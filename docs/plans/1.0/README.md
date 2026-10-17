@@ -5,10 +5,10 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 ## Now
 
 <!-- roadmap-summary:start -->
-- **Workspace:** `0.83.0`
-- **First open stop:** `w13i`
+- **Workspace:** `0.84.0`
+- **First open stop:** `w13j`
 - **Stop state:** `todo`
-- **Next milestone:** `M64`
+- **Next milestone:** `M65`
 <!-- roadmap-summary:end -->
 
 This is the local tree's snapshot, not proof of publication. `python3 -B scripts/roadmap.py summary` prints the four owned fields above, and `--write` replaces them; `just repo-check` checks them against workspace metadata and the existing status derivation. `python3 -B scripts/roadmap.py status` reports the branch, tags, stop evidence and last fetch without fetching. Refresh/review local refs before claiming a release is merged or published.

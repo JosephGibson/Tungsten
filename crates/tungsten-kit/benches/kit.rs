@@ -1,25 +1,43 @@
-//! The kit's per-entity per-step systems at 1,000 and 10,000 entities, one
-//! fixed step per iteration: `lifetime_tick`, `health_tick`, `action_input`,
-//! the bodiless `top_down_mover`, `TagFilter::matches`, `stats_apply`,
-//! `cooldown_tick` (no jitter) and `cues` (one `damaged` occurrence per
-//! entity per step, with an entity cue and one rule). The measured run with
-//! its bound is W13i's; `cargo test -p tungsten-kit --bench kit` runs each
-//! row once.
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 23 rows, one
+//! fixed step or one frame's present phase per iteration:
+//!
+//! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
+//!   bodiless `top_down_mover`, `TagFilter::matches`, `stats_apply`,
+//!   `cooldown_tick` (no jitter), `cues` (one `damaged` occurrence per
+//!   entity per step, with an entity cue and one rule), and M64's
+//!   `linear_motion`, `oscillator`, `follow` and `steering` (each after one
+//!   tagged target, through the nearest search), `orbit` (its spawn point),
+//!   `knockback` (pushes running), `speed_limit` (bodiless),
+//!   `speed_limit_settle` (the plugin's step on dynamic bodies, no solver),
+//!   `wrap` and `stay_in_view` (a region), `aim` (one tagged target);
+//! - present phase: `oscillator_present` (rotation and scale), `facing`,
+//!   `character_animator` (a clip set, unchanged) and `depth_sort`.
+//!
+//! The bound, from M64's first measured run: each row's median per entity
+//! at 10,000 is at most twice its median per entity at 1,000, so no row
+//! grows faster than its entities. `cargo test -p tungsten-kit --bench kit`
+//! runs each row once.
 
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec2;
-use tungsten_core::physics::Position;
+use tungsten_core::assets::AnimationFrame;
+use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    ActionMap, Binding, CommandBuffer, EventQueue, InputState, KeyCode, Plugin, PluginSet,
-    Schedule, Stage, StagedLoad, Time, World,
+    ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, EventQueue,
+    InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite, SpriteAssetId, Stage, StagedLoad,
+    Time, Transform, World,
 };
 use tungsten_kit::{
-    ActionInput, ActionInputPlugin, Cooldown, CooldownPlugin, Counters, CountersPlugin, CueAction,
-    Cues, CuesPlugin, Damaged, Health, HealthPlugin, Intent, Lifetime, LifetimePlugin,
-    PlatformerController, Stats, StatsPlugin, TagFilter, Tags, TagsPlugin, TopDownMover,
-    TopDownMoverPlugin,
+    ActionInput, ActionInputPlugin, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin,
+    Clips, Cooldown, CooldownPlugin, Counters, CountersPlugin, CueAction, Cues, CuesPlugin,
+    Damaged, DepthSort, DepthSortPlugin, Facing, FacingPlugin, Follow, FollowPlugin, Health,
+    HealthPlugin, Intent, Knockback, KnockbackPlugin, Lifetime, LifetimePlugin, LinearMotion,
+    LinearMotionPlugin, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, PlatformerController,
+    SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
+    SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, Wrap,
+    WrapPlugin, knock_back,
 };
 
 const SIZES: [usize; 2] = [1_000, 10_000];
@@ -39,6 +57,314 @@ fn rig(plugin: &impl Plugin) -> (World, Schedule) {
 fn fixed_step(world: &mut World, schedule: &mut Schedule) {
     world.resource_mut::<Time>().advance_frame(STEP);
     schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+}
+
+/// One frame's present phase: `PostUpdate`, where the kit's present
+/// systems run.
+fn present_step(world: &mut World, schedule: &mut Schedule) {
+    world.resource_mut::<Time>().advance_frame(STEP);
+    schedule.run_stage(Stage::PostUpdate, world, |_, _| {});
+}
+
+/// A bodiless entity at `at`: a `Position` and a `PrevPosition`.
+fn placed(at: Vec2) -> (Position, PrevPosition) {
+    (Position(at), PrevPosition(at))
+}
+
+/// A row of `n` entities each spawned by `spawn(world, i)` into `plugin`'s
+/// rig, `setup` run once after, then `step` per iteration.
+fn row(
+    c: &mut Criterion,
+    name: &str,
+    plugin: &impl Plugin,
+    setup: fn(&mut World),
+    spawn: fn(&mut World, usize),
+    step: fn(&mut World, &mut Schedule),
+) {
+    let mut group = c.benchmark_group(name);
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(plugin);
+        setup(&mut world);
+        for i in 0..n {
+            spawn(&mut world, i);
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| step(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn nothing(_: &mut World) {}
+
+/// The one tagged target the seeking rows look for.
+fn one_target(world: &mut World) {
+    world.spawn_with((
+        Tags::new(["team.player"]),
+        Position(Vec2::new(5000.0, 5000.0)),
+    ));
+}
+
+fn the_player() -> Target {
+    Target::nearest(TagFilter::new().all(["team.player"]))
+}
+
+fn linear_motion(c: &mut Criterion) {
+    row(
+        c,
+        "linear_motion",
+        &LinearMotionPlugin,
+        nothing,
+        |world, i| {
+            let velocity = Vec2::new(30.0, (i % 5) as f32);
+            world.spawn_with((LinearMotion::new(velocity),).with(placed(Vec2::ZERO)));
+        },
+        fixed_step,
+    );
+}
+
+fn oscillator(c: &mut Criterion) {
+    row(
+        c,
+        "oscillator",
+        &OscillatorPlugin,
+        nothing,
+        |world, i| {
+            let bob = Oscillator::position(Vec2::new(0.0, 4.0), 1.0 + (i % 3) as f32 * 0.1);
+            world.spawn_with((bob,).with(placed(Vec2::new(i as f32, 0.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn oscillator_present(c: &mut Criterion) {
+    row(
+        c,
+        "oscillator_present",
+        &OscillatorPlugin,
+        nothing,
+        |world, i| {
+            let wobble = Oscillator::rotation(0.3, 0.8).with_scale(0.1, 0.5 + (i % 3) as f32 * 0.1);
+            world.spawn_with((wobble, Transform::from_position(Vec2::new(i as f32, 0.0))));
+        },
+        present_step,
+    );
+}
+
+fn follow(c: &mut Criterion) {
+    row(
+        c,
+        "follow",
+        &FollowPlugin,
+        one_target,
+        |world, i| {
+            let pet = Follow::new(the_player()).with_lag(0.2);
+            world.spawn_with((pet,).with(placed(Vec2::new(i as f32, 0.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn orbit(c: &mut Criterion) {
+    row(
+        c,
+        "orbit",
+        &OrbitPlugin,
+        nothing,
+        |world, i| {
+            let blade = Orbit::new(40.0, 3.0);
+            world.spawn_with((blade,).with(placed(Vec2::new(i as f32, 0.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn steering(c: &mut Criterion) {
+    row(
+        c,
+        "steering",
+        &SteeringPlugin,
+        one_target,
+        |world, i| {
+            let seeker = Steering::seek(the_player(), 90.0).with_acceleration(600.0);
+            world.spawn_with((seeker,).with(placed(Vec2::new(i as f32, 0.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn knockback(c: &mut Criterion) {
+    row(
+        c,
+        "knockback",
+        &KnockbackPlugin,
+        nothing,
+        |world, i| {
+            let rover =
+                world.spawn_with((Knockback::new(1e6),).with(placed(Vec2::new(i as f32, 0.0))));
+            assert!(knock_back(world, rover, Vec2::new(-200.0, 50.0)));
+        },
+        fixed_step,
+    );
+}
+
+fn speed_limit(c: &mut Criterion) {
+    row(
+        c,
+        "speed_limit",
+        &SpeedLimitPlugin,
+        nothing,
+        |world, i| {
+            let cap = SpeedLimit::speed(100.0).with_y(60.0);
+            world.spawn_with(
+                (cap, Velocity(Vec2::new(150.0, (i % 7) as f32 * 20.0))).with(placed(Vec2::ZERO)),
+            );
+        },
+        fixed_step,
+    );
+}
+
+fn speed_limit_settle(c: &mut Criterion) {
+    row(
+        c,
+        "speed_limit_settle",
+        &SpeedLimitPlugin,
+        nothing,
+        |world, i| {
+            let body =
+                RigidBodyBundle::dynamic(Position::new(i as f32 * 4.0, 0.0), Collider::circle(1.0));
+            let entity = world.spawn_with(body.with((SpeedLimit::y(300.0),)));
+            world.get_mut::<Velocity>(entity).unwrap().0 = Vec2::new(0.0, 400.0);
+        },
+        fixed_step,
+    );
+}
+
+fn wrap(c: &mut Criterion) {
+    row(
+        c,
+        "wrap",
+        &WrapPlugin,
+        nothing,
+        |world, i| {
+            let arena =
+                Wrap::region(Vec2::ZERO, Vec2::new(20_000.0, 720.0)).with_size(Vec2::splat(16.0));
+            world.spawn_with((arena,).with(placed(Vec2::new(i as f32, 100.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn stay_in_view(c: &mut Criterion) {
+    row(
+        c,
+        "stay_in_view",
+        &StayInViewPlugin,
+        nothing,
+        |world, i| {
+            let room = StayInView::region(Vec2::ZERO, Vec2::new(20_000.0, 720.0))
+                .with_size(Vec2::splat(16.0));
+            world.spawn_with((room,).with(placed(Vec2::new(i as f32, 100.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn aim(c: &mut Criterion) {
+    row(
+        c,
+        "aim",
+        &AimPlugin,
+        one_target,
+        |world, i| {
+            let sentry = Aim::at(the_player()).with_offset(Vec2::splat(8.0));
+            world.spawn_with((sentry, Position(Vec2::new(i as f32, 0.0))));
+        },
+        fixed_step,
+    );
+}
+
+fn facing(c: &mut Criterion) {
+    row(
+        c,
+        "facing",
+        &FacingPlugin,
+        nothing,
+        |world, i| {
+            let heading = Facing::new().four_way().turning(0.0);
+            let velocity = Velocity(Vec2::new((i % 5) as f32 - 2.0, 3.0));
+            world.spawn_with((heading, velocity, Transform::default()));
+        },
+        present_step,
+    );
+}
+
+/// The animator row's clips: `idle` and a four-way `walk`.
+fn clips(world: &mut World) {
+    let mut clips = AnimationRegistry::new();
+    for (first, id) in ["idle", "walk_left", "walk_right", "walk_up", "walk_down"]
+        .into_iter()
+        .enumerate()
+    {
+        clips.insert(
+            id.to_string(),
+            AnimationData {
+                looping: true,
+                frames: (0..2)
+                    .map(|frame| AnimationFrame {
+                        sprite: SpriteAssetId::new((first * 2 + frame) as u32),
+                        duration_ms: 100,
+                    })
+                    .collect(),
+            },
+        );
+    }
+    world.insert_resource(clips);
+}
+
+fn character_animator(c: &mut Criterion) {
+    // The animator alone: the facing it reads holds still, and no tick
+    // advances the clips.
+    row(
+        c,
+        "character_animator",
+        &CharacterAnimatorPlugin,
+        clips,
+        |world, i| {
+            let walker = CharacterAnimator::new("idle").with_move(Clips::four(
+                "walk_left",
+                "walk_right",
+                "walk_up",
+                "walk_down",
+            ));
+            let velocity = Velocity(Vec2::new(40.0 * ((i % 3) as f32 - 1.0), 30.0));
+            world.spawn_with((
+                walker,
+                Facing::new().four_way(),
+                velocity,
+                Sprite::new(SpriteAssetId::new(0)),
+            ));
+        },
+        present_step,
+    );
+}
+
+fn depth_sort(c: &mut Criterion) {
+    row(
+        c,
+        "depth_sort",
+        &DepthSortPlugin,
+        nothing,
+        |world, i| {
+            let at = Transform::from_position(Vec2::new(0.0, (i % 700) as f32));
+            world.spawn_with((
+                DepthSort::new().with_offset(16.0),
+                at,
+                Sprite::new(SpriteAssetId::new(0)),
+            ));
+        },
+        present_step,
+    );
 }
 
 fn lifetime_tick(c: &mut Criterion) {
@@ -256,6 +582,21 @@ criterion_group!(
     tag_filter,
     stats_apply,
     cooldown_tick,
-    cues
+    cues,
+    linear_motion,
+    oscillator,
+    oscillator_present,
+    follow,
+    orbit,
+    steering,
+    knockback,
+    speed_limit,
+    speed_limit_settle,
+    wrap,
+    stay_in_view,
+    aim,
+    facing,
+    character_animator,
+    depth_sort
 );
 criterion_main!(kit);

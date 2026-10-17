@@ -1,0 +1,22 @@
+{
+  "sprite": {
+    "asset_id": "sentry"
+  },
+  "tag": "sentry",
+  "components": {
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.player"
+          ],
+          "range": 160
+        }
+      }
+    },
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

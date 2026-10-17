@@ -1,13 +1,20 @@
 //! The top-down fixture: a hero on a kinematic body, a wall, slimes from a
-//! nest, a trap zone, a drone on a loop and a bolt that leaves its region.
+//! nest, a trap zone, a drone on a loop and a bolt that leaves its region;
+//! M64's seeker, coward, crates, sentry, wielder and blades, rovers,
+//! brawler, pet and gem.
 
+use glam::Vec2;
 use tungsten_core::physics::Velocity;
-use tungsten_core::{AudioCommand, CameraController, CameraMode, CameraState};
+use tungsten_core::{
+    AnimationState, AudioCommand, CameraController, CameraMode, CameraState, Entity, Sprite,
+    Transform,
+};
 
-use super::{DTS, body_at, frames_for, recipe, spawn, tagged};
+use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, teleport};
 use crate::kit::{
-    CooldownElapsed, Counters, Damaged, Health, Hit, HitFlash, KitPlugins, KitRng, Modifier,
-    Source, Stats, Tags, TopDownMover, ZoneEntered, damage,
+    Aim, CharacterAnimator, CooldownElapsed, Counters, Damaged, Facing, Health, Hit, HitFlash,
+    KitPlugins, KitRng, Modifier, Source, Stats, Steering, Tags, TopDownMover, ZoneEntered, damage,
+    knock_back,
 };
 use crate::testing::Harness;
 
@@ -310,5 +317,220 @@ fn the_hoppers_jittered_hops_repeat_under_a_seed() {
             let gap = pair[1] - pair[0];
             assert!((low..=high).contains(&gap), "dt {dt}: {first:?}");
         }
+    }
+}
+
+fn z(harness: &Harness, entity: Entity) -> i32 {
+    harness.world().get::<Sprite>(entity).unwrap().z_order
+}
+
+fn walk(harness: &mut Harness, entity: Entity, direction: Vec2) {
+    harness
+        .world_mut()
+        .get_mut::<TopDownMover>(entity)
+        .unwrap()
+        .set_direction(direction);
+}
+
+#[test]
+fn a_seeker_chases_faces_walks_four_ways_and_sorts_by_depth_and_a_coward_flees() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hero = spawn(&mut harness, "hero", [400.0, 300.0]);
+        let seeker = spawn(&mut harness, "seeker", [100.0, 300.0]);
+        let above = spawn(&mut harness, "crate", [250.0, 280.0]);
+        let below = spawn(&mut harness, "crate", [250.0, 320.0]);
+        let coward = spawn(&mut harness, "coward", [450.0, 300.0]);
+        let clip = |harness: &Harness| {
+            harness
+                .world()
+                .get::<AnimationState>(seeker)
+                .unwrap()
+                .animation_id
+                .clone()
+        };
+        harness.step(frames_for(1.0, dt));
+        assert!(body_at(&harness, seeker).x > 130.0, "dt {dt}: it chases");
+        assert_eq!(
+            harness.world().get::<Facing>(seeker).unwrap().direction(),
+            Vec2::X
+        );
+        assert_eq!(clip(&harness), "seeker_walk_right", "dt {dt}");
+        assert!(
+            z(&harness, seeker) > z(&harness, above) && z(&harness, seeker) < z(&harness, below),
+            "dt {dt}: in front of the crate above it, behind the one below"
+        );
+        let fled = body_at(&harness, coward).distance(body_at(&harness, hero));
+        assert!(
+            (96.0..100.0).contains(&fled),
+            "dt {dt}: out of its radius: {fled}"
+        );
+        assert_eq!(
+            harness.world().get::<Steering>(coward).unwrap().velocity(),
+            Vec2::ZERO
+        );
+
+        for (to, walk_clip) in [
+            (Vec2::new(0.0, -300.0), "seeker_walk_up"),
+            (Vec2::new(0.0, 300.0), "seeker_walk_down"),
+            (Vec2::new(-300.0, 0.0), "seeker_walk_left"),
+        ] {
+            let at = body_at(&harness, seeker) + to;
+            teleport(&mut harness, hero, at);
+            harness.step(frames_for(0.5, dt));
+            assert_eq!(clip(&harness), walk_clip, "dt {dt}");
+        }
+        // Its target gone, it brakes and idles.
+        harness.world_mut().despawn(hero);
+        harness.step(frames_for(0.5, dt));
+        assert_eq!(clip(&harness), "seeker_idle", "dt {dt}");
+        assert_eq!(
+            harness
+                .world()
+                .get::<CharacterAnimator>(seeker)
+                .unwrap()
+                .state(),
+            "idle"
+        );
+    }
+}
+
+#[test]
+fn a_sentry_watches_the_nearest_hero_in_range_and_a_wielders_blades_circle_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sentry = spawn(&mut harness, "sentry", [0.0, 0.0]);
+        let hero = spawn(&mut harness, "hero", [100.0, 0.0]);
+        let wielder = spawn(&mut harness, "wielder", [300.0, 300.0]);
+        walk(&mut harness, wielder, Vec2::X);
+        harness.step(1);
+        let aim = harness.world().get::<Aim>(sentry).unwrap();
+        assert_eq!(
+            (aim.direction(), aim.target_entity()),
+            (Some(Vec2::X), Some(hero))
+        );
+        teleport(&mut harness, hero, Vec2::new(0.0, 500.0));
+        harness.step(1);
+        let aim = harness.world().get::<Aim>(sentry).unwrap();
+        assert_eq!(
+            (aim.direction(), aim.target_entity()),
+            (Some(Vec2::X), None),
+            "dt {dt}: out of range, it holds"
+        );
+
+        harness.step(frames_for(1.2, dt));
+        let blades = tagged(&harness, "blade");
+        assert_eq!(blades.len(), 2, "dt {dt}");
+        for &blade in &blades {
+            assert_eq!(
+                harness.world().get::<Source>(blade).unwrap().entity(),
+                wielder
+            );
+        }
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let centre = body_at(&harness, wielder);
+            for &blade in &blades {
+                let radius = body_at(&harness, blade).distance(centre);
+                assert!((radius - 40.0).abs() < 1e-2, "dt {dt}: {radius}");
+            }
+        }
+        let centre = body_at(&harness, wielder);
+        let apart = (body_at(&harness, blades[0]) - centre)
+            .angle_to(body_at(&harness, blades[1]) - centre)
+            .abs();
+        assert!(
+            (apart - std::f32::consts::PI).abs() < 0.3,
+            "dt {dt}: opposite: {apart}"
+        );
+        assert!(centre.x > 400.0, "dt {dt}: the wielder moved");
+    }
+}
+
+#[test]
+fn a_rover_wraps_through_a_side_tunnel_and_pushes_slide_along_walls() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let rover = spawn(&mut harness, "rover", [600.0, 200.0]);
+        walk(&mut harness, rover, Vec2::X);
+        let pushed = spawn(&mut harness, "rover", [300.0, 400.0]);
+        // A wall whose left face is at x 890, the brawler's right face at 880.
+        spawn(&mut harness, "wall", [900.0, 300.0]);
+        let brawler = spawn(&mut harness, "brawler", [870.0, 300.0]);
+        harness.step(2);
+        assert!(knock_back(
+            harness.world_mut(),
+            pushed,
+            Vec2::new(-400.0, 0.0)
+        ));
+        assert!(knock_back(
+            harness.world_mut(),
+            brawler,
+            Vec2::new(600.0, -300.0)
+        ));
+        let mut wrapped = false;
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            let drawn = drawn_at(&harness, rover).x;
+            assert!(
+                drawn > 560.0 || drawn < 80.0,
+                "dt {dt}: never between: {drawn}"
+            );
+            wrapped |= drawn < 80.0;
+            // Its centre at most 10 px on, its right face on the wall's.
+            assert!(
+                body_at(&harness, brawler).x <= 880.0 + 1e-2,
+                "dt {dt}: never into it"
+            );
+        }
+        assert!(wrapped, "dt {dt}: through the tunnel");
+        assert!((body_at(&harness, rover).y - 200.0).abs() < 1e-3);
+        assert!(
+            (body_at(&harness, pushed).x - 260.0).abs() < 1e-2,
+            "dt {dt}: 40 px back"
+        );
+        let slid = body_at(&harness, brawler);
+        assert!(
+            (slid.x - 880.0).abs() < 0.05,
+            "dt {dt}: against the wall: {slid}"
+        );
+        assert!(slid.y < 280.0, "dt {dt}: it slid up the wall: {slid}");
+    }
+}
+
+#[test]
+fn a_pet_trails_the_hero_bobbing_and_a_gem_bobs_and_pulses() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hero = spawn(&mut harness, "hero", [200.0, 200.0]);
+        let pet = spawn(&mut harness, "pet", [0.0, 0.0]);
+        let gem = spawn(&mut harness, "gem", [500.0, 300.0]);
+        harness.step(frames_for(2.0, dt));
+        let (mut low, mut high) = (f32::INFINITY, f32::NEG_INFINITY);
+        let (mut small, mut large) = (f32::INFINITY, f32::NEG_INFINITY);
+        let gem_start = body_at(&harness, gem);
+        for _ in 0..frames_for(1.2, dt) {
+            harness.step(1);
+            let off = body_at(&harness, pet) - body_at(&harness, hero) - Vec2::new(-20.0, 0.0);
+            assert!(off.x.abs() < 0.5, "dt {dt}: beside the hero: {off}");
+            low = low.min(off.y);
+            high = high.max(off.y);
+            let scale = harness.world().get::<Transform>(gem).unwrap().scale.x;
+            small = small.min(scale);
+            large = large.max(scale);
+        }
+        assert!(
+            high - low > 2.0 && low > -5.0 && high < 5.0,
+            "dt {dt}: {low}..{high}"
+        );
+        assert!(small >= 0.9 - 1e-4 && large <= 1.1 + 1e-4 && large - small > 0.15);
+        assert!(
+            body_at(&harness, gem).distance(gem_start) < 1e-3,
+            "dt {dt}: a whole period"
+        );
+        harness.press_action("move_right");
+        harness.step(frames_for(0.5, dt));
+        let trail = body_at(&harness, hero).x - 20.0 - body_at(&harness, pet).x;
+        assert!(trail > 5.0, "dt {dt}: it lags the running hero by {trail}");
     }
 }

@@ -34,11 +34,11 @@ use crate::testing::Harness;
 /// `post_update` with `DefaultPlugins`, then `KitPlugins::set()`, the sound
 /// plugin, the trigger zone and the state machine: the present phase after
 /// the late propagation and before the camera.
-const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, kit_debug_draw, hit_sound, camera_update";
+const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
 /// `physics_step`, each member in its registration order.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, phases, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, zone_entered, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, speed_limit, physics_step, kit_overlap, despawn_outside, zone_tick, speed_limit_settle, wrap, stay_in_view, zone_entered, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -2141,4 +2141,939 @@ fn the_trace_tells_why_an_entity_died() {
         "pushed outside the steps: the next one"
     );
     assert_eq!(entries[2].frame, entries[0].frame + 1);
+}
+
+// M64's motion and facing, each item through the engine's frame.
+
+use std::f32::consts::{FRAC_PI_2, TAU};
+
+use tungsten_core::physics::PrevPosition;
+use tungsten_core::{CameraController, Plugin};
+
+use crate::kit::{
+    ACTION_INPUT, AIM, ANIMATION_TICK, ActionInputPlugin, Aim, AimPlugin, AnimationPlugin,
+    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, DepthSort, FACING, FOLLOW,
+    Facing, FacingPlugin, Follow, FollowPlugin, KNOCKBACK, Knockback, KnockbackPlugin,
+    LINEAR_MOTION, LinearMotion, LinearMotionPlugin, ORBIT, OSCILLATOR, Orbit, OrbitPlugin,
+    Oscillator, OscillatorPlugin, PATH_FOLLOW, PLATFORMER_CONTROLLER, PathFollowerPlugin,
+    PlatformerControllerPlugin, SPEED_LIMIT, STEERING, SpeedLimit, SpeedLimitPlugin, StayInView,
+    Steering, SteeringPlugin, TOP_DOWN_MOVER, Target, TopDownMoverPlugin, Wrap, knock_back,
+};
+
+const MOTION_DTS: [f32; 2] = [1.0 / 60.0, 1.0 / 30.0];
+
+fn motion_harness(dt: f32) -> Harness {
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(dt);
+    harness
+}
+
+/// A bodiless entity at `(x, y)` with `rest`: a `Transform`, a `Position`
+/// and a `PrevPosition` there.
+fn bodiless(harness: &mut Harness, x: f32, y: f32, rest: impl Bundle) -> Entity {
+    let at = Vec2::new(x, y);
+    spawn_at(harness, x, y, (Position(at), PrevPosition(at))).also(harness, rest)
+}
+
+trait Also {
+    fn also(self, harness: &mut Harness, rest: impl Bundle) -> Entity;
+}
+
+impl Also for Entity {
+    fn also(self, harness: &mut Harness, rest: impl Bundle) -> Entity {
+        harness.world_mut().insert_bundle(self, rest);
+        self
+    }
+}
+
+fn body(harness: &Harness, entity: Entity) -> Vec2 {
+    harness.world().get::<Position>(entity).unwrap().0
+}
+
+/// The fixed steps run since `Time` began.
+fn steps_run(harness: &Harness, steps: &mut u32) {
+    *steps += harness.world().resource::<Time>().fixed_steps_this_frame();
+}
+
+#[test]
+fn a_bodiless_mover_is_drawn_between_its_last_two_steps_and_holds_while_paused() {
+    let mut harness = motion_harness(0.025);
+    let rock = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (LinearMotion::new(Vec2::new(60.0, 30.0)),),
+    );
+    let mut between = 0;
+    for _ in 0..12 {
+        harness.step(1);
+        let world = harness.world();
+        let (prev, cur) = (
+            world.get::<PrevPosition>(rock).unwrap().0,
+            body(&harness, rock),
+        );
+        let alpha = world.resource::<Time>().alpha();
+        let drawn = position(&harness, rock);
+        assert!(
+            (drawn - (prev + (cur - prev) * alpha)).length() < 1e-4,
+            "{drawn}"
+        );
+        if alpha > 1e-3 && alpha < 1.0 - 1e-3 {
+            between += 1;
+            assert!(drawn.x > prev.x && drawn.x < cur.x, "{prev} {drawn} {cur}");
+        }
+    }
+    assert!(between > 4);
+    harness.world_mut().resource_mut::<Time>().pause();
+    let (held, drawn) = (body(&harness, rock), position(&harness, rock));
+    harness.step(5);
+    assert_eq!(
+        (body(&harness, rock), position(&harness, rock)),
+        (held, drawn)
+    );
+}
+
+#[test]
+fn an_oscillator_returns_each_period_and_rides_a_path_with_its_whole_wave() {
+    for dt in MOTION_DTS {
+        let mut harness = motion_harness(dt);
+        let gem = bodiless(
+            &mut harness,
+            100.0,
+            100.0,
+            (Oscillator::position(Vec2::new(0.0, 6.0), 1.0),),
+        );
+        let lift = harness.world_mut().spawn_with(
+            RigidBodyBundle::kinematic(
+                Position::new(300.0, 300.0),
+                Collider::aabb(Vec2::new(40.0, 8.0)),
+            )
+            .with((
+                Transform::from_position(Vec2::new(300.0, 300.0)),
+                Oscillator::position(Vec2::new(0.0, 24.0), 2.0),
+            )),
+        );
+        let path =
+            PathFollower::new([Vec2::new(500.0, 300.0), Vec2::new(620.0, 300.0)], 60.0).ping_pong();
+        let rider = harness.world_mut().spawn_with(
+            RigidBodyBundle::kinematic(
+                Position::new(500.0, 300.0),
+                Collider::aabb(Vec2::new(30.0, 6.0)),
+            )
+            .with((
+                Transform::from_position(Vec2::new(500.0, 300.0)),
+                path,
+                Oscillator::position(Vec2::new(0.0, 10.0), 1.0),
+            )),
+        );
+        let mut steps = 0;
+        for second in 1..=4 {
+            for _ in 0..(1.0 / dt).round() as u32 {
+                harness.step(1);
+                steps_run(&harness, &mut steps);
+                let t = steps as f32 / 60.0;
+                let leg = t % 4.0;
+                let x = if leg <= 2.0 {
+                    60.0 * leg
+                } else {
+                    120.0 - 60.0 * (leg - 2.0)
+                };
+                let expected = Vec2::new(500.0 + x, 300.0 + 10.0 * (TAU * t).sin());
+                let at = body(&harness, rider);
+                assert!(
+                    (at - expected).length() < 1e-2,
+                    "dt {dt} t {t}: {at} vs {expected}"
+                );
+            }
+            assert!(
+                body(&harness, gem).distance(Vec2::new(100.0, 100.0)) < 1e-3,
+                "dt {dt}"
+            );
+            if second % 2 == 0 {
+                let at = body(&harness, lift);
+                assert!(
+                    at.distance(Vec2::new(300.0, 300.0)) < 1e-2,
+                    "dt {dt}: no drift: {at}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn an_oscillators_rotation_and_scale_draw_at_the_drawn_positions_time() {
+    let mut harness = motion_harness(0.025);
+    let sign = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (Oscillator::position(Vec2::new(8.0, 0.0), 1.0)
+            .with_rotation(0.4, 0.8)
+            .with_scale(0.2, 0.5),),
+    );
+    let mut steps = 0;
+    for _ in 0..20 {
+        harness.step(1);
+        steps_run(&harness, &mut steps);
+        let alpha = harness.world().resource::<Time>().alpha();
+        let drawn_time = (steps as f32 - 1.0 + alpha) / 60.0;
+        let transform = harness.world().get::<Transform>(sign).unwrap();
+        let rotation = 0.4 * (TAU * drawn_time / 0.8).sin();
+        let scale = 1.0 + 0.2 * (TAU * drawn_time / 0.5).sin();
+        assert!(
+            (transform.rotation - rotation).abs() < 1e-4,
+            "{} vs {rotation}",
+            transform.rotation
+        );
+        assert!((transform.scale - Vec2::splat(scale)).length() < 1e-4);
+        let (prev, cur) = (
+            harness.world().get::<PrevPosition>(sign).unwrap().0,
+            body(&harness, sign),
+        );
+        assert!((transform.position - (prev + (cur - prev) * alpha)).length() < 1e-4);
+    }
+    harness.world_mut().resource_mut::<Time>().pause();
+    let held = *harness.world().get::<Transform>(sign).unwrap();
+    harness.step(5);
+    let now = harness.world().get::<Transform>(sign).unwrap();
+    assert_eq!(
+        (now.rotation, now.scale),
+        (held.rotation, held.scale),
+        "held while paused"
+    );
+}
+
+#[test]
+fn a_follower_sits_on_its_target_closes_by_its_factor_and_bobs_about_its_point() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    let target = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (LinearMotion::new(Vec2::new(50.0, 20.0)),),
+    );
+    let sitter = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Follow::new(Target::source()).with_offset(Vec2::new(0.0, -16.0)),
+            Source::new(target),
+        ),
+    );
+    let lagger = bodiless(
+        &mut harness,
+        -100.0,
+        0.0,
+        (
+            Follow::new(Target::source()).with_lag(0.2),
+            Source::new(target),
+        ),
+    );
+    let bobber = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            Follow::new(Target::source()).with_offset(Vec2::new(20.0, 0.0)),
+            Oscillator::position(Vec2::new(0.0, 5.0), 0.5),
+            Source::new(target),
+        ),
+    );
+    let factor = (-(1.0_f32 / 60.0) / 0.2).exp();
+    for n in 1..=60 {
+        let before = body(&harness, lagger);
+        harness.step(1);
+        let goal = body(&harness, target);
+        assert!((body(&harness, sitter) - (goal + Vec2::new(0.0, -16.0))).length() < 1e-3);
+        let gap = goal - body(&harness, lagger);
+        assert!(
+            (gap - (goal - before) * factor).length() < 1e-3,
+            "{n}: {gap}"
+        );
+        let bob = Vec2::new(20.0, 5.0 * (TAU * n as f32 / 60.0 / 0.5).sin());
+        assert!(
+            (body(&harness, bobber) - (goal + bob)).length() < 1e-3,
+            "{n}"
+        );
+    }
+}
+
+#[test]
+fn an_orbiter_keeps_its_radius_from_a_moving_kinematic_centres_drawn_point() {
+    let mut harness = motion_harness(0.025);
+    let centre = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(
+            Position::new(100.0, 100.0),
+            Collider::aabb(Vec2::splat(8.0)),
+        )
+        .with((
+            Transform::from_position(Vec2::new(100.0, 100.0)),
+            LinearMotion::new(Vec2::new(80.0, 40.0)),
+        )),
+    );
+    let blade = bodiless(
+        &mut harness,
+        100.0,
+        100.0,
+        (
+            Orbit::new(48.0, 3.0).around(Target::source()),
+            Source::new(centre),
+        ),
+    );
+    harness.step(2);
+    for _ in 0..40 {
+        harness.step(1);
+        let gap = position(&harness, blade).distance(position(&harness, centre));
+        assert!((gap - 48.0).abs() < 0.05, "{gap}");
+    }
+    assert!(position(&harness, centre).x > 150.0, "the centre moved");
+}
+
+#[test]
+fn steering_keeps_a_walls_push_takes_its_stat_and_arrives_on_a_tight_radius() {
+    // A dynamic seeker against a wall: the solver's push stays.
+    let mut harness = motion_harness(1.0 / 60.0);
+    let goal = Target::point(Vec2::new(400.0, 0.0));
+    harness.world_mut().spawn_with(RigidBodyBundle::r#static(
+        Position::new(110.0, 0.0),
+        Collider::aabb(Vec2::new(10.0, 300.0)),
+    ));
+    let brute = harness.world_mut().spawn_with(
+        RigidBodyBundle::dynamic(Position::new(0.0, 0.0), Collider::circle(8.0)).with((
+            Transform::default(),
+            Steering::seek(goal.clone(), 90.0).with_acceleration(900.0),
+        )),
+    );
+    let slowed = bodiless(
+        &mut harness,
+        0.0,
+        200.0,
+        (
+            Steering::seek(goal.clone(), 90.0),
+            Stats::new().with(Stats::MOVE_SPEED, 30.0),
+        ),
+    );
+    for _ in 0..120 {
+        harness.step(1);
+        assert!(
+            body(&harness, brute).x <= 92.0 + 0.5,
+            "{}",
+            body(&harness, brute)
+        );
+    }
+    let speed = harness
+        .world()
+        .get::<Steering>(slowed)
+        .unwrap()
+        .velocity()
+        .length();
+    assert!((speed - 30.0).abs() < 1e-3, "the stat's top speed: {speed}");
+
+    for dt in MOTION_DTS {
+        let mut harness = motion_harness(dt);
+        let landing = Vec2::new(200.0, 50.0);
+        let tight = bodiless(
+            &mut harness,
+            0.0,
+            0.0,
+            (Steering::arrive(Target::point(landing), 120.0).with_radius(0.5),),
+        );
+        // A kinematic seeker at full speed, its velocity the body's.
+        let late = harness.world_mut().spawn_with(
+            RigidBodyBundle::kinematic(Position::new(300.0, 0.0), Collider::aabb(Vec2::splat(4.0)))
+                .with((
+                    Transform::from_position(Vec2::new(300.0, 0.0)),
+                    Steering::seek(Target::point(Vec2::new(900.0, 0.0)), 100.0),
+                )),
+        );
+        harness.step(1);
+        assert_eq!(
+            harness.world().get::<Velocity>(late).unwrap().0,
+            Vec2::new(100.0, 0.0)
+        );
+        // Switched to arrive a pixel short of its target, braking at 60 px/s²:
+        // a step's braking leaves it far over the pixel.
+        let stop = body(&harness, late) + Vec2::X;
+        harness.world_mut().insert(
+            late,
+            Steering::arrive(Target::point(stop), 100.0).with_acceleration(60.0),
+        );
+        harness.step(1);
+        assert!(
+            body(&harness, late).distance(stop) < 1e-3,
+            "dt {dt}: an emergency stop"
+        );
+        harness.step((4.0 / dt) as u32);
+        for _ in 0..20 {
+            harness.step(1);
+            assert!(
+                body(&harness, tight).distance(landing) < 1e-3,
+                "dt {dt}: lands and stays"
+            );
+            assert!(
+                body(&harness, late).distance(stop) < 1e-3,
+                "dt {dt}: and stays"
+            );
+        }
+    }
+}
+
+#[test]
+fn knockback_slides_along_walls_stops_a_driverless_body_and_launches_a_platformer() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    // A wall whose left face is at x 100; a top-down mover on its body
+    // beside it, walking down.
+    harness.world_mut().spawn_with(RigidBodyBundle::r#static(
+        Position::new(110.0, 0.0),
+        Collider::aabb(Vec2::new(10.0, 500.0)),
+    ));
+    let mut walker = TopDownMover::new(60.0);
+    walker.set_direction(Vec2::Y);
+    let brawler = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position::new(80.0, 0.0), Collider::aabb(Vec2::splat(10.0)))
+            .with((
+                Transform::from_position(Vec2::new(80.0, 0.0)),
+                walker,
+                Knockback::new(0.3),
+            )),
+    );
+    let crate_ = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position::new(-300.0, 0.0), Collider::aabb(Vec2::splat(8.0)))
+            .with((
+                Transform::from_position(Vec2::new(-300.0, 0.0)),
+                Knockback::new(0.2),
+            )),
+    );
+    harness.step(2);
+    assert!(knock_back(
+        harness.world_mut(),
+        brawler,
+        Vec2::new(900.0, -300.0)
+    ));
+    assert!(knock_back(
+        harness.world_mut(),
+        crate_,
+        Vec2::new(-240.0, 0.0)
+    ));
+    for _ in 0..40 {
+        harness.step(1);
+        assert!(
+            body(&harness, brawler).x <= 90.0 + 1e-3,
+            "never into the wall"
+        );
+    }
+    assert!(
+        (body(&harness, brawler).x - 90.0).abs() < 0.05,
+        "against it"
+    );
+    // 240 px/s falling to 0 over 0.2 s: 24 px, then still.
+    assert!(
+        (body(&harness, crate_).x + 324.0).abs() < 1e-2,
+        "{}",
+        body(&harness, crate_)
+    );
+    assert_eq!(
+        harness.world().get::<Velocity>(crate_).unwrap().0,
+        Vec2::ZERO
+    );
+
+    let mut harness = motion_harness(1.0 / 60.0);
+    harness.world_mut().insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, GRAVITY),
+        ..PhysicsConfig::default()
+    });
+    tile_map(&mut harness, 60, floor_row(60));
+    let acrobat = hero(
+        &mut harness,
+        Vec2::new(300.0, 100.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    harness.world_mut().insert(acrobat, Knockback::new(0.25));
+    harness.step(20);
+    assert!(pc_ref(&harness, acrobat).grounded());
+    assert!(knock_back(
+        harness.world_mut(),
+        acrobat,
+        Vec2::new(-200.0, -500.0)
+    ));
+    pc(&mut harness, acrobat).set_run(1.0);
+    harness.step(5);
+    let thrown = harness.world().get::<Velocity>(acrobat).unwrap().0;
+    assert!(
+        (thrown.x + 200.0).abs() < 1e-3,
+        "launched, the run locked out: {thrown}"
+    );
+    assert!(!pc_ref(&harness, acrobat).can_jump());
+    harness.step(20);
+    assert!(
+        harness.world().get::<Velocity>(acrobat).unwrap().0.x > 0.0,
+        "the lock ended"
+    );
+}
+
+/// The y velocity each limited entity entered the physics step with, read
+/// between the speed limit and the step.
+#[derive(Default)]
+struct Entering(Vec<f32>);
+
+#[test]
+fn a_speed_limit_bounds_free_fall_caps_a_knocked_body_and_never_lets_a_step_pass_it() {
+    const CAP: f32 = 300.0;
+    const FALL: f32 = 1200.0;
+    let mut app = kit_app();
+    app.add_system_to(
+        Stage::FixedUpdate,
+        system("entering", |world: &mut World| {
+            let speeds: Vec<f32> = world
+                .query::<(&SpeedLimit, &Velocity)>()
+                .map(|(_, velocity)| velocity.0.y)
+                .collect();
+            world.resource_mut::<Entering>().0.extend(speeds);
+        })
+        .after(SPEED_LIMIT)
+        .before(tungsten_core::physics::PHYSICS_STEP),
+    );
+    let mut harness = Harness::new(app);
+    harness.world_mut().insert_resource(Entering::default());
+    harness.world_mut().insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, FALL),
+        ..PhysicsConfig::default()
+    });
+    let crate_ = harness.world_mut().spawn_with(
+        RigidBodyBundle::dynamic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(8.0))).with((
+            Transform::default(),
+            SpeedLimit::y(CAP),
+            Knockback::new(0.1),
+        )),
+    );
+    let cart = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position::new(200.0, 0.0), Collider::aabb(Vec2::splat(4.0)))
+            .with((
+                Transform::from_position(Vec2::new(200.0, 0.0)),
+                LinearMotion::new(Vec2::new(500.0, 0.0)).with_acceleration(Vec2::new(0.0, 900.0)),
+                SpeedLimit::speed(240.0),
+            )),
+    );
+    let rock = bodiless(
+        &mut harness,
+        400.0,
+        0.0,
+        (
+            LinearMotion::new(Vec2::new(0.0, 900.0)),
+            SpeedLimit::x(100.0).with_y(CAP),
+        ),
+    );
+    let dt = 1.0 / 60.0;
+    for n in 0..120 {
+        if n == 60 {
+            assert!(knock_back(
+                harness.world_mut(),
+                crate_,
+                Vec2::new(0.0, 3000.0)
+            ));
+        }
+        let (crate_at, cart_at, rock_at) = (
+            body(&harness, crate_),
+            body(&harness, cart),
+            body(&harness, rock),
+        );
+        harness.step(1);
+        let fell = body(&harness, crate_).y - crate_at.y;
+        assert!(fell <= (CAP + FALL * dt) * dt + 1e-3, "{n}: {fell}");
+        assert!(
+            harness.world().get::<Velocity>(crate_).unwrap().0.y <= CAP + 1e-3,
+            "{n}: leaves capped"
+        );
+        assert!((body(&harness, cart) - cart_at).length() <= 240.0 * dt + 1e-3);
+        assert!(body(&harness, rock).y - rock_at.y <= CAP * dt + 1e-3);
+    }
+    let entering = &harness.world().resource::<Entering>().0;
+    // The crate and the cart, which have a `Velocity`, each step.
+    assert_eq!(entering.len(), 240);
+    assert!(
+        entering.iter().all(|&y| y <= CAP + 1e-3),
+        "every step enters capped"
+    );
+}
+
+#[test]
+fn the_frame_after_a_wrap_draws_the_entity_at_the_far_side() {
+    let mut harness = motion_harness(0.025);
+    let rock = bodiless(
+        &mut harness,
+        600.0,
+        100.0,
+        (
+            LinearMotion::new(Vec2::new(300.0, 0.0)),
+            Wrap::region(Vec2::ZERO, Vec2::new(640.0, 360.0)),
+        ),
+    );
+    let mut wraps = 0;
+    for _ in 0..100 {
+        let (before, drawn_before) = (body(&harness, rock).x, position(&harness, rock).x);
+        harness.step(1);
+        if body(&harness, rock).x < before {
+            // The frame after a wrap: drawn at the far side, never between.
+            let drawn = position(&harness, rock).x;
+            assert!(
+                drawn_before > 560.0 && drawn < 40.0,
+                "{drawn_before} then {drawn}"
+            );
+            wraps += 1;
+        }
+    }
+    assert_eq!(
+        wraps, 2,
+        "750 px at 300 px/s for 2.5 s: out at 40 px and 680 px"
+    );
+}
+
+#[test]
+fn a_camera_shake_does_not_move_a_clamped_entity() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    {
+        let camera = harness.world_mut().resource_mut::<CameraController>();
+        camera.shake_max_offset = Vec2::splat(20.0);
+        camera.shake_frequency_hz = 9.0;
+        camera.shake_decay = 0.0;
+        camera.add_trauma(1.0);
+    }
+    let mut mover = TopDownMover::new(300.0);
+    mover.set_direction(Vec2::X);
+    let fighter = bodiless(
+        &mut harness,
+        1000.0,
+        300.0,
+        (mover, StayInView::view(8.0).with_size(Vec2::splat(24.0))),
+    );
+    harness.step(60);
+    let held = body(&harness, fighter);
+    assert_eq!(held.x, 1280.0 - 8.0 - 24.0);
+    let mut shaken = 0;
+    for _ in 0..30 {
+        harness.step(1);
+        let camera = harness.world().resource::<CameraState>().position;
+        shaken += usize::from(camera != Vec2::ZERO);
+        assert_eq!(body(&harness, fighter), held, "the shake moves nothing");
+    }
+    assert!(shaken > 20, "the camera shook");
+}
+
+#[test]
+fn an_aim_follows_the_cursor_under_a_moved_camera_and_a_loose_nearest_fails_the_load() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    {
+        let camera = harness.world_mut().resource_mut::<CameraState>();
+        camera.position = Vec2::new(1000.0, 500.0);
+        camera.zoom = 2.0;
+    }
+    let turret = bodiless(
+        &mut harness,
+        1000.0,
+        500.0,
+        (Aim::cursor().with_offset(Vec2::new(16.0, 16.0)),),
+    );
+    harness.set_cursor(200.0, 32.0);
+    harness.step(1);
+    // The cursor's world point: the camera's corner plus 200 by 32 over 2.
+    let toward = (Vec2::new(1100.0, 516.0) - Vec2::new(1016.0, 516.0)).normalize();
+    assert_eq!(
+        harness.world().get::<Aim>(turret).unwrap().direction(),
+        Some(toward)
+    );
+
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_loose_aim_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("prefabs")).unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{ "prefabs": { "sentry": { "path": "prefabs/sentry.json" } } }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("prefabs/sentry.json"),
+        r#"{ "components": { "aim": { "from": "target", "target": { "nearest": { "none": ["boss"] } } } } }"#,
+    )
+    .unwrap();
+    let mut harness = motion_harness(1.0 / 60.0);
+    let error = harness
+        .load_manifest(dir.join("manifest.json"))
+        .unwrap_err();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let text = format!("{error:#}");
+    assert!(text.contains("aim") && text.contains("target"), "{text}");
+    assert!(text.contains("no `all` or `any` tag"), "{text}");
+}
+
+#[test]
+fn turning_writes_a_bodys_heading_and_a_stopped_entity_keeps_facing() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    let ship = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position::new(0.0, 0.0), Collider::aabb(Vec2::splat(8.0))).with(
+            (
+                Transform::default(),
+                LinearMotion::new(Vec2::new(0.0, 50.0)),
+                Facing::new().turning(FRAC_PI_2),
+            ),
+        ),
+    );
+    harness.step(2);
+    let turned = harness.world().get::<Transform>(ship).unwrap().rotation;
+    assert!((turned - std::f32::consts::PI).abs() < 1e-5, "{turned}");
+    harness
+        .world_mut()
+        .get_mut::<LinearMotion>(ship)
+        .unwrap()
+        .set_velocity(Vec2::ZERO);
+    harness.step(5);
+    assert_eq!(
+        harness.world().get::<Facing>(ship).unwrap().direction(),
+        Vec2::Y
+    );
+    assert!(
+        (harness.world().get::<Transform>(ship).unwrap().rotation - std::f32::consts::PI).abs()
+            < 1e-5
+    );
+}
+
+#[test]
+fn a_misspelt_clip_fails_the_load_and_a_new_clip_shows_its_first_frame_however_short() {
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_bad_clip_{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("prefabs")).unwrap();
+    std::fs::create_dir_all(dir.join("animations")).unwrap();
+    std::fs::write(
+        dir.join("manifest.json"),
+        r#"{ "prefabs": { "walker": { "path": "prefabs/walker.json" } }, "animations": { "walk_right": { "path": "animations/walk_right.json" } } }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("animations/walk_right.json"),
+        r#"{ "frames": [{ "duration_ms": 100, "sprite": "walk_0" }], "looping": true }"#,
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("prefabs/walker.json"),
+        r#"{ "components": { "character_animator": { "idle": "walk_right", "move": { "left": "walk_lft", "right": "walk_right" } } } }"#,
+    )
+    .unwrap();
+    let mut harness = motion_harness(1.0 / 60.0);
+    let error = harness
+        .load_manifest(dir.join("manifest.json"))
+        .unwrap_err();
+    std::fs::remove_dir_all(&dir).unwrap();
+    let text = format!("{error:#}");
+    assert!(
+        text.contains("move.left") && text.contains("walk_lft"),
+        "{text}"
+    );
+
+    let mut harness = motion_harness(0.05);
+    let clip = |first: u32, ms: u32| AnimationData {
+        looping: true,
+        frames: (0..3)
+            .map(|i| AnimationFrame {
+                sprite: SpriteAssetId::new(first + i),
+                duration_ms: ms,
+            })
+            .collect(),
+    };
+    let mut clips = AnimationRegistry::new();
+    clips.insert("idle".into(), clip(0, 100));
+    clips.insert("dash".into(), clip(70, 10));
+    harness.world_mut().insert_resource(clips);
+    let runner = bodiless(
+        &mut harness,
+        0.0,
+        0.0,
+        (
+            CharacterAnimator::new("idle").with_move("dash"),
+            LinearMotion::new(Vec2::ZERO),
+            Sprite::new(SpriteAssetId::new(99)),
+        ),
+    );
+    harness.step(2);
+    assert_eq!(
+        harness.world().get::<Sprite>(runner).unwrap().asset_id,
+        SpriteAssetId::new(0)
+    );
+    harness
+        .world_mut()
+        .get_mut::<LinearMotion>(runner)
+        .unwrap()
+        .set_velocity(Vec2::new(80.0, 0.0));
+    harness.step(1);
+    assert_eq!(
+        harness.world().get::<Sprite>(runner).unwrap().asset_id,
+        SpriteAssetId::new(70),
+        "its 10 ms first frame shows on the 50 ms frame that picks it"
+    );
+    harness.step(1);
+    assert_ne!(
+        harness.world().get::<Sprite>(runner).unwrap().asset_id,
+        SpriteAssetId::new(70)
+    );
+}
+
+#[test]
+fn depth_sorting_draws_the_lower_of_two_crossing_entities_later() {
+    let mut harness = motion_harness(1.0 / 60.0);
+    let quad = harness
+        .world_mut()
+        .resource_mut::<AssetRegistry>()
+        .register_sprite(
+            "quad".into(),
+            FilterMode::Nearest,
+            16,
+            16,
+            PathBuf::from("test/quad.png"),
+            TextureHandle(0),
+            UvRect::FULL,
+            None,
+            None,
+            None,
+        );
+    let still = spawn_at(
+        &mut harness,
+        100.0,
+        100.0,
+        (
+            Sprite::new(quad),
+            DepthSort::new().with_offset(16.0),
+            Visibility::default(),
+        ),
+    );
+    let walker = bodiless(
+        &mut harness,
+        140.0,
+        40.0,
+        (
+            Sprite::new(quad),
+            DepthSort::new().with_offset(16.0),
+            Visibility::default(),
+            LinearMotion::new(Vec2::new(0.0, 60.0)),
+        ),
+    );
+    let order = |harness: &Harness| -> Vec<f32> {
+        harness
+            .draw()
+            .unwrap()
+            .sprites
+            .iter()
+            .flat_map(|batch| batch.instances.iter().map(|sprite| sprite.position[0]))
+            .collect()
+    };
+    harness.step(1);
+    assert_eq!(
+        order(&harness),
+        [140.0, 100.0],
+        "above it, the walker draws first"
+    );
+    harness.step(120);
+    assert!(position(&harness, walker).y > 100.0);
+    assert_eq!(
+        order(&harness),
+        [100.0, 140.0],
+        "below it, the walker draws later"
+    );
+    let _ = still;
+}
+
+/// Builds the plugin whose system is `name`.
+fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut World) {
+    match name {
+        ACTION_INPUT => ActionInputPlugin.build(schedule, world),
+        AIM => AimPlugin.build(schedule, world),
+        LINEAR_MOTION => LinearMotionPlugin.build(schedule, world),
+        OSCILLATOR => OscillatorPlugin.build(schedule, world),
+        PATH_FOLLOW => PathFollowerPlugin.build(schedule, world),
+        PLATFORMER_CONTROLLER => PlatformerControllerPlugin.build(schedule, world),
+        TOP_DOWN_MOVER => TopDownMoverPlugin.build(schedule, world),
+        STEERING => SteeringPlugin.build(schedule, world),
+        FOLLOW => FollowPlugin.build(schedule, world),
+        ORBIT => OrbitPlugin.build(schedule, world),
+        KNOCKBACK => KnockbackPlugin.build(schedule, world),
+        SPEED_LIMIT => SpeedLimitPlugin.build(schedule, world),
+        FACING => FacingPlugin.build(schedule, world),
+        ANIMATION_TICK => AnimationPlugin.build(schedule, world),
+        CHARACTER_ANIMATOR => CharacterAnimatorPlugin.build(schedule, world),
+        other => panic!("no plugin for {other}"),
+    }
+}
+
+/// M64's within-phase edges, each `(earlier, later)`.
+const MOTION_EDGES: [(&str, &str); 36] = [
+    (ACTION_INPUT, AIM),
+    (LINEAR_MOTION, PLATFORMER_CONTROLLER),
+    (LINEAR_MOTION, TOP_DOWN_MOVER),
+    (LINEAR_MOTION, OSCILLATOR),
+    (OSCILLATOR, PLATFORMER_CONTROLLER),
+    (OSCILLATOR, TOP_DOWN_MOVER),
+    (PATH_FOLLOW, FOLLOW),
+    (LINEAR_MOTION, FOLLOW),
+    (OSCILLATOR, FOLLOW),
+    (PLATFORMER_CONTROLLER, FOLLOW),
+    (TOP_DOWN_MOVER, FOLLOW),
+    (STEERING, FOLLOW),
+    (PATH_FOLLOW, ORBIT),
+    (LINEAR_MOTION, ORBIT),
+    (OSCILLATOR, ORBIT),
+    (PLATFORMER_CONTROLLER, ORBIT),
+    (TOP_DOWN_MOVER, ORBIT),
+    (STEERING, ORBIT),
+    (PATH_FOLLOW, KNOCKBACK),
+    (LINEAR_MOTION, KNOCKBACK),
+    (OSCILLATOR, KNOCKBACK),
+    (TOP_DOWN_MOVER, KNOCKBACK),
+    (STEERING, KNOCKBACK),
+    (FOLLOW, KNOCKBACK),
+    (ORBIT, KNOCKBACK),
+    (PATH_FOLLOW, SPEED_LIMIT),
+    (LINEAR_MOTION, SPEED_LIMIT),
+    (OSCILLATOR, SPEED_LIMIT),
+    (PLATFORMER_CONTROLLER, SPEED_LIMIT),
+    (TOP_DOWN_MOVER, SPEED_LIMIT),
+    (STEERING, SPEED_LIMIT),
+    (FOLLOW, SPEED_LIMIT),
+    (ORBIT, SPEED_LIMIT),
+    (KNOCKBACK, SPEED_LIMIT),
+    (FACING, CHARACTER_ANIMATOR),
+    (ANIMATION_TICK, CHARACTER_ANIMATOR),
+];
+
+#[test]
+fn each_motion_edge_holds_with_its_two_plugins_alone_in_either_order_and_reversed_in_the_set() {
+    for (earlier, later) in MOTION_EDGES {
+        for (first, second) in [(earlier, later), (later, earlier)] {
+            let mut world = World::new();
+            let mut schedule = tungsten_core::Schedule::new();
+            build_owner(first, &mut schedule, &mut world);
+            build_owner(second, &mut schedule, &mut world);
+            schedule.resolve().unwrap();
+            let stage = schedule.stage_of(earlier).unwrap();
+            let names: Vec<&str> = schedule.names(stage).collect();
+            let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
+            assert!(
+                at(earlier) < at(later),
+                "{earlier} before {later}, built {first} first: {names:?}"
+            );
+        }
+    }
+    let mut app = App::new(Config::default()).unwrap();
+    app.add_plugins(crate::kit_recipes::motion_reversed());
+    app.resolve_schedule().unwrap();
+    let text = app.schedule().resolved_text();
+    for (earlier, later) in MOTION_EDGES {
+        let line = text
+            .lines()
+            .find(|line| {
+                line.contains(&format!(" {earlier},")) || line.ends_with(&format!(" {earlier}"))
+            })
+            .unwrap();
+        let names: Vec<&str> = line.split_once(": ").unwrap().1.split(", ").collect();
+        let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
+        assert!(
+            at(earlier) < at(later),
+            "reversed in the set: {earlier} before {later}"
+        );
+    }
 }

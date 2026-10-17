@@ -1,11 +1,15 @@
 //! The grid fixture: a bodiless rogue under the move actions, a hole that
-//! spawns rats, a potion that expires, and the camera on the rogue.
+//! spawns rats, a potion that expires, and the camera on the rogue; M64's
+//! crawlers and warden.
 
+use glam::Vec2;
 use tungsten_core::RigidBody;
-use tungsten_core::{CameraController, CameraMode, CameraState};
+use tungsten_core::{CameraController, CameraMode, CameraState, Entity, Sprite};
 
 use super::{DTS, body_at, frames_for, recipe, spawn, tagged};
-use crate::kit::{Cooldown, Counters, Flags, Health, Hit, KitPlugins, Source, Tags, damage};
+use crate::kit::{
+    Cooldown, Counters, Flags, Health, Hit, KitPlugins, Source, Tags, TopDownMover, damage,
+};
 
 const GENRE: &str = "grid";
 
@@ -142,5 +146,46 @@ fn the_slug_counts_its_death_and_goes() {
             1,
             "dt {dt}"
         );
+    }
+}
+
+fn head(harness: &mut super::Harness, entity: Entity, direction: Vec2) {
+    harness
+        .world_mut()
+        .get_mut::<TopDownMover>(entity)
+        .unwrap()
+        .set_direction(direction);
+}
+
+#[test]
+fn crawlers_sort_by_depth_as_they_pass_and_a_warden_stays_in_its_room() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let still = spawn(&mut harness, "crawler", [100.0, 100.0]);
+        let passing = spawn(&mut harness, "crawler", [100.0, 40.0]);
+        head(&mut harness, passing, Vec2::Y);
+        let z = |harness: &super::Harness, entity| {
+            harness.world().get::<Sprite>(entity).unwrap().z_order
+        };
+        harness.step(1);
+        assert!(
+            z(&harness, passing) < z(&harness, still),
+            "dt {dt}: above, behind"
+        );
+        harness.step(frames_for(4.0, dt));
+        assert!(body_at(&harness, passing).y > 100.0, "dt {dt}: it passed");
+        assert!(
+            z(&harness, passing) > z(&harness, still),
+            "dt {dt}: below, in front"
+        );
+
+        // The room is 64..256 by 64..192, the warden 16 px.
+        let warden = spawn(&mut harness, "warden", [200.0, 100.0]);
+        head(&mut harness, warden, Vec2::new(-1.0, 1.0));
+        harness.step(frames_for(4.0, dt));
+        assert_eq!(body_at(&harness, warden), Vec2::new(64.0, 176.0), "dt {dt}");
+        head(&mut harness, warden, Vec2::new(1.0, -1.0));
+        harness.step(frames_for(4.0, dt));
+        assert_eq!(body_at(&harness, warden), Vec2::new(240.0, 64.0), "dt {dt}");
     }
 }

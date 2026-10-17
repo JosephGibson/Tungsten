@@ -6,6 +6,23 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.84.0] - 2026-10-17
+
+Summary: M64, W13i (plan archived at `docs/plans/archive/1.0/phase6-milestone-64-kit-motion-facing.md`): the kit catalogue's M, motion and facing: thirteen movers, constraints and presentation items with targets and a knockback call, under one motion write rule in which movers move roots before the physics step, a kinematic body has one driver, constraints correct after the step and presentation writes once a frame, each proven by recipes in two genres, and the template's hazard, a patrolling, wobbling enemy whose touch hurts and knocks the player back.
+
+### Added
+
+- **Movers** (`D-174`): `LinearMotion` (exact under a constant acceleration), `Oscillator` (position, rotation and scale waves on the fixed-step clock, starting where it is), `Follow` (a lagged chase with a top speed), `Orbit`, `Steering` (`seek`, `flee` and `arrive` with a bounded acceleration) and `Knockback` with `knock_back(world, entity, velocity) -> bool`, each with its plugin; `Target`, the entity's source, the nearest other entity whose tags pass a filter (within a range, ties to the lower index) or a world point, resolved each step.
+- **Constraints** (`D-174`): `SpeedLimit` (the length, then each axis, and a dynamic body again after the solver in `speed_limit_settle`), `Wrap` and `StayInView`, on a region or the last frame's camera view without its shake.
+- **Facing and presentation** (`D-174`): `Aim` (the intent's aim, the cursor, the movement or a target); `Facing` (from motion, intent or aim, free or snapped horizontal, four or eight ways, turning the rotation when asked); `CharacterAnimator` with `Clips` (idle, move, rise and fall, one clip or a set by facing, every ID checked at load, a new clip's first frame shown the frame it starts); `DepthSort` (`base + round(y + offset)` into `Sprite.z_order`); the oscillator's rotation and scale, drawn once a frame by `oscillator_present`.
+- **Seeing motion** (`D-174`): thirteen scene components with descriptions and four shapes in the components snapshot, inspector rows, and `kit_debug_draw`'s orbit circles, follower goals, regions and aim rays; 11 recipes, fixtures for each item in two genres, 15 harness tests and a test of every within-phase edge in both orders; 15 bench rows, the kit bench's 23 rows within a per-entity bound at their first measured run.
+
+### Changed
+
+- **The kit's schedule and hash** (`D-174` amends `D-172` and `D-173`): `KitPlugins::set()` adds `aim` after `action_input`; `linear_motion`, `oscillator`, `steering`, `follow`, `orbit`, `knockback` and `speed_limit` around the controllers in `kit_move`, by within-phase edges; `speed_limit_settle`, `wrap` and `stay_in_view` after the step; `oscillator_present`, `facing`, `character_animator` (after `animation_tick`) and `depth_sort` in `kit_present`; `stats_apply` writes `move_speed` into a `Steering`'s top speed; the kit determinism hash moves to `0xd651_23fe_e583_03ee`, its script now spawning M's prefabs and pushing three of them, its rows adding rotation, sprite depth and clip; the physics hashes, row digests and `DefaultPlugins`' schedule are unchanged.
+- **The template**: a hazard (`prefabs/hazard.json` and the game's checked `Hazard`) patrols below the player's start on an oscillator; touching it through the game's `hazard_touch` in `Phase::Overlap` deals a hit and a knockback, the player gains `knockback`, and a player whose health runs out starts gameplay over, with tests; `AGENTS.md`, the README and the guide's "Composing with the kit" name M's items, the write rule and `knock_back`.
+- **Records**: decision 174 with its marker lines on `D-172` and `D-173`; `DESIGN.md`'s M64 section and status line; known issues (M64's motion limits, the template's camera shake that moves nothing, the kit grid's milestone corrected to W13j); the W4 ledger's two rows; the LLM index's kit row; the profiling workflow's kit bench bound; w13-kit's revision, landed motion review and follow-ups. `api/tungsten-kit.txt` gains 1,293 lines and `api/tungsten-kit-components.txt` 106, none removed; no new dependency.
+
 ## [0.83.0] - 2026-10-17
 
 Summary: M63, W13h (plan archived at `docs/plans/archive/1.0/phase6-milestone-63-kit-data-reactions.md`): the kit catalogue's A, data and reactions: stats with ordered modifiers that the movers, health and cooldowns read, cues that react to events in data with a closed set of actions and timed damage labels, cooldowns, counters, flags, a seeded random stream, child spawns and an event trace, each proven by recipes in two genres, and the template's player shaking the camera and floating its damage on a hit.

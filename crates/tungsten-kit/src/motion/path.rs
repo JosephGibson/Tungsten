@@ -13,6 +13,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::positive;
+use crate::motion::oscillator::Oscillator;
 use crate::motion::platformer::PLATFORMER_CONTROLLER;
 use crate::motion::slide::step_dt;
 use crate::motion::top_down::TOP_DOWN_MOVER;
@@ -45,7 +46,10 @@ enum Mode {
 /// segment. The body starts at the first point, so spawn it there. By
 /// default the follower stops at the last point, where it sets `Velocity`
 /// to zero; [`looping`](Self::looping) goes on to the first point and
-/// [`ping_pong`](Self::ping_pong) back along the points.
+/// [`ping_pong`](Self::ping_pong) back along the points. With an
+/// [`Oscillator`](crate::Oscillator) on the body, its goal is the path's
+/// point plus the wave's offset, so the platform rides the path with the
+/// whole wave, and at a stopped follower's end the wave goes on.
 ///
 /// Scene name `path_follower`:
 /// `{ "points": [[0, 0], [0, -100]], "speed": 100, "mode": "ping_pong", "easing": "sine_in_out" }`,
@@ -248,8 +252,9 @@ impl PathFollower {
 
 /// Registers the `path_follower` scene component and [`PATH_FOLLOW`] in the
 /// move phase, before both controllers when they are registered, so a rider
-/// reads where its platform goes this step: the kit's one within-phase
-/// edge. Its system advances every [`PathFollower`] with a `Position` and a
+/// reads where its platform goes this step, one of the kit's within-phase
+/// edges (the [`Phase`] table lists them). Its system advances every
+/// [`PathFollower`] with a `Position` and a
 /// `Velocity` by the step, `Time::delta` bounded by
 /// `PhysicsConfig::max_step_dt` as the physics step takes it; a step of 0
 /// moves nothing.
@@ -388,15 +393,27 @@ fn path_follow(world: &mut World) {
     if dt <= 0.0 {
         return;
     }
-    for (follower, position, velocity) in
-        world.query_mut::<(&mut PathFollower, &Position, &mut Velocity)>()
-    {
-        if follower.is_finished() {
-            velocity.0 = Vec2::ZERO;
-            continue;
+    for (follower, position, velocity, oscillator) in world.query_mut::<(
+        &mut PathFollower,
+        &Position,
+        &mut Velocity,
+        Option<&Oscillator>,
+    )>() {
+        match oscillator.filter(|oscillator| oscillator.moves()) {
+            None if follower.is_finished() => velocity.0 = Vec2::ZERO,
+            None => {
+                follower.advance(dt);
+                velocity.0 = (follower.point() - position.0) / dt;
+            }
+            // The wave's offset at the oscillator's clock: when the
+            // oscillator runs after this, it adds the step's change.
+            Some(oscillator) => {
+                if !follower.is_finished() {
+                    follower.advance(dt);
+                }
+                velocity.0 = (follower.point() + oscillator.displacement() - position.0) / dt;
+            }
         }
-        follower.advance(dt);
-        velocity.0 = (follower.point() - position.0) / dt;
     }
 }
 

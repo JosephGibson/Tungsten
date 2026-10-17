@@ -1,0 +1,11 @@
+{
+  "sprite": {
+    "asset_id": "crate"
+  },
+  "tag": "crate",
+  "components": {
+    "depth_sort": {
+      "offset": 16
+    }
+  }
+}

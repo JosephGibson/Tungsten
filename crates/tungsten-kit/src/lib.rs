@@ -78,7 +78,9 @@
 //!   the action map read into what each entity means to do, which the
 //!   movers take. [`StateMachine`] and [`StateMachinePlugin`]: a per-entity
 //!   state with enter, exit and update hooks. [`cursor_to_world`]: the
-//!   world point under the cursor.
+//!   world point under the cursor. [`Aim`] and [`AimPlugin`]: the direction
+//!   an entity aims in, from its intent, the cursor, its movement or a
+//!   target.
 //! - **Motion.** [`PlatformerController`] and
 //!   [`PlatformerControllerPlugin`]: a platformer character on a kinematic
 //!   body, with a ground check, coyote time, a jump buffer and variable
@@ -86,6 +88,20 @@
 //!   character that slides along walls on a kinematic body, or moves its
 //!   `Position` without one. [`PathFollower`] and [`PathFollowerPlugin`]: a
 //!   kinematic body moved along points, such as a moving platform.
+//!   [`LinearMotion`] and [`LinearMotionPlugin`]: a velocity an
+//!   acceleration changes. [`Oscillator`] and [`OscillatorPlugin`]: a sine
+//!   wave on the position, rotation or scale. [`Follow`] and
+//!   [`FollowPlugin`]: a target's point plus an offset, with a lag.
+//!   [`Orbit`] and [`OrbitPlugin`]: a circle about a centre. [`Steering`]
+//!   and [`SteeringPlugin`]: seek, flee or arrive. [`Target`]: what those
+//!   items aim at. [`Knockback`], [`knock_back`] and [`KnockbackPlugin`]: a
+//!   push back from a hit. [`SpeedLimit`] and [`SpeedLimitPlugin`]: a cap on
+//!   the speed. [`Wrap`] and [`WrapPlugin`]: back in from the far side of an
+//!   area. [`StayInView`] and [`StayInViewPlugin`]: a box clamped inside an
+//!   area. A mover writes a root's `Position`, or a body's `Velocity`,
+//!   before the physics step, a kinematic body has one kit driver, the
+//!   constraints correct after the step, and presentation writes once a
+//!   frame, one kit writer per channel.
 //! - **Lifecycle.** [`Lifetime`] and [`LifetimePlugin`]: an entity
 //!   despawned once its time on the game clock has passed.
 //!   [`DespawnOutside`] and [`DespawnOutsidePlugin`]: one despawned once it
@@ -109,9 +125,13 @@
 //!   game's, that cues write.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
-//!   [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the camera
-//!   follows. [`SoundOnEvent`]: a manifest sound played once per event.
-//!   [`LabelStyle`]: how a cue's `label` floats an amount.
+//!   [`CharacterAnimator`], [`Clips`] and [`CharacterAnimatorPlugin`]: the
+//!   clip a character's motion and facing pick. [`Facing`] and
+//!   [`FacingPlugin`]: the way an entity faces, turning it when asked.
+//!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
+//!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
+//!   camera follows. [`SoundOnEvent`]: a manifest sound played once per
+//!   event. [`LabelStyle`]: how a cue's `label` floats an amount.
 //! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
 //!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`]: the
 //!   hierarchy that moves children with their parents' positions after the
@@ -167,6 +187,7 @@ pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
+pub use intent::aim::{AIM, Aim, AimPlugin};
 pub use intent::cursor::cursor_to_world;
 pub use intent::state_machine::{StateMachine, StateMachinePlugin};
 pub use lifecycle::children::{SPAWN_CHILDREN, SpawnChildren, SpawnChildrenPlugin};
@@ -174,15 +195,30 @@ pub use lifecycle::cooldown::{COOLDOWN_TICK, Cooldown, CooldownElapsed, Cooldown
 pub use lifecycle::despawn::{DESPAWN_OUTSIDE, DespawnOutside, DespawnOutsidePlugin};
 pub use lifecycle::lifetime::{LIFETIME_TICK, Lifetime, LifetimePlugin};
 pub use lifecycle::spawner::{SPAWNER_TICK, Spawner, SpawnerPlugin};
+pub use motion::follow::{FOLLOW, Follow, FollowPlugin};
+pub use motion::knockback::{KNOCKBACK, Knockback, KnockbackPlugin, knock_back};
+pub use motion::linear::{LINEAR_MOTION, LinearMotion, LinearMotionPlugin};
+pub use motion::orbit::{ORBIT, Orbit, OrbitPlugin};
+pub use motion::oscillator::{OSCILLATOR, OSCILLATOR_PRESENT, Oscillator, OscillatorPlugin};
 pub use motion::path::{PATH_FOLLOW, PathFollower, PathFollowerPlugin};
 pub use motion::platformer::{
     PLATFORMER_CONTROLLER, PlatformerController, PlatformerControllerPlugin,
 };
+pub use motion::speed_limit::{SPEED_LIMIT, SPEED_LIMIT_SETTLE, SpeedLimit, SpeedLimitPlugin};
+pub use motion::stay_in_view::{STAY_IN_VIEW, StayInView, StayInViewPlugin};
+pub use motion::steering::{STEERING, Steering, SteeringPlugin};
+pub use motion::target::Target;
 pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
+pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
 pub use overlap::trigger::{TriggerEntered, TriggerZone};
 pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
 pub use present::camera::{CAMERA_TARGET, CameraTarget, CameraTargetPlugin};
+pub use present::character::{
+    CHARACTER_ANIMATOR, CharacterAnimator, CharacterAnimatorPlugin, Clips,
+};
+pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
+pub use present::facing::{FACING, Facing, FacingPlugin};
 pub use present::labels::{LABEL_TICK, LabelStyle};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
@@ -197,17 +233,22 @@ pub use transform::hierarchy::{
 /// root.
 pub mod prelude {
     pub use crate::{
-        ActionInput, ActionInputPlugin, AnimationPlugin, CameraTarget, CameraTargetPlugin,
-        Children, Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction,
-        CueEvent, Cues, CuesOnEvent, CuesPlugin, Damaged, DespawnOutside, DespawnOutsidePlugin,
-        Flags, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, Intent, KitDebug,
-        KitDebugPlugin, KitPlugins, KitRng, KitTrace, LabelStyle, Lifetime, LifetimePlugin,
-        LocalOffset, Modifier, Parent, PathFollower, PathFollowerPlugin, Phase,
-        PlatformerController, PlatformerControllerPlugin, SoundOnEvent, Source, SourcePlugin,
-        SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, StateMachine,
-        StateMachinePlugin, Stats, StatsPlugin, TagFilter, Tags, TagsPlugin, TopDownMover,
-        TopDownMoverPlugin, TraceEntry, TraceKind, TriggerEntered, TriggerZone, Zone, ZoneEntered,
-        ZonePlugin, cursor_to_world, damage, despawn_recursive, ensure_phases, spawn_child,
+        ActionInput, ActionInputPlugin, Aim, AimPlugin, AnimationPlugin, CameraTarget,
+        CameraTargetPlugin, CharacterAnimator, CharacterAnimatorPlugin, Children, Clips, Cooldown,
+        CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent, Cues,
+        CuesOnEvent, CuesPlugin, Damaged, DepthSort, DepthSortPlugin, DespawnOutside,
+        DespawnOutsidePlugin, Facing, FacingPlugin, Flags, Follow, FollowPlugin, Health,
+        HealthPlugin, HierarchyPlugin, Hit, HitFlash, Intent, KitDebug, KitDebugPlugin, KitPlugins,
+        KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle, Lifetime, LifetimePlugin,
+        LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Orbit, OrbitPlugin, Oscillator,
+        OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Phase, PlatformerController,
+        PlatformerControllerPlugin, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
+        SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine,
+        StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
+        SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin,
+        TraceEntry, TraceKind, TriggerEntered, TriggerZone, Wrap, WrapPlugin, Zone, ZoneEntered,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, ensure_phases, knock_back,
+        spawn_child,
     };
 }
 

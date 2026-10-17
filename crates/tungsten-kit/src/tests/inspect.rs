@@ -4,9 +4,11 @@ use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
 use tungsten_core::{Bundle, InspectRegistry, Schedule, Transform};
 
 use crate::{
-    ActionInput, CameraTarget, Cooldown, Counters, CueAction, Cues, Flags, Health, HitFlash,
-    Intent, KitDescriptions, KitPlugins, Lifetime, Modifier, PathFollower, SpawnChildren, Spawner,
-    Stats, TagFilter, Tags, TopDownMover, Zone, spawn_child,
+    ActionInput, Aim, CameraTarget, CharacterAnimator, Cooldown, Counters, CueAction, Cues,
+    DepthSort, Facing, Flags, Follow, Health, HitFlash, Intent, KitDescriptions, KitPlugins,
+    Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator, PathFollower, SpawnChildren,
+    Spawner, SpeedLimit, Stats, StayInView, Steering, TagFilter, Tags, Target, TopDownMover, Wrap,
+    Zone, spawn_child,
 };
 
 fn world() -> World {
@@ -59,6 +61,19 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("counters", "Counters"),
         ("flags", "Flags"),
         ("spawn_children", "SpawnChildren"),
+        ("linear_motion", "LinearMotion"),
+        ("oscillator", "Oscillator"),
+        ("follow", "Follow"),
+        ("orbit", "Orbit"),
+        ("steering", "Steering"),
+        ("knockback", "Knockback"),
+        ("speed_limit", "SpeedLimit"),
+        ("wrap", "Wrap"),
+        ("stay_in_view", "StayInView"),
+        ("aim", "Aim"),
+        ("facing", "Facing"),
+        ("character_animator", "CharacterAnimator"),
+        ("depth_sort", "DepthSort"),
     ] {
         assert!(described.get(scene).is_some(), "{scene} is described");
         assert!(labels.contains(&label), "{scene} has rows under {label}");
@@ -66,7 +81,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 19);
+    assert_eq!(described.iter().count(), 32);
 }
 
 #[test]
@@ -144,6 +159,62 @@ fn the_rows_print_each_components_state() {
     assert_eq!(find("Counters", "counter"), "coins = 3");
     assert_eq!(find("Flags", "flags"), "door.locked, has_key");
     assert_eq!(find("SpawnChildren", "children"), "glow");
+    let hero_tag = TagFilter::new().all(["team.player"]);
+    let mover = world.spawn_with((
+        LinearMotion::new(Vec2::new(0.0, 120.0)),
+        Oscillator::position(Vec2::new(0.0, 3.0), 1.2).with_rotation(0.3, 0.8),
+        Steering::seek(Target::nearest(hero_tag.clone()), 90.0),
+        Knockback::new(0.2),
+        SpeedLimit::y(900.0),
+        Wrap::view(0.0),
+        Aim::cursor(),
+        Facing::new().four_way(),
+        CharacterAnimator::new("idle"),
+        DepthSort::new().with_offset(32.0),
+    ));
+    let placer = world.spawn_with((
+        Follow::new(Target::source()).with_lag(0.15),
+        Orbit::new(48.0, 3.0).around(Target::point(Vec2::new(10.0, 20.0))),
+        StayInView::region(Vec2::ZERO, Vec2::new(640.0, 480.0)),
+    ));
+    let rows = rows_of(&world, mover);
+    let find = |label: &str, name: &str| -> String {
+        rows.iter()
+            .find(|(l, n, _)| *l == label && *n == name)
+            .map_or_else(
+                || panic!("no row {label}.{name} in {rows:?}"),
+                |(_, _, value)| value.clone(),
+            )
+    };
+    assert_eq!(find("LinearMotion", "velocity"), "(0.00, 120.00)");
+    assert_eq!(
+        find("Oscillator", "channels"),
+        "position (0.00, 3.00) / 1.20 s, rotation 0.30 / 0.80 s"
+    );
+    assert_eq!(find("Steering", "target"), "nearest all: team.player: none");
+    assert_eq!(find("Knockback", "left"), "0.00 of 0.20 s");
+    assert_eq!(find("SpeedLimit", "y"), "900.0");
+    assert_eq!(find("Wrap", "area"), "view, margin 0");
+    assert_eq!(find("Aim", "source"), "cursor");
+    assert_eq!(find("Aim", "direction"), "none");
+    assert_eq!(find("Facing", "source"), "motion, snap four");
+    assert_eq!(find("CharacterAnimator", "state"), "idle");
+    assert_eq!(find("DepthSort", "z_order"), "no sprite");
+    let rows = rows_of(&world, placer);
+    let find = |label: &str, name: &str| -> String {
+        rows.iter()
+            .find(|(l, n, _)| *l == label && *n == name)
+            .map_or_else(
+                || panic!("no row {label}.{name} in {rows:?}"),
+                |(_, _, value)| value.clone(),
+            )
+    };
+    assert_eq!(find("Follow", "target"), "source: none");
+    assert_eq!(find("Orbit", "centre"), "point (10.00, 20.00)");
+    assert_eq!(
+        find("StayInView", "area"),
+        "region (0.00, 0.00)..(640.00, 480.00)"
+    );
     let pod_rows = rows_of(&world, pod);
     assert!(
         pod_rows

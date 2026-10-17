@@ -105,7 +105,7 @@ Tests set the folder in code, so they never read or write your own settings or s
 ## How the game is laid out
 
 - `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, registers the game and runs it.
-- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, the camera's dead zone and its text. The player's movement, health and camera are the kit's, named on its prefab ([Composing with the kit](#composing-with-the-kit)).
+- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, the hazard's touch, the camera's dead zone and its text. The player's movement, health, knockback and camera and the hazard's patrol are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
 - `src/states.rs` holds the title, gameplay and pause states on the engine's state stack.
 - `src/components.rs` holds the game's components.
 - `tests/game.rs` steps the game on the headless harness, with no window: a test per system and a snapshot of the resolved schedule.
@@ -115,13 +115,18 @@ Tests set the folder in code, so they never read or write your own settings or s
 
 ## Systems and stages
 
-A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The template's `GamePlugin` registers `setup` in `startup` and `toggle_mute` in `update`; the player's movement is the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The template's `GamePlugin` registers `setup` in `startup`, `toggle_mute` in `update` and `hazard_touch` in the kit's overlap phase; the player's movement is the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
 
 ```rust
 impl Plugin for GamePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         schedule.add(Stage::Startup, system("setup", setup));
         schedule.add(Stage::Update, system("toggle_mute", toggle_mute));
+        ensure_phases(schedule);
+        schedule.add(
+            Phase::Overlap.stage(),
+            Phase::Overlap.join(system("hazard_touch", hazard_touch)),
+        );
     }
 }
 ```
@@ -177,6 +182,7 @@ world
     "top_down_mover": { "speed": 240 },
     "health": { "max": 5, "invulnerability": 0.5 },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
+    "knockback": { "seconds": 0.2 },
     "camera_target": null,
     "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
   }
@@ -192,6 +198,8 @@ world
 - `stats` holds named values that modifiers change, `{ "move_speed": 160 }`. The movers, health and cooldowns read the well-known ones (`move_speed`, `max_health`, `cooldown_rate`) when the entity has them; a game declares its own, with their bounds, in the `stats` data kind.
 - `cooldown` repeats on the game clock and sends `cooldown_elapsed` each time, with an optional jitter drawn from the kit's seeded `KitRng`. `counters` and `flags` hold named counts and switches that cues write, on the entity or, with `"target": "game"`, in the World's own `Counters` and `Flags`. `spawn_children` spawns prefabs once as the entity's children, at offsets; they follow it and leave with its state.
 - `KitTrace` records what the kit's items did, each event, cue action, spawn and despawn; with `KitDebug` on, the log console shows each entry as it lands.
+- `knockback` takes a push from `tungsten::kit::knock_back(world, entity, velocity)`, falling to nothing over its seconds: a platformer controller is launched with its input locked, a dynamic body kicked once, anything else pushed along its motion, sliding along walls on a kinematic body. The template's hazard, `assets/prefabs/hazard.json`, patrols a line below the player by an `oscillator`; touching it calls `damage` and, on a hit that lands, `knock_back` away from it, in the game's `hazard_touch` until the kit's contact damage takes it into data.
+- The motion items move an entity without a body or drive a body: `linear_motion` (a velocity and an acceleration), `oscillator` (a sine on the position, rotation or scale), `follow` (a target's point with a lag), `orbit` (a circle about a centre) and `steering` (seek, flee or arrive). Their targets are the spawn chain's origin, `{ "source": {} }`, the nearest tagged entity, `{ "nearest": { "all": ["team.player"], "range": 320 } }`, or a point. `speed_limit`, `wrap` and `stay_in_view` constrain the motion; `aim`, `facing`, `character_animator` (idle, move, rise and fall clips, by facing) and `depth_sort` present it. The rule that lets them compose: motion moves a root's `Position`, or a body's `Velocity`, before the physics step, one mover drives a kinematic body, the constraints correct after the step, and presentation writes once a frame; a game system that moves what the kit moves joins the same phase and never writes that entity's `Transform`.
 
 Every kit system runs in one of seven phases, anchor systems in `fixed_update` and `post_update` ordered against the engine's: timers first, then intent, motion before `physics_step`, overlap after it, resolution, reactions, and presentation after the physics sync. A game system that belongs with the kit's joins a phase instead of naming an engine system: `ensure_phases(schedule)` in the plugin's `build`, then `schedule.add(Stage::FixedUpdate, Phase::Move.join(system("magnet", magnet)))`. The rustdoc of `tungsten::kit` lists every item by domain, and `api/tungsten-kit-components.txt` every scene component's fields with their types and defaults. The engine's genre fixtures, `crates/tungsten/tests/fixtures/kit/`, are the cookbook: a platformer, a top-down, a shmup and a grid folder of prefabs and data, each kit item in at least two of them, with the harness tests that drive them in `crates/tungsten/src/tests/kit_recipes/`.
 

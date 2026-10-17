@@ -17,6 +17,7 @@ use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::lifecycle::cooldown::Cooldown;
 use crate::motion::platformer::PlatformerController;
+use crate::motion::steering::Steering;
 use crate::motion::top_down::TopDownMover;
 
 /// [`StatsPlugin`]'s system, in the tick phase.
@@ -116,8 +117,9 @@ impl Stat {
 /// The well-known stats ([`WELL_KNOWN`](Self::WELL_KNOWN)) are bounded to
 /// `[0, ∞)`, [`MAX_HEALTH`](Self::MAX_HEALTH) to `[1, ∞)`. [`StatsPlugin`]'s
 /// [`STATS_APPLY`] writes each one an entity has into its item, when they
-/// differ: [`MOVE_SPEED`](Self::MOVE_SPEED) into a [`TopDownMover`]'s speed
-/// or a [`PlatformerController`]'s run speed (0 stops it),
+/// differ: [`MOVE_SPEED`](Self::MOVE_SPEED) into a [`TopDownMover`]'s speed,
+/// a [`PlatformerController`]'s run speed or a [`Steering`]'s top speed (0
+/// stops it),
 /// [`MAX_HEALTH`](Self::MAX_HEALTH) into a [`Health`]'s max, its current
 /// health kept as the same fraction of it, and
 /// [`COOLDOWN_RATE`](Self::COOLDOWN_RATE) into a [`Cooldown`]'s rate. An
@@ -724,10 +726,11 @@ impl Plugin for StatsPlugin {
 /// Writes each well-known stat an entity has into its item, when they
 /// differ.
 fn stats_apply(world: &mut World) {
-    for (stats, mover, controller, health, cooldown) in world.query_mut::<(
+    for (stats, mover, controller, steering, health, cooldown) in world.query_mut::<(
         &Stats,
         Option<&mut TopDownMover>,
         Option<&mut PlatformerController>,
+        Option<&mut Steering>,
         Option<&mut Health>,
         Option<&mut Cooldown>,
     )>() {
@@ -737,6 +740,9 @@ fn stats_apply(world: &mut World) {
             }
             if let Some(controller) = controller {
                 controller.set_run_speed(speed);
+            }
+            if let Some(steering) = steering {
+                steering.set_max_speed(speed);
             }
         }
         if let (Some(max), Some(health)) = (stats.get(Stats::MAX_HEALTH), health) {

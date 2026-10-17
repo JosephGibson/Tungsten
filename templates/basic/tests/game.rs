@@ -7,15 +7,15 @@ use std::path::{Path, PathBuf};
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
     ActionMap, AssetRegistry, Binding, CameraController, CameraMode, CameraState, Config, Entity,
-    Position, Settings, Sprite, Time, Transform, UserFolder, With,
+    Position, PrevPosition, Settings, Sprite, Time, Transform, UserFolder, With,
 };
 use tungsten::kit::{Damaged, Health, Hit, HitFlash, damage};
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
-use tungsten_template_basic::components::Player;
+use tungsten_template_basic::components::{Hazard, Player};
 use tungsten_template_basic::game::{self, active_state};
 use tungsten_template_basic::states::{
-    AUTOSAVE, GAMEPLAY, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE,
+    AUTOSAVE, GAMEPLAY, HAZARD_PREFAB, HAZARD_START, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE,
 };
 
 /// How far the player moves per second, in pixels: the prefab's
@@ -89,6 +89,29 @@ fn player_entity(harness: &Harness) -> Entity {
         .expect("the player spawned")
 }
 
+fn hazard_entity(harness: &Harness) -> Entity {
+    harness
+        .world()
+        .query_filtered::<Entity, With<Hazard>>()
+        .next()
+        .expect("the hazard spawned")
+}
+
+fn health(harness: &Harness, entity: Entity) -> f32 {
+    harness.world().get::<Health>(entity).unwrap().current()
+}
+
+/// The world labels the last frame drew, with their fonts.
+fn labels(harness: &Harness) -> Vec<(String, String)> {
+    harness
+        .draw()
+        .expect("a frame was drawn")
+        .world_labels
+        .iter()
+        .map(|run| (run.content.clone(), run.font_id.clone()))
+        .collect()
+}
+
 /// A fresh user folder for one persistence test.
 fn user_folder(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("tungsten-template-{tag}-{}", std::process::id()));
@@ -102,9 +125,9 @@ fn user_folder(tag: &str) -> PathBuf {
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
-fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, kit_move, path_follow, platformer_controller, top_down_mover, physics_step, kit_overlap, despawn_outside, zone_tick, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, speed_limit, physics_step, kit_overlap, despawn_outside, zone_tick, speed_limit_settle, wrap, stay_in_view, hazard_touch, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step
 update: toggle_mute
-post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, kit_debug_draw, camera_update
+post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, camera_update
 ";
 
 #[test]
@@ -141,6 +164,7 @@ fn data_files_load() {
     assert!(manifest.sprites["player"].path.is_file());
     assert!(manifest.fonts[game::FONT].path.is_file());
     assert!(manifest.prefabs[PLAYER_PREFAB].path.is_file());
+    assert!(manifest.prefabs[HAZARD_PREFAB].path.is_file());
     assert!(manifest.data["tags"]["game"].path.is_file());
     assert!(manifest.shaders["damage_flash"].path.is_file());
     assert_eq!(manifest.materials["damage_flash"].shader, "damage_flash");
@@ -300,6 +324,225 @@ fn a_hit_shakes_the_camera_and_shows_its_damage() {
         harness.world().resource::<CameraController>().shake_trauma > 0.0,
         "and shakes the camera"
     );
+}
+
+/// A teleport of the player onto the hazard's point: `Position` and
+/// `PrevPosition`.
+fn place_on_hazard(harness: &mut Harness, player: Entity, hazard: Entity) {
+    let at = harness.world().get::<Position>(hazard).unwrap().0;
+    let world = harness.world_mut();
+    world.get_mut::<Position>(player).unwrap().0 = at;
+    world.get_mut::<PrevPosition>(player).unwrap().0 = at;
+}
+
+#[test]
+fn a_player_kept_on_the_hazard_takes_one_hit_per_window() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
+    assert_eq!(
+        health(&harness, player),
+        5.0,
+        "the idle player is never touched"
+    );
+    // The hazard is owned by gameplay, as the player is.
+    assert_eq!(
+        harness.world().get::<SceneEntity>(hazard).unwrap().state_id,
+        GAMEPLAY
+    );
+
+    place_on_hazard(&mut harness, player, hazard);
+    harness.step(1);
+    assert_eq!(health(&harness, player), 4.0, "one hit");
+    assert_eq!(
+        labels(&harness),
+        [("1".to_string(), "sans".to_string())],
+        "the player's damaged cue floats the hit"
+    );
+    assert!(
+        harness.world().resource::<CameraController>().shake_trauma > 0.0,
+        "and shakes the camera"
+    );
+
+    // Kept on the hazard each frame, whatever the push and the patrol do
+    // inside the step: the window is half a second, 30 steps, so none of
+    // the next 29 touches lands, and the one after it does.
+    for _ in 0..29 {
+        place_on_hazard(&mut harness, player, hazard);
+        harness.step(1);
+    }
+    assert_eq!(health(&harness, player), 4.0, "the window paces the hits");
+    place_on_hazard(&mut harness, player, hazard);
+    harness.step(1);
+    assert_eq!(health(&harness, player), 3.0, "the next hit after it");
+}
+
+#[test]
+fn a_killed_player_starts_gameplay_over() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let first = player_entity(&harness);
+    harness.press_action("move_right");
+    harness.step(10);
+    harness.release_action("move_right");
+    assert_ne!(player(&harness), Some(PLAYER_START));
+
+    assert_eq!(damage(harness.world_mut(), first, 5.0), Hit::Killed);
+    // Gameplay's next update asks for the restart; the frame after applies
+    // it.
+    harness.step(2);
+    assert_eq!(active_state(harness.world()), Some(GAMEPLAY));
+    assert!(
+        !harness.world().is_alive(first),
+        "the dead player left with the old gameplay"
+    );
+    let player_now = player_entity(&harness);
+    assert_eq!(health(&harness, player_now), 5.0);
+    assert_eq!(player(&harness), Some(PLAYER_START));
+}
+
+/// The hazard's patrol: its start, the amplitude of its swing along x and
+/// its period, from `prefabs/hazard.json`.
+const HAZARD_SWING: f32 = 240.0;
+const HAZARD_PERIOD_FRAMES: usize = 240;
+
+#[test]
+fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushed_away() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
+    let hazard_at = |harness: &Harness| harness.world().get::<Position>(hazard).unwrap().0;
+    let first = hazard_at(&harness);
+    let (mut left, mut right) = (f32::INFINITY, f32::NEG_INFINITY);
+    for _ in 0..HAZARD_PERIOD_FRAMES {
+        harness.step(1);
+        let at = hazard_at(&harness);
+        assert!(
+            (at.y - HAZARD_START[1]).abs() < 1e-3,
+            "it keeps to its line"
+        );
+        left = left.min(at.x);
+        right = right.max(at.x);
+    }
+    assert!(
+        (left - (HAZARD_START[0] - HAZARD_SWING)).abs() < 1.0,
+        "{left}"
+    );
+    assert!(
+        (right - (HAZARD_START[0] + HAZARD_SWING)).abs() < 1.0,
+        "{right}"
+    );
+    assert!(
+        (hazard_at(&harness).x - first.x).abs() < 1e-2,
+        "a whole period"
+    );
+    assert_eq!(
+        health(&harness, player),
+        5.0,
+        "the idle player is never touched"
+    );
+
+    // Down onto the hazard's line, then wait for its next pass.
+    harness.press_action("move_down");
+    harness.step(40);
+    harness.release_action("move_down");
+    let stood = player_position(&harness).unwrap();
+    assert!(
+        (stood[1] - HAZARD_START[1]).abs() <= ONE_STEP + 1e-3,
+        "{stood:?}"
+    );
+    let mut hit = None;
+    for frame in 0..HAZARD_PERIOD_FRAMES {
+        harness.step(1);
+        if health(&harness, player) < 5.0 {
+            hit = Some(frame);
+            break;
+        }
+    }
+    assert!(hit.is_some(), "the hazard came by");
+    assert_eq!(health(&harness, player), 4.0);
+    let at_hit = player_position(&harness).unwrap();
+    // The window is half a second: the pass is over before it ends, with
+    // no second hit, and the push has thrown the player off its spot.
+    harness.step(29);
+    assert_eq!(health(&harness, player), 4.0, "one hit per window");
+    let after = player_position(&harness).unwrap();
+    let pushed = ((after[0] - at_hit[0]).powi(2) + (after[1] - at_hit[1]).powi(2)).sqrt();
+    assert!(pushed > 30.0, "pushed {pushed} px away");
+}
+
+/// A headless review of a hit in motion: for the label's 0.8 s after the
+/// player is put on the hazard, each frame's label run, the camera's shake
+/// trauma and offset and the drawn points of the player and the hazard (their
+/// `Transform`s, which the default extract draws; headless, the sprites have
+/// no texture), printed under `cargo test -- --nocapture`. The label rises
+/// and fades, the shake decays to nothing and the two points part.
+#[test]
+fn a_hit_in_motion_floats_its_label_and_settles_its_shake() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
+    place_on_hazard(&mut harness, player, hazard);
+    harness.step(1);
+    assert_eq!(health(&harness, player), 4.0);
+    let drawn = |harness: &Harness, entity: Entity| {
+        harness.world().get::<Transform>(entity).unwrap().position
+    };
+    let mut rises = Vec::new();
+    let mut alphas = Vec::new();
+    let mut traumas = Vec::new();
+    for frame in 0..48 {
+        let draw = harness.draw().expect("a frame was drawn");
+        let run = draw
+            .world_labels
+            .first()
+            .map(|run| (run.position, run.color[3]));
+        let camera = harness.world().resource::<CameraController>();
+        let (trauma, shake) = (camera.shake_trauma, camera.shake_offset());
+        let (player_at, hazard_at) = (drawn(&harness, player), drawn(&harness, hazard));
+        println!(
+            "{frame:2}: label {run:?}, trauma {trauma:.3}, shake ({:5.2}, {:5.2}), player ({:7.2}, {:7.2}), hazard ({:7.2}, {:7.2})",
+            shake.x, shake.y, player_at.x, player_at.y, hazard_at.x, hazard_at.y
+        );
+        if let Some((position, alpha)) = run {
+            rises.push(position[1]);
+            alphas.push(alpha);
+        }
+        traumas.push(trauma);
+        harness.step(1);
+    }
+    assert!(
+        rises.len() > 40,
+        "the label shows for most of its seconds: {}",
+        rises.len()
+    );
+    assert!(
+        rises.windows(2).all(|pair| pair[1] <= pair[0]),
+        "it rises: {rises:?}"
+    );
+    assert!(rises[0] - rises[rises.len() - 1] > 10.0, "{rises:?}");
+    assert!(
+        alphas.windows(2).all(|pair| pair[1] <= pair[0]),
+        "it fades: {alphas:?}"
+    );
+    assert!(alphas[alphas.len() - 1] < alphas[0] / 2, "{alphas:?}");
+    assert!(traumas[0] > 0.0, "a shake follows the hit: {traumas:?}");
+    assert!(
+        traumas.windows(2).all(|pair| pair[1] <= pair[0]),
+        "{traumas:?}"
+    );
+    assert_eq!(
+        traumas[traumas.len() - 1],
+        0.0,
+        "and decays to nothing: {traumas:?}"
+    );
+    harness.step(2);
+    assert!(
+        harness.draw().unwrap().world_labels.is_empty(),
+        "gone after its seconds"
+    );
+    let gap = drawn(&harness, player).distance(drawn(&harness, hazard));
+    assert!(gap > 28.0, "the push and the patrol part them: {gap}");
 }
 
 #[test]

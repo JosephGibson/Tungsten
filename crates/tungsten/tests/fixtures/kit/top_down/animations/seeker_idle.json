@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "seeker_idle_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "seeker_idle_1"
+    }
+  ],
+  "looping": true
+}

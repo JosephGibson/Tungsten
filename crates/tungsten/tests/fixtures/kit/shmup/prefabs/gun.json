@@ -1,0 +1,30 @@
+{
+  "sprite": {
+    "asset_id": "gun"
+  },
+  "tag": "gun",
+  "components": {
+    "aim": {
+      "from": "target",
+      "target": {
+        "nearest": {
+          "all": [
+            "team.player"
+          ]
+        }
+      },
+      "offset": [
+        8,
+        8
+      ]
+    },
+    "facing": {
+      "from": "aim",
+      "turn": true,
+      "offset": 1.5707964
+    },
+    "tags": [
+      "team.enemy"
+    ]
+  }
+}

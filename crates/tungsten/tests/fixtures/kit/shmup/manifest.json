@@ -26,6 +26,21 @@
     },
     "wing": {
       "path": "prefabs/wing.json"
+    },
+    "fighter": {
+      "path": "prefabs/fighter.json"
+    },
+    "drifter": {
+      "path": "prefabs/drifter.json"
+    },
+    "asteroid": {
+      "path": "prefabs/asteroid.json"
+    },
+    "mine": {
+      "path": "prefabs/mine.json"
+    },
+    "gun": {
+      "path": "prefabs/gun.json"
     }
   },
   "data": {

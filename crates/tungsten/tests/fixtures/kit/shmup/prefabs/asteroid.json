@@ -1,0 +1,30 @@
+{
+  "sprite": {
+    "asset_id": "asteroid"
+  },
+  "tag": "asteroid",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        90,
+        30
+      ]
+    },
+    "wrap": {
+      "region": [
+        [
+          0,
+          0
+        ],
+        [
+          640,
+          360
+        ]
+      ],
+      "size": [
+        32,
+        32
+      ]
+    }
+  }
+}
