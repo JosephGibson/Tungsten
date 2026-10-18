@@ -23,7 +23,10 @@
         "move_right",
         "move_up",
         "move_down"
-      ]
+      ],
+      "slots": {
+        "dash": "dash"
+      }
     },
     "tags": [
       "team.player"
@@ -32,6 +35,16 @@
       "max": 5,
       "invulnerability": 0.5
     },
-    "camera_target": null
+    "camera_target": null,
+    "aim": {
+      "from": "movement"
+    },
+    "knockback": {
+      "seconds": 0.2
+    },
+    "abilities": [
+      "wand",
+      "dash"
+    ]
   }
 }

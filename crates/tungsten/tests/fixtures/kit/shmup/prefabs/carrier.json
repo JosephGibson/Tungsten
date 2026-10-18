@@ -19,6 +19,9 @@
       "max": 2,
       "recharge": 1,
       "delay": 1
+    },
+    "ailment_threshold": {
+      "flat": 2
     }
   }
 }

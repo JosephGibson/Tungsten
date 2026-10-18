@@ -46,12 +46,12 @@ pub const KIT_PRESENT: &str = "kit_present";
 ///
 /// | Phase | Stage | What runs there |
 /// | --- | --- | --- |
-/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows and death delays, shields, stats, cooldowns |
-/// | `Intent` | `FixedUpdate` | input, aim, state machines |
+/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows and death delays, shields, stats, cooldowns, effects, the ailment drain |
+/// | `Intent` | `FixedUpdate` | input, aim, abilities, state machines |
 /// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower, linear motion, the oscillator, steering, follow, orbit, knockback, the pickups' magnet, the speed limit |
 /// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, the speed limit's settle, the hit grid, hitboxes, contact damage, projectiles, pickups, despawn outside, wrap, stay in view |
-/// | `Resolve` | `FixedUpdate` | the damage pipeline's queued requests and heals |
-/// | `React` | `FixedUpdate`, last | spawners, child spawns, cues, the kit's end-of-step despawn, the trace's step count |
+/// | `Resolve` | `FixedUpdate` | the damage pipeline's queued requests and heals, the ailment feed, the effect requests |
+/// | `React` | `FixedUpdate`, last | spawners, child spawns, level ups, cues, the kit's end-of-step despawn, the trace's step count |
 /// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, labels, sounds, the oscillator's rotation and scale, facing, the character animator, depth sort |
 ///
 /// Stats sit in `Tick`, not `Resolve`, so an entity spawned at a flush

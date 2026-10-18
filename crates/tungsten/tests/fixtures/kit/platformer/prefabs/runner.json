@@ -36,6 +36,9 @@
       "max_health": 4,
       "jump_boost": 1
     },
-    "flags": []
+    "flags": [],
+    "effects": [
+      "regen"
+    ]
   }
 }

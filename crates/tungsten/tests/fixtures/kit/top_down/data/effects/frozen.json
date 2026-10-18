@@ -1,0 +1,18 @@
+{
+  "duration": 2,
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "override": 0
+      }
+    }
+  ],
+  "grant": [
+    "status.frozen"
+  ],
+  "blocked_by": [
+    "status.thawed"
+  ],
+  "on_expire": "thawed"
+}

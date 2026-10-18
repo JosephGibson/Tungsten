@@ -122,9 +122,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 41);
-    assert_eq!(kinds.len(), 5);
-    assert_eq!(descriptions.shapes().count(), 19);
+    assert_eq!(described.len(), 45);
+    assert_eq!(kinds.len(), 9);
+    assert_eq!(descriptions.shapes().count(), 39);
 }
 
 #[test]
@@ -148,8 +148,17 @@ fn every_shape_a_field_names_is_described() {
         // A kind's entry, which a field names through its kind.
         assert!(
             used.contains(shape.name())
-                || ["cue_rule", "damage_type", "stat_bounds", "weighted_table"]
-                    .contains(&shape.name()),
+                || [
+                    "ability",
+                    "cue_rule",
+                    "curve",
+                    "damage_type",
+                    "effect",
+                    "offers",
+                    "stat_bounds",
+                    "weighted_table",
+                ]
+                .contains(&shape.name()),
             "the shape `{}` is described but no field names it",
             shape.name()
         );
@@ -229,8 +238,9 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 15,
-        "the cue action's ten forms, the target's three and the hit shape's two"
+        probed, 34,
+        "the cue action's twelve forms, the target's three, the hit shape's two, the modifier's \
+         four, the ability trigger's three, its target's four, its payload's four and the offer's two"
     );
 }
 
@@ -256,10 +266,11 @@ fn each_described_enum_variant_deserializes() {
     }
     assert_eq!(
         variants,
-        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3,
+        3 + EASING_NAMES.len() + 4 + 3 + 3 + 2 + 3 + 4 + 3 + 4 + 3 + 2 + 3 + 2 + 2 + 2 + 2,
         "the path follower's modes and easings, the squash triggers, the action targets, the \
-         steering's modes, the aim's and the facing's sources, the facing's snaps and the wrap's \
-         axes"
+         steering's modes, the aim's and the facing's sources, the facing's snaps, the wrap's \
+         axes, the effect action's targets, the stack's refresh and expire policies, and the \
+         ability action's ops and targets, and the level's counter targets"
     );
 }
 
@@ -372,8 +383,8 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
         }
     }
     assert_eq!(
-        checked, 70,
-        "the kit's numeric fields, two of them a hit's number-or-map damage"
+        checked, 96,
+        "the kit's numeric fields, three of them a number-or-map damage"
     );
 }
 
@@ -382,9 +393,9 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 41);
-    assert_eq!(count("shape "), 19);
-    assert_eq!(count("kind "), 5);
+    assert_eq!(count("component "), 45);
+    assert_eq!(count("shape "), 39);
+    assert_eq!(count("kind "), 9);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));

@@ -1,0 +1,22 @@
+{
+  "trigger": {
+    "interval": 0.5
+  },
+  "target": {
+    "nearest": {
+      "all": [
+        "team.enemy"
+      ],
+      "range": 320
+    }
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "ember",
+        "speed": 420,
+        "offset": 12
+      }
+    }
+  ]
+}

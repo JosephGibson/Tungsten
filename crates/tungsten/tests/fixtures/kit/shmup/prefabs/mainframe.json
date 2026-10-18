@@ -28,6 +28,10 @@
           "label": {}
         }
       ]
+    },
+    "ailment_threshold": {
+      "flat": 20,
+      "of_max_health": 0.1
     }
   }
 }

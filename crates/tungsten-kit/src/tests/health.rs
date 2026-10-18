@@ -375,7 +375,7 @@ fn health_is_data_within_its_bounds() {
         "a health without the policy saves as before"
     );
     let mut dying = Health::new(5.0).with_despawn_on_death(0.25);
-    assert!(dying.hurt(5.0));
+    assert!(dying.hurt(5.0, false));
     let value = serde_json::to_value(&dying).unwrap();
     assert_eq!(value["despawn_on_death"], 0.25);
     assert_eq!(value["death_left"], 0.25);

@@ -9,5 +9,11 @@
   "elemental.cold",
   "elemental.lightning",
   "toxic",
-  "chaos"
+  "chaos",
+  "status.burning",
+  "status.chilled",
+  "status.frozen",
+  "status.thawed",
+  "status.poisoned",
+  "flammable"
 ]

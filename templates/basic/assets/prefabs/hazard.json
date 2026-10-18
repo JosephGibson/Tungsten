@@ -12,6 +12,7 @@
     "oscillator": {
       "position": { "amplitude": [240, 0], "period": 4 },
       "rotation": { "amplitude": 0.3, "period": 0.8 }
-    }
+    },
+    "cues": { "hit": [{ "effect": { "id": "slowed", "target": "other" } }] }
   }
 }

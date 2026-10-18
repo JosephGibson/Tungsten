@@ -31,6 +31,19 @@
           "prefab": "swing"
         }
       ]
+    },
+    "effects": [
+      {
+        "duration": 2,
+        "grant": [
+          "status.blessed"
+        ]
+      }
+    ],
+    "level": {
+      "counter": "gold",
+      "curve": "delver_xp",
+      "offers": "delver_offers"
     }
   }
 }

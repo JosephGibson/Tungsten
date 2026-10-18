@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use tungsten_core::{DataRegistry, Inspectable, MissingAsset, SpawnContext, World};
 
+use crate::damage::ailments::{AILMENT_RUNG, AilmentRung};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, describe,
     describe_kind, describe_shape, round_trip,
@@ -61,6 +62,9 @@ pub(crate) struct DamageTypeDef {
     /// type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     label_style: Option<LabelStyle>,
+    /// The ladder a part of the type climbs, from the lowest rung up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ailments: Option<Vec<AilmentRung>>,
 }
 
 /// A `damage_types` entry: definitions by damage type, in name order, each
@@ -111,13 +115,18 @@ fn entries(world: &World) -> impl Iterator<Item = (&str, &DamageTypes)> {
 }
 
 /// The `damage_types` kind's check at a load's commit, every staged entry
-/// in place: each type a declared tag and defined by no other entry, and
-/// room in the World's 64 bits for every type the table lacks; when the
-/// types the table lacks outnumber the bits left, every checked entry that
-/// holds one fails, naming its first.
+/// in place: each type a declared tag and defined by no other entry, each
+/// ladder rung's effect and tags, and room in the World's 64 bits for every
+/// type the table lacks; when the types the table lacks outnumber the bits
+/// left, every checked entry that holds one fails, naming its first.
 fn check_types(types: &DamageTypes, world: &World) -> Result<(), MissingAsset> {
     for name in types.names() {
         check_declared(world, name, name)?;
+    }
+    for (name, definition) in &types.0 {
+        for (i, rung) in definition.ailments.iter().flatten().enumerate() {
+            rung.check(world, &format!("{name}.ailments.{i}"))?;
+        }
     }
     for name in types.names() {
         let twice =
@@ -413,6 +422,29 @@ pub(crate) fn label_style(world: &World, kinds: DamageKinds) -> Option<LabelStyl
         }
         name = &name[..name.rfind('.')?];
     }
+}
+
+/// The ladder a part of `kinds` climbs and the type it sits on, whose
+/// bucket the part fills: its definition's `ailments`, else its nearest
+/// ancestor's that sets one, read from the current `damage_types` entries;
+/// `None` when no type of its line sets one.
+pub(crate) fn ladder(world: &World, kinds: DamageKinds) -> Option<(&str, &[AilmentRung])> {
+    let mut name = definition(world, kinds)?;
+    loop {
+        if let Some(rungs) = ladder_of(world, name) {
+            return Some((name, rungs));
+        }
+        name = &name[..name.rfind('.')?];
+    }
+}
+
+/// The ladder the type `name`'s own definition sets, when it sets one.
+pub(crate) fn ladder_of<'a>(world: &'a World, name: &str) -> Option<&'a [AilmentRung]> {
+    entries(world).find_map(|(_, types)| {
+        types
+            .get(name)
+            .and_then(|definition| definition.ailments.as_deref())
+    })
 }
 
 /// Points off a hit part's resistances: for each damage type, points in
@@ -868,6 +900,14 @@ fn describe_types(world: &mut World) {
                 "label_style",
                 FieldType::Shape("label_style"),
                 "how a `damaged_part` cue's `{ \"label\": {} }` floats a part of the type",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "ailments",
+                FieldType::List(Box::new(FieldType::Shape(AILMENT_RUNG))),
+                "the ladder a part of the type climbs, from the lowest rung up; the feed takes the highest rung the target reaches and empties its bucket",
             )
             .default("null"),
         )

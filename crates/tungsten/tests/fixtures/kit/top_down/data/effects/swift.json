@@ -1,0 +1,16 @@
+{
+  "duration": 5,
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "pct": 0.3
+      }
+    }
+  ],
+  "stack": {
+    "limit": 3,
+    "refresh": "extend",
+    "expire": "remove_one"
+  }
+}

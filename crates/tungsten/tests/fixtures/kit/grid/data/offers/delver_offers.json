@@ -1,0 +1,33 @@
+{
+  "count": 1,
+  "entries": [
+    {
+      "weight": 1,
+      "gives": {
+        "effect": {
+          "duration": 3,
+          "grant": [
+            "status.blessed"
+          ]
+        }
+      }
+    },
+    {
+      "weight": 1,
+      "gives": {
+        "ability": {
+          "trigger": {
+            "action": "attack"
+          },
+          "payload": [
+            {
+              "spawn": {
+                "prefab": "swing"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

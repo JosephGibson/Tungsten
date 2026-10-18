@@ -95,6 +95,9 @@
     },
     "ward": {
       "path": "prefabs/ward.json"
+    },
+    "ammo": {
+      "path": "prefabs/ammo.json"
     }
   },
   "data": {
@@ -124,6 +127,50 @@
     "damage_types": {
       "fantasy": {
         "path": "data/damage_types/fantasy.json"
+      }
+    },
+    "effects": {
+      "burning": {
+        "path": "data/effects/burning.json"
+      },
+      "chilled": {
+        "path": "data/effects/chilled.json"
+      },
+      "frozen": {
+        "path": "data/effects/frozen.json"
+      },
+      "thawed": {
+        "path": "data/effects/thawed.json"
+      },
+      "swift": {
+        "path": "data/effects/swift.json"
+      },
+      "poisoned": {
+        "path": "data/effects/poisoned.json"
+      }
+    },
+    "curves": {
+      "burn_scale": {
+        "path": "data/curves/burn_scale.json"
+      },
+      "hero_xp": {
+        "path": "data/curves/hero_xp.json"
+      }
+    },
+    "abilities": {
+      "wand": {
+        "path": "data/abilities/wand.json"
+      },
+      "dash": {
+        "path": "data/abilities/dash.json"
+      },
+      "volley": {
+        "path": "data/abilities/volley.json"
+      }
+    },
+    "offers": {
+      "hero_offers": {
+        "path": "data/offers/hero_offers.json"
       }
     }
   },

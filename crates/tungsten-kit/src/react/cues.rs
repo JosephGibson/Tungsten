@@ -7,7 +7,8 @@ use std::fmt;
 use std::sync::Arc;
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
     AudioCommands, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor, EventQueue,
@@ -15,6 +16,7 @@ use tungsten_core::{
     SquashEvent, SquashTrigger, Time, Transform, World, system,
 };
 
+use crate::damage::effects::{EFFECTS, Effect, EffectApplied, EffectExpired, EffectRequest};
 use crate::damage::health::{Damaged, DamagedPart, start_flash};
 use crate::damage::kinds::{DamageKinds, DamageTypeTable, check_type, label_style, merge_types};
 use crate::damage::pipeline::Healed;
@@ -28,6 +30,7 @@ use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::rng::KitRng;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
+use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
 use crate::lifecycle::cooldown::CooldownElapsed;
 use crate::lifecycle::ended::{Despawning, mark_despawning};
 use crate::overlap::hit::Struck;
@@ -38,6 +41,7 @@ use crate::present::labels::{
     LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, float_label, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
+use crate::react::level::LevelUp;
 use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
 use crate::transform::hierarchy::despawn_recursive;
 
@@ -57,7 +61,11 @@ pub(crate) const HIT: &str = "hit";
 pub(crate) const HEALED: &str = "healed";
 pub(crate) const PICKED_UP: &str = "picked_up";
 pub(crate) const EXPIRED: &str = "expired";
-const KIT_EVENTS: [&str; 9] = [
+pub(crate) const EFFECT_APPLIED: &str = "effect_applied";
+pub(crate) const EFFECT_EXPIRED: &str = "effect_expired";
+pub(crate) const ABILITY_USED: &str = "ability_used";
+pub(crate) const LEVEL_UP: &str = "level_up";
+const KIT_EVENTS: [&str; 13] = [
     DAMAGED_PART,
     DAMAGED,
     KILLED,
@@ -67,6 +75,10 @@ const KIT_EVENTS: [&str; 9] = [
     HEALED,
     PICKED_UP,
     EXPIRED,
+    EFFECT_APPLIED,
+    EFFECT_EXPIRED,
+    ABILITY_USED,
+    LEVEL_UP,
 ];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
@@ -88,8 +100,11 @@ fn valid_event(name: &str) -> bool {
 /// (the zone is the subject, the entrant the other), `cooldown_elapsed`,
 /// `hit` (the hitting entity is the subject, the target the other),
 /// `healed` (the heal's source the other), `picked_up` (the pickup is the
-/// subject, the collector the other) and `expired` (a projectile's end),
-/// and each name a game's [`CuesOnEvent`] registers.
+/// subject, the collector the other), `expired` (a projectile's end),
+/// `effect_applied` (the effect's source the other, the stacks the amount),
+/// `effect_expired`, `ability_used` (the ability's target the other) and
+/// `level_up` (the level the amount), and each name a game's
+/// [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -208,14 +223,14 @@ impl Cues {
 }
 
 /// One reaction to an event: spawn a prefab, roll a loot table, change a
-/// counter or a flag, despawn, or present (a sound, a shake, a squash, a
-/// flash, a label).
-/// `counter`, `flag` and `despawn` act on the event's subject by default;
-/// [`for_other`](Self::for_other) points them at the event's other entity
-/// and [`for_game`](Self::for_game) the first two at the World's own
-/// [`Counters`](crate::Counters) and [`Flags`](crate::Flags). The rest act
-/// on the subject or at its position. Presentation actions change no
-/// gameplay state.
+/// counter or a flag, despawn, apply an effect, use or refill an ability,
+/// or present (a sound, a shake, a squash, a flash, a label).
+/// `counter`, `flag`, `despawn`, `effect` and `ability` act on the event's
+/// subject by default; [`for_other`](Self::for_other) points them at the event's
+/// other entity and [`for_game`](Self::for_game) the first two at the
+/// World's own [`Counters`](crate::Counters) and [`Flags`](crate::Flags).
+/// The rest act on the subject or at its position. Presentation actions
+/// change no gameplay state.
 ///
 /// Data form, one field per action:
 ///
@@ -231,6 +246,8 @@ impl Cues {
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
 /// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
+/// | effect | `{ "effect": "burning" }`, or `{ "effect": { "id": "burning", "target": "other" } }`, an `effects` entry or the [`Effect`] in place under `id`, queued on the subject from the event's other entity, or on the other from the subject |
+/// | ability | `{ "ability": "wand" }`, or `{ "ability": { "name": "wand", "op": "refill", "target": "other" } }`, the named ability of the subject or the other used now (`op` `use`), or made ready with every charge (`refill`) |
 ///
 /// # Examples
 ///
@@ -278,6 +295,15 @@ pub(crate) enum ActionKind {
     /// `None`: a `damaged_part`'s amount in its type's style.
     Label(Option<LabelStyle>),
     Roll(DataRef<WeightedTable>),
+    Effect {
+        effect: DataRef<Effect>,
+        target: Target,
+    },
+    Ability {
+        name: String,
+        refill: bool,
+        target: Target,
+    },
 }
 
 /// A counter action's change.
@@ -372,7 +398,8 @@ impl CueAction {
     ///
     /// # Panics
     ///
-    /// When the action is not a `counter`, `flag` or `despawn`.
+    /// When the action is not a `counter`, `flag`, `despawn`, `effect` or
+    /// `ability`.
     #[must_use]
     #[track_caller]
     pub fn for_other(self) -> Self {
@@ -395,7 +422,13 @@ impl CueAction {
         let name = self.name();
         match &mut self.kind {
             ActionKind::Counter { target, .. } | ActionKind::Flag { target, .. } => *target = to,
-            ActionKind::Despawn(target) if to == Target::Other => *target = to,
+            ActionKind::Despawn(target)
+            | ActionKind::Effect { target, .. }
+            | ActionKind::Ability { target, .. }
+                if to == Target::Other =>
+            {
+                *target = to;
+            }
             _ => panic!("CueAction::{method}: a `{name}` action takes no target"),
         }
         self
@@ -507,8 +540,84 @@ impl CueAction {
         Self::of(ActionKind::Roll(table))
     }
 
+    /// Queues `effect`, an `effects` entry or an effect in place, on the
+    /// subject, from the event's other entity, for the next
+    /// [`EFFECT_RESOLVE`](crate::EFFECT_RESOLVE);
+    /// [`for_other`](Self::for_other) queues it on the other entity from
+    /// the subject. Data form `{ "effect": "burning" }` or
+    /// `{ "effect": { "id": "burning", "target": "other" } }`; the load
+    /// checks the effect.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_core::DataRef;
+    /// use tungsten_kit::{CueAction, Effect};
+    ///
+    /// let slow = CueAction::effect(DataRef::by_id("slowed")).for_other();
+    /// assert_eq!(
+    ///     serde_json::to_value(&slow).unwrap(),
+    ///     serde_json::json!({ "effect": { "id": "slowed", "target": "other" } })
+    /// );
+    /// let short: CueAction = serde_json::from_str(r#"{ "effect": "slowed" }"#).unwrap();
+    /// assert_eq!(short, CueAction::effect(DataRef::by_id("slowed")));
+    /// let inline = CueAction::effect(DataRef::inline(Effect::new().with_duration(1.0)));
+    /// assert_eq!(inline.name(), "effect");
+    /// ```
+    #[must_use]
+    pub fn effect(effect: DataRef<Effect>) -> Self {
+        Self::of(ActionKind::Effect {
+            effect,
+            target: Target::Subject,
+        })
+    }
+
+    /// Uses the subject's ability `name` now, as [`use_ability`] uses it;
+    /// [`for_other`](Self::for_other) uses the other entity's. Data form
+    /// `{ "ability": "wand" }` or
+    /// `{ "ability": { "name": "wand", "op": "use", "target": "other" } }`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::CueAction;
+    ///
+    /// let swing = CueAction::ability("sword");
+    /// assert_eq!(
+    ///     serde_json::to_value(&swing).unwrap(),
+    ///     serde_json::json!({ "ability": { "name": "sword", "op": "use", "target": "self" } })
+    /// );
+    /// let short: CueAction = serde_json::from_str(r#"{ "ability": "sword" }"#).unwrap();
+    /// assert_eq!(short, swing);
+    /// let reload = CueAction::refill_ability("volley").for_other();
+    /// assert_eq!(reload.name(), "ability");
+    /// ```
+    #[must_use]
+    pub fn ability(name: impl Into<String>) -> Self {
+        Self::of(ActionKind::Ability {
+            name: name.into(),
+            refill: false,
+            target: Target::Subject,
+        })
+    }
+
+    /// Makes the subject's ability `name` ready now, every charge back and
+    /// its cooldown cleared ([`Abilities::refill`]); an ammo pickup's
+    /// `picked_up` cue refills its collector's with
+    /// [`for_other`](Self::for_other). Data form
+    /// `{ "ability": { "name": "volley", "op": "refill" } }`.
+    #[must_use]
+    pub fn refill_ability(name: impl Into<String>) -> Self {
+        Self::of(ActionKind::Ability {
+            name: name.into(),
+            refill: true,
+            target: Target::Subject,
+        })
+    }
+
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
-    /// `sound`, `shake`, `squash`, `flash`, `label` or `roll`.
+    /// `sound`, `shake`, `squash`, `flash`, `label`, `roll`, `effect` or
+    /// `ability`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -522,6 +631,8 @@ impl CueAction {
             ActionKind::Flash => "flash",
             ActionKind::Label(_) => "label",
             ActionKind::Roll(_) => "roll",
+            ActionKind::Effect { .. } => "effect",
+            ActionKind::Ability { .. } => "ability",
         }
     }
 }
@@ -556,6 +667,8 @@ pub(crate) enum CueActionDef {
     Flash(FlashDef),
     Label(LabelDef),
     Roll(DataRef<WeightedTable>),
+    Effect(EffectActionDef),
+    Ability(AbilityActionDef),
 }
 
 /// A `counter` action as data writes it: exactly one of `add` and `set`.
@@ -653,6 +766,8 @@ pub(crate) struct DespawnDef {
     target: DespawnTarget,
 }
 
+/// Whom a `despawn` or an `effect` action acts on: the subject or the
+/// other entity.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum DespawnTarget {
@@ -660,6 +775,159 @@ enum DespawnTarget {
     #[serde(rename = "self")]
     Subject,
     Other,
+}
+
+impl From<DespawnTarget> for Target {
+    fn from(target: DespawnTarget) -> Self {
+        match target {
+            DespawnTarget::Subject => Target::Subject,
+            DespawnTarget::Other => Target::Other,
+        }
+    }
+}
+
+impl From<Target> for DespawnTarget {
+    /// `Game` reads as the subject; no action of this target takes it.
+    fn from(target: Target) -> Self {
+        match target {
+            Target::Other => DespawnTarget::Other,
+            Target::Subject | Target::Game => DespawnTarget::Subject,
+        }
+    }
+}
+
+/// An `effect` action as data writes it: the effect's ID alone, or an
+/// object of `id` (the ID or the effect in place) and `target`; written
+/// back as the object.
+#[derive(Clone, Serialize)]
+#[serde(into = "EffectActionObject")]
+pub(crate) struct EffectActionDef {
+    id: DataRef<Effect>,
+    target: DespawnTarget,
+}
+
+/// The object form of an `effect` action.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct EffectActionObject {
+    id: DataRef<Effect>,
+    #[serde(default)]
+    target: DespawnTarget,
+}
+
+impl From<EffectActionDef> for EffectActionObject {
+    fn from(def: EffectActionDef) -> Self {
+        Self {
+            id: def.id,
+            target: def.target,
+        }
+    }
+}
+
+/// An `ability` action's operation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum AbilityOp {
+    #[default]
+    Use,
+    Refill,
+}
+
+/// An `ability` action as data writes it: the ability's name alone, or an
+/// object of `name`, `op` and `target`; written back as the object.
+#[derive(Clone, Serialize)]
+#[serde(into = "AbilityActionObject")]
+pub(crate) struct AbilityActionDef {
+    name: String,
+    op: AbilityOp,
+    target: DespawnTarget,
+}
+
+/// The object form of an `ability` action.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AbilityActionObject {
+    name: String,
+    #[serde(default)]
+    op: AbilityOp,
+    #[serde(default)]
+    target: DespawnTarget,
+}
+
+impl From<AbilityActionDef> for AbilityActionObject {
+    fn from(def: AbilityActionDef) -> Self {
+        Self {
+            name: def.name,
+            op: def.op,
+            target: def.target,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for AbilityActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct AbilityActionVisitor;
+
+        impl<'de> Visitor<'de> for AbilityActionVisitor {
+            type Value = AbilityActionDef;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an ability's name, or an object of `name`, `op` and `target`")
+            }
+
+            fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
+                Ok(AbilityActionDef {
+                    name: name.to_owned(),
+                    op: AbilityOp::Use,
+                    target: DespawnTarget::Subject,
+                })
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
+                let object =
+                    AbilityActionObject::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(AbilityActionDef {
+                    name: object.name,
+                    op: object.op,
+                    target: object.target,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(AbilityActionVisitor)
+    }
+}
+
+impl<'de> Deserialize<'de> for EffectActionDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct EffectActionVisitor;
+
+        impl<'de> Visitor<'de> for EffectActionVisitor {
+            type Value = EffectActionDef;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("an effect's ID, or an object of `id` and `target`")
+            }
+
+            fn visit_str<E: de::Error>(self, id: &str) -> Result<Self::Value, E> {
+                Ok(EffectActionDef {
+                    id: DataRef::by_id(id),
+                    target: DespawnTarget::Subject,
+                })
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
+                let object =
+                    EffectActionObject::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(EffectActionDef {
+                    id: object.id,
+                    target: object.target,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(EffectActionVisitor)
+    }
 }
 
 /// A `sound` action as data writes it.
@@ -728,10 +996,7 @@ impl TryFrom<CueActionDef> for CueAction {
                 on: def.set,
                 target: def.target,
             },
-            CueActionDef::Despawn(def) => ActionKind::Despawn(match def.target {
-                DespawnTarget::Subject => Target::Subject,
-                DespawnTarget::Other => Target::Other,
-            }),
+            CueActionDef::Despawn(def) => ActionKind::Despawn(def.target.into()),
             CueActionDef::Sound(def) => ActionKind::Sound {
                 id: def.id,
                 min_interval: def.min_interval,
@@ -741,6 +1006,15 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
             CueActionDef::Label(LabelDef(style)) => ActionKind::Label(style),
             CueActionDef::Roll(table) => ActionKind::Roll(table),
+            CueActionDef::Effect(def) => ActionKind::Effect {
+                effect: def.id,
+                target: def.target.into(),
+            },
+            CueActionDef::Ability(def) => ActionKind::Ability {
+                name: def.name,
+                refill: def.op == AbilityOp::Refill,
+                target: def.target.into(),
+            },
         };
         Ok(Self { kind })
     }
@@ -768,11 +1042,7 @@ impl From<CueAction> for CueActionDef {
                 target,
             }),
             ActionKind::Despawn(target) => CueActionDef::Despawn(DespawnDef {
-                target: if target == Target::Other {
-                    DespawnTarget::Other
-                } else {
-                    DespawnTarget::Subject
-                },
+                target: target.into(),
             }),
             ActionKind::Sound { id, min_interval } => {
                 CueActionDef::Sound(SoundDef { id, min_interval })
@@ -782,6 +1052,23 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(LabelDef(style)),
             ActionKind::Roll(table) => CueActionDef::Roll(table),
+            ActionKind::Effect { effect, target } => CueActionDef::Effect(EffectActionDef {
+                id: effect,
+                target: target.into(),
+            }),
+            ActionKind::Ability {
+                name,
+                refill,
+                target,
+            } => CueActionDef::Ability(AbilityActionDef {
+                name,
+                op: if refill {
+                    AbilityOp::Refill
+                } else {
+                    AbilityOp::Use
+                },
+                target: target.into(),
+            }),
         }
     }
 }
@@ -883,6 +1170,10 @@ impl Default for CueEventNames {
                 (HEALED, true, true, false),
                 (PICKED_UP, false, true, false),
                 (EXPIRED, false, false, false),
+                (EFFECT_APPLIED, true, true, false),
+                (EFFECT_EXPIRED, false, false, false),
+                (ABILITY_USED, false, true, false),
+                (LEVEL_UP, true, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other, kinds)| EventInfo {
@@ -1212,10 +1503,10 @@ fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> 
 }
 
 /// Checks `actions`, run for `event`, against the World: each prefab,
-/// sound and loot table ID and an inline table's prefabs, a `label` on an
-/// event with an amount and a style-less one on `damaged_part` only, and a
-/// `target: other` on an event with another entity; `field` names the
-/// list.
+/// sound, loot table and effect ID and an inline table's prefabs or
+/// effect's fields, a `label` on an event with an amount and a style-less
+/// one on `damaged_part` only, and a `target: other` on an event with
+/// another entity; `field` names the list.
 fn check_actions(
     world: &World,
     field: &str,
@@ -1227,6 +1518,16 @@ fn check_actions(
         match &action.kind {
             ActionKind::Prefab(id) => world.check_prefab_id(&at, id)?,
             ActionKind::Roll(table) => table.check(world, &at)?,
+            ActionKind::Effect { effect, target } => {
+                effect.check(world, &at)?;
+                if *target == Target::Other && !event.other {
+                    return Err(MissingAsset::new(
+                        format!("{at}.target"),
+                        "cue event with an other entity",
+                        event.name,
+                    ));
+                }
+            }
             ActionKind::Sound { id, .. } => {
                 if let Some(sounds) = world.get_resource::<SoundRegistry>()
                     && sounds.get_by_id(id).is_none()
@@ -1257,8 +1558,10 @@ fn check_actions(
                 ..
             }
             | ActionKind::Despawn(Target::Other)
-                if !event.other =>
-            {
+            | ActionKind::Ability {
+                target: Target::Other,
+                ..
+            } if !event.other => {
                 return Err(MissingAsset::new(
                     format!("{at}.target"),
                     "cue event with an other entity",
@@ -1290,8 +1593,12 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`CooldownElapsed`],
 /// [`Struck`](crate::Struck) (`hit`), [`Healed`](crate::Healed),
 /// [`PickedUp`](crate::PickedUp) (`picked_up`),
-/// [`ProjectileExpired`](crate::ProjectileExpired) (`expired`), then each
-/// [`CuesOnEvent`] in build order, each queue in send order. It runs every
+/// [`ProjectileExpired`](crate::ProjectileExpired) (`expired`),
+/// [`EffectApplied`](crate::EffectApplied) (`effect_applied`),
+/// [`EffectExpired`](crate::EffectExpired) (`effect_expired`),
+/// [`AbilityUsed`](crate::AbilityUsed) (`ability_used`),
+/// [`LevelUp`](crate::LevelUp) (`level_up`), then each [`CuesOnEvent`] in
+/// build order, each queue in send order. It runs every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
 /// in entry-ID order, then file order); each list in its written order, so
 /// in each pass every `damaged_part` runs before the step's `damaged` and
@@ -1299,8 +1606,9 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// [`Tags`](crate::Tags) and its `kind` filter over the occurrence's
 /// [`DamageKinds`](crate::DamageKinds). `counter` and `flag` apply at once, `prefab` and
 /// `roll` spawns queue as they are met, a `roll` drawing from the
-/// [`KitRng`](crate::KitRng) in this order, and the step's despawns queue
-/// after its spawns, each target marked with its descendants so a frame's
+/// [`KitRng`](crate::KitRng) in this order, an `effect` queues for the
+/// next step's effect resolve, an `ability` uses or refills at once, and
+/// the step's despawns queue after its spawns, each target marked with its descendants so a frame's
 /// second step reacts to them no more; an occurrence whose subject is dead
 /// or so marked is skipped.
 ///
@@ -1393,6 +1701,9 @@ const NO_SOUND: &str = "the World has no sound or audio for it";
 const TOO_SOON: &str = "the sound played within its min_interval";
 const NO_TABLE: &str = "the World has no such loot table";
 const NO_STYLE: &str = "the part's types set no label style";
+const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
+const NO_ABILITY: &str = "the entity owns no such ability";
+const NOT_USED: &str = "the ability was not ready, had no charge, no cost or no target";
 
 /// The cue system's state between steps: its place in each kit queue, the
 /// step's scratch lists, and each cue sound's last play on its clock.
@@ -1406,6 +1717,10 @@ struct Reactor {
     healed: EventCursor<Healed>,
     picked: EventCursor<PickedUp>,
     expired: EventCursor<ProjectileExpired>,
+    applied: EventCursor<EffectApplied>,
+    effects_expired: EventCursor<EffectExpired>,
+    abilities_used: EventCursor<AbilityUsed>,
+    level_ups: EventCursor<LevelUp>,
     occurrences: Vec<Occurrence>,
     /// The rules that match one occurrence, with their names.
     matched: Vec<(String, Arc<[CueAction]>)>,
@@ -1679,6 +1994,46 @@ impl Reactor {
                 };
                 float_label(world, &style, occurrence.position, amount);
             }
+            ActionKind::Effect { effect, target: to } => {
+                let Some(entity) = target(*to, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                let source = if *to == Target::Other {
+                    Some(subject)
+                } else {
+                    target(Target::Other, world)
+                };
+                let mut request = EffectRequest::new(entity, effect.clone());
+                if let Some(source) = source {
+                    request = request.with_source(source);
+                }
+                if !request.queue(world) {
+                    return skip(world, NO_EFFECTS);
+                }
+            }
+            ActionKind::Ability {
+                name,
+                refill,
+                target: to,
+            } => {
+                let Some(entity) = target(*to, world) else {
+                    return skip(world, NO_OTHER);
+                };
+                if *refill {
+                    let refilled = world
+                        .get_mut::<Abilities>(entity)
+                        .is_some_and(|abilities| abilities.refill(name));
+                    if !refilled {
+                        return skip(world, NO_ABILITY);
+                    }
+                } else {
+                    match use_ability(world, entity, name) {
+                        Used::Used => {}
+                        Used::NoAbility => return skip(world, NO_ABILITY),
+                        _ => return skip(world, NOT_USED),
+                    }
+                }
+            }
         }
         trace(world, subject, || TraceKind::Cue {
             event: occurrence.event,
@@ -1748,6 +2103,10 @@ impl Reactor {
             healed,
             picked,
             expired,
+            applied,
+            effects_expired,
+            abilities_used,
+            level_ups,
             occurrences,
             ..
         } = self;
@@ -1847,6 +2206,46 @@ impl Reactor {
                 subject: event.entity,
                 position: event.position,
                 amount: None,
+                other: None,
+                kinds: DamageKinds::NONE,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<EffectApplied>>() {
+            occurrences.extend(applied.read(queue).map(|event| Occurrence {
+                event: EFFECT_APPLIED,
+                subject: event.entity,
+                position: point_of(world, event.entity),
+                amount: Some(event.stacks as f32),
+                other: event.source,
+                kinds: DamageKinds::NONE,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<EffectExpired>>() {
+            occurrences.extend(effects_expired.read(queue).map(|event| Occurrence {
+                event: EFFECT_EXPIRED,
+                subject: event.entity,
+                position: point_of(world, event.entity),
+                amount: None,
+                other: None,
+                kinds: DamageKinds::NONE,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<AbilityUsed>>() {
+            occurrences.extend(abilities_used.read(queue).map(|event| Occurrence {
+                event: ABILITY_USED,
+                subject: event.entity,
+                position: event.position,
+                amount: None,
+                other: event.target,
+                kinds: DamageKinds::NONE,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<LevelUp>>() {
+            occurrences.extend(level_ups.read(queue).map(|event| Occurrence {
+                event: LEVEL_UP,
+                subject: event.entity,
+                position: point_of(world, event.entity),
+                amount: Some(event.level as f32),
                 other: None,
                 kinds: DamageKinds::NONE,
             }));
@@ -1973,6 +2372,16 @@ fn describe_cues(world: &mut World) {
                 FieldType::Data(LOOT_TABLES),
                 "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs",
             ))
+            .field(FieldDescription::new(
+                "effect",
+                FieldType::Shape("effect_action"),
+                "an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ \"id\": .. }`",
+            ))
+            .field(FieldDescription::new(
+                "ability",
+                FieldType::Shape("ability_action"),
+                "the subject's or the other's ability used now, or made ready; a name alone reads as `{ \"name\": .. }`",
+            ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),
         ComponentDescription::new("counter_action", "A counter added to or set: exactly one of `add` and `set`.")
@@ -2029,6 +2438,38 @@ fn describe_cues(world: &mut World) {
             .field(target(&["self", "other"], "the subject or the other entity"))
             .sample("{}")
             .roundtrip(round_trip::<DespawnDef>),
+        ComponentDescription::new(
+            "effect_action",
+            "An effect applied at the next effect resolve, from the event's other entity on the subject or from the subject on the other.",
+        )
+        .field(FieldDescription::new(
+            "id",
+            FieldType::Data(EFFECTS),
+            "an `effects` entry or the effect in place; the load checks it",
+        ))
+        .field(target(&["self", "other"], "the subject or the other entity"))
+        .sample(r#"{ "id": "burning" }"#)
+        .roundtrip(round_trip::<EffectActionDef>),
+        ComponentDescription::new(
+            "ability_action",
+            "An ability of the subject or the other entity used now, as `use_ability` uses it, or made ready with every charge.",
+        )
+        .field(FieldDescription::new(
+            "name",
+            FieldType::Text,
+            "the ability's name in the entity's `abilities`: an entry's ID or `#<index>`",
+        ))
+        .field(
+            FieldDescription::new(
+                "op",
+                FieldType::Enum(&["use", "refill"]),
+                "used now, or every charge back and the cooldown cleared",
+            )
+            .default(r#""use""#),
+        )
+        .field(target(&["self", "other"], "the subject or the other entity"))
+        .sample(r#"{ "name": "wand" }"#)
+        .roundtrip(round_trip::<AbilityActionDef>),
         ComponentDescription::new("sound_action", "A manifest sound played at its volume, never looping.")
             .field(FieldDescription::new(
                 "id",

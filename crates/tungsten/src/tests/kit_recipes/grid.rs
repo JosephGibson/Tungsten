@@ -1,7 +1,7 @@
 //! The grid fixture: a bodiless rogue under the move actions, a hole that
 //! spawns rats, a potion that expires, and the camera on the rogue; M64's
 //! crawlers and warden; M65's adventurer and its swing, a chest and its
-//! loot, gold and spikes.
+//! loot, gold and spikes; M67's blessing and level on the adventurer.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -9,7 +9,8 @@ use tungsten_core::{CameraController, CameraMode, CameraState, Entity, Sprite};
 
 use super::{DTS, body_at, frames_for, point_of, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
-    Cooldown, Counters, Flags, Health, Hit, KitPlugins, KitRng, Source, Tags, TopDownMover, damage,
+    Abilities, Cooldown, Counters, Effects, Flags, Health, Hit, KitPlugins, KitRng, Level, Source,
+    Tags, TopDownMover, damage,
 };
 
 const GENRE: &str = "grid";
@@ -266,5 +267,86 @@ fn spikes_hurt_the_adventurer_each_interval() {
             harness.world().get::<Health>(adventurer).unwrap().current(),
             7.0
         );
+    }
+}
+
+// M67: the adventurer's inline effect and its level.
+
+#[test]
+fn the_adventurers_inline_effect_expires_and_its_level_grants_an_ability() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let adventurer = spawn(&mut harness, "adventurer", [32.0, 32.0]);
+        harness.step(1);
+        let world = harness.world();
+        assert!(
+            world.get::<Tags>(adventurer).unwrap().has("status.blessed"),
+            "dt {dt}"
+        );
+        let effects = world.get::<Effects>(adventurer).unwrap();
+        assert_eq!(effects.instances().count(), 1);
+        assert!(
+            effects
+                .instances()
+                .next()
+                .unwrap()
+                .effect()
+                .as_inline()
+                .is_some()
+        );
+        harness.step(frames_for(2.05, dt));
+        let world = harness.world();
+        assert!(
+            !world.get::<Tags>(adventurer).unwrap().has("status.blessed"),
+            "dt {dt}"
+        );
+        assert_eq!(
+            world
+                .get::<Effects>(adventurer)
+                .unwrap()
+                .instances()
+                .count(),
+            0
+        );
+        // One gold reaches level 2; the draw offers the blessing or the
+        // swing ability, so raise the count until the ability comes up.
+        let gold = spawn(&mut harness, "gold", [32.0, 32.0]);
+        harness.step(frames_for(0.25, dt));
+        assert!(!harness.world().is_alive(gold), "dt {dt}");
+        let level = harness.world().get::<Level>(adventurer).unwrap();
+        assert_eq!((level.level(), level.offers().len()), (2, 1), "dt {dt}");
+        let mut chosen = false;
+        for (level, gold) in [(2, 1), (3, 15)] {
+            if gold > 1 {
+                harness
+                    .world_mut()
+                    .get_mut::<Counters>(adventurer)
+                    .unwrap()
+                    .set("gold", gold);
+                harness.step(1);
+            }
+            let found = harness.world().get::<Level>(adventurer).unwrap();
+            assert_eq!(found.level(), level, "dt {dt}");
+            if found.offers()[0].ability().is_some() {
+                assert!(
+                    harness
+                        .world_mut()
+                        .get_mut::<Level>(adventurer)
+                        .unwrap()
+                        .choose(0)
+                );
+                chosen = true;
+                break;
+            }
+        }
+        assert!(chosen, "dt {dt}: the ability was offered by level 3");
+        harness.step(1);
+        let abilities = harness.world().get::<Abilities>(adventurer).unwrap();
+        assert_eq!(
+            abilities.names().collect::<Vec<_>>(),
+            ["#0"],
+            "dt {dt}: the inline ability"
+        );
+        assert!(abilities.ready("#0"));
     }
 }

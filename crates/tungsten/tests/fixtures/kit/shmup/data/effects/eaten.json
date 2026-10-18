@@ -1,0 +1,11 @@
+{
+  "duration": 2,
+  "resist": [
+    {
+      "tag": "biological",
+      "modifier": {
+        "add": 0.5
+      }
+    }
+  ]
+}

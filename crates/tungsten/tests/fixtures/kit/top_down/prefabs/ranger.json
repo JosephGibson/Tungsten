@@ -39,6 +39,25 @@
           "prefab": "ember"
         }
       ]
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "attack": "attack"
+      }
+    },
+    "abilities": [
+      "volley"
+    ],
+    "level": {
+      "counter": "xp",
+      "curve": "hero_xp",
+      "offers": "hero_offers"
     }
   }
 }

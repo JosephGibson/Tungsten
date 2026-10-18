@@ -1,7 +1,8 @@
 //! The damage pipeline: requests of typed parts that carry a source, a
-//! position, a knockback and a crit flag, resolved through conversion,
-//! penetration and resistances per part, then once through a shield and
-//! health, at once or once a step in sorted order; heals the same way.
+//! position, a knockback, a crit flag and a periodic flag, resolved through
+//! conversion, penetration and resistances per part, then once through a
+//! shield and health, at once or once a step in sorted order; heals the
+//! same way.
 
 use glam::Vec2;
 use tungsten_core::{Entity, EventQueue, World};
@@ -106,17 +107,19 @@ impl PartialEq for Parts {
 /// A hit to resolve: its target and its parts, each an amount with its
 /// damage types, with the entity it came from, the types its untyped parts
 /// take (`damage.fire`), where it landed, the push it gives, whether it was
-/// a critical one, and its own [`Penetration`] and [`Conversion`]. The
-/// kit's hitboxes, contact damage and projectiles queue one per hit; a
-/// game's Rust builds its own and either [`apply`](Self::apply)s it now or
+/// a critical one, whether it is periodic (an effect's payload, which
+/// passes the target's invulnerability window and starts none), and its
+/// own [`Penetration`] and [`Conversion`]. The kit's hitboxes, contact
+/// damage, projectiles and effects queue one per hit; a game's Rust builds
+/// its own and either [`apply`](Self::apply)s it now or
 /// [`queue`](Self::queue)s it for the step's [`DAMAGE_RESOLVE`].
 ///
 /// Resolving one, now or queued:
 ///
 /// 1. Each part takes its own types, else the request's; a part of 0 drops.
 ///    No part left, or a target that is gone, being despawned by the kit,
-///    without [`Health`], dead or inside its invulnerability window, is
-///    [`Hit::Ignored`], with no side effect.
+///    without [`Health`], dead or, unless the request is periodic, inside
+///    its invulnerability window, is [`Hit::Ignored`], with no side effect.
 /// 2. Conversion: the hit's own rules, then its source's [`Conversion`],
 ///    in one pass, each share a new part of its rule's type alone; parts of
 ///    equal types then merge in first-appearance order.
@@ -128,13 +131,14 @@ impl PartialEq for Parts {
 ///    `f32::MAX`, and a result of 0 drops the part.
 /// 5. No part left is [`Hit::Ignored`], with no side effect.
 /// 6. The parts' total falls once: its [`Shield`] takes what it can and
-///    waits its delay again, health falls by the rest, the window and the
-///    [`HitFlash`](crate::HitFlash) start.
+///    waits its delay again, health falls by the rest, and the window and
+///    the [`HitFlash`](crate::HitFlash) start, unless the request is
+///    periodic.
 /// 7. A [`DamagedPart`] goes out per part, in part order, with its amount
 ///    after the resistances and its [`DamageKinds`], then one [`Damaged`]
 ///    with the total and the parts' kinds together, each with the source,
-///    the position and, on [`Damaged`], the crit flag; the trace records each
-///    part, the hit and any kill.
+///    the position, the periodic flag and, on [`Damaged`], the crit flag;
+///    the trace records each part, the hit and any kill.
 /// 8. The outcome is [`Hit::Killed`], [`Hit::Hurt`] or [`Hit::Absorbed`]
 ///    (the shield took it all), and on the last two the knockback goes
 ///    through [`knock_back`](crate::knock_back). A kill of a health with a
@@ -209,14 +213,15 @@ pub struct DamageRequest {
     position: Option<Vec2>,
     knockback: Option<Vec2>,
     crit: bool,
+    periodic: bool,
     penetration: Option<Penetration>,
     conversion: Option<Conversion>,
 }
 
 impl DamageRequest {
     /// A request of one untyped part of `amount` on `target`, with no
-    /// source, no types, no position, no knockback, no crit and no
-    /// penetration or conversion of its own.
+    /// source, no types, no position, no knockback, no crit, not periodic,
+    /// and no penetration or conversion of its own.
     ///
     /// # Panics
     ///
@@ -254,6 +259,7 @@ impl DamageRequest {
             position: None,
             knockback: None,
             crit: false,
+            periodic: false,
             penetration: None,
             conversion: None,
         }
@@ -335,6 +341,16 @@ impl DamageRequest {
         self
     }
 
+    /// The request, periodic when `periodic`: an effect's payload, which
+    /// passes the target's invulnerability window, starts none and starts
+    /// no [`HitFlash`](crate::HitFlash); [`Damaged`] and [`DamagedPart`]
+    /// carry the flag.
+    #[must_use]
+    pub fn with_periodic(mut self, periodic: bool) -> Self {
+        self.periodic = periodic;
+        self
+    }
+
     /// The entity hit.
     #[must_use]
     pub fn target(&self) -> Entity {
@@ -393,6 +409,12 @@ impl DamageRequest {
     #[must_use]
     pub fn is_crit(&self) -> bool {
         self.crit
+    }
+
+    /// Whether it is periodic: an effect's payload.
+    #[must_use]
+    pub fn is_periodic(&self) -> bool {
+        self.periodic
     }
 
     /// Resolves the request now, so the caller knows the outcome in the
@@ -604,13 +626,14 @@ impl Resolver {
 }
 
 /// Whether `target` takes a request: alive, not being despawned by the kit,
-/// with [`Health`] that is neither dead nor inside its window.
-fn takes_hits(world: &World, target: Entity) -> bool {
+/// with [`Health`] that is neither dead nor, unless the request is
+/// `periodic`, inside its window.
+fn takes_hits(world: &World, target: Entity, periodic: bool) -> bool {
     world.is_alive(target)
         && !world.has::<Despawning>(target)
         && world
             .get::<Health>(target)
-            .is_some_and(|health| !health.is_dead() && !health.is_invulnerable())
+            .is_some_and(|health| !health.is_dead() && (periodic || !health.is_invulnerable()))
 }
 
 /// One part after the target's resistances: its amount and its kinds.
@@ -754,7 +777,9 @@ fn merge_part<'a>(working: &mut Vec<Working<'a>>, tags: &'a Tags, amount: f64) {
 /// [`DamageRequest`]'s resolution, its landed parts gathered in `landed`.
 fn resolve(world: &mut World, request: &DamageRequest, landed: &mut Vec<Landed>) -> Hit {
     let target = request.target;
-    if request.parts().iter().all(|part| part.amount == 0.0) || !takes_hits(world, target) {
+    if request.parts().iter().all(|part| part.amount == 0.0)
+        || !takes_hits(world, target, request.periodic)
+    {
         return Hit::Ignored;
     }
     land_parts(world, request, landed);
@@ -769,12 +794,19 @@ fn resolve(world: &mut World, request: &DamageRequest, landed: &mut Vec<Landed>)
         Some(shield) => amount - shield.take(amount),
         None => amount,
     };
-    let killed = world.get_mut::<Health>(target).unwrap().hurt(rest);
-    start_flash(world, target);
+    let killed = world
+        .get_mut::<Health>(target)
+        .unwrap()
+        .hurt(rest, request.periodic);
+    if !request.periodic {
+        start_flash(world, target);
+    }
     if world.has_event::<DamagedPart>() {
         let queue = world.resource_mut::<EventQueue<DamagedPart>>();
         for part in landed.iter() {
-            let mut event = DamagedPart::new(target, part.amount).with_kinds(part.kinds);
+            let mut event = DamagedPart::new(target, part.amount)
+                .with_kinds(part.kinds)
+                .with_periodic(request.periodic);
             if let Some(source) = request.source {
                 event = event.with_source(source);
             }
@@ -787,6 +819,7 @@ fn resolve(world: &mut World, request: &DamageRequest, landed: &mut Vec<Landed>)
     if world.has_event::<Damaged>() {
         let mut event = Damaged::new(target, amount, killed)
             .with_crit(request.crit)
+            .with_periodic(request.periodic)
             .with_kinds(kinds);
         if let Some(source) = request.source {
             event = event.with_source(source);

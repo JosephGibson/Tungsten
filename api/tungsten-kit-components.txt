@@ -1,9 +1,19 @@
+component abilities: The abilities the entity owns, by name: an entry's ID, or `#<index>` for one written in place.
+  field list: list of abilities ID or entry — the value itself: each an `abilities` entry's ID or an ability in place, names unique; the load checks each
+  events: AbilityUsed
+  genres: top_down, shmup
+  sample: ["wand"]
 component action_input: The actions that steer the entity, read into its Intent each fixed step.
   field move: list of text — [left, right] or [left, right, up, down]: the movement actions
   field aim: list of text = null — [left, right, up, down]: the aim actions
   field slots: { slot: action } = {} — named slots, such as `jump`, read as held and just pressed
   genres: platformer, top_down, shmup, grid
   sample: { "move": ["move_left", "move_right"] }
+component ailment_threshold: How much the entity's ailment buckets must hold before a ladder's `needs` rungs reach: flat plus a fraction of its full health, times its `ailment_threshold_mult` stat when it has one.
+  field flat: f32 (>= 0) = 0.0 — the flat part
+  field of_max_health: f32 (>= 0) = 0.0 — a fraction of the entity's `health` max, added
+  genres: top_down, shmup
+  sample: {}
 component aim: The direction the entity aims in, from its intent, the cursor, its movement or a target, kept while its source gives none.
   field from: one of intent | cursor | movement | target = "intent" — the intent's aim, the cursor's world point, the movement or a target
   field target: shape target = null — what it aims at with `from: target`, unused otherwise; the load checks its tags
@@ -63,6 +73,10 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field healed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field picked_up: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field expired: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field effect_applied: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field effect_expired: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field ability_used: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field level_up: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, shmup, grid
   sample: {}
@@ -76,6 +90,11 @@ component despawn_outside: Despawns the entity, with its children, once it leave
   field view: f32 (>= 0) — the margin outside the last frame's camera view
   genres: top_down, shmup
   sample: { "view": 16 }
+component effects: The effects the entity carries: entries applied at its first step, and the active instances.
+  field list: list of effects ID or entry — the value itself: each an `effects` entry's ID or an effect in place, applied with no source; the load checks each
+  events: EffectApplied, EffectExpired
+  genres: platformer, grid
+  sample: ["regen"]
 component facing: The direction the entity faces, from its motion, intent or aim, snapped and held while it stops; it turns the entity when asked.
   field from: one of motion | intent | aim = "motion" — the velocity, the intent's movement or the aim's direction
   field snap: one of free | horizontal | four | eight = "free" — unsnapped, left or right, or the nearest of four or eight
@@ -116,6 +135,7 @@ component hitbox: Hits the hurtboxes its shape meets over each step, each target
   field convert: list of shape conversion_rule = [] — the hit's own conversion rules, before its source's `conversion`
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
+  field window: f32 (> 0) = null — seconds it hits for once armed, by `arm` or an ability's `hitbox` payload; always armed when left out
   events: Struck
   genres: top_down, shmup, platformer, grid
   sample: { "shape": { "circle": 4 }, "damage": 1 }
@@ -129,6 +149,14 @@ component knockback: How the entity takes a push from `knock_back`: a push that 
   field resist: f32 (>= 0, <= 1) = 0.0 — the part of each push it ignores
   genres: platformer, top_down
   sample: {}
+component level: A level climbed along a curve by a counter, each level up sending an event and drawing offers.
+  field counter: text — the counter it reads: dotted, undeclared
+  field target: one of self | game = "self" — the entity's counters, or the game's
+  field curve: curves ID or entry — level to the total count that reaches it; its last `x`, floored, is the top level; the load checks it
+  field offers: offers ID or entry = null — drawn at each level up; the load checks it
+  events: LevelUp
+  genres: top_down, grid
+  sample: { "counter": "xp", "curve": "hero_xp" }
 component lifetime: Despawns the entity, with its children, once its time on the game clock has passed.
   field seconds: f32 (>= 0) — how long it lives; 0 despawns it at its first step
   genres: platformer, top_down, shmup, grid
@@ -252,6 +280,55 @@ component zone: A sensor entered by the entities whose tags pass its filter.
   events: ZoneEntered
   genres: platformer, top_down
   sample: {}
+shape ability: What an entity can do: fired by a trigger, at a cost, with a cooldown and charges, at a target.
+  field trigger: shape ability_trigger = { "manual": {} } — what fires it
+  field cost: shape ability_cost = null — a stat's base spent per use; a base below it refuses the use
+  field cooldown: f32 (>= 0) = 0.0 — seconds between uses, counted at the entity's `cooldown_rate`
+  field charges: shape ability_charges = null — uses in hand, refilled by time
+  field target: shape ability_target = { "self": {} } — what it aims at; the load checks a filter's tags
+  field payload: list of shape ability_payload — what a use does, in order; at least one
+  sample: { "payload": [{ "effect": "swift" }] }
+shape ability_action: An ability of the subject or the other entity used now, as `use_ability` uses it, or made ready with every charge.
+  field name: text — the ability's name in the entity's `abilities`: an entry's ID or `#<index>`
+  field op: one of use | refill = "use" — used now, or every charge back and the cooldown cleared
+  field target: one of self | other = "self" — the subject or the other entity
+  sample: { "name": "wand" }
+shape ability_charges: Uses in hand, a use taking one, time giving them back.
+  field max: u32 (>= 1) — the charges in hand at the start and at most
+  field refill: f32 (> 0) — seconds of game time per charge back, or until all come back with `all`
+  field all: bool = false — every charge comes back together, `refill` seconds after the last runs out
+  sample: { "max": 3, "refill": 1.5 }
+shape ability_cost: A stat's base spent per use.
+  field stat: text — the stat, `[a-z][a-z0-9_]*`; an entity without it cannot use the ability
+  field amount: f32 (>= 0) — taken off the base
+  sample: { "stat": "mana", "amount": 10 }
+shape ability_payload: One thing a use does.
+  exactly one of its fields
+  field spawn: shape spawn_payload — a prefab spawned from the entity
+  field effect: effects ID or entry — an effect queued on the target from the entity; the load checks it
+  field impulse: f32 (>= 0) — world pixels per second the entity is pushed along the direction, through its knockback
+  field hitbox: f32 (> 0) — seconds the entity's own hitbox is armed for
+  sample: { "impulse": 600 }
+shape ability_target: What an ability aims at.
+  exactly one of its fields
+  field self: {} — the entity itself, in the direction its aim or its intent gives when either does
+  field aim: {} — the entity itself, in the direction its aim or its intent gives; no direction, no use
+  field nearest: shape nearest — the nearest live entity whose tags pass the filter, within the range
+  field random: shape nearest — one of the live entities whose tags pass the filter, within the range, from the kit's random stream
+  sample: { "self": {} }
+shape ability_trigger: What fires an ability.
+  exactly one of its fields
+  field action: text — an intent slot, used when pressed
+  field interval: f32 (> 0) — seconds of game time between uses, at most once a step
+  field manual: {} — `use_ability` and the `ability` cue action alone
+  sample: { "manual": {} }
+shape ailment_rung: One rung of a damage type's ladder, written from the lowest up and climbed from the top down.
+  field effect: effects ID or entry — applied to the target from the part's source, scaled by the fill over the threshold; the load checks it
+  field needs: f32 (> 0) = null — the fraction of the target's threshold the bucket must hold; any fill when left out
+  field requires: list of tag = [] — tags the target must carry, the tags of effects the feed queued for it this step counted; the load checks them
+  field chance: f32 (> 0, <= 1) = 1.0 — drawn from the kit's random stream once the rung is reached
+  field window: f32 (> 0) = null — seconds the bucket drains a threshold over, the first `needs` rung's; required with `needs`
+  sample: { "effect": "chilled", "window": 4 }
 shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
@@ -279,6 +356,8 @@ shape cue_action: One reaction to an event.
   field flash: shape flash_action — the subject's hit flash started
   field label: shape label_style — the event's amount floated at its position; on `damaged_part`, `{}` floats it in its type's `label_style`
   field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
+  field effect: shape effect_action — an effect queued on the subject from the event's other entity, or on the other from the subject; an ID alone reads as `{ "id": .. }`
+  field ability: shape ability_action — the subject's or the other's ability used now, or made ready; a name alone reads as `{ "name": .. }`
   sample: { "despawn": {} }
 shape cue_rule: A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.
   field on: text — the cue event; the load checks it is registered
@@ -286,11 +365,41 @@ shape cue_rule: A shared reaction: on an event, for each subject whose tags pass
   field kind: tag filter = {} — the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed` and `damaged_part` only
   field do: list of shape cue_action — the actions, in order
   sample: { "on": "killed", "do": [] }
+shape curve: A piecewise-linear map: linear between its points and held at the ends.
+  field points: list of [x, y] — the value itself: `[x, y]` points, at least one, every number finite, the `x`s strictly increasing
+  sample: [[0, 0], [1, 1]]
 shape damage_type: A game's damage type: each field inherited from its nearest declared ancestor that sets it.
   field label_style: shape label_style = null — how a `damaged_part` cue's `{ "label": {} }` floats a part of the type
+  field ailments: list of shape ailment_rung = null — the ladder a part of the type climbs, from the lowest rung up; the feed takes the highest rung the target reaches and empties its bucket
   sample: {}
 shape despawn_action: An entity despawned with its children.
   field target: one of self | other = "self" — the subject or the other entity
+  sample: {}
+shape effect: A change an entity carries: timed, infinite or instant, with a payload, modifiers and tags.
+  field duration: f32 (>= 0) = null — seconds of game time it lasts; infinite when left out, instant at 0
+  field period: f32 (> 0) = null — seconds between its payloads; once at the application when left out
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 = 0.0 — the payload's hit, periodic: it passes the window and starts none; a map's keys are declared damage types
+  field heal: f32 (>= 0) = 0.0 — the payload's heal
+  field stack: shape effect_stack = { "limit": 1, "refresh": "refresh", "expire": "clear" } — how many stacks, what a repeat does to the time left, and what an end does
+  field modifiers: list of shape stat_modifier = [] — on the target's stats, per stack, under the source `effect#<serial>`
+  field resist: list of shape resist_modifier = [] — on the target's resistances, per stack
+  field grant: list of tag = [] — tags the target carries while an instance runs; the load checks each
+  field blocked_by: list of tag = [] — tags that refuse the effect; the load checks each
+  field scale: shape effect_scale = null — a curve at the request's scale, multiplying what `into` names; the load refuses a `y` below 0
+  field on_expire: effects ID or entry = null — applied to the target from the same source at a timed end; the load checks it
+  sample: {}
+shape effect_action: An effect applied at the next effect resolve, from the event's other entity on the subject or from the subject on the other.
+  field id: effects ID or entry — an `effects` entry or the effect in place; the load checks it
+  field target: one of self | other = "self" — the subject or the other entity
+  sample: { "id": "burning" }
+shape effect_scale: A curve at the request's scale, as a factor on what `into` names.
+  field curve: curves ID or entry — every `y` at least 0; the load checks it
+  field into: list of one of duration | periodic | modifiers = ["duration", "periodic", "modifiers"] — what the factor multiplies: the duration, the damage and heal payload, the `add` and `pct` modifiers
+  sample: { "curve": "burn_scale" }
+shape effect_stack: An effect's stacking.
+  field limit: u32 (>= 1) = 1 — the most stacks an instance holds
+  field refresh: one of refresh | keep | extend = "refresh" — what a request on an entity that carries it does to the time left
+  field expire: one of clear | remove_one = "clear" — what a timed end does: every stack, or one at a time
   sample: {}
 shape flag_action: A flag set or cleared.
   field name: text — the flag: dotted, undeclared
@@ -312,24 +421,57 @@ shape label_style: The event's amount as a timed world label: it rises, pops fro
   field rise: f32 = 32.0 — UI units it rises over its seconds
   field pop: f32 (> 0) = 1.5 — the scale it starts at
   sample: { "font": "sans" }
+shape modifier: A change to a value: added to the base, added to the percentage factor, multiplied, or replaced.
+  exactly one of its fields
+  field add: f32 — added to the base
+  field pct: f32 — added to the percentage factor, which starts at 1
+  field mul: f32 — multiplies the result
+  field override: f32 — replaces the result; the last-added override wins
+  sample: { "add": 1 }
 shape nearest: The nearest other entity whose tags pass a filter that names an `all` or an `any` tag; ties go to the lower entity index.
   field all: list of tag = [] — tags it carries every one of
   field any: list of tag = [] — tags it carries at least one of
   field none: list of tag = [] — tags it carries none of
   field range: f32 (> 0) = null — world pixels from the seeker; any distance when left out
   sample: { "all": ["team.player"] }
+shape offer: One offer: what it gives and its weight.
+  field weight: f32 (> 0) — its share of the draws
+  field gives: shape offer_gives — an effect queued on the entity, or an ability added to it; the load checks it
+  sample: { "weight": 1, "gives": { "effect": "swift" } }
+shape offer_gives: What a chosen offer gives.
+  exactly one of its fields
+  field effect: effects ID or entry — queued on the entity with no source at the next level tick
+  field ability: abilities ID or entry — added to the entity's `abilities`, or, when it owns the name, that entry refilled with its cooldown cleared
+  sample: { "effect": "swift" }
+shape offers: What a level up offers: distinct entries drawn by weight without replacement.
+  field count: u32 (>= 1) — how many entries a level up draws; every one when there are no more
+  field entries: list of shape offer = [] — what a draw may give, each by its weight over the rest
+  sample: { "count": 1 }
 shape position_wave: A position channel: amplitude · sin(2π(t / period + phase)), less its value at the start.
   field amplitude: [x, y] — world pixels at the peak
   field period: f32 (> 0) — seconds of game time a swing takes
   sample: { "amplitude": [0, 3], "period": 1.2 }
+shape resist_modifier: A modifier on the target's resistance to one damage tag.
+  field tag: tag — the damage tag; the load checks it
+  field modifier: shape modifier — the change, over a base of 1 for a tag the target lists no factor for
+  sample: { "tag": "arcane", "modifier": { "mul": 2 } }
 shape sound_action: A manifest sound played at its volume, never looping.
   field id: text — the manifest sound; the load checks the ID
   field min_interval: f32 (>= 0) = 0.0 — game seconds before this sound plays again from a cue
   sample: { "id": "blip" }
+shape spawn_payload: A prefab spawned from the entity at its point.
+  field prefab: prefab ID — the manifest prefab; the load checks the ID, and that it holds a `linear_motion` with a speed
+  field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction, as its `linear_motion`; 0 leaves the prefab's own
+  field offset: f32 = 0.0 — world pixels from the entity's point along the direction
+  sample: { "prefab": "bolt" }
 shape stat_bounds: A game stat's clamp.
   field min: f32 = null — the least value; none when left out
   field max: f32 = null — the greatest value, at least `min`; none when left out
   sample: {}
+shape stat_modifier: A modifier on one of the target's stats.
+  field stat: text — the stat, `[a-z][a-z0-9_]*`; a target without it takes nothing
+  field modifier: shape modifier — the change; `add` and `pct` scale with the effect's factor
+  sample: { "stat": "move_speed", "modifier": { "pct": -0.2 } }
 shape target: What an item follows, circles, steers toward or aims at, resolved again each step.
   exactly one of its fields
   field source: {} — the entity's `Source`: the origin of the spawn chain it came from
@@ -348,8 +490,12 @@ shape weighted_table: Rolls that each draw one entry by weight: a prefab, or not
   field rolls: u32 (>= 1, <= 64) = 1 — the entries one roll of the table draws
   field entries: list of shape weighted_entry — what a draw may give, each by its weight over the total
   sample: { "entries": [] }
+kind abilities: An `ability`: what an entity's `abilities` list owns, a trigger or the `ability` cue action uses.
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
+kind curves: A `curve`: what an effect's `scale` reads and a `level` climbs.
 kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
+kind effects: An `effect`: what a cue's `effect` action, an ailment, an ability or an offer applies.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
+kind offers: An `offers`: what a `level` draws at each level up.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

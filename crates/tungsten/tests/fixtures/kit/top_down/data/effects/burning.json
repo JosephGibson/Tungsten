@@ -1,0 +1,25 @@
+{
+  "duration": 3,
+  "period": 0.5,
+  "damage": {
+    "elemental.fire": 1
+  },
+  "grant": [
+    "status.burning"
+  ],
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "pct": -0.25
+      }
+    }
+  ],
+  "scale": {
+    "curve": "burn_scale",
+    "into": [
+      "duration",
+      "periodic"
+    ]
+  }
+}

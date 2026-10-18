@@ -53,6 +53,16 @@
       "chest_loot": {
         "path": "data/loot_tables/chest_loot.json"
       }
+    },
+    "curves": {
+      "delver_xp": {
+        "path": "data/curves/delver_xp.json"
+      }
+    },
+    "offers": {
+      "delver_offers": {
+        "path": "data/offers/delver_offers.json"
+      }
     }
   }
 }

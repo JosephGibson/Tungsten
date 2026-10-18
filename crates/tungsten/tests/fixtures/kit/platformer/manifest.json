@@ -71,6 +71,19 @@
       "game": {
         "path": "data/stats.json"
       }
+    },
+    "effects": {
+      "regen": {
+        "path": "data/effects/regen.json"
+      },
+      "hasted": {
+        "path": "data/effects/hasted.json"
+      }
+    },
+    "curves": {
+      "regen_scale": {
+        "path": "data/curves/regen_scale.json"
+      }
     }
   },
   "animations": {

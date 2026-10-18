@@ -30,7 +30,22 @@
         1,
         1
       ]
-    }
+    },
+    "ailments": [
+      {
+        "effect": "chilled",
+        "needs": 0.5,
+        "window": 4
+      },
+      {
+        "effect": "frozen",
+        "needs": 1,
+        "requires": [
+          "status.chilled"
+        ],
+        "window": 4
+      }
+    ]
   },
   "elemental.fire": {
     "label_style": {
@@ -41,7 +56,14 @@
         0,
         1
       ]
-    }
+    },
+    "ailments": [
+      {
+        "effect": "burning",
+        "needs": 0.5,
+        "window": 4
+      }
+    ]
   },
   "elemental.lightning": {},
   "physical": {
@@ -67,6 +89,12 @@
         0,
         1
       ]
-    }
+    },
+    "ailments": [
+      {
+        "effect": "poisoned",
+        "chance": 0.5
+      }
+    ]
   }
 }

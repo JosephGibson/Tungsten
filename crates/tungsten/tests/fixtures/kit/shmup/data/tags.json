@@ -8,5 +8,6 @@
   "digital.exploit",
   "biological.toxin",
   "biological.pathogen",
-  "biological.acid"
+  "biological.acid",
+  "status.corrupted"
 ]

@@ -248,7 +248,9 @@ impl Health {
         self.current <= 0.0
     }
 
-    /// A hit's window is still open, so [`damage`] does nothing.
+    /// A hit's window is still open, so [`damage`] does nothing; a periodic
+    /// request ([`DamageRequest::with_periodic`](crate::DamageRequest::with_periodic))
+    /// passes it.
     #[must_use]
     pub fn is_invulnerable(&self) -> bool {
         self.window_left > 0.0
@@ -270,11 +272,14 @@ impl Health {
         }
     }
 
-    /// Takes `amount` off the health, to no less than 0, starts the window,
-    /// and on a kill starts the death policy's delay; whether it killed.
-    pub(crate) fn hurt(&mut self, amount: f32) -> bool {
+    /// Takes `amount` off the health, to no less than 0, starts the window
+    /// unless the hit is `periodic`, and on a kill starts the death policy's
+    /// delay; whether it killed.
+    pub(crate) fn hurt(&mut self, amount: f32, periodic: bool) -> bool {
         self.current = (self.current - amount).max(0.0);
-        self.window_left = self.invulnerability;
+        if !periodic {
+            self.window_left = self.invulnerability;
+        }
         let killed = self.is_dead();
         if killed && let Some(delay) = self.despawn_on_death {
             self.death_left = Some(delay);
@@ -346,14 +351,17 @@ pub struct Damaged {
     pub position: Option<Vec2>,
     /// The request was a critical hit.
     pub crit: bool,
+    /// The request was periodic: an effect's payload, which passed the
+    /// window and started none.
+    pub periodic: bool,
     /// The damage types of every part that landed, together; none for an
     /// untyped hit.
     pub kinds: DamageKinds,
 }
 
 impl Damaged {
-    /// An event with these fields, no source, no position, no crit and no
-    /// kind, as [`damage`] sends one.
+    /// An event with these fields, no source, no position, no crit, not
+    /// periodic and no kind, as [`damage`] sends one.
     #[must_use]
     pub fn new(entity: Entity, amount: f32, killed: bool) -> Self {
         Self {
@@ -363,8 +371,16 @@ impl Damaged {
             source: None,
             position: None,
             crit: false,
+            periodic: false,
             kinds: DamageKinds::NONE,
         }
+    }
+
+    /// The event, periodic when `periodic`.
+    #[must_use]
+    pub fn with_periodic(mut self, periodic: bool) -> Self {
+        self.periodic = periodic;
+        self
     }
 
     /// The event, of the damage types `kinds`.
@@ -430,10 +446,13 @@ pub struct DamagedPart {
     pub source: Option<Entity>,
     /// Where the hit landed, when the request said.
     pub position: Option<Vec2>,
+    /// The request was periodic: an effect's payload.
+    pub periodic: bool,
 }
 
 impl DamagedPart {
-    /// An event with these fields, no kind, no source and no position.
+    /// An event with these fields, no kind, no source, no position and not
+    /// periodic.
     #[must_use]
     pub fn new(entity: Entity, amount: f32) -> Self {
         Self {
@@ -442,7 +461,15 @@ impl DamagedPart {
             kinds: DamageKinds::NONE,
             source: None,
             position: None,
+            periodic: false,
         }
+    }
+
+    /// The event, periodic when `periodic`.
+    #[must_use]
+    pub fn with_periodic(mut self, periodic: bool) -> Self {
+        self.periodic = periodic;
+        self
     }
 
     /// The event, of the damage types `kinds`.

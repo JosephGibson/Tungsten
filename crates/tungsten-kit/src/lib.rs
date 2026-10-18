@@ -70,8 +70,9 @@
 //!   chain's origin, derived at the flush. [`Stats`], [`Modifier`] and
 //!   [`StatsPlugin`]: named values with ordered modifiers, which the
 //!   movers, health, cooldowns and hit items read, and the `stats` data
-//!   kind that declares a game's. [`KitRng`]: the kit's seeded random
-//!   stream.
+//!   kind that declares a game's. [`Curve`]: a piecewise-linear map, the
+//!   `curves` kind that effects scale by and levels climb. [`KitRng`]: the
+//!   kit's seeded random stream.
 //!   [`KitTrace`], [`TraceEntry`] and [`TraceKind`]: what the items did,
 //!   for a failing recipe or the debug view. [`Phase`], [`ensure_phases`]
 //!   and [`KitPlugins`].
@@ -81,7 +82,11 @@
 //!   state with enter, exit and update hooks. [`cursor_to_world`]: the
 //!   world point under the cursor. [`Aim`] and [`AimPlugin`]: the direction
 //!   an entity aims in, from its intent, the cursor, its movement or a
-//!   target.
+//!   target. [`Ability`], [`Abilities`], [`use_ability`], [`AbilityUsed`]
+//!   and [`AbilitiesPlugin`]: what an entity can do on a trigger (an
+//!   action, an interval, or the `ability` cue action), at a cost, with a
+//!   cooldown and charges, at a target: a spawn, an effect, an impulse or a
+//!   hitbox window; the `abilities` data kind and scene component.
 //! - **Motion.** [`PlatformerController`] and
 //!   [`PlatformerControllerPlugin`]: a platformer character on a kinematic
 //!   body, with a ground check, coyote time, a jump buffer and variable
@@ -119,7 +124,8 @@
 //!   and [`TriggerEntered`]: a sensor of one game type entered by an entity
 //!   of another. [`HitShape`], [`Hitbox`], [`Hurtbox`], [`Struck`] and
 //!   [`HitPlugin`]: hit shapes on the kit's grid, each hit tested over the
-//!   step's motion, so a fast bolt skips nothing. [`ContactDamage`] and
+//!   step's motion, so a fast bolt skips nothing; a windowed hitbox hits
+//!   while an ability or `arm` keeps it open. [`ContactDamage`] and
 //!   [`ContactDamagePlugin`]: a hazard or an aura that hurts what it
 //!   touches, again each interval. [`Projectile`], [`ProjectileExpired`]
 //!   and [`ProjectilePlugin`]: a bolt that ends at its first hit, its first
@@ -140,13 +146,27 @@
 //!   through [`Conversion`], [`Penetration`] and the target's [`Resist`],
 //!   with its modifiers, on its own, then the parts fall once through the
 //!   shield and health, a [`DamagedPart`] out for each part and one
-//!   [`Damaged`] for the hit, each carrying its [`DamageKinds`].
+//!   [`Damaged`] for the hit, each carrying its [`DamageKinds`]. [`Effect`],
+//!   [`Effects`], [`EffectRequest`], [`EffectApplied`], [`EffectExpired`]
+//!   and [`EffectsPlugin`]: timed, infinite or instant changes an entity
+//!   carries, the `effects` data kind and scene component: a periodic
+//!   payload that passes the window, stacks, modifiers on its stats and
+//!   resistances, granted and blocking tags, a scale curve and a
+//!   transition at the end, which the cue action `effect` applies.
+//!   [`AilmentRung`], [`AilmentThreshold`] and [`AilmentBuckets`]: the
+//!   ladder on a `damage_types` definition that a target's bucket of that
+//!   type climbs against its threshold, each rung an effect.
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
-//!   `cues` and the shared `cue_rules` kind. [`WeightedTable`]: the
+//!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
+//!   an effect to the subject or the other entity. [`WeightedTable`]: the
 //!   `loot_tables` kind that a cue's `roll` draws drops from. [`Counters`],
 //!   [`Flags`] and [`CountersPlugin`]: named counts and switches, an
-//!   entity's or the game's, that cues write.
+//!   entity's or the game's, that cues write. [`Level`], [`Offers`],
+//!   [`LevelUp`] and [`LevelPlugin`]: a counter climbed along a curve,
+//!   each level up an event and a draw of offers, an effect or an ability
+//!   the game's choice applies; the `offers` data kind and the `level`
+//!   scene component.
 //! - **Present.** [`AnimationPlugin`]: an animated sprite, whose
 //!   `AnimationState` writes its current frame into `Sprite.asset_id`.
 //!   [`CharacterAnimator`], [`Clips`] and [`CharacterAnimatorPlugin`]: the
@@ -192,13 +212,21 @@ mod present;
 mod react;
 mod transform;
 
+pub use damage::ailments::{
+    AILMENT_FEED, AILMENT_TICK, AilmentBuckets, AilmentRung, AilmentThreshold,
+};
 pub use damage::defense::{Resist, SHIELD_TICK, Shield};
+pub use damage::effects::{
+    Applied, EFFECT_RESOLVE, EFFECT_TICK, Effect, EffectApplied, EffectExpired, EffectInstance,
+    EffectRequest, Effects, EffectsPlugin, Expire, Refresh, Scaled, end_effect,
+};
 pub use damage::health::{
     Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
     Hit, HitFlash, damage,
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
 pub use damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, heal};
+pub use foundation::curve::Curve;
 pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
@@ -213,6 +241,10 @@ pub use foundation::source::{Source, SourcePlugin};
 pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};
 pub use foundation::trace::{KIT_TRACE_STEP, KitTrace, TraceEntry, TraceKind};
+pub use intent::ability::{
+    ABILITY_TICK, Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, Payload,
+    Trigger, Used, use_ability,
+};
 pub use intent::action_input::{ACTION_INPUT, ActionInput, ActionInputPlugin, Intent};
 pub use intent::aim::{AIM, Aim, AimPlugin};
 pub use intent::cursor::cursor_to_world;
@@ -255,6 +287,7 @@ pub use present::labels::{LABEL_TICK, LabelStyle};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin};
+pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
 pub use transform::hierarchy::{
     Children, HierarchyPlugin, LocalOffset, Parent, TRANSFORM_PROPAGATE, TRANSFORM_PROPAGATE_LATE,
@@ -266,25 +299,29 @@ pub use transform::hierarchy::{
 /// root.
 pub mod prelude {
     pub use crate::{
-        ActionInput, ActionInputPlugin, Aim, AimPlugin, AnimationPlugin, CameraTarget,
-        CameraTargetPlugin, CharacterAnimator, CharacterAnimatorPlugin, Children, Clips,
-        ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed, CooldownPlugin,
-        Counters, CountersPlugin, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin, DamageKinds,
-        DamagePart, DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin,
-        DespawnOutside, DespawnOutsidePlugin, Facing, FacingPlugin, Flags, Follow, FollowPlugin,
-        HealRequest, Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin,
-        HitShape, Hitbox, Hurtbox, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace,
-        Knockback, KnockbackPlugin, LabelStyle, Lifetime, LifetimePlugin, LinearMotion,
-        LinearMotionPlugin, LocalOffset, Modifier, Orbit, OrbitPlugin, Oscillator,
-        OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Penetration, Phase, PickedUp,
-        Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin, Projectile,
-        ProjectileExpired, ProjectilePlugin, Resist, Shield, SoundOnEvent, Source, SourcePlugin,
-        SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,
-        StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
-        Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-        TopDownMoverPlugin, TraceEntry, TraceKind, TriggerEntered, TriggerZone, WeightedTable,
-        Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, cursor_to_world, damage,
-        despawn_recursive, ensure_phases, heal, knock_back, spawn_child,
+        Abilities, AbilitiesPlugin, Ability, AbilityTarget, AbilityUsed, ActionInput,
+        ActionInputPlugin, AilmentBuckets, AilmentRung, AilmentThreshold, Aim, AimPlugin,
+        AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, CharacterAnimator,
+        CharacterAnimatorPlugin, Children, Clips, ContactDamage, ContactDamagePlugin, Conversion,
+        Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
+        Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
+        DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Effect,
+        EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects, EffectsPlugin,
+        Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest, Healed, Health,
+        HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox, Intent,
+        KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin,
+        LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion,
+        LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator,
+        OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Payload, Penetration, Phase,
+        PickedUp, Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin,
+        Projectile, ProjectileExpired, ProjectilePlugin, Refresh, Resist, Scaled, Shield,
+        SoundOnEvent, Source, SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner,
+        SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats,
+        StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
+        Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger,
+        TriggerEntered, TriggerZone, Used, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, heal,
+        knock_back, spawn_child, use_ability,
     };
 }
 

@@ -13,7 +13,10 @@
         "move_right",
         "move_up",
         "move_down"
-      ]
+      ],
+      "slots": {
+        "fire": "fire"
+      }
     },
     "tags": [
       "team.player"
@@ -22,6 +25,9 @@
       "max": 3
     },
     "hit_flash": {},
-    "camera_target": null
+    "camera_target": null,
+    "abilities": [
+      "cannon"
+    ]
   }
 }

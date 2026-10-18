@@ -82,6 +82,30 @@
       "scifi": {
         "path": "data/damage_types/scifi.json"
       }
+    },
+    "effects": {
+      "corrupted": {
+        "path": "data/effects/corrupted.json"
+      },
+      "overclocked": {
+        "path": "data/effects/overclocked.json"
+      },
+      "eaten": {
+        "path": "data/effects/eaten.json"
+      }
+    },
+    "abilities": {
+      "cannon": {
+        "path": "data/abilities/cannon.json"
+      },
+      "pulse": {
+        "path": "data/abilities/pulse.json"
+      }
+    },
+    "stats": {
+      "game": {
+        "path": "data/stats.json"
+      }
     }
   },
   "shaders": {

@@ -9,7 +9,9 @@ use tungsten::core::{
     ActionMap, AssetRegistry, Binding, CameraController, CameraMode, CameraState, Config, Entity,
     Position, PrevPosition, Settings, Sprite, Time, Transform, UserFolder, With,
 };
-use tungsten::kit::{ContactDamage, Counters, Damaged, Health, Hit, HitFlash, Pickup, damage};
+use tungsten::kit::{
+    ContactDamage, Counters, Damaged, Effects, Health, Hit, HitFlash, Pickup, Stats, damage,
+};
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
 use tungsten_template_basic::components::Player;
@@ -143,7 +145,7 @@ fn user_folder(tag: &str) -> PathBuf {
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
-fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, kit_resolve, damage_resolve, kit_react, spawner_tick, spawn_children, cues, kit_despawn, kit_trace_step
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, kit_intent, action_input, aim, ability_tick, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, kit_resolve, damage_resolve, ailment_feed, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step
 update: toggle_mute
 post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, camera_update
 ";
@@ -490,6 +492,65 @@ fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushe
     let after = player_position(&harness).unwrap();
     let pushed = ((after[0] - at_hit[0]).powi(2) + (after[1] - at_hit[1]).powi(2)).sqrt();
     assert!(pushed > 30.0, "pushed {pushed} px away");
+}
+
+#[test]
+fn a_hazard_hit_slows_the_player_for_its_effects_seconds() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
+    let speed = |harness: &Harness| {
+        harness
+            .world()
+            .get::<Stats>(player)
+            .unwrap()
+            .get("move_speed")
+            .unwrap()
+    };
+    assert_eq!(speed(&harness), 240.0, "the stat the mover follows");
+    // The hit: the hazard's `hit` cue queues `slowed` on the player, which
+    // lands at the next step's effect resolve.
+    place_on_hazard(&mut harness, player, hazard);
+    harness.step(1);
+    assert_eq!(health(&harness, player), 4.0);
+    harness.step(1);
+    assert_eq!(speed(&harness), 120.0, "halved by the effect's modifier");
+    assert!(
+        harness
+            .world()
+            .get::<Effects>(player)
+            .unwrap()
+            .has("slowed")
+    );
+    // Walking up, away from the hazard's line, while the push runs out
+    // sideways: half a second covers 60 px at the slowed speed.
+    harness.press_action("move_up");
+    harness.step(1);
+    let from = player_position(&harness).unwrap();
+    harness.step(30);
+    let slowed = from[1] - player_position(&harness).unwrap()[1];
+    assert!(
+        (slowed - 60.0).abs() < 1.0,
+        "slowed: {slowed} px in half a second"
+    );
+    // Past the effect's second and a half, the same half second covers 120.
+    harness.step(60);
+    assert_eq!(speed(&harness), 240.0, "the effect expired");
+    assert!(
+        !harness
+            .world()
+            .get::<Effects>(player)
+            .unwrap()
+            .has("slowed")
+    );
+    let from = player_position(&harness).unwrap();
+    harness.step(30);
+    let full = from[1] - player_position(&harness).unwrap()[1];
+    assert!(
+        (full - 120.0).abs() < 1.0,
+        "full speed: {full} px in half a second"
+    );
+    harness.release_action("move_up");
 }
 
 /// A headless review of a hit in motion: for the label's 0.8 s after the

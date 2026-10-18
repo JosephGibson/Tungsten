@@ -1,0 +1,14 @@
+{
+  "duration": 3,
+  "resist": [
+    {
+      "tag": "digital",
+      "modifier": {
+        "mul": 2
+      }
+    }
+  ],
+  "grant": [
+    "status.corrupted"
+  ]
+}

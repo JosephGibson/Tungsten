@@ -9,7 +9,7 @@
     "hurtbox": { "shape": { "circle": 8 } },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
     "knockback": { "seconds": 0.2 },
-    "stats": { "pickup_radius": 96 },
+    "stats": { "pickup_radius": 96, "move_speed": 240 },
     "camera_target": null,
     "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
   }
