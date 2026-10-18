@@ -1,0 +1,30 @@
+{
+  "tag": "swing",
+  "components": {
+    "hitbox": {
+      "shape": {
+        "aabb": [
+          6,
+          6
+        ]
+      },
+      "offset": [
+        12,
+        0
+      ],
+      "damage": 3,
+      "tags": [
+        "damage.blade"
+      ],
+      "filter": {
+        "any": [
+          "team.enemy",
+          "breakable"
+        ]
+      }
+    },
+    "lifetime": {
+      "seconds": 0.1
+    }
+  }
+}

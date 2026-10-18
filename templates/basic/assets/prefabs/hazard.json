@@ -1,8 +1,14 @@
 {
   "sprite": { "asset_id": "player", "color": [255, 96, 96, 255] },
   "components": {
-    "hazard": { "radius": 28, "damage": 1, "push": 420 },
     "tags": ["team.hazard"],
+    "contact_damage": {
+      "damage": 1,
+      "interval": 0.5,
+      "knockback": 420,
+      "filter": { "all": ["team.player"] },
+      "shape": { "circle": 20 }
+    },
     "oscillator": {
       "position": { "amplitude": [240, 0], "period": 4 },
       "rotation": { "amplitude": 0.3, "period": 0.8 }

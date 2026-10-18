@@ -12,15 +12,17 @@ use tungsten_core::physics::Position;
 use tungsten_core::{AnimationState, Entity, Sprite, Transform, World};
 
 use super::{DTS, GENRES, recipe, spawn, tagged};
-use crate::kit::{Counters, Flags, Health, KitPlugins, Stats, Tags, damage, knock_back};
+use crate::kit::{Counters, Flags, Health, KitPlugins, Shield, Stats, Tags, damage, knock_back};
 use crate::testing::Harness;
 
 /// The hash of the four recipes, pinned from the first run; moved by M63,
 /// whose script spawns the stats, cues, cooldowns, counters, flags and
 /// children prefabs and lands hits, then by M64, whose script spawns the
 /// motion and facing prefabs and pushes, and whose rows add the rotation,
-/// the depth and the clip.
-const KIT_RECIPES_HASH: u64 = 0xd651_23fe_e583_03ee;
+/// the depth and the clip, then by M65, whose script spawns the overlap
+/// and damage prefabs, whose bolts, contacts, drops and pickups land, and
+/// whose rows add the shield.
+const KIT_RECIPES_HASH: u64 = 0x5a73_d4a5_51f4_0bfa;
 
 const FRAMES: u32 = 300;
 
@@ -34,7 +36,7 @@ fn fnv1a(hash: &mut u64, bytes: &[u8]) {
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// An entity's index, point, health, then its tags, counters, flags, stat
-/// values, rotation, depth and clip as text.
+/// values, rotation, depth, clip and shield as text.
 type Row = (u32, [f32; 2], Option<(f32, f32)>, String);
 
 /// `counters` as text: `name=value` by name.
@@ -51,8 +53,8 @@ fn flags_text(flags: &Flags) -> String {
 }
 
 /// Every entity's index, point, health, tags, counters, flags, stat values,
-/// rotation, sprite depth and animation, in entity order, then the game's
-/// counters and flags.
+/// rotation, sprite depth, animation and shield, in entity order, then the
+/// game's counters and flags.
 fn hash_world(hash: &mut u64, world: &World) {
     let mut rows: Vec<Row> = world
         .query::<(
@@ -93,6 +95,9 @@ fn hash_world(hash: &mut u64, world: &World) {
                 }
                 if let Some(state) = world.get::<AnimationState>(entity) {
                     let _ = write!(text, "|a:{}", state.animation_id);
+                }
+                if let Some(shield) = world.get::<Shield>(entity) {
+                    let _ = write!(text, "|sh:{:08x}", shield.current().to_bits());
                 }
                 (entity.id(), point, health, text)
             },
@@ -176,6 +181,47 @@ fn motion_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
     }
 }
 
+/// The genre's M65 prefabs, spawned after its others, clear of them: the
+/// ranger's embers through a ghoul and a knight, a ghoul at its side and an
+/// orb in its reach; a fireball into a brick and a ricochet between two, a
+/// spiker beside the climber and a coin on it; two interceptors' lasers on
+/// a carrier and a bulwark; the adventurer's swings on a chest, spikes at
+/// its side and gold on it.
+fn combat_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
+    match genre {
+        "platformer" => &[
+            ("brick", [300.0, -500.0]),
+            ("fireball", [100.0, -500.0]),
+            ("brick", [100.0, -600.0]),
+            ("brick", [300.0, -600.0]),
+            ("ricochet", [200.0, -600.0]),
+            ("climber", [-350.0, 270.0]),
+            ("spiker", [-332.0, 270.0]),
+            ("coin", [-350.0, 260.0]),
+        ],
+        "top_down" => &[
+            ("ranger", [100.0, 1000.0]),
+            ("ghoul", [250.0, 1000.0]),
+            ("knight", [330.0, 1000.0]),
+            ("ghoul", [85.0, 1000.0]),
+            ("orb", [160.0, 1000.0]),
+        ],
+        "shmup" => &[
+            ("interceptor", [2000.0, 1000.0]),
+            ("carrier", [2000.0, 700.0]),
+            ("interceptor", [2300.0, 1000.0]),
+            ("bulwark", [2300.0, 700.0]),
+        ],
+        "grid" => &[
+            ("adventurer", [500.0, 500.0]),
+            ("chest", [514.0, 500.0]),
+            ("spikes", [488.0, 500.0]),
+            ("gold", [500.0, 510.0]),
+        ],
+        other => panic!("no combat prefabs for {other}"),
+    }
+}
+
 /// The genre's fixed script: its prefabs spawned at fixed points, the move
 /// actions and the jump pressed and released at fixed frames.
 fn script(genre: &str, harness: &mut Harness) {
@@ -220,7 +266,7 @@ fn script(genre: &str, harness: &mut Harness) {
         }
         other => panic!("no script for {other}"),
     }
-    for &(id, at) in motion_prefabs(genre) {
+    for &(id, at) in motion_prefabs(genre).iter().chain(combat_prefabs(genre)) {
         spawn(harness, id, at);
     }
     for frame in 0..FRAMES {
@@ -254,19 +300,35 @@ fn script(genre: &str, harness: &mut Harness) {
 }
 
 /// Whether the script's cues ran: the runner took the key, and the
-/// game's counters counted the kills.
+/// game's counters counted the kills; and M65's items landed: the coin, the
+/// orb and the gold collected, the ranger's kill counted on it, the lasers'
+/// kill scored.
 fn reacted(genre: &str, harness: &Harness) -> bool {
     let game = harness.world().resource::<Counters>();
+    let counted = |tag: &str, name: &str| -> i64 {
+        tagged(harness, tag)
+            .iter()
+            .filter_map(|&entity| harness.world().get::<Counters>(entity))
+            .map(|counters| counters.get(name))
+            .sum()
+    };
     match genre {
-        "platformer" => tagged(harness, "runner").iter().all(|&runner| {
-            harness
-                .world()
-                .get::<Flags>(runner)
-                .is_some_and(|flags| flags.has("has_key"))
-        }),
-        "top_down" => game.get("kills") >= 1,
-        "shmup" => game.get("score") == 2,
-        "grid" => game.get("slugs") == 1,
+        "platformer" => {
+            tagged(harness, "runner").iter().all(|&runner| {
+                harness
+                    .world()
+                    .get::<Flags>(runner)
+                    .is_some_and(|flags| flags.has("has_key"))
+            }) && counted("climber", "coins") == 1
+        }
+        "top_down" => {
+            game.get("kills") >= 1
+                && counted("ranger", "kills") == 1
+                && counted("ranger", "xp") == 1
+        }
+        // The two wings the script kills, and the carrier the lasers kill.
+        "shmup" => game.get("score") == 3,
+        "grid" => game.get("slugs") == 1 && counted("adventurer", "gold") == 1,
         other => panic!("no reaction for {other}"),
     }
 }

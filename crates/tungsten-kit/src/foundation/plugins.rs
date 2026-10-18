@@ -26,6 +26,10 @@ use crate::motion::stay_in_view::StayInViewPlugin;
 use crate::motion::steering::SteeringPlugin;
 use crate::motion::top_down::TopDownMoverPlugin;
 use crate::motion::wrap::WrapPlugin;
+use crate::overlap::contact::ContactDamagePlugin;
+use crate::overlap::hit::HitPlugin;
+use crate::overlap::pickup::PickupPlugin;
+use crate::overlap::projectile::ProjectilePlugin;
 use crate::overlap::zone::ZonePlugin;
 use crate::present::animation::AnimationPlugin;
 use crate::present::camera::CameraTargetPlugin;
@@ -72,8 +76,9 @@ impl KitPlugins {
     /// top-down mover, zone, action input, the camera target, stats,
     /// counters, cooldown, spawn children, cues, linear motion, the
     /// oscillator, steering, follow, orbit, knockback, the speed limit,
-    /// wrap, stay in view, aim, facing, the character animator, depth sort
-    /// and the debug drawing, in that order.
+    /// wrap, stay in view, aim, facing, the character animator, depth sort,
+    /// the hit shapes, contact damage, projectiles, pickups and the debug
+    /// drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -109,6 +114,10 @@ impl KitPlugins {
             .with(FacingPlugin)
             .with(CharacterAnimatorPlugin)
             .with(DepthSortPlugin)
+            .with(HitPlugin)
+            .with(ContactDamagePlugin)
+            .with(ProjectilePlugin)
+            .with(PickupPlugin)
             .with(KitDebugPlugin)
     }
 }

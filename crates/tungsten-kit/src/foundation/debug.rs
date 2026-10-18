@@ -10,12 +10,16 @@ use crate::foundation::trace::{KIT_TRACE_STEP, KitTrace};
 use crate::intent::aim::Aim;
 use crate::lifecycle::children::SPAWN_CHILDREN;
 use crate::lifecycle::despawn::DespawnOutside;
+use crate::lifecycle::ended::KIT_DESPAWN;
 use crate::lifecycle::spawner::{SPAWNER_TICK, Spawner};
 use crate::motion::follow::Follow;
 use crate::motion::orbit::Orbit;
 use crate::motion::path::PathFollower;
 use crate::motion::stay_in_view::StayInView;
 use crate::motion::wrap::Wrap;
+use crate::overlap::contact::ContactDamage;
+use crate::overlap::hit::{Hitbox, Hurtbox};
+use crate::overlap::pickup::Pickup;
 use crate::overlap::zone::Zone;
 use crate::present::camera::CameraTarget;
 use crate::react::cues::CUES;
@@ -37,6 +41,10 @@ const CAMERA_COLOR: [f32; 4] = [1.0, 1.0, 0.3, 1.0];
 const ORBIT_COLOR: [f32; 4] = [0.7, 0.5, 1.0, 1.0];
 const FOLLOW_COLOR: [f32; 4] = [0.4, 1.0, 1.0, 1.0];
 const AIM_COLOR: [f32; 4] = [1.0, 0.3, 0.3, 1.0];
+const HURTBOX_COLOR: [f32; 4] = [0.3, 0.9, 0.3, 1.0];
+const HITBOX_COLOR: [f32; 4] = [1.0, 0.15, 0.15, 1.0];
+const CONTACT_COLOR: [f32; 4] = [1.0, 0.55, 0.0, 1.0];
+const PICKUP_COLOR: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 
 /// Whether the kit draws its debug shapes, a World resource, off by
 /// default; a game's hotkey or console command flips it.
@@ -92,8 +100,10 @@ impl KitDebug {
 /// `DebugDraw`, it draws a path follower's polyline and current target, a
 /// `DespawnOutside` region, a zone's collider, a spawner's mark, a camera
 /// target's cross, an orbit's circle and centre, a follower's goal, a
-/// `Wrap`'s and a `StayInView`'s region and an aim's ray (32 px, or to its
-/// target), once a frame before the camera. While the
+/// `Wrap`'s and a `StayInView`'s region, an aim's ray (32 px, or to its
+/// target), and each hurtbox's, hitbox's, contact damage's own and
+/// pickup's shape at its entity's point, once a frame before the camera.
+/// While the
 /// resource is on it also logs each new [`KitTrace`] entry once, at `info`
 /// under target `tungsten_kit::trace`, which the log console shows.
 #[derive(Debug, Default, Clone, Copy)]
@@ -114,7 +124,8 @@ impl Plugin for KitDebugPlugin {
                 system(KIT_TRACE_STEP, kit_trace_step)
                     .after_if_present(SPAWNER_TICK)
                     .after_if_present(SPAWN_CHILDREN)
-                    .after_if_present(CUES),
+                    .after_if_present(CUES)
+                    .after_if_present(KIT_DESPAWN),
             ),
         );
         let mut logged = 0;
@@ -262,7 +273,57 @@ fn kit_debug_draw(world: &mut World) {
             draw.draw_line(origin, end, AIM_COLOR, THICKNESS);
         }
     }
+    draw_hit_shapes(world, &mut draw);
     world.insert_resource(draw);
+}
+
+/// `shape` centred at `at`.
+fn draw_shape(draw: &mut DebugDraw, shape: Shape, at: Vec2, color: [f32; 4]) {
+    match shape {
+        Shape::Aabb { half_extents } => {
+            draw.draw_aabb(at - half_extents, at + half_extents, color, THICKNESS);
+        }
+        Shape::Circle { radius } => draw.draw_circle(at, radius, color, THICKNESS),
+    }
+}
+
+/// Each hit item's shape at its entity's point plus its offset.
+fn draw_hit_shapes(world: &World, draw: &mut DebugDraw) {
+    for (entity, hurtbox) in world.query::<(Entity, &Hurtbox)>() {
+        if let Some(at) = point_of(world, entity) {
+            draw_shape(
+                draw,
+                hurtbox.shape().shape(),
+                at + hurtbox.offset(),
+                HURTBOX_COLOR,
+            );
+        }
+    }
+    for (entity, hitbox) in world.query::<(Entity, &Hitbox)>() {
+        if let Some(at) = point_of(world, entity) {
+            draw_shape(
+                draw,
+                hitbox.shape().shape(),
+                at + hitbox.offset(),
+                HITBOX_COLOR,
+            );
+        }
+    }
+    for (entity, contact) in world.query::<(Entity, &ContactDamage)>() {
+        if let (Some(shape), Some(at)) = (contact.shape(), point_of(world, entity)) {
+            draw_shape(draw, shape.shape(), at + contact.offset(), CONTACT_COLOR);
+        }
+    }
+    for (entity, pickup) in world.query::<(Entity, &Pickup)>() {
+        if let Some(at) = point_of(world, entity) {
+            draw_shape(
+                draw,
+                pickup.shape().shape(),
+                at + pickup.offset(),
+                PICKUP_COLOR,
+            );
+        }
+    }
 }
 
 #[cfg(test)]

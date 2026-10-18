@@ -24,7 +24,8 @@
   },
   "prefabs": {
     "player": { "path": "prefabs/player.json" },
-    "hazard": { "path": "prefabs/hazard.json" }
+    "hazard": { "path": "prefabs/hazard.json" },
+    "gem": { "path": "prefabs/gem.json" }
   },
   "data": {
     "tags": {

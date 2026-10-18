@@ -1,25 +1,32 @@
 //! Health and damage: an invulnerability window counted on the fixed-step
-//! clock, the `Damaged` event and a hit flash on the `damage_flash`
-//! material.
+//! clock, the `Damaged` event, a death policy and a hit flash on the
+//! `damage_flash` material.
 
+use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::{
-    Entity, EventQueue, Inspectable, MaterialAssetId, MaterialRegistry, Plugin, Schedule,
-    SpawnContext, Sprite, Time, UniformOverrideBlock, World, system,
+    Entity, Inspectable, MaterialAssetId, MaterialRegistry, Plugin, Schedule, SpawnContext, Sprite,
+    Time, UniformOverrideBlock, World, system,
 };
 
 use crate::count_down;
+use crate::damage::defense::{
+    RESIST, Resist, ResistDef, SHIELD, SHIELD_TICK, Shield, ShieldDef, resist_description,
+    shield_description, shield_tick,
+};
+use crate::damage::pipeline::{DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
     describe, round_trip,
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::trace::{TraceKind, trace};
-use crate::foundation::{finite_color, non_negative, positive};
+use crate::foundation::tags::check_declared;
+use crate::foundation::{finite_color, non_negative, optional_non_negative, positive};
+use crate::lifecycle::ended::{end, ensure_kit_despawn};
 
-/// [`HealthPlugin`]'s system that counts invulnerability windows down, in
-/// the tick phase.
+/// [`HealthPlugin`]'s system that counts invulnerability windows and death
+/// delays down, in the tick phase.
 pub const HEALTH_TICK: &str = "health_tick";
 
 /// [`HealthPlugin`]'s system that fades hit flashes, in the present phase.
@@ -37,14 +44,24 @@ const HIT_FLASH: &str = "hit_flash";
 pub const HIT_FLASH_MATERIAL: &str = "damage_flash";
 
 /// An entity's health, with an invulnerability window after each hit.
-/// [`damage`] lowers it and [`heal`](Self::heal) raises it;
+/// [`damage`] and the damage pipeline ([`DamageRequest`](crate::DamageRequest))
+/// lower it, and [`heal`](Self::heal) and [`heal`](crate::heal()) raise it;
 /// [`HealthPlugin`]'s [`HEALTH_TICK`] counts the window down by the fixed
 /// step, so a hit sequence on the fixed-step clock lands the same hits
 /// whatever the frame rate, and a paused game, which runs no step, holds
-/// every window. It is data: a game's save can hold it.
+/// every window.
 ///
-/// Scene name `health`: `{ "max": 5, "invulnerability": 0.5 }`,
-/// `invulnerability` 0 by default.
+/// A dead entity stays until something despawns it, unless its death
+/// policy ([`with_despawn_on_death`](Self::with_despawn_on_death)) says
+/// otherwise: then a kill starts a delay that [`HEALTH_TICK`] counts from
+/// the step after the kill, and once it has passed the kit's end-of-step
+/// despawn takes the entity with its children, after the `killed` cues
+/// have run. It is data: a game's save can hold it, a delay that runs
+/// included.
+///
+/// Scene name `health`: `{ "max": 5, "invulnerability": 0.5, "despawn_on_death": 0.1 }`,
+/// `invulnerability` 0 by default and `despawn_on_death` none, so the
+/// entity is kept.
 ///
 /// # Examples
 ///
@@ -81,6 +98,12 @@ pub struct Health {
     max: f32,
     invulnerability: f32,
     window_left: f32,
+    /// Seconds from a kill to the despawn; `None` keeps the dead.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    despawn_on_death: Option<f32>,
+    /// The delay left since the kill, while it runs or once it has passed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    death_left: Option<f32>,
 }
 
 /// A health as data writes it, before its values are checked.
@@ -93,6 +116,10 @@ struct HealthFields {
     invulnerability: f32,
     #[serde(default)]
     window_left: f32,
+    #[serde(default)]
+    despawn_on_death: Option<f32>,
+    #[serde(default)]
+    death_left: Option<f32>,
 }
 
 impl TryFrom<HealthFields> for Health {
@@ -104,6 +131,8 @@ impl TryFrom<HealthFields> for Health {
             max,
             invulnerability,
             window_left,
+            despawn_on_death,
+            death_left,
         } = fields;
         if !(max.is_finite() && max > 0.0) {
             return Err(format!("max: must be finite and > 0 (got {max})"));
@@ -112,10 +141,14 @@ impl TryFrom<HealthFields> for Health {
             return Err(format!("current: must be within 0..={max} (got {current})"));
         }
         for (field, value) in [
-            ("invulnerability", invulnerability),
-            ("window_left", window_left),
+            ("invulnerability", Some(invulnerability)),
+            ("window_left", Some(window_left)),
+            ("despawn_on_death", despawn_on_death),
+            ("death_left", death_left),
         ] {
-            if !(value.is_finite() && value >= 0.0) {
+            if let Some(value) = value
+                && !(value.is_finite() && value >= 0.0)
+            {
                 return Err(format!("{field}: must be finite and >= 0 (got {value})"));
             }
         }
@@ -124,6 +157,8 @@ impl TryFrom<HealthFields> for Health {
             max,
             invulnerability,
             window_left,
+            despawn_on_death,
+            death_left,
         })
     }
 }
@@ -146,6 +181,8 @@ impl Health {
             max,
             invulnerability: 0.0,
             window_left: 0.0,
+            despawn_on_death: None,
+            death_left: None,
         }
     }
 
@@ -164,6 +201,32 @@ impl Health {
         );
         self.invulnerability = seconds;
         self
+    }
+
+    /// The health with a death policy: `seconds` of game time after a kill,
+    /// counted from the step after it, the kit despawns the entity with its
+    /// children, its `killed` cues having run first; 0 despawns it the step
+    /// after the kill. Without one the dead stay until something despawns
+    /// them.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_despawn_on_death(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds >= 0.0,
+            "Health::with_despawn_on_death: seconds must be finite and >= 0 (got {seconds})"
+        );
+        self.despawn_on_death = Some(seconds);
+        self
+    }
+
+    /// The death policy's delay, when it has one.
+    #[must_use]
+    pub fn despawn_on_death(&self) -> Option<f32> {
+        self.despawn_on_death
     }
 
     /// The health left, from 0 to [`max`](Self::max).
@@ -206,6 +269,29 @@ impl Health {
         }
     }
 
+    /// Takes `amount` off the health, to no less than 0, starts the window,
+    /// and on a kill starts the death policy's delay; whether it killed.
+    pub(crate) fn hurt(&mut self, amount: f32) -> bool {
+        self.current = (self.current - amount).max(0.0);
+        self.window_left = self.invulnerability;
+        let killed = self.is_dead();
+        if killed && let Some(delay) = self.despawn_on_death {
+            self.death_left = Some(delay);
+        }
+        killed
+    }
+
+    /// Adds up to `amount`, up to [`max`](Self::max); the health restored,
+    /// 0 for the dead.
+    pub(crate) fn restore(&mut self, amount: f32) -> f32 {
+        if self.is_dead() {
+            return 0.0;
+        }
+        let before = self.current;
+        self.current = (self.current + amount).min(self.max);
+        self.current - before
+    }
+
     /// Sets the full health to `max`, the health left kept as the same
     /// fraction of it, so 5 of 5 at a max of 8 becomes 8 of 8 and the dead
     /// stay dead: what a `max_health` stat writes. A max that is not finite
@@ -219,51 +305,91 @@ impl Health {
     }
 }
 
-/// What [`damage`] did. A match outside this crate needs a wildcard arm,
-/// since later outcomes are additions.
+/// What [`damage`] or a [`DamageRequest`](crate::DamageRequest) did. A
+/// match outside this crate needs a wildcard arm, since later outcomes are
+/// additions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Hit {
-    /// Nothing: an amount of 0, a target without [`Health`], a dead one or
-    /// one inside its invulnerability window.
+    /// Nothing: an amount of 0, a target that is gone or being despawned,
+    /// one without [`Health`], a dead one, one inside its invulnerability
+    /// window, or one whose [`Resist`](crate::Resist) is immune.
     Ignored,
     /// Health fell and some is left.
     Hurt,
     /// Health fell to 0.
     Killed,
+    /// The [`Shield`](crate::Shield) took it all: health did not fall.
+    Absorbed,
 }
 
-/// A hit [`damage`] applied, sent once [`HealthPlugin`] has registered its
-/// queue: damage numbers, a hurt sound, a score. Build one with
-/// [`Damaged::new`].
+/// A hit the damage pipeline applied, sent once [`HealthPlugin`] has
+/// registered its queue: damage numbers, a hurt sound, a score. Build one
+/// with [`Damaged::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct Damaged {
     /// The entity hit.
     pub entity: Entity,
-    /// The amount passed to [`damage`], which may exceed the health it
-    /// took.
+    /// The amount after the target's resistances, which may exceed the
+    /// health it took: a shield may have taken some.
     pub amount: f32,
     /// The hit left no health.
     pub killed: bool,
+    /// The entity the hit came from, when the request named one: the
+    /// `damaged` and `killed` cue events' other entity.
+    pub source: Option<Entity>,
+    /// Where the hit landed, when the request said: where a cue spawns or
+    /// floats its label, else at the entity's point.
+    pub position: Option<Vec2>,
+    /// The request was a critical hit.
+    pub crit: bool,
 }
 
 impl Damaged {
-    /// An event with these fields, as [`damage`] sends one.
+    /// An event with these fields, no source, no position and no crit, as
+    /// [`damage`] sends one.
     #[must_use]
     pub fn new(entity: Entity, amount: f32, killed: bool) -> Self {
         Self {
             entity,
             amount,
             killed,
+            source: None,
+            position: None,
+            crit: false,
         }
+    }
+
+    /// The event, from `source`.
+    #[must_use]
+    pub fn with_source(mut self, source: Entity) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// The event, landing at `position`.
+    #[must_use]
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// The event, a critical hit when `crit`.
+    #[must_use]
+    pub fn with_crit(mut self, crit: bool) -> Self {
+        self.crit = crit;
+        self
     }
 }
 
 /// Damages `target` by `amount` at once, so the caller knows the outcome
-/// in the same step. An amount of 0, a target without [`Health`], a dead
+/// in the same step: `DamageRequest::new(target, amount).apply(world)`,
+/// with no source, tags, position, knockback or crit. An amount of 0, a
+/// target that is gone or being despawned, one without [`Health`], a dead
 /// one or one inside its invulnerability window is [`Hit::Ignored`].
-/// Otherwise its health falls by `amount`, to no less than 0, its window
+/// Otherwise its [`Resist`](crate::Resist) and [`Shield`](crate::Shield)
+/// apply, its health falls by the rest, to no less than 0, its window
 /// starts, its [`HitFlash`] starts when it has one and a `Sprite`, and a
 /// [`Damaged`] is sent when [`HealthPlugin`] has registered its queue. The
 /// World's [`KitTrace`](crate::KitTrace) records the hit, and the kill.
@@ -274,41 +400,7 @@ impl Damaged {
 /// When `amount` is not finite and at least 0.
 #[track_caller]
 pub fn damage(world: &mut World, target: Entity, amount: f32) -> Hit {
-    assert!(
-        amount.is_finite() && amount >= 0.0,
-        "damage: amount must be finite and >= 0 (got {amount})"
-    );
-    if amount == 0.0 {
-        return Hit::Ignored;
-    }
-    let Some(health) = world.get_mut::<Health>(target) else {
-        return Hit::Ignored;
-    };
-    if health.is_dead() || health.is_invulnerable() {
-        return Hit::Ignored;
-    }
-    health.current = (health.current - amount).max(0.0);
-    health.window_left = health.invulnerability;
-    let killed = health.is_dead();
-    start_flash(world, target);
-    if world.has_event::<Damaged>() {
-        world
-            .resource_mut::<EventQueue<Damaged>>()
-            .send(Damaged::new(target, amount, killed));
-    }
-    trace(world, target, || TraceKind::Event {
-        name: "damaged",
-        other: None,
-        amount: Some(amount),
-    });
-    if killed {
-        trace(world, target, || TraceKind::Event {
-            name: "killed",
-            other: None,
-            amount: Some(amount),
-        });
-    }
-    if killed { Hit::Killed } else { Hit::Hurt }
+    DamageRequest::new(target, amount).apply(world)
 }
 
 /// A sprite that flashes a colour when [`damage`] hits its entity, drawn
@@ -471,9 +563,13 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     world.insert(target, block);
 }
 
-/// Registers `EventQueue<Damaged>`, the `health` and `hit_flash` scene
-/// components, [`HEALTH_TICK`] in the tick phase and [`HIT_FLASH_TICK`] in
-/// the present phase, which runs after `tween_tick`.
+/// Registers the damage pipeline: `EventQueue<Damaged>` and
+/// `EventQueue<Healed>`, the request queue, the `health`, `hit_flash`,
+/// `resist` and `shield` scene components, [`HEALTH_TICK`] and
+/// [`SHIELD_TICK`] in the tick phase, [`DAMAGE_RESOLVE`] in the resolve
+/// phase, [`HIT_FLASH_TICK`] in the present phase, which runs after
+/// `tween_tick`, and the kit's end-of-step despawn when the schedule lacks
+/// it, for the death policy.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct HealthPlugin;
 
@@ -482,6 +578,8 @@ impl Plugin for HealthPlugin {
         ensure_phases(schedule);
         register_rows::<Health>(world, "Health");
         register_rows::<HitFlash>(world, "HitFlash");
+        register_rows::<Resist>(world, "Resist");
+        register_rows::<Shield>(world, "Shield");
         describe(
             world,
             ComponentDescription::new(
@@ -507,7 +605,19 @@ impl Plugin for HealthPlugin {
                 )
                 .default("0.0"),
             )
+            .field(
+                FieldDescription::new(
+                    "despawn_on_death",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "game seconds from a kill, counted from the step after it, until the kit despawns the entity after its `killed` cues; kept when left out",
+                )
+                .default("null"),
+            )
             .event("Damaged")
+            .event("Healed")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
             .genre(SHMUP)
@@ -545,16 +655,53 @@ impl Plugin for HealthPlugin {
             .sample("{}")
             .roundtrip(round_trip::<HitFlashDef>),
         );
+        describe(world, resist_description());
+        describe(world, shield_description());
         world.register_event::<Damaged>();
+        world.register_event::<Healed>();
+        if !world.has_resource::<Requests>() {
+            world.insert_resource(Requests::default());
+        }
         world.register_component_with(HEALTH, |def: HealthDef, _: &SpawnContext<'_>| {
-            (Health::new(def.max).with_invulnerability(def.invulnerability),)
+            let health = Health::new(def.max).with_invulnerability(def.invulnerability);
+            match def.despawn_on_death {
+                Some(seconds) => (health.with_despawn_on_death(seconds),),
+                None => (health,),
+            }
         });
         world.register_component_with(HIT_FLASH, |def: HitFlashDef, _: &SpawnContext<'_>| {
             (HitFlash::new(def.color, def.seconds),)
         });
+        world.register_component_with_assets(
+            RESIST,
+            |def: &ResistDef, world: &World| {
+                for tag in def.0.keys() {
+                    check_declared(world, tag, tag)?;
+                }
+                Ok(())
+            },
+            |def: ResistDef, _: &SpawnContext<'_>| (Resist::from(def),),
+        );
+        world.register_component_with(SHIELD, |def: ShieldDef, _: &SpawnContext<'_>| {
+            (Shield::new(def.max).with_recharge(def.recharge, def.delay),)
+        });
+        let mut dying: Vec<Entity> = Vec::new();
         schedule.add(
             Phase::Tick.stage(),
-            Phase::Tick.join(system(HEALTH_TICK, health_tick)),
+            Phase::Tick.join(system(HEALTH_TICK, move |world: &mut World| {
+                health_tick(world, &mut dying);
+            })),
+        );
+        schedule.add(
+            Phase::Tick.stage(),
+            Phase::Tick.join(system(SHIELD_TICK, shield_tick)),
+        );
+        let mut resolver = Resolver::default();
+        schedule.add(
+            Phase::Resolve.stage(),
+            Phase::Resolve.join(system(DAMAGE_RESOLVE, move |world: &mut World| {
+                resolver.run(world);
+            })),
         );
         let mut flashes = Flashes::default();
         schedule.add(
@@ -563,6 +710,7 @@ impl Plugin for HealthPlugin {
                 flashes.run(world);
             })),
         );
+        ensure_kit_despawn(schedule, world);
     }
 }
 
@@ -574,6 +722,12 @@ struct HealthDef {
     max: f32,
     #[serde(default, deserialize_with = "non_negative")]
     invulnerability: f32,
+    #[serde(
+        default,
+        deserialize_with = "optional_non_negative",
+        skip_serializing_if = "Option::is_none"
+    )]
+    despawn_on_death: Option<f32>,
 }
 
 /// `components.hit_flash` as a scene writes it.
@@ -594,13 +748,31 @@ fn default_flash_seconds() -> f32 {
     0.1
 }
 
-fn health_tick(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    if dt <= 0.0 {
-        return;
+/// Counts every window down by the step and every death delay that runs,
+/// listing for the kit's despawn each entity whose delay has passed, the
+/// step after the kill for a delay of 0; `dying` is the scratch list.
+fn health_tick(world: &mut World, dying: &mut Vec<Entity>) {
+    let dt = world
+        .get_resource::<Time>()
+        .map_or(0.0, Time::delta)
+        .max(0.0);
+    dying.clear();
+    for (entity, health) in world.query_mut::<(Entity, &mut Health)>() {
+        if dt > 0.0 {
+            health.window_left = count_down(health.window_left, dt);
+        }
+        if let Some(left) = health.death_left {
+            let left = count_down(left, dt);
+            health.death_left = Some(left);
+            if left <= 0.0 {
+                dying.push(entity);
+            }
+        }
     }
-    for health in world.query_mut::<&mut Health>() {
-        health.window_left = count_down(health.window_left, dt);
+    // Listed each step until the flush; the despawn marks it the first
+    // time and skips it after.
+    for &entity in dying.iter() {
+        end(world, entity, HEALTH);
     }
 }
 
@@ -673,9 +845,15 @@ impl Flashes {
 
 impl Inspectable for Health {
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
+        let death = match (self.despawn_on_death, self.death_left) {
+            (None, _) => "kept".to_string(),
+            (Some(_), Some(left)) => format!("despawns in {left:.2} s"),
+            (Some(delay), None) => format!("despawns {delay:.2} s after a kill"),
+        };
         vec![
             ("hp", format!("{} / {}", self.current, self.max)),
             ("window", format!("{:.2} s", self.window_left)),
+            ("death", death),
         ]
     }
 }

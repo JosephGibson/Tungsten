@@ -1,15 +1,17 @@
 //! The platformer fixture: a hero on a kinematic body under the move
 //! actions and a jump slot, a ground, a door zone, a spark and a lift; M64's
-//! conveyor, bobbing lift, acrobat, firebar and firefly.
+//! conveyor, bobbing lift, acrobat, firebar and firefly; M65's fireballs,
+//! bricks, climber, spiker and coin.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
 use tungsten_core::{AnimationState, PluginSet, Transform, World};
 
-use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, recipe, spawn, tagged};
+use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, point_of, recipe, spawn, tagged};
 use crate::kit::{
-    CharacterAnimator, Children, Facing, Flags, Health, KitPlugins, PathFollowerPlugin,
-    PlatformerController, PlatformerControllerPlugin, Stats, ZoneEntered, knock_back,
+    CharacterAnimator, Children, Counters, Facing, Flags, Health, KitPlugins, LinearMotion,
+    PathFollowerPlugin, PlatformerController, PlatformerControllerPlugin, ProjectileExpired, Stats,
+    ZoneEntered, knock_back,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 
@@ -443,6 +445,108 @@ fn a_firebars_ball_circles_its_pivot_and_a_firefly_trails_the_hero() {
         assert!(
             trail > 5.0,
             "dt {dt}: it trails the running hero by {trail}"
+        );
+    }
+}
+
+/// Runs `frames` frames, collecting each one's projectile ends.
+fn ends(harness: &mut super::Harness, frames: u32) -> Vec<ProjectileExpired> {
+    let mut expired = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        expired.extend(harness.events::<ProjectileExpired>().copied());
+    }
+    expired
+}
+
+#[test]
+fn a_fireball_stops_at_a_brick() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The brick's left face at x 90.
+        spawn(&mut harness, "brick", [100.0, 100.0]);
+        let fireball = spawn(&mut harness, "fireball", [0.0, 100.0]);
+        let expired = ends(&mut harness, frames_for(0.5, dt));
+        assert_eq!(expired.len(), 1, "dt {dt}");
+        assert!(
+            expired[0].position.distance(Vec2::new(86.0, 100.0)) < 1e-3,
+            "dt {dt}: at the face: {}",
+            expired[0].position
+        );
+        assert!(!harness.world().is_alive(fireball));
+    }
+}
+
+#[test]
+fn a_bouncing_fireball_turns_at_a_brick_then_stops() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "brick", [100.0, 100.0]);
+        spawn(&mut harness, "brick", [-100.0, 100.0]);
+        let ricochet = spawn(&mut harness, "ricochet", [0.0, 100.0]);
+        let mut turned = false;
+        let mut expired = Vec::new();
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            expired.extend(harness.events::<ProjectileExpired>().copied());
+            if let Some(motion) = harness.world().get::<LinearMotion>(ricochet)
+                && motion.velocity().x < 0.0
+                && !turned
+            {
+                turned = true;
+                assert!(
+                    point_of(&harness, ricochet).x <= 86.0 + 1e-3,
+                    "dt {dt}: placed at the right brick"
+                );
+            }
+        }
+        assert!(turned, "dt {dt}: it turned");
+        assert_eq!(expired.len(), 1, "dt {dt}");
+        assert!(
+            expired[0].position.distance(Vec2::new(-86.0, 100.0)) < 1e-3,
+            "dt {dt}: stopped at the left brick: {}",
+            expired[0].position
+        );
+    }
+}
+
+#[test]
+fn a_spikers_touch_hurts_the_climber_and_throws_it_back() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        spawn(&mut harness, "spiker", [100.0, 270.0]);
+        // Touching the spiker's left side, its feet on the ground.
+        let climber = spawn(&mut harness, "climber", [82.0, 270.0]);
+        harness.step(1);
+        assert_eq!(
+            harness.world().get::<Health>(climber).unwrap().current(),
+            4.0,
+            "dt {dt}: hurt once"
+        );
+        harness.step(frames_for(0.2, dt));
+        let x = body_at(&harness, climber).x;
+        assert!(x < 82.0 - 10.0, "dt {dt}: thrown back left: {x}");
+    }
+}
+
+#[test]
+fn a_coin_counts_once() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let climber = spawn(&mut harness, "climber", [100.0, 270.0]);
+        let coin = spawn(&mut harness, "coin", [100.0, 270.0]);
+        harness.step(frames_for(0.25, dt));
+        assert!(!harness.world().is_alive(coin), "dt {dt}");
+        assert_eq!(
+            harness
+                .world()
+                .get::<Counters>(climber)
+                .unwrap()
+                .get("coins"),
+            1,
+            "dt {dt}: once"
         );
     }
 }

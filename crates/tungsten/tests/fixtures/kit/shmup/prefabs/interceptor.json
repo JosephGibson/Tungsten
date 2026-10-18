@@ -1,0 +1,29 @@
+{
+  "tag": "interceptor",
+  "components": {
+    "top_down_mover": {
+      "speed": 300
+    },
+    "tags": [
+      "team.player"
+    ],
+    "health": {
+      "max": 3
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    },
+    "cooldown": {
+      "seconds": 0.25
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "laser"
+        }
+      ]
+    }
+  }
+}

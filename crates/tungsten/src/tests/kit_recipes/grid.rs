@@ -1,14 +1,15 @@
 //! The grid fixture: a bodiless rogue under the move actions, a hole that
 //! spawns rats, a potion that expires, and the camera on the rogue; M64's
-//! crawlers and warden.
+//! crawlers and warden; M65's adventurer and its swing, a chest and its
+//! loot, gold and spikes.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::{CameraController, CameraMode, CameraState, Entity, Sprite};
 
-use super::{DTS, body_at, frames_for, recipe, spawn, tagged};
+use super::{DTS, body_at, frames_for, point_of, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
-    Cooldown, Counters, Flags, Health, Hit, KitPlugins, Source, Tags, TopDownMover, damage,
+    Cooldown, Counters, Flags, Health, Hit, KitPlugins, KitRng, Source, Tags, TopDownMover, damage,
 };
 
 const GENRE: &str = "grid";
@@ -187,5 +188,83 @@ fn crawlers_sort_by_depth_as_they_pass_and_a_warden_stays_in_its_room() {
         head(&mut harness, warden, Vec2::new(1.0, -1.0));
         harness.step(frames_for(4.0, dt));
         assert_eq!(body_at(&harness, warden), Vec2::new(240.0, 64.0), "dt {dt}");
+    }
+}
+
+#[test]
+fn a_chest_rolls_its_loot_when_broken() {
+    let mut counts = Vec::new();
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let adventurer = spawn(&mut harness, "adventurer", [32.0, 32.0]);
+        // Inside the swing's box, 12 px to the adventurer's right; the
+        // gold it drops out of the adventurer's reach.
+        let chest = spawn(&mut harness, "chest", [46.0, 32.0]);
+        let draws = harness.world().resource::<KitRng>().draws();
+        harness.step(frames_for(0.75, dt));
+        assert!(
+            !harness.world().is_alive(chest),
+            "dt {dt}: broken by the swing"
+        );
+        assert_eq!(
+            harness.world().resource::<KitRng>().draws() - draws,
+            2,
+            "dt {dt}: the table's two rolls"
+        );
+        let gold = tagged(&harness, "gold");
+        assert!(gold.len() <= 2, "dt {dt}");
+        for &piece in &gold {
+            assert!(point_of(&harness, piece).distance(Vec2::new(46.0, 32.0)) < 1e-3);
+        }
+        assert_eq!(
+            harness
+                .world()
+                .get::<Counters>(adventurer)
+                .unwrap()
+                .get("gold"),
+            0
+        );
+        counts.push(gold.len());
+    }
+    assert_eq!(counts[0], counts[1], "one seed, one roll at each dt");
+    assert!(counts[0] >= 1, "the default seed draws gold: {counts:?}");
+}
+
+#[test]
+fn gold_counts_once() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let adventurer = spawn(&mut harness, "adventurer", [32.0, 32.0]);
+        let gold = spawn(&mut harness, "gold", [32.0, 32.0]);
+        harness.step(frames_for(0.25, dt));
+        assert!(!harness.world().is_alive(gold), "dt {dt}");
+        assert_eq!(
+            harness
+                .world()
+                .get::<Counters>(adventurer)
+                .unwrap()
+                .get("gold"),
+            1,
+            "dt {dt}: once"
+        );
+    }
+}
+
+#[test]
+fn spikes_hurt_the_adventurer_each_interval() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "spikes", [0.0, 0.0]);
+        let adventurer = spawn(&mut harness, "adventurer", [5.0, 0.0]);
+        harness.step(frames_for(62.0 / 60.0, dt));
+        assert_eq!(
+            traced_steps(&harness, adventurer, "damaged"),
+            [1, 31, 61],
+            "dt {dt}"
+        );
+        assert_eq!(
+            harness.world().get::<Health>(adventurer).unwrap().current(),
+            7.0
+        );
     }
 }

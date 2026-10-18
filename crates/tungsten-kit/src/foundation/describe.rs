@@ -297,6 +297,8 @@ pub enum FieldType {
     /// An object of the shape of this name, described in
     /// [`KitDescriptions::shapes`].
     Shape(&'static str),
+    /// An entry of this data kind: its ID, or the entry written in place.
+    Data(&'static str),
 }
 
 impl FieldType {
@@ -330,6 +332,7 @@ impl FieldType {
             FieldType::Filter => "tag filter".to_string(),
             FieldType::Object(text) => (*text).to_string(),
             FieldType::Shape(name) => format!("shape {name}"),
+            FieldType::Data(kind) => format!("{kind} ID or entry"),
         }
     }
 }

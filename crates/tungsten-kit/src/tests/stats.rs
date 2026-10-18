@@ -246,6 +246,37 @@ fn stats_apply_writes_the_movers_health_and_cooldowns() {
 }
 
 #[test]
+fn a_damage_stat_sets_a_hitboxs_and_a_contact_damages_damage() {
+    let (mut world, mut schedule) = rig();
+    let shape = crate::HitShape::circle(4.0);
+    let brute = world.spawn_with((
+        Hitbox::new(shape, 1.0),
+        ContactDamage::new(1.0),
+        Stats::new().with(Stats::DAMAGE, 3.0),
+    ));
+    let plain = world.spawn_with((Hitbox::new(shape, 1.0),));
+    step(&mut world, &mut schedule);
+    assert_eq!(world.get::<Hitbox>(brute).unwrap().damage(), 3.0);
+    assert_eq!(world.get::<ContactDamage>(brute).unwrap().damage(), 3.0);
+    assert_eq!(
+        world.get::<Hitbox>(plain).unwrap().damage(),
+        1.0,
+        "its own field"
+    );
+    world.get_mut::<Stats>(brute).unwrap().add_modifier(
+        Stats::DAMAGE,
+        "curse",
+        Modifier::Add(-10.0),
+    );
+    step(&mut world, &mut schedule);
+    assert_eq!(
+        world.get::<Hitbox>(brute).unwrap().damage(),
+        0.0,
+        "the well-known floor"
+    );
+}
+
+#[test]
 fn a_move_speed_stat_sets_a_steerings_top_speed_and_zero_stops_it() {
     let mut world = World::new();
     world.insert_resource(Time::new());

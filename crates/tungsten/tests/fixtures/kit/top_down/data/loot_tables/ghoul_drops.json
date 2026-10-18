@@ -1,0 +1,9 @@
+{
+  "rolls": 1,
+  "entries": [
+    {
+      "prefab": "orb",
+      "weight": 1
+    }
+  ]
+}

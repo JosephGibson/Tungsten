@@ -1,7 +1,8 @@
 //! The top-down fixture: a hero on a kinematic body, a wall, slimes from a
 //! nest, a trap zone, a drone on a loop and a bolt that leaves its region;
 //! M64's seeker, coward, crates, sentry, wielder and blades, rovers,
-//! brawler, pet and gem.
+//! brawler, pet and gem; M65's ranger and its embers, ghouls, their bursts
+//! and drops, orbs and a knight.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -10,13 +11,17 @@ use tungsten_core::{
     Transform,
 };
 
-use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, teleport};
+use super::{
+    DTS, body_at, drawn_at, frames_for, overlap_reversed, point_of, recipe, spawn, tagged,
+    teleport, traced_steps,
+};
 use crate::kit::{
     Aim, CharacterAnimator, CooldownElapsed, Counters, Damaged, Facing, Health, Hit, HitFlash,
-    KitPlugins, KitRng, Modifier, Source, Stats, Steering, Tags, TopDownMover, ZoneEntered, damage,
-    knock_back,
+    KitPlugins, KitRng, Modifier, ProjectileExpired, Shield, Source, Stats, Steering, Struck, Tags,
+    TopDownMover, ZoneEntered, damage, knock_back,
 };
 use crate::testing::Harness;
+use tungsten_core::PluginSet;
 
 const GENRE: &str = "top_down";
 
@@ -532,5 +537,186 @@ fn a_pet_trails_the_hero_bobbing_and_a_gem_bobs_and_pulses() {
         harness.step(frames_for(0.5, dt));
         let trail = body_at(&harness, hero).x - 20.0 - body_at(&harness, pet).x;
         assert!(trail > 5.0, "dt {dt}: it lags the running hero by {trail}");
+    }
+}
+
+/// The card's recipe, cues and cue rules alone: the ranger's cooldown fires
+/// an ember from it, whose hit kills a ghoul; the combat rule counts the
+/// kill and floats the damage, the ghoul's `killed` cues burst, roll its
+/// drop and count the kill on the ranger, its kill's other entity, and the
+/// ghoul goes the step after its kill.
+fn the_card_recipe(plugins: fn() -> PluginSet) {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, plugins(), dt);
+        let ranger = spawn(&mut harness, "ranger", [100.0, 100.0]);
+        let ghoul = spawn(&mut harness, "ghoul", [200.0, 100.0]);
+        let mut killed = None;
+        for _ in 0..frames_for(1.5, dt) {
+            harness.step(1);
+            killed = harness
+                .events::<Damaged>()
+                .find(|event| event.entity == ghoul && event.killed)
+                .copied();
+            if killed.is_some() {
+                break;
+            }
+        }
+        let killed = killed.unwrap_or_else(|| panic!("dt {dt}: the ember killed no ghoul"));
+        assert_eq!(killed.source, Some(ranger), "dt {dt}: the ember's source");
+        assert_eq!(killed.amount, 2.0);
+        assert!(
+            tagged(&harness, "ember")
+                .iter()
+                .any(|&ember| harness.world().get::<Source>(ember) == Some(&Source::new(ranger))),
+            "dt {dt}: the ember came from the ranger's cue"
+        );
+        let world = harness.world();
+        assert_eq!(
+            world.resource::<Counters>().get("kills"),
+            1,
+            "dt {dt}: the combat rule"
+        );
+        assert_eq!(
+            world.get::<Counters>(ranger).unwrap().get("kills"),
+            1,
+            "dt {dt}: the kill's other entity"
+        );
+        let at = Vec2::new(200.0, 100.0);
+        for name in ["ghoul_burst", "orb"] {
+            let spawned = tagged(&harness, name);
+            assert_eq!(spawned.len(), 1, "dt {dt}: one {name}");
+            assert!(
+                point_of(&harness, spawned[0]).distance(at) < 1e-3,
+                "dt {dt}: {name} at the hit"
+            );
+        }
+        assert!(
+            labels(&harness).contains(&"2".to_string()),
+            "dt {dt}: the damage floated"
+        );
+        if dt == DTS[0] {
+            assert!(world.is_alive(ghoul), "dt {dt}: kept for its cues' step");
+        }
+        harness.step(1);
+        assert!(
+            !harness.world().is_alive(ghoul),
+            "dt {dt}: gone the step after its kill"
+        );
+    }
+}
+
+#[test]
+fn a_cue_driven_kill_counts_bursts_labels_and_rolls_a_drop() {
+    the_card_recipe(KitPlugins::set);
+}
+
+#[test]
+fn the_card_recipe_holds_with_the_overlap_plugins_reversed() {
+    the_card_recipe(overlap_reversed);
+}
+
+#[test]
+fn an_ember_pierces_two_ghouls_and_expires_at_its_range() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let first = spawn(&mut harness, "ghoul", [100.0, 0.0]);
+        let second = spawn(&mut harness, "ghoul", [150.0, 0.0]);
+        let ember = spawn(&mut harness, "ember", [0.0, 0.0]);
+        let (mut struck, mut expired) = (Vec::new(), Vec::new());
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            struck.extend(
+                harness
+                    .events::<Struck>()
+                    .map(|event| (event.entity, event.target)),
+            );
+            expired.extend(harness.events::<ProjectileExpired>().copied());
+        }
+        assert_eq!(struck, [(ember, first), (ember, second)], "dt {dt}");
+        assert_eq!(expired.len(), 1, "dt {dt}");
+        assert!(
+            expired[0].position.distance(Vec2::new(400.0, 0.0)) < 1e-3,
+            "dt {dt}: at its range: {}",
+            expired[0].position
+        );
+        let world = harness.world();
+        assert!(!world.is_alive(first) && !world.is_alive(second) && !world.is_alive(ember));
+    }
+}
+
+#[test]
+fn a_knights_shield_takes_a_hit_then_its_resist_halves_fire() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let knight = spawn(&mut harness, "knight", [200.0, 0.0]);
+        harness.step(1);
+        assert_eq!(
+            damage(harness.world_mut(), knight, 2.0),
+            Hit::Absorbed,
+            "dt {dt}"
+        );
+        assert_eq!(
+            harness.world().get::<Shield>(knight).unwrap().current(),
+            0.0
+        );
+        spawn(&mut harness, "ember", [0.0, 0.0]);
+        let mut amounts = Vec::new();
+        for _ in 0..frames_for(0.6, dt) {
+            harness.step(1);
+            amounts.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|event| event.entity == knight)
+                    .map(|event| event.amount),
+            );
+        }
+        assert_eq!(
+            amounts,
+            [2.0, 1.0],
+            "dt {dt}: whole into the shield, then fire halved"
+        );
+        assert_eq!(
+            harness.world().get::<Health>(knight).unwrap().current(),
+            5.0
+        );
+    }
+}
+
+#[test]
+fn an_orb_drifts_to_the_ranger_and_counts_its_xp() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ranger = spawn(&mut harness, "ranger", [0.0, 0.0]);
+        let orb = spawn(&mut harness, "orb", [80.0, 0.0]);
+        harness.step(1);
+        let x = body_at(&harness, orb).x;
+        assert!(x < 80.0, "dt {dt}: drifting in: {x}");
+        harness.step(frames_for(0.5, dt));
+        assert!(!harness.world().is_alive(orb), "dt {dt}: collected");
+        assert_eq!(
+            harness.world().get::<Counters>(ranger).unwrap().get("xp"),
+            1
+        );
+    }
+}
+
+#[test]
+fn a_ghouls_touch_hurts_the_ranger_each_interval() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Touching, the ghoul to the ranger's left, so the ranger's embers
+        // fly away from it.
+        spawn(&mut harness, "ghoul", [0.0, 0.0]);
+        let ranger = spawn(&mut harness, "ranger", [15.0, 0.0]);
+        harness.step(frames_for(62.0 / 60.0, dt));
+        assert_eq!(
+            traced_steps(&harness, ranger, "damaged"),
+            [1, 31, 61],
+            "dt {dt}"
+        );
+        assert_eq!(
+            harness.world().get::<Health>(ranger).unwrap().current(),
+            2.0
+        );
     }
 }

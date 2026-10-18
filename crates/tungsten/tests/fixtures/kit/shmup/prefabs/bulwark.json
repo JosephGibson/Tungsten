@@ -1,0 +1,22 @@
+{
+  "tag": "bulwark",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 3
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          12,
+          12
+        ]
+      }
+    },
+    "resist": {
+      "damage.laser": 0
+    }
+  }
+}

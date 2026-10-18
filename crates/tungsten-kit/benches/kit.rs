@@ -1,4 +1,4 @@
-//! The kit's per-entity systems at 1,000 and 10,000 entities, 23 rows, one
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 31 rows, one
 //! fixed step or one frame's present phase per iteration:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
@@ -10,6 +10,17 @@
 //!   `knockback` (pushes running), `speed_limit` (bodiless),
 //!   `speed_limit_settle` (the plugin's step on dynamic bodies, no solver),
 //!   `wrap` and `stay_in_view` (a region), `aim` (one tagged target);
+//! - M65's, each at one density, its area growing with its count, so no
+//!   grid row is judged on a denser crowd: `hit_grid` (moving hurtboxes, no
+//!   hitbox), `hitbox_tick` (each hitbox over one hurtbox it has already
+//!   hit, the steady state), `contact_damage` (each over one target, hit
+//!   again each interval), `projectile_tick` (bodiless projectiles with
+//!   hitboxes in open space beside one static body, so the wall queries
+//!   run), `pickup_tick` (no collector reached), `pickup_magnet` (each
+//!   pickup in a collector's radius, one collector per ten pickups, so a
+//!   scan over every collector would fail the bound), `damage_resolve` (one
+//!   request a step per target, through its resistance and its shield) and
+//!   `shield_tick` (recharging);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
 //!   `character_animator` (a clip set, unchanged) and `depth_sort`.
 //!
@@ -31,13 +42,14 @@ use tungsten_core::{
 };
 use tungsten_kit::{
     ActionInput, ActionInputPlugin, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin,
-    Clips, Cooldown, CooldownPlugin, Counters, CountersPlugin, CueAction, Cues, CuesPlugin,
-    Damaged, DepthSort, DepthSortPlugin, Facing, FacingPlugin, Follow, FollowPlugin, Health,
-    HealthPlugin, Intent, Knockback, KnockbackPlugin, Lifetime, LifetimePlugin, LinearMotion,
-    LinearMotionPlugin, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, PlatformerController,
-    SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
-    SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, Wrap,
-    WrapPlugin, knock_back,
+    Clips, ContactDamage, ContactDamagePlugin, Cooldown, CooldownPlugin, Counters, CountersPlugin,
+    CueAction, Cues, CuesPlugin, DamageRequest, Damaged, DepthSort, DepthSortPlugin, Facing,
+    FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox, Hurtbox,
+    Intent, Knockback, KnockbackPlugin, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
+    Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Pickup, PickupPlugin, PlatformerController,
+    Projectile, ProjectilePlugin, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin,
+    StayInView, StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target,
+    TopDownMover, TopDownMoverPlugin, Wrap, WrapPlugin, knock_back,
 };
 
 const SIZES: [usize; 2] = [1_000, 10_000];
@@ -573,6 +585,204 @@ fn cues(c: &mut Criterion) {
     group.finish();
 }
 
+/// Where the `i`th of `n` entities stands: a square of `n` cells 32 px
+/// apart, so the density is the same at every count.
+fn spread(i: usize, n: usize) -> Vec2 {
+    let side = (n as f32).sqrt().ceil() as usize;
+    Vec2::new((i % side) as f32, (i / side) as f32) * 32.0
+}
+
+/// A fixed step, then the event flush, so a row's sent events stay one
+/// step's.
+fn fixed_step_and_flush(world: &mut World, schedule: &mut Schedule) {
+    fixed_step(world, schedule);
+    world.flush_events();
+}
+
+fn hit_grid(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hit_grid");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&HitPlugin);
+        for i in 0..n {
+            // A step's motion: no snapshot runs here, so the sweep stays.
+            let at = spread(i, n);
+            world.spawn_with((
+                Hurtbox::new(HitShape::circle(6.0)),
+                Position(at),
+                PrevPosition(at - Vec2::new(4.0, 2.0)),
+            ));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn hitbox_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("hitbox_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&HitPlugin);
+        for i in 0..n {
+            let at = spread(i, n);
+            world.spawn_with((Hurtbox::new(HitShape::circle(6.0)), Position(at)));
+            world.spawn_with((Hitbox::new(HitShape::circle(4.0), 1.0), Position(at)));
+        }
+        // One warm step: each hitbox hits its hurtbox once; after it, the
+        // steady state of a live activation.
+        fixed_step_and_flush(&mut world, &mut schedule);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn contact_damage(c: &mut Criterion) {
+    let mut group = c.benchmark_group("contact_damage");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&ContactDamagePlugin);
+        for i in 0..n {
+            let at = spread(i, n);
+            world.spawn_with((Hurtbox::new(HitShape::circle(4.0)), Position(at)));
+            let aura = ContactDamage::new(1.0).with_shape(HitShape::circle(8.0), Vec2::ZERO);
+            world.spawn_with((aura, Position(at)));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn projectile_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("projectile_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&ProjectilePlugin);
+        // One static body beside them, indexed by one physics step, so the
+        // wall queries run against an index.
+        world.spawn_with(RigidBodyBundle::r#static(
+            Position::new(-500.0, -500.0),
+            Collider::aabb(Vec2::splat(50.0)),
+        ));
+        tungsten_core::physics::physics_step(&mut world);
+        for i in 0..n {
+            let at = spread(i, n);
+            world.spawn_with((
+                Hitbox::new(HitShape::circle(2.0), 1.0),
+                Projectile::new(),
+                Position(at),
+                PrevPosition(at - Vec2::new(5.0, 0.0)),
+            ));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn pickup_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pickup_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&PickupPlugin);
+        for i in 0..n {
+            let at = spread(i, n);
+            world.spawn_with((
+                Pickup::new(HitShape::circle(4.0)),
+                Position(at),
+                PrevPosition(at - Vec2::new(2.0, 0.0)),
+            ));
+            // A collector in every tenth cell, 16 px off: none reached.
+            if i % 10 == 0 {
+                world.spawn_with((
+                    Hurtbox::new(HitShape::circle(4.0)),
+                    Position(at + Vec2::splat(16.0)),
+                ));
+            }
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn pickup_magnet(c: &mut Criterion) {
+    let mut group = c.benchmark_group("pickup_magnet");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&PickupPlugin);
+        for i in 0..n {
+            let at = spread(i, n);
+            // So slow it barely moves over a sitting: the same work each step.
+            world.spawn_with((
+                Pickup::new(HitShape::circle(1.0)).with_magnet(1e-3),
+                Position(at),
+                PrevPosition(at),
+            ));
+            // One collector per ten pickups, its reach over its neighbours.
+            if i % 10 == 0 {
+                world.spawn_with((
+                    Hurtbox::new(HitShape::circle(1.0)),
+                    Position(at + Vec2::splat(16.0)),
+                    Stats::new().with(Stats::PICKUP_RADIUS, 120.0),
+                ));
+            }
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn damage_resolve(c: &mut Criterion) {
+    let mut group = c.benchmark_group("damage_resolve");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&HealthPlugin);
+        let fire = Tags::new(["damage.fire"]);
+        let targets: Vec<_> = (0..n)
+            .map(|_| {
+                world.spawn_with((
+                    Health::new(1e12),
+                    Resist::new().with_factor("damage.fire", 0.5),
+                    Shield::new(1e9).with_recharge(1e9, 0.0),
+                ))
+            })
+            .collect();
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| {
+                for &target in targets.iter().rev() {
+                    DamageRequest::new(target, 2.0)
+                        .with_tags(fire.clone())
+                        .queue(&mut world);
+                }
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn shield_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("shield_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&HealthPlugin);
+        for _ in 0..n {
+            // Drained far below its max: it recharges for a whole sitting.
+            let shield: Shield = serde_json::from_value(serde_json::json!({
+                "current": 0.0, "max": 1e9, "recharge": 1.0, "delay": 0.0
+            }))
+            .unwrap();
+            world.spawn_with((shield,));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     kit,
     lifetime_tick,
@@ -597,6 +807,14 @@ criterion_group!(
     aim,
     facing,
     character_animator,
-    depth_sort
+    depth_sort,
+    hit_grid,
+    hitbox_tick,
+    contact_damage,
+    projectile_tick,
+    pickup_tick,
+    pickup_magnet,
+    damage_resolve,
+    shield_tick
 );
 criterion_main!(kit);

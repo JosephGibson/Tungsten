@@ -5,9 +5,11 @@ use tungsten_core::Pcg32;
 
 /// The kit's random stream, a World resource: a seeded PCG32 that kit
 /// systems draw from in a fixed order (a cooldown's jitter, in entity
-/// order), so a run under one seed repeats. It is the kit's own, apart
-/// from the particles' `WorldRngSeed`, so a draw here moves no emitter's
-/// seed. [`CooldownPlugin`](crate::CooldownPlugin) inserts one at
+/// order; a cue's `roll`, in the cue system's order), so a run under one
+/// seed repeats. It is the kit's own, apart from the particles'
+/// `WorldRngSeed`, so a draw here moves no emitter's seed.
+/// [`CooldownPlugin`](crate::CooldownPlugin) and
+/// [`CuesPlugin`](crate::CuesPlugin) insert one at
 /// [`DEFAULT_SEED`](Self::DEFAULT_SEED) when the World has none; a game
 /// reseeds it per run, as from a run seed in a save.
 ///

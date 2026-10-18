@@ -1,0 +1,12 @@
+{
+  "rolls": 2,
+  "entries": [
+    {
+      "prefab": "gold",
+      "weight": 3
+    },
+    {
+      "weight": 1
+    }
+  ]
+}

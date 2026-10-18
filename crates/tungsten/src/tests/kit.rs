@@ -21,12 +21,13 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    Children, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues, CuesOnEvent, Damaged,
-    DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome, HitFlash, KitPlugins,
-    KitRng, KitTrace, LabelStyle, Lifetime, LocalOffset, Modifier, Parent, PathFollower,
-    PlatformerController, SoundOnEvent, Source, SpawnChildren, Spawner, StateMachine,
-    StateMachinePlugin, Stats, TopDownMover, TraceKind, TriggerEntered, TriggerZone,
-    cursor_to_world, damage, despawn_recursive, spawn_child,
+    Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues,
+    CuesOnEvent, Damaged, DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome,
+    HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng, KitTrace, LabelStyle, Lifetime,
+    LocalOffset, Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController,
+    Projectile, ProjectileExpired, SoundOnEvent, Source, SpawnChildren, Spawner, StateMachine,
+    StateMachinePlugin, Stats, Struck, TagFilter, Tags, TopDownMover, TraceKind, TriggerEntered,
+    TriggerZone, cursor_to_world, damage, despawn_recursive, spawn_child,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
@@ -37,8 +38,10 @@ use crate::testing::Harness;
 const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, hit_sound, camera_update";
 
 /// `fixed_update` with the same plugins: the six fixed phases around
-/// `physics_step`, each member in its registration order.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, speed_limit, physics_step, kit_overlap, despawn_outside, zone_tick, speed_limit_settle, wrap, stay_in_view, zone_entered, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step";
+/// `physics_step`, each member in its registration order but where an edge
+/// orders it: the hit items before the corrections, the magnet before the
+/// speed limit, the kit's despawn after the cues.
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, kit_react, spawner_tick, spawn_children, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -1969,14 +1972,14 @@ fn entity_cues_run_before_rules_and_despawns_after_spawns() {
     }
 }
 
-/// The game's pickup: a coin taken by a hero.
-struct PickedUp {
+/// The game's own coin event: a coin taken by a hero.
+struct CoinTaken {
     coin: Entity,
     hero: Entity,
 }
 
-/// A coin that picks itself up is no pickup.
-fn picked_up(event: &PickedUp) -> Option<CueEvent> {
+/// A coin that takes itself is no take.
+fn coin_taken(event: &CoinTaken) -> Option<CueEvent> {
     (event.coin != event.hero).then(|| {
         CueEvent::new(event.coin, Vec2::ZERO)
             .with_amount(5.0)
@@ -1987,7 +1990,7 @@ fn picked_up(event: &PickedUp) -> Option<CueEvent> {
 #[test]
 fn a_game_event_reaches_cues_through_cues_on_event() {
     let mut app = kit_app();
-    app.add_plugin(CuesOnEvent::<PickedUp>::new("picked_up", picked_up));
+    app.add_plugin(CuesOnEvent::<CoinTaken>::new("coin_taken", coin_taken));
     let mut harness = Harness::new(app);
     let hero = spawn_at(&mut harness, 0.0, 0.0, (Visibility::default(),));
     let coin = spawn_at(
@@ -1995,7 +1998,7 @@ fn a_game_event_reaches_cues_through_cues_on_event() {
         8.0,
         0.0,
         (Cues::new().on(
-            "picked_up",
+            "coin_taken",
             [
                 CueAction::counter_add("coins", 5).for_other(),
                 CueAction::label(LabelStyle::new("sans")),
@@ -2004,9 +2007,9 @@ fn a_game_event_reaches_cues_through_cues_on_event() {
         ),),
     );
     let fake = spawn_at(&mut harness, 16.0, 0.0, (Visibility::default(),));
-    let queue = harness.world_mut().resource_mut::<EventQueue<PickedUp>>();
-    queue.send(PickedUp { coin, hero });
-    queue.send(PickedUp {
+    let queue = harness.world_mut().resource_mut::<EventQueue<CoinTaken>>();
+    queue.send(CoinTaken { coin, hero });
+    queue.send(CoinTaken {
         coin: fake,
         hero: fake,
     });
@@ -3076,4 +3079,976 @@ fn each_motion_edge_holds_with_its_two_plugins_alone_in_either_order_and_reverse
             "reversed in the set: {earlier} before {later}"
         );
     }
+}
+
+// M65: hit shapes and contact damage over the step's motion.
+
+/// The fixed steps the kit's trace has counted.
+fn kit_steps(harness: &Harness) -> u64 {
+    harness.world().resource::<KitTrace>().steps()
+}
+
+/// Frames until `steps` more fixed steps have run, collecting each frame's
+/// `T` events.
+fn run_steps<T: Copy + 'static>(harness: &mut Harness, steps: u64) -> Vec<T> {
+    let until = kit_steps(harness) + steps;
+    let mut sent = Vec::new();
+    while kit_steps(harness) < until {
+        harness.step(1);
+        sent.extend(harness.events::<T>().copied());
+    }
+    sent
+}
+
+/// The 1-based fixed steps at which the trace saw `event` about `entity`.
+fn traced_steps(harness: &Harness, entity: Entity, event: &str) -> Vec<u64> {
+    harness
+        .world()
+        .resource::<KitTrace>()
+        .iter()
+        .filter(|entry| {
+            entry.entity == entity
+                && matches!(entry.kind, TraceKind::Event { name, .. } if name == event)
+        })
+        .map(|entry| entry.step + 1)
+        .collect()
+}
+
+/// A bodiless mover at `at` with `velocity` and `rest`.
+fn mover(harness: &mut Harness, at: Vec2, velocity: Vec2, rest: impl Bundle) -> Entity {
+    harness.world_mut().spawn_with(
+        (
+            Transform::from_position(at),
+            Position(at),
+            tungsten_core::physics::PrevPosition(at),
+            LinearMotion::new(velocity),
+        )
+            .with(rest),
+    )
+}
+
+fn struck(harness: &Harness) -> Vec<(Entity, Entity)> {
+    harness
+        .events::<Struck>()
+        .map(|event| (event.entity, event.target))
+        .collect()
+}
+
+#[test]
+fn a_hitbox_hits_each_target_once_per_activation_at_three_frame_rates() {
+    let run = |dt: f32| {
+        let mut harness = Harness::new(kit_app());
+        harness.set_dt(dt);
+        let sword = spawn_at(
+            &mut harness,
+            0.0,
+            0.0,
+            (Hitbox::new(HitShape::circle(20.0), 1.0),),
+        );
+        for x in [-5.0, 5.0] {
+            spawn_at(
+                &mut harness,
+                x,
+                0.0,
+                (Hurtbox::new(HitShape::circle(8.0)), Health::new(10.0)),
+            );
+        }
+        let first = run_steps::<Damaged>(&mut harness, 60);
+        harness
+            .world_mut()
+            .get_mut::<Hitbox>(sword)
+            .unwrap()
+            .rearm();
+        let second = run_steps::<Damaged>(&mut harness, 60);
+        (first, second)
+    };
+    let (first, second) = run(1.0 / 60.0);
+    assert_eq!(first.len(), 2, "each target once: {first:?}");
+    assert_eq!(second.len(), 2, "once more after the rearm");
+    assert!(
+        first
+            .iter()
+            .all(|event| event.amount == 1.0 && event.source.is_some())
+    );
+    for dt in [1.0 / 30.0, 1.0 / 144.0] {
+        assert_eq!(run(dt), (first.clone(), second.clone()), "at dt {dt}");
+    }
+}
+
+#[test]
+fn a_bolt_faster_than_a_hurtbox_per_step_hits_it_once() {
+    let mut harness = Harness::new(kit_app());
+    let target = spawn_at(
+        &mut harness,
+        100.0,
+        0.0,
+        (
+            Hurtbox::new(HitShape::aabb(Vec2::new(4.0, 4.0))),
+            Health::new(5.0),
+        ),
+    );
+    // 1,800 px/s is 30 px a step; from -5 its ends are 25, 55, 85, 115.
+    let bolt = mover(
+        &mut harness,
+        Vec2::new(-5.0, 0.0),
+        Vec2::new(1800.0, 0.0),
+        (Hitbox::new(HitShape::circle(1.0), 1.0),),
+    );
+    let mut hits = Vec::new();
+    let mut damaged = 0;
+    for _ in 0..6 {
+        harness.step(1);
+        let x = body_at(&harness, bolt).x;
+        assert!(
+            (x - 100.0).abs() >= 5.0,
+            "never overlapping at a step's end: {x}"
+        );
+        hits.extend(struck(&harness));
+        damaged += harness.events::<Damaged>().count();
+    }
+    assert_eq!(hits, [(bolt, target)]);
+    assert_eq!(damaged, 1);
+}
+
+#[test]
+fn a_bolt_and_a_moving_hurtbox_crossing_between_their_endpoints_meet_once() {
+    let mut harness = Harness::new(kit_app());
+    let bolt = mover(
+        &mut harness,
+        Vec2::new(-50.0, 0.0),
+        Vec2::new(1200.0, 0.0),
+        (Hitbox::new(HitShape::circle(2.0), 1.0),),
+    );
+    let runner = mover(
+        &mut harness,
+        Vec2::new(0.0, -50.0),
+        Vec2::new(0.0, 1200.0),
+        (Hurtbox::new(HitShape::circle(2.0)), Health::new(5.0)),
+    );
+    let mut hits = Vec::new();
+    for _ in 0..6 {
+        harness.step(1);
+        let gap = body_at(&harness, bolt).distance(body_at(&harness, runner));
+        assert!(gap >= 4.0, "apart at every step's end: {gap}");
+        hits.extend(struck(&harness));
+    }
+    assert_eq!(hits, [(bolt, runner)], "they crossed inside the third step");
+}
+
+#[test]
+fn contact_damage_rehits_a_target_each_interval_while_it_touches() {
+    for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
+        let mut harness = Harness::new(kit_app());
+        harness.set_dt(dt);
+        spawn_at(
+            &mut harness,
+            0.0,
+            0.0,
+            (ContactDamage::new(1.0).with_shape(HitShape::circle(10.0), Vec2::ZERO),),
+        );
+        let target = spawn_at(
+            &mut harness,
+            3.0,
+            0.0,
+            (Hurtbox::new(HitShape::circle(5.0)), Health::new(100.0)),
+        );
+        run_steps::<Damaged>(&mut harness, 90);
+        assert_eq!(
+            traced_steps(&harness, target, "damaged"),
+            [1, 31, 61],
+            "at dt {dt}"
+        );
+    }
+    // One that leaves after its first hit and returns inside the interval
+    // waits it out from that hit.
+    let mut harness = Harness::new(kit_app());
+    spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (ContactDamage::new(1.0).with_shape(HitShape::circle(10.0), Vec2::ZERO),),
+    );
+    let target = spawn_at(
+        &mut harness,
+        3.0,
+        0.0,
+        (Hurtbox::new(HitShape::circle(5.0)), Health::new(100.0)),
+    );
+    harness.step(1);
+    harness
+        .world_mut()
+        .get_mut::<Transform>(target)
+        .unwrap()
+        .position
+        .x = 100.0;
+    harness.step(10);
+    harness
+        .world_mut()
+        .get_mut::<Transform>(target)
+        .unwrap()
+        .position
+        .x = 3.0;
+    harness.step(30);
+    assert_eq!(traced_steps(&harness, target, "damaged"), [1, 31]);
+}
+
+/// Inserts prefab `id`, written as `json`, through a temporary file.
+fn insert_prefab(harness: &mut Harness, id: &str, json: &str) {
+    use tungsten_core::{PrefabData, PrefabRegistry};
+    let dir = std::env::temp_dir().join(format!("tungsten_kit_m65_{id}_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{id}.json"));
+    std::fs::write(&path, json).unwrap();
+    let data = PrefabData::load(&path, harness.world()).unwrap();
+    std::fs::remove_dir_all(&dir).unwrap();
+    harness
+        .world_mut()
+        .resource_mut::<PrefabRegistry>()
+        .insert(id.to_string(), data);
+}
+
+/// The entity whose `Tag` is `name`.
+fn tagged_one(harness: &Harness, name: &str) -> Entity {
+    harness
+        .world()
+        .query::<(Entity, &tungsten_core::Tag)>()
+        .find(|(_, tag)| tag.name == name)
+        .map_or_else(|| panic!("no `{name}`"), |(entity, _)| entity)
+}
+
+#[test]
+fn a_hitbox_spares_its_entity_its_emitter_and_its_source_and_follows_its_filter() {
+    let mut harness = Harness::new(kit_app());
+    insert_prefab(
+        &mut harness,
+        "turret",
+        r#"{ "tag": "turret", "components": { "hurtbox": { "shape": { "circle": 8 } } } }"#,
+    );
+    insert_prefab(
+        &mut harness,
+        "bolt",
+        r#"{ "tag": "bolt", "components": { "hitbox": { "shape": { "circle": 8 }, "damage": 1 }, "hurtbox": { "shape": { "circle": 8 } } } }"#,
+    );
+    let hurt = || (Hurtbox::new(HitShape::circle(8.0)), Health::new(5.0));
+    let from = |harness: &mut Harness, source: Entity, id: &str| {
+        let world = harness.world_mut();
+        let prepared = world.prepare_prefab(id, [0.0, 0.0]).unwrap();
+        world
+            .resource_mut::<CommandBuffer>()
+            .spawn_prefab_from(source, prepared);
+        harness.step(1);
+    };
+    // A nest spawns a turret on itself, and the turret a bolt on both.
+    let nest = spawn_at(&mut harness, 0.0, 0.0, hurt());
+    from(&mut harness, nest, "turret");
+    let turret = tagged_one(&harness, "turret");
+    from(&mut harness, turret, "bolt");
+    let bolt = tagged_one(&harness, "bolt");
+    assert_eq!(
+        harness.world().get::<Source>(bolt),
+        Some(&Source::new(nest))
+    );
+    let third = spawn_at(&mut harness, 4.0, 0.0, hurt());
+    harness.step(1);
+    assert_eq!(
+        struck(&harness),
+        [(bolt, third)],
+        "not itself, its turret or its nest"
+    );
+
+    // A filter picks its targets by their tags.
+    let enemy = spawn_at(
+        &mut harness,
+        300.0,
+        0.0,
+        hurt().with((Tags::new(["team.enemy"]),)),
+    );
+    spawn_at(&mut harness, 304.0, 0.0, hurt());
+    let picky =
+        spawn_at(
+            &mut harness,
+            302.0,
+            0.0,
+            (Hitbox::new(HitShape::circle(8.0), 1.0)
+                .with_filter(TagFilter::new().all(["team.enemy"])),),
+        );
+    harness.step(1);
+    assert_eq!(struck(&harness), [(picky, enemy)]);
+}
+
+#[test]
+fn a_dead_or_despawning_hurtbox_takes_no_hit() {
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(1.0 / 30.0);
+    let hurt = |health: f32| (Hurtbox::new(HitShape::circle(4.0)), Health::new(health));
+    let dead = spawn_at(&mut harness, 100.0, 15.0, hurt(1.0));
+    damage(harness.world_mut(), dead, 1.0);
+    // Its lifetime ends in the frame's first step; the hit comes in its
+    // second.
+    let ending = spawn_at(
+        &mut harness,
+        100.0,
+        0.0,
+        hurt(5.0).with((Lifetime::new(0.0),)),
+    );
+    assert!(harness.world().has::<Hurtbox>(ending));
+    let live = spawn_at(&mut harness, 100.0, -15.0, hurt(5.0));
+    // 3,000 px/s: 50 px a step, reaching x 100 in the second step.
+    let sweeper = mover(
+        &mut harness,
+        Vec2::ZERO,
+        Vec2::new(3000.0, 0.0),
+        (Hitbox::new(HitShape::circle(30.0), 1.0),),
+    );
+    harness.step(1);
+    assert_eq!(struck(&harness), [(sweeper, live)]);
+    assert!(!harness.world().is_alive(ending));
+}
+
+#[test]
+fn a_dying_parents_child_hitbox_strikes_no_more_that_frame() {
+    use tungsten_core::Tag;
+    let mut harness = Harness::new(kit_app());
+    harness.set_dt(1.0 / 30.0);
+    insert_prefab(&mut harness, "spark", r#"{ "tag": "spark" }"#);
+    let parent = spawn_at(&mut harness, 0.0, 0.0, (Lifetime::new(0.0),));
+    let blade = spawn_child(
+        harness.world_mut(),
+        parent,
+        Vec2::ZERO,
+        (
+            Hitbox::new(HitShape::circle(10.0), 1.0),
+            Cues::new().on("hit", [CueAction::prefab("spark")]),
+        ),
+    );
+    let first = spawn_at(
+        &mut harness,
+        5.0,
+        0.0,
+        (Hurtbox::new(HitShape::circle(4.0)), Health::new(5.0)),
+    );
+    // 1,200 px/s: from 40 it reaches the blade in the frame's second step.
+    let late = mover(
+        &mut harness,
+        Vec2::new(40.0, 0.0),
+        Vec2::new(-1200.0, 0.0),
+        (Hurtbox::new(HitShape::circle(4.0)), Health::new(5.0)),
+    );
+    harness.step(1);
+    assert_eq!(
+        struck(&harness),
+        [(blade, first)],
+        "the first step's hit only"
+    );
+    let world = harness.world();
+    assert!(!world.is_alive(parent) && !world.is_alive(blade));
+    assert!(
+        world.query::<&Tag>().any(|tag| tag.name == "spark"),
+        "the hit's cue spawn survived the flush"
+    );
+    assert_eq!(world.get::<Health>(late).unwrap().current(), 5.0);
+}
+
+#[test]
+fn stats_damage_sets_the_damage_a_hitbox_and_a_contact_deal() {
+    let mut harness = Harness::new(kit_app());
+    let stats = |damage: f32| Stats::new().with(Stats::DAMAGE, damage);
+    let target = |harness: &mut Harness, x: f32| {
+        spawn_at(
+            harness,
+            x,
+            0.0,
+            (Hurtbox::new(HitShape::circle(4.0)), Health::new(50.0)),
+        )
+    };
+    let a = target(&mut harness, 0.0);
+    let b = target(&mut harness, 200.0);
+    spawn_at(
+        &mut harness,
+        0.0,
+        0.0,
+        (Hitbox::new(HitShape::circle(8.0), 1.0), stats(3.0)),
+    );
+    spawn_at(
+        &mut harness,
+        200.0,
+        0.0,
+        (
+            ContactDamage::new(1.0).with_shape(HitShape::circle(8.0), Vec2::ZERO),
+            stats(2.0),
+        ),
+    );
+    let sent = run_steps::<Damaged>(&mut harness, 1);
+    let amounts: Vec<(Entity, f32)> = sent
+        .iter()
+        .map(|event| (event.entity, event.amount))
+        .collect();
+    assert_eq!(amounts, [(a, 3.0), (b, 2.0)]);
+}
+
+// M65: projectiles, their walls, pierce, bounces and range.
+
+/// A bolt: a bodiless mover with a hitbox of `radius` and `projectile`.
+fn bolt(
+    harness: &mut Harness,
+    at: Vec2,
+    velocity: Vec2,
+    radius: f32,
+    projectile: Projectile,
+) -> Entity {
+    mover(
+        harness,
+        at,
+        velocity,
+        (Hitbox::new(HitShape::circle(radius), 1.0), projectile),
+    )
+}
+
+/// A target: a hurtbox circle of `radius` at `at`, with health.
+fn target_at(harness: &mut Harness, at: Vec2, radius: f32) -> Entity {
+    spawn_at(
+        harness,
+        at.x,
+        at.y,
+        (Hurtbox::new(HitShape::circle(radius)), Health::new(20.0)),
+    )
+}
+
+/// A static wall: a box of `half` at `at`.
+fn wall(harness: &mut Harness, at: Vec2, half: Vec2) -> Entity {
+    harness.world_mut().spawn_with(RigidBodyBundle::r#static(
+        Position(at),
+        Collider::aabb(half),
+    ))
+}
+
+/// Frames of the harness's dt until no `ProjectileExpired` is new for
+/// `frames`, collecting each frame's ends and hits.
+fn fly(harness: &mut Harness, frames: u32) -> (Vec<ProjectileExpired>, Vec<(Entity, Entity)>) {
+    let mut expired = Vec::new();
+    let mut hits = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        expired.extend(harness.events::<ProjectileExpired>().copied());
+        hits.extend(struck(harness));
+    }
+    (expired, hits)
+}
+
+fn close_x(point: Vec2, x: f32) -> bool {
+    (point.x - x).abs() < 1e-3
+}
+
+#[test]
+fn a_projectile_ends_at_a_static_wall_and_at_a_tile_and_spares_what_is_behind() {
+    let mut harness = Harness::new(kit_app());
+    // A static body whose face is at x 95, a target behind it.
+    wall(&mut harness, Vec2::new(100.0, 300.0), Vec2::new(5.0, 50.0));
+    let behind_body = target_at(&mut harness, Vec2::new(120.0, 300.0), 4.0);
+    let first = bolt(
+        &mut harness,
+        Vec2::new(0.0, 300.0),
+        Vec2::new(1200.0, 0.0),
+        2.0,
+        Projectile::new(),
+    );
+    // A tile column from x 160, a target behind it.
+    tile_map(&mut harness, 12, (0..12).map(|row| (10, row)));
+    let behind_tile = target_at(&mut harness, Vec2::new(200.0, 40.0), 4.0);
+    let second = bolt(
+        &mut harness,
+        Vec2::new(100.0, 40.0),
+        Vec2::new(1200.0, 0.0),
+        2.0,
+        Projectile::new(),
+    );
+    let (expired, hits) = fly(&mut harness, 12);
+    assert!(hits.is_empty(), "{hits:?}");
+    let at = |entity: Entity| {
+        expired
+            .iter()
+            .find(|e| e.entity == entity)
+            .unwrap()
+            .position
+    };
+    assert!(close_x(at(first), 93.0), "{}", at(first));
+    assert!(close_x(at(second), 158.0), "{}", at(second));
+    for target in [behind_body, behind_tile] {
+        assert_eq!(
+            harness.world().get::<Health>(target).unwrap().current(),
+            20.0
+        );
+    }
+    assert!(!harness.world().is_alive(first) && !harness.world().is_alive(second));
+}
+
+#[test]
+fn a_projectile_passes_kinematic_bodies_and_hits_their_hurtboxes() {
+    let mut harness = Harness::new(kit_app());
+    // A kinematic body far wider than its hurtbox: no wall.
+    let enemy = spawn_at(
+        &mut harness,
+        100.0,
+        0.0,
+        RigidBodyBundle::kinematic(Position::new(100.0, 0.0), Collider::aabb(Vec2::splat(20.0)))
+            .with((Hurtbox::new(HitShape::circle(4.0)), Health::new(20.0))),
+    );
+    let shot = bolt(
+        &mut harness,
+        Vec2::ZERO,
+        Vec2::new(1200.0, 0.0),
+        2.0,
+        Projectile::new(),
+    );
+    let (expired, hits) = fly(&mut harness, 10);
+    assert_eq!(hits, [(shot, enemy)]);
+    assert_eq!(expired.len(), 1);
+    assert!(
+        close_x(expired[0].position, 94.0),
+        "ended at the hurtbox: {}",
+        expired[0].position
+    );
+}
+
+#[test]
+fn a_bouncing_projectile_reflects_off_a_wall_then_ends_at_the_next() {
+    /// The x velocity each kind of mover keeps.
+    fn velocity_x(harness: &Harness, entity: Entity) -> f32 {
+        let world = harness.world();
+        world
+            .get::<LinearMotion>(entity)
+            .map(|motion| motion.velocity().x)
+            .or_else(|| {
+                world
+                    .get::<Steering>(entity)
+                    .map(|steering| steering.velocity().x)
+            })
+            .or_else(|| world.get::<Velocity>(entity).map(|velocity| velocity.0.x))
+            .unwrap()
+    }
+    /// Spawns one kind of bouncing projectile.
+    type Spawn = fn(&mut Harness) -> Entity;
+    let kinds: [(&str, Spawn); 3] = [
+        ("linear", |harness| {
+            bolt(
+                harness,
+                Vec2::new(100.0, 0.0),
+                Vec2::new(1200.0, 0.0),
+                2.0,
+                Projectile::new().with_bounces(1),
+            )
+        }),
+        ("kinematic", |harness| {
+            spawn_at(
+                harness,
+                100.0,
+                0.0,
+                RigidBodyBundle::kinematic(Position::new(100.0, 0.0), Collider::circle(2.0))
+                    .with_velocity(Velocity::new(1200.0, 0.0))
+                    .with((
+                        Hitbox::new(HitShape::circle(2.0), 1.0),
+                        Projectile::new().with_bounces(1),
+                    )),
+            )
+        }),
+        ("steering", |harness| {
+            harness.world_mut().spawn_with((
+                Transform::from_position(Vec2::new(100.0, 0.0)),
+                Position::new(100.0, 0.0),
+                tungsten_core::physics::PrevPosition(Vec2::new(100.0, 0.0)),
+                Steering::seek(Target::point(Vec2::new(1000.0, 0.0)), 1200.0)
+                    .with_acceleration(1e6),
+                Hitbox::new(HitShape::circle(2.0), 1.0),
+                Projectile::new().with_bounces(1),
+            ))
+        }),
+    ];
+    for (kind, spawn) in kinds {
+        let mut harness = Harness::new(kit_app());
+        wall(&mut harness, Vec2::new(-10.0, 0.0), Vec2::new(10.0, 100.0));
+        wall(&mut harness, Vec2::new(210.0, 0.0), Vec2::new(10.0, 100.0));
+        let shot = spawn(&mut harness);
+        let mut bounced = false;
+        let mut expired = Vec::new();
+        for _ in 0..30 {
+            harness.step(1);
+            expired.extend(harness.events::<ProjectileExpired>().copied());
+            if !expired.is_empty() {
+                break;
+            }
+            let projectile = harness.world().get::<Projectile>(shot).unwrap();
+            if !bounced && projectile.bounces() == 1 && velocity_x(&harness, shot) < 0.0 {
+                bounced = true;
+                assert!(
+                    close_x(body_at(&harness, shot), 198.0),
+                    "{kind}: placed at the contact: {}",
+                    body_at(&harness, shot)
+                );
+            }
+        }
+        assert!(bounced, "{kind}: turned at the right wall");
+        assert_eq!(expired.len(), 1, "{kind}: ended at the next");
+        let x = expired[0].position.x;
+        assert!(
+            close_x(expired[0].position, 2.0) || close_x(expired[0].position, 198.0),
+            "{kind}: {x}"
+        );
+    }
+}
+
+#[test]
+fn a_piercing_projectile_passes_its_targets_in_sweep_order_and_ends_at_the_next() {
+    let mut harness = Harness::new(kit_app());
+    // Spawned in this order, met in the other inside one step.
+    let far = target_at(&mut harness, Vec2::new(50.0, 0.0), 4.0);
+    let near = target_at(&mut harness, Vec2::new(30.0, 0.0), 4.0);
+    let last = target_at(&mut harness, Vec2::new(150.0, 0.0), 4.0);
+    let shot = bolt(
+        &mut harness,
+        Vec2::ZERO,
+        Vec2::new(3600.0, 0.0),
+        2.0,
+        Projectile::new().with_pierce(2),
+    );
+    let (expired, hits) = fly(&mut harness, 6);
+    assert_eq!(hits, [(shot, near), (shot, far), (shot, last)]);
+    assert_eq!(expired.len(), 1);
+    assert!(
+        close_x(expired[0].position, 144.0),
+        "{}",
+        expired[0].position
+    );
+}
+
+#[test]
+fn a_projectile_ends_at_its_range_on_its_path() {
+    let mut harness = Harness::new(kit_app());
+    let shot = bolt(
+        &mut harness,
+        Vec2::new(0.0, 5.0),
+        Vec2::new(1800.0, 0.0),
+        2.0,
+        Projectile::new().with_range(100.0),
+    );
+    let mut travelled = 0.0;
+    let mut expired = Vec::new();
+    for _ in 0..6 {
+        harness.step(1);
+        if let Some(projectile) = harness.world().get::<Projectile>(shot) {
+            travelled = projectile.travelled();
+        }
+        expired.extend(harness.events::<ProjectileExpired>().copied());
+    }
+    assert_eq!(expired.len(), 1);
+    assert!(
+        (expired[0].position - Vec2::new(100.0, 5.0)).length() < 1e-3,
+        "{}",
+        expired[0].position
+    );
+    assert!(
+        (travelled - 90.0).abs() < 1e-3,
+        "three full steps before its last: {travelled}"
+    );
+}
+
+#[test]
+fn an_ended_projectile_stops_sends_expired_and_despawns_after_its_cues() {
+    use tungsten_core::Tag;
+    for dt in [1.0 / 60.0, 1.0 / 30.0] {
+        let mut app = kit_app();
+        app.add_system_to(
+            Stage::PostUpdate,
+            system("record_ends", |world: &mut World| {
+                let points: Vec<Vec2> = world
+                    .query::<(&Projectile, &Position)>()
+                    .map(|(_, position)| position.0)
+                    .collect();
+                world.resource_mut::<Vec<Vec2>>().extend(points);
+            }),
+        );
+        let mut harness = Harness::new(app);
+        harness.set_dt(dt);
+        harness.world_mut().insert_resource(Vec::<Vec2>::new());
+        insert_prefab(&mut harness, "puff", r#"{ "tag": "puff" }"#);
+        // 30 px a step and a range of 15: it ends in the first step.
+        let shot = bolt(
+            &mut harness,
+            Vec2::ZERO,
+            Vec2::new(1800.0, 0.0),
+            2.0,
+            Projectile::new().with_range(15.0),
+        );
+        harness
+            .world_mut()
+            .insert(shot, Cues::new().on("expired", [CueAction::prefab("puff")]));
+        harness.step(1);
+        let world = harness.world();
+        assert!(!world.is_alive(shot), "dt {dt}: despawned after its cues");
+        let puffs: Vec<Vec2> = world
+            .query::<(&Tag, &Transform)>()
+            .filter(|(tag, _)| tag.name == "puff")
+            .map(|(_, transform)| transform.position)
+            .collect();
+        assert_eq!(
+            puffs,
+            [Vec2::new(15.0, 0.0)],
+            "dt {dt}: its expired cue at its end"
+        );
+        assert_eq!(
+            *world.resource::<Vec<Vec2>>(),
+            [Vec2::new(15.0, 0.0)],
+            "dt {dt}: still at its end after the frame's last step"
+        );
+    }
+}
+
+#[test]
+fn a_projectile_whose_lifetime_ends_as_it_hits_keeps_its_hit_cue() {
+    use tungsten_core::Tag;
+    let mut harness = Harness::new(kit_app());
+    insert_prefab(&mut harness, "spark", r#"{ "tag": "spark" }"#);
+    let victim = target_at(&mut harness, Vec2::new(80.0, 0.0), 4.0);
+    // 30 px a step: it meets the target in its third step, its last.
+    let shot = bolt(
+        &mut harness,
+        Vec2::ZERO,
+        Vec2::new(1800.0, 0.0),
+        2.0,
+        Projectile::new().with_pierce(5),
+    );
+    harness.world_mut().insert(shot, Lifetime::new(3.0 / 60.0));
+    harness
+        .world_mut()
+        .insert(shot, Cues::new().on("hit", [CueAction::prefab("spark")]));
+    let mut hits = Vec::new();
+    for _ in 0..3 {
+        harness.step(1);
+        hits.extend(struck(&harness));
+    }
+    assert_eq!(hits, [(shot, victim)]);
+    let world = harness.world();
+    assert!(!world.is_alive(shot), "its lifetime ended in that step");
+    assert!(
+        world.query::<&Tag>().any(|tag| tag.name == "spark"),
+        "the hit's spark survived the flush that took the bolt"
+    );
+}
+
+#[test]
+fn a_projectile_bouncing_back_inside_its_region_stays() {
+    let mut harness = Harness::new(kit_app());
+    // The wall's face at x 199, inside the region's edge at 200; the bolt's
+    // unclipped end lies past both.
+    wall(
+        &mut harness,
+        Vec2::new(225.0, 100.0),
+        Vec2::new(26.0, 100.0),
+    );
+    let shot = bolt(
+        &mut harness,
+        Vec2::new(190.0, 100.0),
+        Vec2::new(1800.0, 0.0),
+        2.0,
+        Projectile::new().with_bounces(1),
+    );
+    harness.world_mut().insert(
+        shot,
+        DespawnOutside::region(Vec2::ZERO, Vec2::new(200.0, 200.0)),
+    );
+    harness.step(1);
+    assert!(
+        harness.world().is_alive(shot),
+        "judged where the wall left it"
+    );
+    assert!(
+        close_x(body_at(&harness, shot), 197.0),
+        "{}",
+        body_at(&harness, shot)
+    );
+    assert_eq!(
+        harness.world().get::<Projectile>(shot).unwrap().bounces(),
+        1
+    );
+}
+
+// M65: pickups and their magnet.
+
+/// A collector: a hurtbox circle of 4 at `at`, tagged `team.player`, with
+/// a `pickup_radius` when `radius` gives one.
+fn collector(harness: &mut Harness, at: Vec2, radius: Option<f32>) -> Entity {
+    let entity = spawn_at(
+        harness,
+        at.x,
+        at.y,
+        (
+            Hurtbox::new(HitShape::circle(4.0)),
+            Tags::new(["team.player"]),
+        ),
+    );
+    if let Some(radius) = radius {
+        harness
+            .world_mut()
+            .insert(entity, Stats::new().with(Stats::PICKUP_RADIUS, radius));
+    }
+    entity
+}
+
+/// A gem: a bodiless pickup circle of 6 at `at` that players collect, with
+/// `magnet`.
+fn gem(harness: &mut Harness, at: Vec2, magnet: f32) -> Entity {
+    harness.world_mut().spawn_with((
+        Transform::from_position(at),
+        Position(at),
+        tungsten_core::physics::PrevPosition(at),
+        Pickup::new(HitShape::circle(6.0))
+            .with_filter(TagFilter::new().all(["team.player"]))
+            .with_magnet(magnet),
+    ))
+}
+
+#[test]
+fn a_pickup_goes_once_to_the_first_collector_its_filter_passes() {
+    let mut harness = Harness::new(kit_app());
+    let coin = gem(&mut harness, Vec2::ZERO, 0.0);
+    harness.world_mut().insert(
+        coin,
+        Cues::new().on("picked_up", [CueAction::counter_add("gems", 1).for_other()]),
+    );
+    let player = || {
+        (
+            Hurtbox::new(HitShape::circle(4.0)),
+            Tags::new(["team.player"]),
+        )
+    };
+    // 30 px a step: the lower index meets the coin at t 0.83, the higher
+    // at t 0.5, an enemy at once.
+    let later = mover(
+        &mut harness,
+        Vec2::new(-35.0, 0.0),
+        Vec2::new(1800.0, 0.0),
+        player(),
+    );
+    let sooner = mover(
+        &mut harness,
+        Vec2::new(25.0, 0.0),
+        Vec2::new(-1800.0, 0.0),
+        player(),
+    );
+    spawn_at(
+        &mut harness,
+        0.0,
+        5.0,
+        (
+            Hurtbox::new(HitShape::circle(4.0)),
+            Tags::new(["team.enemy"]),
+        ),
+    );
+    harness.step(1);
+    let picked: Vec<(Entity, Entity)> = harness
+        .events::<PickedUp>()
+        .map(|event| (event.entity, event.by))
+        .collect();
+    assert_eq!(picked, [(coin, sooner)]);
+    let world = harness.world();
+    assert_eq!(world.get::<Counters>(sooner).unwrap().get("gems"), 1);
+    assert!(world.get::<Counters>(later).is_none(), "once");
+    assert!(!world.is_alive(coin), "despawned after its cues");
+}
+
+#[test]
+fn a_magnet_pulls_a_pickup_to_the_nearest_collector_within_its_pickup_radius() {
+    let run = |dt: f32| {
+        let mut harness = Harness::new(kit_app());
+        harness.set_dt(dt);
+        let reach = collector(&mut harness, Vec2::ZERO, Some(150.0));
+        collector(&mut harness, Vec2::new(300.0, 0.0), None);
+        collector(&mut harness, Vec2::new(100.0, 400.0), Some(50.0));
+        let pulled = gem(&mut harness, Vec2::new(100.0, 0.0), 120.0);
+        let mut path = Vec::new();
+        for steps in [16, 30] {
+            while kit_steps(&harness) < steps {
+                harness.step(1);
+            }
+            path.push(body_at(&harness, pulled));
+        }
+        let mut picked = Vec::new();
+        for _ in 0..200 {
+            harness.step(1);
+            picked.extend(harness.events::<PickedUp>().copied());
+            if !picked.is_empty() {
+                break;
+            }
+        }
+        (path, picked, reach)
+    };
+    let (path, picked, reach) = run(1.0 / 60.0);
+    let expected = [
+        Vec2::new(100.0 - 120.0 * 16.0 / 60.0, 0.0),
+        Vec2::new(40.0, 0.0),
+    ];
+    for (got, want) in path.iter().zip(expected) {
+        assert!((*got - want).length() < 1e-3, "{got} against {want}");
+    }
+    assert_eq!(picked.len(), 1);
+    assert_eq!(picked[0].by, reach);
+    assert!(
+        picked[0].position.x >= 0.0,
+        "never past the collector: {}",
+        picked[0].position
+    );
+    for dt in [1.0 / 30.0, 1.0 / 144.0] {
+        let (other, other_picked, _) = run(dt);
+        for (got, want) in other.iter().zip(&path) {
+            assert!(
+                (*got - *want).length() < 1e-3,
+                "dt {dt}: {got} against {want}"
+            );
+        }
+        assert_eq!(other_picked.len(), 1, "dt {dt}");
+    }
+}
+
+#[test]
+fn a_magnet_leaves_a_body_or_a_child_with_one_warning() {
+    let mut harness = Harness::new(kit_app());
+    collector(&mut harness, Vec2::ZERO, Some(500.0));
+    let pickup = Pickup::new(HitShape::circle(6.0))
+        .with_filter(TagFilter::new().all(["team.player"]))
+        .with_magnet(120.0);
+    let body = spawn_at(
+        &mut harness,
+        100.0,
+        0.0,
+        RigidBodyBundle::kinematic(Position::new(100.0, 0.0), Collider::circle(2.0))
+            .with((pickup.clone(),)),
+    );
+    let parent = spawn_at(&mut harness, 0.0, 100.0, (Visibility::default(),));
+    let child = spawn_child(harness.world_mut(), parent, Vec2::ZERO, (pickup,));
+    harness.step(30);
+    assert_eq!(
+        body_at(&harness, body),
+        Vec2::new(100.0, 0.0),
+        "the body holds"
+    );
+    assert_eq!(
+        position(&harness, child),
+        Vec2::new(0.0, 100.0),
+        "the child holds"
+    );
+}
+
+#[test]
+fn a_magnet_passes_a_nearer_corpse_for_a_live_collector() {
+    let mut harness = Harness::new(kit_app());
+    let corpse = collector(&mut harness, Vec2::new(130.0, 0.0), Some(150.0));
+    harness.world_mut().insert(corpse, Health::new(1.0));
+    damage(harness.world_mut(), corpse, 1.0);
+    collector(&mut harness, Vec2::ZERO, Some(200.0));
+    let pulled = gem(&mut harness, Vec2::new(100.0, 0.0), 120.0);
+    harness.step(15);
+    let at = body_at(&harness, pulled);
+    assert!(
+        (at - Vec2::new(70.0, 0.0)).length() < 1e-3,
+        "toward the live collector, not the corpse 30 px away: {at}"
+    );
 }

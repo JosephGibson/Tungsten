@@ -1,5 +1,5 @@
 use super::*;
-use crate::HEALTH_TICK;
+use crate::{DAMAGE_RESOLVE, HEALTH_TICK, KIT_DESPAWN, SHIELD_TICK};
 use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
 use tungsten_core::Stage;
 use tungsten_core::physics::{PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin};
@@ -185,13 +185,16 @@ fn it_runs_after_the_window_count_and_before_the_step() {
             PHYSICS_PREV_SNAPSHOT,
             KIT_TICK,
             HEALTH_TICK,
+            SHIELD_TICK,
             KIT_INTENT,
             "modes",
             KIT_MOVE,
             PHYSICS_STEP,
             KIT_OVERLAP,
             KIT_RESOLVE,
-            KIT_REACT
+            DAMAGE_RESOLVE,
+            KIT_REACT,
+            KIT_DESPAWN
         ]
     );
 }

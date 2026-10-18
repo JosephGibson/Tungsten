@@ -81,6 +81,42 @@ fn each_shaped_item_draws_once() {
 }
 
 #[test]
+fn the_hit_items_draw_their_shapes_at_their_points() {
+    let (mut world, mut schedule) = rig();
+    world.resource_mut::<KitDebug>().set_enabled(true);
+    let shape = crate::HitShape::circle(4.0);
+    let at = |x: f32| Transform::from_position(Vec2::new(x, 0.0));
+    world.spawn_with((at(0.0), crate::Hurtbox::new(shape)));
+    world.spawn_with((at(10.0), crate::Hitbox::new(shape, 1.0)));
+    world.spawn_with((
+        at(20.0),
+        crate::ContactDamage::new(1.0).with_shape(shape, Vec2::ZERO),
+    ));
+    world.spawn_with((at(30.0), crate::ContactDamage::new(1.0)));
+    world.spawn_with((at(40.0), crate::Pickup::new(shape)));
+    // A contact damage without its own shape draws through its hurtbox.
+    assert_eq!(frame(&mut world, &mut schedule), 4);
+}
+
+#[test]
+fn the_step_count_follows_the_kits_despawn_in_either_order() {
+    for despawn_first in [true, false] {
+        let mut world = World::new();
+        let mut schedule = Schedule::new();
+        if despawn_first {
+            crate::LifetimePlugin.build(&mut schedule, &mut world);
+            KitDebugPlugin.build(&mut schedule, &mut world);
+        } else {
+            KitDebugPlugin.build(&mut schedule, &mut world);
+            crate::LifetimePlugin.build(&mut schedule, &mut world);
+        }
+        schedule.resolve().unwrap();
+        let order: Vec<&str> = schedule.names(Stage::FixedUpdate).collect();
+        assert_eq!(order.last(), Some(&KIT_TRACE_STEP), "{order:?}");
+    }
+}
+
+#[test]
 fn the_motion_items_draw_their_circles_goals_regions_and_rays() {
     let (mut world, mut schedule) = rig();
     world.insert_resource(tungsten_core::Time::new());

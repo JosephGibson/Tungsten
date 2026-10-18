@@ -1,0 +1,36 @@
+{
+  "tag": "adventurer",
+  "components": {
+    "top_down_mover": {
+      "speed": 64
+    },
+    "tags": [
+      "team.player"
+    ],
+    "health": {
+      "max": 10,
+      "invulnerability": 0.2
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          7,
+          7
+        ]
+      }
+    },
+    "counters": {
+      "gold": 0
+    },
+    "cooldown": {
+      "seconds": 0.5
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "swing"
+        }
+      ]
+    }
+  }
+}

@@ -1,7 +1,11 @@
 use std::path::PathBuf;
 
 use super::*;
-use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use crate::{
+    DAMAGE_RESOLVE, KIT_DESPAWN, KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE,
+    KIT_TICK, SHIELD_TICK,
+};
+use tungsten_core::EventQueue;
 use tungsten_core::Stage;
 use tungsten_core::physics::{PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin};
 use tungsten_core::{MaterialUniformDefaults, SpriteAssetId};
@@ -59,12 +63,18 @@ fn sent(world: &World) -> Vec<Damaged> {
 }
 
 #[test]
-fn the_plugin_registers_its_queue_and_both_systems() {
+fn the_plugin_registers_its_queues_and_its_systems() {
     let (world, schedule) = rig();
-    assert!(world.has_event::<Damaged>());
+    assert!(world.has_event::<Damaged>() && world.has_event::<Healed>());
+    assert!(world.has_resource::<Requests>());
     assert_eq!(schedule.stage_of(HEALTH_TICK), Some(Stage::FixedUpdate));
     assert_eq!(schedule.stage_of(HIT_FLASH_TICK), Some(Stage::PostUpdate));
-    assert_eq!(schedule.len(), 9, "the seven anchors and both systems");
+    assert_eq!(schedule.stage_of(DAMAGE_RESOLVE), Some(Stage::FixedUpdate));
+    assert_eq!(
+        schedule.len(),
+        12,
+        "the seven anchors, the health and shield ticks, the resolve, the flash and the kit's despawn"
+    );
 }
 
 #[test]
@@ -292,12 +302,15 @@ fn the_window_count_runs_first_after_the_snapshot() {
             PHYSICS_PREV_SNAPSHOT,
             KIT_TICK,
             HEALTH_TICK,
+            SHIELD_TICK,
             KIT_INTENT,
             KIT_MOVE,
             PHYSICS_STEP,
             KIT_OVERLAP,
             KIT_RESOLVE,
-            KIT_REACT
+            DAMAGE_RESOLVE,
+            KIT_REACT,
+            KIT_DESPAWN
         ]
     );
 }
@@ -320,6 +333,12 @@ fn a_zero_max_panics() {
 #[should_panic(expected = "seconds must be finite and >= 0")]
 fn a_negative_window_panics() {
     let _ = Health::new(1.0).with_invulnerability(-0.5);
+}
+
+#[test]
+#[should_panic(expected = "with_despawn_on_death: seconds must be finite and >= 0")]
+fn a_negative_death_delay_panics() {
+    let _ = Health::new(1.0).with_despawn_on_death(-0.5);
 }
 
 #[test]
@@ -349,6 +368,21 @@ fn health_is_data_within_its_bounds() {
     assert_eq!((back.current(), back.max()), (2.0, 5.0));
     assert!(!back.is_invulnerable());
 
+    assert!(
+        !value_has_policy(&serde_json::to_value(&health).unwrap()),
+        "a health without the policy saves as before"
+    );
+    let mut dying = Health::new(5.0).with_despawn_on_death(0.25);
+    assert!(dying.hurt(5.0));
+    let value = serde_json::to_value(&dying).unwrap();
+    assert_eq!(value["despawn_on_death"], 0.25);
+    assert_eq!(value["death_left"], 0.25);
+    let back: Health = serde_json::from_value(value).unwrap();
+    assert_eq!(
+        (back.despawn_on_death(), back.death_left),
+        (Some(0.25), Some(0.25))
+    );
+
     let refused = [
         serde_json::json!({ "current": 5.0, "max": -1.0 }),
         serde_json::json!({ "current": 6.0, "max": 5.0 }),
@@ -356,6 +390,8 @@ fn health_is_data_within_its_bounds() {
         serde_json::json!({ "current": 1.0, "max": 5.0, "invulnerability": -0.5 }),
         serde_json::json!({ "current": 1.0, "max": 5.0, "window_left": f64::NAN }),
         serde_json::json!({ "current": 1.0, "max": 5.0, "lives": 3 }),
+        serde_json::json!({ "current": 1.0, "max": 5.0, "despawn_on_death": -1.0 }),
+        serde_json::json!({ "current": 1.0, "max": 5.0, "death_left": -0.5 }),
     ];
     for value in refused {
         assert!(
@@ -397,4 +433,38 @@ fn a_hit_and_a_kill_go_in_the_trace() {
         ],
         "an ignored hit records nothing"
     );
+}
+
+/// Whether a saved health names the death policy.
+fn value_has_policy(value: &serde_json::Value) -> bool {
+    value.get("despawn_on_death").is_some() || value.get("death_left").is_some()
+}
+
+#[test]
+fn the_scene_form_takes_the_death_policy() {
+    let (world, _) = rig();
+    let components = world.resource::<tungsten_core::ComponentRegistry>();
+    let check = |value| components.check_in(HEALTH, &value, &world);
+    assert!(check(serde_json::json!({ "max": 5, "despawn_on_death": 0 })).is_ok());
+    assert!(check(serde_json::json!({ "max": 5, "despawn_on_death": -1 })).is_err());
+    let rows = Health::new(2.0).with_despawn_on_death(0.1).inspect_rows();
+    assert_eq!(
+        rows[2],
+        ("death", "despawns 0.10 s after a kill".to_string())
+    );
+    assert_eq!(Health::new(2.0).inspect_rows()[2].1, "kept");
+}
+
+#[test]
+fn a_hit_on_a_shield_still_starts_the_window_and_sends_damaged() {
+    let (mut world, _) = rig();
+    let target = world.spawn_with((
+        Health::new(5.0).with_invulnerability(0.5),
+        crate::Shield::new(3.0),
+    ));
+    assert_eq!(damage(&mut world, target, 2.0), Hit::Absorbed);
+    assert!(world.get::<Health>(target).unwrap().is_invulnerable());
+    assert_eq!(sent(&world), [Damaged::new(target, 2.0, false)]);
+    let queue = world.resource::<EventQueue<Damaged>>();
+    assert_eq!(queue.iter().count(), 1);
 }

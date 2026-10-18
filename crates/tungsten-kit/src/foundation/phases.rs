@@ -38,16 +38,20 @@ pub const KIT_PRESENT: &str = "kit_present";
 /// reads its platform's velocity; the follower and the orbit after the
 /// movers their target moves by; the knockback after the drivers it adds
 /// to, and the speed limit after everything it caps; the aim after the
-/// input; the character animator after the facing and the animation tick.
+/// input; the character animator after the facing and the animation tick;
+/// the pickups' magnet after the oscillator it adds to; the hit items after
+/// the hit grid and before the despawn outside, the wrap and the stay in
+/// view, which judge or rewrite the step's motion; the kit's end-of-step
+/// despawn after the spawns.
 ///
 /// | Phase | Stage | What runs there |
 /// | --- | --- | --- |
-/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows, stats, cooldowns |
+/// | `Tick` | `FixedUpdate`, after the history snapshot | timers, lifetimes, health windows and death delays, shields, stats, cooldowns |
 /// | `Intent` | `FixedUpdate` | input, aim, state machines |
-/// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower, linear motion, the oscillator, steering, follow, orbit, knockback, the speed limit |
-/// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, despawn outside, the speed limit's settle, wrap, stay in view |
-/// | `Resolve` | `FixedUpdate` | damage and effects (later milestones) |
-/// | `React` | `FixedUpdate`, last | spawners, child spawns, cues, the trace's step count |
+/// | `Move` | `FixedUpdate`, before `physics_step` | the controllers, the path follower, linear motion, the oscillator, steering, follow, orbit, knockback, the pickups' magnet, the speed limit |
+/// | `Overlap` | `FixedUpdate`, after `physics_step` | zones, the speed limit's settle, the hit grid, hitboxes, contact damage, projectiles, pickups, despawn outside, wrap, stay in view |
+/// | `Resolve` | `FixedUpdate` | the damage pipeline's queued requests and heals |
+/// | `React` | `FixedUpdate`, last | spawners, child spawns, cues, the kit's end-of-step despawn, the trace's step count |
 /// | `Present` | `PostUpdate`, after the sync and the late propagation, before the camera | animation, the hit flash, the camera target, labels, sounds, the oscillator's rotation and scale, facing, the character animator, depth sort |
 ///
 /// Stats sit in `Tick`, not `Resolve`, so an entity spawned at a flush

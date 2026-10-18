@@ -1,0 +1,641 @@
+//! Contact damage: an entity that hurts what its shape touches, at once
+//! and again each interval while it touches: a hazard, a spiked enemy, an
+//! aura.
+
+use std::collections::HashSet;
+
+use glam::Vec2;
+use serde::{Deserialize, Serialize};
+use tungsten_core::{
+    Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, With, World, system,
+};
+
+use crate::TIME_EPSILON;
+use crate::foundation::describe::{
+    Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, TOP_DOWN, describe,
+    round_trip,
+};
+use crate::foundation::inspect::{point, register_rows};
+use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
+use crate::foundation::{non_negative, optional_vec2, positive};
+use crate::lifecycle::ended::Despawning;
+use crate::overlap::grid::{
+    Blow, HitGrid, ensure_emitter, first_contact, spares, strike, sweep_of,
+};
+use crate::overlap::hit::{
+    HitShape, Hurtbox, Struck, TagNames, after_grid, check_names, checked_offset,
+    describe_hit_shape, ensure_grid, hit_fields, optional_offset,
+};
+
+/// [`ContactDamagePlugin`]'s system, in the overlap phase.
+pub const CONTACT_DAMAGE: &str = "contact_damage";
+
+/// The scene component the plugin registers.
+const CONTACT_DAMAGE_COMPONENT: &str = "contact_damage";
+
+/// The default seconds between two hits on one target.
+const DEFAULT_INTERVAL: f32 = 0.5;
+
+/// Hurts the hurtboxes its shape touches, at once and then again each
+/// interval of game time while they touch: a hazard, a spiked enemy, an
+/// aura. [`ContactDamagePlugin`]'s system tests its shape, its own when it
+/// has one, else its entity's [`Hurtbox`](crate::Hurtbox)'s, against every
+/// other hurtbox its [`TagFilter`] passes, over the step's motion of both.
+/// A target met is hit at once, then each `interval` of the game seconds
+/// the item has stepped while it is still met; a target met by none of its
+/// steps for a whole interval starts over. Each hit sends
+/// [`Struck`](crate::Struck) and, when its damage is above 0, queues a
+/// [`DamageRequest`](crate::DamageRequest) as a hitbox's does. An entity
+/// with neither shape hits nothing, with one warning. Composing beats
+/// options: an aura is contact damage with its own shape.
+///
+/// Scene name `contact_damage`:
+/// `{ "damage": 1, "interval": 0.5, "filter": { "all": ["team.player"] }, "knockback": 420, "shape": { "circle": 28 } }`,
+/// `interval` 0.5, `tags` none, `filter` everything and `knockback` 0 by
+/// default; without `shape` it takes the hurtbox's shape and offset, and
+/// an `offset` comes only with a `shape`. It is data, without the times it
+/// keeps per target: a loaded one starts over.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_kit::{ContactDamage, HitShape, TagFilter};
+///
+/// let aura = ContactDamage::new(1.0)
+///     .with_interval(0.25)
+///     .with_shape(HitShape::circle(28.0), Vec2::ZERO)
+///     .with_filter(TagFilter::new().all(["team.enemy"]));
+/// assert_eq!((aura.damage(), aura.interval()), (1.0, 0.25));
+/// assert_eq!(aura.shape(), Some(HitShape::circle(28.0)));
+/// let spikes: ContactDamage = serde_json::from_str(r#"{ "damage": 2 }"#).unwrap();
+/// assert_eq!((spikes.interval(), spikes.shape()), (0.5, None), "the hurtbox's shape");
+/// ```
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ContactDamageFields", into = "ContactDamageFields")]
+pub struct ContactDamage {
+    damage: f32,
+    interval: f32,
+    /// Its own shape and offset: an aura.
+    own: Option<(HitShape, Vec2)>,
+    tags: Tags,
+    filter: TagFilter,
+    knockback: f32,
+    /// Game seconds the item has stepped: its targets' clock.
+    clock: f64,
+    /// Each target it timed, by index.
+    timed: Vec<Timed>,
+}
+
+/// A target contact damage has hit: its last hit and the last step that met
+/// it, on the item's clock.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Timed {
+    target: Entity,
+    hit: f64,
+    met: f64,
+}
+
+/// A contact damage as a save writes it, before its values are checked.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContactDamageFields {
+    damage: f32,
+    #[serde(default = "default_interval")]
+    interval: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shape: Option<HitShape>,
+    #[serde(
+        default,
+        with = "optional_offset",
+        skip_serializing_if = "Option::is_none"
+    )]
+    offset: Option<Vec2>,
+    #[serde(default)]
+    tags: Tags,
+    #[serde(default)]
+    filter: TagFilter,
+    #[serde(default)]
+    knockback: f32,
+}
+
+fn default_interval() -> f32 {
+    DEFAULT_INTERVAL
+}
+
+/// The pairing rule: an offset comes only with a shape.
+fn own_shape(
+    shape: Option<HitShape>,
+    offset: Option<Vec2>,
+) -> Result<Option<(HitShape, Vec2)>, String> {
+    match (shape, offset) {
+        (Some(shape), offset) => Ok(Some((shape, offset.unwrap_or(Vec2::ZERO)))),
+        (None, None) => Ok(None),
+        (None, Some(_)) => Err("an `offset` comes only with its own `shape`".to_string()),
+    }
+}
+
+impl TryFrom<ContactDamageFields> for ContactDamage {
+    type Error = String;
+
+    fn try_from(fields: ContactDamageFields) -> Result<Self, Self::Error> {
+        for (field, value) in [("damage", fields.damage), ("knockback", fields.knockback)] {
+            if !(value.is_finite() && value >= 0.0) {
+                return Err(format!("{field}: must be finite and >= 0 (got {value})"));
+            }
+        }
+        if !(fields.interval.is_finite() && fields.interval > 0.0) {
+            return Err(format!(
+                "interval: must be finite and > 0 (got {})",
+                fields.interval
+            ));
+        }
+        Ok(Self {
+            damage: fields.damage,
+            interval: fields.interval,
+            own: own_shape(fields.shape, fields.offset)?,
+            tags: fields.tags,
+            filter: fields.filter,
+            knockback: fields.knockback,
+            clock: 0.0,
+            timed: Vec::new(),
+        })
+    }
+}
+
+impl From<ContactDamage> for ContactDamageFields {
+    fn from(contact: ContactDamage) -> Self {
+        Self {
+            damage: contact.damage,
+            interval: contact.interval,
+            shape: contact.own.map(|(shape, _)| shape),
+            offset: contact.own.map(|(_, offset)| offset),
+            tags: contact.tags,
+            filter: contact.filter,
+            knockback: contact.knockback,
+        }
+    }
+}
+
+impl ContactDamage {
+    /// Contact damage of `damage` every 0.5 s, through its entity's
+    /// hurtbox's shape and offset, of no damage tag, hitting everything and
+    /// pushing nothing.
+    ///
+    /// # Panics
+    ///
+    /// When `damage` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn new(damage: f32) -> Self {
+        assert!(
+            damage.is_finite() && damage >= 0.0,
+            "ContactDamage::new: damage must be finite and >= 0 (got {damage})"
+        );
+        Self {
+            damage,
+            interval: DEFAULT_INTERVAL,
+            own: None,
+            tags: Tags::default(),
+            filter: TagFilter::new(),
+            knockback: 0.0,
+            clock: 0.0,
+            timed: Vec::new(),
+        }
+    }
+
+    /// The contact damage, hitting a target it still touches again each
+    /// `seconds` of game time.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_interval(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds > 0.0,
+            "ContactDamage::with_interval: seconds must be finite and > 0 (got {seconds})"
+        );
+        self.interval = seconds;
+        self
+    }
+
+    /// The contact damage, through its own `shape` at `offset` world pixels
+    /// from its entity's point instead of the hurtbox's: an aura.
+    ///
+    /// # Panics
+    ///
+    /// When `offset` is not finite and within ±16384 on each axis.
+    #[must_use]
+    #[track_caller]
+    pub fn with_shape(mut self, shape: HitShape, offset: Vec2) -> Self {
+        self.own = Some((shape, checked_offset("ContactDamage::with_shape", offset)));
+        self
+    }
+
+    /// The contact damage, of the damage kinds `tags`.
+    #[must_use]
+    pub fn with_tags(mut self, tags: Tags) -> Self {
+        self.tags = tags;
+        self
+    }
+
+    /// The contact damage, hitting only the hurtboxes whose entity's
+    /// [`Tags`] pass `filter`.
+    #[must_use]
+    pub fn with_filter(mut self, filter: TagFilter) -> Self {
+        self.filter = filter;
+        self
+    }
+
+    /// The contact damage, pushing each target it hurts away from it at
+    /// `speed` world pixels per second.
+    ///
+    /// # Panics
+    ///
+    /// When `speed` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_knockback(mut self, speed: f32) -> Self {
+        assert!(
+            speed.is_finite() && speed >= 0.0,
+            "ContactDamage::with_knockback: speed must be finite and >= 0 (got {speed})"
+        );
+        self.knockback = speed;
+        self
+    }
+
+    /// Each hit's damage, which a `damage` stat writes.
+    #[must_use]
+    pub fn damage(&self) -> f32 {
+        self.damage
+    }
+
+    /// The game seconds between two hits on a target it still touches.
+    #[must_use]
+    pub fn interval(&self) -> f32 {
+        self.interval
+    }
+
+    /// Its own shape, when it has one; else the hurtbox's applies.
+    #[must_use]
+    pub fn shape(&self) -> Option<HitShape> {
+        self.own.map(|(shape, _)| shape)
+    }
+
+    /// Its own shape's offset from its entity's point; `[0, 0]` without
+    /// its own shape, whose hurtbox's offset applies.
+    #[must_use]
+    pub fn offset(&self) -> Vec2 {
+        self.own.map_or(Vec2::ZERO, |(_, offset)| offset)
+    }
+
+    /// Its damage tags.
+    #[must_use]
+    pub fn tags(&self) -> &Tags {
+        &self.tags
+    }
+
+    /// What it hits.
+    #[must_use]
+    pub fn filter(&self) -> &TagFilter {
+        &self.filter
+    }
+
+    /// The push it gives, in world pixels per second.
+    #[must_use]
+    pub fn knockback(&self) -> f32 {
+        self.knockback
+    }
+
+    /// Sets the damage a `damage` stat gives; one that is not finite and at
+    /// least 0 is ignored.
+    pub(crate) fn set_damage(&mut self, damage: f32) {
+        if damage.is_finite() && damage >= 0.0 {
+            self.damage = damage;
+        }
+    }
+}
+
+/// `components.contact_damage` as a scene writes it, before the pairing
+/// rule.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContactDamageScene {
+    #[serde(deserialize_with = "non_negative")]
+    damage: f32,
+    #[serde(default = "default_interval", deserialize_with = "positive")]
+    interval: f32,
+    #[serde(default)]
+    shape: Option<HitShape>,
+    #[serde(default, with = "optional_offset")]
+    offset: Option<Vec2>,
+    #[serde(default)]
+    tags: TagNames,
+    #[serde(default)]
+    filter: TagFilterDef,
+    #[serde(default, deserialize_with = "non_negative")]
+    knockback: f32,
+}
+
+/// `components.contact_damage`, checked.
+#[derive(Serialize, Deserialize)]
+#[serde(try_from = "ContactDamageScene")]
+struct ContactDamageDef {
+    damage: f32,
+    interval: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    shape: Option<HitShape>,
+    #[serde(with = "optional_vec2", skip_serializing_if = "Option::is_none")]
+    offset: Option<Vec2>,
+    tags: TagNames,
+    filter: TagFilterDef,
+    knockback: f32,
+}
+
+impl TryFrom<ContactDamageScene> for ContactDamageDef {
+    type Error = String;
+
+    fn try_from(scene: ContactDamageScene) -> Result<Self, Self::Error> {
+        own_shape(scene.shape, scene.offset)?;
+        Ok(Self {
+            damage: scene.damage,
+            interval: scene.interval,
+            shape: scene.shape,
+            offset: scene.offset,
+            tags: scene.tags,
+            filter: scene.filter,
+            knockback: scene.knockback,
+        })
+    }
+}
+
+impl From<ContactDamageDef> for ContactDamage {
+    fn from(def: ContactDamageDef) -> Self {
+        let mut contact = ContactDamage::new(def.damage)
+            .with_interval(def.interval)
+            .with_tags(Tags::new(def.tags.0))
+            .with_filter(def.filter.into())
+            .with_knockback(def.knockback);
+        if let Some(shape) = def.shape {
+            contact = contact.with_shape(shape, def.offset.unwrap_or(Vec2::ZERO));
+        }
+        contact
+    }
+}
+
+/// Registers `EventQueue<Struck>`, the `contact_damage` scene component
+/// and, in the overlap phase, the hit grid when the schedule lacks it and
+/// then [`CONTACT_DAMAGE`], before `despawn_outside`, `wrap` and
+/// `stay_in_view` when each is registered.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{Plugin, Schedule, World};
+/// use tungsten_kit::{CONTACT_DAMAGE, ContactDamagePlugin, HIT_GRID};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// ContactDamagePlugin.build(&mut schedule, &mut world);
+/// schedule.resolve().unwrap();
+/// assert!(schedule.contains(HIT_GRID) && schedule.contains(CONTACT_DAMAGE));
+/// ```
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ContactDamagePlugin;
+
+impl Plugin for ContactDamagePlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        ensure_phases(schedule);
+        register_rows::<ContactDamage>(world, "ContactDamage");
+        describe_hit_shape(world);
+        describe(
+            world,
+            hit_fields(
+                ComponentDescription::new(
+                    CONTACT_DAMAGE_COMPONENT,
+                    "Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.",
+                )
+                .field(FieldDescription::new(
+                    "damage",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run",
+                ))
+                .field(
+                    FieldDescription::new(
+                        "interval",
+                        FieldType::F32 {
+                            min: Bound::Exclusive(0.0),
+                            max: Bound::Open,
+                        },
+                        "game seconds between two hits on a target it still touches",
+                    )
+                    .default("0.5"),
+                )
+                .field(
+                    FieldDescription::new(
+                        "shape",
+                        FieldType::Shape("hit_shape"),
+                        "its own circle or box, an aura; the entity's hurtbox's shape and offset when left out",
+                    )
+                    .default("null"),
+                )
+                .field(
+                    FieldDescription::new(
+                        "offset",
+                        FieldType::Vec2,
+                        "its own shape's offset from the entity's point, with `shape` only; [0, 0] when left out",
+                    )
+                    .default("null"),
+                ),
+            )
+            .event("Struck")
+            .genre(TOP_DOWN)
+            .genre(PLATFORMER)
+            .genre(GRID)
+            .sample(r#"{ "damage": 1 }"#)
+            .roundtrip(round_trip::<ContactDamageDef>),
+        );
+        world.register_event::<Struck>();
+        world.register_component_with_assets(
+            CONTACT_DAMAGE_COMPONENT,
+            |def: &ContactDamageDef, world: &World| {
+                check_names(world, Some(&def.tags), &def.filter)
+            },
+            |def: ContactDamageDef, _: &SpawnContext<'_>| (ContactDamage::from(def),),
+        );
+        ensure_emitter(world);
+        ensure_grid(schedule);
+        let mut runner = ContactRunner::default();
+        schedule.add(
+            Phase::Overlap.stage(),
+            after_grid(system(CONTACT_DAMAGE, move |world: &mut World| {
+                runner.run(world);
+            })),
+        );
+    }
+}
+
+/// [`CONTACT_DAMAGE`]'s state between steps: the step's items, a query's
+/// candidates and an item's targets met, kept so a step allocates nothing
+/// once warm, and the items warned about.
+#[derive(Default)]
+struct ContactRunner {
+    hitters: Vec<Entity>,
+    candidates: Vec<u32>,
+    /// (t, grid entry), in sweep order once sorted.
+    met: Vec<(f32, u32)>,
+    warned: HashSet<Entity>,
+}
+
+impl ContactRunner {
+    /// Runs every contact damage, in entity order, against the step's grid.
+    fn run(&mut self, world: &mut World) {
+        let dt = f64::from(world.get_resource::<Time>().map_or(0.0, Time::delta));
+        let Some(grid) = world.remove_resource::<HitGrid>() else {
+            return;
+        };
+        self.hitters.clear();
+        self.hitters
+            .extend(world.query_filtered::<Entity, With<ContactDamage>>());
+        self.hitters.sort_by_key(|entity| entity.id());
+        for i in 0..self.hitters.len() {
+            let hitter = self.hitters[i];
+            if world.has::<Despawning>(hitter) {
+                continue;
+            }
+            world.get_mut::<ContactDamage>(hitter).unwrap().clock += dt;
+            self.touch(world, &grid, hitter);
+        }
+        world.insert_resource(grid);
+    }
+
+    /// Meets `hitter`'s shape against the grid, hits each target due, and
+    /// forgets each it has not met for a whole interval.
+    fn touch(&mut self, world: &mut World, grid: &HitGrid, hitter: Entity) {
+        self.met.clear();
+        let contact = world.get::<ContactDamage>(hitter).unwrap();
+        let shape = contact.own.or_else(|| {
+            world
+                .get::<Hurtbox>(hitter)
+                .map(|hurtbox| (hurtbox.shape(), hurtbox.offset()))
+        });
+        let Some((shape, offset)) = shape else {
+            if self.warned.insert(hitter) {
+                log::warn!(
+                    "ContactDamage on {hitter:?}: no shape of its own and no Hurtbox; it hits nothing"
+                );
+            }
+            return;
+        };
+        let Some(sweep) = sweep_of(world, hitter, shape.shape(), offset) else {
+            return;
+        };
+        let (min, max) = sweep.bounds();
+        grid.candidates(min, max, &mut self.candidates);
+        for &index in &self.candidates {
+            let entry = &grid.entries()[index as usize];
+            if spares(world, hitter, entry.entity)
+                || !contact
+                    .filter
+                    .matches(world.get::<crate::Tags>(entry.entity))
+            {
+                continue;
+            }
+            if let Some(t) = first_contact(&sweep, &entry.sweep) {
+                self.met.push((t, index));
+            }
+        }
+        self.met
+            .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let (damage, tags, knockback) = (contact.damage, contact.tags.clone(), contact.knockback);
+        for &(t, index) in &self.met {
+            let entry = grid.entries()[index as usize];
+            let contact = world.get_mut::<ContactDamage>(hitter).unwrap();
+            if !contact.due(entry.entity) {
+                continue;
+            }
+            strike(
+                world,
+                &Blow {
+                    hitter,
+                    target: entry.entity,
+                    hitter_at: sweep.at(t),
+                    target_at: entry.sweep.at(t),
+                    relative: (sweep.end - sweep.start) - (entry.sweep.end - entry.sweep.start),
+                    damage,
+                    tags: &tags,
+                    knockback,
+                },
+            );
+        }
+        world.get_mut::<ContactDamage>(hitter).unwrap().forget();
+    }
+}
+
+impl ContactDamage {
+    /// Records that `target` met the item this step; whether it is due a
+    /// hit: new, or an interval past its last hit, which it then records.
+    fn due(&mut self, target: Entity) -> bool {
+        let clock = self.clock;
+        let interval = f64::from(self.interval);
+        let at = self
+            .timed
+            .partition_point(|timed| timed.target.id() < target.id());
+        let known = self.timed[at..]
+            .iter_mut()
+            .take_while(|timed| timed.target.id() == target.id())
+            .find(|timed| timed.target == target);
+        if let Some(timed) = known {
+            timed.met = clock;
+            let due = clock - timed.hit + f64::from(TIME_EPSILON) >= interval;
+            if due {
+                timed.hit = clock;
+            }
+            due
+        } else {
+            self.timed.insert(
+                at,
+                Timed {
+                    target,
+                    hit: clock,
+                    met: clock,
+                },
+            );
+            true
+        }
+    }
+
+    /// Drops each target no step has met for a whole interval.
+    fn forget(&mut self) {
+        let (clock, interval) = (self.clock, f64::from(self.interval));
+        self.timed
+            .retain(|timed| clock - timed.met + f64::from(TIME_EPSILON) < interval);
+    }
+}
+
+impl Inspectable for ContactDamage {
+    fn inspect_rows(&self) -> Vec<(&'static str, String)> {
+        let shape = match self.own {
+            Some((shape, offset)) => format!("{} at {}", shape.summary(), point(offset)),
+            None => "the hurtbox's".to_string(),
+        };
+        vec![
+            ("contact", shape),
+            (
+                "damage",
+                format!("{} every {:.2} s", self.damage, self.interval),
+            ),
+            ("timed", format!("{} targets", self.timed.len())),
+        ]
+    }
+}
+
+#[cfg(test)]
+#[path = "../tests/contact.rs"]
+mod tests;

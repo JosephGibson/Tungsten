@@ -1,0 +1,26 @@
+{
+  "tag": "spiker",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          10,
+          10
+        ]
+      }
+    },
+    "contact_damage": {
+      "damage": 1,
+      "interval": 0.5,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "knockback": 400
+    }
+  }
+}

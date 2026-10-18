@@ -26,12 +26,32 @@
     },
     "warden": {
       "path": "prefabs/warden.json"
+    },
+    "adventurer": {
+      "path": "prefabs/adventurer.json"
+    },
+    "swing": {
+      "path": "prefabs/swing.json"
+    },
+    "chest": {
+      "path": "prefabs/chest.json"
+    },
+    "gold": {
+      "path": "prefabs/gold.json"
+    },
+    "spikes": {
+      "path": "prefabs/spikes.json"
     }
   },
   "data": {
     "tags": {
       "game": {
         "path": "data/tags.json"
+      }
+    },
+    "loot_tables": {
+      "chest_loot": {
+        "path": "data/loot_tables/chest_loot.json"
       }
     }
   }

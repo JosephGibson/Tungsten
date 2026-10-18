@@ -27,6 +27,13 @@ pub const HAZARD_PREFAB: &str = "hazard";
 /// Where the hazard's patrol starts: 160 px below the player's start, so
 /// its line stays clear of the player standing or walking across the view.
 pub const HAZARD_START: [f32; 2] = [624.0, 504.0];
+/// The gem's prefab, by its manifest ID: the player's sprite tinted gold,
+/// bobbing, which drifts to the player once in reach of its
+/// `pickup_radius` and counts `gems` on the game's `Counters` when taken.
+pub const GEM_PREFAB: &str = "gem";
+/// Where gameplay's three gems start: beyond the player's reach of 96 px,
+/// left, right and above, so the player walks toward each.
+pub const GEM_STARTS: [[f32; 2]; 3] = [[424.0, 344.0], [824.0, 344.0], [624.0, 184.0]];
 /// The save slot gameplay continues from and pause writes.
 pub const AUTOSAVE: &str = "autosave";
 
@@ -64,9 +71,10 @@ impl GameState for TitleState {
     }
 }
 
-/// Gameplay: the player spawns with it, where the autosave left it, and the
-/// hazard at its patrol's start, and both leave with it; `state_pause`
-/// pauses, and a player whose health runs out starts gameplay over.
+/// Gameplay: the player spawns with it, where the autosave left it, the
+/// hazard at its patrol's start and the gems at theirs, and all leave with
+/// it; `state_pause` pauses, and a player whose health runs out starts
+/// gameplay over.
 pub struct GameplayState;
 
 impl GameState for GameplayState {
@@ -78,6 +86,9 @@ impl GameState for GameplayState {
         let start = load_autosave(ctx.world).map_or(PLAYER_START, |save| save.player);
         spawn(ctx.world, PLAYER_PREFAB, start);
         spawn(ctx.world, HAZARD_PREFAB, HAZARD_START);
+        for at in GEM_STARTS {
+            spawn(ctx.world, GEM_PREFAB, at);
+        }
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
