@@ -9,10 +9,12 @@ use std::fmt::Write as _;
 
 use glam::Vec2;
 use tungsten_core::physics::Position;
-use tungsten_core::{AnimationState, Entity, Sprite, Transform, World};
+use tungsten_core::{AnimationState, Entity, Inspectable, Sprite, Transform, World};
 
 use super::{DTS, GENRES, recipe, spawn, tagged};
-use crate::kit::{Counters, Flags, Health, KitPlugins, Shield, Stats, Tags, damage, knock_back};
+use crate::kit::{
+    Counters, Flags, Health, KitPlugins, Modifier, Resist, Shield, Stats, Tags, damage, knock_back,
+};
 use crate::testing::Harness;
 
 /// The hash of the four recipes, pinned from the first run; moved by M63,
@@ -21,8 +23,10 @@ use crate::testing::Harness;
 /// motion and facing prefabs and pushes, and whose rows add the rotation,
 /// the depth and the clip, then by M65, whose script spawns the overlap
 /// and damage prefabs, whose bolts, contacts, drops and pickups land, and
-/// whose rows add the shield.
-const KIT_RECIPES_HASH: u64 = 0x5a73_d4a5_51f4_0bfa;
+/// whose rows add the shield, then by M66, whose script spawns a golem
+/// under a spellblade and a mainframe under a hacker's typed payloads and
+/// adds resistance modifiers, and whose rows add each resistance.
+const KIT_RECIPES_HASH: u64 = 0x2288_2ee7_97d4_aba9;
 
 const FRAMES: u32 = 300;
 
@@ -36,7 +40,7 @@ fn fnv1a(hash: &mut u64, bytes: &[u8]) {
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// An entity's index, point, health, then its tags, counters, flags, stat
-/// values, rotation, depth, clip and shield as text.
+/// values, rotation, depth, clip, shield and resistances as text.
 type Row = (u32, [f32; 2], Option<(f32, f32)>, String);
 
 /// `counters` as text: `name=value` by name.
@@ -53,8 +57,9 @@ fn flags_text(flags: &Flags) -> String {
 }
 
 /// Every entity's index, point, health, tags, counters, flags, stat values,
-/// rotation, sprite depth, animation and shield, in entity order, then the
-/// game's counters and flags.
+/// rotation, sprite depth, animation, shield and resistances (each factor
+/// with its base and modifiers, as the inspector prints them), in entity
+/// order, then the game's counters and flags.
 fn hash_world(hash: &mut u64, world: &World) {
     let mut rows: Vec<Row> = world
         .query::<(
@@ -98,6 +103,11 @@ fn hash_world(hash: &mut u64, world: &World) {
                 }
                 if let Some(shield) = world.get::<Shield>(entity) {
                     let _ = write!(text, "|sh:{:08x}", shield.current().to_bits());
+                }
+                if let Some(resist) = world.get::<Resist>(entity) {
+                    for (_, factors) in resist.inspect_rows() {
+                        let _ = write!(text, "|re:{factors}");
+                    }
                 }
                 (entity.id(), point, health, text)
             },
@@ -222,6 +232,35 @@ fn combat_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
     }
 }
 
+/// The genre's M66 prefabs, spawned after its others, clear of them: a
+/// spellblade's typed hit on a golem; a hacker below a mainframe, in its
+/// payloads' range.
+fn typed_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
+    match genre {
+        "top_down" => &[("golem", [600.0, 1400.0]), ("spellblade", [600.0, 1400.0])],
+        "shmup" => &[("mainframe", [2600.0, 700.0]), ("hacker", [2600.0, 1000.0])],
+        "platformer" | "grid" => &[],
+        other => panic!("no typed prefabs for {other}"),
+    }
+}
+
+/// The script's resistance modifiers: at `frame`, a modifier on `factor`
+/// from `source` for each entity tagged `tag`.
+fn curses(genre: &str) -> &'static [(u32, &'static str, &'static str, &'static str, Modifier)] {
+    match genre {
+        "top_down" => &[(100, "golem", "physical", "curse", Modifier::Mul(1.5))],
+        "shmup" => &[(
+            100,
+            "mainframe",
+            "digital",
+            "overclock",
+            Modifier::Add(0.25),
+        )],
+        "platformer" | "grid" => &[],
+        other => panic!("no curses for {other}"),
+    }
+}
+
 /// The genre's fixed script: its prefabs spawned at fixed points, the move
 /// actions and the jump pressed and released at fixed frames.
 fn script(genre: &str, harness: &mut Harness) {
@@ -266,7 +305,11 @@ fn script(genre: &str, harness: &mut Harness) {
         }
         other => panic!("no script for {other}"),
     }
-    for &(id, at) in motion_prefabs(genre).iter().chain(combat_prefabs(genre)) {
+    for &(id, at) in motion_prefabs(genre)
+        .iter()
+        .chain(combat_prefabs(genre))
+        .chain(typed_prefabs(genre))
+    {
         spawn(harness, id, at);
     }
     for frame in 0..FRAMES {
@@ -295,6 +338,14 @@ fn script(genre: &str, harness: &mut Harness) {
                 }
             }
         }
+        for &(at, tag, factor, source, modifier) in curses(genre) {
+            if at == frame {
+                for entity in tagged(harness, tag) {
+                    let resist = harness.world_mut().get_mut::<Resist>(entity).unwrap();
+                    resist.add_modifier(factor, source, modifier);
+                }
+            }
+        }
         harness.step(1);
     }
 }
@@ -302,7 +353,7 @@ fn script(genre: &str, harness: &mut Harness) {
 /// Whether the script's cues ran: the runner took the key, and the
 /// game's counters counted the kills; and M65's items landed: the coin, the
 /// orb and the gold collected, the ranger's kill counted on it, the lasers'
-/// kill scored.
+/// kill scored; and M66's typed parts met their kind filters.
 fn reacted(genre: &str, harness: &Harness) -> bool {
     let game = harness.world().resource::<Counters>();
     let counted = |tag: &str, name: &str| -> i64 {
@@ -325,9 +376,10 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
             game.get("kills") >= 1
                 && counted("ranger", "kills") == 1
                 && counted("ranger", "xp") == 1
+                && game.get("elemental_hits") >= 1
         }
         // The two wings the script kills, and the carrier the lasers kill.
-        "shmup" => game.get("score") == 3,
+        "shmup" => game.get("score") == 3 && game.get("virus_hits") >= 1,
         "grid" => game.get("slugs") == 1 && counted("adventurer", "gold") == 1,
         other => panic!("no reaction for {other}"),
     }

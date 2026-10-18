@@ -1,5 +1,12 @@
 [
   "team.player",
   "team.enemy",
-  "damage.laser"
+  "damage.laser",
+  "digital.virus",
+  "digital.overload",
+  "digital.corruption",
+  "digital.exploit",
+  "biological.toxin",
+  "biological.pathogen",
+  "biological.acid"
 ]

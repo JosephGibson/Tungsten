@@ -1,0 +1,29 @@
+{
+  "tag": "spellblade",
+  "components": {
+    "hitbox": {
+      "shape": {
+        "circle": 12
+      },
+      "damage": {
+        "physical.slash": 8,
+        "elemental.fire": 4
+      },
+      "pen": {
+        "elemental.fire": 0.25
+      },
+      "convert": [
+        {
+          "from": "physical.slash",
+          "to": "elemental.cold",
+          "pct": 0.5
+        }
+      ],
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    }
+  }
+}

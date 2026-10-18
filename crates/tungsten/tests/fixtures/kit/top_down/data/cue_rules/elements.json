@@ -1,0 +1,19 @@
+[
+  {
+    "on": "damaged_part",
+    "kind": {
+      "any": [
+        "elemental"
+      ]
+    },
+    "do": [
+      {
+        "counter": {
+          "name": "elemental_hits",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  }
+]

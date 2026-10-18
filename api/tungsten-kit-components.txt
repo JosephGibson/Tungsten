@@ -26,16 +26,22 @@ component character_animator: Picks the entity's animation clip each frame: idle
   genres: platformer, top_down
   sample: { "idle": "hero_idle" }
 component contact_damage: Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.
-  field damage: f32 (>= 0) — each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — each hit's damage, which a `damage` stat writes; a map of declared damage types to amounts gives its typed parts, in name order, which the stat scales; 0 is a trigger whose `hit` cues run
   field interval: f32 (> 0) = 0.5 — game seconds between two hits on a target it still touches
   field shape: shape hit_shape = null — its own circle or box, an aura; the entity's hurtbox's shape and offset when left out
   field offset: [x, y] = null — its own shape's offset from the entity's point, with `shape` only; [0, 0] when left out
-  field tags: list of tag = [] — the damage's kinds, such as `damage.fire`, which `resist` reads; the load checks them
+  field tags: list of tag = [] — the damage's types, such as `damage.fire`, which `resist` reads; the load checks them; refused beside a `damage` map
+  field pen: damage type → points in [0, 1] = {} — the hit's own penetration, before its source's `penetration`; each a declared damage type or an ancestor of one
+  field convert: list of shape conversion_rule = [] — the hit's own conversion rules, before its source's `conversion`
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
   events: Struck
   genres: top_down, platformer, grid
   sample: { "damage": 1 }
+component conversion: Shares of a hit part converted to other damage types before penetration and resistances, after the hit's own rules.
+  field rules: list of shape conversion_rule — the value itself: the rules in order, in one pass with the hit's own, a share never converted again
+  genres: top_down, shmup
+  sample: [{ "from": "damage", "to": "damage.fire", "pct": 0.5 }]
 component cooldown: A repeating countdown on the game clock that sends an event each time it elapses.
   field seconds: f32 (> 0) — seconds of game time a cycle
   field jitter: f32 (>= 0) = 0.0 — up to this many seconds more each cycle, drawn from the kit's random stream
@@ -48,6 +54,7 @@ component counters: Named whole numbers on the entity, which cues add to or set.
   genres: top_down, grid
   sample: { "coins": 0 }
 component cues: The entity's reactions: for each event about it, actions run in order.
+  field damaged_part: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field damaged: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field killed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field zone_entered: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
@@ -92,7 +99,7 @@ component health: Health with an invulnerability window after each hit, which `d
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
   field despawn_on_death: f32 (>= 0) = null — game seconds from a kill, counted from the step after it, until the kit despawns the entity after its `killed` cues; kept when left out
-  events: Damaged, Healed
+  events: Damaged, DamagedPart, Healed
   genres: platformer, top_down, shmup, grid
   sample: { "max": 5 }
 component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.
@@ -103,8 +110,10 @@ component hit_flash: A flash of colour on the sprite when `damage` hits the enti
 component hitbox: Hits the hurtboxes its shape meets over each step, each target once per activation, through the damage pipeline.
   field shape: shape hit_shape — its circle or box
   field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
-  field damage: f32 (>= 0) — each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run
-  field tags: list of tag = [] — the damage's kinds, such as `damage.fire`, which `resist` reads; the load checks them
+  field damage: f32 (>= 0), or damage type → f32 (>= 0) with one above 0 — each hit's damage, which a `damage` stat writes; a map of declared damage types to amounts gives its typed parts, in name order, which the stat scales; 0 is a trigger whose `hit` cues run
+  field tags: list of tag = [] — the damage's types, such as `damage.fire`, which `resist` reads; the load checks them; refused beside a `damage` map
+  field pen: damage type → points in [0, 1] = {} — the hit's own penetration, before its source's `penetration`; each a declared damage type or an ancestor of one
+  field convert: list of shape conversion_rule = [] — the hit's own conversion rules, before its source's `conversion`
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
   events: Struck
@@ -151,6 +160,10 @@ component path_follower: Moves a kinematic body along points at a speed: a movin
   field easing: one of linear | quad_in | quad_out | quad_in_out | cubic_in | cubic_out | cubic_in_out | quart_in | quart_out | quart_in_out | sine_in | sine_out | sine_in_out | expo_in | expo_out | expo_in_out | back_in | back_out | back_in_out | bounce_in | bounce_out | bounce_in_out = "linear" — each segment's progress, one of core's easings
   genres: platformer, top_down, shmup
   sample: { "points": [[0, 0], [0, -100]], "speed": 100 }
+component penetration: Points off a hit part's resistances by damage type, which every hit from the entity takes after the hit's own.
+  field points: damage type → points in [0, 1] — the value itself: each a declared damage type or an ancestor of one, off each matching factor in (0, 1), capped at 1
+  genres: top_down, shmup
+  sample: { "damage.fire": 0.5 }
 component pickup: Collected once by the first entity whose hurtbox it meets and whose tags pass its filter, drawn in by a magnet.
   field shape: shape hit_shape — its circle or box, which a collector's hurtbox meets
   field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
@@ -175,8 +188,8 @@ component projectile: Ends at its hitbox's first hit, its first wall or its rang
   events: ProjectileExpired, Struck
   genres: top_down, platformer, shmup
   sample: {}
-component resist: Damage factors by damage tag: a request's matching factors multiply its amount, and a factor of 0 is immunity.
-  field factors: damage tag → factor in [0, 1000] — the value itself: each tag declared, matching a request's tag or its dotted descendants
+component resist: Damage factors by damage tag: a hit part's matching factors multiply its amount, and a factor of 0 is immunity.
+  field factors: damage tag → factor in [0, 1000] — the value itself: each tag declared, matching a part's type or its dotted descendants; a save adds each factor's modifiers
   genres: top_down, shmup
   sample: { "damage.fire": 0.5 }
 component shield: Takes damage before health, and recharges after a delay without a hit.
@@ -243,6 +256,11 @@ shape child: One child: its prefab and its offset from the parent.
   field prefab: prefab ID — what it spawns; the load checks the ID and refuses a prefab with a `rigid_body`
   field offset: [x, y] = [0.0, 0.0] — world pixels from the parent's position
   sample: { "prefab": "glow" }
+shape conversion_rule: A share of each part of one damage type converted to another; one part's shares past 1 normalize.
+  field from: tag — the type a part carries, exactly or as a dotted ancestor: a declared damage type or an ancestor of one
+  field to: tag — the share's one type: a declared damage type other than `from`
+  field pct: f32 (>= 0, <= 1) — the part's share converted
+  sample: { "from": "damage", "to": "damage.fire", "pct": 0.5 }
 shape counter_action: A counter added to or set: exactly one of `add` and `set`.
   field name: text — the counter: dotted, undeclared
   field add: i64 = null — added, saturating
@@ -259,14 +277,18 @@ shape cue_action: One reaction to an event.
   field shake: f32 (>= 0) — camera trauma added
   field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
   field flash: shape flash_action — the subject's hit flash started
-  field label: shape label_style — the event's amount floated at its position
+  field label: shape label_style — the event's amount floated at its position; on `damaged_part`, `{}` floats it in its type's `label_style`
   field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
   sample: { "despawn": {} }
 shape cue_rule: A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.
   field on: text — the cue event; the load checks it is registered
   field filter: tag filter = {} — the subjects it runs for; the load checks its tags
+  field kind: tag filter = {} — the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed` and `damaged_part` only
   field do: list of shape cue_action — the actions, in order
   sample: { "on": "killed", "do": [] }
+shape damage_type: A game's damage type: each field inherited from its nearest declared ancestor that sets it.
+  field label_style: shape label_style = null — how a `damaged_part` cue's `{ "label": {} }` floats a part of the type
+  sample: {}
 shape despawn_action: An entity despawned with its children.
   field target: one of self | other = "self" — the subject or the other entity
   sample: {}
@@ -327,6 +349,7 @@ shape weighted_table: Rolls that each draw one entry by weight: a prefab, or not
   field entries: list of shape weighted_entry — what a draw may give, each by its weight over the total
   sample: { "entries": [] }
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
+kind damage_types: An object of `damage_type` by damage type: each key a declared tag, defined by one entry; a World holds 64.
 kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.

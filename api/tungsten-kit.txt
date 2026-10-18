@@ -359,17 +359,23 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Clips
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Clips
 pub struct tungsten_kit::prelude::ContactDamage
 impl tungsten_kit::ContactDamage
+pub fn tungsten_kit::ContactDamage::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::ContactDamage::damage(&self) -> f32
 pub fn tungsten_kit::ContactDamage::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::ContactDamage::interval(&self) -> f32
 pub fn tungsten_kit::ContactDamage::knockback(&self) -> f32
 pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::ContactDamage::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::ContactDamage::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::ContactDamage::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
+pub fn tungsten_kit::ContactDamage::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::ContactDamage::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::ContactDamage::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::ContactDamage
@@ -409,6 +415,32 @@ impl core::marker::Unpin for tungsten_kit::ContactDamagePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ContactDamagePlugin
+pub struct tungsten_kit::prelude::Conversion
+impl tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::new() -> Self
+pub fn tungsten_kit::Conversion::with_rule(self, &str, &str, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::clone(&self) -> tungsten_kit::Conversion
+impl core::cmp::PartialEq for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::eq(&self, &tungsten_kit::Conversion) -> bool
+impl core::default::Default for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::default() -> tungsten_kit::Conversion
+impl core::fmt::Debug for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conversion
+impl serde_core::ser::Serialize for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Conversion
+impl core::marker::Send for tungsten_kit::Conversion
+impl core::marker::Sync for tungsten_kit::Conversion
+impl core::marker::Unpin for tungsten_kit::Conversion
+impl core::marker::UnsafeUnpin for tungsten_kit::Conversion
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conversion
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conversion
 pub struct tungsten_kit::prelude::Cooldown
 impl tungsten_kit::Cooldown
 pub const tungsten_kit::Cooldown::MAX_ELAPSES_PER_STEP: u32
@@ -546,6 +578,7 @@ pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungst
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::type_label() -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
@@ -654,20 +687,72 @@ impl core::marker::Unpin for tungsten_kit::CuesPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CuesPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesPlugin
+pub struct tungsten_kit::prelude::DamageKinds
+impl tungsten_kit::DamageKinds
+pub const tungsten_kit::DamageKinds::NONE: Self
+pub fn tungsten_kit::DamageKinds::has(self, &tungsten_core::ecs::world::World, &str) -> bool
+pub fn tungsten_kit::DamageKinds::is_empty(self) -> bool
+pub fn tungsten_kit::DamageKinds::names(self, &tungsten_core::ecs::world::World) -> alloc::vec::Vec<&str>
+impl core::clone::Clone for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::clone(&self) -> tungsten_kit::DamageKinds
+impl core::cmp::Eq for tungsten_kit::DamageKinds
+impl core::cmp::PartialEq for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::eq(&self, &tungsten_kit::DamageKinds) -> bool
+impl core::default::Default for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::default() -> tungsten_kit::DamageKinds
+impl core::fmt::Debug for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_kit::DamageKinds
+impl core::marker::StructuralPartialEq for tungsten_kit::DamageKinds
+impl core::marker::Freeze for tungsten_kit::DamageKinds
+impl core::marker::Send for tungsten_kit::DamageKinds
+impl core::marker::Sync for tungsten_kit::DamageKinds
+impl core::marker::Unpin for tungsten_kit::DamageKinds
+impl core::marker::UnsafeUnpin for tungsten_kit::DamageKinds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamageKinds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamageKinds
+pub struct tungsten_kit::prelude::DamagePart
+impl tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::amount(&self) -> f32
+pub fn tungsten_kit::DamagePart::new(f32) -> Self
+pub fn tungsten_kit::DamagePart::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::DamagePart::with_tags(self, tungsten_kit::Tags) -> Self
+impl core::clone::Clone for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::clone(&self) -> tungsten_kit::DamagePart
+impl core::cmp::PartialEq for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::eq(&self, &tungsten_kit::DamagePart) -> bool
+impl core::fmt::Debug for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::DamagePart
+impl core::marker::Freeze for tungsten_kit::DamagePart
+impl core::marker::Send for tungsten_kit::DamagePart
+impl core::marker::Sync for tungsten_kit::DamagePart
+impl core::marker::Unpin for tungsten_kit::DamagePart
+impl core::marker::UnsafeUnpin for tungsten_kit::DamagePart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamagePart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamagePart
 pub struct tungsten_kit::prelude::DamageRequest
 impl tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::amount(&self) -> f32
 pub fn tungsten_kit::DamageRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Hit
+pub fn tungsten_kit::DamageRequest::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::DamageRequest::from_parts(tungsten_core::ecs::entity::Entity, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::DamageRequest::is_crit(&self) -> bool
 pub fn tungsten_kit::DamageRequest::knockback(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::DamageRequest::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::DamageRequest::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::DamageRequest::with_crit(self, bool) -> Self
 pub fn tungsten_kit::DamageRequest::with_knockback(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::DamageRequest::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::DamageRequest::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::DamageRequest::with_tags(self, tungsten_kit::Tags) -> Self
@@ -690,11 +775,13 @@ pub tungsten_kit::prelude::Damaged::amount: f32
 pub tungsten_kit::prelude::Damaged::crit: bool
 pub tungsten_kit::prelude::Damaged::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::prelude::Damaged::killed: bool
+pub tungsten_kit::prelude::Damaged::kinds: tungsten_kit::DamageKinds
 pub tungsten_kit::prelude::Damaged::position: core::option::Option<glam::f32::vec2::Vec2>
 pub tungsten_kit::prelude::Damaged::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::Damaged
 pub fn tungsten_kit::Damaged::new(tungsten_core::ecs::entity::Entity, f32, bool) -> Self
 pub fn tungsten_kit::Damaged::with_crit(self, bool) -> Self
+pub fn tungsten_kit::Damaged::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::Damaged::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Damaged::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::Damaged
@@ -712,6 +799,32 @@ impl core::marker::Unpin for tungsten_kit::Damaged
 impl core::marker::UnsafeUnpin for tungsten_kit::Damaged
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Damaged
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Damaged
+#[non_exhaustive] pub struct tungsten_kit::prelude::DamagedPart
+pub tungsten_kit::prelude::DamagedPart::amount: f32
+pub tungsten_kit::prelude::DamagedPart::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::DamagedPart::kinds: tungsten_kit::DamageKinds
+pub tungsten_kit::prelude::DamagedPart::position: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_kit::prelude::DamagedPart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamagedPart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
+pub fn tungsten_kit::DamagedPart::with_position(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::DamagedPart::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::clone(&self) -> tungsten_kit::DamagedPart
+impl core::cmp::PartialEq for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::eq(&self, &tungsten_kit::DamagedPart) -> bool
+impl core::fmt::Debug for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::DamagedPart
+impl core::marker::StructuralPartialEq for tungsten_kit::DamagedPart
+impl core::marker::Freeze for tungsten_kit::DamagedPart
+impl core::marker::Send for tungsten_kit::DamagedPart
+impl core::marker::Sync for tungsten_kit::DamagedPart
+impl core::marker::Unpin for tungsten_kit::DamagedPart
+impl core::marker::UnsafeUnpin for tungsten_kit::DamagedPart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamagedPart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamagedPart
 pub struct tungsten_kit::prelude::DepthSort
 impl tungsten_kit::DepthSort
 pub fn tungsten_kit::DepthSort::new() -> Self
@@ -1091,18 +1204,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HitShape
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HitShape
 pub struct tungsten_kit::prelude::Hitbox
 impl tungsten_kit::Hitbox
+pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
 pub fn tungsten_kit::Hitbox::knockback(&self) -> f32
 pub fn tungsten_kit::Hitbox::new(tungsten_kit::HitShape, f32) -> Self
 pub fn tungsten_kit::Hitbox::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Hitbox::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::Hitbox::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::Hitbox::rearm(&mut self)
 pub fn tungsten_kit::Hitbox::shape(&self) -> tungsten_kit::HitShape
 pub fn tungsten_kit::Hitbox::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::Hitbox::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::Hitbox::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Hitbox::with_knockback(self, f32) -> Self
 pub fn tungsten_kit::Hitbox::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Hitbox::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
+pub fn tungsten_kit::Hitbox::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::Hitbox::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::clone(&self) -> tungsten_kit::Hitbox
@@ -1596,6 +1715,33 @@ impl core::marker::Unpin for tungsten_kit::PathFollowerPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::PathFollowerPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PathFollowerPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PathFollowerPlugin
+pub struct tungsten_kit::prelude::Penetration
+impl tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::new() -> Self
+pub fn tungsten_kit::Penetration::points(&self, &tungsten_kit::Tags) -> f32
+pub fn tungsten_kit::Penetration::with_points(self, &str, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::clone(&self) -> tungsten_kit::Penetration
+impl core::cmp::PartialEq for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::eq(&self, &tungsten_kit::Penetration) -> bool
+impl core::default::Default for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::default() -> tungsten_kit::Penetration
+impl core::fmt::Debug for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Penetration
+impl serde_core::ser::Serialize for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Penetration
+impl core::marker::Send for tungsten_kit::Penetration
+impl core::marker::Sync for tungsten_kit::Penetration
+impl core::marker::Unpin for tungsten_kit::Penetration
+impl core::marker::UnsafeUnpin for tungsten_kit::Penetration
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Penetration
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Penetration
 #[non_exhaustive] pub struct tungsten_kit::prelude::PickedUp
 pub tungsten_kit::prelude::PickedUp::by: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::prelude::PickedUp::entity: tungsten_core::ecs::entity::Entity
@@ -1785,15 +1931,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
 pub struct tungsten_kit::prelude::Resist
 impl tungsten_kit::Resist
+pub fn tungsten_kit::Resist::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
+pub fn tungsten_kit::Resist::base(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::factor(&self, &tungsten_kit::Tags) -> f32
 pub fn tungsten_kit::Resist::new() -> Self
+pub fn tungsten_kit::Resist::remove_modifiers(&mut self, &str) -> usize
 pub fn tungsten_kit::Resist::with_factor(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::clone(&self) -> tungsten_kit::Resist
 impl core::cmp::PartialEq for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::eq(&self, &tungsten_kit::Resist) -> bool
-impl core::convert::From<tungsten_kit::Resist> for alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
-pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>::from(tungsten_kit::Resist) -> Self
 impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>> for tungsten_kit::Resist
 pub type tungsten_kit::Resist::Error = alloc::string::String
 pub fn tungsten_kit::Resist::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>) -> core::result::Result<Self, Self::Error>
@@ -2615,6 +2762,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Bound
 #[non_exhaustive] pub enum tungsten_kit::FieldType
 pub tungsten_kit::FieldType::Bool
 pub tungsten_kit::FieldType::Color
+pub tungsten_kit::FieldType::Damage
 pub tungsten_kit::FieldType::Data(&'static str)
 pub tungsten_kit::FieldType::Enum(&'static [&'static str])
 pub tungsten_kit::FieldType::F32
@@ -3034,17 +3182,23 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ComponentDescript
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ComponentDescription
 pub struct tungsten_kit::ContactDamage
 impl tungsten_kit::ContactDamage
+pub fn tungsten_kit::ContactDamage::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::ContactDamage::damage(&self) -> f32
 pub fn tungsten_kit::ContactDamage::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::ContactDamage::interval(&self) -> f32
 pub fn tungsten_kit::ContactDamage::knockback(&self) -> f32
 pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::ContactDamage::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::ContactDamage::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_knockback(self, f32) -> Self
+pub fn tungsten_kit::ContactDamage::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
+pub fn tungsten_kit::ContactDamage::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::ContactDamage::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::ContactDamage::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::ContactDamage
@@ -3084,6 +3238,32 @@ impl core::marker::Unpin for tungsten_kit::ContactDamagePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ContactDamagePlugin
+pub struct tungsten_kit::Conversion
+impl tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::new() -> Self
+pub fn tungsten_kit::Conversion::with_rule(self, &str, &str, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::clone(&self) -> tungsten_kit::Conversion
+impl core::cmp::PartialEq for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::eq(&self, &tungsten_kit::Conversion) -> bool
+impl core::default::Default for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::default() -> tungsten_kit::Conversion
+impl core::fmt::Debug for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Conversion
+impl serde_core::ser::Serialize for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Conversion
+pub fn tungsten_kit::Conversion::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Conversion
+impl core::marker::Send for tungsten_kit::Conversion
+impl core::marker::Sync for tungsten_kit::Conversion
+impl core::marker::Unpin for tungsten_kit::Conversion
+impl core::marker::UnsafeUnpin for tungsten_kit::Conversion
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Conversion
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Conversion
 pub struct tungsten_kit::Cooldown
 impl tungsten_kit::Cooldown
 pub const tungsten_kit::Cooldown::MAX_ELAPSES_PER_STEP: u32
@@ -3221,6 +3401,7 @@ pub fn tungsten_kit::CueAction::roll(tungsten_core::assets::data::DataRef<tungst
 pub fn tungsten_kit::CueAction::shake(f32) -> Self
 pub fn tungsten_kit::CueAction::sound(impl core::convert::Into<alloc::string::String>) -> Self
 pub fn tungsten_kit::CueAction::squash(tungsten_core::components::SquashTrigger) -> Self
+pub fn tungsten_kit::CueAction::type_label() -> Self
 pub fn tungsten_kit::CueAction::with_min_interval(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::CueAction
 pub fn tungsten_kit::CueAction::clone(&self) -> tungsten_kit::CueAction
@@ -3329,20 +3510,72 @@ impl core::marker::Unpin for tungsten_kit::CuesPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::CuesPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CuesPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CuesPlugin
+pub struct tungsten_kit::DamageKinds
+impl tungsten_kit::DamageKinds
+pub const tungsten_kit::DamageKinds::NONE: Self
+pub fn tungsten_kit::DamageKinds::has(self, &tungsten_core::ecs::world::World, &str) -> bool
+pub fn tungsten_kit::DamageKinds::is_empty(self) -> bool
+pub fn tungsten_kit::DamageKinds::names(self, &tungsten_core::ecs::world::World) -> alloc::vec::Vec<&str>
+impl core::clone::Clone for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::clone(&self) -> tungsten_kit::DamageKinds
+impl core::cmp::Eq for tungsten_kit::DamageKinds
+impl core::cmp::PartialEq for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::eq(&self, &tungsten_kit::DamageKinds) -> bool
+impl core::default::Default for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::default() -> tungsten_kit::DamageKinds
+impl core::fmt::Debug for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_kit::DamageKinds
+pub fn tungsten_kit::DamageKinds::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_kit::DamageKinds
+impl core::marker::StructuralPartialEq for tungsten_kit::DamageKinds
+impl core::marker::Freeze for tungsten_kit::DamageKinds
+impl core::marker::Send for tungsten_kit::DamageKinds
+impl core::marker::Sync for tungsten_kit::DamageKinds
+impl core::marker::Unpin for tungsten_kit::DamageKinds
+impl core::marker::UnsafeUnpin for tungsten_kit::DamageKinds
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamageKinds
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamageKinds
+pub struct tungsten_kit::DamagePart
+impl tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::amount(&self) -> f32
+pub fn tungsten_kit::DamagePart::new(f32) -> Self
+pub fn tungsten_kit::DamagePart::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::DamagePart::with_tags(self, tungsten_kit::Tags) -> Self
+impl core::clone::Clone for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::clone(&self) -> tungsten_kit::DamagePart
+impl core::cmp::PartialEq for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::eq(&self, &tungsten_kit::DamagePart) -> bool
+impl core::fmt::Debug for tungsten_kit::DamagePart
+pub fn tungsten_kit::DamagePart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::DamagePart
+impl core::marker::Freeze for tungsten_kit::DamagePart
+impl core::marker::Send for tungsten_kit::DamagePart
+impl core::marker::Sync for tungsten_kit::DamagePart
+impl core::marker::Unpin for tungsten_kit::DamagePart
+impl core::marker::UnsafeUnpin for tungsten_kit::DamagePart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamagePart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamagePart
 pub struct tungsten_kit::DamageRequest
 impl tungsten_kit::DamageRequest
 pub fn tungsten_kit::DamageRequest::amount(&self) -> f32
 pub fn tungsten_kit::DamageRequest::apply(self, &mut tungsten_core::ecs::world::World) -> tungsten_kit::Hit
+pub fn tungsten_kit::DamageRequest::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
+pub fn tungsten_kit::DamageRequest::from_parts(tungsten_core::ecs::entity::Entity, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::DamageRequest::is_crit(&self) -> bool
 pub fn tungsten_kit::DamageRequest::knockback(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamageRequest::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::DamageRequest::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::DamageRequest::position(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_kit::DamageRequest::queue(self, &mut tungsten_core::ecs::world::World) -> bool
 pub fn tungsten_kit::DamageRequest::source(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::DamageRequest::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::DamageRequest::target(&self) -> tungsten_core::ecs::entity::Entity
+pub fn tungsten_kit::DamageRequest::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::DamageRequest::with_crit(self, bool) -> Self
 pub fn tungsten_kit::DamageRequest::with_knockback(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::DamageRequest::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::DamageRequest::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::DamageRequest::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 pub fn tungsten_kit::DamageRequest::with_tags(self, tungsten_kit::Tags) -> Self
@@ -3365,11 +3598,13 @@ pub tungsten_kit::Damaged::amount: f32
 pub tungsten_kit::Damaged::crit: bool
 pub tungsten_kit::Damaged::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::Damaged::killed: bool
+pub tungsten_kit::Damaged::kinds: tungsten_kit::DamageKinds
 pub tungsten_kit::Damaged::position: core::option::Option<glam::f32::vec2::Vec2>
 pub tungsten_kit::Damaged::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::Damaged
 pub fn tungsten_kit::Damaged::new(tungsten_core::ecs::entity::Entity, f32, bool) -> Self
 pub fn tungsten_kit::Damaged::with_crit(self, bool) -> Self
+pub fn tungsten_kit::Damaged::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::Damaged::with_position(self, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::Damaged::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
 impl core::clone::Clone for tungsten_kit::Damaged
@@ -3387,6 +3622,32 @@ impl core::marker::Unpin for tungsten_kit::Damaged
 impl core::marker::UnsafeUnpin for tungsten_kit::Damaged
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Damaged
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Damaged
+#[non_exhaustive] pub struct tungsten_kit::DamagedPart
+pub tungsten_kit::DamagedPart::amount: f32
+pub tungsten_kit::DamagedPart::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::DamagedPart::kinds: tungsten_kit::DamageKinds
+pub tungsten_kit::DamagedPart::position: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_kit::DamagedPart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamagedPart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
+pub fn tungsten_kit::DamagedPart::with_position(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::DamagedPart::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::clone(&self) -> tungsten_kit::DamagedPart
+impl core::cmp::PartialEq for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::eq(&self, &tungsten_kit::DamagedPart) -> bool
+impl core::fmt::Debug for tungsten_kit::DamagedPart
+pub fn tungsten_kit::DamagedPart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::DamagedPart
+impl core::marker::StructuralPartialEq for tungsten_kit::DamagedPart
+impl core::marker::Freeze for tungsten_kit::DamagedPart
+impl core::marker::Send for tungsten_kit::DamagedPart
+impl core::marker::Sync for tungsten_kit::DamagedPart
+impl core::marker::Unpin for tungsten_kit::DamagedPart
+impl core::marker::UnsafeUnpin for tungsten_kit::DamagedPart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::DamagedPart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::DamagedPart
 pub struct tungsten_kit::DepthSort
 impl tungsten_kit::DepthSort
 pub fn tungsten_kit::DepthSort::new() -> Self
@@ -3785,18 +4046,24 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::HitShape
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::HitShape
 pub struct tungsten_kit::Hitbox
 impl tungsten_kit::Hitbox
+pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten_kit::Conversion>
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
 pub fn tungsten_kit::Hitbox::knockback(&self) -> f32
 pub fn tungsten_kit::Hitbox::new(tungsten_kit::HitShape, f32) -> Self
 pub fn tungsten_kit::Hitbox::offset(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::Hitbox::parts(&self) -> &[tungsten_kit::DamagePart]
+pub fn tungsten_kit::Hitbox::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::Hitbox::rearm(&mut self)
 pub fn tungsten_kit::Hitbox::shape(&self) -> tungsten_kit::HitShape
 pub fn tungsten_kit::Hitbox::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::Hitbox::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::Hitbox::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::Hitbox::with_knockback(self, f32) -> Self
 pub fn tungsten_kit::Hitbox::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::Hitbox::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
+pub fn tungsten_kit::Hitbox::with_penetration(self, tungsten_kit::Penetration) -> Self
 pub fn tungsten_kit::Hitbox::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::Hitbox
 pub fn tungsten_kit::Hitbox::clone(&self) -> tungsten_kit::Hitbox
@@ -4313,6 +4580,33 @@ impl core::marker::Unpin for tungsten_kit::PathFollowerPlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::PathFollowerPlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PathFollowerPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PathFollowerPlugin
+pub struct tungsten_kit::Penetration
+impl tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::new() -> Self
+pub fn tungsten_kit::Penetration::points(&self, &tungsten_kit::Tags) -> f32
+pub fn tungsten_kit::Penetration::with_points(self, &str, f32) -> Self
+impl core::clone::Clone for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::clone(&self) -> tungsten_kit::Penetration
+impl core::cmp::PartialEq for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::eq(&self, &tungsten_kit::Penetration) -> bool
+impl core::default::Default for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::default() -> tungsten_kit::Penetration
+impl core::fmt::Debug for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::Penetration
+impl serde_core::ser::Serialize for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl tungsten_core::inspect::Inspectable for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::Penetration
+pub fn tungsten_kit::Penetration::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_kit::Penetration
+impl core::marker::Send for tungsten_kit::Penetration
+impl core::marker::Sync for tungsten_kit::Penetration
+impl core::marker::Unpin for tungsten_kit::Penetration
+impl core::marker::UnsafeUnpin for tungsten_kit::Penetration
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Penetration
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Penetration
 #[non_exhaustive] pub struct tungsten_kit::PickedUp
 pub tungsten_kit::PickedUp::by: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::PickedUp::entity: tungsten_core::ecs::entity::Entity
@@ -4502,15 +4796,16 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePlugin
 pub struct tungsten_kit::Resist
 impl tungsten_kit::Resist
+pub fn tungsten_kit::Resist::add_modifier(&mut self, &str, &str, tungsten_kit::Modifier)
+pub fn tungsten_kit::Resist::base(&self, &str) -> core::option::Option<f32>
 pub fn tungsten_kit::Resist::factor(&self, &tungsten_kit::Tags) -> f32
 pub fn tungsten_kit::Resist::new() -> Self
+pub fn tungsten_kit::Resist::remove_modifiers(&mut self, &str) -> usize
 pub fn tungsten_kit::Resist::with_factor(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::clone(&self) -> tungsten_kit::Resist
 impl core::cmp::PartialEq for tungsten_kit::Resist
 pub fn tungsten_kit::Resist::eq(&self, &tungsten_kit::Resist) -> bool
-impl core::convert::From<tungsten_kit::Resist> for alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>
-pub fn alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>::from(tungsten_kit::Resist) -> Self
 impl core::convert::TryFrom<alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>> for tungsten_kit::Resist
 pub type tungsten_kit::Resist::Error = alloc::string::String
 pub fn tungsten_kit::Resist::try_from(alloc::collections::btree::map::BTreeMap<alloc::string::String, f32>) -> core::result::Result<Self, Self::Error>

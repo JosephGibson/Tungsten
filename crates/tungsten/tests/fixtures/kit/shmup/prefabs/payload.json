@@ -1,0 +1,31 @@
+{
+  "tag": "payload",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        -900
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "aabb": [
+          1,
+          6
+        ]
+      },
+      "damage": {
+        "digital.overload": 8,
+        "digital.exploit": 2
+      },
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "range": 500
+    }
+  }
+}

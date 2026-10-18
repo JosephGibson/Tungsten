@@ -1,0 +1,28 @@
+{
+  "tag": "pyromancer",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "cooldown": {
+      "seconds": 1
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "firebolt"
+        }
+      ]
+    },
+    "penetration": {
+      "elemental.fire": 0.5
+    },
+    "conversion": [
+      {
+        "from": "elemental.fire",
+        "to": "toxic",
+        "pct": 0.5
+      }
+    ]
+  }
+}

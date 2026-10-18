@@ -533,8 +533,12 @@ impl ProjectileRunner {
         }
         self.hits
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        let (damage, tags, knockback) =
-            (hitbox.damage(), hitbox.tags().clone(), hitbox.knockback());
+        let (damage, tags, knockback, typed) = (
+            hitbox.damage(),
+            hitbox.tags().clone(),
+            hitbox.knockback(),
+            hitbox.payload().cloned(),
+        );
         for &(t, index) in &self.hits {
             let entry = grid.entries()[index as usize];
             world
@@ -551,6 +555,7 @@ impl ProjectileRunner {
                     relative: (sweep.end - sweep.start) - (entry.sweep.end - entry.sweep.start),
                     damage,
                     tags: &tags,
+                    typed: typed.as_ref(),
                     knockback,
                 },
             );

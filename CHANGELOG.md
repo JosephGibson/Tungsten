@@ -6,6 +6,27 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.86.0] - 2026-10-18
+
+Summary: M66, W13 damage types (plan archived at `docs/plans/archive/1.0/phase6-milestone-66-kit-damage-types.md`): the kit catalogue's DT, damage types a game declares in the `damage_types` data kind, none named by the kit; a hit as typed parts, each converted, penetrated and resisted on its own before one fall through the shield and health; `DamageKinds` on `Damaged` and on a new `DamagedPart`; the `damaged_part` cue event, a rule's `kind` filter and labels in a type's style; recipes in a fantasy (top-down) and a sci-fi (shmup) set. No template change.
+
+### Added
+
+- **Typed hits** (`D-176`): `DamagePart` and `DamageRequest::from_parts`, `with_penetration` and `with_conversion`; `Penetration` (points off matching resistances in (0, 1), never piercing an immunity) and `Conversion` (shares of a part turned into other types in one pass, never chained), each a hit's own and, as the `penetration` and `conversion` components, its source's; `Hitbox`'s and `ContactDamage`'s `damage` as a map of damage types with `pen` and `convert`, the map's parts scaled by the `damage` stat at each hit; a projectile's hits take its hitbox's parts.
+- **Damage types and kinds** (`D-176`): the `damage_types` data kind, entries keyed by declared tags whose fields inherit down the dotted tree (`label_style`), defined by one entry each, at most 64 per World, their bits kept across reloads; `DamageKinds` (`NONE`, `is_empty`, `has`, `names`) on `Damaged` (`kinds`, `with_kinds`) and on the new `DamagedPart` event, one per part before the hit's `Damaged`.
+- **`Resist` modifiers** (`D-176`): `add_modifier`, `remove_modifiers` and `base`, under `Stats`' formula, a base of 0 immune whatever its modifiers; a save writes a factor with modifiers beside the bases 0.85 wrote.
+- **Cues** (`D-176`): the event `damaged_part`, read before `damaged`; a rule's `kind` filter on `damaged`, `killed` and `damaged_part`; `CueAction::type_label`, `{ "label": {} }`, floating a part in its type's `label_style`; `FieldType::Damage`.
+- **Proof** (`D-176`): four recipes in the top-down and shmup fixtures, a scan that finds no fixture damage type named in the kit's sources with its negative control, and the kit bench's 33 rows (`damage_resolve_typed`, `cues_typed`) within the per-entity bound.
+
+### Changed
+
+- **The resolution and the kit hash** (`D-176` amends `D-173` and `D-175`): every hit resolves as parts and sends a `DamagedPart` per part before its `Damaged`, traced as `damaged_part`, and a one-part hit computes as before; `damage_resolve` runs about 1.7 times its M65 cost per request; the kit hash moves to `0x2288_2ee7_97d4_aba9`, its script spawning a typed spellblade on a golem and a hacker's payloads on a mainframe.
+- **Records**: decision 176 with its marker lines on `D-173` and `D-175`; `DESIGN.md`'s M66 section and status line; known issues (`Damaged`'s missing tags settled, DT's limits); the W4 ledger's two rows; w13-kit's Q17–Q27 answered; the guide's `health` and `cues` paragraphs; the LLM index's decision range; the profiling workflow's kit rows.
+
+### Removed
+
+- **`From<Resist> for BTreeMap<String, f32>`** (`D-176`): it would drop a factor's modifiers; `TryFrom<BTreeMap<String, f32>>` stays for bases, and `Resist::base` reads one.
+
 ## [0.85.0] - 2026-10-18
 
 Summary: M65, W13j (plan archived at `docs/plans/archive/1.0/phase6-milestone-65-kit-overlap-damage.md`): the kit catalogue's C, overlap and damage: hit shapes on a kit grid, each hit tested over the step's relative motion so that a fast bolt skips nothing; one damage pipeline that hitboxes, contact damage, projectiles and a game's Rust share, resolved once a step through resistances, a shield and health, with heals and a death policy; contact damage, projectiles walled by tiles and static colliders, pickups with a magnet and drops rolled from loot tables in data, each proven by recipes in two genres; and the template's hazard and gems in data alone.

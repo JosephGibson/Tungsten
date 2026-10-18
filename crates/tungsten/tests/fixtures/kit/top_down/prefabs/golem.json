@@ -1,0 +1,28 @@
+{
+  "tag": "golem",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 20
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 10
+      }
+    },
+    "resist": {
+      "physical": 0.5,
+      "elemental": 0.8,
+      "elemental.fire": 0.5
+    },
+    "cues": {
+      "damaged_part": [
+        {
+          "label": {}
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "chaos": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        0,
+        1,
+        1
+      ]
+    }
+  },
+  "elemental": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        1,
+        0,
+        1
+      ]
+    }
+  },
+  "elemental.cold": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        0,
+        1,
+        1
+      ]
+    }
+  },
+  "elemental.fire": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "elemental.lightning": {},
+  "physical": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "physical.pierce": {},
+  "physical.slash": {},
+  "physical.smash": {},
+  "toxic": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        1,
+        0,
+        1
+      ]
+    }
+  }
+}

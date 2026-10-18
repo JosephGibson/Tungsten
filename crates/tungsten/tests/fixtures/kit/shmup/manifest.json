@@ -53,6 +53,15 @@
     },
     "bulwark": {
       "path": "prefabs/bulwark.json"
+    },
+    "hacker": {
+      "path": "prefabs/hacker.json"
+    },
+    "payload": {
+      "path": "prefabs/payload.json"
+    },
+    "mainframe": {
+      "path": "prefabs/mainframe.json"
     }
   },
   "data": {
@@ -64,6 +73,14 @@
     "cue_rules": {
       "score": {
         "path": "data/cue_rules/score.json"
+      },
+      "typed": {
+        "path": "data/cue_rules/typed.json"
+      }
+    },
+    "damage_types": {
+      "scifi": {
+        "path": "data/damage_types/scifi.json"
       }
     }
   },

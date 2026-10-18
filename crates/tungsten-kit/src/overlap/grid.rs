@@ -12,7 +12,7 @@ use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::Despawning;
-use crate::overlap::hit::{Hurtbox, Struck};
+use crate::overlap::hit::{HitPayload, Hurtbox, Struck};
 use crate::transform::hierarchy::Parent;
 
 /// The grid's cell size, in world pixels (Q12).
@@ -425,13 +425,18 @@ pub(crate) struct Blow<'a> {
     pub(crate) relative: Vec2,
     pub(crate) damage: f32,
     pub(crate) tags: &'a Tags,
+    /// A typed item's parts, penetration and conversion.
+    pub(crate) typed: Option<&'a HitPayload>,
     pub(crate) knockback: f32,
 }
 
 /// Lands `blow`: sends [`Struck`], traces `hit` on the hitter and, when
 /// its damage is above 0, queues a [`DamageRequest`] from the hitter's
 /// [`Source`] or the hitter itself, at the target's centre, pushing the
-/// target away from the hitter, else along the relative motion.
+/// target away from the hitter, else along the relative motion. The request
+/// is one part of the damage, or a typed item's parts split to it, its
+/// untyped parts of the item's tags, with the item's penetration and
+/// conversion.
 pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<Struck>>() {
         queue.send(Struck::new(
@@ -452,7 +457,11 @@ pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
     let source = world
         .get::<Source>(blow.hitter)
         .map_or(blow.hitter, |source| source.entity());
-    let mut request = DamageRequest::new(blow.target, blow.damage)
+    let request = match blow.typed {
+        Some(typed) => typed.request(blow.target, blow.damage),
+        None => DamageRequest::new(blow.target, blow.damage),
+    };
+    let mut request = request
         .with_source(source)
         .with_tags(blow.tags.clone())
         .with_position(blow.target_at);

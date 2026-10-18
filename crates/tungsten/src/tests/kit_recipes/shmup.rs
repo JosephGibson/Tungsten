@@ -1,19 +1,21 @@
 //! The shmup fixture: a bodiless ship under the move actions, bullets that
 //! expire or leave the view, raiders from a wave on a path, and a walker
 //! on a floor under the same actions; M64's fighter, drifter, asteroid,
-//! mine and gun; M65's interceptor, lasers, carrier and bulwark.
+//! mine and gun; M65's interceptor, lasers, carrier and bulwark; M66's
+//! sci-fi damage types: a hacker, its payloads and a mainframe.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::physics::{Position, PrevPosition, Velocity};
-use tungsten_core::{AudioCommand, CameraController, Transform};
+use tungsten_core::{AudioCommand, CameraController, Entity, Transform};
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
 use crate::kit::{
-    Aim, Children, CooldownElapsed, Counters, Damaged, Health, Hit, KitPlugins, LinearMotion,
-    PlatformerController, ProjectileExpired, Shield, Source, Steering, Struck, TopDownMover,
-    damage,
+    Aim, Children, CooldownElapsed, Counters, Damaged, DamagedPart, Health, Hit, KitPlugins,
+    KitTrace, LinearMotion, PlatformerController, ProjectileExpired, Shield, Source, Steering,
+    Struck, TopDownMover, TraceKind, damage,
 };
+use crate::testing::Harness;
 
 const GENRE: &str = "shmup";
 
@@ -421,5 +423,146 @@ fn a_bulwark_ignores_lasers() {
             !harness.world().is_alive(laser),
             "dt {dt}: the hit ended it"
         );
+    }
+}
+
+/// The world labels the last frame drew: each text with its colour, sorted.
+fn typed_labels(harness: &Harness) -> Vec<(String, [u8; 4])> {
+    let mut drawn: Vec<(String, [u8; 4])> = harness
+        .draw()
+        .unwrap()
+        .world_labels
+        .iter()
+        .map(|run| (run.content.clone(), run.color))
+        .collect();
+    drawn.sort();
+    drawn
+}
+
+/// The parts of `entity`'s hits the last frame sent: each amount with its
+/// kinds by name.
+fn parts_on(harness: &Harness, entity: Entity) -> Vec<(f32, Vec<String>)> {
+    harness
+        .events::<DamagedPart>()
+        .filter(|part| part.entity == entity)
+        .map(|part| {
+            let kinds = part.kinds.names(harness.world());
+            (part.amount, kinds.into_iter().map(str::to_owned).collect())
+        })
+        .collect()
+}
+
+/// Steps until `entity` is hit, at most `seconds` of game time; the frame
+/// that hit it is the last.
+fn step_until_hit(harness: &mut Harness, entity: Entity, seconds: f32, dt: f32) {
+    for _ in 0..frames_for(seconds, dt) {
+        harness.step(1);
+        if harness
+            .events::<DamagedPart>()
+            .any(|part| part.entity == entity)
+        {
+            return;
+        }
+    }
+    panic!("dt {dt}: no hit within {seconds} s");
+}
+
+fn close(a: f32, b: f32) -> bool {
+    (a - b).abs() < 1e-4
+}
+
+/// `parts` match `expected` amount for amount, within 1e-4, kinds exactly.
+fn parts_match(parts: &[(f32, Vec<String>)], expected: &[(f32, &[&str])]) -> bool {
+    parts.len() == expected.len()
+        && parts
+            .iter()
+            .zip(expected)
+            .all(|((amount, kinds), (want, names))| {
+                close(*amount, *want) && kinds.iter().map(String::as_str).eq(names.iter().copied())
+            })
+}
+
+#[test]
+fn a_hackers_payload_converts_to_a_virus_and_an_exploit_immunity_holds() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hacker = spawn(&mut harness, "hacker", [640.0, 600.0]);
+        let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
+        step_until_hit(&mut harness, mainframe, 1.6, dt);
+        // Exploit 2 and overload 8, half the overload to virus: exploit
+        // immune at a base of 0, which no point pierces; overload and virus
+        // 4 each at 0.5 + 0.25.
+        let parts = parts_on(&harness, mainframe);
+        assert!(
+            parts_match(
+                &parts,
+                &[
+                    (3.0, &["digital", "digital.overload"]),
+                    (3.0, &["digital", "digital.virus"]),
+                ]
+            ),
+            "dt {dt}: {parts:?}"
+        );
+        let hit = harness
+            .events::<Damaged>()
+            .find(|event| event.entity == mainframe)
+            .copied()
+            .unwrap();
+        assert_eq!((hit.amount, hit.source), (6.0, Some(hacker)));
+        assert!(!hit.kinds.has(harness.world(), "digital.exploit"));
+        assert!(hit.kinds.has(harness.world(), "digital"));
+        let world = harness.world();
+        assert_eq!(world.get::<Shield>(mainframe).unwrap().current(), 0.0);
+        assert_eq!(world.get::<Health>(mainframe).unwrap().current(), 96.0);
+        assert_eq!(world.resource::<Counters>().get("virus_hits"), 1, "dt {dt}");
+        assert_eq!(
+            typed_labels(&harness),
+            [
+                ("3".to_string(), [0, 255, 0, 255]),
+                ("3".to_string(), [0, 255, 255, 255]),
+            ],
+            "dt {dt}: overload in `digital`'s cyan, virus in its own green"
+        );
+    }
+}
+
+#[test]
+fn an_untyped_laser_sends_one_part_of_no_kind_and_its_label_skips() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "interceptor", [640.0, 600.0]);
+        let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
+        step_until_hit(&mut harness, mainframe, 1.0, dt);
+        let parts: Vec<DamagedPart> = harness
+            .events::<DamagedPart>()
+            .filter(|part| part.entity == mainframe)
+            .copied()
+            .collect();
+        assert_eq!(parts.len(), 1, "dt {dt}");
+        assert_eq!(parts[0].amount, 1.0);
+        assert!(
+            parts[0].kinds.is_empty(),
+            "dt {dt}: `damage.laser` is no damage type"
+        );
+        let world = harness.world();
+        assert_eq!(
+            world.get::<Shield>(mainframe).unwrap().current(),
+            1.0,
+            "absorbed"
+        );
+        assert_eq!(world.get::<Health>(mainframe).unwrap().current(), 100.0);
+        assert_eq!(world.resource::<Counters>().get("virus_hits"), 0);
+        assert!(typed_labels(&harness).is_empty(), "dt {dt}: no label");
+        let skipped = world.resource::<KitTrace>().about(mainframe).any(|entry| {
+            matches!(
+                entry.kind,
+                TraceKind::Skipped {
+                    event: "damaged_part",
+                    action: "label",
+                    why: "the part's types set no label style"
+                }
+            )
+        });
+        assert!(skipped, "dt {dt}: the trace says why");
     }
 }

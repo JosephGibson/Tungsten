@@ -80,6 +80,21 @@
     },
     "knight": {
       "path": "prefabs/knight.json"
+    },
+    "spellblade": {
+      "path": "prefabs/spellblade.json"
+    },
+    "golem": {
+      "path": "prefabs/golem.json"
+    },
+    "pyromancer": {
+      "path": "prefabs/pyromancer.json"
+    },
+    "firebolt": {
+      "path": "prefabs/firebolt.json"
+    },
+    "ward": {
+      "path": "prefabs/ward.json"
     }
   },
   "data": {
@@ -96,11 +111,19 @@
     "cue_rules": {
       "combat": {
         "path": "data/cue_rules/combat.json"
+      },
+      "elements": {
+        "path": "data/cue_rules/elements.json"
       }
     },
     "loot_tables": {
       "ghoul_drops": {
         "path": "data/loot_tables/ghoul_drops.json"
+      }
+    },
+    "damage_types": {
+      "fantasy": {
+        "path": "data/damage_types/fantasy.json"
       }
     }
   },

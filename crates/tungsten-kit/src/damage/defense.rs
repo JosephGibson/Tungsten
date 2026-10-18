@@ -1,14 +1,18 @@
 //! Defences between a damage request and health: resistances by damage
-//! tag, and a shield that takes damage first and recharges after a delay.
+//! tag with modifiers, and a shield that takes damage first and recharges
+//! after a delay.
 
 use std::collections::BTreeMap;
+use std::fmt;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::{Inspectable, Time, World};
 
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, SHMUP, TOP_DOWN, round_trip,
 };
+use crate::foundation::stats::{Modifier, modified};
 use crate::foundation::tags::{Tags, valid_tag};
 
 /// [`HealthPlugin`](crate::HealthPlugin)'s system that recharges shields, in
@@ -22,70 +26,135 @@ pub(crate) const SHIELD: &str = "shield";
 /// The largest resistance factor.
 const MAX_FACTOR: f32 = 1000.0;
 
-/// An entity's resistances: a factor per damage tag, which multiplies the
-/// amount of a [`DamageRequest`](crate::DamageRequest) whose tags carry
-/// that tag, exactly or as a dotted ancestor: a factor for `damage` applies
-/// to a `damage.fire` request too. A factor of 0 is immunity: the request
-/// is ignored before any product. The matching factors multiply in `f64`
-/// and the amount they make is clamped to `f32::MAX`, so every amount stays
-/// finite.
+/// An entity's resistances: a factor per damage tag, which multiplies each
+/// part of a [`DamageRequest`](crate::DamageRequest) whose types carry that
+/// tag, exactly or as a dotted ancestor: a factor for `damage` applies to a
+/// `damage.fire` part too. A base factor of 0 is immunity, whatever the
+/// modifiers: the part drops before any product. The matching factors
+/// multiply in `f64` and the amount they make is clamped to `f32::MAX`, so
+/// every amount stays finite; a factor in `(0, 1)` first gains the part's
+/// [`Penetration`](crate::Penetration) points, capped at 1.
+///
+/// A factor takes modifiers by source, as a stat does
+/// ([`add_modifier`](Self::add_modifier)): its value is `((base + Σadd) ×
+/// (1 + Σpct) × Πmul)`, replaced by the last-added override, in `f64`,
+/// clamped to `[0, 1000]`, the base 1 for a tag listed by a modifier only.
+/// A curse that doubles fire damage is `Modifier::Mul(2.0)` on `fire`, from
+/// `curse`, which [`remove_modifiers`](Self::remove_modifiers) takes back.
 ///
 /// Scene name `resist`: `{ "damage.fire": 0.5, "damage.poison": 0 }`, each
-/// key a declared tag, each factor finite in `[0, 1000]`. It is data: it
-/// serializes as that object.
+/// key a declared tag, each base finite in `[0, 1000]`. It is data: a save
+/// writes a factor without modifiers as its base, as the scene does, and
+/// one with modifiers as `{ "base": 0.5, "modifiers": [["curse", { "mul": 2 }]] }`,
+/// `base` left out for a tag listed by a modifier only.
 ///
 /// # Examples
 ///
 /// ```
-/// use tungsten_kit::{Resist, Tags};
+/// use tungsten_kit::{Modifier, Resist, Tags};
 ///
 /// let resist = Resist::new().with_factor("damage", 0.5).with_factor("damage.fire", 0.5);
 /// assert_eq!(resist.factor(&Tags::new(["damage.fire"])), 0.25, "the tag and its ancestor");
 /// assert_eq!(resist.factor(&Tags::new(["damage.cold"])), 0.5);
 /// assert_eq!(resist.factor(&Tags::new(["magic"])), 1.0, "no listed tag");
 ///
-/// let immune = resist.with_factor("damage.poison", 0.0);
-/// assert_eq!(immune.factor(&Tags::new(["damage.poison"])), 0.0);
+/// let mut cursed = resist.with_factor("damage.poison", 0.0);
+/// cursed.add_modifier("damage.fire", "curse", Modifier::Mul(3.0));
+/// cursed.add_modifier("damage.poison", "curse", Modifier::Add(1.0));
+/// assert_eq!(cursed.factor(&Tags::new(["damage.fire"])), 0.75);
+/// assert_eq!(cursed.factor(&Tags::new(["damage.poison"])), 0.0, "a base of 0 stays immune");
+/// assert_eq!(cursed.remove_modifiers("curse"), 2);
+/// assert_eq!(cursed.base("damage.fire"), Some(0.5));
 /// ```
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "BTreeMap<String, f32>", into = "BTreeMap<String, f32>")]
+#[serde(try_from = "ResistSave", into = "ResistSave")]
 pub struct Resist {
     /// Sorted by tag.
-    factors: Vec<(String, f32)>,
+    entries: Vec<Entry>,
+}
+
+/// One resisted tag: its base, its modifiers by source in add order, and
+/// the factor they make.
+#[derive(Debug, Clone, PartialEq)]
+struct Entry {
+    tag: String,
+    /// `None` for a tag listed by a modifier only, whose base is 1.
+    base: Option<f32>,
+    modifiers: Vec<(String, Modifier)>,
+    factor: f32,
+}
+
+impl Entry {
+    fn new(tag: &str, base: Option<f32>, modifiers: Vec<(String, Modifier)>) -> Self {
+        let mut entry = Self {
+            tag: tag.to_owned(),
+            base,
+            modifiers,
+            factor: 0.0,
+        };
+        entry.recompute();
+        entry
+    }
+
+    /// A base of 0 stays 0; a base without modifiers is the factor as it
+    /// is; otherwise the modifiers over the base, or over 1 without one.
+    fn recompute(&mut self) {
+        self.factor = match self.base {
+            Some(base) if base == 0.0 || self.modifiers.is_empty() => base,
+            base => modified(
+                base.unwrap_or(1.0),
+                self.modifiers.iter().map(|&(_, modifier)| modifier),
+                0.0,
+                MAX_FACTOR,
+            ),
+        };
+    }
 }
 
 impl TryFrom<BTreeMap<String, f32>> for Resist {
     type Error = String;
 
+    /// Resistances of these bases, without modifiers: the scene's form.
     fn try_from(factors: BTreeMap<String, f32>) -> Result<Self, Self::Error> {
-        for (tag, &factor) in &factors {
-            check_factor(tag, factor)?;
+        let mut entries = Vec::with_capacity(factors.len());
+        for (tag, factor) in factors {
+            check_factor(&tag, factor)?;
+            entries.push(Entry::new(&tag, Some(factor), Vec::new()));
         }
-        Ok(Self {
-            factors: factors.into_iter().collect(),
-        })
-    }
-}
-
-impl From<Resist> for BTreeMap<String, f32> {
-    fn from(resist: Resist) -> Self {
-        resist.factors.into_iter().collect()
+        Ok(Self { entries })
     }
 }
 
 /// `tag` a tag name and `factor` finite in `[0, 1000]`.
 fn check_factor(tag: &str, factor: f32) -> Result<(), String> {
-    if !valid_tag(tag) {
-        return Err(format!(
-            "`{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
-        ));
-    }
+    check_tag(tag)?;
     if !(factor.is_finite() && (0.0..=MAX_FACTOR).contains(&factor)) {
         return Err(format!(
             "{tag}: the factor must be finite and in [0, {MAX_FACTOR}] (got {factor})"
         ));
     }
     Ok(())
+}
+
+/// `tag` a tag name.
+fn check_tag(tag: &str) -> Result<(), String> {
+    if valid_tag(tag) {
+        Ok(())
+    } else {
+        Err(format!(
+            "`{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+        ))
+    }
+}
+
+/// Every modifier finite.
+fn check_modifiers(tag: &str, modifiers: &[(String, Modifier)]) -> Result<(), String> {
+    match modifiers.iter().find(|(_, modifier)| !modifier.is_finite()) {
+        Some((_, modifier)) => Err(format!(
+            "{tag}: a modifier must be finite (got {modifier:?})"
+        )),
+        None => Ok(()),
+    }
 }
 
 impl Resist {
@@ -95,8 +164,8 @@ impl Resist {
         Self::default()
     }
 
-    /// The resistances with `factor` for damage tagged `tag`, added or
-    /// replaced; 0 is immunity.
+    /// The resistances with base `factor` for damage tagged `tag`, added or
+    /// replaced, its modifiers kept; 0 is immunity.
     ///
     /// # Panics
     ///
@@ -108,32 +177,240 @@ impl Resist {
         if let Err(error) = check_factor(tag, factor) {
             panic!("Resist::with_factor: {error}");
         }
-        match self
-            .factors
-            .binary_search_by(|(known, _)| known.as_str().cmp(tag))
-        {
-            Ok(at) => self.factors[at].1 = factor,
-            Err(at) => self.factors.insert(at, (tag.to_owned(), factor)),
+        match self.search(tag) {
+            Ok(at) => {
+                self.entries[at].base = Some(factor);
+                self.entries[at].recompute();
+            }
+            Err(at) => self
+                .entries
+                .insert(at, Entry::new(tag, Some(factor), Vec::new())),
         }
         self
     }
 
-    /// The product of the factors whose tag `tags` carries, 1 when none
-    /// does and 0 when one of them is 0, clamped to `f32::MAX`.
+    /// Adds `modifier` to `tag`'s factor from `source`, after its earlier
+    /// ones, as [`Stats::add_modifier`](crate::Stats::add_modifier) does; a
+    /// tag without a factor takes one of base 1, which goes with its last
+    /// modifier. A base of 0 stays immune whatever its modifiers.
+    ///
+    /// # Panics
+    ///
+    /// When `tag` is not a tag name or the modifier's value is not finite.
+    #[track_caller]
+    pub fn add_modifier(&mut self, tag: &str, source: &str, modifier: Modifier) {
+        if let Err(error) = check_tag(tag) {
+            panic!("Resist::add_modifier: {error}");
+        }
+        assert!(
+            modifier.is_finite(),
+            "Resist::add_modifier: {tag}: the modifier must be finite (got {modifier:?})"
+        );
+        match self.search(tag) {
+            Ok(at) => {
+                let entry = &mut self.entries[at];
+                entry.modifiers.push((source.to_owned(), modifier));
+                entry.recompute();
+            }
+            Err(at) => self.entries.insert(
+                at,
+                Entry::new(tag, None, vec![(source.to_owned(), modifier)]),
+            ),
+        }
+    }
+
+    /// Removes every modifier `source` gave, on every tag, and recomputes
+    /// those factors, dropping a tag left with no base and no modifier; how
+    /// many it removed.
+    pub fn remove_modifiers(&mut self, source: &str) -> usize {
+        let mut removed = 0;
+        for entry in &mut self.entries {
+            let before = entry.modifiers.len();
+            entry.modifiers.retain(|(from, _)| from != source);
+            if entry.modifiers.len() != before {
+                removed += before - entry.modifiers.len();
+                entry.recompute();
+            }
+        }
+        self.entries
+            .retain(|entry| entry.base.is_some() || !entry.modifiers.is_empty());
+        removed
+    }
+
+    /// `tag`'s base factor, when it lists one.
+    #[must_use]
+    pub fn base(&self, tag: &str) -> Option<f32> {
+        self.search(tag).ok().and_then(|at| self.entries[at].base)
+    }
+
+    /// The product of the factors whose tag `tags` carries, each after its
+    /// modifiers, 1 when none does and 0 when one of them is 0, clamped to
+    /// `f32::MAX`.
     #[must_use]
     pub fn factor(&self, tags: &Tags) -> f32 {
-        self.product(tags)
+        self.product_with(tags, 0.0)
             .map_or(0.0, |product| product.min(f64::from(f32::MAX)) as f32)
     }
 
-    /// The product of the matching factors in `f64`, or `None` when one of
-    /// them is 0: immunity, found before any product.
-    pub(crate) fn product(&self, tags: &Tags) -> Option<f64> {
-        let matching = || self.factors.iter().filter(|(tag, _)| tags.has(tag));
-        if matching().any(|&(_, factor)| factor == 0.0) {
+    /// The product of the matching factors in `f64`, each in `(0, 1)`
+    /// raised by `points` and capped at 1, or `None` when one of them is 0:
+    /// an immunity or a modifier's 0, found before any product.
+    pub(crate) fn product_with(&self, tags: &Tags, points: f32) -> Option<f64> {
+        let matching = || self.entries.iter().filter(|entry| tags.has(&entry.tag));
+        if matching().any(|entry| entry.factor == 0.0) {
             return None;
         }
-        Some(matching().map(|&(_, factor)| f64::from(factor)).product())
+        Some(
+            matching()
+                .map(|entry| {
+                    let factor = f64::from(entry.factor);
+                    if points > 0.0 && entry.factor < 1.0 {
+                        (factor + f64::from(points)).min(1.0)
+                    } else {
+                        factor
+                    }
+                })
+                .product(),
+        )
+    }
+
+    fn search(&self, tag: &str) -> Result<usize, usize> {
+        self.entries
+            .binary_search_by(|entry| entry.tag.as_str().cmp(tag))
+    }
+}
+
+/// A resistance as a save writes it: factors by tag, each a bare base or a
+/// base with its modifiers.
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+struct ResistSave(BTreeMap<String, SavedFactor>);
+
+/// One saved factor: `0.5`, or `{ "base": 0.5, "modifiers": [..] }` with
+/// `base` optional, never `{}`.
+struct SavedFactor {
+    base: Option<f32>,
+    modifiers: Vec<(String, Modifier)>,
+}
+
+impl Serialize for SavedFactor {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct WithModifiers<'a> {
+            #[serde(skip_serializing_if = "Option::is_none")]
+            base: Option<f32>,
+            modifiers: &'a [(String, Modifier)],
+        }
+        match (self.base, self.modifiers.is_empty()) {
+            (Some(base), true) => serializer.serialize_f32(base),
+            _ => WithModifiers {
+                base: self.base,
+                modifiers: &self.modifiers,
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SavedFactor {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(SavedFactorVisitor)
+    }
+}
+
+/// Reads either form of a saved factor.
+struct SavedFactorVisitor;
+
+impl SavedFactorVisitor {
+    fn base(value: f64) -> SavedFactor {
+        SavedFactor {
+            base: Some(value as f32),
+            modifiers: Vec::new(),
+        }
+    }
+}
+
+impl<'de> Visitor<'de> for SavedFactorVisitor {
+    type Value = SavedFactor;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a factor, or an object of `base` and `modifiers`")
+    }
+
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<SavedFactor, E> {
+        Ok(Self::base(value))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<SavedFactor, E> {
+        Ok(Self::base(value as f64))
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<SavedFactor, E> {
+        Ok(Self::base(value as f64))
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<SavedFactor, A::Error> {
+        let mut base = None;
+        let mut modifiers = None;
+        while let Some(key) = map.next_key::<String>()? {
+            match key.as_str() {
+                "base" => {
+                    if base.is_some() {
+                        return Err(de::Error::duplicate_field("base"));
+                    }
+                    base = Some(map.next_value::<f32>()?);
+                }
+                "modifiers" => {
+                    if modifiers.is_some() {
+                        return Err(de::Error::duplicate_field("modifiers"));
+                    }
+                    modifiers = Some(map.next_value::<Vec<(String, Modifier)>>()?);
+                }
+                other => return Err(de::Error::unknown_field(other, &["base", "modifiers"])),
+            }
+        }
+        let modifiers = modifiers.unwrap_or_default();
+        if base.is_none() && modifiers.is_empty() {
+            return Err(de::Error::custom(
+                "a factor names its `base`, its `modifiers` or both",
+            ));
+        }
+        Ok(SavedFactor { base, modifiers })
+    }
+}
+
+impl TryFrom<ResistSave> for Resist {
+    type Error = String;
+
+    fn try_from(save: ResistSave) -> Result<Self, Self::Error> {
+        let mut entries = Vec::with_capacity(save.0.len());
+        for (tag, factor) in save.0 {
+            match factor.base {
+                Some(base) => check_factor(&tag, base)?,
+                None => check_tag(&tag)?,
+            }
+            check_modifiers(&tag, &factor.modifiers)?;
+            entries.push(Entry::new(&tag, factor.base, factor.modifiers));
+        }
+        Ok(Self { entries })
+    }
+}
+
+impl From<Resist> for ResistSave {
+    fn from(resist: Resist) -> Self {
+        Self(
+            resist
+                .entries
+                .into_iter()
+                .map(|entry| {
+                    let factor = SavedFactor {
+                        base: entry.base,
+                        modifiers: entry.modifiers,
+                    };
+                    (entry.tag, factor)
+                })
+                .collect(),
+        )
     }
 }
 
@@ -371,7 +648,11 @@ impl TryFrom<BTreeMap<String, f32>> for ResistDef {
 impl From<ResistDef> for Resist {
     fn from(def: ResistDef) -> Self {
         Self {
-            factors: def.0.into_iter().collect(),
+            entries: def
+                .0
+                .into_iter()
+                .map(|(tag, factor)| Entry::new(&tag, Some(factor), Vec::new()))
+                .collect(),
         }
     }
 }
@@ -392,12 +673,12 @@ pub(crate) struct ShieldDef {
 pub(crate) fn resist_description() -> ComponentDescription {
     ComponentDescription::new(
         RESIST,
-        "Damage factors by damage tag: a request's matching factors multiply its amount, and a factor of 0 is immunity.",
+        "Damage factors by damage tag: a hit part's matching factors multiply its amount, and a factor of 0 is immunity.",
     )
     .field(FieldDescription::new(
         "factors",
         FieldType::Object("damage tag → factor in [0, 1000]"),
-        "the value itself: each tag declared, matching a request's tag or its dotted descendants",
+        "the value itself: each tag declared, matching a part's type or its dotted descendants; a save adds each factor's modifiers",
     ))
     .genre(TOP_DOWN)
     .genre(SHMUP)
@@ -447,11 +728,30 @@ pub(crate) fn shield_description() -> ComponentDescription {
 }
 
 impl Inspectable for Resist {
+    /// Each tag's factor, with its base and modifiers when it has any.
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
         let factors: Vec<String> = self
-            .factors
+            .entries
             .iter()
-            .map(|(tag, factor)| format!("{tag} × {factor}"))
+            .map(|entry| {
+                if entry.modifiers.is_empty() {
+                    return format!("{} × {}", entry.tag, entry.factor);
+                }
+                let base = entry
+                    .base
+                    .map_or_else(|| "none".to_string(), |base| base.to_string());
+                let modifiers: Vec<String> = entry
+                    .modifiers
+                    .iter()
+                    .map(|(source, modifier)| format!("{source} {modifier:?}"))
+                    .collect();
+                format!(
+                    "{} × {} (base {base}; {})",
+                    entry.tag,
+                    entry.factor,
+                    modifiers.join(", ")
+                )
+            })
             .collect();
         vec![("resist", factors.join(", "))]
     }

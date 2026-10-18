@@ -1,0 +1,27 @@
+{
+  "tag": "ward",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 10
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    },
+    "resist": {
+      "elemental.fire": 0.25,
+      "toxic": 0
+    },
+    "cues": {
+      "damaged_part": [
+        {
+          "label": {}
+        }
+      ]
+    }
+  }
+}
