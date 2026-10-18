@@ -1,0 +1,10 @@
+{
+  "trigger": {
+    "interval": 1.0
+  },
+  "payload": [
+    {
+      "hitbox": 0.2
+    }
+  ]
+}

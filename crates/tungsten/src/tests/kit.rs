@@ -12,7 +12,7 @@ use tungsten_core::physics::{
 };
 use tungsten_core::{
     AnimationData, AnimationRegistry, AnimationState, AssetRegistry, AudioCommand, AudioHandle,
-    Bundle, CameraState, CommandBuffer, Config, Easing, Entity, EventQueue, LayerKind,
+    Bundle, CameraState, CommandBuffer, Config, DataRef, Easing, Entity, EventQueue, LayerKind,
     MaterialAssetId, MaterialRegistry, MaterialUniformDefaults, PhysicsConfig, SoundData,
     SoundRegistry, Sprite, SpriteAssetId, Stage, TilemapData, TilemapInstance, TilemapRegistry,
     Time, Transform, Tween, TweenChannel, UniformOverrideBlock, Visibility, WindowSize, World,
@@ -21,13 +21,17 @@ use tungsten_core::{
 
 use crate::App;
 use crate::kit::{
-    Children, ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues,
-    CuesOnEvent, Damaged, DespawnOutside, HEALTH_TICK, HIT_FLASH_MATERIAL, Health, Hit as Outcome,
-    HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng, KitTrace, LabelStyle, Lifetime,
-    LocalOffset, Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController,
-    Projectile, ProjectileExpired, SoundOnEvent, Source, SpawnChildren, Spawner, StateMachine,
-    StateMachinePlugin, Stats, Struck, TagFilter, Tags, TopDownMover, TraceKind, TriggerEntered,
-    TriggerZone, cursor_to_world, damage, despawn_recursive, spawn_child,
+    ABILITY_TICK, AILMENT_FEED, AILMENT_TICK, AbilitiesPlugin, Applied, CUES, Children,
+    ContactDamage, Cooldown, CooldownElapsed, Counters, CueAction, CueEvent, Cues, CuesOnEvent,
+    CuesPlugin, DAMAGE_RESOLVE, DamagePart, DamageRequest, Damaged, DespawnOutside, EFFECT_RESOLVE,
+    EFFECT_TICK, Effect, EffectRequest, Effects, EffectsPlugin, Expire, HEALTH_TICK,
+    HIT_FLASH_MATERIAL, Health, HealthPlugin, Hit as Outcome, HitFlash, HitShape, Hitbox, Hurtbox,
+    KitPlugins, KitRng, KitTrace, LEVEL_TICK, LabelStyle, LevelPlugin, Lifetime, LocalOffset,
+    Modifier, Parent, PathFollower, PickedUp, Pickup, PlatformerController, Projectile,
+    ProjectileExpired, Refresh, STATS_APPLY, SoundOnEvent, Source, SpawnChildren, Spawner,
+    StateMachine, StateMachinePlugin, Stats, StatsPlugin, Struck, TagFilter, Tags, TopDownMover,
+    TraceKind, TriggerEntered, TriggerZone, cursor_to_world, damage, despawn_recursive,
+    spawn_child,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
 use crate::testing::Harness;
@@ -41,7 +45,7 @@ const KIT_POST_UPDATE: &str = "post_update: physics_sync, transform_propagate, p
 /// `physics_step`, each member in its registration order but where an edge
 /// orders it: the hit items before the corrections, the magnet before the
 /// speed limit, the kit's despawn after the cues.
-const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, kit_react, spawner_tick, spawn_children, cues, kit_despawn, kit_trace_step";
+const KIT_FIXED_UPDATE: &str = "fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, effect_tick, ailment_tick, kit_intent, action_input, aim, ability_tick, phases, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, zone_entered, kit_resolve, damage_resolve, ailment_feed, effect_resolve, kit_react, spawner_tick, spawn_children, level_tick, cues, kit_despawn, kit_trace_step";
 
 /// The event the sound plugin plays.
 struct Hit;
@@ -2987,6 +2991,14 @@ fn build_owner(name: &str, schedule: &mut tungsten_core::Schedule, world: &mut W
     match name {
         ACTION_INPUT => ActionInputPlugin.build(schedule, world),
         AIM => AimPlugin.build(schedule, world),
+        STATS_APPLY => StatsPlugin::new().build(schedule, world),
+        DAMAGE_RESOLVE => HealthPlugin.build(schedule, world),
+        EFFECT_TICK | EFFECT_RESOLVE | AILMENT_TICK | AILMENT_FEED => {
+            EffectsPlugin.build(schedule, world);
+        }
+        ABILITY_TICK => AbilitiesPlugin.build(schedule, world),
+        LEVEL_TICK => LevelPlugin.build(schedule, world),
+        CUES => CuesPlugin.build(schedule, world),
         LINEAR_MOTION => LinearMotionPlugin.build(schedule, world),
         OSCILLATOR => OscillatorPlugin.build(schedule, world),
         PATH_FOLLOW => PathFollowerPlugin.build(schedule, world),
@@ -4052,4 +4064,208 @@ fn a_magnet_passes_a_nearer_corpse_for_a_live_collector() {
         (at - Vec2::new(70.0, 0.0)).length() < 1e-3,
         "toward the live collector, not the corpse 30 px away: {at}"
     );
+}
+
+// M67: effects, abilities, levels and ailments at three frame rates, and
+// their edges.
+
+/// M67's within-phase edges whose two systems have their own plugins,
+/// each `(earlier, later)`; the effect plugin's own pair (`effect_tick`
+/// before `ailment_tick`, `ailment_feed` before `effect_resolve`) holds by
+/// its edges inside one build.
+const EFFECT_EDGES: [(&str, &str); 7] = [
+    (STATS_APPLY, EFFECT_TICK),
+    (STATS_APPLY, AILMENT_TICK),
+    (ACTION_INPUT, ABILITY_TICK),
+    (AIM, ABILITY_TICK),
+    (DAMAGE_RESOLVE, AILMENT_FEED),
+    (DAMAGE_RESOLVE, EFFECT_RESOLVE),
+    (LEVEL_TICK, CUES),
+];
+
+#[test]
+fn each_effect_edge_holds_with_its_two_plugins_alone_in_either_order_and_reversed_in_the_set() {
+    for (earlier, later) in EFFECT_EDGES {
+        for (first, second) in [(earlier, later), (later, earlier)] {
+            let mut world = World::new();
+            let mut schedule = tungsten_core::Schedule::new();
+            build_owner(first, &mut schedule, &mut world);
+            build_owner(second, &mut schedule, &mut world);
+            schedule.resolve().unwrap();
+            let stage = schedule.stage_of(earlier).unwrap();
+            let names: Vec<&str> = schedule.names(stage).collect();
+            let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
+            assert!(
+                at(earlier) < at(later),
+                "{earlier} before {later}, built {first} first: {names:?}"
+            );
+        }
+    }
+    let mut app = App::new(Config::default()).unwrap();
+    app.add_plugins(crate::kit_recipes::effects_reversed());
+    app.resolve_schedule().unwrap();
+    let text = app.schedule().resolved_text();
+    let fixed = text
+        .lines()
+        .find(|line| line.starts_with("fixed_update: "))
+        .unwrap();
+    let names: Vec<&str> = fixed.split_once(": ").unwrap().1.split(", ").collect();
+    let at = |name: &str| names.iter().position(|n| *n == name).unwrap();
+    for (earlier, later) in EFFECT_EDGES
+        .iter()
+        .copied()
+        .chain([(EFFECT_TICK, AILMENT_TICK), (AILMENT_FEED, EFFECT_RESOLVE)])
+    {
+        assert!(
+            at(earlier) < at(later),
+            "reversed in the set: {earlier} before {later}: {fixed}"
+        );
+    }
+}
+
+#[test]
+fn stacking_and_expiry_land_the_same_at_three_frame_rates() {
+    // At each rate: the seconds a limit-2 `extend` effect applied three
+    // times runs for, and the seconds at which a limit-3 `remove_one`
+    // effect drops each stack.
+    let run = |dt: f32| -> (f32, Vec<f32>) {
+        let mut harness = Harness::new(kit_app());
+        harness.set_dt(dt);
+        let extend = DataRef::inline(
+            Effect::new()
+                .with_duration(0.5)
+                .with_stack(2, Refresh::Extend, Expire::Clear)
+                .with_modifier("armor", Modifier::Add(1.0)),
+        );
+        let remove = DataRef::inline(
+            Effect::new()
+                .with_duration(0.5)
+                .with_stack(3, Refresh::Refresh, Expire::RemoveOne)
+                .with_modifier("armor", Modifier::Add(1.0)),
+        );
+        let extended = spawn_at(&mut harness, 0.0, 0.0, (Stats::new().with("armor", 0.0),));
+        let removed = spawn_at(&mut harness, 10.0, 0.0, (Stats::new().with("armor", 0.0),));
+        harness.step(1);
+        for _ in 0..3 {
+            EffectRequest::new(extended, extend.clone()).apply(harness.world_mut());
+            EffectRequest::new(removed, remove.clone()).apply(harness.world_mut());
+        }
+        let armor = |harness: &Harness, entity| {
+            harness
+                .world()
+                .get::<Stats>(entity)
+                .unwrap()
+                .get("armor")
+                .unwrap()
+        };
+        assert_eq!(
+            (armor(&harness, extended), armor(&harness, removed)),
+            (2.0, 3.0)
+        );
+        let mut ran = None;
+        let mut drops = Vec::new();
+        let mut last = 3.0;
+        for step in 1..=400 {
+            harness.step(1);
+            if ran.is_none() && armor(&harness, extended) == 0.0 {
+                ran = Some(step as f32 * dt);
+            }
+            let now = armor(&harness, removed);
+            if now < last {
+                drops.push(step as f32 * dt);
+                last = now;
+            }
+            if ran.is_some() && now == 0.0 {
+                break;
+            }
+        }
+        (ran.unwrap(), drops)
+    };
+    let close = |a: f32, b: f32, dt: f32| (a - b).abs() <= dt + 1e-4;
+    for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
+        let (ran, drops) = run(dt);
+        assert!(
+            close(ran, 1.5, dt),
+            "at dt {dt}: one stack, extended twice: {ran}"
+        );
+        assert_eq!(drops.len(), 3, "at dt {dt}: {drops:?}");
+        for (drop, at) in drops.iter().zip([0.5, 1.0, 1.5]) {
+            assert!(
+                close(*drop, at, dt),
+                "at dt {dt}: a stack every half second: {drops:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_ailment_ladder_climbs_its_gates_in_order_at_three_frame_rates() {
+    for dt in [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0] {
+        let mut harness = crate::kit_recipes::recipe("top_down", KitPlugins::set(), dt);
+        let golem = crate::kit_recipes::spawn(&mut harness, "golem", [0.0, 0.0]);
+        harness.step(1);
+        let cold = |amount: f32| {
+            DamageRequest::from_parts(
+                golem,
+                [DamagePart::new(amount).with_tags(Tags::new(["elemental.cold"]))],
+            )
+        };
+        let effects = |harness: &Harness| -> (bool, bool) {
+            let effects = harness.world().get::<Effects>(golem);
+            (
+                effects.is_some_and(|e| e.has("chilled")),
+                effects.is_some_and(|e| e.has("frozen")),
+            )
+        };
+        // The gates in order: a full bucket chills, the next freezes, and
+        // the application lands in the hit's step.
+        cold(8.0).apply(harness.world_mut());
+        run_steps::<Damaged>(&mut harness, 1);
+        assert_eq!(effects(&harness), (true, false), "at dt {dt}");
+        cold(8.0).apply(harness.world_mut());
+        run_steps::<Damaged>(&mut harness, 1);
+        assert_eq!(effects(&harness), (true, true), "at dt {dt}");
+        // The drain: a part below the half fills the bucket, which loses a
+        // threshold over the ladder's four seconds, the same at every rate.
+        let fresh = crate::kit_recipes::spawn(&mut harness, "golem", [200.0, 0.0]);
+        run_steps::<Damaged>(&mut harness, 1);
+        DamageRequest::from_parts(
+            fresh,
+            [DamagePart::new(3.0).with_tags(Tags::new(["elemental.cold"]))],
+        )
+        .apply(harness.world_mut());
+        // The hit's step fills the bucket; a frame of two steps drains one
+        // step's worth off it before the read.
+        run_steps::<Damaged>(&mut harness, 1);
+        let fill = |harness: &Harness| {
+            harness
+                .world()
+                .get::<crate::kit::AilmentBuckets>(fresh)
+                .map_or(0.0, |b| b.fill("elemental.cold"))
+        };
+        let filled = fill(&harness);
+        assert!(
+            (2.4 - 1.5 / 60.0 - 1e-3..=2.4 + 1e-3).contains(&filled),
+            "at dt {dt}: 3 at the 0.8 factor: {filled}"
+        );
+        // Sixty fixed steps drain a quarter of the threshold of 6.
+        run_steps::<Damaged>(&mut harness, 60);
+        let left = fill(&harness);
+        assert!(
+            (left - (filled - 1.5)).abs() < 1e-3,
+            "at dt {dt}: a quarter of 6 off: {left} from {filled}"
+        );
+        assert_eq!(
+            harness
+                .world()
+                .get::<Effects>(fresh)
+                .map_or(0, |e| e.instances().count()),
+            0,
+            "at dt {dt}: below the half, nothing applied"
+        );
+        assert_eq!(
+            EffectRequest::new(fresh, DataRef::by_id("chilled")).apply(harness.world_mut()),
+            Applied::Applied
+        );
+    }
 }

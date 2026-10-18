@@ -1,0 +1,10 @@
+{
+  "period": 1,
+  "heal": 1,
+  "scale": {
+    "curve": "regen_scale",
+    "into": [
+      "periodic"
+    ]
+  }
+}

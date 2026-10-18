@@ -23,6 +23,12 @@
           "label": {}
         }
       ]
+    },
+    "ailment_threshold": {
+      "flat": 4
+    },
+    "stats": {
+      "ailment_threshold_mult": 1.5
     }
   }
 }

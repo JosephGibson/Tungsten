@@ -19,7 +19,14 @@
         0,
         1
       ]
-    }
+    },
+    "ailments": [
+      {
+        "effect": "eaten",
+        "needs": 0.5,
+        "window": 2
+      }
+    ]
   },
   "biological.pathogen": {},
   "biological.toxin": {},
@@ -34,7 +41,15 @@
       ]
     }
   },
-  "digital.corruption": {},
+  "digital.corruption": {
+    "ailments": [
+      {
+        "effect": "corrupted",
+        "needs": 1,
+        "window": 3
+      }
+    ]
+  },
   "digital.exploit": {
     "label_style": {
       "font": "sans",

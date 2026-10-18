@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.87.0] - 2026-10-18
+
+Summary: M67, W13k (plan archived at `docs/plans/archive/1.0/phase6-milestone-67-kit-effects-abilities.md`): the kit catalogue's E, effects, abilities, curves, offers and levels as data kinds and scene components, every kit payload queued for one `effect_resolve` after the damage; the ailment ladder on `damage_types` entries, fed by typed parts and climbed from the top down; a periodic flag through the pipeline; the hitbox window; four cue events and two actions; twelve recipes in the four fixtures. The template's hazard slows the player.
+
+### Added
+
+- **Effects** (`D-177`): `Effect` and the `effects` kind (timed, infinite or instant; a payload of typed damage or a heal, once or each period, a periodic hit passing the invulnerability window and starting none; stacks with `refresh` and `expire` rules; modifiers on the target's `Stats` and `Resist` per stack; granted and blocking tags; a `scale` curve into the duration, the payload and the modifiers; an `on_expire` transition); `Effects`, the scene component's pending list and instances with a granted-tag table, and `EffectInstance`; `EffectRequest` applied at once or queued, `Applied` and `end_effect`; `EffectApplied` and `EffectExpired`; `Curve` and the `curves` kind; `EffectsPlugin`, with `effect_tick` after `stats_apply` and `effect_resolve` after `damage_resolve`.
+- **Abilities** (`D-177`): `Ability` and the `abilities` kind (a trigger by action, by interval or by hand; a cost in a stat's base; a cooldown at `cooldown_rate`; charges with a refill; a target of the entity, its aim, the nearest or a random live match; payloads of a spawn, an effect, an impulse or a hitbox window); `Abilities` by ID or `#<index>`; `use_ability` and `Used`; `AbilityUsed`; `AbilitiesPlugin`, with `ability_tick` after `action_input` and `aim`; `Hitbox::with_window`, `arm`, `is_armed` and `window`, a windowed hitbox hitting only while armed.
+- **Levels** (`D-177`): `Level` and the `level` scene component, a counter climbed along a curve, at most 16 levels a step; `Offers`, `Offer` and the `offers` kind, drawn by weight without replacement, an effect or an ability the game's `choose` applies; `LevelUp`; `LevelPlugin`, with `level_tick` before `cues`.
+- **Ailments** (`D-177`): `ailments` on a `damage_types` definition, a ladder of `AilmentRung`s inherited down the dotted tree and climbed from the top down, with `needs`, `requires`, `chance` and `window`; `AilmentThreshold` (`ailment_threshold`, times the `ailment_threshold_mult` stat) and `AilmentBuckets`; `ailment_feed` after `damage_resolve`, filling a bucket per resolved ladder from each typed, non-periodic `DamagedPart`, and `ailment_tick` draining it over the first `needs` rung's window.
+- **Cues** (`D-177`): the events `effect_applied`, `effect_expired`, `ability_used` and `level_up`; the actions `effect` (queued on the subject from the other, or on the other from the subject) and `ability` (use or refill); `CueAction::effect`, `ability` and `refill_ability`.
+- **Proof** (`D-177`): twelve recipes across the four fixtures (a burning slime, a wand on an interval with a dash, a volley with ammo, gems into levels and an offer, chill then freeze with a thaw immunity, a poison by chance, a corrupting wither, a cannon that reloads, a pulse once per window, a regen, a haste, an inline effect and a level that grants an ability), stacking, expiry and the ladder at three frame rates, the seven edges pinned with their plugins alone and the set reversed, and the kit bench's 39 rows (`effect_tick`, `effect_resolve`, `ailment_tick`, `ailment_feed`, `ability_tick` and `level_tick` new) within the per-entity bound.
+- **Template** (`D-177`): the hazard's `hit` cue applies `slowed`, a `data.effects` entry, to the player, whose `stats` declares `move_speed`; the README, `AGENTS.md` and the getting-started guide name the new items.
+
+### Changed
+
+- **The pipeline, the set and the kit hash** (`D-177` amends `D-172`, `D-173`, `D-175` and `D-176`): `DamageRequest::with_periodic` passes the window guard with no window, flash, knockback or crit, and `Damaged` and `DamagedPart` carry `periodic`; `hitbox_tick` skips a disarmed hitbox; `KitPlugins::set()` adds the effects, abilities and level plugins, its resolved schedule and the template's gaining the six systems; the kit hash moves to `0x6fbd_8f24_2114_15a5`, its script pressing attack and fire, spawning an ammo orb and sending a cold hit on the golem and a digital one on the mainframe.
+- **Records**: decision 177 with its marker lines on `D-172`, `D-173`, `D-175` and `D-176`; `DESIGN.md`'s M67 section and status line; known issues (E's limits); the W4 ledger's additions row; w13-kit's Q28–Q32 answered and Q33–Q41 recorded; the backlog's `apply` list, `event` trigger and `jump_speed` rows; the LLM index's decision range; the profiling workflow's kit rows; the phase table's members.
+
+### Fixed
+
+- **The template's README** (M67 step 7): its first paragraph still called `hazard_touch` the template's one piece of game Rust and named no gems, after M65 moved the touch into `contact_damage` and added three gems; it now names the contact damage, the gems and the slow, and the known-issues row is gone.
+
 ## [0.86.0] - 2026-10-18
 
 Summary: M66, W13 damage types (plan archived at `docs/plans/archive/1.0/phase6-milestone-66-kit-damage-types.md`): the kit catalogue's DT, damage types a game declares in the `damage_types` data kind, none named by the kit; a hit as typed parts, each converted, penetrated and resisted on its own before one fall through the shield and health; `DamageKinds` on `Damaged` and on a new `DamagedPart`; the `damaged_part` cue event, a rule's `kind` filter and labels in a type's style; recipes in a fantasy (top-down) and a sci-fi (shmup) set. No template change.

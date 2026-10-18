@@ -1,7 +1,7 @@
 //! What the game runs: its plugin (the setup its first frame needs, its
 //! systems by stage and its text). The player's movement, health, hit flash,
-//! knockback and camera, the hazard's patrol and touch, and the gems' drift
-//! and count are the kit's: components named on their prefabs, run by
+//! knockback and camera, the hazard's patrol, touch and slow, and the gems'
+//! drift and count are the kit's: components named on their prefabs, run by
 //! `KitPlugins::set()`, with no game Rust for them.
 
 use tungsten::core::{ActionMap, CameraController, InputState, Settings, World};
@@ -55,7 +55,9 @@ impl Plugin for GamePlugin {
 /// flashes its `hit_flash` and runs its `knockback` on a hit, and points the
 /// camera at its `camera_target`; it swings the hazard's `oscillator` and
 /// hurts the player's `hurtbox` through the hazard's `contact_damage`, once
-/// per interval while they touch, pushing it away; it draws each gem's
+/// per interval while they touch, pushing it away, and the hazard's `hit`
+/// cue applies the `slowed` effect to the player, whose `move_speed` stat
+/// its modifier halves for the effect's seconds; it draws each gem's
 /// `pickup` to the player whose `pickup_radius` stat reaches it and counts
 /// it on the game's `Counters` through the gem's `picked_up` cue.
 pub fn register(app: &mut App) {

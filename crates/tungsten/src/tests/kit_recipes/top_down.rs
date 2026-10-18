@@ -3,7 +3,9 @@
 //! M64's seeker, coward, crates, sentry, wielder and blades, rovers,
 //! brawler, pet and gem; M65's ranger and its embers, ghouls, their bursts
 //! and drops, orbs and a knight; M66's fantasy damage types: a spellblade
-//! and a golem, a pyromancer, its firebolts and a ward.
+//! and a golem, a pyromancer, its firebolts and a ward; M67's burning
+//! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
+//! offers, the golem's cold ladder and the ghouls' poison.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -17,9 +19,11 @@ use super::{
     teleport, traced_steps,
 };
 use crate::kit::{
-    Aim, CharacterAnimator, Conversion, CooldownElapsed, Counters, Damaged, DamagedPart, Facing,
-    Health, Hit, HitFlash, KitPlugins, KitRng, Modifier, Penetration, ProjectileExpired, Shield,
-    Source, Stats, Steering, Struck, Tags, TopDownMover, ZoneEntered, damage, knock_back,
+    Abilities, Aim, CharacterAnimator, Conversion, CooldownElapsed, Counters, DamagePart,
+    DamageRequest, Damaged, DamagedPart, Effects, Facing, Health, Hit, HitFlash, KitPlugins,
+    KitRng, Knockback, Level, LinearMotion, Modifier, Penetration, ProjectileExpired, Shield,
+    Source, Stats, Steering, Struck, Tags, TopDownMover, TraceKind, ZoneEntered, damage,
+    knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -877,6 +881,329 @@ fn a_pyromancers_bolts_take_its_penetration_and_conversion() {
         assert!(
             parts_match(&parts, &[(2.0, &["elemental", "elemental.fire"])]),
             "dt {dt}: {parts:?}"
+        );
+    }
+}
+
+// M67: effects, abilities, levels and ailments.
+
+fn cold(target: Entity, amount: f32) -> DamageRequest {
+    DamageRequest::from_parts(
+        target,
+        [DamagePart::new(amount).with_tags(Tags::new(["elemental.cold"]))],
+    )
+}
+
+fn has_effect(harness: &Harness, entity: Entity, id: &str) -> bool {
+    harness
+        .world()
+        .get::<Effects>(entity)
+        .is_some_and(|effects| effects.has(id))
+}
+
+#[test]
+fn a_burning_hit_slows_the_slime_and_its_fire_ticks_kill_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let slime = spawn(&mut harness, "slime", [50.0, 50.0]);
+        let torch = harness.world_mut().spawn();
+        harness.step(1);
+        // A fire part on the flammable slime: the elements rule's `effect`
+        // action queues `burning` from the hitter, which lands the step
+        // after the cue.
+        DamageRequest::from_parts(
+            slime,
+            [DamagePart::new(0.5).with_tags(Tags::new(["elemental.fire"]))],
+        )
+        .with_source(torch)
+        .apply(harness.world_mut());
+        harness.step(2);
+        let world = harness.world();
+        assert!(has_effect(&harness, slime, "burning"), "dt {dt}");
+        let instance = world
+            .get::<Effects>(slime)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap();
+        assert_eq!(instance.source(), Some(torch));
+        assert_eq!(
+            world.get::<Stats>(slime).unwrap().get("move_speed"),
+            Some(45.0),
+            "dt {dt}: a quarter slower"
+        );
+        assert!(world.get::<Tags>(slime).unwrap().has("status.burning"));
+        assert_eq!(world.get::<Health>(slime).unwrap().current(), 1.5);
+        // Fire ticks every half second: the second one kills, which the
+        // combat rule counts.
+        harness.step(frames_for(1.1, dt));
+        let world = harness.world();
+        assert!(world.get::<Health>(slime).unwrap().is_dead(), "dt {dt}");
+        assert_eq!(world.resource::<Counters>().get("kills"), 1, "dt {dt}");
+        let ticks: Vec<f32> = world
+            .resource::<crate::kit::KitTrace>()
+            .about(slime)
+            .filter_map(|entry| match entry.kind {
+                TraceKind::Event {
+                    name: "damaged",
+                    amount,
+                    ..
+                } => amount,
+                _ => None,
+            })
+            .collect();
+        assert_eq!(ticks, [0.5, 1.0, 1.0], "dt {dt}: the hit, then two ticks");
+    }
+}
+
+#[test]
+fn the_heros_wand_bolts_the_nearest_slime_on_its_interval_and_its_dash_pushes_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let hero = spawn(&mut harness, "hero", [100.0, 0.0]);
+        let near = spawn(&mut harness, "slime", [200.0, 0.0]);
+        spawn(&mut harness, "slime", [100.0, 300.0]);
+        harness.step(frames_for(0.45, dt));
+        assert!(tagged(&harness, "ember").is_empty(), "dt {dt}: not yet");
+        harness.step(frames_for(0.1, dt));
+        let embers = tagged(&harness, "ember");
+        assert_eq!(embers.len(), 1, "dt {dt}: one on the interval");
+        let world = harness.world();
+        let velocity = world.get::<LinearMotion>(embers[0]).unwrap().velocity();
+        assert!(
+            (velocity - Vec2::new(420.0, 0.0)).length() < 1e-3,
+            "dt {dt}: toward the near slime at the wand's speed: {velocity}"
+        );
+        assert_eq!(world.get::<Source>(embers[0]), Some(&Source::new(hero)));
+        let used = traced_steps(&harness, hero, "ability_used");
+        assert_eq!(used.len(), 1);
+        let _ = near;
+        // The dash: the hero moving right aims right, and the dash slot
+        // pushes it that way through its knockback.
+        harness.press_action("move_right");
+        harness.step(1);
+        harness.press_action("dash");
+        harness.step(1);
+        harness.release_action("dash");
+        // The push falls to 0 over the knockback's 0.2 s: a step in, most
+        // of its 600 is left, along the aim.
+        let push = harness.world().get::<Knockback>(hero).unwrap().push();
+        assert!(push.x > 400.0 && push.y.abs() < 1e-3, "dt {dt}: {push}");
+        let x = body_at(&harness, hero).x;
+        harness.step(frames_for(0.2, dt));
+        assert!(
+            body_at(&harness, hero).x > x + 50.0,
+            "dt {dt}: thrown forward"
+        );
+        assert!(
+            !harness
+                .world()
+                .get::<Abilities>(hero)
+                .unwrap()
+                .ready("dash"),
+            "dt {dt}: on cooldown"
+        );
+    }
+}
+
+#[test]
+fn the_rangers_volley_empties_its_charges_and_an_ammo_orb_refills_them() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ranger = spawn(&mut harness, "ranger", [0.0, 0.0]);
+        spawn(&mut harness, "golem", [300.0, 0.0]);
+        harness.step(1);
+        for _ in 0..4 {
+            harness.press_action("attack");
+            harness.step(1);
+            harness.release_action("attack");
+            harness.step(1);
+        }
+        assert_eq!(
+            traced_steps(&harness, ranger, "ability_used").len(),
+            3,
+            "dt {dt}: three charges"
+        );
+        let abilities = harness.world().get::<Abilities>(ranger).unwrap();
+        assert_eq!(abilities.charges("volley"), Some(0));
+        assert!(!abilities.ready("volley"));
+        let embers = tagged(&harness, "ember");
+        assert_eq!(embers.len(), 3, "dt {dt}");
+        for ember in embers {
+            let velocity = harness
+                .world()
+                .get::<LinearMotion>(ember)
+                .unwrap()
+                .velocity();
+            assert!(
+                (velocity - Vec2::new(500.0, 0.0)).length() < 1e-3,
+                "dt {dt}"
+            );
+        }
+        // The ammo on the ranger: its `picked_up` cue refills the
+        // collector's volley.
+        let ammo = spawn(&mut harness, "ammo", [0.0, 0.0]);
+        harness.step(2);
+        assert!(!harness.world().is_alive(ammo), "dt {dt}: collected");
+        let abilities = harness.world().get::<Abilities>(ranger).unwrap();
+        assert!(abilities.ready("volley"), "dt {dt}");
+        assert_eq!(abilities.charges("volley"), Some(3));
+        harness.press_action("attack");
+        harness.step(1);
+        harness.release_action("attack");
+        assert_eq!(traced_steps(&harness, ranger, "ability_used").len(), 4);
+    }
+}
+
+#[test]
+fn the_ranger_levels_on_gems_and_a_chosen_offer_grants_swift() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ranger = spawn(&mut harness, "ranger", [0.0, 0.0]);
+        harness.step(1);
+        assert_eq!(harness.world().get::<Level>(ranger).unwrap().level(), 1);
+        // The orbs' xp, as their cues count it: enough for the next level,
+        // then the next, until the draw offers `swift`.
+        let mut swift_at = None;
+        for (level, xp) in [(2, 10), (3, 25), (4, 50)] {
+            harness
+                .world_mut()
+                .get_mut::<Counters>(ranger)
+                .unwrap()
+                .set("xp", xp);
+            harness.step(1);
+            let found = harness.world().get::<Level>(ranger).unwrap();
+            assert_eq!(found.level(), level, "dt {dt}");
+            assert_eq!(found.offers().len(), 2, "dt {dt}: two of three");
+            swift_at = found
+                .offers()
+                .iter()
+                .position(|offer| offer.effect().and_then(|e| e.id()) == Some("swift"));
+            if swift_at.is_some() {
+                break;
+            }
+        }
+        let at = swift_at.expect("swift was offered by the fourth level");
+        assert!(
+            harness
+                .world_mut()
+                .get_mut::<Level>(ranger)
+                .unwrap()
+                .choose(at)
+        );
+        harness.step(2);
+        assert!(has_effect(&harness, ranger, "swift"), "dt {dt}");
+        assert!(
+            harness
+                .world()
+                .get::<Level>(ranger)
+                .unwrap()
+                .offers()
+                .is_empty(),
+            "dt {dt}: the choice cleared the offers"
+        );
+        let ups = traced_steps(&harness, ranger, "level_up");
+        assert!(!ups.is_empty());
+    }
+}
+
+#[test]
+fn cold_hits_chill_then_freeze_the_golem_and_a_thawed_golem_resists_the_next_freeze() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let rival = harness.world_mut().spawn();
+        let golem = spawn(&mut harness, "golem", [0.0, 0.0]);
+        let mage = harness.world_mut().spawn();
+        harness.step(1);
+        // The threshold is 4 at the golem's 1.5 multiplier; a hit of 8 lands
+        // 6.4 after its resistance: a full bucket chills, the next freezes,
+        // and three such hits leave the golem of 20 alive.
+        cold(golem, 8.0)
+            .with_source(mage)
+            .apply(harness.world_mut());
+        harness.step(1);
+        assert!(has_effect(&harness, golem, "chilled") && !has_effect(&harness, golem, "frozen"));
+        cold(golem, 8.0)
+            .with_source(mage)
+            .apply(harness.world_mut());
+        harness.step(1);
+        assert!(has_effect(&harness, golem, "frozen"), "dt {dt}");
+        // Up to the step the freeze expires on; that step, the rival, of a
+        // lower index than the mage, lands another full bucket.
+        loop {
+            let left = harness
+                .world()
+                .get::<Effects>(golem)
+                .unwrap()
+                .instances()
+                .find(|i| i.effect().id() == Some("frozen"))
+                .unwrap()
+                .left()
+                .unwrap();
+            if left <= dt * 1.001 {
+                break;
+            }
+            harness.step(1);
+        }
+        assert!(
+            cold(golem, 8.0)
+                .with_source(rival)
+                .queue(harness.world_mut())
+        );
+        harness.step(1);
+        let world = harness.world();
+        let effects = world.get::<Effects>(golem).unwrap();
+        assert!(effects.has("thawed") && !effects.has("frozen"), "dt {dt}");
+        assert!(effects.has("chilled"), "dt {dt}: the chill still runs");
+        let tags = world.get::<Tags>(golem).unwrap();
+        assert!(tags.has("status.thawed") && !tags.has("status.frozen"));
+        let blocked = world
+            .resource::<crate::kit::KitTrace>()
+            .about(golem)
+            .filter(|entry| {
+                matches!(
+                    entry.kind,
+                    TraceKind::Skipped {
+                        event: "effect",
+                        action: "apply",
+                        ..
+                    }
+                )
+            })
+            .count();
+        assert_eq!(blocked, 1, "dt {dt}: the rival's freeze was refused");
+    }
+}
+
+#[test]
+fn a_toxic_hit_poisons_by_chance_under_a_seed() {
+    for dt in DTS {
+        let run = |seed: u64| -> Vec<bool> {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            harness.world_mut().insert_resource(KitRng::seeded(seed));
+            let ghouls: Vec<Entity> = (0..8)
+                .map(|i| spawn(&mut harness, "ghoul", [i as f32 * 100.0, -500.0]))
+                .collect();
+            harness.step(1);
+            for &ghoul in &ghouls {
+                DamageRequest::from_parts(
+                    ghoul,
+                    [DamagePart::new(0.5).with_tags(Tags::new(["toxic"]))],
+                )
+                .apply(harness.world_mut());
+            }
+            harness.step(1);
+            ghouls
+                .iter()
+                .map(|&ghoul| has_effect(&harness, ghoul, "poisoned"))
+                .collect()
+        };
+        let a = run(21);
+        assert_eq!(a, run(21), "dt {dt}: one seed, one outcome");
+        assert_ne!(a, run(22), "dt {dt}");
+        assert!(
+            a.iter().any(|&p| p) && a.iter().any(|&p| !p),
+            "dt {dt}: {a:?}"
         );
     }
 }

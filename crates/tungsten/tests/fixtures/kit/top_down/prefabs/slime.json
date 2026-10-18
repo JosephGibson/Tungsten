@@ -15,7 +15,8 @@
       }
     },
     "tags": [
-      "team.enemy"
+      "team.enemy",
+      "flammable"
     ],
     "health": {
       "max": 2
@@ -31,6 +32,9 @@
     },
     "animation": {
       "id": "slime_idle"
+    },
+    "stats": {
+      "move_speed": 60
     }
   }
 }

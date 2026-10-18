@@ -10,10 +10,11 @@ use serde::de::{Error as _, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::physics::Shape;
 use tungsten_core::{
-    Entity, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, SystemDesc, With, Without,
-    World, system,
+    Entity, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, SystemDesc, Time, With,
+    Without, World, system,
 };
 
+use crate::count_down;
 use crate::damage::kinds::{
     CONVERSION_RULE, Conversion, ConversionDef, Penetration, PenetrationDef, check_type,
 };
@@ -23,9 +24,9 @@ use crate::foundation::describe::{
     describe, describe_shape, round_trip,
 };
 use crate::foundation::inspect::{point, register_rows};
-use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
+use crate::foundation::{non_negative, optional_positive};
 use crate::lifecycle::despawn::DESPAWN_OUTSIDE;
 use crate::lifecycle::ended::Despawning;
 use crate::motion::stay_in_view::STAY_IN_VIEW;
@@ -334,6 +335,13 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// until [`rearm`](Self::rearm); a [`Projectile`](crate::Projectile)'s
 /// hitbox is the projectile's to run.
 ///
+/// A windowed hitbox ([`with_window`](Self::with_window)) starts disarmed
+/// and hits only while its window runs: [`arm`](Self::arm) starts a new
+/// activation and opens the window, which the system counts down at the
+/// end of its run, so a window of `n` steps hits for `n` steps; an
+/// ability's `hitbox` payload arms it for its seconds. A hitbox without a
+/// window is always armed.
+///
 /// A typed hitbox ([`with_parts`](Self::with_parts)) keeps its parts, each
 /// an amount with its damage types, as base parts that no stat writes: its
 /// damage starts at their sum, a `damage` stat writes it as before, and
@@ -348,9 +356,11 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// and leave no room for `tags`: `{ "physical.slash": 8, "elemental.fire": 4 }`.
 /// `pen`, points by damage type in `[0, 1]`, and `convert`, a list of
 /// `{ "from", "to", "pct" }` rules, are its own penetration and conversion,
-/// none by default. It is data, without the targets it has hit: a loaded one
-/// starts a fresh activation, and a save writes a typed one's parts as
-/// `parts`, a list of `{ "tags", "amount" }`, beside its damage.
+/// none by default; `window`, seconds above 0, makes it a windowed hitbox,
+/// none by default. It is data, without the targets it has hit: a loaded
+/// one starts a fresh activation, and a save writes a typed one's parts as
+/// `parts`, a list of `{ "tags", "amount" }`, beside its damage, and a
+/// windowed one's `window` and `armed_left`.
 ///
 /// # Examples
 ///
@@ -382,6 +392,10 @@ pub struct Hitbox {
     typed: Option<Box<HitPayload>>,
     /// The targets hit in this activation, by index.
     hit: Vec<Entity>,
+    /// Seconds a window lasts; `None` for a hitbox that is always armed.
+    window: Option<f32>,
+    /// Seconds left of the open window.
+    armed_left: f32,
 }
 
 /// A typed hit item's base parts, penetration and conversion, which an
@@ -546,16 +560,35 @@ struct HitboxFields {
     pen: Option<Penetration>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     convert: Option<Conversion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window: Option<f32>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    armed_left: f32,
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &f32) -> bool {
+    *value == 0.0
 }
 
 impl TryFrom<HitboxFields> for Hitbox {
     type Error = String;
 
     fn try_from(fields: HitboxFields) -> Result<Self, Self::Error> {
-        for (field, value) in [("damage", fields.damage), ("knockback", fields.knockback)] {
+        for (field, value) in [
+            ("damage", fields.damage),
+            ("knockback", fields.knockback),
+            ("armed_left", fields.armed_left),
+        ] {
             if !(value.is_finite() && value >= 0.0) {
                 return Err(format!("{field}: must be finite and >= 0 (got {value})"));
             }
+        }
+        if let Some(window) = fields.window
+            && !(window.is_finite() && window > 0.0)
+        {
+            return Err(format!("window: must be finite and > 0 (got {window})"));
         }
         Ok(Self {
             shape: fields.shape,
@@ -566,6 +599,12 @@ impl TryFrom<HitboxFields> for Hitbox {
             knockback: fields.knockback,
             typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             hit: Vec::new(),
+            window: fields.window,
+            armed_left: if fields.window.is_some() {
+                fields.armed_left
+            } else {
+                0.0
+            },
         })
     }
 }
@@ -583,6 +622,8 @@ impl From<Hitbox> for HitboxFields {
             parts,
             pen,
             convert,
+            window: hitbox.window,
+            armed_left: hitbox.armed_left,
         }
     }
 }
@@ -610,7 +651,39 @@ impl Hitbox {
             knockback: 0.0,
             typed: None,
             hit: Vec::new(),
+            window: None,
+            armed_left: 0.0,
         }
+    }
+
+    /// The hitbox, windowed: disarmed until [`arm`](Self::arm) opens its
+    /// window of `seconds`, hitting only while it runs.
+    ///
+    /// # Panics
+    ///
+    /// When `seconds` is not finite and above 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::{HitShape, Hitbox};
+    ///
+    /// let mut pulse = Hitbox::new(HitShape::circle(40.0), 1.0).with_window(0.2);
+    /// assert!(!pulse.is_armed(), "disarmed until armed");
+    /// pulse.arm();
+    /// assert!(pulse.is_armed() && pulse.window() == Some(0.2));
+    /// assert!(Hitbox::new(HitShape::circle(4.0), 1.0).is_armed(), "no window: always");
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn with_window(mut self, seconds: f32) -> Self {
+        assert!(
+            seconds.is_finite() && seconds > 0.0,
+            "Hitbox::with_window: seconds must be finite and > 0 (got {seconds})"
+        );
+        self.window = Some(seconds);
+        self.armed_left = 0.0;
+        self
     }
 
     /// The hitbox, typed: `parts` as its base parts, which no stat writes,
@@ -783,6 +856,41 @@ impl Hitbox {
     /// Starts a new activation: every target may be hit once more.
     pub fn rearm(&mut self) {
         self.hit.clear();
+    }
+
+    /// Starts a new activation and opens the window of a windowed hitbox;
+    /// [`rearm`](Self::rearm) for one without a window.
+    pub fn arm(&mut self) {
+        self.hit.clear();
+        self.armed_left = self.window.unwrap_or(0.0);
+    }
+
+    /// Whether it hits: always without a window, else while the window
+    /// runs.
+    #[must_use]
+    pub fn is_armed(&self) -> bool {
+        self.window.is_none() || self.armed_left > 0.0
+    }
+
+    /// Its window's seconds, when it has one.
+    #[must_use]
+    pub fn window(&self) -> Option<f32> {
+        self.window
+    }
+
+    /// Starts a new activation with a window of `seconds`: an ability's
+    /// `hitbox` payload.
+    pub(crate) fn arm_for(&mut self, seconds: f32) {
+        self.hit.clear();
+        self.window = Some(seconds);
+        self.armed_left = seconds;
+    }
+
+    /// Counts the open window down by `dt`.
+    fn count_window(&mut self, dt: f32) {
+        if self.window.is_some() && self.armed_left > 0.0 {
+            self.armed_left = count_down(self.armed_left, dt);
+        }
     }
 
     /// Sets the damage a `damage` stat gives; one that is not finite and at
@@ -1067,6 +1175,8 @@ struct HitboxScene {
     filter: TagFilterDef,
     #[serde(default, deserialize_with = "non_negative")]
     knockback: f32,
+    #[serde(default, deserialize_with = "optional_positive")]
+    window: Option<f32>,
 }
 
 /// `components.hitbox`, checked.
@@ -1082,6 +1192,7 @@ struct HitboxDef {
     convert: ConversionDef,
     filter: TagFilterDef,
     knockback: f32,
+    window: Option<f32>,
 }
 
 impl TryFrom<HitboxScene> for HitboxDef {
@@ -1098,6 +1209,7 @@ impl TryFrom<HitboxScene> for HitboxDef {
             convert: scene.convert,
             filter: scene.filter,
             knockback: scene.knockback,
+            window: scene.window,
         })
     }
 }
@@ -1109,6 +1221,9 @@ impl From<HitboxDef> for Hitbox {
             .with_tags(Tags::new(def.tags.0))
             .with_filter(def.filter.into())
             .with_knockback(def.knockback);
+        if let Some(window) = def.window {
+            hitbox = hitbox.with_window(window);
+        }
         if let Some(parts) = def.damage.parts() {
             hitbox = hitbox.with_parts(parts);
         }
@@ -1275,6 +1390,17 @@ impl Plugin for HitPlugin {
                 )
                 .field(damage_field()),
             )
+            .field(
+                FieldDescription::new(
+                    "window",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "seconds it hits for once armed, by `arm` or an ability's `hitbox` payload; always armed when left out",
+                )
+                .default("null"),
+            )
             .event("Struck")
             .genre(TOP_DOWN)
             .genre(SHMUP)
@@ -1337,8 +1463,8 @@ struct HitboxRunner {
 }
 
 impl HitboxRunner {
-    /// Runs every hitbox but a projectile's, in entity order, against the
-    /// step's grid.
+    /// Runs every armed hitbox but a projectile's, in entity order, against
+    /// the step's grid, then counts each window down by the step.
     fn run(&mut self, world: &mut World) {
         let Some(grid) = world.remove_resource::<HitGrid>() else {
             return;
@@ -1354,17 +1480,31 @@ impl HitboxRunner {
             }
         }
         world.insert_resource(grid);
+        let dt = world
+            .get_resource::<Time>()
+            .map_or(0.0, Time::delta)
+            .max(0.0);
+        if dt > 0.0 {
+            for &hitter in &self.hitters {
+                if let Some(hitbox) = world.get_mut::<Hitbox>(hitter) {
+                    hitbox.count_window(dt);
+                }
+            }
+        }
     }
 
     /// `hitter`'s sweep, with the entries it meets this step in `hits`, in
-    /// sweep order: (t, target index); `None` for a hitter being despawned
-    /// or unplaced.
+    /// sweep order: (t, target index); `None` for a hitter being despawned,
+    /// disarmed or unplaced.
     fn collect(&mut self, world: &World, grid: &HitGrid, hitter: Entity) -> Option<Sweep> {
         self.hits.clear();
         if world.has::<Despawning>(hitter) {
             return None;
         }
         let hitbox = world.get::<Hitbox>(hitter)?;
+        if !hitbox.is_armed() {
+            return None;
+        }
         let sweep = sweep_of(world, hitter, hitbox.shape.shape(), hitbox.offset)?;
         let (min, max) = sweep.bounds();
         grid.candidates(min, max, &mut self.candidates);
@@ -1431,7 +1571,21 @@ impl Inspectable for Hitbox {
                 format!("{} at {}", self.shape.summary(), point(self.offset)),
             ),
             ("damage", damage_row(self.damage, self.parts())),
-            ("hit", format!("{} targets", self.hit.len())),
+            (
+                "hit",
+                match self.window {
+                    Some(window) if self.armed_left > 0.0 => format!(
+                        "{} targets, armed {:.2} of {window:.2} s",
+                        self.hit.len(),
+                        self.armed_left
+                    ),
+                    Some(window) => format!(
+                        "{} targets, disarmed ({window:.2} s window)",
+                        self.hit.len()
+                    ),
+                    None => format!("{} targets", self.hit.len()),
+                },
+            ),
         ]
     }
 }

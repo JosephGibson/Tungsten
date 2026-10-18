@@ -1,0 +1,11 @@
+{
+  "duration": 1.5,
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "pct": -0.5
+      }
+    }
+  ]
+}

@@ -19,6 +19,21 @@
           }
         }
       ]
-    }
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 40
+      },
+      "damage": 1,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "window": 0.2
+    },
+    "abilities": [
+      "pulse"
+    ]
   }
 }

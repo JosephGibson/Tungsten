@@ -423,3 +423,58 @@ fn a_parts_definition_is_its_deepest_type_ties_to_the_first_name() {
     );
     assert_eq!(definition(&world, DamageKinds::NONE), None);
 }
+
+#[test]
+fn a_rung_with_needs_and_no_window_fails_the_load() {
+    let (mut world, mut schedule) = rig(&names(&["elemental.cold", "status.chilled"]));
+    crate::EffectsPlugin.build(&mut schedule, &mut world);
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("chilled", crate::Effect::new().with_duration(1.0));
+    let files = Files::new("rung");
+    let write = |file: &str, text: &str| {
+        let path = files.0.join(file);
+        std::fs::write(&path, text).unwrap();
+        path
+    };
+    let no_window = write(
+        "no_window.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "chilled", "needs": 0.5 }] } }"#,
+    );
+    let error = load(&mut world, &[("cold", &no_window)]).unwrap_err();
+    assert!(error.contains("window: required with `needs`"), "{error}");
+    let missing = write(
+        "missing.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "frosted", "window": 1 }] } }"#,
+    );
+    let error = load(&mut world, &[("cold", &missing)]).unwrap_err();
+    assert!(
+        error.contains("effects `frosted`") && error.contains("elemental.cold.ailments.0.effect"),
+        "{error}"
+    );
+    let undeclared = write(
+        "undeclared.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "chilled", "requires": ["status.wet"] }] } }"#,
+    );
+    let error = load(&mut world, &[("cold", &undeclared)]).unwrap_err();
+    assert!(
+        error.contains("tag `status.wet`") && error.contains("ailments.0.requires.0"),
+        "{error}"
+    );
+    let good = write(
+        "good.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "chilled", "needs": 0.5, "requires": ["status.chilled"], "window": 4 }] } }"#,
+    );
+    assert!(load(&mut world, &[("cold", &good)]).is_ok());
+    merge_types(&mut world);
+    let (name, rungs) = ladder(
+        &world,
+        world
+            .resource::<DamageTypeTable>()
+            .mask_of("elemental.cold"),
+    )
+    .unwrap();
+    assert_eq!((name, rungs.len()), ("elemental.cold", 1));
+    assert_eq!(rungs[0].window(), Some(4.0));
+    assert!(ladder_of(&world, "elemental").is_none());
+}

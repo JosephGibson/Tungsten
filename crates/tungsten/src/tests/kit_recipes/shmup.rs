@@ -2,18 +2,20 @@
 //! expire or leave the view, raiders from a wave on a path, and a walker
 //! on a floor under the same actions; M64's fighter, drifter, asteroid,
 //! mine and gun; M65's interceptor, lasers, carrier and bulwark; M66's
-//! sci-fi damage types: a hacker, its payloads and a mainframe.
+//! sci-fi damage types: a hacker, its payloads and a mainframe; M67's
+//! corruption ladder, the ship's cannon and the turret's pulse.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::physics::{Position, PrevPosition, Velocity};
 use tungsten_core::{AudioCommand, CameraController, Entity, Transform};
 
-use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
+use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
-    Aim, Children, CooldownElapsed, Counters, Damaged, DamagedPart, Health, Hit, KitPlugins,
-    KitTrace, LinearMotion, PlatformerController, ProjectileExpired, Shield, Source, Steering,
-    Struck, TopDownMover, TraceKind, damage,
+    Abilities, Aim, Children, CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged,
+    DamagedPart, Effects, Health, Hit, HitShape, Hurtbox, KitPlugins, KitTrace, LinearMotion,
+    PlatformerController, ProjectileExpired, Shield, Source, Steering, Struck, Tags, TopDownMover,
+    TraceKind, damage,
 };
 use crate::testing::Harness;
 
@@ -564,5 +566,150 @@ fn an_untyped_laser_sends_one_part_of_no_kind_and_its_label_skips() {
             )
         });
         assert!(skipped, "dt {dt}: the trace says why");
+    }
+}
+
+// M67: effects, abilities and ailments.
+
+fn digital(target: Entity, kind: &str, amount: f32) -> DamageRequest {
+    DamageRequest::from_parts(
+        target,
+        [DamagePart::new(amount).with_tags(Tags::new([kind]))],
+    )
+}
+
+#[test]
+fn a_corrupted_mainframe_takes_more_digital_damage_until_its_wither_expires() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
+        harness.step(1);
+        // The threshold is 20 plus a tenth of 100; a corruption hit of 60
+        // lands 30 at the half resistance: a full bucket corrupts.
+        assert_eq!(
+            digital(mainframe, "digital.corruption", 60.0).apply(harness.world_mut()),
+            Hit::Hurt
+        );
+        harness.step(1);
+        let world = harness.world();
+        assert!(
+            world.get::<Effects>(mainframe).unwrap().has("corrupted"),
+            "dt {dt}"
+        );
+        assert!(
+            world
+                .get::<Tags>(mainframe)
+                .unwrap()
+                .has("status.corrupted")
+        );
+        let health = world.get::<Health>(mainframe).unwrap().current();
+        assert_eq!(health, 72.0, "dt {dt}: 30, two of it into the shield");
+        // Withered, the digital factor doubles: an overload of 10 lands whole.
+        digital(mainframe, "digital.overload", 10.0).apply(harness.world_mut());
+        assert_eq!(
+            harness.world().get::<Health>(mainframe).unwrap().current(),
+            62.0,
+            "dt {dt}"
+        );
+        harness.step(frames_for(3.1, dt));
+        assert!(
+            !harness
+                .world()
+                .get::<Effects>(mainframe)
+                .unwrap()
+                .has("corrupted")
+        );
+        digital(mainframe, "digital.overload", 10.0).apply(harness.world_mut());
+        assert_eq!(
+            harness.world().get::<Health>(mainframe).unwrap().current(),
+            57.0,
+            "dt {dt}: halved again"
+        );
+    }
+}
+
+#[test]
+fn the_ships_cannon_fires_on_fire_and_reloads() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let ship = spawn(&mut harness, "ship", [640.0, 600.0]);
+        harness.step(1);
+        // A press every tenth of a second, the cannon's cooldown: four
+        // charges, then none until one comes back half a second later.
+        for _ in 0..5 {
+            harness.press_action("fire");
+            harness.step(1);
+            harness.release_action("fire");
+            harness.step(frames_for(0.1, dt) - 1);
+        }
+        assert_eq!(
+            traced_steps(&harness, ship, "ability_used").len(),
+            4,
+            "dt {dt}: four charges: {:?}",
+            traced_steps(&harness, ship, "ability_used")
+        );
+        // The first bullet has already flown out of the view and gone; the
+        // rest carry the ship as their source.
+        let bullets = tagged(&harness, "bullet");
+        assert!(bullets.len() >= 3, "dt {dt}: {}", bullets.len());
+        for bullet in bullets {
+            assert_eq!(
+                harness.world().get::<Source>(bullet),
+                Some(&Source::new(ship))
+            );
+        }
+        let abilities = harness.world().get::<Abilities>(ship).unwrap();
+        assert_eq!(abilities.charges("cannon"), Some(0), "dt {dt}");
+        harness.step(frames_for(0.5, dt));
+        assert!(
+            harness
+                .world()
+                .get::<Abilities>(ship)
+                .unwrap()
+                .ready("cannon"),
+            "dt {dt}"
+        );
+        harness.press_action("fire");
+        harness.step(1);
+        harness.release_action("fire");
+        assert_eq!(
+            traced_steps(&harness, ship, "ability_used").len(),
+            5,
+            "dt {dt}: reloaded"
+        );
+    }
+}
+
+#[test]
+fn the_turrets_pulse_hits_once_per_window() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let turret = spawn(&mut harness, "turret", [200.0, 100.0]);
+        // A player's hurtbox inside the pulse's circle, clear of the
+        // turret's bullets, which fly down from it.
+        let target = harness.world_mut().spawn_with((
+            Position(Vec2::new(230.0, 100.0)),
+            PrevPosition(Vec2::new(230.0, 100.0)),
+            Transform::from_position(Vec2::new(230.0, 100.0)),
+            Hurtbox::new(HitShape::circle(4.0)),
+            Health::new(10.0),
+            Tags::new(["team.player"]),
+        ));
+        harness.step(frames_for(2.5, dt));
+        let hits = traced_steps(&harness, target, "damaged");
+        assert_eq!(hits.len(), 2, "dt {dt}: once per window: {hits:?}");
+        // Fixed steps, sixty a second at either frame length.
+        let expected = [61_u64, 121];
+        assert!(
+            hits.iter()
+                .zip(expected)
+                .all(|(&hit, at)| hit.abs_diff(at) <= 1),
+            "dt {dt}: on the interval: {hits:?} vs {expected:?}"
+        );
+        assert_eq!(
+            harness.world().get::<Health>(target).unwrap().current(),
+            8.0
+        );
+        assert_eq!(traced_steps(&harness, turret, "ability_used").len(), 2);
     }
 }

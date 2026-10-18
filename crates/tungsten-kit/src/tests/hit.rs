@@ -495,3 +495,126 @@ fn a_zero_damage_stat_makes_a_typed_hitbox_a_trigger_and_its_return_restores_the
         "the stat's return restores the parts"
     );
 }
+
+/// A World with hit shapes, health, time and the tag `team.enemy`.
+fn windowed_rig() -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["team.enemy"])
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    HitPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+#[test]
+fn a_windowed_hitbox_hits_only_while_armed() {
+    use tungsten_core::physics::{Position, PrevPosition};
+
+    for (dt, steps) in [(1.0 / 60.0, 6), (1.0 / 30.0, 3)] {
+        let (mut world, mut schedule) = windowed_rig();
+        // Three steps' window at 1/60, which is 0.05 s; the same at 1/30
+        // is a step and a half, so two steps land.
+        let window = 3.0 / 60.0;
+        let placed = |world: &mut World, rest: Box<dyn FnOnce(&mut World) -> Entity>| rest(world);
+        let turret = placed(
+            &mut world,
+            Box::new(move |world| {
+                world.spawn_with((
+                    Position(Vec2::ZERO),
+                    PrevPosition(Vec2::ZERO),
+                    Hitbox::new(HitShape::circle(40.0), 1.0).with_window(window),
+                ))
+            }),
+        );
+        let target = world.spawn_with((
+            Position(Vec2::new(10.0, 0.0)),
+            PrevPosition(Vec2::new(10.0, 0.0)),
+            Hurtbox::new(HitShape::circle(4.0)),
+            crate::Health::new(100.0),
+        ));
+        let run = |world: &mut World, schedule: &mut Schedule| {
+            world.resource_mut::<Time>().advance_frame(dt);
+            schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+            world.flush_events();
+        };
+        for _ in 0..3 {
+            run(&mut world, &mut schedule);
+        }
+        assert_eq!(
+            world.get::<crate::Health>(target).unwrap().current(),
+            100.0,
+            "disarmed, nothing lands"
+        );
+        assert!(!world.get::<Hitbox>(turret).unwrap().is_armed());
+        world.get_mut::<Hitbox>(turret).unwrap().arm();
+        let mut hits = Vec::new();
+        for _ in 0..steps {
+            run(&mut world, &mut schedule);
+            hits.push(world.get::<crate::Health>(target).unwrap().current());
+            // Each step a fresh target may be hit: the activation is one
+            // hit per target, so rearm without opening the window.
+            world.get_mut::<Hitbox>(turret).unwrap().rearm();
+        }
+        let expected: Vec<f32> = match dt {
+            dt if dt < 1.0 / 50.0 => vec![99.0, 98.0, 97.0, 97.0, 97.0, 97.0],
+            _ => vec![99.0, 98.0, 98.0],
+        };
+        assert_eq!(hits, expected, "at dt {dt}");
+        assert!(
+            !world.get::<Hitbox>(turret).unwrap().is_armed(),
+            "closed again"
+        );
+        // `rearm` alone opens no window; `arm` does, and the save carries both.
+        world.get_mut::<Hitbox>(turret).unwrap().rearm();
+        assert!(!world.get::<Hitbox>(turret).unwrap().is_armed());
+        world.get_mut::<Hitbox>(turret).unwrap().arm();
+        let saved = serde_json::to_value(world.get::<Hitbox>(turret).unwrap()).unwrap();
+        assert_eq!(saved["window"].as_f64().unwrap() as f32, window);
+        assert_eq!(saved["armed_left"].as_f64().unwrap() as f32, window);
+        let read: Hitbox = serde_json::from_value(saved).unwrap();
+        assert!(read.is_armed());
+        assert_eq!(read.window(), Some(window));
+    }
+    // An unwindowed hitbox saves neither field and is always armed.
+    let plain = Hitbox::new(HitShape::circle(4.0), 1.0);
+    let saved = serde_json::to_value(&plain).unwrap();
+    assert!(saved.get("window").is_none() && saved.get("armed_left").is_none());
+    assert!(plain.is_armed());
+    assert!(
+        serde_json::from_value::<Hitbox>(
+            json!({ "shape": { "circle": 4 }, "damage": 1, "window": 0 })
+        )
+        .is_err()
+    );
+    assert!(
+        serde_json::from_value::<Hitbox>(
+            json!({ "shape": { "circle": 4 }, "damage": 1, "armed_left": -1 })
+        )
+        .is_err()
+    );
+    let (world, _) = windowed_rig();
+    assert!(
+        check(
+            &world,
+            HITBOX,
+            &json!({ "shape": { "circle": 4 }, "damage": 1, "window": 0.2 })
+        )
+        .is_ok()
+    );
+    assert!(
+        check(
+            &world,
+            HITBOX,
+            &json!({ "shape": { "circle": 4 }, "damage": 1, "window": -1 })
+        )
+        .is_err()
+    );
+    let rows = Hitbox::new(HitShape::circle(4.0), 1.0)
+        .with_window(0.2)
+        .inspect_rows();
+    assert_eq!(rows[2].1, "0 targets, disarmed (0.20 s window)");
+}

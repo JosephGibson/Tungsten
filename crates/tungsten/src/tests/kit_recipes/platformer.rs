@@ -1,7 +1,7 @@
 //! The platformer fixture: a hero on a kinematic body under the move
 //! actions and a jump slot, a ground, a door zone, a spark and a lift; M64's
 //! conveyor, bobbing lift, acrobat, firebar and firefly; M65's fireballs,
-//! bricks, climber, spiker and coin.
+//! bricks, climber, spiker and coin; M67's regen and haste on the runner.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -9,11 +9,12 @@ use tungsten_core::{AnimationState, PluginSet, Transform, World};
 
 use super::{DTS, body_at, drawn_at, frames_for, motion_reversed, point_of, recipe, spawn, tagged};
 use crate::kit::{
-    CharacterAnimator, Children, Counters, Facing, Flags, Health, KitPlugins, LinearMotion,
-    PathFollowerPlugin, PlatformerController, PlatformerControllerPlugin, ProjectileExpired, Stats,
-    ZoneEntered, knock_back,
+    CharacterAnimator, Children, Counters, EffectRequest, Effects, Facing, Flags, Health,
+    KitPlugins, LinearMotion, PathFollowerPlugin, PlatformerController, PlatformerControllerPlugin,
+    ProjectileExpired, Stats, ZoneEntered, damage, knock_back,
 };
 use crate::state::{GameState, SceneEntity, StateContext, StateId, StateStack};
+use tungsten_core::DataRef;
 
 const GENRE: &str = "platformer";
 
@@ -547,6 +548,83 @@ fn a_coin_counts_once() {
                 .get("coins"),
             1,
             "dt {dt}: once"
+        );
+    }
+}
+
+// M67: effects on the runner.
+
+#[test]
+fn the_runners_regen_heals_it_each_period() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let runner = spawn(&mut harness, "runner", [0.0, 270.0]);
+        harness.step(2);
+        assert!(
+            harness.world().get::<Effects>(runner).unwrap().has("regen"),
+            "dt {dt}: the listed effect applied at the first step"
+        );
+        damage(harness.world_mut(), runner, 3.0);
+        assert_eq!(
+            harness.world().get::<Health>(runner).unwrap().current(),
+            1.0
+        );
+        // Each second heals the curve's 2 at the scale of 1.
+        harness.step(frames_for(0.9, dt));
+        assert_eq!(
+            harness.world().get::<Health>(runner).unwrap().current(),
+            1.0,
+            "dt {dt}"
+        );
+        harness.step(frames_for(0.2, dt));
+        assert_eq!(
+            harness.world().get::<Health>(runner).unwrap().current(),
+            3.0,
+            "dt {dt}"
+        );
+        harness.step(frames_for(1.0, dt));
+        assert_eq!(
+            harness.world().get::<Health>(runner).unwrap().current(),
+            4.0,
+            "dt {dt}: full"
+        );
+    }
+}
+
+#[test]
+fn a_hasted_runner_runs_faster_for_its_seconds_and_no_longer() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let runner = spawn(&mut harness, "runner", [0.0, 270.0]);
+        harness.step(2);
+        harness.press_action("move_right");
+        assert!(EffectRequest::new(runner, DataRef::by_id("hasted")).queue(harness.world_mut()));
+        let speed = |harness: &super::Harness| harness.world().get::<Velocity>(runner).unwrap().0.x;
+        harness.step(2);
+        assert!(
+            (speed(&harness) - 225.0).abs() < 1e-3,
+            "dt {dt}: 150 and a half: {}",
+            speed(&harness)
+        );
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            (speed(&harness) - 225.0).abs() < 1e-3,
+            "dt {dt}: still hasted"
+        );
+        harness.step(frames_for(0.6, dt));
+        assert!(
+            (speed(&harness) - 150.0).abs() < 1e-3,
+            "dt {dt}: the stat's own: {}",
+            speed(&harness)
+        );
+        assert!(
+            !harness
+                .world()
+                .get::<Effects>(runner)
+                .unwrap()
+                .has("hasted")
         );
     }
 }

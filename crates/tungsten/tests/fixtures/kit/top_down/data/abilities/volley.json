@@ -1,0 +1,25 @@
+{
+  "trigger": {
+    "action": "attack"
+  },
+  "charges": {
+    "max": 3,
+    "refill": 10
+  },
+  "target": {
+    "nearest": {
+      "all": [
+        "team.enemy"
+      ],
+      "range": 400
+    }
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "ember",
+        "speed": 500
+      }
+    }
+  ]
+}

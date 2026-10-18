@@ -1,4 +1,4 @@
-//! The kit's per-entity systems at 1,000 and 10,000 entities, 33 rows, one
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 39 rows, one
 //! fixed step or one frame's present phase per iteration:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
@@ -26,6 +26,15 @@
 //!   resistances, one under a modifier, and its shield) and `cues_typed`
 //!   (one `damaged_part` occurrence per entity per step with its kinds,
 //!   with an entity cue and one rule's kind filter);
+//! - M67's, each at one steady state: `effect_tick` (an infinite effect
+//!   per entity with a modifier and a half-second period, its ticks queued
+//!   for the health plugin's resolve), `effect_resolve` (one request a step
+//!   per target at its stack limit under `refresh`), `ailment_tick` (a
+//!   bucket per entity draining under a threshold), `ailment_feed` (one
+//!   typed part a step per entity, below its ladder's `needs`),
+//!   `ability_tick` (an interval ability used each step, arming a windowed
+//!   hitbox, no hit plugin) and `level_tick` (a counter below the next
+//!   level);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
 //!   `character_animator` (a clip set, unchanged) and `depth_sort`.
 //!
@@ -41,21 +50,23 @@ use glam::Vec2;
 use tungsten_core::assets::AnimationFrame;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, EventQueue,
-    InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite, SpriteAssetId, Stage, StagedLoad,
-    Time, Transform, World,
+    ActionMap, AnimationData, AnimationRegistry, Binding, Bundle, CommandBuffer, DataRef,
+    EventQueue, InputState, KeyCode, Plugin, PluginSet, Schedule, Sprite, SpriteAssetId, Stage,
+    StagedLoad, Time, Transform, World,
 };
 use tungsten_kit::{
-    ActionInput, ActionInputPlugin, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin,
-    Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
-    CountersPlugin, CueAction, Cues, CuesPlugin, DamagePart, DamageRequest, Damaged, DamagedPart,
-    DepthSort, DepthSortPlugin, Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin,
-    HitPlugin, HitShape, Hitbox, Hurtbox, Intent, Knockback, KnockbackPlugin, Lifetime,
-    LifetimePlugin, LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator,
-    OscillatorPlugin, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile,
-    ProjectilePlugin, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView,
+    Abilities, AbilitiesPlugin, Ability, ActionInput, ActionInputPlugin, AilmentBuckets,
+    AilmentThreshold, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin, Clips,
+    ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
+    CountersPlugin, CueAction, Cues, CuesPlugin, Curve, DamagePart, DamageRequest, Damaged,
+    DamagedPart, DepthSort, DepthSortPlugin, Effect, EffectRequest, Effects, EffectsPlugin, Expire,
+    Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox,
+    Hurtbox, Intent, Knockback, KnockbackPlugin, Level, LevelPlugin, Lifetime, LifetimePlugin,
+    LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator, OscillatorPlugin,
+    Payload, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile, ProjectilePlugin,
+    Refresh, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView,
     StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-    TopDownMoverPlugin, Wrap, WrapPlugin, knock_back,
+    TopDownMoverPlugin, Trigger, Wrap, WrapPlugin, knock_back,
 };
 
 const SIZES: [usize; 2] = [1_000, 10_000];
@@ -908,6 +919,182 @@ fn shield_tick(c: &mut Criterion) {
     group.finish();
 }
 
+/// A World with the clock and a buffer, and `set`'s schedule, resolved.
+fn rig_set(set: PluginSet) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    let mut schedule = Schedule::new();
+    set.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// Tags (the ladder's `bench.a` declared), health, stats and effects: what
+/// the effect rows run on.
+fn effect_set() -> PluginSet {
+    PluginSet::new()
+        .with(TagsPlugin::new().with_tags(["bench.a"]))
+        .with(HealthPlugin)
+        .with(StatsPlugin::new())
+        .with(EffectsPlugin)
+}
+
+/// M67's ladder: `bench.a` with one rung far out of reach.
+fn stage_ladder(world: &mut World) {
+    stage(
+        world,
+        "damage_types",
+        r#"{ "bench.a": { "ailments": [{ "effect": { "duration": 1 }, "needs": 1, "window": 1000000 }] } }"#,
+    );
+}
+
+fn effect_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("effect_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        // Infinite, a modifier on a stat and a payload every half second,
+        // queued for the step's damage resolve.
+        let burn = DataRef::inline(
+            Effect::new()
+                .with_period(0.5)
+                .with_damage(1.0)
+                .with_modifier("armor", Modifier::Add(1.0)),
+        );
+        for _ in 0..n {
+            world.spawn_with((
+                Health::new(1e12),
+                Stats::new().with("armor", 0.0),
+                Effects::new().with(burn.clone()),
+            ));
+        }
+        // One warm step applies the listed effects: the steady state.
+        fixed_step_and_flush(&mut world, &mut schedule);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn effect_resolve(c: &mut Criterion) {
+    let mut group = c.benchmark_group("effect_resolve");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        // At its limit of one stack, each request refreshes the instance
+        // and rebuilds its modifier.
+        let slow = DataRef::inline(
+            Effect::new()
+                .with_duration(1e9)
+                .with_stack(1, Refresh::Refresh, Expire::Clear)
+                .with_modifier("armor", Modifier::Pct(-0.2)),
+        );
+        let targets: Vec<_> = (0..n)
+            .map(|_| world.spawn_with((Health::new(1e12), Stats::new().with("armor", 10.0))))
+            .collect();
+        for &target in &targets {
+            EffectRequest::new(target, slow.clone()).apply(&mut world);
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| {
+                for &target in targets.iter().rev() {
+                    EffectRequest::new(target, slow.clone()).queue(&mut world);
+                }
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn ailment_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ailment_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        stage_ladder(&mut world);
+        for _ in 0..n {
+            // A bucket far above what a sitting drains at the rung's window.
+            let buckets: AilmentBuckets =
+                serde_json::from_value(serde_json::json!({ "bench.a": 1e9 })).unwrap();
+            world.spawn_with((Health::new(100.0), AilmentThreshold::new(1.0), buckets));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn ailment_feed(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ailment_feed");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig_set(effect_set());
+        stage_ladder(&mut world);
+        let kind = Tags::new(["bench.a"]);
+        // A threshold no sitting's fills reach: every part feeds, no rung
+        // passes.
+        let targets: Vec<_> = (0..n)
+            .map(|_| world.spawn_with((Health::new(1e12), AilmentThreshold::new(1e9))))
+            .collect();
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| {
+                for &target in targets.iter().rev() {
+                    DamageRequest::from_parts(
+                        target,
+                        [DamagePart::new(1.0).with_tags(kind.clone())],
+                    )
+                    .queue(&mut world);
+                }
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            });
+        });
+    }
+    group.finish();
+}
+
+fn ability_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("ability_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&AbilitiesPlugin);
+        // Used every step: the interval is one step, the payload arms the
+        // entity's windowed hitbox, which no hit plugin runs.
+        let pulse = DataRef::inline(
+            Ability::new()
+                .with_trigger(Trigger::Interval(STEP))
+                .with_payload(Payload::Hitbox(0.1)),
+        );
+        for i in 0..n {
+            world.spawn_with((
+                Abilities::new().with(pulse.clone()),
+                Hitbox::new(HitShape::circle(4.0), 1.0).with_window(0.1),
+                Position(spread(i, n)),
+            ));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step_and_flush(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
+fn level_tick(c: &mut Criterion) {
+    let mut group = c.benchmark_group("level_tick");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&LevelPlugin);
+        let xp = DataRef::inline(Curve::new([(1.0, 0.0), (2.0, 1e9)]));
+        for i in 0..n {
+            world.spawn_with((
+                Level::new("xp", xp.clone()),
+                Counters::new().with("xp", (i % 100) as i64),
+            ));
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| fixed_step(black_box(&mut world), &mut schedule));
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     kit,
     lifetime_tick,
@@ -942,6 +1129,12 @@ criterion_group!(
     pickup_magnet,
     damage_resolve,
     damage_resolve_typed,
-    shield_tick
+    shield_tick,
+    effect_tick,
+    effect_resolve,
+    ailment_tick,
+    ailment_feed,
+    ability_tick,
+    level_tick
 );
 criterion_main!(kit);

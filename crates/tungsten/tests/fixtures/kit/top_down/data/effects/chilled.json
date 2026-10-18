@@ -1,0 +1,14 @@
+{
+  "duration": 4,
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "pct": -0.5
+      }
+    }
+  ],
+  "grant": [
+    "status.chilled"
+  ]
+}

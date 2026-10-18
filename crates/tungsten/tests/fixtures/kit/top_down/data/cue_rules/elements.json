@@ -15,5 +15,23 @@
         }
       }
     ]
+  },
+  {
+    "on": "damaged_part",
+    "filter": {
+      "all": [
+        "flammable"
+      ]
+    },
+    "kind": {
+      "all": [
+        "elemental.fire"
+      ]
+    },
+    "do": [
+      {
+        "effect": "burning"
+      }
+    ]
   }
 ]

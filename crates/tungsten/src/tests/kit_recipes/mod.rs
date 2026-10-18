@@ -11,10 +11,11 @@ use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Tran
 
 use crate::App;
 use crate::kit::{
-    AimPlugin, CharacterAnimatorPlugin, ContactDamagePlugin, CuesPlugin, DepthSortPlugin,
-    FacingPlugin, FollowPlugin, HealthPlugin, HitPlugin, KitPlugins, KnockbackPlugin,
-    LinearMotionPlugin, OrbitPlugin, OscillatorPlugin, PickupPlugin, ProjectilePlugin,
-    SpeedLimitPlugin, StayInViewPlugin, SteeringPlugin, WrapPlugin,
+    AbilitiesPlugin, ActionInputPlugin, AimPlugin, CharacterAnimatorPlugin, ContactDamagePlugin,
+    CuesPlugin, DepthSortPlugin, EffectsPlugin, FacingPlugin, FollowPlugin, HealthPlugin,
+    HitPlugin, KitPlugins, KnockbackPlugin, LevelPlugin, LinearMotionPlugin, OrbitPlugin,
+    OscillatorPlugin, PickupPlugin, ProjectilePlugin, SpeedLimitPlugin, StatsPlugin,
+    StayInViewPlugin, SteeringPlugin, WrapPlugin,
 };
 use crate::testing::Harness;
 
@@ -48,6 +49,9 @@ fn declare_actions(app: &mut App) {
         ("move_up", KeyCode::ArrowUp),
         ("move_down", KeyCode::ArrowDown),
         ("jump", KeyCode::Space),
+        ("attack", KeyCode::KeyJ),
+        ("dash", KeyCode::ShiftLeft),
+        ("fire", KeyCode::KeyZ),
     ] {
         actions.replace_bindings(action, vec![Binding::Key { code }]);
     }
@@ -116,6 +120,32 @@ pub(crate) fn overlap_reversed() -> PluginSet {
         .with(ContactDamagePlugin)
         .with(HitPlugin)
         .with(CuesPlugin)
+        .with(HealthPlugin)
+}
+
+/// `KitPlugins::set()` with the health, stats, cue, hit, input, aim and
+/// M67 effect, ability and level plugins built last, in the reverse of
+/// their order in the set: the effect edges, not registration order, must
+/// order them.
+pub(crate) fn effects_reversed() -> PluginSet {
+    KitPlugins::set()
+        .without::<HealthPlugin>()
+        .without::<StatsPlugin>()
+        .without::<CuesPlugin>()
+        .without::<HitPlugin>()
+        .without::<ActionInputPlugin>()
+        .without::<AimPlugin>()
+        .without::<EffectsPlugin>()
+        .without::<AbilitiesPlugin>()
+        .without::<LevelPlugin>()
+        .with(LevelPlugin)
+        .with(AbilitiesPlugin)
+        .with(EffectsPlugin)
+        .with(AimPlugin)
+        .with(ActionInputPlugin)
+        .with(HitPlugin)
+        .with(CuesPlugin)
+        .with(StatsPlugin::new())
         .with(HealthPlugin)
 }
 

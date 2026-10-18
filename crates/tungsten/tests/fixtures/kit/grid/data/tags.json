@@ -2,5 +2,6 @@
   "team.player",
   "team.enemy",
   "damage.blade",
-  "breakable"
+  "breakable",
+  "status.blessed"
 ]

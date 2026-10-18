@@ -1,0 +1,23 @@
+{
+  "count": 2,
+  "entries": [
+    {
+      "weight": 2,
+      "gives": {
+        "effect": "swift"
+      }
+    },
+    {
+      "weight": 1,
+      "gives": {
+        "ability": "dash"
+      }
+    },
+    {
+      "weight": 1,
+      "gives": {
+        "ability": "wand"
+      }
+    }
+  ]
+}

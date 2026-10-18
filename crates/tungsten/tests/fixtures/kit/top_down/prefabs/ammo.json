@@ -1,0 +1,26 @@
+{
+  "tag": "ammo",
+  "components": {
+    "pickup": {
+      "shape": {
+        "circle": 4
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "ability": {
+            "name": "volley",
+            "op": "refill",
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

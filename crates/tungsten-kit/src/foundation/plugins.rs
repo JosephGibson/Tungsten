@@ -2,11 +2,13 @@
 
 use tungsten_core::PluginSet;
 
+use crate::damage::effects::EffectsPlugin;
 use crate::damage::health::HealthPlugin;
 use crate::foundation::debug::KitDebugPlugin;
 use crate::foundation::source::SourcePlugin;
 use crate::foundation::stats::StatsPlugin;
 use crate::foundation::tags::TagsPlugin;
+use crate::intent::ability::AbilitiesPlugin;
 use crate::intent::action_input::ActionInputPlugin;
 use crate::intent::aim::AimPlugin;
 use crate::lifecycle::children::SpawnChildrenPlugin;
@@ -38,6 +40,7 @@ use crate::present::depth::DepthSortPlugin;
 use crate::present::facing::FacingPlugin;
 use crate::react::counters::CountersPlugin;
 use crate::react::cues::CuesPlugin;
+use crate::react::level::LevelPlugin;
 use crate::transform::hierarchy::HierarchyPlugin;
 
 /// Every kit plugin that takes no game type, in the kit's order, as a
@@ -77,8 +80,8 @@ impl KitPlugins {
     /// counters, cooldown, spawn children, cues, linear motion, the
     /// oscillator, steering, follow, orbit, knockback, the speed limit,
     /// wrap, stay in view, aim, facing, the character animator, depth sort,
-    /// the hit shapes, contact damage, projectiles, pickups and the debug
-    /// drawing, in that order.
+    /// the hit shapes, contact damage, projectiles, pickups, effects,
+    /// abilities, levels and the debug drawing, in that order.
     #[must_use]
     pub fn set() -> PluginSet {
         PluginSet::new()
@@ -118,6 +121,9 @@ impl KitPlugins {
             .with(ContactDamagePlugin)
             .with(ProjectilePlugin)
             .with(PickupPlugin)
+            .with(EffectsPlugin)
+            .with(AbilitiesPlugin)
+            .with(LevelPlugin)
             .with(KitDebugPlugin)
     }
 }

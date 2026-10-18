@@ -2,5 +2,8 @@
   "armor": {
     "min": 0,
     "max": 10
+  },
+  "ailment_threshold_mult": {
+    "min": 0
   }
 }

@@ -13,7 +13,8 @@ use tungsten_core::{AnimationState, Entity, Inspectable, Sprite, Transform, Worl
 
 use super::{DTS, GENRES, recipe, spawn, tagged};
 use crate::kit::{
-    Counters, Flags, Health, KitPlugins, Modifier, Resist, Shield, Stats, Tags, damage, knock_back,
+    Abilities, AilmentBuckets, Counters, DamagePart, DamageRequest, Effects, Flags, Health,
+    KitPlugins, Level, Modifier, Resist, Shield, Stats, Tags, damage, knock_back,
 };
 use crate::testing::Harness;
 
@@ -25,8 +26,12 @@ use crate::testing::Harness;
 /// and damage prefabs, whose bolts, contacts, drops and pickups land, and
 /// whose rows add the shield, then by M66, whose script spawns a golem
 /// under a spellblade and a mainframe under a hacker's typed payloads and
-/// adds resistance modifiers, and whose rows add each resistance.
-const KIT_RECIPES_HASH: u64 = 0x2288_2ee7_97d4_aba9;
+/// adds resistance modifiers, and whose rows add each resistance, then by
+/// M67, whose script spawns the ranger's ammo, presses `attack` and `fire`
+/// and lands typed cold and corruption hits, whose prefabs carry effects,
+/// abilities, levels and thresholds, and whose rows add each effect
+/// instance, each bucket, each level and each ability.
+const KIT_RECIPES_HASH: u64 = 0x6fbd_8f24_2114_15a5;
 
 const FRAMES: u32 = 300;
 
@@ -40,7 +45,8 @@ fn fnv1a(hash: &mut u64, bytes: &[u8]) {
 const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 
 /// An entity's index, point, health, then its tags, counters, flags, stat
-/// values, rotation, depth, clip, shield and resistances as text.
+/// values, rotation, depth, clip, shield, resistances, effects, buckets,
+/// level and abilities as text.
 type Row = (u32, [f32; 2], Option<(f32, f32)>, String);
 
 /// `counters` as text: `name=value` by name.
@@ -107,6 +113,36 @@ fn hash_world(hash: &mut u64, world: &World) {
                 if let Some(resist) = world.get::<Resist>(entity) {
                     for (_, factors) in resist.inspect_rows() {
                         let _ = write!(text, "|re:{factors}");
+                    }
+                }
+                if let Some(effects) = world.get::<Effects>(entity) {
+                    for instance in effects.instances() {
+                        let _ = write!(
+                            text,
+                            "|e:{}x{}:{:08x}:{}",
+                            instance.effect().id().unwrap_or("inline"),
+                            instance.stacks(),
+                            instance.left().unwrap_or(-1.0).to_bits(),
+                            instance.serial()
+                        );
+                    }
+                }
+                if let Some(buckets) = world.get::<AilmentBuckets>(entity) {
+                    for (name, fill) in buckets.iter() {
+                        let _ = write!(text, "|b:{name}={:08x}", fill.to_bits());
+                    }
+                }
+                if let Some(level) = world.get::<Level>(entity) {
+                    let _ = write!(text, "|l:{}/{}", level.level(), level.offers().len());
+                }
+                if let Some(abilities) = world.get::<Abilities>(entity) {
+                    for name in abilities.names() {
+                        let _ = write!(
+                            text,
+                            "|ab:{name}:{:08x}:{:?}",
+                            abilities.cooldown_left(name).unwrap_or(0.0).to_bits(),
+                            abilities.charges(name)
+                        );
                     }
                 }
                 (entity.id(), point, health, text)
@@ -244,6 +280,27 @@ fn typed_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
     }
 }
 
+/// The script's typed hits: at `frame`, `amount` of `kind` on each entity
+/// tagged `tag`, feeding its ladder.
+fn typed_hits(genre: &str) -> &'static [(u32, &'static str, &'static str, f32)] {
+    match genre {
+        "top_down" => &[(160, "golem", "elemental.cold", 5.0)],
+        "shmup" => &[(170, "mainframe", "digital.corruption", 60.0)],
+        "platformer" | "grid" => &[],
+        other => panic!("no typed hits for {other}"),
+    }
+}
+
+/// The genre's M67 prefabs, spawned after its others, clear of them: the
+/// ranger's ammo beside its orb.
+fn effect_prefabs(genre: &str) -> &'static [(&'static str, [f32; 2])] {
+    match genre {
+        "top_down" => &[("ammo", [160.0, 1020.0])],
+        "shmup" | "platformer" | "grid" => &[],
+        other => panic!("no effect prefabs for {other}"),
+    }
+}
+
 /// The script's resistance modifiers: at `frame`, a modifier on `factor`
 /// from `source` for each entity tagged `tag`.
 fn curses(genre: &str) -> &'static [(u32, &'static str, &'static str, &'static str, Modifier)] {
@@ -309,12 +366,17 @@ fn script(genre: &str, harness: &mut Harness) {
         .iter()
         .chain(combat_prefabs(genre))
         .chain(typed_prefabs(genre))
+        .chain(effect_prefabs(genre))
     {
         spawn(harness, id, at);
     }
     for frame in 0..FRAMES {
         match frame {
             10 => harness.press_action("move_right"),
+            30 => harness.press_action("attack"),
+            31 => harness.release_action("attack"),
+            40 => harness.press_action("fire"),
+            41 => harness.release_action("fire"),
             60 => harness.press_action("jump"),
             62 => harness.release_action("jump"),
             120 => {
@@ -346,6 +408,17 @@ fn script(genre: &str, harness: &mut Harness) {
                 }
             }
         }
+        for &(at, tag, kind, amount) in typed_hits(genre) {
+            if at == frame {
+                for entity in tagged(harness, tag) {
+                    DamageRequest::from_parts(
+                        entity,
+                        [DamagePart::new(amount).with_tags(Tags::new([kind]))],
+                    )
+                    .apply(harness.world_mut());
+                }
+            }
+        }
         harness.step(1);
     }
 }
@@ -353,7 +426,9 @@ fn script(genre: &str, harness: &mut Harness) {
 /// Whether the script's cues ran: the runner took the key, and the
 /// game's counters counted the kills; and M65's items landed: the coin, the
 /// orb and the gold collected, the ranger's kill counted on it, the lasers'
-/// kill scored; and M66's typed parts met their kind filters.
+/// kill scored; and M66's typed parts met their kind filters; and M67's
+/// ladders applied (the golem chilled, the mainframe corrupted) and the
+/// adventurer's gold reached its level.
 fn reacted(genre: &str, harness: &Harness) -> bool {
     let game = harness.world().resource::<Counters>();
     let counted = |tag: &str, name: &str| -> i64 {
@@ -362,6 +437,14 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
             .filter_map(|&entity| harness.world().get::<Counters>(entity))
             .map(|counters| counters.get(name))
             .sum()
+    };
+    let affected = |tag: &str, id: &str| -> bool {
+        tagged(harness, tag).iter().any(|&entity| {
+            harness
+                .world()
+                .get::<Effects>(entity)
+                .is_some_and(|effects| effects.has(id))
+        })
     };
     match genre {
         "platformer" => {
@@ -374,15 +457,58 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
         }
         "top_down" => {
             game.get("kills") >= 1
-                && counted("ranger", "kills") == 1
-                && counted("ranger", "xp") == 1
+                && counted("ranger", "kills") >= 1
+                && counted("ranger", "xp") >= 1
                 && game.get("elemental_hits") >= 1
+                && affected("golem", "chilled")
         }
         // The two wings the script kills, and the carrier the lasers kill.
-        "shmup" => game.get("score") == 3 && game.get("virus_hits") >= 1,
-        "grid" => game.get("slugs") == 1 && counted("adventurer", "gold") == 1,
+        "shmup" => {
+            game.get("score") == 3
+                && game.get("virus_hits") >= 1
+                && affected("mainframe", "corrupted")
+        }
+        "grid" => {
+            game.get("slugs") == 1
+                && counted("adventurer", "gold") == 1
+                && tagged(harness, "adventurer").iter().all(|&adventurer| {
+                    harness
+                        .world()
+                        .get::<Level>(adventurer)
+                        .is_some_and(|level| level.level() == 2)
+                })
+        }
         other => panic!("no reaction for {other}"),
     }
+}
+
+/// What `reacted` reads, for a failure's message.
+fn report(genre: &str, harness: &Harness) -> String {
+    let world = harness.world();
+    let mut text = format!("game {}", counters_text(world.resource::<Counters>()));
+    for tag in ["ranger", "golem", "mainframe", "adventurer", "runner"] {
+        for entity in tagged(harness, tag) {
+            let _ = write!(text, "; {tag} {entity}");
+            if let Some(counters) = world.get::<Counters>(entity) {
+                let _ = write!(text, " c:{}", counters_text(counters));
+            }
+            if let Some(health) = world.get::<Health>(entity) {
+                let _ = write!(text, " hp:{}", health.current());
+            }
+            if let Some(effects) = world.get::<Effects>(entity) {
+                let ids: Vec<&str> = effects
+                    .instances()
+                    .map(|i| i.effect().id().unwrap_or("inline"))
+                    .collect();
+                let _ = write!(text, " e:{ids:?}");
+            }
+            if let Some(level) = world.get::<Level>(entity) {
+                let _ = write!(text, " l:{}", level.level());
+            }
+        }
+    }
+    let _ = write!(text, " ({genre})");
+    text
 }
 
 fn run_once() -> u64 {
@@ -390,7 +516,11 @@ fn run_once() -> u64 {
     for genre in GENRES {
         let mut harness = recipe(genre, KitPlugins::set(), DTS[0]);
         script(genre, &mut harness);
-        assert!(reacted(genre, &harness), "{genre}: the script's cues ran");
+        assert!(
+            reacted(genre, &harness),
+            "{genre}: the script's cues ran: {}",
+            report(genre, &harness)
+        );
         hash_world(&mut hash, harness.world());
         fnv1a(&mut hash, genre.as_bytes());
     }

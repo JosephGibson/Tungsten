@@ -1,0 +1,15 @@
+{
+  "duration": 2,
+  "modifiers": [
+    {
+      "stat": "cooldown_rate",
+      "modifier": {
+        "mul": 2
+      }
+    }
+  ],
+  "stack": {
+    "limit": 2,
+    "refresh": "refresh"
+  }
+}

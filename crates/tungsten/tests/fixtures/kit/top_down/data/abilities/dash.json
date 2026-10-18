@@ -1,0 +1,14 @@
+{
+  "trigger": {
+    "action": "dash"
+  },
+  "cooldown": 0.8,
+  "target": {
+    "aim": {}
+  },
+  "payload": [
+    {
+      "impulse": 600
+    }
+  ]
+}

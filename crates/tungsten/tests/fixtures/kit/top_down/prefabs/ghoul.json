@@ -38,6 +38,9 @@
           }
         }
       ]
+    },
+    "ailment_threshold": {
+      "of_max_health": 1
     }
   }
 }

@@ -1,35 +1,96 @@
 {
   "sprites": {
-    "player": { "path": "sprites/player.png", "filter": "nearest" }
+    "player": {
+      "path": "sprites/player.png",
+      "filter": "nearest"
+    }
   },
   "fonts": {
-    "sans": { "path": "fonts/Inter/Inter-Regular.ttf" }
+    "sans": {
+      "path": "fonts/Inter/Inter-Regular.ttf"
+    }
   },
   "font_families": {
-    "sans": { "faces": ["sans"] }
+    "sans": {
+      "faces": [
+        "sans"
+      ]
+    }
   },
-  "font_fallback": ["sans"],
+  "font_fallback": [
+    "sans"
+  ],
   "shaders": {
-    "damage_flash": { "path": "shaders/damage_flash.wgsl" }
+    "damage_flash": {
+      "path": "shaders/damage_flash.wgsl"
+    }
   },
   "materials": {
     "damage_flash": {
       "shader": "damage_flash",
       "uniform_defaults": {
-        "vec4": [[1.0, 0.2, 0.1, 1.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
-        "f32s": [0.0, 0.0, 0.0, 0.0],
-        "i32s": [0, 0, 0, 0]
+        "vec4": [
+          [
+            1.0,
+            0.2,
+            0.1,
+            1.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        ],
+        "f32s": [
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "i32s": [
+          0,
+          0,
+          0,
+          0
+        ]
       }
     }
   },
   "prefabs": {
-    "player": { "path": "prefabs/player.json" },
-    "hazard": { "path": "prefabs/hazard.json" },
-    "gem": { "path": "prefabs/gem.json" }
+    "player": {
+      "path": "prefabs/player.json"
+    },
+    "hazard": {
+      "path": "prefabs/hazard.json"
+    },
+    "gem": {
+      "path": "prefabs/gem.json"
+    }
   },
   "data": {
     "tags": {
-      "game": { "path": "data/tags.json" }
+      "game": {
+        "path": "data/tags.json"
+      }
+    },
+    "effects": {
+      "slowed": {
+        "path": "data/effects/slowed.json"
+      }
     }
   }
 }

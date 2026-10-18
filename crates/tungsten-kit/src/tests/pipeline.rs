@@ -96,6 +96,96 @@ fn typed(amount: f32, names: &[&str]) -> DamagePart {
 }
 
 #[test]
+fn a_periodic_hit_passes_the_window_and_starts_none() {
+    let (mut world, mut schedule) = rig();
+    let slime = world.spawn_with((
+        Health::new(10.0).with_invulnerability(0.5),
+        HitFlash::new([1.0; 4], 0.2),
+        Sprite::new(SpriteAssetId::new(0)),
+        Knockback::new(0.1),
+    ));
+    let mage = world.spawn();
+    // A plain hit opens the window; inside it, a plain hit is ignored and a
+    // periodic one lands, starting neither the window over nor the flash.
+    assert_eq!(crate::damage(&mut world, slime, 1.0), Hit::Hurt);
+    assert_eq!(crate::damage(&mut world, slime, 1.0), Hit::Ignored);
+    frame(&mut world, &mut schedule);
+    let window_before = world.get::<Health>(slime).unwrap();
+    assert!(window_before.is_invulnerable());
+    let left_before = serde_json::to_value(window_before).unwrap()["window_left"]
+        .as_f64()
+        .unwrap();
+    // The flash has run out of its first frame; clear its state for the check.
+    schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    let tick = DamageRequest::new(slime, 2.0)
+        .with_source(mage)
+        .with_periodic(true)
+        .with_knockback(glam::Vec2::X);
+    assert!(tick.is_periodic() && !DamageRequest::new(slime, 1.0).is_periodic());
+    assert_eq!(tick.apply(&mut world), Hit::Hurt);
+    let health = world.get::<Health>(slime).unwrap();
+    assert_eq!(health.current(), 7.0);
+    let left_after = serde_json::to_value(health).unwrap()["window_left"]
+        .as_f64()
+        .unwrap();
+    assert_eq!(left_after, left_before, "the window is not started over");
+    let flash = world.get::<HitFlash>(slime).unwrap();
+    assert!(flash.is_active(), "the first hit's flash still runs");
+    assert_eq!(
+        serde_json::to_value(world.get::<Health>(slime).unwrap()).unwrap()["window_left"],
+        serde_json::json!(left_after)
+    );
+    let events = sent(&world);
+    assert_eq!(events.len(), 2);
+    assert_eq!(
+        events[0],
+        Damaged::new(slime, 1.0, false),
+        "a plain hit's event as before"
+    );
+    assert!(!events[0].periodic);
+    assert_eq!(
+        (events[1].amount, events[1].source, events[1].periodic),
+        (2.0, Some(mage), true)
+    );
+    let parts = world.resource::<tungsten_core::EventQueue<DamagedPart>>();
+    let periodic: Vec<bool> = parts.iter().map(|part| part.periodic).collect();
+    assert_eq!(periodic, [false, true]);
+    assert_eq!(
+        world.get::<Knockback>(slime).unwrap().push(),
+        glam::Vec2::X,
+        "a periodic request's own knockback still pushes"
+    );
+    // Once the window has passed, a periodic hit still starts none.
+    for _ in 0..30 {
+        frame(&mut world, &mut schedule);
+    }
+    assert!(!world.get::<Health>(slime).unwrap().is_invulnerable());
+    world.get_mut::<HitFlash>(slime).unwrap();
+    for _ in 0..3 {
+        world.resource_mut::<Time>().advance_frame(0.1);
+        schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+    }
+    assert!(!world.get::<HitFlash>(slime).unwrap().is_active());
+    assert_eq!(
+        DamageRequest::new(slime, 1.0)
+            .with_periodic(true)
+            .apply(&mut world),
+        Hit::Hurt
+    );
+    let health = world.get::<Health>(slime).unwrap();
+    assert!(!health.is_invulnerable(), "no window started");
+    assert!(
+        !world.get::<HitFlash>(slime).unwrap().is_active(),
+        "no flash started"
+    );
+    assert_eq!(
+        crate::damage(&mut world, slime, 1.0),
+        Hit::Hurt,
+        "so a plain hit lands at once"
+    );
+}
+
+#[test]
 fn a_one_part_hit_resolves_as_before() {
     let (mut world, _) = rig();
     let plain = world.spawn_with((Health::new(10.0),));

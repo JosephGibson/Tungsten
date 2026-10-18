@@ -1,0 +1,17 @@
+{
+  "trigger": {
+    "action": "fire"
+  },
+  "cooldown": 0.1,
+  "charges": {
+    "max": 4,
+    "refill": 0.5
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "bullet"
+      }
+    }
+  ]
+}
