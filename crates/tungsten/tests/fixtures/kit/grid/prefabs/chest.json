@@ -1,0 +1,27 @@
+{
+  "tag": "chest",
+  "components": {
+    "tags": [
+      "breakable"
+    ],
+    "health": {
+      "max": 1,
+      "despawn_on_death": 0
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          8,
+          8
+        ]
+      }
+    },
+    "cues": {
+      "killed": [
+        {
+          "roll": "chest_loot"
+        }
+      ]
+    }
+  }
+}

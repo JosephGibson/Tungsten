@@ -1,5 +1,5 @@
 //! Stats: named values with ordered modifiers, which the kit's movers,
-//! health and cooldowns read when an entity carries them.
+//! health, cooldowns and hit items read when an entity carries them.
 
 use std::collections::BTreeMap;
 
@@ -19,6 +19,8 @@ use crate::lifecycle::cooldown::Cooldown;
 use crate::motion::platformer::PlatformerController;
 use crate::motion::steering::Steering;
 use crate::motion::top_down::TopDownMover;
+use crate::overlap::contact::ContactDamage;
+use crate::overlap::hit::Hitbox;
 
 /// [`StatsPlugin`]'s system, in the tick phase.
 pub const STATS_APPLY: &str = "stats_apply";
@@ -121,9 +123,12 @@ impl Stat {
 /// a [`PlatformerController`]'s run speed or a [`Steering`]'s top speed (0
 /// stops it),
 /// [`MAX_HEALTH`](Self::MAX_HEALTH) into a [`Health`]'s max, its current
-/// health kept as the same fraction of it, and
-/// [`COOLDOWN_RATE`](Self::COOLDOWN_RATE) into a [`Cooldown`]'s rate. An
-/// item without that stat runs on its own field. A game's stat is
+/// health kept as the same fraction of it,
+/// [`COOLDOWN_RATE`](Self::COOLDOWN_RATE) into a [`Cooldown`]'s rate and
+/// [`DAMAGE`](Self::DAMAGE) into a [`Hitbox`]'s and a [`ContactDamage`]'s
+/// damage. An item without that stat runs on its own field; an item reads
+/// no stat of another entity's, but for a pickup's magnet, which reads its
+/// collector's [`PICKUP_RADIUS`](Self::PICKUP_RADIUS). A game's stat is
 /// unbounded unless [`with_bounds`](Self::with_bounds),
 /// [`StatsPlugin::with_stat`] or the `stats` data kind bound it.
 ///
@@ -245,16 +250,22 @@ impl Stats {
     pub const MOVE_SPEED: &'static str = "move_speed";
     /// A [`Health`]'s full health.
     pub const MAX_HEALTH: &'static str = "max_health";
-    /// A hit's damage, read from the damage pipeline on.
+    /// The damage of the entity's [`Hitbox`] and [`ContactDamage`], which
+    /// `stats_apply` writes.
     pub const DAMAGE: &'static str = "damage";
     /// How fast a [`Cooldown`] counts down: 1 is the game clock, 2 twice
     /// as fast, 0 holds it.
     pub const COOLDOWN_RATE: &'static str = "cooldown_rate";
-    /// An area's size, read from the effects on.
+    /// An area's size, which the kit's effects will read (W13k); no item
+    /// reads it yet.
     pub const AREA: &'static str = "area";
-    /// How near a pickup is collected, read from the pickups on.
+    /// How far from a collector its pickups' magnets reach, in world
+    /// pixels: a [`Pickup`](crate::Pickup) with a magnet moves toward the
+    /// nearest collector whose radius reaches it.
     pub const PICKUP_RADIUS: &'static str = "pickup_radius";
-    /// A projectile's speed, read from the projectiles on.
+    /// The speed of the projectiles an entity fires, which the kit's
+    /// abilities will read when they spawn one (W13k); no item reads it
+    /// yet.
     pub const PROJECTILE_SPEED: &'static str = "projectile_speed";
     /// The stats every game knows without declaring them.
     pub const WELL_KNOWN: [&'static str; 7] = [
@@ -726,14 +737,18 @@ impl Plugin for StatsPlugin {
 /// Writes each well-known stat an entity has into its item, when they
 /// differ.
 fn stats_apply(world: &mut World) {
-    for (stats, mover, controller, steering, health, cooldown) in world.query_mut::<(
-        &Stats,
-        Option<&mut TopDownMover>,
-        Option<&mut PlatformerController>,
-        Option<&mut Steering>,
-        Option<&mut Health>,
-        Option<&mut Cooldown>,
-    )>() {
+    for (stats, mover, controller, steering, health, cooldown, hitbox, contact) in world
+        .query_mut::<(
+            &Stats,
+            Option<&mut TopDownMover>,
+            Option<&mut PlatformerController>,
+            Option<&mut Steering>,
+            Option<&mut Health>,
+            Option<&mut Cooldown>,
+            Option<&mut Hitbox>,
+            Option<&mut ContactDamage>,
+        )>()
+    {
         if let Some(speed) = stats.get(Stats::MOVE_SPEED) {
             if let Some(mover) = mover {
                 mover.set_speed(speed);
@@ -750,6 +765,14 @@ fn stats_apply(world: &mut World) {
         }
         if let (Some(rate), Some(cooldown)) = (stats.get(Stats::COOLDOWN_RATE), cooldown) {
             cooldown.set_rate(rate);
+        }
+        if let Some(damage) = stats.get(Stats::DAMAGE) {
+            if let Some(hitbox) = hitbox {
+                hitbox.set_damage(damage);
+            }
+            if let Some(contact) = contact {
+                contact.set_damage(damage);
+            }
         }
     }
 }

@@ -97,7 +97,10 @@ fn valid_value(descriptions: &KitDescriptions, ty: &FieldType) -> Value {
             Bound::Open => json!(1.0),
         },
         FieldType::Enum(names) => json!(names[0]),
-        FieldType::Prefab | FieldType::Text | FieldType::Tag => json!("puff"),
+        // A data field takes an entry's ID.
+        FieldType::Prefab | FieldType::Text | FieldType::Tag | FieldType::Data(_) => {
+            json!("puff")
+        }
         FieldType::Vec2 => json!([1.0, 2.0]),
         // A target's `source` takes the empty object.
         FieldType::Object(_) => json!({}),
@@ -119,9 +122,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 32);
-    assert_eq!(kinds.len(), 3);
-    assert_eq!(descriptions.shapes().count(), 14);
+    assert_eq!(described.len(), 39);
+    assert_eq!(kinds.len(), 4);
+    assert_eq!(descriptions.shapes().count(), 17);
 }
 
 #[test]
@@ -142,10 +145,10 @@ fn every_shape_a_field_names_is_described() {
     }
     let used: BTreeSet<&str> = named.into_iter().collect();
     for shape in descriptions.shapes() {
+        // A kind's entry, which a field names through its kind.
         assert!(
             used.contains(shape.name())
-                || shape.name() == "cue_rule"
-                || shape.name() == "stat_bounds",
+                || ["cue_rule", "stat_bounds", "weighted_table"].contains(&shape.name()),
             "the shape `{}` is described but no field names it",
             shape.name()
         );
@@ -225,8 +228,8 @@ fn a_one_of_shape_takes_each_field_alone_and_refuses_two() {
         );
     }
     assert_eq!(
-        probed, 12,
-        "the cue action's nine forms and the target's three"
+        probed, 15,
+        "the cue action's ten forms, the target's three and the hit shape's two"
     );
 }
 
@@ -355,7 +358,7 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
             }
         }
     }
-    assert_eq!(checked, 53, "the kit's numeric fields");
+    assert_eq!(checked, 69, "the kit's numeric fields");
 }
 
 #[test]
@@ -363,9 +366,9 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 32);
-    assert_eq!(count("shape "), 14);
-    assert_eq!(count("kind "), 3);
+    assert_eq!(count("component "), 39);
+    assert_eq!(count("shape "), 17);
+    assert_eq!(count("kind "), 4);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));
@@ -376,6 +379,8 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
         text.contains("shape cue_action: One reaction to an event.\n  exactly one of its fields\n")
     );
     assert!(text.contains("kind tags: "));
+    assert!(text.contains("  field roll: loot_tables ID or entry "));
+    assert!(text.contains("shape hit_shape: "));
     let first_shape = text.find("\nshape ").unwrap();
     assert!(text.rfind("\ncomponent ").unwrap() < first_shape);
     assert!(first_shape < text.find("\nkind ").unwrap());

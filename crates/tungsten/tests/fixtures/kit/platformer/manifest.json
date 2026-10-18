@@ -41,6 +41,24 @@
     },
     "firefly": {
       "path": "prefabs/firefly.json"
+    },
+    "climber": {
+      "path": "prefabs/climber.json"
+    },
+    "fireball": {
+      "path": "prefabs/fireball.json"
+    },
+    "ricochet": {
+      "path": "prefabs/ricochet.json"
+    },
+    "brick": {
+      "path": "prefabs/brick.json"
+    },
+    "spiker": {
+      "path": "prefabs/spiker.json"
+    },
+    "coin": {
+      "path": "prefabs/coin.json"
     }
   },
   "data": {

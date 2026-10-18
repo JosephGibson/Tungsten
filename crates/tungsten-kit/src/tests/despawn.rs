@@ -1,6 +1,6 @@
 use super::*;
 use crate::transform::hierarchy::spawn_child;
-use tungsten_core::Stage;
+use tungsten_core::{CommandBuffer, Stage, Time};
 
 fn setup() -> (World, Schedule) {
     let mut world = World::new();
@@ -27,7 +27,11 @@ fn at(x: f32, y: f32, rule: DespawnOutside) -> (Transform, DespawnOutside) {
 fn the_plugin_registers_its_system_in_the_overlap_phase() {
     let (_, schedule) = setup();
     assert_eq!(schedule.stage_of(DESPAWN_OUTSIDE), Some(Stage::FixedUpdate));
-    assert_eq!(schedule.len(), 8, "the seven anchors and the system");
+    assert_eq!(
+        schedule.len(),
+        9,
+        "the seven anchors, the system and the kit's despawn"
+    );
 }
 
 #[test]

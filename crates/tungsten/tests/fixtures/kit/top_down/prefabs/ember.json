@@ -1,0 +1,29 @@
+{
+  "tag": "ember",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        600,
+        0
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 3
+      },
+      "damage": 2,
+      "tags": [
+        "damage.fire"
+      ],
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "pierce": 2,
+      "range": 400
+    }
+  }
+}

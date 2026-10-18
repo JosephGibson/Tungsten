@@ -1,4 +1,6 @@
 [
   "team.player",
-  "team.enemy"
+  "team.enemy",
+  "damage.blade",
+  "breakable"
 ]

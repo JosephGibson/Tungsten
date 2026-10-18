@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 use tungsten_core::{
-    CommandBuffer, Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Timer, World, system,
+    Entity, Inspectable, Plugin, Schedule, SpawnContext, Time, Timer, World, system,
 };
 
 use crate::foundation::describe::{
@@ -13,8 +13,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::trace::{TraceKind, trace};
-use crate::transform::hierarchy::despawn_recursive;
+use crate::lifecycle::ended::{end, ensure_kit_despawn};
 
 /// [`LifetimePlugin`]'s system, in the tick phase.
 pub const LIFETIME_TICK: &str = "lifetime_tick";
@@ -26,10 +25,12 @@ const LIFETIME: &str = "lifetime";
 /// game clock: a bolt, a spark, a floating score. [`LifetimePlugin`]'s
 /// system ticks it once a fixed step by the step, so a lifetime ends on a
 /// step whatever the frame rate, a pause holds every lifetime and the time
-/// scale stretches them; once it has finished the system queues
-/// [`despawn_recursive`], so the entity goes at that frame's command
-/// flush, before the extract. Its [`Timer`] reads how far the entity has
-/// come, for a fade.
+/// scale stretches them; once it has finished the system lists it for the
+/// kit's end-of-step despawn ([`KIT_DESPAWN`](crate::KIT_DESPAWN)), which
+/// queues [`despawn_recursive`](crate::despawn_recursive) after the step's
+/// spawns from it, so the entity goes at that frame's command flush, before
+/// the extract, and a cue spawn from it in its last step survives. Its
+/// [`Timer`] reads how far the entity has come, for a fade.
 ///
 /// Scene name `lifetime`: `{ "seconds": 0.5 }`.
 ///
@@ -84,11 +85,12 @@ impl Lifetime {
     }
 }
 
-/// Registers the `lifetime` scene component and [`LIFETIME_TICK`] in the
-/// tick phase: each fixed step it ticks every [`Lifetime`] by the step and
-/// queues the despawn of each finished one, with its children, for the
-/// frame's command flush. Without a `CommandBuffer` it queues nothing; a
-/// finished lifetime queues again on the next step.
+/// Registers the `lifetime` scene component, [`LIFETIME_TICK`] in the tick
+/// phase and the kit's end-of-step despawn when the schedule lacks it: each
+/// fixed step the tick ticks every [`Lifetime`] by the step and lists each
+/// finished one for the despawn, which queues it, with its children, for
+/// the frame's command flush. Without a `CommandBuffer` nothing is queued;
+/// a finished lifetime is listed again on the next step.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct LifetimePlugin;
 
@@ -124,6 +126,7 @@ impl Plugin for LifetimePlugin {
             Phase::Tick.stage(),
             Phase::Tick.join(system(LIFETIME_TICK, lifetime_tick)),
         );
+        ensure_kit_despawn(schedule, world);
     }
 }
 
@@ -138,29 +141,16 @@ struct LifetimeDef {
 fn lifetime_tick(world: &mut World) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
     let mut finished: Vec<Entity> = Vec::new();
-    let mut ended: Vec<Entity> = Vec::new();
     for (entity, lifetime) in world.query_mut::<(Entity, &mut Lifetime)>() {
         lifetime.timer.tick(dt);
         if lifetime.timer.finished() {
             finished.push(entity);
-            if lifetime.timer.just_finished() {
-                ended.push(entity);
-            }
         }
     }
-    if finished.is_empty() {
-        return;
-    }
-    // Traced once, at the step its time ends; the despawn is queued again
-    // each step until the flush.
-    for entity in ended {
-        trace(world, entity, || TraceKind::Despawn { by: "lifetime" });
-    }
-    let Some(commands) = world.get_resource_mut::<CommandBuffer>() else {
-        return;
-    };
+    // Listed each step until the flush; the despawn marks it the first
+    // time and skips it after.
     for entity in finished {
-        despawn_recursive(commands, entity);
+        end(world, entity, "lifetime");
     }
 }
 

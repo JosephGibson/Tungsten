@@ -1,0 +1,8 @@
+{
+  "tag": "ghoul_burst",
+  "components": {
+    "lifetime": {
+      "seconds": 0.3
+    }
+  }
+}

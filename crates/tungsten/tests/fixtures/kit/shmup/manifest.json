@@ -41,6 +41,18 @@
     },
     "gun": {
       "path": "prefabs/gun.json"
+    },
+    "interceptor": {
+      "path": "prefabs/interceptor.json"
+    },
+    "laser": {
+      "path": "prefabs/laser.json"
+    },
+    "carrier": {
+      "path": "prefabs/carrier.json"
+    },
+    "bulwark": {
+      "path": "prefabs/bulwark.json"
     }
   },
   "data": {

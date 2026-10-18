@@ -1,0 +1,26 @@
+{
+  "tag": "coin",
+  "components": {
+    "pickup": {
+      "shape": {
+        "circle": 6
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "counter": {
+            "name": "coins",
+            "add": 1,
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

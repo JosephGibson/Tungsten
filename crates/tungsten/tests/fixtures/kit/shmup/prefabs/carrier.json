@@ -1,0 +1,24 @@
+{
+  "tag": "carrier",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 4
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          16,
+          10
+        ]
+      }
+    },
+    "shield": {
+      "max": 2,
+      "recharge": 1,
+      "delay": 1
+    }
+  }
+}

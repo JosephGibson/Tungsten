@@ -92,6 +92,18 @@ fn each_action_reads_and_writes_its_data_form() {
             json!({ "squash": "on_land" }),
         ),
         (CueAction::flash(), json!({ "flash": {} })),
+        (
+            CueAction::roll(DataRef::by_id("drops")),
+            json!({ "roll": "drops" }),
+        ),
+        (
+            CueAction::roll(DataRef::inline(
+                WeightedTable::new()
+                    .with_entry("puff", 2.0)
+                    .with_nothing(1.0),
+            )),
+            json!({ "roll": { "rolls": 1, "entries": [{ "prefab": "puff", "weight": 2.0 }, { "weight": 1.0 }] } }),
+        ),
     ] {
         assert_eq!(serde_json::to_value(&action).unwrap(), data, "{action:?}");
         assert_eq!(serde_json::from_value::<CueAction>(data).unwrap(), action);
@@ -110,6 +122,7 @@ fn each_action_reads_and_writes_its_data_form() {
         CueAction::squash(SquashTrigger::Manual),
         CueAction::flash(),
         CueAction::label(LabelStyle::new("sans")),
+        CueAction::roll(DataRef::by_id("drops")),
     ]
     .iter()
     .map(CueAction::name)
@@ -117,7 +130,8 @@ fn each_action_reads_and_writes_its_data_form() {
     assert_eq!(
         names,
         [
-            "prefab", "counter", "flag", "despawn", "sound", "shake", "squash", "flash", "label"
+            "prefab", "counter", "flag", "despawn", "sound", "shake", "squash", "flash", "label",
+            "roll"
         ]
     );
 }
@@ -140,6 +154,8 @@ fn the_data_form_refuses_what_the_constructors_refuse() {
         json!({ "flash": { "color": [1, 1, 1, 1] } }),
         json!({ "label": { "font": "" } }),
         json!({ "label": { "font": "sans", "size": 0 } }),
+        json!({ "roll": 3 }),
+        json!({ "roll": { "rolls": 0, "entries": [] } }),
     ] {
         assert!(
             serde_json::from_value::<CueAction>(bad.clone()).is_err(),
@@ -206,6 +222,20 @@ fn the_load_checks_events_ids_amounts_and_others() {
         )
         .is_ok()
     );
+    assert!(
+        check(
+            &world,
+            &json!({
+                "damaged": [{ "counter": { "name": "hits", "add": 1, "target": "other" } }],
+                "hit": [{ "label": { "font": "sans" } }, { "despawn": { "target": "other" } }],
+                "healed": [{ "label": { "font": "sans" } }],
+                "picked_up": [{ "counter": { "name": "gems", "add": 1, "target": "other" } }],
+                "expired": [{ "prefab": "puff" }, { "roll": { "entries": [{ "prefab": "puff", "weight": 1 }] } }]
+            })
+        )
+        .is_ok(),
+        "C's events and the source as the hit's other"
+    );
     let cases = [
         (
             json!({ "dmaged": [] }),
@@ -226,6 +256,18 @@ fn the_load_checks_events_ids_amounts_and_others() {
         (
             json!({ "cooldown_elapsed": [{ "despawn": { "target": "other" } }] }),
             "component `cues`, field `cooldown_elapsed.0.despawn.target`: unknown cue event with an other entity `cooldown_elapsed`",
+        ),
+        (
+            json!({ "killed": [{ "roll": "chest" }] }),
+            "component `cues`, field `killed.0.roll`: unknown loot_tables `chest`",
+        ),
+        (
+            json!({ "killed": [{ "flash": {} }, { "roll": { "entries": [{ "weight": 1 }, { "prefab": "ruby", "weight": 1 }] } }] }),
+            "component `cues`, field `killed.1.roll.entries.1.prefab`: unknown prefab `ruby`",
+        ),
+        (
+            json!({ "expired": [{ "label": { "font": "sans" } }] }),
+            "component `cues`, field `expired.0.label`: unknown cue event with an amount `expired`",
         ),
     ];
     for (value, error) in cases {
@@ -272,34 +314,34 @@ fn a_rule_checks_its_event_its_filters_tags_and_its_actions() {
     }
 }
 
-/// The game's pickup.
-struct PickedUp {
-    item: Entity,
+/// The game's loot: a chest opened by someone.
+struct Looted {
+    chest: Entity,
     by: Entity,
 }
 
-/// A pickup by the item itself is no pickup.
-fn picked_up(event: &PickedUp) -> Option<CueEvent> {
-    (event.item != event.by).then(|| CueEvent::new(event.item, Vec2::ZERO).with_other(event.by))
+/// A chest that loots itself is no loot.
+fn looted(event: &Looted) -> Option<CueEvent> {
+    (event.chest != event.by).then(|| CueEvent::new(event.chest, Vec2::ZERO).with_other(event.by))
 }
 
 #[test]
 fn a_game_event_registers_its_queue_and_its_name_for_cues() {
     let (mut world, mut schedule) = rig();
-    CuesOnEvent::<PickedUp>::new("picked_up", picked_up).build(&mut schedule, &mut world);
-    assert!(world.has_event::<PickedUp>());
+    CuesOnEvent::<Looted>::new("looted", looted).build(&mut schedule, &mut world);
+    assert!(world.has_event::<Looted>());
     assert!(
         check(
             &world,
-            &json!({ "picked_up": [{ "despawn": {} }, { "counter": { "name": "coins", "add": 1, "target": "other" } }, { "label": { "font": "sans" } }] })
+            &json!({ "looted": [{ "despawn": {} }, { "counter": { "name": "coins", "add": 1, "target": "other" } }, { "label": { "font": "sans" } }] })
         )
         .is_ok(),
         "a game event may carry an amount and an other"
     );
-    let plugin = CuesOnEvent::<PickedUp>::new("picked_up", picked_up);
+    let plugin = CuesOnEvent::<Looted>::new("looted", looted);
     assert_eq!(
         format!("{plugin:?}"),
-        r#"CuesOnEvent { name: "picked_up", .. }"#
+        r#"CuesOnEvent { name: "looted", .. }"#
     );
     let _ = plugin.clone();
 }
@@ -308,22 +350,29 @@ fn a_game_event_registers_its_queue_and_its_name_for_cues() {
 #[should_panic(expected = "is one of the kit's cue events")]
 fn a_game_event_named_as_the_kits_panics() {
     let (mut world, mut schedule) = rig();
-    CuesOnEvent::<PickedUp>::new("killed", picked_up).build(&mut schedule, &mut world);
+    CuesOnEvent::<Looted>::new("killed", looted).build(&mut schedule, &mut world);
+}
+
+#[test]
+#[should_panic(expected = "is one of the kit's cue events")]
+fn a_game_event_named_as_one_of_cs_panics() {
+    let (mut world, mut schedule) = rig();
+    CuesOnEvent::<Looted>::new("picked_up", looted).build(&mut schedule, &mut world);
 }
 
 #[test]
 #[should_panic(expected = "is already registered")]
 fn a_game_event_registered_twice_panics() {
     let (mut world, mut schedule) = rig();
-    CuesOnEvent::<PickedUp>::new("picked_up", picked_up).build(&mut schedule, &mut world);
-    CuesOnEvent::<PickedUp>::new("picked_up", picked_up).build(&mut schedule, &mut world);
+    CuesOnEvent::<Looted>::new("looted", looted).build(&mut schedule, &mut world);
+    CuesOnEvent::<Looted>::new("looted", looted).build(&mut schedule, &mut world);
 }
 
 #[test]
 #[should_panic(expected = "is not an event name")]
 fn a_game_event_with_a_bad_name_panics() {
     let (mut world, mut schedule) = rig();
-    CuesOnEvent::<PickedUp>::new("Picked Up", picked_up).build(&mut schedule, &mut world);
+    CuesOnEvent::<Looted>::new("Picked Up", looted).build(&mut schedule, &mut world);
 }
 
 mod running {
@@ -496,12 +545,20 @@ mod running {
         ));
         damage(&mut world, slime, 1.0);
         step(&mut world, &mut schedule);
-        damage(&mut world, slime, 1.0);
+        assert_eq!(
+            damage(&mut world, slime, 1.0),
+            crate::Hit::Ignored,
+            "the pipeline ignores a despawning target"
+        );
+        let hero = world.spawn();
+        world
+            .resource_mut::<EventQueue<ZoneEntered>>()
+            .send(ZoneEntered::new(slime, hero, Vec2::ZERO));
         step(&mut world, &mut schedule);
         assert_eq!(game(&world, "hits"), 1);
         assert!(
             traced(&world, slime)
-                .contains(&"damaged: all skipped, the subject is despawning".to_string())
+                .contains(&"zone_entered: all skipped, the subject is despawning".to_string())
         );
         let despawns = traced(&world, slime)
             .iter()
@@ -636,6 +693,129 @@ mod running {
         );
         assert!(world.get::<HitFlash>(slime).unwrap().is_active());
         assert_eq!(world.resource::<LiveLabels>().len(), 1);
+    }
+
+    /// The positions of the World's tagged entities, with their sources.
+    fn spawned(world: &World) -> Vec<(String, Vec2, Option<Entity>)> {
+        let mut out: Vec<(String, Vec2, Option<Entity>)> = world
+            .query::<(Entity, &tungsten_core::Tag, &Transform)>()
+            .map(|(entity, tag, transform)| {
+                (
+                    tag.name.clone(),
+                    transform.position,
+                    world
+                        .get::<crate::Source>(entity)
+                        .map(|source| source.entity()),
+                )
+            })
+            .collect();
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
+    }
+
+    #[test]
+    fn a_roll_draws_its_rolls_and_spawns_each_from_the_subject_at_its_point() {
+        let (mut world, mut schedule) = rig();
+        crate::SourcePlugin.build(&mut schedule, &mut world);
+        let drops = WeightedTable::new().with_entry("puff", 1.0).with_rolls(3);
+        world.resource_mut::<DataRegistry>().insert("drops", drops);
+        let chest = world.spawn_with((
+            Health::new(1.0),
+            Transform::from_position(Vec2::new(12.0, -3.0)),
+            Cues::new().on("killed", [CueAction::roll(DataRef::by_id("drops"))]),
+        ));
+        let draws = world.resource::<KitRng>().draws();
+        damage(&mut world, chest, 1.0);
+        step(&mut world, &mut schedule);
+        flush(&mut world);
+        assert_eq!(
+            world.resource::<KitRng>().draws(),
+            draws + 3,
+            "one number a roll"
+        );
+        assert_eq!(
+            spawned(&world),
+            vec![("puff".to_string(), Vec2::new(12.0, -3.0), Some(chest)); 3]
+        );
+        let rolls: Vec<String> = traced(&world, chest)
+            .into_iter()
+            .filter(|line| line.contains("roll") || line.contains("spawned"))
+            .collect();
+        assert_eq!(
+            rolls,
+            [
+                "spawned `puff` by cues",
+                "spawned `puff` by cues",
+                "spawned `puff` by cues",
+                "killed: roll (own cue)"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_roll_of_a_missing_table_is_skipped_and_traced() {
+        let (mut world, mut schedule) = rig();
+        let chest = world.spawn_with((
+            Health::new(1.0),
+            Cues::new().on("killed", [CueAction::roll(DataRef::by_id("nowhere"))]),
+        ));
+        damage(&mut world, chest, 1.0);
+        step(&mut world, &mut schedule);
+        assert!(
+            traced(&world, chest)
+                .contains(&"killed: roll skipped, the World has no such loot table".to_string())
+        );
+    }
+
+    #[test]
+    fn cs_events_reach_their_subjects_cues_with_their_others() {
+        let (mut world, mut schedule) = rig();
+        for register in [
+            World::register_event::<crate::Struck>,
+            World::register_event::<crate::PickedUp>,
+            World::register_event::<crate::ProjectileExpired>,
+        ] {
+            let _ = register(&mut world);
+        }
+        let hero = world.spawn();
+        let gem = world.spawn();
+        let bolt = world.spawn();
+        let blade = world.spawn();
+        let knight = world.spawn_with((Health::new(10.0),));
+        let count = |name: &str| CueAction::counter_add(name, 1).for_other();
+        world.insert(blade, Cues::new().on("hit", [count("struck")]));
+        world.insert(gem, Cues::new().on("picked_up", [count("gems")]));
+        world.insert(
+            bolt,
+            Cues::new().on("expired", [CueAction::counter_add("expired", 1).for_game()]),
+        );
+        world.insert(
+            knight,
+            Cues::new()
+                .on("damaged", [count("hits")])
+                .on("healed", [count("heals")]),
+        );
+        world
+            .resource_mut::<EventQueue<crate::Struck>>()
+            .send(crate::Struck::new(blade, hero, Vec2::ZERO, 2.0));
+        world
+            .resource_mut::<EventQueue<crate::PickedUp>>()
+            .send(crate::PickedUp::new(gem, hero, Vec2::ZERO));
+        world
+            .resource_mut::<EventQueue<crate::ProjectileExpired>>()
+            .send(crate::ProjectileExpired::new(bolt, Vec2::ZERO));
+        crate::DamageRequest::new(knight, 2.0)
+            .with_source(hero)
+            .apply(&mut world);
+        crate::HealRequest::new(knight, 1.0)
+            .with_source(hero)
+            .apply(&mut world);
+        step(&mut world, &mut schedule);
+        let counters = world.get::<Counters>(hero).unwrap();
+        for name in ["struck", "gems", "hits", "heals"] {
+            assert_eq!(counters.get(name), 1, "{name}");
+        }
+        assert_eq!(game(&world, "expired"), 1);
     }
 
     #[test]

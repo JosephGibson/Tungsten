@@ -1,0 +1,31 @@
+{
+  "tag": "laser",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        0,
+        -900
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "aabb": [
+          1,
+          6
+        ]
+      },
+      "damage": 1,
+      "tags": [
+        "damage.laser"
+      ],
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "range": 500
+    }
+  }
+}

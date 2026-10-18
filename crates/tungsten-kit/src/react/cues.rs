@@ -10,12 +10,13 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
-    AudioCommands, CommandBuffer, DataRegistry, Entity, EventCursor, EventQueue, Inspectable,
-    MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry, SpawnContext, SquashEvent,
-    SquashTrigger, Time, Transform, World, system,
+    AudioCommands, CommandBuffer, DataRef, DataRegistry, Entity, EventCursor, EventQueue,
+    Inspectable, MissingAsset, Plugin, Schedule, ShakeEvent, SoundRegistry, SpawnContext,
+    SquashEvent, SquashTrigger, Time, Transform, World, system,
 };
 
 use crate::damage::health::{Damaged, start_flash};
+use crate::damage::pipeline::Healed;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
     describe, describe_kind, describe_shape, round_trip,
@@ -23,14 +24,20 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::rng::KitRng;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::cooldown::CooldownElapsed;
+use crate::lifecycle::ended::{Despawning, mark_despawning};
+use crate::overlap::hit::Struck;
+use crate::overlap::pickup::PickedUp;
+use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
 use crate::present::labels::{
     LABEL_TICK, LabelStyle, LabelStyleDef, LiveLabels, float_label, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
+use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
 use crate::transform::hierarchy::despawn_recursive;
 
 /// [`CuesPlugin`]'s system, in the react phase, last of the kit's items.
@@ -44,7 +51,20 @@ pub(crate) const DAMAGED: &str = "damaged";
 pub(crate) const KILLED: &str = "killed";
 pub(crate) const ZONE_ENTERED: &str = "zone_entered";
 pub(crate) const COOLDOWN_ELAPSED: &str = "cooldown_elapsed";
-const KIT_EVENTS: [&str; 4] = [DAMAGED, KILLED, ZONE_ENTERED, COOLDOWN_ELAPSED];
+pub(crate) const HIT: &str = "hit";
+pub(crate) const HEALED: &str = "healed";
+pub(crate) const PICKED_UP: &str = "picked_up";
+pub(crate) const EXPIRED: &str = "expired";
+const KIT_EVENTS: [&str; 8] = [
+    DAMAGED,
+    KILLED,
+    ZONE_ENTERED,
+    COOLDOWN_ELAPSED,
+    HIT,
+    HEALED,
+    PICKED_UP,
+    EXPIRED,
+];
 
 /// The squash triggers' data names, as a scene's `squash_stretch` writes
 /// them.
@@ -59,10 +79,13 @@ fn valid_event(name: &str) -> bool {
 
 /// An entity's reactions: for each event about it, a list of
 /// [`CueAction`]s that [`CuesPlugin`]'s system runs in order, in the fixed
-/// step the event is read. The events are the kit's `damaged`, `killed`
-/// (after its `damaged`), `zone_entered` (the zone is the subject, the
-/// entrant the other) and `cooldown_elapsed`, and each name a game's
-/// [`CuesOnEvent`] registers.
+/// step the event is read. The events are the kit's `damaged` and `killed`
+/// (after its `damaged`; the hit's source is the other), `zone_entered`
+/// (the zone is the subject, the entrant the other), `cooldown_elapsed`,
+/// `hit` (the hitting entity is the subject, the target the other),
+/// `healed` (the heal's source the other), `picked_up` (the pickup is the
+/// subject, the collector the other) and `expired` (a projectile's end),
+/// and each name a game's [`CuesOnEvent`] registers.
 ///
 /// Scene name `cues`:
 /// `{ "damaged": [{ "flash": {} }], "killed": [{ "prefab": "puff" }, { "despawn": {} }] }`;
@@ -180,8 +203,9 @@ impl Cues {
     }
 }
 
-/// One reaction to an event: spawn a prefab, change a counter or a flag,
-/// despawn, or present (a sound, a shake, a squash, a flash, a label).
+/// One reaction to an event: spawn a prefab, roll a loot table, change a
+/// counter or a flag, despawn, or present (a sound, a shake, a squash, a
+/// flash, a label).
 /// `counter`, `flag` and `despawn` act on the event's subject by default;
 /// [`for_other`](Self::for_other) points them at the event's other entity
 /// and [`for_game`](Self::for_game) the first two at the World's own
@@ -202,6 +226,7 @@ impl Cues {
 /// | squash | `{ "squash": "on_hit" }`, the subject's squash trigger |
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
 /// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label |
+/// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
 ///
 /// # Examples
 ///
@@ -247,6 +272,7 @@ pub(crate) enum ActionKind {
     Squash(SquashTrigger),
     Flash,
     Label(LabelStyle),
+    Roll(DataRef<WeightedTable>),
 }
 
 /// A counter action's change.
@@ -434,8 +460,29 @@ impl CueAction {
         Self::of(ActionKind::Label(style))
     }
 
+    /// Rolls `table`, a `loot_tables` entry or a table in place: each of
+    /// its rolls draws from the kit's [`KitRng`](crate::KitRng), in the cue
+    /// system's order, and each prefab drawn spawns at the event's position
+    /// from the subject, as [`prefab`](Self::prefab) spawns.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_core::DataRef;
+    /// use tungsten_kit::{CueAction, WeightedTable};
+    ///
+    /// let drops = CueAction::roll(DataRef::by_id("slime_drops"));
+    /// assert_eq!(serde_json::to_value(&drops).unwrap(), serde_json::json!({ "roll": "slime_drops" }));
+    /// let chest = CueAction::roll(DataRef::inline(WeightedTable::new().with_entry("gold", 1.0)));
+    /// assert_eq!(chest.name(), "roll");
+    /// ```
+    #[must_use]
+    pub fn roll(table: DataRef<WeightedTable>) -> Self {
+        Self::of(ActionKind::Roll(table))
+    }
+
     /// The action's data name: `prefab`, `counter`, `flag`, `despawn`,
-    /// `sound`, `shake`, `squash`, `flash` or `label`.
+    /// `sound`, `shake`, `squash`, `flash`, `label` or `roll`.
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self.kind {
@@ -448,6 +495,7 @@ impl CueAction {
             ActionKind::Squash(_) => "squash",
             ActionKind::Flash => "flash",
             ActionKind::Label(_) => "label",
+            ActionKind::Roll(_) => "roll",
         }
     }
 }
@@ -481,6 +529,7 @@ pub(crate) enum CueActionDef {
     Squash(SquashName),
     Flash(FlashDef),
     Label(LabelStyleDef),
+    Roll(DataRef<WeightedTable>),
 }
 
 /// A `counter` action as data writes it: exactly one of `add` and `set`.
@@ -665,6 +714,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Squash(name) => ActionKind::Squash(name.into()),
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
             CueActionDef::Label(def) => ActionKind::Label(LabelStyle::try_from(def)?),
+            CueActionDef::Roll(table) => ActionKind::Roll(table),
         };
         Ok(Self { kind })
     }
@@ -705,6 +755,7 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Squash(trigger) => CueActionDef::Squash(trigger.into()),
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
             ActionKind::Label(style) => CueActionDef::Label(style.into()),
+            ActionKind::Roll(table) => CueActionDef::Roll(table),
         }
     }
 }
@@ -793,10 +844,14 @@ impl Default for CueEventNames {
     fn default() -> Self {
         Self(
             [
-                (DAMAGED, true, false),
-                (KILLED, true, false),
+                (DAMAGED, true, true),
+                (KILLED, true, true),
                 (ZONE_ENTERED, false, true),
                 (COOLDOWN_ELAPSED, false, false),
+                (HIT, true, true),
+                (HEALED, true, true),
+                (PICKED_UP, false, true),
+                (EXPIRED, false, false),
             ]
             .into_iter()
             .map(|(name, amount, other)| EventInfo {
@@ -850,9 +905,9 @@ struct CueSources(Vec<Box<dyn CueSource>>);
 /// use tungsten_core::{Entity, Plugin, Schedule, World};
 /// use tungsten_kit::{CueEvent, CuesOnEvent, CuesPlugin};
 ///
-/// /// The game's pickup event.
-/// struct PickedUp {
-///     item: Entity,
+/// /// The game's chest event.
+/// struct Opened {
+///     chest: Entity,
 ///     by: Entity,
 ///     at: Vec2,
 /// }
@@ -860,12 +915,12 @@ struct CueSources(Vec<Box<dyn CueSource>>);
 /// let mut world = World::new();
 /// let mut schedule = Schedule::new();
 /// CuesPlugin.build(&mut schedule, &mut world);
-/// CuesOnEvent::<PickedUp>::new("picked_up", |e| {
-///     Some(CueEvent::new(e.item, e.at).with_other(e.by))
+/// CuesOnEvent::<Opened>::new("opened", |e| {
+///     Some(CueEvent::new(e.chest, e.at).with_other(e.by))
 /// })
 /// .build(&mut schedule, &mut world);
 /// schedule.resolve().unwrap();
-/// assert!(world.has_event::<PickedUp>());
+/// assert!(world.has_event::<Opened>());
 /// ```
 pub struct CuesOnEvent<E> {
     name: &'static str,
@@ -1018,9 +1073,10 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
     }
 }
 
-/// Checks `actions`, run for `event`, against the World: each prefab and
-/// sound ID, a `label` on an event with an amount and a `target: other` on
-/// one with another entity; `field` names the list.
+/// Checks `actions`, run for `event`, against the World: each prefab,
+/// sound and loot table ID and an inline table's prefabs, a `label` on an
+/// event with an amount and a `target: other` on one with another entity;
+/// `field` names the list.
 fn check_actions(
     world: &World,
     field: &str,
@@ -1031,6 +1087,7 @@ fn check_actions(
         let at = format!("{field}.{i}.{}", action.name());
         match &action.kind {
             ActionKind::Prefab(id) => world.check_prefab_id(&at, id)?,
+            ActionKind::Roll(table) => table.check(world, &at)?,
             ActionKind::Sound { id, .. } => {
                 if let Some(sounds) = world.get_resource::<SoundRegistry>()
                     && sounds.get_by_id(id).is_none()
@@ -1076,29 +1133,36 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
         .ok_or_else(|| MissingAsset::new(field, "cue event", name))
 }
 
-/// Registers the `cues` scene component and the `cue_rules` data kind, the
-/// kit's cue events, [`CUES`] in the react phase, last of the kit's items,
+/// Registers the `cues` scene component, the `cue_rules` and `loot_tables`
+/// data kinds, the kit's cue events, a [`KitRng`](crate::KitRng) when the
+/// World has none, [`CUES`] in the react phase, last of the kit's items,
 /// and [`LABEL_TICK`] in the present phase.
 ///
 /// Each fixed step, the cue system reads its sources, each once through an
 /// `EventCursor`: [`Damaged`] (a `damaged` occurrence, then a `killed` one
-/// for a kill), [`ZoneEntered`], [`CooldownElapsed`], then each
+/// for a kill), [`ZoneEntered`], [`CooldownElapsed`],
+/// [`Struck`](crate::Struck) (`hit`), [`Healed`](crate::Healed),
+/// [`PickedUp`](crate::PickedUp) (`picked_up`),
+/// [`ProjectileExpired`](crate::ProjectileExpired) (`expired`), then each
 /// [`CuesOnEvent`] in build order, each queue in send order. It runs every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
 /// in entry-ID order, then file order); each list in its written order. A
 /// rule matches on its event and its tag filter over the subject's
-/// [`Tags`](crate::Tags). `counter` and `flag` apply at once, `prefab`
-/// spawns queue as they are met, and the step's despawns queue after its
-/// spawns, each target marked so a frame's second step reacts to it no
-/// more; an occurrence whose subject is dead or so marked is skipped.
+/// [`Tags`](crate::Tags). `counter` and `flag` apply at once, `prefab` and
+/// `roll` spawns queue as they are met, a `roll` drawing from the
+/// [`KitRng`](crate::KitRng) in this order, and the step's despawns queue
+/// after its spawns, each target marked with its descendants so a frame's
+/// second step reacts to them no more; an occurrence whose subject is dead
+/// or so marked is skipped.
 ///
 /// A `cue_rules` entry is a list of rules,
 /// `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`,
 /// `filter` everything by default. The load checks every event name, tag,
-/// prefab and sound ID it names.
+/// prefab, sound and loot table ID it names.
 ///
 /// The vocabulary stops there: no conditions, variables or sequences, and
-/// no filter but the rule's. A reaction that needs more is a game's Rust.
+/// no filter but the rule's; a `roll` draws only from the table it names.
+/// A reaction that needs more is a game's Rust.
 ///
 /// # Examples
 ///
@@ -1134,6 +1198,10 @@ impl Plugin for CuesPlugin {
         if !world.has_resource::<LiveLabels>() {
             world.insert_resource(LiveLabels::default());
         }
+        if !world.has_resource::<KitRng>() {
+            world.insert_resource(KitRng::default());
+        }
+        register_loot_tables(world);
         world.register_data_kind_with_assets(CUE_RULES, |rules: &CueRules, world: &World| {
             for (i, rule) in rules.0.iter().enumerate() {
                 let event = event_info(world, &format!("{i}.on"), &rule.on)?;
@@ -1167,12 +1235,6 @@ impl Plugin for CuesPlugin {
     }
 }
 
-/// Marks an entity a cue queued for despawn this frame: the frame's later
-/// steps react to it no more, and a second despawn of it queues nothing.
-/// The flush that despawns it takes the mark with it.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Despawning;
-
 /// Why an action or an occurrence did not run, for the trace.
 const GONE: &str = "the subject is gone";
 const DESPAWNING: &str = "the subject is despawning";
@@ -1182,6 +1244,7 @@ const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
 const NO_SOUND: &str = "the World has no sound or audio for it";
 const TOO_SOON: &str = "the sound played within its min_interval";
+const NO_TABLE: &str = "the World has no such loot table";
 
 /// The cue system's state between steps: its place in each kit queue, the
 /// step's scratch lists, and each cue sound's last play on its clock.
@@ -1190,10 +1253,17 @@ struct Reactor {
     damaged: EventCursor<Damaged>,
     zones: EventCursor<ZoneEntered>,
     cooldowns: EventCursor<CooldownElapsed>,
+    struck: EventCursor<Struck>,
+    healed: EventCursor<Healed>,
+    picked: EventCursor<PickedUp>,
+    expired: EventCursor<ProjectileExpired>,
     occurrences: Vec<Occurrence>,
     /// The rules that match one occurrence, with their names.
     matched: Vec<(String, Arc<[CueAction]>)>,
     despawns: Vec<Entity>,
+    /// A roll's drawn prefabs, and the despawn mark's walk.
+    drawn: Vec<String>,
+    stack: Vec<Entity>,
     /// Game seconds the system has stepped through: the cue sounds' clock.
     clock: f64,
     /// Each sound ID's last play on `clock`.
@@ -1306,28 +1376,22 @@ impl Reactor {
                 if !world.has_resource::<CommandBuffer>() {
                     return skip(world, NO_COMMANDS);
                 }
-                match world.prepare_prefab(id, occurrence.position) {
-                    Ok(prepared) => {
-                        world
-                            .resource_mut::<CommandBuffer>()
-                            .spawn_prefab_from(subject, prepared);
-                        trace(world, subject, || TraceKind::Spawn {
-                            prefab: id.clone(),
-                            by: CUES,
-                        });
-                    }
-                    Err(err) => {
-                        if self.warned.insert(id.clone()) {
-                            log::error!("cues: prefab `{id}` spawns nothing: {err}");
-                        }
-                        trace(world, subject, || TraceKind::SpawnFailed {
-                            prefab: id.clone(),
-                            by: CUES,
-                            error: err.to_string(),
-                        });
-                        return;
-                    }
+                if !self.spawn(world, subject, id, occurrence.position) {
+                    return;
                 }
+            }
+            ActionKind::Roll(table) => {
+                if !world.has_resource::<CommandBuffer>() {
+                    return skip(world, NO_COMMANDS);
+                }
+                if !self.draw(world, table) {
+                    return skip(world, NO_TABLE);
+                }
+                let drawn = std::mem::take(&mut self.drawn);
+                for id in &drawn {
+                    self.spawn(world, subject, id, occurrence.position);
+                }
+                self.drawn = drawn;
             }
             ActionKind::Counter {
                 name,
@@ -1384,7 +1448,7 @@ impl Reactor {
                     return skip(world, NO_COMMANDS);
                 }
                 if !world.has::<Despawning>(entity) {
-                    world.insert(entity, Despawning);
+                    mark_despawning(world, entity, &mut self.stack);
                     self.despawns.push(entity);
                 }
             }
@@ -1440,25 +1504,81 @@ impl Reactor {
         });
     }
 
+    /// Queues prefab `id` at `position` from `subject` and traces the
+    /// spawn, or traces and logs once why it spawns nothing; whether it
+    /// spawned. The World holds a `CommandBuffer`.
+    fn spawn(&mut self, world: &mut World, subject: Entity, id: &str, position: Vec2) -> bool {
+        match world.prepare_prefab(id, position) {
+            Ok(prepared) => {
+                world
+                    .resource_mut::<CommandBuffer>()
+                    .spawn_prefab_from(subject, prepared);
+                trace(world, subject, || TraceKind::Spawn {
+                    prefab: id.to_owned(),
+                    by: CUES,
+                });
+                true
+            }
+            Err(err) => {
+                if self.warned.insert(id.to_owned()) {
+                    log::error!("cues: prefab `{id}` spawns nothing: {err}");
+                }
+                trace(world, subject, || TraceKind::SpawnFailed {
+                    prefab: id.to_owned(),
+                    by: CUES,
+                    error: err.to_string(),
+                });
+                false
+            }
+        }
+    }
+
+    /// Draws `table`'s rolls from the World's [`KitRng`] into `drawn`;
+    /// false when the table is an ID the World's data lacks.
+    fn draw(&mut self, world: &mut World, table: &DataRef<WeightedTable>) -> bool {
+        self.drawn.clear();
+        let mut rng = world.remove_resource::<KitRng>().unwrap_or_default();
+        let found = match world.get_resource::<DataRegistry>() {
+            Some(data) => table.resolve(data),
+            None => table.as_inline(),
+        };
+        let resolved = found.is_some();
+        if let Some(table) = found {
+            for _ in 0..table.rolls() {
+                if let Some(id) = table.draw(&mut rng) {
+                    self.drawn.push(id.to_owned());
+                }
+            }
+        }
+        world.insert_resource(rng);
+        resolved
+    }
+
     /// The step's occurrences, from every source in order.
     fn read(&mut self, world: &mut World) {
         let Self {
             damaged,
             zones,
             cooldowns,
+            struck,
+            healed,
+            picked,
+            expired,
             occurrences,
             ..
         } = self;
         if let Some(queue) = world.get_resource::<EventQueue<Damaged>>() {
             for event in damaged.read(queue) {
-                let position = point_of(world, event.entity);
+                let position = event
+                    .position
+                    .unwrap_or_else(|| point_of(world, event.entity));
                 let amount = Some(event.amount);
                 occurrences.push(Occurrence {
                     event: DAMAGED,
                     subject: event.entity,
                     position,
                     amount,
-                    other: None,
+                    other: event.source,
                 });
                 if event.killed {
                     occurrences.push(Occurrence {
@@ -1466,7 +1586,7 @@ impl Reactor {
                         subject: event.entity,
                         position,
                         amount,
-                        other: None,
+                        other: event.source,
                     });
                 }
             }
@@ -1485,6 +1605,42 @@ impl Reactor {
                 event: COOLDOWN_ELAPSED,
                 subject: event.entity,
                 position: point_of(world, event.entity),
+                amount: None,
+                other: None,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<Struck>>() {
+            occurrences.extend(struck.read(queue).map(|event| Occurrence {
+                event: HIT,
+                subject: event.entity,
+                position: event.position,
+                amount: Some(event.amount),
+                other: Some(event.target),
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<Healed>>() {
+            occurrences.extend(healed.read(queue).map(|event| Occurrence {
+                event: HEALED,
+                subject: event.entity,
+                position: point_of(world, event.entity),
+                amount: Some(event.amount),
+                other: event.source,
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
+            occurrences.extend(picked.read(queue).map(|event| Occurrence {
+                event: PICKED_UP,
+                subject: event.entity,
+                position: event.position,
+                amount: None,
+                other: Some(event.by),
+            }));
+        }
+        if let Some(queue) = world.get_resource::<EventQueue<ProjectileExpired>>() {
+            occurrences.extend(expired.read(queue).map(|event| Occurrence {
+                event: EXPIRED,
+                subject: event.entity,
+                position: event.position,
                 amount: None,
                 other: None,
             }));
@@ -1605,6 +1761,11 @@ fn describe_cues(world: &mut World) {
                 "label",
                 FieldType::Shape("label_style"),
                 "the event's amount floated at its position",
+            ))
+            .field(FieldDescription::new(
+                "roll",
+                FieldType::Data(LOOT_TABLES),
+                "a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs",
             ))
             .sample(r#"{ "despawn": {} }"#)
             .roundtrip(round_trip::<CueActionDef>),

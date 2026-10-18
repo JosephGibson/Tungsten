@@ -5,8 +5,8 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
 use tungsten_core::{
-    CameraState, CommandBuffer, Entity, Inspectable, Plugin, Schedule, SpawnContext, Time,
-    Transform, WindowSize, World, system,
+    CameraState, Entity, Inspectable, Plugin, Schedule, SpawnContext, Transform, WindowSize, World,
+    system,
 };
 
 use crate::foundation::describe::{
@@ -14,8 +14,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::trace::{TraceKind, trace};
-use crate::transform::hierarchy::despawn_recursive;
+use crate::lifecycle::ended::{end, ensure_kit_despawn};
 
 /// [`DespawnOutsidePlugin`]'s system, in the overlap phase.
 pub const DESPAWN_OUTSIDE: &str = "despawn_outside";
@@ -27,9 +26,12 @@ const DESPAWN_OUTSIDE_COMPONENT: &str = "despawn_outside";
 /// box or the camera's view: a bolt that left the arena, debris that fell
 /// off the screen. [`DespawnOutsidePlugin`]'s system tests the entity's
 /// `Position`, or its `Transform.position` when it has none, once a fixed
-/// step after `physics_step`, against the box or the view the last frame's
-/// camera saw, and queues [`despawn_recursive`] for the frame's command
-/// flush. It tests a point, so a margin stands for the entity's extent.
+/// step after `physics_step` and the kit's hits, against the box or the
+/// view the last frame's camera saw, and lists it for the kit's end-of-step
+/// despawn ([`KIT_DESPAWN`](crate::KIT_DESPAWN)), which queues
+/// [`despawn_recursive`](crate::despawn_recursive) after the step's spawns
+/// from it for the frame's command flush. It tests a point, so a margin
+/// stands for the entity's extent.
 ///
 /// Scene name `despawn_outside`: `{ "region": [[0, 0], [640, 360]] }` or
 /// `{ "view": 16 }`, the margin.
@@ -118,10 +120,11 @@ impl DespawnOutside {
     }
 }
 
-/// Registers the `despawn_outside` scene component and [`DESPAWN_OUTSIDE`]
-/// in the overlap phase: each fixed step it queues the despawn of every
-/// [`DespawnOutside`] entity, with its children, whose point has left its
-/// box or the view. Without a `CommandBuffer` it queues nothing.
+/// Registers the `despawn_outside` scene component, [`DESPAWN_OUTSIDE`] in
+/// the overlap phase and the kit's end-of-step despawn when the schedule
+/// lacks it: each fixed step the system lists every [`DespawnOutside`]
+/// entity whose point has left its box or the view, and the despawn queues
+/// it, with its children. Without a `CommandBuffer` nothing is queued.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct DespawnOutsidePlugin;
 
@@ -157,13 +160,14 @@ impl Plugin for DespawnOutsidePlugin {
             DESPAWN_OUTSIDE_COMPONENT,
             |def: DespawnOutsideDef, _: &SpawnContext<'_>| (DespawnOutside::from(def),),
         );
-        let mut traced = Traced::default();
+        let mut gone: Vec<Entity> = Vec::new();
         schedule.add(
             Phase::Overlap.stage(),
             Phase::Overlap.join(system(DESPAWN_OUTSIDE, move |world: &mut World| {
-                despawn_outside(world, &mut traced);
+                despawn_outside(world, &mut gone);
             })),
         );
+        ensure_kit_despawn(schedule, world);
     }
 }
 
@@ -230,15 +234,9 @@ fn outside(point: Vec2, min: Vec2, max: Vec2) -> bool {
     point.x < min.x || point.x > max.x || point.y < min.y || point.y > max.y
 }
 
-/// The entities the trace already has a despawn for this frame: the system
-/// queues a despawn each step until the flush, and traces it once.
-#[derive(Default)]
-struct Traced {
-    frame: u64,
-    entities: Vec<Entity>,
-}
-
-fn despawn_outside(world: &mut World, traced: &mut Traced) {
+/// Lists each entity outside its bounds for the kit's despawn, through the
+/// scratch list `gone`.
+fn despawn_outside(world: &mut World, gone: &mut Vec<Entity>) {
     let view = match (
         world.get_resource::<CameraState>(),
         world.get_resource::<WindowSize>(),
@@ -248,7 +246,7 @@ fn despawn_outside(world: &mut World, traced: &mut Traced) {
         }
         _ => None,
     };
-    let mut gone: Vec<Entity> = Vec::new();
+    gone.clear();
     for (entity, rule, position, transform) in
         world.query::<(Entity, &DespawnOutside, Option<&Position>, &Transform)>()
     {
@@ -263,27 +261,8 @@ fn despawn_outside(world: &mut World, traced: &mut Traced) {
             gone.push(entity);
         }
     }
-    if gone.is_empty() {
-        return;
-    }
-    let frame = world.get_resource::<Time>().map_or(0, Time::frame);
-    if traced.frame != frame {
-        traced.frame = frame;
-        traced.entities.clear();
-    }
-    for &entity in &gone {
-        if !traced.entities.contains(&entity) {
-            traced.entities.push(entity);
-            trace(world, entity, || TraceKind::Despawn {
-                by: DESPAWN_OUTSIDE,
-            });
-        }
-    }
-    let Some(commands) = world.get_resource_mut::<CommandBuffer>() else {
-        return;
-    };
-    for entity in gone {
-        despawn_recursive(commands, entity);
+    for &entity in gone.iter() {
+        end(world, entity, DESPAWN_OUTSIDE);
     }
 }
 

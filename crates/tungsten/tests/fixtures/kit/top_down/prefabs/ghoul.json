@@ -1,0 +1,43 @@
+{
+  "tag": "ghoul",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 2,
+      "despawn_on_death": 0
+    },
+    "hurtbox": {
+      "shape": {
+        "circle": 8
+      }
+    },
+    "contact_damage": {
+      "damage": 1,
+      "interval": 0.5,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "killed": [
+        {
+          "prefab": "ghoul_burst"
+        },
+        {
+          "roll": "ghoul_drops"
+        },
+        {
+          "counter": {
+            "name": "kills",
+            "add": 1,
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -9,13 +9,14 @@ use tungsten::core::{
     ActionMap, AssetRegistry, Binding, CameraController, CameraMode, CameraState, Config, Entity,
     Position, PrevPosition, Settings, Sprite, Time, Transform, UserFolder, With,
 };
-use tungsten::kit::{Damaged, Health, Hit, HitFlash, damage};
+use tungsten::kit::{ContactDamage, Counters, Damaged, Health, Hit, HitFlash, Pickup, damage};
 use tungsten::testing::Harness;
 use tungsten::{App, SceneEntity};
-use tungsten_template_basic::components::{Hazard, Player};
+use tungsten_template_basic::components::Player;
 use tungsten_template_basic::game::{self, active_state};
 use tungsten_template_basic::states::{
-    AUTOSAVE, GAMEPLAY, HAZARD_PREFAB, HAZARD_START, PAUSE, PLAYER_PREFAB, PLAYER_START, TITLE,
+    AUTOSAVE, GAMEPLAY, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, PAUSE, PLAYER_PREFAB,
+    PLAYER_START, TITLE,
 };
 
 /// How far the player moves per second, in pixels: the prefab's
@@ -89,12 +90,29 @@ fn player_entity(harness: &Harness) -> Entity {
         .expect("the player spawned")
 }
 
+/// The hazard: the entity whose `contact_damage` hurts the player.
 fn hazard_entity(harness: &Harness) -> Entity {
     harness
         .world()
-        .query_filtered::<Entity, With<Hazard>>()
+        .query_filtered::<Entity, With<ContactDamage>>()
         .next()
         .expect("the hazard spawned")
+}
+
+/// The gems still in play: the entities with a `pickup`.
+fn gem_entities(harness: &Harness) -> Vec<Entity> {
+    harness
+        .world()
+        .query_filtered::<Entity, With<Pickup>>()
+        .collect()
+}
+
+/// The game's `gems` count, which each gem's `picked_up` cue adds to.
+fn gems_counted(harness: &Harness) -> i64 {
+    harness
+        .world()
+        .get_resource::<Counters>()
+        .map_or(0, |counters| counters.get("gems"))
 }
 
 fn health(harness: &Harness, entity: Entity) -> f32 {
@@ -125,7 +143,7 @@ fn user_folder(tag: &str) -> PathBuf {
 const SCHEDULE: &str = "\
 startup: setup
 pre_update: physics_debug_toggle, systems_overlay_toggle, inspector_toggle, hud_toggle, ui_debug_toggle, ui_inspector_toggle, log_console_toggle, display_input, ui_state_roots, ui_route, inspector_pick, ui_animate, state_dispatcher
-fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, speed_limit, physics_step, kit_overlap, despawn_outside, zone_tick, speed_limit_settle, wrap, stay_in_view, hazard_touch, kit_resolve, kit_react, spawner_tick, spawn_children, cues, kit_trace_step
+fixed_update: physics_prev_snapshot, kit_tick, lifetime_tick, health_tick, shield_tick, stats_apply, cooldown_tick, kit_intent, action_input, aim, kit_move, path_follow, linear_motion, oscillator, platformer_controller, top_down_mover, steering, follow, orbit, knockback, pickup_magnet, speed_limit, physics_step, kit_overlap, zone_tick, speed_limit_settle, hit_grid, hitbox_tick, contact_damage, projectile_tick, pickup_tick, despawn_outside, wrap, stay_in_view, kit_resolve, damage_resolve, kit_react, spawner_tick, spawn_children, cues, kit_despawn, kit_trace_step
 update: toggle_mute
 post_update: physics_sync, transform_propagate, particle_count_refresh, particle_emit, particle_tick, tween_tick, squash_stretch_trigger, squash_stretch_tick, shake_tick, transform_propagate_late, kit_present, animation_tick, hit_flash_tick, camera_target, label_tick, oscillator_present, facing, character_animator, depth_sort, kit_debug_draw, camera_update
 ";
@@ -165,6 +183,7 @@ fn data_files_load() {
     assert!(manifest.fonts[game::FONT].path.is_file());
     assert!(manifest.prefabs[PLAYER_PREFAB].path.is_file());
     assert!(manifest.prefabs[HAZARD_PREFAB].path.is_file());
+    assert!(manifest.prefabs[GEM_PREFAB].path.is_file());
     assert!(manifest.data["tags"]["game"].path.is_file());
     assert!(manifest.shaders["damage_flash"].path.is_file());
     assert_eq!(manifest.materials["damage_flash"].shader, "damage_flash");
@@ -326,10 +345,12 @@ fn a_hit_shakes_the_camera_and_shows_its_damage() {
     );
 }
 
-/// A teleport of the player onto the hazard's point: `Position` and
-/// `PrevPosition`.
+/// A teleport of the player onto the hazard, a pixel right of its point:
+/// `Position` and `PrevPosition`. The contact's push points from the
+/// hazard's point to the player's, so the pixel gives it a way out.
 fn place_on_hazard(harness: &mut Harness, player: Entity, hazard: Entity) {
-    let at = harness.world().get::<Position>(hazard).unwrap().0;
+    let mut at = harness.world().get::<Position>(hazard).unwrap().0;
+    at.x += 1.0;
     let world = harness.world_mut();
     world.get_mut::<Position>(player).unwrap().0 = at;
     world.get_mut::<PrevPosition>(player).unwrap().0 = at;
@@ -696,4 +717,38 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
         "the slot is untouched"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_gem_drifts_to_the_player_and_counts_once() {
+    let mut harness = harness();
+    tap(&mut harness, "state_start");
+    let player = player_entity(&harness);
+    let gems = gem_entities(&harness);
+    assert_eq!(gems.len(), 3, "gameplay spawns three");
+    assert_eq!(gems_counted(&harness), 0);
+    let gem = gems[0];
+    let start = harness.world().get::<Position>(gem).unwrap().0;
+    // Within the player's reach of 96 px, out of touch.
+    let mut near = start;
+    near.x += 60.0;
+    let world = harness.world_mut();
+    world.get_mut::<Position>(player).unwrap().0 = near;
+    world.get_mut::<PrevPosition>(player).unwrap().0 = near;
+    harness.step(1);
+    let drifted = harness.world().get::<Position>(gem).unwrap().0;
+    assert!(
+        drifted.x > start.x,
+        "it drifts toward the player: {drifted:?}"
+    );
+    harness.step(30);
+    assert!(!harness.world().is_alive(gem), "taken");
+    assert_eq!(gems_counted(&harness), 1);
+    harness.step(30);
+    assert_eq!(gems_counted(&harness), 1, "once");
+    assert_eq!(
+        gem_entities(&harness).len(),
+        2,
+        "the others wait out of reach"
+    );
 }

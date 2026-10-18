@@ -1,7 +1,7 @@
 //! The shmup fixture: a bodiless ship under the move actions, bullets that
 //! expire or leave the view, raiders from a wave on a path, and a walker
 //! on a floor under the same actions; M64's fighter, drifter, asteroid,
-//! mine and gun.
+//! mine and gun; M65's interceptor, lasers, carrier and bulwark.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -10,8 +10,9 @@ use tungsten_core::{AudioCommand, CameraController, Transform};
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged};
 use crate::kit::{
-    Aim, Children, CooldownElapsed, Counters, Hit, KitPlugins, LinearMotion, PlatformerController,
-    Source, Steering, TopDownMover, damage,
+    Aim, Children, CooldownElapsed, Counters, Damaged, Health, Hit, KitPlugins, LinearMotion,
+    PlatformerController, ProjectileExpired, Shield, Source, Steering, Struck, TopDownMover,
+    damage,
 };
 
 const GENRE: &str = "shmup";
@@ -296,6 +297,129 @@ fn a_mine_arrives_at_the_ship_and_a_gun_aims_and_turns_to_it() {
         assert!(
             (turned - heading).abs() < 1e-4,
             "dt {dt}: {turned} vs {heading}"
+        );
+    }
+}
+
+/// Runs `frames` frames, collecting each one's hits and projectile ends.
+fn fire(
+    harness: &mut super::Harness,
+    frames: u32,
+) -> (
+    Vec<(tungsten_core::Entity, tungsten_core::Entity)>,
+    Vec<ProjectileExpired>,
+) {
+    let (mut hits, mut expired) = (Vec::new(), Vec::new());
+    for _ in 0..frames {
+        harness.step(1);
+        hits.extend(
+            harness
+                .events::<Struck>()
+                .map(|event| (event.entity, event.target)),
+        );
+        expired.extend(harness.events::<ProjectileExpired>().copied());
+    }
+    (hits, expired)
+}
+
+#[test]
+fn a_laser_hits_once_and_ends_at_its_range() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // The carrier's bottom face at y 310; one laser into it, one into
+        // the open.
+        let carrier = spawn(&mut harness, "carrier", [100.0, 300.0]);
+        let into = spawn(&mut harness, "laser", [100.0, 600.0]);
+        let open = spawn(&mut harness, "laser", [400.0, 600.0]);
+        let (hits, expired) = fire(&mut harness, frames_for(1.0, dt));
+        assert_eq!(hits, [(into, carrier)], "dt {dt}: once");
+        let at = |laser| {
+            expired
+                .iter()
+                .find(|end| end.entity == laser)
+                .unwrap()
+                .position
+        };
+        assert!(
+            at(into).distance(Vec2::new(100.0, 316.0)) < 1e-3,
+            "dt {dt}: {}",
+            at(into)
+        );
+        assert!(
+            at(open).distance(Vec2::new(400.0, 100.0)) < 1e-3,
+            "dt {dt}: {}",
+            at(open)
+        );
+        assert_eq!(
+            harness.world().get::<Shield>(carrier).unwrap().current(),
+            1.0
+        );
+    }
+}
+
+#[test]
+fn a_carriers_shield_recharges_after_its_delay() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let carrier = spawn(&mut harness, "carrier", [100.0, 100.0]);
+        harness.step(1);
+        assert_eq!(
+            damage(harness.world_mut(), carrier, 2.0),
+            Hit::Absorbed,
+            "dt {dt}"
+        );
+        let shield =
+            |harness: &super::Harness| harness.world().get::<Shield>(carrier).unwrap().current();
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            shield(&harness) < 1e-3,
+            "dt {dt}: its delay: {}",
+            shield(&harness)
+        );
+        harness.step(frames_for(0.5, dt));
+        assert!(
+            (shield(&harness) - 0.5).abs() < 1e-3,
+            "dt {dt}: {}",
+            shield(&harness)
+        );
+        harness.step(frames_for(2.0, dt));
+        assert_eq!(shield(&harness), 2.0, "dt {dt}: full");
+        assert_eq!(
+            harness.world().get::<Health>(carrier).unwrap().current(),
+            4.0
+        );
+    }
+}
+
+#[test]
+fn a_bulwark_ignores_lasers() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let bulwark = spawn(&mut harness, "bulwark", [100.0, 300.0]);
+        let laser = spawn(&mut harness, "laser", [100.0, 600.0]);
+        let mut damaged = 0;
+        let mut hits = Vec::new();
+        for _ in 0..frames_for(1.0, dt) {
+            harness.step(1);
+            hits.extend(
+                harness
+                    .events::<Struck>()
+                    .map(|event| (event.entity, event.target)),
+            );
+            damaged += harness
+                .events::<Damaged>()
+                .filter(|event| event.entity == bulwark)
+                .count();
+        }
+        assert_eq!(hits, [(laser, bulwark)], "dt {dt}: hit");
+        assert_eq!(damaged, 0, "dt {dt}: immune");
+        assert_eq!(
+            harness.world().get::<Health>(bulwark).unwrap().current(),
+            3.0
+        );
+        assert!(
+            !harness.world().is_alive(laser),
+            "dt {dt}: the hit ended it"
         );
     }
 }

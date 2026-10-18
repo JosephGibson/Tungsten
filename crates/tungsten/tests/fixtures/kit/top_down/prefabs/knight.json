@@ -1,0 +1,25 @@
+{
+  "tag": "knight",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 6
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          8,
+          10
+        ]
+      }
+    },
+    "shield": {
+      "max": 2
+    },
+    "resist": {
+      "damage.fire": 0.5
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "tag": "spikes",
+  "components": {
+    "contact_damage": {
+      "damage": 1,
+      "interval": 0.5,
+      "shape": {
+        "aabb": [
+          8,
+          8
+        ]
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

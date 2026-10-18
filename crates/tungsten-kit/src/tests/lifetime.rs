@@ -1,8 +1,7 @@
 use super::*;
 use crate::transform::hierarchy::{Children, spawn_child};
 use glam::Vec2;
-use tungsten_core::Stage;
-use tungsten_core::Transform;
+use tungsten_core::{CommandBuffer, Stage, Transform};
 
 fn setup() -> (World, Schedule) {
     let mut world = World::new();
@@ -27,7 +26,11 @@ fn frame(world: &mut World, schedule: &mut Schedule, dt: f32) {
 fn the_plugin_registers_its_system_in_the_tick_phase() {
     let (_, schedule) = setup();
     assert_eq!(schedule.stage_of(LIFETIME_TICK), Some(Stage::FixedUpdate));
-    assert_eq!(schedule.len(), 8, "the seven anchors and the tick");
+    assert_eq!(
+        schedule.len(),
+        9,
+        "the seven anchors, the tick and the kit's despawn"
+    );
 }
 
 #[test]

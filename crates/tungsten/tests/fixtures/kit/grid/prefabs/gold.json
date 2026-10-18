@@ -1,0 +1,26 @@
+{
+  "tag": "gold",
+  "components": {
+    "pickup": {
+      "shape": {
+        "circle": 5
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "counter": {
+            "name": "gold",
+            "add": 1,
+            "target": "other"
+          }
+        }
+      ]
+    }
+  }
+}

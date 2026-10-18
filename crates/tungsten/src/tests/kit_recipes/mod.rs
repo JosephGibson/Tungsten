@@ -11,9 +11,10 @@ use tungsten_core::{ActionMap, Binding, Config, Entity, KeyCode, PluginSet, Tran
 
 use crate::App;
 use crate::kit::{
-    AimPlugin, CharacterAnimatorPlugin, DepthSortPlugin, FacingPlugin, FollowPlugin, KitPlugins,
-    KnockbackPlugin, LinearMotionPlugin, OrbitPlugin, OscillatorPlugin, SpeedLimitPlugin,
-    StayInViewPlugin, SteeringPlugin, WrapPlugin,
+    AimPlugin, CharacterAnimatorPlugin, ContactDamagePlugin, CuesPlugin, DepthSortPlugin,
+    FacingPlugin, FollowPlugin, HealthPlugin, HitPlugin, KitPlugins, KnockbackPlugin,
+    LinearMotionPlugin, OrbitPlugin, OscillatorPlugin, PickupPlugin, ProjectilePlugin,
+    SpeedLimitPlugin, StayInViewPlugin, SteeringPlugin, WrapPlugin,
 };
 use crate::testing::Harness;
 
@@ -99,6 +100,25 @@ pub(crate) fn motion_reversed() -> PluginSet {
         .with(LinearMotionPlugin)
 }
 
+/// `KitPlugins::set()` with the health, cue and M65 overlap plugins built
+/// last, in the reverse of their order in the set: the overlap edges and
+/// the despawn's, not registration order, must order them.
+pub(crate) fn overlap_reversed() -> PluginSet {
+    KitPlugins::set()
+        .without::<HealthPlugin>()
+        .without::<CuesPlugin>()
+        .without::<HitPlugin>()
+        .without::<ContactDamagePlugin>()
+        .without::<ProjectilePlugin>()
+        .without::<PickupPlugin>()
+        .with(PickupPlugin)
+        .with(ProjectilePlugin)
+        .with(ContactDamagePlugin)
+        .with(HitPlugin)
+        .with(CuesPlugin)
+        .with(HealthPlugin)
+}
+
 /// Spawns the fixture's prefab `id` at `at`.
 pub(crate) fn spawn(harness: &mut Harness, id: &str, at: [f32; 2]) -> Entity {
     let prepared = harness
@@ -145,4 +165,29 @@ pub(crate) fn tagged(harness: &Harness, name: &str) -> Vec<Entity> {
         .collect();
     found.sort_by_key(|entity| entity.id());
     found
+}
+
+/// The 1-based fixed steps at which the kit's trace saw `event` about
+/// `entity`.
+pub(crate) fn traced_steps(harness: &Harness, entity: Entity, event: &str) -> Vec<u64> {
+    use crate::kit::{KitTrace, TraceKind};
+    harness
+        .world()
+        .resource::<KitTrace>()
+        .iter()
+        .filter(|entry| {
+            entry.entity == entity
+                && matches!(entry.kind, TraceKind::Event { name, .. } if name == event)
+        })
+        .map(|entry| entry.step + 1)
+        .collect()
+}
+
+/// Where `entity` is: its `Position`, else its `Transform.position`.
+pub(crate) fn point_of(harness: &Harness, entity: Entity) -> Vec2 {
+    let world = harness.world();
+    world.get::<Position>(entity).map_or_else(
+        || world.get::<Transform>(entity).unwrap().position,
+        |position| position.0,
+    )
 }

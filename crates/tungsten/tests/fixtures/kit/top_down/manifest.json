@@ -62,6 +62,24 @@
     },
     "gem": {
       "path": "prefabs/gem.json"
+    },
+    "ranger": {
+      "path": "prefabs/ranger.json"
+    },
+    "ember": {
+      "path": "prefabs/ember.json"
+    },
+    "ghoul": {
+      "path": "prefabs/ghoul.json"
+    },
+    "ghoul_burst": {
+      "path": "prefabs/ghoul_burst.json"
+    },
+    "orb": {
+      "path": "prefabs/orb.json"
+    },
+    "knight": {
+      "path": "prefabs/knight.json"
     }
   },
   "data": {
@@ -78,6 +96,11 @@
     "cue_rules": {
       "combat": {
         "path": "data/cue_rules/combat.json"
+      }
+    },
+    "loot_tables": {
+      "ghoul_drops": {
+        "path": "data/loot_tables/ghoul_drops.json"
       }
     }
   },

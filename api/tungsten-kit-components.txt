@@ -25,6 +25,17 @@ component character_animator: Picks the entity's animation clip each frame: idle
   field min_speed: f32 (>= 0) = 10.0 — world pixels per second from which it moves
   genres: platformer, top_down
   sample: { "idle": "hero_idle" }
+component contact_damage: Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.
+  field damage: f32 (>= 0) — each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run
+  field interval: f32 (> 0) = 0.5 — game seconds between two hits on a target it still touches
+  field shape: shape hit_shape = null — its own circle or box, an aura; the entity's hurtbox's shape and offset when left out
+  field offset: [x, y] = null — its own shape's offset from the entity's point, with `shape` only; [0, 0] when left out
+  field tags: list of tag = [] — the damage's kinds, such as `damage.fire`, which `resist` reads; the load checks them
+  field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
+  field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
+  events: Struck
+  genres: top_down, platformer, grid
+  sample: { "damage": 1 }
 component cooldown: A repeating countdown on the game clock that sends an event each time it elapses.
   field seconds: f32 (> 0) — seconds of game time a cycle
   field jitter: f32 (>= 0) = 0.0 — up to this many seconds more each cycle, drawn from the kit's random stream
@@ -41,6 +52,10 @@ component cues: The entity's reactions: for each event about it, actions run in 
   field killed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field zone_entered: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   field cooldown_elapsed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field hit: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field healed: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field picked_up: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
+  field expired: list of shape cue_action = [] — the actions for this kit event; a game's `CuesOnEvent` names more
   events: ShakeEvent, SquashEvent
   genres: platformer, top_down, shmup, grid
   sample: {}
@@ -76,7 +91,8 @@ component follow: Places the entity on a target's point plus an offset, closing 
 component health: Health with an invulnerability window after each hit, which `damage` lowers.
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
-  events: Damaged
+  field despawn_on_death: f32 (>= 0) = null — game seconds from a kill, counted from the step after it, until the kit despawns the entity after its `killed` cues; kept when left out
+  events: Damaged, Healed
   genres: platformer, top_down, shmup, grid
   sample: { "max": 5 }
 component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.
@@ -84,6 +100,21 @@ component hit_flash: A flash of colour on the sprite when `damage` hits the enti
   field seconds: f32 (> 0) = 0.1 — how long the flash fades over
   genres: top_down, shmup
   sample: {}
+component hitbox: Hits the hurtboxes its shape meets over each step, each target once per activation, through the damage pipeline.
+  field shape: shape hit_shape — its circle or box
+  field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
+  field damage: f32 (>= 0) — each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run
+  field tags: list of tag = [] — the damage's kinds, such as `damage.fire`, which `resist` reads; the load checks them
+  field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
+  field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
+  events: Struck
+  genres: top_down, shmup, platformer, grid
+  sample: { "shape": { "circle": 4 }, "damage": 1 }
+component hurtbox: What hitboxes, contact damage and pickups meet: a circle or a box at the entity's point.
+  field shape: shape hit_shape — its circle or box
+  field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
+  genres: top_down, shmup, platformer, grid
+  sample: { "shape": { "circle": 8 } }
 component knockback: How the entity takes a push from `knock_back`: a push that falls to 0 over its seconds.
   field seconds: f32 (> 0) = 0.2 — seconds of game time a push lasts, and a platformer's input stays locked
   field resist: f32 (>= 0, <= 1) = 0.0 — the part of each push it ignores
@@ -120,6 +151,14 @@ component path_follower: Moves a kinematic body along points at a speed: a movin
   field easing: one of linear | quad_in | quad_out | quad_in_out | cubic_in | cubic_out | cubic_in_out | quart_in | quart_out | quart_in_out | sine_in | sine_out | sine_in_out | expo_in | expo_out | expo_in_out | back_in | back_out | back_in_out | bounce_in | bounce_out | bounce_in_out = "linear" — each segment's progress, one of core's easings
   genres: platformer, top_down, shmup
   sample: { "points": [[0, 0], [0, -100]], "speed": 100 }
+component pickup: Collected once by the first entity whose hurtbox it meets and whose tags pass its filter, drawn in by a magnet.
+  field shape: shape hit_shape — its circle or box, which a collector's hurtbox meets
+  field offset: [x, y] = [0.0, 0.0] — from the entity's point, each axis within ±16384
+  field filter: tag filter = {} — what collects it, by the collector's tags; the load checks its tags
+  field magnet: f32 (>= 0) = 0.0 — world pixels per second toward the nearest collector whose `pickup_radius` stat reaches it; 0 none
+  events: PickedUp
+  genres: top_down, platformer, grid
+  sample: { "shape": { "circle": 6 } }
 component platformer_controller: A side-view character on a kinematic body: it runs, jumps and falls, stops at walls, lands on floors and rides moving platforms.
   field run_speed: f32 (> 0) — world pixels per second at full run
   field jump_speed: f32 (> 0) — the jump's upward speed; it peaks at jump_speed² / 2g
@@ -129,6 +168,23 @@ component platformer_controller: A side-view character on a kinematic body: it r
   field jump_cut: f32 (>= 0, <= 1) = 0.5 — the rising speed kept when the jump is released early
   genres: platformer, shmup
   sample: { "run_speed": 200, "jump_speed": 600 }
+component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces or bounces.
+  field pierce: u32 = 0 — targets it passes before the next ends it
+  field range: f32 (> 0) = null — world pixels it travels before it ends; none when left out
+  field bounces: u32 = 0 — walls it turns at before the next ends it
+  events: ProjectileExpired, Struck
+  genres: top_down, platformer, shmup
+  sample: {}
+component resist: Damage factors by damage tag: a request's matching factors multiply its amount, and a factor of 0 is immunity.
+  field factors: damage tag → factor in [0, 1000] — the value itself: each tag declared, matching a request's tag or its dotted descendants
+  genres: top_down, shmup
+  sample: { "damage.fire": 0.5 }
+component shield: Takes damage before health, and recharges after a delay without a hit.
+  field max: f32 (> 0) — the full shield, which it starts at
+  field recharge: f32 (>= 0) = 0.0 — shield restored per second of game time once the delay has passed
+  field delay: f32 (>= 0) = 0.0 — game seconds without a hit before it recharges
+  genres: shmup, top_down
+  sample: { "max": 3 }
 component spawn_children: Prefabs spawned once as the entity's children, at offsets from it.
   field children: list of shape child — the value itself: each child's prefab and offset, in order
   genres: platformer, shmup
@@ -204,6 +260,7 @@ shape cue_action: One reaction to an event.
   field squash: one of on_land | on_hit | on_pickup | manual — the subject's squash armed for this trigger
   field flash: shape flash_action — the subject's hit flash started
   field label: shape label_style — the event's amount floated at its position
+  field roll: loot_tables ID or entry — a weighted table drawn from the kit's random stream, each prefab drawn spawned at the event's position from the subject; the load checks its IDs
   sample: { "despawn": {} }
 shape cue_rule: A shared reaction: on an event, for each subject whose tags pass the filter, the actions in order.
   field on: text — the cue event; the load checks it is registered
@@ -220,6 +277,11 @@ shape flag_action: A flag set or cleared.
   sample: { "name": "has_key" }
 shape flash_action: The subject's hit flash started, as a hit starts it.
   sample: {}
+shape hit_shape: A circle or a box, placed at its entity's point plus its item's offset.
+  exactly one of its fields
+  field circle: f32 (> 0, <= 16384) — the radius, in world pixels
+  field aabb: [x, y] — the half extents [x, y], each in (0, 16384]
+  sample: { "circle": 8 }
 shape label_style: The event's amount as a timed world label: it rises, pops from its scale to 1 over its first fifth and fades over its second half.
   field font: text — a manifest font face; the load does not check it
   field size: f32 (> 0) = 16.0 — UI units tall
@@ -256,6 +318,15 @@ shape wave: A rotation or scale channel: amplitude · sin(2π(t / period + phase
   field amplitude: f32 — the peak: radians for `rotation`, a fraction in [0, 1) of the base for `scale`
   field period: f32 (> 0) — seconds of game time a swing takes
   sample: { "amplitude": 0.3, "period": 0.8 }
+shape weighted_entry: A prefab, or nothing, and its weight.
+  field prefab: prefab ID = null — spawned when drawn; the load checks the ID; nothing is drawn when left out
+  field weight: f32 (> 0) — its share of the draws
+  sample: { "weight": 1 }
+shape weighted_table: Rolls that each draw one entry by weight: a prefab, or nothing.
+  field rolls: u32 (>= 1, <= 64) = 1 — the entries one roll of the table draws
+  field entries: list of shape weighted_entry — what a draw may give, each by its weight over the total
+  sample: { "entries": [] }
 kind cue_rules: A list of `cue_rule`: shared reactions to an event, run after the entity's own cues.
+kind loot_tables: A `weighted_table`: what a `roll` cue action draws and spawns.
 kind stats: An object of `stat_bounds` by stat name: each declares a game stat and its clamp.
 kind tags: A JSON array of tag names; each declares itself and its dotted ancestors.
