@@ -14,6 +14,7 @@ use crate::damage::defense::{
     RESIST, Resist, ResistDef, SHIELD, SHIELD_TICK, Shield, ShieldDef, resist_description,
     shield_description, shield_tick,
 };
+use crate::damage::kinds::{DamageKinds, register_types};
 use crate::damage::pipeline::{DAMAGE_RESOLVE, DamageRequest, Healed, Requests, Resolver};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
@@ -313,7 +314,8 @@ impl Health {
 pub enum Hit {
     /// Nothing: an amount of 0, a target that is gone or being despawned,
     /// one without [`Health`], a dead one, one inside its invulnerability
-    /// window, or one whose [`Resist`](crate::Resist) is immune.
+    /// window, or a hit whose every part dropped: of 0, or resisted to 0 or
+    /// by an immunity of its [`Resist`](crate::Resist).
     Ignored,
     /// Health fell and some is left.
     Hurt,
@@ -324,15 +326,15 @@ pub enum Hit {
 }
 
 /// A hit the damage pipeline applied, sent once [`HealthPlugin`] has
-/// registered its queue: damage numbers, a hurt sound, a score. Build one
-/// with [`Damaged::new`].
+/// registered its queue, after its parts' [`DamagedPart`]s: damage numbers,
+/// a hurt sound, a score. Build one with [`Damaged::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct Damaged {
     /// The entity hit.
     pub entity: Entity,
-    /// The amount after the target's resistances, which may exceed the
-    /// health it took: a shield may have taken some.
+    /// The parts' total after the target's resistances, which may exceed
+    /// the health it took: a shield may have taken some.
     pub amount: f32,
     /// The hit left no health.
     pub killed: bool,
@@ -344,11 +346,14 @@ pub struct Damaged {
     pub position: Option<Vec2>,
     /// The request was a critical hit.
     pub crit: bool,
+    /// The damage types of every part that landed, together; none for an
+    /// untyped hit.
+    pub kinds: DamageKinds,
 }
 
 impl Damaged {
-    /// An event with these fields, no source, no position and no crit, as
-    /// [`damage`] sends one.
+    /// An event with these fields, no source, no position, no crit and no
+    /// kind, as [`damage`] sends one.
     #[must_use]
     pub fn new(entity: Entity, amount: f32, killed: bool) -> Self {
         Self {
@@ -358,7 +363,15 @@ impl Damaged {
             source: None,
             position: None,
             crit: false,
+            kinds: DamageKinds::NONE,
         }
+    }
+
+    /// The event, of the damage types `kinds`.
+    #[must_use]
+    pub fn with_kinds(mut self, kinds: DamageKinds) -> Self {
+        self.kinds = kinds;
+        self
     }
 
     /// The event, from `source`.
@@ -383,16 +396,88 @@ impl Damaged {
     }
 }
 
+/// One part of a hit the damage pipeline applied, sent once
+/// [`HealthPlugin`] has registered its queue, before the hit's
+/// [`Damaged`]: the cue event `damaged_part`, whose subject is the entity
+/// hit and whose other is the source. An untyped part sends one too, with
+/// [`DamageKinds::NONE`]. Build one with [`DamagedPart::new`].
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{EventQueue, Plugin, Schedule, World};
+/// use tungsten_kit::{DamagePart, DamageRequest, DamagedPart, Health, HealthPlugin};
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// HealthPlugin.build(&mut schedule, &mut world);
+/// let slime = world.spawn_with((Health::new(10.0),));
+/// DamageRequest::from_parts(slime, [DamagePart::new(2.0), DamagePart::new(0.0)]).apply(&mut world);
+/// let parts: Vec<DamagedPart> = world.resource::<EventQueue<DamagedPart>>().iter().copied().collect();
+/// assert_eq!(parts, [DamagedPart::new(slime, 2.0)], "a part of 0 drops");
+/// assert!(parts[0].kinds.is_empty());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct DamagedPart {
+    /// The entity hit.
+    pub entity: Entity,
+    /// The part's amount after the target's resistances.
+    pub amount: f32,
+    /// The part's damage types.
+    pub kinds: DamageKinds,
+    /// The entity the hit came from, when the request named one.
+    pub source: Option<Entity>,
+    /// Where the hit landed, when the request said.
+    pub position: Option<Vec2>,
+}
+
+impl DamagedPart {
+    /// An event with these fields, no kind, no source and no position.
+    #[must_use]
+    pub fn new(entity: Entity, amount: f32) -> Self {
+        Self {
+            entity,
+            amount,
+            kinds: DamageKinds::NONE,
+            source: None,
+            position: None,
+        }
+    }
+
+    /// The event, of the damage types `kinds`.
+    #[must_use]
+    pub fn with_kinds(mut self, kinds: DamageKinds) -> Self {
+        self.kinds = kinds;
+        self
+    }
+
+    /// The event, from `source`.
+    #[must_use]
+    pub fn with_source(mut self, source: Entity) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// The event, landing at `position`.
+    #[must_use]
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = Some(position);
+        self
+    }
+}
+
 /// Damages `target` by `amount` at once, so the caller knows the outcome
 /// in the same step: `DamageRequest::new(target, amount).apply(world)`,
-/// with no source, tags, position, knockback or crit. An amount of 0, a
+/// one untyped part with no source, tags, position, knockback or crit. An amount of 0, a
 /// target that is gone or being despawned, one without [`Health`], a dead
 /// one or one inside its invulnerability window is [`Hit::Ignored`].
 /// Otherwise its [`Resist`](crate::Resist) and [`Shield`](crate::Shield)
 /// apply, its health falls by the rest, to no less than 0, its window
 /// starts, its [`HitFlash`] starts when it has one and a `Sprite`, and a
-/// [`Damaged`] is sent when [`HealthPlugin`] has registered its queue. The
-/// World's [`KitTrace`](crate::KitTrace) records the hit, and the kill.
+/// [`DamagedPart`] and a [`Damaged`] are sent when [`HealthPlugin`] has
+/// registered their queues. The World's [`KitTrace`](crate::KitTrace)
+/// records the part, the hit, and the kill.
 /// See [`Health`] for an example.
 ///
 /// # Panics
@@ -563,9 +648,11 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
     world.insert(target, block);
 }
 
-/// Registers the damage pipeline: `EventQueue<Damaged>` and
-/// `EventQueue<Healed>`, the request queue, the `health`, `hit_flash`,
-/// `resist` and `shield` scene components, [`HEALTH_TICK`] and
+/// Registers the damage pipeline: `EventQueue<Damaged>`,
+/// `EventQueue<DamagedPart>` and `EventQueue<Healed>`, the request queue,
+/// the `damage_types` data kind with the World's type table, the `health`,
+/// `hit_flash`, `resist`, `shield`, `penetration` and `conversion` scene
+/// components, [`HEALTH_TICK`] and
 /// [`SHIELD_TICK`] in the tick phase, [`DAMAGE_RESOLVE`] in the resolve
 /// phase, [`HIT_FLASH_TICK`] in the present phase, which runs after
 /// `tween_tick`, and the kit's end-of-step despawn when the schedule lacks
@@ -617,6 +704,7 @@ impl Plugin for HealthPlugin {
                 .default("null"),
             )
             .event("Damaged")
+            .event("DamagedPart")
             .event("Healed")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -657,7 +745,9 @@ impl Plugin for HealthPlugin {
         );
         describe(world, resist_description());
         describe(world, shield_description());
+        register_types(world);
         world.register_event::<Damaged>();
+        world.register_event::<DamagedPart>();
         world.register_event::<Healed>();
         if !world.has_resource::<Requests>() {
             world.insert_resource(Requests::default());

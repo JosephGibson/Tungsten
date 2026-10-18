@@ -1,0 +1,19 @@
+[
+  {
+    "on": "damaged_part",
+    "kind": {
+      "any": [
+        "digital.virus"
+      ]
+    },
+    "do": [
+      {
+        "counter": {
+          "name": "virus_hits",
+          "add": 1,
+          "target": "game"
+        }
+      }
+    ]
+  }
+]

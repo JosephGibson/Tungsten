@@ -66,6 +66,8 @@ fn sent(world: &World) -> Vec<Damaged> {
 fn the_plugin_registers_its_queues_and_its_systems() {
     let (world, schedule) = rig();
     assert!(world.has_event::<Damaged>() && world.has_event::<Healed>());
+    assert!(world.has_event::<DamagedPart>());
+    assert!(world.has_resource::<crate::damage::kinds::DamageTypeTable>());
     assert!(world.has_resource::<Requests>());
     assert_eq!(schedule.stage_of(HEALTH_TICK), Some(Stage::FixedUpdate));
     assert_eq!(schedule.stage_of(HIT_FLASH_TICK), Some(Stage::PostUpdate));
@@ -427,11 +429,13 @@ fn a_hit_and_a_kill_go_in_the_trace() {
     assert_eq!(
         names,
         [
+            ("damaged_part", Some(1.0)),
             ("damaged", Some(1.0)),
+            ("damaged_part", Some(3.0)),
             ("damaged", Some(3.0)),
             ("killed", Some(3.0))
         ],
-        "an ignored hit records nothing"
+        "each part before its hit; an ignored hit records nothing"
     );
 }
 

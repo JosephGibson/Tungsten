@@ -1,0 +1,61 @@
+{
+  "biological": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        1,
+        0,
+        1
+      ]
+    }
+  },
+  "biological.acid": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        0,
+        0,
+        1
+      ]
+    }
+  },
+  "biological.pathogen": {},
+  "biological.toxin": {},
+  "digital": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "digital.corruption": {},
+  "digital.exploit": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        1,
+        0,
+        1,
+        1
+      ]
+    }
+  },
+  "digital.overload": {},
+  "digital.virus": {
+    "label_style": {
+      "font": "sans",
+      "color": [
+        0,
+        1,
+        0,
+        1
+      ]
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "tag": "firebolt",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        600,
+        0
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 3
+      },
+      "damage": {
+        "elemental.fire": 8
+      },
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "range": 400
+    }
+  }
+}

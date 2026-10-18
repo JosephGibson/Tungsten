@@ -1,0 +1,28 @@
+{
+  "tag": "hacker",
+  "components": {
+    "tags": [
+      "team.player"
+    ],
+    "cooldown": {
+      "seconds": 1
+    },
+    "cues": {
+      "cooldown_elapsed": [
+        {
+          "prefab": "payload"
+        }
+      ]
+    },
+    "penetration": {
+      "digital": 0.25
+    },
+    "conversion": [
+      {
+        "from": "digital.overload",
+        "to": "digital.virus",
+        "pct": 0.5
+      }
+    ]
+  }
+}

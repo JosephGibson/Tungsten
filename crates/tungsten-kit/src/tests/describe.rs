@@ -122,9 +122,9 @@ fn every_registered_scene_name_and_kind_is_described_and_nothing_else() {
     let kinds: BTreeSet<&str> = descriptions.kinds().map(|(kind, _)| kind).collect();
     let registered_kinds: BTreeSet<&str> = world.resource::<DataRegistry>().kinds().collect();
     assert_eq!(kinds, registered_kinds);
-    assert_eq!(described.len(), 39);
-    assert_eq!(kinds.len(), 4);
-    assert_eq!(descriptions.shapes().count(), 17);
+    assert_eq!(described.len(), 41);
+    assert_eq!(kinds.len(), 5);
+    assert_eq!(descriptions.shapes().count(), 19);
 }
 
 #[test]
@@ -148,7 +148,8 @@ fn every_shape_a_field_names_is_described() {
         // A kind's entry, which a field names through its kind.
         assert!(
             used.contains(shape.name())
-                || ["cue_rule", "stat_bounds", "weighted_table"].contains(&shape.name()),
+                || ["cue_rule", "damage_type", "stat_bounds", "weighted_table"]
+                    .contains(&shape.name()),
             "the shape `{}` is described but no field names it",
             shape.name()
         );
@@ -354,11 +355,26 @@ fn numeric_fields_take_their_extremes_and_refuse_beyond() {
                     refuses(json!("text"));
                     checked += 1;
                 }
+                FieldType::Damage => {
+                    accept(json!(0.0));
+                    refuse(json!(-1.0));
+                    accept(json!(1e6));
+                    refuse(json!("text"));
+                    accept(json!({ "damage": 1.0, "damage.fire": 0.0 }));
+                    accept(json!({ "damage.fire": 1e6 }));
+                    refuse(json!({ "damage.fire": -1.0 }));
+                    refuse(json!({}));
+                    refuse(json!({ "damage.fire": 0.0 }));
+                    checked += 1;
+                }
                 _ => {}
             }
         }
     }
-    assert_eq!(checked, 69, "the kit's numeric fields");
+    assert_eq!(
+        checked, 70,
+        "the kit's numeric fields, two of them a hit's number-or-map damage"
+    );
 }
 
 #[test]
@@ -366,9 +382,9 @@ fn the_snapshot_renders_one_line_per_component_shape_and_field() {
     let world = world();
     let text = world.resource::<KitDescriptions>().render();
     let count = |prefix: &str| text.lines().filter(|l| l.starts_with(prefix)).count();
-    assert_eq!(count("component "), 39);
-    assert_eq!(count("shape "), 17);
-    assert_eq!(count("kind "), 4);
+    assert_eq!(count("component "), 41);
+    assert_eq!(count("shape "), 19);
+    assert_eq!(count("kind "), 5);
     assert!(count("  field ") >= 40, "{}", count("  field "));
     assert!(text.contains("component health: "));
     assert!(text.contains("  field invulnerability: f32 (>= 0) = 0.0 "));

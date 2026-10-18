@@ -2,8 +2,9 @@ use super::*;
 use serde_json::json;
 use tungsten_core::{ComponentRegistry, Stage};
 
+use crate::damage::pipeline::DamagePart;
 use crate::lifecycle::ended::KIT_DESPAWN;
-use crate::overlap::hit::HIT_GRID;
+use crate::overlap::hit::{HIT_GRID, HitShape, Hitbox, Hurtbox};
 
 #[test]
 fn a_projectile_reads_back_its_pierce_range_and_bounces() {
@@ -98,4 +99,80 @@ fn the_plugin_registers_its_queues_its_tick_after_the_grid_and_the_despawn() {
 #[should_panic(expected = "distance must be finite and > 0")]
 fn a_zero_range_panics() {
     let _ = Projectile::new().with_range(0.0);
+}
+
+/// A World running projectiles, stats and the damage pipeline at 1/60 s steps,
+/// with `types` declared as tags and as damage types.
+fn projectile_rig(types: &[&str]) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    let mut schedule = Schedule::new();
+    crate::TagsPlugin::new()
+        .with_tags(types.iter().copied())
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    crate::StatsPlugin::new().build(&mut schedule, &mut world);
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let entry: serde_json::Map<String, serde_json::Value> = types
+        .iter()
+        .map(|name| ((*name).to_owned(), serde_json::json!({})))
+        .collect();
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(serde_json::Value::Object(entry)).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+    (world, schedule)
+}
+
+/// One fixed step of 1/60 s.
+fn fixed_step(world: &mut World, schedule: &mut Schedule) {
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+}
+
+/// Each part sent so far: its amount and its kinds by name.
+fn parts_sent(world: &World) -> Vec<(f32, Vec<&str>)> {
+    world
+        .resource::<tungsten_core::EventQueue<crate::DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.kinds.names(world)))
+        .collect()
+}
+
+fn typed(amount: f32, name: &str) -> DamagePart {
+    DamagePart::new(amount).with_tags(Tags::new([name]))
+}
+
+/// A target at the origin: a hurtbox of radius 8 and plenty of health.
+fn target(world: &mut World) -> Entity {
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hurtbox::new(HitShape::circle(8.0)),
+        crate::Health::new(1000.0),
+    ))
+}
+
+#[test]
+fn a_typed_projectiles_hits_carry_its_hitboxs_parts() {
+    let (mut world, mut schedule) = projectile_rig(&["fire", "ice"]);
+    target(&mut world);
+    let bolt = world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(2.0), 0.0)
+            .with_parts([typed(3.0, "fire"), DamagePart::new(1.0)])
+            .with_tags(Tags::new(["ice"])),
+        Projectile::new(),
+    ));
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec!["fire"]), (1.0, vec!["ice"])],
+        "its hitbox's parts, the untyped one of its tags"
+    );
+    assert_eq!(world.get::<Projectile>(bolt).unwrap().hits(), 1);
 }

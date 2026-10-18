@@ -6,13 +6,15 @@ use tungsten_core::{
     Schedule, Sprite, SpriteAssetId, Stage, Time, World, system,
 };
 
-use crate::damage::health::{HIT_FLASH_MATERIAL, HealthPlugin, HitFlash};
+use crate::damage::health::{DamagedPart, HIT_FLASH_MATERIAL, HealthPlugin, HitFlash};
+use crate::damage::kinds::DamageTypes;
 use crate::foundation::phases::Phase;
+use crate::foundation::stats::Modifier;
 use crate::foundation::trace::KitTrace;
 use crate::motion::knockback::Knockback;
 use crate::react::counters::{Counters, CountersPlugin};
 use crate::react::cues::{CUES, CueAction, Cues, CuesPlugin};
-use crate::{Resist, Shield};
+use crate::{Conversion, Penetration, Resist, Shield};
 
 const STEP: f32 = 1.0 / 60.0;
 
@@ -65,6 +67,370 @@ fn sent(world: &World) -> Vec<Damaged> {
 
 fn game(world: &World, name: &str) -> i64 {
     world.resource::<Counters>().get(name)
+}
+
+/// Each part sent so far: its amount and its kinds by name.
+fn parts_sent(world: &World) -> Vec<(f32, Vec<&str>)> {
+    world
+        .resource::<tungsten_core::EventQueue<DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.kinds.names(world)))
+        .collect()
+}
+
+/// Declares the damage types `names` in a `damage_types` entry inserted in
+/// code.
+fn declare(world: &mut World, names: &[&str]) {
+    let entry: serde_json::Map<String, serde_json::Value> = names
+        .iter()
+        .map(|name| ((*name).to_owned(), serde_json::json!({})))
+        .collect();
+    let types: DamageTypes = serde_json::from_value(serde_json::Value::Object(entry)).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+}
+
+fn typed(amount: f32, names: &[&str]) -> DamagePart {
+    DamagePart::new(amount).with_tags(Tags::new(names.iter().copied()))
+}
+
+#[test]
+fn a_one_part_hit_resolves_as_before() {
+    let (mut world, _) = rig();
+    let plain = world.spawn_with((Health::new(10.0),));
+    let request = DamageRequest::new(plain, 3.0);
+    assert_eq!(request.parts(), [DamagePart::new(3.0)]);
+    assert_eq!((request.amount(), request.tags()), (3.0, &Tags::default()));
+    assert_eq!(request.apply(&mut world), Hit::Hurt);
+    assert_eq!(world.get::<Health>(plain).unwrap().current(), 7.0);
+
+    let golem = world.spawn_with((
+        Health::new(10.0),
+        Resist::new()
+            .with_factor("damage", 0.5)
+            .with_factor("damage.fire", 0.5)
+            .with_factor("damage.poison", 0.0),
+    ));
+    let fire = DamageRequest::new(golem, 6.0).with_tags(Tags::new(["damage.fire"]));
+    assert_eq!(
+        fire.parts()[0].tags(),
+        &Tags::default(),
+        "it takes the request's"
+    );
+    assert_eq!(fire.apply(&mut world), Hit::Hurt);
+    let poison = DamageRequest::new(golem, 6.0).with_tags(Tags::new(["damage.poison"]));
+    assert_eq!(poison.apply(&mut world), Hit::Ignored, "immune");
+    assert_eq!(
+        DamageRequest::new(golem, 0.0).apply(&mut world),
+        Hit::Ignored
+    );
+    world.insert(plain, Resist::new().with_factor("tiny", 1e-30));
+    let tiny = DamageRequest::new(plain, 1e-30).with_tags(Tags::new(["tiny"]));
+    assert_eq!(tiny.apply(&mut world), Hit::Ignored, "resisted to 0");
+
+    let levels: Vec<String> = (1..=13)
+        .map(|n| {
+            (0..n)
+                .map(|i| format!("l{i}"))
+                .collect::<Vec<_>>()
+                .join(".")
+        })
+        .collect();
+    let mut resist = Resist::new();
+    for level in &levels {
+        resist = resist.with_factor(level, 1000.0);
+    }
+    let titan = world.spawn_with((Health::new(f32::MAX), resist));
+    let deep = DamageRequest::new(titan, 1.0).with_tags(Tags::new([levels[12].clone()]));
+    assert_eq!(deep.apply(&mut world), Hit::Killed, "clamped to f32::MAX");
+
+    assert_eq!(
+        sent(&world),
+        [
+            Damaged::new(plain, 3.0, false),
+            Damaged::new(golem, 1.5, false),
+            Damaged::new(titan, f32::MAX, true),
+        ],
+        "0.85's events, value for value, with no kind"
+    );
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec![]), (1.5, vec![]), (f32::MAX, vec![])],
+        "one part each, of no kind"
+    );
+    assert_eq!(world.get::<Health>(golem).unwrap().current(), 8.5);
+}
+
+#[test]
+fn a_multi_part_hit_starts_one_window_and_sends_one_damaged_after_its_parts() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let archer = world.spawn();
+    let target = world.spawn_with((
+        Health::new(20.0).with_invulnerability(0.5),
+        Shield::new(1.0),
+        HitFlash::new([1.0; 4], 0.2),
+        Sprite::new(SpriteAssetId::new(0)),
+    ));
+    let hit = DamageRequest::from_parts(target, [typed(3.0, &["fire"]), typed(2.0, &["ice"])])
+        .with_source(archer)
+        .with_position(Vec2::new(4.0, 5.0))
+        .with_crit(true);
+    assert_eq!(hit.amount(), 5.0);
+    assert_eq!(hit.apply(&mut world), Hit::Hurt);
+    let health = world.get::<Health>(target).unwrap();
+    assert_eq!(health.current(), 16.0, "5, of which the shield took 1");
+    assert!(health.is_invulnerable(), "one window");
+    assert!(world.get::<HitFlash>(target).unwrap().is_active());
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec!["fire"]), (2.0, vec!["ice"])]
+    );
+    let parts: Vec<DamagedPart> = world
+        .resource::<tungsten_core::EventQueue<DamagedPart>>()
+        .iter()
+        .copied()
+        .collect();
+    assert!(
+        parts
+            .iter()
+            .all(|part| part.source == Some(archer) && part.position == Some(Vec2::new(4.0, 5.0)))
+    );
+    let damaged = sent(&world);
+    assert_eq!(damaged.len(), 1, "one Damaged for the hit");
+    assert_eq!(
+        (
+            damaged[0].amount,
+            damaged[0].crit,
+            damaged[0].kinds.names(&world)
+        ),
+        (5.0, true, vec!["fire", "ice"])
+    );
+    let story: Vec<String> = world
+        .resource::<KitTrace>()
+        .about(target)
+        .map(|entry| {
+            let line = entry.to_string();
+            let head = format!("{target} ");
+            line.split_once(&head).unwrap().1.to_owned()
+        })
+        .collect();
+    assert_eq!(
+        story,
+        [
+            format!("damaged_part 3 with {archer}"),
+            format!("damaged_part 2 with {archer}"),
+            format!("damaged 5 with {archer}")
+        ]
+    );
+    let again = DamageRequest::from_parts(target, [typed(3.0, &["fire"])]);
+    assert_eq!(again.apply(&mut world), Hit::Ignored, "inside the window");
+}
+
+#[test]
+fn a_zero_part_and_a_modifier_made_zero_factor_meet_no_product() {
+    let (mut world, _) = rig();
+    // 103 levels of 1000: a product of 1e309, past f64::MAX, which 13
+    // levels never reach.
+    let levels: Vec<String> = (1..=103)
+        .map(|n| {
+            (0..n)
+                .map(|i| format!("l{i}"))
+                .collect::<Vec<_>>()
+                .join(".")
+        })
+        .collect();
+    let deepest = levels.last().unwrap().as_str();
+    let mut resist = Resist::new();
+    for level in &levels {
+        resist = resist.with_factor(level, 1000.0);
+    }
+    let product = resist.product_with(&Tags::new([deepest]), 0.0).unwrap();
+    assert!(product.is_infinite(), "the levels overflow f64: {product}");
+    // A 104th entry, sorting after the levels, whose factor a modifier
+    // makes 0.
+    resist.add_modifier("m", "ward", Modifier::Mul(0.0));
+    let titan = world.spawn_with((Health::new(100.0), resist));
+    let zero_beside =
+        DamageRequest::from_parts(titan, [typed(0.0, &[deepest]), typed(2.0, &["safe"])]);
+    assert_eq!(zero_beside.apply(&mut world), Hit::Hurt);
+    let warded_beside =
+        DamageRequest::from_parts(titan, [typed(1.0, &[deepest, "m"]), typed(2.0, &["safe"])]);
+    assert_eq!(warded_beside.apply(&mut world), Hit::Hurt);
+    let amounts: Vec<f32> = sent(&world).iter().map(|event| event.amount).collect();
+    assert_eq!(amounts, [2.0, 2.0], "each drop met no product");
+    assert!(
+        parts_sent(&world)
+            .iter()
+            .all(|(amount, _)| amount.is_finite() && *amount != f32::MAX && *amount == 2.0)
+    );
+    assert_eq!(world.get::<Health>(titan).unwrap().current(), 96.0);
+}
+
+#[test]
+fn conversion_normalizes_past_one_and_never_chains() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice", "acid", "zap"]);
+    let target = world.spawn_with((Health::new(1000.0),));
+    let past_one = Conversion::new()
+        .with_rule("fire", "ice", 0.75)
+        .with_rule("fire", "acid", 0.75)
+        .with_rule("ice", "zap", 1.0);
+    DamageRequest::from_parts(target, [typed(10.0, &["fire"])])
+        .with_conversion(past_one)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world),
+        [(5.0, vec!["ice"]), (5.0, vec!["acid"])],
+        "normalized to 1, no remainder, the ice share not converted again"
+    );
+    let exactly_one = Conversion::new().with_rule("fire", "ice", 1.0);
+    DamageRequest::from_parts(target, [typed(4.0, &["fire"])])
+        .with_conversion(exactly_one)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world)[2],
+        (4.0, vec!["ice"]),
+        "no remainder at 1"
+    );
+    let some = Conversion::new().with_rule("fire", "ice", 0.25);
+    DamageRequest::from_parts(target, [typed(4.0, &["fire"])])
+        .with_conversion(some)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world)[3..],
+        [(3.0, vec!["fire"]), (1.0, vec!["ice"])],
+        "the remainder before its shares"
+    );
+    // A share is its rule's type alone: the request's tags stay behind.
+    let shared = Conversion::new().with_rule("fire", "ice", 0.5);
+    DamageRequest::new(target, 2.0)
+        .with_tags(Tags::new(["fire", "acid"]))
+        .with_conversion(shared)
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world)[5..],
+        [(1.0, vec!["acid", "fire"]), (1.0, vec!["ice"])]
+    );
+}
+
+#[test]
+fn shares_that_land_on_one_type_merge_in_first_appearance_order() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["slash", "fire"]);
+    let target = world.spawn_with((Health::new(1000.0),));
+    DamageRequest::from_parts(target, [typed(10.0, &["slash"]), typed(5.0, &["fire"])])
+        .with_conversion(Conversion::new().with_rule("slash", "fire", 0.5))
+        .apply(&mut world);
+    assert_eq!(
+        parts_sent(&world),
+        [(5.0, vec!["slash"]), (10.0, vec!["fire"])],
+        "slash 10 and fire 5, half the slash to fire: slash 5 and fire 10"
+    );
+    // Untyped parts take the request's types and merge as one.
+    DamageRequest::from_parts(target, [DamagePart::new(1.0), DamagePart::new(2.0)])
+        .with_tags(Tags::new(["fire"]))
+        .apply(&mut world);
+    assert_eq!(parts_sent(&world)[2..], [(3.0, vec!["fire"])]);
+    assert_eq!(sent(&world)[1].amount, 3.0);
+}
+
+#[test]
+fn penetration_never_pierces_zero_or_raises_a_factor_above_one() {
+    let (mut world, _) = rig();
+    let target = world.spawn_with((
+        Health::new(1000.0),
+        Resist::new()
+            .with_factor("fire", 0.5)
+            .with_factor("ice", 0.0)
+            .with_factor("acid", 1.5),
+    ));
+    let pen = Penetration::new()
+        .with_points("fire", 0.75)
+        .with_points("ice", 1.0)
+        .with_points("acid", 1.0);
+    let hit = DamageRequest::from_parts(
+        target,
+        [
+            typed(4.0, &["fire"]),
+            typed(4.0, &["ice"]),
+            typed(4.0, &["acid"]),
+        ],
+    )
+    .with_penetration(pen);
+    assert_eq!(hit.apply(&mut world), Hit::Hurt);
+    let amounts: Vec<f32> = parts_sent(&world).iter().map(|part| part.0).collect();
+    assert_eq!(
+        amounts,
+        [4.0, 6.0],
+        "fire capped at a factor of 1, ice immune, acid left at 1.5"
+    );
+}
+
+#[test]
+fn the_source_lends_its_penetration_and_conversion_after_the_hits_own() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "acid", "ice"]);
+    let mage = world.spawn_with((
+        Penetration::new().with_points("fire", 0.25),
+        Conversion::new().with_rule("fire", "ice", 0.25),
+    ));
+    let target = world.spawn_with((Health::new(1000.0), Resist::new().with_factor("fire", 0.25)));
+    let own = || {
+        DamageRequest::from_parts(target, [typed(8.0, &["fire"])])
+            .with_penetration(Penetration::new().with_points("fire", 0.25))
+            .with_conversion(Conversion::new().with_rule("fire", "acid", 0.25))
+    };
+    own().with_source(mage).apply(&mut world);
+    assert_eq!(
+        parts_sent(&world),
+        [(3.0, vec!["fire"]), (2.0, vec!["acid"]), (2.0, vec!["ice"])],
+        "fire 4 at 0.25 + 0.5 points; the hit's share before the source's"
+    );
+    own().apply(&mut world);
+    assert_eq!(
+        parts_sent(&world)[3..],
+        [(3.0, vec!["fire"]), (2.0, vec!["acid"])],
+        "fire 6 at 0.25 + 0.25 points, without the source"
+    );
+}
+
+#[test]
+fn a_hit_whose_every_part_drops_is_ignored_with_no_side_effect() {
+    let (mut world, _) = rig();
+    let target = world.spawn_with((
+        Health::new(5.0).with_invulnerability(1.0),
+        Shield::new(2.0),
+        HitFlash::new([1.0; 4], 0.2),
+        Sprite::new(SpriteAssetId::new(0)),
+        Knockback::new(0.2),
+        Resist::new()
+            .with_factor("fire", 0.0)
+            .with_factor("ice", 0.0),
+    ));
+    let dropped = DamageRequest::from_parts(
+        target,
+        [
+            typed(3.0, &["fire"]),
+            typed(2.0, &["ice"]),
+            DamagePart::new(0.0),
+        ],
+    )
+    .with_knockback(Vec2::new(100.0, 0.0));
+    assert_eq!(dropped.apply(&mut world), Hit::Ignored);
+    assert_eq!(
+        DamageRequest::from_parts(target, []).apply(&mut world),
+        Hit::Ignored,
+        "no part"
+    );
+    let health = world.get::<Health>(target).unwrap();
+    assert!(health.current() == 5.0 && !health.is_invulnerable());
+    assert_eq!(world.get::<Shield>(target).unwrap().current(), 2.0);
+    assert!(!world.get::<HitFlash>(target).unwrap().is_active());
+    assert!(!world.get::<Knockback>(target).unwrap().is_active());
+    assert!(sent(&world).is_empty() && parts_sent(&world).is_empty());
+    assert_eq!(world.resource::<KitTrace>().about(target).count(), 0);
 }
 
 #[test]

@@ -7,7 +7,7 @@ use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::{Time, World, WorldLabel, WorldLabels};
 
-use crate::foundation::{finite_color, positive};
+use crate::foundation::{finite_color, optional_positive, positive};
 
 /// [`CuesPlugin`](crate::CuesPlugin)'s system that ages and draws the
 /// labels, in the present phase.
@@ -25,7 +25,10 @@ pub const LABEL_TICK: &str = "label_tick";
 ///
 /// Data form, inside a `label` action:
 /// `{ "font": "sans", "size": 16, "color": [1, 1, 1, 1], "seconds": 0.8, "rise": 32, "pop": 1.5 }`,
-/// all but `font` optional with those defaults.
+/// all but `font` optional with those defaults; a label that names any
+/// field names `font`. A `damaged_part` cue's `{ "label": {} }` names none
+/// and takes its part's type's style, a `damage_types` entry's
+/// `label_style` ([`CueAction::type_label`](crate::CueAction::type_label)).
 ///
 /// # Examples
 ///
@@ -128,6 +131,124 @@ impl From<LabelStyle> for LabelStyleDef {
             seconds: style.seconds,
             rise: style.rise,
             pop: style.pop,
+        }
+    }
+}
+
+/// A `label` action as data writes it: `{}`, which floats a `damaged_part`
+/// occurrence's amount in its type's style, or a style that names its
+/// font, every other field defaulted.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(try_from = "LabelFields", into = "LabelFields")]
+pub(crate) struct LabelDef(pub(crate) Option<LabelStyle>);
+
+/// A `label` action's fields before the font rule, each optional and
+/// checked.
+#[derive(Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LabelFields {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    font: Option<String>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    size: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_color",
+        skip_serializing_if = "Option::is_none"
+    )]
+    color: Option<[f32; 4]>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    seconds: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_finite",
+        skip_serializing_if = "Option::is_none"
+    )]
+    rise: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pop: Option<f32>,
+}
+
+/// An optional finite number, for a field's `deserialize_with`.
+fn optional_finite<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f32>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(transparent)]
+    struct Checked(#[serde(deserialize_with = "finite")] f32);
+    Ok(Option::<Checked>::deserialize(deserializer)?.map(|checked| checked.0))
+}
+
+/// An optional finite colour, for a field's `deserialize_with`.
+fn optional_color<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<[f32; 4]>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(transparent)]
+    struct Checked(#[serde(deserialize_with = "finite_color")] [f32; 4]);
+    Ok(Option::<Checked>::deserialize(deserializer)?.map(|checked| checked.0))
+}
+
+impl TryFrom<LabelFields> for LabelDef {
+    type Error = String;
+
+    fn try_from(fields: LabelFields) -> Result<Self, Self::Error> {
+        let LabelFields {
+            font,
+            size,
+            color,
+            seconds,
+            rise,
+            pop,
+        } = fields;
+        let Some(font) = font else {
+            let named = size.is_some()
+                || color.is_some()
+                || seconds.is_some()
+                || rise.is_some()
+                || pop.is_some();
+            return if named {
+                Err("font: a label that names any field names its font".to_string())
+            } else {
+                Ok(Self(None))
+            };
+        };
+        let style = LabelStyle::try_from(LabelStyleDef {
+            font,
+            size: size.unwrap_or_else(default_size),
+            color: color.unwrap_or_else(default_color),
+            seconds: seconds.unwrap_or_else(default_seconds),
+            rise: rise.unwrap_or_else(default_rise),
+            pop: pop.unwrap_or_else(default_pop),
+        })?;
+        Ok(Self(Some(style)))
+    }
+}
+
+impl From<LabelDef> for LabelFields {
+    fn from(def: LabelDef) -> Self {
+        match def.0 {
+            None => Self::default(),
+            Some(style) => Self {
+                font: Some(style.font),
+                size: Some(style.size),
+                color: Some(style.color),
+                seconds: Some(style.seconds),
+                rise: Some(style.rise),
+                pop: Some(style.pop),
+            },
         }
     }
 }

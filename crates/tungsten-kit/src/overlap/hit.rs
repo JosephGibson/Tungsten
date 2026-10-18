@@ -2,15 +2,22 @@
 //! step's motion, each target once per activation, through the damage
 //! pipeline; and the data forms the kit's overlap items share.
 
+use std::collections::BTreeMap;
+use std::fmt;
+
 use glam::Vec2;
-use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::de::{Error as _, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::physics::Shape;
 use tungsten_core::{
     Entity, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, SystemDesc, With, Without,
     World, system,
 };
 
+use crate::damage::kinds::{
+    CONVERSION_RULE, Conversion, ConversionDef, Penetration, PenetrationDef, check_type,
+};
+use crate::damage::pipeline::{DamagePart, DamageRequest};
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
     describe, describe_shape, round_trip,
@@ -327,11 +334,23 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// until [`rearm`](Self::rearm); a [`Projectile`](crate::Projectile)'s
 /// hitbox is the projectile's to run.
 ///
+/// A typed hitbox ([`with_parts`](Self::with_parts)) keeps its parts, each
+/// an amount with its damage types, as base parts that no stat writes: its
+/// damage starts at their sum, a `damage` stat writes it as before, and
+/// each hit splits it among the parts by their proportions. Its own
+/// [`Penetration`] and [`Conversion`] go with each hit.
+///
 /// Scene name `hitbox`:
 /// `{ "shape": { "aabb": [6, 3] }, "offset": [8, 0], "damage": 2, "tags": ["damage.fire"], "filter": { "all": ["team.enemy"] }, "knockback": 300 }`,
 /// `offset` `[0, 0]`, `tags` none, `filter` everything and `knockback` 0 by
-/// default; the load checks its tags. It is data, without the targets it
-/// has hit: a loaded one starts a fresh activation.
+/// default; the load checks its tags. `damage` may instead map declared
+/// damage types to amounts, one above 0, which type its parts in name order
+/// and leave no room for `tags`: `{ "physical.slash": 8, "elemental.fire": 4 }`.
+/// `pen`, points by damage type in `[0, 1]`, and `convert`, a list of
+/// `{ "from", "to", "pct" }` rules, are its own penetration and conversion,
+/// none by default. It is data, without the targets it has hit: a loaded one
+/// starts a fresh activation, and a save writes a typed one's parts as
+/// `parts`, a list of `{ "tags", "amount" }`, beside its damage.
 ///
 /// # Examples
 ///
@@ -359,8 +378,152 @@ pub struct Hitbox {
     tags: Tags,
     filter: TagFilter,
     knockback: f32,
+    /// A typed hitbox's parts, penetration and conversion.
+    typed: Option<Box<HitPayload>>,
     /// The targets hit in this activation, by index.
     hit: Vec<Entity>,
+}
+
+/// A typed hit item's base parts, penetration and conversion, which an
+/// untyped item goes without.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct HitPayload {
+    pub(crate) parts: Vec<DamagePart>,
+    pub(crate) penetration: Option<Penetration>,
+    pub(crate) conversion: Option<Conversion>,
+}
+
+impl HitPayload {
+    /// A hit of `damage` on `target`: the parts split to `damage` by their
+    /// proportions, in `f64`, clamped, and as they are when it is their
+    /// sum; one part of it without parts; with the penetration and the
+    /// conversion.
+    pub(crate) fn request(&self, target: Entity, damage: f32) -> DamageRequest {
+        let mut request = if self.parts.is_empty() {
+            DamageRequest::new(target, damage)
+        } else if sum_of(&self.parts) == damage {
+            DamageRequest::from_parts(target, self.parts.iter().cloned())
+        } else {
+            let total: f64 = self.parts.iter().map(|part| f64::from(part.amount())).sum();
+            let scale = f64::from(damage) / total;
+            DamageRequest::from_parts(
+                target,
+                self.parts.iter().map(|part| {
+                    let amount = (f64::from(part.amount()) * scale).min(f64::from(f32::MAX));
+                    DamagePart::new(amount as f32).with_tags(part.tags().clone())
+                }),
+            )
+        };
+        if let Some(penetration) = &self.penetration {
+            request = request.with_penetration(penetration.clone());
+        }
+        if let Some(conversion) = &self.conversion {
+            request = request.with_conversion(conversion.clone());
+        }
+        request
+    }
+}
+
+/// The total of a typed item's `parts`, in `f64`, clamped to `f32::MAX`.
+///
+/// # Panics
+///
+/// When there is no part or every part is 0.
+#[track_caller]
+pub(crate) fn parts_total(method: &str, parts: &[DamagePart]) -> f32 {
+    assert!(
+        parts.iter().any(|part| part.amount() > 0.0),
+        "{method}: the parts must hold one above 0 (got {parts:?})"
+    );
+    sum_of(parts)
+}
+
+fn sum_of(parts: &[DamagePart]) -> f32 {
+    let sum: f64 = parts.iter().map(|part| f64::from(part.amount())).sum();
+    sum.min(f64::from(f32::MAX)) as f32
+}
+
+/// A typed item's base part as a save writes it.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SavedPart {
+    #[serde(default)]
+    tags: Tags,
+    amount: f32,
+}
+
+/// A save's `parts`, `pen` and `convert` as an item's payload: `None` for
+/// none of them; the parts each finite and at least 0, one above 0.
+pub(crate) fn payload_from_save(
+    parts: Vec<SavedPart>,
+    penetration: Option<Penetration>,
+    conversion: Option<Conversion>,
+) -> Result<Option<Box<HitPayload>>, String> {
+    if let Some(part) = parts
+        .iter()
+        .find(|part| !(part.amount.is_finite() && part.amount >= 0.0))
+    {
+        return Err(format!(
+            "parts: each amount must be finite and >= 0 (got {})",
+            part.amount
+        ));
+    }
+    if !parts.is_empty() && parts.iter().all(|part| part.amount == 0.0) {
+        return Err("parts: one must be above 0".to_string());
+    }
+    if parts.is_empty() && penetration.is_none() && conversion.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(Box::new(HitPayload {
+        parts: parts
+            .into_iter()
+            .map(|part| DamagePart::new(part.amount).with_tags(part.tags))
+            .collect(),
+        penetration,
+        conversion,
+    })))
+}
+
+/// An item's payload as a save writes it: `parts`, `pen` and `convert`.
+pub(crate) fn payload_to_save(
+    typed: Option<Box<HitPayload>>,
+) -> (Vec<SavedPart>, Option<Penetration>, Option<Conversion>) {
+    match typed {
+        None => (Vec::new(), None, None),
+        Some(payload) => {
+            let HitPayload {
+                parts,
+                penetration,
+                conversion,
+            } = *payload;
+            let parts = parts
+                .into_iter()
+                .map(|part| SavedPart {
+                    amount: part.amount(),
+                    tags: part.tags().clone(),
+                })
+                .collect();
+            (parts, penetration, conversion)
+        }
+    }
+}
+
+/// The parts of a typed item in a line: `elemental.fire 4, physical.slash
+/// 8`.
+pub(crate) fn parts_summary(parts: &[DamagePart]) -> String {
+    let parts: Vec<String> = parts
+        .iter()
+        .map(|part| {
+            let types: Vec<&str> = part.tags().iter().collect();
+            let types = if types.is_empty() {
+                "untyped".to_string()
+            } else {
+                types.join(" + ")
+            };
+            format!("{types} {}", part.amount())
+        })
+        .collect();
+    parts.join(", ")
 }
 
 /// A hitbox as a save writes it, before its values are checked.
@@ -377,6 +540,12 @@ struct HitboxFields {
     filter: TagFilter,
     #[serde(default)]
     knockback: f32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    parts: Vec<SavedPart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pen: Option<Penetration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    convert: Option<Conversion>,
 }
 
 impl TryFrom<HitboxFields> for Hitbox {
@@ -395,6 +564,7 @@ impl TryFrom<HitboxFields> for Hitbox {
             tags: fields.tags,
             filter: fields.filter,
             knockback: fields.knockback,
+            typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             hit: Vec::new(),
         })
     }
@@ -402,6 +572,7 @@ impl TryFrom<HitboxFields> for Hitbox {
 
 impl From<Hitbox> for HitboxFields {
     fn from(hitbox: Hitbox) -> Self {
+        let (parts, pen, convert) = payload_to_save(hitbox.typed);
         Self {
             shape: hitbox.shape,
             offset: hitbox.offset,
@@ -409,6 +580,9 @@ impl From<Hitbox> for HitboxFields {
             tags: hitbox.tags,
             filter: hitbox.filter,
             knockback: hitbox.knockback,
+            parts,
+            pen,
+            convert,
         }
     }
 }
@@ -434,8 +608,81 @@ impl Hitbox {
             tags: Tags::default(),
             filter: TagFilter::new(),
             knockback: 0.0,
+            typed: None,
             hit: Vec::new(),
         }
+    }
+
+    /// The hitbox, typed: `parts` as its base parts, which no stat writes,
+    /// and their sum as its damage. Each hit splits its damage among them by
+    /// their proportions, so a `damage` stat scales them; a part without
+    /// types takes the hitbox's [`with_tags`](Self::with_tags).
+    ///
+    /// # Panics
+    ///
+    /// When there is no part, or every part is 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::{Conversion, DamagePart, HitShape, Hitbox, Penetration, Tags};
+    ///
+    /// let spellblade = Hitbox::new(HitShape::circle(12.0), 0.0)
+    ///     .with_parts([
+    ///         DamagePart::new(8.0).with_tags(Tags::new(["physical.slash"])),
+    ///         DamagePart::new(4.0).with_tags(Tags::new(["elemental.fire"])),
+    ///     ])
+    ///     .with_penetration(Penetration::new().with_points("elemental.fire", 0.25))
+    ///     .with_conversion(Conversion::new().with_rule("physical.slash", "elemental.cold", 0.5));
+    /// assert_eq!((spellblade.damage(), spellblade.parts().len()), (12.0, 2));
+    /// assert!(spellblade.penetration().is_some() && spellblade.conversion().is_some());
+    /// assert!(Hitbox::new(HitShape::circle(4.0), 1.0).parts().is_empty(), "one number");
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn with_parts(mut self, parts: impl IntoIterator<Item = DamagePart>) -> Self {
+        let parts: Vec<DamagePart> = parts.into_iter().collect();
+        self.damage = parts_total("Hitbox::with_parts", &parts);
+        self.typed.get_or_insert_default().parts = parts;
+        self
+    }
+
+    /// The hitbox, with its own `penetration`, before its source's.
+    #[must_use]
+    pub fn with_penetration(mut self, penetration: Penetration) -> Self {
+        self.typed.get_or_insert_default().penetration = Some(penetration);
+        self
+    }
+
+    /// The hitbox, with its own `conversion`, before its source's.
+    #[must_use]
+    pub fn with_conversion(mut self, conversion: Conversion) -> Self {
+        self.typed.get_or_insert_default().conversion = Some(conversion);
+        self
+    }
+
+    /// Its base parts; empty for a hitbox of one number.
+    #[must_use]
+    pub fn parts(&self) -> &[DamagePart] {
+        self.typed.as_ref().map_or(&[], |typed| &typed.parts)
+    }
+
+    /// Its own penetration, when it has one.
+    #[must_use]
+    pub fn penetration(&self) -> Option<&Penetration> {
+        self.typed.as_ref()?.penetration.as_ref()
+    }
+
+    /// Its own conversion, when it has one.
+    #[must_use]
+    pub fn conversion(&self) -> Option<&Conversion> {
+        self.typed.as_ref()?.conversion.as_ref()
+    }
+
+    /// A typed hitbox's parts, penetration and conversion, for a
+    /// projectile's hits.
+    pub(crate) fn payload(&self) -> Option<&HitPayload> {
+        self.typed.as_deref()
     }
 
     /// The hitbox, its shape at `offset` world pixels from its entity's
@@ -451,8 +698,8 @@ impl Hitbox {
         self
     }
 
-    /// The hitbox, its damage of the kinds `tags` (`damage.fire`), which a
-    /// [`Resist`](crate::Resist) reads.
+    /// The hitbox, its damage of the types `tags` (`damage.fire`), which a
+    /// [`Resist`](crate::Resist) reads: a typed hitbox's untyped parts'.
     #[must_use]
     pub fn with_tags(mut self, tags: Tags) -> Self {
         self.tags = tags;
@@ -497,13 +744,14 @@ impl Hitbox {
         self.offset
     }
 
-    /// Each hit's damage, which a `damage` stat writes.
+    /// Each hit's damage, which a `damage` stat writes: one number, or a
+    /// typed hitbox's total.
     #[must_use]
     pub fn damage(&self) -> f32 {
         self.damage
     }
 
-    /// Its damage tags.
+    /// Its damage types.
     #[must_use]
     pub fn tags(&self) -> &Tags {
         &self.tags
@@ -666,31 +914,221 @@ impl Struck {
     }
 }
 
-/// `components.hitbox` as a scene writes it.
-#[derive(Serialize, Deserialize)]
+/// A hit item's `damage` as a scene writes it: a number, or declared damage
+/// types to amounts with one above 0, read by a visitor that keeps the field
+/// path in its errors.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum DamageDef {
+    Number(f32),
+    Typed(BTreeMap<String, f32>),
+}
+
+impl DamageDef {
+    /// The damage it gives: the number, or the map's sum.
+    pub(crate) fn total(&self) -> f32 {
+        match self {
+            DamageDef::Number(damage) => *damage,
+            DamageDef::Typed(parts) => {
+                let sum: f64 = parts.values().map(|&amount| f64::from(amount)).sum();
+                sum.min(f64::from(f32::MAX)) as f32
+            }
+        }
+    }
+
+    /// A map's parts, in type-name order; `None` for a number.
+    pub(crate) fn parts(&self) -> Option<Vec<DamagePart>> {
+        match self {
+            DamageDef::Number(_) => None,
+            DamageDef::Typed(parts) => Some(
+                parts
+                    .iter()
+                    .map(|(name, &amount)| {
+                        DamagePart::new(amount).with_tags(Tags::new([name.as_str()]))
+                    })
+                    .collect(),
+            ),
+        }
+    }
+
+    /// The load's check: each of a map's keys a declared damage type.
+    pub(crate) fn check(&self, world: &World) -> Result<(), MissingAsset> {
+        if let DamageDef::Typed(parts) = self {
+            for name in parts.keys() {
+                check_type(world, &format!("damage.{name}"), name, false)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The scene's pairing rule: a map's keys type every part, so `tags`
+    /// may not sit beside it.
+    pub(crate) fn beside(&self, tags: &TagNames) -> Result<(), String> {
+        match self {
+            DamageDef::Typed(_) if !tags.0.is_empty() => Err(
+                "tags: a `damage` map's keys type its parts, so `tags` may not sit beside it"
+                    .to_string(),
+            ),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Serialize for DamageDef {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            DamageDef::Number(damage) => serializer.serialize_f32(*damage),
+            DamageDef::Typed(parts) => parts.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DamageDef {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(DamageVisitor)
+    }
+}
+
+/// A part's amount, finite and at least 0, checked where it is read so an
+/// error names its key.
+#[derive(Deserialize)]
+#[serde(transparent)]
+struct Amount(#[serde(deserialize_with = "non_negative")] f32);
+
+/// Reads either form of a `damage`.
+struct DamageVisitor;
+
+impl DamageVisitor {
+    fn number<E: serde::de::Error>(value: f64) -> Result<DamageDef, E> {
+        let damage = value as f32;
+        if damage.is_finite() && damage >= 0.0 {
+            Ok(DamageDef::Number(damage))
+        } else {
+            Err(E::custom(format!("must be finite and >= 0 (got {value})")))
+        }
+    }
+}
+
+impl<'de> Visitor<'de> for DamageVisitor {
+    type Value = DamageDef;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a number, or an object of damage types to amounts")
+    }
+
+    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<DamageDef, E> {
+        Self::number(value)
+    }
+
+    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<DamageDef, E> {
+        Self::number(value as f64)
+    }
+
+    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<DamageDef, E> {
+        Self::number(value as f64)
+    }
+
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<DamageDef, A::Error> {
+        let mut parts = BTreeMap::new();
+        while let Some(name) = map.next_key::<String>()? {
+            if !valid_tag(&name) {
+                return Err(A::Error::custom(format!(
+                    "`{name}` is not a damage type (`[a-z][a-z0-9_]*` segments joined by dots)"
+                )));
+            }
+            let Amount(amount) = map.next_value()?;
+            if parts.insert(name.clone(), amount).is_some() {
+                return Err(A::Error::custom(format!("`{name}` given twice")));
+            }
+        }
+        if !parts.values().any(|&amount| amount > 0.0) {
+            return Err(A::Error::custom(
+                "a damage map holds a damage type of an amount above 0",
+            ));
+        }
+        Ok(DamageDef::Typed(parts))
+    }
+}
+
+/// `components.hitbox` as a scene writes it, before the pairing rule.
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct HitboxDef {
+struct HitboxScene {
     shape: HitShape,
     #[serde(default, with = "offset")]
     offset: Vec2,
-    #[serde(deserialize_with = "non_negative")]
-    damage: f32,
+    damage: DamageDef,
     #[serde(default)]
     tags: TagNames,
+    #[serde(default)]
+    pen: PenetrationDef,
+    #[serde(default)]
+    convert: ConversionDef,
     #[serde(default)]
     filter: TagFilterDef,
     #[serde(default, deserialize_with = "non_negative")]
     knockback: f32,
 }
 
+/// `components.hitbox`, checked.
+#[derive(Serialize, Deserialize)]
+#[serde(try_from = "HitboxScene")]
+struct HitboxDef {
+    shape: HitShape,
+    #[serde(with = "offset")]
+    offset: Vec2,
+    damage: DamageDef,
+    tags: TagNames,
+    pen: PenetrationDef,
+    convert: ConversionDef,
+    filter: TagFilterDef,
+    knockback: f32,
+}
+
+impl TryFrom<HitboxScene> for HitboxDef {
+    type Error = String;
+
+    fn try_from(scene: HitboxScene) -> Result<Self, Self::Error> {
+        scene.damage.beside(&scene.tags)?;
+        Ok(Self {
+            shape: scene.shape,
+            offset: scene.offset,
+            damage: scene.damage,
+            tags: scene.tags,
+            pen: scene.pen,
+            convert: scene.convert,
+            filter: scene.filter,
+            knockback: scene.knockback,
+        })
+    }
+}
+
 impl From<HitboxDef> for Hitbox {
     fn from(def: HitboxDef) -> Self {
-        Hitbox::new(def.shape, def.damage)
+        let mut hitbox = Hitbox::new(def.shape, def.damage.total())
             .with_offset(def.offset)
             .with_tags(Tags::new(def.tags.0))
             .with_filter(def.filter.into())
-            .with_knockback(def.knockback)
+            .with_knockback(def.knockback);
+        if let Some(parts) = def.damage.parts() {
+            hitbox = hitbox.with_parts(parts);
+        }
+        if !def.pen.is_empty() {
+            hitbox = hitbox.with_penetration(def.pen.into());
+        }
+        if !def.convert.is_empty() {
+            hitbox = hitbox.with_conversion(def.convert.into());
+        }
+        hitbox
     }
+}
+
+/// The `damage` field of a hitting item.
+pub(crate) fn damage_field() -> FieldDescription {
+    FieldDescription::new(
+        "damage",
+        FieldType::Damage,
+        "each hit's damage, which a `damage` stat writes; a map of declared damage types to amounts gives its typed parts, in name order, which the stat scales; 0 is a trigger whose `hit` cues run",
+    )
 }
 
 /// The description of `hit_shape`, which the hit items' fields name.
@@ -738,14 +1176,31 @@ fn shape_fields(description: ComponentDescription, doc: &'static str) -> Compone
         )
 }
 
-/// The `tags`, `filter` and `knockback` fields of a hitting item.
+/// The `tags`, `pen`, `convert`, `filter` and `knockback` fields of a
+/// hitting item.
 pub(crate) fn hit_fields(description: ComponentDescription) -> ComponentDescription {
     description
         .field(
             FieldDescription::new(
                 "tags",
                 FieldType::List(Box::new(FieldType::Tag)),
-                "the damage's kinds, such as `damage.fire`, which `resist` reads; the load checks them",
+                "the damage's types, such as `damage.fire`, which `resist` reads; the load checks them; refused beside a `damage` map",
+            )
+            .default("[]"),
+        )
+        .field(
+            FieldDescription::new(
+                "pen",
+                FieldType::Object("damage type → points in [0, 1]"),
+                "the hit's own penetration, before its source's `penetration`; each a declared damage type or an ancestor of one",
+            )
+            .default("{}"),
+        )
+        .field(
+            FieldDescription::new(
+                "convert",
+                FieldType::List(Box::new(FieldType::Shape(CONVERSION_RULE))),
+                "the hit's own conversion rules, before its source's `conversion`",
             )
             .default("[]"),
         )
@@ -818,14 +1273,7 @@ impl Plugin for HitPlugin {
                     ),
                     "its circle or box",
                 )
-                .field(FieldDescription::new(
-                    "damage",
-                    FieldType::F32 {
-                        min: Bound::Inclusive(0.0),
-                        max: Bound::Open,
-                    },
-                    "each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run",
-                )),
+                .field(damage_field()),
             )
             .event("Struck")
             .genre(TOP_DOWN)
@@ -854,7 +1302,12 @@ impl Plugin for HitPlugin {
         world.register_event::<Struck>();
         world.register_component_with_assets(
             HITBOX,
-            |def: &HitboxDef, world: &World| check_names(world, Some(&def.tags), &def.filter),
+            |def: &HitboxDef, world: &World| {
+                check_names(world, Some(&def.tags), &def.filter)?;
+                def.damage.check(world)?;
+                def.pen.check(world, "pen.")?;
+                def.convert.check(world, "convert.")
+            },
             |def: HitboxDef, _: &SpawnContext<'_>| (Hitbox::from(def),),
         );
         world.register_component_with(HURTBOX, |def: HurtboxDef, _: &SpawnContext<'_>| {
@@ -937,9 +1390,14 @@ impl HitboxRunner {
         if self.hits.is_empty() {
             return;
         }
-        let (damage, tags, knockback) = {
+        let (damage, tags, knockback, typed) = {
             let hitbox = world.get::<Hitbox>(hitter).unwrap();
-            (hitbox.damage, hitbox.tags.clone(), hitbox.knockback)
+            (
+                hitbox.damage,
+                hitbox.tags.clone(),
+                hitbox.knockback,
+                hitbox.typed.clone(),
+            )
         };
         for &(t, index) in &self.hits {
             let entry = grid.entries()[index as usize];
@@ -957,6 +1415,7 @@ impl HitboxRunner {
                     relative: (sweep.end - sweep.start) - (entry.sweep.end - entry.sweep.start),
                     damage,
                     tags: &tags,
+                    typed: typed.as_deref(),
                     knockback,
                 },
             );
@@ -971,9 +1430,18 @@ impl Inspectable for Hitbox {
                 "hitbox",
                 format!("{} at {}", self.shape.summary(), point(self.offset)),
             ),
-            ("damage", format!("{}", self.damage)),
+            ("damage", damage_row(self.damage, self.parts())),
             ("hit", format!("{} targets", self.hit.len())),
         ]
+    }
+}
+
+/// A hit item's damage row: its damage, with a typed item's parts.
+pub(crate) fn damage_row(damage: f32, parts: &[DamagePart]) -> String {
+    if parts.is_empty() {
+        format!("{damage}")
+    } else {
+        format!("{damage} of {}", parts_summary(parts))
     }
 }
 

@@ -15,7 +15,8 @@ use tungsten_core::{
     SquashEvent, SquashTrigger, Time, Transform, World, system,
 };
 
-use crate::damage::health::{Damaged, start_flash};
+use crate::damage::health::{Damaged, DamagedPart, start_flash};
+use crate::damage::kinds::{DamageKinds, DamageTypeTable, check_type, label_style, merge_types};
 use crate::damage::pipeline::Healed;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, SHMUP, TOP_DOWN,
@@ -34,7 +35,7 @@ use crate::overlap::pickup::PickedUp;
 use crate::overlap::projectile::ProjectileExpired;
 use crate::overlap::zone::ZoneEntered;
 use crate::present::labels::{
-    LABEL_TICK, LabelStyle, LabelStyleDef, LiveLabels, float_label, label_tick,
+    LABEL_TICK, LabelDef, LabelStyle, LabelStyleDef, LiveLabels, float_label, label_tick,
 };
 use crate::react::counters::{Counters, Flags};
 use crate::react::loot::{LOOT_TABLES, WeightedTable, register_loot_tables};
@@ -47,6 +48,7 @@ pub const CUES: &str = "cues";
 const CUE_RULES: &str = "cue_rules";
 
 /// The kit's cue events, in the order the cue system reads them.
+pub(crate) const DAMAGED_PART: &str = "damaged_part";
 pub(crate) const DAMAGED: &str = "damaged";
 pub(crate) const KILLED: &str = "killed";
 pub(crate) const ZONE_ENTERED: &str = "zone_entered";
@@ -55,7 +57,8 @@ pub(crate) const HIT: &str = "hit";
 pub(crate) const HEALED: &str = "healed";
 pub(crate) const PICKED_UP: &str = "picked_up";
 pub(crate) const EXPIRED: &str = "expired";
-const KIT_EVENTS: [&str; 8] = [
+const KIT_EVENTS: [&str; 9] = [
+    DAMAGED_PART,
     DAMAGED,
     KILLED,
     ZONE_ENTERED,
@@ -79,8 +82,9 @@ fn valid_event(name: &str) -> bool {
 
 /// An entity's reactions: for each event about it, a list of
 /// [`CueAction`]s that [`CuesPlugin`]'s system runs in order, in the fixed
-/// step the event is read. The events are the kit's `damaged` and `killed`
-/// (after its `damaged`; the hit's source is the other), `zone_entered`
+/// step the event is read. The events are the kit's `damaged_part` (one per
+/// part of a hit, before the hit's own), `damaged` and `killed` (after its
+/// `damaged`; the hit's source is the other), `zone_entered`
 /// (the zone is the subject, the entrant the other), `cooldown_elapsed`,
 /// `hit` (the hitting entity is the subject, the target the other),
 /// `healed` (the heal's source the other), `picked_up` (the pickup is the
@@ -225,7 +229,7 @@ impl Cues {
 /// | shake | `{ "shake": 0.3 }`, camera trauma added |
 /// | squash | `{ "squash": "on_hit" }`, the subject's squash trigger |
 /// | flash | `{ "flash": {} }`, the subject's [`HitFlash`](crate::HitFlash) |
-/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label |
+/// | label | `{ "label": { "font": "sans" } }`, the event's amount as a [`LabelStyle`] label; on `damaged_part`, `{ "label": {} }` floats it in its type's style |
 /// | roll | `{ "roll": "slime_drops" }`, a `loot_tables` entry or the [`WeightedTable`] in place: each prefab drawn spawned at the event's position from the subject |
 ///
 /// # Examples
@@ -271,7 +275,8 @@ pub(crate) enum ActionKind {
     Shake(f32),
     Squash(SquashTrigger),
     Flash,
-    Label(LabelStyle),
+    /// `None`: a `damaged_part`'s amount in its type's style.
+    Label(Option<LabelStyle>),
     Roll(DataRef<WeightedTable>),
 }
 
@@ -457,7 +462,28 @@ impl CueAction {
     /// Floats the event's amount at its position in `style`.
     #[must_use]
     pub fn label(style: LabelStyle) -> Self {
-        Self::of(ActionKind::Label(style))
+        Self::of(ActionKind::Label(Some(style)))
+    }
+
+    /// Floats a `damaged_part` occurrence's amount at its position in its
+    /// part's type's style: the `label_style` of the deepest damage type
+    /// among its kinds, the first by name at one depth, from that type's
+    /// `damage_types` entry or its nearest ancestor's that sets one. A part
+    /// whose types set none floats nothing, and the trace says so. Data form
+    /// `{ "label": {} }`; the load refuses it on any other event.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::{CueAction, Cues};
+    ///
+    /// let numbers = Cues::new().on("damaged_part", [CueAction::type_label()]);
+    /// let data = serde_json::to_value(&numbers).unwrap();
+    /// assert_eq!(data["damaged_part"][0], serde_json::json!({ "label": {} }));
+    /// ```
+    #[must_use]
+    pub fn type_label() -> Self {
+        Self::of(ActionKind::Label(None))
     }
 
     /// Rolls `table`, a `loot_tables` entry or a table in place: each of
@@ -528,7 +554,7 @@ pub(crate) enum CueActionDef {
     Shake(#[serde(deserialize_with = "non_negative")] f32),
     Squash(SquashName),
     Flash(FlashDef),
-    Label(LabelStyleDef),
+    Label(LabelDef),
     Roll(DataRef<WeightedTable>),
 }
 
@@ -713,7 +739,7 @@ impl TryFrom<CueActionDef> for CueAction {
             CueActionDef::Shake(trauma) => ActionKind::Shake(trauma),
             CueActionDef::Squash(name) => ActionKind::Squash(name.into()),
             CueActionDef::Flash(FlashDef {}) => ActionKind::Flash,
-            CueActionDef::Label(def) => ActionKind::Label(LabelStyle::try_from(def)?),
+            CueActionDef::Label(LabelDef(style)) => ActionKind::Label(style),
             CueActionDef::Roll(table) => ActionKind::Roll(table),
         };
         Ok(Self { kind })
@@ -754,7 +780,7 @@ impl From<CueAction> for CueActionDef {
             ActionKind::Shake(trauma) => CueActionDef::Shake(trauma),
             ActionKind::Squash(trigger) => CueActionDef::Squash(trigger.into()),
             ActionKind::Flash => CueActionDef::Flash(FlashDef {}),
-            ActionKind::Label(style) => CueActionDef::Label(style.into()),
+            ActionKind::Label(style) => CueActionDef::Label(LabelDef(style)),
             ActionKind::Roll(table) => CueActionDef::Roll(table),
         }
     }
@@ -825,6 +851,8 @@ pub(crate) struct Occurrence {
     pub(crate) position: Vec2,
     pub(crate) amount: Option<f32>,
     pub(crate) other: Option<Entity>,
+    /// A damage event's kinds: a part's, or a hit's parts' together.
+    pub(crate) kinds: DamageKinds,
 }
 
 /// What a registered cue event may carry, for the load's checks.
@@ -833,6 +861,8 @@ struct EventInfo {
     name: &'static str,
     amount: bool,
     other: bool,
+    /// Its occurrences carry damage kinds, which a rule's `kind` reads.
+    kinds: bool,
 }
 
 /// The cue events a load may name, a World resource: the kit's and each
@@ -844,20 +874,22 @@ impl Default for CueEventNames {
     fn default() -> Self {
         Self(
             [
-                (DAMAGED, true, true),
-                (KILLED, true, true),
-                (ZONE_ENTERED, false, true),
-                (COOLDOWN_ELAPSED, false, false),
-                (HIT, true, true),
-                (HEALED, true, true),
-                (PICKED_UP, false, true),
-                (EXPIRED, false, false),
+                (DAMAGED_PART, true, true, true),
+                (DAMAGED, true, true, true),
+                (KILLED, true, true, true),
+                (ZONE_ENTERED, false, true, false),
+                (COOLDOWN_ELAPSED, false, false, false),
+                (HIT, true, true, false),
+                (HEALED, true, true, false),
+                (PICKED_UP, false, true, false),
+                (EXPIRED, false, false, false),
             ]
             .into_iter()
-            .map(|(name, amount, other)| EventInfo {
+            .map(|(name, amount, other, kinds)| EventInfo {
                 name,
                 amount,
                 other,
+                kinds,
             })
             .collect(),
         )
@@ -974,6 +1006,7 @@ impl<E: 'static> CueSource for GameSource<E> {
                     position: event.position,
                     amount: event.amount,
                     other: event.other,
+                    kinds: DamageKinds::NONE,
                 }),
         );
     }
@@ -1002,6 +1035,7 @@ impl<E: 'static> Plugin for CuesOnEvent<E> {
             name,
             amount: true,
             other: true,
+            kinds: false,
         });
         world.register_event::<E>();
         if !world.has_resource::<CueSources>() {
@@ -1025,18 +1059,97 @@ struct CueRuleDef {
     on: String,
     #[serde(default)]
     filter: TagFilterDef,
+    #[serde(default)]
+    kind: KindFilterDef,
     #[serde(rename = "do")]
     actions: Vec<CueAction>,
 }
 
-/// One shared rule: on event `on`, for a subject whose tags pass `filter`,
-/// the actions in order.
+/// A rule's filter over an occurrence's damage kinds as data writes it:
+/// declared damage types or their ancestors in `all`, `any` and `none`,
+/// each checked as a tag name and kept as written, so a load's error names
+/// the field.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(try_from = "KindFields")]
+struct KindFilterDef {
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    all: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    any: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    none: Vec<String>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+struct KindFields {
+    all: Vec<String>,
+    any: Vec<String>,
+    none: Vec<String>,
+}
+
+impl TryFrom<KindFields> for KindFilterDef {
+    type Error = String;
+
+    fn try_from(fields: KindFields) -> Result<Self, Self::Error> {
+        for (field, names) in [
+            ("all", &fields.all),
+            ("any", &fields.any),
+            ("none", &fields.none),
+        ] {
+            if let Some(name) = names.iter().find(|name| !valid_tag(name)) {
+                return Err(format!(
+                    "{field}: `{name}` is not a damage type (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
+            }
+        }
+        Ok(Self {
+            all: fields.all,
+            any: fields.any,
+            none: fields.none,
+        })
+    }
+}
+
+impl KindFilterDef {
+    /// Every name the filter uses, with the field that names it as written
+    /// (`any.0`), for a load's check.
+    fn names(&self) -> impl Iterator<Item = (String, &str)> {
+        [("all", &self.all), ("any", &self.any), ("none", &self.none)]
+            .into_iter()
+            .flat_map(|(field, names)| {
+                names
+                    .iter()
+                    .enumerate()
+                    .map(move |(i, name)| (format!("{field}.{i}"), name.as_str()))
+            })
+    }
+
+    /// Whether it names no type, so every occurrence passes.
+    fn is_everything(&self) -> bool {
+        self.all.is_empty() && self.any.is_empty() && self.none.is_empty()
+    }
+
+    /// Whether an occurrence of `kinds` passes, each name's kinds from
+    /// `mask`, read as a tag filter reads tags: every `all`, one `any` when
+    /// it names any, no `none`.
+    fn matches(&self, kinds: DamageKinds, mut mask: impl FnMut(&str) -> DamageKinds) -> bool {
+        let mut has = |name: &String| kinds.intersects(mask(name));
+        self.all.iter().all(&mut has)
+            && (self.any.is_empty() || self.any.iter().any(&mut has))
+            && !self.none.iter().any(&mut has)
+    }
+}
+
+/// One shared rule: on event `on`, for a subject whose tags pass `filter`
+/// and an occurrence whose damage kinds pass `kind`, the actions in order.
 struct CueRule {
     on: String,
     filter: TagFilter,
     /// The filter's names with the fields that name them, for the load's
     /// check.
     names: Vec<(String, String)>,
+    kind: KindFilterDef,
     actions: Arc<[CueAction]>,
 }
 
@@ -1066,6 +1179,7 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
                 on: rule.on,
                 filter: rule.filter.into(),
                 names,
+                kind: rule.kind,
                 actions: rule.actions.into(),
             });
         }
@@ -1073,10 +1187,35 @@ impl TryFrom<Vec<CueRuleDef>> for CueRules {
     }
 }
 
+/// The `cue_rules` kind's check: each rule's event, its tag filter's
+/// tags, its `kind` filter on an event with damage kinds, each of its names
+/// a declared damage type or an ancestor of one, and its actions.
+fn check_rule_list(rules: &CueRules, world: &World) -> Result<(), MissingAsset> {
+    for (i, rule) in rules.0.iter().enumerate() {
+        let event = event_info(world, &format!("{i}.on"), &rule.on)?;
+        for (field, name) in &rule.names {
+            check_declared(world, &format!("{i}.filter.{field}"), name)?;
+        }
+        if !rule.kind.is_everything() && !event.kinds {
+            return Err(MissingAsset::new(
+                format!("{i}.kind"),
+                "cue event with damage kinds",
+                event.name,
+            ));
+        }
+        for (field, name) in rule.kind.names() {
+            check_type(world, &format!("{i}.kind.{field}"), name, true)?;
+        }
+        check_actions(world, &format!("{i}.do"), event, &rule.actions)?;
+    }
+    Ok(())
+}
+
 /// Checks `actions`, run for `event`, against the World: each prefab,
 /// sound and loot table ID and an inline table's prefabs, a `label` on an
-/// event with an amount and a `target: other` on one with another entity;
-/// `field` names the list.
+/// event with an amount and a style-less one on `damaged_part` only, and a
+/// `target: other` on an event with another entity; `field` names the
+/// list.
 fn check_actions(
     world: &World,
     field: &str,
@@ -1099,6 +1238,13 @@ fn check_actions(
                 return Err(MissingAsset::new(
                     at,
                     "cue event with an amount",
+                    event.name,
+                ));
+            }
+            ActionKind::Label(None) if event.name != DAMAGED_PART => {
+                return Err(MissingAsset::new(
+                    at,
+                    "cue event with a damage type's label style",
                     event.name,
                 ));
             }
@@ -1139,16 +1285,19 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 /// and [`LABEL_TICK`] in the present phase.
 ///
 /// Each fixed step, the cue system reads its sources, each once through an
-/// `EventCursor`: [`Damaged`] (a `damaged` occurrence, then a `killed` one
-/// for a kill), [`ZoneEntered`], [`CooldownElapsed`],
+/// `EventCursor`: [`DamagedPart`] (`damaged_part`), [`Damaged`] (a
+/// `damaged` occurrence, then a `killed` one for a kill), [`ZoneEntered`],
+/// [`CooldownElapsed`],
 /// [`Struck`](crate::Struck) (`hit`), [`Healed`](crate::Healed),
 /// [`PickedUp`](crate::PickedUp) (`picked_up`),
 /// [`ProjectileExpired`](crate::ProjectileExpired) (`expired`), then each
 /// [`CuesOnEvent`] in build order, each queue in send order. It runs every
 /// occurrence's entity cues, then every occurrence's matching rules (rules
-/// in entry-ID order, then file order); each list in its written order. A
-/// rule matches on its event and its tag filter over the subject's
-/// [`Tags`](crate::Tags). `counter` and `flag` apply at once, `prefab` and
+/// in entry-ID order, then file order); each list in its written order, so
+/// in each pass every `damaged_part` runs before the step's `damaged` and
+/// `killed`. A rule matches on its event, its tag filter over the subject's
+/// [`Tags`](crate::Tags) and its `kind` filter over the occurrence's
+/// [`DamageKinds`](crate::DamageKinds). `counter` and `flag` apply at once, `prefab` and
 /// `roll` spawns queue as they are met, a `roll` drawing from the
 /// [`KitRng`](crate::KitRng) in this order, and the step's despawns queue
 /// after its spawns, each target marked with its descendants so a frame's
@@ -1157,12 +1306,19 @@ fn event_info(world: &World, field: &str, name: &str) -> Result<EventInfo, Missi
 ///
 /// A `cue_rules` entry is a list of rules,
 /// `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`,
-/// `filter` everything by default. The load checks every event name, tag,
-/// prefab, sound and loot table ID it names.
+/// `filter` everything by default. On `damaged`, `killed` and
+/// `damaged_part`, a rule's `kind`, `{ "all": [..], "any": [..], "none": [..] }`
+/// of declared damage types or their ancestors, read as a tag filter reads
+/// tags, passes the occurrences whose damage kinds match it (a kill's are
+/// its hit's); everything by default, and an untyped occurrence passes only
+/// a `kind` without `all` and `any`. The load checks every event name, tag,
+/// damage type, prefab, sound and loot table ID it names, and refuses a
+/// `kind` on another event.
 ///
 /// The vocabulary stops there: no conditions, variables or sequences, and
-/// no filter but the rule's; a `roll` draws only from the table it names.
-/// A reaction that needs more is a game's Rust.
+/// no filter but the rule's tag filter and, on the damage events, its kind
+/// filter; a `roll` draws only from the table it names. A reaction that
+/// needs more is a game's Rust.
 ///
 /// # Examples
 ///
@@ -1202,16 +1358,7 @@ impl Plugin for CuesPlugin {
             world.insert_resource(KitRng::default());
         }
         register_loot_tables(world);
-        world.register_data_kind_with_assets(CUE_RULES, |rules: &CueRules, world: &World| {
-            for (i, rule) in rules.0.iter().enumerate() {
-                let event = event_info(world, &format!("{i}.on"), &rule.on)?;
-                for (field, name) in &rule.names {
-                    check_declared(world, &format!("{i}.filter.{field}"), name)?;
-                }
-                check_actions(world, &format!("{i}.do"), event, &rule.actions)?;
-            }
-            Ok(())
-        });
+        world.register_data_kind_with_assets(CUE_RULES, check_rule_list);
         world.register_component_with_assets(
             CUES,
             |cues: &Cues, world: &World| {
@@ -1245,11 +1392,13 @@ const NO_QUEUE: &str = "the World has no queue for it";
 const NO_SOUND: &str = "the World has no sound or audio for it";
 const TOO_SOON: &str = "the sound played within its min_interval";
 const NO_TABLE: &str = "the World has no such loot table";
+const NO_STYLE: &str = "the part's types set no label style";
 
 /// The cue system's state between steps: its place in each kit queue, the
 /// step's scratch lists, and each cue sound's last play on its clock.
 #[derive(Default)]
 struct Reactor {
+    parts: EventCursor<DamagedPart>,
     damaged: EventCursor<Damaged>,
     zones: EventCursor<ZoneEntered>,
     cooldowns: EventCursor<CooldownElapsed>,
@@ -1270,6 +1419,10 @@ struct Reactor {
     played: HashMap<String, f64>,
     /// The prefab IDs whose failure was logged.
     warned: HashSet<String>,
+    /// Each `kind` filter name's kinds, kept until the type table grows.
+    masks: HashMap<String, DamageKinds>,
+    /// The type table's bits when `masks` was last cleared.
+    masked: usize,
 }
 
 impl Reactor {
@@ -1279,6 +1432,14 @@ impl Reactor {
         self.read(world);
         if self.occurrences.is_empty() {
             return;
+        }
+        merge_types(world);
+        let types = world
+            .get_resource::<DamageTypeTable>()
+            .map_or(0, DamageTypeTable::len);
+        if types != self.masked {
+            self.masks.clear();
+            self.masked = types;
         }
         let mut occurrences = std::mem::take(&mut self.occurrences);
         occurrences.retain(|occurrence| {
@@ -1327,21 +1488,34 @@ impl Reactor {
         }
     }
 
-    /// The rules for `occurrence`'s event whose filter its subject passes,
-    /// in entry-ID order, then file order.
+    /// The rules for `occurrence`'s event whose tag filter its subject
+    /// passes and whose kind filter its kinds pass, in entry-ID order, then
+    /// file order.
     fn match_rules(&mut self, world: &World, occurrence: &Occurrence) {
         let Some(data) = world.get_resource::<DataRegistry>() else {
             return;
         };
+        let table = world.get_resource::<DamageTypeTable>();
         let tags = world.get::<Tags>(occurrence.subject);
+        let Self { matched, masks, .. } = self;
+        let mut mask = |name: &str| -> DamageKinds {
+            if let Some(&kinds) = masks.get(name) {
+                return kinds;
+            }
+            let kinds = table.map_or(DamageKinds::NONE, |table| table.mask_of(name));
+            masks.insert(name.to_owned(), kinds);
+            kinds
+        };
         for id in data.ids(CUE_RULES) {
             let Some(rules) = data.get::<CueRules>(id) else {
                 continue;
             };
             for (i, rule) in rules.0.iter().enumerate() {
-                if rule.on == occurrence.event && rule.filter.matches(tags) {
-                    self.matched
-                        .push((format!("{id}.{i}"), Arc::clone(&rule.actions)));
+                if rule.on == occurrence.event
+                    && rule.filter.matches(tags)
+                    && (rule.kind.is_everything() || rule.kind.matches(occurrence.kinds, &mut mask))
+                {
+                    matched.push((format!("{id}.{i}"), Arc::clone(&rule.actions)));
                 }
             }
         }
@@ -1490,11 +1664,20 @@ impl Reactor {
                 });
             }
             ActionKind::Flash => start_flash(world, subject),
-            ActionKind::Label(style) => {
+            ActionKind::Label(Some(style)) => {
                 let Some(amount) = occurrence.amount else {
                     return skip(world, NO_AMOUNT);
                 };
                 float_label(world, style, occurrence.position, amount);
+            }
+            ActionKind::Label(None) => {
+                let Some(amount) = occurrence.amount else {
+                    return skip(world, NO_AMOUNT);
+                };
+                let Some(style) = label_style(world, occurrence.kinds) else {
+                    return skip(world, NO_STYLE);
+                };
+                float_label(world, &style, occurrence.position, amount);
             }
         }
         trace(world, subject, || TraceKind::Cue {
@@ -1557,6 +1740,7 @@ impl Reactor {
     /// The step's occurrences, from every source in order.
     fn read(&mut self, world: &mut World) {
         let Self {
+            parts,
             damaged,
             zones,
             cooldowns,
@@ -1567,6 +1751,20 @@ impl Reactor {
             occurrences,
             ..
         } = self;
+        if let Some(queue) = world.get_resource::<EventQueue<DamagedPart>>() {
+            for event in parts.read(queue) {
+                occurrences.push(Occurrence {
+                    event: DAMAGED_PART,
+                    subject: event.entity,
+                    position: event
+                        .position
+                        .unwrap_or_else(|| point_of(world, event.entity)),
+                    amount: Some(event.amount),
+                    other: event.source,
+                    kinds: event.kinds,
+                });
+            }
+        }
         if let Some(queue) = world.get_resource::<EventQueue<Damaged>>() {
             for event in damaged.read(queue) {
                 let position = event
@@ -1579,6 +1777,7 @@ impl Reactor {
                     position,
                     amount,
                     other: event.source,
+                    kinds: event.kinds,
                 });
                 if event.killed {
                     occurrences.push(Occurrence {
@@ -1587,6 +1786,7 @@ impl Reactor {
                         position,
                         amount,
                         other: event.source,
+                        kinds: event.kinds,
                     });
                 }
             }
@@ -1598,6 +1798,7 @@ impl Reactor {
                 position: event.position,
                 amount: None,
                 other: Some(event.entity),
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<CooldownElapsed>>() {
@@ -1607,6 +1808,7 @@ impl Reactor {
                 position: point_of(world, event.entity),
                 amount: None,
                 other: None,
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Struck>>() {
@@ -1616,6 +1818,7 @@ impl Reactor {
                 position: event.position,
                 amount: Some(event.amount),
                 other: Some(event.target),
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<Healed>>() {
@@ -1625,6 +1828,7 @@ impl Reactor {
                 position: point_of(world, event.entity),
                 amount: Some(event.amount),
                 other: event.source,
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<PickedUp>>() {
@@ -1634,6 +1838,7 @@ impl Reactor {
                 position: event.position,
                 amount: None,
                 other: Some(event.by),
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(queue) = world.get_resource::<EventQueue<ProjectileExpired>>() {
@@ -1643,6 +1848,7 @@ impl Reactor {
                 position: event.position,
                 amount: None,
                 other: None,
+                kinds: DamageKinds::NONE,
             }));
         }
         if let Some(mut sources) = world.remove_resource::<CueSources>() {
@@ -1760,7 +1966,7 @@ fn describe_cues(world: &mut World) {
             .field(FieldDescription::new(
                 "label",
                 FieldType::Shape("label_style"),
-                "the event's amount floated at its position",
+                "the event's amount floated at its position; on `damaged_part`, `{}` floats it in its type's `label_style`",
             ))
             .field(FieldDescription::new(
                 "roll",
@@ -1918,6 +2124,14 @@ fn describe_cues(world: &mut World) {
                 "filter",
                 FieldType::Filter,
                 "the subjects it runs for; the load checks its tags",
+            )
+            .default("{}"),
+        )
+        .field(
+            FieldDescription::new(
+                "kind",
+                FieldType::Filter,
+                "the occurrences it runs for by their damage kinds, each a declared damage type or an ancestor of one; `damaged`, `killed` and `damaged_part` only",
             )
             .default("{}"),
         )

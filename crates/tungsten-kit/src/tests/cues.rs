@@ -43,19 +43,110 @@ fn rules(value: Value) -> Result<CueRules, serde_json::Error> {
 /// The `cue_rules` kind's check on `value`.
 fn check_rules(world: &mut World, value: Value) -> Result<(), String> {
     let rules = rules(value).map_err(|e| e.to_string())?;
-    let world = &*world;
-    rules
-        .0
-        .iter()
-        .enumerate()
-        .try_for_each(|(i, rule)| {
-            let event = event_info(world, &format!("{i}.on"), &rule.on)?;
-            for (field, name) in &rule.names {
-                check_declared(world, &format!("{i}.filter.{field}"), name)?;
-            }
-            check_actions(world, &format!("{i}.do"), event, &rule.actions)
-        })
+    check_rule_list(&rules, world)
         .map_err(|e| format!("unknown {} `{}` at {}", e.kind, e.id, e.field))
+}
+
+/// The rig with health and the damage types `elemental.fire` and
+/// `elemental.cold` declared.
+fn typed_rig() -> World {
+    let (mut world, mut schedule) = rig();
+    crate::TagsPlugin::new()
+        .with_tags(["elemental.fire", "elemental.cold"])
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(json!({ "elemental.fire": {}, "elemental.cold": {} })).unwrap();
+    world.resource_mut::<DataRegistry>().insert("game", types);
+    world
+}
+
+#[test]
+fn a_kind_filter_on_an_event_without_kinds_or_an_unknown_type_fails_the_load() {
+    let mut world = typed_rig();
+    for good in [
+        json!([{ "on": "damaged_part", "kind": { "any": ["elemental"] }, "do": [] }]),
+        json!([{ "on": "killed", "kind": { "all": ["elemental.fire"], "none": ["elemental.cold"] }, "do": [] }]),
+        json!([{ "on": "damaged", "kind": {}, "do": [] }]),
+        json!([{ "on": "hit", "do": [] }]),
+    ] {
+        assert!(check_rules(&mut world, good.clone()).is_ok(), "{good}");
+    }
+    let cases = [
+        (
+            json!([{ "on": "hit", "kind": { "any": ["elemental"] }, "do": [] }]),
+            "unknown cue event with damage kinds `hit` at 0.kind",
+        ),
+        (
+            json!([{ "on": "damaged", "do": [] }, { "on": "zone_entered", "kind": { "none": ["elemental"] }, "do": [] }]),
+            "unknown cue event with damage kinds `zone_entered` at 1.kind",
+        ),
+        (
+            json!([{ "on": "damaged", "kind": { "any": ["elemental.acid"] }, "do": [] }]),
+            "unknown damage type `elemental.acid` at 0.kind.any.0",
+        ),
+        (
+            json!([{ "on": "damaged_part", "kind": { "all": ["elemental", "team"] }, "do": [] }]),
+            "unknown damage type `team` at 0.kind.all.1",
+        ),
+    ];
+    for (value, error) in cases {
+        assert_eq!(check_rules(&mut world, value).unwrap_err(), error);
+    }
+    for bad in [
+        json!([{ "on": "damaged", "kind": { "any": ["Fire"] }, "do": [] }]),
+        json!([{ "on": "damaged", "kind": { "some": ["fire"] }, "do": [] }]),
+    ] {
+        assert!(rules(bad.clone()).is_err(), "{bad}");
+    }
+    let rule: CueRuleDef = serde_json::from_value(
+        json!({ "on": "killed", "kind": { "any": ["elemental"] }, "do": [] }),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(rule).unwrap()["kind"],
+        json!({ "any": ["elemental"] })
+    );
+}
+
+#[test]
+fn a_style_less_label_is_refused_outside_damaged_part() {
+    let (mut world, mut schedule) = rig();
+    assert!(
+        check(
+            &world,
+            &json!({ "damaged_part": [{ "label": {} }, { "label": { "font": "sans" } }] })
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        check(&world, &json!({ "damaged": [{ "label": {} }] })).unwrap_err(),
+        "component `cues`, field `damaged.0.label`: unknown cue event with a damage type's label style `damaged`"
+    );
+    assert_eq!(
+        check(&world, &json!({ "zone_entered": [{ "label": {} }] })).unwrap_err(),
+        "component `cues`, field `zone_entered.0.label`: unknown cue event with an amount `zone_entered`"
+    );
+    assert_eq!(
+        check_rules(
+            &mut world,
+            json!([{ "on": "killed", "do": [{ "label": {} }] }])
+        )
+        .unwrap_err(),
+        "unknown cue event with a damage type's label style `killed` at 0.do.0.label"
+    );
+    CuesOnEvent::<Looted>::new("looted", looted).build(&mut schedule, &mut world);
+    assert!(check(&world, &json!({ "looted": [{ "label": {} }] })).is_err());
+    assert_eq!(
+        serde_json::to_value(CueAction::type_label()).unwrap(),
+        json!({ "label": {} })
+    );
+    assert_eq!(
+        serde_json::from_value::<CueAction>(json!({ "label": {} })).unwrap(),
+        CueAction::type_label()
+    );
+    assert_eq!(CueAction::type_label().name(), "label");
+    assert!(serde_json::from_value::<CueAction>(json!({ "label": { "size": 20 } })).is_err());
 }
 
 #[test]
@@ -835,4 +926,309 @@ mod running {
                 .any(|line| line.starts_with("`ruby` by cues spawned nothing"))
         );
     }
+}
+
+/// A World running the cues with health, counters, a command buffer, a
+/// trace, the frame's labels, the prefabs `puff` and `smoke`, and the
+/// damage types `entry` defines, each declared as a tag.
+fn typed_running(entry: Value) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    world.insert_resource(CommandBuffer::new());
+    world.insert_resource(crate::foundation::trace::KitTrace::default());
+    world.insert_resource(tungsten_core::WorldLabels::default());
+    let mut prefabs = PrefabRegistry::new();
+    for name in ["puff", "smoke"] {
+        let prefab: PrefabData = serde_json::from_value(json!({ "tag": name })).unwrap();
+        prefabs.insert(name.to_string(), prefab);
+    }
+    world.insert_resource(prefabs);
+    let mut schedule = Schedule::new();
+    let declared: Vec<String> = entry.as_object().unwrap().keys().cloned().collect();
+    crate::TagsPlugin::new()
+        .with_tags(declared)
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    crate::CountersPlugin.build(&mut schedule, &mut world);
+    CuesPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    define(&mut world, entry);
+    (world, schedule)
+}
+
+/// Puts `entry` in place as the `damage_types` entry `game`, as a reload
+/// replaces it.
+fn define(world: &mut World, entry: Value) {
+    let types: crate::damage::kinds::DamageTypes = serde_json::from_value(entry).unwrap();
+    world.resource_mut::<DataRegistry>().insert("game", types);
+}
+
+/// One fixed step of 1/60 s, its spawns flushed.
+fn typed_step(world: &mut World, schedule: &mut Schedule) {
+    world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+    world.resource_mut::<Time>().enter_fixed_step();
+    schedule.run_stage(tungsten_core::Stage::FixedUpdate, world, |_, _| {});
+    world.resource_mut::<Time>().leave_fixed_steps();
+    let mut commands = world.remove_resource::<CommandBuffer>().unwrap();
+    world.flush_reusing(&mut commands);
+    world.insert_resource(commands);
+}
+
+fn hit(world: &mut World, target: Entity, parts: &[(f32, &[&str])]) -> crate::Hit {
+    let parts = parts.iter().map(|&(amount, names)| {
+        crate::DamagePart::new(amount).with_tags(Tags::new(names.iter().copied()))
+    });
+    crate::DamageRequest::from_parts(target, parts).apply(world)
+}
+
+fn game_count(world: &World, name: &str) -> i64 {
+    world
+        .get_resource::<Counters>()
+        .map_or(0, |counters| counters.get(name))
+}
+
+fn insert_rule_list(world: &mut World, id: &str, value: Value) {
+    let rules: CueRules = serde_json::from_value(value).unwrap();
+    world.resource_mut::<DataRegistry>().insert(id, rules);
+}
+
+#[test]
+fn damaged_part_runs_before_damaged_in_each_pass_under_kit_rng() {
+    let (mut world, mut schedule) = typed_running(json!({ "fire": {}, "ice": {} }));
+    let part_table = WeightedTable::new()
+        .with_entry("puff", 1.0)
+        .with_entry("smoke", 1.0);
+    let hit_table = WeightedTable::new()
+        .with_entry("smoke", 3.0)
+        .with_entry("puff", 1.0);
+    let part_roll = || CueAction::roll(DataRef::inline(part_table.clone()));
+    let hit_roll = || CueAction::roll(DataRef::inline(hit_table.clone()));
+    insert_rule_list(
+        &mut world,
+        "r",
+        json!([
+            { "on": "damaged_part", "do": [{ "roll": { "entries": [{ "prefab": "puff", "weight": 1 }, { "prefab": "smoke", "weight": 1 }] } }] },
+            { "on": "damaged", "do": [{ "roll": { "entries": [{ "prefab": "smoke", "weight": 3 }, { "prefab": "puff", "weight": 1 }] } }] }
+        ]),
+    );
+    let golem = world.spawn_with((
+        crate::Health::new(100.0),
+        Cues::new()
+            .on("damaged_part", [part_roll()])
+            .on("damaged", [hit_roll()]),
+    ));
+    hit(&mut world, golem, &[(1.0, &["fire"]), (1.0, &["ice"])]);
+    hit(&mut world, golem, &[(1.0, &["ice"]), (1.0, &["fire"])]);
+    let mut replay = world.resource::<KitRng>().clone();
+    typed_step(&mut world, &mut schedule);
+    let trace = world.resource::<crate::foundation::trace::KitTrace>();
+    let cues: Vec<String> = trace
+        .about(golem)
+        .filter_map(|entry| match &entry.kind {
+            TraceKind::Cue { event, rule, .. } => {
+                Some(format!("{event} {}", rule.as_deref().unwrap_or("own")))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut expected = vec!["damaged_part own".to_string(); 4];
+    expected.extend(vec!["damaged own".to_string(); 2]);
+    expected.extend(vec!["damaged_part r.0".to_string(); 4]);
+    expected.extend(vec!["damaged r.1".to_string(); 2]);
+    assert_eq!(cues, expected, "each pass runs every part before any total");
+    let spawned: Vec<String> = trace
+        .about(golem)
+        .filter_map(|entry| match &entry.kind {
+            TraceKind::Spawn { prefab, .. } => Some(prefab.clone()),
+            _ => None,
+        })
+        .collect();
+    let order = [&part_table; 4]
+        .into_iter()
+        .chain([&hit_table; 2])
+        .chain([&part_table; 4])
+        .chain([&hit_table; 2]);
+    let drawn: Vec<String> = order
+        .map(|table| table.draw(&mut replay).unwrap().to_owned())
+        .collect();
+    assert_eq!(spawned, drawn, "the rolls drew in that order");
+}
+
+#[test]
+fn a_rules_kind_filter_matches_by_type_and_ancestor() {
+    let (mut world, mut schedule) =
+        typed_running(json!({ "elemental.fire": {}, "elemental.cold": {}, "physical": {} }));
+    let count = |name: &str| json!([{ "counter": { "name": name, "add": 1, "target": "game" } }]);
+    insert_rule_list(
+        &mut world,
+        "kinds",
+        json!([
+            { "on": "damaged_part", "kind": { "any": ["elemental"] }, "do": count("elemental") },
+            { "on": "damaged_part", "kind": { "all": ["elemental.fire"] }, "do": count("fire") },
+            { "on": "damaged_part", "kind": { "none": ["elemental"] }, "do": count("not_elemental") },
+            { "on": "damaged_part", "kind": { "any": ["physical"] }, "do": count("physical") },
+            { "on": "damaged", "kind": { "all": ["elemental.fire", "physical"] }, "do": count("mixed") },
+            { "on": "killed", "kind": { "any": ["elemental.cold"] }, "do": count("cold_kill") }
+        ]),
+    );
+    let golem = world.spawn_with((crate::Health::new(100.0),));
+    let wisp = world.spawn_with((crate::Health::new(1.0),));
+    hit(
+        &mut world,
+        golem,
+        &[(1.0, &["elemental.fire"]), (1.0, &["physical"])],
+    );
+    crate::damage(&mut world, golem, 1.0);
+    assert_eq!(
+        hit(&mut world, wisp, &[(5.0, &["elemental.cold"])]),
+        crate::Hit::Killed
+    );
+    typed_step(&mut world, &mut schedule);
+    let counts: Vec<(&str, i64)> = [
+        "elemental",
+        "fire",
+        "not_elemental",
+        "physical",
+        "mixed",
+        "cold_kill",
+    ]
+    .into_iter()
+    .map(|name| (name, game_count(&world, name)))
+    .collect();
+    assert_eq!(
+        counts,
+        [
+            ("elemental", 2),
+            ("fire", 1),
+            ("not_elemental", 2),
+            ("physical", 1),
+            ("mixed", 1),
+            ("cold_kill", 1)
+        ],
+        "fire and cold under `elemental`; the untyped and the physical part pass `none`; the total and the kill read the hit's kinds"
+    );
+}
+
+#[test]
+fn a_damaged_part_label_takes_its_types_style_unless_it_names_one() {
+    let style = |color: [f32; 4]| json!({ "label_style": { "font": "sans", "color": color } });
+    let entry = |fire: [f32; 4]| {
+        json!({
+            "elemental": style([1.0, 1.0, 0.0, 1.0]),
+            "elemental.fire": style(fire),
+            "elemental.cold": {},
+            "tie.b": style([0.0, 1.0, 0.0, 1.0]),
+            "tie.a": style([1.0, 0.0, 1.0, 1.0]),
+            "plain": {}
+        })
+    };
+    let (mut world, mut schedule) = typed_running(entry([1.0, 0.0, 0.0, 1.0]));
+    let golem = world.spawn_with((
+        crate::Health::new(1000.0),
+        Cues::new().on("damaged_part", [CueAction::type_label()]),
+    ));
+    let named = world.spawn_with((
+        crate::Health::new(1000.0),
+        Cues::new().on("damaged_part", [CueAction::label(LabelStyle::new("mono"))]),
+    ));
+    let drawn = |world: &mut World, schedule: &mut Schedule| -> Vec<(String, String, [u8; 4])> {
+        world.resource_mut::<Time>().advance_frame(0.0);
+        schedule.run_stage(tungsten_core::Stage::PostUpdate, world, |_, _| {});
+        let mut labels: Vec<(String, String, [u8; 4])> = world
+            .resource_mut::<tungsten_core::WorldLabels>()
+            .drain()
+            .map(|label| (label.text, label.font_id, label.color))
+            .collect();
+        labels.sort();
+        labels
+    };
+    hit(
+        &mut world,
+        golem,
+        &[
+            (1.0, &["elemental.fire"]),
+            (2.0, &["elemental.cold"]),
+            (3.0, &["tie.b", "tie.a"]),
+        ],
+    );
+    hit(&mut world, named, &[(4.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        drawn(&mut world, &mut schedule),
+        [
+            ("1".to_string(), "sans".to_string(), [255, 0, 0, 255]),
+            ("2".to_string(), "sans".to_string(), [255, 255, 0, 255]),
+            ("3".to_string(), "sans".to_string(), [255, 0, 255, 255]),
+            ("4".to_string(), "mono".to_string(), [255, 255, 255, 255]),
+        ],
+        "its own style, its ancestor's, the first of a tie, and a named style as it is"
+    );
+
+    // A reload restyles; a part whose types set no style, or untyped,
+    // skips its label and the trace says why.
+    define(&mut world, entry([0.0, 0.0, 1.0, 1.0]));
+    world.resource_mut::<Time>().advance_frame(1.0);
+    schedule.run_stage(tungsten_core::Stage::PostUpdate, &mut world, |_, _| {});
+    world
+        .resource_mut::<tungsten_core::WorldLabels>()
+        .drain()
+        .for_each(drop);
+    world.insert_resource(crate::foundation::trace::KitTrace::default());
+    hit(
+        &mut world,
+        golem,
+        &[(5.0, &["elemental.fire"]), (6.0, &["plain"])],
+    );
+    crate::damage(&mut world, golem, 7.0);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        drawn(&mut world, &mut schedule),
+        [("5".to_string(), "sans".to_string(), [0, 0, 255, 255])]
+    );
+    let skips = world
+        .resource::<crate::foundation::trace::KitTrace>()
+        .about(golem)
+        .filter(|entry| {
+            matches!(
+                entry.kind,
+                TraceKind::Skipped {
+                    event: "damaged_part",
+                    action: "label",
+                    why: "the part's types set no label style"
+                }
+            )
+        })
+        .count();
+    assert_eq!(skips, 2);
+}
+
+#[test]
+fn a_kind_mask_follows_a_type_a_reload_adds() {
+    let (mut world, mut schedule) =
+        typed_running(json!({ "elemental.fire": {}, "elemental.cold": {} }));
+    define(&mut world, json!({ "elemental.fire": {} }));
+    insert_rule_list(
+        &mut world,
+        "kinds",
+        json!([{ "on": "damaged_part", "kind": { "any": ["elemental"] }, "do": [{ "counter": { "name": "elemental", "add": 1, "target": "game" } }] }]),
+    );
+    let golem = world.spawn_with((crate::Health::new(100.0),));
+    hit(&mut world, golem, &[(1.0, &["elemental.fire"])]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        game_count(&world, "elemental"),
+        1,
+        "the mask of `elemental` kept"
+    );
+    define(
+        &mut world,
+        json!({ "elemental.fire": {}, "elemental.cold": {} }),
+    );
+    hit(&mut world, golem, &[(1.0, &["elemental.cold"])]);
+    typed_step(&mut world, &mut schedule);
+    assert_eq!(
+        game_count(&world, "elemental"),
+        2,
+        "the new type joins the name's mask"
+    );
 }

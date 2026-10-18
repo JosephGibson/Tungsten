@@ -1,4 +1,5 @@
 use super::*;
+use serde_json::json;
 
 /// A World with a clock, the live labels and the frame's labels.
 fn world() -> World {
@@ -113,4 +114,33 @@ fn without_frame_labels_they_still_age() {
     world.resource_mut::<Time>().advance_frame(0.2);
     label_tick(&mut world);
     assert_eq!(world.resource::<LiveLabels>().len(), 0);
+}
+
+#[test]
+fn an_empty_label_takes_no_style_and_a_partial_one_needs_a_font() {
+    let empty: LabelDef = serde_json::from_value(json!({})).unwrap();
+    assert!(empty.0.is_none());
+    assert_eq!(serde_json::to_value(LabelDef(None)).unwrap(), json!({}));
+    let named: LabelDef = serde_json::from_value(json!({ "font": "sans", "size": 20 })).unwrap();
+    assert_eq!(named.0, Some(LabelStyle::new("sans").with_size(20.0)));
+    let written = serde_json::to_value(named).unwrap();
+    assert_eq!(written["font"], "sans");
+    assert_eq!(written["rise"], 32.0, "every field, as a style writes it");
+    let partial = serde_json::from_value::<LabelDef>(json!({ "size": 20 }))
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(partial.contains("names its font"), "{partial}");
+    for bad in [
+        json!({ "font": "" }),
+        json!({ "font": "sans", "size": 0 }),
+        json!({ "color": [1, 1, 1, 1] }),
+        json!({ "font": "sans", "glow": 1 }),
+        json!({ "font": "sans", "rise": "up" }),
+    ] {
+        assert!(
+            serde_json::from_value::<LabelDef>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
 }

@@ -2125,6 +2125,7 @@ fn the_trace_tells_why_an_entity_died() {
     assert_eq!(
         story,
         [
+            "damaged_part 3",
             "damaged 3",
             "killed 3",
             "killed: despawn (own cue)",
@@ -2140,10 +2141,10 @@ fn the_trace_tells_why_an_entity_died() {
     // The hit came between frames; the cue ran in the next frame's step.
     let entries: Vec<_> = trace.about(slime).collect();
     assert_eq!(
-        entries[0].step, entries[2].step,
+        entries[0].step, entries[3].step,
         "pushed outside the steps: the next one"
     );
-    assert_eq!(entries[2].frame, entries[0].frame + 1);
+    assert_eq!(entries[3].frame, entries[0].frame + 1);
 }
 
 // M64's motion and facing, each item through the engine's frame.

@@ -2,7 +2,8 @@
 //! nest, a trap zone, a drone on a loop and a bolt that leaves its region;
 //! M64's seeker, coward, crates, sentry, wielder and blades, rovers,
 //! brawler, pet and gem; M65's ranger and its embers, ghouls, their bursts
-//! and drops, orbs and a knight.
+//! and drops, orbs and a knight; M66's fantasy damage types: a spellblade
+//! and a golem, a pyromancer, its firebolts and a ward.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -16,9 +17,9 @@ use super::{
     teleport, traced_steps,
 };
 use crate::kit::{
-    Aim, CharacterAnimator, CooldownElapsed, Counters, Damaged, Facing, Health, Hit, HitFlash,
-    KitPlugins, KitRng, Modifier, ProjectileExpired, Shield, Source, Stats, Steering, Struck, Tags,
-    TopDownMover, ZoneEntered, damage, knock_back,
+    Aim, CharacterAnimator, Conversion, CooldownElapsed, Counters, Damaged, DamagedPart, Facing,
+    Health, Hit, HitFlash, KitPlugins, KitRng, Modifier, Penetration, ProjectileExpired, Shield,
+    Source, Stats, Steering, Struck, Tags, TopDownMover, ZoneEntered, damage, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -717,6 +718,165 @@ fn a_ghouls_touch_hurts_the_ranger_each_interval() {
         assert_eq!(
             harness.world().get::<Health>(ranger).unwrap().current(),
             2.0
+        );
+    }
+}
+
+/// The world labels the last frame drew: each text with its colour, sorted.
+fn typed_labels(harness: &Harness) -> Vec<(String, [u8; 4])> {
+    let mut drawn: Vec<(String, [u8; 4])> = harness
+        .draw()
+        .unwrap()
+        .world_labels
+        .iter()
+        .map(|run| (run.content.clone(), run.color))
+        .collect();
+    drawn.sort();
+    drawn
+}
+
+/// The parts of `entity`'s hits the last frame sent: each amount with its
+/// kinds by name.
+fn parts_on(harness: &Harness, entity: Entity) -> Vec<(f32, Vec<String>)> {
+    harness
+        .events::<DamagedPart>()
+        .filter(|part| part.entity == entity)
+        .map(|part| {
+            let kinds = part.kinds.names(harness.world());
+            (part.amount, kinds.into_iter().map(str::to_owned).collect())
+        })
+        .collect()
+}
+
+/// Steps until `entity` is hit, at most `seconds` of game time; the frame
+/// that hit it is the last.
+fn step_until_hit(harness: &mut Harness, entity: Entity, seconds: f32, dt: f32) {
+    for _ in 0..frames_for(seconds, dt) {
+        harness.step(1);
+        if harness
+            .events::<DamagedPart>()
+            .any(|part| part.entity == entity)
+        {
+            return;
+        }
+    }
+    panic!("dt {dt}: no hit within {seconds} s");
+}
+
+fn close(a: f32, b: f32) -> bool {
+    (a - b).abs() < 1e-4
+}
+
+/// `parts` match `expected` amount for amount, within 1e-4, kinds exactly.
+fn parts_match(parts: &[(f32, Vec<String>)], expected: &[(f32, &[&str])]) -> bool {
+    parts.len() == expected.len()
+        && parts
+            .iter()
+            .zip(expected)
+            .all(|((amount, kinds), (want, names))| {
+                close(*amount, *want) && kinds.iter().map(String::as_str).eq(names.iter().copied())
+            })
+}
+
+const RED: [u8; 4] = [255, 0, 0, 255];
+const CYAN: [u8; 4] = [0, 255, 255, 255];
+const BLUE: [u8; 4] = [0, 0, 255, 255];
+const WHITE: [u8; 4] = [255, 255, 255, 255];
+
+#[test]
+fn a_spellblades_typed_hit_converts_penetrates_resists_and_labels_each_part() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let golem = spawn(&mut harness, "golem", [300.0, 300.0]);
+        spawn(&mut harness, "spellblade", [300.0, 300.0]);
+        step_until_hit(&mut harness, golem, 0.1, dt);
+        // Fire 4 and slash 8, half the slash to cold: fire 4 at 0.8 + 0.25
+        // capped at 1 and 0.5 + 0.25, slash 4 at 0.5, cold 4 at 0.8.
+        let parts = parts_on(&harness, golem);
+        assert!(
+            parts_match(
+                &parts,
+                &[
+                    (3.0, &["elemental", "elemental.fire"]),
+                    (2.0, &["physical", "physical.slash"]),
+                    (3.2, &["elemental", "elemental.cold"]),
+                ]
+            ),
+            "dt {dt}: {parts:?}"
+        );
+        let hits: Vec<Damaged> = harness
+            .events::<Damaged>()
+            .filter(|event| event.entity == golem)
+            .copied()
+            .collect();
+        assert_eq!(hits.len(), 1, "dt {dt}: one Damaged");
+        assert!(close(hits[0].amount, 8.2), "dt {dt}: {}", hits[0].amount);
+        assert_eq!(
+            hits[0].kinds.names(harness.world()),
+            [
+                "elemental",
+                "elemental.cold",
+                "elemental.fire",
+                "physical",
+                "physical.slash"
+            ]
+        );
+        let health = harness.world().get::<Health>(golem).unwrap().current();
+        assert!(close(health, 11.8), "dt {dt}: {health}");
+        assert_eq!(
+            harness.world().resource::<Counters>().get("elemental_hits"),
+            2,
+            "dt {dt}: the rule's `any: [elemental]` passes fire and cold"
+        );
+        assert_eq!(
+            typed_labels(&harness),
+            [
+                ("2".to_string(), CYAN),
+                ("3".to_string(), RED),
+                ("3.2".to_string(), BLUE),
+                ("8.2".to_string(), WHITE),
+            ],
+            "dt {dt}: each part in its type's style, the hit in the combat rule's"
+        );
+    }
+}
+
+#[test]
+fn a_pyromancers_bolts_take_its_penetration_and_conversion() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let pyromancer = spawn(&mut harness, "pyromancer", [100.0, 300.0]);
+        let ward = spawn(&mut harness, "ward", [200.0, 300.0]);
+        step_until_hit(&mut harness, ward, 1.5, dt);
+        // Its conversion halves fire 8 into toxic 4, to which the ward is
+        // immune; fire 4 takes its 0.5 points over the ward's 0.25.
+        let parts = parts_on(&harness, ward);
+        assert!(
+            parts_match(&parts, &[(3.0, &["elemental", "elemental.fire"])]),
+            "dt {dt}: {parts:?}"
+        );
+        let hit = harness
+            .events::<Damaged>()
+            .find(|event| event.entity == ward)
+            .copied()
+            .unwrap();
+        assert_eq!((hit.amount, hit.source), (3.0, Some(pyromancer)));
+        assert_eq!(harness.world().get::<Health>(ward).unwrap().current(), 7.0);
+        assert_eq!(
+            typed_labels(&harness),
+            [("3".to_string(), RED), ("3".to_string(), WHITE)],
+            "dt {dt}"
+        );
+        // Without its components the next bolt deals fire 8 at 0.25.
+        let world = harness.world_mut();
+        world.remove_component::<Penetration>(pyromancer);
+        world.remove_component::<Conversion>(pyromancer);
+        harness.step(1);
+        step_until_hit(&mut harness, ward, 1.5, dt);
+        let parts = parts_on(&harness, ward);
+        assert!(
+            parts_match(&parts, &[(2.0, &["elemental", "elemental.fire"])]),
+            "dt {dt}: {parts:?}"
         );
     }
 }

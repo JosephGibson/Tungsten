@@ -299,6 +299,9 @@ pub enum FieldType {
     Shape(&'static str),
     /// An entry of this data kind: its ID, or the entry written in place.
     Data(&'static str),
+    /// A hit's damage: a number of at least 0, or an object of declared
+    /// damage types to amounts of at least 0, one of them above 0.
+    Damage,
 }
 
 impl FieldType {
@@ -333,6 +336,9 @@ impl FieldType {
             FieldType::Object(text) => (*text).to_string(),
             FieldType::Shape(name) => format!("shape {name}"),
             FieldType::Data(kind) => format!("{kind} ID or entry"),
+            FieldType::Damage => {
+                "f32 (>= 0), or damage type → f32 (>= 0) with one above 0".to_string()
+            }
         }
     }
 }

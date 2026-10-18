@@ -1,5 +1,13 @@
 [
   "team.player",
   "team.enemy",
-  "damage.fire"
+  "damage.fire",
+  "physical.slash",
+  "physical.pierce",
+  "physical.smash",
+  "elemental.fire",
+  "elemental.cold",
+  "elemental.lightning",
+  "toxic",
+  "chaos"
 ]

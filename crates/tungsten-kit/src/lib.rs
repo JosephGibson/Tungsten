@@ -132,9 +132,15 @@
 //!   `damage_flash` material ([`HIT_FLASH_MATERIAL`]). [`DamageRequest`]
 //!   and [`HealRequest`]: the damage pipeline that hitboxes, contact damage,
 //!   projectiles and a game's Rust share, whose requests carry a source,
-//!   damage tags, a position, a knockback and a crit flag and resolve at
+//!   damage types, a position, a knockback and a crit flag and resolve at
 //!   once or once a step in sorted order, through [`Resist`] and a
-//!   [`Shield`] to health.
+//!   [`Shield`] to health. A hit is a list of [`DamagePart`]s, each an
+//!   amount with its damage types, which the game declares in the
+//!   `damage_types` data kind, none named by the kit: each part goes
+//!   through [`Conversion`], [`Penetration`] and the target's [`Resist`],
+//!   with its modifiers, on its own, then the parts fall once through the
+//!   shield and health, a [`DamagedPart`] out for each part and one
+//!   [`Damaged`] for the hit, each carrying its [`DamageKinds`].
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
 //!   `cues` and the shared `cue_rules` kind. [`WeightedTable`]: the
@@ -188,10 +194,11 @@ mod transform;
 
 pub use damage::defense::{Resist, SHIELD_TICK, Shield};
 pub use damage::health::{
-    Damaged, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin, Hit, HitFlash,
-    damage,
+    Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
+    Hit, HitFlash, damage,
 };
-pub use damage::pipeline::{DAMAGE_RESOLVE, DamageRequest, HealRequest, Healed, heal};
+pub use damage::kinds::{Conversion, DamageKinds, Penetration};
+pub use damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, heal};
 pub use foundation::debug::{KIT_DEBUG_DRAW, KitDebug, KitDebugPlugin};
 pub use foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, KitDescriptions,
@@ -261,21 +268,22 @@ pub mod prelude {
     pub use crate::{
         ActionInput, ActionInputPlugin, Aim, AimPlugin, AnimationPlugin, CameraTarget,
         CameraTargetPlugin, CharacterAnimator, CharacterAnimatorPlugin, Children, Clips,
-        ContactDamage, ContactDamagePlugin, Cooldown, CooldownElapsed, CooldownPlugin, Counters,
-        CountersPlugin, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin, DamageRequest, Damaged,
-        DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Facing, FacingPlugin,
-        Flags, Follow, FollowPlugin, HealRequest, Healed, Health, HealthPlugin, HierarchyPlugin,
-        Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox, Intent, KitDebug, KitDebugPlugin,
-        KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin, LabelStyle, Lifetime,
-        LifetimePlugin, LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Orbit,
-        OrbitPlugin, Oscillator, OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Phase,
-        PickedUp, Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin,
-        Projectile, ProjectileExpired, ProjectilePlugin, Resist, Shield, SoundOnEvent, Source,
-        SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit,
-        SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView,
-        StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target,
-        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, TriggerEntered, TriggerZone,
-        WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, cursor_to_world, damage,
+        ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownElapsed, CooldownPlugin,
+        Counters, CountersPlugin, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin, DamageKinds,
+        DamagePart, DamageRequest, Damaged, DamagedPart, DepthSort, DepthSortPlugin,
+        DespawnOutside, DespawnOutsidePlugin, Facing, FacingPlugin, Flags, Follow, FollowPlugin,
+        HealRequest, Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin,
+        HitShape, Hitbox, Hurtbox, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace,
+        Knockback, KnockbackPlugin, LabelStyle, Lifetime, LifetimePlugin, LinearMotion,
+        LinearMotionPlugin, LocalOffset, Modifier, Orbit, OrbitPlugin, Oscillator,
+        OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Penetration, Phase, PickedUp,
+        Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin, Projectile,
+        ProjectileExpired, ProjectilePlugin, Resist, Shield, SoundOnEvent, Source, SourcePlugin,
+        SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin,
+        StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin,
+        Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
+        TopDownMoverPlugin, TraceEntry, TraceKind, TriggerEntered, TriggerZone, WeightedTable,
+        Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin, cursor_to_world, damage,
         despawn_recursive, ensure_phases, heal, knock_back, spawn_child,
     };
 }

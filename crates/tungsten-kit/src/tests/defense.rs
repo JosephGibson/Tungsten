@@ -3,6 +3,7 @@ use serde_json::json;
 use tungsten_core::{ComponentRegistry, Plugin, Schedule, Stage};
 
 use crate::damage::health::{Health, HealthPlugin, Hit, damage};
+use crate::foundation::stats::Modifier;
 use crate::foundation::tags::TagsPlugin;
 
 /// A World with health and the tags `damage.fire` and `damage.cold`
@@ -43,10 +44,145 @@ fn resist_multiplies_the_factors_of_a_tag_and_its_ancestors() {
     let immune = resist.with_factor("damage.cold", 0.0);
     assert_eq!(immune.factor(&Tags::new(["damage.cold"])), 0.0);
     assert_eq!(
-        immune.product(&Tags::new(["damage.cold"])),
+        immune.product_with(&Tags::new(["damage.cold"]), 0.0),
         None,
         "immunity, no product"
     );
+}
+
+#[test]
+fn a_base_zero_stays_immune_under_every_modifier_and_penetration() {
+    let mut resist = Resist::new().with_factor("toxic", 0.0);
+    for (source, modifier) in [
+        ("boost", Modifier::Add(5.0)),
+        ("pct", Modifier::Pct(2.0)),
+        ("mul", Modifier::Mul(10.0)),
+        ("set", Modifier::Override(1.0)),
+    ] {
+        resist.add_modifier("toxic", source, modifier);
+        let toxic = Tags::new(["toxic"]);
+        assert_eq!(resist.factor(&toxic), 0.0, "after {source}");
+        assert_eq!(resist.product_with(&toxic, 1.0), None, "pierced by none");
+    }
+    assert_eq!(resist.base("toxic"), Some(0.0));
+    // A modifier that makes a factor 0 drops a part too, before any
+    // product, and penetration does not lift it.
+    let mut warded = Resist::new().with_factor("fire", 0.5);
+    warded.add_modifier("fire", "ward", Modifier::Mul(0.0));
+    assert_eq!(warded.product_with(&Tags::new(["fire"]), 1.0), None);
+    // Points raise a factor in (0, 1), capped at 1, and leave 1 and above.
+    let resist = Resist::new()
+        .with_factor("fire", 0.5)
+        .with_factor("ice", 1.0)
+        .with_factor("acid", 2.0);
+    assert_eq!(resist.product_with(&Tags::new(["fire"]), 0.25), Some(0.75));
+    assert_eq!(resist.product_with(&Tags::new(["fire"]), 0.75), Some(1.0));
+    assert_eq!(resist.product_with(&Tags::new(["ice"]), 0.5), Some(1.0));
+    assert_eq!(resist.product_with(&Tags::new(["acid"]), 0.5), Some(2.0));
+}
+
+#[test]
+fn modifiers_combine_as_stats_do_and_clamp_to_the_factor_bounds() {
+    let mut resist = Resist::new().with_factor("fire", 0.5);
+    resist.add_modifier("fire", "curse", Modifier::Add(0.5));
+    resist.add_modifier("fire", "hex", Modifier::Pct(0.5));
+    resist.add_modifier("fire", "doom", Modifier::Mul(2.0));
+    let fire = Tags::new(["fire"]);
+    assert_eq!(resist.factor(&fire), 3.0, "(0.5 + 0.5) × 1.5 × 2");
+    let mut stats = crate::Stats::new().with("fire", 0.5);
+    for (source, modifier) in [
+        ("curse", Modifier::Add(0.5)),
+        ("hex", Modifier::Pct(0.5)),
+        ("doom", Modifier::Mul(2.0)),
+    ] {
+        stats.add_modifier("fire", source, modifier);
+    }
+    assert_eq!(
+        stats.get("fire"),
+        Some(resist.factor(&fire)),
+        "the stat's formula"
+    );
+    resist.add_modifier("fire", "stone", Modifier::Override(0.25));
+    resist.add_modifier("fire", "glass", Modifier::Override(0.75));
+    assert_eq!(resist.factor(&fire), 0.75, "the last override wins");
+    assert_eq!(resist.remove_modifiers("glass"), 1);
+    assert_eq!(resist.factor(&fire), 0.25);
+    resist.add_modifier("fire", "huge", Modifier::Mul(1e9));
+    resist.remove_modifiers("stone");
+    assert_eq!(resist.factor(&fire), 1000.0, "clamped to 1000");
+    resist.add_modifier("fire", "sink", Modifier::Add(-1e9));
+    assert_eq!(resist.factor(&fire), 0.0, "clamped to 0");
+    // A modifier on a tag with no base works on 1 and goes with its last
+    // modifier.
+    resist.add_modifier("ice", "chill", Modifier::Mul(0.5));
+    assert_eq!(resist.factor(&Tags::new(["ice"])), 0.5);
+    assert_eq!(resist.base("ice"), None);
+    assert_eq!(resist.remove_modifiers("chill"), 1);
+    assert_eq!(resist.factor(&Tags::new(["ice"])), 1.0, "gone with it");
+    assert_eq!(resist.remove_modifiers("nobody"), 0);
+    let rows = resist.inspect_rows();
+    assert!(
+        rows[0].1.starts_with("fire × 0 (base 0.5; curse Add(0.5)"),
+        "{rows:?}"
+    );
+    assert!(
+        std::panic::catch_unwind(|| {
+            Resist::new().add_modifier("fire", "nan", Modifier::Add(f32::NAN));
+        })
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| {
+            Resist::new().add_modifier("Fire", "bad", Modifier::Add(1.0));
+        })
+        .is_err()
+    );
+}
+
+#[test]
+fn an_085_save_reads_and_modifiers_round_trip() {
+    let old: Resist = serde_json::from_value(json!({ "damage.fire": 0.5, "damage": 2 })).unwrap();
+    assert_eq!(
+        old,
+        Resist::new()
+            .with_factor("damage.fire", 0.5)
+            .with_factor("damage", 2.0)
+    );
+    assert_eq!(
+        serde_json::to_value(&old).unwrap(),
+        json!({ "damage": 2.0, "damage.fire": 0.5 }),
+        "written as 0.85 wrote it"
+    );
+    let mut cursed = old.clone();
+    cursed.add_modifier("damage.fire", "curse", Modifier::Mul(2.0));
+    cursed.add_modifier("damage.cold", "chill", Modifier::Add(-0.5));
+    let saved = serde_json::to_value(&cursed).unwrap();
+    assert_eq!(
+        saved,
+        json!({
+            "damage": 2.0,
+            "damage.cold": { "modifiers": [["chill", { "add": -0.5 }]] },
+            "damage.fire": { "base": 0.5, "modifiers": [["curse", { "mul": 2.0 }]] }
+        })
+    );
+    let back: Resist = serde_json::from_value(saved).unwrap();
+    assert_eq!(back, cursed);
+    assert_eq!(back.factor(&Tags::new(["damage.fire"])), 2.0);
+    let base_only: Resist = serde_json::from_value(json!({ "damage": { "base": 0.5 } })).unwrap();
+    assert_eq!(base_only, Resist::new().with_factor("damage", 0.5));
+    for bad in [
+        json!({ "damage": {} }),
+        json!({ "damage": { "base": 2000 } }),
+        json!({ "damage": { "base": 0.5, "modifiers": [["x", { "mul": 1e39 }]] } }),
+        json!({ "damage": { "base": 0.5, "boost": 1 } }),
+        json!({ "Damage": { "base": 0.5 } }),
+        json!({ "damage": "half" }),
+    ] {
+        assert!(
+            serde_json::from_value::<Resist>(bad.clone()).is_err(),
+            "{bad}"
+        );
+    }
 }
 
 #[test]

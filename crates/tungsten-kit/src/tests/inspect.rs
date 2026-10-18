@@ -4,11 +4,11 @@ use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
 use tungsten_core::{Bundle, InspectRegistry, Schedule, Transform};
 
 use crate::{
-    ActionInput, Aim, CameraTarget, CharacterAnimator, Cooldown, Counters, CueAction, Cues,
-    DepthSort, Facing, Flags, Follow, Health, HitFlash, Intent, KitDescriptions, KitPlugins,
-    Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator, PathFollower, SpawnChildren,
-    Spawner, SpeedLimit, Stats, StayInView, Steering, TagFilter, Tags, Target, TopDownMover, Wrap,
-    Zone, spawn_child,
+    ActionInput, Aim, CameraTarget, CharacterAnimator, Conversion, Cooldown, Counters, CueAction,
+    Cues, DepthSort, Facing, Flags, Follow, Health, HitFlash, Intent, KitDescriptions, KitPlugins,
+    Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator, PathFollower, Penetration,
+    Resist, SpawnChildren, Spawner, SpeedLimit, Stats, StayInView, Steering, TagFilter, Tags,
+    Target, TopDownMover, Wrap, Zone, spawn_child,
 };
 
 fn world() -> World {
@@ -81,6 +81,8 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
         ("pickup", "Pickup"),
         ("resist", "Resist"),
         ("shield", "Shield"),
+        ("penetration", "Penetration"),
+        ("conversion", "Conversion"),
     ] {
         assert!(described.get(scene).is_some(), "{scene} is described");
         assert!(labels.contains(&label), "{scene} has rows under {label}");
@@ -88,7 +90,7 @@ fn a_world_from_the_kit_plugins_has_rows_for_each_described_component() {
     for label in ["Intent", "Source", "Parent", "Children", "LocalOffset"] {
         assert!(labels.contains(&label), "{label}");
     }
-    assert_eq!(described.iter().count(), 39);
+    assert_eq!(described.iter().count(), 41);
 }
 
 #[test]
@@ -222,6 +224,28 @@ fn the_rows_print_each_components_state() {
         find("StayInView", "area"),
         "region (0.00, 0.00)..(640.00, 480.00)"
     );
+    let mut resist = Resist::new().with_factor("fire", 0.5);
+    resist.add_modifier("fire", "curse", Modifier::Mul(2.0));
+    let warded = world.spawn_with((
+        resist.with_factor("ice", 0.25),
+        Penetration::new().with_points("fire", 0.25),
+        Conversion::new().with_rule("fire", "ice", 0.5),
+    ));
+    let rows = rows_of(&world, warded);
+    let find = |label: &str, name: &str| -> String {
+        rows.iter()
+            .find(|(l, n, _)| *l == label && *n == name)
+            .map_or_else(
+                || panic!("no row {label}.{name} in {rows:?}"),
+                |(_, _, value)| value.clone(),
+            )
+    };
+    assert_eq!(
+        find("Resist", "resist"),
+        "fire × 1 (base 0.5; curse Mul(2.0)), ice × 0.25"
+    );
+    assert_eq!(find("Penetration", "penetration"), "fire 0.25");
+    assert_eq!(find("Conversion", "conversion"), "fire → ice × 0.5");
     let pod_rows = rows_of(&world, pod);
     assert!(
         pod_rows

@@ -1,0 +1,33 @@
+{
+  "tag": "mainframe",
+  "components": {
+    "tags": [
+      "team.enemy"
+    ],
+    "health": {
+      "max": 100
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          16,
+          16
+        ]
+      }
+    },
+    "resist": {
+      "digital": 0.5,
+      "digital.exploit": 0
+    },
+    "shield": {
+      "max": 2
+    },
+    "cues": {
+      "damaged_part": [
+        {
+          "label": {}
+        }
+      ]
+    }
+  }
+}

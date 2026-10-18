@@ -76,36 +76,53 @@ impl Stat {
         stat
     }
 
-    /// `((base + Σadd) × (1 + Σpct) × Πmul)`, replaced by the last-added
-    /// override, then clamped to the bounds and to `±f32::MAX`. The sums
-    /// and products run in `f64`, and a zero factor makes the product 0, so
-    /// no `0 × ∞` arises and the value is always finite.
+    /// The value [`modified`] makes of the base, the modifiers and the
+    /// bounds.
     fn recompute(&mut self) {
-        let mut sum = f64::from(self.base);
-        let mut pct = 1.0_f64;
-        let mut product = 1.0_f64;
-        let mut zero = false;
-        let mut over = None;
-        for (_, modifier) in &self.modifiers {
-            match *modifier {
-                Modifier::Add(v) => sum += f64::from(v),
-                Modifier::Pct(v) => pct += f64::from(v),
-                Modifier::Mul(0.0) => zero = true,
-                Modifier::Mul(v) => product *= f64::from(v),
-                Modifier::Override(v) => over = Some(f64::from(v)),
-            }
-        }
-        let raw = match over {
-            Some(value) => value,
-            None if zero || sum == 0.0 || pct == 0.0 => 0.0,
-            None => sum * pct * product,
-        };
-        let limit = f64::from(f32::MAX);
-        let value = raw
-            .clamp(f64::from(self.min), f64::from(self.max))
-            .clamp(-limit, limit);
-        self.value = value as f32;
+        self.value = modified(
+            self.base,
+            self.modifiers.iter().map(|&(_, modifier)| modifier),
+            self.min,
+            self.max,
+        );
     }
+}
+
+/// `((base + Σadd) × (1 + Σpct) × Πmul)`, replaced by the last-added
+/// override, then clamped to `[min, max]` and to `±f32::MAX`: a stat's value,
+/// and a [`Resist`](crate::Resist) factor's under its modifiers. The sums
+/// and products run in `f64`, and a zero factor makes the product 0, so no
+/// `0 × ∞` arises and the value is always finite.
+pub(crate) fn modified(
+    base: f32,
+    modifiers: impl IntoIterator<Item = Modifier>,
+    min: f32,
+    max: f32,
+) -> f32 {
+    let mut sum = f64::from(base);
+    let mut pct = 1.0_f64;
+    let mut product = 1.0_f64;
+    let mut zero = false;
+    let mut over = None;
+    for modifier in modifiers {
+        match modifier {
+            Modifier::Add(v) => sum += f64::from(v),
+            Modifier::Pct(v) => pct += f64::from(v),
+            Modifier::Mul(0.0) => zero = true,
+            Modifier::Mul(v) => product *= f64::from(v),
+            Modifier::Override(v) => over = Some(f64::from(v)),
+        }
+    }
+    let raw = match over {
+        Some(value) => value,
+        None if zero || sum == 0.0 || pct == 0.0 => 0.0,
+        None => sum * pct * product,
+    };
+    let limit = f64::from(f32::MAX);
+    let value = raw
+        .clamp(f64::from(min), f64::from(max))
+        .clamp(-limit, limit);
+    value as f32
 }
 
 /// An entity's stats: named values such as `move_speed` or `armor`, each a
@@ -251,7 +268,8 @@ impl Stats {
     /// A [`Health`]'s full health.
     pub const MAX_HEALTH: &'static str = "max_health";
     /// The damage of the entity's [`Hitbox`] and [`ContactDamage`], which
-    /// `stats_apply` writes.
+    /// `stats_apply` writes: one number, or a typed item's total, which its
+    /// parts split by their proportions.
     pub const DAMAGE: &'static str = "damage";
     /// How fast a [`Cooldown`] counts down: 1 is the game clock, 2 twice
     /// as fast, 0 holds it.
@@ -434,7 +452,8 @@ pub enum Modifier {
 }
 
 impl Modifier {
-    fn is_finite(self) -> bool {
+    /// Whether its value is finite.
+    pub(crate) fn is_finite(self) -> bool {
         match self {
             Modifier::Add(v) | Modifier::Pct(v) | Modifier::Mul(v) | Modifier::Override(v) => {
                 v.is_finite()

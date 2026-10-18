@@ -349,3 +349,66 @@ fn a_velocity_reflects_about_a_normal() {
     let back = reflect(Vec2::new(-1.0, -1.0), diagonal);
     assert!((back - Vec2::ONE).length() < 1e-5, "{back}");
 }
+
+#[test]
+fn strike_types_the_untyped_parts_with_the_items_tags() {
+    use tungsten_core::{Plugin, Schedule, Stage, Time};
+
+    let mut world = World::new();
+    world.insert_resource(Time::new());
+    let mut schedule = Schedule::new();
+    crate::TagsPlugin::new()
+        .with_tags(["fire", "ice"])
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(serde_json::json!({ "fire": {}, "ice": {} })).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+    let target = world.spawn_with((Health::new(100.0),));
+    let hitter = world.spawn();
+    let typed = HitPayload {
+        parts: vec![
+            crate::DamagePart::new(2.0),
+            crate::DamagePart::new(3.0).with_tags(Tags::new(["ice"])),
+        ],
+        penetration: None,
+        conversion: None,
+    };
+    let fire = Tags::new(["fire"]);
+    strike(
+        &mut world,
+        &Blow {
+            hitter,
+            target,
+            hitter_at: Vec2::ZERO,
+            target_at: Vec2::new(1.0, 0.0),
+            relative: Vec2::ZERO,
+            damage: 5.0,
+            tags: &fire,
+            typed: Some(&typed),
+            knockback: 0.0,
+        },
+    );
+    world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, &mut world, |_, _| {});
+    let parts: Vec<(f32, Vec<&str>)> = world
+        .resource::<EventQueue<crate::DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.kinds.names(&world)))
+        .collect();
+    assert_eq!(
+        parts,
+        [(2.0, vec!["fire"]), (3.0, vec!["ice"])],
+        "the untyped part of the item's tags, the typed one of its own"
+    );
+    let hit = world
+        .resource::<EventQueue<crate::Damaged>>()
+        .iter()
+        .next()
+        .copied()
+        .unwrap();
+    assert_eq!((hit.amount, hit.source), (5.0, Some(hitter)));
+}

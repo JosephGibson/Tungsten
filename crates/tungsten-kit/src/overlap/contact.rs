@@ -11,6 +11,8 @@ use tungsten_core::{
 };
 
 use crate::TIME_EPSILON;
+use crate::damage::kinds::{Conversion, ConversionDef, Penetration, PenetrationDef};
+use crate::damage::pipeline::DamagePart;
 use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, TOP_DOWN, describe,
     round_trip,
@@ -24,8 +26,9 @@ use crate::overlap::grid::{
     Blow, HitGrid, ensure_emitter, first_contact, spares, strike, sweep_of,
 };
 use crate::overlap::hit::{
-    HitShape, Hurtbox, Struck, TagNames, after_grid, check_names, checked_offset,
-    describe_hit_shape, ensure_grid, hit_fields, optional_offset,
+    DamageDef, HitPayload, HitShape, Hurtbox, SavedPart, Struck, TagNames, after_grid, check_names,
+    checked_offset, damage_field, damage_row, describe_hit_shape, ensure_grid, hit_fields,
+    optional_offset, parts_total, payload_from_save, payload_to_save,
 };
 
 /// [`ContactDamagePlugin`]'s system, in the overlap phase.
@@ -50,12 +53,17 @@ const DEFAULT_INTERVAL: f32 = 0.5;
 /// with neither shape hits nothing, with one warning. Composing beats
 /// options: an aura is contact damage with its own shape.
 ///
+/// Typed contact damage ([`with_parts`](Self::with_parts)) keeps its parts
+/// and splits each hit's damage among them, with its own [`Penetration`]
+/// and [`Conversion`], as a typed [`Hitbox`](crate::Hitbox) does.
+///
 /// Scene name `contact_damage`:
 /// `{ "damage": 1, "interval": 0.5, "filter": { "all": ["team.player"] }, "knockback": 420, "shape": { "circle": 28 } }`,
 /// `interval` 0.5, `tags` none, `filter` everything and `knockback` 0 by
 /// default; without `shape` it takes the hurtbox's shape and offset, and
-/// an `offset` comes only with a `shape`. It is data, without the times it
-/// keeps per target: a loaded one starts over.
+/// an `offset` comes only with a `shape`. `damage`, `pen` and `convert`
+/// take a hitbox's forms. It is data, without the times it keeps per
+/// target: a loaded one starts over.
 ///
 /// # Examples
 ///
@@ -82,6 +90,8 @@ pub struct ContactDamage {
     tags: Tags,
     filter: TagFilter,
     knockback: f32,
+    /// Typed contact damage's parts, penetration and conversion.
+    typed: Option<Box<HitPayload>>,
     /// Game seconds the item has stepped: its targets' clock.
     clock: f64,
     /// Each target it timed, by index.
@@ -118,6 +128,12 @@ struct ContactDamageFields {
     filter: TagFilter,
     #[serde(default)]
     knockback: f32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    parts: Vec<SavedPart>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pen: Option<Penetration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    convert: Option<Conversion>,
 }
 
 fn default_interval() -> f32 {
@@ -158,6 +174,7 @@ impl TryFrom<ContactDamageFields> for ContactDamage {
             tags: fields.tags,
             filter: fields.filter,
             knockback: fields.knockback,
+            typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             clock: 0.0,
             timed: Vec::new(),
         })
@@ -166,6 +183,7 @@ impl TryFrom<ContactDamageFields> for ContactDamage {
 
 impl From<ContactDamage> for ContactDamageFields {
     fn from(contact: ContactDamage) -> Self {
+        let (parts, pen, convert) = payload_to_save(contact.typed);
         Self {
             damage: contact.damage,
             interval: contact.interval,
@@ -174,6 +192,9 @@ impl From<ContactDamage> for ContactDamageFields {
             tags: contact.tags,
             filter: contact.filter,
             knockback: contact.knockback,
+            parts,
+            pen,
+            convert,
         }
     }
 }
@@ -200,9 +221,71 @@ impl ContactDamage {
             tags: Tags::default(),
             filter: TagFilter::new(),
             knockback: 0.0,
+            typed: None,
             clock: 0.0,
             timed: Vec::new(),
         }
+    }
+
+    /// The contact damage, typed: `parts` as its base parts, which no stat
+    /// writes, and their sum as its damage, split among them at each hit by
+    /// their proportions; a part without types takes its
+    /// [`with_tags`](Self::with_tags).
+    ///
+    /// # Panics
+    ///
+    /// When there is no part, or every part is 0.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::{ContactDamage, DamagePart, Penetration, Tags};
+    ///
+    /// let lava = ContactDamage::new(0.0)
+    ///     .with_parts([DamagePart::new(3.0).with_tags(Tags::new(["elemental.fire"]))])
+    ///     .with_penetration(Penetration::new().with_points("elemental", 0.5));
+    /// assert_eq!((lava.damage(), lava.parts().len()), (3.0, 1));
+    /// assert!(lava.conversion().is_none());
+    /// ```
+    #[must_use]
+    #[track_caller]
+    pub fn with_parts(mut self, parts: impl IntoIterator<Item = DamagePart>) -> Self {
+        let parts: Vec<DamagePart> = parts.into_iter().collect();
+        self.damage = parts_total("ContactDamage::with_parts", &parts);
+        self.typed.get_or_insert_default().parts = parts;
+        self
+    }
+
+    /// The contact damage, with its own `penetration`, before its source's.
+    #[must_use]
+    pub fn with_penetration(mut self, penetration: Penetration) -> Self {
+        self.typed.get_or_insert_default().penetration = Some(penetration);
+        self
+    }
+
+    /// The contact damage, with its own `conversion`, before its source's.
+    #[must_use]
+    pub fn with_conversion(mut self, conversion: Conversion) -> Self {
+        self.typed.get_or_insert_default().conversion = Some(conversion);
+        self
+    }
+
+    /// Its base parts; empty for contact damage of one number.
+    #[must_use]
+    pub fn parts(&self) -> &[DamagePart] {
+        self.typed.as_ref().map_or(&[], |typed| &typed.parts)
+    }
+
+    /// Its own penetration, when it has one.
+    #[must_use]
+    pub fn penetration(&self) -> Option<&Penetration> {
+        self.typed.as_ref()?.penetration.as_ref()
+    }
+
+    /// Its own conversion, when it has one.
+    #[must_use]
+    pub fn conversion(&self) -> Option<&Conversion> {
+        self.typed.as_ref()?.conversion.as_ref()
     }
 
     /// The contact damage, hitting a target it still touches again each
@@ -235,7 +318,8 @@ impl ContactDamage {
         self
     }
 
-    /// The contact damage, of the damage kinds `tags`.
+    /// The contact damage, of the damage types `tags`: typed contact
+    /// damage's untyped parts'.
     #[must_use]
     pub fn with_tags(mut self, tags: Tags) -> Self {
         self.tags = tags;
@@ -267,7 +351,8 @@ impl ContactDamage {
         self
     }
 
-    /// Each hit's damage, which a `damage` stat writes.
+    /// Each hit's damage, which a `damage` stat writes: one number, or typed
+    /// contact damage's total.
     #[must_use]
     pub fn damage(&self) -> f32 {
         self.damage
@@ -292,7 +377,7 @@ impl ContactDamage {
         self.own.map_or(Vec2::ZERO, |(_, offset)| offset)
     }
 
-    /// Its damage tags.
+    /// Its damage types.
     #[must_use]
     pub fn tags(&self) -> &Tags {
         &self.tags
@@ -320,12 +405,11 @@ impl ContactDamage {
 }
 
 /// `components.contact_damage` as a scene writes it, before the pairing
-/// rule.
+/// rules.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ContactDamageScene {
-    #[serde(deserialize_with = "non_negative")]
-    damage: f32,
+    damage: DamageDef,
     #[serde(default = "default_interval", deserialize_with = "positive")]
     interval: f32,
     #[serde(default)]
@@ -334,6 +418,10 @@ struct ContactDamageScene {
     offset: Option<Vec2>,
     #[serde(default)]
     tags: TagNames,
+    #[serde(default)]
+    pen: PenetrationDef,
+    #[serde(default)]
+    convert: ConversionDef,
     #[serde(default)]
     filter: TagFilterDef,
     #[serde(default, deserialize_with = "non_negative")]
@@ -344,13 +432,15 @@ struct ContactDamageScene {
 #[derive(Serialize, Deserialize)]
 #[serde(try_from = "ContactDamageScene")]
 struct ContactDamageDef {
-    damage: f32,
+    damage: DamageDef,
     interval: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     shape: Option<HitShape>,
     #[serde(with = "optional_vec2", skip_serializing_if = "Option::is_none")]
     offset: Option<Vec2>,
     tags: TagNames,
+    pen: PenetrationDef,
+    convert: ConversionDef,
     filter: TagFilterDef,
     knockback: f32,
 }
@@ -360,12 +450,15 @@ impl TryFrom<ContactDamageScene> for ContactDamageDef {
 
     fn try_from(scene: ContactDamageScene) -> Result<Self, Self::Error> {
         own_shape(scene.shape, scene.offset)?;
+        scene.damage.beside(&scene.tags)?;
         Ok(Self {
             damage: scene.damage,
             interval: scene.interval,
             shape: scene.shape,
             offset: scene.offset,
             tags: scene.tags,
+            pen: scene.pen,
+            convert: scene.convert,
             filter: scene.filter,
             knockback: scene.knockback,
         })
@@ -374,13 +467,22 @@ impl TryFrom<ContactDamageScene> for ContactDamageDef {
 
 impl From<ContactDamageDef> for ContactDamage {
     fn from(def: ContactDamageDef) -> Self {
-        let mut contact = ContactDamage::new(def.damage)
+        let mut contact = ContactDamage::new(def.damage.total())
             .with_interval(def.interval)
             .with_tags(Tags::new(def.tags.0))
             .with_filter(def.filter.into())
             .with_knockback(def.knockback);
         if let Some(shape) = def.shape {
             contact = contact.with_shape(shape, def.offset.unwrap_or(Vec2::ZERO));
+        }
+        if let Some(parts) = def.damage.parts() {
+            contact = contact.with_parts(parts);
+        }
+        if !def.pen.is_empty() {
+            contact = contact.with_penetration(def.pen.into());
+        }
+        if !def.convert.is_empty() {
+            contact = contact.with_conversion(def.convert.into());
         }
         contact
     }
@@ -418,14 +520,7 @@ impl Plugin for ContactDamagePlugin {
                     CONTACT_DAMAGE_COMPONENT,
                     "Hurts the hurtboxes its shape touches, at once and again each interval while they touch: a hazard, an aura.",
                 )
-                .field(FieldDescription::new(
-                    "damage",
-                    FieldType::F32 {
-                        min: Bound::Inclusive(0.0),
-                        max: Bound::Open,
-                    },
-                    "each hit's damage, which a `damage` stat writes; 0 is a trigger whose `hit` cues run",
-                ))
+                .field(damage_field())
                 .field(
                     FieldDescription::new(
                         "interval",
@@ -465,7 +560,10 @@ impl Plugin for ContactDamagePlugin {
         world.register_component_with_assets(
             CONTACT_DAMAGE_COMPONENT,
             |def: &ContactDamageDef, world: &World| {
-                check_names(world, Some(&def.tags), &def.filter)
+                check_names(world, Some(&def.tags), &def.filter)?;
+                def.damage.check(world)?;
+                def.pen.check(world, "pen.")?;
+                def.convert.check(world, "convert.")
             },
             |def: ContactDamageDef, _: &SpawnContext<'_>| (ContactDamage::from(def),),
         );
@@ -553,7 +651,12 @@ impl ContactRunner {
         }
         self.met
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        let (damage, tags, knockback) = (contact.damage, contact.tags.clone(), contact.knockback);
+        let (damage, tags, knockback, typed) = (
+            contact.damage,
+            contact.tags.clone(),
+            contact.knockback,
+            contact.typed.clone(),
+        );
         for &(t, index) in &self.met {
             let entry = grid.entries()[index as usize];
             let contact = world.get_mut::<ContactDamage>(hitter).unwrap();
@@ -570,6 +673,7 @@ impl ContactRunner {
                     relative: (sweep.end - sweep.start) - (entry.sweep.end - entry.sweep.start),
                     damage,
                     tags: &tags,
+                    typed: typed.as_deref(),
                     knockback,
                 },
             );
@@ -629,7 +733,11 @@ impl Inspectable for ContactDamage {
             ("contact", shape),
             (
                 "damage",
-                format!("{} every {:.2} s", self.damage, self.interval),
+                format!(
+                    "{} every {:.2} s",
+                    damage_row(self.damage, self.parts()),
+                    self.interval
+                ),
             ),
             ("timed", format!("{} targets", self.timed.len())),
         ]

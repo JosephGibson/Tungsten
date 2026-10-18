@@ -24,6 +24,153 @@ fn check(world: &World, name: &str, value: &serde_json::Value) -> Result<(), Str
         .map_err(|e| e.to_string())
 }
 
+/// A World with hit shapes, health and the damage types `physical.slash`
+/// and `elemental.fire` declared.
+fn typed_rig() -> World {
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    TagsPlugin::new()
+        .with_tags(["team.enemy", "physical.slash", "elemental.fire"])
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    HitPlugin.build(&mut schedule, &mut world);
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(json!({ "physical.slash": {}, "elemental.fire": {} })).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+    world
+}
+
+#[test]
+fn damage_takes_a_number_or_a_map_and_names_the_field_in_errors() {
+    let world = typed_rig();
+    let shape = json!({ "circle": 4 });
+    let hitbox = |extra: serde_json::Value| {
+        let mut value = json!({ "shape": shape });
+        value
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        check(&world, HITBOX, &value)
+    };
+    assert!(hitbox(json!({ "damage": 2 })).is_ok());
+    let typed = json!({
+        "damage": { "physical.slash": 8, "elemental.fire": 4 },
+        "pen": { "elemental": 0.25 },
+        "convert": [{ "from": "physical", "to": "elemental.fire", "pct": 0.5 }]
+    });
+    assert!(hitbox(typed.clone()).is_ok());
+    for (extra, error) in [
+        (
+            json!({ "damage": -1 }),
+            "component `hitbox`, field `damage`: must be finite and >= 0 (got -1)",
+        ),
+        (
+            json!({ "damage": { "physical.slash": -1 } }),
+            "component `hitbox`, field `damage.physical.slash`: must be finite and >= 0 (got -1)",
+        ),
+        (
+            json!({ "damage": { "physical.blunt": 2 } }),
+            "component `hitbox`, field `damage.physical.blunt`: unknown damage type `physical.blunt`",
+        ),
+        (
+            json!({ "damage": 1, "pen": { "chaos": 0.5 } }),
+            "component `hitbox`, field `pen.chaos`: unknown damage type `chaos`",
+        ),
+        (
+            json!({ "damage": 1, "convert": [{ "from": "physical.slash", "to": "physical", "pct": 0.5 }] }),
+            "component `hitbox`, field `convert.0.to`: unknown damage type `physical`",
+        ),
+        (
+            json!({ "damage": 1, "pen": { "elemental": 2 } }),
+            "component `hitbox`, field `pen`: elemental: points must be in [0, 1] (got 2)",
+        ),
+    ] {
+        assert_eq!(hitbox(extra).unwrap_err(), error);
+    }
+    assert!(hitbox(json!({ "damage": "lots" })).is_err());
+    assert!(hitbox(json!({ "damage": { "Physical": 1 } })).is_err());
+
+    // A map's parts come in type-name order, its sum the damage.
+    let mut value = typed;
+    value["shape"] = shape.clone();
+    let def: HitboxDef = serde_json::from_value(value).unwrap();
+    let spellblade = Hitbox::from(def);
+    assert_eq!(spellblade.damage(), 12.0);
+    let parts: Vec<(f32, Vec<&str>)> = spellblade
+        .parts()
+        .iter()
+        .map(|part| (part.amount(), part.tags().iter().collect()))
+        .collect();
+    assert_eq!(
+        parts,
+        [(4.0, vec!["elemental.fire"]), (8.0, vec!["physical.slash"])]
+    );
+    assert_eq!(
+        spellblade.penetration(),
+        Some(&Penetration::new().with_points("elemental", 0.25))
+    );
+    assert_eq!(
+        spellblade.conversion(),
+        Some(&Conversion::new().with_rule("physical", "elemental.fire", 0.5))
+    );
+    assert_eq!(
+        spellblade.inspect_rows()[1].1,
+        "12 of elemental.fire 4, physical.slash 8"
+    );
+
+    // A save keeps the damage and the parts, and reads back whole.
+    let saved = serde_json::to_value(&spellblade).unwrap();
+    assert_eq!(saved["damage"], json!(12.0));
+    assert_eq!(
+        saved["parts"],
+        json!([
+            { "tags": ["elemental.fire"], "amount": 4.0 },
+            { "tags": ["physical.slash"], "amount": 8.0 }
+        ])
+    );
+    assert_eq!(serde_json::from_value::<Hitbox>(saved).unwrap(), spellblade);
+    assert!(
+        serde_json::from_value::<Hitbox>(
+            json!({ "shape": shape, "damage": 1, "parts": [{ "amount": 0 }] })
+        )
+        .is_err(),
+        "a save's parts hold one above 0"
+    );
+}
+
+#[test]
+fn a_map_beside_tags_or_an_all_zero_map_fails() {
+    let world = typed_rig();
+    let refused = [
+        json!({ "shape": { "circle": 4 }, "damage": { "physical.slash": 2 }, "tags": ["elemental.fire"] }),
+        json!({ "shape": { "circle": 4 }, "damage": { "physical.slash": 0, "elemental.fire": 0 } }),
+        json!({ "shape": { "circle": 4 }, "damage": {} }),
+    ];
+    for value in &refused {
+        assert!(check(&world, HITBOX, value).is_err(), "{value}");
+    }
+    let beside = check(&world, HITBOX, &refused[0]).unwrap_err();
+    assert!(beside.contains("may not sit beside it"), "{beside}");
+    assert!(
+        check(
+            &world,
+            HITBOX,
+            &json!({ "shape": { "circle": 4 }, "damage": { "physical.slash": 2, "elemental.fire": 0 }, "tags": [] })
+        )
+        .is_ok(),
+        "an empty `tags` and a part of 0 beside one above 0"
+    );
+    let panics = |f: fn()| std::panic::catch_unwind(f).is_err();
+    assert!(panics(|| {
+        let _ = Hitbox::new(HitShape::circle(1.0), 1.0).with_parts([]);
+    }));
+    assert!(panics(|| {
+        let _ = Hitbox::new(HitShape::circle(1.0), 1.0).with_parts([DamagePart::new(0.0)]);
+    }));
+}
+
 #[test]
 fn a_hit_shape_reads_one_form_within_its_bounds() {
     assert_eq!(
@@ -221,4 +368,130 @@ fn a_negative_hitbox_damage_panics() {
 #[should_panic(expected = "speed must be finite and >= 0")]
 fn a_nan_hitbox_knockback_panics() {
     let _ = Hitbox::new(HitShape::circle(1.0), 1.0).with_knockback(f32::NAN);
+}
+
+/// A World running hitboxes, stats and the damage pipeline at 1/60 s steps,
+/// with `types` declared as tags and as damage types.
+fn hit_rig(types: &[&str]) -> (World, Schedule) {
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    let mut schedule = Schedule::new();
+    crate::TagsPlugin::new()
+        .with_tags(types.iter().copied())
+        .build(&mut schedule, &mut world);
+    crate::HealthPlugin.build(&mut schedule, &mut world);
+    crate::StatsPlugin::new().build(&mut schedule, &mut world);
+    HitPlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    let entry: serde_json::Map<String, serde_json::Value> = types
+        .iter()
+        .map(|name| ((*name).to_owned(), serde_json::json!({})))
+        .collect();
+    let types: crate::damage::kinds::DamageTypes =
+        serde_json::from_value(serde_json::Value::Object(entry)).unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+    (world, schedule)
+}
+
+/// One fixed step of 1/60 s.
+fn fixed_step(world: &mut World, schedule: &mut Schedule) {
+    world
+        .resource_mut::<tungsten_core::Time>()
+        .advance_frame(1.0 / 60.0);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+}
+
+/// Each part sent so far: its amount and its kinds by name.
+fn parts_sent(world: &World) -> Vec<(f32, Vec<&str>)> {
+    world
+        .resource::<tungsten_core::EventQueue<crate::DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.kinds.names(world)))
+        .collect()
+}
+
+fn typed(amount: f32, name: &str) -> DamagePart {
+    DamagePart::new(amount).with_tags(Tags::new([name]))
+}
+
+/// A target at the origin: a hurtbox of radius 8 and plenty of health.
+fn target(world: &mut World) -> Entity {
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hurtbox::new(HitShape::circle(8.0)),
+        crate::Health::new(1000.0),
+    ))
+}
+
+#[test]
+fn a_typed_hitbox_queues_its_parts_split_to_its_damage() {
+    let (mut world, mut schedule) = hit_rig(&["fire", "slash"]);
+    target(&mut world);
+    let blade = world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(4.0), 0.0)
+            .with_parts([typed(4.0, "fire"), typed(8.0, "slash")]),
+    ));
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(
+        parts_sent(&world),
+        [(4.0, vec!["fire"]), (8.0, vec!["slash"])],
+        "the parts as they are at their sum"
+    );
+    world.insert(blade, crate::Stats::new().with(crate::Stats::DAMAGE, 6.0));
+    world.get_mut::<Hitbox>(blade).unwrap().rearm();
+    // Both of the queue's windows, so only the next hit's parts are read.
+    world.flush_events();
+    world.flush_events();
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(world.get::<Hitbox>(blade).unwrap().damage(), 6.0);
+    assert_eq!(
+        parts_sent(&world),
+        [(2.0, vec!["fire"]), (4.0, vec!["slash"])],
+        "split to the stat's 6 by their proportions"
+    );
+    assert_eq!(
+        world.get::<Hitbox>(blade).unwrap().parts()[1].amount(),
+        8.0,
+        "the base parts stay"
+    );
+}
+
+#[test]
+fn a_zero_damage_stat_makes_a_typed_hitbox_a_trigger_and_its_return_restores_the_parts() {
+    let (mut world, mut schedule) = hit_rig(&["fire", "slash"]);
+    target(&mut world);
+    let mut stats = crate::Stats::new().with(crate::Stats::DAMAGE, 12.0);
+    stats.add_modifier(crate::Stats::DAMAGE, "dull", crate::Modifier::Mul(0.0));
+    let blade = world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        Hitbox::new(HitShape::circle(4.0), 0.0)
+            .with_parts([typed(4.0, "fire"), typed(8.0, "slash")]),
+        stats,
+    ));
+    fixed_step(&mut world, &mut schedule);
+    let struck: Vec<f32> = world
+        .resource::<tungsten_core::EventQueue<Struck>>()
+        .iter()
+        .map(|hit| hit.amount)
+        .collect();
+    assert_eq!(struck, [0.0], "a trigger: the hit lands");
+    assert!(parts_sent(&world).is_empty(), "and nothing is hurt");
+    world
+        .get_mut::<crate::Stats>(blade)
+        .unwrap()
+        .remove_modifiers("dull");
+    world.get_mut::<Hitbox>(blade).unwrap().rearm();
+    // Both of the queue's windows, so only the next hit's parts are read.
+    world.flush_events();
+    world.flush_events();
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(
+        parts_sent(&world),
+        [(4.0, vec!["fire"]), (8.0, vec!["slash"])],
+        "the stat's return restores the parts"
+    );
 }

@@ -1,4 +1,4 @@
-//! The kit's per-entity systems at 1,000 and 10,000 entities, 31 rows, one
+//! The kit's per-entity systems at 1,000 and 10,000 entities, 33 rows, one
 //! fixed step or one frame's present phase per iteration:
 //!
 //! - fixed step: `lifetime_tick`, `health_tick`, `action_input`, the
@@ -21,6 +21,11 @@
 //!   scan over every collector would fail the bound), `damage_resolve` (one
 //!   request a step per target, through its resistance and its shield) and
 //!   `shield_tick` (recharging);
+//! - M66's: `damage_resolve_typed` (one request a step per target of two
+//!   typed parts, half of one converted, with penetration, through two
+//!   resistances, one under a modifier, and its shield) and `cues_typed`
+//!   (one `damaged_part` occurrence per entity per step with its kinds,
+//!   with an entity cue and one rule's kind filter);
 //! - present phase: `oscillator_present` (rotation and scale), `facing`,
 //!   `character_animator` (a clip set, unchanged) and `depth_sort`.
 //!
@@ -42,14 +47,15 @@ use tungsten_core::{
 };
 use tungsten_kit::{
     ActionInput, ActionInputPlugin, Aim, AimPlugin, CharacterAnimator, CharacterAnimatorPlugin,
-    Clips, ContactDamage, ContactDamagePlugin, Cooldown, CooldownPlugin, Counters, CountersPlugin,
-    CueAction, Cues, CuesPlugin, DamageRequest, Damaged, DepthSort, DepthSortPlugin, Facing,
-    FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin, HitPlugin, HitShape, Hitbox, Hurtbox,
-    Intent, Knockback, KnockbackPlugin, Lifetime, LifetimePlugin, LinearMotion, LinearMotionPlugin,
-    Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Pickup, PickupPlugin, PlatformerController,
-    Projectile, ProjectilePlugin, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin,
-    StayInView, StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target,
-    TopDownMover, TopDownMoverPlugin, Wrap, WrapPlugin, knock_back,
+    Clips, ContactDamage, ContactDamagePlugin, Conversion, Cooldown, CooldownPlugin, Counters,
+    CountersPlugin, CueAction, Cues, CuesPlugin, DamagePart, DamageRequest, Damaged, DamagedPart,
+    DepthSort, DepthSortPlugin, Facing, FacingPlugin, Follow, FollowPlugin, Health, HealthPlugin,
+    HitPlugin, HitShape, Hitbox, Hurtbox, Intent, Knockback, KnockbackPlugin, Lifetime,
+    LifetimePlugin, LinearMotion, LinearMotionPlugin, Modifier, Orbit, OrbitPlugin, Oscillator,
+    OscillatorPlugin, Penetration, Pickup, PickupPlugin, PlatformerController, Projectile,
+    ProjectilePlugin, Resist, Shield, SpeedLimit, SpeedLimitPlugin, Stats, StatsPlugin, StayInView,
+    StayInViewPlugin, Steering, SteeringPlugin, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
+    TopDownMoverPlugin, Wrap, WrapPlugin, knock_back,
 };
 
 const SIZES: [usize; 2] = [1_000, 10_000];
@@ -522,21 +528,31 @@ fn cooldown_tick(c: &mut Criterion) {
     group.finish();
 }
 
-/// The `cues` row's shared rule, staged from a file as a manifest's load
-/// stages it.
-fn stage_rule(world: &mut World) {
+/// Stages `json` as entry `bench` of `kind` from a file, as a manifest's
+/// load stages it.
+fn stage(world: &mut World, kind: &str, json: &str) {
     let dir = std::env::temp_dir().join(format!("tungsten_kit_bench_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("rules.json");
-    std::fs::write(
-        &path,
-        r#"[{ "on": "damaged", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "hits", "add": 1, "target": "game" } }] }]"#,
-    )
-    .unwrap();
+    let path = dir.join(format!("{kind}.json"));
+    std::fs::write(&path, json).unwrap();
     let mut load = StagedLoad::new();
-    load.add_data(world, "cue_rules", "bench", &path).unwrap();
+    load.add_data(world, kind, "bench", &path).unwrap();
     load.commit(world).unwrap();
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// The `cues` row's shared rule.
+fn stage_rule(world: &mut World) {
+    stage(
+        world,
+        "cue_rules",
+        r#"[{ "on": "damaged", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "hits", "add": 1, "target": "game" } }] }]"#,
+    );
+}
+
+/// M66's rows' damage types, `bench.a` and `bench.b`.
+fn stage_types(world: &mut World) {
+    stage(world, "damage_types", r#"{ "bench.a": {}, "bench.b": {} }"#);
 }
 
 fn cues(c: &mut Criterion) {
@@ -576,6 +592,69 @@ fn cues(c: &mut Criterion) {
                 let queue = world.resource_mut::<EventQueue<Damaged>>();
                 for &entity in &entities {
                     queue.send(Damaged::new(entity, 1.0, false));
+                }
+                fixed_step(black_box(&mut world), &mut schedule);
+                world.flush_events();
+            });
+        });
+    }
+    group.finish();
+}
+
+fn cues_typed(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cues_typed");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&CuesPlugin);
+        PluginSet::new()
+            .with(TagsPlugin::new().with_tags(["bench.a", "bench.b"]))
+            .with(HealthPlugin)
+            .with(CountersPlugin)
+            .build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        stage_types(&mut world);
+        stage(
+            &mut world,
+            "cue_rules",
+            r#"[{ "on": "damaged_part", "kind": { "any": ["bench"] }, "do": [{ "counter": { "name": "hits", "add": 1, "target": "game" } }] }]"#,
+        );
+        // One warm apply gives a typed part's kinds.
+        let probe = world.spawn_with((Health::new(1e9),));
+        DamageRequest::from_parts(
+            probe,
+            [DamagePart::new(1.0).with_tags(Tags::new(["bench.a"]))],
+        )
+        .apply(&mut world);
+        let kinds = world
+            .resource::<EventQueue<DamagedPart>>()
+            .iter()
+            .next()
+            .unwrap()
+            .kinds;
+        world.flush_events();
+        world.flush_events();
+        let entities: Vec<_> = (0..n)
+            .map(|_| {
+                world.spawn_with((
+                    Health::new(1e9),
+                    Cues::new().on("damaged_part", [CueAction::counter_add("hits", 1)]),
+                ))
+            })
+            .collect();
+        let part = |entity| DamagedPart::new(entity, 1.0).with_kinds(kinds);
+        // One warm step: every entity's own cue and the rule ran.
+        let queue = world.resource_mut::<EventQueue<DamagedPart>>();
+        for &entity in &entities {
+            queue.send(part(entity));
+        }
+        fixed_step(&mut world, &mut schedule);
+        world.flush_events();
+        assert_eq!(world.resource::<Counters>().get("hits"), n as i64);
+        assert_eq!(world.get::<Counters>(entities[0]).unwrap().get("hits"), 1);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
+            b.iter(|| {
+                let queue = world.resource_mut::<EventQueue<DamagedPart>>();
+                for &entity in &entities {
+                    queue.send(part(entity));
                 }
                 fixed_step(black_box(&mut world), &mut schedule);
                 world.flush_events();
@@ -764,6 +843,52 @@ fn damage_resolve(c: &mut Criterion) {
     group.finish();
 }
 
+fn damage_resolve_typed(c: &mut Criterion) {
+    let mut group = c.benchmark_group("damage_resolve_typed");
+    for n in SIZES {
+        let (mut world, mut schedule) = rig(&HealthPlugin);
+        TagsPlugin::new()
+            .with_tags(["bench.a", "bench.b"])
+            .build(&mut schedule, &mut world);
+        schedule.resolve().unwrap();
+        stage_types(&mut world);
+        let targets: Vec<_> = (0..n)
+            .map(|_| {
+                let mut resist = Resist::new()
+                    .with_factor("bench.a", 0.5)
+                    .with_factor("bench.b", 0.8);
+                resist.add_modifier("bench.b", "bench", Modifier::Mul(0.5));
+                world.spawn_with((
+                    Health::new(1e12),
+                    resist,
+                    Shield::new(1e9).with_recharge(1e9, 0.0),
+                ))
+            })
+            .collect();
+        let (a, b) = (Tags::new(["bench.a"]), Tags::new(["bench.b"]));
+        let conversion = Conversion::new().with_rule("bench.a", "bench.b", 0.5);
+        let penetration = Penetration::new().with_points("bench.b", 0.25);
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bencher, _| {
+            bencher.iter(|| {
+                for &target in targets.iter().rev() {
+                    DamageRequest::from_parts(
+                        target,
+                        [
+                            DamagePart::new(2.0).with_tags(a.clone()),
+                            DamagePart::new(1.0).with_tags(b.clone()),
+                        ],
+                    )
+                    .with_conversion(conversion.clone())
+                    .with_penetration(penetration.clone())
+                    .queue(&mut world);
+                }
+                fixed_step_and_flush(black_box(&mut world), &mut schedule);
+            });
+        });
+    }
+    group.finish();
+}
+
 fn shield_tick(c: &mut Criterion) {
     let mut group = c.benchmark_group("shield_tick");
     for n in SIZES {
@@ -793,6 +918,7 @@ criterion_group!(
     stats_apply,
     cooldown_tick,
     cues,
+    cues_typed,
     linear_motion,
     oscillator,
     oscillator_present,
@@ -815,6 +941,7 @@ criterion_group!(
     pickup_tick,
     pickup_magnet,
     damage_resolve,
+    damage_resolve_typed,
     shield_tick
 );
 criterion_main!(kit);
