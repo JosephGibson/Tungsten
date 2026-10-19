@@ -1272,3 +1272,33 @@ fn a_scene_naming_the_four_engine_components_spawns_them_and_steps_the_bodies() 
     assert_eq!(moving.1.y, spawned[1].1.y);
     fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn load_sounds_gives_a_sound_its_manifest_bus_and_voice_limit() {
+    let dir = tempdir();
+    let blip =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/kit/shmup/sounds/blip.ogg");
+    fs::copy(&blip, dir.join("blip.ogg")).unwrap();
+    write(
+        &dir.join("manifest.json"),
+        r#"{"sounds": {
+            "theme": {"path": "blip.ogg", "looping": true, "volume": 0.4, "bus": "music"},
+            "hit": {"path": "blip.ogg", "volume": 0.8, "max_voices": 3}
+        }}"#,
+    );
+    let manifest = ResolvedManifest::load(dir.join("manifest.json")).unwrap();
+    let mut world = World::new();
+    load_sounds(&manifest, &mut world).unwrap();
+    let sounds = world.resource::<SoundRegistry>();
+    let theme = sounds.get_by_id("theme").unwrap();
+    let hit = sounds.get_by_id("hit").unwrap();
+    assert_eq!(
+        (sounds.get_bus(theme), sounds.get_max_voices(theme)),
+        (tungsten_core::AudioBus::Music, 64)
+    );
+    assert_eq!(
+        (sounds.get_bus(hit), sounds.get_max_voices(hit)),
+        (tungsten_core::AudioBus::Effects, 3)
+    );
+    assert!(sounds.get_looping(theme) && (sounds.get_volume(hit) - 0.8).abs() < 1e-6);
+}

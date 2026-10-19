@@ -1,16 +1,34 @@
 //! The player's settings, kept in the game's user folder (`D-159`): the
-//! display mode, resolution and vsync, the UI scale, the text scale (M56)
-//! and the master volume, layered between `tungsten.json` and the
-//! environment.
+//! display mode, resolution and vsync, the UI scale, the text scale (M56),
+//! the master volume and each bus's volume, layered between `tungsten.json`
+//! and the environment.
 
+use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::audio::AudioBus;
 use crate::display::{DisplayMode, Resolution};
 use crate::persist::{WriteError, quarantine, write_atomic};
+
+/// How many buses there are: [`AudioBus::ALL`]'s length.
+const BUSES: usize = AudioBus::ALL.len();
+
+/// A bus's place in [`AudioBus::ALL`].
+fn bus_index(bus: AudioBus) -> usize {
+    AudioBus::ALL
+        .iter()
+        .position(|&each| each == bus)
+        .expect("every bus is in AudioBus::ALL")
+}
+
+/// The bus a settings file names, if any.
+fn bus_named(name: &str) -> Option<AudioBus> {
+    AudioBus::ALL.iter().copied().find(|bus| bus.name() == name)
+}
 
 /// Where the game's user folder is (`D-119`), set in code; never read from
 /// `tungsten.json`.
@@ -37,7 +55,8 @@ pub enum UserFolder {
 ///   "display": { "display_mode": "borderless_fullscreen", "resolution": { "width": 1920, "height": 1080 }, "vsync": true },
 ///   "ui_scale": 1.25,
 ///   "text_scale": 1.5,
-///   "master_volume": 0.8
+///   "master_volume": 0.8,
+///   "bus_volumes": { "music": 0.5 }
 /// }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -48,6 +67,8 @@ pub struct Settings {
     ui_scale: Option<f32>,
     text_scale: Option<f32>,
     master_volume: Option<f32>,
+    /// By [`AudioBus::ALL`]'s order.
+    bus_volumes: [Option<f32>; BUSES],
     path: Option<PathBuf>,
     load_warnings: Vec<String>,
 }
@@ -80,8 +101,10 @@ impl Settings {
     ///
     /// Invalid means not UTF-8 JSON, not an object, a known key of the wrong
     /// type, or a value no setter would keep. Unknown keys are ignored, so an
-    /// older build reads a newer file. A file that cannot be read for another
-    /// reason than its absence (permission denied) is left where it is.
+    /// older build reads a newer file, and so are unknown buses in
+    /// `bus_volumes`, whatever their values. A file that cannot be read for
+    /// another reason than its absence (permission denied) is left where it
+    /// is.
     pub fn load(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let mut settings = Self {
@@ -225,6 +248,23 @@ impl Settings {
         }
     }
 
+    /// The volume the player set for `bus`, 0 to 1.
+    #[must_use]
+    pub fn bus_volume(&self, bus: AudioBus) -> Option<f32> {
+        self.bus_volumes[bus_index(bus)]
+    }
+
+    /// Sets or unsets `bus`'s volume, clamped to 0..=1; a value that is not
+    /// finite is ignored. The file holds only the buses set.
+    pub fn set_bus_volume(&mut self, bus: AudioBus, volume: Option<f32>) {
+        let slot = &mut self.bus_volumes[bus_index(bus)];
+        match volume {
+            Some(volume) if !volume.is_finite() => {}
+            Some(volume) => *slot = Some(volume.clamp(0.0, 1.0)),
+            None => *slot = None,
+        }
+    }
+
     /// Writes the set values through [`write_atomic`].
     ///
     /// # Errors
@@ -241,11 +281,16 @@ impl Settings {
             }),
             vsync: self.vsync,
         };
+        let buses: BTreeMap<String, f32> = AudioBus::ALL
+            .iter()
+            .filter_map(|&bus| Some((bus.name().to_string(), self.bus_volume(bus)?)))
+            .collect();
         let file = SettingsFile {
             display: (display != DisplayFile::default()).then_some(display),
             ui_scale: self.ui_scale,
             text_scale: self.text_scale,
             master_volume: self.master_volume,
+            bus_volumes: (!buses.is_empty()).then_some(buses),
         };
         let mut json = serde_json::to_string_pretty(&file)
             .expect("settings serialize: plain fields with string keys");
@@ -269,6 +314,11 @@ impl Settings {
         self.ui_scale = file.ui_scale;
         self.text_scale = file.text_scale;
         self.master_volume = file.master_volume;
+        for (name, volume) in file.bus_volumes.unwrap_or_default() {
+            if let Some(bus) = bus_named(&name) {
+                self.bus_volumes[bus_index(bus)] = Some(volume);
+            }
+        }
     }
 }
 
@@ -282,6 +332,38 @@ struct SettingsFile {
     text_scale: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     master_volume: Option<f32>,
+    /// The known buses' volumes by name.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "bus_volumes_file"
+    )]
+    bus_volumes: Option<BTreeMap<String, f32>>,
+}
+
+/// `bus_volumes`: an object whose known buses each hold a number in 0..=1;
+/// an unknown bus is ignored, whatever its value.
+fn bus_volumes_file<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<BTreeMap<String, f32>>, D::Error> {
+    let Some(entries) = Option::<BTreeMap<String, serde_json::Value>>::deserialize(deserializer)?
+    else {
+        return Ok(None);
+    };
+    let mut volumes = BTreeMap::new();
+    for (name, value) in entries {
+        if bus_named(&name).is_none() {
+            continue;
+        }
+        let volume = value
+            .as_f64()
+            .filter(|volume| (0.0..=1.0).contains(volume))
+            .ok_or_else(|| {
+                serde::de::Error::custom(format!("bus_volumes.{name} {value} is outside 0..=1"))
+            })?;
+        volumes.insert(name, volume as f32);
+    }
+    Ok(Some(volumes))
 }
 
 #[derive(Debug, Default, PartialEq, Serialize, Deserialize)]

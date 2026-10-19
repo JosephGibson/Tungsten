@@ -88,11 +88,22 @@
 //! Sensors are gathered beside the proxies, never as one, so no substep,
 //! pair, solve or sweep sees them. The writeback moves each by its velocity;
 //! then the step builds the spatial index and tests each sensor, in gather
-//! order, against the bodies and tiles it overlaps at their final positions.
-//! A pair the previous step lacked sends `SensorEntered`, after the frame's
-//! collision events. A pair's key holds the sensor's key in its high half
-//! and the other's identity in its low half (a tile's names its map, layer
-//! and cell), and a step without sensors forgets every pair.
+//! order, against the bodies and tiles it overlaps at their final positions,
+//! in a layer its mask holds. A pair the previous step lacked sends
+//! `SensorEntered`, after the frame's collision events. A pair's key holds
+//! the sensor's key in its high half and the other's identity in its low
+//! half (a tile's names its map, layer and cell), and a step without sensors
+//! forgets every pair.
+//!
+//! Layers and masks: the gather keeps each proxy's layers and mask in an
+//! array beside the proxies, as `pair_flags` is (D-080), and notes whether
+//! any proxy or sensor is off the defaults (layer 0, every layer met). Only
+//! then do the pair build and repair, the safety net and the arrival pass
+//! test that the two sides meet, so a world without layers runs the same
+//! loops. A pair that does not meet is never admitted, so it makes no
+//! contact, event, island, wake or clamp. A sleeper whose layers or mask
+//! changed wakes its island, and a static or tile support whose layers or
+//! mask changed wakes the sleepers near it.
 //!
 //! The whole step is serial and deterministic by design (D-067): a
 //! color-parallel contact solver was built, measured and dropped — at 25k
@@ -196,6 +207,60 @@ impl Proxy {
     }
 }
 
+/// A body's collision layers and mask, as its `RigidBody` holds them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Layers {
+    /// The layers it is in.
+    layers: u32,
+    /// The layers it meets.
+    mask: u32,
+}
+
+impl Layers {
+    /// Layer 0, meeting every layer: every constructor's body, a tile and a
+    /// collider without a `RigidBody`.
+    const DEFAULT: Self = Self {
+        layers: RigidBody::DEFAULT_LAYERS,
+        mask: RigidBody::ALL_LAYERS,
+    };
+
+    fn of(body: &RigidBody) -> Self {
+        Self {
+            layers: body.layers,
+            mask: body.mask,
+        }
+    }
+
+    /// The contact rule ([`RigidBody::meets`]).
+    fn meets(self, other: Self) -> bool {
+        self.layers & other.mask != 0 && other.layers & self.mask != 0
+    }
+}
+
+impl Default for Layers {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// Each proxy's layers, in proxy order, read instead of the 80-byte `Proxy`
+/// as `pair_flags` is (D-080).
+#[derive(Debug, Default)]
+struct ProxyLayers {
+    of: Vec<Layers>,
+    /// Some proxy or sensor is off [`Layers::DEFAULT`]; while it is false,
+    /// every pair meets and no pass tests it.
+    layered: bool,
+}
+
+impl ProxyLayers {
+    /// Proxies `a` and `b` may touch: always while nothing is layered.
+    #[inline]
+    fn meet(&self, a: usize, b: usize) -> bool {
+        !self.layered || self.of[a].meets(self.of[b])
+    }
+}
+
 /// A sensor for the frame: never a proxy, so no substep sees it. The
 /// writeback moves it and the sensor pass tests it.
 #[derive(Debug, Clone, Copy)]
@@ -207,6 +272,8 @@ struct SensorBody {
     center: Vec2,
     shape: Shape,
     velocity: Vec2,
+    /// Its mask picks what it reports; its layers matter to queries alone.
+    layers: Layers,
 }
 
 /// One narrow-phase contact prepared for the soft solver.
@@ -249,6 +316,8 @@ pub struct PhysicsBuffers {
     /// `PAIR_*` bits per proxy. Pair queries read this byte instead of the
     /// 80-byte `Proxy` (D-080).
     pair_flags: Vec<u8>,
+    /// Each proxy's layers and mask, set by the gather.
+    layers: ProxyLayers,
     /// Moving proxies whose travel budget ran out, in proxy order (D-081);
     /// refilled before every substep.
     tripped: Vec<u32>,
@@ -386,23 +455,27 @@ impl PhysicsBuffers {
     /// sensors and is 0 otherwise.
     pub(super) fn index_entries(&self, out: &mut Vec<IndexEntry>) {
         let first_tile = self.proxies.len() - self.tile_ids.len();
-        out.extend(self.proxies.iter().enumerate().map(|(index, proxy)| {
-            let identity = if proxy.entity.is_some() {
-                proxy.key
-            } else {
-                index
-                    .checked_sub(first_tile)
-                    .map_or(0, |tile| self.tile_ids[tile])
-            };
-            IndexEntry {
-                entity: proxy.entity,
-                center: proxy.center,
-                shape: proxy.shape,
-                face_mask: proxy.face_mask,
-                sensor: false,
-                identity,
-            }
-        }));
+        out.extend(self.proxies.iter().zip(&self.layers.of).enumerate().map(
+            |(index, (proxy, layers))| {
+                let identity = if proxy.entity.is_some() {
+                    proxy.key
+                } else {
+                    index
+                        .checked_sub(first_tile)
+                        .map_or(0, |tile| self.tile_ids[tile])
+                };
+                IndexEntry {
+                    entity: proxy.entity,
+                    center: proxy.center,
+                    shape: proxy.shape,
+                    face_mask: proxy.face_mask,
+                    sensor: false,
+                    identity,
+                    layers: layers.layers,
+                    mask: layers.mask,
+                }
+            },
+        ));
         out.extend(self.sensors.iter().map(|sensor| IndexEntry {
             entity: Some(sensor.entity),
             center: sensor.center,
@@ -410,6 +483,8 @@ impl PhysicsBuffers {
             face_mask: FACE_ALL,
             sensor: true,
             identity: sensor.key,
+            layers: sensor.layers.layers,
+            mask: sensor.layers.mask,
         }));
     }
 }
@@ -454,6 +529,7 @@ pub fn physics_step(world: &mut World) {
     let kinematics = gather_proxies(
         world,
         &mut buffers.proxies,
+        &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
@@ -633,6 +709,7 @@ fn substep(
         proxies,
         pair_budgets,
         pair_flags,
+        layers,
         repaired,
         repair_grid,
         pairs_invalidated,
@@ -847,6 +924,7 @@ fn substep(
             grid,
             repair_grid,
             pair_flags,
+            layers,
             repaired,
             candidates,
             arrival,
@@ -875,7 +953,15 @@ fn substep(
     // Safety net: clamp extreme dynamics to first static sweep hit (covers
     // solver-injected velocity a speculative pair admission never saw).
     // Events keep accumulating across substeps; the frame drains them once.
-    speculative_pass(config, proxies, grid, static_grid, candidates, events);
+    speculative_pass(
+        config,
+        proxies,
+        layers,
+        grid,
+        static_grid,
+        candidates,
+        events,
+    );
 
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.

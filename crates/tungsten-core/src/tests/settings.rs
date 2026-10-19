@@ -27,6 +27,9 @@ fn is_default(settings: &Settings) -> bool {
         && settings.vsync().is_none()
         && settings.ui_scale().is_none()
         && settings.master_volume().is_none()
+        && AudioBus::ALL
+            .iter()
+            .all(|&bus| settings.bus_volume(bus).is_none())
 }
 
 #[test]
@@ -214,4 +217,88 @@ fn the_text_scale_saves_loads_clamps_and_falls_back() {
         assert_eq!(std::fs::read_to_string(&backup).unwrap(), text);
         assert_eq!(fallen.take_load_warnings().len(), 1);
     }
+}
+
+#[test]
+fn bus_volumes_save_load_and_stay_out_of_the_file_when_unset() {
+    let path = tempdir().join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert_eq!(settings.bus_volume(AudioBus::Music), None);
+    settings.set_bus_volume(AudioBus::Music, Some(0.5));
+    settings.save().unwrap();
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "bus_volumes": { "music": 0.5 } })
+    );
+
+    settings.set_bus_volume(AudioBus::Effects, Some(0.0));
+    settings.set_master_volume(Some(0.8));
+    settings.save().unwrap();
+    let mut reloaded = Settings::load(&path);
+    assert!(reloaded.take_load_warnings().is_empty());
+    assert_eq!(reloaded, settings);
+    assert_eq!(reloaded.bus_volume(AudioBus::Effects), Some(0.0));
+
+    settings.set_bus_volume(AudioBus::Music, None);
+    settings.set_bus_volume(AudioBus::Effects, None);
+    settings.save().unwrap();
+    let written: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        written,
+        serde_json::json!({ "master_volume": 0.8 }),
+        "no empty bus_volumes object"
+    );
+}
+
+#[test]
+fn an_out_of_range_bus_volume_sets_the_file_aside_and_an_unknown_bus_is_ignored() {
+    for text in [
+        r#"{ "bus_volumes": { "music": 1.5 } }"#,
+        r#"{ "bus_volumes": { "effects": -0.1, "music": 0.5 } }"#,
+        r#"{ "bus_volumes": { "music": "loud" } }"#,
+        r#"{ "bus_volumes": { "music": null } }"#,
+        r#"{ "bus_volumes": [0.5] }"#,
+        r#"{ "bus_volumes": 0.5 }"#,
+    ] {
+        let (path, mut settings) = load_text(text);
+        assert!(is_default(&settings), "{text}");
+        assert_eq!(settings.take_load_warnings().len(), 1, "{text}");
+        let backup = path.with_file_name("settings.json.bad");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), text);
+    }
+    let (path, mut settings) = load_text(
+        r#"{ "bus_volumes": { "music": 0.25, "voice": 7, "ambience": "loud" }, "master_volume": 0.5 }"#,
+    );
+    assert!(settings.take_load_warnings().is_empty());
+    assert_eq!(settings.bus_volume(AudioBus::Music), Some(0.25));
+    assert_eq!(settings.bus_volume(AudioBus::Effects), None);
+    assert_eq!(settings.master_volume(), Some(0.5));
+    assert!(path.exists() && !path.with_file_name("settings.json.bad").exists());
+}
+
+#[test]
+fn the_bus_volume_setters_clamp_and_ignore_non_finite() {
+    let mut settings = Settings::default();
+    settings.set_bus_volume(AudioBus::Music, Some(-1.0));
+    assert_eq!(settings.bus_volume(AudioBus::Music), Some(0.0));
+    settings.set_bus_volume(AudioBus::Music, Some(2.0));
+    assert_eq!(settings.bus_volume(AudioBus::Music), Some(1.0));
+    for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        settings.set_bus_volume(AudioBus::Music, Some(value));
+        assert_eq!(
+            settings.bus_volume(AudioBus::Music),
+            Some(1.0),
+            "{value} ignored"
+        );
+    }
+    assert_eq!(
+        settings.bus_volume(AudioBus::Effects),
+        None,
+        "one bus at a time"
+    );
+    settings.set_bus_volume(AudioBus::Music, None);
+    assert_eq!(settings.bus_volume(AudioBus::Music), None);
 }

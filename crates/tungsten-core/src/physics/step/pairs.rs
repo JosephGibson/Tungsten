@@ -149,7 +149,8 @@ pub(super) fn refresh_pairs(
 /// D-081). The inflation includes the speculative slack on both sides of a
 /// pair, so neither the query nor the overlap prefilter needs a
 /// grid-staleness margin. A kinematic proxy initiates as an awake one does;
-/// it moves, so it is not counted among the statics.
+/// it moves, so it is not counted among the statics. Two proxies whose
+/// layers do not meet are never paired.
 pub(super) fn build_pairs(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -166,6 +167,7 @@ pub(super) fn build_pairs(
         pair_aabbs,
         pair_budgets,
         pair_flags,
+        layers,
         repaired,
         pairs,
         pairs_invalidated,
@@ -220,7 +222,7 @@ pub(super) fn build_pairs(
             if pair_flags[b_idx] & PAIR_AWAKE != 0 && b_idx <= a_idx {
                 return;
             }
-            if aabb.overlaps(&pair_aabbs[b_idx]) {
+            if aabb.overlaps(&pair_aabbs[b_idx]) && layers.meet(a_idx, b_idx) {
                 pairs.push((a_idx as u32, b_id));
             }
         });
@@ -268,7 +270,7 @@ pub(super) fn collect_tripped(
 
 /// Re-pair the tripped proxies in place of a rebuild (D-081). Every other
 /// proxy keeps its pairs, inflated AABB and budget, and the pair grid is not
-/// restaged.
+/// restaged. As in a build, proxies whose layers do not meet are not paired.
 fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &mut PhysicsBuffers) {
     let PhysicsBuffers {
         proxies,
@@ -277,6 +279,7 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         pair_aabbs,
         pair_budgets,
         pair_flags,
+        layers,
         tripped,
         repaired,
         repair_impulses,
@@ -366,7 +369,10 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         // an untripped awake body of lower index must still be paired here.
         grid.for_each_in(aabb, Some(member), |other| {
             let flags = pair_flags[other as usize];
-            if flags & PAIR_REPAIRED != 0 || !aabb.overlaps(&pair_aabbs[other as usize]) {
+            if flags & PAIR_REPAIRED != 0
+                || !aabb.overlaps(&pair_aabbs[other as usize])
+                || !layers.meet(member as usize, other as usize)
+            {
                 return;
             }
             if flags & PAIR_AWAKE != 0 && other < member {
@@ -378,7 +384,10 @@ fn repair_pairs(config: &PhysicsConfig, sub_dt: f32, time_left: f32, buffers: &m
         repair_grid.for_each_in(aabb, Some(member), |other| {
             // A pair between two members is added by the lower one.
             let member_too = pair_flags[other as usize] & PAIR_TRIPPED != 0;
-            if (member_too && other < member) || !aabb.overlaps(&pair_aabbs[other as usize]) {
+            if (member_too && other < member)
+                || !aabb.overlaps(&pair_aabbs[other as usize])
+                || !layers.meet(member as usize, other as usize)
+            {
                 return;
             }
             if other < member {

@@ -44,6 +44,7 @@ fn frame(world: &mut World, schedule: &mut Schedule) -> Vec<(AudioHandle, f32, b
                 handle,
                 volume,
                 looping,
+                ..
             } => (handle, volume, looping),
             other => panic!("unexpected {other:?}"),
         })

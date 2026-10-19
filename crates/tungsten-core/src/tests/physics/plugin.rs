@@ -363,3 +363,84 @@ fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
         );
     }
 }
+
+#[test]
+fn layers_rigid_body_spawns_its_lists_bits_and_takes_the_defaults_without_them() {
+    let mut world = physics_world();
+    let shape = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let listed = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "sensor", "shape": shape, "layers": [3], "mask": [2, 0, 2] }),
+    );
+    let body = world.get::<RigidBody>(listed).unwrap();
+    assert_eq!((body.layers, body.mask), (1 << 3, 0b101));
+    assert_eq!(body.kind, crate::physics::BodyKind::Sensor);
+    let plain = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape }),
+    );
+    assert_eq!(world.get::<RigidBody>(plain), Some(&RigidBody::dynamic()));
+    let blind = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "static", "shape": shape, "layers": [0, 31], "mask": [] }),
+    );
+    let body = world.get::<RigidBody>(blind).unwrap();
+    assert_eq!((body.layers, body.mask), (1 | 1 << 31, 0));
+    assert!(!body.meets(&RigidBody::dynamic()) && !RigidBody::dynamic().meets(body));
+    let unplaced = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "kinematic", "shape": shape, "layers": [] }),
+    );
+    let body = world.get::<RigidBody>(unplaced).unwrap();
+    assert_eq!((body.layers, body.mask), (0, RigidBody::ALL_LAYERS));
+}
+
+#[test]
+fn layers_rigid_body_fails_on_layer_32_and_a_non_integer_at_the_fields_path() {
+    let world = physics_world();
+    let circle = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let cases = [
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "layers": [32] }),
+            "layers[0]",
+            "a layer must be 0 to 31 (got 32)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mask": [1, 40] }),
+            "mask[1]",
+            "a layer must be 0 to 31 (got 40)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "layers": [1.5] }),
+            "layers[0]",
+            "invalid type: floating point `1.5`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mask": [-1] }),
+            "mask[0]",
+            "invalid value: integer `-1`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mask": ["walls"] }),
+            "mask[0]",
+            "invalid type: string \"walls\"",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "layers": 3 }),
+            "layers",
+            "invalid type: integer `3`, expected a sequence",
+        ),
+    ];
+    for (value, field, expected) in cases {
+        let message = check_error(&world, &value);
+        assert!(
+            message.starts_with(&format!("component `rigid_body`, field `{field}`: "))
+                && message.contains(expected),
+            "{value}: {message}"
+        );
+    }
+}

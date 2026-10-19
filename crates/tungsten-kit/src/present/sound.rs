@@ -53,7 +53,7 @@ use crate::foundation::phases::{Phase, ensure_phases};
 /// let played = world.resource_mut::<AudioCommands>().drain();
 /// assert!(matches!(
 ///     played[..],
-///     [AudioCommand::Play { handle: h, volume: 0.5, looping: false }] if h == handle
+///     [AudioCommand::Play { handle: h, volume: 0.5, looping: false, .. }] if h == handle
 /// ));
 /// ```
 pub struct SoundOnEvent<E> {

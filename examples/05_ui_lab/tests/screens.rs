@@ -9,10 +9,12 @@ use example_05_ui_lab::inventory::{self, Inventory};
 use example_05_ui_lab::menus::{self, PauseMenu, PlayState, REBIND_ACTION, SettingsMenu};
 use example_05_ui_lab::{budget, controls, labels, screens};
 use glam::Vec2;
+use tungsten::core::assets::{AudioHandle, SoundData, SoundRegistry};
 use tungsten::core::ui::{Rect, UiEvent, UiLayer, UiTree, Visibility, WidgetId, WidgetKind};
 use tungsten::core::{
-    ActionMap, AssetRegistry, AudioCommand, Binding, Config, DisplayMode, EventQueue,
+    ActionMap, AssetRegistry, AudioBus, AudioCommand, Binding, Config, DisplayMode, EventQueue,
     GamepadButton, GamepadId, InputState, KeyCode, MouseButton, ScaleFactor, Settings, UserFolder,
+    Voice, World,
 };
 use tungsten::testing::UiHarness;
 use tungsten::{App, StateStack, WindowSize};
@@ -958,4 +960,184 @@ fn every_screen_is_centred_and_aligned_at_three_sizes() {
             &format!("confirm {at}"),
         );
     }
+}
+
+// ---- M68: the music and the buses ----
+
+/// The music and the blip, registered as the root manifest has them: the
+/// music looping at 0.4 on the music bus, the blip at 0.8 on effects.
+fn register_sounds(world: &mut World) -> (AudioHandle, AudioHandle) {
+    let silence = || SoundData {
+        samples: vec![0.0; 4],
+        sample_rate: 44_100,
+        channels: 1,
+    };
+    let mut sounds = SoundRegistry::new();
+    let music = sounds.register(menus::MUSIC_SOUND.into(), silence(), 0.4, true);
+    sounds.set_bus(music, AudioBus::Music);
+    let blip = sounds.register(menus::BLIP_SOUND.into(), silence(), 0.8, false);
+    world.insert_resource(sounds);
+    (music, blip)
+}
+
+/// The play state entered with the sounds registered and M bound; returns
+/// the harness, the music and the blip.
+fn musical(config: Config) -> (UiHarness, AudioHandle, AudioHandle) {
+    let mut harness = UiHarness::new(App::new(config).expect("App::new failed"));
+    let world = harness.world_mut();
+    let (music, blip) = register_sounds(world);
+    menus::add_pause_pad_binding(world);
+    menus::add_music_binding(world);
+    world
+        .resource_mut::<StateStack>()
+        .request_push(PlayState::new(Vec::new()));
+    harness.step(1);
+    (harness, music, blip)
+}
+
+/// Each play in `commands`: its sound, voice, loop flag and fade.
+fn plays(commands: &[AudioCommand]) -> Vec<(AudioHandle, Voice, bool, f32)> {
+    commands
+        .iter()
+        .filter_map(|command| match *command {
+            AudioCommand::Play {
+                handle,
+                voice,
+                looping,
+                fade,
+                ..
+            } => Some((handle, voice, looping, fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Holds `key` down for one frame and returns the audio it queued.
+fn press(harness: &mut UiHarness, key: KeyCode) -> Vec<AudioCommand> {
+    harness.key_down(key);
+    harness.step(1);
+    let audio = harness.harness().audio().to_vec();
+    harness.key_up(key);
+    harness.step(1);
+    audio
+}
+
+#[test]
+fn entering_play_fades_the_music_in_over_a_second() {
+    let (harness, music, _) = musical(Config::default());
+    let audio = harness.harness().audio();
+    let played = plays(audio);
+    assert_eq!(played.len(), 1, "{audio:?}");
+    let (handle, _, looping, fade) = played[0];
+    assert_eq!((handle, looping, fade), (music, true, menus::MUSIC_FADE_IN));
+}
+
+#[test]
+fn m_crossfades_the_music_into_a_new_voice_over_two_seconds() {
+    let (mut harness, music, _) = musical(Config::default());
+    let mut playing = plays(harness.harness().audio())[0].1;
+    for _ in 0..2 {
+        let audio = press(&mut harness, KeyCode::KeyM);
+        assert_eq!(audio.len(), 2, "{audio:?}");
+        assert!(
+            matches!(
+                audio[0],
+                AudioCommand::StopVoice { voice, fade, .. } if voice == playing && fade == 2.0
+            ),
+            "{audio:?}"
+        );
+        let (handle, next, looping, fade) = plays(&audio)[0];
+        assert_eq!(
+            (handle, looping, fade),
+            (music, true, menus::MUSIC_CROSSFADE)
+        );
+        assert_ne!(next, playing);
+        playing = next;
+    }
+}
+
+#[test]
+fn the_music_and_effects_sliders_set_their_buses_and_back_saves_them() {
+    let dir = std::env::temp_dir().join(format!("ui_lab_buses_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("temp folder");
+    let mut config = Config::default();
+    config.game.user_folder = UserFolder::At(dir);
+    let (mut harness, _, blip) = musical(config);
+    settings(&mut harness);
+    let path = harness
+        .world()
+        .resource::<Settings>()
+        .path()
+        .expect("a user folder")
+        .to_path_buf();
+    let set = |audio: &[AudioCommand], bus: AudioBus| {
+        audio.iter().any(|command| {
+            matches!(command, AudioCommand::SetBusVolume { bus: b, volume, .. }
+                if *b == bus && (*volume - 0.95).abs() < 1e-6)
+        })
+    };
+    let music_slider = menu(&harness).music;
+    assert!(harness.focus(music_slider));
+    let audio = press(&mut harness, KeyCode::ArrowLeft);
+    assert!(set(&audio, AudioBus::Music), "{audio:?}");
+    assert!(plays(&audio).is_empty(), "a music change plays nothing");
+    let effects_slider = menu(&harness).effects;
+    assert!(harness.focus(effects_slider));
+    let audio = press(&mut harness, KeyCode::ArrowLeft);
+    assert!(set(&audio, AudioBus::Effects), "{audio:?}");
+    let played = plays(&audio);
+    assert_eq!(played.len(), 1, "{audio:?}");
+    assert_eq!((played[0].0, played[0].2), (blip, false));
+    // Back saves both under `bus_volumes`.
+    let back = menu(&harness).back;
+    assert!(harness.focus(back));
+    tap(&mut harness, KeyCode::Enter);
+    settle(&mut harness);
+    assert_eq!(top(&harness), "pause");
+    let text = std::fs::read_to_string(&path).expect("saved");
+    assert!(text.contains("\"bus_volumes\""), "{text}");
+    let saved = Settings::load(&path);
+    assert_eq!(saved.bus_volume(AudioBus::Music), Some(0.95));
+    assert_eq!(saved.bus_volume(AudioBus::Effects), Some(0.95));
+}
+
+#[test]
+fn with_the_music_and_effects_rows_back_fits_a_1280x720_window_at_scale_1_75() {
+    let mut harness = UiHarness::new(App::new(Config::default()).expect("App::new failed"));
+    let world = harness.world_mut();
+    *world.resource_mut::<WindowSize>() = WindowSize {
+        width: 1280,
+        height: 720,
+    };
+    world.resource_mut::<ScaleFactor>().set_os(1.75);
+    menus::add_pause_pad_binding(world);
+    world
+        .resource_mut::<StateStack>()
+        .request_push(PlayState::new(Vec::new()));
+    harness.step(2);
+    settings(&mut harness);
+    // The owner's display: 731 × 411 units.
+    let viewport = Vec2::new(1280.0, 720.0) / 1.75;
+    let menu = menu(&harness);
+    let (back, rows) = (
+        menu.back,
+        [
+            menu.ui_scale,
+            menu.text_scale,
+            menu.volume,
+            menu.music,
+            menu.effects,
+            menu.rebind,
+        ],
+    );
+    let rect = laid(&harness, back);
+    assert!(
+        rect.min.x >= 0.0
+            && rect.min.y >= 0.0
+            && rect.max.x <= viewport.x
+            && rect.max.y <= viewport.y,
+        "Back at {rect:?} in {viewport}"
+    );
+    assert_setting_rows(&harness, &rows, &rows[..5], "settings with buses");
 }

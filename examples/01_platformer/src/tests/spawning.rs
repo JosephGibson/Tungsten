@@ -172,7 +172,8 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
             [AudioCommand::Play {
                 handle,
                 volume,
-                looping
+                looping,
+                ..
             }] if *handle == AudioHandle(3) && (*volume - 0.65).abs() < f32::EPSILON && !*looping
         ),
         "press should play the black-hole spawn sound once"

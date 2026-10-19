@@ -7,9 +7,7 @@ use tungsten::core::{
     SpriteSquashStretch, SquashTrigger, Tag, TilemapInstance, TilemapRegistry, Timer, Transform,
     Visibility, With, World,
 };
-use tungsten::physics::{
-    BodyKind, Collider, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity,
-};
+use tungsten::physics::{Collider, PhysicsConfig, Position, RigidBody, RigidBodyBundle, Velocity};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_STEP, PHYSICS_SYNC};
 use tungsten::{App, Bundle, Stage, SystemDesc, system};
 
@@ -477,11 +475,7 @@ fn seed_world(world: &mut World) {
                 Collider::circle(BALL_RADIUS),
             )
             .with_velocity(Velocity(Vec2::new(vx, 0.0)))
-            .with_body(RigidBody {
-                kind: BodyKind::Dynamic,
-                inv_mass: 1.0,
-                restitution: BALL_RESTITUTION,
-            })
+            .with_body(RigidBody::dynamic().with_restitution(BALL_RESTITUTION))
             .with((
                 Ball,
                 tungsten::core::AnimationState::new(BALL_ANIMATION_ID),

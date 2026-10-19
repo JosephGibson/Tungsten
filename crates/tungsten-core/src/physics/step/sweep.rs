@@ -1,7 +1,7 @@
 //! Safety-net slab sweep against statics (D-064) and the statics-only grid
 //! that answers it once a frame's queries outnumber the statics (D-080).
 
-use super::Proxy;
+use super::{Proxy, ProxyLayers};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid};
 use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb};
@@ -77,12 +77,14 @@ impl SweepGrid {
 /// the solver after contacts were built (impulse chains, deep-recovery bias).
 /// Static circles promote conservatively to their bounding squares.
 ///
-/// Only statics can be hit, never a kinematic body. The pair grid answers
-/// the query until the statics-only grid is worth staging (D-080); both
-/// return the same statics in the same order, so the first hit is the same.
+/// Only statics can be hit, never a kinematic body, and only those whose
+/// layers meet the body's. The pair grid answers the query until the
+/// statics-only grid is worth staging (D-080); both return the same statics
+/// in the same order, so the first hit is the same.
 pub(super) fn speculative_pass(
     config: &PhysicsConfig,
     proxies: &mut [Proxy],
+    layers: &ProxyLayers,
     grid: &mut SpatialGrid,
     static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
@@ -121,7 +123,7 @@ pub(super) fn speculative_pass(
         for &b_id in candidates.iter() {
             let b_idx = b_id as usize;
             let target = &proxies[b_idx];
-            if target.is_dynamic || target.kinematic {
+            if target.is_dynamic || target.kinematic || !layers.meet(a_idx, b_idx) {
                 continue;
             }
             let b_half = match target.shape {

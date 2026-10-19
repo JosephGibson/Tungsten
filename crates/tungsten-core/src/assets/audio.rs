@@ -3,6 +3,8 @@ use std::path::Path;
 
 use thiserror::Error;
 
+use crate::audio::{AudioBus, MAX_VOICES};
+
 /// Registered sound handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AudioHandle(pub u32);
@@ -166,13 +168,23 @@ impl SoundData {
     }
 }
 
+/// A sound's manifest defaults: what a play takes when the caller names
+/// none, and where and how often it plays.
+#[derive(Debug, Clone, Copy)]
+struct SoundDefaults {
+    volume: f32,
+    looping: bool,
+    bus: AudioBus,
+    max_voices: u32,
+}
+
 /// Decoded sound registry resource.
 pub struct SoundRegistry {
     next_id: u32,
     sounds: HashMap<AudioHandle, SoundData>,
     id_map: HashMap<String, AudioHandle>,
-    /// Manifest `(volume, looping)` defaults.
-    defaults: HashMap<AudioHandle, (f32, bool)>,
+    /// Manifest defaults by handle.
+    defaults: HashMap<AudioHandle, SoundDefaults>,
 }
 
 impl SoundRegistry {
@@ -186,7 +198,10 @@ impl SoundRegistry {
         }
     }
 
-    /// Register decoded sound and defaults.
+    /// Register decoded sound and defaults. It plays on
+    /// [`AudioBus::Effects`] with a limit of [`MAX_VOICES`] until
+    /// [`set_bus`](Self::set_bus) and [`set_max_voices`](Self::set_max_voices)
+    /// say otherwise.
     pub fn register(
         &mut self,
         id: String,
@@ -198,7 +213,15 @@ impl SoundRegistry {
         self.next_id += 1;
         self.id_map.insert(id, handle);
         self.sounds.insert(handle, data);
-        self.defaults.insert(handle, (volume, looping));
+        self.defaults.insert(
+            handle,
+            SoundDefaults {
+                volume,
+                looping,
+                bus: AudioBus::default(),
+                max_voices: MAX_VOICES,
+            },
+        );
         handle
     }
 
@@ -215,13 +238,46 @@ impl SoundRegistry {
     /// Manifest default volume.
     #[must_use]
     pub fn get_volume(&self, handle: AudioHandle) -> f32 {
-        self.defaults.get(&handle).map_or(1.0, |&(v, _)| v)
+        self.defaults.get(&handle).map_or(1.0, |d| d.volume)
     }
 
     /// Manifest default looping flag.
     #[must_use]
     pub fn get_looping(&self, handle: AudioHandle) -> bool {
-        self.defaults.get(&handle).is_some_and(|&(_, l)| l)
+        self.defaults.get(&handle).is_some_and(|d| d.looping)
+    }
+
+    /// Puts a registered sound on `bus`; an unknown handle is ignored.
+    pub fn set_bus(&mut self, handle: AudioHandle, bus: AudioBus) {
+        if let Some(defaults) = self.defaults.get_mut(&handle) {
+            defaults.bus = bus;
+        }
+    }
+
+    /// The bus a sound plays on: its manifest `bus`, and
+    /// [`AudioBus::Effects`] for an unknown handle.
+    #[must_use]
+    pub fn get_bus(&self, handle: AudioHandle) -> AudioBus {
+        self.defaults
+            .get(&handle)
+            .map_or(AudioBus::default(), |d| d.bus)
+    }
+
+    /// Sets the voices of a registered sound that play at once, clamped to
+    /// `1..=MAX_VOICES`; an unknown handle is ignored.
+    pub fn set_max_voices(&mut self, handle: AudioHandle, max_voices: u32) {
+        if let Some(defaults) = self.defaults.get_mut(&handle) {
+            defaults.max_voices = max_voices.clamp(1, MAX_VOICES);
+        }
+    }
+
+    /// The voices of a sound that play at once: its manifest `max_voices`,
+    /// and [`MAX_VOICES`] for an unknown handle.
+    #[must_use]
+    pub fn get_max_voices(&self, handle: AudioHandle) -> u32 {
+        self.defaults
+            .get(&handle)
+            .map_or(MAX_VOICES, |d| d.max_voices)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (AudioHandle, &SoundData)> {

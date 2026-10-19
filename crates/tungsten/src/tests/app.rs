@@ -476,6 +476,55 @@ fn audio_a_frame_queues_lands_in_the_capture_list_only_when_one_is_set() {
     ));
 }
 
+#[test]
+fn audio_plays_past_a_sounds_voice_limit_in_one_frame_keep_the_last_ones() {
+    use tungsten_core::assets::{SoundData, SoundRegistry};
+
+    let mut app = App::new(Config::default()).unwrap();
+    let mut sounds = SoundRegistry::new();
+    let silence = || SoundData {
+        samples: vec![0.0; 4],
+        sample_rate: 44_100,
+        channels: 1,
+    };
+    let hit = sounds.register("hit".into(), silence(), 1.0, false);
+    let other = sounds.register("other".into(), silence(), 1.0, false);
+    sounds.set_max_voices(hit, 4);
+    app.world.insert_resource(sounds);
+    app.add_system(move |world| {
+        let audio = world.get_resource_mut::<AudioCommands>().unwrap();
+        for _ in 0..16 {
+            audio.play(hit);
+        }
+        audio.play(other);
+    });
+    app.audio_capture = Some(Vec::new());
+    headless_frame(&mut app);
+    let played: Vec<(tungsten_core::assets::AudioHandle, tungsten_core::Voice)> = app
+        .audio_capture
+        .as_deref()
+        .unwrap()
+        .iter()
+        .filter_map(|command| match *command {
+            AudioCommand::Play { handle, voice, .. } => Some((handle, voice)),
+            _ => None,
+        })
+        .collect();
+    // Voices count from 1: the last four of the sixteen, then the other.
+    let mut audio = AudioCommands::new();
+    let voices: Vec<tungsten_core::Voice> = (0..17).map(|_| audio.play(hit)).collect();
+    assert_eq!(
+        played,
+        [
+            (hit, voices[12]),
+            (hit, voices[13]),
+            (hit, voices[14]),
+            (hit, voices[15]),
+            (other, voices[16])
+        ]
+    );
+}
+
 /// A capture of `target_frame`, as `TUNGSTEN_CAPTURE_FRAME` arms it.
 fn capture_frame(target_frame: u64) -> crate::capture::Capture {
     crate::capture::Capture::new(crate::capture::CaptureConfig {

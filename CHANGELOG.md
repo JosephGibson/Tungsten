@@ -6,6 +6,27 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.88.0] - 2026-10-19
+
+Summary: M68, W6b and W6c (plan archived at `docs/plans/archive/1.0/phase6-milestone-68-layers-audio-buses.md`): collision layers and masks on bodies, sensors and spatial queries; every sound on the music or effects bus, whose volumes the player sets and keeps; a voice from every play that fades, sets or stops; a voice limit per sound; linear gain ramps, a clamp and stereo channel mapping in a mixer that never allocates; a 1,024-command ring whose overflow waits in order, with a latch that resynchronizes a stalled callback and rebuilds a lost device; the UI lab as the listening host. No hash moves.
+
+### Added
+
+- **Collision layers and masks** (`D-178`): `RigidBody::layers` and `mask`, one bit per layer 0 to 31, with `DEFAULT_LAYERS`, `ALL_LAYERS`, `with_layers`, `with_mask` and `meets`, and `RigidBodyBundle::with_layers` and `with_mask`; two bodies touch only when each one's mask holds a layer the other is in, the pair build and repair, the safety net and the arrival pass skipping the rest; a sensor reports what its own mask holds; `SpatialFilter::with_mask`; tiles in layer 0 meeting every layer; a sleeper's or a support's changed layers wake the island; `rigid_body`'s `layers` and `mask` lists.
+- **Buses and voices** (`D-179`): `AudioBus` (`Music`, `Effects`), `Voice` and `MAX_VOICES` at the crate root; `AudioCommands::play_faded`, `stop_voice`, `set_voice_volume` and `set_bus_volume`; a manifest sound's `bus` and `max_voices`, kept per sound by `SoundRegistry` (`set_bus`, `get_bus`, `set_max_voices`, `get_max_voices`) and set by `load_sounds`; `Settings::bus_volume` and `set_bus_volume` with the file's `bus_volumes`, which `apply_settings` sends for every bus and startup queues when set.
+- **The mixer and the ring** (`D-179`): a callback-owned mixer of 64 voice slots that never allocates, each voice at its volume × its bus × the master, gains ramping linearly per frame (fades, at least 10 ms for a voice change or a stop, 10 ms for the master and the buses), a sound's oldest one-shot ending before its oldest loop at its limit, the mix clamped to [-1, 1], stereo into a wider device's first two channels and the mean on a mono one; the stage caps a frame's plays of a sound at its limit; a 1,024-command ring whose overflow waits in order behind `AudioSystem::flush`, called every frame, one-shot plays dropped only while 4,096 wait and a queue past 65,536 resynchronized from the outbox's latch; a callback takes at most 1,024 commands before it renders.
+- **The lost device** (`D-179`): the error callback only flags a lost stream (`DeviceNotAvailable`, `StreamInvalidated`) or counts other errors, logged at most once a second; the stage drops the lost stream, opens the default device again and replays the latch's master, buses and loops into the new ring, trying every two seconds.
+- **The listening host** (`D-179`): the UI lab's play state fades `music_main` in over a second and out over half a second, its settings screen gains Music and Effects sliders (an effects change plays `sfx_blip`), and M crossfades the music into a new voice over two seconds; the root manifest puts `music_main` on music and `sfx_blip` on effects.
+
+### Changed
+
+- **API breaks** (`D-178`, `D-179`; the W4 ledger): `RigidBody` gains two public fields, and the workspace's three struct literals moved to its constructors; `AudioCommand` and its `Play` turn `#[non_exhaustive]`, `Play` gaining `voice` and `fade` and the enum `StopVoice`, `SetVoiceVolume` and `SetBusVolume`; `play`, `play_looping` and `play_with` return the `Voice` they start; `SoundEntry` and `ResolvedSound` gain `bus` and `max_voices` and turn `#[non_exhaustive]`; `AudioSystem::send` waits for room instead of dropping.
+- **Records**: decisions 178 and 179 with their marker lines on `D-033`, `D-065`, `D-154`, `D-156`, `D-029`, `D-034` and `D-159`; `DESIGN.md`'s M68 section, its Physics and Audio sections and the status line; known issues (two recorded limits); the asset doc's Sound row; the W4 ledger's six rows; the w06 file; the backlog's four rows; the API snapshots.
+
+### Fixed
+
+- **Audio's known issues** (`D-179`): a device with more than two channels read three source frames per output frame; a `Play` could grow a vector in the callback; full rings dropped commands; a lost or switched output device left the game silent for the session and the error callback logged on the audio thread at every underrun (App 4); the summed output had no clamp (App 6).
+
 ## [0.87.0] - 2026-10-18
 
 Summary: M67, W13k (plan archived at `docs/plans/archive/1.0/phase6-milestone-67-kit-effects-abilities.md`): the kit catalogue's E, effects, abilities, curves, offers and levels as data kinds and scene components, every kit payload queued for one `effect_resolve` after the damage; the ailment ladder on `damage_types` entries, fed by typed parts and climbed from the top down; a periodic flag through the pipeline; the hitbox window; four cue events and two actions; twelve recipes in the four fixtures. The template's hazard slows the player.

@@ -292,6 +292,7 @@ fn sound_on_event_plays_each_event_once_from_any_stage() {
                     handle,
                     volume,
                     looping,
+                    ..
                 } => (*handle, *volume, *looping),
                 other => panic!("unexpected {other:?}"),
             })

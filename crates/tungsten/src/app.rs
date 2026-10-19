@@ -252,6 +252,11 @@ impl App {
         if let Some(volume) = settings.master_volume() {
             audio_commands.set_master_volume(volume);
         }
+        for &bus in tungsten_core::AudioBus::ALL {
+            if let Some(volume) = settings.bus_volume(bus) {
+                audio_commands.set_bus_volume(bus, volume);
+            }
+        }
         let mut ui_tree = UiTree::new();
         if let Some(text_scale) = settings.text_scale() {
             ui_tree.set_text_scale(text_scale);
@@ -1545,17 +1550,40 @@ impl App {
         }
     }
 
+    /// Checks the device's stream (a lost one is rebuilt), sends the frame's
+    /// audio commands, each sound's plays capped at its voice limit (the
+    /// last ones kept), to the device or to the capture list, then moves
+    /// waiting commands into the ring, every frame.
     #[inline(always)]
     fn stage_audio(&mut self) -> f32 {
         let audio_start = Instant::now();
-        if let Some(cmds) = self.world.get_resource_mut::<AudioCommands>() {
-            for cmd in cmds.drain() {
+        if let (Some(audio), Some(sounds)) =
+            (&mut self.audio, self.world.get_resource::<SoundRegistry>())
+        {
+            audio.maintain(sounds);
+        }
+        let mut commands = self
+            .world
+            .get_resource_mut::<AudioCommands>()
+            .map(AudioCommands::drain)
+            .unwrap_or_default();
+        if !commands.is_empty() {
+            let sounds = self.world.get_resource::<SoundRegistry>();
+            crate::audio::cap_plays(&mut commands, |handle| {
+                sounds.map_or(tungsten_core::MAX_VOICES, |sounds| {
+                    sounds.get_max_voices(handle)
+                })
+            });
+            for cmd in commands {
                 if let Some(audio) = &mut self.audio {
                     audio.send(cmd);
                 } else if let Some(capture) = &mut self.audio_capture {
                     capture.push(cmd);
                 }
             }
+        }
+        if let Some(audio) = &mut self.audio {
+            audio.flush();
         }
         audio_start.elapsed().as_secs_f64() as f32 * 1000.0
     }

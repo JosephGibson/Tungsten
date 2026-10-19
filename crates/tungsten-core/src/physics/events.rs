@@ -34,9 +34,11 @@ impl CollisionEvent {
 }
 
 /// A sensor began to overlap a body (`other`) or a solid tile (`other:
-/// None`), sent at the end of the step in which the overlap began: once per
-/// pair while it lasts, and again after the two separate and overlap anew.
-/// Build one with [`SensorEntered::new`].
+/// None`) in a layer its mask holds ([`RigidBody`](crate::physics::RigidBody)),
+/// sent at the end of the step in which the overlap began: once per pair
+/// while it lasts, and again after the two separate and overlap anew. A body
+/// already overlapping when the sensor's mask comes to hold its layer is
+/// reported at that step. Build one with [`SensorEntered::new`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct SensorEntered {

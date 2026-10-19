@@ -1,8 +1,8 @@
 //! Once-per-frame gather of entity and tilemap collider proxies in
-//! deterministic `World` order (D-066), and their warm-start keys; sensors
-//! are gathered beside the proxies, never as one.
+//! deterministic `World` order (D-066), their warm-start keys and their
+//! layers; sensors are gathered beside the proxies, never as one.
 
-use super::{Proxy, SensorBody};
+use super::{Layers, Proxy, ProxyLayers, SensorBody};
 use crate::assets::{LayerKind, TilemapInstance, TilemapRegistry};
 use crate::ecs::{Entity, World};
 use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
@@ -38,21 +38,25 @@ fn tile_identity(map: Entity, layer: usize, col: u32, row: u32) -> u64 {
 
 /// Gather entity + tilemap proxies in deterministic `World` order, once per
 /// frame (D-066); the gather runs before any integration, so
-/// `prev_center == center` at gather time. A sensor row joins `sensors`
-/// instead of the proxies; in a frame with sensors, `tile_ids` gets each
-/// tile proxy's identity, in proxy order, and stays empty otherwise.
-/// Returns how many kinematic proxies it staged, which sets the frame's
-/// substep count.
+/// `prev_center == center` at gather time. Each proxy's layers go to
+/// `layers`, in proxy order, which notes whether any proxy or sensor is off
+/// the defaults. A sensor row joins `sensors` instead of the proxies; in a
+/// frame with sensors, `tile_ids` gets each tile proxy's identity, in proxy
+/// order, and stays empty otherwise. Returns how many kinematic proxies it
+/// staged, which sets the frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
+    layers: &mut ProxyLayers,
     sensors: &mut Vec<SensorBody>,
     tile_ids: &mut Vec<u64>,
 ) -> usize {
     proxies.clear();
+    layers.of.clear();
     sensors.clear();
     tile_ids.clear();
     let mut kinematics = 0;
+    let mut layered = false;
 
     // Columnar 4-way gather: RigidBody/Velocity columns resolve once per
     // archetype — no per-entity random lookups (D-066).
@@ -66,6 +70,8 @@ pub(super) fn gather_proxies(
         let has_velocity = velocity.is_some();
         let velocity = velocity.map_or(Vec2::ZERO, |v| v.0);
         let body = body.copied();
+        let body_layers = body.as_ref().map_or(Layers::DEFAULT, Layers::of);
+        layered |= body_layers != Layers::DEFAULT;
         if body.is_some_and(|b| b.kind == BodyKind::Sensor) {
             sensors.push(SensorBody {
                 entity,
@@ -73,6 +79,7 @@ pub(super) fn gather_proxies(
                 center: position.0 + collider.offset,
                 shape: collider.shape,
                 velocity,
+                layers: body_layers,
             });
             continue;
         }
@@ -104,18 +111,21 @@ pub(super) fn gather_proxies(
             kinematic,
             kept_awake: false,
         });
+        layers.of.push(body_layers);
     }
+    layers.layered = layered;
 
     let tile_ids = (!sensors.is_empty()).then_some(tile_ids);
-    gather_tilemap_proxies(world, proxies, tile_ids);
+    gather_tilemap_proxies(world, proxies, &mut layers.of, tile_ids);
     kinematics
 }
 
-/// Emit transient static tile proxies for collision layers, and their
-/// identities when `tile_ids` is given.
+/// Emit transient static tile proxies for collision layers, in layer 0 and
+/// meeting every layer, and their identities when `tile_ids` is given.
 fn gather_tilemap_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
+    layers: &mut Vec<Layers>,
     mut tile_ids: Option<&mut Vec<u64>>,
 ) {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
@@ -187,6 +197,7 @@ fn gather_tilemap_proxies(
                         kinematic: false,
                         kept_awake: false,
                     });
+                    layers.push(Layers::DEFAULT);
                     if let Some(ids) = tile_ids.as_deref_mut() {
                         ids.push(tile_identity(map, layer_index, col, row));
                     }

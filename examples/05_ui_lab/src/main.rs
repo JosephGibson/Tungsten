@@ -5,7 +5,10 @@
 //! (I, or a pad's North) pushes the inventory, and `state_pause` (P, or a
 //! pad's Start) the pause menu, each behind a fade; the pause menu's
 //! Settings pushes the settings screen (display mode, UI and text scale,
-//! volume, a `jump` rebind, Back) and its Inventory the inventory.
+//! the Volume, Music and Effects sliders, a `jump` rebind, Back; an Effects
+//! change plays a blip) and its Inventory the inventory. The play state's
+//! music fades in over a second, and `audio_toggle_music` (M) crossfades it
+//! into a new voice over two seconds.
 //!
 //! Env: `TUNGSTEN_UI_LAB_FIXTURE={default|empty|hidden|labels|menus|menu|menu-prewarm|menu-cold|debug|display}`
 //! picks a fixture ([`fixtures`] lists them): `default` builds the lab
@@ -75,6 +78,7 @@ fn main() -> anyhow::Result<()> {
             Fixture::Off | Fixture::Menus | Fixture::Display => {
                 let roots = menus::build_play_screen(world, fixture == Fixture::Off);
                 menus::add_pause_pad_binding(world);
+                menus::add_music_binding(world);
                 inventory::add_bindings(world);
                 world
                     .resource_mut::<StateStack>()

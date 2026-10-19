@@ -714,11 +714,7 @@ fn spawn_balls(world: &mut World, small: bool, budget: u32) -> u32 {
             );
             cmds.insert_pending(
                 ball,
-                RigidBody {
-                    kind: BodyKind::Dynamic,
-                    inv_mass: 1.0,
-                    restitution: BALL_RESTITUTION,
-                },
+                RigidBody::dynamic().with_restitution(BALL_RESTITUTION),
             );
             cmds.insert_pending(
                 ball,

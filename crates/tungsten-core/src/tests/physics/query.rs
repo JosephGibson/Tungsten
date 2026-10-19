@@ -723,3 +723,128 @@ fn queries_see_a_sensor_only_with_sensors() {
     );
     assert_eq!(builds(&world), 1, "the step's index served every query");
 }
+
+/// A static box at `center` in `layers`.
+fn layered_wall(world: &mut World, center: Vec2, layers: u32) -> Entity {
+    world.spawn_with(
+        RigidBodyBundle::r#static(Position(center), Collider::aabb(Vec2::splat(8.0)))
+            .with_layers(layers),
+    )
+}
+
+#[test]
+fn layers_casts_skip_bodies_sensors_and_tiles_outside_the_mask() {
+    // Down the line x 40: a sensor and a box in layer 2, then the floor.
+    let mut world = world();
+    floor(&mut world, 10);
+    let boxed = layered_wall(&mut world, Vec2::new(40.0, -40.0), 1 << 2);
+    let sensor = world.spawn_with(
+        RigidBodyBundle::sensor(Position::new(40.0, -80.0), Collider::aabb(Vec2::splat(8.0)))
+            .with_layers(1 << 2),
+    );
+    physics_step(&mut world);
+    let origin = Vec2::new(40.0, -200.0);
+    let shape = Shape::Circle { radius: 3.0 };
+    let ray = |filter: &SpatialFilter| {
+        cast_ray(&world, origin, Vec2::Y, 500.0, filter).map(|hit| hit.entity)
+    };
+    let swept = |filter: &SpatialFilter| {
+        cast_shape(&world, shape, origin, Vec2::Y, 500.0, filter).map(|hit| hit.entity)
+    };
+    let sensors = all().with_sensors(true);
+    for cast in [
+        &ray as &dyn Fn(&SpatialFilter) -> Option<Option<Entity>>,
+        &swept,
+    ] {
+        assert_eq!(cast(&sensors), Some(Some(sensor)));
+        assert_eq!(cast(&sensors.with_mask(1 << 2)), Some(Some(sensor)));
+        assert_eq!(cast(&all().with_mask(1 << 2)), Some(Some(boxed)));
+        assert_eq!(
+            cast(&sensors.with_mask(RigidBody::DEFAULT_LAYERS)),
+            Some(None)
+        );
+        assert_eq!(cast(&sensors.with_mask(1 << 5)), None);
+        assert_eq!(cast(&sensors.with_mask(0)), None);
+        // A later mask replaces an earlier one.
+        assert_eq!(
+            cast(&sensors.with_mask(0).with_mask(u32::MAX)),
+            Some(Some(sensor))
+        );
+    }
+}
+
+#[test]
+fn layers_overlap_and_nearest_skip_what_the_mask_lacks() {
+    let mut world = world();
+    floor(&mut world, 4);
+    let plain = layered_wall(
+        &mut world,
+        Vec2::new(10.0, -20.0),
+        RigidBody::DEFAULT_LAYERS,
+    );
+    let layered = layered_wall(&mut world, Vec2::new(30.0, -20.0), 1 << 2);
+    let sensor = world.spawn_with(
+        RigidBodyBundle::sensor(Position::new(50.0, -20.0), Collider::aabb(Vec2::splat(8.0)))
+            .with_layers(1 << 2),
+    );
+    physics_step(&mut world);
+    let big = Shape::Aabb {
+        half_extents: Vec2::splat(60.0),
+    };
+    let sensors = all().with_sensors(true);
+    let mut out = Vec::new();
+    let mut overlaps = |filter: &SpatialFilter| {
+        overlap(&world, big, Vec2::new(30.0, 0.0), filter, &mut out);
+        out.clone()
+    };
+    assert_eq!(
+        overlaps(&sensors),
+        [
+            Some(plain),
+            Some(layered),
+            None,
+            None,
+            None,
+            None,
+            Some(sensor)
+        ]
+    );
+    assert_eq!(
+        overlaps(&sensors.with_mask(1 << 2)),
+        [Some(layered), Some(sensor)]
+    );
+    assert_eq!(
+        overlaps(&sensors.with_mask(RigidBody::DEFAULT_LAYERS)),
+        [Some(plain), None, None, None, None]
+    );
+    assert!(overlaps(&sensors.with_mask(1 << 7)).is_empty());
+    let near = |point: Vec2, filter: &SpatialFilter| {
+        nearest(&world, point, 500.0, filter).map(|hit| hit.entity)
+    };
+    // Inside the layered box; the plain box is 12 px away, the floor 36.
+    let inside = Vec2::new(30.0, -20.0);
+    assert_eq!(near(inside, &all()), Some(Some(layered)));
+    assert_eq!(near(inside, &all().with_mask(1 << 2)), Some(Some(layered)));
+    assert_eq!(
+        near(inside, &all().with_mask(RigidBody::DEFAULT_LAYERS)),
+        Some(Some(plain))
+    );
+    assert_eq!(
+        near(
+            Vec2::new(30.0, 40.0),
+            &all().with_mask(RigidBody::DEFAULT_LAYERS)
+        ),
+        Some(None)
+    );
+    assert_eq!(near(inside, &all().with_mask(1 << 7)), None);
+    // Inside the sensor, which only a filter with sensors sees.
+    let in_sensor = Vec2::new(50.0, -20.0);
+    assert_eq!(
+        near(in_sensor, &sensors.with_mask(1 << 2)),
+        Some(Some(sensor))
+    );
+    assert_eq!(
+        near(in_sensor, &all().with_mask(1 << 2)),
+        Some(Some(layered))
+    );
+}

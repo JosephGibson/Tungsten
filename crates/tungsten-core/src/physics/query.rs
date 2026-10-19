@@ -8,7 +8,9 @@
 //! step is found where the step left it, one spawned since is not found and
 //! one despawned since is skipped; before the first step nothing is found.
 //! Ties go to the lower index (proxies in gather order, then sensors), so
-//! every answer is deterministic.
+//! every answer is deterministic. A filter sees the layers its mask holds
+//! ([`SpatialFilter::with_mask`]), every layer by default; tiles are in
+//! layer 0.
 //!
 //! Tiles keep `D-064`'s seams: a cast never hits a face the tile's neighbour
 //! covers, and a corner beside such a face is square, so a cast along a tile
@@ -45,7 +47,7 @@ use super::collision::{
     Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
 };
-use super::components::Shape;
+use super::components::{RigidBody, Shape};
 use super::step::PhysicsBuffers;
 use crate::ecs::{Entity, World};
 use glam::Vec2;
@@ -55,13 +57,14 @@ use glam::Vec2;
 const QUERY_PAD: f32 = 0.01;
 
 /// Which bodies, sensors and tiles a query sees. The default sees bodies and
-/// tiles, no sensors, and excludes nothing.
+/// tiles in every layer, no sensors, and excludes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpatialFilter {
     exclude: Option<Entity>,
     bodies: bool,
     sensors: bool,
     tiles: bool,
+    mask: u32,
 }
 
 impl Default for SpatialFilter {
@@ -71,12 +74,14 @@ impl Default for SpatialFilter {
             bodies: true,
             sensors: false,
             tiles: true,
+            mask: RigidBody::ALL_LAYERS,
         }
     }
 }
 
 impl SpatialFilter {
-    /// The default filter: bodies and tiles, no sensors, nothing excluded.
+    /// The default filter: bodies and tiles in every layer, no sensors,
+    /// nothing excluded.
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -112,8 +117,21 @@ impl SpatialFilter {
         self
     }
 
+    /// The filter, seeing only the bodies, sensors and tiles in a layer
+    /// `mask` holds, one bit per layer ([`RigidBody::layers`]); tiles are in
+    /// layer 0. It replaces an earlier mask; the default holds every layer.
+    /// Sensors still need [`with_sensors`](Self::with_sensors).
+    #[must_use]
+    pub fn with_mask(mut self, mask: u32) -> Self {
+        self.mask = mask;
+        self
+    }
+
     /// The entry passes the filter and its entity is still alive.
     fn admits(&self, entry: &IndexEntry, world: &World) -> bool {
+        if entry.layers & self.mask == 0 {
+            return false;
+        }
         match entry.entity {
             None => self.tiles,
             Some(entity) => {
@@ -159,6 +177,10 @@ pub(super) struct IndexEntry {
     /// The body's key or the tile's identity (the low half of a sensor
     /// pair's key); a sensor's key (the high half).
     pub(super) identity: u64,
+    /// The layers it is in; a tile's is layer 0.
+    pub(super) layers: u32,
+    /// The layers it meets; a sensor reports what this holds.
+    pub(super) mask: u32,
 }
 
 impl IndexEntry {
@@ -185,9 +207,10 @@ impl SpatialIndex {
     }
 
     /// The step's sensor pass: builds the index of `buffers` and calls
-    /// `visit` with each sensor, in gather order, and each body or tile it
-    /// overlaps with penetration above 0, in index order. Sensors do not
-    /// detect sensors. The step's queries reuse the index.
+    /// `visit` with each sensor, in gather order, and each body or tile in a
+    /// layer the sensor's mask holds that it overlaps with penetration above
+    /// 0, in index order. Sensors do not detect sensors. The step's queries
+    /// reuse the index.
     pub(super) fn sensor_overlaps(
         world: &World,
         buffers: &PhysicsBuffers,
@@ -202,6 +225,7 @@ impl SpatialIndex {
                 for &id in &state.candidates {
                     let other = &state.entries[id as usize];
                     if !other.sensor
+                        && sensor.mask & other.layers != 0
                         && shapes_overlap(sensor.shape, sensor.center, other.shape, other.center)
                     {
                         visit(&sensor, other);

@@ -8,17 +8,24 @@
 //!
 //! The settings screen shows the runtime apply (`D-159`, `D-169`): each
 //! change goes into `Settings` and `apply_settings` applies it as a restart
-//! would; Back or `ui_cancel` saves the file and pops. Its rebind row
-//! captures the next key, button or stick direction (`D-164`) and persists
-//! the action map's user layer. The pad's Start pauses through a binding
-//! added in code ([`add_pause_pad_binding`]).
+//! would; Back or `ui_cancel` saves the file and pops. Its music and effects
+//! sliders set the buses' volumes, and each effects change plays a blip at
+//! the new level. Its rebind row captures the next key, button or stick
+//! direction (`D-164`) and persists the action map's user layer. The pad's
+//! Start pauses through a binding added in code ([`add_pause_pad_binding`]).
+//!
+//! The play state's music fades in over a second on entry and out over half
+//! a second on exit, and plays on through the pause menu and the
+//! inventory; [`MUSIC_ACTION`] (M, which [`add_music_binding`] adds when the
+//! map lacks it) crossfades it into a new voice from its start over two
+//! seconds.
 
 use tungsten::core::ui::{
     LayoutStyle, Sizing, SliderRange, UiEvent, UiRouter, UiTree, UiValue, WidgetId,
 };
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, DisplayMode, DisplayState, EventQueue, GamepadButton,
-    RoutedInput, Settings, Time, World,
+    ActionMap, AssetRegistry, AudioBus, AudioCommands, Binding, DisplayMode, DisplayState,
+    EventQueue, GamepadButton, KeyCode, RoutedInput, Settings, SoundRegistry, Time, Voice, World,
 };
 use tungsten::{GameState, RootCover, StateContext, StateId, StateStack, apply_settings};
 
@@ -33,6 +40,19 @@ use crate::widgets;
 pub const PAUSE_ACTION: &str = "state_pause";
 /// The action the settings screen rebinds.
 pub const REBIND_ACTION: &str = "jump";
+/// The action that crossfades the play state's music: M in the root
+/// `input.json`, which [`add_music_binding`] adds when the map lacks it.
+pub const MUSIC_ACTION: &str = "audio_toggle_music";
+/// The play state's music, on the music bus.
+pub const MUSIC_SOUND: &str = "music_main";
+/// The blip an effects volume change plays, on the effects bus.
+pub const BLIP_SOUND: &str = "sfx_blip";
+/// Seconds the music takes to rise on entering play.
+pub const MUSIC_FADE_IN: f32 = 1.0;
+/// Seconds the music takes to fall on leaving play.
+pub const MUSIC_FADE_OUT: f32 = 0.5;
+/// Seconds a crossfade into a new music voice takes.
+pub const MUSIC_CROSSFADE: f32 = 2.0;
 
 /// Adds the pad's Start to [`PAUSE_ACTION`]'s bindings, once.
 pub fn add_pause_pad_binding(world: &mut World) {
@@ -46,6 +66,41 @@ pub fn add_pause_pad_binding(world: &mut World) {
     if !bindings.contains(&start) {
         bindings.push(start);
         map.replace_bindings(PAUSE_ACTION, bindings);
+    }
+}
+
+/// Adds M to [`MUSIC_ACTION`]'s bindings when the map has none of it, so a
+/// map built without the root `input.json` (the harness's) has it too.
+pub fn add_music_binding(world: &mut World) {
+    let Some(map) = world.get_resource_mut::<ActionMap>() else {
+        return;
+    };
+    let key = Binding::Key {
+        code: KeyCode::KeyM,
+    };
+    let mut bindings = map.bindings(MUSIC_ACTION).to_vec();
+    if !bindings.contains(&key) {
+        bindings.push(key);
+        map.replace_bindings(MUSIC_ACTION, bindings);
+    }
+}
+
+/// Plays `id` at its manifest volume, looping as asked, rising over
+/// `fade`; `None` when the manifest has no such sound.
+fn play_sound(world: &mut World, id: &str, looping: bool, fade: f32) -> Option<Voice> {
+    let (handle, volume) = {
+        let sounds = world.get_resource::<SoundRegistry>()?;
+        let handle = sounds.get_by_id(id)?;
+        (handle, sounds.get_volume(handle))
+    };
+    let audio = world.get_resource_mut::<AudioCommands>()?;
+    Some(audio.play_faded(handle, volume, looping, fade))
+}
+
+/// Stops `voice` over `fade` seconds.
+fn stop_voice(world: &mut World, voice: Voice, fade: f32) {
+    if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
+        audio.stop_voice(voice, fade);
     }
 }
 
@@ -100,16 +155,19 @@ pub fn build_play_screen(world: &mut World, controls: bool) -> Vec<(WidgetId, Ro
 /// controls window `Hide`, so no pushed screen shares the screen with it),
 /// and the play HUD (`Show`); counts game time; pushes [`PauseState`] on
 /// [`PAUSE_ACTION`] and [`InventoryState`] on `inventory_open`, each
-/// behind a fade. Pauses the game clock while covered.
+/// behind a fade. Pauses the game clock while covered. Plays the music
+/// from entry to exit and crossfades it on [`MUSIC_ACTION`].
 pub struct PlayState {
     roots: Vec<(WidgetId, RootCover)>,
+    /// The music's voice while it plays.
+    music: Option<Voice>,
 }
 
 impl PlayState {
     /// A play state that will own `roots`, the lab's, with their covers.
     #[must_use]
     pub fn new(roots: Vec<(WidgetId, RootCover)>) -> Self {
-        Self { roots }
+        Self { roots, music: None }
     }
 }
 
@@ -130,10 +188,14 @@ impl GameState for PlayState {
             stack.own_root(owned, cover);
         }
         ctx.world.insert_resource(play_hud);
+        self.music = play_sound(ctx.world, MUSIC_SOUND, true, MUSIC_FADE_IN);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.remove_resource::<PlayHud>();
+        if let Some(music) = self.music.take() {
+            stop_voice(ctx.world, music, MUSIC_FADE_OUT);
+        }
     }
 
     fn on_pause(&mut self, ctx: &mut StateContext) {
@@ -153,8 +215,13 @@ impl GameState for PlayState {
                 .is_some_and(|(map, routed)| map.just_pressed(routed, action))
         };
         let (pause, open) = (pressed(PAUSE_ACTION), pressed(inventory::OPEN_ACTION));
+        let crossfade = pressed(MUSIC_ACTION);
         if world.resource::<StateStack>().is_transitioning() {
             return;
+        }
+        if crossfade && let Some(music) = self.music {
+            stop_voice(world, music, MUSIC_CROSSFADE);
+            self.music = play_sound(world, MUSIC_SOUND, true, MUSIC_CROSSFADE);
         }
         if pause {
             stack(world).request_push_transition(PauseState, theme::fade());
@@ -271,6 +338,11 @@ pub struct SettingsMenu {
     pub text_scale: WidgetId,
     /// The master volume, 0 to 100 by 5, applied live.
     pub volume: WidgetId,
+    /// The music bus's volume, 0 to 100 by 5, applied live.
+    pub music: WidgetId,
+    /// The effects bus's volume, 0 to 100 by 5, applied live; each change
+    /// plays a blip.
+    pub effects: WidgetId,
     /// Shows [`REBIND_ACTION`]'s binding and captures a new one.
     pub rebind: WidgetId,
     /// Saves the settings and pops.
@@ -281,9 +353,9 @@ pub struct SettingsMenu {
     dragging: Option<(WidgetId, Option<f32>)>,
 }
 
-/// The settings screen: display mode, UI and text scale, master volume, one
-/// rebind and Back, which saves the settings and pops behind a fade, as
-/// `ui_cancel` does.
+/// The settings screen: display mode, UI and text scale, the master, music
+/// and effects volumes, one rebind and Back, which saves the settings and
+/// pops behind a fade, as `ui_cancel` does.
 pub struct SettingsState;
 
 const MODES: [DisplayMode; 3] = [
@@ -346,6 +418,17 @@ impl GameState for SettingsState {
             SliderRange::new(0.0, 100.0).with_step(5.0),
             settings.master_volume().unwrap_or(1.0) * 100.0,
         );
+        let [music, effects] =
+            [("Music", AudioBus::Music), ("Effects", AudioBus::Effects)].map(|(caption, bus)| {
+                widgets::slider_row(
+                    tree,
+                    root,
+                    caption,
+                    SliderRange::new(0.0, 100.0).with_step(5.0),
+                    settings.bus_volume(bus).unwrap_or(1.0) * 100.0,
+                )
+                .1
+            });
         let (row, _) = widgets::caption_row(tree, root, "Jump");
         let rebind = widgets::button(tree, row, "");
         tree.set_layout_style(
@@ -366,6 +449,8 @@ impl GameState for SettingsState {
             ui_scale,
             text_scale,
             volume,
+            music,
+            effects,
             rebind,
             back,
             display_requests: 0,
@@ -468,6 +553,19 @@ fn settings_event(world: &mut World, menu: &mut SettingsMenu, event: UiEvent) ->
             value: UiValue::Number(value),
             ..
         } if widget == menu.volume => set_volume(world, value),
+        UiEvent::ValueChanged {
+            widget,
+            value: UiValue::Number(value),
+            ..
+        } if widget == menu.music => set_bus_volume(world, AudioBus::Music, value),
+        UiEvent::ValueChanged {
+            widget,
+            value: UiValue::Number(value),
+            ..
+        } if widget == menu.effects => {
+            set_bus_volume(world, AudioBus::Effects, value);
+            play_sound(world, BLIP_SOUND, false, 0.0);
+        }
         UiEvent::InputCaptured {
             widget, binding, ..
         } if widget == menu.rebind => {
@@ -512,6 +610,13 @@ pub fn cycle_display_mode(world: &mut World, menu: &mut SettingsMenu) {
 pub fn set_volume(world: &mut World, percent: f32) {
     change_settings(world, |settings| {
         settings.set_master_volume(Some(percent / 100.0));
+    });
+}
+
+/// A bus slider's action: `bus`'s volume at `percent`, applied.
+pub fn set_bus_volume(world: &mut World, bus: AudioBus, percent: f32) {
+    change_settings(world, |settings| {
+        settings.set_bus_volume(bus, Some(percent / 100.0));
     });
 }
 

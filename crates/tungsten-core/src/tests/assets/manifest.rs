@@ -247,6 +247,60 @@ fn a_sound_volume_must_be_finite_and_not_negative() {
     );
 }
 
+/// The sound `sfx_blip` loaded from a manifest naming `fields` beside its
+/// path, or the load's error.
+fn load_sound(tmp: &Path, fields: &str) -> Result<ResolvedSound, ManifestError> {
+    write_file(tmp, "blip.ogg");
+    let path = write_manifest(
+        tmp,
+        &format!(r#"{{"sounds": {{"sfx_blip": {{"path": "blip.ogg"{fields}}}}}}}"#),
+    );
+    ResolvedManifest::load(&path).map(|manifest| manifest.sounds["sfx_blip"].clone())
+}
+
+#[test]
+fn a_sound_bus_is_music_or_effects_and_defaults_to_effects() {
+    let tmp = tempdir();
+    assert_eq!(load_sound(&tmp, "").unwrap().bus, AudioBus::Effects);
+    assert_eq!(
+        load_sound(&tmp, r#", "bus": "music""#).unwrap().bus,
+        AudioBus::Music
+    );
+    assert_eq!(
+        load_sound(&tmp, r#", "bus": "effects""#).unwrap().bus,
+        AudioBus::Effects
+    );
+    for bus in [r#""voice""#, r#""Music""#, "3"] {
+        let err = load_sound(&tmp, &format!(r#", "bus": {bus}"#)).unwrap_err();
+        assert!(matches!(err, ManifestError::Parse { .. }), "{bus}: {err}");
+        let message = err.to_string();
+        assert!(message.contains("sound `sfx_blip`"), "{bus}: {message}");
+    }
+}
+
+#[test]
+fn a_sound_max_voices_is_1_to_64_and_defaults_to_64() {
+    let tmp = tempdir();
+    assert_eq!(load_sound(&tmp, "").unwrap().max_voices, 64);
+    for limit in [1, 4, 64] {
+        let sound = load_sound(&tmp, &format!(r#", "max_voices": {limit}"#)).unwrap();
+        assert_eq!(sound.max_voices, limit);
+    }
+    for limit in ["0", "65", "-1", "2.5", r#""four""#] {
+        let err = load_sound(&tmp, &format!(r#", "max_voices": {limit}"#)).unwrap_err();
+        assert!(matches!(err, ManifestError::Parse { .. }), "{limit}: {err}");
+        let message = err.to_string();
+        assert!(message.contains("sound `sfx_blip`"), "{limit}: {message}");
+    }
+    let message = load_sound(&tmp, r#", "max_voices": 65"#)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        message.contains("max_voices 65 is outside 1..=64"),
+        "{message}"
+    );
+}
+
 #[test]
 fn a_repeated_id_inside_one_section_is_an_error() {
     // `D-017`: duplicate IDs are fatal. serde's map kept the last entry,
@@ -288,6 +342,8 @@ fn merge_duplicate_sound_is_error() {
             path: "blip.ogg".into(),
             looping: false,
             volume: 1.0,
+            bus: AudioBus::Effects,
+            max_voices: 64,
         },
     );
 
@@ -298,6 +354,8 @@ fn merge_duplicate_sound_is_error() {
             path: "blip2.ogg".into(),
             looping: false,
             volume: 1.0,
+            bus: AudioBus::Effects,
+            max_voices: 64,
         },
     );
 

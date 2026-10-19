@@ -175,7 +175,8 @@ pub(crate) fn font_load_order(manifest: &ResolvedManifest) -> Vec<&String> {
     ids
 }
 
-/// Decode sounds into `SoundRegistry`.
+/// Decode sounds into `SoundRegistry`, each with its manifest volume, loop
+/// flag, bus and voice limit.
 pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
     let mut sound_registry = SoundRegistry::new();
 
@@ -196,7 +197,10 @@ pub fn load_sounds(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Re
             data.channels,
             sound_entry.path.display(),
         );
-        sound_registry.register(id.clone(), data, sound_entry.volume, sound_entry.looping);
+        let handle =
+            sound_registry.register(id.clone(), data, sound_entry.volume, sound_entry.looping);
+        sound_registry.set_bus(handle, sound_entry.bus);
+        sound_registry.set_max_voices(handle, sound_entry.max_voices);
     }
 
     world.insert_resource(sound_registry);
