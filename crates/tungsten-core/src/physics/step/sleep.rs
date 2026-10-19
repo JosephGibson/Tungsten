@@ -2,7 +2,7 @@
 //! (D-082), union-find over touching contacts, and the frame-start and
 //! frame-end sleep passes.
 
-use super::{PhysicsBuffers, Proxy};
+use super::{Layers, PhysicsBuffers, Proxy};
 use crate::ecs::World;
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::Aabb;
@@ -27,6 +27,9 @@ pub(super) struct SleepEntry {
     /// Collider center frozen at sleep, stored with the exact fp ops the
     /// next gather performs; a mismatch means an external `Position` write.
     center: Vec2,
+    /// Layers and mask at sleep; a mismatch is a write that wakes, as a
+    /// moved centre is.
+    layers: Layers,
 }
 
 /// Key of a proxy without sleep state, and the empty index slot; entity keys
@@ -57,20 +60,21 @@ pub(super) struct SleepTable {
     /// Scratch: old entries a rebuild carried over.
     carried: Vec<bool>,
     /// The static and tile proxies at the end of the last frame in which an
-    /// island slept, in proxy order: key and box. Only dynamic members carry
-    /// sleep entries, so a support that went, moved or changed is found by
-    /// comparing this with the next frame's (`wake_on_supports`).
-    supports: Vec<(u64, Aabb)>,
+    /// island slept, in proxy order: key, box and layers. Only dynamic
+    /// members carry sleep entries, so a support that went, moved or changed
+    /// is found by comparing this with the next frame's (`wake_on_supports`).
+    supports: Vec<Support>,
     /// `supports` matches the last frame's proxies; false while no island
     /// sleeps, when nothing is recorded.
     supports_valid: bool,
-    /// Scratch: supports whose box changed, by index, with the new box.
-    moved_supports: Vec<(usize, Aabb)>,
+    /// Scratch: supports whose box or layers changed, by index, with the
+    /// new ones.
+    moved_supports: Vec<(usize, Support)>,
     /// Scratch: the old and new boxes of the supports that changed.
     changed_supports: Vec<Aabb>,
     /// Scratch for the sorted comparison when supports appear or go.
-    sorted_old: Vec<(u64, Aabb)>,
-    sorted_new: Vec<(u64, Aabb)>,
+    sorted_old: Vec<Support>,
+    sorted_new: Vec<Support>,
     #[cfg(test)]
     pub(super) rebuilds: usize,
 }
@@ -81,16 +85,43 @@ fn is_support(proxy: &Proxy) -> bool {
     !proxy.is_dynamic && !proxy.kinematic
 }
 
+/// A sleeper's gathered state differs from the state it froze with: an
+/// external `Position` or `Velocity` write, or new layers or a new mask.
+fn written(proxy: &Proxy, layers: Layers, entry: &SleepEntry) -> bool {
+    proxy.velocity != Vec2::ZERO || proxy.center != entry.center || layers != entry.layers
+}
+
+/// A support as the sleep record keeps it: a change to its box or its
+/// layers wakes the sleepers near it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Support {
+    key: u64,
+    aabb: Aabb,
+    layers: Layers,
+}
+
+impl Support {
+    fn of(proxy: &Proxy, layers: Layers) -> Self {
+        Self {
+            key: proxy.key,
+            aabb: proxy.world_aabb(),
+            layers,
+        }
+    }
+}
+
 /// A total order on a support for the sorted comparison: key, then the box's
-/// bits.
-fn support_order(a: &(u64, Aabb), b: &(u64, Aabb)) -> std::cmp::Ordering {
-    let bits = |(key, aabb): &(u64, Aabb)| {
+/// bits, then the layers.
+fn support_order(a: &Support, b: &Support) -> std::cmp::Ordering {
+    let bits = |support: &Support| {
         (
-            *key,
-            aabb.center.x.to_bits(),
-            aabb.center.y.to_bits(),
-            aabb.half_extents.x.to_bits(),
-            aabb.half_extents.y.to_bits(),
+            support.key,
+            support.aabb.center.x.to_bits(),
+            support.aabb.center.y.to_bits(),
+            support.aabb.half_extents.x.to_bits(),
+            support.aabb.half_extents.y.to_bits(),
+            support.layers.layers,
+            support.layers.mask,
         )
     };
     bits(a).cmp(&bits(b))
@@ -129,16 +160,27 @@ impl SleepTable {
     /// True when `proxies` are last frame's bodies in last frame's order, so
     /// the entries need no rebuild. Collects the islands of sleepers with an
     /// external write (a sleeper's `Position`/`Velocity` are frozen by the
-    /// step, so any mismatch at gather time is one).
-    fn same_bodies(&self, proxies: &[Proxy], wake_islands: &mut Vec<u64>) -> bool {
+    /// step, so any mismatch at gather time is one, as is a change to its
+    /// layers or mask).
+    fn same_bodies(
+        &self,
+        proxies: &[Proxy],
+        layers: &[Layers],
+        wake_islands: &mut Vec<u64>,
+    ) -> bool {
         if proxies.len() != self.keys.len() {
             return false;
         }
-        for ((proxy, &key), entry) in proxies.iter().zip(&self.keys).zip(&self.entries) {
+        for (index, ((proxy, &key), entry)) in proxies
+            .iter()
+            .zip(&self.keys)
+            .zip(&self.entries)
+            .enumerate()
+        {
             if Self::key_of(proxy) != key {
                 return false;
             }
-            if entry.sleeping && (proxy.velocity != Vec2::ZERO || proxy.center != entry.center) {
+            if entry.sleeping && written(proxy, layers[index], entry) {
                 wake_islands.push(entry.island);
             }
         }
@@ -148,13 +190,13 @@ impl SleepTable {
     /// Carry entries over by entity key into the order of `proxies`. Sleeping
     /// entries that do not carry over (despawn or component removal) wake
     /// their island: bodies above a removed support must fall.
-    fn rebuild(&mut self, proxies: &[Proxy], wake_islands: &mut Vec<u64>) {
+    fn rebuild(&mut self, proxies: &[Proxy], layers: &[Layers], wake_islands: &mut Vec<u64>) {
         self.next_keys.clear();
         self.next_entries.clear();
         self.carried.clear();
         self.carried.resize(self.entries.len(), false);
         let mut members = 0_usize;
-        for proxy in proxies {
+        for (proxy, &proxy_layers) in proxies.iter().zip(layers) {
             let key = Self::key_of(proxy);
             let mut entry = SleepEntry::default();
             if key != EMPTY_SLEEP {
@@ -162,9 +204,7 @@ impl SleepTable {
                 if let Some(old) = self.index_of(key) {
                     self.carried[old] = true;
                     entry = self.entries[old];
-                    if entry.sleeping
-                        && (proxy.velocity != Vec2::ZERO || proxy.center != entry.center)
-                    {
+                    if entry.sleeping && written(proxy, proxy_layers, &entry) {
                         wake_islands.push(entry.island);
                     }
                 }
@@ -228,20 +268,25 @@ impl SleepTable {
     }
 
     /// Brings the support record up to `proxies` and collects into
-    /// `changed_supports` the old and new box of every support that moved or
-    /// changed shape, and the box of every one that went or appeared. While
-    /// the supports keep their keys in order, boxes compare in place.
-    fn diff_supports(&mut self, proxies: &[Proxy]) {
+    /// `changed_supports` the old and new box of every support that moved,
+    /// changed shape or changed its layers or mask, and the box of every one
+    /// that went or appeared. While the supports keep their keys in order,
+    /// they compare in place.
+    fn diff_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
         self.changed_supports.clear();
         self.moved_supports.clear();
         let mut count = 0;
         let mut same_keys = true;
-        for proxy in proxies.iter().filter(|proxy| is_support(proxy)) {
+        for (proxy, &proxy_layers) in proxies
+            .iter()
+            .zip(layers)
+            .filter(|(proxy, _)| is_support(proxy))
+        {
             match self.supports.get(count) {
-                Some(&(key, old)) if key == proxy.key => {
-                    let aabb = proxy.world_aabb();
-                    if old != aabb {
-                        self.moved_supports.push((count, aabb));
+                Some(old) if old.key == proxy.key => {
+                    let new = Support::of(proxy, proxy_layers);
+                    if *old != new {
+                        self.moved_supports.push((count, new));
                     }
                 }
                 _ => {
@@ -252,10 +297,10 @@ impl SleepTable {
             count += 1;
         }
         if same_keys && count == self.supports.len() {
-            for &(index, aabb) in &self.moved_supports {
-                self.changed_supports.push(self.supports[index].1);
-                self.changed_supports.push(aabb);
-                self.supports[index].1 = aabb;
+            for &(index, new) in &self.moved_supports {
+                self.changed_supports.push(self.supports[index].aabb);
+                self.changed_supports.push(new.aabb);
+                self.supports[index] = new;
             }
             return;
         }
@@ -263,7 +308,7 @@ impl SleepTable {
         // sorted lists changed.
         self.sorted_old.clear();
         self.sorted_old.extend_from_slice(&self.supports);
-        self.record_supports(proxies);
+        self.record_supports(proxies, layers);
         self.sorted_new.clear();
         self.sorted_new.extend_from_slice(&self.supports);
         self.sorted_old.sort_unstable_by(support_order);
@@ -277,11 +322,11 @@ impl SleepTable {
             };
             match order {
                 std::cmp::Ordering::Less => {
-                    self.changed_supports.push(self.sorted_old[i].1);
+                    self.changed_supports.push(self.sorted_old[i].aabb);
                     i += 1;
                 }
                 std::cmp::Ordering::Greater => {
-                    self.changed_supports.push(self.sorted_new[j].1);
+                    self.changed_supports.push(self.sorted_new[j].aabb);
                     j += 1;
                 }
                 std::cmp::Ordering::Equal => {
@@ -293,13 +338,14 @@ impl SleepTable {
     }
 
     /// Records this frame's supports, in proxy order.
-    fn record_supports(&mut self, proxies: &[Proxy]) {
+    fn record_supports(&mut self, proxies: &[Proxy], layers: &[Layers]) {
         self.supports.clear();
         self.supports.extend(
             proxies
                 .iter()
-                .filter(|proxy| is_support(proxy))
-                .map(|proxy| (proxy.key, proxy.world_aabb())),
+                .zip(layers)
+                .filter(|(proxy, _)| is_support(proxy))
+                .map(|(proxy, &proxy_layers)| Support::of(proxy, proxy_layers)),
         );
     }
 }
@@ -339,24 +385,27 @@ pub(super) fn uf_union(parent: &mut [u32], a: u32, b: u32) {
 
 /// Frame-start sleep bookkeeping (D-065): line the persistent sleep state up
 /// with this frame's proxies (D-082), waking islands whose members despawned
-/// (or lost their dynamic body/collider), islands with an external write, and
-/// islands within `margin` of a static or tile support that went, moved or
-/// changed since the last frame.
+/// (or lost their dynamic body/collider), islands with an external write or
+/// a member whose layers or mask changed, and islands within `margin` of a
+/// static or tile support that went, moved or changed, its layers and mask
+/// included, since the last frame.
 pub(super) fn sleep_frame_start(buffers: &mut PhysicsBuffers, margin: f32) {
     let PhysicsBuffers {
         proxies,
+        layers,
         sleep,
         wake_islands,
         ..
     } = buffers;
+    let layers = &layers.of;
 
     wake_islands.clear();
-    if !sleep.same_bodies(proxies, wake_islands) {
+    if !sleep.same_bodies(proxies, layers, wake_islands) {
         wake_islands.clear();
-        sleep.rebuild(proxies, wake_islands);
+        sleep.rebuild(proxies, layers, wake_islands);
     }
     if sleep.supports_valid {
-        sleep.diff_supports(proxies);
+        sleep.diff_supports(proxies, layers);
         if !sleep.changed_supports.is_empty() {
             let reach = Vec2::splat(margin);
             for (proxy, entry) in proxies.iter().zip(&sleep.entries) {
@@ -402,6 +451,7 @@ pub(super) fn sleep_frame_end(
 ) {
     let PhysicsBuffers {
         proxies,
+        layers,
         contacts,
         sleep,
         island_parent,
@@ -409,6 +459,7 @@ pub(super) fn sleep_frame_end(
         island_tag,
         ..
     } = buffers;
+    let layers = &layers.of;
 
     debug_assert_eq!(
         sleep.entries.len(),
@@ -488,6 +539,7 @@ pub(super) fn sleep_frame_end(
         // Same fp ops the next gather performs on the written-back
         // Position, so an untouched body compares bit-equal.
         entry.center = (proxy.center - proxy.offset) + proxy.offset;
+        entry.layers = layers[index];
         if let Some(vel) = world.get_mut::<Velocity>(entity) {
             vel.0 = Vec2::ZERO;
         }
@@ -497,7 +549,7 @@ pub(super) fn sleep_frame_end(
     // start's comparison already brought a valid record up to date.
     if sleep.entries.iter().any(|entry| entry.sleeping) {
         if !sleep.supports_valid {
-            sleep.record_supports(proxies);
+            sleep.record_supports(proxies, layers);
             sleep.supports_valid = true;
         }
     } else {

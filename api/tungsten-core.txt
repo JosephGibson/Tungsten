@@ -255,12 +255,16 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::Soun
 pub struct tungsten_core::assets::audio::SoundRegistry
 impl tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::get(&self, tungsten_core::assets::audio::AudioHandle) -> core::option::Option<&tungsten_core::assets::audio::SoundData>
+pub fn tungsten_core::assets::audio::SoundRegistry::get_bus(&self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::AudioBus
 pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> core::option::Option<tungsten_core::assets::audio::AudioHandle>
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry
@@ -818,8 +822,10 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedShader
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedShader
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedShader
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedShader
-pub struct tungsten_core::assets::manifest::ResolvedSound
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::ResolvedSound
+pub tungsten_core::assets::manifest::ResolvedSound::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::assets::manifest::ResolvedSound::looping: bool
+pub tungsten_core::assets::manifest::ResolvedSound::max_voices: u32
 pub tungsten_core::assets::manifest::ResolvedSound::path: std::path::PathBuf
 pub tungsten_core::assets::manifest::ResolvedSound::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSound
@@ -895,8 +901,10 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ShaderEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ShaderEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ShaderEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ShaderEntry
-pub struct tungsten_core::assets::manifest::SoundEntry
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::SoundEntry
+pub tungsten_core::assets::manifest::SoundEntry::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::assets::manifest::SoundEntry::looping: bool
+pub tungsten_core::assets::manifest::SoundEntry::max_voices: u32
 pub tungsten_core::assets::manifest::SoundEntry::path: alloc::string::String
 pub tungsten_core::assets::manifest::SoundEntry::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::SoundEntry
@@ -3393,8 +3401,10 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedShader
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedShader
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedShader
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedShader
-pub struct tungsten_core::assets::ResolvedSound
+#[non_exhaustive] pub struct tungsten_core::assets::ResolvedSound
+pub tungsten_core::assets::ResolvedSound::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::assets::ResolvedSound::looping: bool
+pub tungsten_core::assets::ResolvedSound::max_voices: u32
 pub tungsten_core::assets::ResolvedSound::path: std::path::PathBuf
 pub tungsten_core::assets::ResolvedSound::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSound
@@ -3613,8 +3623,10 @@ impl core::marker::Unpin for tungsten_core::assets::audio::SoundData
 impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::SoundData
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::SoundData
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::SoundData
-pub struct tungsten_core::assets::SoundEntry
+#[non_exhaustive] pub struct tungsten_core::assets::SoundEntry
+pub tungsten_core::assets::SoundEntry::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::assets::SoundEntry::looping: bool
+pub tungsten_core::assets::SoundEntry::max_voices: u32
 pub tungsten_core::assets::SoundEntry::path: alloc::string::String
 pub tungsten_core::assets::SoundEntry::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::SoundEntry
@@ -3633,12 +3645,16 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::S
 pub struct tungsten_core::assets::SoundRegistry
 impl tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::get(&self, tungsten_core::assets::audio::AudioHandle) -> core::option::Option<&tungsten_core::assets::audio::SoundData>
+pub fn tungsten_core::assets::audio::SoundRegistry::get_bus(&self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::AudioBus
 pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> core::option::Option<tungsten_core::assets::audio::AudioHandle>
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry
@@ -3876,19 +3892,64 @@ pub type tungsten_core::assets::ParticleMeshEntry = tungsten_core::assets::parti
 pub type tungsten_core::assets::SpriteAssetId = tungsten_core::assets::particle::AssetId<tungsten_core::assets::registry::SpriteAsset>
 pub type tungsten_core::assets::TileIndex = i32
 pub mod tungsten_core::audio
-pub enum tungsten_core::audio::AudioCommand
-pub tungsten_core::audio::AudioCommand::Play
+#[non_exhaustive] pub enum tungsten_core::audio::AudioBus
+pub tungsten_core::audio::AudioBus::Effects
+pub tungsten_core::audio::AudioBus::Music
+impl tungsten_core::audio::AudioBus
+pub const tungsten_core::audio::AudioBus::ALL: &'static [tungsten_core::audio::AudioBus]
+pub fn tungsten_core::audio::AudioBus::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::clone(&self) -> tungsten_core::audio::AudioBus
+impl core::cmp::Eq for tungsten_core::audio::AudioBus
+impl core::cmp::PartialEq for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::eq(&self, &tungsten_core::audio::AudioBus) -> bool
+impl core::default::Default for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::default() -> tungsten_core::audio::AudioBus
+impl core::fmt::Debug for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::audio::AudioBus
+impl core::marker::StructuralPartialEq for tungsten_core::audio::AudioBus
+impl serde_core::ser::Serialize for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::audio::AudioBus
+impl core::marker::Send for tungsten_core::audio::AudioBus
+impl core::marker::Sync for tungsten_core::audio::AudioBus
+impl core::marker::Unpin for tungsten_core::audio::AudioBus
+impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioBus
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioBus
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioBus
+#[non_exhaustive] pub enum tungsten_core::audio::AudioCommand
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::Play
+pub tungsten_core::audio::AudioCommand::Play::fade: f32
 pub tungsten_core::audio::AudioCommand::Play::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::audio::AudioCommand::Play::looping: bool
+pub tungsten_core::audio::AudioCommand::Play::voice: tungsten_core::audio::Voice
 pub tungsten_core::audio::AudioCommand::Play::volume: f32
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::SetBusVolume
+pub tungsten_core::audio::AudioCommand::SetBusVolume::bus: tungsten_core::audio::AudioBus
+pub tungsten_core::audio::AudioCommand::SetBusVolume::volume: f32
 pub tungsten_core::audio::AudioCommand::SetMasterVolume(f32)
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::SetVoiceVolume
+pub tungsten_core::audio::AudioCommand::SetVoiceVolume::fade: f32
+pub tungsten_core::audio::AudioCommand::SetVoiceVolume::voice: tungsten_core::audio::Voice
+pub tungsten_core::audio::AudioCommand::SetVoiceVolume::volume: f32
 pub tungsten_core::audio::AudioCommand::Stop
 pub tungsten_core::audio::AudioCommand::Stop::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::audio::AudioCommand::StopAll
+#[non_exhaustive] pub tungsten_core::audio::AudioCommand::StopVoice
+pub tungsten_core::audio::AudioCommand::StopVoice::fade: f32
+pub tungsten_core::audio::AudioCommand::StopVoice::voice: tungsten_core::audio::Voice
 impl core::clone::Clone for tungsten_core::audio::AudioCommand
 pub fn tungsten_core::audio::AudioCommand::clone(&self) -> tungsten_core::audio::AudioCommand
+impl core::cmp::PartialEq for tungsten_core::audio::AudioCommand
+pub fn tungsten_core::audio::AudioCommand::eq(&self, &tungsten_core::audio::AudioCommand) -> bool
 impl core::fmt::Debug for tungsten_core::audio::AudioCommand
 pub fn tungsten_core::audio::AudioCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::audio::AudioCommand
 impl core::marker::Freeze for tungsten_core::audio::AudioCommand
 impl core::marker::Send for tungsten_core::audio::AudioCommand
 impl core::marker::Sync for tungsten_core::audio::AudioCommand
@@ -3900,12 +3961,16 @@ pub struct tungsten_core::audio::AudioCommands
 impl tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::drain(&mut self) -> alloc::vec::Vec<tungsten_core::audio::AudioCommand>
 pub fn tungsten_core::audio::AudioCommands::new() -> Self
-pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle)
-pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle)
-pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool)
+pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_faded(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, f32)
 pub fn tungsten_core::audio::AudioCommands::set_master_volume(&mut self, f32)
+pub fn tungsten_core::audio::AudioCommands::set_voice_volume(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::stop(&mut self, tungsten_core::assets::audio::AudioHandle)
 pub fn tungsten_core::audio::AudioCommands::stop_all(&mut self)
+pub fn tungsten_core::audio::AudioCommands::stop_voice(&mut self, tungsten_core::audio::Voice, f32)
 impl core::default::Default for tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::default() -> Self
 impl core::marker::Freeze for tungsten_core::audio::AudioCommands
@@ -3915,6 +3980,26 @@ impl core::marker::Unpin for tungsten_core::audio::AudioCommands
 impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioCommands
+pub struct tungsten_core::audio::Voice(_)
+impl core::clone::Clone for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::clone(&self) -> tungsten_core::audio::Voice
+impl core::cmp::Eq for tungsten_core::audio::Voice
+impl core::cmp::PartialEq for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::eq(&self, &tungsten_core::audio::Voice) -> bool
+impl core::fmt::Debug for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::audio::Voice
+impl core::marker::StructuralPartialEq for tungsten_core::audio::Voice
+impl core::marker::Freeze for tungsten_core::audio::Voice
+impl core::marker::Send for tungsten_core::audio::Voice
+impl core::marker::Sync for tungsten_core::audio::Voice
+impl core::marker::Unpin for tungsten_core::audio::Voice
+impl core::marker::UnsafeUnpin for tungsten_core::audio::Voice
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::Voice
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::Voice
+pub const tungsten_core::audio::MAX_VOICES: u32
 pub mod tungsten_core::camera
 pub enum tungsten_core::camera::CameraMode
 pub tungsten_core::camera::CameraMode::Follow(tungsten_core::Entity)
@@ -6705,12 +6790,19 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components
 pub struct tungsten_core::physics::components::RigidBody
 pub tungsten_core::physics::components::RigidBody::inv_mass: f32
 pub tungsten_core::physics::components::RigidBody::kind: tungsten_core::physics::components::BodyKind
+pub tungsten_core::physics::components::RigidBody::layers: u32
+pub tungsten_core::physics::components::RigidBody::mask: u32
 pub tungsten_core::physics::components::RigidBody::restitution: f32
 impl tungsten_core::physics::components::RigidBody
+pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
+pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
@@ -6739,6 +6831,8 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::kinematic(tungsten_c
 pub fn tungsten_core::physics::components::RigidBodyBundle::sensor(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -7073,12 +7167,19 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components
 pub struct tungsten_core::physics::RigidBody
 pub tungsten_core::physics::RigidBody::inv_mass: f32
 pub tungsten_core::physics::RigidBody::kind: tungsten_core::physics::components::BodyKind
+pub tungsten_core::physics::RigidBody::layers: u32
+pub tungsten_core::physics::RigidBody::mask: u32
 pub tungsten_core::physics::RigidBody::restitution: f32
 impl tungsten_core::physics::components::RigidBody
+pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
+pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
@@ -7107,6 +7208,8 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::kinematic(tungsten_c
 pub fn tungsten_core::physics::components::RigidBodyBundle::sensor(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -7152,6 +7255,7 @@ impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
@@ -8132,12 +8236,14 @@ impl tungsten_core::settings::Settings
 pub const tungsten_core::settings::Settings::FILE: &'static str
 pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
@@ -12076,19 +12182,64 @@ impl core::marker::Unpin for tungsten_core::input::action_map::ActionMapError
 impl core::marker::UnsafeUnpin for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_map::ActionMapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::ActionMapError
-pub enum tungsten_core::AudioCommand
-pub tungsten_core::AudioCommand::Play
+#[non_exhaustive] pub enum tungsten_core::AudioBus
+pub tungsten_core::AudioBus::Effects
+pub tungsten_core::AudioBus::Music
+impl tungsten_core::audio::AudioBus
+pub const tungsten_core::audio::AudioBus::ALL: &'static [tungsten_core::audio::AudioBus]
+pub fn tungsten_core::audio::AudioBus::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::clone(&self) -> tungsten_core::audio::AudioBus
+impl core::cmp::Eq for tungsten_core::audio::AudioBus
+impl core::cmp::PartialEq for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::eq(&self, &tungsten_core::audio::AudioBus) -> bool
+impl core::default::Default for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::default() -> tungsten_core::audio::AudioBus
+impl core::fmt::Debug for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::audio::AudioBus
+impl core::marker::StructuralPartialEq for tungsten_core::audio::AudioBus
+impl serde_core::ser::Serialize for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::audio::AudioBus
+pub fn tungsten_core::audio::AudioBus::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::audio::AudioBus
+impl core::marker::Send for tungsten_core::audio::AudioBus
+impl core::marker::Sync for tungsten_core::audio::AudioBus
+impl core::marker::Unpin for tungsten_core::audio::AudioBus
+impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioBus
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioBus
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioBus
+#[non_exhaustive] pub enum tungsten_core::AudioCommand
+#[non_exhaustive] pub tungsten_core::AudioCommand::Play
+pub tungsten_core::AudioCommand::Play::fade: f32
 pub tungsten_core::AudioCommand::Play::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::AudioCommand::Play::looping: bool
+pub tungsten_core::AudioCommand::Play::voice: tungsten_core::audio::Voice
 pub tungsten_core::AudioCommand::Play::volume: f32
+#[non_exhaustive] pub tungsten_core::AudioCommand::SetBusVolume
+pub tungsten_core::AudioCommand::SetBusVolume::bus: tungsten_core::audio::AudioBus
+pub tungsten_core::AudioCommand::SetBusVolume::volume: f32
 pub tungsten_core::AudioCommand::SetMasterVolume(f32)
+#[non_exhaustive] pub tungsten_core::AudioCommand::SetVoiceVolume
+pub tungsten_core::AudioCommand::SetVoiceVolume::fade: f32
+pub tungsten_core::AudioCommand::SetVoiceVolume::voice: tungsten_core::audio::Voice
+pub tungsten_core::AudioCommand::SetVoiceVolume::volume: f32
 pub tungsten_core::AudioCommand::Stop
 pub tungsten_core::AudioCommand::Stop::handle: tungsten_core::assets::audio::AudioHandle
 pub tungsten_core::AudioCommand::StopAll
+#[non_exhaustive] pub tungsten_core::AudioCommand::StopVoice
+pub tungsten_core::AudioCommand::StopVoice::fade: f32
+pub tungsten_core::AudioCommand::StopVoice::voice: tungsten_core::audio::Voice
 impl core::clone::Clone for tungsten_core::audio::AudioCommand
 pub fn tungsten_core::audio::AudioCommand::clone(&self) -> tungsten_core::audio::AudioCommand
+impl core::cmp::PartialEq for tungsten_core::audio::AudioCommand
+pub fn tungsten_core::audio::AudioCommand::eq(&self, &tungsten_core::audio::AudioCommand) -> bool
 impl core::fmt::Debug for tungsten_core::audio::AudioCommand
 pub fn tungsten_core::audio::AudioCommand::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::audio::AudioCommand
 impl core::marker::Freeze for tungsten_core::audio::AudioCommand
 impl core::marker::Send for tungsten_core::audio::AudioCommand
 impl core::marker::Sync for tungsten_core::audio::AudioCommand
@@ -14070,12 +14221,16 @@ pub struct tungsten_core::AudioCommands
 impl tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::drain(&mut self) -> alloc::vec::Vec<tungsten_core::audio::AudioCommand>
 pub fn tungsten_core::audio::AudioCommands::new() -> Self
-pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle)
-pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle)
-pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool)
+pub fn tungsten_core::audio::AudioCommands::play(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_faded(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool, f32) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_looping(&mut self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::play_with(&mut self, tungsten_core::assets::audio::AudioHandle, f32, bool) -> tungsten_core::audio::Voice
+pub fn tungsten_core::audio::AudioCommands::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, f32)
 pub fn tungsten_core::audio::AudioCommands::set_master_volume(&mut self, f32)
+pub fn tungsten_core::audio::AudioCommands::set_voice_volume(&mut self, tungsten_core::audio::Voice, f32, f32)
 pub fn tungsten_core::audio::AudioCommands::stop(&mut self, tungsten_core::assets::audio::AudioHandle)
 pub fn tungsten_core::audio::AudioCommands::stop_all(&mut self)
+pub fn tungsten_core::audio::AudioCommands::stop_voice(&mut self, tungsten_core::audio::Voice, f32)
 impl core::default::Default for tungsten_core::audio::AudioCommands
 pub fn tungsten_core::audio::AudioCommands::default() -> Self
 impl core::marker::Freeze for tungsten_core::audio::AudioCommands
@@ -16147,8 +16302,10 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ResolvedPrefab
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedPrefab
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedPrefab
-pub struct tungsten_core::ResolvedSound
+#[non_exhaustive] pub struct tungsten_core::ResolvedSound
+pub tungsten_core::ResolvedSound::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::ResolvedSound::looping: bool
+pub tungsten_core::ResolvedSound::max_voices: u32
 pub tungsten_core::ResolvedSound::path: std::path::PathBuf
 pub tungsten_core::ResolvedSound::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedSound
@@ -16182,12 +16339,19 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::R
 pub struct tungsten_core::RigidBody
 pub tungsten_core::RigidBody::inv_mass: f32
 pub tungsten_core::RigidBody::kind: tungsten_core::physics::components::BodyKind
+pub tungsten_core::RigidBody::layers: u32
+pub tungsten_core::RigidBody::mask: u32
 pub tungsten_core::RigidBody::restitution: f32
 impl tungsten_core::physics::components::RigidBody
+pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
+pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
 pub fn tungsten_core::physics::components::RigidBody::dynamic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
+pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
@@ -16216,6 +16380,8 @@ pub fn tungsten_core::physics::components::RigidBodyBundle::kinematic(tungsten_c
 pub fn tungsten_core::physics::components::RigidBodyBundle::sensor(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::static(tungsten_core::physics::components::Position, tungsten_core::physics::components::Collider) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_body(self, tungsten_core::physics::components::RigidBody) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_layers(self, u32) -> Self
+pub fn tungsten_core::physics::components::RigidBodyBundle::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBodyBundle::with_velocity(self, tungsten_core::physics::components::Velocity) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBodyBundle
 pub fn tungsten_core::physics::components::RigidBodyBundle::clone(&self) -> tungsten_core::physics::components::RigidBodyBundle
@@ -16454,12 +16620,14 @@ impl tungsten_core::settings::Settings
 pub const tungsten_core::settings::Settings::FILE: &'static str
 pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
+pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
 pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Option<tungsten_core::display::Resolution>
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
+pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
@@ -16516,8 +16684,10 @@ impl core::marker::Unpin for tungsten_core::assets::audio::SoundData
 impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::SoundData
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::SoundData
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::SoundData
-pub struct tungsten_core::SoundEntry
+#[non_exhaustive] pub struct tungsten_core::SoundEntry
+pub tungsten_core::SoundEntry::bus: tungsten_core::audio::AudioBus
 pub tungsten_core::SoundEntry::looping: bool
+pub tungsten_core::SoundEntry::max_voices: u32
 pub tungsten_core::SoundEntry::path: alloc::string::String
 pub tungsten_core::SoundEntry::volume: f32
 impl core::clone::Clone for tungsten_core::assets::manifest::SoundEntry
@@ -16536,12 +16706,16 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::S
 pub struct tungsten_core::SoundRegistry
 impl tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::get(&self, tungsten_core::assets::audio::AudioHandle) -> core::option::Option<&tungsten_core::assets::audio::SoundData>
+pub fn tungsten_core::assets::audio::SoundRegistry::get_bus(&self, tungsten_core::assets::audio::AudioHandle) -> tungsten_core::audio::AudioBus
 pub fn tungsten_core::assets::audio::SoundRegistry::get_by_id(&self, &str) -> core::option::Option<tungsten_core::assets::audio::AudioHandle>
 pub fn tungsten_core::assets::audio::SoundRegistry::get_looping(&self, tungsten_core::assets::audio::AudioHandle) -> bool
+pub fn tungsten_core::assets::audio::SoundRegistry::get_max_voices(&self, tungsten_core::assets::audio::AudioHandle) -> u32
 pub fn tungsten_core::assets::audio::SoundRegistry::get_volume(&self, tungsten_core::assets::audio::AudioHandle) -> f32
 pub fn tungsten_core::assets::audio::SoundRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::audio::AudioHandle, &tungsten_core::assets::audio::SoundData)>
 pub fn tungsten_core::assets::audio::SoundRegistry::new() -> Self
 pub fn tungsten_core::assets::audio::SoundRegistry::register(&mut self, alloc::string::String, tungsten_core::assets::audio::SoundData, f32, bool) -> tungsten_core::assets::audio::AudioHandle
+pub fn tungsten_core::assets::audio::SoundRegistry::set_bus(&mut self, tungsten_core::assets::audio::AudioHandle, tungsten_core::audio::AudioBus)
+pub fn tungsten_core::assets::audio::SoundRegistry::set_max_voices(&mut self, tungsten_core::assets::audio::AudioHandle, u32)
 impl core::default::Default for tungsten_core::assets::audio::SoundRegistry
 pub fn tungsten_core::assets::audio::SoundRegistry::default() -> Self
 impl core::marker::Freeze for tungsten_core::assets::audio::SoundRegistry
@@ -16556,6 +16730,7 @@ impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
 pub fn tungsten_core::SpatialFilter::new() -> Self
 pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
@@ -17603,6 +17778,25 @@ impl core::marker::Unpin for tungsten_core::components::Visibility
 impl core::marker::UnsafeUnpin for tungsten_core::components::Visibility
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Visibility
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Visibility
+pub struct tungsten_core::Voice(_)
+impl core::clone::Clone for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::clone(&self) -> tungsten_core::audio::Voice
+impl core::cmp::Eq for tungsten_core::audio::Voice
+impl core::cmp::PartialEq for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::eq(&self, &tungsten_core::audio::Voice) -> bool
+impl core::fmt::Debug for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::audio::Voice
+pub fn tungsten_core::audio::Voice::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::audio::Voice
+impl core::marker::StructuralPartialEq for tungsten_core::audio::Voice
+impl core::marker::Freeze for tungsten_core::audio::Voice
+impl core::marker::Send for tungsten_core::audio::Voice
+impl core::marker::Sync for tungsten_core::audio::Voice
+impl core::marker::Unpin for tungsten_core::audio::Voice
+impl core::marker::UnsafeUnpin for tungsten_core::audio::Voice
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::Voice
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::Voice
 pub struct tungsten_core::WidgetId
 impl tungsten_core::ui::id::WidgetId
 pub const fn tungsten_core::ui::id::WidgetId::generation(self) -> u32
@@ -17834,6 +18028,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::particle::W
 pub const tungsten_core::DEFAULT_CIRCLE_SEGMENTS: u16
 pub const tungsten_core::EMPTY_TILE: tungsten_core::assets::tilemap::TileIndex
 pub const tungsten_core::LIGHT_CAP: usize
+pub const tungsten_core::MAX_VOICES: u32
 pub const tungsten_core::STICK_PRESS: f32
 pub const tungsten_core::STICK_RELEASE: f32
 pub trait tungsten_core::Bundle: 'static

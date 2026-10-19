@@ -134,6 +134,7 @@ pub fn tungsten::asset_loader::spawn_scene(&mut tungsten_core::ecs::world::World
 pub mod tungsten::audio
 pub struct tungsten::audio::AudioSystem
 impl tungsten::audio::AudioSystem
+pub fn tungsten::audio::AudioSystem::flush(&mut self)
 pub fn tungsten::audio::AudioSystem::init(&tungsten_core::assets::audio::SoundRegistry) -> anyhow::Result<Self>
 pub fn tungsten::audio::AudioSystem::send(&mut self, tungsten_core::audio::AudioCommand)
 impl !core::marker::Freeze for tungsten::audio::AudioSystem

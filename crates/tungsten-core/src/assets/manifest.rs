@@ -5,6 +5,7 @@ use thiserror::Error;
 
 use crate::assets::material::MaterialUniformDefaults;
 use crate::assets::particle::ParticleMesh;
+use crate::audio::{AudioBus, MAX_VOICES};
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -90,7 +91,7 @@ pub struct RawManifest {
     pub animations: HashMap<String, AnimationEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
     pub fonts: HashMap<String, FontEntry>,
-    #[serde(default, deserialize_with = "unique_ids")]
+    #[serde(default, deserialize_with = "sound_entries")]
     pub sounds: HashMap<String, SoundEntry>,
     #[serde(default, deserialize_with = "unique_ids")]
     pub tilemaps: HashMap<String, TilemapEntry>,
@@ -175,6 +176,7 @@ pub struct FontFamilyEntry {
     pub faces: Vec<String>,
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Deserialize)]
 pub struct SoundEntry {
     pub path: String,
@@ -184,6 +186,54 @@ pub struct SoundEntry {
     /// Base volume before master volume: finite and at least 0.
     #[serde(default = "default_volume", deserialize_with = "sound_volume")]
     pub volume: f32,
+    /// The bus it plays on, `"music"` or `"effects"`; effects by default.
+    #[serde(default)]
+    pub bus: AudioBus,
+    /// The voices of it that play at once, 1 to [`MAX_VOICES`]; that many
+    /// by default, so only the mixer's pool bounds a sound that names none.
+    #[serde(default = "default_max_voices", deserialize_with = "sound_max_voices")]
+    pub max_voices: u32,
+}
+
+/// The `sounds` section: entries by ID, refusing a repeated ID, with a bad
+/// entry's error naming its ID.
+fn sound_entries<'de, D>(deserializer: D) -> Result<HashMap<String, SoundEntry>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct Sounds;
+
+    impl<'de> serde::de::Visitor<'de> for Sounds {
+        type Value = HashMap<String, SoundEntry>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("an object of sounds by ID")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut entries = HashMap::with_capacity(map.size_hint().unwrap_or(0));
+            while let Some(id) = map.next_key::<String>()? {
+                if entries.contains_key(&id) {
+                    return Err(serde::de::Error::custom(format_args!(
+                        "duplicate ID `{id}` in one section"
+                    )));
+                }
+                // Read as a value first, so the entry's own error carries
+                // the ID and the file's position once.
+                let value: serde_json::Value = map.next_value()?;
+                let entry = serde_json::from_value(value).map_err(|error| {
+                    serde::de::Error::custom(format_args!("sound `{id}`: {error}"))
+                })?;
+                entries.insert(id, entry);
+            }
+            Ok(entries)
+        }
+    }
+
+    deserializer.deserialize_map(Sounds)
 }
 
 /// A manifest section, entries by ID, refusing an ID it repeats: serde's
@@ -286,6 +336,22 @@ fn sound_volume<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f32
 
 fn default_volume() -> f32 {
     1.0
+}
+
+/// A sound's `max_voices`: 1 to [`MAX_VOICES`].
+fn sound_max_voices<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let limit = u64::deserialize(deserializer)?;
+    if (1..=u64::from(MAX_VOICES)).contains(&limit) {
+        Ok(limit as u32)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "max_voices {limit} is outside 1..={MAX_VOICES}"
+        )))
+    }
+}
+
+fn default_max_voices() -> u32 {
+    MAX_VOICES
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -416,11 +482,16 @@ impl ResolvedFontFamily {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone)]
 pub struct ResolvedSound {
     pub path: PathBuf,
     pub looping: bool,
     pub volume: f32,
+    /// The bus it plays on.
+    pub bus: AudioBus,
+    /// The voices of it that play at once, 1 to [`MAX_VOICES`].
+    pub max_voices: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -615,6 +686,8 @@ impl ResolvedManifest {
                     path: full_path,
                     looping: entry.looping,
                     volume: entry.volume,
+                    bus: entry.bus,
+                    max_voices: entry.max_voices,
                 },
             );
         }

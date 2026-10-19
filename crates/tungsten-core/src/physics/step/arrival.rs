@@ -1,9 +1,9 @@
 //! Arrival pass (D-092): a body whose velocity the solve changed is clamped
 //! against what that velocity reaches within the substep.
 
-use super::Proxy;
 use super::pairs::PAIR_REPAIRED;
 use super::solver::narrow_phase_at;
+use super::{Proxy, ProxyLayers};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid};
 use crate::physics::collision::Aabb;
@@ -156,8 +156,8 @@ fn arrival_center(proxy: &Proxy) -> Vec2 {
 ///    travel. The pass runs only when it listed one.
 /// 2. Each listed body is paired with every neighbour within reach of its
 ///    new velocity (static, sleeping or dynamic; from the pair grid and the
-///    repair grid) that the narrow phase accepts at the D-064 margin, with
-///    both bodies where the substep began.
+///    repair grid) whose layers meet its own and that the narrow phase
+///    accepts at the D-064 margin, with both bodies where the substep began.
 /// 3. The pairs are ordered pushers first, walls last: by the push depth of
 ///    each pair's mover, then lighter targets first.
 /// 4. Forward sweep: a pair closing faster than its gap allows takes the
@@ -181,6 +181,7 @@ pub(super) fn arrival_pass(
     grid: &mut SpatialGrid,
     repair_grid: &mut SpatialGrid,
     pair_flags: &[u8],
+    layers: &ProxyLayers,
     repaired: &[u32],
     candidates: &mut Vec<ProxyId>,
     arrival: &mut ArrivalScratch,
@@ -250,6 +251,10 @@ pub(super) fn arrival_pass(
                 if state[other] & ARRIVAL_LISTED != 0
                     && (round_start..at).contains(&(slot[other] as usize))
                 {
+                    continue;
+                }
+                // The body passes a neighbour its layers do not meet.
+                if !layers.meet(body, other) {
                     continue;
                 }
                 let target = &proxies[other];

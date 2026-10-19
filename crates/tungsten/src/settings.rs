@@ -2,8 +2,8 @@
 //! screen calls after changing them, before `Settings::save`.
 
 use tungsten_core::{
-    AudioCommands, Config, DisplayMode, DisplayState, Resolution, ScaleFactor, Settings, UiTree,
-    World,
+    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, Resolution, ScaleFactor, Settings,
+    UiTree, World,
 };
 
 use crate::app::resolve_startup_display;
@@ -22,9 +22,10 @@ pub(crate) struct WindowedTarget(pub(crate) Resolution);
 /// Applies the world's [`Settings`] now, as a restart would: the display
 /// mode, resolution and vsync through a display request, the UI scale to
 /// [`ScaleFactor`], the text scale to the [`UiTree`] (M56), the master
-/// volume through [`AudioCommands`]. A value the player unset returns to
-/// the shipped one, the UI scale, the text scale and the master volume to
-/// 1.0. A display request queued earlier this frame, such as a
+/// volume and every bus's volume through [`AudioCommands`]. A value the
+/// player unset returns to the shipped one, the UI scale, the text scale,
+/// the master volume and a bus's volume to 1.0. A display request queued
+/// earlier this frame, such as a
 /// hotkey's, takes the persisted values, so the last apply wins; the F9 and
 /// F11 hotkeys' changes to them since startup are replaced. In windowed
 /// mode the resolution is sent only when the set or shipped one differs
@@ -47,6 +48,9 @@ pub fn apply_settings(world: &mut World) {
     }
     if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
         audio.set_master_volume(settings.master_volume().unwrap_or(1.0));
+        for &bus in AudioBus::ALL {
+            audio.set_bus_volume(bus, settings.bus_volume(bus).unwrap_or(1.0));
+        }
     }
 
     let current = world

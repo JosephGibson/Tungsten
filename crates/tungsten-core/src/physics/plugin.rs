@@ -122,6 +122,28 @@ enum SceneShape {
     Circle { radius: f32 },
 }
 
+/// One layer number in `rigid_body.layers` or `rigid_body.mask`: 0 to 31.
+#[derive(Clone, Copy, Deserialize)]
+#[serde(try_from = "u32")]
+struct SceneLayer(u32);
+
+impl TryFrom<u32> for SceneLayer {
+    type Error = String;
+
+    fn try_from(layer: u32) -> Result<Self, String> {
+        if layer < u32::BITS {
+            Ok(Self(layer))
+        } else {
+            Err(format!("a layer must be 0 to 31 (got {layer})"))
+        }
+    }
+}
+
+/// The bits of a list of layers; an empty list has none.
+fn layer_bits(layers: &[SceneLayer]) -> u32 {
+    layers.iter().fold(0, |bits, layer| bits | 1 << layer.0)
+}
+
 /// `components.rigid_body` as written.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -134,6 +156,10 @@ struct RigidBodyFields {
     #[serde(default)]
     restitution: f32,
     velocity: Option<[f32; 2]>,
+    /// The layers the body is in; `[0]` when missing.
+    layers: Option<Vec<SceneLayer>>,
+    /// The layers it meets; every layer when missing.
+    mask: Option<Vec<SceneLayer>>,
 }
 
 /// `components.rigid_body`, checked: the bundle's parts beside the entry's
@@ -215,13 +241,24 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             SceneBodyKind::Sensor => (RigidBody::sensor(), Some(velocity.unwrap_or_default())),
         };
+        let layers = fields
+            .layers
+            .as_deref()
+            .map_or(RigidBody::DEFAULT_LAYERS, layer_bits);
+        let mask = fields
+            .mask
+            .as_deref()
+            .map_or(RigidBody::ALL_LAYERS, layer_bits);
         Ok(Self {
             velocity,
             collider: Collider {
                 shape,
                 offset: Vec2::new(ox, oy),
             },
-            body: body.with_restitution(fields.restitution),
+            body: body
+                .with_restitution(fields.restitution)
+                .with_layers(layers)
+                .with_mask(mask),
         })
     }
 }

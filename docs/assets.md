@@ -11,7 +11,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Font | `assets/fonts/<Fam>/` | `fonts` | ID |
 | Font family | manifest only | `font_families` | family ID, `faces` (`fonts` IDs) (`D-115`) |
 | Fallback chain | manifest only | `font_fallback` | a list of family IDs, not a map (`D-115`) |
-| Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` (finite, at least 0); a sample rate of 1,000–384,000 Hz |
+| Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` (finite, at least 0), `bus` (`"music"` or `"effects"`, effects by default) and `max_voices` (1 to 64, 64 by default); a sample rate of 1,000–384,000 Hz |
 | Tilemap | `assets/tilemaps/` | `tilemaps` | ID; a Tiled `.tmj` with one embedded tileset whose tiles name sprite IDs in a `sprite_id` property; tile layers (a `kind` property `collision` for collision) and object layers, whose object classes name prefabs (`D-032`, `D-157`) |
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |

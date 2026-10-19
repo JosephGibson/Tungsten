@@ -39,7 +39,7 @@ pub use assets::{
     SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileIndex, TilemapData,
     TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
 };
-pub use audio::{AudioCommand, AudioCommands};
+pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};
 pub use component_registry::{
     ComponentError, ComponentRegistry, MissingAsset, PreparedComponent, SpawnContext,

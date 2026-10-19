@@ -195,6 +195,7 @@ fn inflated_broadphase_catches_resolution_slip_into_unpaired_wall() {
             kind: BodyKind::Dynamic,
             inv_mass: 0.1,
             restitution: 0.0,
+            ..RigidBody::dynamic()
         },
     );
 
@@ -507,6 +508,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
         gather_proxies(
             &world,
             &mut buffers.proxies,
+            &mut buffers.layers,
             &mut buffers.sensors,
             &mut buffers.tile_ids,
         );
@@ -1417,10 +1419,12 @@ pub(super) fn assert_pair_contacts(config: &PhysicsConfig, sub_dt: f32, buffers:
     use std::collections::BTreeSet;
 
     let proxies = &buffers.proxies;
+    // A pair whose layers do not meet is never a contact.
     let contact_key = |a: usize, b: usize| {
         let margin = (proxies[a].velocity - proxies[b].velocity).length() * sub_dt
             + 4.0 * config.linear_slop;
         narrow_phase(&proxies[a], &proxies[b], margin)
+            .filter(|_| buffers.layers.meet(a, b))
             .map(|_| pair_key(proxies[a].key, proxies[b].key))
     };
     let mut persistent = BTreeSet::new();
@@ -1577,6 +1581,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
     gather_proxies(
         &world,
         &mut buffers.proxies,
+        &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
@@ -1654,6 +1659,7 @@ fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
     gather_proxies(
         &world,
         &mut buffers.proxies,
+        &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
@@ -1766,6 +1772,7 @@ fn oracle_buffers(world: &World) -> PhysicsBuffers {
     gather_proxies(
         world,
         &mut buffers.proxies,
+        &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
@@ -1909,6 +1916,7 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
     gather_proxies(
         &world,
         &mut buffers.proxies,
+        &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
     );
@@ -3563,4 +3571,532 @@ fn a_time_to_sleep_of_zero_never_sleeps_a_moving_body() {
     assert!(!buffers.is_sleeping(moving), "a moving body fell asleep");
     assert!(buffers.is_sleeping(still), "a still body sleeps at once");
     assert_eq!(world.get::<Velocity>(moving).unwrap().0.x, 1_000.0);
+}
+
+/// Layer 1 alone, meeting only layer 1: a body that meets nothing at the
+/// defaults.
+fn layer_one(body: RigidBody) -> RigidBody {
+    body.with_layers(1 << 1).with_mask(1 << 1)
+}
+
+/// A 10 px ball moving at 150 px/s for 1 s at a ball at rest 60 px ahead:
+/// the collision events sent and where the mover and the resting ball end.
+fn layered_crossing(mover: RigidBody, rest: RigidBody) -> (usize, f32, f32) {
+    let mut world = seed_world();
+    let ball = spawn_body(
+        &mut world,
+        mover,
+        Collider::circle(10.0),
+        Vec2::ZERO,
+        Vec2::new(150.0, 0.0),
+    );
+    let target = spawn_body(
+        &mut world,
+        rest,
+        Collider::circle(10.0),
+        Vec2::new(60.0, 0.0),
+        Vec2::ZERO,
+    );
+    let mut events = 0;
+    for _ in 0..60 {
+        physics_step(&mut world);
+        events += drain_events(&mut world).len();
+    }
+    let x = |entity: Entity| world.get::<Position>(entity).unwrap().0.x;
+    (events, x(ball), x(target))
+}
+
+/// The crossing passed: no event, the mover kept its speed and the resting
+/// ball stayed.
+fn assert_passed(mover: RigidBody, rest: RigidBody) {
+    let (events, mover_x, rest_x) = layered_crossing(mover, rest);
+    assert_eq!(events, 0, "{mover:?} met {rest:?}");
+    assert!(
+        (mover_x - 150.0).abs() < 1.0e-2,
+        "the mover was held at {mover_x}"
+    );
+    assert_eq!(rest_x, 60.0, "the resting ball moved");
+}
+
+#[test]
+fn layers_bodies_whose_layers_do_not_meet_pass_through_each_other() {
+    let (events, mover_x, rest_x) = layered_crossing(RigidBody::dynamic(), RigidBody::dynamic());
+    assert!(
+        events > 0 && mover_x < rest_x,
+        "the default balls did not meet"
+    );
+    assert_passed(layer_one(RigidBody::dynamic()), RigidBody::dynamic());
+    assert_passed(RigidBody::dynamic(), layer_one(RigidBody::dynamic()));
+}
+
+#[test]
+fn layers_an_asymmetric_pair_does_not_touch() {
+    // The default ball's mask holds layer 1; the layer-1 ball's lacks layer 0.
+    let default = RigidBody::dynamic();
+    let one_sided = layer_one(RigidBody::dynamic());
+    assert!(default.mask & one_sided.layers != 0 && !default.meets(&one_sided));
+    assert_passed(default, one_sided);
+    assert_passed(one_sided, default);
+    // Both masks holding the other's layer is a contact.
+    let both = RigidBody::dynamic().with_layers(1 << 1);
+    assert!(both.meets(&default));
+    let (events, mover_x, rest_x) = layered_crossing(both, default);
+    assert!(events > 0 && mover_x < rest_x);
+}
+
+/// A 4 px box falling at `speed`, from y 0 for 0.5 s, toward a tile floor at
+/// y 96 and a static box at y 292: its end height and the events sent.
+fn fall_through_floors(body: RigidBody, speed: f32) -> (f32, usize) {
+    let mut world = seed_world();
+    spawn_map(
+        &mut world,
+        "floor",
+        Vec2::new(0.0, 96.0),
+        6,
+        vec![vec![0; 6]],
+    );
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(50.0, 8.0)),
+        Vec2::new(40.0, 300.0),
+    );
+    let faller = spawn_body(
+        &mut world,
+        body,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(40.0, 0.0),
+        Vec2::new(0.0, speed),
+    );
+    let mut events = 0;
+    for _ in 0..30 {
+        physics_step(&mut world);
+        events += drain_events(&mut world).len();
+    }
+    (world.get::<Position>(faller).unwrap().0.y, events)
+}
+
+#[test]
+fn layers_a_mask_without_layer_0_falls_through_tiles_and_a_static_box() {
+    // 1,200 px/s is 5 px a substep, past the 4 px half extent, so the safety
+    // net sweeps the body against every static it reaches.
+    let speed = 1_200.0;
+    let substep_travel = speed / 60.0 / PhysicsConfig::default().substeps as f32;
+    assert!(substep_travel > 4.0);
+    let (y, events) = fall_through_floors(RigidBody::dynamic(), speed);
+    assert!(
+        y + 4.0 <= 96.5 && events > 0,
+        "the default body ended at {y}"
+    );
+    let ghost = RigidBody::dynamic().with_mask(RigidBody::ALL_LAYERS & !RigidBody::DEFAULT_LAYERS);
+    let (y, events) = fall_through_floors(ghost, speed);
+    assert_eq!(events, 0);
+    assert!((y - speed * 0.5).abs() < 1.0e-2, "the body was held at {y}");
+}
+
+/// `pushed_body_arrives_at_a_static_wall_and_stops_its_pusher`'s rig, with
+/// `wall` for the wall (none without it) and `ball` for both balls: the
+/// arrival pass's listed and clamp counts, and the balls' position bits.
+fn arrival_rig(wall: Option<RigidBody>, ball: RigidBody) -> (usize, usize, [[u32; 2]; 2]) {
+    const RADIUS: f32 = 8.0;
+    const WALL_FACE: f32 = 798.0;
+    let mut world = seed_world();
+    if let Some(wall) = wall {
+        let entity = world.spawn();
+        world.insert(entity, Position(Vec2::new(WALL_FACE + 2.0, 0.0)));
+        world.insert(entity, Collider::aabb(Vec2::new(2.0, 400.0)));
+        world.insert(entity, wall);
+    }
+    let pushed = spawn_body(
+        &mut world,
+        ball,
+        Collider::circle(RADIUS),
+        Vec2::new(WALL_FACE - RADIUS - 3.0, 0.0),
+        Vec2::ZERO,
+    );
+    let pusher = spawn_body(
+        &mut world,
+        ball.with_mass(100.0),
+        Collider::circle(RADIUS),
+        Vec2::new(WALL_FACE - RADIUS - 3.0 - 46.0, 0.0),
+        Vec2::new(1_920.0, 0.0),
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let (listed, clamps) = arrival_counts(&world);
+    let at = [position_bits(&world, pushed), position_bits(&world, pusher)];
+    (listed, clamps, at)
+}
+
+#[test]
+fn layers_the_arrival_pass_clamps_only_against_a_wall_the_body_meets() {
+    // Without a wall, the pass clamps the pusher's own contact alone.
+    let ball = RigidBody::dynamic().with_mask(RigidBody::DEFAULT_LAYERS);
+    let (listed, alone, free) = arrival_rig(None, ball);
+    assert!(listed > 0, "the arrival pass never ran");
+    // A wall in layer 1, which the balls' masks lack: no clamp against it,
+    // and the balls move as they do without it.
+    let (_, clamps, passed) = arrival_rig(Some(RigidBody::r#static().with_layers(1 << 1)), ball);
+    assert_eq!(clamps, alone, "the pass clamped against the wall");
+    assert_eq!(passed, free);
+    assert!(f32::from_bits(passed[0][0]) - 8.0 > 802.0);
+    // A wall they meet: at least one clamp against it, and the pushed body
+    // stops at its face.
+    let (_, clamps, held) = arrival_rig(Some(RigidBody::r#static()), ball);
+    assert!(clamps > alone, "clamps {clamps}, {alone} without the wall");
+    let x = f32::from_bits(held[0][0]);
+    assert!(x + 8.0 <= 799.0, "the pushed body sits in the wall at {x}");
+}
+
+#[test]
+fn layers_a_kinematic_body_pushes_and_wakes_only_the_bodies_it_meets() {
+    // A tall box, its face at x 12, with two balls asleep 1 px ahead of it:
+    // one at the defaults and one in layer 1 alone.
+    let mut world = seed_world();
+    let body = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(12.0, 60.0)),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let met = spawn_ball(&mut world, Vec2::new(23.0, -30.0));
+    let passed = spawn_body(
+        &mut world,
+        layer_one(RigidBody::dynamic()),
+        Collider::circle(10.0),
+        Vec2::new(23.0, 30.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(
+        is_sleeping(&world, met) && is_sleeping(&world, passed),
+        "the idle balls never slept"
+    );
+    let passed_at = position_bits(&world, passed);
+    world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(60.0, 0.0);
+    for step in 0..60 {
+        physics_step(&mut world);
+        assert!(
+            drain_events(&mut world)
+                .iter()
+                .all(|event| event.a != passed && event.b != Some(passed)),
+            "a contact named the passed ball at step {step}"
+        );
+        assert!(
+            is_sleeping(&world, passed),
+            "the kinematic body woke the passed ball at step {step}"
+        );
+    }
+    assert_eq!(position_bits(&world, passed), passed_at);
+    let face = world.get::<Position>(body).unwrap().0.x + 12.0;
+    let met_left = world.get::<Position>(met).unwrap().0.x - 10.0;
+    assert!(
+        face > 70.0 && met_left >= face - 1.0,
+        "face {face}, ball {met_left}"
+    );
+    assert!(!is_sleeping(&world, met));
+}
+
+#[test]
+fn layers_a_sensor_reports_what_its_mask_holds_whatever_the_others_mask() {
+    let mut world = seed_world();
+    let sensor_with = |world: &mut World, mask: u32| {
+        spawn_body(
+            world,
+            RigidBody::sensor().with_mask(mask),
+            Collider::circle(30.0),
+            Vec2::ZERO,
+            Vec2::ZERO,
+        )
+    };
+    let world_sensor = sensor_with(&mut world, RigidBody::DEFAULT_LAYERS);
+    let layer_sensor = sensor_with(&mut world, 1 << 2);
+    let blind = sensor_with(&mut world, 0);
+    // Layer 0 meeting only layer 3, and layer 2 meeting nothing.
+    let plain = spawn_body(
+        &mut world,
+        RigidBody::r#static().with_mask(1 << 3),
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(-10.0, 0.0),
+        Vec2::ZERO,
+    );
+    let layered = spawn_body(
+        &mut world,
+        RigidBody::r#static().with_layers(1 << 2).with_mask(0),
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(10.0, 0.0),
+        Vec2::ZERO,
+    );
+    spawn_map(&mut world, "tile", Vec2::new(-8.0, 8.0), 1, vec![vec![0]]);
+    physics_step(&mut world);
+    let events = drain_sensor_events(&mut world);
+    let seen = |sensor: Entity| {
+        events
+            .iter()
+            .filter(|event| event.sensor == sensor)
+            .map(|event| event.other)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(seen(world_sensor), [Some(plain), None]);
+    assert_eq!(seen(layer_sensor), [Some(layered)]);
+    assert!(seen(blind).is_empty());
+}
+
+#[test]
+fn layers_a_sensor_whose_mask_grows_reports_a_body_it_already_overlaps() {
+    let mut world = seed_world();
+    let sensor = spawn_body(
+        &mut world,
+        RigidBody::sensor().with_mask(RigidBody::DEFAULT_LAYERS),
+        Collider::circle(8.0),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let body = spawn_body(
+        &mut world,
+        RigidBody::r#static().with_layers(1 << 3),
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(4.0, 0.0),
+        Vec2::ZERO,
+    );
+    let entered = [SensorEntered::new(sensor, Some(body))];
+    for _ in 0..3 {
+        physics_step(&mut world);
+        assert!(drain_sensor_events(&mut world).is_empty());
+    }
+    world.get_mut::<RigidBody>(sensor).unwrap().mask |= 1 << 3;
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), entered);
+    physics_step(&mut world);
+    assert!(drain_sensor_events(&mut world).is_empty());
+    // A mask that shrinks forgets the pair, so it grows into a new one.
+    world.get_mut::<RigidBody>(sensor).unwrap().mask = RigidBody::DEFAULT_LAYERS;
+    physics_step(&mut world);
+    assert!(drain_sensor_events(&mut world).is_empty());
+    world.get_mut::<RigidBody>(sensor).unwrap().mask |= 1 << 3;
+    physics_step(&mut world);
+    assert_eq!(drain_sensor_events(&mut world), entered);
+}
+
+#[test]
+fn layers_a_sleeper_whose_layers_or_mask_change_wakes_its_island() {
+    for change in 0..2 {
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        settle_to_sleep(&mut world, &[bottom, top]);
+        let resting = world.get::<Position>(top).unwrap().0.y;
+        let body = world.get_mut::<RigidBody>(top).unwrap();
+        match change {
+            // Still meeting everything it met.
+            0 => body.layers = 0b11,
+            // Meeting nothing: it falls through the ball and the floor.
+            _ => body.mask = 0,
+        }
+        physics_step(&mut world);
+        assert!(
+            !is_sleeping(&world, bottom) && !is_sleeping(&world, top),
+            "change {change}: the island stayed asleep"
+        );
+        if change == 1 {
+            for _ in 0..30 {
+                physics_step(&mut world);
+            }
+            assert!(world.get::<Position>(top).unwrap().0.y > resting + 30.0);
+        }
+    }
+}
+
+#[test]
+fn layers_a_static_support_whose_layers_or_mask_change_wakes_the_island_on_it() {
+    for change in 0..2 {
+        let mut world = seed_world();
+        let (bottom, top) = spawn_sleeping_stack(&mut world);
+        settle_to_sleep(&mut world, &[bottom, top]);
+        let floor = stack_floor(&world);
+        let resting = world.get::<Position>(bottom).unwrap().0.y;
+        let body = world.get_mut::<RigidBody>(floor).unwrap();
+        match change {
+            // Still meeting both balls.
+            0 => body.layers = 0b11,
+            // A door that stops meeting them: they fall.
+            _ => body.mask = 1 << 4,
+        }
+        physics_step(&mut world);
+        assert!(
+            !is_sleeping(&world, bottom) && !is_sleeping(&world, top),
+            "change {change}: the island stayed asleep"
+        );
+        if change == 1 {
+            for _ in 0..30 {
+                physics_step(&mut world);
+            }
+            assert!(world.get::<Position>(bottom).unwrap().0.y > resting + 30.0);
+        }
+    }
+}
+
+#[test]
+fn layers_constructors_and_bundles_give_the_defaults_and_a_default_world_is_not_layered() {
+    let defaults = (RigidBody::DEFAULT_LAYERS, RigidBody::ALL_LAYERS);
+    assert_eq!(defaults, (1, u32::MAX));
+    for body in [
+        RigidBody::dynamic(),
+        RigidBody::r#static(),
+        RigidBody::kinematic(),
+        RigidBody::sensor(),
+    ] {
+        assert_eq!((body.layers, body.mask), defaults, "{:?}", body.kind);
+        let set = body.with_layers(0b101).with_mask(0b110);
+        assert_eq!(
+            set,
+            RigidBody {
+                layers: 0b101,
+                mask: 0b110,
+                ..body
+            }
+        );
+    }
+    let at = Position::new(1.0, 2.0);
+    let collider = Collider::circle(4.0);
+    for bundle in [
+        RigidBodyBundle::dynamic(at, collider),
+        RigidBodyBundle::r#static(at, collider),
+        RigidBodyBundle::kinematic(at, collider),
+        RigidBodyBundle::sensor(at, collider),
+    ] {
+        assert_eq!((bundle.body.layers, bundle.body.mask), defaults);
+        let set = bundle.with_layers(0b101).with_mask(0b110);
+        assert_eq!(set.body, bundle.body.with_layers(0b101).with_mask(0b110));
+        assert_eq!(
+            (set.position, set.velocity),
+            (bundle.position, bundle.velocity)
+        );
+    }
+    // The rule: each mask holds a layer the other is in.
+    let a = RigidBody::dynamic().with_layers(0b01).with_mask(0b10);
+    let b = RigidBody::dynamic().with_layers(0b10).with_mask(0b01);
+    assert!(a.meets(&b) && b.meets(&a));
+    assert!(!a.meets(&a));
+    assert!(
+        !RigidBody::dynamic()
+            .with_mask(0)
+            .meets(&RigidBody::dynamic())
+    );
+
+    // Every kind, a tile and a collider without a body, all at the defaults.
+    let mut world = seed_world();
+    spawn_ball(&mut world, Vec2::ZERO);
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(40.0, 0.0),
+    );
+    spawn_kinematic(&mut world, collider, Vec2::new(80.0, 0.0), Vec2::ZERO);
+    let sensor = spawn_sensor(&mut world, collider, Vec2::new(120.0, 0.0), Vec2::ZERO);
+    spawn_map(&mut world, "tile", Vec2::new(160.0, 0.0), 1, vec![vec![0]]);
+    let bare = world.spawn();
+    world.insert(bare, Position(Vec2::new(200.0, 0.0)));
+    world.insert(bare, collider);
+    let layered = |world: &World| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .layers
+            .layered
+    };
+    for _ in 0..3 {
+        physics_step(&mut world);
+        assert!(!layered(&world));
+    }
+    // A sensor off the defaults is enough.
+    world.get_mut::<RigidBody>(sensor).unwrap().layers = 0b10;
+    physics_step(&mut world);
+    assert!(layered(&world));
+}
+
+#[test]
+fn layers_persistent_pairs_match_fresh_contacts_with_masks() {
+    use crate::Pcg32;
+
+    let mut checked = 0;
+    let mut repairs = 0;
+    let mut unmet = 0;
+    for seed in 0..8 {
+        let mut rng = Pcg32::seeded(0x1A7E + seed);
+        let mut world = seed_world();
+        world.get_resource_mut::<PhysicsConfig>().unwrap().gravity = Vec2::new(0.0, 900.0);
+        // A static floor: a tile row's seams would admit contacts the
+        // oracle's exhaustive pass finds along the whole row.
+        spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(80.0, 8.0)),
+            Vec2::new(0.0, 104.0),
+        );
+        let buffers = PhysicsBuffers {
+            check_pair_contacts: true,
+            ..PhysicsBuffers::default()
+        };
+        world.insert_resource(buffers);
+        let config = world.get_resource_mut::<PhysicsConfig>().unwrap();
+        config.substeps = [1, 2, 4, 8][seed as usize % 4];
+        config.broadphase_cell_size = [8.0, 16.0, 32.0][seed as usize % 3];
+        let mut bodies = Vec::new();
+        for i in 0..30 {
+            let body = RigidBody::dynamic()
+                .with_layers(1 << (rng.next_u32() % 3))
+                .with_mask([0b111, 0b011, 0b101, 0b001, 0b110][rng.next_u32() as usize % 5]);
+            let position = Vec2::new(
+                (i % 6) as f32 * 11.0 - 28.0 + rng.next_range(-1.0, 1.0),
+                60.0 - (i / 6) as f32 * 11.0 + rng.next_range(-1.0, 1.0),
+            );
+            let velocity = rng.next_unit_vec2() * rng.next_range(0.0, 80.0);
+            let collider = if i % 3 == 0 {
+                Collider::aabb(Vec2::splat(5.0))
+            } else {
+                Collider::circle(5.0)
+            };
+            bodies.push(spawn_body(&mut world, body, collider, position, velocity));
+        }
+        // A bullet in layer 1 meeting layers 0 and 1 trips budgets.
+        spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_layers(0b10).with_mask(0b11),
+            Collider::circle(4.0),
+            Vec2::new(-90.0, 40.0),
+            Vec2::new(rng.next_range(2_400.0, 9_000.0), 0.0),
+        );
+        for _ in 0..40 {
+            physics_step(&mut world);
+            drain_events(&mut world);
+        }
+        // Some overlapping bodies must not meet, or the masks were idle.
+        for (index, &a) in bodies.iter().enumerate() {
+            for &b in &bodies[index + 1..] {
+                let (pa, pb) = (
+                    world.get::<Position>(a).unwrap().0,
+                    world.get::<Position>(b).unwrap().0,
+                );
+                let (ba, bb) = (
+                    world.get::<RigidBody>(a).unwrap(),
+                    world.get::<RigidBody>(b).unwrap(),
+                );
+                if pa.distance(pb) < 9.0 && !ba.meets(bb) {
+                    unmet += 1;
+                }
+            }
+        }
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert!(buffers.layers.layered);
+        checked += buffers.checked_substeps;
+        repairs += buffers.pair_repairs;
+    }
+    assert_eq!(
+        checked,
+        40 * (1 + 2 + 4 + 8) * 2,
+        "every substep runs the oracle"
+    );
+    assert!(repairs > 0, "the oracle never checked a repaired list");
+    assert!(unmet > 0, "no pair that does not meet ever overlapped");
 }

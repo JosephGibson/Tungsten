@@ -3,7 +3,7 @@ use crate::App;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tungsten_core::config::PresentModeConfig;
-use tungsten_core::{AudioCommand, DisplayMode, Resolution, UserFolder};
+use tungsten_core::{AudioBus, AudioCommand, DisplayMode, Resolution, UserFolder};
 
 fn tempdir() -> PathBuf {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -238,5 +238,60 @@ fn two_applies_before_a_frame_keep_the_queued_resolution() {
             .expect("the first apply's request")
             .resolution,
         HD
+    );
+}
+
+/// The bus volumes the queued commands set, draining them.
+fn bus_volumes(world: &mut World) -> Vec<(AudioBus, f32)> {
+    world
+        .resource_mut::<AudioCommands>()
+        .drain()
+        .into_iter()
+        .filter_map(|command| match command {
+            AudioCommand::SetBusVolume { bus, volume, .. } => Some((bus, volume)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn apply_settings_sends_every_bus_volume_a_set_one_or_1() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    world.resource_mut::<AudioCommands>().drain();
+    world
+        .resource_mut::<Settings>()
+        .set_bus_volume(AudioBus::Music, Some(0.25));
+    apply_settings(world);
+    assert_eq!(
+        bus_volumes(world),
+        [(AudioBus::Music, 0.25), (AudioBus::Effects, 1.0)]
+    );
+    let settings = world.resource_mut::<Settings>();
+    settings.set_bus_volume(AudioBus::Music, None);
+    settings.set_bus_volume(AudioBus::Effects, Some(0.0));
+    apply_settings(world);
+    assert_eq!(
+        bus_volumes(world),
+        [(AudioBus::Music, 1.0), (AudioBus::Effects, 0.0)]
+    );
+}
+
+#[test]
+fn startup_queues_only_the_set_bus_volumes() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    assert!(
+        bus_volumes(app.world_mut()).is_empty(),
+        "nothing set, nothing queued"
+    );
+    let settings = app.world_mut().resource_mut::<Settings>();
+    settings.set_bus_volume(AudioBus::Effects, Some(0.4));
+    settings.save().unwrap();
+    let mut restarted = app_at(&dir, Config::default());
+    assert_eq!(
+        bus_volumes(restarted.world_mut()),
+        [(AudioBus::Effects, 0.4)]
     );
 }

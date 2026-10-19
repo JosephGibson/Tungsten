@@ -102,20 +102,44 @@ pub enum BodyKind {
     /// pass through it and no `CollisionEvent` names it. At the end of each
     /// step it sends a [`SensorEntered`](crate::physics::SensorEntered) for
     /// every static, dynamic or kinematic body or solid tile it has begun to
-    /// overlap; a body it passes within one step goes unseen, and sensors do
-    /// not detect sensors. It never sleeps.
+    /// overlap in a layer its [`mask`](RigidBody::mask) holds; a body it
+    /// passes within one step goes unseen, and sensors do not detect
+    /// sensors. It never sleeps.
     Sensor,
 }
 
-/// Body mass/restitution state.
+/// Body mass/restitution state, and the layers the body is in and the layers
+/// it meets.
+///
+/// Layers are bits of a `u32`, one per layer, 0 to 31. Two bodies touch only
+/// when each one's [`mask`](Self::mask) holds a layer the other is in
+/// ([`meets`](Self::meets)); a pair that does not meet makes no contact,
+/// event or wake. A sensor reports a body or tile in a layer its own mask
+/// holds, whatever the other's mask, and a
+/// [`SpatialFilter`](crate::physics::SpatialFilter) sees what its mask holds.
+/// Tiles, and colliders without a `RigidBody`, are in layer 0 and meet every
+/// layer, so layer 0 is the world: a body whose mask lacks it passes them.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBody {
     pub kind: BodyKind,
     pub inv_mass: f32,
     pub restitution: f32,
+    /// The layers the body is in, one bit per layer;
+    /// [`DEFAULT_LAYERS`](Self::DEFAULT_LAYERS) (layer 0) from every
+    /// constructor.
+    pub layers: u32,
+    /// The layers the body meets; [`ALL_LAYERS`](Self::ALL_LAYERS) from every
+    /// constructor.
+    pub mask: u32,
 }
 
 impl RigidBody {
+    /// Layer 0 alone, the world's layer: every constructor's `layers`, and
+    /// the layers of tiles and of colliders without a `RigidBody`.
+    pub const DEFAULT_LAYERS: u32 = 1;
+    /// Every layer: every constructor's `mask`.
+    pub const ALL_LAYERS: u32 = u32::MAX;
+
     /// Unit-mass dynamic body.
     #[must_use]
     pub fn dynamic() -> Self {
@@ -123,6 +147,8 @@ impl RigidBody {
             kind: BodyKind::Dynamic,
             inv_mass: 1.0,
             restitution: 0.0,
+            layers: Self::DEFAULT_LAYERS,
+            mask: Self::ALL_LAYERS,
         }
     }
 
@@ -133,6 +159,8 @@ impl RigidBody {
             kind: BodyKind::Static,
             inv_mass: 0.0,
             restitution: 0.0,
+            layers: Self::DEFAULT_LAYERS,
+            mask: Self::ALL_LAYERS,
         }
     }
 
@@ -146,6 +174,8 @@ impl RigidBody {
             kind: BodyKind::Kinematic,
             inv_mass: 0.0,
             restitution: 0.0,
+            layers: Self::DEFAULT_LAYERS,
+            mask: Self::ALL_LAYERS,
         }
     }
 
@@ -158,6 +188,8 @@ impl RigidBody {
             kind: BodyKind::Sensor,
             inv_mass: 0.0,
             restitution: 0.0,
+            layers: Self::DEFAULT_LAYERS,
+            mask: Self::ALL_LAYERS,
         }
     }
 
@@ -171,6 +203,27 @@ impl RigidBody {
     pub fn with_restitution(mut self, restitution: f32) -> Self {
         self.restitution = restitution.clamp(0.0, 1.0);
         self
+    }
+
+    /// The body in `layers`, one bit per layer, in place of layer 0.
+    #[must_use]
+    pub fn with_layers(mut self, layers: u32) -> Self {
+        self.layers = layers;
+        self
+    }
+
+    /// The body meeting the layers of `mask`, one bit per layer, in place of
+    /// every layer. A mask of 0 meets nothing.
+    #[must_use]
+    pub fn with_mask(mut self, mask: u32) -> Self {
+        self.mask = mask;
+        self
+    }
+
+    /// The contact rule: each body's mask holds a layer the other is in.
+    #[must_use]
+    pub fn meets(&self, other: &RigidBody) -> bool {
+        self.layers & other.mask != 0 && other.layers & self.mask != 0
     }
 }
 
@@ -191,7 +244,7 @@ pub struct RigidBodyBundle {
     pub velocity: Option<Velocity>,
     /// The body's shape.
     pub collider: Collider,
-    /// Its kind, with its mass and restitution.
+    /// Its kind, with its mass, restitution, layers and mask.
     pub body: RigidBody,
 }
 
@@ -253,6 +306,20 @@ impl RigidBodyBundle {
     #[must_use]
     pub fn with_body(mut self, body: RigidBody) -> Self {
         self.body = body;
+        self
+    }
+
+    /// The bundle with its body in `layers` ([`RigidBody::with_layers`]).
+    #[must_use]
+    pub fn with_layers(mut self, layers: u32) -> Self {
+        self.body.layers = layers;
+        self
+    }
+
+    /// The bundle with its body meeting `mask` ([`RigidBody::with_mask`]).
+    #[must_use]
+    pub fn with_mask(mut self, mask: u32) -> Self {
+        self.body.mask = mask;
         self
     }
 }
