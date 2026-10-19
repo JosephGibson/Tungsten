@@ -8192,6 +8192,25 @@ pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
 pub fn tungsten_core::schedule::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
 pub type tungsten_core::schedule::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::World)>
 pub mod tungsten_core::settings
+pub enum tungsten_core::settings::FrameRateCap
+pub tungsten_core::settings::FrameRateCap::Fps(core::num::nonzero::NonZeroU32)
+pub tungsten_core::settings::FrameRateCap::Uncapped
+impl core::clone::Clone for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::clone(&self) -> tungsten_core::settings::FrameRateCap
+impl core::cmp::Eq for tungsten_core::settings::FrameRateCap
+impl core::cmp::PartialEq for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::eq(&self, &tungsten_core::settings::FrameRateCap) -> bool
+impl core::fmt::Debug for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::settings::FrameRateCap
+impl core::marker::StructuralPartialEq for tungsten_core::settings::FrameRateCap
+impl core::marker::Freeze for tungsten_core::settings::FrameRateCap
+impl core::marker::Send for tungsten_core::settings::FrameRateCap
+impl core::marker::Sync for tungsten_core::settings::FrameRateCap
+impl core::marker::Unpin for tungsten_core::settings::FrameRateCap
+impl core::marker::UnsafeUnpin for tungsten_core::settings::FrameRateCap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::FrameRateCap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::FrameRateCap
 #[non_exhaustive] pub enum tungsten_core::settings::SettingsError
 pub tungsten_core::settings::SettingsError::NoFolder
 pub tungsten_core::settings::SettingsError::Write(tungsten_core::persist::WriteError)
@@ -8238,6 +8257,7 @@ pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range:
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
+pub fn tungsten_core::settings::Settings::frame_rate_cap(&self) -> core::option::Option<tungsten_core::settings::FrameRateCap>
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
@@ -8245,6 +8265,7 @@ pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Opt
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
 pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
+pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)
@@ -12708,6 +12729,25 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::FilterMode
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::FilterMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::FilterMode
+pub enum tungsten_core::FrameRateCap
+pub tungsten_core::FrameRateCap::Fps(core::num::nonzero::NonZeroU32)
+pub tungsten_core::FrameRateCap::Uncapped
+impl core::clone::Clone for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::clone(&self) -> tungsten_core::settings::FrameRateCap
+impl core::cmp::Eq for tungsten_core::settings::FrameRateCap
+impl core::cmp::PartialEq for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::eq(&self, &tungsten_core::settings::FrameRateCap) -> bool
+impl core::fmt::Debug for tungsten_core::settings::FrameRateCap
+pub fn tungsten_core::settings::FrameRateCap::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::settings::FrameRateCap
+impl core::marker::StructuralPartialEq for tungsten_core::settings::FrameRateCap
+impl core::marker::Freeze for tungsten_core::settings::FrameRateCap
+impl core::marker::Send for tungsten_core::settings::FrameRateCap
+impl core::marker::Sync for tungsten_core::settings::FrameRateCap
+impl core::marker::Unpin for tungsten_core::settings::FrameRateCap
+impl core::marker::UnsafeUnpin for tungsten_core::settings::FrameRateCap
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::settings::FrameRateCap
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::settings::FrameRateCap
 #[non_exhaustive] pub enum tungsten_core::GamepadAxis
 pub tungsten_core::GamepadAxis::LeftStickX
 pub tungsten_core::GamepadAxis::LeftStickY
@@ -16622,6 +16662,7 @@ pub const tungsten_core::settings::Settings::TEXT_SCALE_RANGE: core::ops::range:
 pub const tungsten_core::settings::Settings::UI_SCALE_RANGE: core::ops::range::RangeInclusive<f32>
 pub fn tungsten_core::settings::Settings::bus_volume(&self, tungsten_core::audio::AudioBus) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::display_mode(&self) -> core::option::Option<tungsten_core::display::DisplayMode>
+pub fn tungsten_core::settings::Settings::frame_rate_cap(&self) -> core::option::Option<tungsten_core::settings::FrameRateCap>
 pub fn tungsten_core::settings::Settings::load(impl core::convert::Into<std::path::PathBuf>) -> Self
 pub fn tungsten_core::settings::Settings::master_volume(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::path(&self) -> core::option::Option<&std::path::Path>
@@ -16629,6 +16670,7 @@ pub fn tungsten_core::settings::Settings::resolution(&self) -> core::option::Opt
 pub fn tungsten_core::settings::Settings::save(&self) -> core::result::Result<(), tungsten_core::settings::SettingsError>
 pub fn tungsten_core::settings::Settings::set_bus_volume(&mut self, tungsten_core::audio::AudioBus, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::option::Option<tungsten_core::display::DisplayMode>)
+pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)

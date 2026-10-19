@@ -6,6 +6,26 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.89.0] - 2026-10-19
+
+Summary: M69, the W12 shell (plan archived at `docs/plans/archive/1.0/phase6-milestone-69-template-shell.md`): `templates/basic` becomes a shell every game copies unchanged (title, pause, game over, save and load over an autosave and three slots, tabbed settings with a Display tab, keybindings, a confirm dialog and toasts, in a dark, square theme) and a sample game it deletes, joined through a six-name seam within a line budget; the engine gains an exit request with one last frame for quit and window close, and the player's frame-rate limit. No hash moves.
+
+### Added
+
+- **The exit request** (`D-180`): `request_exit`, `Exiting` and `ExitReason` at the umbrella's root; the frame after a request runs whole, render included, with `Exiting` present, and is the run's last; the window's close button runs its last frame at once from the event, so a minimized window still ends after it; `Harness::request_close`, and `step` keeps the last frame's draw, audio and count; `engine_exit` and the smoke exit end the run as before.
+- **The player's frame-rate limit** (`D-180`): `FrameRateCap` (`Uncapped`, `Fps`) with `Settings::frame_rate_cap` and `set_frame_rate_cap`; the file's `display.frame_rate_cap` holds an integer of at least 1 or `"uncapped"`, and any other value sets the file aside; `Config::apply_settings` layers it under `TUNGSTEN_DISPLAY_FRAME_RATE_CAP`, and `apply_settings` sends it with the display request.
+- **The template shell** (`D-181`): `templates/basic/src/shell/` with the title and its difficulty picker, pause, game over with Retry, the save and load screen, tabbed settings (Display, Audio, Interface, Controls, Gameplay) whose window changes revert after 10 s, keybindings with a 5 s capture, a device check, a swap and resets, a confirm dialog with a countdown, toasts on the real clock, `shell::goto` applied by `shell_flow`, four slots with fixed autosave triggers and per-slot read-only, `GameOptions` in their own store, pause and mute on focus loss, and the theme `assets/ui/themes/shell.json`; the seam in `game.rs` and `save.rs`; the sample in `src/sample/` with its HUD, its difficulty as the `max_health` base and `SampleRun`; damage numbers as the `labels` cue rule behind a tag; 85 tests in `tests/game/`, among them every screen's fit at 731 × 411 and 1920 × 1080 UI units, and the title's pixel test in `just visual`.
+
+### Changed
+
+- **The template** (`D-181`): `src/states.rs` and `src/components.rs` give way to `src/shell/`, `src/sample/`, `src/game.rs` and `src/save.rs`; `SaveGame` goes to schema 2, migrated from 1; `main.rs` turns `engine_exit` off, and `input.json` binds `state_pause` to P, Escape and Start; the engine's debug HUD starts hidden (F4 shows it); the schedule snapshot moves.
+- **Records**: decisions 180 and 181 with their marker lines on `D-159` and `D-123`; `DESIGN.md`'s frame loop, its template section, an M69 section and the status line; the template's `AGENTS.md` and `README.md`; the getting-started guide; the w12 and w13 files; the backlog's eight rows; known issues (the F9 and F11 row); the template row of `docs/LLM_INDEX.md`; the API snapshots, additive with no ledger row.
+
+### Fixed
+
+- **The template's camera shake** moved nothing (known issues): the sample sets a shake that the Screen shake option scales.
+- **No exit from game code** (M59 Q14, known issues): a menu's Quit calls `request_exit`.
+
 ## [0.88.0] - 2026-10-19
 
 Summary: M68, W6b and W6c (plan archived at `docs/plans/archive/1.0/phase6-milestone-68-layers-audio-buses.md`): collision layers and masks on bodies, sensors and spatial queries; every sound on the music or effects bus, whose volumes the player sets and keeps; a voice from every play that fades, sets or stops; a voice limit per sound; linear gain ramps, a clamp and stereo channel mapping in a mixer that never allocates; a 1,024-command ring whose overflow waits in order, with a latch that resynchronizes a stalled callback and rebuilds a lost device; the UI lab as the listening host. No hash moves.

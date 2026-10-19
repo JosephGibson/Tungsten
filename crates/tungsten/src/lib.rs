@@ -34,7 +34,7 @@ pub mod tweens;
 pub mod ui_debug;
 mod user_dir;
 
-pub use app::{App, WindowSize};
+pub use app::{App, ExitReason, Exiting, WindowSize, request_exit};
 pub use camera::camera_update_system;
 pub use debug_hud::{DebugHud, HudActiveState, HudCorner, HudRow, hud_toggle_system};
 pub use debug_views::{LogConsole, UiInspector};

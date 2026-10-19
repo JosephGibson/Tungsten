@@ -1,8 +1,9 @@
 use super::Harness;
-use crate::App;
+use crate::app::PendingExit;
 use crate::particles::ParticleBurstEmitted;
 use crate::state::{GameState, StateContext, StateId, StateStack};
 use crate::transition::{Transition, TransitionEffect};
+use crate::{App, ExitReason, Exiting, request_exit};
 use glam::Vec2;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,8 +14,8 @@ use tungsten_core::assets::{
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, CameraController, CameraMode,
     CameraState, Collider, Config, Easing, Entity, InputState, KeyCode, Particle, ParticleEmitter,
-    ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Time, Transform, Tween,
-    TweenChannel, TweenComplete, Velocity, Visibility, With, World,
+    ParticleEmitterState, PhysicsConfig, Position, RigidBody, Sprite, Stage, Time, Transform,
+    Tween, TweenChannel, TweenComplete, Velocity, Visibility, With, World, system,
 };
 use tungsten_render::{QuadInstance, TextSection};
 
@@ -553,4 +554,217 @@ fn set_dt_rejects_infinity() {
 #[should_panic(expected = "dt must be finite and not negative")]
 fn set_dt_rejects_a_negative_dt() {
     Harness::new(app()).set_dt(-0.01);
+}
+
+/// What each stage's system saw of [`Exiting`], one entry a run.
+#[derive(Default)]
+struct SeenExiting {
+    pre_update: Vec<Option<ExitReason>>,
+    fixed_update: Vec<Option<ExitReason>>,
+    update: Vec<Option<ExitReason>>,
+    post_update: Vec<Option<ExitReason>>,
+}
+
+impl SeenExiting {
+    fn stages(&self) -> [&Vec<Option<ExitReason>>; 4] {
+        [
+            &self.pre_update,
+            &self.fixed_update,
+            &self.update,
+            &self.post_update,
+        ]
+    }
+}
+
+/// An app whose every stage records [`Exiting`], whose frame `n` (from 1)
+/// draws one quad at x = `n` and plays `AudioHandle(n)`, and whose update
+/// calls [`request_exit`] in each frame `requests` names.
+fn exiting_app(requests: &'static [u64]) -> App {
+    fn reason(world: &World) -> Option<ExitReason> {
+        world
+            .get_resource::<Exiting>()
+            .map(|exiting| exiting.reason)
+    }
+    let mut app = app();
+    app.world_mut().insert_resource(SeenExiting::default());
+    app.add_system_to(
+        Stage::PreUpdate,
+        system("seen_pre_update", |world| {
+            let seen = reason(world);
+            world.resource_mut::<SeenExiting>().pre_update.push(seen);
+        }),
+    );
+    app.add_system_to(
+        Stage::FixedUpdate,
+        system("seen_fixed_update", |world| {
+            let seen = reason(world);
+            world.resource_mut::<SeenExiting>().fixed_update.push(seen);
+        }),
+    );
+    app.add_system(move |world| {
+        let seen = reason(world);
+        let frame = world.resource::<Time>().frame();
+        world.resource_mut::<SeenExiting>().update.push(seen);
+        world
+            .resource_mut::<AudioCommands>()
+            .play(AudioHandle(frame as u32));
+        for _ in requests.iter().filter(|&&each| each == frame) {
+            request_exit(world);
+        }
+    });
+    app.add_system_to(
+        Stage::PostUpdate,
+        system("seen_post_update", |world| {
+            let seen = reason(world);
+            world.resource_mut::<SeenExiting>().post_update.push(seen);
+        }),
+    );
+    app.set_extract_quads(|world| {
+        vec![QuadInstance {
+            position: [world.resource::<Time>().frame() as f32, 0.0],
+            size: [1.0, 1.0],
+            color: [1.0; 4],
+        }]
+    });
+    app
+}
+
+#[test]
+fn exiting_follows_request_exit_for_one_frame() {
+    let mut harness = Harness::new(exiting_app(&[2]));
+    assert_eq!(harness.step(5), 3);
+    assert!(harness.exit_requested());
+    let requested = Some(ExitReason::Requested);
+    for stage in harness.world().resource::<SeenExiting>().stages() {
+        assert_eq!(stage[..], [None, None, requested], "every stage ran in it");
+    }
+    assert_eq!(
+        harness.world().resource::<Exiting>().reason,
+        ExitReason::Requested
+    );
+    assert_eq!(harness.step(1), 0, "no frame runs after the last");
+    assert_eq!(harness.frame(), 3);
+    assert_eq!(harness.world().resource::<SeenExiting>().update.len(), 3);
+}
+
+#[test]
+fn exiting_keeps_the_last_frames_draw_audio_and_count() {
+    let mut harness = Harness::new(exiting_app(&[2]));
+    assert_eq!(harness.step(5), 3);
+    assert_eq!(harness.frame(), 3, "the last frame counts");
+    let draw = harness.draw().expect("the last frame drew");
+    assert_eq!(draw.quads.len(), 1);
+    assert_eq!(draw.quads[0].position, [3.0, 0.0], "the last frame's draw");
+    assert!(
+        matches!(
+            harness.audio(),
+            [AudioCommand::Play {
+                handle: AudioHandle(3),
+                ..
+            }]
+        ),
+        "the last frame's audio: {:?}",
+        harness.audio()
+    );
+}
+
+#[test]
+fn exiting_follows_a_close_for_one_frame() {
+    let mut harness = Harness::new(exiting_app(&[]));
+    assert_eq!(harness.step(2), 2);
+    harness.request_close();
+    assert!(!harness.exit_requested(), "the last frame has not run yet");
+    assert_eq!(harness.step(5), 1);
+    assert!(harness.exit_requested());
+    let closed = Some(ExitReason::CloseRequested);
+    for stage in harness.world().resource::<SeenExiting>().stages() {
+        assert_eq!(stage[..], [None, None, closed]);
+    }
+    assert_eq!(harness.step(1), 0);
+    assert_eq!(harness.frame(), 3);
+}
+
+#[test]
+fn exiting_ignores_a_second_request_and_one_in_the_last_frame() {
+    // Frame 2 asks twice; frame 3, the last, asks again.
+    let mut harness = Harness::new(exiting_app(&[2, 2, 3]));
+    assert_eq!(harness.step(10), 3);
+    let world = harness.world();
+    assert_eq!(world.resource::<Exiting>().reason, ExitReason::Requested);
+    assert!(!world.has_resource::<PendingExit>(), "nothing left pending");
+    assert_eq!(world.resource::<SeenExiting>().update.len(), 3);
+
+    // A close during the last frame keeps the request's reason.
+    let mut harness = Harness::new(exiting_app(&[1]));
+    assert_eq!(harness.step(1), 1);
+    harness.request_close();
+    assert_eq!(harness.step(5), 1);
+    assert_eq!(
+        harness.world().resource::<Exiting>().reason,
+        ExitReason::Requested
+    );
+}
+
+#[test]
+fn exiting_is_absent_from_ordinary_frames() {
+    let mut harness = Harness::new(exiting_app(&[]));
+    assert_eq!(harness.step(600), 600);
+    assert!(!harness.exit_requested());
+    let seen = harness.world().resource::<SeenExiting>();
+    for stage in seen.stages() {
+        assert!(stage.iter().all(Option::is_none));
+    }
+    assert_eq!(seen.update.len(), 600);
+    assert!(!harness.world().has_resource::<Exiting>());
+}
+
+#[test]
+fn exiting_never_follows_engine_exit() {
+    // `engine_exit` pressed in the frame that also asks to exit: the frame
+    // stops after update and no last frame runs.
+    let mut app = exiting_app(&[3]);
+    let mut calls = 0;
+    app.add_system(move |world| {
+        calls += 1;
+        if calls == 3 {
+            world
+                .get_resource_mut::<InputState>()
+                .unwrap()
+                .key_down(KeyCode::Escape);
+        }
+    });
+    let mut harness = Harness::new(app);
+    assert_eq!(harness.step(5), 2);
+    assert!(harness.exit_requested());
+    assert_eq!(harness.step(1), 0);
+    let world = harness.world();
+    assert!(!world.has_resource::<Exiting>());
+    for stage in world.resource::<SeenExiting>().stages() {
+        assert!(stage.iter().all(Option::is_none));
+    }
+
+    // Pressed in the last frame itself: that frame is cut short too.
+    let mut app = exiting_app(&[1]);
+    let mut calls = 0;
+    app.add_system(move |world| {
+        calls += 1;
+        if calls == 2 {
+            world
+                .get_resource_mut::<InputState>()
+                .unwrap()
+                .key_down(KeyCode::Escape);
+        }
+    });
+    let mut harness = Harness::new(app);
+    assert_eq!(
+        harness.step(5),
+        1,
+        "the cut-short last frame does not count"
+    );
+    assert!(harness.exit_requested());
+    assert_eq!(
+        harness.world().resource::<SeenExiting>().post_update[..],
+        [None],
+        "its later stages never ran"
+    );
 }

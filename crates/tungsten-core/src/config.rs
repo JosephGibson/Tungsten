@@ -1,5 +1,5 @@
 use crate::display::{DisplayConfig, DisplayMode, Resolution};
-use crate::settings::{Settings, UserFolder};
+use crate::settings::{FrameRateCap, Settings, UserFolder};
 use serde::Deserialize;
 use serde_json::Value;
 use std::path::Path;
@@ -572,8 +572,9 @@ impl Config {
     }
 
     /// Lays the player's [`Settings`] over this config (`D-159`): each set
-    /// display value replaces the file's, and a set vsync also clears both
-    /// present modes, so `auto` follows it. A config [`load`](Self::load)
+    /// display value replaces the file's, a set vsync also clears both
+    /// present modes, so `auto` follows it, and [`FrameRateCap::Uncapped`]
+    /// clears the file's frame-rate cap (`D-180`). A config [`load`](Self::load)
     /// built then takes its environment overrides again, so they stay last;
     /// one built in code stays free of them.
     ///
@@ -599,6 +600,12 @@ impl Config {
             self.display.vsync = Some(vsync);
             self.display.present_mode = None;
             self.render.present_mode = None;
+        }
+        if let Some(cap) = settings.frame_rate_cap() {
+            self.display.frame_rate_cap = match cap {
+                FrameRateCap::Uncapped => None,
+                FrameRateCap::Fps(fps) => Some(fps.get()),
+            };
         }
         if self.env_overrides {
             self.apply_env_overrides(env)?;

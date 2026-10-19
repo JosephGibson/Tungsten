@@ -41,7 +41,7 @@ use tungsten_render::{
     WorldLabelRun,
 };
 
-use crate::app::{App, FrameClock, FrameEnd, FrameExtract};
+use crate::app::{App, ExitReason, Exiting, FrameClock, FrameEnd, FrameExtract};
 use crate::asset_loader;
 
 mod ui;
@@ -148,8 +148,10 @@ impl Harness {
 
     /// Runs up to `frames` frames and returns how many completed. A frame
     /// whose update leaves `engine_exit` just pressed stops there, before
-    /// its later stages, as the window loop exits; after that, no frame
-    /// runs.
+    /// its later stages, as the window loop exits. The last frame after
+    /// [`request_exit`](crate::request_exit) or [`request_close`](Self::request_close)
+    /// runs whole and counts, its draw and audio kept (`D-180`). After
+    /// either end, no frame runs.
     pub fn step(&mut self, frames: u32) -> u32 {
         for completed in 0..frames {
             if self.exit_requested {
@@ -170,8 +172,25 @@ impl Harness {
             self.draw = draw;
             self.audio = audio;
             self.frames += 1;
+            if end == FrameEnd::Last {
+                self.exit_requested = true;
+                return completed + 1;
+            }
         }
         frames
+    }
+
+    /// Asks the window to close, as its close button does (`D-180`): the
+    /// next [`step`](Self::step) runs the run's last frame, with
+    /// [`Exiting`] whose reason is [`ExitReason::CloseRequested`], or keeps
+    /// the `Exiting` a [`request_exit`](crate::request_exit) already set.
+    pub fn request_close(&mut self) {
+        let world = self.app.world_mut();
+        if !world.has_resource::<Exiting>() {
+            world.insert_resource(Exiting {
+                reason: ExitReason::CloseRequested,
+            });
+        }
     }
 
     /// Presses `action`'s first binding, as the key, button, wheel or
@@ -275,7 +294,9 @@ impl Harness {
         &self.audio
     }
 
-    /// Whether a frame stopped at an `engine_exit` press.
+    /// Whether the run has ended: a frame stopped at an `engine_exit` press,
+    /// or the last frame after [`request_exit`](crate::request_exit) or
+    /// [`request_close`](Self::request_close) ran. No frame runs after it.
     #[must_use]
     pub fn exit_requested(&self) -> bool {
         self.exit_requested

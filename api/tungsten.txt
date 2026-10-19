@@ -28,6 +28,25 @@ pub use tungsten::system
 pub mod tungsten::app
 pub use tungsten::app::SystemFn
 pub use tungsten::app::WindowSize
+#[non_exhaustive] pub enum tungsten::app::ExitReason
+pub tungsten::app::ExitReason::CloseRequested
+pub tungsten::app::ExitReason::Requested
+impl core::clone::Clone for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::clone(&self) -> tungsten::app::ExitReason
+impl core::cmp::Eq for tungsten::app::ExitReason
+impl core::cmp::PartialEq for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::eq(&self, &tungsten::app::ExitReason) -> bool
+impl core::fmt::Debug for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::ExitReason
+impl core::marker::StructuralPartialEq for tungsten::app::ExitReason
+impl core::marker::Freeze for tungsten::app::ExitReason
+impl core::marker::Send for tungsten::app::ExitReason
+impl core::marker::Sync for tungsten::app::ExitReason
+impl core::marker::Unpin for tungsten::app::ExitReason
+impl core::marker::UnsafeUnpin for tungsten::app::ExitReason
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::ExitReason
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::ExitReason
 pub struct tungsten::app::App
 impl tungsten::app::App
 pub fn tungsten::app::App::add_plugin(&mut self, impl tungsten_core::schedule::Plugin)
@@ -63,6 +82,25 @@ impl core::marker::Unpin for tungsten::app::App
 impl core::marker::UnsafeUnpin for tungsten::app::App
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::app::App
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::app::App
+#[non_exhaustive] pub struct tungsten::app::Exiting
+pub tungsten::app::Exiting::reason: tungsten::app::ExitReason
+impl core::clone::Clone for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::clone(&self) -> tungsten::app::Exiting
+impl core::cmp::Eq for tungsten::app::Exiting
+impl core::cmp::PartialEq for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::eq(&self, &tungsten::app::Exiting) -> bool
+impl core::fmt::Debug for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::Exiting
+impl core::marker::StructuralPartialEq for tungsten::app::Exiting
+impl core::marker::Freeze for tungsten::app::Exiting
+impl core::marker::Send for tungsten::app::Exiting
+impl core::marker::Sync for tungsten::app::Exiting
+impl core::marker::Unpin for tungsten::app::Exiting
+impl core::marker::UnsafeUnpin for tungsten::app::Exiting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::Exiting
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::Exiting
+pub fn tungsten::app::request_exit(&mut tungsten_core::ecs::world::World)
 pub type tungsten::app::ExtractQuadsFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance>>
 pub type tungsten::app::ExtractSpritesFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::sprite::SpriteBatch>>
 pub type tungsten::app::ExtractTextFn = alloc::boxed::Box<dyn core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::text::TextSection>>
@@ -789,6 +827,7 @@ pub fn tungsten::testing::Harness::load_manifest(&mut self, impl core::convert::
 pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
+pub fn tungsten::testing::Harness::request_close(&mut self)
 pub fn tungsten::testing::Harness::set_cursor(&mut self, f32, f32)
 pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
 pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32
@@ -933,6 +972,25 @@ pub mod tungsten::tweens
 pub fn tungsten::tweens::tween_tick_system(&mut tungsten_core::ecs::world::World)
 pub mod tungsten::ui_debug
 pub fn tungsten::ui_debug::ui_debug_toggle_system(&mut tungsten_core::ecs::world::World)
+#[non_exhaustive] pub enum tungsten::ExitReason
+pub tungsten::ExitReason::CloseRequested
+pub tungsten::ExitReason::Requested
+impl core::clone::Clone for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::clone(&self) -> tungsten::app::ExitReason
+impl core::cmp::Eq for tungsten::app::ExitReason
+impl core::cmp::PartialEq for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::eq(&self, &tungsten::app::ExitReason) -> bool
+impl core::fmt::Debug for tungsten::app::ExitReason
+pub fn tungsten::app::ExitReason::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::ExitReason
+impl core::marker::StructuralPartialEq for tungsten::app::ExitReason
+impl core::marker::Freeze for tungsten::app::ExitReason
+impl core::marker::Send for tungsten::app::ExitReason
+impl core::marker::Sync for tungsten::app::ExitReason
+impl core::marker::Unpin for tungsten::app::ExitReason
+impl core::marker::UnsafeUnpin for tungsten::app::ExitReason
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::ExitReason
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::ExitReason
 pub enum tungsten::HudCorner
 pub tungsten::HudCorner::BottomLeft
 pub tungsten::HudCorner::BottomRight
@@ -1180,6 +1238,24 @@ impl core::marker::Unpin for tungsten::telemetry::DisplayTelemetry
 impl core::marker::UnsafeUnpin for tungsten::telemetry::DisplayTelemetry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::DisplayTelemetry
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::DisplayTelemetry
+#[non_exhaustive] pub struct tungsten::Exiting
+pub tungsten::Exiting::reason: tungsten::app::ExitReason
+impl core::clone::Clone for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::clone(&self) -> tungsten::app::Exiting
+impl core::cmp::Eq for tungsten::app::Exiting
+impl core::cmp::PartialEq for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::eq(&self, &tungsten::app::Exiting) -> bool
+impl core::fmt::Debug for tungsten::app::Exiting
+pub fn tungsten::app::Exiting::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::app::Exiting
+impl core::marker::StructuralPartialEq for tungsten::app::Exiting
+impl core::marker::Freeze for tungsten::app::Exiting
+impl core::marker::Send for tungsten::app::Exiting
+impl core::marker::Sync for tungsten::app::Exiting
+impl core::marker::Unpin for tungsten::app::Exiting
+impl core::marker::UnsafeUnpin for tungsten::app::Exiting
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::app::Exiting
+impl core::panic::unwind_safe::UnwindSafe for tungsten::app::Exiting
 pub struct tungsten::Extracts
 impl tungsten::extract::Extracts
 pub fn tungsten::extract::Extracts::add_quads(&mut self, impl core::ops::function::Fn(&tungsten_core::ecs::world::World) -> alloc::vec::Vec<tungsten_render::quad::QuadInstance> + 'static)
@@ -1681,6 +1757,7 @@ pub fn tungsten::particle_count_refresh_system(&mut tungsten_core::ecs::world::W
 pub fn tungsten::particle_emit_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::particle_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_display_settings(&mut tungsten_core::ecs::world::World, tungsten_core::display::DisplayState) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
+pub fn tungsten::request_exit(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::request_post_aa(&mut tungsten_core::ecs::world::World, tungsten_core::config::PostAaMode)
 pub fn tungsten::shake_tick_system(&mut tungsten_core::ecs::world::World)
 pub fn tungsten::spawn_mesh_particle_via(&mut tungsten_core::ecs::command_buffer::CommandBuffer, core::option::Option<tungsten_core::ecs::entity::Entity>, alloc::sync::Arc<tungsten_core::assets::particle::ParticleConfig>, tungsten_core::assets::particle::ParticleMeshAssetId, glam::f32::vec2::Vec2, glam::f32::vec2::Vec2, f32, f32)

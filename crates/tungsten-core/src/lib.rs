@@ -83,7 +83,7 @@ pub use post::{
 pub use rng::{Pcg32, splitmix64};
 pub use save::{SaveData, SaveSlots};
 pub use schedule::{Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, system};
-pub use settings::{Settings, UserFolder};
+pub use settings::{FrameRateCap, Settings, UserFolder};
 pub use text::{
     EllipsisAt, FontEpoch, FontFeature, FontFeatures, MeasureWidth, StyledText, TextAlign,
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,

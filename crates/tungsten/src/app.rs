@@ -455,7 +455,9 @@ impl App {
         Ok(())
     }
 
-    /// Enable or disable engine exit action handling.
+    /// Enable or disable engine exit action handling: the `engine_exit`
+    /// action, which ends its frame after `Update` with no last frame. A
+    /// game's own quit calls [`request_exit`] instead (`D-180`).
     pub fn set_exit_on_escape(&mut self, exit: bool) {
         self.exit_on_escape = exit;
     }
@@ -915,6 +917,42 @@ pub(crate) enum FrameClock {
     Pinned(f32),
 }
 
+/// Why the run is ending (`D-180`); [`Exiting`] carries it through the last
+/// frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ExitReason {
+    /// The game called [`request_exit`].
+    Requested,
+    /// The window's close button, or the OS, asked the window to close.
+    CloseRequested,
+}
+
+/// A resource present for the run's last frame only (`D-180`): a system that
+/// saves on quit reads it. Every stage runs in that frame, render included,
+/// and the run ends after it. The `engine_exit` action and
+/// `TUNGSTEN_SMOKE_FRAMES` end the run with no last frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Exiting {
+    /// What ended the run.
+    pub reason: ExitReason,
+}
+
+/// A [`request_exit`] the frame end has not yet seen.
+pub(crate) struct PendingExit;
+
+/// Ends the run after one more frame, which runs with [`Exiting`] (`D-180`):
+/// called from a system, the next frame is the last; called between frames,
+/// the frame after the next. A second call, or one during the last frame,
+/// changes nothing. A game's Quit button calls it, then saves in the last
+/// frame; the window's close button gives the same last frame.
+pub fn request_exit(world: &mut World) {
+    if !world.has_resource::<Exiting>() {
+        world.insert_resource(PendingExit);
+    }
+}
+
 /// How a frame ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrameEnd {
@@ -925,6 +963,9 @@ pub(crate) enum FrameEnd {
     /// Every stage ran, but the render failed: the run's fatal error holds
     /// why, and the window loop exits (`D-142`).
     RenderFailed,
+    /// Every stage ran with [`Exiting`]: the run's last frame (`D-180`). The
+    /// window loop exits after presenting it.
+    Last,
 }
 
 // Extract output kept in umbrella crate; renderer stays World-free.
@@ -1712,7 +1753,42 @@ impl App {
             }
         }
 
+        self.settle_exit(end)
+    }
+
+    /// `D-180`: a frame that ran with [`Exiting`] was the run's last, unless
+    /// its render failed; a [`request_exit`] since the last check makes the
+    /// next frame the last.
+    #[inline(always)]
+    fn settle_exit(&mut self, end: FrameEnd) -> FrameEnd {
+        if self.world.has_resource::<Exiting>() {
+            return match end {
+                FrameEnd::Completed => FrameEnd::Last,
+                other => other,
+            };
+        }
+        if self.world.remove_resource::<PendingExit>().is_some() {
+            self.world.insert_resource(Exiting {
+                reason: ExitReason::Requested,
+            });
+        }
         end
+    }
+
+    /// `D-180`: the close button's last frame, run at once from the event on
+    /// the wall clock, so a minimized window that gets no redraw still
+    /// saves; the run then ends whatever the frame returned. With no
+    /// renderer yet, the run ends at once.
+    fn close_with_last_frame(&mut self, event_loop: &ActiveEventLoop) {
+        if self.renderer.is_some() {
+            if !self.world.has_resource::<Exiting>() {
+                self.world.insert_resource(Exiting {
+                    reason: ExitReason::CloseRequested,
+                });
+            }
+            self.run_frame(Instant::now(), FrameClock::Wall, |_| {});
+        }
+        event_loop.exit();
     }
 
     #[inline(always)]
@@ -2247,9 +2323,9 @@ impl ApplicationHandler for App {
         event: WindowEvent,
     ) {
         match event {
-            WindowEvent::CloseRequested => {
-                event_loop.exit();
-            }
+            // A redraw or a second close after the last frame runs nothing.
+            WindowEvent::CloseRequested | WindowEvent::RedrawRequested if event_loop.exiting() => {}
+            WindowEvent::CloseRequested => self.close_with_last_frame(event_loop),
             WindowEvent::Resized(size) => {
                 if let Some(renderer) = &mut self.renderer {
                     renderer.resize(size.width, size.height);
@@ -2322,8 +2398,8 @@ impl ApplicationHandler for App {
                 match self.run_frame(frame_start, FrameClock::Wall, |_| {}) {
                     FrameEnd::Completed => {}
                     // A failed render ends the run at once; `App::run`
-                    // returns its error.
-                    FrameEnd::ExitRequested | FrameEnd::RenderFailed => {
+                    // returns its error. The last frame has presented.
+                    FrameEnd::ExitRequested | FrameEnd::RenderFailed | FrameEnd::Last => {
                         event_loop.exit();
                         return;
                     }
