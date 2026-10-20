@@ -1,9 +1,10 @@
 //! The player's settings, kept in the game's user folder (`D-159`): the
-//! display mode, resolution and vsync, the UI scale, the text scale (M56),
-//! the master volume and each bus's volume, layered between `tungsten.json`
-//! and the environment.
+//! display mode, resolution, vsync and frame-rate limit (`D-180`), the UI
+//! scale, the text scale (M56), the master volume and each bus's volume,
+//! layered between `tungsten.json` and the environment.
 
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 use std::ops::RangeInclusive;
 use std::path::{Path, PathBuf};
 
@@ -30,6 +31,41 @@ fn bus_named(name: &str) -> Option<AudioBus> {
     AudioBus::ALL.iter().copied().find(|bus| bus.name() == name)
 }
 
+/// A frame-rate limit the player chose (`D-180`). Unset, the shipped
+/// `display.frame_rate_cap` applies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameRateCap {
+    /// No limit, over a shipped one.
+    Uncapped,
+    /// At most this many frames a second.
+    Fps(NonZeroU32),
+}
+
+impl FrameRateCap {
+    /// The settings file's word for [`Uncapped`](Self::Uncapped).
+    const UNCAPPED: &'static str = "uncapped";
+
+    /// The cap a settings file holds: `"uncapped"` or an integer >= 1.
+    fn from_file(value: &serde_json::Value) -> Option<Self> {
+        match value {
+            serde_json::Value::String(word) if word == Self::UNCAPPED => Some(Self::Uncapped),
+            serde_json::Value::Number(number) => number
+                .as_u64()
+                .and_then(|fps| u32::try_from(fps).ok())
+                .and_then(NonZeroU32::new)
+                .map(Self::Fps),
+            _ => None,
+        }
+    }
+
+    fn to_file(self) -> serde_json::Value {
+        match self {
+            Self::Uncapped => Self::UNCAPPED.into(),
+            Self::Fps(fps) => fps.get().into(),
+        }
+    }
+}
+
 /// Where the game's user folder is (`D-119`), set in code; never read from
 /// `tungsten.json`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -52,7 +88,7 @@ pub enum UserFolder {
 ///
 /// ```json
 /// {
-///   "display": { "display_mode": "borderless_fullscreen", "resolution": { "width": 1920, "height": 1080 }, "vsync": true },
+///   "display": { "display_mode": "borderless_fullscreen", "resolution": { "width": 1920, "height": 1080 }, "vsync": true, "frame_rate_cap": 60 },
 ///   "ui_scale": 1.25,
 ///   "text_scale": 1.5,
 ///   "master_volume": 0.8,
@@ -64,6 +100,7 @@ pub struct Settings {
     display_mode: Option<DisplayMode>,
     resolution: Option<Resolution>,
     vsync: Option<bool>,
+    frame_rate_cap: Option<FrameRateCap>,
     ui_scale: Option<f32>,
     text_scale: Option<f32>,
     master_volume: Option<f32>,
@@ -191,6 +228,19 @@ impl Settings {
         self.vsync = vsync;
     }
 
+    /// The frame-rate limit the player set (`D-180`), which replaces the
+    /// shipped `display.frame_rate_cap`; [`FrameRateCap::Uncapped`] lifts it.
+    #[must_use]
+    pub fn frame_rate_cap(&self) -> Option<FrameRateCap> {
+        self.frame_rate_cap
+    }
+
+    /// Sets or, with `None`, unsets the frame-rate limit, so the shipped one
+    /// applies again.
+    pub fn set_frame_rate_cap(&mut self, cap: Option<FrameRateCap>) {
+        self.frame_rate_cap = cap;
+    }
+
     /// The UI scale the player set, which `ScaleFactor::get` multiplies the
     /// OS scale by.
     #[must_use]
@@ -280,6 +330,7 @@ impl Settings {
                 height: r.height,
             }),
             vsync: self.vsync,
+            frame_rate_cap: self.frame_rate_cap.map(FrameRateCap::to_file),
         };
         let buses: BTreeMap<String, f32> = AudioBus::ALL
             .iter()
@@ -310,6 +361,10 @@ impl Settings {
                 height: r.height,
             });
             self.vsync = display.vsync;
+            self.frame_rate_cap = display
+                .frame_rate_cap
+                .as_ref()
+                .and_then(FrameRateCap::from_file);
         }
         self.ui_scale = file.ui_scale;
         self.text_scale = file.text_scale;
@@ -374,6 +429,9 @@ struct DisplayFile {
     resolution: Option<ResolutionFile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     vsync: Option<bool>,
+    /// `"uncapped"` or an integer >= 1, checked by [`parse`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frame_rate_cap: Option<serde_json::Value>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -412,6 +470,13 @@ fn parse(bytes: &[u8]) -> Result<SettingsFile, String> {
             return Err(format!(
                 "display.resolution {}x{} has a zero side",
                 r.width, r.height
+            ));
+        }
+        if let Some(cap) = &display.frame_rate_cap
+            && FrameRateCap::from_file(cap).is_none()
+        {
+            return Err(format!(
+                "display.frame_rate_cap {cap} is not \"uncapped\" or an integer >= 1"
             ));
         }
     }

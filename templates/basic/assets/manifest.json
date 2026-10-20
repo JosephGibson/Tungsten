@@ -91,6 +91,16 @@
       "slowed": {
         "path": "data/effects/slowed.json"
       }
+    },
+    "cue_rules": {
+      "labels": {
+        "path": "data/cue_rules/labels.json"
+      }
+    }
+  },
+  "ui_themes": {
+    "shell": {
+      "path": "ui/themes/shell.json"
     }
   }
 }

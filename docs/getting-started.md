@@ -1,6 +1,6 @@
 # Getting started
 
-Make a game with Tungsten from its template, `templates/basic`: a title screen, a player that the arrow keys or WASD move, and a pause. The game lives in a repository of its own and depends on the engine through a git tag (`D-123`). This is the guide's first draft; packaging a game for players joins it with `tungsten package`.
+Make a game with Tungsten from its template, `templates/basic`: a shell of the screens every game needs (a title, pause, game over, save and load, tabbed settings and keybindings) around a sample game you replace, a player that the arrow keys or WASD move, a hazard and three gems. The game lives in a repository of its own and depends on the engine through a git tag (`D-123`). This is the guide's first draft; packaging a game for players joins it with `tungsten package`.
 
 ## What you need
 
@@ -37,8 +37,15 @@ tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z", f
 Rename the game:
 
 - the package in `Cargo.toml`: `name = "my-game"`;
-- the crate in `src/main.rs` and `tests/game.rs`: `tungsten_template_basic` becomes `my_game`;
+- the crate in `src/main.rs` and the files of `tests/game/`: `tungsten_template_basic` becomes `my_game`;
 - the game in `tungsten.json`: `"game": { "id": "my-game" }`. The ID names the folder where the game keeps its player's settings and saves and writes its logs and crash reports: up to 64 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit, and not a Windows device name such as `con`.
+
+Then make the game yours (`D-181`). Delete `src/sample/` and its tests, `tests/game/sample.rs`, write your gameplay under `src/features/<name>/` ([Composing with the kit](#composing-with-the-kit)), and point the seam at it, the six names the shell calls and nothing else:
+
+- in `src/game.rs`, `GAMEPLAY`, your gameplay state's ID, which pause opens over and losing focus pauses; `gameplay(start)`, the state the shell puts on the stack for New Game, Continue, Load and Retry, with the run's difficulty and, to continue one, its save; and `BINDABLE_ACTIONS`, the actions the Keybindings screen lists, each with its row's label;
+- in `src/save.rs`, `SaveGame`, what a save holds beside the shell's `meta`; `capture`, the live run as a save, `None` when there is nothing to save; and `summary`, a save's line on its slot row.
+
+Leave `src/shell/` as the template ships it, so a later template's shell can replace it whole. Your gameplay state calls `shell::game_over(world)` when the player dies, and reads the run's difficulty through `shell::run(world)`.
 
 Add a development profile to `Cargo.toml`, so the engine and its dependencies build optimized while your own code builds fast:
 
@@ -56,7 +63,7 @@ cargo run    # a debug build, with hot reload and the engine's HUD (F4 toggles i
 cargo test   # the game's tests, on the engine's headless harness
 ```
 
-The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. In the game, Enter starts, the arrow keys or WASD move the player, P pauses, Backspace or P resumes, M mutes and Escape quits.
+The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. The menus take the keyboard, a pad or the mouse. In the game, the arrow keys or WASD move the player, P or Escape pauses, M mutes, and Quit Game on the pause menu or Quit on the title ends the run, saving it first; so does the window's close button.
 
 ## Change it while it runs
 
@@ -64,64 +71,67 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 
 ## Settings and saves
 
-The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, UI scale and master volume the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
+The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, frame-rate limit, UI and text scales, master volume and bus volumes the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
 
-The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the template's `toggle_mute` does on M:
+The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the shell's mute key does on M:
 
 ```rust
 let settings = world.resource_mut::<Settings>();
 let muted = settings.master_volume().is_some_and(|volume| volume <= 0.0);
 settings.set_master_volume(if muted { None } else { Some(0.0) });
-tungsten::apply_settings(world);
+shell::apply_settings(world);
 if let Err(err) = world.resource::<Settings>().save() {
     log::warn!("Settings not saved: {err}");
 }
 ```
 
-`apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the master volume to the mixer. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. A window the player resized or maximized keeps its size: the resolution goes out only when the set or shipped one changes (`D-169`). `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
+`tungsten::apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the volumes to the mixer; the shell's `shell::apply_settings` calls it and keeps the game muted while its window has no focus, when the player chose that. The shell's Settings screen changes these values, applies each change at once and saves when it closes; a window mode or size change asks to keep it and reverts after 10 seconds. Its gameplay options, screen shake, damage numbers and pausing or muting when the window loses focus, are `GameOptions`, kept in a store of their own under the user folder's `options`. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. A window the player resized or maximized keeps its size: the resolution goes out only when the set or shipped one changes (`D-169`). `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
 
-Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The template's `SaveGame` holds the player's position: gameplay continues from slot `autosave` and pause saves it.
+Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The shell saves your `SaveGame` to four slots: `autosave`, written when the game pauses, quits to the title or exits and when a run starts, and `slot_1` to `slot_3`, which the player saves to from the pause menu. Continue loads the newest slot that reads. The sample's `SaveGame` holds the shell's `meta` (the game's version, the difficulty and the playtime), the player's position and health, the gems left and the count, and migrates schema 1, which held the position alone:
 
 ```rust
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaveGame {
+    pub meta: RunMeta,
     pub player: [f32; 2],
+    pub health: Health,
+    pub gems_left: Vec<u8>,
+    pub gems: i64,
 }
 
 impl SaveData for SaveGame {
-    const SCHEMA: u32 = 1;
+    const SCHEMA: u32 = 2;
+    // `migrate(1, data)` fills in the fields schema 1 lacked.
 }
 
-let start = match world.resource::<SaveSlots>().load::<SaveGame>(AUTOSAVE) {
-    Ok(save) => save.player,
-    Err(_) => PLAYER_START,
-};
+/// The live run as a save; `None` with no run, no player or a dead one.
+pub fn capture(world: &World) -> Option<SaveGame>
 ```
 
-`save(slot, &data)`, `load`, `list` and `delete` return a `SaveError` rather than panic: `NotFound` for a slot never saved, `NewerSchema` for one a newer build wrote, `Corrupt`, `Migration`, `NoFolder` without a folder. A slot name is lowercase letters, digits, `.`, `_` and `-`. A slot that failed to load is the player's progress all the same: the template never overwrites one in the same run.
+`save(slot, &data)`, `load`, `list` and `delete` return a `SaveError` rather than panic: `NotFound` for a slot never saved, `NewerSchema` for one a newer build wrote, `Corrupt`, `Migration`, `NoFolder` without a folder. A slot name is lowercase letters, digits, `.`, `_` and `-`. A slot that failed to load is the player's progress all the same: the shell shows it as saved by a newer version or damaged, never loads or overwrites it until the game restarts, and lets the player delete it after a question.
 
-Tests set the folder in code, so they never read or write your own settings or saves: the template's `harness()` sets `config.game.user_folder = UserFolder::Off`, and a persistence test points `UserFolder::At(dir)` at a fresh temp folder and builds a second app on it, as `mute_survives_a_restart` and `continue_from_the_autosave` do.
+Tests set the folder in code, so they never read or write your own settings or saves: the template's `harness()` sets `config.game.user_folder = UserFolder::Off`, and a persistence test points `UserFolder::At(dir)` at a fresh temp folder and builds a second app on it, as `mute_survives_a_restart` and `continue_restores_position_health_gems_and_count` do.
 
 ## How the game is laid out
 
-- `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, registers the game and runs it.
-- `src/game.rs` is the game's plugin: its systems by stage, the setup its first frame needs, the camera's dead zone and its text. The player's movement, health, knockback and camera, the hazard's patrol and touch, and the gems are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
-- `src/states.rs` holds the title, gameplay and pause states on the engine's state stack.
-- `src/components.rs` holds the game's components.
-- `tests/game.rs` steps the game on the headless harness, with no window: a test per system and a snapshot of the resolved schedule.
+- `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, turns the engine's Escape-to-quit off, registers the game and runs it.
+- `src/game.rs` registers the kit, the shell and the game, and holds the seam's three game names; `src/save.rs` holds the other three, `SaveGame`, `capture` and `summary`.
+- `src/shell/` holds the screens every game keeps, each a state on the engine's state stack with a UI root it owns: the title, pause, game over, save and load, settings, keybindings, the confirm dialog and toasts, with their theme and widgets.
+- `src/sample/` is the sample game: its plugin and gameplay state, its components and its HUD. The player's movement, health, knockback and camera, the hazard's patrol and touch, and the gems are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
+- `tests/game/` steps the game on the headless harness, with no window: a module each for the sample, the shell, the saves, the settings, the keybindings, every screen's fit at the smallest and a large viewport, and the title's pixels; `sample` holds the snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
-- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, and `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader.
+- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, `assets/data/cue_rules/labels.json` floats a hit's damage, `assets/ui/themes/shell.json` is the shell's theme, and `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader.
 - `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
 
 ## Systems and stages
 
-A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The template's `GamePlugin` registers `setup` in `startup` and `toggle_mute` in `update`; the player's movement, the hazard's touch and the gems are the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
+A system is a function over the world, `fn(&mut World)`, registered under a name in one of five stages the engine runs in order each frame: `startup` (once, on the first frame), `pre_update` (the engine's hotkeys, its state dispatcher and the UI's input routing), `fixed_update` (once per fixed step: the physics snapshot and `physics_step`), `update` and `post_update` (the physics sync, particles, tweens, game feel and the camera). A game with a UI reads its gameplay input from `RoutedInput`, which `ActionMap` reads as it reads `InputState` but which holds only what the UI did not take, so a click on a button is not also a jump (`D-149`). The shell's plugin registers `shell_start` in `startup`, `shell_frame` and `shell_flow` in `update` and `shell_checkpoint` in `fixed_update`; the sample's registers its component and one system; the player's movement, the hazard's touch and the gems are the kit's, on the fixed step ([Composing with the kit](#composing-with-the-kit)):
 
 ```rust
-impl Plugin for GamePlugin {
+impl Plugin for SamplePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
-        schedule.add(Stage::Startup, system("setup", setup));
-        schedule.add(Stage::Update, system("toggle_mute", toggle_mute));
+        world.register_component::<Player>("player");
+        schedule.add(Stage::Update, system("sample_frame", frame));
     }
 }
 ```
@@ -148,16 +158,18 @@ let last_hit = world
 
 A spawn gives the entity every component at once, in one archetype move, through a tuple of up to sixteen components: `world.spawn_with((Player, transform, sprite, Visibility::default()))`. A tuple's elements are components, never bundles; join a bundle with `with`: `RigidBodyBundle::dynamic(position, collider).with((Player, transform))` spawns a body with its `Position`, `PrevPosition` (the history it is drawn from), `Velocity`, `Collider` and `RigidBody` and the game's components beside them. A system without `&mut World` records the same through `CommandBuffer::spawn_with`. A body that jumps to a new place, a respawn or a portal, writes `Position` and `PrevPosition` together; otherwise it is drawn sliding from the old point for a step.
 
-An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one: its sprite, the game's `player` marker and the kit's components ([Composing with the kit](#composing-with-the-kit)); `GamePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name, and the kit's plugins register theirs. The template's `spawn_player`:
+An entity kind the game places more than once, or that a level places, is a prefab: a file under `assets/prefabs/`, listed in the manifest's `prefabs`, with a scene entry's fields but no transform: its sprite, visibility, tag, one tween and its components by their registered names. The template's player is one: its sprite, the game's `player` marker and the kit's components ([Composing with the kit](#composing-with-the-kit)); `SamplePlugin::build` registers `Player` as `player` before the manifest loads, which checks each prefab's components and the assets they name, and the kit's plugins register theirs. The sample's gameplay state spawns its player:
 
 ```rust
 world
     .prepare_prefab(PLAYER_PREFAB, PLAYER_START)
-    .expect("the player prefab loads with the manifest")
+    .expect("the manifest's prefabs load with it")
     // The state stack despawns it when gameplay leaves the stack.
     .with((SceneEntity { state_id: GAMEPLAY },))
     .spawn(world);
 ```
+
+The state keeps the handles of what it spawned in a `SampleRun` resource, and its death check, its HUD and `save::capture` read those: when a run replaces another, the old run's entities are despawned at the frame's command flush, so for the rest of that frame a query would still see them.
 
 `prepare_prefab` builds the spawn against the world, with its top-left at the position, and `with` adds components in the same archetype move, here the state that owns the player; `world.spawn_prefab(id, position)` does both. A system queues the spawn for the frame's command flush instead: `let bolt = world.prepare_prefab("bolt", muzzle)?;`, then `world.resource_mut::<CommandBuffer>().spawn_prefab(bolt)`; queued from an entity with `CommandBuffer::spawn_prefab_from(entity, bolt)`, the spawn takes that entity's `SceneEntity` and leaves with its state, as the kit's `Spawner` spawns once per interval. In a Tiled map, an object whose class names a prefab spawns it at the object's top-left, with the object's custom properties written over the prefab's components by dotted path, such as `particle_emitter.config`, through `world.spawn_map_objects(map, origin)`; an object without a class is a marker the game reads from the map's `object_layers`.
 
@@ -179,9 +191,9 @@ world
     "hurtbox": { "shape": { "circle": 8 } },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
     "knockback": { "seconds": 0.2 },
-    "stats": { "pickup_radius": 96 },
+    "stats": { "pickup_radius": 96, "move_speed": 240, "max_health": 5 },
     "camera_target": null,
-    "cues": { "damaged": [{ "shake": 0.25 }, { "label": { "font": "sans" } }] }
+    "cues": { "damaged": [{ "shake": 0.25 }] }
   }
 }
 ```
@@ -192,8 +204,8 @@ world
 - `health` takes hits through the damage pipeline: `tungsten::kit::damage(world, entity, amount)` at once, or a `DamageRequest` carrying a source, damage tags (`damage.fire`), a position, a knockback and a crit flag, applied at once or queued for the step's `damage_resolve`, which resolves the step's requests in a fixed order. A hit passes the entity's `resist` (a factor per damage tag, 0 for immunity) and its `shield` (taken first, recharging after a delay without a hit), then lowers the health, opens its invulnerability window, starts the `hit_flash` on the entity's sprite through the manifest's `damage_flash` material and sends a `Damaged` event; `tungsten::kit::heal` restores it. A game declares its own damage types in the `damage_types` data kind, `{ "physical": { "label_style": { "font": "sans" } }, "physical.slash": {} }`, each key a declared tag and each field inherited by the types under it. A `hitbox`'s or a `contact_damage`'s `damage` may then map types to amounts, `{ "physical.slash": 8, "elemental.fire": 4 }`, and each part resolves on its own: `convert` (`[{ "from": "physical.slash", "to": "elemental.cold", "pct": 0.5 }]`) turns shares into other types, `pen` (`{ "elemental.fire": 0.25 }`) raises the matching resistances below 1, the `conversion` and `penetration` components lend the attacker's own after the hit's, and `resist`, whose factors take modifiers in Rust, multiplies each part; the parts' total then falls once, a `DamagedPart` going out for each part before the hit's `Damaged`. A dead entity stays until something despawns it, unless its `health` names `despawn_on_death`, the seconds after the kill at which the kit despawns it, its `killed` cues having run.
 - `hurtbox` is what the kit's hits meet. A `hitbox` hits each hurtbox its shape meets once per activation, a `contact_damage` hurts what it touches again each interval, and a `projectile` ends its hitbox's flight at its first hit, its first wall or its range, unless it pierces or bounces; each hit is tested over the step's motion, so a fast bolt skips nothing, spares the entity that fired it, and queues its damage with its push. The template's hazard, `assets/prefabs/hazard.json`, patrols a line below the player by an `oscillator` and hurts the player's `hurtbox` through its `contact_damage`, once per half second while they touch, pushing the player away. A `pickup` goes once to the first hurtbox its filter passes, drawn in by its magnet toward a collector whose `pickup_radius` stat reaches it: the template's three gems, `assets/prefabs/gem.json`, drift to the player and count `gems` on the game's `Counters` through their `picked_up` cue.
 - `camera_target` marks what the camera follows; the template gives the camera a dead zone, so the player roams the middle of the view before the camera moves.
-- `cues` reacts in data to the events about the entity, on the fixed step that reads them: the player's `damaged` list shakes the camera and floats the hit's amount above it in the manifest face `sans`. Each event, `damaged_part` (one per part of a hit, before its `damaged`), `damaged` and `killed` (with the hit's source as the other entity), `zone_entered` (the zone's, with the entrant as the other entity), `cooldown_elapsed`, `hit` (the hitting entity's, with its target as the other), `healed`, `picked_up` (the pickup's, with its collector as the other), `expired` (a projectile's end), `effect_applied` and `effect_expired` (an effect's, with its source as the other), `ability_used` (with its target as the other) or `level_up`, takes a list of actions run in order: `prefab`, `counter`, `flag`, `despawn`, `sound`, `shake`, `squash`, `flash`, `label`, `roll`, which draws from a weighted table of the `loot_tables` data kind and spawns what it draws, a drop, `effect`, which applies an `effects` entry to the subject or the other entity, and `ability`, which uses or refills one of theirs. A reaction many prefabs share is a rule in the `cue_rules` data kind, `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`, run after each entity's own cues; a game's own event joins through `CuesOnEvent`. On the damage events a rule may add a `kind` filter over the hit's damage types, `{ "any": ["elemental"] }`, and a `damaged_part` cue's `{ "label": {} }` floats the part in its type's `label_style`. The vocabulary stops at the rule's tag filter and, on the damage events, its kind filter: a reaction that needs a condition is the game's Rust.
-- `stats` holds named values that modifiers change, `{ "move_speed": 160 }`. The movers, health, cooldowns and hit items read the well-known ones (`move_speed`, `max_health`, `cooldown_rate`, `damage`) when the entity has them, and a pickup's magnet its collector's `pickup_radius`; a game declares its own, with their bounds, in the `stats` data kind. The template's player carries `move_speed` so an effect's modifier can slow it: a mover without the stat runs on its own field.
+- `cues` reacts in data to the events about the entity, on the fixed step that reads them: the player's `damaged` list shakes the camera, and the sample's `labels` rule in the `cue_rules` kind floats the hit's amount above it in the manifest face `sans`, but only on a player tagged `show.damage_numbers`, which the sample sets while the Damage numbers option is on. Each event, `damaged_part` (one per part of a hit, before its `damaged`), `damaged` and `killed` (with the hit's source as the other entity), `zone_entered` (the zone's, with the entrant as the other entity), `cooldown_elapsed`, `hit` (the hitting entity's, with its target as the other), `healed`, `picked_up` (the pickup's, with its collector as the other), `expired` (a projectile's end), `effect_applied` and `effect_expired` (an effect's, with its source as the other), `ability_used` (with its target as the other) or `level_up`, takes a list of actions run in order: `prefab`, `counter`, `flag`, `despawn`, `sound`, `shake`, `squash`, `flash`, `label`, `roll`, which draws from a weighted table of the `loot_tables` data kind and spawns what it draws, a drop, `effect`, which applies an `effects` entry to the subject or the other entity, and `ability`, which uses or refills one of theirs. A reaction many prefabs share is a rule in the `cue_rules` data kind, `[{ "on": "killed", "filter": { "all": ["team.enemy"] }, "do": [{ "counter": { "name": "kills", "add": 1, "target": "game" } }] }]`, run after each entity's own cues; a game's own event joins through `CuesOnEvent`. On the damage events a rule may add a `kind` filter over the hit's damage types, `{ "any": ["elemental"] }`, and a `damaged_part` cue's `{ "label": {} }` floats the part in its type's `label_style`. The vocabulary stops at the rule's tag filter and, on the damage events, its kind filter: a reaction that needs a condition is the game's Rust.
+- `stats` holds named values that modifiers change, `{ "move_speed": 160 }`. The movers, health, cooldowns and hit items read the well-known ones (`move_speed`, `max_health`, `cooldown_rate`, `damage`) when the entity has them, and a pickup's magnet its collector's `pickup_radius`; a game declares its own, with their bounds, in the `stats` data kind. The sample's player carries `move_speed` so an effect's modifier can slow it, a mover without the stat running on its own field, and `max_health`, whose base the gameplay state sets for the difficulty before the first step: 8, 5 or 3.
 - `effects` lists the `effects` data kind's entries the entity starts with, and the kit keeps the instances it takes later: an effect is a change an entity carries for its `duration` (left out for one that lasts, 0 for one that lands and ends at once), with a `damage` or `heal` payload at each `period` (periodic damage passes the target's invulnerability window and starts none), `modifiers` on its stats and `resist` factors per stack, `grant` tags while it runs, `blocked_by` tags that refuse it, a `scale` curve from the `curves` kind, a `stack` policy (a limit, what a repeat does to the time left, whether the end drops one stack or all) and an `on_expire` effect for the end. The template's hazard applies one through its `hit` cue, `"cues": { "hit": [{ "effect": { "id": "slowed", "target": "other" } }] }`, and `assets/data/effects/slowed.json` halves the player's `move_speed` for a second and a half: `{ "duration": 1.5, "modifiers": [{ "stat": "move_speed", "modifier": { "pct": -0.5 } }] }`. A game's Rust builds an `EffectRequest` and queues it for the step's `effect_resolve`, or applies it at once; `EffectApplied` and `EffectExpired` go out, and `Effects` on the entity lists what runs.
 - `abilities` lists the `abilities` data kind's entries the entity owns, by ID or `#<index>` for one written in place: each has a `trigger` (an intent slot pressed, an interval, or manual), a `cost` off a stat's base, a `cooldown` counted at the entity's `cooldown_rate`, `charges` that refill by time, a `target` (`self`, `aim`, the `nearest` live entity a filter passes within a range, or a `random` one) and a `payload` list run in order: `spawn` a prefab along the direction at a speed, apply an `effect` to the target, an `impulse` through the entity's `knockback`, or a `hitbox` window that arms the entity's own hitbox for its seconds. `tungsten::kit::use_ability(world, entity, name)` uses one from Rust, the `ability` cue action from data, and `AbilityUsed` goes out.
 - `level` climbs a counter along a curve from the `curves` kind, `{ "counter": "xp", "curve": "hero_xp", "offers": "hero_offers" }`: each level up sends `LevelUp` and draws the `offers` kind's `count` distinct entries by weight, an effect or an ability each, which a game shows and `Level::choose`s; the next tick applies the choice.
@@ -209,7 +221,7 @@ When the game passes about three components or two features, move each feature i
 
 ## Drawing
 
-The engine draws what the world holds: each entity with a `Sprite`, a `Transform` and `Visibility`, in `z_order`, over the render layers of every tilemap. Anything else the game draws, its own sprite batches, quads and text, it adds to the `Extracts` resource in its plugin's `build`, as the template's `GamePlugin` adds its text (`D-138`):
+The engine draws what the world holds: each entity with a `Sprite`, a `Transform` and `Visibility`, in `z_order`, over the render layers of every tilemap. The shell's screens and the sample's HUD are roots in the engine's UI tree. Anything else the game draws, its own sprite batches, quads and text, it adds to the `Extracts` resource in its plugin's `build` (`D-138`):
 
 ```rust
 world.resource_mut::<Extracts>().add_text(text);
@@ -227,7 +239,7 @@ let dt = world.resource::<Time>().delta();
 
 `real_delta()` is the real clock's dt, for anything that should keep running over a pause, such as a pause menu's own animation; the engine's screen transitions run on it. `elapsed()` and `real_elapsed()` sum each clock's dts, and `frame()` counts frames.
 
-`pause()`, `resume()` and `set_scale(0.5)` take effect from the next frame: `world.get_resource_mut::<Time>().unwrap().pause()`. A paused clock freezes whatever moves by game time: physics, tweens, particles, game feel, the camera's follow and the game's own systems that read `delta()`. Input keeps arriving, so a pause screen still reads its keys. The template's pause state pauses the clock on enter and resumes it on exit, so the kit's fixed-step systems, which move its player, hold with it.
+`pause()`, `resume()` and `set_scale(0.5)` take effect from the next frame: `world.get_resource_mut::<Time>().unwrap().pause()`. A paused clock freezes whatever moves by game time: physics, tweens, particles, game feel, the camera's follow and the game's own systems that read `delta()`. Input keeps arriving, so a pause screen still reads its keys. The sample's gameplay state pauses the clock while a screen covers it and resumes it when uncovered, so the kit's fixed-step systems, which move its player, hold under pause and game over, while the shell's toasts and menu animations run on the real clock.
 
 A `Timer` counts down a cooldown, a wave or a lifetime by whichever clock's dt you tick it with. `tick` returns how many times it finished during the tick, so a long frame cannot swallow a repeat:
 

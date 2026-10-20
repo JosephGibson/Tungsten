@@ -295,3 +295,80 @@ fn startup_queues_only_the_set_bus_volumes() {
         [(AudioBus::Effects, 0.4)]
     );
 }
+
+fn fps(n: u32) -> FrameRateCap {
+    FrameRateCap::Fps(std::num::NonZeroU32::new(n).unwrap())
+}
+
+#[test]
+fn player_frame_cap_reaches_the_display_request() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    assert_eq!(world.resource::<DisplayState>().frame_rate_cap, None);
+    world
+        .resource_mut::<Settings>()
+        .set_frame_rate_cap(Some(fps(30)));
+    apply_settings(world);
+    assert_eq!(
+        pending(world).expect("a display request").frame_rate_cap,
+        Some(30)
+    );
+}
+
+#[test]
+fn player_frame_cap_unset_returns_to_the_shipped_one() {
+    let dir = tempdir();
+    let mut shipped = Config::default();
+    shipped.display.frame_rate_cap = Some(60);
+    let mut app = app_at(&dir, shipped.clone());
+    let world = app.world_mut();
+    assert_eq!(world.resource::<DisplayState>().frame_rate_cap, Some(60));
+
+    world
+        .resource_mut::<Settings>()
+        .set_frame_rate_cap(Some(FrameRateCap::Uncapped));
+    world.resource::<Settings>().save().unwrap();
+    apply_settings(world);
+    let request = pending(world).expect("uncapped over the shipped 60");
+    assert_eq!(request.frame_rate_cap, None);
+    apply_request(world);
+
+    let mut restarted = app_at(&dir, shipped);
+    assert_eq!(
+        restarted
+            .world_mut()
+            .resource::<DisplayState>()
+            .frame_rate_cap,
+        None,
+        "a restart agrees"
+    );
+
+    world.resource_mut::<Settings>().set_frame_rate_cap(None);
+    apply_settings(world);
+    assert_eq!(
+        pending(world)
+            .expect("back to the shipped cap")
+            .frame_rate_cap,
+        Some(60)
+    );
+}
+
+#[test]
+fn player_frame_cap_without_a_shipped_config_sets_only_a_set_cap() {
+    let mut world = World::new();
+    world.insert_resource(DisplayState {
+        frame_rate_cap: Some(144),
+        ..DisplayState::default()
+    });
+    world.insert_resource(PendingDisplay::default());
+    world.insert_resource(Settings::default());
+    apply_settings(&mut world);
+    assert_eq!(pending(&world), None, "unset keeps the current cap");
+
+    world
+        .resource_mut::<Settings>()
+        .set_frame_rate_cap(Some(fps(30)));
+    apply_settings(&mut world);
+    assert_eq!(pending(&world).unwrap().frame_rate_cap, Some(30));
+}

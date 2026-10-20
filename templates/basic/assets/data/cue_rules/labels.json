@@ -1,0 +1,7 @@
+[
+  {
+    "on": "damaged",
+    "filter": { "all": ["team.player", "show.damage_numbers"] },
+    "do": [{ "label": { "font": "sans" } }]
+  }
+]

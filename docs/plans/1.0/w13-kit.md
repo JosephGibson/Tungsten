@@ -278,7 +278,7 @@ Each milestone is level C: new public API, so step 1's API sketch gets the criti
 
 "When the game passes about three components or two features, move each feature into `src/features/<name>/`: `mod.rs` holds its `Plugin`, `components.rs` and `systems.rs` the rest. `game.rs` only adds the feature plugins. A component two features share goes in `src/shared.rs`. A feature plugin registers its own prefab components, data kinds and systems, as a kit item does. The kit's scene names and data kinds are reserved: the registries fail startup on a duplicate."
 
-The nested layout is shown by the reworked examples and the acceptance game; `templates/basic` stays basic (`w12-template.md`).
+The nested layout is shown by the reworked examples and the acceptance game; `templates/basic` stays within `D-181`'s line budget, 2,000 lines of code in `src/shell/` and 2,600 in `src/` (`w12-template.md`).
 
 ## 9. Ordered steps
 
@@ -550,7 +550,7 @@ From M63 (`docs/plans/archive/1.0/phase6-milestone-63-kit-data-reactions.md`):
 - A `label_styles` kind, when a second label style needs sharing (Q16); `KitRng` and `KitTrace` serde, when a save needs the stream's place.
 - A `KitDebug` hotkey or console command, so the trace's log view needs no game code.
 - A core list of the manifest's font faces with the engine font, so a label's font is checked at load; world labels resolving family IDs ([known issues](../../known-issues.md)).
-- W13i: a motion review of the template's cue label and shake in its hazard, the first running scene with a hit. Landed in M64 (`D-174`): the template's motion review samples the label, the shake and both drawn points each frame after a hit; it showed the label rising and fading and the trauma decaying, and a shake that moves nothing, since the template's camera keeps a zero `shake_max_offset` ([known issues](../../known-issues.md)).
+- W13i: a motion review of the template's cue label and shake in its hazard, the first running scene with a hit. Landed in M64 (`D-174`): the template's motion review samples the label, the shake and both drawn points each frame after a hit; it showed the label rising and fading and the trauma decaying, and a shake that moves nothing, since the template's camera kept a zero `shake_max_offset`; M69 set one (`D-181`).
 - `Spawner`'s interval has no lower bound and `spawner_tick` queues every spawn a long step owes, as M63's cooldowns did before their 16-a-step bound: the Phase 6 QA pass.
 
 From M64 (`docs/plans/archive/1.0/phase6-milestone-64-kit-motion-facing.md`), each waiting for a user unless it names a home:
@@ -561,7 +561,7 @@ From M64 (`docs/plans/archive/1.0/phase6-milestone-64-kit-motion-facing.md`), ea
 - A `knockback` cue action (Q3): C decides with its damage pipeline, whose requests carry the push. Answered in M65 (`D-175`): none; a hit's request carries its push, so contact damage and hitboxes push in data.
 - The nearest search over many matches (Q4): C's grid, or a spatial query over bodiless entities. M65's grid holds hurtboxes only, so the search waits in the [1.x backlog](backlog-1.x.md).
 - `despawn_outside` on the unshaken view, as `Wrap` and `StayInView` judge it (Q9): the Phase 6 QA pass.
-- The template's `hazard_touch` onto C's contact damage (Q2), and its camera's shake offset. The hazard landed in M65 (`D-175`); the shake offset waits ([known issues](../../known-issues.md)).
+- The template's `hazard_touch` onto C's contact damage (Q2), and its camera's shake offset. The hazard landed in M65 (`D-175`); the shake offset in M69, with the shell's Screen shake option scaling it (`D-181`).
 - Placers that track a target's knockback, speed cap, wrap or clamp in the same step (§2.2 of the plan), when a recipe shows the step's lag.
 - Kit adders beside a game's own kinematic driver (Q13), with a way for a game to name its driver.
 - A `nearest` target among untagged entities (Q14).

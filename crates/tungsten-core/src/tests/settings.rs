@@ -25,6 +25,7 @@ fn is_default(settings: &Settings) -> bool {
     settings.display_mode().is_none()
         && settings.resolution().is_none()
         && settings.vsync().is_none()
+        && settings.frame_rate_cap().is_none()
         && settings.ui_scale().is_none()
         && settings.master_volume().is_none()
         && AudioBus::ALL
@@ -301,4 +302,59 @@ fn the_bus_volume_setters_clamp_and_ignore_non_finite() {
     );
     settings.set_bus_volume(AudioBus::Music, None);
     assert_eq!(settings.bus_volume(AudioBus::Music), None);
+}
+
+fn fps(n: u32) -> FrameRateCap {
+    FrameRateCap::Fps(NonZeroU32::new(n).unwrap())
+}
+
+#[test]
+fn player_frame_cap_round_trips_a_number_and_uncapped() {
+    for (cap, json) in [
+        (fps(60), serde_json::json!(60)),
+        (FrameRateCap::Uncapped, serde_json::json!("uncapped")),
+    ] {
+        let path = tempdir().join(Settings::FILE);
+        let mut settings = Settings::load(&path);
+        settings.set_frame_rate_cap(Some(cap));
+        settings.save().unwrap();
+        let written: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            written,
+            serde_json::json!({ "display": { "frame_rate_cap": json } })
+        );
+        let mut reloaded = Settings::load(&path);
+        assert!(reloaded.take_load_warnings().is_empty());
+        assert_eq!(reloaded.frame_rate_cap(), Some(cap));
+        assert_eq!(reloaded, settings);
+
+        settings.set_frame_rate_cap(None);
+        settings.save().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{}\n",
+            "unset, absent"
+        );
+    }
+}
+
+#[test]
+fn player_frame_cap_any_other_value_quarantines_the_file() {
+    for value in ["0", "-1", r#""fast""#, "59.5", "4294967296", "true", "[60]"] {
+        let text = format!(r#"{{ "ui_scale": 1.5, "display": {{ "frame_rate_cap": {value} }} }}"#);
+        let (path, mut settings) = load_text(&text);
+        assert!(is_default(&settings), "{text}");
+        let warnings = settings.take_load_warnings();
+        assert_eq!(warnings.len(), 1, "{text}");
+        assert!(warnings[0].contains("frame_rate_cap"), "{warnings:?}");
+        assert!(path.with_file_name("settings.json.bad").exists(), "{text}");
+    }
+    let (_, mut settings) = load_text(r#"{ "display": { "frame_rate_cap": null } }"#);
+    assert_eq!(
+        settings.frame_rate_cap(),
+        None,
+        "null is unset, as elsewhere"
+    );
+    assert!(settings.take_load_warnings().is_empty());
 }

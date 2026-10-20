@@ -2,8 +2,8 @@
 //! screen calls after changing them, before `Settings::save`.
 
 use tungsten_core::{
-    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, Resolution, ScaleFactor, Settings,
-    UiTree, World,
+    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, FrameRateCap, Resolution,
+    ScaleFactor, Settings, UiTree, World,
 };
 
 use crate::app::resolve_startup_display;
@@ -20,14 +20,14 @@ pub(crate) struct ShippedConfig(pub(crate) Config);
 pub(crate) struct WindowedTarget(pub(crate) Resolution);
 
 /// Applies the world's [`Settings`] now, as a restart would: the display
-/// mode, resolution and vsync through a display request, the UI scale to
-/// [`ScaleFactor`], the text scale to the [`UiTree`] (M56), the master
-/// volume and every bus's volume through [`AudioCommands`]. A value the
-/// player unset returns to the shipped one, the UI scale, the text scale,
-/// the master volume and a bus's volume to 1.0. A display request queued
-/// earlier this frame, such as a
-/// hotkey's, takes the persisted values, so the last apply wins; the F9 and
-/// F11 hotkeys' changes to them since startup are replaced. In windowed
+/// mode, resolution, vsync and frame-rate limit (`D-180`) through a display
+/// request, the UI scale to [`ScaleFactor`], the text scale to the
+/// [`UiTree`] (M56), the master volume and every bus's volume through
+/// [`AudioCommands`]. A value the player unset returns to the shipped one,
+/// the UI scale, the text scale, the master volume and a bus's volume to
+/// 1.0. A display request queued earlier this frame, such as a hotkey's,
+/// takes the persisted values, so the last apply wins; the F9 and F11
+/// hotkeys' changes to them since startup are replaced. In windowed
 /// mode the resolution is sent only when the set or shipped one differs
 /// from the last one sent (`D-169`), so a window resized by hand or
 /// maximized keeps its size at an unrelated apply, and one set while
@@ -71,6 +71,7 @@ pub fn apply_settings(world: &mut World) {
         next.display_mode = target.display_mode;
         next.vsync = target.vsync;
         next.present_mode = target.present_mode;
+        next.frame_rate_cap = target.frame_rate_cap;
         let sent = world
             .get_resource::<WindowedTarget>()
             .map(|windowed| windowed.0);
@@ -91,6 +92,12 @@ pub fn apply_settings(world: &mut World) {
         if let Some(vsync) = settings.vsync() {
             next.vsync = vsync;
             next.present_mode = None;
+        }
+        if let Some(cap) = settings.frame_rate_cap() {
+            next.frame_rate_cap = match cap {
+                FrameRateCap::Uncapped => None,
+                FrameRateCap::Fps(fps) => Some(fps.get()),
+            };
         }
     }
 

@@ -1,4 +1,5 @@
 use super::*;
+use std::num::NonZeroU32;
 
 #[test]
 fn defaults_are_sane() {
@@ -876,5 +877,73 @@ fn apply_settings_reapplies_overrides_only_to_a_loaded_config() {
             }
         ),
         "{error}"
+    );
+}
+
+#[test]
+fn player_frame_cap_lays_over_the_shipped_cap() {
+    let (_, loaded) = load_json("m69-cap", r#"{ "display": { "frame_rate_cap": 60 } }"#);
+    let shipped = loaded.unwrap();
+    let resolved = |config: &Config| {
+        config
+            .display
+            .resolve(&config.window, &config.render)
+            .frame_rate_cap
+    };
+    assert_eq!(resolved(&shipped), Some(60));
+
+    let mut settings = Settings::default();
+    settings.set_frame_rate_cap(Some(FrameRateCap::Fps(NonZeroU32::new(30).unwrap())));
+    let mut config = shipped.clone();
+    config.apply_settings_with(&settings, |_| None).unwrap();
+    assert_eq!(config.display.frame_rate_cap, Some(30));
+    assert_eq!(resolved(&config), Some(30));
+
+    settings.set_frame_rate_cap(Some(FrameRateCap::Uncapped));
+    let mut config = shipped.clone();
+    config.apply_settings_with(&settings, |_| None).unwrap();
+    assert_eq!(
+        config.display.frame_rate_cap, None,
+        "uncapped over a shipped 60"
+    );
+    assert_eq!(resolved(&config), None);
+
+    let mut untouched = shipped.clone();
+    untouched
+        .apply_settings_with(&Settings::default(), |_| None)
+        .unwrap();
+    assert_eq!(
+        resolved(&untouched),
+        Some(60),
+        "unset keeps the shipped cap"
+    );
+}
+
+#[test]
+fn player_frame_cap_yields_to_the_environment() {
+    let (_, loaded) = load_json("m69-cap-env", r#"{ "display": { "frame_rate_cap": 60 } }"#);
+    let mut settings = Settings::default();
+    settings.set_frame_rate_cap(Some(FrameRateCap::Fps(NonZeroU32::new(30).unwrap())));
+    let mut config = loaded.unwrap();
+    config
+        .apply_settings_with(&settings, env_of(&[(DISPLAY_FRAME_RATE_CAP_ENV, "144")]))
+        .unwrap();
+    assert_eq!(
+        config.display.frame_rate_cap,
+        Some(144),
+        "the environment is last"
+    );
+
+    let (_, loaded) = load_json(
+        "m69-cap-env-0",
+        r#"{ "display": { "frame_rate_cap": 60 } }"#,
+    );
+    let mut config = loaded.unwrap();
+    config
+        .apply_settings_with(&settings, env_of(&[(DISPLAY_FRAME_RATE_CAP_ENV, "0")]))
+        .unwrap();
+    assert_eq!(
+        config.display.frame_rate_cap, None,
+        "0 in the environment uncaps"
     );
 }

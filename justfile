@@ -47,6 +47,7 @@ visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-04-shader-playground --test post_regression --locked -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-scene-state --test transition_regression --locked -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-05-ui-lab --test ui_regression --locked -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p tungsten-template-basic --test game --locked -- visual:: --nocapture
 
 # Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
 perf *args:
