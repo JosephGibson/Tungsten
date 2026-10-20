@@ -2,7 +2,7 @@
 //! at the OS scale 1.75 (731 × 411 UI units), and at a 1920 × 1080 window
 //! (1280 × 720 units): every shown control, enabled or not, lies inside the
 //! viewport; a scroll panel must fit, and its rows scroll inside it. Then
-//! §2.3's matrix of windows and scale extremes, box by box.
+//! a matrix of six windows and scale extremes, box by box.
 
 use tungsten::WindowSize;
 use tungsten::core::text::TextNodeStore;
@@ -110,7 +110,7 @@ fn every_settings_tab_fits() {
     }
 }
 
-/// §2.3's matrix: the window, the OS, UI and text scales, and the
+/// The matrix: the window, the OS, UI and text scales, and the
 /// viewport in UI units they give under the shell's policy (a 720-pixel
 /// reference height under a 731 × 411 floor).
 const MATRIX: [([u32; 2], [f32; 3], [f32; 2]); 6] = [
@@ -139,7 +139,7 @@ fn set_scales(harness: &mut UiHarness, window: [u32; 2], [os, ui, text]: [f32; 3
     harness.layout();
 }
 
-/// §2.3's rules on the shown screens: every root inside the viewport, every
+/// The fit rules on the shown screens: every root inside the viewport, every
 /// visible widget's box inside its parent's, horizontally always and
 /// vertically unless a scroll panel above it scrolls it, and the title's
 /// label, when shown, one line.
@@ -190,7 +190,7 @@ fn assert_rules(harness: &mut UiHarness, what: &str) {
     let title = tree.roots().iter().find_map(|root| {
         let card = *tree.children(*root).first()?;
         let label = *tree.children(card).first()?;
-        (widgets::text_of(tree, label) == "Tungsten template").then_some(label)
+        (widgets::text_of(tree, label) == super::info().title).then_some(label)
     });
     if let Some(title) = title.filter(|_| tree.visibility(tree.roots()[0]).is_some()) {
         let node = tree.text_node(title).unwrap();

@@ -11,7 +11,7 @@
 use std::path::Path;
 
 use tungsten::core::ui::{Sizing, UiEvent, UiRouter, UiTree, Visibility, WidgetId};
-use tungsten::core::{ActionMap, ActionMapError, Binding, Time, World};
+use tungsten::core::{ActionMap, ActionMapError, Binding, Time, Timer, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
@@ -97,8 +97,8 @@ pub fn reset(world: &mut World, only: Option<&str>) {
 pub struct KeybindingsState {
     /// The root, each row's three cells and Reset, Reset all and Back.
     ui: Option<(WidgetId, Vec<[WidgetId; 4]>, WidgetId, WidgetId)>,
-    /// The row and column capturing, and its real seconds left.
-    capture: Option<(usize, usize, f32)>,
+    /// The row and column capturing, and its timer on the real clock.
+    capture: Option<(usize, usize, Timer)>,
 }
 
 impl KeybindingsState {
@@ -210,9 +210,9 @@ impl GameState for KeybindingsState {
         if transitioning(world) {
             return;
         }
-        if let Some((row, column, left)) = self.capture.as_mut() {
-            *left -= world.resource::<Time>().real_delta();
-            let (row, column, left) = (*row, *column, *left);
+        if let Some((row, column, timer)) = self.capture.as_mut() {
+            let ended = timer.tick(world.resource::<Time>().real_delta()) > 0;
+            let (row, column, left) = (*row, *column, timer.remaining());
             for event in events(world) {
                 match event {
                     UiEvent::InputCaptured { binding, .. } => {
@@ -224,7 +224,7 @@ impl GameState for KeybindingsState {
                     _ => {}
                 }
             }
-            if left <= 0.0 {
+            if ended {
                 return self.stop_capture(world);
             }
             let wanted = if column == 2 { "button" } else { "key" };
@@ -245,7 +245,7 @@ impl GameState for KeybindingsState {
                 self.refresh(world);
             }
             Some(at) => {
-                self.capture = Some((at / 4, at % 4, CAPTURE_SECS));
+                self.capture = Some((at / 4, at % 4, Timer::once(CAPTURE_SECS)));
                 let router = world.resource_mut::<UiRouter>();
                 router.capture_next_input(buttons[at]);
             }

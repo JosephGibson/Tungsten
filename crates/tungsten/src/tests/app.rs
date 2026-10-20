@@ -818,7 +818,7 @@ fn run_check_writes_one_line_naming_the_manifest_and_fails_on_a_missing_sprite_f
     app.set_manifest_roots(vec![root]);
     let report = dir.join("report.txt");
     let err = app.run_check(&report, &dir).unwrap_err();
-    assert!(err.to_string().contains("1 errors"), "{err}");
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
     let text = std::fs::read_to_string(&report).unwrap();
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 1, "{text}");

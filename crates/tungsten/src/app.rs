@@ -641,7 +641,8 @@ impl App {
         match errors.len() {
             0 => Ok(()),
             n => Err(anyhow::anyhow!(
-                "the check found {n} errors, written to '{}'",
+                "the check found {n} error{}, written to '{}'",
+                if n == 1 { "" } else { "s" },
                 report.display()
             )),
         }

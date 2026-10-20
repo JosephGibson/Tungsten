@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CPU-only asset coverage, documentation, active-plan, plan-citation and roadmap checks (stdlib only).
+"""CPU-only asset coverage, template, documentation, active-plan, plan-citation and roadmap checks (stdlib only).
 
 Never traverses docs/plans/archive, follows directory symlinks, edits manifests,
 or deletes files. Rust's manifests/decision_index tests remain authoritative for
@@ -33,6 +33,8 @@ ASSET_EXCEPTIONS = {
     **{f"assets/shaders/stock/lygia/{name}.wgsl": "compiled shader helper fragment"
        for name in ("hash", "luma", "noise", "srgb")},
 }
+# The kit's registered names, which `just api-check` holds to the kit (D-172).
+KIT_SNAPSHOT = "api/tungsten-kit-components.txt"
 FIELDS = ("status", "goal", "non-goals", "files to touch", "ordered steps", "done-when")
 CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
 # History keeps the plan names of its time; the scripts' tests cite fixture plans.
@@ -141,6 +143,24 @@ def check_templates(root, errors, notes):
         version = tomllib.loads((template / "Cargo.toml").read_text()).get("package", {}).get("rust-version")
         if version != workspace:
             errors.append(f"{rel}/Cargo.toml: rust-version {version!r} differs from the workspace's {workspace!r}")
+
+
+def check_kit_catalogue(root, errors, notes):
+    """A template's AGENTS.md names every scene component, data kind and cue
+    event the kit registers, as the kit's snapshot lists them, so its
+    catalogue cannot fall behind the kit (D-192)."""
+    snapshot, folder = root / KIT_SNAPSHOT, root / "templates"
+    if not snapshot.is_file() or not folder.is_dir():
+        return
+    text = snapshot.read_text()
+    names = set(re.findall(r"^(?:component|kind) ([a-z_]+):", text, re.M))
+    cues = re.search(r"^component cues:.*?(?=^\S|\Z)", text, re.M | re.S)
+    if cues:
+        names |= set(re.findall(r"^  field ([a-z_]+):", cues.group(0), re.M))
+    for agents in sorted(folder.glob("*/AGENTS.md")):
+        named = set(re.findall(r"`([a-z_]+)`", agents.read_text()))
+        for name in sorted(names - named):
+            errors.append(f"{agents.relative_to(root).as_posix()}: names no `{name}`, which {KIT_SNAPSHOT} lists")
 
 
 def plan_fields(text):
@@ -561,6 +581,8 @@ def select_checks(root, paths):
             require("just template-check", "Hardware", "new, check and package on an outside game; local GPU/display and disk floor")
         if path.startswith("api/"):
             require("just api-check", "CPU", "tracked public API agrees with pinned-toolchain rustdoc")
+        if path == KIT_SNAPSHOT:
+            require("just repo-check", "CPU", "the template's AGENTS.md names every kit item (check_kit_catalogue)")
             review.add("Public API: review additions/breaks, W4 ledger, rustdoc and template authoring examples; milestone level C review still applies.")
         if path in ("tungsten.json", "input.json") or re.match(r"examples/[^/]+/(tungsten|input)\.json$", path):
             require("just smoke", "Hardware", "engine/example configuration wiring")
@@ -626,7 +648,7 @@ def main(argv=None):
             print(f"ERROR: check selection: {exc}")
             return 2
         return 0
-    for check in (check_assets, check_templates, check_plans, check_docs, check_plan_citations, check_roadmap, check_summary):
+    for check in (check_assets, check_templates, check_kit_catalogue, check_plans, check_docs, check_plan_citations, check_roadmap, check_summary):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

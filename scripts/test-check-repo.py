@@ -102,6 +102,23 @@ class RepoChecks(unittest.TestCase):
         (self.root / "templates/basic/rust-toolchain.toml").unlink()
         self.assertIn("templates/basic/rust-toolchain.toml: must equal the root's rust-toolchain.toml", self.templates())
 
+    def test_template_agents_names_every_kit_item(self):
+        def catalogue():
+            errors = []
+            qa.check_kit_catalogue(self.root, errors, [])
+            return errors
+        self.assertEqual(catalogue(), [])  # no snapshot, no templates
+        self.write("api/tungsten-kit-components.txt",
+                   "component cues: Reactions.\n  field damaged: list\n  field hit: list\n  genres: grid\n"
+                   "component health: Health.\n  field max: f32\nkind tags: Tags.\nshape cue_action: An action.\n")
+        self.write("templates/basic/AGENTS.md", "Uses `cues`, `health`, `tags`, `damaged` and `hit`.\n")
+        self.assertEqual(catalogue(), [])
+        self.write("templates/basic/AGENTS.md", "Uses `cues`, `health` and `damaged`, and `max`.\n")
+        snapshot = "api/tungsten-kit-components.txt"
+        self.assertEqual(catalogue(), [
+            f"templates/basic/AGENTS.md: names no `hit`, which {snapshot} lists",
+            f"templates/basic/AGENTS.md: names no `tags`, which {snapshot} lists"])
+
     def test_directory_symlinks_are_not_walked(self):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])
@@ -422,6 +439,7 @@ class CheckSelection(unittest.TestCase):
             "assets/manifest.json": {"cargo test -p tungsten-core --test manifests --locked", "just smoke"},
             "crates/tungsten/src/asset_loader/mod.rs": {"cargo test -p tungsten-core --test manifests --locked", "just repo-check"},
             "api/tungsten.txt": {"just api-check"},
+            "api/tungsten-kit-components.txt": {"just api-check", "just repo-check"},
             "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked",
                                             "cargo test -p tungsten-cli --locked"},
             "tools/cli/src/main.rs": {"cargo test -p tungsten-cli --locked", "just template-check"},

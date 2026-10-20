@@ -19,11 +19,11 @@ use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
 use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
-use tungsten_template_basic::shell::{AUTOSAVE, Difficulty, RunState, theme, widgets};
+use tungsten_template_basic::shell::{AUTOSAVE, Difficulty, RunStart, RunState, theme, widgets};
 
 use super::{
-    find, harness, harness_with, health, player_entity, player_position, press, settle, shows,
-    slot_file, start, start_at, tap, top, user_folder,
+    act, find, harness, harness_with, health, heard, player_entity, player_position, plays, press,
+    settle, shows, slot_file, start, start_at, stops, tap, top, user_folder,
 };
 
 fn depth(harness: &UiHarness) -> usize {
@@ -57,7 +57,7 @@ fn kill(harness: &mut UiHarness) {
     assert_eq!(top(harness), Some(GAME_OVER));
 }
 
-fn focused(harness: &UiHarness) -> Option<tungsten::core::ui::WidgetId> {
+fn focused(harness: &UiHarness) -> Option<WidgetId> {
     harness.tree().focused()
 }
 
@@ -570,6 +570,43 @@ fn losing_focus_pauses_gameplay() {
 }
 
 #[test]
+fn losing_focus_during_a_screen_change_pauses_after_it() {
+    let set_focused = |harness: &mut UiHarness, focused: bool| {
+        let input = harness.world_mut().resource_mut::<InputState>();
+        input.set_focused(focused);
+    };
+    // Under a run's curtain: the run starts paused.
+    let mut harness = harness();
+    let start = RunStart::default();
+    tungsten_template_basic::shell::start_run(harness.world_mut(), start, None);
+    harness.step(1);
+    assert!(tungsten_template_basic::shell::transitioning(
+        harness.world()
+    ));
+    set_focused(&mut harness, false);
+    for _ in 0..3 {
+        harness.step(1);
+        settle(&mut harness);
+    }
+    assert_eq!(top(&harness), Some(PAUSE), "paused once the curtain ends");
+    // While pause closes: it opens again over gameplay, once.
+    set_focused(&mut harness, true);
+    harness.step(1);
+    let resume = find(&harness, "Resume").unwrap();
+    assert!(harness.focus(resume));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    harness.harness_mut().release_action("ui_accept");
+    set_focused(&mut harness, false);
+    for _ in 0..3 {
+        harness.step(1);
+        settle(&mut harness);
+    }
+    assert_eq!(top(&harness), Some(PAUSE), "paused again after the close");
+    assert_eq!(depth(&harness), 2, "one pause");
+}
+
+#[test]
 fn the_hud_shows_health_gems_and_the_bound_pause_key() {
     let mut harness = harness();
     start(&mut harness);
@@ -724,7 +761,7 @@ fn the_title_is_one_serif_line_above_the_menu() {
     let harness = harness();
     let tree = harness.tree();
     let root = front(&harness).expect("the title's root");
-    let title = labelled(tree, root, "Tungsten template").expect("the game's name");
+    let title = labelled(tree, root, &super::info().title).expect("the game's name");
     let text = &tree.resolved_style(title).unwrap().text;
     assert_eq!(text.family, "serif");
     assert_eq!([text.size, text.line_height], theme::TITLE);
@@ -742,7 +779,8 @@ fn the_title_is_one_serif_line_above_the_menu() {
     );
     // The version and "Saving is off", small in the corner.
     let viewport = harness.rect(root).unwrap();
-    for (line, caption) in ["Version 0.1.0", "Saving is off"].iter().enumerate() {
+    let version = format!("Version {}", super::info().version);
+    for (line, caption) in [version.as_str(), "Saving is off"].iter().enumerate() {
         let label = labelled(tree, root, caption).expect("a corner line");
         let rect = harness.rect(label).unwrap();
         assert_eq!(rect.min.x, theme::MARGIN, "{caption}");
@@ -1091,4 +1129,63 @@ fn menu_sounds_play_on_move_activate_and_back() {
     press(&mut harness, "New Game");
     harness.step(1);
     assert!(played(&harness).is_empty());
+}
+
+#[test]
+fn the_title_plays_its_song_until_a_run_starts() {
+    let mut harness = harness();
+    // The title came on the first frame, with its song.
+    let first = harness.harness().audio().to_vec();
+    let song = plays(&harness, &first, theme::TITLE_MUSIC);
+    assert_eq!(song.len(), 1, "the title's song");
+    let (song, looping, fade) = song[0];
+    assert!(looping && fade == theme::TITLE_FADE);
+    let shell =
+        |harness: &UiHarness| tungsten_template_basic::shell::transitioning(harness.world());
+    tungsten_template_basic::shell::start_run(harness.world_mut(), RunStart::default(), None);
+    let mut started = heard(&mut harness, 1);
+    while shell(&harness) {
+        started.extend(heard(&mut harness, 1));
+    }
+    assert!(
+        stops(&started).contains(&(song, theme::TITLE_FADE)),
+        "a run fades it out"
+    );
+    tap(&mut harness, "state_pause");
+    press(&mut harness, "Quit to Title");
+    let quit = find(&harness, "Quit").unwrap();
+    assert!(harness.focus(quit));
+    let back = act(&mut harness, "ui_accept");
+    assert_eq!(
+        plays(&harness, &back, theme::TITLE_MUSIC).len(),
+        1,
+        "back again"
+    );
+}
+
+#[test]
+fn game_over_plays_its_sting_and_music_until_the_run_ends() {
+    let mut harness = harness();
+    start(&mut harness);
+    let player = player_entity(&harness);
+    assert_eq!(damage(harness.world_mut(), player, 99.0), Hit::Killed);
+    let mut over = heard(&mut harness, 1);
+    while tungsten_template_basic::shell::transitioning(harness.world()) {
+        over.extend(heard(&mut harness, 1));
+    }
+    over.extend(heard(&mut harness, 30));
+    assert_eq!(top(&harness), Some(GAME_OVER));
+    let [sting, music] = theme::GAME_OVER_SOUNDS;
+    assert_eq!(plays(&harness, &over, sting).len(), 1, "the sting, once");
+    let music = plays(&harness, &over, music);
+    assert_eq!(music.len(), 1, "game over's music");
+    let (music, looping, fade) = music[0];
+    assert!(looping && fade == theme::GAME_OVER_FADE);
+    let quit = find(&harness, "Quit to Title").unwrap();
+    assert!(harness.focus(quit));
+    let ended = act(&mut harness, "ui_accept");
+    assert!(
+        stops(&ended).contains(&(music, theme::GAME_OVER_FADE)),
+        "its music stops with the run"
+    );
 }

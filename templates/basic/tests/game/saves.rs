@@ -191,8 +191,8 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     let dir = user_folder("newer-save");
     let slot = slot_file(&dir, AUTOSAVE);
     std::fs::create_dir_all(slot.parent().unwrap()).unwrap();
-    // A save from a newer build of the game: schema 3.
-    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 3, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
+    // A save from a newer build of the game: schema 9.
+    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
     std::fs::write(&slot, newer).unwrap();
 
     let mut harness = harness_with(UserFolder::At(dir.clone()));
@@ -249,7 +249,7 @@ fn options_keep_their_own_folder_and_a_damaged_file_falls_back() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ---- the save and load screen (step 3) ----
+// ---- the save and load screen ----
 
 /// `save` with `player` and `gems` written to `slot` in `dir`, played for
 /// 12:04.
@@ -300,11 +300,17 @@ fn the_load_screen_lists_the_autosave_and_ten_slots_and_scrolls() {
     assert_eq!(top(&harness), Some(SAVES));
     assert_eq!(
         row_text(&harness, "Autosave"),
-        "Autosave · just now · 12:04 played · v0.1.0\nGems 1 / 3 · Health 5 / 5"
+        format!(
+            "Autosave · just now · 12:04 played · v{}\nGems 1 / 3 · Health 5 / 5",
+            super::info().version
+        )
     );
     assert_eq!(
         row_text(&harness, "Slot 2"),
-        "Slot 2 · just now · 12:04 played · v0.1.0\nGems 2 / 3 · Health 5 / 5"
+        format!(
+            "Slot 2 · just now · 12:04 played · v{}\nGems 2 / 3 · Health 5 / 5",
+            super::info().version
+        )
     );
     for number in [1, 3, 4, 5, 6, 7, 8, 9] {
         let name = format!("Slot {number}");
@@ -407,6 +413,44 @@ fn deleting_asks_first_and_empties_the_slot() {
     assert!(!file.exists());
     assert_eq!(row_text(&harness, "Slot 2"), "Slot 2 · Empty");
     assert_eq!(find(&harness, "Delete Slot 2"), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[cfg_attr(not(unix), ignore = "Windows does not honor read-only on folders")]
+fn a_delete_that_fails_keeps_the_slot_read_only_and_says_so() {
+    let dir = user_folder("delete-fails");
+    let damaged = "{ not json";
+    let file = slot_file(&dir, "slot_3");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, damaged).unwrap();
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    tap(&mut harness, "state_pause");
+    press(&mut harness, "Save");
+    press(&mut harness, "Delete Slot 3");
+    // The answer's frame, with the saves folder read-only: the delete fails.
+    let saves = dir.join("saves");
+    let writable = std::fs::metadata(&saves).unwrap().permissions();
+    let mut read_only = writable.clone();
+    read_only.set_readonly(true);
+    std::fs::set_permissions(&saves, read_only).unwrap();
+    let delete = find(&harness, "Delete").unwrap();
+    assert!(harness.focus(delete));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    harness.harness_mut().release_action("ui_accept");
+    std::fs::set_permissions(&saves, writable).unwrap();
+    // Before the screen reads the slots again, the slot is still read-only.
+    assert!(
+        !shell::save_to(harness.world_mut(), "slot_3"),
+        "not written"
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), damaged);
+    harness.step(1);
+    let toasts = harness.world().resource::<Toasts>().texts(harness.tree());
+    let last = toasts.last().map(String::as_str);
+    assert_eq!(last, Some("Slot 3 could not be deleted"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 

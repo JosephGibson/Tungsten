@@ -2,9 +2,9 @@
 //! Continue, New Game (through the difficulty picker, each difficulty beside
 //! the game's note on it), Load, Settings and Quit, smaller and spaced wider
 //! than a menu's, with the version and "Saving is off" small at the bottom
-//! left, and its song playing until a run starts. Continue loads the newest readable slot,
-//! named with its age under it, and is focused when there is one, disabled
-//! otherwise. Quit asks first.
+//! left, and its song playing until a run starts. Continue loads the newest
+//! readable slot, named with its age under it, and is focused when there
+//! is one, disabled otherwise. Quit asks first.
 
 use tungsten::core::text::TextWrap;
 use tungsten::core::ui::{Align, Anchor, Edges, Justify, LayoutStyle, Sizing, UiTree, WidgetId};

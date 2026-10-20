@@ -5,9 +5,9 @@ use std::path::Path;
 
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioHandle, Binding, BodyKind, CameraController,
-    CameraMode, CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigidBody,
-    SoundRegistry, Sprite, Time, Transform, UserFolder, Velocity, Voice, With,
+    ActionMap, AssetRegistry, AudioCommand, Binding, BodyKind, CameraController, CameraMode,
+    CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigidBody, SoundRegistry, Sprite,
+    Time, Transform, UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats, damage,
@@ -15,7 +15,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
-use tungsten_template_basic::sample::components::{GemSlot, Player};
+use tungsten_template_basic::sample::components::Player;
 use tungsten_template_basic::sample::{
     CAMERA_DEAD_ZONE, DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB,
     HAZARD_START, MUSIC_FADE, MUSIC_PAUSE, MUSIC_RUN, PAUSE_FADE, PICKUPS, PLAY_CENTRE,
@@ -25,8 +25,8 @@ use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::{Difficulty, theme};
 
 use super::{
-    config, harness, health, player, player_entity, player_position, release_and_settle, start,
-    start_at, tap,
+    act, config, harness, health, heard, player, player_entity, player_position, plays,
+    release_and_settle, sound, start, start_at, stops, tap,
 };
 
 /// How far the player moves per second, in pixels: the prefab's
@@ -51,11 +51,12 @@ fn hazard_entity(harness: &UiHarness) -> Entity {
     harness.world().resource::<SampleRun>().enemies[0].entity
 }
 
-/// The gems still in play: the entities with a gem's slot.
+/// The gems still in play: the run's gems not yet taken.
 fn gem_entities(harness: &UiHarness) -> Vec<Entity> {
-    harness
-        .world()
-        .query_filtered::<Entity, With<GemSlot>>()
+    let world = harness.world();
+    let gems = world.resource::<SampleRun>().gems.iter();
+    gems.map(|(_, gem)| *gem)
+        .filter(|gem| world.is_alive(*gem))
         .collect()
 }
 
@@ -282,14 +283,10 @@ fn a_hit_shakes_the_camera_and_shows_its_damage() {
 /// `Position` and `PrevPosition`. The contact's push points from the
 /// hazard's point to the player's, so the pixel gives it a way out.
 fn place_on_hazard(harness: &mut UiHarness, player: Entity, hazard: Entity) {
-    let mut at = harness
-        .world()
-        .get::<tungsten::core::Position>(hazard)
-        .unwrap()
-        .0;
+    let mut at = harness.world().get::<Position>(hazard).unwrap().0;
     at.x += 1.0;
     let world = harness.world_mut();
-    world.get_mut::<tungsten::core::Position>(player).unwrap().0 = at;
+    world.get_mut::<Position>(player).unwrap().0 = at;
     world.get_mut::<PrevPosition>(player).unwrap().0 = at;
 }
 
@@ -339,13 +336,7 @@ fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushe
     let mut harness = harness();
     start(&mut harness);
     let (player, hazard) = (player_entity(&harness), hazard_entity(&harness));
-    let hazard_at = |harness: &UiHarness| {
-        harness
-            .world()
-            .get::<tungsten::core::Position>(hazard)
-            .unwrap()
-            .0
-    };
+    let hazard_at = |harness: &UiHarness| harness.world().get::<Position>(hazard).unwrap().0;
     let first = hazard_at(&harness);
     let (mut left, mut right) = (f32::INFINITY, f32::NEG_INFINITY);
     for _ in 0..HAZARD_PERIOD_FRAMES {
@@ -563,23 +554,15 @@ fn a_gem_drifts_to_the_player_and_counts_once() {
     assert_eq!(gems.len(), 3, "gameplay spawns three");
     assert_eq!(gems_counted(&harness), 0);
     let gem = gems[0];
-    let start = harness
-        .world()
-        .get::<tungsten::core::Position>(gem)
-        .unwrap()
-        .0;
+    let start = harness.world().get::<Position>(gem).unwrap().0;
     // Within the player's reach of 96 px, out of touch.
     let mut near = start;
     near.x += 60.0;
     let world = harness.world_mut();
-    world.get_mut::<tungsten::core::Position>(player).unwrap().0 = near;
+    world.get_mut::<Position>(player).unwrap().0 = near;
     world.get_mut::<PrevPosition>(player).unwrap().0 = near;
     harness.step(1);
-    let drifted = harness
-        .world()
-        .get::<tungsten::core::Position>(gem)
-        .unwrap()
-        .0;
+    let drifted = harness.world().get::<Position>(gem).unwrap().0;
     assert!(
         drifted.x > start.x,
         "it drifts toward the player: {drifted:?}"
@@ -795,65 +778,6 @@ fn the_camera_frames_the_play_space_at_every_window_size() {
             "{window:?}: the view centred on {centre:?}"
         );
     }
-}
-
-/// The audio commands of `frames` frames, stepped one at a time.
-fn heard(harness: &mut UiHarness, frames: u32) -> Vec<AudioCommand> {
-    let mut commands = Vec::new();
-    for _ in 0..frames {
-        harness.step(1);
-        commands.extend(harness.harness().audio().iter().cloned());
-    }
-    commands
-}
-
-/// Taps `action` and steps until no screen change runs, with every frame's
-/// audio.
-fn act(harness: &mut UiHarness, action: &str) -> Vec<AudioCommand> {
-    harness.harness_mut().press_action(action);
-    let mut commands = heard(harness, 1);
-    harness.harness_mut().release_action(action);
-    commands.extend(heard(harness, 1));
-    while tungsten_template_basic::shell::transitioning(harness.world()) {
-        commands.extend(heard(harness, 1));
-    }
-    commands.extend(heard(harness, 2));
-    commands
-}
-
-fn sound(harness: &UiHarness, name: &str) -> AudioHandle {
-    let sounds = harness.world().resource::<SoundRegistry>();
-    sounds.get_by_id(name).expect("a manifest sound")
-}
-
-/// The voices started for `name` among `commands`, with their loop flag
-/// and fade.
-fn plays(harness: &UiHarness, commands: &[AudioCommand], name: &str) -> Vec<(Voice, bool, f32)> {
-    let handle = sound(harness, name);
-    commands
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::Play {
-                handle: played,
-                voice,
-                looping,
-                fade,
-                ..
-            } if *played == handle => Some((*voice, *looping, *fade)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The stops among `commands`, with their fades.
-fn stops(commands: &[AudioCommand]) -> Vec<(Voice, f32)> {
-    commands
-        .iter()
-        .filter_map(|command| match command {
-            AudioCommand::StopVoice { voice, fade, .. } => Some((*voice, *fade)),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The volume changes among `commands`.
@@ -1230,32 +1154,6 @@ fn a_shot_flies_at_its_speed_and_ends_at_its_range() {
     }
     // 760 px at 640 px/s: 71 steps of 1/60 s, give or take its first.
     assert!((68..=74).contains(&steps), "{steps} steps");
-}
-
-#[test]
-fn the_title_plays_its_song_until_a_run_starts() {
-    let mut harness = harness();
-    let (run, _) = start_heard(&mut harness);
-    act(&mut harness, "state_pause");
-    let quit = find_named(&harness, "Quit to Title");
-    assert!(harness.focus(quit));
-    act(&mut harness, "ui_accept");
-    let answer = find_named(&harness, "Quit");
-    assert!(harness.focus(answer));
-    let back = act(&mut harness, "ui_accept");
-    assert!(
-        stops(&back).contains(&(run, MUSIC_FADE)),
-        "the run's music ends"
-    );
-    let song = plays(&harness, &back, theme::TITLE_MUSIC);
-    assert_eq!(song.len(), 1, "the title's song");
-    let (song, looping, fade) = song[0];
-    assert!(looping && fade == theme::TITLE_FADE);
-    let (_, started) = start_heard(&mut harness);
-    assert!(
-        stops(&started).contains(&(song, theme::TITLE_FADE)),
-        "a run fades it out"
-    );
 }
 
 /// Puts the player at `at`, without a slide from where it was.

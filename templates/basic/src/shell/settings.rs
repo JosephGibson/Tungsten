@@ -1,17 +1,19 @@
 //! Tabbed settings: Display, Audio, Interface, Controls and Gameplay. Every
 //! change applies at once through `shell::apply_settings` and is written
 //! when the screen closes (Back or `ui_cancel` save `Settings` and the
-//! gameplay options); a tab's Reset returns its values to unset or default.
+//! gameplay options) or the game exits with it open; a tab's Reset returns
+//! its values to unset or default.
 //! The window mode and size are picked first and sent by Apply, so a player
 //! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
 //! through them. Every slider shows its value in a mono readout. The
-//! Display rows show the set value, else the live one, so an F11 press
-//! shows while it is unset; the volumes the set value, else the one
-//! `tungsten.json` ships.
+//! Display rows show the set value, else the live one, and the shell keeps
+//! the F11 and F9 keys' changes set; the volumes show the set value, else
+//! the one `tungsten.json` ships.
 
 use std::num::NonZeroU32;
 
+use tungsten::core::settings::SettingsError;
 use tungsten::core::ui::{Align, Sizing, SliderRange, UiEvent, UiTree, UiValue, WidgetId};
 use tungsten::core::{
     AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
@@ -22,8 +24,8 @@ use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
-    Difficulty, RunState, apply_settings, enter, events, idle, pop, pressed, push, theme, toast,
-    widgets,
+    Difficulty, RunState, Shell, apply_settings, enter, events, idle, pop, pressed, push, theme,
+    toast, widgets,
 };
 
 pub const SETTINGS: StateId = "settings";
@@ -77,6 +79,8 @@ const TEXT: std::ops::RangeInclusive<f32> = Settings::TEXT_SCALE_RANGE;
 /// The UI scales the shell offers: the engine's range to 2, since past it
 /// the floor (`D-184`) lays most windows out no differently.
 pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
+const UI_SCALE: Kind = Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25);
+const TEXT_SCALE: Kind = Kind::Slider(*TEXT.start(), *TEXT.end(), 0.25);
 
 /// Every row: its tab, its caption and how it is built.
 const ROWS: [(Row, usize, &str, Kind); 18] = [
@@ -90,18 +94,8 @@ const ROWS: [(Row, usize, &str, Kind); 18] = [
     (Row::Music, 1, "Music", PERCENT),
     (Row::Effects, 1, "Effects", PERCENT),
     (Row::MuteUnfocused, 1, "Mute when unfocused", Kind::Toggle),
-    (
-        Row::UiScale,
-        2,
-        "UI scale",
-        Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25),
-    ),
-    (
-        Row::TextScale,
-        2,
-        "Text scale",
-        Kind::Slider(*TEXT.start(), *TEXT.end(), 0.25),
-    ),
+    (Row::UiScale, 2, "UI scale", UI_SCALE),
+    (Row::TextScale, 2, "Text scale", TEXT_SCALE),
     (Row::Keys, 3, "Keybindings…", Kind::Button),
     (Row::ResetKeys, 3, "Reset all bindings", Kind::Button),
     (Row::Difficulty, 4, "Difficulty", Kind::Choice),
@@ -339,10 +333,8 @@ impl SettingsState {
                     continue;
                 }
                 Row::Difficulty => {
-                    tree.set_text(
-                        id,
-                        difficulty.map_or("Chosen at New Game", Difficulty::label),
-                    );
+                    let text = difficulty.map_or("Chosen at New Game", Difficulty::label);
+                    tree.set_text(id, text);
                     tree.set_enabled(id, difficulty.is_some());
                     continue;
                 }
@@ -428,10 +420,8 @@ impl SettingsState {
     /// A slider or toggle took `value`: the frame-rate limit the slider's,
     /// or none while Unlimited is on.
     fn set(&self, world: &mut World, row: Row, value: UiValue) {
-        let (number, on) = (
-            value.as_number().unwrap_or(0.0),
-            value.as_bool().unwrap_or(false),
-        );
+        let number = value.as_number().unwrap_or(0.0);
+        let on = value.as_bool().unwrap_or(false);
         let fps = |fps: f32| NonZeroU32::new(fps as u32).map(FrameRateCap::Fps);
         match row {
             Row::Vsync => change(world, |settings| settings.set_vsync(Some(on))),
@@ -508,12 +498,20 @@ impl SettingsState {
 
     /// Writes `Settings` and the options, then closes.
     fn leave(world: &mut World) {
-        if let Err(error) = world.resource::<Settings>().save() {
-            log::warn!("Settings not saved: {error}");
-        }
-        options::save(world);
+        save(world);
         pop(world);
     }
+}
+
+/// Writes `Settings` and the gameplay options; a failure logs, and no user
+/// folder saves nothing. The exit's last frame calls it while the screen is
+/// open, and the F11 and F9 keys while it is not.
+pub(crate) fn save(world: &World) {
+    match world.resource::<Settings>().save() {
+        Ok(()) | Err(SettingsError::NoFolder) => {}
+        Err(error) => log::warn!("Settings not saved: {error}"),
+    }
+    options::save(world);
 }
 
 impl GameState for SettingsState {
@@ -576,9 +574,12 @@ impl GameState for SettingsState {
         self.select(tree, self.tab);
         enter(ctx.world, root);
         self.refresh(ctx.world);
+        ctx.world.resource_mut::<Shell>().settings_open = true;
     }
 
-    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        ctx.world.resource_mut::<Shell>().settings_open = false;
+    }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
         self.refresh(ctx.world);
@@ -593,12 +594,9 @@ impl GameState for SettingsState {
         }
         let (root, reset, back, tabs, rows) =
             (ui.root, ui.reset, ui.back, ui.tabs.clone(), ui.rows.clone());
-        let step = match (
-            pressed(world, "ui_next", false),
-            pressed(world, "ui_prev", false),
-        ) {
-            (true, false) => 1,
-            (false, true) => TABS.len() - 1,
+        let step = match ["ui_next", "ui_prev"].map(|key| pressed(world, key, false)) {
+            [true, false] => 1,
+            [false, true] => TABS.len() - 1,
             _ => 0,
         };
         if step > 0 {

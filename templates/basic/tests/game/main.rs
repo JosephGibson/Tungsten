@@ -2,8 +2,8 @@
 //! window or renderer, the frames stepped one call at a time. `sample` holds
 //! the sample's gameplay, `shell` the shell's screens and run, `saves` the
 //! save seam and its screen, `settings` the tabbed settings, `keys` the
-//! keybindings, `fit` the screens at the smallest and a large viewport, and
-//! `visual` the title's pixels.
+//! keybindings, `fit` every screen at six windows and the scale extremes,
+//! and `visual` the title's pixels.
 
 mod fit;
 mod keys;
@@ -16,7 +16,10 @@ mod visual;
 use std::path::{Path, PathBuf};
 
 use tungsten::core::ui::{Visibility, WidgetId};
-use tungsten::core::{Config, Entity, Position, Transform, UserFolder, Velocity, With};
+use tungsten::core::{
+    AudioCommand, AudioHandle, Config, Entity, Position, SoundRegistry, Transform, UserFolder,
+    Velocity, Voice, With,
+};
 use tungsten::kit::Health;
 use tungsten::testing::UiHarness;
 use tungsten::{App, StateId};
@@ -33,11 +36,11 @@ pub fn config(user_folder: UserFolder) -> Config {
     config
 }
 
-/// What `main.rs` hands the shell.
+/// What `main.rs` hands the shell: the window's title from `tungsten.json`.
 pub fn info() -> GameInfo {
     GameInfo {
-        title: "Tungsten template".into(),
-        version: "0.1.0".into(),
+        title: config(UserFolder::Off).window.title,
+        version: env!("CARGO_PKG_VERSION").into(),
     }
 }
 
@@ -168,7 +171,8 @@ pub fn press(harness: &mut UiHarness, name: &str) {
 }
 
 /// Starts a run at `difficulty` as the title's New Game does, and steps
-/// into it through the curtain.
+/// into it through the curtain, returning once the curtain has lifted: the
+/// game clock has run through its fade out, about 0.14 s into the run.
 pub fn start_at(harness: &mut UiHarness, difficulty: Difficulty) {
     game_shell::start_run(
         harness.world_mut(),
@@ -230,4 +234,68 @@ pub fn player_entity(harness: &UiHarness) -> Entity {
 pub fn health(harness: &UiHarness, entity: Entity) -> (f32, f32) {
     let health = harness.world().get::<Health>(entity).expect("a health");
     (health.current(), health.max())
+}
+
+/// The audio commands of `frames` frames, stepped one at a time.
+pub fn heard(harness: &mut UiHarness, frames: u32) -> Vec<AudioCommand> {
+    let mut commands = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        commands.extend(harness.harness().audio().iter().cloned());
+    }
+    commands
+}
+
+/// Taps `action` and steps until no screen change runs, with every frame's
+/// audio.
+pub fn act(harness: &mut UiHarness, action: &str) -> Vec<AudioCommand> {
+    harness.harness_mut().press_action(action);
+    let mut commands = heard(harness, 1);
+    harness.harness_mut().release_action(action);
+    commands.extend(heard(harness, 1));
+    while tungsten_template_basic::shell::transitioning(harness.world()) {
+        commands.extend(heard(harness, 1));
+    }
+    commands.extend(heard(harness, 2));
+    commands
+}
+
+/// The manifest's sound `name`.
+pub fn sound(harness: &UiHarness, name: &str) -> AudioHandle {
+    let sounds = harness.world().resource::<SoundRegistry>();
+    sounds.get_by_id(name).expect("a manifest sound")
+}
+
+/// The voices started for `name` among `commands`, with their loop flag
+/// and fade.
+pub fn plays(
+    harness: &UiHarness,
+    commands: &[AudioCommand],
+    name: &str,
+) -> Vec<(Voice, bool, f32)> {
+    let handle = sound(harness, name);
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            AudioCommand::Play {
+                handle: played,
+                voice,
+                looping,
+                fade,
+                ..
+            } if *played == handle => Some((*voice, *looping, *fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The stops among `commands`, with their fades.
+pub fn stops(commands: &[AudioCommand]) -> Vec<(Voice, f32)> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            AudioCommand::StopVoice { voice, fade, .. } => Some((*voice, *fade)),
+            _ => None,
+        })
+        .collect()
 }

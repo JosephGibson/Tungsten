@@ -1,8 +1,9 @@
 //! The shell's look, motion and sound in one place: the theme asset's ID
 //! and its apply, the spacing and sizes every screen shares, the fades and
-//! slides each screen change takes, and the menu sounds' manifest IDs. Colours, borders, radii and font
-//! families live in `assets/ui/themes/shell.json`, which hot-reloads; layout
-//! is not themable, so spacing and sizes are constants here.
+//! slides each screen change takes, and the manifest IDs of the menu
+//! sounds and the shell's music. Colours, borders, radii and font families
+//! live in `assets/ui/themes/shell.json`, which hot-reloads; layout is not
+//! themable, so spacing and sizes are constants here.
 
 use tungsten::core::ui::{UiThemeRegistry, UiTrack, UiTree, WidgetId};
 use tungsten::core::{Easing, World};

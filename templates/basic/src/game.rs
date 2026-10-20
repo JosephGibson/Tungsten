@@ -37,7 +37,9 @@ pub fn gameplay(start: RunStart) -> impl GameState {
 }
 
 /// What `difficulty` changes, the muted note beside it in the New Game
-/// picker.
+/// picker: a few words, as short as the sample's `8 health`, since it
+/// shares a menu-wide row with its button on one line, which
+/// `tests/game/fit.rs` checks at text 200 %.
 #[must_use]
 pub fn difficulty_note(difficulty: Difficulty) -> String {
     format!("{} health", max_health(difficulty))

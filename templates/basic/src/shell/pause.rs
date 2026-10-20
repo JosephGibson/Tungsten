@@ -1,8 +1,9 @@
 //! Pause, pushed over gameplay: Resume, Save, Load, Settings, Quit to Title
-//! and Quit Game; the gameplay options sit in Settings' Gameplay tab. Gameplay holds the game clock while
-//! covered; pause autosaves on its first frame that runs no fixed step, since
-//! the frame that pushed it still ran the steps it owed. `ui_cancel`,
-//! Resume or `state_pause` closes it, once a frame.
+//! and Quit Game; the gameplay options sit in Settings' Gameplay tab.
+//! Gameplay holds the game clock while covered; pause autosaves on its
+//! first frame that runs no fixed step, since the frame that pushed it
+//! still ran the steps it owed. `ui_cancel`, Resume or `state_pause` closes
+//! it, once a frame.
 
 use tungsten::core::ui::UiTree;
 use tungsten::core::{Time, World};

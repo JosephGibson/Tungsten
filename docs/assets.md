@@ -2,7 +2,7 @@
 
 Where each asset type lives and what its manifest entry needs. [AGENTS.md](../AGENTS.md) links here; the table moved out of it with `D-106`. A new asset type adds its row here in the change that adds its manifest section.
 
-Every asset file is listed in a `manifest.json` and named in game code by its registry ID. `just repo-check` checks that each file under an `assets/` folder is listed and each listed path exists; loaders validate what the files contain.
+Every asset file is listed in a `manifest.json` and named in game code by its registry ID. `just repo-check` checks that each file under an `assets/` folder in this repository is listed and each listed path exists; loaders validate what the files contain. In a game's own repository, `tungsten check` loads every listed file and every unlisted `.json` file under the manifest's folder as a scene, so an unlisted image or sound goes unreported, and `tungsten package` ships it.
 
 | Type | Location | Section | Required |
 | --- | --- | --- | --- |

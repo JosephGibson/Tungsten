@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{UiEvent, UiRouter, UiTrack, UiTree, Visibility, WidgetId};
 use tungsten::core::{
-    ActionMap, AudioCommands, EventQueue, InputState, RoutedInput, SaveSlots, ScaleFactor,
-    Schedule, Settings, SoundRegistry, Stage, Time, Voice, World, system,
+    ActionMap, AudioCommands, DisplayMode, DisplayState, EventQueue, InputState, RoutedInput,
+    SaveSlots, ScaleFactor, Schedule, Settings, SoundRegistry, Stage, Time, Voice, World, system,
 };
 use tungsten::{
     DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack, request_exit,
@@ -163,7 +163,12 @@ pub(crate) struct Shell {
     unfocused: bool,
     /// The window lost focus with "Mute when unfocused" on.
     focus_muted: bool,
+    /// The window lost focus with "Pause when unfocused" on: pause opens
+    /// once gameplay is on top with no screen change running.
+    pause_due: bool,
     exit_saved: bool,
+    /// The Settings screen is on the stack, so the exit saves its changes.
+    pub(crate) settings_open: bool,
     pub(crate) warned: bool,
     change: Option<Change>,
     /// Slots that failed to load: never loaded or written this run.
@@ -351,8 +356,9 @@ pub fn enter(world: &mut World, root: WidgetId) {
     stack(world).own_root(root, RootCover::Show);
 }
 
-/// Opens the game-over screen over gameplay: the sample calls it from its
-/// gameplay state's `update`, which runs off the stack, when its player dies.
+/// Opens the game-over screen over gameplay: the game's gameplay state
+/// calls it from its `update`, which runs off the stack, when its player
+/// dies.
 pub fn game_over(world: &mut World) {
     if !transitioning(world) && matches!(top(world), None | Some(game::GAMEPLAY)) {
         push(world, game_over::GameOverState::default());
@@ -531,10 +537,12 @@ impl Menu {
     }
 }
 
-/// `shell_frame`: the run's playtime and first autosave, the exit's save,
-/// the menu sounds, the pause key and focus loss.
+/// `shell_frame`: the F11 and F9 keys, the run's playtime and first
+/// autosave, the exit's saves (the run, and the Settings screen's changes
+/// while it is open), the menu sounds, the pause key and focus loss.
 fn frame(world: &mut World) {
     widgets::recap(world);
+    display_keys(world);
     let delta = f64::from(world.resource::<Time>().delta());
     let first_save = world.get_resource_mut::<RunState>().is_some_and(|run| {
         run.playtime_secs += delta;
@@ -545,12 +553,42 @@ fn frame(world: &mut World) {
     if first_save || exit_save {
         autosave(world);
     }
+    if exit_save && world.resource::<Shell>().settings_open {
+        settings::save(world);
+    }
     menu_sounds(world);
     let open = idle(world) && top(world) == Some(game::GAMEPLAY);
     if open && pressed(world, "state_pause", true) {
         push(world, pause::PauseState::default());
     }
     focus(world, open);
+}
+
+/// F11 and F9, the engine's fullscreen and vsync keys, kept in `Settings`
+/// and saved as the engine toggles them, so the Display rows show them and
+/// the next apply, or start, keeps them.
+fn display_keys(world: &mut World) {
+    let keys = ["engine_toggle_fullscreen", "engine_toggle_vsync"];
+    let [full, vsync] = keys.map(|key| pressed(world, key, false));
+    if !full && !vsync {
+        return;
+    }
+    // The engine toggles the live display; its request lands next frame.
+    let live = *world.resource::<DisplayState>();
+    let settings = world.resource_mut::<Settings>();
+    let modes = [DisplayMode::Windowed, DisplayMode::BorderlessFullscreen];
+    if full {
+        settings.set_display_mode(Some(modes[usize::from(live.display_mode == modes[0])]));
+    }
+    if vsync {
+        settings.set_vsync(Some(!live.vsync));
+    }
+    // Applied again, since an apply earlier this frame, a slider's, replaces
+    // the engine's request; the Settings screen saves when it closes.
+    apply_settings(world);
+    if !world.resource::<Shell>().settings_open {
+        settings::save(world);
+    }
 }
 
 /// Plays the manifest's sound `id` at its volume, looping as the manifest
@@ -593,20 +631,21 @@ fn menu_sounds(world: &mut World) {
     }
 }
 
-/// Focus loss: mutes when the options say so, and pauses gameplay when
-/// `open` (gameplay on top, no transition); focus back unmutes.
+/// Focus loss: mutes when the options say so, and pauses gameplay once
+/// `open` (gameplay on top, no screen change), so a loss during a change
+/// pauses after it; focus back unmutes and drops a pause still due.
 fn focus(world: &mut World, open: bool) {
     let unfocused = !world.resource::<InputState>().focused();
-    let shell = world.resource_mut::<Shell>();
-    if std::mem::replace(&mut shell.unfocused, unfocused) == unfocused {
-        return;
-    }
     let options = *world.resource::<options::GameOptions>();
-    let muted = unfocused && options.mute_unfocused;
-    if std::mem::replace(&mut world.resource_mut::<Shell>().focus_muted, muted) != muted {
-        apply_settings(world);
+    let shell = world.resource_mut::<Shell>();
+    if std::mem::replace(&mut shell.unfocused, unfocused) != unfocused {
+        shell.pause_due = unfocused && options.pause_unfocused;
+        let muted = unfocused && options.mute_unfocused;
+        if std::mem::replace(&mut shell.focus_muted, muted) != muted {
+            apply_settings(world);
+        }
     }
-    if unfocused && open && options.pause_unfocused {
+    if open && std::mem::take(&mut world.resource_mut::<Shell>().pause_due) {
         push(world, pause::PauseState::default());
     }
 }

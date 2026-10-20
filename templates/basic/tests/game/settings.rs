@@ -6,7 +6,8 @@ use std::num::NonZeroU32;
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
     AudioBus, AudioCommand, CameraController, DisplayMode, DisplayState, FrameRateCap, InputState,
-    MonitorInfo, Resolution, SaveSlots, ScaleFactor, Settings, Time, UserFolder, VideoMode,
+    KeyCode, MonitorInfo, Resolution, SaveSlots, ScaleFactor, Settings, Time, UserFolder,
+    VideoMode,
 };
 use tungsten::kit::{Hit, damage};
 use tungsten::testing::UiHarness;
@@ -209,6 +210,31 @@ fn a_window_mode_change_reverts_after_ten_seconds() {
     assert_eq!(top(&harness), Some(SETTINGS));
     assert_eq!(settings(&harness).display_mode(), None, "reverted");
     assert_eq!(row_text(&harness, "Window mode"), "Windowed");
+}
+
+#[test]
+fn f11_and_f9_are_kept_in_settings_and_survive_a_restart() {
+    let dir = user_folder("display-keys");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let vsync = harness.world().resource::<DisplayState>().vsync;
+    for key in [KeyCode::F11, KeyCode::F9] {
+        harness.key_down(key);
+        harness.step(1);
+        harness.key_up(key);
+        harness.step(1);
+    }
+    let fullscreen = Some(DisplayMode::BorderlessFullscreen);
+    assert_eq!(settings(&harness).display_mode(), fullscreen, "F11 is kept");
+    assert_eq!(settings(&harness).vsync(), Some(!vsync), "F9 is kept");
+    // The Display rows read the set value when Settings opens.
+    from_title(&mut harness);
+    assert_eq!(row_text(&harness, "Window mode"), "Fullscreen");
+    // Saved at the press: a restart starts fullscreen.
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let display = *restarted.world().resource::<DisplayState>();
+    assert_eq!(display.display_mode, DisplayMode::BorderlessFullscreen);
+    assert_eq!(display.vsync, !vsync);
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -710,6 +736,50 @@ fn back_saves_settings_and_options_across_a_restart() {
         Some(0.75)
     );
     assert!(!restarted.world().resource::<GameOptions>().damage_numbers);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_close_in_settings_keeps_the_changes_but_not_an_unkept_display() {
+    let dir = user_folder("settings-close");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    from_title(&mut harness);
+    press(&mut harness, "Audio");
+    nudge(&mut harness, "Master", "ui_left");
+    press(&mut harness, "Gameplay");
+    press(&mut harness, "Damage numbers");
+    press(&mut harness, "Display");
+    press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
+    assert_eq!(top(&harness), Some(CONFIRM), "asked to keep it");
+    harness.harness_mut().request_close();
+    assert_eq!(harness.step(1), 1, "the last frame runs");
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let settings = restarted.world().resource::<Settings>();
+    assert_eq!(settings.master_volume(), Some(0.75), "saved at the close");
+    assert_eq!(settings.display_mode(), None, "the unkept mode reverted");
+    assert!(!restarted.world().resource::<GameOptions>().damage_numbers);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_close_while_keep_fades_out_keeps_the_display() {
+    let dir = user_folder("keep-close");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    from_title(&mut harness);
+    press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
+    let keep = find(&harness, "Keep").unwrap();
+    assert!(harness.focus(keep));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    harness.harness_mut().release_action("ui_accept");
+    assert_eq!(top(&harness), Some(CONFIRM), "still fading out");
+    harness.harness_mut().request_close();
+    assert_eq!(harness.step(1), 1, "the last frame runs");
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let mode = restarted.world().resource::<Settings>().display_mode();
+    assert_eq!(mode, Some(DisplayMode::BorderlessFullscreen), "kept");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

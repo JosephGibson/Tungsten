@@ -5,8 +5,8 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 ## Now
 
 <!-- roadmap-summary:start -->
-- **Workspace:** `0.90.0`
-- **First open stop:** `w12qa`
+- **Workspace:** `0.91.0`
+- **First open stop:** `w12b`
 - **Stop state:** `todo`
 - **Next milestone:** `M71`
 <!-- roadmap-summary:end -->

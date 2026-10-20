@@ -1,15 +1,16 @@
 //! The save and load screen over the autosave and ten slots, in a card that
 //! scrolls. Each row names its slot's state in text, in the mono family:
 //! empty, ready (when, playtime, version and the game's summary), saved by a
-//! newer version, or damaged; a newer or
-//! damaged slot is neither loaded nor overwritten, and any slot with a file
-//! can be deleted after a confirm. Save mode (from pause) saves to an empty
+//! newer version, or damaged; a newer or damaged slot is neither loaded nor
+//! overwritten, and any slot with a file can be deleted after a confirm, a
+//! delete that fails saying so. Save mode (from pause) saves to an empty
 //! slot at once and asks before it overwrites; the autosave is no target.
 //! Load mode (from the title, pause and game over) starts the run from a
 //! ready slot, asking first only over a live run that is not checkpointed.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tungsten::core::save::SaveError;
 use tungsten::core::ui::{Sizing, UiTree, WidgetId};
 use tungsten::core::{SaveSlots, World};
 use tungsten::{GameState, StateContext, StateId};
@@ -137,15 +138,19 @@ fn saved(world: &mut World, slot: &'static str) {
     toast::toast(world, text);
 }
 
-/// Deletes `slot`'s file, so it can be written again.
+/// Deletes `slot`'s file, so it can be written again; a file that stays
+/// keeps the slot read-only, and a toast says so.
 fn delete(world: &mut World, slot: &'static str) {
-    if let Err(error) = world.resource::<SaveSlots>().delete(slot) {
-        log::warn!("Save slot '{slot}' not deleted: {error}");
+    match world.resource::<SaveSlots>().delete(slot) {
+        Ok(()) | Err(SaveError::NotFound { .. }) => {
+            let shell = world.resource_mut::<Shell>();
+            shell.read_only.retain(|kept| *kept != slot);
+        }
+        Err(error) => {
+            log::warn!("Save slot '{slot}' not deleted: {error}");
+            toast::toast(world, format!("{} could not be deleted", slot_name(slot)));
+        }
     }
-    world
-        .resource_mut::<Shell>()
-        .read_only
-        .retain(|kept| *kept != slot);
 }
 
 /// A slot's name on screen.
@@ -188,11 +193,7 @@ impl GameState for SavesState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
         let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
-        let heading = if self.mode == Mode::Save {
-            "Save"
-        } else {
-            "Load"
-        };
+        let heading = ["Load", "Save"][usize::from(self.mode == Mode::Save)];
         widgets::heading(tree, card, heading, false);
         let mut rows = Vec::new();
         for slot in SLOTS {

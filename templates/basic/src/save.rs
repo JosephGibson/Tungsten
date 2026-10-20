@@ -1,7 +1,9 @@
 //! What a save holds, part of the seam the shell calls: [`SaveGame`], how
 //! a live run becomes one ([`capture`]) and the slot row's one line
 //! ([`summary`]). A new game edits this file for its own fields, bumps the
-//! schema and writes `migrate`.
+//! schema and writes `migrate`. Count on from the sample's schema 3, so a
+//! save the sample wrote while you tried it reads as damaged, which the
+//! player can delete, never as a newer version's.
 
 use serde::{Deserialize, Serialize};
 use tungsten::core::save::Value;

@@ -17,7 +17,7 @@ pub mod hud;
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
     AudioCommands, CameraController, CameraState, Entity, PreparedPrefab, Schedule, SoundRegistry,
-    Stage, Time, Voice, WindowSize, World, system,
+    Stage, Time, Timer, Voice, WindowSize, With, World, system,
 };
 use tungsten::kit::{Counters, Health, Stats, Tags};
 use tungsten::{GameState, Plugin, RootCover, SceneEntity, StateContext, StateId};
@@ -27,7 +27,7 @@ use crate::shell::game_over::GAME_OVER;
 use crate::shell::options::GameOptions;
 use crate::shell::pause::PAUSE;
 use crate::shell::{self, Difficulty, RunStart, theme};
-use components::{GemSlot, Player};
+use components::Player;
 
 /// The player's prefab, by its manifest ID.
 pub const PLAYER_PREFAB: &str = "player";
@@ -74,6 +74,12 @@ pub const MUSIC_RUN: &str = "music_run";
 pub const MUSIC_PAUSE: &str = "music_pause";
 pub const MUSIC_FADE: f32 = 0.5;
 pub const PAUSE_FADE: f32 = 0.3;
+/// The camera's dead zone, in world pixels: the player roams the middle of
+/// a 1280 × 720 view before the camera follows.
+pub const CAMERA_DEAD_ZONE: [f32; 2] = [640.0, 360.0];
+/// The camera shake's peak offset, in world pixels, at full trauma: a hit's
+/// `shake` cue adds trauma, and the shell's Screen shake option scales it.
+pub const CAMERA_SHAKE: [f32; 2] = [24.0, 16.0];
 
 /// The music playing: the run's voice, which plays on at 0 under pause, and
 /// pause's loop while pause is on top.
@@ -83,12 +89,6 @@ struct Music {
     pause: Option<Voice>,
     ducked: bool,
 }
-/// The camera's dead zone, in world pixels: the player roams the middle of
-/// a 1280 × 720 view before the camera follows.
-pub const CAMERA_DEAD_ZONE: [f32; 2] = [640.0, 360.0];
-/// The camera shake's peak offset, in world pixels, at full trauma: a hit's
-/// `shake` cue adds trauma, and the shell's Screen shake option scales it.
-pub const CAMERA_SHAKE: [f32; 2] = [24.0, 16.0];
 
 /// The player's full health at `difficulty`: its `max_health` stat's base.
 #[must_use]
@@ -113,12 +113,22 @@ pub struct SampleRun {
     pub enemies: Vec<Enemy>,
 }
 
-/// An enemy of [`ENEMIES`]: its entity, and the game seconds it has been
-/// down, which bring it back at [`ENEMY_RETURN_SECS`].
+/// An enemy of [`ENEMIES`]: its entity, and the timer on the game clock
+/// that brings it back [`ENEMY_RETURN_SECS`] after it falls.
 #[derive(Debug, Clone, Copy)]
 pub struct Enemy {
     pub entity: Entity,
-    pub down: f32,
+    pub back: Timer,
+}
+
+impl Enemy {
+    /// Spawns the enemy at `slot` of [`ENEMIES`] at its place.
+    fn spawn(world: &mut World, slot: usize) -> Self {
+        let (prefab, at) = ENEMIES[slot];
+        let entity = prepare(world, prefab, at).spawn(world);
+        let back = Timer::once(ENEMY_RETURN_SECS);
+        Self { entity, back }
+    }
 }
 
 /// The sample as a plugin: the components its prefabs name, the camera's
@@ -185,14 +195,8 @@ fn duck(world: &mut World) {
     });
 }
 
-/// Spawns the enemy at `slot` of [`ENEMIES`] at its place.
-fn spawn_enemy(world: &mut World, slot: usize) -> Entity {
-    let (prefab, at) = ENEMIES[slot];
-    prepare(world, prefab, at).spawn(world)
-}
-
-/// Counts each fallen enemy's game seconds down and brings it back at its
-/// place after [`ENEMY_RETURN_SECS`].
+/// Ticks each fallen enemy's timer by the game clock and brings the enemy
+/// back at its place when the timer ends.
 fn bring_back(world: &mut World) {
     let delta = world.resource::<Time>().delta();
     let Some(mut enemies) = world
@@ -205,34 +209,27 @@ fn bring_back(world: &mut World) {
         let alive = world
             .get::<Health>(enemy.entity)
             .is_some_and(|h| !h.is_dead());
-        enemy.down = if alive { 0.0 } else { enemy.down + delta };
-        if enemy.down >= ENEMY_RETURN_SECS {
-            *enemy = Enemy {
-                entity: spawn_enemy(world, slot),
-                down: 0.0,
-            };
+        if alive {
+            enemy.back.reset();
+        } else if enemy.back.tick(delta) > 0 {
+            *enemy = Enemy::spawn(world, slot);
         }
     }
     world.resource_mut::<SampleRun>().enemies = enemies;
 }
 
 /// `sample_frame`: fallen enemies come back, the damage numbers tag follows
-/// the option on the player, the dummy and the enemies, the camera's zoom
-/// the window, the music the stack and the HUD the run.
+/// the option on whatever has health (the player, the dummy and the
+/// enemies), the camera's zoom the window, the music the stack and the HUD
+/// the run.
 fn frame(world: &mut World) {
     bring_back(world);
     let shown = world.resource::<GameOptions>().damage_numbers;
-    let wearers = world.get_resource::<SampleRun>().map_or(Vec::new(), |run| {
-        let enemies = run.enemies.iter().map(|enemy| enemy.entity);
-        [run.player, run.dummy].into_iter().chain(enemies).collect()
-    });
-    for entity in wearers {
-        if let Some(tags) = world.get_mut::<Tags>(entity) {
-            if shown {
-                tags.insert(DAMAGE_NUMBERS_TAG);
-            } else {
-                tags.remove(DAMAGE_NUMBERS_TAG);
-            }
+    for tags in world.query_mut_filtered::<&mut Tags, With<Health>>() {
+        if shown {
+            tags.insert(DAMAGE_NUMBERS_TAG);
+        } else {
+            tags.remove(DAMAGE_NUMBERS_TAG);
         }
     }
     let zoom = zoom(world);
@@ -272,6 +269,7 @@ impl GameState for GameplayState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
+        let every = |count: usize| (0..).take(count).collect::<Vec<u8>>();
         let (at, gems_left, counted, pickups_left) = match &start.save {
             Some(save) => (
                 save.player,
@@ -279,7 +277,12 @@ impl GameState for GameplayState {
                 save.gems,
                 save.pickups_left.clone(),
             ),
-            None => (PLAYER_START, vec![0, 1, 2], 0, vec![0, 1]),
+            None => (
+                PLAYER_START,
+                every(GEM_STARTS.len()),
+                0,
+                every(PICKUPS.len()),
+            ),
         };
         let mut player = prepare(world, PLAYER_PREFAB, at);
         if let Some(save) = start.save {
@@ -291,10 +294,7 @@ impl GameState for GameplayState {
             stats.set_base(Stats::MAX_HEALTH, max_health(start.difficulty));
         }
         let enemies = (0..ENEMIES.len())
-            .map(|slot| Enemy {
-                entity: spawn_enemy(world, slot),
-                down: 0.0,
-            })
+            .map(|slot| Enemy::spawn(world, slot))
             .collect();
         let dummy = prepare(world, DUMMY_PREFAB, DUMMY_START).spawn(world);
         let pickups = pickups_left
@@ -308,8 +308,7 @@ impl GameState for GameplayState {
             .into_iter()
             .filter_map(|slot| {
                 let at = *GEM_STARTS.get(usize::from(slot))?;
-                let gem = prepare(world, GEM_PREFAB, at).with((GemSlot(slot),));
-                Some((slot, gem.spawn(world)))
+                Some((slot, prepare(world, GEM_PREFAB, at).spawn(world)))
             })
             .collect();
         if !world.has_resource::<Counters>() {
