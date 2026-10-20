@@ -1,6 +1,8 @@
 //! The sample's HUD: a root gameplay owns, drawn and frozen under a pause
-//! (`RootCover::Show`), with a health bar and its "current / max", the gems
-//! counted and a prompt row that names the bound keys for the last device.
+//! (`RootCover::Show`), with a health bar, in the theme's danger colour at a
+//! third of max health or less, and its "current / max", the gems counted,
+//! both in the mono family, and a prompt row that names the bound keys for
+//! the last device.
 
 use tungsten::core::World;
 use tungsten::core::ui::{Anchor, LayoutStyle, Sizing, UiLayer, UiTree, WidgetId};
@@ -19,7 +21,7 @@ pub struct Hud {
     pub health: WidgetId,
     /// "Gems n / 3".
     pub gems: WidgetId,
-    /// The bound pause and mute keys.
+    /// The bound pause and shoot keys.
     pub prompt: WidgetId,
 }
 
@@ -47,10 +49,12 @@ pub fn build(tree: &mut UiTree) -> Hud {
     widgets::fill(tree, fill, accent);
     let health = tree.label(row, "");
     let gems = tree.label(root, "");
+    widgets::mono(tree, health);
+    widgets::mono(tree, gems);
     let prompt = widgets::prompt_row(
         tree,
         root,
-        "{action:state_pause} Pause   {action:toggle_mute} Mute",
+        "{action:state_pause} Pause   {action:shoot} Shoot",
     );
     Hud {
         root,
@@ -80,6 +84,11 @@ pub fn update(world: &mut World) {
     let tree = world.resource_mut::<UiTree>();
     tree.set_plain_text(hud.health, &health);
     tree.set_plain_text(hud.gems, &gems);
+    let colors = tree.theme().tokens.colors;
+    let color = [colors.accent, colors.danger][usize::from(current * 3.0 <= max)];
+    if tree.overrides(hud.fill).and_then(|style| style.background) != Some(color) {
+        widgets::fill(tree, hud.fill, color);
+    }
     let width = Sizing::Percent((current / max * 100.0).clamp(0.0, 100.0));
     if tree
         .layout_style(hud.fill)

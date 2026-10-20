@@ -33,6 +33,64 @@ impl SaveData for SaveV1 {
     const SCHEMA: u32 = 1;
 }
 
+/// The template's save before schema 3: no pickups.
+#[derive(Serialize, Deserialize)]
+struct SaveV2 {
+    meta: shell::RunMeta,
+    player: [f32; 2],
+    health: tungsten::kit::Health,
+    gems_left: Vec<u8>,
+    gems: i64,
+}
+
+impl SaveData for SaveV2 {
+    const SCHEMA: u32 = 2;
+}
+
+#[test]
+fn a_schema_2_save_migrates() {
+    let dir = user_folder("migrate-2");
+    let fresh = fresh_save();
+    let old = SaveV2 {
+        meta: fresh.meta.clone(),
+        player: [120.0, 220.0],
+        health: fresh.health.clone(),
+        gems_left: vec![1],
+        gems: 2,
+    };
+    let slots = SaveSlots::new(Some(dir.join("saves")));
+    slots.save("slot_4", &old).unwrap();
+    let save = slots.load::<SaveGame>("slot_4").expect("schema 2 migrates");
+    assert_eq!(
+        (save.player, save.gems_left, save.gems),
+        ([120.0, 220.0], vec![1], 2)
+    );
+    assert_eq!(save.pickups_left, [0, 1], "every pickup still there");
+    assert_eq!(<SaveGame as SaveData>::SCHEMA, 3);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pickups_left_round_trip() {
+    let dir = user_folder("pickups-left");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let taken = harness.world().resource::<SampleRun>().pickups[0].1;
+    harness.world_mut().despawn(taken);
+    tap(&mut harness, "state_pause");
+    harness.step(1);
+    let saved = SaveSlots::new(Some(dir.join("saves")))
+        .load::<SaveGame>(AUTOSAVE)
+        .unwrap();
+    assert_eq!(saved.pickups_left, [1], "the speed pickup alone");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "Continue");
+    let run = harness.world().resource::<SampleRun>();
+    let left: Vec<u8> = run.pickups.iter().map(|(slot, _)| *slot).collect();
+    assert_eq!(left, [1], "the heal stays taken");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 #[test]
 fn a_schema_1_autosave_migrates() {
     let dir = user_folder("migrate");
@@ -53,6 +111,7 @@ fn a_schema_1_autosave_migrates() {
     assert_eq!((save.health.current(), save.health.max()), (5.0, 5.0));
     assert_eq!(save.gems_left, [0, 1, 2]);
     assert_eq!(save.gems, 0);
+    assert_eq!(save.pickups_left, [0, 1], "through schema 2's step");
 
     // Continued, it plays from there.
     let mut harness = harness_with(UserFolder::At(dir.clone()));
@@ -132,8 +191,8 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     let dir = user_folder("newer-save");
     let slot = slot_file(&dir, AUTOSAVE);
     std::fs::create_dir_all(slot.parent().unwrap()).unwrap();
-    // A save from a newer build of the game: schema 3.
-    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 3, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
+    // A save from a newer build of the game: schema 9.
+    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
     std::fs::write(&slot, newer).unwrap();
 
     let mut harness = harness_with(UserFolder::At(dir.clone()));
@@ -145,6 +204,18 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
     harness.step(1);
     assert_eq!(top(&harness), Some(PAUSE));
     assert_eq!(std::fs::read_to_string(&slot).unwrap(), newer);
+
+    // The last slot, newer too: listed, neither loaded nor overwritten.
+    let last = slot_file(&dir, "slot_10");
+    let newer_last = newer.replace("\"autosave\"", "\"slot_10\"");
+    std::fs::write(&last, &newer_last).unwrap();
+    press(&mut harness, "Save");
+    assert_eq!(find(&harness, "Slot 10"), None, "not a save target");
+    assert!(named(&harness, "Slot 10").is_some(), "but listed");
+    tap(&mut harness, "ui_cancel");
+    press(&mut harness, "Load");
+    assert_eq!(find(&harness, "Slot 10"), None, "nor a load source");
+    assert_eq!(std::fs::read_to_string(&last).unwrap(), newer_last);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -178,7 +249,7 @@ fn options_keep_their_own_folder_and_a_damaged_file_falls_back() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-// ---- the save and load screen (step 3) ----
+// ---- the save and load screen ----
 
 /// `save` with `player` and `gems` written to `slot` in `dir`, played for
 /// 12:04.
@@ -213,29 +284,62 @@ fn row_text(harness: &UiHarness, name: &str) -> String {
 }
 
 #[test]
-fn the_load_screen_lists_the_autosave_and_three_slots_with_summaries() {
+fn the_load_screen_lists_the_autosave_and_ten_slots_and_scrolls() {
     let dir = user_folder("load-screen");
     let save = fresh_save();
     write_slot(&dir, AUTOSAVE, save.clone(), [10.0, 20.0], 1);
-    write_slot(&dir, "slot_2", save, [30.0, 40.0], 2);
+    write_slot(&dir, "slot_2", save.clone(), [30.0, 40.0], 2);
+    write_slot(&dir, "slot_10", save, [50.0, 60.0], 0);
     let mut harness = harness_with(UserFolder::At(dir.clone()));
+    // The smallest viewport, where eleven rows outgrow the card.
+    harness.world_mut().insert_resource(tungsten::WindowSize {
+        width: 731,
+        height: 411,
+    });
     press(&mut harness, "Load");
     assert_eq!(top(&harness), Some(SAVES));
     assert_eq!(
         row_text(&harness, "Autosave"),
-        "Autosave · just now · 12:04 played · v0.1.0\nGems 1 / 3 · Health 5 / 5"
+        format!(
+            "Autosave · just now · 12:04 played · v{}\nGems 1 / 3 · Health 5 / 5",
+            super::info().version
+        )
     );
-    assert_eq!(row_text(&harness, "Slot 1"), "Slot 1 · Empty");
     assert_eq!(
         row_text(&harness, "Slot 2"),
-        "Slot 2 · just now · 12:04 played · v0.1.0\nGems 2 / 3 · Health 5 / 5"
+        format!(
+            "Slot 2 · just now · 12:04 played · v{}\nGems 2 / 3 · Health 5 / 5",
+            super::info().version
+        )
     );
-    assert_eq!(row_text(&harness, "Slot 3"), "Slot 3 · Empty");
-    assert!(find(&harness, "Autosave").is_some() && find(&harness, "Slot 2").is_some());
-    assert_eq!(
-        find(&harness, "Slot 1"),
-        None,
-        "an empty slot loads nothing"
+    for number in [1, 3, 4, 5, 6, 7, 8, 9] {
+        let name = format!("Slot {number}");
+        assert_eq!(row_text(&harness, &name), format!("{name} · Empty"));
+        assert_eq!(find(&harness, &name), None, "an empty slot loads nothing");
+    }
+    assert!(row_text(&harness, "Slot 10").starts_with("Slot 10 · just now"));
+    let tree = harness.tree();
+    let card = named(&harness, "Autosave").and_then(|row| {
+        let mut id = row;
+        while let Some(parent) = tree.parent(id) {
+            if tree.scroll_max(parent).is_some() {
+                return Some(parent);
+            }
+            id = parent;
+        }
+        None
+    });
+    let card = card.expect("the rows sit in a scroll panel");
+    assert!(tree.scroll_max(card).unwrap() > 0.0, "the card scrolls");
+    let last = find(&harness, "Slot 10").unwrap();
+    assert!(harness.focus(last), "focus reaches the last row");
+    harness.layout();
+    let (rect, view) = (harness.rect(last).unwrap(), harness.rect(card).unwrap());
+    let offset = harness.tree().scroll(card).unwrap();
+    assert!(offset > 0.0, "focus scrolls it into view");
+    assert!(
+        rect.max.y - offset <= view.max.y + 0.01,
+        "{rect:?} at {offset} in {view:?}"
     );
     press(&mut harness, "Slot 2");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
@@ -250,8 +354,7 @@ fn saving_to_an_empty_slot_writes_it_and_toasts() {
     start(&mut harness);
     harness.harness_mut().press_action("move_right");
     harness.step(10);
-    harness.harness_mut().release_action("move_right");
-    harness.step(1);
+    super::release_and_settle(&mut harness, "move_right");
     let walked = player_position(&harness).unwrap();
     tap(&mut harness, "state_pause");
     press(&mut harness, "Save");
@@ -310,6 +413,44 @@ fn deleting_asks_first_and_empties_the_slot() {
     assert!(!file.exists());
     assert_eq!(row_text(&harness, "Slot 2"), "Slot 2 · Empty");
     assert_eq!(find(&harness, "Delete Slot 2"), None);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+#[cfg_attr(not(unix), ignore = "Windows does not honor read-only on folders")]
+fn a_delete_that_fails_keeps_the_slot_read_only_and_says_so() {
+    let dir = user_folder("delete-fails");
+    let damaged = "{ not json";
+    let file = slot_file(&dir, "slot_3");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    std::fs::write(&file, damaged).unwrap();
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    tap(&mut harness, "state_pause");
+    press(&mut harness, "Save");
+    press(&mut harness, "Delete Slot 3");
+    // The answer's frame, with the saves folder read-only: the delete fails.
+    let saves = dir.join("saves");
+    let writable = std::fs::metadata(&saves).unwrap().permissions();
+    let mut read_only = writable.clone();
+    read_only.set_readonly(true);
+    std::fs::set_permissions(&saves, read_only).unwrap();
+    let delete = find(&harness, "Delete").unwrap();
+    assert!(harness.focus(delete));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    harness.harness_mut().release_action("ui_accept");
+    std::fs::set_permissions(&saves, writable).unwrap();
+    // Before the screen reads the slots again, the slot is still read-only.
+    assert!(
+        !shell::save_to(harness.world_mut(), "slot_3"),
+        "not written"
+    );
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), damaged);
+    harness.step(1);
+    let toasts = harness.world().resource::<Toasts>().texts(harness.tree());
+    let last = toasts.last().map(String::as_str);
+    assert_eq!(last, Some("Slot 3 could not be deleted"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -442,18 +583,19 @@ fn loading_from_pause_asks_first_unless_the_run_is_checkpointed() {
 }
 
 #[test]
-fn continue_loads_the_newest_slot() {
+fn continue_loads_the_newest_of_eleven_slots() {
     let dir = user_folder("continue-newest");
     let save = fresh_save();
-    write_slot(&dir, AUTOSAVE, save.clone(), [10.0, 20.0], 0);
-    write_slot(&dir, "slot_2", save.clone(), [30.0, 40.0], 0);
-    write_slot(&dir, "slot_3", save, [70.0, 80.0], 0);
-    set_saved_at(&dir, AUTOSAVE, 2_000);
-    set_saved_at(&dir, "slot_2", 3_000);
-    set_saved_at(&dir, "slot_3", 1_000);
+    for (at, slot) in shell::SLOTS.iter().enumerate() {
+        let x = at as f32 * 10.0;
+        write_slot(&dir, slot, save.clone(), [x, x + 1.0], 0);
+        set_saved_at(&dir, slot, 1_000 + at as u64);
+    }
+    set_saved_at(&dir, "slot_7", 9_000);
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "Continue");
-    assert_eq!(player_position(&harness), Some([30.0, 40.0]));
+    assert_eq!(player_position(&harness), Some([70.0, 71.0]), "slot_7");
+    assert_eq!(shell::SLOTS.len(), 11);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

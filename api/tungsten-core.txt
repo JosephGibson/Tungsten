@@ -4642,7 +4642,32 @@ impl core::marker::Unpin for tungsten_core::config::PresentModeConfig
 impl core::marker::UnsafeUnpin for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::PresentModeConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::PresentModeConfig
+#[non_exhaustive] pub struct tungsten_core::config::AudioConfig
+pub tungsten_core::config::AudioConfig::bus_volumes: std::collections::hash::map::HashMap<tungsten_core::audio::AudioBus, f32>
+pub tungsten_core::config::AudioConfig::master_volume: f32
+impl tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::bus_volume(&self, tungsten_core::audio::AudioBus) -> f32
+pub fn tungsten_core::config::AudioConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::clone(&self) -> tungsten_core::config::AudioConfig
+impl core::cmp::PartialEq for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::eq(&self, &tungsten_core::config::AudioConfig) -> bool
+impl core::default::Default for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::default() -> Self
+impl core::fmt::Debug for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::config::AudioConfig
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::AudioConfig where tungsten_core::config::AudioConfig: core::default::Default
+pub fn tungsten_core::config::AudioConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::AudioConfig
+impl core::marker::Send for tungsten_core::config::AudioConfig
+impl core::marker::Sync for tungsten_core::config::AudioConfig
+impl core::marker::Unpin for tungsten_core::config::AudioConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::AudioConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::AudioConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::AudioConfig
 pub struct tungsten_core::config::Config
+pub tungsten_core::config::Config::audio: tungsten_core::config::AudioConfig
 pub tungsten_core::config::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::config::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::config::Config::logging: tungsten_core::config::LoggingConfig
@@ -5031,6 +5056,28 @@ impl core::marker::Unpin for tungsten_core::display::DisplayState
 impl core::marker::UnsafeUnpin for tungsten_core::display::DisplayState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::DisplayState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::DisplayState
+#[non_exhaustive] pub struct tungsten_core::display::MonitorInfo
+pub tungsten_core::display::MonitorInfo::modes: alloc::vec::Vec<tungsten_core::display::VideoMode>
+pub tungsten_core::display::MonitorInfo::refresh_millihertz: core::option::Option<u32>
+pub tungsten_core::display::MonitorInfo::size: tungsten_core::display::Resolution
+impl tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::new(tungsten_core::display::Resolution, core::option::Option<u32>, impl core::iter::traits::collect::IntoIterator<Item = tungsten_core::display::VideoMode>) -> core::option::Option<Self>
+pub fn tungsten_core::display::MonitorInfo::window_sizes(&self) -> alloc::vec::Vec<tungsten_core::display::Resolution>
+impl core::clone::Clone for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::clone(&self) -> tungsten_core::display::MonitorInfo
+impl core::cmp::Eq for tungsten_core::display::MonitorInfo
+impl core::cmp::PartialEq for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::eq(&self, &tungsten_core::display::MonitorInfo) -> bool
+impl core::fmt::Debug for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::display::MonitorInfo
+impl core::marker::Freeze for tungsten_core::display::MonitorInfo
+impl core::marker::Send for tungsten_core::display::MonitorInfo
+impl core::marker::Sync for tungsten_core::display::MonitorInfo
+impl core::marker::Unpin for tungsten_core::display::MonitorInfo
+impl core::marker::UnsafeUnpin for tungsten_core::display::MonitorInfo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::MonitorInfo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::MonitorInfo
 pub struct tungsten_core::display::Resolution
 pub tungsten_core::display::Resolution::height: u32
 pub tungsten_core::display::Resolution::width: u32
@@ -5055,9 +5102,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::Resolution
 pub struct tungsten_core::display::ScaleFactor
 impl tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::min_viewport(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::reference_height(&self) -> core::option::Option<f32>
+pub fn tungsten_core::display::ScaleFactor::set_min_viewport(&mut self, core::option::Option<glam::f32::vec2::Vec2>)
 pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_reference_height(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::display::ScaleFactor::set_ui_scale(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_window_size(&mut self, u32, u32)
 pub fn tungsten_core::display::ScaleFactor::ui_scale(&self) -> f32
 impl core::clone::Clone for tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
@@ -5076,6 +5128,27 @@ impl core::marker::Unpin for tungsten_core::display::ScaleFactor
 impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleFactor
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleFactor
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleFactor
+#[non_exhaustive] pub struct tungsten_core::display::VideoMode
+pub tungsten_core::display::VideoMode::refresh_millihertz: u32
+pub tungsten_core::display::VideoMode::size: tungsten_core::display::Resolution
+impl tungsten_core::display::VideoMode
+pub const fn tungsten_core::display::VideoMode::new(tungsten_core::display::Resolution, u32) -> Self
+impl core::clone::Clone for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::clone(&self) -> tungsten_core::display::VideoMode
+impl core::cmp::Eq for tungsten_core::display::VideoMode
+impl core::cmp::PartialEq for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::eq(&self, &tungsten_core::display::VideoMode) -> bool
+impl core::fmt::Debug for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::VideoMode
+impl core::marker::StructuralPartialEq for tungsten_core::display::VideoMode
+impl core::marker::Freeze for tungsten_core::display::VideoMode
+impl core::marker::Send for tungsten_core::display::VideoMode
+impl core::marker::Sync for tungsten_core::display::VideoMode
+impl core::marker::Unpin for tungsten_core::display::VideoMode
+impl core::marker::UnsafeUnpin for tungsten_core::display::VideoMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::VideoMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::VideoMode
 pub struct tungsten_core::display::WindowSize
 pub tungsten_core::display::WindowSize::height: u32
 pub tungsten_core::display::WindowSize::width: u32
@@ -10112,6 +10185,7 @@ pub tungsten_core::ui::theme::ColorTokens::accent: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::accent_text: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::background: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::border: [u8; 4]
+pub tungsten_core::ui::theme::ColorTokens::danger: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::disabled_text: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::focus: [u8; 4]
 pub tungsten_core::ui::theme::ColorTokens::surface: [u8; 4]
@@ -11277,6 +11351,7 @@ pub tungsten_core::ui::ColorTokens::accent: [u8; 4]
 pub tungsten_core::ui::ColorTokens::accent_text: [u8; 4]
 pub tungsten_core::ui::ColorTokens::background: [u8; 4]
 pub tungsten_core::ui::ColorTokens::border: [u8; 4]
+pub tungsten_core::ui::ColorTokens::danger: [u8; 4]
 pub tungsten_core::ui::ColorTokens::disabled_text: [u8; 4]
 pub tungsten_core::ui::ColorTokens::focus: [u8; 4]
 pub tungsten_core::ui::ColorTokens::surface: [u8; 4]
@@ -14317,6 +14392,30 @@ impl core::marker::Unpin for tungsten_core::audio::AudioCommands
 impl core::marker::UnsafeUnpin for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::audio::AudioCommands
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::audio::AudioCommands
+#[non_exhaustive] pub struct tungsten_core::AudioConfig
+pub tungsten_core::AudioConfig::bus_volumes: std::collections::hash::map::HashMap<tungsten_core::audio::AudioBus, f32>
+pub tungsten_core::AudioConfig::master_volume: f32
+impl tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::bus_volume(&self, tungsten_core::audio::AudioBus) -> f32
+pub fn tungsten_core::config::AudioConfig::validate(&self) -> core::result::Result<(), tungsten_core::config::ConfigError>
+impl core::clone::Clone for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::clone(&self) -> tungsten_core::config::AudioConfig
+impl core::cmp::PartialEq for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::eq(&self, &tungsten_core::config::AudioConfig) -> bool
+impl core::default::Default for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::default() -> Self
+impl core::fmt::Debug for tungsten_core::config::AudioConfig
+pub fn tungsten_core::config::AudioConfig::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::config::AudioConfig
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::config::AudioConfig where tungsten_core::config::AudioConfig: core::default::Default
+pub fn tungsten_core::config::AudioConfig::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::config::AudioConfig
+impl core::marker::Send for tungsten_core::config::AudioConfig
+impl core::marker::Sync for tungsten_core::config::AudioConfig
+impl core::marker::Unpin for tungsten_core::config::AudioConfig
+impl core::marker::UnsafeUnpin for tungsten_core::config::AudioConfig
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::config::AudioConfig
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::config::AudioConfig
 pub struct tungsten_core::AudioHandle(pub u32)
 impl core::clone::Clone for tungsten_core::assets::audio::AudioHandle
 pub fn tungsten_core::assets::audio::AudioHandle::clone(&self) -> tungsten_core::assets::audio::AudioHandle
@@ -14557,6 +14656,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::component_registry::ComponentR
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::component_registry::ComponentRegistry
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::component_registry::ComponentRegistry
 pub struct tungsten_core::Config
+pub tungsten_core::Config::audio: tungsten_core::config::AudioConfig
 pub tungsten_core::Config::display: tungsten_core::display::DisplayConfig
 pub tungsten_core::Config::game: tungsten_core::config::GameConfig
 pub tungsten_core::Config::logging: tungsten_core::config::LoggingConfig
@@ -15575,6 +15675,28 @@ impl core::marker::Unpin for tungsten_core::input::Modifiers
 impl core::marker::UnsafeUnpin for tungsten_core::input::Modifiers
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::Modifiers
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::Modifiers
+#[non_exhaustive] pub struct tungsten_core::MonitorInfo
+pub tungsten_core::MonitorInfo::modes: alloc::vec::Vec<tungsten_core::display::VideoMode>
+pub tungsten_core::MonitorInfo::refresh_millihertz: core::option::Option<u32>
+pub tungsten_core::MonitorInfo::size: tungsten_core::display::Resolution
+impl tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::new(tungsten_core::display::Resolution, core::option::Option<u32>, impl core::iter::traits::collect::IntoIterator<Item = tungsten_core::display::VideoMode>) -> core::option::Option<Self>
+pub fn tungsten_core::display::MonitorInfo::window_sizes(&self) -> alloc::vec::Vec<tungsten_core::display::Resolution>
+impl core::clone::Clone for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::clone(&self) -> tungsten_core::display::MonitorInfo
+impl core::cmp::Eq for tungsten_core::display::MonitorInfo
+impl core::cmp::PartialEq for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::eq(&self, &tungsten_core::display::MonitorInfo) -> bool
+impl core::fmt::Debug for tungsten_core::display::MonitorInfo
+pub fn tungsten_core::display::MonitorInfo::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::display::MonitorInfo
+impl core::marker::Freeze for tungsten_core::display::MonitorInfo
+impl core::marker::Send for tungsten_core::display::MonitorInfo
+impl core::marker::Sync for tungsten_core::display::MonitorInfo
+impl core::marker::Unpin for tungsten_core::display::MonitorInfo
+impl core::marker::UnsafeUnpin for tungsten_core::display::MonitorInfo
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::MonitorInfo
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::MonitorInfo
 #[non_exhaustive] pub struct tungsten_core::ObjectLayer
 pub tungsten_core::ObjectLayer::name: alloc::string::String
 pub tungsten_core::ObjectLayer::objects: alloc::vec::Vec<tungsten_core::assets::tilemap::MapObject>
@@ -16522,9 +16644,14 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
 pub struct tungsten_core::ScaleFactor
 impl tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::min_viewport(&self) -> core::option::Option<glam::f32::vec2::Vec2>
 pub fn tungsten_core::display::ScaleFactor::os(&self) -> f32
+pub fn tungsten_core::display::ScaleFactor::reference_height(&self) -> core::option::Option<f32>
+pub fn tungsten_core::display::ScaleFactor::set_min_viewport(&mut self, core::option::Option<glam::f32::vec2::Vec2>)
 pub fn tungsten_core::display::ScaleFactor::set_os(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_reference_height(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::display::ScaleFactor::set_ui_scale(&mut self, f32)
+pub fn tungsten_core::display::ScaleFactor::set_window_size(&mut self, u32, u32)
 pub fn tungsten_core::display::ScaleFactor::ui_scale(&self) -> f32
 impl core::clone::Clone for tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::clone(&self) -> tungsten_core::display::ScaleFactor
@@ -17812,6 +17939,27 @@ impl core::marker::Unpin for tungsten_core::physics::components::Velocity
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::Velocity
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::Velocity
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::Velocity
+#[non_exhaustive] pub struct tungsten_core::VideoMode
+pub tungsten_core::VideoMode::refresh_millihertz: u32
+pub tungsten_core::VideoMode::size: tungsten_core::display::Resolution
+impl tungsten_core::display::VideoMode
+pub const fn tungsten_core::display::VideoMode::new(tungsten_core::display::Resolution, u32) -> Self
+impl core::clone::Clone for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::clone(&self) -> tungsten_core::display::VideoMode
+impl core::cmp::Eq for tungsten_core::display::VideoMode
+impl core::cmp::PartialEq for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::eq(&self, &tungsten_core::display::VideoMode) -> bool
+impl core::fmt::Debug for tungsten_core::display::VideoMode
+pub fn tungsten_core::display::VideoMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::display::VideoMode
+impl core::marker::StructuralPartialEq for tungsten_core::display::VideoMode
+impl core::marker::Freeze for tungsten_core::display::VideoMode
+impl core::marker::Send for tungsten_core::display::VideoMode
+impl core::marker::Sync for tungsten_core::display::VideoMode
+impl core::marker::Unpin for tungsten_core::display::VideoMode
+impl core::marker::UnsafeUnpin for tungsten_core::display::VideoMode
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::VideoMode
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::VideoMode
 pub struct tungsten_core::VignetteParams
 pub tungsten_core::VignetteParams::color: [f32; 4]
 pub tungsten_core::VignetteParams::inner: f32

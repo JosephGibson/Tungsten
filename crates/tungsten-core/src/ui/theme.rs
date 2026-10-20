@@ -89,6 +89,9 @@ pub struct ColorTokens {
     pub focus: [u8; 4],
     /// Text of a disabled widget.
     pub disabled_text: [u8; 4],
+    /// Destructive actions and warnings, such as a Delete button's text or
+    /// a low-health bar (`D-184`). No built-in kind uses it.
+    pub danger: [u8; 4],
 }
 
 impl Default for ColorTokens {
@@ -103,6 +106,7 @@ impl Default for ColorTokens {
             accent_text: [255, 255, 255, 255],
             focus: [255, 196, 64, 255],
             disabled_text: [120, 122, 135, 255],
+            danger: [255, 107, 107, 255],
         }
     }
 }

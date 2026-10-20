@@ -1,0 +1,10 @@
+{
+  "sprite": { "asset_id": "heal_pickup" },
+  "components": {
+    "pickup": { "shape": { "circle": 6 }, "offset": [16, 16], "filter": { "all": ["team.player"] } },
+    "oscillator": { "position": { "amplitude": [0, 4], "period": 1.2 } },
+    "cues": {
+      "picked_up": [{ "effect": { "id": "heal", "target": "other" } }, { "sound": { "id": "pickup" } }]
+    }
+  }
+}

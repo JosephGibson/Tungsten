@@ -47,7 +47,11 @@ fn smoothing_blend(s: f32, dt: f32) -> f32 {
     }
 }
 
-/// Update authoritative camera state for the frame.
+/// Moves the camera for the frame: from the position a game wrote into
+/// `CameraState` (`Free`, `Scripted`), or toward the followed entity
+/// (`Follow`), clamped to the controller's bounds; the zoom times
+/// `zoom_multiplier`; then the shake offset, which the next frame takes back
+/// off before it reads the position, so a game writes it without the shake.
 pub fn camera_update_system(world: &mut World) {
     let Some(mut camera) = world.get_resource::<CameraState>().copied() else {
         return;

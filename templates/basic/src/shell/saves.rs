@@ -1,22 +1,24 @@
-//! The save and load screen over the autosave and three slots. Each row
-//! names its slot's state in text: empty, ready (when, playtime, version and
-//! the game's summary), saved by a newer version, or damaged; a newer or
-//! damaged slot is neither loaded nor overwritten, and any slot with a file
-//! can be deleted after a confirm. Save mode (from pause) saves to an empty
+//! The save and load screen over the autosave and ten slots, in a card that
+//! scrolls. Each row names its slot's state in text, in the mono family:
+//! empty, ready (when, playtime, version and the game's summary), saved by a
+//! newer version, or damaged; a newer or damaged slot is neither loaded nor
+//! overwritten, and any slot with a file can be deleted after a confirm, a
+//! delete that fails saying so. Save mode (from pause) saves to an empty
 //! slot at once and asks before it overwrites; the autosave is no target.
 //! Load mode (from the title, pause and game over) starts the run from a
 //! ready slot, asking first only over a live run that is not checkpointed.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use tungsten::core::save::SaveError;
 use tungsten::core::ui::{Sizing, UiTree, WidgetId};
 use tungsten::core::{SaveSlots, World};
-use tungsten::{GameState, RootCover, StateContext, StateId};
+use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
 use super::{
-    AUTOSAVE, RunStart, SLOTS, Shell, SlotState, cancelled, clicked, idle, pop, read_slots, run,
-    save_to, stack, start_run, theme, toast, widgets,
+    AUTOSAVE, RunStart, SLOTS, Shell, SlotState, cancelled, clicked, enter, idle, pop, read_slots,
+    run, save_to, start_run, theme, toast, widgets,
 };
 use crate::save;
 
@@ -57,10 +59,6 @@ impl SavesState {
         let Some((_, rows, back)) = &self.ui else {
             return;
         };
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default();
-        let now = u64::try_from(now.as_millis()).unwrap_or(u64::MAX);
         let tree = world.resource_mut::<UiTree>();
         for ((slot, state), [button, delete]) in slots.iter().zip(rows) {
             let name = slot_name(slot);
@@ -68,7 +66,7 @@ impl SavesState {
                 SlotState::Off => (format!("{name} · Saving is off"), false),
                 SlotState::Empty => (format!("{name} · Empty"), self.mode == Mode::Save),
                 SlotState::Ready(save, at) => {
-                    let (meta, ago) = (&save.meta, ago(now.saturating_sub(*at)));
+                    let (meta, ago) = (&save.meta, age(*at));
                     let played = clock(meta.playtime_secs);
                     let summary = save::summary(save);
                     let version = &meta.game_version;
@@ -140,28 +138,36 @@ fn saved(world: &mut World, slot: &'static str) {
     toast::toast(world, text);
 }
 
-/// Deletes `slot`'s file, so it can be written again.
+/// Deletes `slot`'s file, so it can be written again; a file that stays
+/// keeps the slot read-only, and a toast says so.
 fn delete(world: &mut World, slot: &'static str) {
-    if let Err(error) = world.resource::<SaveSlots>().delete(slot) {
-        log::warn!("Save slot '{slot}' not deleted: {error}");
+    match world.resource::<SaveSlots>().delete(slot) {
+        Ok(()) | Err(SaveError::NotFound { .. }) => {
+            let shell = world.resource_mut::<Shell>();
+            shell.read_only.retain(|kept| *kept != slot);
+        }
+        Err(error) => {
+            log::warn!("Save slot '{slot}' not deleted: {error}");
+            toast::toast(world, format!("{} could not be deleted", slot_name(slot)));
+        }
     }
-    world
-        .resource_mut::<Shell>()
-        .read_only
-        .retain(|kept| *kept != slot);
 }
 
 /// A slot's name on screen.
-fn slot_name(slot: &str) -> String {
+pub(crate) fn slot_name(slot: &str) -> String {
     match slot.strip_prefix("slot_") {
         Some(number) => format!("Slot {number}"),
         None => "Autosave".to_owned(),
     }
 }
 
-/// How long ago `ms` milliseconds is, roughly.
-fn ago(ms: u64) -> String {
-    match ms / 60_000 {
+/// How long ago a save written at `at` (Unix ms) was, roughly.
+pub(crate) fn age(at: u64) -> String {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let now = u64::try_from(now.as_millis()).unwrap_or(u64::MAX);
+    match now.saturating_sub(at) / 60_000 {
         0 => "just now".to_owned(),
         minutes @ 1..60 => format!("{minutes} min ago"),
         minutes @ 60..1440 => format!("{} h ago", minutes / 60),
@@ -186,25 +192,22 @@ impl GameState for SavesState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let root = widgets::screen(tree, theme::WIDE_WIDTH);
-        let heading = if self.mode == Mode::Save {
-            "Save"
-        } else {
-            "Load"
-        };
-        widgets::heading(tree, root, heading);
+        let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
+        let heading = ["Load", "Save"][usize::from(self.mode == Mode::Save)];
+        widgets::heading(tree, card, heading, false);
         let mut rows = Vec::new();
         for slot in SLOTS {
-            let (row, name) = (widgets::row(tree, root), slot_name(slot));
+            let (row, name) = (widgets::row(tree, card), slot_name(slot));
             let button = widgets::button(tree, row, &name);
             widgets::set_width(tree, button, Sizing::Fill);
+            widgets::mono(tree, button);
             let delete = widgets::button(tree, row, &format!("Delete {name}"));
             tree.set_text(delete, "Delete");
+            widgets::danger(tree, delete);
             rows.push([button, delete]);
         }
-        let back = widgets::button(tree, root, "Back");
-        theme::slide_in(tree, root);
-        stack(ctx.world).own_root(root, RootCover::Hide);
+        let back = widgets::button(tree, card, "Back");
+        enter(ctx.world, root);
         self.ui = Some((root, rows, back));
         self.refresh(ctx.world);
     }

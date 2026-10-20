@@ -38,8 +38,13 @@ fn rotated_view_extents(view_size: Vec2, rotation: f32) -> (Vec2, Vec2) {
 /// Camera behavior mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CameraMode {
+    /// The camera stays where a game writes [`CameraState::position`],
+    /// its top-left in world units; the shake is added on top each frame.
     Free,
+    /// The camera follows the entity's drawn point once it leaves the dead
+    /// zone, at the smoothing factor.
     Follow(Entity),
+    /// As [`Free`](Self::Free), for a camera a script moves.
     Scripted,
 }
 

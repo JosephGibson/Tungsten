@@ -3246,6 +3246,8 @@ impl tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
+pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 impl core::clone::Clone for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::clone(&self) -> tungsten_kit::TopDownMover
@@ -6852,6 +6854,8 @@ impl tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::direction(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::TopDownMover::new(f32) -> Self
 pub fn tungsten_kit::TopDownMover::set_direction(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::TopDownMover::with_acceleration(self, f32) -> Self
+pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 impl core::clone::Clone for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::clone(&self) -> tungsten_kit::TopDownMover

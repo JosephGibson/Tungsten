@@ -1,24 +1,30 @@
-//! Release-archive launcher (`D-072`): runs the fastest build of an example that
-//! this CPU supports, from the archive root.
+//! Release-archive launcher (`D-072`): runs the fastest build of an example or
+//! a template that this CPU supports, from the archive root or the template's
+//! folder.
 //!
-//! Archives ship one copy of this binary per example, named like the example
-//! (`example-01-platformer[.exe]`), next to `bin/<level>/<example>` builds for
+//! Archives ship one copy of this binary per build, named like it
+//! (`example-01-platformer[.exe]`), next to `bin/<level>/<build>` builds for
 //! several x86-64 levels. The launcher picks the highest level whose directory
 //! exists and whose features the CPU reports, then runs that build with the
 //! archive root as the working directory, where the examples read
-//! `tungsten.json`, `input.json` and their assets. It names the chosen level on
-//! stderr; `TUNGSTEN_CPU_LEVEL` forces one. Standard library only; the levels
-//! must match `LEVELS` in `scripts/release.py`.
+//! `tungsten.json`, `input.json` and their assets, or, for a build [`FOLDERS`]
+//! lists, with its folder of the archive (`D-186`). It names the chosen level
+//! on stderr; `TUNGSTEN_CPU_LEVEL` forces one. Standard library only; the
+//! levels must match `LEVELS` in `scripts/release.py`, and the folders its
+//! `templates(root)`.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::env;
-use std::ffi::OsString;
-use std::path::Path;
+use std::ffi::{OsStr, OsString};
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// Levels the launcher knows, fastest first. `x86-64` is the portable baseline.
 const LEVELS: [&str; 4] = ["x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64"];
+/// Builds that read their files from a folder of the archive, by launcher
+/// file stem: the templates `scripts/release.py` archives (`D-186`).
+const FOLDERS: [(&str, &str); 1] = [("tungsten-template-basic", "templates/basic")];
 /// Environment override naming one of [`LEVELS`].
 const OVERRIDE: &str = "TUNGSTEN_CPU_LEVEL";
 
@@ -44,11 +50,21 @@ fn run() -> Result<ExitCode, String> {
     let forced = env::var(OVERRIDE).ok();
     let level = choose(&available, supports, forced.as_deref())?;
     eprintln!("tungsten-launcher: running the {level} build");
+    let stem = exe.file_stem().unwrap_or(name);
     launch(
         &bin.join(level).join(name),
-        root,
+        &working_dir(root, stem),
         env::args_os().skip(1).collect(),
     )
+}
+
+/// Where the build named `stem` runs: its folder under `root` when
+/// [`FOLDERS`] lists it, else `root`.
+fn working_dir(root: &Path, stem: &OsStr) -> PathBuf {
+    FOLDERS
+        .iter()
+        .find(|(listed, _)| stem == OsStr::new(listed))
+        .map_or_else(|| root.to_path_buf(), |(_, folder)| root.join(folder))
 }
 
 /// The level to run: the override if given and shipped, else the fastest
@@ -149,7 +165,27 @@ fn launch(target: &Path, root: &Path, args: Vec<OsString>) -> Result<ExitCode, S
 
 #[cfg(test)]
 mod tests {
-    use super::choose;
+    use std::ffi::OsStr;
+    use std::path::Path;
+
+    use super::{choose, working_dir};
+
+    #[test]
+    fn a_listed_build_runs_from_its_folder() {
+        let root = Path::new("archive");
+        assert_eq!(
+            working_dir(root, OsStr::new("tungsten-template-basic")),
+            root.join("templates").join("basic")
+        );
+    }
+
+    #[test]
+    fn an_example_runs_from_the_root() {
+        let root = Path::new("archive");
+        for stem in ["example-01-platformer", "tungsten-template", ""] {
+            assert_eq!(working_dir(root, OsStr::new(stem)), root, "{stem:?}");
+        }
+    }
 
     const SHIPPED: [&str; 2] = ["x86-64-v3", "x86-64"];
 

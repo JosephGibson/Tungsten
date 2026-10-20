@@ -1,0 +1,6 @@
+{
+  "components": {
+    "particle_emitter": { "config": "spark" },
+    "lifetime": { "seconds": 0.5 }
+  }
+}

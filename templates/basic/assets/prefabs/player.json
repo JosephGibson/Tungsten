@@ -3,14 +3,23 @@
   "components": {
     "player": null,
     "tags": ["team.player"],
-    "action_input": { "move": ["move_left", "move_right", "move_up", "move_down"] },
-    "top_down_mover": { "speed": 240 },
+    "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [12, 12] }, "offset": [16, 16] },
+    "action_input": {
+      "move": ["move_left", "move_right", "move_up", "move_down"],
+      "slots": { "shoot": "shoot" }
+    },
+    "top_down_mover": { "speed": 240, "acceleration": 1800, "deceleration": 2400 },
+    "aim": { "from": "cursor", "offset": [16, 16] },
+    "abilities": ["shot"],
     "health": { "max": 5, "invulnerability": 0.5 },
-    "hurtbox": { "shape": { "circle": 8 } },
+    "hurtbox": { "shape": { "circle": 12 }, "offset": [16, 16] },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
     "knockback": { "seconds": 0.2 },
     "stats": { "pickup_radius": 96, "move_speed": 240, "max_health": 5 },
     "camera_target": null,
-    "cues": { "damaged": [{ "shake": 0.25 }] }
+    "cues": {
+      "damaged": [{ "shake": 0.6 }, { "sound": { "id": "hurt" } }],
+      "ability_used": [{ "sound": { "id": "shoot" } }]
+    }
   }
 }

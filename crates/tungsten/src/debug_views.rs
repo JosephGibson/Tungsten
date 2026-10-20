@@ -550,8 +550,9 @@ pub(crate) struct ViewFrame<'a> {
     pub(crate) viewport: Vec2,
     /// Physical pixels per tree unit: `ScaleFactor::get()`.
     pub(crate) scale: f32,
-    /// OS-logical units per debug unit: the player's UI scale times the
-    /// debug scale (M58), what a saved place is multiplied by.
+    /// OS-logical units per debug unit: the tree's factor times the debug
+    /// scale over the OS scale (M58, `D-184`), what a saved place is
+    /// multiplied by.
     units: f32,
     /// The placements the dock gave its windows at the last frame (M58):
     /// another placement means a drag or the game moved the window.
@@ -1637,9 +1638,9 @@ pub(crate) fn update_with(world: &mut World, paint: Option<&PaintList>) {
     let mut placements = world
         .remove_resource::<WindowPlacements>()
         .unwrap_or_default();
-    let (scale, ui) = world
+    let (scale, os) = world
         .get_resource::<ScaleFactor>()
-        .map_or((1.0, 1.0), |scale| (scale.get(), scale.ui_scale()));
+        .map_or((1.0, 1.0), |scale| (scale.get(), scale.os()));
     let debug = tree.debug_scale();
     let viewport = world
         .get_resource::<WindowSize>()
@@ -1700,7 +1701,7 @@ pub(crate) fn update_with(world: &mut World, paint: Option<&PaintList>) {
         placements: &mut placements,
         viewport,
         scale,
-        units: ui * debug,
+        units: scale * debug / os,
         docked,
         docking: Vec::new(),
         moved,
@@ -1765,21 +1766,22 @@ pub(crate) fn step_for(logical: Vec2) -> f32 {
 }
 
 /// The debug layers' scale this frame (M58): the zoom kept with the window
-/// places times the step for the OS-logical viewport, over the player's UI
-/// scale, which the tree's scale already holds; 1 step without a window
-/// size.
+/// places times the step for the OS-logical viewport, times the OS scale
+/// over the tree's factor, which already holds the player's UI scale and
+/// any window-relative base a game set (`D-184`), so the views keep their
+/// OS-relative size; 1 step without a window size.
 fn debug_factor(world: &World) -> f32 {
     let zoom = world
         .get_resource::<WindowPlacements>()
         .and_then(WindowPlacements::zoom)
         .map_or(1.0, snap_zoom);
-    let (os, ui) = world
+    let (os, factor) = world
         .get_resource::<ScaleFactor>()
-        .map_or((1.0, 1.0), |scale| (scale.os(), scale.ui_scale()));
+        .map_or((1.0, 1.0), |scale| (scale.os(), scale.get()));
     let step = world.get_resource::<WindowSize>().map_or(1.0, |size| {
         step_for(Vec2::new(size.width as f32, size.height as f32) / os)
     });
-    zoom * step / ui
+    zoom * step * os / factor
 }
 
 /// The zoom keys (M58), read from the frame's raw key presses, OS repeats

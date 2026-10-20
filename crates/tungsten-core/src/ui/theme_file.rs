@@ -166,6 +166,7 @@ impl TokensFile {
             (self.colors.accent_text, &mut colors.accent_text),
             (self.colors.focus, &mut colors.focus),
             (self.colors.disabled_text, &mut colors.disabled_text),
+            (self.colors.danger, &mut colors.danger),
         ] {
             if let Some(Color(color)) = value {
                 *slot = color;
@@ -229,6 +230,7 @@ struct ColorsFile {
     accent_text: Option<Color>,
     focus: Option<Color>,
     disabled_text: Option<Color>,
+    danger: Option<Color>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]

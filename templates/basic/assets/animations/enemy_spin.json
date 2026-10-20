@@ -1,0 +1,9 @@
+{
+  "looping": true,
+  "frames": [
+    { "sprite": "enemy", "duration_ms": 110 },
+    { "sprite": "enemy_1", "duration_ms": 110 },
+    { "sprite": "enemy_2", "duration_ms": 110 },
+    { "sprite": "enemy_3", "duration_ms": 110 }
+  ]
+}

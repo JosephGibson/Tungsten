@@ -6,17 +6,19 @@ use std::num::NonZeroU32;
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
     AudioBus, AudioCommand, CameraController, DisplayMode, DisplayState, FrameRateCap, InputState,
-    SaveSlots, ScaleFactor, Settings, Time, UserFolder,
+    KeyCode, MonitorInfo, Resolution, SaveSlots, ScaleFactor, Settings, Time, UserFolder,
+    VideoMode,
 };
 use tungsten::kit::{Hit, damage};
 use tungsten::testing::UiHarness;
+use tungsten::{WindowSize, shipped_volume};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::CAMERA_SHAKE;
 use tungsten_template_basic::save::SaveGame;
 use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::settings::{self, SETTINGS};
-use tungsten_template_basic::shell::{AUTOSAVE, Difficulty, widgets};
+use tungsten_template_basic::shell::{AUTOSAVE, Difficulty, theme, widgets};
 
 use super::{
     find, harness, harness_with, health, named, player_entity, press, settle, start, tap, top,
@@ -77,6 +79,7 @@ fn a_display_revert_keeps_the_focus_mute() {
         .mute_unfocused = true;
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
     assert_eq!(top(&harness), Some(CONFIRM));
     set_focus(&mut harness, false);
     // From the focus loss through the countdown's end and its revert.
@@ -92,7 +95,11 @@ fn a_display_revert_keeps_the_focus_mute() {
     assert_eq!(settings(&harness).display_mode(), None);
     set_focus(&mut harness, true);
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [1.0], "focus back unmutes");
+    assert_eq!(
+        master_volumes(&harness),
+        [0.8],
+        "focus back unmutes, to the shipped volume"
+    );
 }
 
 #[test]
@@ -102,7 +109,8 @@ fn retry_keeps_a_difficulty_changed_mid_run() {
     start(&mut harness);
     tap(&mut harness, "state_pause");
     harness.step(1);
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Difficulty");
     assert_eq!(row_text(&harness, "Difficulty"), "Hard");
     press(&mut harness, "Back");
@@ -140,14 +148,46 @@ fn tabs_switch_with_the_tab_row_and_ui_next() {
 }
 
 #[test]
-fn gameplay_options_opens_on_the_gameplay_tab() {
+fn pause_reaches_the_gameplay_options_through_settings() {
     let mut harness = harness();
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    assert_eq!(named(&harness, "Gameplay Options"), None, "not on pause");
+    press(&mut harness, "Settings");
     assert_eq!(top(&harness), Some(SETTINGS));
+    press(&mut harness, "Gameplay");
     assert!(find(&harness, "Difficulty").is_some(), "on in a run");
     assert_eq!(find(&harness, "Window mode"), None);
+}
+
+#[test]
+fn window_sizes_cycle_until_apply_sends_them() {
+    let mut harness = harness();
+    from_title(&mut harness);
+    assert_eq!(find(&harness, "Apply"), None, "nothing to apply");
+    press(&mut harness, "Window size");
+    press(&mut harness, "Reset tab");
+    assert_eq!(
+        row_text(&harness, "Window size"),
+        "1280×720 (16:9)",
+        "Reset drops it"
+    );
+    for _ in 0..3 {
+        press(&mut harness, "Window size");
+    }
+    assert_eq!(top(&harness), Some(SETTINGS), "no question while picking");
+    assert_eq!(settings(&harness).resolution(), None, "nothing sent");
+    assert_eq!(row_text(&harness, "Window size"), "2560×1440 (16:9)");
+    press(&mut harness, "Apply");
+    assert_eq!(top(&harness), Some(CONFIRM));
+    assert_eq!(
+        settings(&harness).resolution().map(|size| size.width),
+        Some(2560)
+    );
+    press(&mut harness, "Revert");
+    assert_eq!(settings(&harness).resolution(), None, "reverted");
+    assert_eq!(row_text(&harness, "Window size"), "1280×720 (16:9)");
+    assert_eq!(find(&harness, "Apply"), None, "nothing left to apply");
 }
 
 #[test]
@@ -155,6 +195,9 @@ fn a_window_mode_change_reverts_after_ten_seconds() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    assert_eq!(settings(&harness).display_mode(), None, "picked, not sent");
+    assert_eq!(row_text(&harness, "Window mode"), "Fullscreen");
+    press(&mut harness, "Apply");
     assert_eq!(
         settings(&harness).display_mode(),
         Some(DisplayMode::BorderlessFullscreen)
@@ -170,10 +213,36 @@ fn a_window_mode_change_reverts_after_ten_seconds() {
 }
 
 #[test]
+fn f11_and_f9_are_kept_in_settings_and_survive_a_restart() {
+    let dir = user_folder("display-keys");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let vsync = harness.world().resource::<DisplayState>().vsync;
+    for key in [KeyCode::F11, KeyCode::F9] {
+        harness.key_down(key);
+        harness.step(1);
+        harness.key_up(key);
+        harness.step(1);
+    }
+    let fullscreen = Some(DisplayMode::BorderlessFullscreen);
+    assert_eq!(settings(&harness).display_mode(), fullscreen, "F11 is kept");
+    assert_eq!(settings(&harness).vsync(), Some(!vsync), "F9 is kept");
+    // The Display rows read the set value when Settings opens.
+    from_title(&mut harness);
+    assert_eq!(row_text(&harness, "Window mode"), "Fullscreen");
+    // Saved at the press: a restart starts fullscreen.
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let display = *restarted.world().resource::<DisplayState>();
+    assert_eq!(display.display_mode, DisplayMode::BorderlessFullscreen);
+    assert_eq!(display.vsync, !vsync);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn keep_confirms_the_display_change() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(top(&harness), Some(SETTINGS));
     assert_eq!(
@@ -188,9 +257,12 @@ fn window_size_is_disabled_in_fullscreen() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window size");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
-    assert_eq!(row_text(&harness, "Window size"), "1600×900");
+    assert_eq!(row_text(&harness, "Window size"), "1600×900 (16:9)");
     press(&mut harness, "Window mode");
+    assert_eq!(find(&harness, "Window size"), None, "off once picked");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(find(&harness, "Window size"), None, "off in fullscreen");
     assert_eq!(
@@ -199,31 +271,296 @@ fn window_size_is_disabled_in_fullscreen() {
     );
 }
 
+/// The text of the readout after the slider named `name`.
+fn readout(harness: &UiHarness, name: &str) -> String {
+    let tree = harness.tree();
+    let slider = named(harness, name).expect("a slider");
+    let row = tree.parent(slider).unwrap();
+    let readout = *tree.children(row).last().unwrap();
+    widgets::text_of(tree, readout)
+}
+
+fn fps(n: u32) -> Option<FrameRateCap> {
+    Some(FrameRateCap::Fps(NonZeroU32::new(n).unwrap()))
+}
+
+fn toggled(harness: &UiHarness, name: &str) -> Option<bool> {
+    harness.tree().toggled(named(harness, name)?)
+}
+
 #[test]
-fn the_frame_rate_limit_writes_settings_and_the_display_request() {
+fn the_frame_rate_limit_is_a_slider_and_an_unlimited_toggle() {
     let dir = user_folder("frame-limit");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     from_title(&mut harness);
-    assert_eq!(row_text(&harness, "Frame rate limit"), "Off");
-    press(&mut harness, "Frame rate limit");
-    let fps = |n| Some(FrameRateCap::Fps(NonZeroU32::new(n).unwrap()));
-    assert_eq!(settings(&harness).frame_rate_cap(), fps(30));
-    press(&mut harness, "Frame rate limit");
+    // Unset: the template ships no cap, so Unlimited is on and the slider
+    // rests at 60, off.
+    assert_eq!(toggled(&harness, "Unlimited"), Some(true));
+    assert_eq!(
+        find(&harness, "Frame rate limit"),
+        None,
+        "off while Unlimited"
+    );
+    assert_eq!(readout(&harness, "Frame rate limit"), "60 fps");
+    press(&mut harness, "Unlimited");
     assert_eq!(settings(&harness).frame_rate_cap(), fps(60));
-    assert_eq!(row_text(&harness, "Frame rate limit"), "60");
+    nudge(&mut harness, "Frame rate limit", "ui_right");
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(65));
+    assert_eq!(readout(&harness, "Frame rate limit"), "65 fps");
+    press(&mut harness, "Unlimited");
+    assert_eq!(
+        settings(&harness).frame_rate_cap(),
+        Some(FrameRateCap::Uncapped)
+    );
+    assert_eq!(find(&harness, "Frame rate limit"), None);
+    press(&mut harness, "Unlimited");
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(65), "the slider's");
+    nudge(&mut harness, "Frame rate limit", "ui_right");
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(70));
     press(&mut harness, "Back");
     // Headless, a display request has no window to reach, so a restart
     // shows where the cap lands.
     let restarted = harness_with(UserFolder::At(dir.clone()));
     assert_eq!(
         restarted.world().resource::<Settings>().frame_rate_cap(),
-        fps(60)
+        fps(70)
     );
     assert_eq!(
         restarted.world().resource::<DisplayState>().frame_rate_cap,
-        Some(60)
+        Some(70)
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_frame_rate_limit_stops_at_thirty() {
+    let mut harness = harness();
+    from_title(&mut harness);
+    press(&mut harness, "Unlimited");
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(60));
+    for _ in 0..10 {
+        nudge(&mut harness, "Frame rate limit", "ui_left");
+    }
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(30), "the floor");
+    assert_eq!(readout(&harness, "Frame rate limit"), "30 fps");
+}
+
+#[test]
+fn window_sizes_show_their_aspect_ratio() {
+    let sizes = [
+        ((1280, 720), "16:9"),
+        ((1366, 768), "16:9"),
+        ((1920, 1200), "16:10"),
+        ((1280, 1024), "5:4"),
+        ((1024, 768), "4:3"),
+        ((2560, 1080), "21:9"),
+        ((3440, 1440), "21:9"),
+        ((5120, 1440), "32:9"),
+        ((1280, 768), "5:3"),
+    ];
+    for ((width, height), ratio) in sizes {
+        assert_eq!(settings::aspect(width, height), ratio, "{width}×{height}");
+    }
+}
+
+#[test]
+fn an_off_grid_cap_keeps_its_value_until_moved() {
+    let dir = user_folder("off-grid-cap");
+    std::fs::create_dir_all(dir.join("settings")).unwrap();
+    let file = dir.join("settings").join("settings.json");
+    std::fs::write(&file, r#"{ "display": { "frame_rate_cap": 144 } }"#).unwrap();
+    for _ in 0..2 {
+        // Shown exactly and kept, across a Back and a restart.
+        let mut harness = harness_with(UserFolder::At(dir.clone()));
+        from_title(&mut harness);
+        assert_eq!(settings(&harness).frame_rate_cap(), fps(144));
+        assert_eq!(readout(&harness, "Frame rate limit"), "144 fps");
+        assert_eq!(toggled(&harness, "Unlimited"), Some(false));
+        press(&mut harness, "Back");
+        assert_eq!(settings(&harness).frame_rate_cap(), fps(144));
+    }
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    from_title(&mut harness);
+    nudge(&mut harness, "Frame rate limit", "ui_right");
+    let Some(FrameRateCap::Fps(moved)) = settings(&harness).frame_rate_cap() else {
+        panic!("a cap");
+    };
+    assert!(
+        moved.get() % 5 == 0 && moved.get() > 144,
+        "a grid value: {moved}"
+    );
+    assert_eq!(
+        readout(&harness, "Frame rate limit"),
+        format!("{moved} fps")
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn every_slider_shows_its_value_as_it_moves() {
+    let mut harness = harness();
+    from_title(&mut harness);
+    press(&mut harness, "Audio");
+    for name in ["Master", "Music", "Effects"] {
+        assert_eq!(readout(&harness, name), "80%", "{name}");
+    }
+    nudge(&mut harness, "Effects", "ui_left");
+    assert_eq!(readout(&harness, "Effects"), "75%");
+    press(&mut harness, "Gameplay");
+    assert_eq!(readout(&harness, "Screen shake"), "100%");
+    nudge(&mut harness, "Screen shake", "ui_left");
+    assert_eq!(readout(&harness, "Screen shake"), "95%");
+    press(&mut harness, "Interface");
+    assert_eq!(readout(&harness, "UI scale"), "100%");
+    assert_eq!(readout(&harness, "Text scale"), "100%");
+    nudge(&mut harness, "Text scale", "ui_left");
+    assert_eq!(readout(&harness, "Text scale"), "75%");
+    // A held scale slider shows its value at once and applies it at the
+    // release, so the UI does not rescale under the pointer.
+    let slider = find(&harness, "UI scale").unwrap();
+    let rect = harness.rect(slider).unwrap();
+    let scale = harness.world().resource::<ScaleFactor>().get();
+    let y = (rect.min.y + rect.max.y) * 0.5 * scale;
+    harness.pointer_to(rect.min.x * scale + 1.0, y);
+    harness.pointer_down();
+    harness.step(1);
+    harness.pointer_to(rect.max.x * scale + 40.0, y);
+    harness.step(1);
+    assert_eq!(readout(&harness, "UI scale"), "200%", "the most");
+    assert_eq!(harness.world().resource::<ScaleFactor>().ui_scale(), 1.0);
+    harness.pointer_up();
+    harness.step(1);
+    assert_eq!(harness.world().resource::<ScaleFactor>().ui_scale(), 2.0);
+    assert_eq!(readout(&harness, "UI scale"), "200%");
+}
+
+#[test]
+fn volumes_ship_at_eighty_percent_and_reset_to_it() {
+    let dir = user_folder("shipped-volumes");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    for bus in [None, Some(AudioBus::Music), Some(AudioBus::Effects)] {
+        assert_eq!(shipped_volume(harness.world(), bus), 0.8, "{bus:?}");
+    }
+    assert_eq!(settings(&harness).master_volume(), None, "nothing set");
+    from_title(&mut harness);
+    press(&mut harness, "Audio");
+    nudge(&mut harness, "Master", "ui_left");
+    nudge(&mut harness, "Music", "ui_right");
+    assert_eq!(settings(&harness).master_volume(), Some(0.75));
+    assert_eq!(settings(&harness).bus_volume(AudioBus::Music), Some(0.85));
+    let reset = find(&harness, "Reset tab").unwrap();
+    assert!(harness.focus(reset));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    let sent = harness.harness().audio().to_vec();
+    assert!(
+        sent.contains(&AudioCommand::SetMasterVolume(0.8)),
+        "{sent:?}"
+    );
+    harness.harness_mut().release_action("ui_accept");
+    settle(&mut harness);
+    assert_eq!(settings(&harness).master_volume(), None);
+    assert_eq!(settings(&harness).bus_volume(AudioBus::Music), None);
+    for name in ["Master", "Music", "Effects"] {
+        assert_eq!(readout(&harness, name), "80%", "{name} after Reset tab");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn window_sizes_follow_the_monitor() {
+    let mut harness = harness();
+    let size = |width, height| Resolution { width, height };
+    let fixed: Vec<Resolution> = settings::SIZES
+        .iter()
+        .map(|(width, height)| size(*width, *height))
+        .collect();
+    assert_eq!(settings::window_sizes(harness.world()), fixed, "no monitor");
+    // X11 lists modes past the current one, and smaller ones.
+    let modes = [
+        (4096, 2160),
+        (3840, 2160),
+        (2560, 1440),
+        (1920, 1080),
+        (1680, 1050),
+        (1280, 1024),
+        (1280, 720),
+        (1024, 768),
+    ]
+    .map(|(width, height)| VideoMode::new(size(width, height), 60_000));
+    let x11 = MonitorInfo::new(size(3840, 2160), Some(60_000), modes).unwrap();
+    harness.world_mut().insert_resource(x11);
+    let listed = [
+        (1280, 720),
+        (1280, 1024),
+        (1680, 1050),
+        (1920, 1080),
+        (2560, 1440),
+        (3840, 2160),
+    ]
+    .map(|(width, height)| size(width, height));
+    assert_eq!(settings::window_sizes(harness.world()), listed);
+    from_title(&mut harness);
+    press(&mut harness, "Window size");
+    press(&mut harness, "Apply");
+    press(&mut harness, "Keep");
+    assert_eq!(
+        row_text(&harness, "Window size"),
+        "1280×1024 (5:4)",
+        "the next mode"
+    );
+    // A Wayland output often lists its current mode alone.
+    let one = MonitorInfo::new(
+        size(1920, 1080),
+        None,
+        [VideoMode::new(size(1920, 1080), 60_000)],
+    );
+    harness.world_mut().insert_resource(one.unwrap());
+    assert_eq!(
+        settings::window_sizes(harness.world()),
+        [size(1280, 720), size(1600, 900), size(1920, 1080)]
+    );
+}
+
+#[test]
+fn ui_scale_follows_the_window_height_with_a_floor() {
+    let mut harness = harness();
+    let scale = *harness.world().resource::<ScaleFactor>();
+    assert_eq!(scale.reference_height(), Some(theme::REFERENCE_HEIGHT));
+    assert_eq!(scale.min_viewport(), Some(theme::MIN_VIEWPORT.into()));
+    let viewport = |harness: &mut UiHarness, window: [u32; 2]| {
+        harness.world_mut().insert_resource(WindowSize {
+            width: window[0],
+            height: window[1],
+        });
+        harness.step(1);
+        let get = harness.world().resource::<ScaleFactor>().get();
+        [window[0] as f32 / get, window[1] as f32 / get]
+    };
+    assert_eq!(
+        viewport(&mut harness, [3840, 2160]),
+        [1280.0, 720.0],
+        "4K at 3"
+    );
+    assert_eq!(viewport(&mut harness, [1280, 720]), [1280.0, 720.0]);
+    settings::set_scale(harness.world_mut(), false, 2.0);
+    for window in [[1280, 720], [3840, 2160]] {
+        let [width, height] = viewport(&mut harness, window);
+        assert!(
+            (width - 731.0).abs() < 0.01 && height >= 411.0,
+            "{window:?}: {width}×{height}"
+        );
+    }
+    settings::set_scale(harness.world_mut(), false, 1.0);
+    harness
+        .world_mut()
+        .resource_mut::<ScaleFactor>()
+        .set_os(1.75);
+    let [width, height] = viewport(&mut harness, [1280, 720]);
+    assert!(
+        (width - 731.4).abs() < 0.1 && (height - 411.4).abs() < 0.1,
+        "{width}×{height}"
+    );
 }
 
 #[test]
@@ -231,23 +568,24 @@ fn volumes_write_settings_and_audio_commands() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Audio");
+    // From the shipped 80 %, a step of 5.
     let master = find(&harness, "Master").unwrap();
     assert!(harness.focus(master));
     harness.harness_mut().press_action("ui_left");
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [0.95]);
+    assert_eq!(master_volumes(&harness), [0.75]);
     harness.harness_mut().release_action("ui_left");
     harness.step(1);
-    assert_eq!(settings(&harness).master_volume(), Some(0.95));
+    assert_eq!(settings(&harness).master_volume(), Some(0.75));
     let music = find(&harness, "Music").unwrap();
     assert!(harness.focus(music));
     harness.harness_mut().press_action("ui_left");
     harness.step(1);
     let sent = harness.harness().audio().iter().any(|command| {
-        matches!(command, AudioCommand::SetBusVolume { bus: AudioBus::Music, volume, .. } if *volume == 0.95)
+        matches!(command, AudioCommand::SetBusVolume { bus: AudioBus::Music, volume, .. } if *volume == 0.75)
     });
     assert!(sent, "{:?}", harness.harness().audio());
-    assert_eq!(settings(&harness).bus_volume(AudioBus::Music), Some(0.95));
+    assert_eq!(settings(&harness).bus_volume(AudioBus::Music), Some(0.75));
 }
 
 #[test]
@@ -290,7 +628,8 @@ fn damage_numbers_off_floats_no_label() {
     let mut harness = harness();
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Damage numbers");
     assert!(!options(&harness).damage_numbers);
     press(&mut harness, "Back");
@@ -315,7 +654,8 @@ fn difficulty_is_off_outside_a_run_and_saved_with_it() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Difficulty");
     press(&mut harness, "Difficulty");
     assert_eq!(row_text(&harness, "Difficulty"), "Easy");
@@ -342,7 +682,7 @@ fn mute_when_unfocused_mutes_and_restores() {
     assert_eq!(settings(&harness).master_volume(), None, "never written");
     set_focus(&mut harness, true);
     harness.step(1);
-    assert_eq!(master_volumes(&harness), [1.0]);
+    assert_eq!(master_volumes(&harness), [0.8], "the shipped volume");
 }
 
 #[test]
@@ -393,9 +733,53 @@ fn back_saves_settings_and_options_across_a_restart() {
     let restarted = harness_with(UserFolder::At(dir.clone()));
     assert_eq!(
         restarted.world().resource::<Settings>().master_volume(),
-        Some(0.95)
+        Some(0.75)
     );
     assert!(!restarted.world().resource::<GameOptions>().damage_numbers);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_close_in_settings_keeps_the_changes_but_not_an_unkept_display() {
+    let dir = user_folder("settings-close");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    from_title(&mut harness);
+    press(&mut harness, "Audio");
+    nudge(&mut harness, "Master", "ui_left");
+    press(&mut harness, "Gameplay");
+    press(&mut harness, "Damage numbers");
+    press(&mut harness, "Display");
+    press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
+    assert_eq!(top(&harness), Some(CONFIRM), "asked to keep it");
+    harness.harness_mut().request_close();
+    assert_eq!(harness.step(1), 1, "the last frame runs");
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let settings = restarted.world().resource::<Settings>();
+    assert_eq!(settings.master_volume(), Some(0.75), "saved at the close");
+    assert_eq!(settings.display_mode(), None, "the unkept mode reverted");
+    assert!(!restarted.world().resource::<GameOptions>().damage_numbers);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_close_while_keep_fades_out_keeps_the_display() {
+    let dir = user_folder("keep-close");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    from_title(&mut harness);
+    press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
+    let keep = find(&harness, "Keep").unwrap();
+    assert!(harness.focus(keep));
+    harness.harness_mut().press_action("ui_accept");
+    harness.step(1);
+    harness.harness_mut().release_action("ui_accept");
+    assert_eq!(top(&harness), Some(CONFIRM), "still fading out");
+    harness.harness_mut().request_close();
+    assert_eq!(harness.step(1), 1, "the last frame runs");
+    let restarted = harness_with(UserFolder::At(dir.clone()));
+    let mode = restarted.world().resource::<Settings>().display_mode();
+    assert_eq!(mode, Some(DisplayMode::BorderlessFullscreen), "kept");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -417,11 +801,11 @@ fn shell_values_clamp_and_ignore_non_finite_input() {
         Some(0.0)
     );
     settings::set_scale(world, false, 10.0);
-    assert_eq!(world.resource::<Settings>().ui_scale(), Some(3.0));
+    assert_eq!(world.resource::<Settings>().ui_scale(), Some(2.0));
     settings::set_scale(world, true, f32::INFINITY);
     assert_eq!(world.resource::<Settings>().text_scale(), None, "ignored");
     settings::set_scale(world, true, 0.1);
-    assert_eq!(world.resource::<Settings>().text_scale(), Some(0.75));
+    assert_eq!(world.resource::<Settings>().text_scale(), Some(0.5));
     let options = world.resource_mut::<GameOptions>();
     options.set_screen_shake(2.0);
     assert_eq!(options.screen_shake(), 1.0);

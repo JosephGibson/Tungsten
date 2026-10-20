@@ -9,8 +9,8 @@ use crate::crash::{self, CrashContext};
 use crate::debug_hud::{DebugHud, HudActiveState};
 use crate::debug_views::{DEBUG_WINDOWS_FILE, LogConsole, UiInspector};
 use crate::display::{
-    DisplayDelta, PendingDisplay, frame_budget_for, runtime_display_mode,
-    sync_display_state_and_telemetry, sync_window_resolution, take_pending_display,
+    DisplayDelta, PendingDisplay, frame_budget_for, read_monitor, runtime_display_mode,
+    set_monitor, sync_display_state_and_telemetry, sync_window_resolution, take_pending_display,
 };
 use crate::extract::Extracts;
 use crate::hot_reload::HotReloadWatcher;
@@ -165,8 +165,9 @@ impl App {
     ///
     /// # Errors
     ///
-    /// An invalid `game.id` or `logging.level`, or a shipped `input.json`
-    /// that cannot be read or parsed.
+    /// An invalid `game.id`, `time` section, `audio` volume (`D-184`) or
+    /// `logging.level`, or a shipped `input.json` that cannot be read or
+    /// parsed.
     pub fn new(config: Config) -> anyhow::Result<Self> {
         Self::with_plugins(config, DefaultPlugins::set())
     }
@@ -187,6 +188,7 @@ impl App {
             .validate()
             .err()
             .or_else(|| config.time.validate().err())
+            .or_else(|| config.audio.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
         let user_dirs = if invalid.is_none() {
             user_dir::resolve(
@@ -259,12 +261,25 @@ impl App {
         if let Some(ui_scale) = settings.ui_scale() {
             scale_factor.set_ui_scale(ui_scale);
         }
+        scale_factor.set_window_size(
+            resolved_display.resolution.width,
+            resolved_display.resolution.height,
+        );
+        // Each volume the player set, else one the game ships below 1
+        // (`D-184`); 1 is the mixer's own.
+        let below_one = |volume: f32| (volume < 1.0).then_some(volume);
         let mut audio_commands = AudioCommands::new();
-        if let Some(volume) = settings.master_volume() {
+        if let Some(volume) = settings
+            .master_volume()
+            .or_else(|| below_one(config.audio.master_volume))
+        {
             audio_commands.set_master_volume(volume);
         }
         for &bus in tungsten_core::AudioBus::ALL {
-            if let Some(volume) = settings.bus_volume(bus) {
+            if let Some(volume) = settings
+                .bus_volume(bus)
+                .or_else(|| below_one(config.audio.bus_volume(bus)))
+            {
                 audio_commands.set_bus_volume(bus, volume);
             }
         }
@@ -626,7 +641,8 @@ impl App {
         match errors.len() {
             0 => Ok(()),
             n => Err(anyhow::anyhow!(
-                "the check found {n} errors, written to '{}'",
+                "the check found {n} error{}, written to '{}'",
+                if n == 1 { "" } else { "s" },
                 report.display()
             )),
         }
@@ -925,6 +941,15 @@ impl App {
         }
 
         sync_display_state_and_telemetry(&mut self.world, effective, actual_present_mode);
+    }
+
+    /// Reads the window's monitor again into [`MonitorInfo`](tungsten_core::MonitorInfo)
+    /// (`D-184`); without a window it does nothing.
+    fn refresh_monitor(&mut self) {
+        if let Some(window) = &self.window {
+            let monitor = read_monitor(window);
+            set_monitor(&mut self.world, monitor);
+        }
     }
 
     /// M27: apply any post-AA mode change requested via `request_post_aa`.
@@ -2284,6 +2309,7 @@ impl ApplicationHandler for App {
         apply_window_fullscreen(&window, startup_mode);
         let initial_inner_size = window.inner_size();
         input_bridge::apply_scale_factor(&mut self.world, window.scale_factor());
+        set_monitor(&mut self.world, read_monitor(&window));
 
         let mut render_config = self.config.render.clone();
         let startup_state = DisplayState {
@@ -2401,7 +2427,12 @@ impl ApplicationHandler for App {
                     size.height,
                     actual_present_mode,
                 );
+                // A Wayland surface learns its output late (`D-184`).
+                if !self.world.has_resource::<tungsten_core::MonitorInfo>() {
+                    self.refresh_monitor();
+                }
             }
+            WindowEvent::Moved(_) => self.refresh_monitor(),
             // Smoke runs drop the window's input, so a resting pointer cannot
             // hover a pixel fixture; focus, resize and scale still apply
             // (`D-149`).
@@ -2453,6 +2484,7 @@ impl ApplicationHandler for App {
             }
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 input_bridge::apply_scale_factor(&mut self.world, scale_factor);
+                self.refresh_monitor();
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();

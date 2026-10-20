@@ -1,16 +1,19 @@
-//! Pause, pushed over gameplay: Resume, Save, Load, Gameplay Options,
-//! Settings, Quit to Title and Quit Game. Gameplay holds the game clock while
-//! covered; pause autosaves on its first frame that runs no fixed step, since
-//! the frame that pushed it still ran the steps it owed. `ui_cancel`,
-//! Resume or `state_pause` closes it, once a frame.
+//! Pause, pushed over gameplay: Resume, Save, Load, Settings, Quit to Title
+//! and Quit Game; the gameplay options sit in Settings' Gameplay tab.
+//! Gameplay holds the game clock while covered; pause autosaves on its
+//! first frame that runs no fixed step, since the frame that pushed it
+//! still ran the steps it owed. `ui_cancel`, Resume or `state_pause` closes
+//! it, once a frame.
 
 use tungsten::core::ui::UiTree;
 use tungsten::core::{Time, World};
-use tungsten::{GameState, StateContext, StateId, request_exit};
+use tungsten::{GameState, StateContext, StateId};
 
 use super::saves::{Mode, SavesState};
-use super::settings::{GAMEPLAY_TAB, SettingsState};
-use super::{Menu, autosave, cancelled, idle, pop, pressed, push, quit_to_title, saving_on};
+use super::settings::SettingsState;
+use super::{
+    Menu, autosave, cancelled, idle, pop, pressed, push, quit_game, quit_to_title, saving_on,
+};
 
 pub const PAUSE: StateId = "pause";
 
@@ -31,7 +34,6 @@ impl GameState for PauseState {
             "Resume",
             "Save",
             "Load",
-            "Gameplay Options",
             "Settings",
             "Quit to Title",
             "Quit Game",
@@ -63,10 +65,9 @@ impl GameState for PauseState {
         match menu.pick(world) {
             Some(1) => push(world, SavesState::new(Mode::Save)),
             Some(2) => push(world, SavesState::new(Mode::Load)),
-            Some(3) => push(world, SettingsState::new(GAMEPLAY_TAB)),
-            Some(4) => push(world, SettingsState::new(0)),
-            Some(5) => quit_to_title(world),
-            Some(6) => request_exit(world),
+            Some(3) => push(world, SettingsState::new(0)),
+            Some(4) => quit_to_title(world),
+            Some(5) => quit_game(world),
             Some(_) => pop(world),
             None if cancelled(world, menu.root) || pressed(world, "state_pause", false) => {
                 pop(world);

@@ -1,0 +1,11 @@
+{
+  "sprite": { "asset_id": "dummy" },
+  "components": {
+    "tags": ["team.dummy"],
+    "rigid_body": { "kind": "static", "shape": { "kind": "circle", "radius": 14 }, "offset": [16, 16] },
+    "health": { "max": 100 },
+    "hurtbox": { "shape": { "circle": 15 }, "offset": [16, 16] },
+    "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
+    "cues": { "damaged": [{ "effect": "mend" }, { "sound": { "id": "hit" } }] }
+  }
+}

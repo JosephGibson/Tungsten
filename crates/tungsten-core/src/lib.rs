@@ -50,12 +50,13 @@ pub use components::{
     parallax_world_position, sync_position_to_transform,
 };
 pub use config::{
-    Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig, TimeConfig,
+    AudioConfig, Config, ConfigError, DepthSortMode, GameConfig, PostAaMode, RenderConfig,
+    TimeConfig,
 };
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
-    DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, Resolution, ScaleFactor,
-    ScaleMode, WindowSize,
+    DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, MonitorInfo, Resolution,
+    ScaleFactor, ScaleMode, VideoMode, WindowSize,
 };
 pub use ecs::{
     Bundle, CommandBuffer, Entity, EventCursor, EventQueue, EventRead, OptionalColumn,

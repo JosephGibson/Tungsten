@@ -14,7 +14,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::positive;
+use crate::foundation::{optional_positive, positive};
 use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
 use crate::motion::platformer::kinematic_body;
@@ -49,10 +49,20 @@ const TOP_DOWN_MOVER_COMPONENT: &str = "top_down_mover";
 /// and writes a `Velocity` when it has one; the physics sync draws it as a
 /// body. Any other body is skipped, with one warning.
 ///
-/// Scene name `top_down_mover`: `{ "speed": 240 }`, which spawns the mover
-/// with a `Position`, a `PrevPosition` and a `Velocity` at the spawn
-/// position, so a prefab without a `rigid_body` moves bodiless and one with
-/// a kinematic `rigid_body` keeps the body's.
+/// By default it reaches its speed at once and stops at once. With an
+/// [acceleration](Self::with_acceleration) or a
+/// [deceleration](Self::with_deceleration) it keeps a velocity instead
+/// (`D-185`): each step the target is its direction times its speed; with
+/// a direction the velocity moves toward the target by the acceleration
+/// times the step, with none toward 0 by the deceleration times the step,
+/// and a rate left unset jumps, as without either. On a kinematic body the
+/// kept velocity is the one the slide moved by, so a wall absorbs it.
+///
+/// Scene name `top_down_mover`: `{ "speed": 240 }`, with optional
+/// `"acceleration"` and `"deceleration"` in px/s², each above 0, which
+/// spawns the mover with a `Position`, a `PrevPosition` and a `Velocity` at
+/// the spawn position, so a prefab without a `rigid_body` moves bodiless
+/// and one with a kinematic `rigid_body` keeps the body's.
 ///
 /// # Examples
 ///
@@ -113,6 +123,12 @@ pub struct TopDownMover {
     filter: SpatialFilter,
     /// Its first step has run.
     started: bool,
+    /// px/s² toward the target while it has a direction; `None` jumps.
+    acceleration: Option<f32>,
+    /// px/s² toward rest while it has none; `None` stops at once.
+    deceleration: Option<f32>,
+    /// The velocity it moved by at its last step, which the rates move.
+    velocity: Vec2,
 }
 
 impl TopDownMover {
@@ -133,7 +149,45 @@ impl TopDownMover {
             direction: Vec2::ZERO,
             filter: SpatialFilter::new(),
             started: false,
+            acceleration: None,
+            deceleration: None,
+            velocity: Vec2::ZERO,
         }
+    }
+
+    /// The mover reaching its speed at `rate` px/s² instead of at once,
+    /// turning and slowing toward a lower speed at it too, while it has a
+    /// direction (`D-185`).
+    ///
+    /// # Panics
+    ///
+    /// When `rate` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_acceleration(mut self, rate: f32) -> Self {
+        assert!(
+            rate.is_finite() && rate > 0.0,
+            "TopDownMover::with_acceleration: rate must be finite and > 0 (got {rate})"
+        );
+        self.acceleration = Some(rate);
+        self
+    }
+
+    /// The mover slowing to a stop at `rate` px/s² instead of at once, once
+    /// it has no direction (`D-185`).
+    ///
+    /// # Panics
+    ///
+    /// When `rate` is not finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_deceleration(mut self, rate: f32) -> Self {
+        assert!(
+            rate.is_finite() && rate > 0.0,
+            "TopDownMover::with_deceleration: rate must be finite and > 0 (got {rate})"
+        );
+        self.deceleration = Some(rate);
+        self
     }
 
     /// The mover blocked by what `filter` sees; its own body is always
@@ -199,6 +253,28 @@ impl Plugin for TopDownMoverPlugin {
                 },
                 "world pixels per second at full tilt",
             ))
+            .field(
+                FieldDescription::new(
+                    "acceleration",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "world pixels per second squared toward full tilt while moving; null reaches it at once",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "deceleration",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "world pixels per second squared toward rest once stopped; null stops at once",
+                )
+                .default("null"),
+            )
             .genre(TOP_DOWN)
             .genre(SHMUP)
             .genre(GRID)
@@ -209,8 +285,11 @@ impl Plugin for TopDownMoverPlugin {
             TOP_DOWN_MOVER_COMPONENT,
             |def: TopDownMoverDef, at: &SpawnContext<'_>| {
                 let spawn = at.transform().position;
+                let mut mover = TopDownMover::new(def.speed);
+                mover.acceleration = def.acceleration;
+                mover.deceleration = def.deceleration;
                 (
-                    TopDownMover::new(def.speed),
+                    mover,
                     Position(spawn),
                     PrevPosition(spawn),
                     Velocity(Vec2::ZERO),
@@ -235,6 +314,18 @@ impl Plugin for TopDownMoverPlugin {
 struct TopDownMoverDef {
     #[serde(deserialize_with = "positive")]
     speed: f32,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    acceleration: Option<f32>,
+    #[serde(
+        default,
+        deserialize_with = "optional_positive",
+        skip_serializing_if = "Option::is_none"
+    )]
+    deceleration: Option<f32>,
 }
 
 /// The system's state between steps.
@@ -260,19 +351,25 @@ impl Runner {
         );
         let Self { entities, warned } = self;
         for &entity in entities.iter() {
-            let (speed, own_direction, started, filter) = {
+            let (own_direction, started, filter, mover) = {
                 let mover = world.get::<TopDownMover>(entity).unwrap();
                 (
-                    mover.speed,
                     mover.direction,
                     mover.started,
                     mover.filter.excluding(entity),
+                    (
+                        mover.speed,
+                        mover.acceleration,
+                        mover.deceleration,
+                        mover.velocity,
+                    ),
                 )
             };
             let direction = world
                 .get::<Intent>(entity)
                 .map_or(own_direction, Intent::movement);
-            if world.has::<RigidBody>(entity) {
+            let wanted = step_velocity(mover, direction, dt);
+            let velocity = if world.has::<RigidBody>(entity) {
                 let Some((position, collider)) = kinematic_body(world, entity) else {
                     warn(warned, entity);
                     continue;
@@ -282,7 +379,7 @@ impl Runner {
                         world,
                         collider.shape,
                         position + collider.offset,
-                        direction * speed * dt,
+                        wanted * dt,
                         &filter,
                     );
                     slide.moved / dt
@@ -290,22 +387,50 @@ impl Runner {
                     Vec2::ZERO
                 };
                 world.get_mut::<Velocity>(entity).unwrap().0 = velocity;
+                velocity
             } else {
                 // Bodiless: the position moves, with no cast.
                 let Some(position) = world.get_mut::<Position>(entity) else {
                     warn(warned, entity);
                     continue;
                 };
-                let velocity = direction * speed;
-                position.0 += velocity * dt;
+                position.0 += wanted * dt;
                 if let Some(body_velocity) = world.get_mut::<Velocity>(entity) {
-                    body_velocity.0 = velocity;
+                    body_velocity.0 = wanted;
                 }
-            }
+                wanted
+            };
             let mover = world.get_mut::<TopDownMover>(entity).unwrap();
             mover.direction = direction;
+            mover.velocity = velocity;
             mover.started = true;
         }
+    }
+}
+
+/// The velocity a mover of (speed, acceleration, deceleration, kept
+/// velocity) moves by this step: the target, direction times speed, or the
+/// kept velocity moved toward it at the rate that applies (`D-185`).
+fn step_velocity(
+    (speed, acceleration, deceleration, kept): (f32, Option<f32>, Option<f32>, Vec2),
+    direction: Vec2,
+    dt: f32,
+) -> Vec2 {
+    let target = direction * speed;
+    let rate = if direction == Vec2::ZERO {
+        deceleration
+    } else {
+        acceleration
+    };
+    let Some(rate) = rate else {
+        return target;
+    };
+    let gap = target - kept;
+    let reach = rate * dt;
+    if gap.length_squared() <= reach * reach {
+        target
+    } else {
+        kept + gap.normalize() * reach
     }
 }
 
@@ -320,11 +445,22 @@ fn warn(warned: &mut HashSet<Entity>, entity: Entity) {
 }
 
 impl Inspectable for TopDownMover {
+    /// `speed` and `direction`, then `acceleration`, `deceleration` and
+    /// `velocity` only when a rate is set, so a mover without one keeps
+    /// the rows (and the kit hash) it had before `D-185`.
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
-        vec![
+        let mut rows = vec![
             ("speed", format!("{:.1}", self.speed)),
             ("direction", point(self.direction)),
-        ]
+        ];
+        if self.acceleration.is_some() || self.deceleration.is_some() {
+            let rate =
+                |rate: Option<f32>| rate.map_or_else(|| "none".to_string(), |r| format!("{r:.1}"));
+            rows.push(("acceleration", rate(self.acceleration)));
+            rows.push(("deceleration", rate(self.deceleration)));
+            rows.push(("velocity", point(self.velocity)));
+        }
+        rows
     }
 }
 

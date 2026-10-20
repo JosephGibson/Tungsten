@@ -3,17 +3,75 @@
     "player": {
       "path": "sprites/player.png",
       "filter": "nearest"
+    },
+    "bolt": {
+      "path": "sprites/bolt.png",
+      "filter": "nearest"
+    },
+    "dummy": {
+      "path": "sprites/dummy.png",
+      "filter": "nearest"
+    },
+    "gem": {
+      "path": "sprites/gem.png",
+      "filter": "nearest"
+    },
+    "heal_pickup": {
+      "path": "sprites/heal_pickup.png",
+      "filter": "nearest"
+    },
+    "speed_pickup": {
+      "path": "sprites/speed_pickup.png",
+      "filter": "nearest"
+    },
+    "enemy": {
+      "path": "sprites/enemy.png",
+      "filter": "nearest"
+    },
+    "enemy_1": {
+      "path": "sprites/enemy_1.png",
+      "filter": "nearest"
+    },
+    "enemy_2": {
+      "path": "sprites/enemy_2.png",
+      "filter": "nearest"
+    },
+    "enemy_3": {
+      "path": "sprites/enemy_3.png",
+      "filter": "nearest"
+    },
+    "spark": {
+      "path": "sprites/spark.png",
+      "filter": "linear"
+    }
+  },
+  "animations": {
+    "enemy_spin": {
+      "path": "animations/enemy_spin.json"
+    }
+  },
+  "particles": {
+    "spark": {
+      "path": "particles/spark.json"
     }
   },
   "fonts": {
     "sans": {
       "path": "fonts/Inter/Inter-Regular.ttf"
+    },
+    "serif": {
+      "path": "fonts/SourceSerif4/SourceSerif4-Regular.ttf"
     }
   },
   "font_families": {
     "sans": {
       "faces": [
         "sans"
+      ]
+    },
+    "serif": {
+      "faces": [
+        "serif"
       ]
     }
   },
@@ -70,6 +128,84 @@
       }
     }
   },
+  "sounds": {
+    "ui_move": {
+      "path": "sounds/ui_move.wav",
+      "volume": 0.5,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "ui_select": {
+      "path": "sounds/ui_select.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "ui_back": {
+      "path": "sounds/ui_back.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "shoot": {
+      "path": "sounds/shoot.wav",
+      "volume": 0.5,
+      "bus": "effects",
+      "max_voices": 4
+    },
+    "hit": {
+      "path": "sounds/hit.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 4
+    },
+    "pickup": {
+      "path": "sounds/pickup.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "hurt": {
+      "path": "sounds/hurt.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "game_over": {
+      "path": "sounds/game_over.wav",
+      "volume": 0.7,
+      "bus": "effects",
+      "max_voices": 1
+    },
+    "music_title": {
+      "path": "sounds/music_title.wav",
+      "looping": true,
+      "volume": 0.4,
+      "bus": "music",
+      "max_voices": 1
+    },
+    "music_run": {
+      "path": "sounds/music_run.wav",
+      "looping": true,
+      "volume": 0.45,
+      "bus": "music",
+      "max_voices": 1
+    },
+    "music_pause": {
+      "path": "sounds/music_pause.wav",
+      "looping": true,
+      "volume": 0.45,
+      "bus": "music",
+      "max_voices": 1
+    },
+    "music_over": {
+      "path": "sounds/music_over.wav",
+      "looping": true,
+      "volume": 0.45,
+      "bus": "music",
+      "max_voices": 1
+    }
+  },
   "prefabs": {
     "player": {
       "path": "prefabs/player.json"
@@ -77,8 +213,29 @@
     "hazard": {
       "path": "prefabs/hazard.json"
     },
+    "enemy_orbit": {
+      "path": "prefabs/enemy_orbit.json"
+    },
+    "enemy_patrol": {
+      "path": "prefabs/enemy_patrol.json"
+    },
     "gem": {
       "path": "prefabs/gem.json"
+    },
+    "bolt": {
+      "path": "prefabs/bolt.json"
+    },
+    "dummy": {
+      "path": "prefabs/dummy.json"
+    },
+    "heal_pickup": {
+      "path": "prefabs/heal_pickup.json"
+    },
+    "speed_pickup": {
+      "path": "prefabs/speed_pickup.json"
+    },
+    "spark": {
+      "path": "prefabs/spark.json"
     }
   },
   "data": {
@@ -90,6 +247,20 @@
     "effects": {
       "slowed": {
         "path": "data/effects/slowed.json"
+      },
+      "mend": {
+        "path": "data/effects/mend.json"
+      },
+      "heal": {
+        "path": "data/effects/heal.json"
+      },
+      "swift": {
+        "path": "data/effects/swift.json"
+      }
+    },
+    "abilities": {
+      "shot": {
+        "path": "data/abilities/shot.json"
       }
     },
     "cue_rules": {

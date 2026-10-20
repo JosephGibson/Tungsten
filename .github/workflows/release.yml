@@ -143,15 +143,15 @@ jobs:
           build-warnings: ""
           cache: false
 
-      # Binary targets are the examples and the launcher; the template ships in
-      # no archive, so it is left out. The tuned profile's line tables stay in,
-      # for the debug archive (D-120). A set RUSTFLAGS replaces target-cpu=native
-      # from .cargo/config.toml.
+      # Binary targets are the examples, the template, which the archive ships
+      # beside them (D-186), and the launcher. The tuned profile's line tables
+      # stay in, for the debug archive (D-120). A set RUSTFLAGS replaces
+      # target-cpu=native from .cargo/config.toml.
       - name: Build release binaries per CPU level
         run: |
           for level in $CPU_LEVELS; do
             RUSTFLAGS="-C target-cpu=$level $EXTRA_RUSTFLAGS" cargo build --release --locked \
-              --workspace --exclude tungsten-crash-probe --exclude tungsten-template-basic --bins \
+              --workspace --exclude tungsten-crash-probe --bins \
               --target "$TARGET" --target-dir "target/$level"
           done
 
@@ -182,6 +182,8 @@ jobs:
           path: |
             target/*/${{ matrix.target }}/release/example-*
             target/*/${{ matrix.target }}/release/example_*.pdb
+            target/*/${{ matrix.target }}/release/tungsten-template-basic*
+            target/*/${{ matrix.target }}/release/tungsten_template_basic.pdb
             target/x86-64/${{ matrix.target }}/release/tungsten-launcher*
             target/licenses.json
             !target/*/${{ matrix.target }}/release/*.d

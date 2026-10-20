@@ -4,7 +4,7 @@
     "move_right": [{ "kind": "key", "code": "ArrowRight" }, { "kind": "key", "code": "KeyD" }, { "kind": "gamepad_axis", "axis": "LeftStickX", "direction": "positive" }, { "kind": "gamepad_button", "button": "DPadRight" }],
     "move_up":    [{ "kind": "key", "code": "ArrowUp" },    { "kind": "key", "code": "KeyW" }, { "kind": "gamepad_axis", "axis": "LeftStickY", "direction": "positive" }, { "kind": "gamepad_button", "button": "DPadUp" }],
     "move_down":  [{ "kind": "key", "code": "ArrowDown" },  { "kind": "key", "code": "KeyS" }, { "kind": "gamepad_axis", "axis": "LeftStickY", "direction": "negative" }, { "kind": "gamepad_button", "button": "DPadDown" }],
-    "toggle_mute": [{ "kind": "key", "code": "KeyM" }, { "kind": "gamepad_button", "button": "North" }],
-    "state_pause": [{ "kind": "key", "code": "KeyP" }, { "kind": "key", "code": "Escape" }, { "kind": "gamepad_button", "button": "Start" }]
+    "state_pause": [{ "kind": "key", "code": "KeyP" }, { "kind": "key", "code": "Escape" }, { "kind": "gamepad_button", "button": "Start" }],
+    "shoot": [{ "kind": "mouse", "button": "left" }]
   }
 }

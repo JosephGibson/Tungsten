@@ -947,3 +947,116 @@ fn player_frame_cap_yields_to_the_environment() {
         "0 in the environment uncaps"
     );
 }
+
+#[test]
+fn audio_defaults_to_full_volume() {
+    let audio = AudioConfig::default();
+    assert_eq!(audio.master_volume, 1.0);
+    assert!(audio.bus_volumes.is_empty());
+    for &bus in crate::audio::AudioBus::ALL {
+        assert_eq!(audio.bus_volume(bus), 1.0, "{bus:?}");
+    }
+    assert!(audio.validate().is_ok());
+    assert_eq!(Config::default().audio, audio);
+    let (_, loaded) = load_json("audio-none", "{}");
+    assert_eq!(loaded.unwrap().audio, audio, "no section");
+    let (_, loaded) = load_json("audio-empty", r#"{ "audio": {} }"#);
+    assert_eq!(loaded.unwrap().audio, audio, "an empty section");
+}
+
+#[test]
+fn audio_reads_master_and_bus_volumes() {
+    use crate::audio::AudioBus;
+    let (_, loaded) = load_json(
+        "audio-set",
+        r#"{ "audio": { "master_volume": 0.8, "bus_volumes": { "music": 0.5, "effects": 0 } } }"#,
+    );
+    let audio = loaded.unwrap().audio;
+    assert_eq!(audio.master_volume, 0.8);
+    assert_eq!(audio.bus_volume(AudioBus::Music), 0.5);
+    assert_eq!(audio.bus_volume(AudioBus::Effects), 0.0);
+    let (_, loaded) = load_json(
+        "audio-one-bus",
+        r#"{ "audio": { "bus_volumes": { "music": 1 } } }"#,
+    );
+    let audio = loaded.unwrap().audio;
+    assert_eq!(audio.master_volume, 1.0, "a master left out is 1");
+    assert_eq!(audio.bus_volume(AudioBus::Music), 1.0);
+    assert_eq!(
+        audio.bus_volume(AudioBus::Effects),
+        1.0,
+        "a bus left out is 1"
+    );
+}
+
+#[test]
+fn audio_refuses_out_of_range_non_finite_unknown_bus_and_unknown_key() {
+    use crate::audio::AudioBus;
+    let cases = [
+        (
+            "audio-master-high",
+            r#"{ "audio": { "master_volume": 1.5 } }"#,
+            "audio.master_volume",
+            "1.5",
+        ),
+        (
+            "audio-master-negative",
+            r#"{ "audio": { "master_volume": -0.1 } }"#,
+            "audio.master_volume",
+            "-0.1",
+        ),
+        (
+            "audio-bus-high",
+            r#"{ "audio": { "bus_volumes": { "effects": 2 } } }"#,
+            "audio.bus_volumes",
+            "effects: 2",
+        ),
+    ];
+    for (tag, json, expected_field, expected_value) in cases {
+        let (file, loaded) = load_json(tag, json);
+        match loaded.unwrap_err() {
+            ConfigError::InvalidValue {
+                path, field, value, ..
+            } => {
+                assert_eq!(field, expected_field, "{tag}");
+                assert_eq!(value, expected_value, "{tag}");
+                assert_eq!(path, file.display().to_string(), "{tag}");
+            }
+            other => panic!("unexpected error for {tag}: {other}"),
+        }
+    }
+    // JSON has no NaN or infinity; a config built in code can.
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let audio = AudioConfig {
+            master_volume: bad,
+            ..AudioConfig::default()
+        };
+        assert!(audio.validate().is_err(), "master {bad}");
+        let audio = AudioConfig {
+            bus_volumes: HashMap::from([(AudioBus::Music, bad)]),
+            ..AudioConfig::default()
+        };
+        let message = audio.validate().unwrap_err().to_string();
+        assert!(
+            message.starts_with("invalid audio.bus_volumes='music: "),
+            "{message}"
+        );
+    }
+    for (tag, json) in [
+        (
+            "audio-unknown-bus",
+            r#"{ "audio": { "bus_volumes": { "voice": 0.5 } } }"#,
+        ),
+        ("audio-unknown-key", r#"{ "audio": { "volume": 0.5 } }"#),
+        (
+            "audio-not-a-number",
+            r#"{ "audio": { "master_volume": "loud" } }"#,
+        ),
+    ] {
+        let (_, loaded) = load_json(tag, json);
+        assert!(
+            matches!(loaded, Err(ConfigError::Parse { .. })),
+            "{tag}: {loaded:?}"
+        );
+    }
+}

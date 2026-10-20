@@ -23,9 +23,9 @@ pub(crate) struct WindowedTarget(pub(crate) Resolution);
 /// mode, resolution, vsync and frame-rate limit (`D-180`) through a display
 /// request, the UI scale to [`ScaleFactor`], the text scale to the
 /// [`UiTree`] (M56), the master volume and every bus's volume through
-/// [`AudioCommands`]. A value the player unset returns to the shipped one,
-/// the UI scale, the text scale, the master volume and a bus's volume to
-/// 1.0. A display request queued earlier this frame, such as a hotkey's,
+/// [`AudioCommands`]. A value the player unset returns to the shipped one:
+/// the UI scale and the text scale to 1.0, the master volume and a bus's
+/// volume to [`shipped_volume`] (`D-184`). A display request queued earlier this frame, such as a hotkey's,
 /// takes the persisted values, so the last apply wins; the F9 and F11
 /// hotkeys' changes to them since startup are replaced. In windowed
 /// mode the resolution is sent only when the set or shipped one differs
@@ -46,10 +46,21 @@ pub fn apply_settings(world: &mut World) {
     if let Some(tree) = world.get_resource_mut::<UiTree>() {
         tree.set_text_scale(settings.text_scale().unwrap_or(1.0));
     }
-    if let Some(audio) = world.get_resource_mut::<AudioCommands>() {
-        audio.set_master_volume(settings.master_volume().unwrap_or(1.0));
-        for &bus in AudioBus::ALL {
-            audio.set_bus_volume(bus, settings.bus_volume(bus).unwrap_or(1.0));
+    if world.has_resource::<AudioCommands>() {
+        let master = settings
+            .master_volume()
+            .unwrap_or_else(|| shipped_volume(world, None));
+        let buses: Vec<(AudioBus, f32)> = AudioBus::ALL
+            .iter()
+            .map(|&bus| {
+                let shipped = || shipped_volume(world, Some(bus));
+                (bus, settings.bus_volume(bus).unwrap_or_else(shipped))
+            })
+            .collect();
+        let audio = world.resource_mut::<AudioCommands>();
+        audio.set_master_volume(master);
+        for (bus, volume) in buses {
+            audio.set_bus_volume(bus, volume);
         }
     }
 
@@ -108,6 +119,19 @@ pub fn apply_settings(world: &mut World) {
     } else if let Err(err) = request_display_settings(world, next) {
         log::error!("Display request rejected: {err}");
     }
+}
+
+/// The volume `tungsten.json`'s `audio` section ships for the master
+/// (`None`) or `bus` (`D-184`), which an unset setting returns to; 1.0
+/// without `App`'s shipped config (a `World` built by hand).
+#[must_use]
+pub fn shipped_volume(world: &World, bus: Option<AudioBus>) -> f32 {
+    world
+        .get_resource::<ShippedConfig>()
+        .map_or(1.0, |ShippedConfig(config)| match bus {
+            None => config.audio.master_volume,
+            Some(bus) => config.audio.bus_volume(bus),
+        })
 }
 
 #[cfg(test)]

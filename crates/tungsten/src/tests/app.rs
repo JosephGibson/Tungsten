@@ -818,7 +818,7 @@ fn run_check_writes_one_line_naming_the_manifest_and_fails_on_a_missing_sprite_f
     app.set_manifest_roots(vec![root]);
     let report = dir.join("report.txt");
     let err = app.run_check(&report, &dir).unwrap_err();
-    assert!(err.to_string().contains("1 errors"), "{err}");
+    assert!(err.to_string().contains("found 1 error,"), "{err}");
     let text = std::fs::read_to_string(&report).unwrap();
     let lines: Vec<&str> = text.lines().collect();
     assert_eq!(lines.len(), 1, "{text}");
@@ -840,4 +840,56 @@ fn run_check_writes_an_empty_report_and_passes_on_clean_files() {
     app.run_check(&report, &dir).unwrap();
     assert_eq!(std::fs::read_to_string(&report).unwrap(), "");
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn startup_queues_shipped_volumes_below_one() {
+    use tungsten_core::AudioBus;
+    let drain = |app: &mut App| {
+        let mut queued = Vec::new();
+        for command in app.world.resource_mut::<AudioCommands>().drain() {
+            match command {
+                AudioCommand::SetMasterVolume(volume) => queued.push((None, volume)),
+                AudioCommand::SetBusVolume { bus, volume, .. } => queued.push((Some(bus), volume)),
+                _ => {}
+            }
+        }
+        queued
+    };
+    let dir = user_tempdir("shipped_volumes");
+    let mut config = config_at(&dir);
+    config.audio.master_volume = 0.8;
+    config.audio.bus_volumes.insert(AudioBus::Music, 0.5);
+    config.audio.bus_volumes.insert(AudioBus::Effects, 1.0);
+    let mut app = App::new(config.clone()).unwrap();
+    assert_eq!(
+        drain(&mut app),
+        [(None, 0.8), (Some(AudioBus::Music), 0.5)],
+        "a shipped volume of 1 is the mixer's own and queues nothing"
+    );
+    std::fs::write(
+        dir.join("settings/settings.json"),
+        r#"{ "master_volume": 1.0, "bus_volumes": { "effects": 0.25 } }"#,
+    )
+    .unwrap();
+    let mut restarted = App::new(config).unwrap();
+    assert_eq!(
+        drain(&mut restarted),
+        [
+            (None, 1.0),
+            (Some(AudioBus::Music), 0.5),
+            (Some(AudioBus::Effects), 0.25)
+        ],
+        "a set volume queues whatever its level, over the shipped one"
+    );
+    assert!(
+        drain(&mut App::new(Config::default()).unwrap()).is_empty(),
+        "nothing shipped or set, nothing queued"
+    );
+    let mut bad = Config::default();
+    bad.audio.master_volume = f32::NAN;
+    let err = App::new(bad)
+        .err()
+        .expect("App::new accepted a NaN master volume");
+    assert!(err.to_string().contains("audio.master_volume"), "{err}");
 }

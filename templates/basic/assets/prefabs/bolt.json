@@ -1,0 +1,14 @@
+{
+  "sprite": { "asset_id": "bolt" },
+  "components": {
+    "linear_motion": { "velocity": [640, 0] },
+    "hitbox": {
+      "shape": { "circle": 5 },
+      "offset": [16, 16],
+      "damage": 1,
+      "filter": { "any": ["team.dummy", "team.enemy"] }
+    },
+    "projectile": { "range": 760 },
+    "cues": { "hit": [{ "prefab": "spark" }] }
+  }
+}

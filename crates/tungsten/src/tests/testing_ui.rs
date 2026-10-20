@@ -423,3 +423,46 @@ fn frame_draw_holds_a_prewarms_runs_in_one_frame_only() {
     harness.step(1);
     assert!(harness.harness().draw().unwrap().ui_prewarm.is_none());
 }
+
+#[test]
+fn ui_harness_lays_out_at_the_window_relative_factor() {
+    use tungsten_core::ScaleFactor;
+    let mut harness = UiHarness::new(app());
+    let (root, button) = menu(&mut harness);
+    {
+        let world = harness.world_mut();
+        let scale = world.resource_mut::<ScaleFactor>();
+        scale.set_reference_height(Some(720.0));
+        scale.set_min_viewport(Some(Vec2::new(731.0, 411.0)));
+        // A test inserts the window's size, as the template's fit test does.
+        *world.resource_mut::<WindowSize>() = WindowSize {
+            width: 3840,
+            height: 2160,
+        };
+    }
+    harness.step(1);
+    assert_eq!(
+        harness.world().resource::<ScaleFactor>().get(),
+        3.0,
+        "the frame read the inserted size"
+    );
+    assert_eq!(harness.rect(root).unwrap().width(), 1280.0);
+    // The pointer maps through the same factor.
+    let centre = {
+        let rect = harness.rect(button).unwrap();
+        (rect.min + rect.max) * 0.5 * 3.0
+    };
+    assert!(harness.hit(centre.x, centre.y).is_some());
+    // A size changed between frames reaches the next layout without a frame.
+    *harness.world_mut().resource_mut::<WindowSize>() = WindowSize {
+        width: 1280,
+        height: 720,
+    };
+    harness
+        .world_mut()
+        .resource_mut::<ScaleFactor>()
+        .set_ui_scale(3.0);
+    harness.layout();
+    let width = harness.rect(root).unwrap().width();
+    assert!((width - 731.0).abs() < 1e-3, "the floor holds: {width}");
+}

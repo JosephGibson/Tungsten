@@ -3,7 +3,7 @@
 //! clock, so a pause does not hold it.
 
 use tungsten::core::ui::{Align, Anchor, LayoutStyle, UiLayer, UiTree, WidgetId};
-use tungsten::core::{Time, World};
+use tungsten::core::{Time, Timer, World};
 
 use super::{theme, widgets};
 
@@ -14,8 +14,8 @@ pub const TOAST_SECS: f32 = 2.5;
 #[derive(Debug, Default)]
 pub struct Toasts {
     root: Option<WidgetId>,
-    /// Each shown toast's panel, its label and its seconds left.
-    shown: Vec<(WidgetId, WidgetId, f32)>,
+    /// Each shown toast's panel, its label and its timer on the real clock.
+    shown: Vec<(WidgetId, WidgetId, Timer)>,
     pending: Vec<String>,
 }
 
@@ -51,17 +51,16 @@ pub(crate) fn tick(world: &mut World) {
             tree.set_hit_testable(root, false);
             root
         });
-        for (panel, _, left) in &mut toasts.shown {
-            *left -= dt;
-            if *left <= 0.0 {
+        for (panel, _, timer) in &mut toasts.shown {
+            if timer.tick(dt) > 0 {
                 tree.remove(*panel);
             }
         }
-        toasts.shown.retain(|(.., left)| *left > 0.0);
+        toasts.shown.retain(|(.., timer)| !timer.finished());
         for text in toasts.pending.drain(..) {
             let panel = tree.panel(root, LayoutStyle::default().with_padding(theme::GAP));
             let label = tree.label(panel, text.as_str());
-            toasts.shown.push((panel, label, TOAST_SECS));
+            toasts.shown.push((panel, label, Timer::once(TOAST_SECS)));
         }
         if !toasts.shown.is_empty() {
             tree.raise(root);

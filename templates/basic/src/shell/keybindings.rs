@@ -1,5 +1,7 @@
 //! Keybindings: a row per `game::BINDABLE_ACTIONS` entry with its Primary
-//! and Alternate key or mouse binding and its Gamepad binding, and a Reset.
+//! and Alternate key or mouse binding and its Gamepad binding, sharing the
+//! row with its caption, and a Reset; the card scrolls only when the rows
+//! outgrow the viewport.
 //! A cell captures the next press for 5 real seconds; a press of the other
 //! device class is refused, and a binding another bindable action holds
 //! asks to swap. Each change persists through the action map's user layer;
@@ -8,14 +10,12 @@
 
 use std::path::Path;
 
-use tungsten::core::ui::{LayoutStyle, Sizing, UiEvent, UiRouter, UiTree, WidgetId};
-use tungsten::core::{ActionMap, ActionMapError, Binding, Time, World};
-use tungsten::{GameState, RootCover, StateContext, StateId};
+use tungsten::core::ui::{Sizing, UiEvent, UiRouter, UiTree, Visibility, WidgetId};
+use tungsten::core::{ActionMap, ActionMapError, Binding, Time, Timer, World};
+use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
-use super::{
-    cancelled, clicked, events, flow_pending, pop, stack, theme, toast, transitioning, widgets,
-};
+use super::{cancelled, clicked, enter, events, pop, toast, transitioning, widgets};
 use crate::game::BINDABLE_ACTIONS;
 
 pub const KEYBINDINGS: StateId = "keybindings";
@@ -23,9 +23,21 @@ pub const KEYBINDINGS: StateId = "keybindings";
 pub const COLUMNS: [&str; 3] = ["Primary", "Alternate", "Gamepad"];
 /// Real seconds a capture waits for a press.
 pub const CAPTURE_SECS: f32 = 5.0;
-/// A binding cell's width, and the screen's.
-const CELL: f32 = 110.0;
-const WIDTH: f32 = theme::CAPTION_WIDTH + 4.0 * CELL + 5.0 * theme::GAP + 2.0 * theme::PADDING;
+/// The card's design width, past the smallest viewport's, so a stick's
+/// name keeps one line there; and the least width of a row's caption at
+/// text 100 %, which the text scale scales, so the cells line up.
+const WIDTH: f32 = 760.0;
+const CAPTION: f32 = 88.0;
+
+/// A row under `card`: a caption at least [`CAPTION`] wide, scaled.
+fn row(tree: &mut UiTree, card: WidgetId, caption: &str) -> WidgetId {
+    let row = widgets::caption_row(tree, card, caption);
+    let label = tree.children(row)[0];
+    let mut style = tree.layout_style(label).cloned().unwrap_or_default();
+    (style.width, style.min_width) = (Sizing::Auto, Some(CAPTION * tree.text_scale()));
+    tree.set_layout_style(label, style);
+    row
+}
 
 fn is_pad(binding: Binding) -> bool {
     matches!(
@@ -85,8 +97,8 @@ pub fn reset(world: &mut World, only: Option<&str>) {
 pub struct KeybindingsState {
     /// The root, each row's three cells and Reset, Reset all and Back.
     ui: Option<(WidgetId, Vec<[WidgetId; 4]>, WidgetId, WidgetId)>,
-    /// The row and column capturing, and its real seconds left.
-    capture: Option<(usize, usize, f32)>,
+    /// The row and column capturing, and its timer on the real clock.
+    capture: Option<(usize, usize, Timer)>,
 }
 
 impl KeybindingsState {
@@ -150,36 +162,35 @@ impl GameState for KeybindingsState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let root = widgets::screen(tree, WIDTH);
-        widgets::heading(tree, root, "Keybindings");
-        let header = widgets::caption_row(tree, root, "");
+        let (root, card) = widgets::screen(tree, WIDTH);
+        widgets::heading(tree, card, "Keybindings", false);
+        let header = row(tree, card, "");
         for column in COLUMNS {
             let label = widgets::note(tree, header, column);
-            widgets::set_width(tree, label, Sizing::Px(CELL));
+            widgets::set_width(tree, label, Sizing::Fill);
         }
-        let mut style = LayoutStyle::column().with_gap(theme::GAP);
-        style.max_height = Some(200.0);
-        let list = tree.scroll_panel(root, style);
+        // A hidden Reset keeps the header's columns over the rows'.
+        let spacer = widgets::button(tree, header, "Reset");
+        tree.set_visibility(spacer, Visibility::Hidden);
         let rows = BINDABLE_ACTIONS
             .iter()
             .map(|(_, label)| {
-                let row = widgets::caption_row(tree, list, label);
+                let row = row(tree, card, label);
                 let [a, b, c] =
                     COLUMNS.map(|column| widgets::button(tree, row, &format!("{label} {column}")));
                 for button in [a, b, c] {
-                    widgets::set_width(tree, button, Sizing::Px(CELL));
+                    widgets::set_width(tree, button, Sizing::Fill);
                 }
                 let reset = widgets::button(tree, row, &format!("Reset {label}"));
                 tree.set_text(reset, "Reset");
                 [a, b, c, reset]
             })
             .collect::<Vec<_>>();
-        let actions = widgets::row(tree, root);
+        let actions = widgets::row(tree, card);
         let all = widgets::button(tree, actions, "Reset all");
         let back = widgets::button(tree, actions, "Back");
         tree.focus(rows[0][0]);
-        theme::slide_in(tree, root);
-        stack(ctx.world).own_root(root, RootCover::Hide);
+        enter(ctx.world, root);
         self.ui = Some((root, rows, all, back));
         self.refresh(ctx.world);
     }
@@ -196,12 +207,12 @@ impl GameState for KeybindingsState {
         let Some((root, rows, all, back)) = self.ui.clone() else {
             return;
         };
-        if transitioning(world) || flow_pending(world) {
+        if transitioning(world) {
             return;
         }
-        if let Some((row, column, left)) = self.capture.as_mut() {
-            *left -= world.resource::<Time>().real_delta();
-            let (row, column, left) = (*row, *column, *left);
+        if let Some((row, column, timer)) = self.capture.as_mut() {
+            let ended = timer.tick(world.resource::<Time>().real_delta()) > 0;
+            let (row, column, left) = (*row, *column, timer.remaining());
             for event in events(world) {
                 match event {
                     UiEvent::InputCaptured { binding, .. } => {
@@ -213,7 +224,7 @@ impl GameState for KeybindingsState {
                     _ => {}
                 }
             }
-            if left <= 0.0 {
+            if ended {
                 return self.stop_capture(world);
             }
             let wanted = if column == 2 { "button" } else { "key" };
@@ -234,7 +245,7 @@ impl GameState for KeybindingsState {
                 self.refresh(world);
             }
             Some(at) => {
-                self.capture = Some((at / 4, at % 4, CAPTURE_SECS));
+                self.capture = Some((at / 4, at % 4, Timer::once(CAPTURE_SECS)));
                 let router = world.resource_mut::<UiRouter>();
                 router.capture_next_input(buttons[at]);
             }

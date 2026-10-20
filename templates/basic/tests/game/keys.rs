@@ -72,7 +72,7 @@ fn every_bindable_action_is_listed_and_no_ui_or_engine_action() {
             "Move left",
             "Move right",
             "Pause",
-            "Mute"
+            "Shoot"
         ]
     );
     let up = named(&harness, "Move up Primary").unwrap();
@@ -171,17 +171,17 @@ fn reset_one_and_reset_all_restore_input_json() {
 fn a_capture_cancels_after_five_seconds() {
     let mut harness = harness();
     keybindings(&mut harness);
-    let before = bindings(&harness, "toggle_mute");
-    press(&mut harness, "Mute Gamepad");
+    let before = bindings(&harness, "state_pause");
+    press(&mut harness, "Pause Gamepad");
     assert!(capturing(harness.world()));
-    let cell = named(&harness, "Mute Gamepad").unwrap();
+    let cell = named(&harness, "Pause Gamepad").unwrap();
     assert!(widgets::text_of(harness.tree(), cell).starts_with("Press a button…"));
     harness.step(4 * 60);
     assert!(capturing(harness.world()), "still waiting at 4 s");
     harness.step(70);
     assert!(!capturing(harness.world()), "cancelled after 5 s");
-    assert_eq!(widgets::text_of(harness.tree(), cell), "Y");
-    assert_eq!(bindings(&harness, "toggle_mute"), before);
+    assert_eq!(widgets::text_of(harness.tree(), cell), "Start");
+    assert_eq!(bindings(&harness, "state_pause"), before);
     assert!(
         find(&harness, "Back").is_some(),
         "the screen takes input again"
