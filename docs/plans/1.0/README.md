@@ -6,7 +6,7 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 
 <!-- roadmap-summary:start -->
 - **Workspace:** `0.91.0`
-- **First open stop:** `w12b`
+- **First open stop:** `exfix`
 - **Stop state:** `todo`
 - **Next milestone:** `M71`
 <!-- roadmap-summary:end -->
@@ -32,6 +32,7 @@ Phase 5 is complete in the local refs. The [queue](implementation-plan.md#6-crit
 | [workflow.md](workflow.md) | How the program runs as Claude Code sessions: session types, levels, what every milestone owes before its release, sharing the tree and the reference machine, owner touchpoints, Step 0's tooling |
 | [release-checklist.md](release-checklist.md) | The checks that tag 1.0; C3 runs them on a release candidate |
 | [acceptance-game.md](acceptance-game.md) | The game that tests definition A; its feature list cuts W5, W6 and W13 |
+| [example-01-design.md](example-01-design.md) | Example 01 rebuilt as a sandbox on the template in four stops before the feature gate (`D-194`): the rules all four share, the assets, and each stop's scope and done-when, with starting values each stop's plan tunes |
 | [backlog-1.x.md](backlog-1.x.md) | What 1.0 defers, and what would bring each item back |
 | [roadmap.json](roadmap.json) | The catalog the [roadmap page](https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9) shows: every stop in register order with its group, kind, level, title, summary, sources and ratings, and the owner questions with their states and answers (`D-109`). `just repo-check` compares it with the register, and gate and graduation sessions update it with the register |
 
