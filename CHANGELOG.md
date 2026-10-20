@@ -6,6 +6,23 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.90.0] - 2026-10-19
+
+Summary: M70, W14b (plan archived at `docs/plans/archive/1.0/phase6-milestone-70-project-cli.md`): `tungsten`, the engine's command line for a game project, in `tools/cli/`: `new` makes a game from the template pinned to the release tag, `check` loads every file a game reads inside the game's own build behind the `TUNGSTEN_CHECK` handshake and reports every error with its file, and `package` writes a portable Linux x86-64 players' archive with its notices and a debug archive; `just template-check` runs all three on `new`'s output at every release. No hash moves.
+
+### Added
+
+- **The command line** (`D-182`): the `tungsten-cli` package, binary `tungsten` with `doc = false`: `new <path>`, `check` and `package`, `-h`/`--help` and `-V`/`--version`, exit 0, 1 or 2 for a usage error; `check` and `package` need the game's engine at the command line's version and name the `cargo install` line otherwise; arguments parsed by hand and no new crate.
+- **`tungsten check`** (`D-182`): `tungsten.json` and `input.json` through the engine's loaders, then `cargo run` with `TUNGSTEN_CHECK`: `App::new` resolves no user folder and `App::run`, in place of the window, checks the manifest roots (every path inside the game's folder), each sprite with its siblings, the animations, themes, materials, sounds, tilemaps, particle configs, data entries and prefabs, each map's objects and every unlisted JSON file as a scene, against everything the game's plugins registered, and writes every error with its file; core's `ManifestIssue`, `ResolvedManifest::load_for_check` and `StagedLoad::commit_for_check` share their bodies with the first-error loaders.
+- **`tungsten package`** (`D-182`): on Linux x86-64, a release build with `RUSTFLAGS="-C target-cpu=x86-64 -C link-arg=-Wl,--build-id"` (a set `RUSTFLAGS` refused), the binary staged with `tungsten.json`, `input.json`, `assets/` and the game's licence files, the debug split checked by build-id and `.debug_line` (`D-120`), the staged binary's check from the stage, the notices by `D-122`'s rules ported to Rust (the engine's crates under its `LICENSE`, a game's own `licenses/clarifications.json`, a drift test against `release.py`), and `dist/<name>-<version>-<target>.tar.gz` with its `-debug` twin, written by `tar`.
+- **`tungsten new`** (`D-182`): the template embedded at the build under the folder's name, both engine lines on `v<version>`, the workspace's profiles and lock; it never overwrites.
+
+### Changed
+
+- **`just template-check`** (`D-183`): it runs on `new`'s output: the pin, a clean check, the build, tests and smoke run, `tungsten package` into `target/package-check` and its archive's smoke run, two files outside the stage, five seeded content errors and two config errors; the floor's default rises from 3 to 6 GiB.
+- **The API**: `ManifestError` gains `OutsideFolder`, a break with its ledger row, beside a row of additions for the freeze; `api/tungsten-core.txt` moves and `api/tungsten-cli.txt` holds the help (`D-183`).
+- **Records**: decisions 182 and 183 with their marker lines on `D-106`, `D-107` and `D-123`; `DESIGN.md`'s template paragraph, an M70 section and the status line; the template's `AGENTS.md`, which `just ctx` now budgets at 12 KiB and 100 lines, `README.md` and a `.gitignore`; the getting-started guide's start and a Check and package section; the validation matrix's template and CLI rows, the release guide's outside check and `just checks`' routes; the template and CLI row of `docs/LLM_INDEX.md`; w14, Q20 answered by its default, two backlog rows and four known issues.
+
 ## [0.89.0] - 2026-10-19
 
 Summary: M69, the W12 shell (plan archived at `docs/plans/archive/1.0/phase6-milestone-69-template-shell.md`): `templates/basic` becomes a shell every game copies unchanged (title, pause, game over, save and load over an autosave and three slots, tabbed settings with a Display tab, keybindings, a confirm dialog and toasts, in a dark, square theme) and a sample game it deletes, joined through a six-name seam within a line budget; the engine gains an exit request with one last frame for quit and window close, and the player's frame-rate limit. No hash moves.

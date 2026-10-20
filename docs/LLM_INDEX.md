@@ -82,7 +82,7 @@ Run with `cargo run -p example-NN-name`.
 | Scene/state lifecycle | `examples/03_scene_state/src/main.rs`, `examples/03_scene_state/src/states.rs` |
 | Shader/material/post fixtures | `examples/04_shader_playground/src/main.rs` |
 | UI lab: theme reload, screens | `examples/05_ui_lab/src/`, `examples/05_ui_lab/src/menus.rs`, `examples/05_ui_lab/tests/`, `examples/05_ui_lab/tools/README.md` |
-| Game template: shell, sample, seam (`D-181`) | `templates/basic/src/game.rs`, `templates/basic/src/save.rs`, `templates/basic/src/shell/`, `templates/basic/src/sample/`, `templates/basic/AGENTS.md`, `scripts/template-check.sh`, `docs/getting-started.md` |
+| Game template (shell, sample, seam) and the `tungsten` CLI (`D-181`–`D-183`) | `templates/basic/src/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |

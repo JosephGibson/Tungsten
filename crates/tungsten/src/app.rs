@@ -62,6 +62,9 @@ use winit::window::{Fullscreen, Window, WindowId};
 /// 60 Hz so smoke-mode captures and visual regressions are frame-deterministic
 /// across runs regardless of build profile or host load.
 const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
+/// Names the report file `tungsten check` reads. Set, `App::run` checks the
+/// game's files in place of opening a window (M70).
+const CHECK_ENV: &str = "TUNGSTEN_CHECK";
 
 /// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
 /// A stall (debugger pause, window drag, a blocked acquire) would otherwise
@@ -178,6 +181,7 @@ impl App {
     /// As [`App::new`].
     pub fn with_plugins(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
         let smoke_frames = smoke_frames_from_env();
+        let checking = check_report_from_env().is_some();
         let invalid = config
             .game
             .validate()
@@ -187,7 +191,7 @@ impl App {
         let user_dirs = if invalid.is_none() {
             user_dir::resolve(
                 &config.game,
-                smoke_frames.is_some(),
+                smoke_frames.is_some() || checking,
                 Platform::current(),
                 |name| std::env::var_os(name),
             )
@@ -195,6 +199,12 @@ impl App {
             None
         };
         let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
+        // A check run's output is its errors: the loaders' info lines stay out.
+        let level = if checking {
+            level.min(LevelFilter::Warn)
+        } else {
+            level
+        };
         let (log_file, console_feed) =
             logging::install(level, user_dirs.as_ref().map(|dirs| dirs.logs.as_path()));
         if let Some(err) = invalid {
@@ -206,6 +216,7 @@ impl App {
         }
         if user_dirs.is_none()
             && smoke_frames.is_none()
+            && !checking
             && let Some(id) = &config.game.id
         {
             log::warn!("Game '{id}' has no user folder, so no log or crash file is written");
@@ -563,7 +574,21 @@ impl App {
     /// (`D-142`). Otherwise the capture error, logged once, when the frame
     /// `TUNGSTEN_CAPTURE_FRAME` names wrote no file: its readback, encode or
     /// write failed, it was skipped, or the run ended before it.
+    ///
+    /// With `TUNGSTEN_CHECK` set to a file path, as `tungsten check` and
+    /// `tungsten package` set it, the run opens no window, renderer or audio
+    /// device and runs no startup hook or frame: it loads every file the
+    /// manifest roots name, and every unlisted JSON file under a root's
+    /// folder as a scene, into this app's World, past every error, writes
+    /// one `<file>\t<message>` line per error to that file and returns an
+    /// error when there is one. [`App::new`] resolves no user folder then.
+    /// The variable is the command line's, not a promised interface.
     pub fn run(mut self) -> anyhow::Result<()> {
+        if let Some(report) = check_report_from_env() {
+            let game_dir = std::env::current_dir()
+                .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
+            return self.run_check(&report, &game_dir);
+        }
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
         self.start_hot_reload();
@@ -575,6 +600,35 @@ impl App {
         match self.take_run_error() {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+
+    /// `tungsten check`'s content stage in the game's own build (M70): the
+    /// reload roots' files checked in `game_dir` with this app's World, and
+    /// the report written to `report`, one line per error. Loaders log
+    /// warnings and errors only.
+    pub(crate) fn run_check(mut self, report: &Path, game_dir: &Path) -> anyhow::Result<()> {
+        use std::fmt::Write as _;
+
+        log::set_max_level(LevelFilter::Warn);
+        let roots = manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let errors = asset_loader::check::check_files(&mut self.world, &roots, game_dir);
+        let mut lines = String::new();
+        for error in &errors {
+            let _ = writeln!(lines, "{}\t{}", error.file.display(), error.message);
+        }
+        std::fs::write(report, lines).map_err(|err| {
+            anyhow::anyhow!(
+                "Failed to write the check report '{}': {err}",
+                report.display()
+            )
+        })?;
+        match errors.len() {
+            0 => Ok(()),
+            n => Err(anyhow::anyhow!(
+                "the check found {n} errors, written to '{}'",
+                report.display()
+            )),
         }
     }
 
@@ -2020,6 +2074,13 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
         buffers.pair_count(),
         buffers.contact_count()
     )
+}
+
+/// `TUNGSTEN_CHECK`, set and not empty: the report file of a check run.
+fn check_report_from_env() -> Option<PathBuf> {
+    std::env::var_os(CHECK_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
 }
 
 /// `TUNGSTEN_SMOKE_FRAMES` as a frame count above zero: smoke mode.

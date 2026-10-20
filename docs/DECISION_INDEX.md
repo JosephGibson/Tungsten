@@ -59,7 +59,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-115` | Manifest font families and ordered fallback chain validate against the merged graph. |
 | `D-116` | Packaged fonts by default; system faces opt in through `render.system_fonts`. `unicode-script`: `D-015` rule 2. |
 | `D-117` | Device-free `TextEngine`, GPU `TextPipeline`, neutral core types and retained nodes. Amends `D-085`. Amended by `D-125`: `TextNodeStore` seam. |
-| `D-123` | Game-local config/assets, engine font, template outside-copy check and canonical input reload path. Amends `D-008`, `D-013`, `D-045`. Amended by `D-168`: `engine_mono` gains its SemiBold face, `engine_mono_semibold`; `D-181`: the template is a shell and a sample inside a line budget. |
+| `D-123` | Game-local config/assets, engine font, template outside-copy check and canonical input reload path. Amends `D-008`, `D-013`, `D-045`. Amended by `D-168`: `engine_mono` gains its SemiBold face, `engine_mono_semibold`; `D-181`: the template is a shell and a sample inside a line budget; `D-183`: the outside copy made by `tungsten new`, checked and packaged. |
 | `D-126` | 1.0 glyph path: shared atlas, batch renderers, deferred trim (T1b); owned path/R3 deferred. Extends `D-026`. |
 | `D-127` | Logical UI layout, physical text rasterization, hinting off; scene scaling deferred to 1.x. |
 | `D-145` | W2 R2 late acquire: passes before the swapchain stage record and submit before the acquire; a resize inside it records them again; `render_encode` stays whole, `render_encode_pre_acquire` its part before. |
@@ -99,8 +99,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-098` | Remove per-step patch handoff, superseding `D-097`'s patch-series clause. Per-step commit clause superseded by `D-105`. |
 | `D-104` | Tracked public-API snapshots. Amended by `D-105`: before release; `D-107`: pinned toolchain, api/ paths and release check. |
 | `D-105` | Sessions leave work uncommitted; human release block makes the only commit. Supersedes `D-097`/`D-098` commit clauses; amends `D-104`. |
-| `D-106` | 12 KiB on-demand index; root rules stay 6 KiB with asset detail linked out. Amends `D-068`. |
-| `D-107` | Pinned-toolchain rustdoc JSON snapshots, `just api`/`api-check`. Amends `D-104`. Amended by `D-110`: umbrella testing feature. Amended by `D-155`: the kit's snapshot file. Amended by `D-172` (M62): the kit's components snapshot. |
+| `D-106` | 12 KiB on-demand index; root rules stay 6 KiB with asset detail linked out. Amends `D-068`. Amended by `D-183`: the template's `AGENTS.md` budget. |
+| `D-107` | Pinned-toolchain rustdoc JSON snapshots, `just api`/`api-check`. Amends `D-104`. Amended by `D-110`: umbrella testing feature. Amended by `D-155`: the kit's snapshot file. Amended by `D-172` (M62): the kit's components snapshot. Amended by `D-183` (M70): the command line's help snapshot. |
 | `D-108` | Adjacent A/B candidates with separate files may share plan/release; revises the definition gate's one-release rule. |
 | `D-109` | Checked roadmap catalog and one prompt home; viewer fed from tree-derived state. Amended by `D-118`: stages/session recommendations; `D-150`: plan/run status without approval lines, no graduation sessions. |
 | `D-111` | Dev/test debuginfo in unpacked .dwo files; supported backtraces, smaller/faster builds. Amends `D-041`. |
@@ -115,6 +115,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-150` | No owner-approval stops on the road to 1.0: plans end with the run prompt, level C critiques its own step 1 API diff, gates take defaults and sign, plan/run status from the plan's header and evidence, no graduation sessions; publication stays the owner's. Amends `D-109`, `D-118`, `D-140`. |
 | `D-151` | Opus 5.5 max only for level C plans and gates (complexity 2–4); every other session stage xhigh, Fable and high rules kept. Supersedes the max clauses of `D-118` and `D-136`. |
 | `D-152` | README owned fields count cut/tagged/merged stops as closed; `just release-cut` writes them; register rows are not edited after the merge. Extends `D-109`. |
+| `D-182` | W14b landed (M70): `tungsten-cli` in `tools/cli/`, binary `tungsten` with `new`, `check` and `package`, exit codes 0, 1 and 2, the CLI's version the engine's; `check` loads every file inside the game's own build behind `TUNGSTEN_CHECK` and reports every error (core `load_for_check`, `commit_for_check`); `package` builds a portable Linux x86-64 archive with notices and a debug archive; `new` copies the embedded template pinned to the tag. Extends `D-120`, `D-122`; settles `D-153`'s check limit. |
+| `D-183` | `just template-check` runs on `new`'s output with `check` and `package` (6 GiB floor); `api/tungsten-cli.txt` holds the CLI's help; the template's `AGENTS.md` is budgeted at 12 KiB and 100 lines. Amends `D-106`, `D-107`, `D-123`. |
 
 ## ECS / Runtime Flow
 

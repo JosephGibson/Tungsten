@@ -1017,3 +1017,201 @@ fn one_file_backs_one_prefab_or_data_entry() {
     let b = ResolvedManifest::load(&roots[1]).unwrap();
     assert!(matches!(a.merge(b), Err(ManifestError::SharedFile { .. })));
 }
+
+/// The issues' errors, as their messages.
+fn messages(issues: &[ManifestIssue]) -> Vec<String> {
+    issues.iter().map(|issue| issue.error.to_string()).collect()
+}
+
+#[test]
+fn load_for_check_reports_every_missing_file_and_bad_mesh_and_keeps_the_rest() {
+    let tmp = tempdir();
+    write_file(&tmp, "hero.png");
+    write_file(&tmp, "slime.json");
+    write_file(&tmp, "burning.json");
+    let root = write_manifest(
+        &tmp,
+        r#"{
+            "sprites": { "hero": { "path": "hero.png" }, "gem": { "path": "gem.png" } },
+            "prefabs": { "slime": { "path": "slime.json" }, "bat": { "path": "bat.json" } },
+            "data": { "effects": { "burning": { "path": "burning.json" }, "frozen": { "path": "frozen.json" } } },
+            "particle_meshes": {
+                "tri": { "vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 2] },
+                "bad": { "vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 5] }
+            }
+        }"#,
+    );
+    let (graph, issues) = ResolvedManifest::load_for_check(&[&root], &tmp);
+    assert_eq!(issues.len(), 4, "{:?}", messages(&issues));
+    assert!(issues.iter().all(|issue| issue.manifest == root));
+    assert!(
+        issues
+            .iter()
+            .any(|i| matches!(&i.error, ManifestError::MissingFile { id, .. } if id == "gem"))
+    );
+    assert!(
+        issues.iter().any(
+            |i| matches!(&i.error, ManifestError::MissingPrefabFile { id, .. } if id == "bat")
+        )
+    );
+    assert!(
+        issues.iter().any(
+            |i| matches!(&i.error, ManifestError::MissingDataFile { id, .. } if id == "frozen")
+        )
+    );
+    assert!(
+        issues.iter().any(
+            |i| matches!(&i.error, ManifestError::InvalidParticleMesh { id, .. } if id == "bad")
+        )
+    );
+    // Sorted by message within the root.
+    let mut sorted = messages(&issues);
+    sorted.sort();
+    assert_eq!(messages(&issues), sorted);
+    assert!(graph.sprites.contains_key("hero") && !graph.sprites.contains_key("gem"));
+    assert!(graph.prefabs.contains_key("slime") && !graph.prefabs.contains_key("bat"));
+    assert!(graph.data["effects"].contains_key("burning"));
+    assert!(!graph.data["effects"].contains_key("frozen"));
+    assert!(graph.particle_meshes.contains_key("tri"));
+    assert!(!graph.particle_meshes.contains_key("bad"));
+    // The first-error load still stops at one of them.
+    assert!(ResolvedManifest::load(&root).is_err());
+}
+
+#[test]
+fn load_for_check_keeps_the_first_declaration_of_a_repeated_id() {
+    let tmp = tempdir();
+    let one = tmp.join("one");
+    let two = tmp.join("two");
+    write_file(&one, "hero.png");
+    write_file(&two, "hero.png");
+    let first = write_manifest(&one, r#"{"sprites": {"hero": {"path": "hero.png"}}}"#);
+    let second = write_manifest(
+        &two,
+        r#"{"sprites": {"hero": {"path": "hero.png"}}, "data": {}}"#,
+    );
+    let (graph, issues) = ResolvedManifest::load_for_check(&[&first, &second], &tmp);
+    assert_eq!(issues.len(), 1, "{:?}", messages(&issues));
+    assert_eq!(issues[0].manifest, second);
+    assert!(matches!(&issues[0].error, ManifestError::DuplicateId { id } if id == "hero"));
+    assert!(
+        graph.sprites["hero"]
+            .path
+            .starts_with(one.canonicalize().unwrap())
+    );
+}
+
+#[test]
+fn load_for_check_names_the_root_that_declares_each_missing_reference() {
+    let tmp = tempdir();
+    let one = tmp.join("one");
+    let two = tmp.join("two");
+    std::fs::create_dir_all(&one).unwrap();
+    std::fs::create_dir_all(&two).unwrap();
+    let first = write_manifest(&one, r#"{"font_families": {"body": {"faces": ["inter"]}}}"#);
+    let second = write_manifest(
+        &two,
+        r#"{"materials": {"glow": {"shader": "glow"}}, "font_fallback": ["symbols"]}"#,
+    );
+    let (_, issues) = ResolvedManifest::load_for_check(&[&first, &second], &tmp);
+    assert_eq!(issues.len(), 3, "{:?}", messages(&issues));
+    assert!(
+        matches!(&issues[0].error, ManifestError::MaterialShaderMissing { id, .. } if id == "glow")
+    );
+    assert_eq!(issues[0].manifest, second);
+    assert!(
+        matches!(&issues[1].error, ManifestError::FontFamilyFaceMissing { family, .. } if family == "body")
+    );
+    assert_eq!(issues[1].manifest, first);
+    assert!(
+        matches!(&issues[2].error, ManifestError::UnknownFallbackFamily { family } if family == "symbols")
+    );
+    assert_eq!(issues[2].manifest, second);
+}
+
+#[test]
+fn load_for_check_reports_each_shared_file_once_naming_the_second_entry() {
+    let tmp = tempdir();
+    write_file(&tmp, "shared.json");
+    write_file(&tmp, "other.json");
+    let root = write_manifest(
+        &tmp,
+        r#"{"prefabs": {"slime": {"path": "shared.json"}, "bat": {"path": "other.json"}},
+            "data": {"effects": {"ooze": {"path": "shared.json"}, "acid": {"path": "other.json"}}}}"#,
+    );
+    let (_, issues) = ResolvedManifest::load_for_check(&[&root], &tmp);
+    assert_eq!(issues.len(), 2, "{:?}", messages(&issues));
+    assert!(
+        matches!(&issues[0].error, ManifestError::SharedFile { first, second, .. }
+        if first == "data.effects.acid" && second == "prefabs.bat")
+    );
+    assert!(
+        matches!(&issues[1].error, ManifestError::SharedFile { first, second, .. }
+        if first == "data.effects.ooze" && second == "prefabs.slime")
+    );
+}
+
+#[test]
+fn load_for_check_takes_a_root_that_does_not_read_or_parse_as_one_issue() {
+    let tmp = tempdir();
+    write_file(&tmp, "hero.png");
+    let good = tmp.join("good");
+    write_file(&good, "hero.png");
+    let good = write_manifest(&good, r#"{"sprites": {"hero": {"path": "hero.png"}}}"#);
+    let bad = tmp.join("bad.json");
+    std::fs::write(&bad, r#"{"sprites": {"gem": "#).unwrap();
+    let missing = tmp.join("missing.json");
+    let (graph, issues) = ResolvedManifest::load_for_check(&[&bad, &good, &missing], &tmp);
+    assert_eq!(issues.len(), 2, "{:?}", messages(&issues));
+    assert_eq!(issues[0].manifest, bad);
+    assert!(matches!(issues[0].error, ManifestError::Parse { .. }));
+    assert_eq!(issues[1].manifest, missing);
+    assert!(matches!(issues[1].error, ManifestError::Io { .. }));
+    assert_eq!(graph.sprites.len(), 1);
+}
+
+#[test]
+fn load_for_check_bounds_every_root_and_entry_by_the_folder() {
+    let tmp = tempdir();
+    let game = tmp.join("game");
+    let outside = write_file(&tmp, "outside.png");
+    write_file(&game, "hero.png");
+    let root = write_manifest(
+        &game,
+        &format!(
+            r#"{{"sprites": {{
+                "hero": {{"path": "hero.png"}},
+                "up": {{"path": "../outside.png"}},
+                "absolute": {{"path": {}}}
+            }}}}"#,
+            serde_json::to_string(&outside.display().to_string()).unwrap()
+        ),
+    );
+    let stray = write_manifest(&tmp, r#"{"sprites": {}}"#);
+    let (graph, issues) = ResolvedManifest::load_for_check(&[&stray, &root], &game);
+    assert_eq!(issues.len(), 3, "{:?}", messages(&issues));
+    assert_eq!(issues[0].manifest, stray);
+    assert!(
+        matches!(&issues[0].error, ManifestError::OutsideFolder { id, .. } if id == "manifest")
+    );
+    let ids: Vec<&str> = issues[1..]
+        .iter()
+        .map(|issue| match &issue.error {
+            ManifestError::OutsideFolder { id, path } => {
+                assert_eq!(*path, outside.canonicalize().unwrap().display().to_string());
+                id.as_str()
+            }
+            other => panic!("{other}"),
+        })
+        .collect();
+    assert_eq!(ids, ["sprites.absolute", "sprites.up"]);
+    assert!(
+        issues[1]
+            .error
+            .to_string()
+            .ends_with("outside the game's folder")
+    );
+    assert_eq!(graph.sprites.keys().collect::<Vec<_>>(), ["hero"]);
+    // Unbounded, the same root loads all three.
+    assert_eq!(ResolvedManifest::load(&root).unwrap().sprites.len(), 3);
+}

@@ -900,3 +900,65 @@ fn a_staged_file_routes_by_its_canonical_path() {
         Some("bat")
     );
 }
+
+#[test]
+fn commit_for_check_returns_every_failure_in_commits_order_and_keeps_them_in_place() {
+    let files = Files::new();
+    let burning = files.write("burning.json", r#"{ "duration": 1.0, "trail": "nope" }"#);
+    let zap = files.write(
+        "zap.json",
+        r#"{ "components": { "projectile": { "on_hit": "rotten" } } }"#,
+    );
+    let bolt = files.write(
+        "bolt.json",
+        r#"{ "components": { "projectile": { "on_hit": "stale" } } }"#,
+    );
+    let mut world = world();
+    let mut load = StagedLoad::new();
+    load.add_prefab("zap", &zap).unwrap();
+    load.add_prefab("bolt", &bolt).unwrap();
+    load.add_data(&world, "effects", "burning", &burning)
+        .unwrap();
+    let failures = load.commit_for_check(&mut world);
+    let names: Vec<String> = failures
+        .iter()
+        .map(|failure| match failure {
+            StagedLoadError::Data { kind, id, .. } => format!("{kind}.{id}"),
+            StagedLoadError::Prefab { id, .. } => format!("prefabs.{id}"),
+        })
+        .collect();
+    assert_eq!(names, ["effects.burning", "prefabs.bolt", "prefabs.zap"]);
+    assert!(failures[0].to_string().ends_with("unknown prefab `nope`"));
+    assert!(failures[1].to_string().contains("stale"), "{}", failures[1]);
+    // Nothing is taken back.
+    assert_eq!(duration(&world, "burning"), Some(1.0));
+    assert!(world.resource::<PrefabRegistry>().get("zap").is_some());
+    assert!(world.resource::<PrefabRegistry>().get("bolt").is_some());
+}
+
+#[test]
+fn commit_for_check_keeps_out_a_kind_the_world_holds_for_another_type() {
+    let files = Files::new();
+    let burning = files.write("burning.json", r#"{ "duration": 1.0 }"#);
+    let staged_on = world();
+    let mut load = StagedLoad::new();
+    load.add_data(&staged_on, "effects", "burning", &burning)
+        .unwrap();
+    let mut other = World::new();
+    other.register_data_kind::<Tags>("effects");
+    let failures = load.commit_for_check(&mut other);
+    assert_eq!(failures.len(), 1);
+    assert!(
+        matches!(&failures[0], StagedLoadError::Data { source, .. }
+            if matches!(**source, DataError::MismatchedKind { .. })),
+        "{}",
+        failures[0]
+    );
+    assert!(
+        other
+            .resource::<DataRegistry>()
+            .ids("effects")
+            .next()
+            .is_none()
+    );
+}

@@ -422,7 +422,9 @@ class CheckSelection(unittest.TestCase):
             "assets/manifest.json": {"cargo test -p tungsten-core --test manifests --locked", "just smoke"},
             "crates/tungsten/src/asset_loader/mod.rs": {"cargo test -p tungsten-core --test manifests --locked", "just repo-check"},
             "api/tungsten.txt": {"just api-check"},
-            "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked"},
+            "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked",
+                                            "cargo test -p tungsten-cli --locked"},
+            "tools/cli/src/main.rs": {"cargo test -p tungsten-cli --locked", "just template-check"},
             ".github/workflows/ci.yml": {"just script-test", "just repo-check"},
             "Cargo.lock": {"just deps", "just smoke"},
         }
