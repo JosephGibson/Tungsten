@@ -36,17 +36,17 @@ pub const GAMEPLAY_TAB: usize = 4;
 pub const SIZES: [(u32, u32); 4] = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)];
 /// The frame-rate limit's slider: its least, its most and its step, and
 /// where it rests while Unlimited is on.
-pub const FPS: [f32; 3] = [10.0, 480.0, 5.0];
+pub const FPS: [f32; 3] = [30.0, 480.0, 5.0];
 pub const FPS_REST: u32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Row {
     Mode,
     Size,
-    Apply,
     Vsync,
     Cap,
     Unlimited,
+    Apply,
     Master,
     Music,
     Effects,
@@ -73,17 +73,19 @@ enum Kind {
 
 const PERCENT: Kind = Kind::Slider(0.0, 100.0, 5.0);
 const CAP: Kind = Kind::Slider(FPS[0], FPS[1], FPS[2]);
-const UI: std::ops::RangeInclusive<f32> = Settings::UI_SCALE_RANGE;
 const TEXT: std::ops::RangeInclusive<f32> = Settings::TEXT_SCALE_RANGE;
+/// The UI scales the shell offers: the engine's range to 2, since past it
+/// the floor (`D-184`) lays most windows out no differently.
+pub const UI_SCALES: std::ops::RangeInclusive<f32> = 0.5..=2.0;
 
 /// Every row: its tab, its caption and how it is built.
 const ROWS: [(Row, usize, &str, Kind); 18] = [
     (Row::Mode, 0, "Window mode", Kind::Choice),
     (Row::Size, 0, "Window size", Kind::Choice),
-    (Row::Apply, 0, "Apply", Kind::Button),
     (Row::Vsync, 0, "VSync", Kind::Toggle),
     (Row::Cap, 0, "Frame rate limit", CAP),
     (Row::Unlimited, 0, "Unlimited", Kind::Toggle),
+    (Row::Apply, 0, "Apply", Kind::Button),
     (Row::Master, 1, "Master", PERCENT),
     (Row::Music, 1, "Music", PERCENT),
     (Row::Effects, 1, "Effects", PERCENT),
@@ -92,7 +94,7 @@ const ROWS: [(Row, usize, &str, Kind); 18] = [
         Row::UiScale,
         2,
         "UI scale",
-        Kind::Slider(*UI.start(), *UI.end(), 0.25),
+        Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25),
     ),
     (
         Row::TextScale,
@@ -167,12 +169,17 @@ pub fn set_volume(world: &mut World, bus: Option<AudioBus>, percent: f32) {
     });
 }
 
-/// Sets the UI scale, or with `text` the text scale, which `Settings`
-/// clamps to its range, ignoring a value that is not finite.
+/// Sets the UI scale, clamped to [`UI_SCALES`], or with `text` the text
+/// scale, which `Settings` clamps to its range; a value that is not finite
+/// is ignored.
 pub fn set_scale(world: &mut World, text: bool, scale: f32) {
     change(world, |settings| match text {
         true => settings.set_text_scale(Some(scale)),
-        false => settings.set_ui_scale(Some(scale)),
+        false if scale.is_finite() => {
+            let (least, most) = (*UI_SCALES.start(), *UI_SCALES.end());
+            settings.set_ui_scale(Some(scale.clamp(least, most)));
+        }
+        false => {}
     });
 }
 
@@ -234,6 +241,28 @@ pub fn window_sizes(world: &World) -> Vec<Resolution> {
     sizes
 }
 
+/// A size's aspect ratio as displays are sold by it: the nearest common
+/// one within 3 %, else the size reduced.
+#[must_use]
+pub fn aspect(width: u32, height: u32) -> String {
+    const COMMON: [(u32, u32); 7] = [(16, 9), (16, 10), (4, 3), (5, 4), (3, 2), (21, 9), (32, 9)];
+    let ratio = width as f32 / height.max(1) as f32;
+    let near = COMMON
+        .iter()
+        .find(|(w, h)| (ratio * *h as f32 / *w as f32 - 1.0).abs() < 0.03);
+    let gcd = |mut a: u32, mut b: u32| {
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        a.max(1)
+    };
+    let (w, h) = near.copied().unwrap_or_else(|| {
+        let d = gcd(width, height);
+        (width / d, height / d)
+    });
+    format!("{w}:{h}")
+}
+
 /// A slider's readout for `value`: a percent, the scales as percents of 1,
 /// or frames a second.
 fn readout(row: Row, value: f32) -> String {
@@ -289,7 +318,8 @@ impl SettingsState {
                 }
                 Row::Size => {
                     let Resolution { width, height } = size.unwrap_or(display.resolution);
-                    tree.set_text(id, format!("{width}×{height}").as_str());
+                    let text = format!("{width}×{height} ({})", aspect(width, height));
+                    tree.set_text(id, text.as_str());
                     tree.set_enabled(id, !fullscreen);
                     continue;
                 }
@@ -507,10 +537,19 @@ impl GameState for SettingsState {
         let mut readouts = Vec::new();
         let rows = ROWS
             .iter()
-            .map(|&(_, tab, caption, kind)| match kind {
+            .map(|&(row, tab, caption, kind)| match kind {
                 Kind::Choice => widgets::choice_row(tree, panels[tab], caption, ""),
                 Kind::Toggle => widgets::toggle_row(tree, panels[tab], caption, false),
-                Kind::Button => widgets::button(tree, panels[tab], caption),
+                Kind::Button => {
+                    let button = widgets::button(tree, panels[tab], caption);
+                    // Apply sits small at the tab's foot, under the values.
+                    if row == Row::Apply {
+                        let mut style = tree.layout_style(button).cloned().unwrap_or_default();
+                        style.align_self = Some(Align::End);
+                        tree.set_layout_style(button, style);
+                    }
+                    button
+                }
                 Kind::Slider(least, most, step) => {
                     let range = SliderRange::new(least, most).with_step(step);
                     let row = widgets::slider_row(tree, panels[tab], caption, range);

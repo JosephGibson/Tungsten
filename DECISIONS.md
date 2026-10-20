@@ -2604,6 +2604,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 
 ## D-187 — The template polish's template part: three font families, scrims and cards, quick motion and a run curtain, a UI that holds its layout at every scale, readouts and a frame-rate slider, shipped 80 % volumes, monitor sizes, eleven slots, quit questions, a seventh seam name and no mute hotkey; a sample that eases, shoots, mends a dummy, takes pickups, frames its play space and sounds; schema 3; the line caps at 2,400 and 2,900
 **Amended by D-189:** the sample's tinted sprites and its hazard, the run's music under game over, the window mode and size applying at once, the title's size and spacing, and game over's look and sound only; own sprites with hits their size, four red enemies that return, game over's sting and music, Apply, a larger title under a cap; the rest stand.
+**Amended by D-191:** the frame-rate limit's floor and the UI scale's top only; the frame-rate slider runs 30 to 480 fps and the UI scale slider 50 % to 200 %; the rest stand.
 **Date:** 2026-10-20
 **Decision:** `templates/basic` takes the owner's notes of 2026-10-20 on the engine's `D-184` and the kit's `D-185`.
 
@@ -2637,6 +2638,8 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - The UI lab's own text scale slider (example 05) keeps 0.75..=2.
 
 ## D-189 — The template's playtest pass: own sprites with hits their size, four red enemies that return, a hurt sound, a red game over with its sting and music, Apply for the window mode and size, a larger title under a text-scale cap, and no Gameplay Options on pause
+**Amended by D-190:** the shapes' places, the shot's start, the confirm's layout and Apply's place only; every shape and the aim on a 32 × 32 sprite's middle at `[16, 16]`, the shot from the player's middle, a menu-wide confirm with stacked answers and a small Apply at the Display tab's foot; the rest stand.
+**Amended by D-191:** the title's buttons and the shot's speed and range only; smaller title buttons 40 units below the name with a song of its own, and a bolt at 640 px/s for 760 px that bursts into sparks; the rest stand.
 **Date:** 2026-10-20
 **Decision:** `templates/basic` takes the owner's playtest notes of 2026-10-20 on `D-187`.
 
@@ -2654,3 +2657,39 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - Amends `D-187` and `D-181` as their marker lines say; `D-188` lowers the text scale's floor alongside.
 - Tests: 118 in `tests/game/`, among them `a_bolt_hits_what_it_visibly_touches`, which fails at the old circles, `enemies_move_take_three_hits_and_come_back`, `window_sizes_cycle_until_apply_sends_them`, `pause_reaches_the_gameplay_options_through_settings`, `game_over_plays_its_sting_and_music_over_the_silenced_run`, and game over's red heading and tint; the schedule snapshot is unchanged, since no system was added.
 - `src/shell/` measures 2,303 lines of code and `src/` 2,804, under `D-187`'s 2,400 and 2,900; `assets/sounds/` grows to 938,050 bytes, the dirge 294,044 of them.
+
+## D-190 — The template's kit shapes sit on their sprites' middles, a confirm is a menu's width with stacked answers, and Apply is small at the Display tab's foot
+**Date:** 2026-10-20
+**Decision:** `templates/basic` takes the owner's last playtest notes of 2026-10-20 on `D-189`.
+
+- **Shapes on the sprite's middle.** The engine draws a sprite's top-left corner at its entity's point, and the kit centres each shape on the point. `tools/sprites.py` now draws every sprite on a 32 × 32 canvas with its art centred, as M36's `player.png` is, and every prefab offsets its hurtbox, hitbox, contact shape and pickup shape, and the player its aim, by `[16, 16]`, the sprite's middle. The shot starts 18 px from the player's middle along the aim, and an enemy's circle is 13 px.
+- **Damage numbers.** A hit's number floats from its target's shape, so the dummy's now rises from the dummy's middle.
+- **Questions.** A confirm is a menu's width, its question centred and its two answers stacked under it, so the longest pair, Overwrite and Cancel, fits at text 200 % in the 731 × 411 floor.
+- **Apply** is a plain button at the Display tab's foot, aligned with the values.
+
+**Why:** The owner found shots still landing off and the dummy's number off its middle: with every shape on its sprite's top-left corner, a shot left the player's corner, aimed from the corner, and the hit and hurt circles sat 16 px up and left of what was drawn. The confirm stood wider than the menu it covered, and Apply spanned the tab.
+
+**Consequences:**
+- Amends `D-189` as its marker line says.
+- Tests: 119 in `tests/game/`; `shots_land_where_the_cursor_points_at_every_window_size` aims at the dummy's middle through the camera at 1280 × 720 and 3840 × 2160 and checks the bolt's heading, the hit and where the number rises; the other two shot tests aim from the player's middle.
+- `src/shell/` measures 2,311 lines of code and `src/` 2,812, under `D-187`'s caps.
+- A sprite has no origin of its own: a game with other sprite sizes offsets its shapes by half its sprite (known issues).
+
+## D-191 — The template's final playtest pass: a title song, smaller title buttons further below the name, window sizes with their aspect ratios, a spinning enemy, a faster, longer shot that bursts into sparks, bodies for the player, the dummy and the enemies, a harder hit shake, the UI scale offered to 200 % and a 30-fps floor
+**Date:** 2026-10-20
+**Decision:** `templates/basic` takes the owner's final playtest notes of 2026-10-20.
+
+- **Title.** Its buttons sit in a 220-unit column with 3-unit vertical padding, 40 units below the name; the picker keeps a menu's width for its notes. `music_title`, an original four-bar theme at 112 BPM in C major from `tools/sounds.py`, loops while the title is on the stack, faded in and out over 1 s, so a run's start fades it out.
+- **Settings.** A window size reads with its aspect ratio, the nearest common one within 3 % (`16:9`, `16:10`, `4:3`, `5:4`, `3:2`, `21:9`, `32:9`), else the size reduced (`settings::aspect`). The UI scale slider offers 50 % to 200 % (`UI_SCALES`), which `set_scale` clamps to inside the engine's range, and the frame-rate limit runs 30 to 480 fps.
+- **Enemies.** The enemy turns through four frames, `enemy` and `enemy_1` to `enemy_3` from `tools/sprites.py`, its spikes an eighth of their spacing a frame and its body swelling, as the `enemy_spin` animation at 110 ms a frame.
+- **Shot.** The bolt flies at 640 px/s for 760 px, and its `hit` cue spawns `spark`, a 0.5-s emitter of the `spark` particle config: 14 amber sparks of the 8-px `spark` sprite, drawn at its own size, bursting from where the bolt met its target.
+- **Bodies.** The player is a kinematic body with a 24-px box, the enemies kinematic bodies with 12-px circles and the dummy a static body with a 14-px circle, each offset `[16, 16]` as the shapes are (`D-190`): the top-down mover stops at the enemies and slides along the dummy, so the player no longer walks through them, while the enemies' motion drives their bodies' velocity and their touch still lands, the player's hurt circle grown to 12 to meet it. The dummy's body is a pixel smaller than its hurtbox, so a bolt lands its hit before the static body ends it as a wall. F1, the engine's physics view, outlines every body.
+- **Shake.** The player's `damaged` cue adds 0.6 trauma, not 0.25: the camera's offset goes as the trauma squared, so 0.25 moved it 1.5 px at most and 0.6 moves it about 9.
+
+**Why:** The owner's final notes asked for smaller title buttons with more room under the name and a title song, aspect ratios beside the window sizes, an animated enemy, a quicker shot that goes further with an impact effect, collision boxes for the enemies, the player and the target, a screen shake on a hit, the UI scale clamped to 50–200 % and a 30-fps floor. The clamp stays in the template: narrowing the engine's range would make a settings file with a larger UI scale invalid, and an invalid file falls back whole to the defaults (`D-159`).
+
+**Consequences:**
+- Amends `D-187` and `D-189` as their marker lines say; extends `D-190`'s offsets to the bodies.
+- Tests: 126 in `tests/game/`, among them `bodies_keep_the_player_out_of_the_dummy_and_the_enemies`, `a_bolt_hit_bursts_sparks_where_it_struck`, `enemies_turn_through_their_four_frames`, `a_shot_flies_at_its_speed_and_ends_at_its_range`, `the_title_plays_its_song_until_a_run_starts`, `the_frame_rate_limit_stops_at_thirty` and `window_sizes_show_their_aspect_ratio`; the schedule snapshot is unchanged.
+- `src/shell/` measures 2,359 lines of code and `src/` 2,860, inside `D-187`'s caps; `assets/sounds/` grows to 1,316,078 bytes.
+- A stored frame-rate cap under 30 or UI scale over 2, from an older build, applies as stored and reads exactly until its slider moves, as an off-grid cap does (`D-187`).

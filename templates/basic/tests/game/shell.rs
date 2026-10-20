@@ -732,8 +732,13 @@ fn the_title_is_one_serif_line_above_the_menu() {
     assert_eq!(harness.text().committed(node).unwrap().line_count, 1);
     let menu = harness.rect(find(&harness, "New Game").unwrap()).unwrap();
     assert!(
-        harness.rect(title).unwrap().max.y <= menu.min.y,
-        "above the menu"
+        harness.rect(title).unwrap().max.y + theme::TITLE_SPACE <= menu.min.y,
+        "well above the menu"
+    );
+    let width = menu.max.x - menu.min.x;
+    assert!(
+        (width - theme::TITLE_MENU_WIDTH).abs() < 0.5,
+        "narrower: {width}"
     );
     // The version and "Saving is off", small in the corner.
     let viewport = harness.rect(root).unwrap();

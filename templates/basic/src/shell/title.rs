@@ -1,13 +1,14 @@
-//! The title: the game's name, large in the heading family, above Continue,
-//! New Game (through the difficulty picker, each difficulty beside the
-//! game's note on it), Load, Settings and Quit, spaced wider than a menu's,
-//! with the version and "Saving is off" small at the bottom left. Continue loads the newest readable slot,
+//! The title: the game's name, large in the heading family, well above
+//! Continue, New Game (through the difficulty picker, each difficulty beside
+//! the game's note on it), Load, Settings and Quit, smaller and spaced wider
+//! than a menu's, with the version and "Saving is off" small at the bottom
+//! left, and its song playing until a run starts. Continue loads the newest readable slot,
 //! named with its age under it, and is focused when there is one, disabled
 //! otherwise. Quit asks first.
 
-use tungsten::core::World;
 use tungsten::core::text::TextWrap;
-use tungsten::core::ui::{Align, Anchor, Justify, LayoutStyle, Sizing, UiTree, WidgetId};
+use tungsten::core::ui::{Align, Anchor, Edges, Justify, LayoutStyle, Sizing, UiTree, WidgetId};
+use tungsten::core::{AudioCommands, Voice, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
@@ -15,7 +16,7 @@ use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
 use super::{
     Difficulty, GameInfo, RunStart, RunState, Shell, SlotState, cancelled, clicked, enter, idle,
-    newest, push, quit_game, read_slots, saving_on, start_run, theme, toast, widgets,
+    newest, play, push, quit_game, read_slots, saving_on, start_run, theme, toast, widgets,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
@@ -41,6 +42,7 @@ pub struct TitleState {
     autosave_ready: bool,
     picking: bool,
     opened: Option<WidgetId>,
+    music: Option<Voice>,
 }
 
 impl TitleState {
@@ -100,16 +102,30 @@ impl GameState for TitleState {
         // can commit an ulp short and wrap its last word out of sight.
         let title = widgets::display(tree, card, &info.title, theme::TITLE);
         widgets::set_width(tree, title, Sizing::Percent(100.0));
+        // A menu's width, for the picker's notes; the buttons' page within it
+        // narrower, centred.
         let column = widgets::column(tree, card);
-        widgets::set_width(tree, column, Sizing::Px(theme::MENU_WIDTH));
+        let mut style = tree.layout_style(column).cloned().unwrap_or_default();
+        (style.width, style.margin.top) = (Sizing::Px(theme::MENU_WIDTH), theme::TITLE_SPACE);
+        style.align_items = Align::Center;
+        tree.set_layout_style(column, style);
         let pages = [(); 2].map(|()| widgets::column(tree, column));
-        for page in pages {
+        for (page, width) in pages
+            .into_iter()
+            .zip([theme::TITLE_MENU_WIDTH, theme::MENU_WIDTH])
+        {
             let mut style = tree.layout_style(page).cloned().unwrap_or_default();
-            style.gap = theme::TITLE_GAP;
+            (style.gap, style.width) = (theme::TITLE_GAP, Sizing::Px(width));
             tree.set_layout_style(page, style);
         }
         let captions = ["Continue", "New Game", "Load", "Settings", "Quit"];
         let buttons = captions.map(|caption| widgets::button(tree, pages[0], caption));
+        let [x, y] = theme::TITLE_BUTTON_PADDING;
+        for button in buttons {
+            let mut style = tree.layout_style(button).cloned().unwrap_or_default();
+            style.padding = Edges::symmetric(x, y);
+            tree.set_layout_style(button, style);
+        }
         if let Some((slot, _)) = &self.newest {
             let at = slots.iter().find_map(|(each, state)| match state {
                 SlotState::Ready(_, at) if each == slot => Some(*at),
@@ -157,6 +173,7 @@ impl GameState for TitleState {
         }
         enter(world, root);
         widgets::capped(world, title, theme::TITLE, theme::TITLE_CAP);
+        self.music = play(world, theme::TITLE_MUSIC, theme::TITLE_FADE);
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
             let files = if warnings == 1 { "file" } else { "files" };
@@ -164,7 +181,12 @@ impl GameState for TitleState {
         }
     }
 
-    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        if let Some(music) = self.music.take() {
+            let audio = ctx.world.resource_mut::<AudioCommands>();
+            audio.stop_voice(music, theme::TITLE_FADE);
+        }
+    }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
         if let Some(button) = self.opened {

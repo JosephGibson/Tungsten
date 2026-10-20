@@ -2,5 +2,5 @@
   "trigger": { "action": "shoot" },
   "cooldown": 0.2,
   "target": { "aim": {} },
-  "payload": [{ "spawn": { "prefab": "bolt", "speed": 480, "offset": 12 } }]
+  "payload": [{ "spawn": { "prefab": "bolt", "speed": 640, "offset": 18 } }]
 }

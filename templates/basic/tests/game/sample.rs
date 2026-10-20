@@ -5,9 +5,9 @@ use std::path::Path;
 
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
-    ActionMap, AssetRegistry, AudioCommand, AudioHandle, Binding, CameraController, CameraMode,
-    CameraState, Entity, Position, PrevPosition, SoundRegistry, Sprite, Time, Transform,
-    UserFolder, Velocity, Voice, With,
+    ActionMap, AssetRegistry, AudioCommand, AudioHandle, Binding, BodyKind, CameraController,
+    CameraMode, CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigidBody,
+    SoundRegistry, Sprite, Time, Transform, UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
     Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats, damage,
@@ -271,9 +271,10 @@ fn a_hit_shakes_the_camera_and_shows_its_damage() {
         [("1".to_string(), "engine_mono".to_string())],
         "the labels cue rule floats the hit while the option is on"
     );
+    let trauma = harness.world().resource::<CameraController>().shake_trauma;
     assert!(
-        harness.world().resource::<CameraController>().shake_trauma > 0.0,
-        "and the player's damaged cue shakes the camera"
+        trauma > 0.55,
+        "and the player's damaged cue shakes the camera hard: {trauma}"
     );
 }
 
@@ -666,8 +667,8 @@ fn a_click_shoots_a_bolt_toward_the_cursor() {
     start(&mut harness);
     let at = player_position(&harness).unwrap();
     // The camera starts at the play space's top-left at zoom 1, so the
-    // window's pixels are the world's.
-    harness.pointer_to(at[0] + 300.0, at[1]);
+    // window's pixels are the world's; the aim leaves the sprite's middle.
+    harness.pointer_to(at[0] + MIDDLE + 300.0, at[1] + MIDDLE);
     harness.step(1);
     harness.harness_mut().press_action("shoot");
     harness.step(2);
@@ -1041,6 +1042,222 @@ fn game_over_plays_its_sting_and_music_over_the_silenced_run() {
     );
 }
 
+/// A sprite's middle from its entity's point: the engine draws a sprite's
+/// top-left corner at the point, and every sprite is 32 px square.
+const MIDDLE: f32 = 16.0;
+
+/// The world labels the last frame drew: each one's text and the physical
+/// pixel its pivot, the middle of its foot, landed on.
+fn label_spots(harness: &UiHarness) -> Vec<(String, [f32; 2])> {
+    let draw = harness.harness().draw().expect("a frame was drawn");
+    let runs = draw.world_labels.iter();
+    runs.map(|run| (run.content.clone(), run.position))
+        .collect()
+}
+
+#[test]
+fn shots_land_where_the_cursor_points_at_every_window_size() {
+    for window in [[1280, 720], [3840, 2160]] {
+        let mut harness = harness();
+        harness.world_mut().insert_resource(WindowSize {
+            width: window[0],
+            height: window[1],
+        });
+        start(&mut harness);
+        let dummy = harness.world().resource::<SampleRun>().dummy;
+        // Down and left of the dummy, so the shot crosses at a slant.
+        let from = [DUMMY_START[0] - 160.0, DUMMY_START[1] + 90.0];
+        put_player(&mut harness, from);
+        harness.step(1);
+        let middle = [DUMMY_START[0] + MIDDLE, DUMMY_START[1] + MIDDLE];
+        let camera = *harness.world().resource::<CameraState>();
+        let spot = camera.world_to_screen(middle.into());
+        harness.pointer_to(spot.x, spot.y);
+        harness.step(1);
+        harness.harness_mut().press_action("shoot");
+        harness.step(2);
+        harness.harness_mut().release_action("shoot");
+        let fired = bolts(&harness);
+        assert_eq!(fired.len(), 1, "{window:?}: a bolt");
+        let [vx, vy] = fired[0].1;
+        let [wx, wy] = [middle[0] - from[0] - MIDDLE, middle[1] - from[1] - MIDDLE];
+        let cos = (vx * wx + vy * wy) / (vx.hypot(vy) * wx.hypot(wy));
+        assert!(cos > 0.9999, "{window:?}: ({vx}, {vy}) toward ({wx}, {wy})");
+        let mut struck = false;
+        for _ in 0..30 {
+            harness.step(1);
+            let flash = harness.world().get::<HitFlash>(dummy);
+            if flash.is_some_and(|flash| flash.is_active()) {
+                struck = true;
+                break;
+            }
+        }
+        assert!(struck, "{window:?}: the dummy took the shot");
+        // Its damage floats from the dummy's middle, centred on it.
+        let camera = *harness.world().resource::<CameraState>();
+        let centre = camera.world_to_screen(middle.into());
+        let spots = label_spots(&harness);
+        assert_eq!(spots.len(), 1, "{window:?}: {spots:?}");
+        let (text, [x, y]) = &spots[0];
+        assert_eq!(text, "1");
+        assert!(
+            (x - centre.x).abs() < 1.0,
+            "{window:?}: x {x} at {}",
+            centre.x
+        );
+        let above = centre.y - y;
+        assert!(
+            (-1.0..40.0).contains(&above),
+            "{window:?}: y {y} at {}",
+            centre.y
+        );
+    }
+}
+
+#[test]
+fn bodies_keep_the_player_out_of_the_dummy_and_the_enemies() {
+    let mut harness = harness();
+    start(&mut harness);
+    let (player, dummy) = {
+        let run = harness.world().resource::<SampleRun>();
+        (run.player, run.dummy)
+    };
+    let kind = |harness: &UiHarness, entity| {
+        harness
+            .world()
+            .get::<RigidBody>(entity)
+            .map(|body| body.kind)
+    };
+    assert_eq!(kind(&harness, player), Some(BodyKind::Kinematic));
+    assert_eq!(kind(&harness, dummy), Some(BodyKind::Static));
+    for enemy in enemies(&harness) {
+        assert_eq!(kind(&harness, enemy), Some(BodyKind::Kinematic));
+    }
+    // Walked into the dummy from its left, the player stops against it:
+    // the box's 12 and the dummy's circle's 14 keep their middles 26 apart.
+    put_player(&mut harness, [DUMMY_START[0] - 70.0, DUMMY_START[1]]);
+    harness.step(2);
+    harness.harness_mut().press_action("move_right");
+    harness.step(60);
+    harness.harness_mut().release_action("move_right");
+    let gap = DUMMY_START[0] - harness.world().get::<Position>(player).unwrap().0.x;
+    assert!((25.0..=30.0).contains(&gap), "stopped against it: {gap}");
+}
+
+#[test]
+fn a_bolt_hit_bursts_sparks_where_it_struck() {
+    let mut harness = harness();
+    start(&mut harness);
+    let dummy = harness.world().resource::<SampleRun>().dummy;
+    let from = [DUMMY_START[0] - 200.0, DUMMY_START[1]];
+    put_player(&mut harness, from);
+    harness.pointer_to(from[0] + MIDDLE + 300.0, from[1] + MIDDLE);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
+    let sparks = |harness: &UiHarness| -> Vec<[f32; 2]> {
+        let world = harness.world();
+        let found = world.query_filtered::<&Transform, With<ParticleEmitter>>();
+        found.map(|at| at.position.to_array()).collect()
+    };
+    let mut burst = Vec::new();
+    for _ in 0..30 {
+        harness.step(1);
+        burst = sparks(&harness);
+        if !burst.is_empty() {
+            break;
+        }
+    }
+    assert!(
+        harness
+            .world()
+            .get::<HitFlash>(dummy)
+            .is_some_and(|flash| flash.is_active())
+    );
+    assert_eq!(burst.len(), 1, "one burst");
+    // At the bolt's middle when it met the dummy: 20 px from the dummy's.
+    let [x, y] = burst[0];
+    let middle = [DUMMY_START[0] + MIDDLE, DUMMY_START[1] + MIDDLE];
+    let off = (x - middle[0]).hypot(y - middle[1]);
+    assert!((14.0..=26.0).contains(&off), "at the impact: {off}");
+    harness.step(40);
+    assert!(
+        sparks(&harness).is_empty(),
+        "the emitter goes after its burst"
+    );
+}
+
+#[test]
+fn enemies_turn_through_their_four_frames() {
+    let mut harness = harness();
+    start(&mut harness);
+    let enemy = enemies(&harness)[1];
+    let mut seen = Vec::new();
+    for _ in 0..40 {
+        let frame = harness.world().get::<Sprite>(enemy).unwrap().asset_id;
+        if !seen.contains(&frame) {
+            seen.push(frame);
+        }
+        harness.step(1);
+    }
+    assert_eq!(seen.len(), 4, "the spin's four frames");
+}
+
+#[test]
+fn a_shot_flies_at_its_speed_and_ends_at_its_range() {
+    let mut harness = harness();
+    start(&mut harness);
+    let at = player_position(&harness).unwrap();
+    // Left, along an empty row.
+    harness.pointer_to(at[0] + MIDDLE - 300.0, at[1] + MIDDLE);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
+    let fired = bolts(&harness);
+    assert_eq!(fired.len(), 1);
+    let [x, y] = fired[0].1;
+    assert!(
+        (x + 640.0).abs() < 1.0 && y.abs() < 1.0,
+        "640 px/s: {x}, {y}"
+    );
+    let mut steps = 0;
+    while !bolts(&harness).is_empty() {
+        harness.step(1);
+        steps += 1;
+        assert!(steps < 120, "it ends");
+    }
+    // 760 px at 640 px/s: 71 steps of 1/60 s, give or take its first.
+    assert!((68..=74).contains(&steps), "{steps} steps");
+}
+
+#[test]
+fn the_title_plays_its_song_until_a_run_starts() {
+    let mut harness = harness();
+    let (run, _) = start_heard(&mut harness);
+    act(&mut harness, "state_pause");
+    let quit = find_named(&harness, "Quit to Title");
+    assert!(harness.focus(quit));
+    act(&mut harness, "ui_accept");
+    let answer = find_named(&harness, "Quit");
+    assert!(harness.focus(answer));
+    let back = act(&mut harness, "ui_accept");
+    assert!(
+        stops(&back).contains(&(run, MUSIC_FADE)),
+        "the run's music ends"
+    );
+    let song = plays(&harness, &back, theme::TITLE_MUSIC);
+    assert_eq!(song.len(), 1, "the title's song");
+    let (song, looping, fade) = song[0];
+    assert!(looping && fade == theme::TITLE_FADE);
+    let (_, started) = start_heard(&mut harness);
+    assert!(
+        stops(&started).contains(&(song, theme::TITLE_FADE)),
+        "a run fades it out"
+    );
+}
+
 /// Puts the player at `at`, without a slide from where it was.
 fn put_player(harness: &mut UiHarness, at: [f32; 2]) {
     let player = player_entity(harness);
@@ -1058,7 +1275,7 @@ fn a_bolt_hits_what_it_visibly_touches() {
     // and the dummy's 15-px one overlap there, as their sprites do.
     let from = [DUMMY_START[0] - 200.0, DUMMY_START[1] + 17.0];
     put_player(&mut harness, from);
-    harness.pointer_to(from[0] + 300.0, from[1]);
+    harness.pointer_to(from[0] + MIDDLE + 300.0, from[1] + MIDDLE);
     harness.step(1);
     harness.harness_mut().press_action("shoot");
     harness.step(2);

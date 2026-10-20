@@ -25,6 +25,9 @@ pub const SCRIM_ALPHA: u8 = 184;
 /// The menu sounds, by manifest ID: a focus move a navigation press made,
 /// an activation, and a cancel or Back.
 pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
+/// The title's song, by manifest ID, and its fade in and out.
+pub const TITLE_MUSIC: &str = "music_title";
+pub const TITLE_FADE: f32 = 1.0;
 /// Game over's sting and music, by manifest ID, and the music's fade in and
 /// out.
 pub const GAME_OVER_SOUNDS: [&str; 2] = ["game_over", "music_over"];
@@ -67,8 +70,12 @@ pub const HEADING_LINE: f32 = 28.0;
 /// width on one line.
 pub const TITLE: [f32; 2] = [56.0, 64.0];
 pub const TITLE_CAP: f32 = 80.0;
-/// Between the title's buttons, and between the title and them.
+/// Between the title's buttons; the room between the name and them; the
+/// buttons' column, narrower than a menu's; and their padding, shallower.
 pub const TITLE_GAP: f32 = 14.0;
+pub const TITLE_SPACE: f32 = 40.0;
+pub const TITLE_MENU_WIDTH: f32 = 220.0;
+pub const TITLE_BUTTON_PADDING: [f32; 2] = [14.0, 3.0];
 /// Game over's "You died": its size and line height, in the heading family
 /// and the danger colour, and the most its size grows to, which still fits
 /// a menu's width.

@@ -1,9 +1,10 @@
-//! A modal question with two answers: the safe one, the second, focused and
-//! picked by `ui_cancel`; an optional countdown on the real clock picks it
+//! A modal question with two answers, stacked under it in a menu-wide
+//! card: the safe one, the second, focused and picked by `ui_cancel`; an optional countdown on the real clock picks it
 //! when it ends. An answer runs its callback, then the dialog pops, unless
 //! the callback changed the run through `goto`, which takes the dialog too.
 
-use tungsten::core::ui::{Justify, UiTree, WidgetId};
+use tungsten::core::text::TextAlign;
+use tungsten::core::ui::{UiTree, WidgetId};
 use tungsten::core::{Time, World};
 use tungsten::{GameState, StateContext, StateId};
 
@@ -93,19 +94,18 @@ impl GameState for ConfirmState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let (root, card) = widgets::screen(tree, theme::MENU_WIDTH + 80.0);
-        tree.label(card, self.question.as_str());
+        let (root, card) = widgets::screen(tree, theme::MENU_WIDTH);
+        let question = tree.label(card, self.question.as_str());
         let count = widgets::note(tree, card, "");
+        for label in [question, count] {
+            widgets::restyle(tree, label, |text| text.align = Some(TextAlign::Center));
+        }
         widgets::show(tree, count, self.countdown.is_some());
         if let Some(secs) = self.countdown {
             tree.set_plain_text(count, &count_text(secs));
         }
-        let row = widgets::row(tree, card);
-        let mut style = tree.layout_style(row).cloned().unwrap_or_default();
-        style.justify_content = Justify::End;
-        tree.set_layout_style(row, style);
-        let yes = widgets::button(tree, row, self.yes);
-        let no = widgets::button(tree, row, self.no);
+        let yes = widgets::button(tree, card, self.yes);
+        let no = widgets::button(tree, card, self.no);
         tree.focus(no);
         enter(ctx.world, root);
         self.ui = Some([root, yes, no, count]);

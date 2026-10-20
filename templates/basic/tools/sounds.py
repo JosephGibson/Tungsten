@@ -2,7 +2,7 @@
 
 Everything is built from integer xorshift noise, one-pole filters, pulse,
 triangle and sine oscillators and exponential envelopes, so regeneration is
-byte-identical. Each sound is normalized to a -2 dBFS peak. The three music
+byte-identical. Each sound is normalized to a -2 dBFS peak. The four music
 loops render one bar past their end and fold that tail onto their start, so
 each repeats at its bar line without a click.
 
@@ -350,6 +350,50 @@ def music_pause():
     return render_loop(8, beat, events)
 
 
+def music_title():
+    """An original four-bar title theme at 112 BPM in C major: a pulse lead
+    over C, G, Am and F, a triangle bass, a soft arpeggio and light drums."""
+    beat = RATE * 60 // 112  # 11,812 samples
+    eighth = beat // 2
+    chords = [('C', 'E', 'G'), ('G', 'B', 'D'), ('A', 'C', 'E'), ('F', 'A', 'C')]
+    # The lead in eighths; '-' holds the note before, '.' rests.
+    lead = ('E5 - G5 C6 B5 - G5 - '
+            'D5 - G5 B5 A5 - G5 - '
+            'C5 - E5 A5 G5 - E5 - '
+            'F5 - A5 C6 B5 - G5 .').split()
+    events = []
+    at = 0
+    while at < len(lead):
+        name, held = lead[at], 1
+        while at + held < len(lead) and lead[at + held] == '-':
+            held += 1
+        if name != '.':
+            voice = tone(note(name), held * eighth / RATE - 0.02,
+                         lambda p: pulse(p, 0.25), 0.7, 0.3)
+            events.append((at * eighth, voice))
+        at += held
+    for bar, (root, third, fifth) in enumerate(chords):
+        bar_start = bar * 4 * beat
+        # The bass: root, root, fifth, octave in quarters.
+        for step, name in enumerate([root + '2', root + '2', fifth + '2', root + '3']):
+            voice = tone(note(name), beat / RATE - 0.02, triangle, 0.6, 0.5)
+            events.append((bar_start + step * beat, voice))
+        # The arpeggio in eighths, soft, an octave over the bass's top.
+        for step, name in enumerate([root + '4', third + '4', fifth + '4', third + '4'] * 2):
+            voice = tone(note(name), eighth / RATE - 0.01, lambda p: pulse(p, 0.5), 0.1, 0.08)
+            events.append((bar_start + step * eighth, voice))
+        # The drums: a kick on one and three, a soft snare on two and four,
+        # hats on the off-beats.
+        for quarter in range(4):
+            start = bar_start + quarter * beat
+            if quarter in (0, 2):
+                events.append((start, kick(0x7100 + bar * 4 + quarter, 0.6)))
+            else:
+                events.append((start, snare(0x5100 + bar * 4 + quarter, 0.25, 0.06)))
+            events.append((start + eighth, hat(0x4100 + bar * 4 + quarter, 0.15, 0.02, 0.06)))
+    return render_loop(16, beat, events)
+
+
 def music_over():
     """An original two-bar dirge at 72 BPM in D minor: held triangle chords
     on Dm, Bb, Gm and A over a sine bass, a slow pulse line, and a heartbeat
@@ -373,6 +417,7 @@ def music_over():
 
 
 LOOPS = {
+    'music_title.wav': 16 * (RATE * 60 // 112),
     'music_run.wav': 16 * (RATE * 60 // 140),
     'music_pause.wav': 8 * (RATE * 60 // 105),
     'music_over.wav': 8 * (RATE * 60 // 72),
@@ -390,6 +435,7 @@ def build_sounds():
         'pickup.wav': pickup(),
         'hurt.wav': hurt(),
         'game_over.wav': game_over(),
+        'music_title.wav': encode(music_title()),
         'music_run.wav': encode(music_run()),
         'music_pause.wav': encode(music_pause()),
         'music_over.wav': encode(music_over()),

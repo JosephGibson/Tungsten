@@ -27,6 +27,32 @@
     "enemy": {
       "path": "sprites/enemy.png",
       "filter": "nearest"
+    },
+    "enemy_1": {
+      "path": "sprites/enemy_1.png",
+      "filter": "nearest"
+    },
+    "enemy_2": {
+      "path": "sprites/enemy_2.png",
+      "filter": "nearest"
+    },
+    "enemy_3": {
+      "path": "sprites/enemy_3.png",
+      "filter": "nearest"
+    },
+    "spark": {
+      "path": "sprites/spark.png",
+      "filter": "linear"
+    }
+  },
+  "animations": {
+    "enemy_spin": {
+      "path": "animations/enemy_spin.json"
+    }
+  },
+  "particles": {
+    "spark": {
+      "path": "particles/spark.json"
     }
   },
   "fonts": {
@@ -151,6 +177,13 @@
       "bus": "effects",
       "max_voices": 1
     },
+    "music_title": {
+      "path": "sounds/music_title.wav",
+      "looping": true,
+      "volume": 0.4,
+      "bus": "music",
+      "max_voices": 1
+    },
     "music_run": {
       "path": "sounds/music_run.wav",
       "looping": true,
@@ -200,6 +233,9 @@
     },
     "speed_pickup": {
       "path": "prefabs/speed_pickup.json"
+    },
+    "spark": {
+      "path": "prefabs/spark.json"
     }
   },
   "data": {

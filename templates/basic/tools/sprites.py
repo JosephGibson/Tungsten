@@ -2,9 +2,14 @@
 
 Each sprite is a list of shapes painted in order, each sampled 4 × 4 times
 per pixel, so its edges are smooth; only arithmetic and comparisons decide
-a pixel, so a render repeats pixel for pixel. `--check` compares decoded
-pixels, since deflate's bytes differ between zlib builds. M36's
-`player.png` is not drawn here.
+a pixel, so a render repeats pixel for pixel. Every sprite fills a 32 × 32
+canvas, its art centred, as M36's `player.png` does: the engine draws a
+sprite's top-left corner at its entity's point, so each sprite's middle
+is 16 px right of and below it, where the prefabs centre their shapes.
+The enemy turns through four frames, and the bolt's impact sparks are a
+particle sprite at their own small size. `--check` compares decoded
+pixels, since deflate's bytes differ between zlib builds. `player.png`
+itself is not drawn here.
 
     python3 -B tools/sprites.py            # write assets/sprites/
     python3 -B tools/sprites.py --out DIR  # write DIR instead
@@ -19,6 +24,7 @@ import zlib
 
 SPRITES = pathlib.Path(__file__).resolve().parent.parent / 'assets' / 'sprites'
 GRID = 4
+CANVAS = 32
 SIGNATURE = b'\x89PNG\r\n\x1a\n'
 
 
@@ -49,6 +55,15 @@ def polygon(*points):
                 hit = not hit
         return hit
     return inside
+
+
+def centred(width, height, layers):
+    """`layers`, drawn `width` × `height`, moved to the middle of a
+    [`CANVAS`]-square canvas."""
+    dx, dy = (CANVAS - width) / 2, (CANVAS - height) / 2
+    moved = [(lambda x, y, shape=shape: shape(x - dx, y - dy), color)
+             for shape, color in layers]
+    return CANVAS, CANVAS, moved
 
 
 def render(width, height, layers):
@@ -179,19 +194,22 @@ def speed_pickup():
     ]
 
 
-def enemy():
-    """A red spiked blob with angry eyes."""
+def enemy(frame):
+    """A red spiked blob with angry eyes, at `frame` of four: its spikes turn
+    an eighth of their spacing a frame, so the four loop, and its body
+    swells and shrinks a little."""
     dark, ink = (120, 18, 26, 255), (70, 8, 14, 255)
     centre = (16.0, 16.5)
+    body = (10.8, 11.2, 10.8, 10.4)[frame]
 
     def spike(turn):
-        angle = turn * math.tau / 8 + math.tau / 16
+        angle = (turn + frame / 4) * math.tau / 8 + math.tau / 16
         corner = lambda a, r: (centre[0] + r * math.cos(a), centre[1] + r * math.sin(a))
         return polygon(corner(angle - 0.33, 10.0), corner(angle, 15.2), corner(angle + 0.33, 10.0))
     layers = [(spike(turn), dark) for turn in range(8)]
     layers += [
-        (circle(*centre, 12.0), dark),
-        (circle(*centre, 10.8), (222, 52, 52, 255)),
+        (circle(*centre, body + 1.2), dark),
+        (circle(*centre, body), (222, 52, 52, 255)),
         (circle(12.2, 11.8, 3.2), (246, 120, 110, 255)),
         (circle(12.2, 15.6, 3.0), (255, 246, 240, 255)),
         (circle(19.8, 15.6, 3.0), (255, 246, 240, 255)),
@@ -204,14 +222,26 @@ def enemy():
     return 32, 32, layers
 
 
+def spark():
+    """An impact spark: a pale dot in an amber glow, 8 px across."""
+    return 8, 8, [
+        (circle(4, 4, 3.8), (255, 190, 90, 120)),
+        (circle(4, 4, 2.3), (255, 248, 220, 255)),
+    ]
+
+
 DRAWN = {
     'bolt.png': bolt,
     'dummy.png': dummy,
     'gem.png': gem,
     'heal_pickup.png': heal_pickup,
     'speed_pickup.png': speed_pickup,
-    'enemy.png': enemy,
+    # Frame 0 keeps the name the one-frame enemy had.
+    'enemy.png': lambda: enemy(0),
+    **{f'enemy_{frame}.png': (lambda frame=frame: enemy(frame)) for frame in range(1, 4)},
 }
+# Particle sprites keep their own size: a particle is no entity with shapes.
+PARTICLES = {'spark.png': spark}
 
 
 def main():
@@ -223,6 +253,9 @@ def main():
     args = parser.parse_args()
     drawn = {}
     for name, draw in DRAWN.items():
+        width, height, layers = centred(*draw())
+        drawn[name] = (width, height, render(width, height, layers))
+    for name, draw in PARTICLES.items():
         width, height, layers = draw()
         drawn[name] = (width, height, render(width, height, layers))
     if args.check:

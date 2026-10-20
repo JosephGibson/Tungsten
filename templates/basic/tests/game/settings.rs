@@ -168,7 +168,7 @@ fn window_sizes_cycle_until_apply_sends_them() {
     press(&mut harness, "Reset tab");
     assert_eq!(
         row_text(&harness, "Window size"),
-        "1280×720",
+        "1280×720 (16:9)",
         "Reset drops it"
     );
     for _ in 0..3 {
@@ -176,7 +176,7 @@ fn window_sizes_cycle_until_apply_sends_them() {
     }
     assert_eq!(top(&harness), Some(SETTINGS), "no question while picking");
     assert_eq!(settings(&harness).resolution(), None, "nothing sent");
-    assert_eq!(row_text(&harness, "Window size"), "2560×1440");
+    assert_eq!(row_text(&harness, "Window size"), "2560×1440 (16:9)");
     press(&mut harness, "Apply");
     assert_eq!(top(&harness), Some(CONFIRM));
     assert_eq!(
@@ -185,7 +185,7 @@ fn window_sizes_cycle_until_apply_sends_them() {
     );
     press(&mut harness, "Revert");
     assert_eq!(settings(&harness).resolution(), None, "reverted");
-    assert_eq!(row_text(&harness, "Window size"), "1280×720");
+    assert_eq!(row_text(&harness, "Window size"), "1280×720 (16:9)");
     assert_eq!(find(&harness, "Apply"), None, "nothing left to apply");
 }
 
@@ -233,7 +233,7 @@ fn window_size_is_disabled_in_fullscreen() {
     press(&mut harness, "Window size");
     press(&mut harness, "Apply");
     press(&mut harness, "Keep");
-    assert_eq!(row_text(&harness, "Window size"), "1600×900");
+    assert_eq!(row_text(&harness, "Window size"), "1600×900 (16:9)");
     press(&mut harness, "Window mode");
     assert_eq!(find(&harness, "Window size"), None, "off once picked");
     press(&mut harness, "Apply");
@@ -307,6 +307,37 @@ fn the_frame_rate_limit_is_a_slider_and_an_unlimited_toggle() {
 }
 
 #[test]
+fn the_frame_rate_limit_stops_at_thirty() {
+    let mut harness = harness();
+    from_title(&mut harness);
+    press(&mut harness, "Unlimited");
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(60));
+    for _ in 0..10 {
+        nudge(&mut harness, "Frame rate limit", "ui_left");
+    }
+    assert_eq!(settings(&harness).frame_rate_cap(), fps(30), "the floor");
+    assert_eq!(readout(&harness, "Frame rate limit"), "30 fps");
+}
+
+#[test]
+fn window_sizes_show_their_aspect_ratio() {
+    let sizes = [
+        ((1280, 720), "16:9"),
+        ((1366, 768), "16:9"),
+        ((1920, 1200), "16:10"),
+        ((1280, 1024), "5:4"),
+        ((1024, 768), "4:3"),
+        ((2560, 1080), "21:9"),
+        ((3440, 1440), "21:9"),
+        ((5120, 1440), "32:9"),
+        ((1280, 768), "5:3"),
+    ];
+    for ((width, height), ratio) in sizes {
+        assert_eq!(settings::aspect(width, height), ratio, "{width}×{height}");
+    }
+}
+
+#[test]
 fn an_off_grid_cap_keeps_its_value_until_moved() {
     let dir = user_folder("off-grid-cap");
     std::fs::create_dir_all(dir.join("settings")).unwrap();
@@ -369,12 +400,12 @@ fn every_slider_shows_its_value_as_it_moves() {
     harness.step(1);
     harness.pointer_to(rect.max.x * scale + 40.0, y);
     harness.step(1);
-    assert_eq!(readout(&harness, "UI scale"), "300%");
+    assert_eq!(readout(&harness, "UI scale"), "200%", "the most");
     assert_eq!(harness.world().resource::<ScaleFactor>().ui_scale(), 1.0);
     harness.pointer_up();
     harness.step(1);
-    assert_eq!(harness.world().resource::<ScaleFactor>().ui_scale(), 3.0);
-    assert_eq!(readout(&harness, "UI scale"), "300%");
+    assert_eq!(harness.world().resource::<ScaleFactor>().ui_scale(), 2.0);
+    assert_eq!(readout(&harness, "UI scale"), "200%");
 }
 
 #[test]
@@ -449,7 +480,7 @@ fn window_sizes_follow_the_monitor() {
     press(&mut harness, "Keep");
     assert_eq!(
         row_text(&harness, "Window size"),
-        "1280×1024",
+        "1280×1024 (5:4)",
         "the next mode"
     );
     // A Wayland output often lists its current mode alone.
@@ -486,7 +517,7 @@ fn ui_scale_follows_the_window_height_with_a_floor() {
         "4K at 3"
     );
     assert_eq!(viewport(&mut harness, [1280, 720]), [1280.0, 720.0]);
-    settings::set_scale(harness.world_mut(), false, 3.0);
+    settings::set_scale(harness.world_mut(), false, 2.0);
     for window in [[1280, 720], [3840, 2160]] {
         let [width, height] = viewport(&mut harness, window);
         assert!(
@@ -700,7 +731,7 @@ fn shell_values_clamp_and_ignore_non_finite_input() {
         Some(0.0)
     );
     settings::set_scale(world, false, 10.0);
-    assert_eq!(world.resource::<Settings>().ui_scale(), Some(3.0));
+    assert_eq!(world.resource::<Settings>().ui_scale(), Some(2.0));
     settings::set_scale(world, true, f32::INFINITY);
     assert_eq!(world.resource::<Settings>().text_scale(), None, "ignored");
     settings::set_scale(world, true, 0.1);
