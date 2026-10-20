@@ -87,8 +87,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-068` | One shared instruction body, scoped render rules and symlinked skills; `just ctx`. Amended by `D-106`: 12 KiB index. |
 | `D-069` | Pinned Rust, edition 2024, strict CPU and dependency gates. Amended by `D-103`: 1.x MSRV bumps only in minors. |
 | `D-070` | Informational CPU CI; GPU/audio/perf local. Narrows `D-002`. Amended by `D-112`: dev-profile benches; `D-121`: Windows tests. Releases: `D-071`. |
-| `D-071` | Version/changelog cut and release archives. CPU levels: `D-072`. README/handoff superseded by `D-074`; tag-push trigger by `D-079`. Amended by `D-120`: debug/probe; `D-122`: notices. |
-| `D-072` | Portable/v3 builds behind std-only launchers. Supersedes `D-071`'s generic build. Amended by `D-122`: notices; `D-186`: the template's builds, run from its folder; `D-193`: the fixtures crate stays out. |
+| `D-071` | Version/changelog cut and release archives. CPU levels: `D-072`. README/handoff superseded by `D-074`; tag-push trigger by `D-079`. Amended by `D-120`: debug/probe; `D-122`: notices; `D-196`: one zip per platform under a plain name. |
+| `D-072` | Portable/v3 builds behind std-only launchers. Supersedes `D-071`'s generic build. Amended by `D-122`: notices; `D-186`: the template's builds, run from its folder; `D-193`: the fixtures crate stays out; `D-196`: launchers under player-facing names beside `data/`. |
 | `D-074` | Canonical release guide, version-free README and Git preflight. Supersedes `D-071`'s README/handoff; post-merge tags/local squash superseded by `D-079`. |
 | `D-079` | Human commit/tag/push/PR handoff; merge publishes the tagged tree. Supersedes `D-071`'s tag trigger and `D-074`'s post-merge tag/local squash. |
 | `D-077` | Symphonia's `pcm` codec is enabled, so PCM WAV decodes (the platformer's synthesized sound effects); extends `D-028`. |
@@ -106,19 +106,21 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-111` | Dev/test debuginfo in unpacked .dwo files; supported backtraces, smaller/faster builds. Amends `D-041`. |
 | `D-112` | CI builds benchmarks in dev profile; local bench profile remains. Amends `D-070`. |
 | `D-118` | Roadmap stages from prompt flows; session model/mode/effort by stop. Amends `D-109`. Amended by `D-136`: A/B releases use Opus max; `D-150`: no same-session stages, auto mode. Max clause superseded by `D-151`. |
-| `D-120` | Separate identity-checked release debug archives and crash probe. Amends `D-071`. |
+| `D-120` | Separate identity-checked release debug archives and crash probe. Amends `D-071`. Amended by `D-196`: no debug archive ships. |
 | `D-121` | Informational CPU-only Windows test job. Amends `D-070`. |
-| `D-122` | Release archives include version-checked third-party/license notices; `just notices`. Amends `D-071`, `D-072`. |
+| `D-122` | Release archives include version-checked third-party/license notices; `just notices`. Amends `D-071`, `D-072`. Amended by `D-196`: one notices file, the standard library's as text. |
 | `D-124` | Taffy behind Tungsten layout styles, never public (`D-015` rule 3); no grid, rounding at extraction. |
 | `D-140` | Bounded maintenance plans in-session; saved handoffs and milestone/API reviews remain. Canonical checks: [validation](validation.md). Amended by `D-150`: no approval or API review stop. |
 | `D-141` | Perf run/suite/sweep refuse known encoder/foreign-build load before building; existing override and measured scans remain. Amends `D-095`. |
 | `D-150` | No owner-approval stops on the road to 1.0: plans end with the run prompt, level C critiques its own step 1 API diff, gates take defaults and sign, plan/run status from the plan's header and evidence, no graduation sessions; publication stays the owner's. Amends `D-109`, `D-118`, `D-140`. |
-| `D-151` | Opus 5.5 max only for level C plans and gates (complexity 2–4); every other session stage xhigh, Fable and high rules kept. Supersedes the max clauses of `D-118` and `D-136`. |
+| `D-151` | Opus 5.5 max only for level C plans and gates (complexity 2–4); every other session stage xhigh, Fable and high rules kept. Supersedes the max clauses of `D-118` and `D-136`. Amended by `D-195`: a stop's own `tier` comes first; example 01's stops run Opus max. |
 | `D-152` | README owned fields count cut/tagged/merged stops as closed; `just release-cut` writes them; register rows are not edited after the merge. Extends `D-109`. |
 | `D-182` | W14b landed (M70): `tungsten-cli` in `tools/cli/`, binary `tungsten` with `new`, `check` and `package`, exit codes 0, 1 and 2, the CLI's version the engine's; `check` loads every file inside the game's own build behind `TUNGSTEN_CHECK` and reports every error (core `load_for_check`, `commit_for_check`); `package` builds a portable Linux x86-64 archive with notices and a debug archive; `new` copies the embedded template pinned to the tag. Extends `D-120`, `D-122`; settles `D-153`'s check limit. Amended by `D-186`: the release archives ship the template. |
 | `D-183` | `just template-check` runs on `new`'s output with `check` and `package` (6 GiB floor); `api/tungsten-cli.txt` holds the CLI's help; the template's `AGENTS.md` is budgeted at 12 KiB and 100 lines. Amends `D-106`, `D-107`, `D-123`. |
-| `D-186` | The template in the examples' release archives: `release.yml` builds and uploads it, `release.py` reads `templates/*` members (`templates(root)`) and stages its builds under `bin/<level>/`, a launcher copy, its files under `templates/basic/` and its debug files; the launcher's `FOLDERS` table runs it from that folder; README.txt names it and its log folder. Amends `D-072`, `D-182`. |
+| `D-186` | The template in the examples' release archives: `release.yml` builds and uploads it, `release.py` reads `templates/*` members (`templates(root)`) and stages its builds under `bin/<level>/`, a launcher copy, its files under `templates/basic/` and its debug files; the launcher's `FOLDERS` table runs it from that folder; README.txt names it and its log folder. Amends `D-072`, `D-182`. Amended by `D-196`: ships as `Template` under `data/`, no debug files. |
 | `D-193` | Examples 03, 04 and 05 become one test-only crate, `examples/03_fixtures`, with example 01's lighting fixture: 14 smoke rows and three of `just visual`'s suites (the post stack, transitions and the UI overlay), off the template layout and out of the release archives; the three demos, `docs/showcase/` and the README's link go; the template's shell is the only UI reference. Amends `D-072`; supersedes `D-179`'s listening host. |
+| `D-195` | A stop's own `tier` in `roadmap.json` sets its session stages' model and effort ahead of the rule; example 01's four stops (`e01a`–`e01d`) run every plan and run session on Opus 5.5 at max, since each generates assets. Amends `D-151`. |
+| `D-196` | Release archives for players: `tungsten-examples-<version>-<platform>.zip` on both platforms; launchers named by `TITLES` (`Platformer`, `Benchmark`, `Template`) beside `README.txt`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and a `data/` folder with the builds and their files; the standard library's notices as the file's last, plain-text section; no debug archive. Amends `D-071`, `D-072`, `D-120`, `D-122`, `D-186`. |
 
 ## ECS / Runtime Flow
 

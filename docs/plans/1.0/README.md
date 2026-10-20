@@ -34,7 +34,7 @@ Phase 5 is complete in the local refs. The [queue](implementation-plan.md#6-crit
 | [acceptance-game.md](acceptance-game.md) | The game that tests definition A; its feature list cuts W5, W6 and W13 |
 | [example-01-design.md](example-01-design.md) | Example 01 rebuilt as a sandbox on the template in four stops before the feature gate (`D-194`): the rules all four share, the assets, and each stop's scope and done-when, with starting values each stop's plan tunes |
 | [backlog-1.x.md](backlog-1.x.md) | What 1.0 defers, and what would bring each item back |
-| [roadmap.json](roadmap.json) | The catalog the [roadmap page](https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9) shows: every stop in register order with its group, kind, level, title, summary, sources and ratings, and the owner questions with their states and answers (`D-109`). `just repo-check` compares it with the register, and gate and graduation sessions update it with the register |
+| [roadmap.json](roadmap.json) | The catalog the [roadmap page](https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9) shows: every stop in register order with its group, kind, level, title, summary, sources and ratings, a session tier where the owner sets one (`D-195`), and the owner questions with their states and answers (`D-109`). `just repo-check` compares it with the register, and gate and graduation sessions update it with the register |
 
 | ID | Workstream | File |
 | --- | --- | --- |

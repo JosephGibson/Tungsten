@@ -15,16 +15,16 @@
                       lines. `just release-cut` also refreshes Cargo.lock.
   notes TAG           Prints the tag's CHANGELOG section ([Unreleased] for a
                       rehearsal tag), optionally with absolute repository links.
-  package TAG TARGET  Archives each CPU level's example and template builds (BIN_DIR/
-                      <level>/TARGET/release, one cargo target dir per level) under
-                      bin/<level>/, one launcher per build, the files the examples read
-                      relative to the working directory, and each template's own
-                      tungsten.json, input.json and assets/ under its folder, which its
-                      launcher runs it from: OUT/tungsten-examples-TAG-TARGET.*. Their
-                      debug files go to OUT/tungsten-debug-TAG-TARGET.* under the same
-                      top folder: each Linux binary is split with objcopy, its build-id
-                      checked, and each Windows build's PDB is matched to its CodeView
-                      record.
+  package TAG TARGET  Zips each CPU level's example and template builds (BIN_DIR/
+                      <level>/TARGET/release, one cargo target dir per level) for players:
+                      OUT/tungsten-examples-VERSION-PLATFORM.zip, e.g.
+                      tungsten-examples-0.92.0-windows-x64.zip. Its top folder holds one
+                      launcher per build under the build's player-facing name (`TITLES`),
+                      README.txt, LICENSE.txt and THIRD-PARTY-NOTICES.txt; data/ holds
+                      the builds under bin/<level>/, the files the examples read relative
+                      to the working directory, and each template's own tungsten.json,
+                      input.json and assets/ under its folder, which its launcher runs it
+                      from. Linux binaries are stripped with objcopy; no debug file ships.
   split-debug BINARY DEBUG
                       The Linux split alone: moves BINARY's debug info to DEBUG, links
                       it, and checks the build-ids and DEBUG's .debug_line.
@@ -32,16 +32,18 @@
                       for TARGET (cargo tree's normal edges, cargo metadata's details,
                       the crates' license and notice files) and the toolchain's
                       standard-library notices into OUT (a build job's licenses.json).
-  notices DATA        Writes THIRD-PARTY-NOTICES.txt and THIRD-PARTY-NOTICES-rust-std.html
-                      from DATA into OUT, as `package` does inside each archive: each
-                      crate's texts for its preferred license alternative, its NOTICE
-                      files, licenses/clarifications.json and the embedded works.
+  notices DATA        Writes THIRD-PARTY-NOTICES.txt from DATA into OUT, as `package`
+                      does inside each archive: each crate's texts for its preferred
+                      license alternative, its NOTICE files, licenses/clarifications.json,
+                      the embedded works and, last, the standard library's notices as
+                      plain text.
 
-Rationale: D-071, D-072, D-074, D-079, D-120, D-122, D-186. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079, D-120, D-122, D-186, D-196. Release steps: docs/releases.md.
 """
 
 import argparse
 import datetime
+import html.parser
 import json
 import re
 import shutil
@@ -73,13 +75,27 @@ NAME_RE = re.compile(r'^\s*name\s*=\s*"([^"]+)"')
 TARGET_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 # Relative Markdown link targets (no scheme, anchor or absolute path).
 RELATIVE_LINK_RE = re.compile(r"\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)")
-# What every example reads relative to the working directory, plus the license.
-SHARED_RUNTIME = ("tungsten.json", "input.json", "assets", "LICENSE")
+# What every example reads relative to the working directory.
+SHARED_RUNTIME = ("tungsten.json", "input.json", "assets")
 # What a template reads from its own folder, which its launcher runs it from (D-186).
 TEMPLATE_RUNTIME = ("tungsten.json", "input.json", "assets")
 ARCHIVE_PREFIX = "tungsten-examples"
-# The debug files' archive, kept apart so the player archive stays small (D-120).
-DEBUG_PREFIX = "tungsten-debug"
+# The archive folder that holds the builds and every file they read, beside the launchers; must
+# match `DATA` in tools/launcher/src/main.rs (D-196).
+DATA = "data"
+# Archive name and README wording per target; another target keeps its triple.
+PLATFORMS = {
+    "x86_64-pc-windows-msvc": ("windows-x64", "Windows (x64)"),
+    "x86_64-unknown-linux-gnu": ("linux-x64", "Linux (x64)"),
+}
+# What players see each shipped package as: its launcher's and builds' file name and its README
+# line. A package missing here keeps its package name. Template titles must match `FOLDERS` in
+# tools/launcher/src/main.rs.
+TITLES = {
+    "example-01-platformer": ("Platformer", "a small platformer level"),
+    "example-02-bench": ("Benchmark", "the engine's stress tests; Tab moves to the next one"),
+    "tungsten-template-basic": ("Template", "the starting game every new Tungsten project gets"),
+}
 # CPU levels release archives may carry, fastest first; must match `LEVELS` in
 # tools/launcher/src/main.rs. The portable baseline is mandatory (D-072).
 LEVELS = ("x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64")
@@ -92,7 +108,6 @@ NOT_SHIPPED = frozenset({"example-03-fixtures"})
 # gains, and the repository's clarifications for what crate packages lack or misstate.
 LICENSE_DATA = "licenses.json"
 NOTICES = "THIRD-PARTY-NOTICES.txt"
-STD_NOTICES = "THIRD-PARTY-NOTICES-rust-std.html"
 STD_NOTICES_SOURCE = "share/doc/rust/COPYRIGHT-library.html"  # in the toolchain's sysroot
 CLARIFICATIONS = "licenses/clarifications.json"
 # Third-party works the engine compiles into every binary, each with the file holding its license.
@@ -367,58 +382,63 @@ def templates(root):
     return members(root, "templates")
 
 
+def title(package):
+    """The name players see `package` under (`TITLES`), else the package name."""
+    return TITLES.get(package, (package, None))[0]
+
+
 def readme(tag, target, members, suffix, levels, game=None, templates=()):
-    """README.txt; `templates` holds (package name, folder, game id) for each
-    template, which runs from its folder and logs under its own game id."""
-    prefix = ".\\" if suffix else "./"  # PowerShell also needs .\ for the current folder
-    run = "\n".join(f"  {prefix}{name}{suffix}" for name, _ in members)
-    platform = (
-        "Double-clicking an .exe in Explorer also works. Needs a GPU with current DX12\n"
-        "or Vulkan drivers; WGPU_BACKEND=dx12 or WGPU_BACKEND=vulkan overrides the\n"
-        "automatic choice."
-        if suffix else
-        "Needs a GPU with a current Vulkan driver, ALSA (libasound2), libxkbcommon and\n"
-        "X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may\n"
-        "lack a new enough glibc."
-    )
+    """README.txt for players (D-196); `members` holds (package name, folder) for each shipped
+    build and `templates` (package name, folder, game id) for each template, which logs under its
+    own game id."""
+    def wrapped(*sentences):
+        return textwrap.fill(" ".join(sentences), 78, break_on_hyphens=False, break_long_words=False)
+
+    def heading(text, rule):
+        return f"{text}\n{rule * len(text)}"
+
+    prefix, sep = ("", "\\") if suffix else ("./", "/")
+    commands = [(f"{prefix}{title(name)}{suffix}", TITLES.get(name, (name, None))[1]) for name, _ in members]
+    width = max(len(command) for command, _ in commands) + 3
+    programs = "\n".join(f"  {command:<{width}}{blurb}".rstrip() if blurb else f"  {command}"
+                         for command, blurb in commands)
+    keep = "Keep the data folder beside them: it holds their builds and the files they read."
+    if suffix:
+        start = wrapped("Programs made with the Tungsten game engine. Double-click one to start it:")
+        needs = wrapped("They need a GPU with current DirectX 12 or Vulkan drivers.", keep)
+    else:
+        start = wrapped("Programs made with the Tungsten game engine. Start one from a terminal in this folder:")
+        needs = wrapped("They need a GPU with a current Vulkan driver, ALSA (libasound2), libxkbcommon and "
+                        "X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may lack "
+                        "a new enough glibc.", keep)
     # Windows builds open no console (D-119), so only Linux shows the launcher's line.
-    console = "" if suffix else ", names it on the console,"
-    logs = ""
+    logs = ["The programs open no console."] if suffix else []
     if game:
-        logs = (
-            "The examples open no console. Each run writes a log, and a crash a crash\n"
-            f"report, to %LOCALAPPDATA%\\{game}\\logs.\n"
-            if suffix else
-            "Each run writes a log, and a crash a crash report, to\n"
-            f"$XDG_STATE_HOME/{game}/logs, by default ~/.local/state/{game}/logs.\n"
-        ) + "TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.\n\n"
-    started = ""
-    for name, folder, template_game in templates:
-        started += (
-            f"The game template, {prefix}{name}{suffix}, runs from {folder}/, where it reads\n"
-            "its own tungsten.json, input.json and assets/.\n"
-        )
+        logs.append(f"Each run writes a log, and a crash a crash report, to %LOCALAPPDATA%\\{game}\\logs."
+                    if suffix else
+                    f"Each run writes a log, and a crash a crash report, to $XDG_STATE_HOME/{game}/logs, "
+                    f"by default ~/.local/state/{game}/logs.")
+    for name, _, template_game in templates:
         if template_game:
-            started += (
-                f"Its log and crash reports go to %LOCALAPPDATA%\\{template_game}\\logs.\n"
-                if suffix else
-                f"Its log and crash reports go to ~/.local/state/{template_game}/logs.\n"
-            )
-        started += "\n"
-    return (
-        f"Tungsten {tag} examples for {target}\n\n"
-        "Run an example from any folder:\n\n"
-        f"{run}\n\n"
-        "Each is a small launcher. It picks the fastest build in bin/ that this CPU\n"
-        f"supports ({', '.join(levels)}){console} and runs it from\n"
-        "this folder, where the examples read tungsten.json, input.json and assets/.\n"
-        f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable build.\n\n"
-        f"{started}"
-        f"{logs}"
-        f"{platform}\n\n"
-        f"MIT license: LICENSE. Third-party licenses: {NOTICES}, and\n"
-        f"{STD_NOTICES} for the Rust standard library.\n"
-    )
+            folder = f"%LOCALAPPDATA%\\{template_game}\\logs" if suffix else f"~/.local/state/{template_game}/logs"
+            logs.append(f"{title(name)}'s logs and crash reports go to {folder}.")
+    if game or any(template_game for _, _, template_game in templates):
+        logs.append("TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.")
+    builds = (f"Each program starts the fastest build in {DATA}{sep}bin{sep} that this CPU supports "
+              f"({', '.join(levels)}){'' if suffix else ' and names it on the terminal'}; "
+              f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable one.")
+    if suffix:
+        builds = "WGPU_BACKEND=dx12 or WGPU_BACKEND=vulkan overrides the automatic choice of graphics API. " + builds
+    trouble = [wrapped(*logs)] if logs else []
+    parts = [
+        heading(f"Tungsten {tag[1:]} examples for {PLATFORMS.get(target, (target, target))[1]}", "="),
+        start, programs, needs,
+        heading("If a program does not start", "-"), *trouble, wrapped(builds),
+        heading("Licenses", "-"),
+        wrapped(f"Tungsten is under the MIT license: LICENSE.txt. {NOTICES} lists the third-party "
+                "software built into the programs, the Rust standard library among it, with its licenses."),
+    ]
+    return "\n\n".join(parts) + "\n"
 
 
 def place(src, dest):
@@ -763,9 +783,110 @@ def clarified_text(root, item, errors, label):
     return read_any(path)
 
 
+class _PlainText(html.parser.HTMLParser):
+    """The text of the toolchain's COPYRIGHT-library.html: each block on its own lines, `<pre>`
+    verbatim, nested `<div>` boxes indented, an outside link's address after its text."""
+
+    BLOCKS = {"p", "div", "ul", "li", "details", "summary", "pre", "br", "h1", "h2", "h3", "h4"}
+    GAPS = {"p", "div", "ul", "details", "pre", "h1", "h2", "h3", "h4"}
+    RULES = {"h1": "=", "h2": "-"}
+    SKIP = {"head", "script", "style"}
+
+    def __init__(self):
+        super().__init__()
+        self.lines, self.line, self.pre, self.links = [], [], None, []
+        self.depth = self.skip = 0
+
+    def indent(self):
+        return "    " * max(self.depth - 1, 0)
+
+    def gap(self):
+        if self.lines and self.lines[-1]:
+            self.lines.append("")
+
+    def flush(self):
+        text = re.sub(r" +", " ", "".join(self.line)).strip()
+        self.line = []
+        if text:
+            indent = self.indent()
+            self.lines += textwrap.wrap(text, 78, initial_indent=indent,
+                                        subsequent_indent=indent + ("  " if text.startswith("- ") else ""),
+                                        break_on_hyphens=False, break_long_words=False)
+        return text
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skip += 1
+        if self.skip or self.pre is not None:
+            return
+        if tag in self.BLOCKS:
+            self.flush()
+        if tag in self.GAPS:
+            self.gap()
+        if tag == "div":
+            self.depth += 1
+        elif tag == "li":
+            self.line.append("- ")
+        elif tag == "pre":
+            self.pre = []
+        elif tag == "a":
+            self.links.append((dict(attrs).get("href") or "", len(self.line)))
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP:
+            self.skip = max(self.skip - 1, 0)
+            return
+        if self.skip:
+            return
+        if tag == "pre" and self.pre is not None:
+            lines = [line.rstrip() for line in "".join(self.pre).split("\n")]
+            while lines and not lines[0]:
+                lines.pop(0)
+            while lines and not lines[-1]:
+                lines.pop()
+            self.lines += [self.indent() + line if line else "" for line in lines]
+            self.pre = None
+            self.gap()
+            return
+        if self.pre is not None:
+            return
+        if tag == "a" and self.links:
+            href, start = self.links.pop()
+            text = "".join(self.line[start:]).strip()
+            if href.startswith(("http://", "https://")) and href != text:
+                self.line.append(f" <{href}>")
+            return
+        if tag in self.BLOCKS:
+            text = self.flush()
+            if text and tag in self.RULES:
+                self.lines.append(self.indent() + self.RULES[tag] * len(text))
+        if tag == "div":
+            self.depth = max(self.depth - 1, 0)
+        if tag in self.GAPS:
+            self.gap()
+
+    def handle_data(self, data):
+        if self.skip:
+            return
+        if self.pre is not None:
+            self.pre.append(data)
+        else:
+            self.line.append(re.sub(r"\s+", " ", data))
+
+
+def plain_text(source):
+    """`source`, an HTML page such as the standard library's notices, as plain text (D-196)."""
+    parser = _PlainText()
+    parser.feed(source)
+    parser.close()
+    parser.flush()
+    return "\n".join(parser.lines).strip() + "\n"
+
+
 def third_party_notices(root, data):
-    """THIRD-PARTY-NOTICES.txt from a build job's license data (D-122). ValueError names every
-    crate without an entry, every stale clarification and unreviewed font, and missing files."""
+    """THIRD-PARTY-NOTICES.txt from a build job's license data (D-122), the standard library's
+    notices last as plain text (D-196). ValueError names every crate without an entry, every stale
+    clarification and unreviewed font, and missing files."""
     clarified, errors, unmatched, index, texts = clarifications(root), [], [], [], {}
 
     def cite(text, kind, user):
@@ -842,11 +963,12 @@ def third_party_notices(root, data):
     def wrapped(text):
         return textwrap.fill(text, 78, break_on_hyphens=False, break_long_words=False)
 
-    intro = (f"The Tungsten examples' own code is under the MIT license: LICENSE. The fonts under assets/fonts/ "
-             f"have their licenses beside them. Every binary links the Rust standard library, built by "
-             f"{data['rustc']}; its notices are in {STD_NOTICES}. This file lists the third-party works "
+    intro = (f"The Tungsten examples' own code is under the MIT license: LICENSE.txt. The fonts under "
+             f"data/assets/fonts/ have their licenses beside them. This file lists the third-party works "
              f"compiled into the engine, then the {len(index)} crates the binaries link, each with the license "
-             f"it is used under and the numbers of its texts, then each text once with the crates that use it.")
+             f"it is used under and the numbers of its texts, then each text once with the crates that use it. "
+             f"Every binary also links the Rust standard library, built by {data['rustc']}; its notices close "
+             f"the file.")
     parts = [f"Third-party notices: Tungsten examples for {data['target']}", RULE, "", wrapped(intro), "",
              "", "Works compiled into the engine", RULE, "", *works, "", "Crates", RULE, ""]
     parts += [item + "\n" for item in index]
@@ -856,6 +978,7 @@ def third_party_notices(root, data):
         users = ", ".join(user.replace(" ", " ") for user in entry["users"])
         parts += [f"[{entry['number']}] {'; '.join(entry['kinds'])}",
                   wrapped("Used by " + users).replace(" ", " "), "-" * 78, text, ""]
+    parts += ["", f"The Rust standard library ({data['rustc']})", RULE, "", plain_text(data["rust_std_notices"])]
     return "\n".join(parts)
 
 
@@ -870,15 +993,21 @@ def load_license_data(path, target):
 
 
 def write_notices(root, data, folder):
-    """Writes both notices files into `folder`; returns the third-party file's path."""
+    """Writes THIRD-PARTY-NOTICES.txt into `folder` and returns its path."""
     text = third_party_notices(root, data)
     Path(folder).mkdir(parents=True, exist_ok=True)
     write_text(Path(folder) / NOTICES, text)
-    write_text(Path(folder) / STD_NOTICES, data["rust_std_notices"])
     return Path(folder) / NOTICES
 
 
-def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
+def strip_debug(binary):
+    """Drops a Linux binary's debug info in place: `objcopy_split` with no debug file."""
+    objcopy_split(binary, None)
+
+
+def package(root, tag, target, out, bin_dir=None, strip=strip_debug):
+    """Zips the players' archive for `target` (D-196) and returns its path. `strip(binary)` drops a
+    Linux binary's debug info; tests fake it."""
     if not TAG_RE.match(tag):
         raise ValueError(f"tag {tag!r} is not v<SemVer>")
     if not TARGET_RE.match(target):
@@ -906,46 +1035,39 @@ def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
     runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in examples(root)
                                       if (root / d / "assets").is_dir()]
     runtime += [f"{d}/{rel}" for _, d in starts for rel in TEMPLATE_RUNTIME if (root / d / rel).exists()]
-    name = f"{ARCHIVE_PREFIX}-{tag}-{target}"
+    name = f"{ARCHIVE_PREFIX}-{tag[1:]}-{PLATFORMS.get(target, (target, target))[0]}"
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
-        # Both archives share the top folder, so the debug one extracts over the player one.
-        player, debug = Path(tmp) / "player", Path(tmp) / "debug"
-        stage, debug_stage = player / name, debug / name
+        stage = Path(tmp) / name
+        data = stage / DATA
         stage.mkdir(parents=True)
-        for binary, _ in members:
-            launcher = stage / (binary + suffix)
-            place(built(BASELINE, LAUNCHER), launcher)
+
+        def ship(src, dest):
+            place(src, dest)
+            # Windows builds keep their debug info in PDBs, which no archive ships.
             if not suffix:
-                splitter(launcher, None)
+                strip(dest)
+                dest.chmod(0o755)
+
+        # Each launcher runs the build of its own file name from data/bin/<level>/.
+        for binary, _ in members:
+            shown = title(binary) + suffix
+            ship(built(BASELINE, LAUNCHER), stage / shown)
             for level in levels:
-                dest = stage / "bin" / level / (binary + suffix)
-                place(built(level, binary), dest)
-                debug_dir = debug_stage / "bin" / level
-                debug_dir.mkdir(parents=True, exist_ok=True)
-                if suffix:
-                    pdb, pdb_name = matching_pdb(built(level, binary), release_dir(level))
-                    shutil.copyfile(pdb, debug_dir / pdb_name)
-                else:
-                    splitter(dest, debug_dir / f"{binary}.debug")
-                    dest.chmod(0o755)
+                ship(built(level, binary), data / "bin" / level / shown)
         for rel in runtime:
-            src, dest = root / rel, stage / rel
+            src, dest = root / rel, data / rel
             if src.is_dir():
                 shutil.copytree(src, dest)
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)
+        shutil.copyfile(root / "LICENSE", stage / "LICENSE.txt")
         games = [(binary, d, game_id(root, d)) for binary, d in starts]
-        text = readme(tag, target, members, suffix, levels, game_id(root), games)
-        (stage / "README.txt").write_text(text, encoding="utf-8")
+        write_text(stage / "README.txt", readme(tag, target, members, suffix, levels, game_id(root), games))
         write_text(stage / NOTICES, notices)
-        write_text(stage / STD_NOTICES, licenses["rust_std_notices"])
-        kind = "zip" if suffix else "gztar"
-        archive = shutil.make_archive(str(out / name), kind, root_dir=player, base_dir=name)
-        debug_archive = shutil.make_archive(str(out / f"{DEBUG_PREFIX}-{tag}-{target}"), kind,
-                                            root_dir=debug, base_dir=name)
-    return Path(archive), Path(debug_archive)
+        archive = shutil.make_archive(str(out / name), "zip", root_dir=tmp, base_dir=name)
+    return Path(archive)
 
 
 def main(argv=None):
@@ -961,7 +1083,7 @@ def main(argv=None):
     command = commands.add_parser("notes", help="print release notes for TAG")
     command.add_argument("tag")
     command.add_argument("--link-base", help="prefix for relative links, e.g. https://github.com/o/r/blob/TAG")
-    command = commands.add_parser("package", help="archive example binaries with runtime files")
+    command = commands.add_parser("package", help="zip the example and template builds with their files for players")
     command.add_argument("tag")
     command.add_argument("target")
     command.add_argument("--bin-dir", type=Path, help="per-level cargo target dirs (default: target)")
@@ -972,7 +1094,7 @@ def main(argv=None):
     command = commands.add_parser("licenses", help="collect the shipped crates' license data for TARGET")
     command.add_argument("target")
     command.add_argument("--out", type=Path, default=Path("target") / LICENSE_DATA)
-    command = commands.add_parser("notices", help="write both third-party notices files from license data")
+    command = commands.add_parser("notices", help="write THIRD-PARTY-NOTICES.txt from license data")
     command.add_argument("data", type=Path)
     command.add_argument("--out", type=Path, default=Path("target/notices"))
     args = parser.parse_args(argv)
@@ -1020,12 +1142,11 @@ def main(argv=None):
         elif args.command == "notices":
             data = load_license_data(args.data, None)
             path = write_notices(root, data, args.out)
-            print(f"{data['target']}: notices of {len(data['crates'])} crates and {len(EMBEDDED_WORKS)} "
-                  f"embedded work(s) in {path}, beside {STD_NOTICES}")
+            print(f"{data['target']}: notices of {len(data['crates'])} crates, {len(EMBEDDED_WORKS)} "
+                  f"embedded work(s) and the standard library in {path}")
             errors = []
         else:
-            for archive in package(root, args.tag, args.target, args.out, args.bin_dir):
-                print(archive)
+            print(package(root, args.tag, args.target, args.out, args.bin_dir))
             errors = []
     except (OSError, ValueError) as exc:
         errors = [str(exc)]

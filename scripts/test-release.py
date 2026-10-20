@@ -10,7 +10,6 @@ import json
 import re
 import shutil
 import struct
-import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -181,11 +180,9 @@ class Release(unittest.TestCase):
             target.write_text(text)
         return target
 
-    def fake_split(self, binary, debug):
-        """Stands in for objcopy: marks the binary stripped and writes its debug file."""
-        self.splits.append((binary.parent.name, binary.name, debug and debug.name))
-        if debug is not None:
-            debug.write_bytes(b"debug of " + binary.read_bytes())
+    def fake_strip(self, binary):
+        """Stands in for objcopy: marks the binary stripped."""
+        self.strips.append((binary.parent.name, binary.name))
         binary.write_bytes(binary.read_bytes() + b" (stripped)")
 
     def edit(self, path, old, new):
@@ -357,7 +354,7 @@ class Release(unittest.TestCase):
     def bins(self, target, suffix, levels=("x86-64-v3", "x86-64")):
         """Fake builds per level; on Windows each example and template is a PE whose PDB sits
         beside it."""
-        self.splits = []
+        self.strips = []
         builds = [name for name, _ in rel.templates(self.root)]
         for level in levels:
             release = f"target/{level}/{target}/release"
@@ -382,107 +379,83 @@ class Release(unittest.TestCase):
         self.write(rel.CLARIFICATIONS, json.dumps({"crates": list(entries)}))
 
     def package(self, tag, target):
-        return rel.package(self.root, tag, target, self.root / "dist", splitter=self.fake_split)
+        return rel.package(self.root, tag, target, self.root / "dist", strip=self.fake_strip)
+
+    def members(self, archive):
+        """The zip's entries by their path under its one top folder, which carries the archive's name."""
+        with zipfile.ZipFile(archive) as zipped:
+            infos = zipped.infolist()
+        self.assertEqual({info.filename.split("/", 1)[0] for info in infos}, {archive.name.removesuffix(".zip")})
+        return {path: info for info in infos if (path := info.filename.split("/", 1)[1].rstrip("/"))}
+
+    def readme_text(self, archive):
+        """README.txt with its line breaks and runs of spaces read as single spaces."""
+        return " ".join(self.archive_text(archive, f"{archive.name.removesuffix('.zip')}/README.txt").split())
 
     def test_package_linux_archive_layout(self):
-        linux = "x86_64-unknown-linux-gnu"
-        self.bins(linux, "")
-        archive, debug = self.package("v0.26.0", linux)
-        top = f"tungsten-examples-v0.26.0-{linux}"
-        self.assertEqual(archive.name, f"{top}.tar.gz")
-        self.assertEqual(debug.name, f"tungsten-debug-v0.26.0-{linux}.tar.gz")
-        with tarfile.open(archive) as tar:
-            members = {m.name.split("/", 1)[1]: m for m in tar.getmembers() if "/" in m.name}
-            launcher = tar.extractfile(f"{top}/example-01-demo").read()
-            fast = tar.extractfile(f"{top}/bin/x86-64-v3/example-01-demo").read()
-            readme = tar.extractfile(f"{top}/README.txt").read().decode()
-        for path in ("example-01-demo", "example-02-bare", "bin/x86-64-v3/example-01-demo",
-                     "bin/x86-64/example-02-bare", "tungsten.json", "input.json", "LICENSE", "README.txt",
-                     "assets/manifest.json", "assets/sprites/a.png", "examples/01_demo/assets/manifest.json"):
+        self.bins(LINUX, "")
+        archive = self.package("v0.26.0", LINUX)
+        top = "tungsten-examples-0.26.0-linux-x64"
+        self.assertEqual(archive.name, f"{top}.zip")
+        self.assertEqual([path.name for path in (self.root / "dist").iterdir()], [archive.name], "no debug archive")
+        members = self.members(archive)
+        for path in ("example-01-demo", "example-02-bare", "README.txt", "LICENSE.txt", rel.NOTICES,
+                     "data/bin/x86-64-v3/example-01-demo", "data/bin/x86-64/example-02-bare",
+                     "data/tungsten.json", "data/input.json", "data/assets/manifest.json",
+                     "data/assets/sprites/a.png", "data/examples/01_demo/assets/manifest.json"):
             self.assertIn(path, members)
-        # Launcher copies come from the portable build; each level keeps its own binaries.
-        # Every copy is stripped; only the examples' debug info is kept.
+        # The top folder holds the launchers and the player's text files; data/ holds the rest.
+        self.assertEqual(sorted(path for path in members if "/" not in path),
+                         ["LICENSE.txt", "README.txt", rel.NOTICES, "data", "example-01-demo", "example-02-bare"])
+        with zipfile.ZipFile(archive) as zipped:
+            launcher = zipped.read(f"{top}/example-01-demo")
+            fast = zipped.read(f"{top}/data/bin/x86-64-v3/example-01-demo")
+        # Launcher copies come from the portable build; each level keeps its own binaries. Every copy is
+        # stripped, and no debug file ships.
         self.assertEqual(launcher, b"x86-64 tungsten-launcher (stripped)")
         self.assertEqual(fast, b"x86-64-v3 example-01-demo (stripped)")
-        self.assertFalse([path for path in members if path.endswith((".debug", ".pdb"))])
-        for path in ("example-01-demo", "bin/x86-64-v3/example-01-demo", "bin/x86-64/example-02-bare"):
-            self.assertEqual(members[path].mode & 0o111, 0o111, path)
-        for path in ("example-01-demo.d", "bin/x86-64/example-01-demo.d", "tungsten-launcher",
-                     "bin/x86-64/tungsten-launcher", "examples/02_bare/assets"):
+        self.assertEqual(sorted(self.strips), sorted(
+            [(top, name) for name in ("example-01-demo", "example-02-bare")]
+            + [(level, name) for level in ("x86-64-v3", "x86-64") for name in ("example-01-demo", "example-02-bare")]))
+        self.assertFalse([path for path in members if path.endswith((".debug", ".pdb", ".d", ".html"))])
+        for path in ("tungsten-launcher", "data/bin/x86-64/tungsten-launcher", "data/examples/02_bare/assets",
+                     "data/LICENSE"):
             self.assertNotIn(path, members)
-        self.assertIn("(x86-64-v3, x86-64), names it on the console,", readme)
-        self.assertIn("  ./example-01-demo", readme)
-
-    def test_package_linux_debug_archive_extracts_over_the_player_archive(self):
-        linux = "x86_64-unknown-linux-gnu"
-        self.bins(linux, "")
-        _, debug = self.package("v0.26.0", linux)
-        top = f"tungsten-examples-v0.26.0-{linux}"
-        with tarfile.open(debug) as tar:
-            files = {m.name: m for m in tar.getmembers() if m.isfile()}
-            content = tar.extractfile(f"{top}/bin/x86-64/example-02-bare.debug").read()
-        self.assertEqual(sorted(files), sorted(f"{top}/bin/{level}/{name}.debug"
-                                               for level in ("x86-64", "x86-64-v3")
-                                               for name in ("example-01-demo", "example-02-bare")))
-        self.assertEqual(content, b"debug of x86-64 example-02-bare")
-        # Each launcher copy is stripped with no debug file; each example build is split.
-        self.assertEqual(sorted(self.splits, key=str), sorted(
-            [(top, name, None) for name in ("example-01-demo", "example-02-bare")]
-            + [(level, name, f"{name}.debug") for level in ("x86-64-v3", "x86-64")
-               for name in ("example-01-demo", "example-02-bare")], key=str))
+        # The executable bit survives the zip, for unzip and the file managers' extractors.
+        for path in ("example-01-demo", "data/bin/x86-64-v3/example-01-demo", "data/bin/x86-64/example-02-bare"):
+            self.assertEqual((members[path].external_attr >> 16) & 0o111, 0o111, path)
+        readme = self.readme_text(archive)
+        self.assertTrue(readme.startswith("Tungsten 0.26.0 examples for Linux (x64) ="), readme)
+        self.assertIn("Start one from a terminal in this folder: ./example-01-demo ./example-02-bare They need", readme)
+        self.assertIn("in data/bin/ that this CPU supports (x86-64-v3, x86-64) and names it on the terminal;", readme)
 
     def test_package_windows_zip_and_missing_binary(self):
-        windows = "x86_64-pc-windows-msvc"
-        self.bins(windows, ".exe")
-        archive, debug = self.package("v0.0.0-test", windows)
-        top = f"tungsten-examples-v0.0.0-test-{windows}"
-        self.assertEqual(archive.suffix, ".zip")
-        with zipfile.ZipFile(archive) as zipped:
-            names = set(zipped.namelist())
-            readme = zipped.read(f"{top}/README.txt").decode()
-        self.assertIn(f"{top}/example-02-bare.exe", names)
-        self.assertIn(f"{top}/bin/x86-64-v3/example-02-bare.exe", names)
-        self.assertFalse([name for name in names if name.endswith((".debug", ".pdb"))])
-        self.assertIn("  .\\example-01-demo.exe", readme)
-        self.assertNotIn("console,", readme)
-        # Nothing is split on Windows: the PDBs already hold the debug info.
-        self.assertEqual(self.splits, [])
-        with zipfile.ZipFile(debug) as zipped:
-            self.assertEqual(debug.name, f"tungsten-debug-v0.0.0-test-{windows}.zip")
-            self.assertEqual(sorted(n for n in zipped.namelist() if not n.endswith("/")),
-                             sorted(f"{top}/bin/{level}/{name}.pdb" for level in ("x86-64", "x86-64-v3")
-                                    for name in ("example_01_demo", "example_02_bare")))
+        self.bins(WINDOWS, ".exe")
+        archive = self.package("v0.0.0-test", WINDOWS)
+        self.assertEqual(archive.name, "tungsten-examples-0.0.0-test-windows-x64.zip")
+        members = self.members(archive)
+        self.assertIn("example-02-bare.exe", members)
+        self.assertIn("data/bin/x86-64-v3/example-02-bare.exe", members)
+        # Windows builds keep their debug info in PDBs, which stay out; nothing is stripped.
+        self.assertFalse([path for path in members if path.endswith((".debug", ".pdb"))])
+        self.assertEqual(self.strips, [])
+        readme = self.readme_text(archive)
+        self.assertIn("Double-click one to start it: example-01-demo.exe example-02-bare.exe They need a GPU", readme)
+        self.assertIn("The programs open no console.", readme)
+        self.assertIn("in data\\bin\\ that this CPU supports (x86-64-v3, x86-64);", readme)
         with self.assertRaisesRegex(ValueError, "not a target triple"):
             rel.package(self.root, "v0.0.0-test", "../escape", self.root / "dist")
-        (self.root / f"target/x86-64-v3/{windows}/release/example-02-bare.exe").unlink()
+        (self.root / f"target/x86-64-v3/{WINDOWS}/release/example-02-bare.exe").unlink()
         with self.assertRaisesRegex(ValueError, "missing x86-64-v3/example-02-bare.exe"):
-            self.package("v0.0.0-test", windows)
-
-    def test_package_windows_needs_each_pdb_to_match_its_record(self):
-        windows = "x86_64-pc-windows-msvc"
-        self.bins(windows, ".exe")
-        pdb = self.root / f"target/x86-64/{windows}/release/example_02_bare.pdb"
-        pdb.write_bytes(synthetic_pdb(GUID, 1))
-        with self.assertRaisesRegex(ValueError, "example_02_bare.pdb: GUID and age differ"):
-            self.package("v0.0.0-test", windows)
-        pdb.unlink()
-        with self.assertRaisesRegex(ValueError, "names example_02_bare.pdb, which .* lacks"):
-            self.package("v0.0.0-test", windows)
+            self.package("v0.0.0-test", WINDOWS)
 
     def test_readme_names_the_log_folders(self):
         self.write("tungsten.json", '{ "game": { "id": "my-game" } }')
-        for target, suffix, folder in (("x86_64-unknown-linux-gnu", "", "~/.local/state/my-game/logs"),
-                                       ("x86_64-pc-windows-msvc", ".exe", "%LOCALAPPDATA%\\my-game\\logs")):
+        for target, suffix, folder in ((LINUX, "", "~/.local/state/my-game/logs"),
+                                       (WINDOWS, ".exe", "%LOCALAPPDATA%\\my-game\\logs")):
             with self.subTest(target=target):
                 self.bins(target, suffix)
-                archive, _ = self.package("v0.26.0", target)
-                top = f"tungsten-examples-v0.26.0-{target}"
-                if suffix:
-                    with zipfile.ZipFile(archive) as zipped:
-                        readme = zipped.read(f"{top}/README.txt").decode()
-                else:
-                    with tarfile.open(archive) as tar:
-                        readme = tar.extractfile(f"{top}/README.txt").read().decode()
+                readme = self.readme_text(self.package("v0.26.0", target))
                 self.assertIn(folder, readme)
                 self.assertIn("TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.", readme)
         # Without a game id the README names no folder.
@@ -595,7 +568,50 @@ class Release(unittest.TestCase):
         self.assertEqual(notices.count("TERMS AND CONDITIONS FOR USE"), 1)
         self.assertIn("[1] Apache-2.0\nUsed by self_cell 1.0.0, lib-a 1.0.0, lib-b 1.0.0\n", notices)
         self.assertIn("[2] NOTICE\nUsed by lib-a 1.0.0\n" + "-" * 78 + "\nLib A's notice.\n", notices)
-        self.assertIn("rustc 1.0.0 (fake); its notices are in THIRD-PARTY-NOTICES-rust-std.html", notices.replace("\n", " "))
+        self.assertIn("built by rustc 1.0.0 (fake); its notices close the file.", notices.replace("\n", " "))
+
+    def test_std_notices_become_plain_text(self):
+        """The toolchain's COPYRIGHT-library.html shape: headings, nested boxes, links, license texts."""
+        page = """<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Notices</title></head>
+<body>
+<h1>Copyright notices</h1>
+<h2>Contents</h2>
+<ul>
+    <li><a href="#short">Short version</a></li>
+</ul>
+<p>Under <a href="https://a.example/apache">Apache</a> or <a href="https://a.example/mit">https://a.example/mit</a>.</p>
+<div style="border:1px solid black">
+    <p><b>File/Directory:</b> <code>.</code></p>
+    <p><b>Exceptions:</b></p>
+    <div style="border:1px solid black">
+        <p><b>File/Directory:</b> <code>library/core/src/unicode</code></p>
+    </div>
+</div>
+<h3>📦 aho-corasick-1.1.4</h3>
+<p><b>Authors:</b> Andrew Gallant &#60;jamslam@gmail.com&#62;</p>
+<p>""" + "word " * 30 + """</p>
+<p><b>Notices:</b>
+    <details>
+        <summary><code>LICENSE-MIT</code></summary>
+        <pre>
+The MIT License (MIT)
+
+    indented &#34;as is&#34;, """ + "x" * 80 + """
+        </pre>
+    </details>
+</p>
+</body></html>
+"""
+        words = "word " * 30
+        self.assertEqual(rel.plain_text(page), "\n".join([
+            "Copyright notices", "=================", "", "Contents", "--------", "", "- Short version", "",
+            "Under Apache <https://a.example/apache> or https://a.example/mit.", "",
+            "File/Directory: .", "", "Exceptions:", "", "    File/Directory: library/core/src/unicode", "",
+            "📦 aho-corasick-1.1.4", "", "Authors: Andrew Gallant <jamslam@gmail.com>", "",
+            words[:75].strip(), words[75:].strip(), "",
+            "Notices:", "", "LICENSE-MIT", "", "The MIT License (MIT)", "", '    indented "as is", ' + "x" * 80,
+        ]) + "\n")
 
     def test_embedded_works_exist_in_the_repository(self):
         repository = Path(__file__).resolve().parent.parent
@@ -731,24 +747,24 @@ class Release(unittest.TestCase):
             rel.collect_licenses(self.root, LINUX, run=run)
 
     def archive_text(self, archive, name):
-        if archive.suffix == ".zip":
-            with zipfile.ZipFile(archive) as zipped:
-                return zipped.read(name).decode()
-        with tarfile.open(archive) as tar:
-            return tar.extractfile(name).read().decode()
+        with zipfile.ZipFile(archive) as zipped:
+            return zipped.read(name).decode()
 
-    def test_package_writes_both_notices_files_into_each_archive(self):
+    def test_package_writes_one_notices_file_into_each_archive(self):
         for target, suffix in ((LINUX, ""), (WINDOWS, ".exe")):
             with self.subTest(target=target):
                 self.bins(target, suffix)
-                archive, debug = self.package("v0.26.0", target)
-                top = f"tungsten-examples-v0.26.0-{target}"
-                notices = self.archive_text(archive, f"{top}/{rel.NOTICES}")
+                archive = self.package("v0.26.0", target)
+                notices = self.archive_text(archive, f"{archive.name.removesuffix('.zip')}/{rel.NOTICES}")
                 self.assertTrue(notices.startswith(f"Third-party notices: Tungsten examples for {target}\n"))
                 self.assertIn("anyhow 1.0.0\n    License: MIT OR Apache-2.0\n    Used under: MIT: [1]\n", notices)
-                self.assertEqual(self.archive_text(archive, f"{top}/{rel.STD_NOTICES}"), "<html>std notices</html>\n")
-                readme = self.archive_text(archive, f"{top}/README.txt").replace("\n", " ")
-                self.assertIn(f"Third-party licenses: {rel.NOTICES}, and {rel.STD_NOTICES} for the Rust", readme)
+                # The standard library's notices close the file, as text.
+                self.assertTrue(notices.endswith(f"\n\nThe Rust standard library (rustc 1.0.0 (fake))\n{'=' * 78}"
+                                                 "\n\nstd notices\n"), notices[-200:])
+                self.assertFalse([path for path in self.members(archive) if path.endswith(".html")])
+                self.assertIn(f"Tungsten is under the MIT license: LICENSE.txt. {rel.NOTICES} lists the third-party "
+                              "software built into the programs, the Rust standard library among it,",
+                              self.readme_text(archive))
 
     def test_package_fails_without_license_data_or_an_entry(self):
         self.bins(LINUX, "")
@@ -768,54 +784,33 @@ class Release(unittest.TestCase):
         for target, suffix in ((LINUX, ""), (WINDOWS, ".exe")):
             with self.subTest(target=target):
                 self.bins(target, suffix)
-                archive, _ = self.package("v0.26.0", target)
-                top = f"tungsten-examples-v0.26.0-{target}"
-                if suffix:
-                    with zipfile.ZipFile(archive) as zipped:
-                        names = {name.split("/", 1)[1] for name in zipped.namelist() if "/" in name}
-                else:
-                    with tarfile.open(archive) as tar:
-                        names = {m.name.split("/", 1)[1] for m in tar.getmembers() if "/" in m.name}
-                exe = f"tungsten-template-basic{suffix}"
-                for path in (exe, f"bin/x86-64/{exe}", f"bin/x86-64-v3/{exe}",
-                             "templates/basic/tungsten.json", "templates/basic/input.json",
-                             "templates/basic/assets/manifest.json", "tungsten.json", "LICENSE"):
+                archive = self.package("v0.26.0", target)
+                names = set(self.members(archive))
+                # The template ships under its player-facing name (TITLES).
+                exe = f"Template{suffix}"
+                for path in (exe, f"data/bin/x86-64/{exe}", f"data/bin/x86-64-v3/{exe}",
+                             "data/templates/basic/tungsten.json", "data/templates/basic/input.json",
+                             "data/templates/basic/assets/manifest.json", "data/tungsten.json", "LICENSE.txt"):
                     self.assertIn(path, names)
-                for path in ("templates/basic/Cargo.toml", "templates/basic/src/main.rs"):
+                for path in ("data/templates/basic/Cargo.toml", "data/templates/basic/src/main.rs"):
                     self.assertNotIn(path, names, "only what the game reads")
+                self.assertFalse([name for name in names if "tungsten-template-basic" in name], names)
                 self.assertFalse([name for name in names if name.endswith((".debug", ".pdb"))])
-
-    def test_template_debug_files_join_the_debug_archive(self):
-        self.template()
-        self.bins(LINUX, "")
-        _, debug = self.package("v0.26.0", LINUX)
-        top = f"tungsten-examples-v0.26.0-{LINUX}"
-        with tarfile.open(debug) as tar:
-            files = sorted(m.name for m in tar.getmembers() if m.isfile())
-        self.assertEqual(files, sorted(f"{top}/bin/{level}/{name}.debug" for level in ("x86-64", "x86-64-v3")
-                                       for name in ("example-01-demo", "example-02-bare", "tungsten-template-basic")))
-        self.assertIn((top, "tungsten-template-basic", None), self.splits, "its launcher copy is stripped")
-        self.bins(WINDOWS, ".exe")
-        _, debug = self.package("v0.26.0", WINDOWS)
-        top = f"tungsten-examples-v0.26.0-{WINDOWS}"
-        with zipfile.ZipFile(debug) as zipped:
-            pdbs = sorted(n for n in zipped.namelist() if not n.endswith("/"))
-        self.assertIn(f"{top}/bin/x86-64/tungsten_template_basic.pdb", pdbs)
-        self.assertIn(f"{top}/bin/x86-64-v3/tungsten_template_basic.pdb", pdbs)
+                if not suffix:
+                    self.assertIn((archive.name.removesuffix(".zip"), "Template"), self.strips)
+                    self.assertIn(("x86-64-v3", "Template"), self.strips)
 
     def test_readme_names_the_template_and_its_log_folder(self):
         self.template()
         for target, suffix, run, folder in (
-                (LINUX, "", "./tungsten-template-basic", "~/.local/state/tungsten-template-basic/logs"),
-                (WINDOWS, ".exe", ".\\tungsten-template-basic.exe",
-                 "%LOCALAPPDATA%\\tungsten-template-basic\\logs")):
+                (LINUX, "", "./Template", "~/.local/state/tungsten-template-basic/logs"),
+                (WINDOWS, ".exe", "Template.exe", "%LOCALAPPDATA%\\tungsten-template-basic\\logs")):
             with self.subTest(target=target):
                 self.bins(target, suffix)
-                archive, _ = self.package("v0.26.0", target)
-                readme = self.archive_text(archive, f"tungsten-examples-v0.26.0-{target}/README.txt")
-                self.assertIn(f"  {run}\n", readme)
-                self.assertIn(f"The game template, {run}, runs from templates/basic/", readme)
-                self.assertIn(folder, readme)
+                archive = self.package("v0.26.0", target)
+                readme = self.archive_text(archive, f"{archive.name.removesuffix('.zip')}/README.txt")
+                self.assertRegex(readme, rf"\n  {re.escape(run)} +the starting game every new Tungsten project gets\n")
+                self.assertIn(f"Template's logs and crash reports go to {folder}.", self.readme_text(archive))
 
     def test_the_fixtures_crate_is_not_shipped(self):
         """A workspace member that no archive carries: the test-only fixtures crate (D-193)."""
@@ -828,13 +823,10 @@ class Release(unittest.TestCase):
                          [("example-01-demo", "examples/01_demo"), ("example-02-bare", "examples/02_bare")])
         self.assertEqual(rel.shipped_packages(self.root), ["example-01-demo", "example-02-bare", LAUNCHER])
         # Packaging needs no fixtures binary, and neither it nor its assets reach the archive.
-        linux = "x86_64-unknown-linux-gnu"
-        self.bins(linux, "")
-        archive, _ = self.package("v0.26.0", linux)
-        with tarfile.open(archive) as tar:
-            names = [m.name.split("/", 1)[1] for m in tar.getmembers() if "/" in m.name]
+        self.bins(LINUX, "")
+        names = list(self.members(self.package("v0.26.0", LINUX)))
         self.assertIn("example-02-bare", names)
-        self.assertIn("examples/01_demo/assets/manifest.json", names)
+        self.assertIn("data/examples/01_demo/assets/manifest.json", names)
         self.assertFalse([name for name in names if "fixtures" in name], names)
 
     def test_shipped_packages_include_the_templates(self):
@@ -850,7 +842,17 @@ class Release(unittest.TestCase):
         source = (repo / "tools/launcher/src/main.rs").read_text()
         table = re.search(r"const FOLDERS: \[\(&str, &str\); \d+\] = \[(.*?)\];", source, re.S)
         folders = re.findall(r'\("([^"]+)", "([^"]+)"\)', table[1])
-        self.assertEqual(folders, rel.templates(repo))
+        self.assertEqual(folders, [(rel.title(name), folder) for name, folder in rel.templates(repo)])
+        self.assertEqual(re.search(r'const DATA: &str = "([^"]+)";', source)[1], rel.DATA)
+
+    def test_every_shipped_package_has_a_title(self):
+        """Players see each build under its TITLES name; a package without one would show its own."""
+        repo = Path(__file__).resolve().parent.parent
+        shipped = [name for name, _ in rel.examples(repo) + rel.templates(repo)]
+        self.assertEqual(sorted(rel.TITLES), sorted(shipped))
+        shown = [rel.title(name) for name in shipped]
+        self.assertEqual(len(set(map(str.lower, shown))), len(shown), "titles differ, ignoring case")
+        self.assertFalse(set(map(str.lower, shown)) & {rel.DATA, "readme", "license"})
 
     def test_levels_match_the_launcher(self):
         source = (Path(__file__).resolve().parent.parent / "tools/launcher/src/main.rs").read_text()
@@ -880,7 +882,8 @@ class Release(unittest.TestCase):
         code, output = run("notices", str(self.root / "data.json"), "--out", str(self.root / "n"))
         self.assertEqual(code, 0, output)
         self.assertIn(f"{LINUX}: notices of 1 crates", output)
-        self.assertEqual((self.root / "n" / rel.STD_NOTICES).read_text(), "<html>std notices</html>\n")
+        self.assertTrue((self.root / "n" / rel.NOTICES).read_text(encoding="utf-8").endswith("\n\nstd notices\n"))
+        self.assertEqual([path.name for path in (self.root / "n").iterdir()], [rel.NOTICES])
 
 
 if __name__ == "__main__":

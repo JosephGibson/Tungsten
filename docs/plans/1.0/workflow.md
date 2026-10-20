@@ -64,7 +64,7 @@ The prompts, their keys and the order each kind of stop runs them in live in one
 
 ## 4. Levels
 
-Each candidate's card in the implementation plan sets its level. No level stops for the owner (`D-150`); a level sets the plan's model tier (`D-151`), whether two candidates may pair (`D-108`), and level C's step 1 critique.
+Each candidate's card in the implementation plan sets its level. No level stops for the owner (`D-150`); a level sets the plan's model tier (`D-151`; a stop's own tier in the catalog comes first, `D-195`), whether two candidates may pair (`D-108`), and level C's step 1 critique.
 
 | Level | Fits | What it adds | Examples |
 | --- | --- | --- | --- |

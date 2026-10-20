@@ -6,6 +6,15 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Session tiers** (`D-195`): a stop's own `tier` in `docs/plans/1.0/roadmap.json` sets its session stages' model and effort ahead of `D-151`'s rule, and example 01's four stops run every plan and run session on Opus 5.5 at max.
+- **Release archives for players** (`D-196`): each platform's release is one zip, `tungsten-examples-<version>-windows-x64.zip` or `-linux-x64.zip`. Its top folder holds the launchers under player-facing names from `TITLES` in `scripts/release.py` (`Platformer`, `Benchmark`, `Template`), a README written for players, `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`, and a `data/` folder with the builds and the files they read, which the launcher (`tools/launcher`) runs them from. The notices file ends with the Rust standard library's notices, converted from the toolchain's HTML to plain text.
+
+### Removed
+
+- **Debug archives and the HTML notices** (`D-196`): releases no longer ship `tungsten-debug-*` archives, `THIRD-PARTY-NOTICES-rust-std.html` or a Linux `.tar.gz`; packaging strips each Linux binary, `release.yml` no longer uploads the PDBs, and the release guide's crash-report check on a released build is gone. The crash-report probe stays in the build jobs.
+
 ## [0.92.0] - 2026-10-20
 
 Summary: M71, the example fixtures stop (plan archived at `docs/plans/archive/1.0/phase6-milestone-71-example-fixtures.md`): examples 03, 04 and 05 and example 01's lighting fixture become one test-only crate, `examples/03_fixtures` (package `example-03-fixtures`), whose `TUNGSTEN_FIXTURE` picks the `post`, `transition`, `ui` or `lighting` scene. It keeps 14 smoke rows and three of `just visual`'s suites, with every capture byte-equal and the two UI fixture PNGs unchanged, and stays out of the release archives. The template's shell is the only UI reference. No hash moves.

@@ -3,10 +3,10 @@
 # a pushed pre-release tag (vX.Y.Z-<pre>) publishes at once; a manual run on a
 # tag covers maintenance and recovery. Each run checks the tag against
 # Cargo.toml and CHANGELOG.md, builds the examples for Linux and Windows at two
-# x86-64 CPU levels, and publishes one archive per platform (both builds, a
-# launcher per example that runs the fastest one the CPU supports, the files
-# the examples read and the third-party license notices), one debug archive per
-# platform (each build's split .debug file or PDB), SHA256SUMS and the matching
+# x86-64 CPU levels, and publishes one zip per platform for players (a launcher
+# per example under its player-facing name that runs the fastest build the CPU
+# supports, both builds and the files they read under data/, README.txt and the
+# license notices; no debug files, D-196), SHA256SUMS and the matching
 # changelog section as notes. A vX.Y.Z-<pre> tag without its own changelog
 # section is a rehearsal, published as a pre-release. Hosted runners have no
 # GPU: nothing with a window is launched. The one program run is the
@@ -146,8 +146,9 @@ jobs:
       # Binary targets are the examples, the template, which the archive ships
       # beside them (D-186), and the launcher. The test-only fixtures crate is
       # left out, so the example-* upload never sees its binary (D-193). The
-      # tuned profile's line tables stay in, for the debug archive (D-120). A
-      # set RUSTFLAGS replaces target-cpu=native from .cargo/config.toml.
+      # tuned profile's line tables stay in; packaging strips the Linux copies
+      # and the PDBs stay behind (D-196). A set RUSTFLAGS replaces
+      # target-cpu=native from .cargo/config.toml.
       - name: Build release binaries per CPU level
         run: |
           for level in $CPU_LEVELS; do
@@ -169,9 +170,10 @@ jobs:
           RUSTFLAGS="-C target-cpu=x86-64 $EXTRA_RUSTFLAGS" cargo build --release --locked \
             -p tungsten-crash-probe --target "$TARGET" --target-dir target/x86-64
 
-      # A panic in the shipped layout leaves a crash file that symbolizes from the
-      # split debug file (Linux) or the PDB (Windows). Informational: a failure here
-      # is read on the rehearsal run, never fails the release (D-120).
+      # A panic in an archive-like copy leaves a crash file that symbolizes from its
+      # split debug file (Linux) or its PDB (Windows); the release ships neither
+      # (D-196). Informational: a failure here is read on the rehearsal run, never
+      # fails the release (D-120).
       - name: Crash-report probe
         continue-on-error: true
         run: |
@@ -182,9 +184,7 @@ jobs:
           name: bin-${{ matrix.target }}
           path: |
             target/*/${{ matrix.target }}/release/example-*
-            target/*/${{ matrix.target }}/release/example_*.pdb
             target/*/${{ matrix.target }}/release/tungsten-template-basic*
-            target/*/${{ matrix.target }}/release/tungsten_template_basic.pdb
             target/x86-64/${{ matrix.target }}/release/tungsten-launcher*
             target/licenses.json
             !target/*/${{ matrix.target }}/release/*.d
@@ -211,10 +211,10 @@ jobs:
           pattern: bin-*
           path: artifacts
 
-      # A player and a debug archive per built target, then checksums over all of
-      # them. Packaging splits each Linux binary with objcopy and checks every
-      # debug file against its binary (D-120), and writes the notices from the
-      # build job's licenses.json, failing on a crate without a license text (D-122).
+      # A players' zip per built target, then checksums over them. Packaging
+      # strips each Linux binary with objcopy (D-196) and writes the notices from
+      # the build job's licenses.json, failing on a crate without a license text
+      # (D-122).
       - name: Package archives and checksums
         run: |
           for dir in artifacts/bin-*; do
