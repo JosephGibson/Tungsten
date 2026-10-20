@@ -1,0 +1,19 @@
+[package]
+name = "example-03-fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+tungsten = { workspace = true }
+glam = { workspace = true }
+anyhow = { workspace = true }
+log = { workspace = true }
+
+[dev-dependencies]
+# The headless test harness, `tungsten::testing` (D-110, D-125).
+tungsten = { workspace = true, features = ["testing"] }
+
+[lints]
+workspace = true

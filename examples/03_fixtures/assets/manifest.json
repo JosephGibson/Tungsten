@@ -1,0 +1,31 @@
+{
+  "sprites": {
+    "ex03_quad": { "path": "transition/quad.png", "filter": "nearest" },
+    "ex04_quad": { "path": "post/quad.png", "filter": "nearest" },
+    "ex04_emissive_quad": { "path": "post/emissive_quad.png", "filter": "linear" },
+    "ex05_frame": { "path": "sprites/frame.png", "filter": "nearest", "nine_slice": [12, 12, 12, 12] },
+    "ex05_icon": { "path": "sprites/icon.png", "filter": "nearest" },
+    "ex05_item_draught": { "path": "sprites/items/draught.png", "filter": "nearest" },
+    "ex05_item_sword": { "path": "sprites/items/sword.png", "filter": "nearest" },
+    "ex05_item_cap": { "path": "sprites/items/cap.png", "filter": "nearest" },
+    "ex05_item_lantern": { "path": "sprites/items/lantern.png", "filter": "nearest" },
+    "ex05_item_ore": { "path": "sprites/items/ore.png", "filter": "nearest" },
+    "ex05_item_herb": { "path": "sprites/items/herb.png", "filter": "nearest" },
+    "ex05_item_elixir": { "path": "sprites/items/elixir.png", "filter": "nearest" },
+    "ex05_item_bow": { "path": "sprites/items/bow.png", "filter": "nearest" },
+    "ex05_item_mail": { "path": "sprites/items/mail.png", "filter": "nearest" },
+    "ex05_item_moonstone": { "path": "sprites/items/moonstone.png", "filter": "nearest" }
+  },
+  "particle_meshes": {
+    "ex04_bullet_tri": {
+      "vertices": [[0.0, -7.0], [6.0, 7.0], [-6.0, 7.0]],
+      "indices": [0, 1, 2]
+    }
+  },
+  "particles": {
+    "ex04_bullet_trail": { "path": "post/particles/bullet_trail.json" }
+  },
+  "ui_themes": {
+    "ex05_default": { "path": "ui/themes/ex05_default.json" }
+  }
+}

@@ -27,7 +27,7 @@ case "$1" in
       fail) echo "error: stub metadata failure" >&2; exit 101 ;;
       badjson) echo '{"packages": [' ;;
       none) echo '{"packages":[{"name":"tungsten-core"},{"name":"tungsten"}]}' ;;
-      *) echo '{"packages":[{"name":"tungsten"},{"name":"example-01-platformer"},{"name":"example-02-bench"},{"name":"example-04-shader-playground"},{"name":"example-03-scene-state"}]}' ;;
+      *) echo '{"packages":[{"name":"tungsten"},{"name":"example-01-platformer"},{"name":"example-03-fixtures"},{"name":"example-02-bench"}]}' ;;
     esac
     ;;
   build) exit 0 ;;
@@ -35,7 +35,7 @@ case "$1" in
     pkg="$3"
     where=""
     case "$PWD" in */templates/basic) where=" dir=templates/basic" ;; esac
-    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} light=${TUNGSTEN_LIGHTING_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
+    echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
     if [ -n "$where" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
@@ -77,7 +77,7 @@ expect_output() {
 }
 
 if run_case "all pass" 0; then
-  for line in "Passed: 4/4" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
+  for line in "Passed: 3/3" "Template passed: 1/1" "Matrix passed: 4/4" "Post-stack passed: 2/2" \
     "Post-AA passed: 1/1" "Bloom passed: 1/1" "Lighting passed: 1/1" \
     "Game-feel passed: 1/1" "Mesh/transition passed: 5/5" "UI screens passed: 1/1" \
     "Debug views passed: 1/1" "Benchmarks passed: 15/15" \
@@ -86,44 +86,43 @@ if run_case "all pass" 0; then
   done
   expected_runs="$work/expected-runs.txt"
   cat >"$expected_runs" <<'EOF'
-example-01-platformer msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-04-shader-playground msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset=
-tungsten-template-basic msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench= preset= dir=templates/basic
-example-02-bench msaa=1 sort=cpu_stable post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
-example-02-bench msaa=1 sort=gpu_depth post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
-example-02-bench msaa=4 sort=cpu_stable post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
-example-02-bench msaa=4 sort=gpu_depth post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
-example-04-shader-playground msaa= sort= post=empty aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-04-shader-playground msaa= sort= post=all aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-04-shader-playground msaa= sort= post=empty aa=smaa_high bloom= light= feel= frames=3 timing= bench= preset=
-example-04-shader-playground msaa= sort= post=bloom_only aa= bloom=on light= feel= frames=3 timing= bench= preset=
-example-01-platformer msaa= sort= post= aa= bloom= light=on feel= frames=3 timing= bench= preset=
-example-04-shader-playground msaa= sort= post= aa= bloom= light= feel=on frames=3 timing= bench= preset=
-example-04-shader-playground msaa=4 sort=gpu_depth post= aa= bloom= light= feel= frames=3 timing= bench= preset=
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=fade
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=wipe_radial
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=dissolve
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=16 timing= bench= preset= transition=pixelate
-example-05-ui-lab msaa= sort= post= aa= bloom= light= feel= frames=150 timing= bench= preset= ui=menus
-example-05-ui-lab msaa= sort= post= aa= bloom= light= feel= frames=120 timing= bench= preset= ui=debug
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=default
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=sparse-min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=physics preset=sparse
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=ecs preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=ecs preset=default
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=churn preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=churn preset=default
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing=1 bench=gpu preset=default
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=gpu preset=throughput
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=particles preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=particles preset=default
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=integrated preset=min
-example-02-bench msaa= sort= post= aa= bloom= light= feel= frames=3 timing= bench=integrated preset=default
-example-03-scene-state msaa= sort= post= aa= bloom= light= feel= frames=20 timing= bench= preset= cap=20
+example-01-platformer msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
+tungsten-template-basic msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= dir=templates/basic
+example-02-bench msaa=1 sort=cpu_stable post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
+example-02-bench msaa=1 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
+example-02-bench msaa=4 sort=cpu_stable post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
+example-02-bench msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
+example-03-fixtures msaa= sort= post=empty aa= bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=all aa= bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=empty aa=smaa_high bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post=bloom_only aa= bloom=on feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= scene=lighting
+example-03-fixtures msaa= sort= post= aa= bloom= feel=on frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa=4 sort=gpu_depth post= aa= bloom= feel= frames=3 timing= bench= preset= scene=post
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= preset= scene=transition transition=fade
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= preset= scene=transition transition=wipe_radial
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= preset= scene=transition transition=dissolve
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=16 timing= bench= preset= scene=transition transition=pixelate
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=150 timing= bench= preset= scene=ui ui=menus
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=120 timing= bench= preset= scene=ui ui=debug
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=sparse-min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=physics preset=sparse
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=ecs preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=ecs preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=churn preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=churn preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=gpu preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing=1 bench=gpu preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=gpu preset=throughput
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=particles preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=particles preset=default
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=integrated preset=min
+example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench=integrated preset=default
+example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=20 timing= bench= preset= scene=transition cap=20
 EOF
   if ! diff -u "$expected_runs" "$work/runs.txt"; then
     echo "FAIL all pass: run matrix changed"
@@ -135,15 +134,15 @@ run_case "metadata failure" nonzero STUB_METADATA=fail && expect_output "metadat
 run_case "unparseable metadata" nonzero STUB_METADATA=badjson && expect_output "unparseable metadata" "could not parse cargo metadata"
 run_case "zero examples" nonzero STUB_METADATA=none && expect_output "zero examples" "no example-* packages"
 
-if run_case "child failure" nonzero STUB_FAIL_PKG=example-03-scene-state; then
+if run_case "child failure" nonzero STUB_FAIL_PKG=example-03-fixtures; then
   expect_output "child failure" "FAIL (exit 101)"
-  expect_output "child failure" "Passed: 3/4"
+  expect_output "child failure" "Passed: 2/3"
   expect_output "child failure" "panicked at stub"
 fi
 
 if run_case "timeout" nonzero STUB_HANG_PKG=example-01-platformer; then
   expect_output "timeout" "TIMEOUT (2s)"
-  expect_output "timeout" "Passed: 3/4"
+  expect_output "timeout" "Passed: 2/3"
 fi
 
 if run_case "template unknown font" nonzero STUB_UNKNOWN_FONT=1; then

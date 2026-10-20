@@ -17,7 +17,6 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Performance capture and comparison rules | [Profiling workflow](perf/profiling-workflow.md) |
 | Workloads, knobs, dated numbers and performance proposals | [Benchmarks](perf/benchmarks.md) |
 | Release preparation, checks, handoff and recovery | [Release procedure](releases.md) |
-| Visual acceptance artifacts and capture recipes | [Showcase](showcase/README.md) |
 | Platformer asset/layout authoring | [Authoring guide](../examples/01_platformer/tools/README.md) |
 | Asset types, manifest sections and coverage exceptions | [Assets](assets.md) |
 | Font inventory and registered IDs | [Fonts](../assets/fonts/README.md) |

@@ -16,8 +16,7 @@ use tungsten::{WindowSize, extract_tilemap_layers};
 
 use crate::state::{
     BALL_START_SPRITE_ID, BALL_VISUAL_DIAMETER, BLACK_HOLE_VISUAL_DIAMETER, Ball, BallHue,
-    BlackHole, CurrentSprite, LightingFixture, LightingFixtureMode, PLAYER_HALF, Player,
-    PlayerMaterial, TextDisplayState,
+    BlackHole, CurrentSprite, PLAYER_HALF, Player, PlayerMaterial, TextDisplayState,
 };
 use crate::systems::cursor_to_world;
 
@@ -375,9 +374,6 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     batches.extend(extract_vortices(world, assets, true));
 
     // Player sprite bottom-aligned to physics AABB.
-    let lighting_on = world
-        .get_resource::<LightingFixture>()
-        .is_some_and(|fixture| fixture.mode == LightingFixtureMode::On);
     let mut player_batches = Vec::new();
     for (entity, cs) in world.query::<(Entity, &CurrentSprite)>() {
         // A dead player is gone from the screen until the restart.
@@ -403,26 +399,12 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
             asset.uv.max[0] - asset.uv.min[0],
             asset.uv.max[1] - asset.uv.min[1],
         ];
-        // M29: when the lighting fixture is on, route the player batch to the
-        // lit pipeline. Lit wins over the damage-flash material in the M29
-        // platformer fixture; the engine warns once per collision elsewhere.
-        let lit = lighting_on && asset.lit_atlas.is_some();
-        let material_id = if lit {
-            None
-        } else {
-            world.get::<PlayerMaterial>(entity).map(|m| m.material_id)
-        };
-        let override_block = if lit {
-            None
-        } else {
-            world
-                .get::<tungsten::core::UniformOverrideBlock>(entity)
-                .copied()
-        };
+        // Unlit, through the damage-flash material with its override block.
         let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-        batch.material_id = material_id;
-        batch.uniform_overrides = override_block;
-        batch.lit = lit;
+        batch.material_id = world.get::<PlayerMaterial>(entity).map(|m| m.material_id);
+        batch.uniform_overrides = world
+            .get::<tungsten::core::UniformOverrideBlock>(entity)
+            .copied();
         let facing_left = world
             .get::<PlayerPresentation>(entity)
             .is_some_and(|p| p.facing_left);
@@ -462,7 +444,7 @@ pub(crate) fn extract_sprites(world: &World) -> Vec<SpriteBatch> {
     }
     batches.extend(player_batches);
 
-    batches.extend(extract_balls(world, assets, lighting_on));
+    batches.extend(extract_balls(world, assets));
     batches.extend(extract_bricks(world, assets));
     batches.extend(extract_flames(world, assets));
     batches.extend(extract_fireballs(world, assets));
@@ -538,9 +520,9 @@ impl<'w> BallSprites<'w> {
     }
 }
 
-/// On-screen balls in query order: one batch per atlas/filter/lit key,
+/// On-screen balls in query order, unlit: one batch per atlas/filter key,
 /// batches ordered by texture.
-fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Vec<SpriteBatch> {
+fn extract_balls(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let mut sprites_by_id = BallSprites {
         assets,
         slots: [None; BALL_SPRITE_SLOTS],
@@ -594,14 +576,10 @@ fn extract_balls(world: &World, assets: &AssetRegistry, lighting_on: bool) -> Ve
             asset.uv.max[0] - asset.uv.min[0],
             asset.uv.max[1] - asset.uv.min[1],
         ];
-        let lit = lighting_on && asset.lit_atlas.is_some();
-        let same_key =
-            |b: &SpriteBatch| b.texture == asset.atlas && b.filter == asset.filter && b.lit == lit;
+        let same_key = |b: &SpriteBatch| b.texture == asset.atlas && b.filter == asset.filter;
         if !ball_batches.get(current).is_some_and(same_key) {
             current = ball_batches.iter().position(same_key).unwrap_or_else(|| {
-                let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-                batch.lit = lit;
-                ball_batches.push(batch);
+                ball_batches.push(SpriteBatch::new(asset.atlas, asset.filter));
                 ball_batches.len() - 1
             });
         }

@@ -22,7 +22,7 @@
 - **The shell** is copied from `templates/basic/src/shell/` byte for byte and never changed in 01; a repo-check enforces it. A shell change 01 needs goes into the template. The shell plays its sounds by fixed manifest ID (`shell/theme.rs`): `ui_move`, `ui_select` and `ui_back`, the title's `music_title`, and game over's `game_over` sting and `music_over`, so 01's sound generator writes each under that ID.
 - **Kit first.** Each stop's plan maps every 01 system to a kit module, or records why it stays game code. A kit gap becomes a level C step with an API critique, or a 1.x backlog row. It never becomes a workaround in 01.
 - **The existing tests are the spec.** Each of 01's 106 tests is ported to the harness, or (a)'s plan records why it was retired.
-- **Game layout.** 01 follows `templates/basic/AGENTS.md` and has no `TUNGSTEN_*` environment hooks. 01's README maps each mechanic to its kit module and data file, and (a) adds its `docs/LLM_INDEX.md` row. Today 01 also reads the root `input.json` and the root manifest (the fonts, `music_main`, `sfx_blip`, the `damage_flash` material, the `walk_*` sprites); on its own folder it carries what it uses, as the template does.
+- **Game layout.** 01 follows `templates/basic/AGENTS.md` and has no `TUNGSTEN_*` environment hooks. 01's README maps each mechanic to its kit module and data file, and (a) adds its `docs/LLM_INDEX.md` row. Today 01 also reads the root `input.json` and the root manifest (the fonts, `music_main`, `sfx_blip`, the `damage_flash` material); on its own folder it carries what it uses, as the template does.
 - **Sound.** Each stop generates the sounds for what it adds.
   - One-shots are triggered from data through kit sound cues, with a voice limit per sound (M68, `D-179`).
   - Loops (ambience, the wisp's hum, burning) are played by 01's code through the engine's audio commands, which return the `Voice`, so 01 can set a loop's volume by distance. Kit cues play one-shots only and keep no voice (`react/cues.rs`); a looping cue that keeps its voice is a 1.x backlog row.
@@ -110,7 +110,7 @@ Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatte
 | Troll | 128 | Idle, walk, slam wind-up, slam, pick up, throw; the held object is its own sprite on the kit's hierarchy |
 | Player, in (a) | 64 | A toss clip; an arm and gun drawn at 8 aim directions instead of rotated; the lantern brightens on a cast through its emissive map |
 
-Today the player draws unlit through `damage_flash` and reads its maps only under the lighting fixture (`src/extract.rs`), so the lantern's brightening puts the player on the lit path in (a).
+Today the player draws unlit through `damage_flash` and never reads its maps, since the fixtures stop removed the lighting fixture (`src/extract.rs`), so the lantern's brightening puts the player on the lit path in (a).
 
 **Icons, items and effects:**
 

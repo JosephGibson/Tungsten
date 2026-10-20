@@ -23,7 +23,6 @@ Hand-rolled ECS with archetypal storage, deferred command buffers, and typed eve
 | [`docs/perf/profiling-workflow.md`](docs/perf/profiling-workflow.md) | Profiling workflow: capture rules, compare verdicts, capacity search |
 | [`docs/perf/benchmarks.md`](docs/perf/benchmarks.md) | The six benchmarks, their knobs, owned metrics and calibrated defaults |
 | [`docs/releases.md`](docs/releases.md) | Internal release preparation, checks, Git handoff and recovery |
-| [`docs/showcase/README.md`](docs/showcase/README.md) | Visual acceptance artifacts, availability and regeneration commands |
 | [`CHANGELOG.md`](CHANGELOG.md) | Versioned change history |
 
 ## Quick Start
@@ -39,8 +38,6 @@ cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
 cargo run -p example-01-platformer      # comprehensive engine demo
 cargo run -p example-02-bench           # benchmark suite; TUNGSTEN_BENCH selects one
-cargo run -p example-03-scene-state     # scene/state + screen transition demo
-cargo run -p example-04-shader-playground  # materials + 18-effect post-stack demo (incl. bloom)
 ```
 
 To make a game of your own, start from the template: [Getting started](docs/getting-started.md).

@@ -20,15 +20,14 @@ from urllib.parse import unquote, urlsplit
 DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
     "docs/agent-setup.md", "docs/perf/profiling-workflow.md", "docs/perf/benchmarks.md",
-    "docs/showcase/README.md", "docs/plans/README.md", "docs/releases.md", "docs/assets.md",
-    "docs/getting-started.md",
+    "docs/plans/README.md", "docs/releases.md", "docs/assets.md", "docs/getting-started.md",
     "docs/README.md", "docs/validation.md",
 )
 ARCHIVE = "docs/plans/archive"
 # Existing content outside the manifest schema, not a blanket file exemption.
 ASSET_EXCEPTIONS = {
     "assets/fonts/README.md": "font inventory and licensing documentation",
-    "examples/03_scene_state/assets/scene.json": "D-046 scene loaded by the example startup",
+    "examples/03_fixtures/assets/transition/scene.json": "D-046 scene loaded by the fixtures' transition scene",
     "assets/shaders/stock/lygia/LICENSE": "vendored shader license",
     **{f"assets/shaders/stock/lygia/{name}.wgsl": "compiled shader helper fragment"
        for name in ("hash", "luma", "noise", "srgb")},

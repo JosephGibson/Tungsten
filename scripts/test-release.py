@@ -817,6 +817,26 @@ class Release(unittest.TestCase):
                 self.assertIn(f"The game template, {run}, runs from templates/basic/", readme)
                 self.assertIn(folder, readme)
 
+    def test_the_fixtures_crate_is_not_shipped(self):
+        """A workspace member that no archive carries: the test-only fixtures crate (D-193)."""
+        self.edit("Cargo.toml", '    "examples/02_bare",\n', '    "examples/02_bare",\n    "examples/03_fixtures",\n')
+        self.write("examples/03_fixtures/Cargo.toml", '[package]\nname = "example-03-fixtures"\n')
+        self.write("examples/03_fixtures/assets/manifest.json", "{}")
+        self.assertEqual([d for _, d in rel.members(self.root, "examples")],
+                         ["examples/01_demo", "examples/02_bare", "examples/03_fixtures"])
+        self.assertEqual(rel.examples(self.root),
+                         [("example-01-demo", "examples/01_demo"), ("example-02-bare", "examples/02_bare")])
+        self.assertEqual(rel.shipped_packages(self.root), ["example-01-demo", "example-02-bare", LAUNCHER])
+        # Packaging needs no fixtures binary, and neither it nor its assets reach the archive.
+        linux = "x86_64-unknown-linux-gnu"
+        self.bins(linux, "")
+        archive, _ = self.package("v0.26.0", linux)
+        with tarfile.open(archive) as tar:
+            names = [m.name.split("/", 1)[1] for m in tar.getmembers() if "/" in m.name]
+        self.assertIn("example-02-bare", names)
+        self.assertIn("examples/01_demo/assets/manifest.json", names)
+        self.assertFalse([name for name in names if "fixtures" in name], names)
+
     def test_shipped_packages_include_the_templates(self):
         self.assertEqual(rel.templates(self.root), [])
         self.assertEqual(rel.shipped_packages(self.root), ["example-01-demo", "example-02-bare", LAUNCHER])

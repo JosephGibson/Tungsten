@@ -2,7 +2,7 @@ use glam::Vec2;
 use tungsten::WindowSize;
 use tungsten::core::{
     ActionMap, AnimationRegistry, AnimationState, AssetRegistry, AudioCommands, AudioHandle,
-    CameraController, CameraState, CommandBuffer, Entity, EventQueue, InputState, Light,
+    CameraController, CameraState, CommandBuffer, Entity, EventQueue, InputState,
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ShakeEvent, SquashEvent,
     SquashTrigger, Time, Timer, Transform, With, World,
 };
@@ -17,10 +17,10 @@ use crate::state::{
     ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_CAP, BALL_RADIUS, BALL_RESTITUTION,
     BALL_SPAWN_INTERVAL, BALL_SPAWN_JITTER, BALL_START_SPRITE_ID, BLACK_HOLE_FORCE,
     BLACK_HOLE_LIFETIME, BLACK_HOLE_RADIUS, Ball, BallHue, BallSpawnState, BlackHole, CAMERA_ROWS,
-    CurrentSprite, CycleMode, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
-    EffectSounds, KILL_Y, OrbitLight, PLAYER_HALF, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED,
-    PLAYER_SPAWN, Player, PlayerPresentation, TILE, TRANSIENT_EMITTER_CAP, TextDisplayState,
-    TransientEmitter, WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
+    CurrentSprite, EXTINGUISH_BURSTS_PER_FRAME, EXTINGUISH_SFX_INTERVAL, EffectSequence,
+    EffectSounds, KILL_Y, PLAYER_HALF, PLAYER_JUMP_IMPULSE, PLAYER_MOVE_SPEED, Player,
+    PlayerPresentation, TILE, TRANSIENT_EMITTER_CAP, TextDisplayState, TransientEmitter,
+    WORLD_BOUNDS_MAX, WORLD_BOUNDS_MIN,
 };
 use crate::state::{
     SMALL_BALL_ANIMATION_ID, SMALL_BALL_SCALE, SMALL_BALL_SPAWN_INTERVAL,
@@ -1064,83 +1064,6 @@ fn body_bounds(pos: Vec2, collider: Option<Collider>) -> (Vec2, Vec2) {
     };
     (center - half, center + half)
 }
-
-/// M29 lighting fixture: orbit warm + cool point lights around the camera
-/// target, advance each light's phase, and (per `CycleMode`) drive its
-/// `Light.color` and `Light.intensity` so the lighting visibly cycles.
-///
-/// `CycleMode::Pulse` modulates intensity sin-style around 1.0 while holding
-/// the authored `base_color`. `CycleMode::Hue` rotates the color around the
-/// HSV wheel using `phase` as the angle while holding intensity. `None`
-/// only orbits the position.
-pub(crate) fn orbit_lights_system(world: &mut World) {
-    let dt = world
-        .get_resource::<Time>()
-        .map(Time::delta)
-        .unwrap_or_default();
-    let center = world
-        .query::<(Entity, &Player)>()
-        .next()
-        .and_then(|(entity, _)| crate::extract::drawn_position(world, entity))
-        .unwrap_or(PLAYER_SPAWN);
-    struct Update {
-        entity: Entity,
-        pos: Vec2,
-        phase: f32,
-        color: Option<Vec2X3>,
-        intensity: Option<f32>,
-    }
-    let updates: Vec<Update> = world
-        .query::<(Entity, &OrbitLight)>()
-        .map(|(e, ol)| {
-            let new_phase = ol.phase + ol.speed * dt;
-            let pos = Vec2::new(
-                center.x + new_phase.cos() * ol.radius,
-                center.y + new_phase.sin() * ol.radius * 0.5,
-            );
-            let (color, intensity) = match ol.cycle {
-                CycleMode::Pulse => {
-                    // Sin-pulse intensity in [0.45, 1.45] so the orbit reads
-                    // even at the dim end. Color held at base_color.
-                    let i = 0.95 + 0.5 * (new_phase * 1.7).sin();
-                    (Some(Vec2X3(ol.base_color)), Some(i))
-                }
-                CycleMode::Hue => {
-                    // Slow hue rotation; full revolution every ~10 sec.
-                    let hue = (new_phase * 0.1).rem_euclid(1.0);
-                    (Some(Vec2X3(hsv_to_rgb(hue, 0.8, 1.0))), None)
-                }
-            };
-            Update {
-                entity: e,
-                pos,
-                phase: new_phase,
-                color,
-                intensity,
-            }
-        })
-        .collect();
-    for u in updates {
-        if let Some(t) = world.get_mut::<Transform>(u.entity) {
-            t.position = u.pos;
-        }
-        if let Some(ol) = world.get_mut::<OrbitLight>(u.entity) {
-            ol.phase = u.phase;
-        }
-        if let Some(l) = world.get_mut::<Light>(u.entity) {
-            if let Some(c) = u.color {
-                l.color = c.0;
-            }
-            if let Some(i) = u.intensity {
-                l.intensity = i;
-            }
-        }
-    }
-}
-
-/// Tiny wrapper to keep glam::Vec3 out of the local Update struct's signature
-/// without dragging the import here. Pure ergonomics, not behavior.
-struct Vec2X3(glam::Vec3);
 
 pub(crate) fn hsv_to_rgb(hue: f32, saturation: f32, value: f32) -> glam::Vec3 {
     let hue_sector = hue.rem_euclid(1.0) * 6.0;

@@ -1,4 +1,4 @@
-//! The title's pixels against a fixture, in the UI lab's shape. Gate:
+//! The title's pixels against a fixture PNG. Gate:
 //! `TUNGSTEN_VISUAL_REGRESSION=1` (needs a GPU and a display). The template
 //! runs from its folder for 24 smoke frames, capturing frame 20, after the
 //! title's slide, at 1280 × 720; smoke mode has no user folder, so the

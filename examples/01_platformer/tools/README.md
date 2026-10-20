@@ -23,7 +23,6 @@ content-specific acceptance below by running:
 
 ```sh
 cargo run -p example-01-platformer
-TUNGSTEN_LIGHTING_FIXTURE=on cargo run -p example-01-platformer
 ```
 
 The local Python tests are separate from `just script-test`. `just level-check` runs

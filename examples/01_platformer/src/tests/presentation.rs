@@ -361,7 +361,7 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
 
 #[test]
 fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
-    use crate::state::{LightingFixture, LightingFixtureMode, PlayerMaterial, PlayerPresentation};
+    use crate::state::{PlayerMaterial, PlayerPresentation};
     use tungsten::core::{AnimationRegistry, AssetRegistry, MaterialAssetId, UniformOverrideBlock};
     let mut world = seed_world();
     load_presentation_assets(&mut world);
@@ -397,38 +397,29 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
     world.get_mut::<Transform>(player).unwrap().scale = Vec2::new(1.16, 0.86);
     for name in frames.iter().filter(|name| name.starts_with("ex10_player")) {
         world.insert(player, CurrentSprite(name.clone()));
-        for mode in [LightingFixtureMode::On, LightingFixtureMode::Off] {
-            world.insert_resource(LightingFixture { mode });
-            for left in [false, true] {
-                world
-                    .get_mut::<PlayerPresentation>(player)
-                    .unwrap()
-                    .facing_left = left;
-                let batches = crate::extract::extract_sprites(&world);
-                assert_eq!(batches.len(), 1);
-                let batch = &batches[0];
-                let sprite = &batch.instances[0];
-                assert_eq!(batch.lit, mode == LightingFixtureMode::On);
-                assert_eq!(
-                    batch.material_id.is_some(),
-                    mode == LightingFixtureMode::Off
-                );
-                assert_eq!(sprite.uv_size[0] < 0.0, left);
-                assert!((sprite.position[1] + 61.0 * 0.86 - 128.0).abs() < 0.001);
-            }
+        for left in [false, true] {
+            world
+                .get_mut::<PlayerPresentation>(player)
+                .unwrap()
+                .facing_left = left;
+            let batches = crate::extract::extract_sprites(&world);
+            assert_eq!(batches.len(), 1);
+            let batch = &batches[0];
+            let sprite = &batch.instances[0];
+            assert!(!batch.lit, "the player draws unlit");
+            assert!(batch.material_id.is_some(), "through its material");
+            assert_eq!(sprite.uv_size[0] < 0.0, left);
+            assert!((sprite.position[1] + 61.0 * 0.86 - 128.0).abs() < 0.001);
         }
     }
     world.despawn(player);
     let ball = world.spawn();
     world.insert(ball, Ball);
     world.insert(ball, Position(Vec2::new(200.0, 200.0)));
-    world.insert_resource(LightingFixture {
-        mode: LightingFixtureMode::On,
-    });
     for name in frames.iter().filter(|name| name.starts_with("ex10_ball")) {
         world.insert(ball, CurrentSprite(name.clone()));
         let batches = crate::extract::extract_sprites(&world);
-        assert!(batches[0].lit);
+        assert!(!batches[0].lit, "a ball draws unlit");
         assert_eq!(batches[0].instances[0].position, [184.0, 184.0]);
     }
     // A ball outside the view is not extracted.

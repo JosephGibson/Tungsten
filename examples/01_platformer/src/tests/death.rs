@@ -4,7 +4,7 @@ use crate::burning::BallBurn;
 use crate::death::{COVER_SECS, DIM_SECS, DeathScreen, UNCOVER_SECS};
 use crate::fireball::{FireballMissile, TrailLight};
 use crate::gameplay::{Health, PlayerLantern, SceneTime};
-use crate::state::{EffectSequence, EffectSounds, LightingFixture, SmallBall};
+use crate::state::{EffectSequence, EffectSounds, SmallBall};
 use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
     Light, Particle, ParticleActive, ParticleEmitter, SoundData, SoundRegistry, WorldRngSeed,
@@ -104,7 +104,6 @@ fn snapshot(world: &World) -> Vec<String> {
         format!("{:?}", world.get_resource::<BallSpawnState>()),
         format!("{:?}", world.get_resource::<ActiveBlackHole>()),
         format!("{:?}", world.get_resource::<EffectSounds>()),
-        format!("{:?}", world.get_resource::<LightingFixture>()),
         format!("{:?}", world.get_resource::<PostStack>()),
         format!("{:?}", world.get_resource::<CameraState>()),
         format!("{:?}", world.get_resource::<ParticleActive>()),
