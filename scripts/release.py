@@ -85,6 +85,8 @@ DEBUG_PREFIX = "tungsten-debug"
 LEVELS = ("x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64")
 BASELINE = "x86-64"
 LAUNCHER = "tungsten-launcher"
+# Workspace examples no archive ships: the fixtures crate is test-only (D-193).
+NOT_SHIPPED = frozenset({"example-03-fixtures"})
 
 # Third-party license notices (D-122): the build jobs' license data, the files each archive
 # gains, and the repository's clarifications for what crate packages lack or misstate.
@@ -350,8 +352,9 @@ def members(root, folder):
 
 
 def examples(root):
-    """(package name, directory) for each `examples/*` workspace member."""
-    result = members(root, "examples")
+    """(package name, directory) for each `examples/*` workspace member an
+    archive ships: all but the test-only `NOT_SHIPPED` packages (D-193)."""
+    result = [member for member in members(root, "examples") if member[0] not in NOT_SHIPPED]
     if not result:
         raise ValueError(f"{CARGO}: no examples/* workspace members")
     return result

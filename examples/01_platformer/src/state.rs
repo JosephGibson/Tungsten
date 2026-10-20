@@ -217,44 +217,6 @@ pub(crate) struct PlayerMaterial {
     pub(crate) material_id: tungsten::core::MaterialAssetId,
 }
 
-/// M29 lighting fixture mode parsed from `TUNGSTEN_LIGHTING_FIXTURE`.
-/// `On`: spawn warm + cool point lights and a directional, low ambient,
-/// route the player through the lit pipeline. `Off`: midnight ambient and moon
-/// fill, with the custom damage material/unlit player path.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) enum LightingFixtureMode {
-    On,
-    #[default]
-    Off,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct LightingFixture {
-    pub(crate) mode: LightingFixtureMode,
-}
-
-/// Marker on entities created by the lighting fixture (so cleanup is easy).
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct OrbitLight {
-    pub(crate) phase: f32,
-    pub(crate) speed: f32,
-    pub(crate) radius: f32,
-    pub(crate) cycle: CycleMode,
-    /// Color held when `cycle = Pulse`; the system rewrites `Light.intensity`
-    /// each frame and restores `Light.color` to this value so a Pulse light
-    /// never drifts off its authored hue.
-    pub(crate) base_color: glam::Vec3,
-}
-
-/// M29 fixture-side cycle mode for an orbiting light.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum CycleMode {
-    /// Hold the authored color, sin-pulse intensity around 1.0.
-    Pulse,
-    /// Hold intensity, rotate hue around the wheel using `phase` as the angle.
-    Hue,
-}
-
 /// Visual state is independent of the collider and the damage-flash tween slot.
 #[derive(Debug, Clone)]
 pub(crate) struct PlayerPresentation {

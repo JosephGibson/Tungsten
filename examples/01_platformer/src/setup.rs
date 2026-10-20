@@ -15,18 +15,16 @@ use crate::extract::{extract_sprites, extract_text};
 use crate::level_layout::PROPS;
 use crate::state::{
     ASSETS_LOCAL, ASSETS_ROOT, ActiveBlackHole, AudioState, BALL_ANIMATION_ID, BALL_RADIUS,
-    BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallSpawnState, CurrentSprite, CycleMode,
-    EffectSounds, GRAVITY_Y, LightingFixture, LightingFixtureMode, MANIFEST_LOCAL, MANIFEST_ROOT,
-    MAP_COLS, MAP_ROWS, OrbitLight, PLAYER_ANIMATION_ID, PLAYER_HALF, PLAYER_SPAWN,
-    PLAYER_START_SPRITE_ID, Player, TILE, TextDisplayState,
+    BALL_RESTITUTION, BALL_START_SPRITE_ID, Ball, BallSpawnState, CurrentSprite, EffectSounds,
+    GRAVITY_Y, MANIFEST_LOCAL, MANIFEST_ROOT, MAP_COLS, MAP_ROWS, PLAYER_ANIMATION_ID, PLAYER_HALF,
+    PLAYER_SPAWN, PLAYER_START_SPRITE_ID, Player, TILE, TextDisplayState,
 };
 use crate::state::{AmbientEmitter, AnimatedProp, EffectSequence, PlayerPresentation};
 use crate::systems::{
     animation_system, audio_input_system, black_hole_extinguish_system, black_hole_force_system,
     black_hole_lifetime_system, camera_zoom_input_system, despawn_out_of_bounds, ground_detection,
-    orbit_lights_system, platformer_camera_base_zoom, player_input, player_presentation_system,
-    rainbow_ball_hue_system, spawn_ball_system, spawn_black_hole_system, transient_emitter_cleanup,
-    update_text_display,
+    platformer_camera_base_zoom, player_input, player_presentation_system, rainbow_ball_hue_system,
+    spawn_ball_system, spawn_black_hole_system, transient_emitter_cleanup, update_text_display,
 };
 
 type ExampleSystem = fn(&mut World);
@@ -225,7 +223,6 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         "ice_beam_presentation",
         crate::ice::ice_beam_presentation,
     ),
-    (Slot::AfterSync, "orbit_lights_system", orbit_lights_system),
     (
         Slot::AfterSync,
         "scene_effects",
@@ -237,16 +234,6 @@ pub(crate) const RUNTIME_SYSTEM_ORDER: &[(Slot, &str, ExampleSystem)] = &[
         platformer_camera_base_zoom,
     ),
 ];
-
-fn lighting_fixture_from_env() -> LightingFixtureMode {
-    match std::env::var("TUNGSTEN_LIGHTING_FIXTURE")
-        .ok()
-        .map(|s| s.to_ascii_lowercase())
-    {
-        Some(v) if v == "on" => LightingFixtureMode::On,
-        _ => LightingFixtureMode::Off,
-    }
-}
 
 pub(crate) fn configure_app(app: &mut App) {
     enable_hot_reload(app);
@@ -356,71 +343,14 @@ fn seed_world(world: &mut World) {
         }),
     ]));
 
-    // M29 lighting fixture: parsed once at startup; switching modes requires
-    // a relaunch (matches existing `TUNGSTEN_*_FIXTURE` examples).
-    let fixture_mode = lighting_fixture_from_env();
-    world.insert_resource(LightingFixture { mode: fixture_mode });
-    match fixture_mode {
-        LightingFixtureMode::On => {
-            // Dim ambient so warm/cool tints read clearly on the lit sprite.
-            world.insert_resource(AmbientLight(Vec3::splat(0.15)));
-
-            // Warm point light orbits one side of the player; intensity pulses
-            // sin-style so the glow breathes without drifting in hue.
-            let warm_color = Vec3::new(1.0, 0.62, 0.35);
-            let mut warm = Light::point(warm_color, 5.5 * TILE);
-            warm.intensity = 1.0;
-            let warm_e = world.spawn();
-            world.insert(warm_e, Transform::from_position(PLAYER_SPAWN));
-            world.insert(warm_e, warm);
-            world.insert(
-                warm_e,
-                OrbitLight {
-                    phase: 0.0,
-                    speed: 1.4,
-                    radius: 1.6 * TILE,
-                    cycle: CycleMode::Pulse,
-                    base_color: warm_color,
-                },
-            );
-
-            // Cool point light orbits the opposite side and rotates hue, so
-            // the player gets a slow rainbow rim while the warm light pulses.
-            let cool_seed = Vec3::new(0.4, 0.65, 1.0);
-            let mut cool = Light::point(cool_seed, 5.5 * TILE);
-            cool.intensity = 0.9;
-            let cool_e = world.spawn();
-            world.insert(cool_e, Transform::from_position(PLAYER_SPAWN));
-            world.insert(cool_e, cool);
-            world.insert(
-                cool_e,
-                OrbitLight {
-                    phase: std::f32::consts::PI,
-                    speed: 1.4,
-                    radius: 1.6 * TILE,
-                    cycle: CycleMode::Hue,
-                    base_color: cool_seed,
-                },
-            );
-
-            // Soft directional fill from upper-right keeps shadows from
-            // crushing to black while the point lights swing.
-            let mut sun = Light::directional(Vec3::splat(0.7), -std::f32::consts::FRAC_PI_4);
-            sun.intensity = 0.3;
-            let dir = world.spawn();
-            world.insert(dir, Transform::from_position(Vec2::ZERO));
-            world.insert(dir, sun);
-        }
-        LightingFixtureMode::Off => {
-            world.insert_resource(AmbientLight(Vec3::new(0.62, 0.62, 0.57)));
-            let moon = world.spawn();
-            let mut light =
-                Light::directional(Vec3::new(0.85, 0.85, 0.72), -std::f32::consts::FRAC_PI_4);
-            light.intensity = 0.1;
-            world.insert(moon, light);
-            world.insert(moon, Transform::default());
-        }
-    }
+    // Midnight ambient and a moon fill for the sprites drawn lit; the player
+    // and the balls draw unlit.
+    world.insert_resource(AmbientLight(Vec3::new(0.62, 0.62, 0.57)));
+    let moon = world.spawn();
+    let mut light = Light::directional(Vec3::new(0.85, 0.85, 0.72), -std::f32::consts::FRAC_PI_4);
+    light.intensity = 0.1;
+    world.insert(moon, light);
+    world.insert(moon, Transform::default());
 
     let map = world.spawn();
     world.insert(map, TilemapInstance::new("ex10_level", Vec2::ZERO));

@@ -29,4 +29,4 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 
 ## Coverage exceptions
 
-Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and example 03's explicitly loaded `scene.json` (`D-046`). A new exception needs review in the checker (`ASSET_EXCEPTIONS` in `scripts/check-repo.py`), not a broad ignored extension.
+Asset coverage exceptions are explicit: complete font families and their inventory README; four vendored LYGIA helper fragments and their license; and the fixtures crate's explicitly loaded `scene.json` (`D-046`). A new exception needs review in the checker (`ASSET_EXCEPTIONS` in `scripts/check-repo.py`), not a broad ignored extension.

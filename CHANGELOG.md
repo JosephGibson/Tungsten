@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.92.0] - 2026-10-20
+
+Summary: M71, the example fixtures stop (plan archived at `docs/plans/archive/1.0/phase6-milestone-71-example-fixtures.md`): examples 03, 04 and 05 and example 01's lighting fixture become one test-only crate, `examples/03_fixtures` (package `example-03-fixtures`), whose `TUNGSTEN_FIXTURE` picks the `post`, `transition`, `ui` or `lighting` scene. It keeps 14 smoke rows and three of `just visual`'s suites, with every capture byte-equal and the two UI fixture PNGs unchanged, and stays out of the release archives. The template's shell is the only UI reference. No hash moves.
+
+### Added
+
+- **The fixtures crate** (`D-193`): `examples/03_fixtures`, a library and a binary run from the repository root. Its scenes are `post` (04's), `transition` (03's), `ui` (05's, the default) and `lighting`, five lit `walk_*` sprites beside an unlit quad under example 01's M29 lights. It has one manifest, the union of the three, each sprite on a file of its own; the post, transition and UI pixel tests; seven of the UI lab's 19 headless screen tests, the engine rules the template's tests do not reach; and the UI sprite generator with the fixture capture commands in `tools/README.md`.
+
+### Changed
+
+- **Smoke and visual** (`D-193`): `just smoke`'s 14 fixture rows, M29's among them, run `example-03-fixtures` with `TUNGSTEN_FIXTURE`, and the stub test checks the scene; `just visual`'s post, transition and UI lines test the crate.
+- **Release archives** (`D-193`): `scripts/release.py`'s `NOT_SHIPPED` leaves the crate out of `examples()`, the licence data and the archive, and `release.yml` builds without it.
+- **Example 01** (`D-193`): `TUNGSTEN_LIGHTING_FIXTURE` moved to the crate's `lighting` scene, and what only it used is gone: the orbiting lights, their system and types, and the lit player and balls. The default frame is unchanged.
+- **Records**: `DESIGN.md`'s status line, workspace-root sentence and the UI fixture, routing, world-label, control, prompt and listening-host sentences; the getting-started guide, `docs/assets.md`, known issues, the LLM index's rows, example 01's design and the template's visual test comment; the register and the w12 file.
+
+### Removed
+
+- **Examples 03, 04 and 05** (`D-193`): `examples/03_scene_state`, `examples/04_shader_playground` and `examples/05_ui_lab`, with the twelve UI lab screen tests that the template's or the engine's tests cover; `docs/showcase/`, the README's row for it and the two quick-start lines.
+
 ## [0.91.0] - 2026-10-20
 
 Summary: The template polish, its playtest passes and the template audit, the roadmap's w12qa (the polish plan archived at `docs/plans/archive/template-polish.md`; the audit as bounded maintenance with no saved plan, `D-140`): `templates/basic` gets a serif title, mono numbers, scrims and cards over the screen below, quick motion and a run curtain, a UI sized from the window's height under a floor, eleven save slots, quit questions, sprites, sounds and music of its own, and a sample that eases, shoots and fights four red enemies; the audit fixes the shell's focus loss, display keys, exit save and failed deletes and holds the template's kit catalogue to the kit. The engine gains the monitor's modes, shipped volumes, a window-relative UI scale and a danger colour, and the kit's top-down mover eases. No hash moves.

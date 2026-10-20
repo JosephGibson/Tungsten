@@ -144,14 +144,15 @@ jobs:
           cache: false
 
       # Binary targets are the examples, the template, which the archive ships
-      # beside them (D-186), and the launcher. The tuned profile's line tables
-      # stay in, for the debug archive (D-120). A set RUSTFLAGS replaces
-      # target-cpu=native from .cargo/config.toml.
+      # beside them (D-186), and the launcher. The test-only fixtures crate is
+      # left out, so the example-* upload never sees its binary (D-193). The
+      # tuned profile's line tables stay in, for the debug archive (D-120). A
+      # set RUSTFLAGS replaces target-cpu=native from .cargo/config.toml.
       - name: Build release binaries per CPU level
         run: |
           for level in $CPU_LEVELS; do
             RUSTFLAGS="-C target-cpu=$level $EXTRA_RUSTFLAGS" cargo build --release --locked \
-              --workspace --exclude tungsten-crash-probe --bins \
+              --workspace --exclude tungsten-crash-probe --exclude example-03-fixtures --bins \
               --target "$TARGET" --target-dir "target/$level"
           done
 

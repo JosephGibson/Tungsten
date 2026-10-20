@@ -534,6 +534,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 ## D-072 — Release archives ship x86-64-v3 and portable builds behind a launcher
 **Amended by D-122:** the archive-root layout only; the root also holds the two third-party notices files; the rest stand.
 **Amended by D-186:** the archive's builds and the launcher's working directory only; the template's builds sit beside the examples' under `bin/<level>/` with a launcher copy at the root, and a launcher whose file stem its `FOLDERS` table lists runs its build from that folder of the archive; the rest stand.
+**Amended by D-193:** the every-example clause only; `examples/03_fixtures`, a test-only crate, stays out of the archives; the rest stand.
 **Date:** 2026-09-25
 **Decision:** Release archives carry every example built at two CPU levels under `bin/<level>/`: `x86-64-v3` (AVX2, FMA, BMI1/2, F16C, LZCNT, MOVBE) and the portable `x86-64` baseline. At the archive root, each example name is a copy of `tungsten-launcher` (`tools/launcher`, standard library only, built at the baseline). The launcher runs the fastest shipped level whose features `is_x86_feature_detected!` reports, names it on stderr, and runs it with the archive root as the working directory, so an example starts from any folder or through a symlink. `TUNGSTEN_CPU_LEVEL` forces a shipped level. `release.yml` builds each `CPU_LEVELS` entry into `target/<level>`; `scripts/release.py package` requires the baseline and the launcher, and its `LEVELS` list must match the launcher's (tested). The tuned release profile is unchanged.
 **Why:** Measured on the reference machine (Ryzen 5 6600H, rustc 1.98.1) against the portable build, with a baseline rerun as the drift control (criterion geomean −0.1%, frames within 3.6%). Whole-frame telemetry, 3 captures per row with NoMachine idle: `physics-stress` 3k −4.5% average and −4.6% p95 frame time with v3, 10k −4.4% and −5.1%; `ecs-high-load` +0.8% and +0.7%. Criterion: physics steps −3 to −8% and the broadphase rebuild −24% at every higher level, but spawn/despawn +3 to +31% and per-entity lookups +13 to +54%. `x86-64-v2` had the worst regressions. `native` and fat LTO matched v3 within noise, so neither a build-from-source helper nor fat LTO is adopted. A v3-only archive would crash with an illegal instruction on CPUs without AVX2; the launcher gives v3 speed where it's safe. Evidence: `perf-runs/cpu-levels-20260925/` (local).
@@ -2466,6 +2467,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 
 ## D-179 — W6c landed (M68): every sound plays on the `Music` or `Effects` bus, whose volumes the player sets in `Settings`; a play returns a `Voice` that fades, sets or stops; a voice limit per sound; linear gain ramps, a clamp and stereo channel mapping in a mixer that never allocates; a 1,024-command ring whose overflow waits in order, with a latch that resynchronizes a stalled callback and rebuilds a lost device
 **Amended by D-184:** the bus volumes' defaults only; `apply_settings` sends a bus's set volume, else the one `tungsten.json`'s `audio.bus_volumes` ships, 1.0 when it ships none, and startup queues each that is set or shipped below 1; the rest stand.
+**Superseded by D-193:** the listening host only; the UI lab is deleted, and the owner's listening and device-switch checks run in the template's settings; the rest stand.
 **Date:** 2026-10-19
 **Decision:** Core holds the vocabulary, the data and the settings; the umbrella holds the ring, the mixer, the limits' cap, the latch and the rebuild, so core gains no `cpal` or `rtrb` type (`D-007`, `D-018`). No new dependency, thread, system or stage.
 
@@ -2510,6 +2512,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 **Amended by D-187:** the theme's one family and its fades, the four slots, the seam's six names, the sample's scope and the budget only; three families, quick motion with a run curtain, eleven slots, a seventh seam name, a sample that shoots and sounds, and caps of 2,400 and 2,900; the rest stand.
 **Amended by D-189:** pause's Gameplay Options only; the gameplay options sit in Settings' Gameplay tab alone; the rest stand.
 **Amended by D-192:** the confirm, the unfocused pause and the open F9 and F11 item only; a confirm takes its safe answer in the exit's last frame, a focus loss during a screen change pauses once gameplay is back on top, and the shell keeps the F11 and F9 keys' changes in `Settings`; the rest stand.
+**Amended by D-194:** the autosave's triggers and the game's calls only; the run's first autosave, the exit's and one the game asks for through `shell::request_autosave` stay pending until a capture succeeds, where a failed capture dropped them; the rest stand.
 **Date:** 2026-10-19
 **Decision:** The template holds two parts and a seam. No engine or kit code; no new dependency.
 
@@ -2715,3 +2718,43 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - Tests: 132 in `tests/game/`, among them `a_close_while_keep_fades_out_keeps_the_display`, `losing_focus_during_a_screen_change_pauses_after_it`, `f11_and_f9_are_kept_in_settings_and_survive_a_restart`, `a_close_in_settings_keeps_the_changes_but_not_an_unkept_display` and `a_delete_that_fails_keeps_the_slot_read_only_and_says_so` (Unix only) and `game_over_plays_its_sting_and_music_until_the_run_ends`; `test_template_agents_names_every_kit_item` in `scripts/test-check-repo.py`; the schedule snapshot is unchanged.
 - Open: `tungsten new`'s textual rename leaves sources that need `cargo fmt` (known issues), and a `spawner` with an area and a cap is a backlog row.
 - `src/shell/` measures 2,375 lines of code and `src/` 2,872, inside `D-187`'s caps; the template's `AGENTS.md` is 12,255 B of `D-183`'s 12,288.
+
+## D-193 — Examples 03, 04 and 05 become one test-only crate, `examples/03_fixtures`, with example 01's lighting fixture; the template's shell is the only UI reference
+**Date:** 2026-10-20
+**Decision:** Examples `03_scene_state`, `04_shader_playground` and `05_ui_lab` stop being demos. Their fixtures, with example 01's lighting fixture, move into one test-only crate, `examples/03_fixtures` (package `example-03-fixtures`). It is not a reference, and no game copies it. Like `02_bench` it stays off the template layout, and it stays out of the release archives, which carry every other example. The template's shell (`D-181`) becomes the only UI reference. The three examples are deleted, and so are the showcase images and recipe they feed: `docs/showcase/` and the README's link to it.
+
+The crate keeps:
+
+- from 04: `tests/post_regression.rs` (5 tests) and the smoke rows M26 empty and all, M27 SMAA, M28 bloom, M30 game feel and M31 mesh trail;
+- from 03: `tests/transition_regression.rs` (1 test over four effects), M31's four transition rows and the frame-cap row;
+- from 05: `tests/ui_regression.rs` (6 tests, two of them against fixture PNGs at tolerance 0), the M56 menus row and the M57 debug-views row, and those of `tests/screens.rs`'s 19 tests that check engine behaviour rather than the lab's screens, less the ones the template's tests cover;
+- from 01: the M29 lighting row (`TUNGSTEN_LIGHTING_FIXTURE`).
+
+In all, 14 smoke rows beside the plain run every example gets, and three of `just visual`'s five suites.
+
+**Why:** Two UI references would drift apart, and W12b shrinks to example 01 (`D-194`). Deleting the tests with the examples would leave post-processing, transitions and the UI overlay with no pixel tests just before W4b freezes them. Rejected: deleting the examples with their tests, for that loss; folding the fixtures into `02_bench`, which risks its digests-unchanged rule (workflow §5); keeping and migrating all three, which keeps two UI references.
+
+**Consequences:**
+- Amends `D-072` and supersedes `D-179`'s listening host, as their marker lines say: the release archives carry every example but this crate, and M68's listening and device-switch owner checks move from the UI lab to the template's settings.
+- If the merged crate draws a different frame, the owner recaptures the two UI fixture PNGs on the reference machine, at its OS scale of 1.75 with the packaged fonts (`D-116`), as the UI lab's capture notes say.
+- Root `assets/` keeps what `02_bench`, the fixtures crate and the engine's hot-reload copies need.
+- `D-181`'s Why had W12b move examples 01, 03 and 04 onto the template; 01 alone moves now, rebuilt (`D-194`).
+- The register's "Example fixtures" stop, level B, after the template audit (implementation plan §4 and §10, the catalog's `exfix`). Tests that older decisions name in the three examples keep their place in those entries; the fixtures stop's plan records where each went.
+
+## D-194 — Example 01 is rebuilt from scratch as a sandbox on the template, in four Must stops before the feature gate; the template's requested autosaves wait until a capture succeeds, and the game requests one through `shell::request_autosave`
+**Date:** 2026-10-20
+**Decision:** Example 01 is rebuilt from scratch as a sandbox on the template: no objective, no win and no boss, so it stays distinct from the acceptance game, an arena auto-shooter with XP, level-ups, waves and a boss. Its design is a plan, `docs/plans/1.0/example-01-design.md`.
+
+- **Placement.** The whole overhaul lands in Phase 6, after the example fixtures (`D-193`) and before the Phase 6 QA pass, as four stops: 01 (a) rebuild, 01 (b) elements and weapons, 01 (c) bestiary and 01 (d) new level. The owner tiers all four Must, so the feature gate waits for them. 01 (a) carries W12b's Must scope and W1 M6.
+- **Fallback.** 01 (d) is content with no public API: if Phase 6 runs long, the feature gate may re-tier it to 1.x without harming the freeze.
+- **The template.** A requested autosave stays pending until a capture succeeds, where a failed capture dropped it: the run's first autosave, the exit's, and one the game asks for. The game asks through `shell::request_autosave`, a call back to the shell beside `shell::game_over`, `shell::run` and `shell::run_meta`, since `shell::autosave` saves at once and sits outside the seam the template's `AGENTS.md` names. The change stays within `D-187`'s line caps. The title loop asked for with it, `music_title`, which the shell plays on the title by fixed ID as it plays its `ui_*` sounds, is already there (`D-191`).
+- **Not decided here.** 01 (b), (c) and (d) take no decision now. Each stop's milestone writes its own when it lands, as every milestone does, starting from the design file, which is a plan and may change while the stops are planned.
+
+**Why:** `D-158` moves the platformer controller and the path follower to 1.x unless example 01 uses them by the freeze, and the kit's combat API should meet a real game's hardest cases before W4b locks it. C1 then takes 01 as a stable benchmark row. A sandbox keeps 01 apart from the acceptance game. The shell's `frame` clears the run's first-save flag before its capture can fail and drops `autosave`'s result, so a run whose first capture fails has no autosave until pause or a quit; 01's area autosaves need a request that waits the same way.
+
+**Consequences:**
+- Amends `D-181` as its marker line says. `D-158` stands: 01 (a) is the W12b move it names, with the `gate_step` corner widened. `D-187`'s caps and seam names and `D-191`'s title song stand.
+- The register's W12b with W1 M6 row gives way to five rows, the example fixtures and 01 (a) to (d), and the catalog's `w12b` stop to five stops (`D-109`). The `D-108` pair ends: W1 M6 sits inside 01 (a), which is level C.
+- The 1.x backlog gains line-of-sight sensing in the kit, stereo panning per voice, looping kit sound cues that keep their voice, and a same-step order that survives a load.
+- The exit's request has only the exit's last frame (`D-180`), so a capture that fails there still writes nothing.
+- Tests, with 01 (a): the template's pending-autosave test, in which the run's first autosave lands even when the first capture attempt returns `None`, and the shell-copy check in `just repo-check`.

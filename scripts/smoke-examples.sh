@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs every example in smoke-test mode (renders a few frames, then exits),
-# then the template from its own folder, the render fixture matrices, the UI
-# lab's screens row, the benchmark rows and a frame-cap timing row, and
+# then the template from its own folder, the render fixture matrices, the
+# fixtures crate's UI rows, the benchmark rows and a frame-cap timing row, and
 # reports panics, failures and timeouts.
 #
 # Requires a real GPU and display — not for CI. Use as a pre-commit check
@@ -165,87 +165,85 @@ for msaa in 1 4; do
 done
 end_section "Matrix passed" "Matrix failures" 4
 
-# M26: post-stack fixture matrix over example-04-shader-playground. Keeps the
+# The fixtures crate (D-193): one binary whose TUNGSTEN_FIXTURE picks the
+# scene. Its plain run above is the `ui` scene's interactive run.
+fixtures_pkg="example-03-fixtures"
+
+# M26: post-stack fixture matrix over the `post` scene. Keeps the
 # byte-identity gate separate from the 17-effect walk so a per-effect failure
 # surfaces without pulling the empty-stack row down.
-post_pkg="example-04-shader-playground"
-begin_section "M26 post-stack fixture matrix (pkg: $post_pkg)"
+begin_section "M26 post-stack fixture matrix (pkg: $fixtures_pkg, scene=post)"
 for fixture in empty all; do
-  row "fixture=${fixture}" "$log_dir/${post_pkg}-${fixture}.log" "$post_pkg" \
-    TUNGSTEN_POST_STACK_FIXTURE="$fixture"
+  row "fixture=${fixture}" "$log_dir/${fixtures_pkg}-post-${fixture}.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE="$fixture"
 done
 end_section "Post-stack passed" "Post-stack failures" 2
 
 # M27: post-AA fixture row. Pins TUNGSTEN_POST_STACK_FIXTURE=empty so the SMAA
 # tail is the only added work, then runs once with the High preset.
-begin_section "M27 post-AA fixture matrix (pkg: $post_pkg)"
-row "post_stack=empty post_aa=smaa_high" "$log_dir/${post_pkg}-post-aa-smaa_high.log" "$post_pkg" \
-  TUNGSTEN_POST_STACK_FIXTURE=empty TUNGSTEN_POST_AA_FIXTURE=smaa_high
+begin_section "M27 post-AA fixture matrix (pkg: $fixtures_pkg, scene=post)"
+row "post_stack=empty post_aa=smaa_high" "$log_dir/${fixtures_pkg}-post-aa-smaa_high.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=empty TUNGSTEN_POST_AA_FIXTURE=smaa_high
 end_section "Post-AA passed" "Post-AA failures" 1
 
 # M28: bloom fixture row. Locks the post stack to bloom-only and turns the
-# bloom env hint on so the playground spawns the emissive quad and pushes the
-# demo-tuned BloomParams. Verifies the multi-subpass slot path runs cleanly.
-begin_section "M28 bloom fixture matrix (pkg: $post_pkg)"
-row "post_stack=bloom_only bloom_fixture=on" "$log_dir/${post_pkg}-bloom.log" "$post_pkg" \
-  TUNGSTEN_POST_STACK_FIXTURE=bloom_only TUNGSTEN_BLOOM_FIXTURE=on
+# bloom env hint on so the scene spawns the emissive quad and pushes the
+# tuned BloomParams. Verifies the multi-subpass slot path runs cleanly.
+begin_section "M28 bloom fixture matrix (pkg: $fixtures_pkg, scene=post)"
+row "post_stack=bloom_only bloom_fixture=on" "$log_dir/${fixtures_pkg}-bloom.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=post TUNGSTEN_POST_STACK_FIXTURE=bloom_only TUNGSTEN_BLOOM_FIXTURE=on
 end_section "Bloom passed" "Bloom failures" 1
 
-# M29: lighting fixture row over example-01-platformer. Pins lighting_fixture=on
-# so the platformer spawns warm + cool point lights and a directional, routes the
-# walk_* sprites through the lit pipeline, and exercises the LightUbo upload
-# path on the lit batch keying.
-lighting_pkg="example-01-platformer"
-begin_section "M29 lighting fixture matrix (pkg: $lighting_pkg)"
-row "lighting_fixture=on" "$log_dir/${lighting_pkg}-lighting.log" "$lighting_pkg" \
-  TUNGSTEN_LIGHTING_FIXTURE=on
+# M29: lighting row over the `lighting` scene. Five lit sprites beside an
+# unlit quad, under warm and cool point lights and a directional fill, take
+# the lit pipeline, the LightUbo upload and the lit/unlit batch keying.
+begin_section "M29 lighting fixture matrix (pkg: $fixtures_pkg, scene=lighting)"
+row "lighting" "$log_dir/${fixtures_pkg}-lighting.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=lighting
 end_section "Lighting passed" "Lighting failures" 1
 
-# M30: game-feel rows. The playground row pins the fixture env so trauma and
+# M30: game-feel rows. The `post` row pins the fixture env so trauma and
 # every squash envelope are armed at startup — a three-frame run would not
 # otherwise reach a collision. The default example discovery row already
 # exercises the platformer's unconditional parallax backdrop and landing squash.
-feel_pkg="example-04-shader-playground"
-begin_section "M30 game-feel fixture row (pkg: $feel_pkg)"
-row "game_feel_fixture=on" "$log_dir/${feel_pkg}-game-feel.log" "$feel_pkg" \
-  TUNGSTEN_GAME_FEEL_FIXTURE=on
+begin_section "M30 game-feel fixture row (pkg: $fixtures_pkg, scene=post)"
+row "game_feel_fixture=on" "$log_dir/${fixtures_pkg}-game-feel.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=post TUNGSTEN_GAME_FEEL_FIXTURE=on
 end_section "Game-feel passed" "Game-feel failures" 1
 
-# M31: mesh particle and screen transition rows. The playground row draws the
-# bullet trail's mesh pipeline under MSAA with a depth attachment. Each
-# scene-state row requests menu -> gameplay behind one effect at startup; 16
-# frames cross the boundary frame and finish the `In` phase.
-mesh_pkg="example-04-shader-playground"
-transition_pkg="example-03-scene-state"
-begin_section "M31 mesh particle and transition matrix (pkgs: $mesh_pkg, $transition_pkg)"
-row "mesh trail msaa=4 depth_sort=gpu_depth" "$log_dir/${mesh_pkg}-mesh-trail.log" "$mesh_pkg" \
-  TUNGSTEN_RENDER_MSAA=4 TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth
+# M31: mesh particle and screen transition rows. The `post` scene's plain
+# path draws the bullet trail's mesh pipeline under MSAA with a depth
+# attachment. Each `transition` row requests menu -> gameplay behind one
+# effect at startup; 16 frames cross the boundary frame and finish the `In`
+# phase.
+begin_section "M31 mesh particle and transition matrix (pkg: $fixtures_pkg, scenes=post, transition)"
+row "mesh trail msaa=4 depth_sort=gpu_depth" "$log_dir/${fixtures_pkg}-mesh-trail.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=post TUNGSTEN_RENDER_MSAA=4 TUNGSTEN_RENDER_DEPTH_SORT=gpu_depth
 for effect in fade wipe_radial dissolve pixelate; do
-  row "transition=${effect}" "$log_dir/${transition_pkg}-transition-${effect}.log" "$transition_pkg" \
-    TUNGSTEN_SMOKE_FRAMES=16 TUNGSTEN_TRANSITION_FIXTURE="$effect"
+  row "transition=${effect}" "$log_dir/${fixtures_pkg}-transition-${effect}.log" "$fixtures_pkg" \
+    TUNGSTEN_FIXTURE=transition TUNGSTEN_SMOKE_FRAMES=16 TUNGSTEN_TRANSITION_FIXTURE="$effect"
 done
 end_section "Mesh/transition passed" "Mesh/transition failures" 5
 
-# M56: the UI lab's gameplay screens. The `menus` fixture scripts the play
-# state through the pause menu, the settings screen, a cancelled capture and
-# back, each behind a fade, within its 150 frames.
-ui_pkg="example-05-ui-lab"
-begin_section "M56 UI screens row (pkg: $ui_pkg)"
-row "fixture=menus" "$log_dir/${ui_pkg}-menus.log" "$ui_pkg" \
-  TUNGSTEN_SMOKE_FRAMES=150 TUNGSTEN_UI_LAB_FIXTURE=menus
+# M56: the `ui` scene's gameplay screens. The `menus` fixture scripts the
+# play state through the pause menu, the settings screen, a cancelled capture
+# and back, each behind a fade, within its 150 frames.
+begin_section "M56 UI screens row (pkg: $fixtures_pkg, scene=ui)"
+row "fixture=menus" "$log_dir/${fixtures_pkg}-menus.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=ui TUNGSTEN_SMOKE_FRAMES=150 TUNGSTEN_UI_LAB_FIXTURE=menus
 end_section "UI screens passed" "UI screens failures" 1
 
-# M57: the engine's debug views as windows over the UI lab. The `debug`
+# M57: the engine's debug views as windows over the `ui` scene. The `debug`
 # fixture opens every view docked at its corner (M58): the HUD with its
 # frame-time graph and a 120-character row, the timing overlay, the
 # inspector over a selected entity, the log console over an ERROR, a WARN
 # and an INFO record, and the UI inspector; it scrolls the overlay at frame
 # 30. The views draw with the engine font family and its SemiBold face, so
 # an unknown font ID or family fails the row.
-begin_section "M57 Debug views row (pkg: $ui_pkg)"
+begin_section "M57 Debug views row (pkg: $fixtures_pkg, scene=ui)"
 log_forbids="Unknown font"
-row "fixture=debug" "$log_dir/${ui_pkg}-debug.log" "$ui_pkg" \
-  TUNGSTEN_SMOKE_FRAMES=120 TUNGSTEN_UI_LAB_FIXTURE=debug
+row "fixture=debug" "$log_dir/${fixtures_pkg}-debug.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=ui TUNGSTEN_SMOKE_FRAMES=120 TUNGSTEN_UI_LAB_FIXTURE=debug
 log_forbids=""
 end_section "Debug views passed" "Debug views failures" 1
 
@@ -270,15 +268,14 @@ done
 end_section "Benchmarks passed" "Benchmark failures" 15
 
 # Frame cap: 20 frames at display.frame_rate_cap = 20 must take at least 90%
-# of frames / cap (0.9 s). Uncapped, the same run takes about 0.5 s, so a cap
-# that stops limiting the frame rate fails the row. Last, so a slow machine
-# cannot hide the rows above.
-cap_pkg="example-03-scene-state"
+# of frames / cap (0.9 s). Uncapped, the `transition` scene's plain run takes
+# about 0.5 s, so a cap that stops limiting the frame rate fails the row.
+# Last, so a slow machine cannot hide the rows above.
 cap_frames=20
 cap_fps=20
-begin_section "Frame-cap row (pkg: $cap_pkg)"
+begin_section "Frame-cap row (pkg: $fixtures_pkg, scene=transition)"
 min_run_ms=$((cap_frames * 900 / cap_fps))
-row "frames=${cap_frames} frame_rate_cap=${cap_fps}" "$log_dir/${cap_pkg}-frame-cap.log" "$cap_pkg" \
-  TUNGSTEN_SMOKE_FRAMES="$cap_frames" TUNGSTEN_DISPLAY_FRAME_RATE_CAP="$cap_fps"
+row "frames=${cap_frames} frame_rate_cap=${cap_fps}" "$log_dir/${fixtures_pkg}-frame-cap.log" "$fixtures_pkg" \
+  TUNGSTEN_FIXTURE=transition TUNGSTEN_SMOKE_FRAMES="$cap_frames" TUNGSTEN_DISPLAY_FRAME_RATE_CAP="$cap_fps"
 min_run_ms=0
 end_section "Frame cap passed" "Frame-cap failures" 1
