@@ -789,3 +789,55 @@ fn without_a_folder_nothing_persists() {
         "nothing is written to the working directory"
     );
 }
+
+/// A game folder holding one manifest root that names `sprites/hero.png`,
+/// which exists unless `missing`.
+fn check_folder(tag: &str, missing: bool) -> (PathBuf, PathBuf) {
+    let dir = std::env::temp_dir().join(format!("tungsten_app_check_{tag}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("assets/sprites")).unwrap();
+    let dir = dir.canonicalize().unwrap();
+    if !missing {
+        image::RgbaImage::new(4, 4)
+            .save(dir.join("assets/sprites/hero.png"))
+            .unwrap();
+    }
+    let root = dir.join("assets/manifest.json");
+    std::fs::write(
+        &root,
+        r#"{"sprites": {"hero": {"path": "sprites/hero.png"}}}"#,
+    )
+    .unwrap();
+    (dir, root)
+}
+
+#[test]
+fn run_check_writes_one_line_naming_the_manifest_and_fails_on_a_missing_sprite_file() {
+    let (dir, root) = check_folder("missing", true);
+    let mut app = App::new(Config::default()).unwrap();
+    app.set_manifest_roots(vec![root]);
+    let report = dir.join("report.txt");
+    let err = app.run_check(&report, &dir).unwrap_err();
+    assert!(err.to_string().contains("1 errors"), "{err}");
+    let text = std::fs::read_to_string(&report).unwrap();
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 1, "{text}");
+    assert!(
+        lines[0].starts_with("assets/manifest.json\tsprite 'hero' references missing file: "),
+        "{text}"
+    );
+    assert!(lines[0].ends_with("assets/sprites/hero.png"), "{text}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn run_check_writes_an_empty_report_and_passes_on_clean_files() {
+    let (dir, root) = check_folder("clean", false);
+    let mut app = App::new(Config::default()).unwrap();
+    // The reload root stands in when no composition roots are set.
+    app.enable_hot_reload(&[dir.join("assets")], root);
+    let report = dir.join("report.txt");
+    app.run_check(&report, &dir).unwrap();
+    assert_eq!(std::fs::read_to_string(&report).unwrap(), "");
+    let _ = std::fs::remove_dir_all(&dir);
+}

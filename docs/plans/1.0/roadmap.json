@@ -1310,8 +1310,8 @@
       "text": "CLI tiers, and argument parsing and archive writing by hand or by crate?",
       "by": "W14b starts",
       "default": "check and package Must, new Should",
-      "state": "open",
-      "answer": ""
+      "state": "default",
+      "answer": "check and package Must, new Should, all three landed; arguments by hand, archives with the platform's tar (D-182)"
     },
     {
       "id": "q3",

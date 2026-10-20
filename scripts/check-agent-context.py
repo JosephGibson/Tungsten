@@ -23,8 +23,10 @@ BUDGETS = {
     "AGENTS.md": (6144, 200),
     "crates/tungsten-render/AGENTS.md": (4096, 200),
     "docs/LLM_INDEX.md": (12288, None),
+    # Every game's agent reads it at the start of each session (D-183).
+    "templates/basic/AGENTS.md": (12288, 100),
 }
-IMPORT_FILES = ["CLAUDE.md", "crates/tungsten-render/CLAUDE.md"]
+IMPORT_FILES = ["CLAUDE.md", "crates/tungsten-render/CLAUDE.md", "templates/basic/CLAUDE.md"]
 LINK_FILES = [
     "AGENTS.md",
     "crates/tungsten-render/AGENTS.md",
@@ -195,6 +197,8 @@ def self_test() -> int:
         "docs/DECISION_INDEX.md": "# Decisions\n",
         "docs/agent-setup.md": "[rules](../AGENTS.md)\n",
         "docs/plans/README.md": "# Plans\n",
+        "templates/basic/AGENTS.md": "# Game rules\n",
+        "templates/basic/CLAUDE.md": IMPORT_ONLY,
         f"{SKILLS}/demo/SKILL.md": "---\nname: demo\ndescription: Demo skill.\n---\n[rules](../../../AGENTS.md)\n",
     }
     cases = {
@@ -202,6 +206,8 @@ def self_test() -> int:
         "oversize AGENTS.md": lambda r: (r / "AGENTS.md").write_text(ok + "x" * 7000),
         "too many lines": lambda r: (r / "AGENTS.md").write_text(ok + "\n" * 200),
         "oversize index": lambda r: (r / INDEX).write_text(files[INDEX] + "x" * 12288),
+        "oversize template rules": lambda r: (r / "templates/basic/AGENTS.md").write_text("x" * 12289),
+        "template rules too long": lambda r: (r / "templates/basic/AGENTS.md").write_text("-\n" * 100),
         "broken link": lambda r: (r / "docs/agent-setup.md").write_text("[gone](missing.md)\n"),
         "broken index path": lambda r: (r / INDEX).write_text("`core/nope.rs`\n"),
         "CLAUDE.md with body": lambda r: (r / "CLAUDE.md").write_text(IMPORT_ONLY + "extra\n"),

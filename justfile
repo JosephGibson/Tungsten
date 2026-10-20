@@ -109,7 +109,7 @@ repo-check:
 checks *args:
     python3 -B scripts/check-repo.py --select-checks "$@"
 
-# The template copied outside the repository, then built, tested and smoke-run there (D-123); a release check. GPU; free-space floor first.
+# `tungsten new`'s game outside the repository: checked, built, tested, smoke-run and packaged there, then seeded errors (D-123, D-183); a release check. GPU; free-space floor first.
 template-check:
     bash scripts/template-check.sh
 

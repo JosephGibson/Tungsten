@@ -79,6 +79,120 @@ pub enum ManifestError {
     FontFamilyFaceMissing { family: String, face: String },
     #[error("font_fallback names unknown font family '{family}'")]
     UnknownFallbackFamily { family: String },
+    /// A root or an entry resolves outside the game's folder, which
+    /// [`ResolvedManifest::load_for_check`] bounds every path by (M70).
+    #[error("{id} resolves to '{path}', outside the game's folder")]
+    OutsideFolder {
+        /// The entry as `<section>.<id>` (`data.<kind>.<id>` for a data
+        /// entry, `sprites.<id>.normal_map` for a sprite's sibling map), or
+        /// `manifest` for a root.
+        id: String,
+        /// The canonical path outside the folder.
+        path: String,
+    },
+}
+
+/// An error [`ResolvedManifest::load_for_check`] found, with the manifest
+/// to fix: the root that declares the entry it is about, or the root that
+/// did not read or parse (M70).
+#[derive(Debug)]
+#[non_exhaustive]
+pub struct ManifestIssue {
+    /// The manifest file, as the roots name it.
+    pub manifest: PathBuf,
+    /// What is wrong, as `load_and_merge_many` would say it.
+    pub error: ManifestError,
+}
+
+/// Where the loading bodies send an error. `load`, `load_and_merge_many`
+/// and `merge` stop at the first; `load_for_check` keeps each one with the
+/// manifest to fix and goes on, leaving the entry out.
+struct Sink<'a> {
+    every: Option<Every<'a>>,
+}
+
+/// `load_for_check`'s side of a [`Sink`].
+struct Every<'a> {
+    issues: &'a mut Vec<ManifestIssue>,
+    /// The game's folder, canonical: every root and entry lies inside it.
+    folder: PathBuf,
+    /// The root being loaded, as the roots name it.
+    root: PathBuf,
+    /// The root that first declared each entry a cross reference names, by
+    /// `<section>.<id>`.
+    declared: HashMap<String, PathBuf>,
+}
+
+impl Sink<'_> {
+    /// The first-error loaders' sink.
+    fn first() -> Sink<'static> {
+        Sink { every: None }
+    }
+
+    /// Reports `error` about the root being loaded: an `Err` that stops a
+    /// first-error loader, or `Ok` once kept.
+    fn report(&mut self, error: ManifestError) -> Result<(), ManifestError> {
+        match &mut self.every {
+            None => Err(error),
+            Some(every) => {
+                every.issues.push(ManifestIssue {
+                    manifest: every.root.clone(),
+                    error,
+                });
+                Ok(())
+            }
+        }
+    }
+
+    /// Reports `error` about the entry `key`, naming the root that declared
+    /// it.
+    fn report_entry(&mut self, key: &str, error: ManifestError) -> Result<(), ManifestError> {
+        match &mut self.every {
+            None => Err(error),
+            Some(every) => {
+                let manifest = every
+                    .declared
+                    .get(key)
+                    .cloned()
+                    .unwrap_or_else(|| every.root.clone());
+                every.issues.push(ManifestIssue { manifest, error });
+                Ok(())
+            }
+        }
+    }
+
+    /// The folder every path must lie inside, when checking.
+    fn folder(&self) -> Option<&Path> {
+        self.every.as_ref().map(|every| every.folder.as_path())
+    }
+}
+
+/// Resolves `rel` against `base_dir` to its canonical file, or reports it
+/// missing (`missing` builds that error from the path) or outside the
+/// sink's folder (`entry` names the entry) and gives `None`.
+fn resolve_file(
+    base_dir: &Path,
+    rel: &str,
+    sink: &mut Sink<'_>,
+    entry: impl FnOnce() -> String,
+    missing: impl FnOnce(String) -> ManifestError,
+) -> Result<Option<PathBuf>, ManifestError> {
+    let full_path = base_dir.join(rel);
+    if !full_path.exists() {
+        sink.report(missing(full_path.display().to_string()))?;
+        return Ok(None);
+    }
+    let full_path = full_path.canonicalize().unwrap_or(full_path);
+    if let Some(folder) = sink.folder()
+        && !full_path.starts_with(folder)
+    {
+        sink.report(ManifestError::OutsideFolder {
+            id: entry(),
+            path: full_path.display().to_string(),
+        })?;
+        return Ok(None);
+    }
+    Ok(Some(full_path))
 }
 
 /// Raw manifest JSON. An ID repeated inside one section is a parse error
@@ -567,63 +681,86 @@ impl ResolvedManifest {
     /// every material's shader is declared in the same file. Roots that refer
     /// to each other load through [`Self::load_and_merge_many`].
     pub fn load(manifest_path: impl AsRef<Path>) -> Result<Self, ManifestError> {
-        let result = Self::load_unvalidated(manifest_path.as_ref())?;
-        result.validate_cross_refs()?;
+        let mut sink = Sink::first();
+        let result = Self::load_unvalidated(manifest_path.as_ref(), &mut sink)?;
+        result.validate_cross_refs(&mut sink)?;
         Ok(result)
     }
 
     /// Parse one manifest and resolve its paths, leaving references between
-    /// entries unchecked.
-    fn load_unvalidated(manifest_path: &Path) -> Result<Self, ManifestError> {
-        let contents = std::fs::read_to_string(manifest_path).map_err(|e| ManifestError::Io {
-            path: manifest_path.display().to_string(),
-            source: e,
-        })?;
+    /// entries unchecked. A checking sink takes a root that does not read or
+    /// parse as an empty manifest, and leaves out each entry it reports.
+    fn load_unvalidated(manifest_path: &Path, sink: &mut Sink<'_>) -> Result<Self, ManifestError> {
+        let contents = match std::fs::read_to_string(manifest_path) {
+            Ok(contents) => contents,
+            Err(e) => {
+                sink.report(ManifestError::Io {
+                    path: manifest_path.display().to_string(),
+                    source: e,
+                })?;
+                return Ok(Self::default());
+            }
+        };
 
-        let raw: RawManifest =
-            serde_json::from_str(&contents).map_err(|e| ManifestError::Parse {
-                path: manifest_path.display().to_string(),
-                source: e,
-            })?;
+        let raw: RawManifest = match serde_json::from_str(&contents) {
+            Ok(raw) => raw,
+            Err(e) => {
+                sink.report(ManifestError::Parse {
+                    path: manifest_path.display().to_string(),
+                    source: e,
+                })?;
+                return Ok(Self::default());
+            }
+        };
 
         let base_dir = manifest_path.parent().unwrap_or(Path::new("."));
 
         let mut result = ResolvedManifest::default();
 
         for (id, entry) in raw.sprites {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
-            let normal_path = match entry.normal_map {
-                Some(rel) => {
-                    let p = base_dir.join(&rel);
-                    if !p.exists() {
-                        return Err(ManifestError::MissingNormalMapFile {
-                            id,
-                            path: p.display().to_string(),
-                        });
-                    }
-                    Some(p.canonicalize().unwrap_or(p))
-                }
+            let full_path = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("sprites.{id}"),
+                |path| ManifestError::MissingFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?;
+            let normal_path = match &entry.normal_map {
+                Some(rel) => Some(resolve_file(
+                    base_dir,
+                    rel,
+                    sink,
+                    || format!("sprites.{id}.normal_map"),
+                    |path| ManifestError::MissingNormalMapFile {
+                        id: id.clone(),
+                        path,
+                    },
+                )?),
                 None => None,
             };
-            let emissive_path = match entry.emissive_mask {
-                Some(rel) => {
-                    let p = base_dir.join(&rel);
-                    if !p.exists() {
-                        return Err(ManifestError::MissingEmissiveMaskFile {
-                            id,
-                            path: p.display().to_string(),
-                        });
-                    }
-                    Some(p.canonicalize().unwrap_or(p))
-                }
+            let emissive_path = match &entry.emissive_mask {
+                Some(rel) => Some(resolve_file(
+                    base_dir,
+                    rel,
+                    sink,
+                    || format!("sprites.{id}.emissive_mask"),
+                    |path| ManifestError::MissingEmissiveMaskFile {
+                        id: id.clone(),
+                        path,
+                    },
+                )?),
                 None => None,
+            };
+            // A sprite with a sibling that did not resolve is left out.
+            let (Some(full_path), Some(normal_path), Some(emissive_path)) = (
+                full_path,
+                normal_path.map_or(Some(None), |p| p.map(Some)),
+                emissive_path.map_or(Some(None), |p| p.map(Some)),
+            ) else {
+                continue;
             };
             result.sprites.insert(
                 id,
@@ -638,28 +775,38 @@ impl ResolvedManifest {
         }
 
         for (id, entry) in raw.animations {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingAnimationFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("animations.{id}"),
+                |path| ManifestError::MissingAnimationFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .animations
                 .insert(id, ResolvedAnimation { path: full_path });
         }
 
         for (id, entry) in raw.fonts {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingFontFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("fonts.{id}"),
+                |path| ManifestError::MissingFontFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result.fonts.insert(id, ResolvedFont { path: full_path });
         }
 
@@ -672,14 +819,19 @@ impl ResolvedManifest {
         append_fallback(&mut result.font_fallback, raw.font_fallback);
 
         for (id, entry) in raw.sounds {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingSoundFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("sounds.{id}"),
+                |path| ManifestError::MissingSoundFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result.sounds.insert(
                 id,
                 ResolvedSound {
@@ -693,70 +845,95 @@ impl ResolvedManifest {
         }
 
         for (id, entry) in raw.tilemaps {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingTilemapFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("tilemaps.{id}"),
+                |path| ManifestError::MissingTilemapFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .tilemaps
                 .insert(id, ResolvedTilemap { path: full_path });
         }
 
         for (id, entry) in raw.particles {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingParticleFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("particles.{id}"),
+                |path| ManifestError::MissingParticleFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .particles
                 .insert(id, ResolvedParticle { path: full_path });
         }
 
         for (id, entry) in raw.shaders {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingShaderFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("shaders.{id}"),
+                |path| ManifestError::MissingShaderFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .shaders
                 .insert(id, ResolvedShader { path: full_path });
         }
 
         for (id, entry) in raw.ui_themes {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingUiThemeFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("ui_themes.{id}"),
+                |path| ManifestError::MissingUiThemeFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .ui_themes
                 .insert(id, ResolvedUiTheme { path: full_path });
         }
 
         for (id, entry) in raw.prefabs {
-            let full_path = base_dir.join(&entry.path);
-            if !full_path.exists() {
-                return Err(ManifestError::MissingPrefabFile {
-                    id,
-                    path: full_path.display().to_string(),
-                });
-            }
-            let full_path = full_path.canonicalize().unwrap_or(full_path);
+            let Some(full_path) = resolve_file(
+                base_dir,
+                &entry.path,
+                sink,
+                || format!("prefabs.{id}"),
+                |path| ManifestError::MissingPrefabFile {
+                    id: id.clone(),
+                    path,
+                },
+            )?
+            else {
+                continue;
+            };
             result
                 .prefabs
                 .insert(id, ResolvedPrefab { path: full_path });
@@ -765,15 +942,20 @@ impl ResolvedManifest {
         for (kind, entries) in raw.data {
             let section = result.data.entry(kind.clone()).or_default();
             for (id, entry) in entries {
-                let full_path = base_dir.join(&entry.path);
-                if !full_path.exists() {
-                    return Err(ManifestError::MissingDataFile {
-                        kind,
-                        id,
-                        path: full_path.display().to_string(),
-                    });
-                }
-                let full_path = full_path.canonicalize().unwrap_or(full_path);
+                let Some(full_path) = resolve_file(
+                    base_dir,
+                    &entry.path,
+                    sink,
+                    || format!("data.{kind}.{id}"),
+                    |path| ManifestError::MissingDataFile {
+                        kind: kind.clone(),
+                        id: id.clone(),
+                        path,
+                    },
+                )?
+                else {
+                    continue;
+                };
                 section.insert(id, ResolvedDataEntry { path: full_path });
             }
         }
@@ -800,7 +982,8 @@ impl ResolvedManifest {
         meshes.sort_by(|a, b| a.0.cmp(&b.0));
         for (id, mesh) in meshes {
             if let Err(reason) = mesh.validate() {
-                return Err(ManifestError::InvalidParticleMesh { id, reason });
+                sink.report(ManifestError::InvalidParticleMesh { id, reason })?;
+                continue;
             }
             result.particle_meshes.insert(
                 id,
@@ -821,40 +1004,154 @@ impl ResolvedManifest {
     pub fn load_and_merge_many(
         roots: &[impl AsRef<Path>],
     ) -> Result<ResolvedManifest, ManifestError> {
+        let mut sink = Sink::first();
         let mut merged = ResolvedManifest::default();
         for root in roots {
-            let next = ResolvedManifest::load_unvalidated(root.as_ref())?;
-            merged.merge_entries(next, false)?;
+            let next = ResolvedManifest::load_unvalidated(root.as_ref(), &mut sink)?;
+            merged.merge_entries(next, false, &mut sink)?;
         }
-        merged.validate_cross_refs()?;
+        merged.validate_cross_refs(&mut sink)?;
         Ok(merged)
+    }
+
+    /// Loads `roots` as [`Self::load_and_merge_many`] does, past every error,
+    /// for `tungsten check`: a root that does not read or parse, or lies
+    /// outside `folder`, is one issue and adds nothing; an entry whose file is
+    /// missing or resolves outside `folder` (both canonicalized), a particle
+    /// mesh that fails its check and an ID an earlier root declared are an
+    /// issue each and are left out, the first declaration kept; then every
+    /// material shader, family face and fallback family the graph lacks, and
+    /// every file that backs two entries, is an issue. Returns the graph of
+    /// what resolved and the issues, root by root, then the graph's sorted
+    /// by ID. A root's own issues are sorted by their message.
+    ///
+    /// ```
+    /// use tungsten_core::assets::{ManifestError, ResolvedManifest};
+    ///
+    /// let dir = std::env::temp_dir().join(format!("tungsten_check_doc_{}", std::process::id()));
+    /// std::fs::create_dir_all(&dir).unwrap();
+    /// std::fs::write(dir.join("hero.png"), b"").unwrap();
+    /// let root = dir.join("manifest.json");
+    /// std::fs::write(
+    ///     &root,
+    ///     r#"{ "sprites": { "hero": { "path": "hero.png" }, "gem": { "path": "gem.png" } },
+    ///          "materials": { "glow": { "shader": "glow" } } }"#,
+    /// )
+    /// .unwrap();
+    ///
+    /// let (graph, issues) = ResolvedManifest::load_for_check(&[&root], &dir);
+    /// assert!(graph.sprites.contains_key("hero"));
+    /// assert_eq!(issues.len(), 2);
+    /// assert!(issues.iter().all(|issue| issue.manifest == root));
+    /// assert!(matches!(issues[0].error, ManifestError::MissingFile { .. }));
+    /// assert!(matches!(issues[1].error, ManifestError::MaterialShaderMissing { .. }));
+    /// std::fs::remove_dir_all(&dir).unwrap();
+    /// ```
+    #[must_use]
+    pub fn load_for_check(roots: &[impl AsRef<Path>], folder: &Path) -> (Self, Vec<ManifestIssue>) {
+        let mut issues = Vec::new();
+        let mut sink = Sink {
+            every: Some(Every {
+                issues: &mut issues,
+                folder: folder
+                    .canonicalize()
+                    .unwrap_or_else(|_| folder.to_path_buf()),
+                root: PathBuf::new(),
+                declared: HashMap::new(),
+            }),
+        };
+        let mut merged = ResolvedManifest::default();
+        // A checking sink never stops a body, so each `Err` arm is unused.
+        for root in roots {
+            let root = root.as_ref();
+            let Some(every) = sink.every.as_mut() else {
+                break;
+            };
+            every.root = root.to_path_buf();
+            let first = every.issues.len();
+            if let Ok(canonical) = root.canonicalize()
+                && !canonical.starts_with(&every.folder)
+            {
+                every.issues.push(ManifestIssue {
+                    manifest: root.to_path_buf(),
+                    error: ManifestError::OutsideFolder {
+                        id: "manifest".to_owned(),
+                        path: canonical.display().to_string(),
+                    },
+                });
+                continue;
+            }
+            let Ok(next) = Self::load_unvalidated(root, &mut sink) else {
+                continue;
+            };
+            if let Some(every) = sink.every.as_mut() {
+                next.declare(&mut every.declared, root);
+            }
+            let _ = merged.merge_entries(next, false, &mut sink);
+            if let Some(every) = sink.every.as_mut() {
+                every.issues[first..].sort_by_cached_key(|issue| issue.error.to_string());
+            }
+        }
+        let _ = merged.validate_cross_refs(&mut sink);
+        drop(sink);
+        (merged, issues)
+    }
+
+    /// Records `root` as the declaring root of each entry a cross reference
+    /// can name, unless an earlier root declared it.
+    fn declare(&self, declared: &mut HashMap<String, PathBuf>, root: &Path) {
+        let keys = self
+            .materials
+            .keys()
+            .map(|id| format!("materials.{id}"))
+            .chain(
+                self.font_families
+                    .keys()
+                    .map(|id| format!("font_families.{id}")),
+            )
+            .chain(
+                self.font_fallback
+                    .iter()
+                    .map(|family| format!("font_fallback.{family}")),
+            )
+            .chain(self.prefabs.keys().map(|id| format!("prefabs.{id}")))
+            .chain(self.data.iter().flat_map(|(kind, entries)| {
+                entries.keys().map(move |id| format!("data.{kind}.{id}"))
+            }));
+        for key in keys {
+            declared.entry(key).or_insert_with(|| root.to_path_buf());
+        }
     }
 
     /// Every material's shader must be declared in this graph, and so must
     /// every font family's faces and every family in the fallback chain; and
-    /// no file may back two prefab or data entries. Of several failures of
-    /// one kind, the smallest ID is reported, so the error does not depend on
-    /// map order.
-    fn validate_cross_refs(&self) -> Result<(), ManifestError> {
-        let missing = self
+    /// no file may back two prefab or data entries. Failures go to the sink
+    /// by kind, each kind sorted by ID, so the first does not depend on map
+    /// order.
+    fn validate_cross_refs(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
+        let mut missing: Vec<(&String, &ResolvedMaterial)> = self
             .materials
             .iter()
             .filter(|(_, material)| !self.shaders.contains_key(&material.shader))
-            .min_by(|a, b| a.0.cmp(b.0));
-        if let Some((id, material)) = missing {
-            return Err(ManifestError::MaterialShaderMissing {
-                id: id.clone(),
-                shader: material.shader.clone(),
-            });
+            .collect();
+        missing.sort_by(|a, b| a.0.cmp(b.0));
+        for (id, material) in missing {
+            sink.report_entry(
+                &format!("materials.{id}"),
+                ManifestError::MaterialShaderMissing {
+                    id: id.clone(),
+                    shader: material.shader.clone(),
+                },
+            )?;
         }
-        self.validate_font_refs()?;
-        self.validate_shared_files()
+        self.validate_font_refs(sink)?;
+        self.validate_shared_files(sink)
     }
 
     /// Each file backs one prefab or data entry, since an edit routes to
-    /// one (M61); of several shared files, the smallest pair of entries is
-    /// reported.
-    fn validate_shared_files(&self) -> Result<(), ManifestError> {
+    /// one (M61); each shared file is reported with its smallest pair of
+    /// entries, the files in that pair's order.
+    fn validate_shared_files(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
         let mut holders: HashMap<&Path, Vec<String>> = HashMap::new();
         for (id, prefab) in &self.prefabs {
             holders
@@ -870,7 +1167,7 @@ impl ResolvedManifest {
                     .push(format!("data.{kind}.{id}"));
             }
         }
-        let shared = holders
+        let mut shared: Vec<(String, String, &Path)> = holders
             .into_iter()
             .filter(|(_, names)| names.len() > 1)
             .map(|(path, mut names)| {
@@ -879,43 +1176,55 @@ impl ResolvedManifest {
                 let first = names.swap_remove(0);
                 (first, second, path)
             })
-            .min();
-        match shared {
-            Some((first, second, path)) => Err(ManifestError::SharedFile {
-                path: path.display().to_string(),
-                first,
-                second,
-            }),
-            None => Ok(()),
+            .collect();
+        shared.sort();
+        for (first, second, path) in shared {
+            sink.report_entry(
+                &second.clone(),
+                ManifestError::SharedFile {
+                    path: path.display().to_string(),
+                    first,
+                    second,
+                },
+            )?;
         }
+        Ok(())
     }
 
     /// Every family face names a `fonts` entry and every chain entry a family
-    /// (`D-115`); the smallest family ID, then face ID, is reported first.
-    fn validate_font_refs(&self) -> Result<(), ManifestError> {
-        let missing_face = self
+    /// (`D-115`); faces by family ID, then face ID, then chain entries by ID.
+    fn validate_font_refs(&self, sink: &mut Sink<'_>) -> Result<(), ManifestError> {
+        let mut missing_faces: Vec<(&String, &String)> = self
             .font_families
             .iter()
             .flat_map(|(family, entry)| entry.faces.iter().map(move |face| (family, face)))
             .filter(|(_, face)| !self.fonts.contains_key(*face))
-            .min();
-        if let Some((family, face)) = missing_face {
-            return Err(ManifestError::FontFamilyFaceMissing {
-                family: family.clone(),
-                face: face.clone(),
-            });
+            .collect();
+        missing_faces.sort();
+        for (family, face) in missing_faces {
+            sink.report_entry(
+                &format!("font_families.{family}"),
+                ManifestError::FontFamilyFaceMissing {
+                    family: family.clone(),
+                    face: face.clone(),
+                },
+            )?;
         }
-        let unknown = self
+        let mut unknown: Vec<&String> = self
             .font_fallback
             .iter()
             .filter(|family| !self.font_families.contains_key(*family))
-            .min();
-        match unknown {
-            Some(family) => Err(ManifestError::UnknownFallbackFamily {
-                family: family.clone(),
-            }),
-            None => Ok(()),
+            .collect();
+        unknown.sort();
+        for family in unknown {
+            sink.report_entry(
+                &format!("font_fallback.{family}"),
+                ManifestError::UnknownFallbackFamily {
+                    family: family.clone(),
+                },
+            )?;
         }
+        Ok(())
     }
 
     /// Merge another manifest; duplicate IDs are fatal (D-017), a data ID
@@ -923,114 +1232,81 @@ impl ResolvedManifest {
     /// graph or arrive with it, and so must a family's faces and a chain
     /// entry's family (`D-115`); no file may back two prefab or data entries.
     pub fn merge(&mut self, other: ResolvedManifest) -> Result<(), ManifestError> {
-        self.merge_entries(other, true)
+        self.merge_entries(other, true, &mut Sink::first())
     }
 
     /// `merge`, with the reference checks optional: a caller that merges
-    /// several roots checks them once at the end instead.
+    /// several roots checks them once at the end instead. A checking sink
+    /// keeps the first declaration of a repeated ID.
     fn merge_entries(
         &mut self,
         other: ResolvedManifest,
         check_refs: bool,
+        sink: &mut Sink<'_>,
     ) -> Result<(), ManifestError> {
-        for (id, sprite) in other.sprites {
-            if self.sprites.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.sprites.insert(id, sprite);
-        }
-        for (id, anim) in other.animations {
-            if self.animations.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.animations.insert(id, anim);
-        }
-        for (id, font) in other.fonts {
-            if self.fonts.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.fonts.insert(id, font);
-        }
-        for (id, sound) in other.sounds {
-            if self.sounds.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.sounds.insert(id, sound);
-        }
-        for (id, tilemap) in other.tilemaps {
-            if self.tilemaps.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.tilemaps.insert(id, tilemap);
-        }
-        for (id, particle) in other.particles {
-            if self.particles.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.particles.insert(id, particle);
-        }
-        for (id, shader) in other.shaders {
-            if self.shaders.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.shaders.insert(id, shader);
-        }
+        merge_section(&mut self.sprites, other.sprites, sink)?;
+        merge_section(&mut self.animations, other.animations, sink)?;
+        merge_section(&mut self.fonts, other.fonts, sink)?;
+        merge_section(&mut self.sounds, other.sounds, sink)?;
+        merge_section(&mut self.tilemaps, other.tilemaps, sink)?;
+        merge_section(&mut self.particles, other.particles, sink)?;
+        merge_section(&mut self.shaders, other.shaders, sink)?;
         for (id, material) in other.materials {
             if self.materials.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
+                sink.report(ManifestError::DuplicateId { id })?;
+                continue;
             }
             // Re-validate cross-ref: when a material merges in from a sibling
             // manifest, the shader may live in the merged graph we just built.
             if check_refs && !self.shaders.contains_key(&material.shader) {
-                return Err(ManifestError::MaterialShaderMissing {
+                sink.report(ManifestError::MaterialShaderMissing {
                     id,
                     shader: material.shader,
-                });
+                })?;
+                continue;
             }
             self.materials.insert(id, material);
         }
-        for (id, mesh) in other.particle_meshes {
-            if self.particle_meshes.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.particle_meshes.insert(id, mesh);
-        }
-        for (id, family) in other.font_families {
-            if self.font_families.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.font_families.insert(id, family);
-        }
-        for (id, theme) in other.ui_themes {
-            if self.ui_themes.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.ui_themes.insert(id, theme);
-        }
-        for (id, prefab) in other.prefabs {
-            if self.prefabs.contains_key(&id) {
-                return Err(ManifestError::DuplicateId { id });
-            }
-            self.prefabs.insert(id, prefab);
-        }
+        merge_section(&mut self.particle_meshes, other.particle_meshes, sink)?;
+        merge_section(&mut self.font_families, other.font_families, sink)?;
+        merge_section(&mut self.ui_themes, other.ui_themes, sink)?;
+        merge_section(&mut self.prefabs, other.prefabs, sink)?;
         for (kind, entries) in other.data {
             let section = self.data.entry(kind.clone()).or_default();
             for (id, entry) in entries {
                 if section.contains_key(&id) {
-                    return Err(ManifestError::DuplicateId {
+                    sink.report(ManifestError::DuplicateId {
                         id: format!("data.{kind}.{id}"),
-                    });
+                    })?;
+                    continue;
                 }
                 section.insert(id, entry);
             }
         }
         append_fallback(&mut self.font_fallback, other.font_fallback);
         if check_refs {
-            self.validate_font_refs()?;
-            self.validate_shared_files()?;
+            self.validate_font_refs(sink)?;
+            self.validate_shared_files(sink)?;
         }
         Ok(())
     }
+}
+
+/// Moves `other`'s entries into `section`; an ID it already holds is a
+/// [`ManifestError::DuplicateId`] (D-017), the first kept.
+fn merge_section<T>(
+    section: &mut HashMap<String, T>,
+    other: HashMap<String, T>,
+    sink: &mut Sink<'_>,
+) -> Result<(), ManifestError> {
+    for (id, entry) in other {
+        if section.contains_key(&id) {
+            sink.report(ManifestError::DuplicateId { id })?;
+            continue;
+        }
+        section.insert(id, entry);
+    }
+    Ok(())
 }
 
 /// Appends `more` to the chain in order, skipping families already in it, so

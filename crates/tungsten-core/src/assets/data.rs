@@ -689,7 +689,71 @@ impl StagedLoad {
     /// back first: a replaced entry with its file, an added one removed, and
     /// a file's former holder with its file.
     pub fn commit(self, world: &mut World) -> Result<(), StagedLoadError> {
-        self.check_kinds(world)?;
+        if let Some((_, error)) = self.kind_failures(world).next() {
+            return Err(error);
+        }
+        let undo = self.place(world);
+        let checked = check_file_backed(world, &mut Err);
+        if checked.is_err() {
+            for step in undo.into_iter().rev() {
+                step.revert(world);
+            }
+        }
+        checked
+    }
+
+    /// Puts every staged entry in place as [`Self::commit`] does, then checks
+    /// every entry the registries hold from a file and returns every failure,
+    /// in the order `commit` checks them, rather than the first. A staged
+    /// entry whose kind `world` registers for another type is a failure and
+    /// stays out. Nothing is taken back, so the World is one a check throws
+    /// away, as `tungsten check`'s is (M70).
+    ///
+    /// ```
+    /// use serde::Deserialize;
+    /// use tungsten_core::{StagedLoad, World};
+    ///
+    /// #[derive(Deserialize)]
+    /// struct Effect {
+    ///     trail: String,
+    /// }
+    ///
+    /// let dir = std::env::temp_dir().join(format!("tungsten_staged_check_doc_{}", std::process::id()));
+    /// std::fs::create_dir_all(&dir).unwrap();
+    /// std::fs::write(dir.join("burning.json"), r#"{ "trail": "sparks" }"#).unwrap();
+    /// std::fs::write(dir.join("frozen.json"), r#"{ "trail": "ice" }"#).unwrap();
+    ///
+    /// let mut world = World::new();
+    /// world.register_data_kind_with_assets::<Effect>("effects", |effect, world| {
+    ///     world.check_prefab_id("trail", &effect.trail)
+    /// });
+    /// let mut load = StagedLoad::new();
+    /// load.add_data(&world, "effects", "burning", dir.join("burning.json")).unwrap();
+    /// load.add_data(&world, "effects", "frozen", dir.join("frozen.json")).unwrap();
+    /// // Both entries name a prefab no file gives: two failures, not one.
+    /// assert_eq!(load.commit_for_check(&mut world).len(), 2);
+    /// std::fs::remove_dir_all(&dir).unwrap();
+    /// ```
+    #[must_use]
+    pub fn commit_for_check(mut self, world: &mut World) -> Vec<StagedLoadError> {
+        let mut failures = Vec::new();
+        let refused: Vec<_> = self.kind_failures(world).collect();
+        for (key, error) in refused {
+            self.data.remove(&key);
+            failures.push(error);
+        }
+        self.place(world);
+        let _ = check_file_backed(world, &mut |error| {
+            failures.push(error);
+            Ok(())
+        });
+        failures
+    }
+
+    /// Puts every staged entry in place of the World's entry of that ID,
+    /// inserting the registries the World lacks; returns how to take each
+    /// change back.
+    fn place(self, world: &mut World) -> Vec<Undo> {
         if !world.has_resource::<DataRegistry>() {
             world.insert_resource(DataRegistry::new());
         }
@@ -711,43 +775,43 @@ impl StagedLoad {
             prefabs.put_entry(id.clone(), prefab, Some(path));
             undo.push(Undo::Prefab { id, previous });
         }
-        let checked = check_file_backed(world);
-        if checked.is_err() {
-            for step in undo.into_iter().rev() {
-                step.revert(world);
-            }
-        }
-        checked
+        undo
     }
 
-    /// Each staged data entry's kind, registered in `world` for the type
-    /// the entry was read as.
-    fn check_kinds(&self, world: &World) -> Result<(), StagedLoadError> {
-        let empty = DataRegistry::new();
-        let registry = world.get_resource::<DataRegistry>().unwrap_or(&empty);
-        for ((kind, id), staged) in &self.data {
-            let source = match registry.kinds.get(kind) {
-                Some(slot) if slot.type_id == (*staged.value).type_id() => continue,
+    /// Each staged data entry whose kind `world` does not register for the
+    /// type the entry was read as, with its error, by kind, then ID.
+    fn kind_failures<'a>(
+        &'a self,
+        world: &'a World,
+    ) -> impl Iterator<Item = ((&'static str, String), StagedLoadError)> + 'a {
+        let registry = world.get_resource::<DataRegistry>();
+        self.data.iter().filter_map(move |((kind, id), staged)| {
+            let slot = registry.and_then(|registry| registry.kinds.get(kind));
+            let source = match slot {
+                Some(slot) if slot.type_id == (*staged.value).type_id() => return None,
                 Some(slot) => DataError::MismatchedKind {
                     kind: (*kind).to_owned(),
                     path: staged.path.display().to_string(),
                     staged: staged.type_name,
                     registered: slot.type_name,
                 },
-                None => DataError::UnknownKind {
-                    kind: (*kind).to_owned(),
-                    path: staged.path.display().to_string(),
-                    registered: registry.kinds().map(str::to_owned).collect(),
-                    suggestion: nearest(kind, registry.kinds()).map(str::to_owned),
-                },
+                None => {
+                    let kinds = || registry.into_iter().flat_map(DataRegistry::kinds);
+                    DataError::UnknownKind {
+                        kind: (*kind).to_owned(),
+                        path: staged.path.display().to_string(),
+                        registered: kinds().map(str::to_owned).collect(),
+                        suggestion: nearest(kind, kinds()).map(str::to_owned),
+                    }
+                }
             };
-            return Err(StagedLoadError::Data {
+            let error = StagedLoadError::Data {
                 kind: (*kind).to_owned(),
                 id: id.clone(),
                 source: Box::new(source),
-            });
-        }
-        Ok(())
+            };
+            Some(((*kind, id.clone()), error))
+        })
     }
 }
 
@@ -835,8 +899,12 @@ fn take_file(world: &mut World, path: &Path, undo: &mut Vec<Undo>) {
 }
 
 /// Phase two's check: every file-backed data entry by kind, then ID, then
-/// every file-backed prefab by ID; the first failure.
-fn check_file_backed(world: &World) -> Result<(), StagedLoadError> {
+/// every file-backed prefab by ID, each failure sent to `report`, which
+/// `commit` stops at (`Err`) and `commit_for_check` keeps (`Ok`).
+fn check_file_backed(
+    world: &World,
+    report: &mut dyn FnMut(StagedLoadError) -> Result<(), StagedLoadError>,
+) -> Result<(), StagedLoadError> {
     let data = world.resource::<DataRegistry>();
     for (&kind, slot) in &data.kinds {
         let Some(check) = &slot.check else {
@@ -846,29 +914,31 @@ fn check_file_backed(world: &World) -> Result<(), StagedLoadError> {
             let Some(path) = &entry.path else {
                 continue;
             };
-            check(&*entry.value, world).map_err(|missing| StagedLoadError::Data {
-                kind: kind.to_owned(),
-                id: id.clone(),
-                source: Box::new(DataError::MissingAsset {
-                    path: path.display().to_string(),
-                    suggestion: suggestion(world, missing.kind, &missing.id),
-                    field: missing.field,
-                    kind: missing.kind,
-                    id: missing.id,
-                }),
-            })?;
+            if let Err(missing) = check(&*entry.value, world) {
+                report(StagedLoadError::Data {
+                    kind: kind.to_owned(),
+                    id: id.clone(),
+                    source: Box::new(DataError::MissingAsset {
+                        path: path.display().to_string(),
+                        suggestion: suggestion(world, missing.kind, &missing.id),
+                        field: missing.field,
+                        kind: missing.kind,
+                        id: missing.id,
+                    }),
+                })?;
+            }
         }
     }
     for (id, prefab, path) in world.resource::<PrefabRegistry>().file_backed() {
-        prefab
-            .validate(world)
-            .map_err(|message| StagedLoadError::Prefab {
+        if let Err(message) = prefab.validate(world) {
+            report(StagedLoadError::Prefab {
                 id: id.to_owned(),
                 source: Box::new(PrefabError::Validation {
                     path: path.display().to_string(),
                     message,
                 }),
             })?;
+        }
     }
     Ok(())
 }

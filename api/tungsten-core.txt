@@ -395,6 +395,7 @@ impl tungsten_core::assets::data::StagedLoad
 pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
 pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::commit_for_check(self, &mut tungsten_core::World) -> alloc::vec::Vec<tungsten_core::assets::data::StagedLoadError>
 pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
 pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
 pub fn tungsten_core::assets::data::StagedLoad::new() -> Self
@@ -485,6 +486,9 @@ pub tungsten_core::assets::manifest::ManifestError::MissingTilemapFile::path: al
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::MissingUiThemeFile::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::OutsideFolder
+pub tungsten_core::assets::manifest::ManifestError::OutsideFolder::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::OutsideFolder::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
@@ -584,6 +588,18 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::LoadedManifest
+#[non_exhaustive] pub struct tungsten_core::assets::manifest::ManifestIssue
+pub tungsten_core::assets::manifest::ManifestIssue::error: tungsten_core::assets::manifest::ManifestError
+pub tungsten_core::assets::manifest::ManifestIssue::manifest: std::path::PathBuf
+impl core::fmt::Debug for tungsten_core::assets::manifest::ManifestIssue
+pub fn tungsten_core::assets::manifest::ManifestIssue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Send for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Sync for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Unpin for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ManifestIssue
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ManifestIssue
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ManifestIssue
 pub struct tungsten_core::assets::manifest::MaterialEntry
 pub tungsten_core::assets::manifest::MaterialEntry::shader: alloc::string::String
 pub tungsten_core::assets::manifest::MaterialEntry::uniform_defaults: tungsten_core::assets::material::MaterialUniformDefaults
@@ -738,6 +754,7 @@ pub tungsten_core::assets::manifest::ResolvedManifest::ui_themes: std::collectio
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
+pub fn tungsten_core::assets::manifest::ResolvedManifest::load_for_check(&[impl core::convert::AsRef<std::path::Path>], &std::path::Path) -> (Self, alloc::vec::Vec<tungsten_core::assets::manifest::ManifestIssue>)
 pub fn tungsten_core::assets::manifest::ResolvedManifest::merge(&mut self, tungsten_core::assets::manifest::ResolvedManifest) -> core::result::Result<(), tungsten_core::assets::manifest::ManifestError>
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::clone(&self) -> tungsten_core::assets::manifest::ResolvedManifest
@@ -2253,6 +2270,9 @@ pub tungsten_core::assets::ManifestError::MissingTilemapFile::path: alloc::strin
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::MissingUiThemeFile::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::OutsideFolder
+pub tungsten_core::assets::ManifestError::OutsideFolder::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::OutsideFolder::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
@@ -2837,6 +2857,18 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::LoadedManifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::LoadedManifest
+#[non_exhaustive] pub struct tungsten_core::assets::ManifestIssue
+pub tungsten_core::assets::ManifestIssue::error: tungsten_core::assets::manifest::ManifestError
+pub tungsten_core::assets::ManifestIssue::manifest: std::path::PathBuf
+impl core::fmt::Debug for tungsten_core::assets::manifest::ManifestIssue
+pub fn tungsten_core::assets::manifest::ManifestIssue::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Send for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Sync for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::Unpin for tungsten_core::assets::manifest::ManifestIssue
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ManifestIssue
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ManifestIssue
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ManifestIssue
 #[non_exhaustive] pub struct tungsten_core::assets::MapObject
 pub tungsten_core::assets::MapObject::class: alloc::string::String
 pub tungsten_core::assets::MapObject::id: u32
@@ -3317,6 +3349,7 @@ pub tungsten_core::assets::ResolvedManifest::ui_themes: std::collections::hash::
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
+pub fn tungsten_core::assets::manifest::ResolvedManifest::load_for_check(&[impl core::convert::AsRef<std::path::Path>], &std::path::Path) -> (Self, alloc::vec::Vec<tungsten_core::assets::manifest::ManifestIssue>)
 pub fn tungsten_core::assets::manifest::ResolvedManifest::merge(&mut self, tungsten_core::assets::manifest::ResolvedManifest) -> core::result::Result<(), tungsten_core::assets::manifest::ManifestError>
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::clone(&self) -> tungsten_core::assets::manifest::ResolvedManifest
@@ -3691,6 +3724,7 @@ impl tungsten_core::assets::data::StagedLoad
 pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
 pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::commit_for_check(self, &mut tungsten_core::World) -> alloc::vec::Vec<tungsten_core::assets::data::StagedLoadError>
 pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
 pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
 pub fn tungsten_core::assets::data::StagedLoad::new() -> Self
@@ -13060,6 +13094,9 @@ pub tungsten_core::ManifestError::MissingTilemapFile::path: alloc::string::Strin
 pub tungsten_core::ManifestError::MissingUiThemeFile
 pub tungsten_core::ManifestError::MissingUiThemeFile::id: alloc::string::String
 pub tungsten_core::ManifestError::MissingUiThemeFile::path: alloc::string::String
+pub tungsten_core::ManifestError::OutsideFolder
+pub tungsten_core::ManifestError::OutsideFolder::id: alloc::string::String
+pub tungsten_core::ManifestError::OutsideFolder::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
@@ -16271,6 +16308,7 @@ pub tungsten_core::ResolvedManifest::ui_themes: std::collections::hash::map::Has
 impl tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::manifest::ManifestError>
 pub fn tungsten_core::assets::manifest::ResolvedManifest::load_and_merge_many(&[impl core::convert::AsRef<std::path::Path>]) -> core::result::Result<tungsten_core::assets::manifest::ResolvedManifest, tungsten_core::assets::manifest::ManifestError>
+pub fn tungsten_core::assets::manifest::ResolvedManifest::load_for_check(&[impl core::convert::AsRef<std::path::Path>], &std::path::Path) -> (Self, alloc::vec::Vec<tungsten_core::assets::manifest::ManifestIssue>)
 pub fn tungsten_core::assets::manifest::ResolvedManifest::merge(&mut self, tungsten_core::assets::manifest::ResolvedManifest) -> core::result::Result<(), tungsten_core::assets::manifest::ManifestError>
 impl core::clone::Clone for tungsten_core::assets::manifest::ResolvedManifest
 pub fn tungsten_core::assets::manifest::ResolvedManifest::clone(&self) -> tungsten_core::assets::manifest::ResolvedManifest
@@ -16954,6 +16992,7 @@ impl tungsten_core::assets::data::StagedLoad
 pub fn tungsten_core::assets::data::StagedLoad::add_data(&mut self, &tungsten_core::World, &str, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::data::DataError>
 pub fn tungsten_core::assets::data::StagedLoad::add_prefab(&mut self, impl core::convert::Into<alloc::string::String>, impl core::convert::Into<std::path::PathBuf>) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::assets::data::StagedLoad::commit(self, &mut tungsten_core::World) -> core::result::Result<(), tungsten_core::assets::data::StagedLoadError>
+pub fn tungsten_core::assets::data::StagedLoad::commit_for_check(self, &mut tungsten_core::World) -> alloc::vec::Vec<tungsten_core::assets::data::StagedLoadError>
 pub fn tungsten_core::assets::data::StagedLoad::is_empty(&self) -> bool
 pub fn tungsten_core::assets::data::StagedLoad::len(&self) -> usize
 pub fn tungsten_core::assets::data::StagedLoad::new() -> Self

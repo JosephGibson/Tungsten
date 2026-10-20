@@ -1,0 +1,21 @@
+[package]
+name = "tungsten-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "The tungsten command line: start, check and package a game project (D-182)"
+publish = false
+
+[[bin]]
+name = "tungsten"
+path = "src/main.rs"
+doc = false
+
+[dependencies]
+tungsten-core = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

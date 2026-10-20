@@ -7,7 +7,8 @@
 # `pub use tungsten::kit` line, and tungsten-kit has a file of its own.
 # The kit's scene components are data: their field descriptions, rendered by
 # the kit's `components` example, go to api/tungsten-kit-components.txt
-# under the same check (M62).
+# under the same check (M62). The command line's help, its promised commands
+# and options (D-103, D-182), goes to api/tungsten-cli.txt likewise (D-183).
 # --check writes to target/public-api/check/ instead and fails when a tracked
 # file differs, so the release checks catch a stale snapshot.
 #
@@ -71,14 +72,18 @@ for crate in "${CRATES[@]}"; do
 done
 components="tungsten-kit-components"
 cargo run -q --locked -p tungsten-kit --example components > "$out/$components.txt"
-if [[ "$out" != "api" ]] && ! cmp -s "$out/$components.txt" "api/$components.txt"; then
-  echo "api/$components.txt is stale; run 'just api' and review its diff:" >&2
-  diff -u "api/$components.txt" "$out/$components.txt" | head -40 >&2 || true
-  stale=1
-fi
+cli="tungsten-cli"
+cargo run -q --locked -p tungsten-cli -- --help > "$out/$cli.txt"
+for file in "$components" "$cli"; do
+  if [[ "$out" != "api" ]] && ! cmp -s "$out/$file.txt" "api/$file.txt"; then
+    echo "api/$file.txt is stale; run 'just api' and review its diff:" >&2
+    diff -u "api/$file.txt" "$out/$file.txt" | head -40 >&2 || true
+    stale=1
+  fi
+done
 if [[ "$out" == "api" ]]; then
-  printf 'Wrote api/%s.txt\n' "${CRATES[@]}" "$components"
+  printf 'Wrote api/%s.txt\n' "${CRATES[@]}" "$components" "$cli"
 elif [[ "$stale" == 0 ]]; then
-  echo "Public API snapshots current: ${#CRATES[@]} crates and the kit's components"
+  echo "Public API snapshots current: ${#CRATES[@]} crates, the kit's components and the command line"
 fi
 exit "$stale"

@@ -1,6 +1,6 @@
 # Getting started
 
-Make a game with Tungsten from its template, `templates/basic`: a shell of the screens every game needs (a title, pause, game over, save and load, tabbed settings and keybindings) around a sample game you replace, a player that the arrow keys or WASD move, a hazard and three gems. The game lives in a repository of its own and depends on the engine through a git tag (`D-123`). This is the guide's first draft; packaging a game for players joins it with `tungsten package`.
+Make a game with Tungsten from its template, `templates/basic`: a shell of the screens every game needs (a title, pause, game over, save and load, tabbed settings and keybindings) around a sample game you replace, a player that the arrow keys or WASD move, a hazard and three gems. The game lives in a repository of its own and depends on the engine through a git tag (`D-123`). This is the guide's first draft. The engine's command line, `tungsten`, starts the game, checks its files and packages it for players ([Check and package](#check-and-package)).
 
 ## What you need
 
@@ -8,37 +8,29 @@ Make a game with Tungsten from its template, `templates/basic`: a shell of the s
 - A GPU with a current driver: Vulkan on Linux, DX12 or Vulkan on Windows. Those two are the tested hosts; Metal on macOS is untested ([known issues](known-issues.md)).
 - On Linux, `pkg-config` and the ALSA headers (`libasound2-dev` on Debian and Ubuntu).
 - Git.
+- To package a game, a Linux x86-64 host with GNU `tar` and binutils' `objcopy`.
 
 ## Start a game from the template
 
-Pick a release tag from the [releases](https://github.com/JosephGibson/Tungsten/releases), here `vX.Y.Z`, and copy the template out of the engine's repository at that tag:
+Pick a release tag from the [releases](https://github.com/JosephGibson/Tungsten/releases), here `vX.Y.Z`, and install that release's command line, then make the game:
 
 ```bash
-git clone --depth 1 --branch vX.Y.Z https://github.com/JosephGibson/Tungsten.git tungsten
-cp -R tungsten/templates/basic my-game
+cargo install --locked --git https://github.com/JosephGibson/Tungsten --tag vX.Y.Z tungsten-cli
+tungsten new my-game
 cd my-game
+git init
 ```
 
-`my-game` is the game's folder and its working directory: the game reads `tungsten.json`, `input.json` and `assets/` from there.
+`tungsten new` makes the folder from the template the command line carries, so the game starts on the engine you installed it with (`D-182`). The folder's name is the game's: the package in `Cargo.toml`, the crate `my_game` in `src/main.rs` and the files of `tests/game/`, the game ID in `tungsten.json` and the window's title. A name is 1 to 64 lowercase letters, digits, `-` and `_`, starting with a letter, and neither a Rust keyword nor a name Cargo or the engine already uses (`test`, `tungsten`, `serde`); `new` never writes into a folder that exists. The game ID names the folder where the game keeps its player's settings and saves and writes its logs and crash reports.
 
-In `Cargo.toml`, point both engine dependencies at the same tag:
+`my-game` is the game's folder and its working directory: the game reads `tungsten.json`, `input.json` and `assets/` from there. `new` points both engine dependencies in `Cargo.toml` at the tag, `tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z" }`, adds the engine's build profiles, which build the engine and its dependencies optimized while your own code builds fast and keep line tables in release builds, and writes the engine's `Cargo.lock`, so the first build uses the versions the engine was tested with. `.gitignore` leaves out `target/` and `dist/`.
 
-```toml
-[dependencies]
-anyhow = "1"
-log = "0.4"
-serde = { version = "1", features = ["derive"] }
-tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z" }
+The title screen shows the game's name, so the title's pixel test, `tests/game/visual.rs`, fails against the template's `tests/fixtures/title.png` until you capture yours, on the machine that runs the test:
 
-[dev-dependencies]
-tungsten = { git = "https://github.com/JosephGibson/Tungsten", tag = "vX.Y.Z", features = ["testing"] }
+```bash
+TUNGSTEN_SMOKE_FRAMES=24 TUNGSTEN_CAPTURE_FRAME=20 TUNGSTEN_CAPTURE_RESOLUTION=1280x720 \
+  TUNGSTEN_CAPTURE_PATH="$PWD/tests/fixtures/title.png" cargo run
 ```
-
-Rename the game:
-
-- the package in `Cargo.toml`: `name = "my-game"`;
-- the crate in `src/main.rs` and the files of `tests/game/`: `tungsten_template_basic` becomes `my_game`;
-- the game in `tungsten.json`: `"game": { "id": "my-game" }`. The ID names the folder where the game keeps its player's settings and saves and writes its logs and crash reports: up to 64 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit, and not a Windows device name such as `con`.
 
 Then make the game yours (`D-181`). Delete `src/sample/` and its tests, `tests/game/sample.rs`, write your gameplay under `src/features/<name>/` ([Composing with the kit](#composing-with-the-kit)), and point the seam at it, the six names the shell calls and nothing else:
 
@@ -46,13 +38,6 @@ Then make the game yours (`D-181`). Delete `src/sample/` and its tests, `tests/g
 - in `src/save.rs`, `SaveGame`, what a save holds beside the shell's `meta`; `capture`, the live run as a save, `None` when there is nothing to save; and `summary`, a save's line on its slot row.
 
 Leave `src/shell/` as the template ships it, so a later template's shell can replace it whole. Your gameplay state calls `shell::game_over(world)` when the player dies, and reads the run's difficulty through `shell::run(world)`.
-
-Add a development profile to `Cargo.toml`, so the engine and its dependencies build optimized while your own code builds fast:
-
-```toml
-[profile.dev.package."*"]
-opt-level = 2
-```
 
 ## Run and test
 
@@ -68,6 +53,12 @@ The first build compiles the engine and its dependencies, which takes a few minu
 ## Change it while it runs
 
 A debug build watches `assets/` and `input.json`. With the game running, open `assets/sprites/player.png` in an image editor, change it and save: the player draws with the new image. Change a binding in `input.json`, say `move_up` to `KeyI`, and save: the next press reads the new key.
+
+## Check and package
+
+`tungsten check`, from the game's folder, loads every file the game reads with the engine's own loaders and reports every error, each with its file, where the game's own start stops at the first. It loads `tungsten.json` and `input.json` first; an error in either ends the check there, since the game cannot start without them. Then it runs the game's own build, `cargo run`, with `TUNGSTEN_CHECK` set, so every component, data kind and prefab check your plugins register applies: the game opens no window and runs no frame, but loads its manifests, every sprite with its normal map and emissive mask, the animations, UI themes, sounds, tilemaps, particle configs, data entries, prefabs and each map's objects, and checks every reference between them. Every `.json` file under the manifest's folder that the manifest does not name loads as a scene, as `load_scene` would load it, so a misspelt key there fails too. Every path stays inside the game's folder: an entry that names a file outside it is an error. The check cannot see what lives only in Rust: IDs written in code, sprites or fonts a game registers there, WGSL shaders, font files and the schedule, which a test catches through `Harness::new`. It prints one `<file>: <message>` line per error and a summary, and exits 0 when there is none, 1 when there are errors, and 2 on a usage mistake. The command line's version must be the game's engine version; otherwise it names the `cargo install` line for the game's.
+
+`tungsten package`, on Linux x86-64, builds the game for release and writes two archives to `dist/`: `<name>-<version>-x86_64-unknown-linux-gnu.tar.gz` for players, holding the binary, `tungsten.json`, `input.json`, `assets/`, the game's own `LICENSE*`, `COPYING*` and `NOTICE*` files and the third-party notices, and `<name>-<version>-x86_64-unknown-linux-gnu-debug.tar.gz`, the binary's debug file under the same top folder, so it extracts over the first for a crash's backtrace (`D-120`). It builds for the portable x86-64 baseline with `RUSTFLAGS="-C target-cpu=x86-64 -C link-arg=-Wl,--build-id"`, which replaces the flags of every Cargo config file, so a game's or your own config flags, such as a linker or `target-cpu=native`, do not apply; a `RUSTFLAGS` already set in the shell stops it. The debug file needs line tables, which `debug = 1` under `[profile.release]` keeps, as `new` writes it. Before it archives anything, the staged binary checks the staged files as the player will run them, so a file the manifest names outside `assets/` fails here rather than on the player's machine. The notices list every crate the binary links under a license it ships a text of, by the rules of the engine's own archives ([license notices](releases.md#license-notices)); a crate whose package has no matching text stops the package, naming it, until the game's own `licenses/clarifications.json` supplies the text, in the engine's format. Packaging on Windows and macOS hosts comes later.
 
 ## Settings and saves
 

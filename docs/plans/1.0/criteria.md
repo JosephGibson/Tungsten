@@ -226,7 +226,6 @@ Open questions keep their numbers; answered ones are under [Answered](#answered)
 - **3.** Platform tiers: certify Linux only, or find Windows and macOS hosts? Should releases build macOS? *Default, which the feature gate takes unless the owner answers first (`D-150`): Linux certified, the other platforms on stated tiers as far as hosts allow, and no macOS release build for 1.0.*
 - **12.** Which performance budgets gate 1.0?
 - **15.** Which settings does the engine persist itself, and does a corrupt user file reset to defaults (proposed) or stop the game as an invalid `tungsten.json` does?
-- **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)?
 
 ### Answered
 
@@ -247,6 +246,7 @@ Answered on 2026-10-03: a game lives in its own repository on a git dependency, 
 - **17.** Kit dependency direction (§8.4). *Answered 2026-10-03: `Schedule` and `Plugin` in core; the umbrella re-exports the kit.*
 - **18.** Where do examples run from (§8.3)? *Answered 2026-10-03: their own folders, like a copied template.*
 - **19.** Engine-owned text. *Answered 2026-10-03: embed JetBrains Mono; every game carries its OFL notice.*
+- **20.** CLI: `check` and `package` must and `new` should (proposed)? Argument parsing and archive writing by hand or by crate (§8.5)? *Answered 2026-10-19 by its default, which M70 took (`D-150`): `check` and `package` Must and `new` Should, and all three landed; arguments are parsed by hand and archives written with the platform's `tar`, so no new crate (`D-182`).*
 - **21.** Hierarchy: physics bodies on root entities only for 1.0 (proposed)? *Answered 2026-10-06 at the frame-loop gate: yes; the acceptance game places its orbiting blades each fixed step (`D-132`).*
 - **22.** Controllers: anything beyond ground check, coyote time, jump buffer and variable jump, such as slopes, one-way platforms or ladders? *Answered 2026-10-14 by its default, which M52 took (`D-150`): nothing beyond those four; slopes, one-way platforms and ladders are in the [backlog](backlog-1.x.md) (`D-158`).*
 - **23.** Closing order (§8.8). *Answered 2026-10-03: C1 runs before the freeze, so fixes that need API changes still land.*

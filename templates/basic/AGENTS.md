@@ -12,6 +12,7 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - When the game passes about three components or two features, move each feature into `src/features/<name>/`: `mod.rs` holds its `Plugin`, `components.rs` and `systems.rs` the rest. `game.rs` only adds the feature plugins. A component two features share goes in `src/shared.rs`. A feature plugin registers its own prefab components, data kinds and systems, as a kit item does. The kit's scene names and data kinds are reserved: the registries fail startup on a duplicate.
 - In the template itself, `src/shell/` stays within 2,000 lines of code and `src/` within 2,600, as `tokei` counts them (the engine's `D-181`); a feature past that belongs in a game.
 - `tests/game/` holds the tests, one module per part: `sample`, `shell`, `saves`, `settings`, `keys`, `fit` (every screen at 731 × 411 and 1920 × 1080 UI units) and `visual` (the title's pixels, behind `TUNGSTEN_VISUAL_REGRESSION=1`).
+- `tungsten check`, the engine's command line, loads `tungsten.json`, `input.json` and every file the manifest names as the game does, and reports every error with its file; `tungsten package` makes the players' archive in `dist/`.
 
 ## Saves and options
 
@@ -50,7 +51,7 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - Read time from the `Time` resource: `delta()`, the game clock (scaled, zero while paused; the step inside `fixed_update`), for movement and animation, and `real_delta()` for anything that runs over a pause, such as a menu's animation or a toast. Count cooldowns and lifetimes with `Timer`, ticked with the clock's dt. `DeltaTime` is deprecated.
 - Read and write components through one query that names its data, `world.query::<(Entity, &A, Option<&B>)>()` or `query_mut_filtered::<&mut A, With<B>>()`, never a collected entity list and `get` per entity; spawn with `world.spawn_with((A, B, C))`, or `RigidBodyBundle::dynamic(..).with((..))` for a body, never a run of `insert`s; a teleport or respawn writes a body's `Position` and `PrevPosition` together, or it is drawn sliding from the old point; read a resource the engine inserts with `world.resource::<T>()`. The numbered `query2`/`query3_mut` functions are deprecated.
 - Keep what a run spawned by its handles, as the sample's `SampleRun` does: a replaced state's entities are despawned at the frame's end, so a query in that frame still sees them.
-- Before a commit: `cargo test` and `cargo clippy --all-targets -- -D warnings`.
+- Before a commit: `cargo test`, `cargo clippy --all-targets -- -D warnings` and `tungsten check`.
 
 ## Engine documentation
 

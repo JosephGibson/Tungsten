@@ -16,6 +16,7 @@ use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
 
 mod atlas;
+pub(crate) mod check;
 mod prefab;
 mod reload;
 mod scene;

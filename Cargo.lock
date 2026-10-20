@@ -791,7 +791,7 @@ dependencies = [
 
 [[package]]
 name = "example-01-platformer"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -801,7 +801,7 @@ dependencies = [
 
 [[package]]
 name = "example-02-bench"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -812,7 +812,7 @@ dependencies = [
 
 [[package]]
 name = "example-03-scene-state"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "example-04-shader-playground"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "example-05-ui-lab"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "glam",
@@ -2987,7 +2987,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "anyhow",
  "cpal",
@@ -3006,8 +3006,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tungsten-cli"
+version = "0.90.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "tungsten-core",
+]
+
+[[package]]
 name = "tungsten-core"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -3023,7 +3032,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-crash-probe"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "log",
  "tungsten",
@@ -3031,7 +3040,7 @@ dependencies = [
 
 [[package]]
 name = "tungsten-kit"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "criterion",
  "glam",
@@ -3043,11 +3052,11 @@ dependencies = [
 
 [[package]]
 name = "tungsten-launcher"
-version = "0.89.0"
+version = "0.90.0"
 
 [[package]]
 name = "tungsten-render"
-version = "0.89.0"
+version = "0.90.0"
 dependencies = [
  "bytemuck",
  "criterion",

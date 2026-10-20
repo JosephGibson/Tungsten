@@ -61,7 +61,7 @@ struct Decoded {
 /// Decoded M29 siblings of one sprite: the normal map as RGBA and the
 /// emissive mask premultiplied by its alpha into opaque RGBA.
 #[derive(Default)]
-struct SpriteSiblings {
+pub(crate) struct SpriteSiblings {
     normal: Option<Vec<u8>>,
     emissive: Option<Vec<u8>>,
 }
@@ -69,7 +69,7 @@ struct SpriteSiblings {
 /// Decode the normal-map and emissive-mask siblings of an albedo of `size`. A
 /// sibling that fails to decode or has another size comes back `None`, and
 /// `report` gets its manifest field (`normal_map`, `emissive_mask`) and why.
-fn decode_sprite_siblings(
+pub(crate) fn decode_sprite_siblings(
     normal_path: Option<&Path>,
     emissive_path: Option<&Path>,
     size: (u32, u32),

@@ -1,0 +1,18 @@
+Usage: tungsten <command>
+
+Commands:
+  new <path>  Make a game in the new folder <path> from the engine's
+              template, named after the folder, with the engine pinned to
+              this command line's release tag
+  check       Load the game's tungsten.json, input.json and every file its
+              manifests name with the engine's loaders, in the game's own
+              build, and report every error with its file
+  package     Build the game for release, check it, and write its players'
+              archive and its debug archive to dist/ (Linux)
+
+Options:
+  -h, --help     Print this help
+  -V, --version  Print the version
+
+Run check and package in the game's folder. They need the game's engine
+to be the version of this command line.
