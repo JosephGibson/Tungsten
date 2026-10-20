@@ -412,6 +412,10 @@ fn every_embedded_work_and_license_file_is_embedded() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "python3 is not on every Windows host; the Linux runs hold the tables together"
+)]
 fn the_rules_match_release_py() {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let script = r#"

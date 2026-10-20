@@ -114,7 +114,8 @@ fn a_report_prints_sorted_by_file_with_the_count() {
 fn no_report_means_the_content_stage_did_not_run() {
     let dir = Folder::new();
     let report = dir.0.join("report.txt");
-    let status = std::process::Command::new("true").status().unwrap();
+    // A successful exit, on every host.
+    let status = std::process::ExitStatus::default();
     let err = read_report(&report, status).unwrap_err();
     assert!(err.to_string().contains("did not run"), "{err}");
     std::fs::write(&report, "a.json\tbad\n").unwrap();

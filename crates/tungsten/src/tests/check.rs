@@ -77,6 +77,11 @@ fn game_world() -> App {
     app
 }
 
+/// `text` as a JSON string, so a Windows path's `\` survives the parse.
+fn json_string(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn tmj(sprite: &str) -> String {
     format!(
         r#"{{
@@ -119,8 +124,8 @@ fn seed(game: &Folder, outside: &Folder, broken: bool) -> Vec<PathBuf> {
     game.png("levels/bonus.png", 16);
     let extra_sprites = if broken {
         format!(
-            r#", "gone": {{"path": "sprites/gone.png"}}, "far": {{"path": "{}"}}"#,
-            far.display()
+            r#", "gone": {{"path": "sprites/gone.png"}}, "far": {{"path": {}}}"#,
+            json_string(&far.display().to_string())
         )
     } else {
         String::new()

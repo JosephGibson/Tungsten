@@ -460,7 +460,7 @@ impl Errors {
             .into_iter()
             .map(|(file, message)| {
                 let file = relative(&file.display().to_string());
-                let message = relative(&message).replace(['\n', '\t'], " ");
+                let message = slashes(&relative(&message)).replace(['\n', '\t'], " ");
                 CheckError {
                     file: PathBuf::from(slashes(&file)),
                     message,
@@ -470,12 +470,13 @@ impl Errors {
     }
 }
 
-/// `path` with `\` as `/` on Windows; unchanged elsewhere.
-fn slashes(path: &str) -> String {
+/// `text`'s paths with `\` as `/` and no `\\?\` verbatim prefix on
+/// Windows; unchanged elsewhere.
+fn slashes(text: &str) -> String {
     if std::path::MAIN_SEPARATOR == '\\' {
-        path.replace('\\', "/")
+        text.replace(r"\\?\", "").replace('\\', "/")
     } else {
-        path.to_owned()
+        text.to_owned()
     }
 }
 
