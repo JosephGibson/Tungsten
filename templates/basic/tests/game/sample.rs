@@ -10,16 +10,16 @@ use tungsten::core::{
     UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
-    ContactDamage, Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats,
-    damage,
+    Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats, damage,
 };
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::components::{GemSlot, Player};
 use tungsten_template_basic::sample::{
-    CAMERA_DEAD_ZONE, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, MUSIC_FADE, MUSIC_PAUSE, MUSIC_RUN,
-    PAUSE_FADE, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START, SampleRun,
+    CAMERA_DEAD_ZONE, DUMMY_START, ENEMIES, ENEMY_RETURN_SECS, GEM_PREFAB, HAZARD_PREFAB,
+    HAZARD_START, MUSIC_FADE, MUSIC_PAUSE, MUSIC_RUN, PAUSE_FADE, PICKUPS, PLAY_CENTRE,
+    PLAYER_PREFAB, PLAYER_START, SampleRun,
 };
 use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::{Difficulty, theme};
@@ -46,13 +46,9 @@ fn ramp(steps: u32, top: f32) -> f32 {
         .sum()
 }
 
-/// The hazard: the entity whose `contact_damage` hurts the player.
+/// The hazard: the first of the run's enemies.
 fn hazard_entity(harness: &UiHarness) -> Entity {
-    harness
-        .world()
-        .query_filtered::<Entity, With<ContactDamage>>()
-        .next()
-        .expect("the hazard spawned")
+    harness.world().resource::<SampleRun>().enemies[0].entity
 }
 
 /// The gems still in play: the entities with a gem's slot.
@@ -917,6 +913,9 @@ fn a_shot_a_hit_and_a_pickup_play_their_sounds() {
         .0 = spot;
     let taken = heard(&mut harness, 3);
     assert_eq!(plays(&harness, &taken, "pickup").len(), 1, "the pickup");
+    damage(harness.world_mut(), player, 1.0);
+    let hurt = heard(&mut harness, 2);
+    assert_eq!(plays(&harness, &hurt, "hurt").len(), 1, "the player's hurt");
 }
 
 #[test]
@@ -1003,7 +1002,7 @@ fn quit_to_title_from_pause_stops_the_pause_loop() {
 }
 
 #[test]
-fn game_over_plays_no_pause_loop() {
+fn game_over_plays_its_sting_and_music_over_the_silenced_run() {
     let mut harness = harness();
     let (run, _) = start_heard(&mut harness);
     let player = player_entity(&harness);
@@ -1017,13 +1016,110 @@ fn game_over_plays_no_pause_loop() {
         tungsten_template_basic::shell::top(harness.world()),
         Some(tungsten_template_basic::shell::game_over::GAME_OVER)
     );
+    let [sting, music] = theme::GAME_OVER_SOUNDS;
+    assert_eq!(plays(&harness, &over, sting).len(), 1, "the sting, once");
+    let played = plays(&harness, &over, music);
+    assert_eq!(played.len(), 1, "game over's music");
+    let (music, looping, fade) = played[0];
+    assert!(looping && fade == theme::GAME_OVER_FADE);
     assert!(
         plays(&harness, &over, MUSIC_PAUSE).is_empty(),
         "no pause loop"
     );
-    assert!(
-        levels(&over).is_empty() && stops(&over).is_empty(),
-        "the run's music plays on"
+    assert_eq!(
+        levels(&over),
+        [(run, 0.0, PAUSE_FADE)],
+        "the run's music falls silent"
     );
-    let _ = run;
+    let quit = find_named(&harness, "Quit to Title");
+    assert!(harness.focus(quit));
+    let ended = act(&mut harness, "ui_accept");
+    let stopped = stops(&ended);
+    assert!(
+        stopped.contains(&(music, theme::GAME_OVER_FADE)) && stopped.contains(&(run, MUSIC_FADE)),
+        "both stop with the run: {stopped:?}"
+    );
+}
+
+/// Puts the player at `at`, without a slide from where it was.
+fn put_player(harness: &mut UiHarness, at: [f32; 2]) {
+    let player = player_entity(harness);
+    let world = harness.world_mut();
+    world.get_mut::<Position>(player).unwrap().0 = at.into();
+    world.get_mut::<PrevPosition>(player).unwrap().0 = at.into();
+}
+
+#[test]
+fn a_bolt_hits_what_it_visibly_touches() {
+    let mut harness = harness();
+    start(&mut harness);
+    let dummy = harness.world().resource::<SampleRun>().dummy;
+    // A shot passing 17 px from the dummy's middle: the bolt's 5-px circle
+    // and the dummy's 15-px one overlap there, as their sprites do.
+    let from = [DUMMY_START[0] - 200.0, DUMMY_START[1] + 17.0];
+    put_player(&mut harness, from);
+    harness.pointer_to(from[0] + 300.0, from[1]);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
+    let mut struck = false;
+    for _ in 0..40 {
+        harness.step(1);
+        struck |= harness
+            .world()
+            .get::<HitFlash>(dummy)
+            .is_some_and(|flash| flash.is_active());
+    }
+    assert!(struck, "the dummy took the bolt");
+    assert!(bolts(&harness).is_empty(), "and the bolt ended there");
+}
+
+/// The run's enemies, in [`ENEMIES`]' order.
+fn enemies(harness: &UiHarness) -> Vec<Entity> {
+    let run = harness.world().resource::<SampleRun>();
+    run.enemies.iter().map(|enemy| enemy.entity).collect()
+}
+
+#[test]
+fn enemies_move_take_three_hits_and_come_back() {
+    let mut harness = harness();
+    start(&mut harness);
+    let spawned = enemies(&harness);
+    assert_eq!(spawned.len(), ENEMIES.len());
+    let at =
+        |harness: &UiHarness, entity: Entity| harness.world().get::<Position>(entity).unwrap().0;
+    let first: Vec<_> = spawned.iter().map(|&e| at(&harness, e)).collect();
+    harness.step(30);
+    for (entity, before) in spawned.iter().zip(&first) {
+        assert!(at(&harness, *entity).distance(*before) > 1.0, "it moves");
+    }
+    // A bolt hits an enemy: one less health.
+    let orbiter = spawned[1];
+    let near = at(&harness, orbiter);
+    harness
+        .world_mut()
+        .prepare_prefab("bolt", [near.x - 30.0, near.y])
+        .unwrap()
+        .spawn(harness.world_mut());
+    harness.step(6);
+    assert_eq!(current(&harness, orbiter), 2.0, "a bolt took one");
+    for _ in 0..2 {
+        damage(harness.world_mut(), orbiter, 1.0);
+        harness.step(1);
+    }
+    harness.step(2);
+    assert!(!harness.world().is_alive(orbiter), "three hits end it");
+    let seconds = (ENEMY_RETURN_SECS * 60.0) as u32;
+    harness.step(seconds - 10);
+    let back = enemies(&harness)[1];
+    assert_eq!(back, orbiter, "not yet back");
+    harness.step(20);
+    let back = enemies(&harness)[1];
+    assert_ne!(back, orbiter, "back after its seconds");
+    assert!(harness.world().is_alive(back));
+    assert_eq!(current(&harness, back), 3.0, "whole");
+    let start = ENEMIES[1].1;
+    let distance = at(&harness, back).distance(start.into());
+    assert!(distance < 70.0, "on its circle about its place: {distance}");
 }

@@ -3,6 +3,30 @@
     "player": {
       "path": "sprites/player.png",
       "filter": "nearest"
+    },
+    "bolt": {
+      "path": "sprites/bolt.png",
+      "filter": "nearest"
+    },
+    "dummy": {
+      "path": "sprites/dummy.png",
+      "filter": "nearest"
+    },
+    "gem": {
+      "path": "sprites/gem.png",
+      "filter": "nearest"
+    },
+    "heal_pickup": {
+      "path": "sprites/heal_pickup.png",
+      "filter": "nearest"
+    },
+    "speed_pickup": {
+      "path": "sprites/speed_pickup.png",
+      "filter": "nearest"
+    },
+    "enemy": {
+      "path": "sprites/enemy.png",
+      "filter": "nearest"
     }
   },
   "fonts": {
@@ -115,6 +139,18 @@
       "bus": "effects",
       "max_voices": 2
     },
+    "hurt": {
+      "path": "sounds/hurt.wav",
+      "volume": 0.6,
+      "bus": "effects",
+      "max_voices": 2
+    },
+    "game_over": {
+      "path": "sounds/game_over.wav",
+      "volume": 0.7,
+      "bus": "effects",
+      "max_voices": 1
+    },
     "music_run": {
       "path": "sounds/music_run.wav",
       "looping": true,
@@ -128,6 +164,13 @@
       "volume": 0.45,
       "bus": "music",
       "max_voices": 1
+    },
+    "music_over": {
+      "path": "sounds/music_over.wav",
+      "looping": true,
+      "volume": 0.45,
+      "bus": "music",
+      "max_voices": 1
     }
   },
   "prefabs": {
@@ -136,6 +179,12 @@
     },
     "hazard": {
       "path": "prefabs/hazard.json"
+    },
+    "enemy_orbit": {
+      "path": "prefabs/enemy_orbit.json"
+    },
+    "enemy_patrol": {
+      "path": "prefabs/enemy_patrol.json"
     },
     "gem": {
       "path": "prefabs/gem.json"

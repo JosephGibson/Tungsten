@@ -2,7 +2,8 @@
 //! change applies at once through `shell::apply_settings` and is written
 //! when the screen closes (Back or `ui_cancel` save `Settings` and the
 //! gameplay options); a tab's Reset returns its values to unset or default.
-//! A window mode or size change asks to keep it, reverting after 10 s.
+//! The window mode and size are picked first and sent by Apply, so a player
+//! cycles sizes freely; Apply then asks to keep them, reverting after 10 s.
 //! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
 //! through them. Every slider shows its value in a mono readout. The
 //! Display rows show the set value, else the live one, so an F11 press
@@ -28,7 +29,7 @@ use super::{
 pub const SETTINGS: StateId = "settings";
 /// The tabs, in order.
 pub const TABS: [&str; 5] = ["Display", "Audio", "Interface", "Controls", "Gameplay"];
-/// The Gameplay tab, which pause's Gameplay Options opens.
+/// The Gameplay tab.
 pub const GAMEPLAY_TAB: usize = 4;
 /// The window sizes offered without a monitor to read, smallest first; the
 /// first is the least any monitor's list offers.
@@ -42,6 +43,7 @@ pub const FPS_REST: u32 = 60;
 enum Row {
     Mode,
     Size,
+    Apply,
     Vsync,
     Cap,
     Unlimited,
@@ -75,9 +77,10 @@ const UI: std::ops::RangeInclusive<f32> = Settings::UI_SCALE_RANGE;
 const TEXT: std::ops::RangeInclusive<f32> = Settings::TEXT_SCALE_RANGE;
 
 /// Every row: its tab, its caption and how it is built.
-const ROWS: [(Row, usize, &str, Kind); 17] = [
+const ROWS: [(Row, usize, &str, Kind); 18] = [
     (Row::Mode, 0, "Window mode", Kind::Choice),
     (Row::Size, 0, "Window size", Kind::Choice),
+    (Row::Apply, 0, "Apply", Kind::Button),
     (Row::Vsync, 0, "VSync", Kind::Toggle),
     (Row::Cap, 0, "Frame rate limit", CAP),
     (Row::Unlimited, 0, "Unlimited", Kind::Toggle),
@@ -118,6 +121,14 @@ struct Ui {
     back: WidgetId,
 }
 
+impl Ui {
+    /// `row`'s control.
+    fn control(&self, row: Row) -> WidgetId {
+        let at = ROWS.iter().position(|(each, ..)| *each == row);
+        self.rows[at.unwrap_or_default()]
+    }
+}
+
 /// The settings screen, open on one tab.
 pub struct SettingsState {
     tab: usize,
@@ -125,6 +136,8 @@ pub struct SettingsState {
     /// The scale slider the pointer holds: it applies at the release, so
     /// the UI is not rescaled under the pointer.
     held: Option<WidgetId>,
+    /// The window mode and size picked and not yet applied.
+    pending: (Option<DisplayMode>, Option<Resolution>),
 }
 
 impl SettingsState {
@@ -134,6 +147,7 @@ impl SettingsState {
             tab,
             ui: None,
             held: None,
+            pending: (None, None),
         }
     }
 }
@@ -162,8 +176,8 @@ pub fn set_scale(world: &mut World, text: bool, scale: f32) {
     });
 }
 
-/// A window mode or size change: applied, then kept only when the player
-/// says so within 10 s.
+/// The window mode and size Apply sends: applied, then kept only when the
+/// player says so within 10 s.
 fn change_display(world: &mut World, edit: impl FnOnce(&mut Settings)) {
     let before = world.resource::<Settings>().clone();
     change(world, edit);
@@ -263,7 +277,8 @@ impl SettingsState {
         };
         let volumes = [None, Some(AudioBus::Music), Some(AudioBus::Effects)].map(volume);
         let tree = world.resource_mut::<UiTree>();
-        let fullscreen = display.display_mode != DisplayMode::Windowed;
+        let (mode, size) = self.pending;
+        let fullscreen = mode.unwrap_or(display.display_mode) != DisplayMode::Windowed;
         let cap = display.frame_rate_cap;
         for (&(row, ..), &id) in ROWS.iter().zip(&ui.rows) {
             let value = match row {
@@ -273,9 +288,13 @@ impl SettingsState {
                     continue;
                 }
                 Row::Size => {
-                    let Resolution { width, height } = display.resolution;
+                    let Resolution { width, height } = size.unwrap_or(display.resolution);
                     tree.set_text(id, format!("{width}×{height}").as_str());
                     tree.set_enabled(id, !fullscreen);
+                    continue;
+                }
+                Row::Apply => {
+                    tree.set_enabled(id, mode.is_some() || size.is_some());
                     continue;
                 }
                 Row::Cap => {
@@ -329,20 +348,38 @@ impl SettingsState {
         }
     }
 
-    /// A row's button activated.
-    fn activate(world: &mut World, row: Row) {
+    /// A row's button activated: the window mode and size are picked, the
+    /// value as it runs dropping the pick, and Apply sends the picks.
+    fn activate(&mut self, world: &mut World, row: Row) {
         let display = display(world);
+        let (mode, size) = &mut self.pending;
         match row {
             Row::Mode => {
-                let mode = match display.display_mode {
+                let mode_now = mode.unwrap_or(display.display_mode);
+                let picked = match mode_now {
                     DisplayMode::Windowed => DisplayMode::BorderlessFullscreen,
                     _ => DisplayMode::Windowed,
                 };
-                change_display(world, |settings| settings.set_display_mode(Some(mode)));
+                *mode = (picked != display.display_mode).then_some(picked);
             }
             Row::Size => {
-                let size = next(&window_sizes(world), display.resolution);
-                change_display(world, |settings| settings.set_resolution(Some(size)));
+                let picked = next(&window_sizes(world), size.unwrap_or(display.resolution));
+                *size = (picked != display.resolution).then_some(picked);
+            }
+            Row::Apply => {
+                let (mode, size) = std::mem::take(&mut self.pending);
+                if let Some(ui) = &self.ui {
+                    let first = ui.control(Row::Mode);
+                    world.resource_mut::<UiTree>().focus(first);
+                }
+                change_display(world, |settings| {
+                    if mode.is_some() {
+                        settings.set_display_mode(mode);
+                    }
+                    if size.is_some() {
+                        settings.set_resolution(size);
+                    }
+                });
             }
             Row::Difficulty => {
                 if let Some(run) = world.get_resource_mut::<RunState>() {
@@ -370,8 +407,7 @@ impl SettingsState {
             Row::Vsync => change(world, |settings| settings.set_vsync(Some(on))),
             Row::Cap => change(world, |settings| settings.set_frame_rate_cap(fps(number))),
             Row::Unlimited => {
-                // The frame-rate slider, the row before Unlimited.
-                let slider = self.ui.as_ref().map(|ui| ui.rows[3]);
+                let slider = self.ui.as_ref().map(|ui| ui.control(Row::Cap));
                 let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
                 let cap = if on {
                     Some(FrameRateCap::Uncapped)
@@ -399,8 +435,12 @@ impl SettingsState {
         }
     }
 
-    /// Returns the open tab's values to unset or default.
-    fn reset(&self, world: &mut World) {
+    /// Returns the open tab's values to unset or default, dropping the
+    /// display's picks.
+    fn reset(&mut self, world: &mut World) {
+        if self.tab == 0 {
+            self.pending = (None, None);
+        }
         let defaults = GameOptions::default();
         change(world, |settings| match self.tab {
             0 => {
@@ -492,7 +532,7 @@ impl GameState for SettingsState {
             reset,
             back,
         };
-        tree.set_slider_value(ui.rows[3], FPS_REST as f32);
+        tree.set_slider_value(ui.control(Row::Cap), FPS_REST as f32);
         self.ui = Some(ui);
         self.select(tree, self.tab);
         enter(ctx.world, root);
@@ -543,7 +583,7 @@ impl GameState for SettingsState {
                 }
                 UiEvent::Activated { widget, .. } => {
                     if let Some(row) = row_of(widget) {
-                        Self::activate(world, row);
+                        self.activate(world, row);
                         self.refresh(world);
                     }
                 }

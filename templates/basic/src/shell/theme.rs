@@ -25,6 +25,14 @@ pub const SCRIM_ALPHA: u8 = 184;
 /// The menu sounds, by manifest ID: a focus move a navigation press made,
 /// an activation, and a cancel or Back.
 pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
+/// Game over's sting and music, by manifest ID, and the music's fade in and
+/// out.
+pub const GAME_OVER_SOUNDS: [&str; 2] = ["game_over", "music_over"];
+pub const GAME_OVER_FADE: f32 = 1.2;
+/// Game over's entrance: the seconds its scrim takes to deepen from clear
+/// to [`DIED_TINT`] while its heading falls into place.
+pub const DIED_SECS: f32 = 0.9;
+pub const DIED_TINT: [u8; 4] = [64, 6, 10, 216];
 /// The window height, in physical pixels, that lays the UI out at scale 1:
 /// a taller window scales the UI up with it, a shorter one keeps the OS
 /// scale (`D-184`).
@@ -54,9 +62,18 @@ pub const READOUT_WIDTH: f32 = 64.0;
 /// the theme's 16 on 22.
 pub const HEADING_SIZE: f32 = 20.0;
 pub const HEADING_LINE: f32 = 28.0;
-/// The title's size and line height, in the heading family.
-pub const TITLE_SIZE: f32 = 40.0;
-pub const TITLE_LINE: f32 = 48.0;
+/// The title's size and line height, in the heading family, and the most
+/// its size grows to with the text scale, which still fits the floor's
+/// width on one line.
+pub const TITLE: [f32; 2] = [56.0, 64.0];
+pub const TITLE_CAP: f32 = 80.0;
+/// Between the title's buttons, and between the title and them.
+pub const TITLE_GAP: f32 = 14.0;
+/// Game over's "You died": its size and line height, in the heading family
+/// and the danger colour, and the most its size grows to, which still fits
+/// a menu's width.
+pub const DIED: [f32; 2] = [44.0, 52.0];
+pub const DIED_CAP: f32 = 52.0;
 /// Small print: the title's version and "Saving is off".
 pub const SMALL: [f32; 2] = [13.0, 18.0];
 
@@ -87,6 +104,18 @@ pub fn slide_in(tree: &mut UiTree, root: WidgetId) {
         root,
         ease(UiTrack::translation(from, [0.0, 0.0].into(), PUSH_SECS)),
     );
+}
+
+/// Game over's entrance over [`DIED_SECS`]: its scrim deepens from clear
+/// to [`DIED_TINT`], and its heading fades in, falling from 1.6 times its
+/// size.
+pub fn died(tree: &mut UiTree, root: WidgetId, heading: WidgetId) {
+    let [r, g, b, _] = DIED_TINT;
+    let ease = |track: UiTrack| track.with_easing(Easing::CubicOut);
+    let tint = UiTrack::background([r, g, b, 0], DIED_TINT, DIED_SECS);
+    tree.animate(root, ease(tint));
+    tree.animate(heading, ease(UiTrack::scale(1.6, 1.0, DIED_SECS)));
+    tree.animate(heading, ease(UiTrack::opacity(0.0, 1.0, DIED_SECS)));
 }
 
 /// Fades `root` out and slides it down [`SLIDE_UNITS`] over [`POP_SECS`]:

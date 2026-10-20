@@ -5,6 +5,7 @@
 //! changes a number here, not a widget. Every control takes its caption as
 //! its accessible name, so a test finds it by name.
 
+use tungsten::core::World;
 use tungsten::core::text::TextAlign;
 use tungsten::core::ui::{
     Align, CursorIcon, Edges, Justify, LayoutStyle, Sizing, SliderRange, StyleOverrides,
@@ -87,6 +88,46 @@ pub fn display(tree: &mut UiTree, parent: WidgetId, caption: &str, size: [f32; 2
         [text.size, text.line_height] = size.map(Some);
         text.align = Some(TextAlign::Center);
     })
+}
+
+/// The display labels whose size follows the text scale only up to a cap,
+/// each (label, size, cap): a resource [`recap`] keeps current.
+#[derive(Debug, Default)]
+pub struct Capped {
+    scale: f32,
+    labels: Vec<(WidgetId, [f32; 2], f32)>,
+}
+
+/// Sizes `id` at `size` times the text scale, at most `cap` units.
+fn fit(tree: &mut UiTree, id: WidgetId, size: [f32; 2], cap: f32) {
+    let fit = (cap / tree.text_scale() / size[0]).min(1.0);
+    restyle(tree, id, |text| {
+        [text.size, text.line_height] = size.map(|each| Some(each * fit));
+    });
+}
+
+/// Sizes display label `id` at `size` times the text scale, at most `cap`
+/// units, so a long line keeps to one in the smallest viewport, and keeps
+/// it so through text scale changes while it lives.
+pub fn capped(world: &mut World, id: WidgetId, size: [f32; 2], cap: f32) {
+    fit(world.resource_mut::<UiTree>(), id, size, cap);
+    let capped = world.resource_mut::<Capped>();
+    capped.labels.push((id, size, cap));
+}
+
+/// Sizes every capped label again when the text scale has moved, and drops
+/// those gone with their screens.
+pub fn recap(world: &mut World) {
+    let mut capped = std::mem::take(world.resource_mut::<Capped>());
+    let tree = world.resource_mut::<UiTree>();
+    capped.labels.retain(|(id, ..)| tree.contains(*id));
+    if capped.scale != tree.text_scale() {
+        capped.scale = tree.text_scale();
+        for &(id, size, cap) in &capped.labels {
+            fit(tree, id, size, cap);
+        }
+    }
+    *world.resource_mut::<Capped>() = capped;
 }
 
 /// A heading in the heading family, larger, never heavier; a menu's is

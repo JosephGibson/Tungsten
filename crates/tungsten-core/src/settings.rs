@@ -127,9 +127,9 @@ impl Settings {
     pub const FILE: &'static str = "settings.json";
     /// The UI scales a player can set.
     pub const UI_SCALE_RANGE: RangeInclusive<f32> = 0.5..=3.0;
-    /// The text scales a player can set (M56, Q13); the UI tree itself
-    /// takes 0.25..=4.0.
-    pub const TEXT_SCALE_RANGE: RangeInclusive<f32> = 0.75..=2.0;
+    /// The text scales a player can set (M56, Q13; from 0.5, `D-188`); the
+    /// UI tree itself takes 0.25..=4.0.
+    pub const TEXT_SCALE_RANGE: RangeInclusive<f32> = 0.5..=2.0;
 
     /// Reads `path`. A missing file gives defaults; an unreadable, corrupt or
     /// invalid one gives defaults and is renamed to `settings.json.bad`.
@@ -488,7 +488,7 @@ fn parse(bytes: &[u8]) -> Result<SettingsFile, String> {
     if let Some(scale) = file.text_scale
         && !(scale.is_finite() && Settings::TEXT_SCALE_RANGE.contains(&scale))
     {
-        return Err(format!("text_scale {scale} is outside 0.75..=2"));
+        return Err(format!("text_scale {scale} is outside 0.5..=2"));
     }
     if let Some(volume) = file.master_volume
         && !(volume.is_finite() && (0.0..=1.0).contains(&volume))

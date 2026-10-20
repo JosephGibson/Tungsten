@@ -196,10 +196,10 @@ fn the_text_scale_saves_loads_clamps_and_falls_back() {
     settings.set_text_scale(Some(9.0));
     assert_eq!(settings.text_scale(), Some(2.0));
     settings.set_text_scale(Some(0.1));
-    assert_eq!(settings.text_scale(), Some(0.75));
+    assert_eq!(settings.text_scale(), Some(0.5));
     for value in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
         settings.set_text_scale(Some(value));
-        assert_eq!(settings.text_scale(), Some(0.75), "{value} ignored");
+        assert_eq!(settings.text_scale(), Some(0.5), "{value} ignored");
     }
     settings.set_text_scale(None);
     assert_eq!(settings.text_scale(), None);

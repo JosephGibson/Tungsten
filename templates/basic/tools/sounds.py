@@ -2,7 +2,7 @@
 
 Everything is built from integer xorshift noise, one-pole filters, pulse,
 triangle and sine oscillators and exponential envelopes, so regeneration is
-byte-identical. Each sound is normalized to a -2 dBFS peak. The two music
+byte-identical. Each sound is normalized to a -2 dBFS peak. The three music
 loops render one bar past their end and fold that tail onto their start, so
 each repeats at its bar line without a click.
 
@@ -165,6 +165,43 @@ def pickup():
     return finish(samples, fade_in=0.001, fade_out=0.03)
 
 
+def hurt():
+    """The player hurt: a dull crunch over a pulse grunt dropping from 330 to
+    90 Hz, lower and longer than `hit`."""
+    duration = 0.26
+    noise, low, high = Noise(0x4E27), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crunch = (low(n, 2200) - high(n, 300)) * math.exp(-t / 0.035)
+        phase += glide(330, 90, min(1.0, t / 0.16)) / RATE
+        grunt = (pulse(phase, 0.35) + math.sin(math.tau * phase)) * 0.5 * math.exp(-t / 0.09)
+        samples.append(math.tanh(1.8 * (1.1 * crunch + grunt)))
+    return finish(samples, fade_in=0.0005, fade_out=0.03)
+
+
+def mix(length, events):
+    """`events`, each `(start sample, voice)`, summed into `length` samples."""
+    samples = [0.0] * length
+    for start, voice in events:
+        for i, value in enumerate(voice[:max(0, length - start)]):
+            samples[start + i] += value
+    return samples
+
+
+def game_over():
+    """The game-over sting: a pulse line falling A4, F4, D4, G#3, then a low
+    boom under an A minor chord in triangles that fades over a second."""
+    step = int(0.14 * RATE)
+    events = [(at * step, tone(note(name), 0.13, lambda p: pulse(p, 0.25), 0.25, 0.35))
+              for at, name in enumerate(('A4', 'F4', 'D4', 'G#3'))]
+    events.append((4 * step, kick(0xDEAD, 1.0)))
+    events += [(4 * step, tone(note(name), 1.1, triangle, 0.7, 0.25, release=0.3))
+               for name in ('A2', 'E3', 'A3', 'C4')]
+    return finish(mix(4 * step + int(1.5 * RATE), events), fade_out=0.2)
+
+
 def render_loop(beats, beat, events):
     """A loop `beats` long at `beat` samples each, four to the bar: each event
     `(start sample, voice)` renders into a buffer a bar longer, whose tail
@@ -313,7 +350,33 @@ def music_pause():
     return render_loop(8, beat, events)
 
 
-LOOPS = {'music_run.wav': 16 * (RATE * 60 // 140), 'music_pause.wav': 8 * (RATE * 60 // 105)}
+def music_over():
+    """An original two-bar dirge at 72 BPM in D minor: held triangle chords
+    on Dm, Bb, Gm and A over a sine bass, a slow pulse line, and a heartbeat
+    on each bar's first beat."""
+    beat = RATE * 60 // 72  # 18,375 samples
+    chords = [('D3', 'F3', 'A3'), ('Bb2', 'D3', 'F3'), ('G2', 'Bb2', 'D3'), ('A2', 'C#3', 'E3')]
+    events = []
+    for at, names in enumerate(chords):
+        held = 2 * beat / RATE - 0.05
+        for name in names:
+            events.append((at * 2 * beat, tone(note(name), held, triangle, 1.6, 0.2, release=0.08)))
+        bass = tone(note(names[0]) / 2, held, lambda p: math.sin(math.tau * p), 1.2, 0.4, 0.08)
+        events.append((at * 2 * beat, bass))
+    for at, name in enumerate(('A4', 'F4', 'D4', 'E4', 'F4', 'D4', 'C#4', 'E4')):
+        voice = tone(note(name), beat / RATE - 0.06, lambda p: pulse(p, 0.125), 0.5, 0.16)
+        events.append((at * beat, voice))
+    for bar in range(2):
+        events.append((bar * 4 * beat, kick(0xBEA0 + bar, 0.7)))
+        events.append((bar * 4 * beat + beat // 3, kick(0xBEB0 + bar, 0.45)))
+    return render_loop(8, beat, events)
+
+
+LOOPS = {
+    'music_run.wav': 16 * (RATE * 60 // 140),
+    'music_pause.wav': 8 * (RATE * 60 // 105),
+    'music_over.wav': 8 * (RATE * 60 // 72),
+}
 
 
 def build_sounds():
@@ -325,8 +388,11 @@ def build_sounds():
         'shoot.wav': shoot(),
         'hit.wav': hit(),
         'pickup.wav': pickup(),
+        'hurt.wav': hurt(),
+        'game_over.wav': game_over(),
         'music_run.wav': encode(music_run()),
         'music_pause.wav': encode(music_pause()),
+        'music_over.wav': encode(music_over()),
     }
 
 

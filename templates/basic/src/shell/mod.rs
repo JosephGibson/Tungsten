@@ -189,6 +189,7 @@ impl Plugin for ShellPlugin {
         world.insert_resource(self.info.clone());
         world.insert_resource(Shell::default());
         world.insert_resource(toast::Toasts::default());
+        world.insert_resource(widgets::Capped::default());
         options::load(world);
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
             scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
@@ -483,6 +484,7 @@ fn quit(world: &mut World, question: &str, then: impl FnOnce(&mut World) + 'stat
 /// in.
 pub struct Menu {
     pub root: WidgetId,
+    pub heading: WidgetId,
     pub buttons: Vec<WidgetId>,
     /// The button that opened the screen above, which takes focus back.
     opened: Option<WidgetId>,
@@ -493,7 +495,7 @@ impl Menu {
         let saving = saving_on(world);
         let tree = world.resource_mut::<UiTree>();
         let (root, card) = widgets::screen(tree, theme::MENU_WIDTH);
-        widgets::heading(tree, card, heading, true);
+        let heading = widgets::heading(tree, card, heading, true);
         if !saving {
             widgets::note(tree, card, "Saving is off");
         }
@@ -505,6 +507,7 @@ impl Menu {
         let opened = None;
         let menu = Self {
             root,
+            heading,
             buttons,
             opened,
         };
@@ -531,6 +534,7 @@ impl Menu {
 /// `shell_frame`: the run's playtime and first autosave, the exit's save,
 /// the menu sounds, the pause key and focus loss.
 fn frame(world: &mut World) {
+    widgets::recap(world);
     let delta = f64::from(world.resource::<Time>().delta());
     let first_save = world.get_resource_mut::<RunState>().is_some_and(|run| {
         run.playtime_secs += delta;

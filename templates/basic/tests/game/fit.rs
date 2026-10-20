@@ -116,14 +116,14 @@ fn every_settings_tab_fits() {
 const MATRIX: [([u32; 2], [f32; 3], [f32; 2]); 6] = [
     ([1280, 720], [1.75, 1.0, 1.0], [731.4, 411.4]),
     ([1280, 720], [1.75, 3.0, 2.0], [731.0, 411.2]),
-    ([1280, 720], [1.0, 0.5, 0.75], [2560.0, 1440.0]),
+    ([1280, 720], [1.0, 0.5, 0.5], [2560.0, 1440.0]),
     ([3840, 2160], [1.0, 1.0, 1.0], [1280.0, 720.0]),
     ([3840, 2160], [1.0, 3.0, 2.0], [731.0, 411.2]),
     ([1920, 1080], [1.0, 0.5, 2.0], [2560.0, 1440.0]),
 ];
 
 /// Sets the window and the scales, the UI and text scales as a player
-/// does, through `Settings`.
+/// does, through `Settings`, and runs the frame that takes them.
 fn set_scales(harness: &mut UiHarness, window: [u32; 2], [os, ui, text]: [f32; 3]) {
     let world = harness.world_mut();
     world.insert_resource(WindowSize {
@@ -135,6 +135,7 @@ fn set_scales(harness: &mut UiHarness, window: [u32; 2], [os, ui, text]: [f32; 3
     settings.set_ui_scale(Some(ui));
     settings.set_text_scale(Some(text));
     tungsten::apply_settings(world);
+    harness.step(1);
     harness.layout();
 }
 

@@ -1,7 +1,7 @@
-//! The title: the game's name in the heading family above Continue, New
-//! Game (through the difficulty picker, each difficulty beside the game's
-//! note on it), Load, Settings and Quit, with the version and "Saving is
-//! off" small at the bottom left. Continue loads the newest readable slot,
+//! The title: the game's name, large in the heading family, above Continue,
+//! New Game (through the difficulty picker, each difficulty beside the
+//! game's note on it), Load, Settings and Quit, spaced wider than a menu's,
+//! with the version and "Saving is off" small at the bottom left. Continue loads the newest readable slot,
 //! named with its age under it, and is focused when there is one, disabled
 //! otherwise. Quit asks first.
 
@@ -94,15 +94,20 @@ impl GameState for TitleState {
         widgets::fill(tree, card, [0; 4]);
         let mut style = tree.layout_style(card).cloned().unwrap_or_default();
         (style.max_width, style.align_items) = (None, Align::Center);
+        style.gap = theme::TITLE_GAP;
         tree.set_layout_style(card, style);
-        let size = [theme::TITLE_SIZE, theme::TITLE_LINE];
         // The card's width, wider than the name: a box sized to its text
         // can commit an ulp short and wrap its last word out of sight.
-        let title = widgets::display(tree, card, &info.title, size);
+        let title = widgets::display(tree, card, &info.title, theme::TITLE);
         widgets::set_width(tree, title, Sizing::Percent(100.0));
         let column = widgets::column(tree, card);
         widgets::set_width(tree, column, Sizing::Px(theme::MENU_WIDTH));
         let pages = [(); 2].map(|()| widgets::column(tree, column));
+        for page in pages {
+            let mut style = tree.layout_style(page).cloned().unwrap_or_default();
+            style.gap = theme::TITLE_GAP;
+            tree.set_layout_style(page, style);
+        }
         let captions = ["Continue", "New Game", "Load", "Settings", "Quit"];
         let buttons = captions.map(|caption| widgets::button(tree, pages[0], caption));
         if let Some((slot, _)) = &self.newest {
@@ -151,6 +156,7 @@ impl GameState for TitleState {
             tree.focus(buttons[0]);
         }
         enter(world, root);
+        widgets::capped(world, title, theme::TITLE, theme::TITLE_CAP);
         let shell = world.resource_mut::<Shell>();
         if warnings > 0 && !std::mem::replace(&mut shell.warned, true) {
             let files = if warnings == 1 { "file" } else { "files" };

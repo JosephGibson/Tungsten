@@ -366,6 +366,16 @@ fn a_killed_player_opens_game_over_and_holds_the_clock() {
     assert!(paused(&harness));
     assert!(harness.world().is_alive(player), "the dead stay under it");
     assert_eq!(focused(&harness), find(&harness, "Retry"));
+    // "You died" in the danger colour, over a scrim deepened to red once
+    // the entrance has run.
+    let root = front(&harness).expect("game over's root");
+    let tree = harness.tree();
+    let heading = labelled(tree, root, "You died").expect("the heading");
+    let danger = tree.theme().tokens.colors.danger;
+    assert_eq!(tree.resolved_style(heading).unwrap().text.color, danger);
+    harness.step(60);
+    let scrim = harness.tree().overrides(root).unwrap().background;
+    assert_eq!(scrim, Some(theme::DIED_TINT));
 }
 
 #[test]
@@ -717,10 +727,7 @@ fn the_title_is_one_serif_line_above_the_menu() {
     let title = labelled(tree, root, "Tungsten template").expect("the game's name");
     let text = &tree.resolved_style(title).unwrap().text;
     assert_eq!(text.family, "serif");
-    assert_eq!(
-        (text.size, text.line_height),
-        (theme::TITLE_SIZE, theme::TITLE_LINE)
-    );
+    assert_eq!([text.size, text.line_height], theme::TITLE);
     let node = tree.text_node(title).unwrap();
     assert_eq!(harness.text().committed(node).unwrap().line_count, 1);
     let menu = harness.rect(find(&harness, "New Game").unwrap()).unwrap();

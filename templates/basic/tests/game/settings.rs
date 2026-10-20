@@ -78,6 +78,7 @@ fn a_display_revert_keeps_the_focus_mute() {
         .mute_unfocused = true;
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
     assert_eq!(top(&harness), Some(CONFIRM));
     set_focus(&mut harness, false);
     // From the focus loss through the countdown's end and its revert.
@@ -107,7 +108,8 @@ fn retry_keeps_a_difficulty_changed_mid_run() {
     start(&mut harness);
     tap(&mut harness, "state_pause");
     harness.step(1);
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Difficulty");
     assert_eq!(row_text(&harness, "Difficulty"), "Hard");
     press(&mut harness, "Back");
@@ -145,14 +147,46 @@ fn tabs_switch_with_the_tab_row_and_ui_next() {
 }
 
 #[test]
-fn gameplay_options_opens_on_the_gameplay_tab() {
+fn pause_reaches_the_gameplay_options_through_settings() {
     let mut harness = harness();
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    assert_eq!(named(&harness, "Gameplay Options"), None, "not on pause");
+    press(&mut harness, "Settings");
     assert_eq!(top(&harness), Some(SETTINGS));
+    press(&mut harness, "Gameplay");
     assert!(find(&harness, "Difficulty").is_some(), "on in a run");
     assert_eq!(find(&harness, "Window mode"), None);
+}
+
+#[test]
+fn window_sizes_cycle_until_apply_sends_them() {
+    let mut harness = harness();
+    from_title(&mut harness);
+    assert_eq!(find(&harness, "Apply"), None, "nothing to apply");
+    press(&mut harness, "Window size");
+    press(&mut harness, "Reset tab");
+    assert_eq!(
+        row_text(&harness, "Window size"),
+        "1280×720",
+        "Reset drops it"
+    );
+    for _ in 0..3 {
+        press(&mut harness, "Window size");
+    }
+    assert_eq!(top(&harness), Some(SETTINGS), "no question while picking");
+    assert_eq!(settings(&harness).resolution(), None, "nothing sent");
+    assert_eq!(row_text(&harness, "Window size"), "2560×1440");
+    press(&mut harness, "Apply");
+    assert_eq!(top(&harness), Some(CONFIRM));
+    assert_eq!(
+        settings(&harness).resolution().map(|size| size.width),
+        Some(2560)
+    );
+    press(&mut harness, "Revert");
+    assert_eq!(settings(&harness).resolution(), None, "reverted");
+    assert_eq!(row_text(&harness, "Window size"), "1280×720");
+    assert_eq!(find(&harness, "Apply"), None, "nothing left to apply");
 }
 
 #[test]
@@ -160,6 +194,9 @@ fn a_window_mode_change_reverts_after_ten_seconds() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    assert_eq!(settings(&harness).display_mode(), None, "picked, not sent");
+    assert_eq!(row_text(&harness, "Window mode"), "Fullscreen");
+    press(&mut harness, "Apply");
     assert_eq!(
         settings(&harness).display_mode(),
         Some(DisplayMode::BorderlessFullscreen)
@@ -179,6 +216,7 @@ fn keep_confirms_the_display_change() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window mode");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(top(&harness), Some(SETTINGS));
     assert_eq!(
@@ -193,9 +231,12 @@ fn window_size_is_disabled_in_fullscreen() {
     let mut harness = harness();
     from_title(&mut harness);
     press(&mut harness, "Window size");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(row_text(&harness, "Window size"), "1600×900");
     press(&mut harness, "Window mode");
+    assert_eq!(find(&harness, "Window size"), None, "off once picked");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(find(&harness, "Window size"), None, "off in fullscreen");
     assert_eq!(
@@ -404,6 +445,7 @@ fn window_sizes_follow_the_monitor() {
     assert_eq!(settings::window_sizes(harness.world()), listed);
     from_title(&mut harness);
     press(&mut harness, "Window size");
+    press(&mut harness, "Apply");
     press(&mut harness, "Keep");
     assert_eq!(
         row_text(&harness, "Window size"),
@@ -529,7 +571,8 @@ fn damage_numbers_off_floats_no_label() {
     let mut harness = harness();
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Damage numbers");
     assert!(!options(&harness).damage_numbers);
     press(&mut harness, "Back");
@@ -554,7 +597,8 @@ fn difficulty_is_off_outside_a_run_and_saved_with_it() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    press(&mut harness, "Gameplay Options");
+    press(&mut harness, "Settings");
+    press(&mut harness, "Gameplay");
     press(&mut harness, "Difficulty");
     press(&mut harness, "Difficulty");
     assert_eq!(row_text(&harness, "Difficulty"), "Easy");
@@ -660,7 +704,7 @@ fn shell_values_clamp_and_ignore_non_finite_input() {
     settings::set_scale(world, true, f32::INFINITY);
     assert_eq!(world.resource::<Settings>().text_scale(), None, "ignored");
     settings::set_scale(world, true, 0.1);
-    assert_eq!(world.resource::<Settings>().text_scale(), Some(0.75));
+    assert_eq!(world.resource::<Settings>().text_scale(), Some(0.5));
     let options = world.resource_mut::<GameOptions>();
     options.set_screen_shake(2.0);
     assert_eq!(options.screen_shake(), 1.0);

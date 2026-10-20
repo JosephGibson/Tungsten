@@ -73,6 +73,7 @@ script-test: perf-test
     python3 -B scripts/test-crash-report.py
     python3 -B scripts/test-release-preflight.py
     python3 -B templates/basic/tools/sounds.py --check
+    python3 -B templates/basic/tools/sprites.py --check
 
 # Dependency policy: advisories, licenses, bans, sources.
 deps:

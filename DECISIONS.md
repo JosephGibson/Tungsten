@@ -2133,6 +2133,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 
 ## D-163 — W1 M4 landed (M56): state-owned UI roots that hide or freeze while covered and fade with the transition; paint-only opacity, translation and scale with a root fade and frozen roots; UI animation tracks on the real clock; `ui_route` before the dispatcher; a label's colour-only change repaints; disabled ancestors' look; content-box text; text scale; prewarm
 **Amended by D-167:** the text scale clause only; the text scale applies to `Game` and `GamePopup` roots, and debug labels and controls skip it; the rest stand.
+**Amended by D-188:** the text scale's range only; `TEXT_SCALE_RANGE` is 0.5..=2.0; the rest stand.
 **Date:** 2026-10-15
 **Decision:** Gameplay screens build on the core UI with nine additions, plain data and pure functions in core, the umbrella mapping roots to states and bridging the prewarm to the renderer, which reads no `World` (`D-007`, `D-018`).
 
@@ -2507,6 +2508,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 
 ## D-181 — M69's template part: `templates/basic` is a shell every game copies unchanged and a sample game it deletes, joined through a six-name seam, inside a line budget; a dark, square theme; gameplay options in their own store; four save slots with fixed triggers, each read-only for the run once it fails to load
 **Amended by D-187:** the theme's one family and its fades, the four slots, the seam's six names, the sample's scope and the budget only; three families, quick motion with a run curtain, eleven slots, a seventh seam name, a sample that shoots and sounds, and caps of 2,400 and 2,900; the rest stand.
+**Amended by D-189:** pause's Gameplay Options only; the gameplay options sit in Settings' Gameplay tab alone; the rest stand.
 **Date:** 2026-10-19
 **Decision:** The template holds two parts and a seam. No engine or kit code; no new dependency.
 
@@ -2601,6 +2603,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - Tests: `scripts/test-release.py` (the template's Linux and Windows layouts, its debug files, its README lines, the shipped packages and the launcher's table held to `templates(root)`) and the launcher's `a_listed_build_runs_from_its_folder` and `an_example_runs_from_the_root`.
 
 ## D-187 — The template polish's template part: three font families, scrims and cards, quick motion and a run curtain, a UI that holds its layout at every scale, readouts and a frame-rate slider, shipped 80 % volumes, monitor sizes, eleven slots, quit questions, a seventh seam name and no mute hotkey; a sample that eases, shoots, mends a dummy, takes pickups, frames its play space and sounds; schema 3; the line caps at 2,400 and 2,900
+**Amended by D-189:** the sample's tinted sprites and its hazard, the run's music under game over, the window mode and size applying at once, the title's size and spacing, and game over's look and sound only; own sprites with hits their size, four red enemies that return, game over's sting and music, Apply, a larger title under a cap; the rest stand.
 **Date:** 2026-10-20
 **Decision:** `templates/basic` takes the owner's notes of 2026-10-20 on the engine's `D-184` and the kit's `D-185`.
 
@@ -2620,3 +2623,34 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - `tests/game/` holds 115 tests, the fit matrix, the run curtain's timing and saves, the quit questions, the readouts and frame-rate limit, the shipped volumes, the monitor's sizes, the slots, the sample's ease, shot, dummy, pickups, camera and save schema, and the menu sounds and music among them; `the_schedule_matches_the_snapshot` is unchanged, since no system was added.
 - The title takes its card's width, and Continue's line and the picker's notes keep one line (`TextWrap::None`), around the known issue of a label box sized to its own text (`core/ui/layout/taffy.rs`, `place`); `fit.rs` checks the title's one line.
 - The run's music plays on at 0 under the pause loop, so it resumes where it has got to, not where it stopped; a voice pause stays backlog row 34's. Gamepad aim stays a backlog row: the sample aims at the cursor alone.
+
+## D-188 — The player's text scale reaches 50 %
+**Date:** 2026-10-20
+**Decision:** `Settings::TEXT_SCALE_RANGE` is `0.5..=2.0`: `set_text_scale` clamps to it, and a settings file's `text_scale` outside it is refused as invalid, as before. The UI tree's own clamp, 0.25..=4.0, is unchanged.
+
+**Why:** The owner's playtest of the template polish (2026-10-20) asked for text down to 50 %, which the UI scale already reaches; the template's fit matrix now lays every screen out at UI 50 % with text 50 %.
+
+**Consequences:**
+- Amends `D-163` as its marker line says.
+- The API snapshot holds the constant's type, not its value, so `just api` moves no line. A settings file at a text scale under 0.75, written by this build, fails an older build's check, which falls back to defaults beside a `.bad` backup (`D-159`).
+- Tests: `crates/tungsten-core/src/tests/settings.rs` clamps to 0.5; the template's `shell_values_clamp_and_ignore_non_finite_input` and fit matrix.
+- The UI lab's own text scale slider (example 05) keeps 0.75..=2.
+
+## D-189 — The template's playtest pass: own sprites with hits their size, four red enemies that return, a hurt sound, a red game over with its sting and music, Apply for the window mode and size, a larger title under a text-scale cap, and no Gameplay Options on pause
+**Date:** 2026-10-20
+**Decision:** `templates/basic` takes the owner's playtest notes of 2026-10-20 on `D-187`.
+
+- **Sprites.** `tools/sprites.py`, standard library only, draws `bolt`, `dummy`, `gem`, `heal_pickup`, `speed_pickup` and `enemy` as RGBA PNG from discs, rounded boxes and polygons sampled 4 × 4 per pixel; its `--check` compares decoded pixels, since deflate's bytes differ between zlib builds (`just script-test`). M36's `player.png` stays. Each prefab names its own sprite, untinted.
+- **Hits.** A bolt's circle is 5 px and the dummy's 15, as their sprites draw them, and bolts hit `team.dummy` or `team.enemy`. The kit sweeps hits over each step already; the misses came from a 32-px bolt sprite over a 4-px circle and a 10-px circle inside a 32-px dummy.
+- **Enemies.** Four red enemies, `ENEMIES`: the hazard, now an enemy that still slows, two `enemy_orbit` circling their places and an `enemy_patrol` across the top. Each takes three hits, despawns, and returns at its place `ENEMY_RETURN_SECS`, 4 game seconds, later, through `sample_frame`; they wear the damage numbers tag with the player and the dummy, and are not saved, so `SaveGame::SCHEMA` stays 3. The heal pickup moves to (304, 280), clear of the HUD at OS scale 1.75.
+- **Sound.** `hurt` plays on the player's `damaged` cue. Game over plays the `game_over` sting once and loops `music_over`, a two-bar dirge at 72 BPM, faded over 1.2 s, while the sample silences the run's music under it as under pause.
+- **Game over.** "You died" in the heading family at 44 units in the danger colour, fading in and falling from 1.6 times its size as the scrim deepens from clear to a dark red over 0.9 s.
+- **Settings.** The window mode and size cycle a pick their rows show; Apply sends it and asks to keep it, reverting after 10 s; Reset tab and leaving drop it. VSync and the frame-rate limit still apply at once. Pause drops Gameplay Options; the Gameplay tab holds them.
+- **Title.** The name at 56 on 64 units, its buttons 14 units apart. A display label's size follows the text scale only up to a cap, the title's 80 units and game over's 52, which `widgets::capped` sets and `shell_frame` applies again whenever the text scale moves, so the name keeps one line in the 731 × 411 floor at text 200 %.
+
+**Why:** The owner played the polished template and asked on 2026-10-20 for better projectile hits, sprites of their own for the bolt, the dummy and the pickups, more moving enemies in red, an impact sound when the player is hurt, no Gameplay Options on pause, an Apply step so window sizes can be cycled, a larger title with more room between its options, and a game over with an effect, a sound, music and a red "You died". Enemies that return keep the arena busy with no save change; a cap keeps a larger title inside the floor, where text 200 % at 56 units would wrap.
+
+**Consequences:**
+- Amends `D-187` and `D-181` as their marker lines say; `D-188` lowers the text scale's floor alongside.
+- Tests: 118 in `tests/game/`, among them `a_bolt_hits_what_it_visibly_touches`, which fails at the old circles, `enemies_move_take_three_hits_and_come_back`, `window_sizes_cycle_until_apply_sends_them`, `pause_reaches_the_gameplay_options_through_settings`, `game_over_plays_its_sting_and_music_over_the_silenced_run`, and game over's red heading and tint; the schedule snapshot is unchanged, since no system was added.
+- `src/shell/` measures 2,303 lines of code and `src/` 2,804, under `D-187`'s 2,400 and 2,900; `assets/sounds/` grows to 938,050 bytes, the dirge 294,044 of them.

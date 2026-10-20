@@ -1,13 +1,15 @@
 //! The sample game a new game deletes: a player to steer, easing in and out,
-//! who shoots at the cursor, a hazard on patrol, a target dummy, three gems
-//! and two pickups to take, all composed from the kit in prefab files. Its
-//! gameplay state spawns them for a run, fresh or from a save, frames the
-//! play space whatever the window's size, plays the run's music, and opens
-//! the shell's game over when the player dies. While pause is on top, the
-//! run's music falls silent under a loop of its own and comes back after.
-//! Gameplay's sounds are cues in the prefabs. It keeps the entities it spawned in [`SampleRun`],
-//! which the death check, the HUD and `save::capture` read, so a replaced
-//! run's entities, despawned at the frame's end, never count.
+//! who shoots at the cursor, four red enemies that move and come back after
+//! they fall, a target dummy, three gems and two pickups to take, all
+//! composed from the kit in prefab files. Its gameplay state spawns them for
+//! a run, fresh or from a save, frames the play space whatever the window's
+//! size, plays the run's music, and opens the shell's game over when the
+//! player dies. While pause or game over is on top, the run's music falls
+//! silent, under pause's loop or game over's music, and comes back after
+//! pause. Gameplay's sounds are cues in the prefabs. It keeps the entities
+//! it spawned in [`SampleRun`], which the death check, the HUD and
+//! `save::capture` read, so a replaced run's entities, despawned at the
+//! frame's end, never count.
 
 pub mod components;
 pub mod hud;
@@ -21,6 +23,7 @@ use tungsten::kit::{Counters, Health, Stats, Tags};
 use tungsten::{GameState, Plugin, RootCover, SceneEntity, StateContext, StateId};
 
 use crate::game::GAMEPLAY;
+use crate::shell::game_over::GAME_OVER;
 use crate::shell::options::GameOptions;
 use crate::shell::pause::PAUSE;
 use crate::shell::{self, Difficulty, RunStart, theme};
@@ -30,12 +33,22 @@ use components::{GemSlot, Player};
 pub const PLAYER_PREFAB: &str = "player";
 /// Where the player starts: the middle of a 1280 × 720 window.
 pub const PLAYER_START: [f32; 2] = [624.0, 344.0];
-/// The hazard's prefab: the player's sprite tinted red, on patrol.
+/// The hazard's prefab: an enemy on patrol whose touch also slows.
 pub const HAZARD_PREFAB: &str = "hazard";
 /// Where the hazard's patrol starts: 160 px below the player's start.
 pub const HAZARD_START: [f32; 2] = [624.0, 504.0];
-/// The gem's prefab: the player's sprite tinted gold, which drifts to the
-/// player in reach and counts `gems` on the game's `Counters` when taken.
+/// The enemies, by prefab and place: the hazard, two that circle their
+/// place and one on patrol across the top. Each takes three hits; a fallen
+/// one comes back at its place [`ENEMY_RETURN_SECS`] of game time later.
+pub const ENEMIES: [(&str, [f32; 2]); 4] = [
+    (HAZARD_PREFAB, HAZARD_START),
+    ("enemy_orbit", [200.0, 520.0]),
+    ("enemy_orbit", [1100.0, 380.0]),
+    ("enemy_patrol", [640.0, 80.0]),
+];
+pub const ENEMY_RETURN_SECS: f32 = 4.0;
+/// The gem's prefab: a gold diamond, which drifts to the player in reach
+/// and counts `gems` on the game's `Counters` when taken.
 pub const GEM_PREFAB: &str = "gem";
 /// Where the gems start: beyond the player's reach of 96 px.
 pub const GEM_STARTS: [[f32; 2]; 3] = [[424.0, 344.0], [824.0, 344.0], [624.0, 184.0]];
@@ -43,13 +56,15 @@ pub const GEM_STARTS: [[f32; 2]; 3] = [[424.0, 344.0], [824.0, 344.0], [624.0, 1
 /// it stands.
 pub const DUMMY_PREFAB: &str = "dummy";
 pub const DUMMY_START: [f32; 2] = [944.0, 184.0];
-/// The pickups, by their place: one heals 2, one speeds the player for 4 s.
+/// The pickups, by their place, clear of the HUD at any scale: one heals
+/// 2, one speeds the player for 4 s.
 pub const PICKUPS: [(&str, [f32; 2]); 2] = [
-    ("heal_pickup", [304.0, 184.0]),
+    ("heal_pickup", [304.0, 280.0]),
     ("speed_pickup", [944.0, 584.0]),
 ];
-/// The tag the player and the dummy wear while the damage numbers option
-/// is on; the `labels` cue rule floats a hit's damage only with it.
+/// The tag the player, the dummy and the enemies wear while the damage
+/// numbers option is on; the `labels` cue rule floats a hit's damage only
+/// with it.
 pub const DAMAGE_NUMBERS_TAG: &str = "show.damage_numbers";
 /// The play space's centre, which a run's camera starts on.
 pub const PLAY_CENTRE: [f32; 2] = [640.0, 360.0];
@@ -94,6 +109,16 @@ pub struct SampleRun {
     pub dummy: Entity,
     /// Each pickup's place in [`PICKUPS`] and its entity, taken or not.
     pub pickups: Vec<(u8, Entity)>,
+    /// Each enemy of [`ENEMIES`], in its order.
+    pub enemies: Vec<Enemy>,
+}
+
+/// An enemy of [`ENEMIES`]: its entity, and the game seconds it has been
+/// down, which bring it back at [`ENEMY_RETURN_SECS`].
+#[derive(Debug, Clone, Copy)]
+pub struct Enemy {
+    pub entity: Entity,
+    pub down: f32,
 }
 
 /// The sample as a plugin: the components its prefabs name, the camera's
@@ -125,18 +150,19 @@ fn zoom(world: &World) -> f32 {
 
 /// Pause's music: when pause comes on top, the run's voice falls to 0 and
 /// pause's loop fades in; when gameplay is back on top, the loop stops and
-/// the run's voice comes back. A screen over pause keeps the loop, and game
-/// over never starts it.
+/// the run's voice comes back. A screen over pause keeps the loop. Game
+/// over silences the run's voice too, under the music the shell plays.
 fn duck(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
     };
     let top = shell::top(world);
-    let (on, off) = (top == Some(PAUSE), top == Some(GAMEPLAY));
+    let paused = top == Some(PAUSE);
+    let (on, off) = (paused || top == Some(GAME_OVER), top == Some(GAMEPLAY));
     if on == music.ducked || !(on || off) {
         return;
     }
-    let pause = if on {
+    let pause = if paused {
         shell::play(world, MUSIC_PAUSE, PAUSE_FADE)
     } else {
         None
@@ -159,14 +185,47 @@ fn duck(world: &mut World) {
     });
 }
 
-/// `sample_frame`: the damage numbers tag follows the option on the player
-/// and the dummy, the camera's zoom the window, pause's music the stack and
-/// the HUD the run.
-fn frame(world: &mut World) {
-    let shown = world.resource::<GameOptions>().damage_numbers;
-    let wearers = world
+/// Spawns the enemy at `slot` of [`ENEMIES`] at its place.
+fn spawn_enemy(world: &mut World, slot: usize) -> Entity {
+    let (prefab, at) = ENEMIES[slot];
+    prepare(world, prefab, at).spawn(world)
+}
+
+/// Counts each fallen enemy's game seconds down and brings it back at its
+/// place after [`ENEMY_RETURN_SECS`].
+fn bring_back(world: &mut World) {
+    let delta = world.resource::<Time>().delta();
+    let Some(mut enemies) = world
         .get_resource::<SampleRun>()
-        .map_or(Vec::new(), |run| vec![run.player, run.dummy]);
+        .map(|run| run.enemies.clone())
+    else {
+        return;
+    };
+    for (slot, enemy) in enemies.iter_mut().enumerate() {
+        let alive = world
+            .get::<Health>(enemy.entity)
+            .is_some_and(|h| !h.is_dead());
+        enemy.down = if alive { 0.0 } else { enemy.down + delta };
+        if enemy.down >= ENEMY_RETURN_SECS {
+            *enemy = Enemy {
+                entity: spawn_enemy(world, slot),
+                down: 0.0,
+            };
+        }
+    }
+    world.resource_mut::<SampleRun>().enemies = enemies;
+}
+
+/// `sample_frame`: fallen enemies come back, the damage numbers tag follows
+/// the option on the player, the dummy and the enemies, the camera's zoom
+/// the window, the music the stack and the HUD the run.
+fn frame(world: &mut World) {
+    bring_back(world);
+    let shown = world.resource::<GameOptions>().damage_numbers;
+    let wearers = world.get_resource::<SampleRun>().map_or(Vec::new(), |run| {
+        let enemies = run.enemies.iter().map(|enemy| enemy.entity);
+        [run.player, run.dummy].into_iter().chain(enemies).collect()
+    });
     for entity in wearers {
         if let Some(tags) = world.get_mut::<Tags>(entity) {
             if shown {
@@ -231,7 +290,12 @@ impl GameState for GameplayState {
         if let Some(stats) = world.get_mut::<Stats>(player) {
             stats.set_base(Stats::MAX_HEALTH, max_health(start.difficulty));
         }
-        prepare(world, HAZARD_PREFAB, HAZARD_START).spawn(world);
+        let enemies = (0..ENEMIES.len())
+            .map(|slot| Enemy {
+                entity: spawn_enemy(world, slot),
+                down: 0.0,
+            })
+            .collect();
         let dummy = prepare(world, DUMMY_PREFAB, DUMMY_START).spawn(world);
         let pickups = pickups_left
             .into_iter()
@@ -257,6 +321,7 @@ impl GameState for GameplayState {
             gems,
             dummy,
             pickups,
+            enemies,
         });
         // The view starts centred on the play space, at this window's zoom.
         let (window, zoom) = (*world.resource::<WindowSize>(), zoom(world));

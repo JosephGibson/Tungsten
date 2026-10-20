@@ -1,9 +1,9 @@
 {
-  "sprite": { "asset_id": "player", "color": [150, 152, 160, 255] },
+  "sprite": { "asset_id": "dummy" },
   "components": {
     "tags": ["team.dummy"],
     "health": { "max": 100 },
-    "hurtbox": { "shape": { "circle": 10 } },
+    "hurtbox": { "shape": { "circle": 15 } },
     "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
     "cues": { "damaged": [{ "effect": "mend" }, { "sound": { "id": "hit" } }] }
   }

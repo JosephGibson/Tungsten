@@ -17,7 +17,7 @@
     "stats": { "pickup_radius": 96, "move_speed": 240, "max_health": 5 },
     "camera_target": null,
     "cues": {
-      "damaged": [{ "shake": 0.25 }],
+      "damaged": [{ "shake": 0.25 }, { "sound": { "id": "hurt" } }],
       "ability_used": [{ "sound": { "id": "shoot" } }]
     }
   }

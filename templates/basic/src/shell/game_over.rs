@@ -1,23 +1,28 @@
-//! Game over, pushed over gameplay when the player dies: Retry, Load and
-//! Quit to Title, which asks nothing, since a dead run saves nothing.
-//! Gameplay holds the game clock while covered. Retry loads the run's last
-//! good save at the run's difficulty, or starts the run fresh when it has
-//! none.
+//! Game over, pushed over gameplay when the player dies: "You died" in red
+//! falling into place as the world sinks into a red dusk, a sting and music
+//! of its own, then Retry, Load and Quit to Title, which asks nothing,
+//! since a dead run saves nothing. Gameplay holds the game clock while
+//! covered. Retry loads the run's last good save at the run's difficulty,
+//! or starts the run fresh when it has none.
 
-use tungsten::core::World;
 use tungsten::core::ui::UiTree;
+use tungsten::core::{AudioCommands, Voice, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::saves::{Mode, SavesState};
 use super::title::TitleState;
-use super::{Menu, RunStart, SlotState, goto, idle, push, read_slots, run, saving_on, start_run};
+use super::{
+    Menu, RunStart, SlotState, goto, idle, play, push, read_slots, run, saving_on, start_run,
+    theme, widgets,
+};
 
 pub const GAME_OVER: StateId = "game_over";
 
-/// The game-over screen.
+/// The game-over screen and its music.
 #[derive(Default)]
 pub struct GameOverState {
     menu: Option<Menu>,
+    music: Option<Voice>,
 }
 
 /// Starts the run again: from the slot it last loaded or saved, when that
@@ -41,15 +46,25 @@ impl GameState for GameOverState {
     }
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
-        let menu = Menu::new(ctx.world, "Game over", &["Retry", "Load", "Quit to Title"]);
+        let menu = Menu::new(ctx.world, "You died", &["Retry", "Load", "Quit to Title"]);
         let saving = saving_on(ctx.world);
-        ctx.world
-            .resource_mut::<UiTree>()
-            .set_enabled(menu.buttons[1], saving);
+        let tree = ctx.world.resource_mut::<UiTree>();
+        tree.set_enabled(menu.buttons[1], saving);
+        widgets::danger(tree, menu.heading);
+        theme::died(tree, menu.root, menu.heading);
+        widgets::capped(ctx.world, menu.heading, theme::DIED, theme::DIED_CAP);
+        let [sting, music] = theme::GAME_OVER_SOUNDS;
+        play(ctx.world, sting, 0.0);
+        self.music = play(ctx.world, music, theme::GAME_OVER_FADE);
         self.menu = Some(menu);
     }
 
-    fn on_exit(&mut self, _ctx: &mut StateContext) {}
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        if let Some(music) = self.music.take() {
+            let audio = ctx.world.resource_mut::<AudioCommands>();
+            audio.stop_voice(music, theme::GAME_OVER_FADE);
+        }
+    }
 
     fn on_resume(&mut self, ctx: &mut StateContext) {
         if let Some(menu) = &self.menu {
