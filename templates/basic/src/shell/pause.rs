@@ -6,11 +6,13 @@
 
 use tungsten::core::ui::UiTree;
 use tungsten::core::{Time, World};
-use tungsten::{GameState, StateContext, StateId, request_exit};
+use tungsten::{GameState, StateContext, StateId};
 
 use super::saves::{Mode, SavesState};
 use super::settings::{GAMEPLAY_TAB, SettingsState};
-use super::{Menu, autosave, cancelled, idle, pop, pressed, push, quit_to_title, saving_on};
+use super::{
+    Menu, autosave, cancelled, idle, pop, pressed, push, quit_game, quit_to_title, saving_on,
+};
 
 pub const PAUSE: StateId = "pause";
 
@@ -66,7 +68,7 @@ impl GameState for PauseState {
             Some(3) => push(world, SettingsState::new(GAMEPLAY_TAB)),
             Some(4) => push(world, SettingsState::new(0)),
             Some(5) => quit_to_title(world),
-            Some(6) => request_exit(world),
+            Some(6) => quit_game(world),
             Some(_) => pop(world),
             None if cancelled(world, menu.root) || pressed(world, "state_pause", false) => {
                 pop(world);

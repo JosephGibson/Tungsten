@@ -1,21 +1,37 @@
-//! The shell's look and motion in one place: the theme asset's ID and its
-//! apply, the spacing and sizes every screen shares, and the fade and slide
-//! each screen change takes. Colours, borders and radii live in
-//! `assets/ui/themes/shell.json`, which hot-reloads; layout is not themable,
-//! so spacing and sizes are constants here.
+//! The shell's look, motion and sound in one place: the theme asset's ID
+//! and its apply, the spacing and sizes every screen shares, the fades and
+//! slides each screen change takes, and the menu sounds' manifest IDs. Colours, borders, radii and font
+//! families live in `assets/ui/themes/shell.json`, which hot-reloads; layout
+//! is not themable, so spacing and sizes are constants here.
 
 use tungsten::core::ui::{UiThemeRegistry, UiTrack, UiTree, WidgetId};
 use tungsten::core::{Easing, World};
-use tungsten::{Transition, TransitionEffect};
 
 /// The `ui_themes` ID the shell applies.
 pub const THEME_ID: &str = "shell";
-/// Each way of a screen change's fade, in seconds.
-pub const FADE_SECS: f32 = 0.08;
-/// How long a new screen slides into place, in real seconds.
-pub const SLIDE_SECS: f32 = 0.12;
-/// How far below its place a new screen starts, in UI units.
-pub const SLIDE_UNITS: f32 = 8.0;
+/// How long a pushed screen fades and slides in, in real seconds; it acts
+/// on its first frame.
+pub const PUSH_SECS: f32 = 0.10;
+/// How long a closing screen fades and slides out before it pops.
+pub const POP_SECS: f32 = 0.08;
+/// How far a screen slides, in UI units: up into place, down out of it.
+pub const SLIDE_UNITS: f32 = 6.0;
+/// A run change's curtain: its fade in, before the stack changes under it,
+/// and its fade out.
+pub const CURTAIN_IN_SECS: f32 = 0.10;
+pub const CURTAIN_OUT_SECS: f32 = 0.14;
+/// The scrim's alpha over the screen below: the theme's background at 72 %.
+pub const SCRIM_ALPHA: u8 = 184;
+/// The menu sounds, by manifest ID: a focus move a navigation press made,
+/// an activation, and a cancel or Back.
+pub const MENU_SOUNDS: [&str; 3] = ["ui_move", "ui_select", "ui_back"];
+/// The window height, in physical pixels, that lays the UI out at scale 1:
+/// a taller window scales the UI up with it, a shorter one keeps the OS
+/// scale (`D-184`).
+pub const REFERENCE_HEIGHT: f32 = 720.0;
+/// The smallest viewport the UI lays out in, in UI units, whatever the
+/// scales: a 1280 × 720 window at the OS scale 1.75.
+pub const MIN_VIEWPORT: [f32; 2] = [731.0, 411.0];
 
 /// Inside a screen, all round, in UI units.
 pub const PADDING: f32 = 16.0;
@@ -25,18 +41,24 @@ pub const GAP: f32 = 8.0;
 pub const MARGIN: f32 = 16.0;
 /// A button's padding: horizontal, vertical.
 pub const BUTTON_PADDING: [f32; 2] = [14.0, 5.0];
-/// A menu's width, and a wide screen's.
+/// A menu's width, and a wide screen's: a card's design width, which a
+/// narrower viewport narrows.
 pub const MENU_WIDTH: f32 = 260.0;
-pub const WIDE_WIDTH: f32 = 520.0;
-/// A setting row's caption column and control column.
-pub const CAPTION_WIDTH: f32 = 150.0;
+pub const WIDE_WIDTH: f32 = 600.0;
+/// A slider's width and the least width of a setting's choice, which holds
+/// no text or grows with it, and of a readout; a caption takes what is left
+/// and wraps.
 pub const CONTROL_WIDTH: f32 = 170.0;
-/// A heading's size and line height; body text is the theme's 16 on 22.
-pub const HEADING_SIZE: f32 = 26.0;
-pub const HEADING_LINE: f32 = 32.0;
-/// The title's size and line height.
-pub const TITLE_SIZE: f32 = 32.0;
-pub const TITLE_LINE: f32 = 40.0;
+pub const READOUT_WIDTH: f32 = 64.0;
+/// A heading's size and line height, in the heading family; body text is
+/// the theme's 16 on 22.
+pub const HEADING_SIZE: f32 = 20.0;
+pub const HEADING_LINE: f32 = 28.0;
+/// The title's size and line height, in the heading family.
+pub const TITLE_SIZE: f32 = 40.0;
+pub const TITLE_LINE: f32 = 48.0;
+/// Small print: the title's version and "Saving is off".
+pub const SMALL: [f32; 2] = [13.0, 18.0];
 
 /// Applies the shell's theme to `world`'s tree when it is not already on;
 /// without the asset the built-in theme draws.
@@ -54,23 +76,23 @@ pub fn apply(world: &mut World) {
     }
 }
 
-/// A fade to black and back, [`FADE_SECS`] each way: a menu's push and pop.
-#[must_use]
-pub fn fade() -> Transition {
-    Transition::new(
-        TransitionEffect::Fade {
-            color: [0.0, 0.0, 0.0, 1.0],
-        },
-        FADE_SECS,
-    )
-}
-
-/// Slides `root` up [`SLIDE_UNITS`] into place on the real clock, with no
-/// overshoot: a new screen's entrance.
+/// Fades `root` in and slides it up [`SLIDE_UNITS`] into place over
+/// [`PUSH_SECS`] on the real clock, with no overshoot: a new screen's
+/// entrance.
 pub fn slide_in(tree: &mut UiTree, root: WidgetId) {
+    let ease = |track: UiTrack| track.with_easing(Easing::CubicOut);
+    tree.animate(root, ease(UiTrack::opacity(0.0, 1.0, PUSH_SECS)));
+    let from = [0.0, SLIDE_UNITS].into();
     tree.animate(
         root,
-        UiTrack::translation([0.0, SLIDE_UNITS].into(), [0.0, 0.0].into(), SLIDE_SECS)
-            .with_easing(Easing::CubicOut),
+        ease(UiTrack::translation(from, [0.0, 0.0].into(), PUSH_SECS)),
     );
+}
+
+/// Fades `root` out and slides it down [`SLIDE_UNITS`] over [`POP_SECS`]:
+/// a closing screen's exit.
+pub fn slide_out(tree: &mut UiTree, root: WidgetId) {
+    tree.animate(root, UiTrack::opacity(1.0, 0.0, POP_SECS));
+    let to = [0.0, SLIDE_UNITS].into();
+    tree.animate(root, UiTrack::translation([0.0, 0.0].into(), to, POP_SECS));
 }

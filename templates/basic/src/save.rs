@@ -22,20 +22,28 @@ pub struct SaveGame {
     pub gems_left: Vec<u8>,
     /// The game's `gems` count.
     pub gems: i64,
+    /// The pickups not yet taken, by their place in `PICKUPS`. The dummy
+    /// keeps no state, and an active speed boost is not saved.
+    pub pickups_left: Vec<u8>,
 }
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`.
-    const SCHEMA: u32 = 2;
+    const SCHEMA: u32 = 3;
 
     /// Schema 1 held the player's position alone: a Normal run with no
-    /// playtime, full health, every gem and none counted.
+    /// playtime, full health, every gem and none counted. Schema 2 had no
+    /// pickups: every one is still there.
     fn migrate(
         from: u32,
         mut data: Value,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        if from != 1 || !data.is_object() {
+        if !(1..=2).contains(&from) || !data.is_object() {
             return Err(format!("no migration from schema {from}: {data}").into());
+        }
+        if from == 2 {
+            data["pickups_left"] = vec![0, 1].into();
+            return Ok(data);
         }
         let meta: [(&str, Value); 3] = [
             ("game_version", "unknown".into()),
@@ -52,7 +60,7 @@ impl SaveData for SaveGame {
         data["health"] = health.into_iter().collect();
         data["gems_left"] = vec![0, 1, 2].into();
         data["gems"] = 0.into();
-        Ok(data)
+        Self::migrate(2, data)
     }
 }
 
@@ -75,12 +83,19 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     let gems = world
         .get_resource::<Counters>()
         .map_or(0, |counters| counters.get("gems"));
+    let pickups_left = run
+        .pickups
+        .iter()
+        .filter(|(_, pickup)| world.is_alive(*pickup))
+        .map(|(slot, _)| *slot)
+        .collect();
     Some(SaveGame {
         meta,
         player: [at.x, at.y],
         health,
         gems_left,
         gems,
+        pickups_left,
     })
 }
 

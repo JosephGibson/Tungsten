@@ -124,3 +124,54 @@ fn an_exclusive_request_over_borderless_changes_no_mode() {
     };
     assert!(DisplayDelta::between(&windowed, &requested).display_mode_changed);
 }
+
+#[test]
+fn window_syncs_set_the_scale_factors_window_size() {
+    let mut world = seed_world();
+    let mut scale = tungsten_core::ScaleFactor::default();
+    scale.set_reference_height(Some(720.0));
+    world.insert_resource(scale);
+    sync_window_resolution(&mut world, 3840, 2160, None);
+    assert_eq!(
+        world.resource::<tungsten_core::ScaleFactor>().get(),
+        3.0,
+        "a resize moves the window-relative factor"
+    );
+    sync_window_resolution(&mut world, 0, 0, None);
+    assert_eq!(
+        world.resource::<tungsten_core::ScaleFactor>().get(),
+        3.0,
+        "a 0×0 resize, a minimized window, changes nothing"
+    );
+    let state = DisplayState {
+        resolution: Resolution {
+            width: 1920,
+            height: 1080,
+        },
+        ..DisplayState::default()
+    };
+    sync_display_state_and_telemetry(&mut world, state, None);
+    let size = *world.resource::<WindowSize>();
+    assert_eq!((size.width, size.height), (1920, 1080));
+    assert_eq!(world.resource::<tungsten_core::ScaleFactor>().get(), 1.5);
+}
+
+#[test]
+fn set_monitor_inserts_replaces_and_removes_it() {
+    let mut world = World::new();
+    let size = |width, height| Resolution { width, height };
+    let monitor = MonitorInfo::new(
+        size(3840, 2160),
+        Some(60_000),
+        [VideoMode::new(size(3840, 2160), 60_000)],
+    );
+    set_monitor(&mut world, monitor.clone());
+    assert_eq!(world.get_resource::<MonitorInfo>(), monitor.as_ref());
+    let other = MonitorInfo::new(size(1920, 1080), None, []);
+    set_monitor(&mut world, other.clone());
+    assert_eq!(world.get_resource::<MonitorInfo>(), other.as_ref());
+    set_monitor(&mut world, None);
+    assert!(!world.has_resource::<MonitorInfo>());
+    set_monitor(&mut world, None);
+    assert!(!world.has_resource::<MonitorInfo>());
+}

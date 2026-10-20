@@ -56,7 +56,7 @@ pub use plugins::{
     PhysicsPlugin, StatePlugin, TweensPlugin, UiPlugin,
 };
 pub use post_aa::{PostAaState, request_post_aa};
-pub use settings::apply_settings;
+pub use settings::{apply_settings, shipped_volume};
 pub use sprite_extract::extract_sprites_default;
 pub use state::{
     GameState, RootCover, SceneEntity, StateContext, StateId, StateStack, despawn_scene_entities,

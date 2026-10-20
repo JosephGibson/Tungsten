@@ -18,7 +18,10 @@ use crate::app::{App, WindowSize};
 /// Runs an [`App`]'s frames as [`Harness`] does and lays its `UiTree` out
 /// at the logical viewport, `WindowSize` divided by `ScaleFactor::get()`,
 /// after each one, so a system reads the previous frame's rects, as under
-/// the app's layout stage.
+/// the app's layout stage. Before each frame and each layout it copies
+/// `WindowSize` into the `ScaleFactor`'s window size, as the app's window
+/// syncs do, so a test that inserts a `WindowSize` gets a window-relative
+/// factor (`D-184`).
 pub struct UiHarness {
     harness: Harness,
     text: FixedAdvanceMeasure,
@@ -90,6 +93,7 @@ impl UiHarness {
     /// frames run; stops where [`Harness::step`] stops.
     pub fn step(&mut self, frames: u32) -> u32 {
         for completed in 0..frames {
+            self.sync_window_size();
             if self.harness.step(1) == 0 {
                 return completed;
             }
@@ -102,6 +106,7 @@ impl UiHarness {
     /// `ScaleFactor::get()` as the app's layout stage does, without running
     /// a frame.
     pub fn layout(&mut self) -> LayoutStats {
+        self.sync_window_size();
         let scale = self.scale();
         let viewport = self
             .harness
@@ -188,6 +193,17 @@ impl UiHarness {
             stack.extend(tree.children(id).iter().rev().copied());
         }
         None
+    }
+
+    /// Copies `WindowSize` into the `ScaleFactor`'s window size.
+    fn sync_window_size(&mut self) {
+        let world = self.harness.world_mut();
+        let Some(size) = world.get_resource::<WindowSize>().copied() else {
+            return;
+        };
+        if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
+            scale.set_window_size(size.width, size.height);
+        }
     }
 
     /// Physical pixels per UI unit, as the layout divides by.

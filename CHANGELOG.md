@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+- Template polish (plan archived at `docs/plans/archive/template-polish.md`): the shell gets a serif title, mono numbers, scrims and cards over the screen below, quick card motion and a curtain for run changes, a UI sized from the window's height under a 731 × 411-unit floor that keeps its layout at every UI and text scale, slider readouts, a frame-rate slider with Unlimited, 80 % shipped volumes, window sizes from the monitor, eleven save slots, quit questions and no mute hotkey; the sample eases in and out, shoots at the cursor, mends a target dummy, takes a heal and a speed pickup, frames its play space at any window size and plays synthesized sounds and two original music loops; the template ships in the examples' release archives, run from its own folder (`D-184`–`D-187`). The engine gains `MonitorInfo`, `AudioConfig` and `shipped_volume`, `ScaleFactor`'s reference height and minimum viewport, `ColorTokens.danger`, and the kit's mover acceleration and deceleration. No hash moves.
+
 ## [0.90.0] - 2026-10-19
 
 Summary: M70, W14b (plan archived at `docs/plans/archive/1.0/phase6-milestone-70-project-cli.md`): `tungsten`, the engine's command line for a game project, in `tools/cli/`: `new` makes a game from the template pinned to the release tag, `check` loads every file a game reads inside the game's own build behind the `TUNGSTEN_CHECK` handshake and reports every error with its file, and `package` writes a portable Linux x86-64 players' archive with its notices and a debug archive; `just template-check` runs all three on `new`'s output at every release. No hash moves.

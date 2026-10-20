@@ -32,9 +32,9 @@ TUNGSTEN_SMOKE_FRAMES=24 TUNGSTEN_CAPTURE_FRAME=20 TUNGSTEN_CAPTURE_RESOLUTION=1
   TUNGSTEN_CAPTURE_PATH="$PWD/tests/fixtures/title.png" cargo run
 ```
 
-Then make the game yours (`D-181`). Delete `src/sample/` and its tests, `tests/game/sample.rs`, write your gameplay under `src/features/<name>/` ([Composing with the kit](#composing-with-the-kit)), and point the seam at it, the six names the shell calls and nothing else:
+Then make the game yours (`D-181`). Delete `src/sample/` and its tests, `tests/game/sample.rs`, write your gameplay under `src/features/<name>/` ([Composing with the kit](#composing-with-the-kit)), and point the seam at it, the seven names the shell calls and nothing else:
 
-- in `src/game.rs`, `GAMEPLAY`, your gameplay state's ID, which pause opens over and losing focus pauses; `gameplay(start)`, the state the shell puts on the stack for New Game, Continue, Load and Retry, with the run's difficulty and, to continue one, its save; and `BINDABLE_ACTIONS`, the actions the Keybindings screen lists, each with its row's label;
+- in `src/game.rs`, `GAMEPLAY`, your gameplay state's ID, which pause opens over and losing focus pauses; `gameplay(start)`, the state the shell puts on the stack for New Game, Continue, Load and Retry, with the run's difficulty and, to continue one, its save; `BINDABLE_ACTIONS`, the actions the Keybindings screen lists, each with its row's label; and `difficulty_note(difficulty)`, the note beside each difficulty in the New Game picker, which the sample fills with its max health;
 - in `src/save.rs`, `SaveGame`, what a save holds beside the shell's `meta`; `capture`, the live run as a save, `None` when there is nothing to save; and `summary`, a save's line on its slot row.
 
 Leave `src/shell/` as the template ships it, so a later template's shell can replace it whole. Your gameplay state calls `shell::game_over(world)` when the player dies, and reads the run's difficulty through `shell::run(world)`.
@@ -48,7 +48,9 @@ cargo run    # a debug build, with hot reload and the engine's HUD (F4 toggles i
 cargo test   # the game's tests, on the engine's headless harness
 ```
 
-The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. The menus take the keyboard, a pad or the mouse. In the game, the arrow keys or WASD move the player, P or Escape pauses, M mutes, and Quit Game on the pause menu or Quit on the title ends the run, saving it first; so does the window's close button.
+The first build compiles the engine and its dependencies, which takes a few minutes and more than a gigabyte of disk. The menus take the keyboard, a pad or the mouse. In the game, the arrow keys or WASD move the player, the left mouse button shoots toward the cursor, P or Escape pauses, and Quit Game on the pause menu or Quit on the title ends the run after a question, saving it first; the window's close button ends it at once, saving it too.
+
+The UI is laid out at the window's height over 720 when that is larger than the OS scale, so a 4K window shows the menus as large against it as a 720p window at 100 % OS scale does, and never in less than 731 × 411 UI units, whatever the player's UI and text scales (`D-184`); `tests/game/fit.rs` checks every screen at six windows and scale extremes. `tools/sounds.py` synthesizes every sound in `assets/sounds/`, with the standard library alone: change a sound there and run it again; `--check` compares the files with a fresh render.
 
 ## Change it while it runs
 
@@ -64,21 +66,20 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 
 The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, frame-rate limit, UI and text scales, master volume and bus volumes the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
 
-The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the shell's mute key does on M:
+The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the shell's Audio tab does with a volume:
 
 ```rust
 let settings = world.resource_mut::<Settings>();
-let muted = settings.master_volume().is_some_and(|volume| volume <= 0.0);
-settings.set_master_volume(if muted { None } else { Some(0.0) });
+settings.set_bus_volume(AudioBus::Music, Some(0.5));
 shell::apply_settings(world);
 if let Err(err) = world.resource::<Settings>().save() {
     log::warn!("Settings not saved: {err}");
 }
 ```
 
-`tungsten::apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the volumes to the mixer; the shell's `shell::apply_settings` calls it and keeps the game muted while its window has no focus, when the player chose that. The shell's Settings screen changes these values, applies each change at once and saves when it closes; a window mode or size change asks to keep it and reverts after 10 seconds. Its gameplay options, screen shake, damage numbers and pausing or muting when the window loses focus, are `GameOptions`, kept in a store of their own under the user folder's `options`. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. A window the player resized or maximized keeps its size: the resolution goes out only when the set or shipped one changes (`D-169`). `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
+`tungsten::apply_settings` applies them as a restart would: the display through a request the next frame takes, the UI scale to `ScaleFactor` and the volumes to the mixer, an unset volume at the one `tungsten.json`'s `audio` section ships (the template ships 80 %, `D-184`); the shell's `shell::apply_settings` calls it and keeps the game muted while its window has no focus, when the player chose that. The shell's Settings screen changes these values, applies each change at once and saves when it closes; a window mode or size change asks to keep it and reverts after 10 seconds. Its gameplay options, screen shake, damage numbers and pausing or muting when the window loses focus, are `GameOptions`, kept in a store of their own under the user folder's `options`. A value set back to `None` returns to `tungsten.json`'s, and the `TUNGSTEN_DISPLAY_*` overrides still win over both. A window the player resized or maximized keeps its size: the resolution goes out only when the set or shipped one changes (`D-169`). `ActionMap::replace_bindings_and_persist` writes a rebinding to the user folder's `input.json`, and only the actions that differ from the shipped file, so a game update's new bindings reach every action the player left alone.
 
-Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The shell saves your `SaveGame` to four slots: `autosave`, written when the game pauses, quits to the title or exits and when a run starts, and `slot_1` to `slot_3`, which the player saves to from the pause menu. Continue loads the newest slot that reads. The sample's `SaveGame` holds the shell's `meta` (the game's version, the difficulty and the playtime), the player's position and health, the gems left and the count, and migrates schema 1, which held the position alone:
+Saves go in the user folder's `saves` (`~/.local/share/<id>/saves` on Linux, `saves` beside the settings on Windows and macOS), one file per slot, through the `SaveSlots` resource (`D-160`). A save is the game's own serde type with a schema number; bump the number when the type changes shape, and write `migrate` to rewrite an older save into the new shape. The shell saves your `SaveGame` to eleven slots: `autosave`, written when the game pauses, quits to the title or exits and when a run starts, and `slot_1` to `slot_10`, which the player saves to from the pause menu. Continue loads the newest slot that reads and names it with the save's age. The sample's `SaveGame` holds the shell's `meta` (the game's version, the difficulty and the playtime), the player's position and health, the gems left and the count, and the pickups left, and migrates schema 1, which held the position alone, and schema 2, which had no pickups:
 
 ```rust
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,11 +89,12 @@ pub struct SaveGame {
     pub health: Health,
     pub gems_left: Vec<u8>,
     pub gems: i64,
+    pub pickups_left: Vec<u8>,
 }
 
 impl SaveData for SaveGame {
-    const SCHEMA: u32 = 2;
-    // `migrate(1, data)` fills in the fields schema 1 lacked.
+    const SCHEMA: u32 = 3;
+    // `migrate` fills in what schemas 1 and 2 lacked.
 }
 
 /// The live run as a save; `None` with no run, no player or a dead one.
@@ -101,17 +103,17 @@ pub fn capture(world: &World) -> Option<SaveGame>
 
 `save(slot, &data)`, `load`, `list` and `delete` return a `SaveError` rather than panic: `NotFound` for a slot never saved, `NewerSchema` for one a newer build wrote, `Corrupt`, `Migration`, `NoFolder` without a folder. A slot name is lowercase letters, digits, `.`, `_` and `-`. A slot that failed to load is the player's progress all the same: the shell shows it as saved by a newer version or damaged, never loads or overwrites it until the game restarts, and lets the player delete it after a question.
 
-Tests set the folder in code, so they never read or write your own settings or saves: the template's `harness()` sets `config.game.user_folder = UserFolder::Off`, and a persistence test points `UserFolder::At(dir)` at a fresh temp folder and builds a second app on it, as `mute_survives_a_restart` and `continue_restores_position_health_gems_and_count` do.
+Tests set the folder in code, so they never read or write your own settings or saves: the template's `harness()` sets `config.game.user_folder = UserFolder::Off`, and a persistence test points `UserFolder::At(dir)` at a fresh temp folder and builds a second app on it, as `back_saves_settings_and_options_across_a_restart` and `continue_restores_position_health_gems_and_count` do.
 
 ## How the game is laid out
 
 - `src/main.rs` loads `tungsten.json`, creates the app, names the manifest, turns on hot reload in debug builds, turns the engine's Escape-to-quit off, registers the game and runs it.
-- `src/game.rs` registers the kit, the shell and the game, and holds the seam's three game names; `src/save.rs` holds the other three, `SaveGame`, `capture` and `summary`.
+- `src/game.rs` registers the kit, the shell and the game, and holds the seam's four game names; `src/save.rs` holds the other three, `SaveGame`, `capture` and `summary`.
 - `src/shell/` holds the screens every game keeps, each a state on the engine's state stack with a UI root it owns: the title, pause, game over, save and load, settings, keybindings, the confirm dialog and toasts, with their theme and widgets.
-- `src/sample/` is the sample game: its plugin and gameplay state, its components and its HUD. The player's movement, health, knockback and camera, the hazard's patrol and touch, and the gems are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
-- `tests/game/` steps the game on the headless harness, with no window: a module each for the sample, the shell, the saves, the settings, the keybindings, every screen's fit at the smallest and a large viewport, and the title's pixels; `sample` holds the snapshot of the resolved schedule.
+- `src/sample/` is the sample game: its plugin and gameplay state, its components, its HUD and its music. The player's eased movement, aim and shot, health, knockback and camera, the hazard's patrol and touch, the dummy's mend, the gems and the pickups are the kit's, named on their prefabs ([Composing with the kit](#composing-with-the-kit)).
+- `tests/game/` steps the game on the headless harness, with no window: a module each for the sample, the shell, the saves, the settings, the keybindings, every screen's fit at six windows and scale extremes, and the title's pixels; `sample` holds the snapshot of the resolved schedule.
 - `assets/manifest.json` names every asset by an ID, and game code uses the IDs, never file paths ([assets](assets.md)).
-- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, `assets/data/cue_rules/labels.json` floats a hit's damage, `assets/ui/themes/shell.json` is the shell's theme, and `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader.
+- `assets/prefabs/` holds the prefab files, one per entity kind the game spawns by ID ([Queries and spawns](#queries-and-spawns)); `assets/data/tags.json` declares the tags its prefabs name, `assets/data/cue_rules/labels.json` floats a hit's damage, `assets/ui/themes/shell.json` is the shell's theme, `assets/shaders/damage_flash.wgsl` is the kit's hit-flash shader, and `assets/sounds/` holds the sounds `tools/sounds.py` makes.
 - `AGENTS.md` holds the repository's rules for agent sessions, and `CLAUDE.md` imports it.
 
 ## Systems and stages

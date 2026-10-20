@@ -1,16 +1,16 @@
 //! Game over, pushed over gameplay when the player dies: Retry, Load and
-//! Quit to Title. Gameplay holds the game clock while covered. Retry loads
-//! the run's last good save at the run's difficulty, or starts the run
-//! fresh when it has none.
+//! Quit to Title, which asks nothing, since a dead run saves nothing.
+//! Gameplay holds the game clock while covered. Retry loads the run's last
+//! good save at the run's difficulty, or starts the run fresh when it has
+//! none.
 
 use tungsten::core::World;
 use tungsten::core::ui::UiTree;
 use tungsten::{GameState, StateContext, StateId};
 
 use super::saves::{Mode, SavesState};
-use super::{
-    Menu, RunStart, SlotState, idle, push, quit_to_title, read_slots, run, saving_on, start_run,
-};
+use super::title::TitleState;
+use super::{Menu, RunStart, SlotState, goto, idle, push, read_slots, run, saving_on, start_run};
 
 pub const GAME_OVER: StateId = "game_over";
 
@@ -64,7 +64,7 @@ impl GameState for GameOverState {
         match menu.pick(world) {
             Some(0) => retry(world),
             Some(1) => push(world, SavesState::new(Mode::Load)),
-            Some(2) => quit_to_title(world),
+            Some(2) => goto(world, TitleState::default()),
             _ => {}
         }
     }

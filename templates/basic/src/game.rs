@@ -5,8 +5,8 @@
 use tungsten::kit::KitPlugins;
 use tungsten::{App, GameState, StateId};
 
-use crate::sample::{GameplayState, SamplePlugin};
-use crate::shell::{GameInfo, RunStart, ShellPlugin};
+use crate::sample::{GameplayState, SamplePlugin, max_health};
+use crate::shell::{Difficulty, GameInfo, RunStart, ShellPlugin};
 
 /// The game's manifest, relative to its folder.
 pub const MANIFEST: &str = "assets/manifest.json";
@@ -26,7 +26,7 @@ pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
     ("move_left", "Move left"),
     ("move_right", "Move right"),
     ("state_pause", "Pause"),
-    ("toggle_mute", "Mute"),
+    ("shoot", "Shoot"),
 ];
 
 /// The state the shell puts on the stack for New Game, Continue, Load and
@@ -36,10 +36,19 @@ pub fn gameplay(start: RunStart) -> impl GameState {
     GameplayState::new(start)
 }
 
+/// What `difficulty` changes, the muted note beside it in the New Game
+/// picker.
+#[must_use]
+pub fn difficulty_note(difficulty: Difficulty) -> String {
+    format!("{} health", max_health(difficulty))
+}
+
 /// Registers the game with `app`: the kit's plugins, the shell, then the
 /// sample. The kit runs everything the sample's prefabs compose: the
-/// player's movement, health, hit flash, knockback and camera, the
-/// hazard's patrol, touch and slow, and the gems' drift and count.
+/// player's eased movement, aim and shot, health, hit flash, knockback and
+/// camera, the bolt's flight and hit, the hazard's patrol, touch and slow,
+/// the dummy's mend, the gems' drift and count, and the pickups' heal and
+/// speed.
 pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugins(KitPlugins::set());
     app.add_plugin(ShellPlugin::new(info));

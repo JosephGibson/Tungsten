@@ -1,4 +1,5 @@
 use crate::config::{PresentModeConfig, RenderConfig, WindowConfig};
+use glam::Vec2;
 use serde::Deserialize;
 use serde::de::Deserializer;
 use serde_json::{Map, Value};
@@ -103,22 +104,125 @@ pub struct WindowSize {
     pub height: u32,
 }
 
+/// One video mode a monitor offers (`D-184`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct VideoMode {
+    /// Its size in physical pixels.
+    pub size: Resolution,
+    /// Its refresh rate in millihertz: 60 Hz is 60 000.
+    pub refresh_millihertz: u32,
+}
+
+impl VideoMode {
+    /// A mode of `size` at `refresh_millihertz`.
+    #[must_use]
+    pub const fn new(size: Resolution, refresh_millihertz: u32) -> Self {
+        Self {
+            size,
+            refresh_millihertz,
+        }
+    }
+}
+
+/// The monitor the window is on, as the platform reports it (`D-184`): a
+/// `World` resource the app inserts once a window exists and replaces when
+/// the window moves or its scale changes; absent headless and in the
+/// harness.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct MonitorInfo {
+    /// Its current mode's size in physical pixels: the desktop, which a
+    /// window never outgrows.
+    pub size: Resolution,
+    /// Its current refresh rate in millihertz, when the platform reports
+    /// one.
+    pub refresh_millihertz: Option<u32>,
+    /// Every mode it reports, largest first (by area, then width, then
+    /// refresh), each once; a mode with a 0 side is left out.
+    pub modes: Vec<VideoMode>,
+}
+
+impl MonitorInfo {
+    /// The monitor whose current mode is `size`; a refresh of 0 reads as
+    /// unknown. `None` for a size with a 0 side, as a Wayland output
+    /// reports before its first current mode.
+    #[must_use]
+    pub fn new(
+        size: Resolution,
+        refresh_millihertz: Option<u32>,
+        modes: impl IntoIterator<Item = VideoMode>,
+    ) -> Option<Self> {
+        if size.width == 0 || size.height == 0 {
+            return None;
+        }
+        let mut modes: Vec<VideoMode> = modes
+            .into_iter()
+            .filter(|mode| mode.size.width > 0 && mode.size.height > 0)
+            .collect();
+        modes.sort_by_key(|mode| {
+            std::cmp::Reverse((area(mode.size), mode.size.width, mode.refresh_millihertz))
+        });
+        modes.dedup();
+        Some(Self {
+            size,
+            refresh_millihertz: refresh_millihertz.filter(|&hz| hz > 0),
+            modes,
+        })
+    }
+
+    /// Each distinct mode size no wider and no taller than [`size`](Self::size),
+    /// and `size` itself, smallest first (by area, then width): the window
+    /// sizes this monitor can show whole.
+    #[must_use]
+    pub fn window_sizes(&self) -> Vec<Resolution> {
+        let mut sizes: Vec<Resolution> = self
+            .modes
+            .iter()
+            .map(|mode| mode.size)
+            .filter(|size| size.width <= self.size.width && size.height <= self.size.height)
+            .chain(std::iter::once(self.size))
+            .collect();
+        sizes.sort_by_key(|size| (area(*size), size.width));
+        sizes.dedup();
+        sizes
+    }
+}
+
+fn area(size: Resolution) -> u64 {
+    u64::from(size.width) * u64::from(size.height)
+}
+
 /// The display's scale factor: a `World` resource `App` inserts at 1.0 and
 /// keeps current from the window. [`os`](Self::os) is the OS scale, physical
 /// pixels per logical unit, [`ui_scale`](Self::ui_scale) the player's
 /// setting, and [`get`](Self::get) the factor UI layout uses (`D-127`,
-/// `D-144`, `D-159`).
+/// `D-144`, `D-159`). A game may size the UI from the window instead
+/// (`D-184`): a [reference height](Self::set_reference_height) and a
+/// [minimum viewport](Self::set_min_viewport), read against the
+/// [window size](Self::set_window_size) the app keeps here.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ScaleFactor {
     os: f32,
     ui: f32,
+    reference: Option<f32>,
+    floor: Option<Vec2>,
+    window: (u32, u32),
+    /// What `get` returns, recomputed whenever an input changes.
+    factor: f32,
 }
 
 impl ScaleFactor {
-    /// The factor UI layout uses: the OS scale times the player's UI scale.
+    /// The factor UI layout uses: the base times the player's UI scale, the
+    /// base being the OS scale or, with a reference height and a window
+    /// size, the larger of the OS scale and the window's height over the
+    /// reference; then, with a minimum viewport and a window size, at most
+    /// the window's width over the floor's and its height over the floor's.
+    /// Without either, the OS scale times the UI scale. Cached, so a call
+    /// costs a read.
     #[must_use]
     pub fn get(&self) -> f32 {
-        self.os * self.ui
+        self.factor
     }
 
     /// The OS scale: physical pixels per logical unit.
@@ -132,6 +236,7 @@ impl ScaleFactor {
     pub fn set_os(&mut self, scale: f32) {
         if scale.is_finite() && scale > 0.0 {
             self.os = scale;
+            self.refresh();
         }
     }
 
@@ -146,13 +251,93 @@ impl ScaleFactor {
     pub fn set_ui_scale(&mut self, scale: f32) {
         if scale.is_finite() && scale > 0.0 {
             self.ui = scale;
+            self.refresh();
         }
+    }
+
+    /// Sizes the UI from the window's height: the window's height over
+    /// `height` replaces the OS scale in [`get`](Self::get) when larger, so
+    /// 720.0 lays a 2160-pixel window out at 3. `None`, the default, is the
+    /// OS scale alone. A value that is not finite or not positive is
+    /// ignored.
+    pub fn set_reference_height(&mut self, height: Option<f32>) {
+        match height {
+            Some(height) if !(height.is_finite() && height > 0.0) => {}
+            height => {
+                self.reference = height;
+                self.refresh();
+            }
+        }
+    }
+
+    /// The reference height [`set_reference_height`](Self::set_reference_height)
+    /// set; `None` by default.
+    #[must_use]
+    pub fn reference_height(&self) -> Option<f32> {
+        self.reference
+    }
+
+    /// The smallest viewport, in UI units, the factor lays a window out in:
+    /// [`get`](Self::get) never rises past the window's width over
+    /// `floor.x` or its height over `floor.y`, whatever the scales ask.
+    /// `None`, the default, sets no floor. A floor with a side that is not
+    /// finite or not positive is ignored.
+    pub fn set_min_viewport(&mut self, floor: Option<Vec2>) {
+        match floor {
+            Some(floor) if !(floor.is_finite() && floor.x > 0.0 && floor.y > 0.0) => {}
+            floor => {
+                self.floor = floor;
+                self.refresh();
+            }
+        }
+    }
+
+    /// The floor [`set_min_viewport`](Self::set_min_viewport) set; `None`
+    /// by default.
+    #[must_use]
+    pub fn min_viewport(&self) -> Option<Vec2> {
+        self.floor
+    }
+
+    /// The window's size in physical pixels, which the reference height and
+    /// the floor read: the app sets it wherever it sets `WindowSize`, and
+    /// `UiHarness` before each frame and each layout. 0×0, the default, or
+    /// any 0 side leaves both out.
+    pub fn set_window_size(&mut self, width: u32, height: u32) {
+        self.window = (width, height);
+        self.refresh();
+    }
+
+    fn refresh(&mut self) {
+        let (width, height) = self.window;
+        let sized = width > 0 && height > 0;
+        let (width, height) = (width as f32, height as f32);
+        let mut base = self.os;
+        if let Some(reference) = self.reference
+            && sized
+        {
+            base = base.max(height / reference);
+        }
+        let mut factor = base * self.ui;
+        if let Some(floor) = self.floor
+            && sized
+        {
+            factor = factor.min(width / floor.x).min(height / floor.y);
+        }
+        self.factor = factor;
     }
 }
 
 impl Default for ScaleFactor {
     fn default() -> Self {
-        Self { os: 1.0, ui: 1.0 }
+        Self {
+            os: 1.0,
+            ui: 1.0,
+            reference: None,
+            floor: None,
+            window: (0, 0),
+            factor: 1.0,
+        }
     }
 }
 

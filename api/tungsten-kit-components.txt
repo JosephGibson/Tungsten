@@ -266,6 +266,8 @@ component tags: The entity's tags: dotted names the items filter on.
   sample: ["team.player"]
 component top_down_mover: A top-down character: it moves at its speed in its intent's direction, sliding along walls on a kinematic body, or freely without one.
   field speed: f32 (> 0) — world pixels per second at full tilt
+  field acceleration: f32 (> 0) = null — world pixels per second squared toward full tilt while moving; null reaches it at once
+  field deceleration: f32 (> 0) = null — world pixels per second squared toward rest once stopped; null stops at once
   genres: top_down, shmup, grid
   sample: { "speed": 240 }
 component wrap: Brings the entity back in from the far side once its box leaves an area; exactly one of `region` and `view`.

@@ -16,7 +16,7 @@ mod visual;
 use std::path::{Path, PathBuf};
 
 use tungsten::core::ui::{Visibility, WidgetId};
-use tungsten::core::{Config, Entity, Position, Transform, UserFolder, With};
+use tungsten::core::{Config, Entity, Position, Transform, UserFolder, Velocity, With};
 use tungsten::kit::Health;
 use tungsten::testing::UiHarness;
 use tungsten::{App, StateId};
@@ -82,7 +82,8 @@ pub fn top(harness: &UiHarness) -> Option<StateId> {
     game_shell::top(harness.world())
 }
 
-/// Steps until no screen transition runs.
+/// Steps until no screen change runs: a push the dispatcher has not
+/// applied, a closing screen, the curtain or an engine transition.
 pub fn settle(harness: &mut UiHarness) {
     let mut frames = 0;
     while game_shell::transitioning(harness.world()) {
@@ -167,7 +168,7 @@ pub fn press(harness: &mut UiHarness, name: &str) {
 }
 
 /// Starts a run at `difficulty` as the title's New Game does, and steps
-/// into it.
+/// into it through the curtain.
 pub fn start_at(harness: &mut UiHarness, difficulty: Difficulty) {
     game_shell::start_run(
         harness.world_mut(),
@@ -177,7 +178,7 @@ pub fn start_at(harness: &mut UiHarness, difficulty: Difficulty) {
         },
         None,
     );
-    harness.step(2);
+    settle(harness);
     assert_eq!(top(harness), Some(game::GAMEPLAY));
 }
 
@@ -200,6 +201,21 @@ pub fn player_position(harness: &UiHarness) -> Option<[f32; 2]> {
     let player = harness.world().get_resource::<SampleRun>()?.player;
     let at = harness.world().get::<Position>(player)?.0;
     Some([at.x, at.y])
+}
+
+/// Releases `action` and steps until the player's body stands still: the
+/// mover slows to a stop over a few steps.
+pub fn release_and_settle(harness: &mut UiHarness, action: &str) {
+    harness.harness_mut().release_action(action);
+    let player = player_entity(harness);
+    for _ in 0..30 {
+        harness.step(1);
+        let still = harness.world().get::<Velocity>(player);
+        if still.is_none_or(|velocity| velocity.0.length_squared() == 0.0) {
+            return;
+        }
+    }
+    panic!("the player never stopped");
 }
 
 /// The run's player.

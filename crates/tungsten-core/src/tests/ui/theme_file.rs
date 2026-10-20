@@ -270,3 +270,17 @@ fn the_registry_holds_themes_by_id() {
     assert_eq!(registry.insert("light", Theme::default()), Some(light));
     assert_eq!(registry.get("light"), Some(&Theme::default()));
 }
+
+#[test]
+fn danger_reads_from_colors_and_defaults() {
+    assert_eq!(Theme::default().tokens.colors.danger, [255, 107, 107, 255]);
+    let theme = theme_of(r##"{ "tokens": { "colors": { "danger": "#e0303080" } } }"##);
+    assert_eq!(theme.tokens.colors.danger, [0xe0, 0x30, 0x30, 0x80]);
+    let default = Theme::default();
+    assert_eq!(
+        theme.tokens.colors.text, default.tokens.colors.text,
+        "the other colours keep their defaults"
+    );
+    // No built-in kind reads it, so the kinds are the default theme's.
+    assert_eq!(theme.kinds, default.kinds);
+}

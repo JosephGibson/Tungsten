@@ -1,7 +1,9 @@
+use crate::audio::AudioBus;
 use crate::display::{DisplayConfig, DisplayMode, Resolution};
 use crate::settings::{FrameRateCap, Settings, UserFolder};
 use serde::Deserialize;
 use serde_json::Value;
+use std::collections::HashMap;
 use std::path::Path;
 use std::str::FromStr;
 use thiserror::Error;
@@ -33,6 +35,7 @@ const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', sta
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
 const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
+const VOLUME_EXPECTED: &str = "a number from 0 to 1";
 const GAME_ID_MAX_LEN: usize = 64;
 /// The lowest step rate: a longer step than physics' default
 /// `max_step_dt`, 1/30 s, would run physics slow against the game (`D-094`).
@@ -468,6 +471,76 @@ impl TimeConfig {
     }
 }
 
+/// The `audio` section of `tungsten.json` (`D-184`): the volumes a player
+/// who set none hears, each 0 to 1, which an unset setting returns to.
+///
+/// ```json
+/// "audio": { "master_volume": 0.8, "bus_volumes": { "music": 0.8, "effects": 0.8 } }
+/// ```
+///
+/// A file without the section, or a bus left out, plays at 1. An unknown
+/// key or bus name fails the parse.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[non_exhaustive]
+pub struct AudioConfig {
+    /// `audio.master_volume`: 1 unless set.
+    pub master_volume: f32,
+    /// `audio.bus_volumes`, by bus name; a bus left out is 1.
+    pub bus_volumes: HashMap<AudioBus, f32>,
+}
+
+impl Default for AudioConfig {
+    fn default() -> Self {
+        Self {
+            master_volume: 1.0,
+            bus_volumes: HashMap::new(),
+        }
+    }
+}
+
+impl AudioConfig {
+    /// The volume `bus` ships at: its entry, else 1.
+    #[must_use]
+    pub fn bus_volume(&self, bus: AudioBus) -> f32 {
+        self.bus_volumes.get(&bus).copied().unwrap_or(1.0)
+    }
+
+    /// Checks every volume is finite and in 0..=1. `Config::load` and
+    /// `App::new` both call this, since a config built in code skips the
+    /// load.
+    ///
+    /// # Errors
+    ///
+    /// [`ConfigError::InvalidValue`] with an empty `path` for field
+    /// `audio.master_volume` or `audio.bus_volumes`, the latter's value
+    /// naming the bus.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let valid = |volume: f32| volume.is_finite() && (0.0..=1.0).contains(&volume);
+        if !valid(self.master_volume) {
+            return Err(ConfigError::InvalidValue {
+                path: String::new(),
+                field: "audio.master_volume",
+                value: self.master_volume.to_string(),
+                expected: VOLUME_EXPECTED,
+            });
+        }
+        for &bus in AudioBus::ALL {
+            if let Some(&volume) = self.bus_volumes.get(&bus)
+                && !valid(volume)
+            {
+                return Err(ConfigError::InvalidValue {
+                    path: String::new(),
+                    field: "audio.bus_volumes",
+                    value: format!("{}: {volume}", bus.name()),
+                    expected: VOLUME_EXPECTED,
+                });
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Top-level engine configuration.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct Config {
@@ -485,6 +558,9 @@ pub struct Config {
     /// The fixed step and interpolation.
     #[serde(default)]
     pub time: TimeConfig,
+    /// The volumes the game ships (`D-184`).
+    #[serde(default)]
+    pub audio: AudioConfig,
     /// What `load` would have logged before any logger exists (`D-119`).
     #[serde(skip)]
     load_warnings: Vec<String>,
@@ -542,6 +618,7 @@ impl Config {
                 }
                 parsed.game.validate().map_err(|e| e.with_path(path))?;
                 parsed.time.validate().map_err(|e| e.with_path(path))?;
+                parsed.audio.validate().map_err(|e| e.with_path(path))?;
                 if parsed.logging.level.parse::<log::LevelFilter>().is_err() {
                     return Err(ConfigError::InvalidValue {
                         path: path.display().to_string(),

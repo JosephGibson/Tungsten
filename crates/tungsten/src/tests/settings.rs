@@ -372,3 +372,82 @@ fn player_frame_cap_without_a_shipped_config_sets_only_a_set_cap() {
     apply_settings(&mut world);
     assert_eq!(pending(&world).unwrap().frame_rate_cap, Some(30));
 }
+
+/// A config shipping the master and music at 0.8 and effects at 0.6
+/// (`D-184`).
+fn shipped_audio() -> Config {
+    let mut config = Config::default();
+    config.audio.master_volume = 0.8;
+    config.audio.bus_volumes.insert(AudioBus::Music, 0.8);
+    config.audio.bus_volumes.insert(AudioBus::Effects, 0.6);
+    config
+}
+
+/// The master and bus volumes the queued commands set, draining them.
+fn levels(world: &mut World) -> (Vec<f32>, Vec<(AudioBus, f32)>) {
+    let mut master = Vec::new();
+    let mut buses = Vec::new();
+    for command in world.resource_mut::<AudioCommands>().drain() {
+        match command {
+            AudioCommand::SetMasterVolume(volume) => master.push(volume),
+            AudioCommand::SetBusVolume { bus, volume, .. } => buses.push((bus, volume)),
+            _ => {}
+        }
+    }
+    (master, buses)
+}
+
+#[test]
+fn an_unset_volume_returns_to_the_shipped_one() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, shipped_audio());
+    let world = app.world_mut();
+    levels(world);
+    let settings = world.resource_mut::<Settings>();
+    settings.set_master_volume(Some(0.25));
+    settings.set_bus_volume(AudioBus::Music, Some(0.5));
+    apply_settings(world);
+    assert_eq!(
+        levels(world),
+        (
+            vec![0.25],
+            vec![(AudioBus::Music, 0.5), (AudioBus::Effects, 0.6)]
+        ),
+        "a set volume wins; an unset bus plays at its shipped volume"
+    );
+    let settings = world.resource_mut::<Settings>();
+    settings.set_master_volume(None);
+    settings.set_bus_volume(AudioBus::Music, None);
+    apply_settings(world);
+    assert_eq!(
+        levels(world),
+        (
+            vec![0.8],
+            vec![(AudioBus::Music, 0.8), (AudioBus::Effects, 0.6)]
+        ),
+        "unset, each returns to the shipped volume, not to 1"
+    );
+}
+
+#[test]
+fn shipped_volume_reads_the_config_and_defaults_to_one() {
+    let bare = World::new();
+    assert_eq!(shipped_volume(&bare, None), 1.0, "no shipped config");
+    assert_eq!(shipped_volume(&bare, Some(AudioBus::Music)), 1.0);
+    let dir = tempdir();
+    let app = app_at(&dir, shipped_audio());
+    assert_eq!(shipped_volume(app.world(), None), 0.8);
+    assert_eq!(shipped_volume(app.world(), Some(AudioBus::Music)), 0.8);
+    assert_eq!(shipped_volume(app.world(), Some(AudioBus::Effects)), 0.6);
+    let plain = app_at(&tempdir(), Config::default());
+    for bus in [None, Some(AudioBus::Music), Some(AudioBus::Effects)] {
+        assert_eq!(shipped_volume(plain.world(), bus), 1.0, "{bus:?}");
+    }
+    // The settings never change what ships.
+    let mut app = app;
+    app.world_mut()
+        .resource_mut::<Settings>()
+        .set_master_volume(Some(0.1));
+    apply_settings(app.world_mut());
+    assert_eq!(shipped_volume(app.world(), None), 0.8);
+}

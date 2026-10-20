@@ -9,10 +9,11 @@
       "accent": "#f0a830",
       "accent_text": "#0b0c10",
       "focus": "#ffd36b",
-      "disabled_text": "#6c7280"
+      "disabled_text": "#6c7280",
+      "danger": "#ff6b6b"
     },
     "radii": { "none": 0, "sm": 0, "md": 0, "lg": 0 },
-    "fonts": { "body": "sans", "heading": "sans", "mono": "sans" },
+    "fonts": { "body": "sans", "heading": "serif", "mono": "engine_mono" },
     "text": { "size": 16, "line_height": 22, "heading_size": 26 }
   },
   "kinds": {

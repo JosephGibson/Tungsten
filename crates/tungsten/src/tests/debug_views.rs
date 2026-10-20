@@ -1910,3 +1910,41 @@ fn the_controls_line_stays_in_view_and_takes_a_click_while_the_log_follows_its_e
     press_control(&mut harness, 5);
     assert!(harness.world().resource::<LogConsole>().paused.is_some());
 }
+
+#[test]
+fn debug_views_keep_their_size_under_a_reference_height() {
+    // The template's policy: the UI sized from a 720-unit reference height
+    // under a 731×411 floor (`D-184`), at 4K where the base is 3.
+    let run = |reference: Option<f32>, ui: f32| {
+        let mut harness = sized(app(), 3840, 2160, 1.0);
+        {
+            let world = harness.world_mut();
+            let scale = world.resource_mut::<ScaleFactor>();
+            scale.set_reference_height(reference);
+            scale.set_min_viewport(reference.map(|_| Vec2::new(731.0, 411.0)));
+            scale.set_ui_scale(ui);
+            world.resource_mut::<DebugHud>().enabled = true;
+        }
+        harness.step(4);
+        let hud = roots(&harness)[0].unwrap();
+        (
+            harness.world().resource::<ScaleFactor>().get(),
+            harness.tree().debug_scale(),
+            physical(&harness, hud),
+        )
+    };
+    let (plain_factor, plain_debug, plain) = run(None, 1.0);
+    assert_eq!((plain_factor, plain_debug), (1.0, 1.0));
+    for ui in [1.0, 3.0] {
+        let (factor, debug, root) = run(Some(720.0), ui);
+        assert!(factor > 2.9, "the window-relative factor applies: {factor}");
+        assert!(
+            (factor * debug - 1.0).abs() < 1e-5,
+            "the views draw at the OS scale: {factor} × {debug}"
+        );
+        assert!(
+            (root.size() - plain.size()).abs().max_element() < 0.01,
+            "ui {ui}: {root:?} and {plain:?}"
+        );
+    }
+}

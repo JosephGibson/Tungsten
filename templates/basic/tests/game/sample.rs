@@ -5,24 +5,28 @@ use std::path::Path;
 
 use tungsten::core::assets::manifest::ResolvedManifest;
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, CameraController, CameraMode, CameraState, Entity,
-    PrevPosition, Settings, Sprite, Time, Transform, UserFolder, With,
+    ActionMap, AssetRegistry, AudioCommand, AudioHandle, Binding, CameraController, CameraMode,
+    CameraState, Entity, Position, PrevPosition, SoundRegistry, Sprite, Time, Transform,
+    UserFolder, Velocity, Voice, With,
 };
 use tungsten::kit::{
-    ContactDamage, Counters, Damaged, Effects, Hit, HitFlash, Pickup, Stats, damage,
+    ContactDamage, Counters, Damaged, Effects, Hit, HitFlash, LinearMotion, Projectile, Stats,
+    damage,
 };
 use tungsten::testing::UiHarness;
-use tungsten::{App, SceneEntity};
+use tungsten::{App, SceneEntity, WindowSize};
 use tungsten_template_basic::game;
-use tungsten_template_basic::sample::components::Player;
+use tungsten_template_basic::sample::components::{GemSlot, Player};
 use tungsten_template_basic::sample::{
-    CAMERA_DEAD_ZONE, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, PLAYER_PREFAB, PLAYER_START,
+    CAMERA_DEAD_ZONE, GEM_PREFAB, HAZARD_PREFAB, HAZARD_START, MUSIC_FADE, MUSIC_PAUSE, MUSIC_RUN,
+    PAUSE_FADE, PICKUPS, PLAY_CENTRE, PLAYER_PREFAB, PLAYER_START, SampleRun,
 };
+use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::{Difficulty, theme};
 
 use super::{
-    config, harness, harness_with, health, player, player_entity, player_position, start, start_at,
-    tap, user_folder,
+    config, harness, health, player, player_entity, player_position, release_and_settle, start,
+    start_at, tap,
 };
 
 /// How far the player moves per second, in pixels: the prefab's
@@ -33,6 +37,15 @@ const PLAYER_SPEED: f32 = 240.0;
 /// step by up to one, so a distance is checked within it.
 const ONE_STEP: f32 = PLAYER_SPEED / 60.0;
 
+/// How far the player covers in `steps` fixed steps from rest at up to
+/// `top` px/s: the prefab's acceleration, 1,800 px/s², gains 30 px/s a
+/// step.
+fn ramp(steps: u32, top: f32) -> f32 {
+    (1..=steps)
+        .map(|step| (30.0 * step as f32).min(top) / 60.0)
+        .sum()
+}
+
 /// The hazard: the entity whose `contact_damage` hurts the player.
 fn hazard_entity(harness: &UiHarness) -> Entity {
     harness
@@ -42,11 +55,11 @@ fn hazard_entity(harness: &UiHarness) -> Entity {
         .expect("the hazard spawned")
 }
 
-/// The gems still in play: the entities with a `pickup`.
+/// The gems still in play: the entities with a gem's slot.
 fn gem_entities(harness: &UiHarness) -> Vec<Entity> {
     harness
         .world()
-        .query_filtered::<Entity, With<Pickup>>()
+        .query_filtered::<Entity, With<GemSlot>>()
         .collect()
 }
 
@@ -152,7 +165,7 @@ fn player_moves_under_move_right_only_in_gameplay() {
     harness.harness_mut().press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + PLAYER_SPEED * 30.0 / 60.0;
+    let expected = PLAYER_START[0] + ramp(30, PLAYER_SPEED);
     assert!(
         (x - expected).abs() <= ONE_STEP + 1e-3,
         "x = {x}, expected {expected}"
@@ -188,7 +201,7 @@ fn a_gamepad_stick_moves_the_player() {
     harness.harness_mut().press_action("move_right");
     harness.step(30);
     let [x, y] = player(&harness).expect("the player spawned");
-    let expected = PLAYER_START[0] + PLAYER_SPEED * 30.0 / 60.0;
+    let expected = PLAYER_START[0] + ramp(30, PLAYER_SPEED);
     assert!(
         (x - expected).abs() <= ONE_STEP + 1e-3,
         "x = {x}, expected {expected}"
@@ -209,13 +222,14 @@ fn clock_half_scale_moves_the_player_half_as_far() {
         let [x, _] = player(&harness).expect("the player spawned");
         moved.push(x - PLAYER_START[0]);
     }
+    // Half the clock runs half the steps, each eased in the same.
     let (full, half) = (moved[0], moved[1]);
     assert!(
-        (full - PLAYER_SPEED * 30.0 / 60.0).abs() <= ONE_STEP + 1e-3,
+        (full - ramp(30, PLAYER_SPEED)).abs() <= ONE_STEP + 1e-3,
         "full {full}"
     );
     assert!(
-        (half - full / 2.0).abs() <= ONE_STEP + 1e-3,
+        (half - ramp(15, PLAYER_SPEED)).abs() <= ONE_STEP + 1e-3,
         "half {half}, full {full}"
     );
 }
@@ -258,7 +272,7 @@ fn a_hit_shakes_the_camera_and_shows_its_damage() {
     harness.step(1);
     assert_eq!(
         labels(&harness),
-        [("1".to_string(), "sans".to_string())],
+        [("1".to_string(), "engine_mono".to_string())],
         "the labels cue rule floats the hit while the option is on"
     );
     assert!(
@@ -300,7 +314,10 @@ fn a_player_kept_on_the_hazard_takes_one_hit_per_window() {
     place_on_hazard(&mut harness, player, hazard);
     harness.step(1);
     assert_eq!(current(&harness, player), 4.0, "one hit");
-    assert_eq!(labels(&harness), [("1".to_string(), "sans".to_string())]);
+    assert_eq!(
+        labels(&harness),
+        [("1".to_string(), "engine_mono".to_string())]
+    );
     assert!(harness.world().resource::<CameraController>().shake_trauma > 0.0);
 
     // Kept on the hazard each frame: the window is half a second, 30 steps,
@@ -358,10 +375,11 @@ fn the_hazard_patrols_its_line_and_a_player_walked_into_it_is_hit_once_and_pushe
     );
     assert_eq!(current(&harness, player), 5.0);
 
-    // Down onto the hazard's line, then wait for its next pass.
+    // Down onto the hazard's line, eased in and out: 150 px in 41 steps
+    // and 10 more sliding to a stop. Then wait for its next pass.
     harness.harness_mut().press_action("move_down");
-    harness.step(40);
-    harness.harness_mut().release_action("move_down");
+    harness.step(41);
+    release_and_settle(&mut harness, "move_down");
     let stood = player_position(&harness).unwrap();
     assert!(
         (stood[1] - HAZARD_START[1]).abs() <= ONE_STEP + 1e-3,
@@ -416,18 +434,21 @@ fn a_hazard_hit_slows_the_player_for_its_effects_seconds() {
             .has("slowed")
     );
     // Walking up, away from the hazard's line, while the push runs out
-    // sideways: half a second covers 60 px at the slowed speed.
+    // sideways: half a second from the second step covers 58.5 px, eased
+    // in to the slowed 120 px/s.
     harness.harness_mut().press_action("move_up");
     harness.step(1);
     let from = player_position(&harness).unwrap();
     harness.step(30);
     let slowed = from[1] - player_position(&harness).unwrap()[1];
+    let expected = ramp(31, 120.0) - ramp(1, 120.0);
     assert!(
-        (slowed - 60.0).abs() < 1.0,
-        "slowed: {slowed} px in half a second"
+        (slowed - expected).abs() < 1.0,
+        "slowed: {slowed} px in half a second, {expected} expected"
     );
-    // Past the effect's second and a half, the same half second covers 120.
-    harness.step(60);
+    // Past the effect's second and a half and the ease back up, the same
+    // half second covers 120.
+    harness.step(70);
     assert_eq!(speed(&harness), 240.0, "the effect expired");
     let from = player_position(&harness).unwrap();
     harness.step(30);
@@ -606,32 +627,403 @@ fn difficulty_sets_the_players_max_health() {
 }
 
 #[test]
-fn mute_survives_a_restart() {
-    let dir = user_folder("mute");
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    assert_eq!(harness.world().resource::<Settings>().master_volume(), None);
-    tap(&mut harness, "toggle_mute");
-    assert_eq!(
-        harness.world().resource::<Settings>().master_volume(),
-        Some(0.0)
+fn the_player_accelerates_and_stops() {
+    let mut harness = harness();
+    start(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let player = player_entity(&harness);
+    let speed = |harness: &UiHarness| harness.world().get::<Velocity>(player).unwrap().0.length();
+    assert_eq!(speed(&harness), 0.0, "at rest");
+    harness.harness_mut().press_action("move_right");
+    harness.step(1);
+    assert!(
+        speed(&harness) > 0.0 && speed(&harness) < PLAYER_SPEED,
+        "eased in"
     );
-    assert!(dir.join("settings/settings.json").is_file());
+    let mut steps = 1;
+    while (speed(&harness) - PLAYER_SPEED).abs() > 1e-3 {
+        harness.step(1);
+        steps += 1;
+        assert!(steps <= 9, "full speed within nine steps");
+    }
+    harness.harness_mut().release_action("move_right");
+    let mut steps = 0;
+    while speed(&harness) > 0.0 {
+        harness.step(1);
+        steps += 1;
+        assert!(steps <= 7, "at rest within seven steps");
+    }
+}
 
-    let mut restarted = harness_with(UserFolder::At(dir.clone()));
-    assert_eq!(
-        restarted.world().resource::<Settings>().master_volume(),
-        Some(0.0),
-        "the mute is back after a restart"
+/// The bolts in flight, with their velocities.
+fn bolts(harness: &UiHarness) -> Vec<(Entity, [f32; 2])> {
+    let world = harness.world();
+    world
+        .query_filtered::<(Entity, &LinearMotion), With<Projectile>>()
+        .map(|(entity, motion)| (entity, motion.velocity().to_array()))
+        .collect()
+}
+
+#[test]
+fn a_click_shoots_a_bolt_toward_the_cursor() {
+    let mut harness = harness();
+    start(&mut harness);
+    let at = player_position(&harness).unwrap();
+    // The camera starts at the play space's top-left at zoom 1, so the
+    // window's pixels are the world's.
+    harness.pointer_to(at[0] + 300.0, at[1]);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
+    let fired = bolts(&harness);
+    assert_eq!(fired.len(), 1, "a bolt within two steps");
+    let [x, y] = fired[0].1;
+    assert!(x > 470.0 && y.abs() < 1.0, "toward the cursor: {x}, {y}");
+    let start_x = harness.world().get::<Position>(fired[0].0).unwrap().0.x;
+    harness.step(3);
+    let now_x = harness.world().get::<Position>(fired[0].0).unwrap().0.x;
+    assert!(now_x > start_x, "it moves right");
+    // A press inside the 0.2 s cooldown fires nothing; one after it fires.
+    harness.harness_mut().press_action("shoot");
+    harness.step(1);
+    harness.harness_mut().release_action("shoot");
+    harness.step(1);
+    assert_eq!(bolts(&harness).len(), 1, "inside the cooldown");
+    harness.step(12);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
+    assert_eq!(bolts(&harness).len(), 2, "a second after its cooldown");
+}
+
+#[test]
+fn the_dummy_takes_hits_shows_damage_and_never_dies() {
+    let mut harness = harness();
+    start(&mut harness);
+    let dummy = harness.world().resource::<SampleRun>().dummy;
+    for hit in 0..200 {
+        assert_eq!(
+            damage(harness.world_mut(), dummy, 1.0),
+            Hit::Hurt,
+            "hit {hit}"
+        );
+        harness.step(1);
+        if hit == 0 {
+            assert_eq!(
+                labels(&harness),
+                [("1".to_string(), "engine_mono".to_string())],
+                "a hit floats its damage"
+            );
+        }
+    }
+    assert!(current(&harness, dummy) > 0.0, "it never dies");
+    assert_eq!(current(&harness, dummy), 100.0, "each hit mended");
+    harness
+        .world_mut()
+        .resource_mut::<GameOptions>()
+        .damage_numbers = false;
+    harness.step(60);
+    damage(harness.world_mut(), dummy, 1.0);
+    harness.step(1);
+    assert!(labels(&harness).is_empty(), "none with the option off");
+}
+
+/// Puts the player on pickup `at` of [`PICKUPS`] and steps once.
+fn take(harness: &mut UiHarness, at: usize) {
+    let player = player_entity(harness);
+    let spot = PICKUPS[at].1.into();
+    let world = harness.world_mut();
+    world.get_mut::<Position>(player).unwrap().0 = spot;
+    world.get_mut::<PrevPosition>(player).unwrap().0 = spot;
+    harness.step(2);
+}
+
+#[test]
+fn the_heal_pickup_heals_two() {
+    let mut harness = harness();
+    start(&mut harness);
+    let player = player_entity(&harness);
+    assert_eq!(damage(harness.world_mut(), player, 3.0), Hit::Hurt);
+    assert_eq!(current(&harness, player), 2.0);
+    take(&mut harness, 0);
+    assert_eq!(current(&harness, player), 4.0, "healed 2");
+    let run = harness.world().resource::<SampleRun>();
+    assert!(!harness.world().is_alive(run.pickups[0].1), "taken once");
+}
+
+#[test]
+fn the_speed_pickup_speeds_the_player_for_four_seconds() {
+    let mut harness = harness();
+    start(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let player = player_entity(&harness);
+    let speed = |harness: &UiHarness| {
+        harness
+            .world()
+            .get::<Stats>(player)
+            .unwrap()
+            .get("move_speed")
+            .unwrap()
+    };
+    take(&mut harness, 1);
+    harness.step(1);
+    assert_eq!(speed(&harness), 360.0, "half again as fast");
+    harness.step(3 * 60);
+    assert_eq!(speed(&harness), 360.0, "still at 3 s");
+    harness.step(60 + 5);
+    assert_eq!(speed(&harness), PLAYER_SPEED, "over after 4 s");
+}
+
+#[test]
+fn the_camera_frames_the_play_space_at_every_window_size() {
+    for (window, zoom) in [([1280, 720], 1.0), ([3840, 2160], 3.0), ([2560, 1080], 1.5)] {
+        let mut harness = harness();
+        harness.world_mut().insert_resource(WindowSize {
+            width: window[0],
+            height: window[1],
+        });
+        start(&mut harness);
+        let camera = *harness.world().resource::<CameraState>();
+        assert!(
+            (camera.zoom - zoom).abs() < 1e-4,
+            "{window:?}: zoom {}",
+            camera.zoom
+        );
+        let centre = [0, 1]
+            .map(|axis| camera.position.to_array()[axis] + window[axis] as f32 / camera.zoom / 2.0);
+        let off = [centre[0] - PLAY_CENTRE[0], centre[1] - PLAY_CENTRE[1]];
+        assert!(
+            off[0].abs() < 0.5 && off[1].abs() < 0.5,
+            "{window:?}: the view centred on {centre:?}"
+        );
+    }
+}
+
+/// The audio commands of `frames` frames, stepped one at a time.
+fn heard(harness: &mut UiHarness, frames: u32) -> Vec<AudioCommand> {
+    let mut commands = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        commands.extend(harness.harness().audio().iter().cloned());
+    }
+    commands
+}
+
+/// Taps `action` and steps until no screen change runs, with every frame's
+/// audio.
+fn act(harness: &mut UiHarness, action: &str) -> Vec<AudioCommand> {
+    harness.harness_mut().press_action(action);
+    let mut commands = heard(harness, 1);
+    harness.harness_mut().release_action(action);
+    commands.extend(heard(harness, 1));
+    while tungsten_template_basic::shell::transitioning(harness.world()) {
+        commands.extend(heard(harness, 1));
+    }
+    commands.extend(heard(harness, 2));
+    commands
+}
+
+fn sound(harness: &UiHarness, name: &str) -> AudioHandle {
+    let sounds = harness.world().resource::<SoundRegistry>();
+    sounds.get_by_id(name).expect("a manifest sound")
+}
+
+/// The voices started for `name` among `commands`, with their loop flag
+/// and fade.
+fn plays(harness: &UiHarness, commands: &[AudioCommand], name: &str) -> Vec<(Voice, bool, f32)> {
+    let handle = sound(harness, name);
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            AudioCommand::Play {
+                handle: played,
+                voice,
+                looping,
+                fade,
+                ..
+            } if *played == handle => Some((*voice, *looping, *fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The stops among `commands`, with their fades.
+fn stops(commands: &[AudioCommand]) -> Vec<(Voice, f32)> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            AudioCommand::StopVoice { voice, fade, .. } => Some((*voice, *fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The volume changes among `commands`.
+fn levels(commands: &[AudioCommand]) -> Vec<(Voice, f32, f32)> {
+    commands
+        .iter()
+        .filter_map(|command| match command {
+            AudioCommand::SetVoiceVolume {
+                voice,
+                volume,
+                fade,
+                ..
+            } => Some((*voice, *volume, *fade)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A run started as New Game starts it, with its frames' audio; returns
+/// the run music's voice.
+fn start_heard(harness: &mut UiHarness) -> (Voice, Vec<AudioCommand>) {
+    tungsten_template_basic::shell::start_run(
+        harness.world_mut(),
+        tungsten_template_basic::shell::RunStart::default(),
+        None,
     );
-    tap(&mut restarted, "toggle_mute");
+    let mut commands = heard(harness, 1);
+    while tungsten_template_basic::shell::transitioning(harness.world()) {
+        commands.extend(heard(harness, 1));
+    }
+    let run = plays(harness, &commands, MUSIC_RUN);
+    assert_eq!(run.len(), 1, "one run music");
+    (run[0].0, commands)
+}
+
+#[test]
+fn a_shot_a_hit_and_a_pickup_play_their_sounds() {
+    let mut harness = harness();
+    start(&mut harness);
+    let at = player_position(&harness).unwrap();
+    harness.pointer_to(at[0] + 300.0, at[1]);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    let shot = heard(&mut harness, 3);
+    harness.harness_mut().release_action("shoot");
+    assert_eq!(plays(&harness, &shot, "shoot").len(), 1, "the shot");
+    let dummy = harness.world().resource::<SampleRun>().dummy;
+    damage(harness.world_mut(), dummy, 1.0);
+    let hit = heard(&mut harness, 2);
+    assert_eq!(plays(&harness, &hit, "hit").len(), 1, "the dummy's hit");
+    let player = player_entity(&harness);
+    let spot = PICKUPS[0].1.into();
+    harness.world_mut().get_mut::<Position>(player).unwrap().0 = spot;
+    harness
+        .world_mut()
+        .get_mut::<PrevPosition>(player)
+        .unwrap()
+        .0 = spot;
+    let taken = heard(&mut harness, 3);
+    assert_eq!(plays(&harness, &taken, "pickup").len(), 1, "the pickup");
+}
+
+#[test]
+fn the_run_music_fades_in_with_a_run_and_out_at_its_end() {
+    let mut harness = harness();
+    let (run, started) = start_heard(&mut harness);
     assert_eq!(
-        restarted.world().resource::<Settings>().master_volume(),
-        None
+        plays(&harness, &started, MUSIC_RUN),
+        [(run, true, MUSIC_FADE)],
+        "looping, faded in"
     );
-    let restarted = harness_with(UserFolder::At(dir.clone()));
+    act(&mut harness, "state_pause");
+    let quit = find_named(&harness, "Quit to Title");
+    assert!(harness.focus(quit));
+    act(&mut harness, "ui_accept");
+    let answer = find_named(&harness, "Quit");
+    assert!(harness.focus(answer));
+    let ended = act(&mut harness, "ui_accept");
+    assert!(
+        stops(&ended).contains(&(run, MUSIC_FADE)),
+        "faded out with the run: {ended:?}"
+    );
+}
+
+/// The enabled control named `name` on the front-most screen.
+fn find_named(harness: &UiHarness, name: &str) -> tungsten::core::ui::WidgetId {
+    super::find(harness, name).unwrap_or_else(|| panic!("no control '{name}'"))
+}
+
+#[test]
+fn pause_fades_the_run_music_under_its_loop_and_back() {
+    let mut harness = harness();
+    let (run, _) = start_heard(&mut harness);
+    let paused = act(&mut harness, "state_pause");
+    let looped = plays(&harness, &paused, MUSIC_PAUSE);
+    assert_eq!(looped.len(), 1, "pause's loop starts");
+    let (pause, looping, fade) = looped[0];
+    assert!(looping && fade == PAUSE_FADE);
     assert_eq!(
-        restarted.world().resource::<Settings>().master_volume(),
-        None
+        levels(&paused),
+        [(run, 0.0, PAUSE_FADE)],
+        "the run's voice falls silent"
     );
-    let _ = std::fs::remove_dir_all(&dir);
+    assert!(stops(&paused).is_empty(), "and plays on");
+    // A screen over pause keeps the loop.
+    let settings = find_named(&harness, "Settings");
+    assert!(harness.focus(settings));
+    let over = act(&mut harness, "ui_accept");
+    let back = act(&mut harness, "ui_cancel");
+    for commands in [&over, &back] {
+        assert!(stops(commands).is_empty() && levels(commands).is_empty());
+        assert!(plays(&harness, commands, MUSIC_PAUSE).is_empty());
+    }
+    let resumed = act(&mut harness, "state_pause");
+    assert_eq!(stops(&resumed), [(pause, PAUSE_FADE)], "the loop stops");
+    let level = {
+        let sounds = harness.world().resource::<SoundRegistry>();
+        sounds.get_volume(sound(&harness, MUSIC_RUN))
+    };
+    assert_eq!(
+        levels(&resumed),
+        [(run, level, PAUSE_FADE)],
+        "the run's voice is back"
+    );
+}
+
+#[test]
+fn quit_to_title_from_pause_stops_the_pause_loop() {
+    let mut harness = harness();
+    let (run, _) = start_heard(&mut harness);
+    let paused = act(&mut harness, "state_pause");
+    let pause = plays(&harness, &paused, MUSIC_PAUSE)[0].0;
+    let quit = find_named(&harness, "Quit to Title");
+    assert!(harness.focus(quit));
+    act(&mut harness, "ui_accept");
+    let answer = find_named(&harness, "Quit");
+    assert!(harness.focus(answer));
+    let ended = act(&mut harness, "ui_accept");
+    let stopped = stops(&ended);
+    assert!(
+        stopped.contains(&(run, MUSIC_FADE)) && stopped.contains(&(pause, MUSIC_FADE)),
+        "both voices stop: {stopped:?}"
+    );
+}
+
+#[test]
+fn game_over_plays_no_pause_loop() {
+    let mut harness = harness();
+    let (run, _) = start_heard(&mut harness);
+    let player = player_entity(&harness);
+    damage(harness.world_mut(), player, 99.0);
+    let mut over = heard(&mut harness, 1);
+    while tungsten_template_basic::shell::transitioning(harness.world()) {
+        over.extend(heard(&mut harness, 1));
+    }
+    over.extend(heard(&mut harness, 30));
+    assert_eq!(
+        tungsten_template_basic::shell::top(harness.world()),
+        Some(tungsten_template_basic::shell::game_over::GAME_OVER)
+    );
+    assert!(
+        plays(&harness, &over, MUSIC_PAUSE).is_empty(),
+        "no pause loop"
+    );
+    assert!(
+        levels(&over).is_empty() && stops(&over).is_empty(),
+        "the run's music plays on"
+    );
+    let _ = run;
 }

@@ -3,22 +3,25 @@
 //! when the screen closes (Back or `ui_cancel` save `Settings` and the
 //! gameplay options); a tab's Reset returns its values to unset or default.
 //! A window mode or size change asks to keep it, reverting after 10 s.
-//! `ui_next` and `ui_prev` step through the tabs. The Display rows show the
-//! set value, else the live one, so an F11 press shows while it is unset.
+//! The tabs sit in a rail beside the rows; `ui_next` and `ui_prev` step
+//! through them. Every slider shows its value in a mono readout. The
+//! Display rows show the set value, else the live one, so an F11 press
+//! shows while it is unset; the volumes the set value, else the one
+//! `tungsten.json` ships.
 
 use std::num::NonZeroU32;
 
-use tungsten::core::ui::{SliderRange, UiEvent, UiTree, UiValue, WidgetId};
+use tungsten::core::ui::{Align, Sizing, SliderRange, UiEvent, UiTree, UiValue, WidgetId};
 use tungsten::core::{
-    AudioBus, DisplayMode, DisplayState, FrameRateCap, Resolution, Settings, World,
+    AudioBus, DisplayMode, DisplayState, FrameRateCap, MonitorInfo, Resolution, Settings, World,
 };
-use tungsten::{GameState, RootCover, StateContext, StateId};
+use tungsten::{GameState, StateContext, StateId, shipped_volume};
 
 use super::confirm::{self, ConfirmState};
 use super::keybindings::{self, KeybindingsState};
 use super::options::{self, GameOptions};
 use super::{
-    Difficulty, RunState, apply_settings, events, idle, pop, pressed, push, stack, theme, toast,
+    Difficulty, RunState, apply_settings, enter, events, idle, pop, pressed, push, theme, toast,
     widgets,
 };
 
@@ -27,10 +30,13 @@ pub const SETTINGS: StateId = "settings";
 pub const TABS: [&str; 5] = ["Display", "Audio", "Interface", "Controls", "Gameplay"];
 /// The Gameplay tab, which pause's Gameplay Options opens.
 pub const GAMEPLAY_TAB: usize = 4;
-/// The window sizes offered, smallest first.
+/// The window sizes offered without a monitor to read, smallest first; the
+/// first is the least any monitor's list offers.
 pub const SIZES: [(u32, u32); 4] = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)];
-/// The frame-rate limits offered; 0 is none.
-pub const CAPS: [u32; 5] = [0, 30, 60, 120, 144];
+/// The frame-rate limit's slider: its least, its most and its step, and
+/// where it rests while Unlimited is on.
+pub const FPS: [f32; 3] = [10.0, 480.0, 5.0];
+pub const FPS_REST: u32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Row {
@@ -38,6 +44,7 @@ enum Row {
     Size,
     Vsync,
     Cap,
+    Unlimited,
     Master,
     Music,
     Effects,
@@ -63,15 +70,17 @@ enum Kind {
 }
 
 const PERCENT: Kind = Kind::Slider(0.0, 100.0, 5.0);
+const CAP: Kind = Kind::Slider(FPS[0], FPS[1], FPS[2]);
 const UI: std::ops::RangeInclusive<f32> = Settings::UI_SCALE_RANGE;
 const TEXT: std::ops::RangeInclusive<f32> = Settings::TEXT_SCALE_RANGE;
 
 /// Every row: its tab, its caption and how it is built.
-const ROWS: [(Row, usize, &str, Kind); 16] = [
+const ROWS: [(Row, usize, &str, Kind); 17] = [
     (Row::Mode, 0, "Window mode", Kind::Choice),
     (Row::Size, 0, "Window size", Kind::Choice),
     (Row::Vsync, 0, "VSync", Kind::Toggle),
-    (Row::Cap, 0, "Frame rate limit", Kind::Choice),
+    (Row::Cap, 0, "Frame rate limit", CAP),
+    (Row::Unlimited, 0, "Unlimited", Kind::Toggle),
     (Row::Master, 1, "Master", PERCENT),
     (Row::Music, 1, "Music", PERCENT),
     (Row::Effects, 1, "Effects", PERCENT),
@@ -103,6 +112,8 @@ struct Ui {
     panels: Vec<WidgetId>,
     /// Each row's control, in [`ROWS`]' order.
     rows: Vec<WidgetId>,
+    /// Each slider's readout.
+    readouts: Vec<(WidgetId, WidgetId)>,
     reset: WidgetId,
     back: WidgetId,
 }
@@ -187,6 +198,38 @@ fn display(world: &World) -> DisplayState {
     live
 }
 
+/// The window sizes offered, smallest first: the monitor's modes from the
+/// first of [`SIZES`] up to its current size, with [`SIZES`] that fit under
+/// a monitor listing one mode, and [`SIZES`] alone without a monitor.
+#[must_use]
+pub fn window_sizes(world: &World) -> Vec<Resolution> {
+    let fixed = SIZES.map(|(width, height)| Resolution { width, height });
+    let Some(monitor) = world.get_resource::<MonitorInfo>() else {
+        return fixed.to_vec();
+    };
+    let desktop = monitor.size;
+    let fits = |size: &Resolution| size.width <= desktop.width && size.height <= desktop.height;
+    let mut sizes = monitor.window_sizes();
+    if monitor.modes.len() <= 1 {
+        sizes.extend(fixed.iter().filter(|size| fits(size)));
+        sizes.sort_by_key(|size| (u64::from(size.width) * u64::from(size.height), size.width));
+        sizes.dedup();
+    }
+    sizes
+        .retain(|size| (size.width >= SIZES[0].0 && size.height >= SIZES[0].1) || *size == desktop);
+    sizes
+}
+
+/// A slider's readout for `value`: a percent, the scales as percents of 1,
+/// or frames a second.
+fn readout(row: Row, value: f32) -> String {
+    match row {
+        Row::Cap => format!("{value:.0} fps"),
+        Row::UiScale | Row::TextScale => format!("{:.0}%", value * 100.0),
+        _ => format!("{value:.0}%"),
+    }
+}
+
 /// The value after `value` in `values`, the first when it is none of them.
 fn next<T: PartialEq + Copy>(values: &[T], value: T) -> T {
     let at = values.iter().position(|each| *each == value);
@@ -214,12 +257,14 @@ impl SettingsState {
         let (settings, display) = (world.resource::<Settings>().clone(), display(world));
         let options = *world.resource::<GameOptions>();
         let difficulty = world.get_resource::<RunState>().map(|run| run.difficulty);
-        let tree = world.resource_mut::<UiTree>();
-        let fullscreen = display.display_mode != DisplayMode::Windowed;
         let volume = |bus: Option<AudioBus>| {
             let set = bus.map_or(settings.master_volume(), |bus| settings.bus_volume(bus));
-            set.unwrap_or(1.0) * 100.0
+            set.unwrap_or_else(|| shipped_volume(world, bus)) * 100.0
         };
+        let volumes = [None, Some(AudioBus::Music), Some(AudioBus::Effects)].map(volume);
+        let tree = world.resource_mut::<UiTree>();
+        let fullscreen = display.display_mode != DisplayMode::Windowed;
+        let cap = display.frame_rate_cap;
         for (&(row, ..), &id) in ROWS.iter().zip(&ui.rows) {
             let value = match row {
                 Row::Mode => {
@@ -234,10 +279,14 @@ impl SettingsState {
                     continue;
                 }
                 Row::Cap => {
-                    let cap = display
-                        .frame_rate_cap
-                        .map_or("Off".into(), |fps| fps.to_string());
-                    _ = tree.set_text(id, cap.as_str());
+                    // An off-grid cap applies as stored and reads exactly;
+                    // under Unlimited the slider keeps its value, off.
+                    if let Some(fps) = cap {
+                        tree.set_slider_value(id, fps as f32);
+                    }
+                    let fps = cap.map_or(tree.slider_value(id).unwrap_or(0.0), |fps| fps as f32);
+                    tree.set_enabled(id, cap.is_some());
+                    self.show(tree, id, readout(row, fps));
                     continue;
                 }
                 Row::Difficulty => {
@@ -250,20 +299,33 @@ impl SettingsState {
                 }
                 Row::Keys | Row::ResetKeys => continue,
                 Row::Vsync => UiValue::Bool(display.vsync),
+                Row::Unlimited => UiValue::Bool(cap.is_none()),
                 Row::MuteUnfocused => UiValue::Bool(options.mute_unfocused),
                 Row::Damage => UiValue::Bool(options.damage_numbers),
                 Row::PauseUnfocused => UiValue::Bool(options.pause_unfocused),
-                Row::Master => UiValue::Number(volume(None)),
-                Row::Music => UiValue::Number(volume(Some(AudioBus::Music))),
-                Row::Effects => UiValue::Number(volume(Some(AudioBus::Effects))),
+                Row::Master => UiValue::Number(volumes[0]),
+                Row::Music => UiValue::Number(volumes[1]),
+                Row::Effects => UiValue::Number(volumes[2]),
                 Row::UiScale => UiValue::Number(settings.ui_scale().unwrap_or(1.0)),
                 Row::TextScale => UiValue::Number(settings.text_scale().unwrap_or(1.0)),
                 Row::Shake => UiValue::Number(options.screen_shake() * 100.0),
             };
             match value {
                 UiValue::Bool(on) => _ = tree.set_toggled(id, on),
-                _ => _ = tree.set_slider_value(id, value.as_number().unwrap_or(0.0)),
+                _ => {
+                    let number = value.as_number().unwrap_or(0.0);
+                    tree.set_slider_value(id, number);
+                    self.show(tree, id, readout(row, number));
+                }
             }
+        }
+    }
+
+    /// Writes `text` into `slider`'s readout.
+    fn show(&self, tree: &mut UiTree, slider: WidgetId, text: String) {
+        let readouts = self.ui.iter().flat_map(|ui| &ui.readouts);
+        if let Some((_, label)) = readouts.into_iter().find(|(id, _)| *id == slider) {
+            tree.set_plain_text(*label, &text);
         }
     }
 
@@ -279,17 +341,8 @@ impl SettingsState {
                 change_display(world, |settings| settings.set_display_mode(Some(mode)));
             }
             Row::Size => {
-                let (width, height) = next(
-                    &SIZES,
-                    (display.resolution.width, display.resolution.height),
-                );
-                let size = Resolution { width, height };
+                let size = next(&window_sizes(world), display.resolution);
                 change_display(world, |settings| settings.set_resolution(Some(size)));
-            }
-            Row::Cap => {
-                let fps = NonZeroU32::new(next(&CAPS, display.frame_rate_cap.unwrap_or(0)));
-                let cap = fps.map_or(FrameRateCap::Uncapped, FrameRateCap::Fps);
-                change(world, |settings| settings.set_frame_rate_cap(Some(cap)));
             }
             Row::Difficulty => {
                 if let Some(run) = world.get_resource_mut::<RunState>() {
@@ -305,14 +358,29 @@ impl SettingsState {
         }
     }
 
-    /// A slider or toggle took `value`.
-    fn set(world: &mut World, row: Row, value: UiValue) {
+    /// A slider or toggle took `value`: the frame-rate limit the slider's,
+    /// or none while Unlimited is on.
+    fn set(&self, world: &mut World, row: Row, value: UiValue) {
         let (number, on) = (
             value.as_number().unwrap_or(0.0),
             value.as_bool().unwrap_or(false),
         );
+        let fps = |fps: f32| NonZeroU32::new(fps as u32).map(FrameRateCap::Fps);
         match row {
             Row::Vsync => change(world, |settings| settings.set_vsync(Some(on))),
+            Row::Cap => change(world, |settings| settings.set_frame_rate_cap(fps(number))),
+            Row::Unlimited => {
+                // The frame-rate slider, the row before Unlimited.
+                let slider = self.ui.as_ref().map(|ui| ui.rows[3]);
+                let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
+                let cap = if on {
+                    Some(FrameRateCap::Uncapped)
+                } else {
+                    value.and_then(fps)
+                };
+                change(world, |settings| settings.set_frame_rate_cap(cap));
+                self.refresh(world);
+            }
             Row::Master => set_volume(world, None, number),
             Row::Music => set_volume(world, Some(AudioBus::Music), number),
             Row::Effects => set_volume(world, Some(AudioBus::Effects), number),
@@ -385,10 +453,18 @@ impl GameState for SettingsState {
 
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let tree = ctx.world.resource_mut::<UiTree>();
-        let root = widgets::screen(tree, theme::WIDE_WIDTH);
-        widgets::heading(tree, root, "Settings");
-        let (tabs, bars) = widgets::tab_row(tree, root, &TABS);
-        let panels: Vec<WidgetId> = TABS.iter().map(|_| widgets::column(tree, root)).collect();
+        let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
+        widgets::heading(tree, card, "Settings", false);
+        let body = widgets::row(tree, card);
+        let mut style = tree.layout_style(body).cloned().unwrap_or_default();
+        style.align_items = Align::Start;
+        tree.set_layout_style(body, style);
+        let (tabs, bars) = widgets::tab_rail(tree, body, &TABS);
+        let panels: Vec<WidgetId> = TABS.iter().map(|_| widgets::column(tree, body)).collect();
+        for panel in &panels {
+            widgets::set_width(tree, *panel, Sizing::Fill);
+        }
+        let mut readouts = Vec::new();
         let rows = ROWS
             .iter()
             .map(|&(_, tab, caption, kind)| match kind {
@@ -397,26 +473,29 @@ impl GameState for SettingsState {
                 Kind::Button => widgets::button(tree, panels[tab], caption),
                 Kind::Slider(least, most, step) => {
                     let range = SliderRange::new(least, most).with_step(step);
-                    widgets::slider_row(tree, panels[tab], caption, range)
+                    let row = widgets::slider_row(tree, panels[tab], caption, range);
+                    readouts.push(row);
+                    row.0
                 }
             })
             .collect();
-        let actions = widgets::row(tree, root);
+        let actions = widgets::row(tree, card);
         let reset = widgets::button(tree, actions, "Reset tab");
         let back = widgets::button(tree, actions, "Back");
-        theme::slide_in(tree, root);
         let ui = Ui {
             root,
             tabs,
             bars,
             panels,
             rows,
+            readouts,
             reset,
             back,
         };
+        tree.set_slider_value(ui.rows[3], FPS_REST as f32);
         self.ui = Some(ui);
         self.select(tree, self.tab);
-        stack(ctx.world).own_root(root, RootCover::Hide);
+        enter(ctx.world, root);
         self.refresh(ctx.world);
     }
 
@@ -481,15 +560,20 @@ impl GameState for SettingsState {
                         .resource::<UiTree>()
                         .slider_value(widget)
                         .unwrap_or(1.0);
-                    Self::set(
-                        world,
-                        row_of(widget).unwrap_or(Row::UiScale),
-                        UiValue::Number(value),
-                    );
+                    let row = row_of(widget).unwrap_or(Row::UiScale);
+                    self.set(world, row, UiValue::Number(value));
                 }
-                UiEvent::ValueChanged { widget, value, .. } if self.held != Some(widget) => {
-                    if let Some(row) = row_of(widget) {
-                        Self::set(world, row, value);
+                UiEvent::ValueChanged { widget, value, .. } => {
+                    let Some(row) = row_of(widget) else {
+                        continue;
+                    };
+                    if let Some(number) = value.as_number() {
+                        // A held scale slider shows its value now and
+                        // applies it at the release.
+                        self.show(world.resource_mut::<UiTree>(), widget, readout(row, number));
+                    }
+                    if self.held != Some(widget) {
+                        self.set(world, row, value);
                     }
                 }
                 _ => {}

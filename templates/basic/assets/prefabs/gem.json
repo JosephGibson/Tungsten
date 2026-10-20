@@ -3,6 +3,11 @@
   "components": {
     "pickup": { "shape": { "circle": 6 }, "filter": { "all": ["team.player"] }, "magnet": 240 },
     "oscillator": { "position": { "amplitude": [0, 4], "period": 1.2 } },
-    "cues": { "picked_up": [{ "counter": { "name": "gems", "add": 1, "target": "game" } }] }
+    "cues": {
+      "picked_up": [
+        { "counter": { "name": "gems", "add": 1, "target": "game" } },
+        { "sound": { "id": "pickup" } }
+      ]
+    }
   }
 }

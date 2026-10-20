@@ -15,14 +15,16 @@
                       lines. `just release-cut` also refreshes Cargo.lock.
   notes TAG           Prints the tag's CHANGELOG section ([Unreleased] for a
                       rehearsal tag), optionally with absolute repository links.
-  package TAG TARGET  Archives each CPU level's example builds (BIN_DIR/<level>/TARGET/
-                      release, one cargo target dir per level) under bin/<level>/, one
-                      launcher per example, and the files the examples read relative
-                      to the working directory: OUT/tungsten-examples-TAG-TARGET.*.
-                      Their debug files go to OUT/tungsten-debug-TAG-TARGET.* under the
-                      same top folder: each Linux binary is split with objcopy, its
-                      build-id checked, and each Windows example's PDB is matched to
-                      its CodeView record.
+  package TAG TARGET  Archives each CPU level's example and template builds (BIN_DIR/
+                      <level>/TARGET/release, one cargo target dir per level) under
+                      bin/<level>/, one launcher per build, the files the examples read
+                      relative to the working directory, and each template's own
+                      tungsten.json, input.json and assets/ under its folder, which its
+                      launcher runs it from: OUT/tungsten-examples-TAG-TARGET.*. Their
+                      debug files go to OUT/tungsten-debug-TAG-TARGET.* under the same
+                      top folder: each Linux binary is split with objcopy, its build-id
+                      checked, and each Windows build's PDB is matched to its CodeView
+                      record.
   split-debug BINARY DEBUG
                       The Linux split alone: moves BINARY's debug info to DEBUG, links
                       it, and checks the build-ids and DEBUG's .debug_line.
@@ -35,7 +37,7 @@
                       crate's texts for its preferred license alternative, its NOTICE
                       files, licenses/clarifications.json and the embedded works.
 
-Rationale: D-071, D-072, D-074, D-079, D-120, D-122. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079, D-120, D-122, D-186. Release steps: docs/releases.md.
 """
 
 import argparse
@@ -73,6 +75,8 @@ TARGET_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 RELATIVE_LINK_RE = re.compile(r"\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)")
 # What every example reads relative to the working directory, plus the license.
 SHARED_RUNTIME = ("tungsten.json", "input.json", "assets", "LICENSE")
+# What a template reads from its own folder, which its launcher runs it from (D-186).
+TEMPLATE_RUNTIME = ("tungsten.json", "input.json", "assets")
 ARCHIVE_PREFIX = "tungsten-examples"
 # The debug files' archive, kept apart so the player archive stays small (D-120).
 DEBUG_PREFIX = "tungsten-debug"
@@ -326,14 +330,14 @@ def notes(root, tag, link_base=None):
     return body + "\n"
 
 
-def examples(root):
-    """(package name, directory) for each `examples/*` workspace member."""
+def members(root, folder):
+    """(package name, directory) for each `<folder>/*` workspace member."""
     members = re.search(r"^\s*members\s*=\s*\[(.*?)\]", read(root, CARGO), re.S | re.M)
     if not members:
         raise ValueError(f"{CARGO}: no workspace members list")
     result = []
     for pattern in re.findall(r'"([^"]+)"', re.sub(r"#[^\n]*", "", members[1])):
-        if not pattern.startswith("examples/"):
+        if not pattern.startswith(f"{folder}/"):
             continue
         dirs = ([p.relative_to(root).as_posix() for p in sorted(root.glob(pattern)) if (p / CARGO).is_file()]
                 if any(c in pattern for c in "*?[") else [pattern])
@@ -342,12 +346,27 @@ def examples(root):
             if name is None:
                 raise ValueError(f"{member}/{CARGO}: no [package] name")
             result.append((name[1], member))
+    return result
+
+
+def examples(root):
+    """(package name, directory) for each `examples/*` workspace member."""
+    result = members(root, "examples")
     if not result:
         raise ValueError(f"{CARGO}: no examples/* workspace members")
     return result
 
 
-def readme(tag, target, members, suffix, levels, game=None):
+def templates(root):
+    """(package name, directory) for each `templates/*` workspace member: a
+    game's starting point, archived beside the examples and run from its own
+    folder (D-186); none is no error."""
+    return members(root, "templates")
+
+
+def readme(tag, target, members, suffix, levels, game=None, templates=()):
+    """README.txt; `templates` holds (package name, folder, game id) for each
+    template, which runs from its folder and logs under its own game id."""
     prefix = ".\\" if suffix else "./"  # PowerShell also needs .\ for the current folder
     run = "\n".join(f"  {prefix}{name}{suffix}" for name, _ in members)
     platform = (
@@ -370,6 +389,19 @@ def readme(tag, target, members, suffix, levels, game=None):
             "Each run writes a log, and a crash a crash report, to\n"
             f"$XDG_STATE_HOME/{game}/logs, by default ~/.local/state/{game}/logs.\n"
         ) + "TUNGSTEN_USER_DIR=<folder> moves them to <folder>/logs.\n\n"
+    started = ""
+    for name, folder, template_game in templates:
+        started += (
+            f"The game template, {prefix}{name}{suffix}, runs from {folder}/, where it reads\n"
+            "its own tungsten.json, input.json and assets/.\n"
+        )
+        if template_game:
+            started += (
+                f"Its log and crash reports go to %LOCALAPPDATA%\\{template_game}\\logs.\n"
+                if suffix else
+                f"Its log and crash reports go to ~/.local/state/{template_game}/logs.\n"
+            )
+        started += "\n"
     return (
         f"Tungsten {tag} examples for {target}\n\n"
         "Run an example from any folder:\n\n"
@@ -378,6 +410,7 @@ def readme(tag, target, members, suffix, levels, game=None):
         f"supports ({', '.join(levels)}){console} and runs it from\n"
         "this folder, where the examples read tungsten.json, input.json and assets/.\n"
         f"TUNGSTEN_CPU_LEVEL={BASELINE} forces the portable build.\n\n"
+        f"{started}"
         f"{logs}"
         f"{platform}\n\n"
         f"MIT license: LICENSE. Third-party licenses: {NOTICES}, and\n"
@@ -541,10 +574,10 @@ def matching_pdb(exe, search):
     return pdb, name
 
 
-def game_id(root):
-    """`game.id` from the root tungsten.json (D-119), or None."""
+def game_id(root, folder="."):
+    """`game.id` from `folder`'s tungsten.json, the root's by default (D-119), or None."""
     try:
-        value = json.loads(read(root, "tungsten.json")).get("game", {}).get("id")
+        value = json.loads(read(root, f"{folder}/tungsten.json")).get("game", {}).get("id")
     except (OSError, ValueError, AttributeError):
         return None
     return value if isinstance(value, str) else None
@@ -566,8 +599,9 @@ def write_text(path, text):
 
 
 def shipped_packages(root):
-    """The packages whose binaries an archive ships: the examples and the launcher."""
-    return [name for name, _ in examples(root)] + [LAUNCHER]
+    """The packages whose binaries an archive ships: the examples, the templates
+    and the launcher."""
+    return [name for name, _ in examples(root) + templates(root)] + [LAUNCHER]
 
 
 def crate_record(package):
@@ -858,14 +892,17 @@ def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
     levels = [level for level in LEVELS if release_dir(level).is_dir()]
     if BASELINE not in levels:
         raise ValueError(f"{bin_dir}: no {BASELINE}/{target}/release build; the launcher needs the portable fallback")
-    members = examples(root)
+    starts = templates(root)
+    members = examples(root) + starts
     needed = [(level, binary) for level in levels for binary, _ in members] + [(BASELINE, LAUNCHER)]
     missing = [f"{level}/{binary}{suffix}" for level, binary in needed if not built(level, binary).is_file()]
     if missing:
         raise ValueError(f"{bin_dir}: missing {', '.join(missing)}")
     licenses = load_license_data(bin_dir / LICENSE_DATA, target)
     notices = third_party_notices(root, licenses)
-    runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in members if (root / d / "assets").is_dir()]
+    runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in examples(root)
+                                      if (root / d / "assets").is_dir()]
+    runtime += [f"{d}/{rel}" for _, d in starts for rel in TEMPLATE_RUNTIME if (root / d / rel).exists()]
     name = f"{ARCHIVE_PREFIX}-{tag}-{target}"
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -896,7 +933,8 @@ def package(root, tag, target, out, bin_dir=None, splitter=objcopy_split):
             else:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)
-        text = readme(tag, target, members, suffix, levels, game_id(root))
+        games = [(binary, d, game_id(root, d)) for binary, d in starts]
+        text = readme(tag, target, members, suffix, levels, game_id(root), games)
         (stage / "README.txt").write_text(text, encoding="utf-8")
         write_text(stage / NOTICES, notices)
         write_text(stage / STD_NOTICES, licenses["rust_std_notices"])

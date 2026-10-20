@@ -3,8 +3,10 @@ use std::time::Duration;
 use crate::app::WindowSize;
 use crate::telemetry::DisplayTelemetry;
 use tungsten_core::{
-    ActionMap, DisplayMode, DisplayState, DisplayValidationError, InputState, Resolution, World,
+    ActionMap, DisplayMode, DisplayState, DisplayValidationError, InputState, MonitorInfo,
+    Resolution, ScaleFactor, VideoMode, World,
 };
+use winit::window::Window;
 
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct PendingDisplay(pub(crate) Option<DisplayState>);
@@ -112,20 +114,26 @@ pub(crate) fn frame_budget_for(frame_rate_cap: Option<u32>) -> Option<Duration> 
     frame_rate_cap.map(|cap| Duration::from_secs_f64(1.0 / f64::from(cap)))
 }
 
+/// Writes `WindowSize` and the [`ScaleFactor`]'s window size together, so
+/// a window-relative factor follows every resize (`D-184`).
+fn set_window_size(world: &mut World, width: u32, height: u32) {
+    if let Some(window_size) = world.get_resource_mut::<WindowSize>() {
+        window_size.width = width;
+        window_size.height = height;
+    } else {
+        world.insert_resource(WindowSize { width, height });
+    }
+    if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
+        scale.set_window_size(width, height);
+    }
+}
+
 pub(crate) fn sync_display_state_and_telemetry(
     world: &mut World,
     state: DisplayState,
     actual_present_mode: Option<String>,
 ) {
-    if let Some(window_size) = world.get_resource_mut::<WindowSize>() {
-        window_size.width = state.resolution.width;
-        window_size.height = state.resolution.height;
-    } else {
-        world.insert_resource(WindowSize {
-            width: state.resolution.width,
-            height: state.resolution.height,
-        });
-    }
+    set_window_size(world, state.resolution.width, state.resolution.height);
 
     if let Some(display_state) = world.get_resource_mut::<DisplayState>() {
         *display_state = state;
@@ -150,12 +158,7 @@ pub(crate) fn sync_window_resolution(
         return;
     }
 
-    if let Some(window_size) = world.get_resource_mut::<WindowSize>() {
-        window_size.width = width;
-        window_size.height = height;
-    } else {
-        world.insert_resource(WindowSize { width, height });
-    }
+    set_window_size(world, width, height);
 
     let mut display_state = world
         .get_resource::<DisplayState>()
@@ -163,6 +166,59 @@ pub(crate) fn sync_window_resolution(
         .unwrap_or_default();
     display_state.resolution = Resolution { width, height };
     sync_display_state_and_telemetry(world, display_state, actual_present_mode);
+}
+
+/// The monitor `window` is on (`D-184`): its current monitor, else the
+/// first the platform lists, since Wayland has no primary and knows the
+/// current one only once the surface has entered an output; `None` when no
+/// monitor answers or it reports a 0 side.
+pub(crate) fn read_monitor(window: &Window) -> Option<MonitorInfo> {
+    let monitor = window
+        .current_monitor()
+        .or_else(|| window.available_monitors().next())?;
+    let size = monitor.size();
+    let modes = monitor.video_modes().map(|mode| {
+        let mode_size = mode.size();
+        VideoMode::new(
+            Resolution {
+                width: mode_size.width,
+                height: mode_size.height,
+            },
+            mode.refresh_rate_millihertz(),
+        )
+    });
+    MonitorInfo::new(
+        Resolution {
+            width: size.width,
+            height: size.height,
+        },
+        monitor.refresh_rate_millihertz(),
+        modes,
+    )
+}
+
+/// Inserts, replaces or removes the [`MonitorInfo`] resource, logging one
+/// info line when it changes.
+pub(crate) fn set_monitor(world: &mut World, monitor: Option<MonitorInfo>) {
+    if world.get_resource::<MonitorInfo>() == monitor.as_ref() {
+        return;
+    }
+    if let Some(monitor) = monitor {
+        let rate = monitor.refresh_millihertz.map_or_else(
+            || "an unknown rate".to_owned(),
+            |millihertz| format!("{} Hz", f64::from(millihertz) / 1000.0),
+        );
+        log::info!(
+            "Monitor {}×{} at {rate}, {} modes",
+            monitor.size.width,
+            monitor.size.height,
+            monitor.modes.len()
+        );
+        world.insert_resource(monitor);
+    } else {
+        log::info!("Monitor unknown");
+        world.remove_resource::<MonitorInfo>();
+    }
 }
 
 #[cfg(test)]

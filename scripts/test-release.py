@@ -345,12 +345,23 @@ class Release(unittest.TestCase):
         self.write("examples/README.md", "not a package")
         self.assertEqual([d for _, d in rel.examples(self.root)], ["examples/01_demo", "examples/02_bare"])
 
+    def template(self):
+        """Adds a `templates/basic` member with its own config, bindings and assets (D-186)."""
+        self.edit("Cargo.toml", '    "examples/02_bare",\n', '    "examples/02_bare",\n    "templates/basic",\n')
+        self.write("templates/basic/Cargo.toml", '[package]\nname = "tungsten-template-basic"\nversion = "0.1.0"\n')
+        self.write("templates/basic/tungsten.json", '{ "game": { "id": "tungsten-template-basic" } }')
+        self.write("templates/basic/input.json", "{}")
+        self.write("templates/basic/assets/manifest.json", "{}")
+        self.write("templates/basic/src/main.rs", "fn main() {}")
+
     def bins(self, target, suffix, levels=("x86-64-v3", "x86-64")):
-        """Fake builds per level; on Windows each example is a PE whose PDB sits beside it."""
+        """Fake builds per level; on Windows each example and template is a PE whose PDB sits
+        beside it."""
         self.splits = []
+        builds = [name for name, _ in rel.templates(self.root)]
         for level in levels:
             release = f"target/{level}/{target}/release"
-            for name in ("example-01-demo", "example-02-bare", "tungsten-launcher"):
+            for name in ("example-01-demo", "example-02-bare", *builds, "tungsten-launcher"):
                 content = f"{level} {name}".encode()
                 if suffix and name != LAUNCHER:
                     guid, pdb = hashlib.md5(content).digest(), name.replace("-", "_") + ".pdb"
@@ -751,6 +762,75 @@ class Release(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, r"licenses\.json: missing; the build job's `release\.py licenses`"):
             self.package("v0.26.0", LINUX)
         self.assertFalse((self.root / "dist").exists())
+
+    def test_package_ships_the_template_from_its_folder(self):
+        self.template()
+        for target, suffix in ((LINUX, ""), (WINDOWS, ".exe")):
+            with self.subTest(target=target):
+                self.bins(target, suffix)
+                archive, _ = self.package("v0.26.0", target)
+                top = f"tungsten-examples-v0.26.0-{target}"
+                if suffix:
+                    with zipfile.ZipFile(archive) as zipped:
+                        names = {name.split("/", 1)[1] for name in zipped.namelist() if "/" in name}
+                else:
+                    with tarfile.open(archive) as tar:
+                        names = {m.name.split("/", 1)[1] for m in tar.getmembers() if "/" in m.name}
+                exe = f"tungsten-template-basic{suffix}"
+                for path in (exe, f"bin/x86-64/{exe}", f"bin/x86-64-v3/{exe}",
+                             "templates/basic/tungsten.json", "templates/basic/input.json",
+                             "templates/basic/assets/manifest.json", "tungsten.json", "LICENSE"):
+                    self.assertIn(path, names)
+                for path in ("templates/basic/Cargo.toml", "templates/basic/src/main.rs"):
+                    self.assertNotIn(path, names, "only what the game reads")
+                self.assertFalse([name for name in names if name.endswith((".debug", ".pdb"))])
+
+    def test_template_debug_files_join_the_debug_archive(self):
+        self.template()
+        self.bins(LINUX, "")
+        _, debug = self.package("v0.26.0", LINUX)
+        top = f"tungsten-examples-v0.26.0-{LINUX}"
+        with tarfile.open(debug) as tar:
+            files = sorted(m.name for m in tar.getmembers() if m.isfile())
+        self.assertEqual(files, sorted(f"{top}/bin/{level}/{name}.debug" for level in ("x86-64", "x86-64-v3")
+                                       for name in ("example-01-demo", "example-02-bare", "tungsten-template-basic")))
+        self.assertIn((top, "tungsten-template-basic", None), self.splits, "its launcher copy is stripped")
+        self.bins(WINDOWS, ".exe")
+        _, debug = self.package("v0.26.0", WINDOWS)
+        top = f"tungsten-examples-v0.26.0-{WINDOWS}"
+        with zipfile.ZipFile(debug) as zipped:
+            pdbs = sorted(n for n in zipped.namelist() if not n.endswith("/"))
+        self.assertIn(f"{top}/bin/x86-64/tungsten_template_basic.pdb", pdbs)
+        self.assertIn(f"{top}/bin/x86-64-v3/tungsten_template_basic.pdb", pdbs)
+
+    def test_readme_names_the_template_and_its_log_folder(self):
+        self.template()
+        for target, suffix, run, folder in (
+                (LINUX, "", "./tungsten-template-basic", "~/.local/state/tungsten-template-basic/logs"),
+                (WINDOWS, ".exe", ".\\tungsten-template-basic.exe",
+                 "%LOCALAPPDATA%\\tungsten-template-basic\\logs")):
+            with self.subTest(target=target):
+                self.bins(target, suffix)
+                archive, _ = self.package("v0.26.0", target)
+                readme = self.archive_text(archive, f"tungsten-examples-v0.26.0-{target}/README.txt")
+                self.assertIn(f"  {run}\n", readme)
+                self.assertIn(f"The game template, {run}, runs from templates/basic/", readme)
+                self.assertIn(folder, readme)
+
+    def test_shipped_packages_include_the_templates(self):
+        self.assertEqual(rel.templates(self.root), [])
+        self.assertEqual(rel.shipped_packages(self.root), ["example-01-demo", "example-02-bare", LAUNCHER])
+        self.template()
+        self.assertEqual(rel.templates(self.root), [("tungsten-template-basic", "templates/basic")])
+        self.assertEqual(rel.shipped_packages(self.root),
+                         ["example-01-demo", "example-02-bare", "tungsten-template-basic", LAUNCHER])
+
+    def test_folders_match_the_launcher(self):
+        repo = Path(__file__).resolve().parent.parent
+        source = (repo / "tools/launcher/src/main.rs").read_text()
+        table = re.search(r"const FOLDERS: \[\(&str, &str\); \d+\] = \[(.*?)\];", source, re.S)
+        folders = re.findall(r'\("([^"]+)", "([^"]+)"\)', table[1])
+        self.assertEqual(folders, rel.templates(repo))
 
     def test_levels_match_the_launcher(self):
         source = (Path(__file__).resolve().parent.parent / "tools/launcher/src/main.rs").read_text()
