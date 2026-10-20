@@ -413,20 +413,23 @@ fn loading_from_pause_asks_first_unless_the_run_is_checkpointed() {
     ));
     let _ = std::fs::remove_dir_all(&dir);
 
-    // A write that fails: the saves folder turned read-only mid-run.
-    let dir = user_folder("load-asks-failed");
-    write_slot(&dir, "slot_1", fresh_save(), [50.0, 60.0], 0);
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    start(&mut harness);
-    let saves = dir.join("saves");
-    let writable = std::fs::metadata(&saves).unwrap().permissions();
-    let mut read_only = writable.clone();
-    read_only.set_readonly(true);
-    std::fs::set_permissions(&saves, read_only).unwrap();
-    let asked = load_slot_1_asks(&mut harness);
-    std::fs::set_permissions(&saves, writable).unwrap();
-    assert!(asked, "the pause's autosave failed");
-    let _ = std::fs::remove_dir_all(&dir);
+    // A write that fails: the saves folder turned read-only mid-run. Unix
+    // only: Windows does not honor the read-only attribute on folders.
+    if cfg!(unix) {
+        let dir = user_folder("load-asks-failed");
+        write_slot(&dir, "slot_1", fresh_save(), [50.0, 60.0], 0);
+        let mut harness = harness_with(UserFolder::At(dir.clone()));
+        start(&mut harness);
+        let saves = dir.join("saves");
+        let writable = std::fs::metadata(&saves).unwrap().permissions();
+        let mut read_only = writable.clone();
+        read_only.set_readonly(true);
+        std::fs::set_permissions(&saves, read_only).unwrap();
+        let asked = load_slot_1_asks(&mut harness);
+        std::fs::set_permissions(&saves, writable).unwrap();
+        assert!(asked, "the pause's autosave failed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     // Checkpointed: the pause's autosave succeeded.
     let dir = user_folder("load-asks-not");

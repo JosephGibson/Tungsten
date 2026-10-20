@@ -259,7 +259,8 @@ fn retry_loads_the_runs_last_good_save() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// Makes `dir` read-only; returns its permissions before, to put back.
+/// Makes `dir` read-only; returns its permissions before, to put back. Unix
+/// only: Windows does not honor the read-only attribute on folders.
 fn make_read_only(dir: &Path) -> std::fs::Permissions {
     let writable = std::fs::metadata(dir).unwrap().permissions();
     let mut read_only = writable.clone();
@@ -269,6 +270,7 @@ fn make_read_only(dir: &Path) -> std::fs::Permissions {
 }
 
 #[test]
+#[cfg_attr(not(unix), ignore = "Windows does not honor read-only on folders")]
 fn retry_starts_fresh_when_the_runs_first_autosave_failed() {
     let dir = user_folder("retry-fresh");
     // An earlier run's readable autosave, with a gem taken.
