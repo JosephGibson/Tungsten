@@ -22,9 +22,10 @@
       "fall": { "left": "ex10_player_fall_left", "right": "ex10_player_fall" },
       "min_speed": 1
     },
-    "stats": { "max_health": 100, "mana": 100, "max_mana": 100 },
+    "stats": { "max_health": 100, "mana": 100, "max_mana": 100, "move_speed": 560 },
+    "ailment_threshold": { "flat": 30, "of_max_health": 0.2 },
     "effects": ["mana_regen"],
-    "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls"],
+    "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls", "lightning", "gun", "summon"],
     "spellbook": {},
     "camera_target": null,
     "glow": { "offset": [43.5, 46.5], "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }

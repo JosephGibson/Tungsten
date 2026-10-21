@@ -681,6 +681,44 @@ fn damaged_carries_the_source_the_position_and_the_crit() {
 }
 
 #[test]
+fn a_crit_requests_parts_carry_the_flag() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice"]);
+    let archer = world.spawn();
+    let target = world.spawn_with((Health::new(100.0),));
+    let parts = || [typed(3.0, &["fire"]), typed(2.0, &["ice"])];
+    DamageRequest::from_parts(target, parts())
+        .with_source(archer)
+        .with_crit(true)
+        .apply(&mut world);
+    DamageRequest::from_parts(target, parts())
+        .with_periodic(true)
+        .apply(&mut world);
+    DamageRequest::from_parts(target, parts()).apply(&mut world);
+    let flags: Vec<(f32, bool, bool)> = world
+        .resource::<tungsten_core::EventQueue<DamagedPart>>()
+        .iter()
+        .map(|part| (part.amount, part.crit, part.periodic))
+        .collect();
+    assert_eq!(
+        flags,
+        [
+            (3.0, true, false),
+            (2.0, true, false),
+            (3.0, false, true),
+            (2.0, false, true),
+            (3.0, false, false),
+            (2.0, false, false)
+        ],
+        "every part of the crit, none of the periodic or the plain hit"
+    );
+    let crits: Vec<bool> = sent(&world).iter().map(|hit| hit.crit).collect();
+    assert_eq!(crits, [true, false, false]);
+    assert!(DamagedPart::new(target, 1.0).with_crit(true).crit);
+    assert!(!DamagedPart::new(target, 1.0).crit);
+}
+
+#[test]
 fn the_knockback_pushes_on_a_hurt_or_an_absorbed_hit_only() {
     let (mut world, _) = rig();
     let push = Vec2::new(-300.0, 0.0);

@@ -90,14 +90,23 @@
       "force_push": {
         "path": "data/abilities/force_push.json"
       },
+      "gun": {
+        "path": "data/abilities/gun.json"
+      },
       "ice_spray": {
         "path": "data/abilities/ice_spray.json"
       },
       "iron_block": {
         "path": "data/abilities/iron_block.json"
       },
+      "lightning": {
+        "path": "data/abilities/lightning.json"
+      },
       "small_balls": {
         "path": "data/abilities/small_balls.json"
+      },
+      "summon": {
+        "path": "data/abilities/summon.json"
       }
     },
     "cue_rules": {
@@ -105,12 +114,44 @@
         "path": "data/cue_rules/sounds.json"
       }
     },
+    "damage_types": {
+      "game": {
+        "path": "data/damage_types/game.json"
+      }
+    },
     "effects": {
+      "bleeding": {
+        "path": "data/effects/bleeding.json"
+      },
+      "burning": {
+        "path": "data/effects/burning.json"
+      },
       "casting": {
         "path": "data/effects/casting.json"
       },
+      "chilled": {
+        "path": "data/effects/chilled.json"
+      },
+      "doused": {
+        "path": "data/effects/doused.json"
+      },
+      "dummy_regen": {
+        "path": "data/effects/dummy_regen.json"
+      },
+      "frozen": {
+        "path": "data/effects/frozen.json"
+      },
       "mana_regen": {
         "path": "data/effects/mana_regen.json"
+      },
+      "shattered": {
+        "path": "data/effects/shattered.json"
+      },
+      "shocked": {
+        "path": "data/effects/shocked.json"
+      },
+      "stunned": {
+        "path": "data/effects/stunned.json"
       }
     },
     "lantern_anchors": {
@@ -311,6 +352,15 @@
     "ex10_blast_smoke": {
       "path": "particles/blast_smoke.json"
     },
+    "ex10_bleed_drips": {
+      "path": "particles/bleed_drips.json"
+    },
+    "ex10_burn_out": {
+      "path": "particles/burn_out.json"
+    },
+    "ex10_chill_flakes": {
+      "path": "particles/chill_flakes.json"
+    },
     "ex10_double_jump": {
       "path": "particles/double_jump.json"
     },
@@ -331,6 +381,9 @@
     },
     "ex10_flame_spray": {
       "path": "particles/flame_spray.json"
+    },
+    "ex10_frost_blast": {
+      "path": "particles/frost_blast.json"
     },
     "ex10_ice_beam": {
       "path": "particles/ice_beam.json"
@@ -353,11 +406,26 @@
     "ex10_landing_dust": {
       "path": "particles/landing_dust.json"
     },
+    "ex10_muzzle_flash": {
+      "path": "particles/muzzle_flash.json"
+    },
+    "ex10_poof": {
+      "path": "particles/poof.json"
+    },
+    "ex10_ricochet": {
+      "path": "particles/ricochet.json"
+    },
+    "ex10_shock_sparks": {
+      "path": "particles/shock_sparks.json"
+    },
     "ex10_small_ball_impact": {
       "path": "particles/small_ball_impact.json"
     },
     "ex10_spell_trail": {
       "path": "particles/spell_trail.json"
+    },
+    "ex10_steam_burst": {
+      "path": "particles/steam_burst.json"
     },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"
@@ -375,6 +443,12 @@
     },
     "bowling_ball": {
       "path": "prefabs/bowling_ball.json"
+    },
+    "bullet": {
+      "path": "prefabs/bullet.json"
+    },
+    "dummy": {
+      "path": "prefabs/dummy.json"
     },
     "ex10_ambient_emitter": {
       "path": "prefabs/ambient_emitter.json"
@@ -676,6 +750,16 @@
       "path": "sounds/black_hole.ogg",
       "volume": 0.65
     },
+    "ex10_crackle_sfx": {
+      "looping": false,
+      "path": "sounds/crackle.wav",
+      "volume": 0.4
+    },
+    "ex10_dummy_hit_sfx": {
+      "looping": false,
+      "path": "sounds/dummy_hit.wav",
+      "volume": 0.45
+    },
     "ex10_extinguish_sfx": {
       "looping": false,
       "path": "sounds/extinguish.wav",
@@ -705,6 +789,21 @@
       "looping": false,
       "path": "sounds/force_push.wav",
       "volume": 0.55
+    },
+    "ex10_frost_blast_sfx": {
+      "looping": false,
+      "path": "sounds/frost_blast.wav",
+      "volume": 0.55
+    },
+    "ex10_gun_reload_sfx": {
+      "looping": false,
+      "path": "sounds/gun_reload.wav",
+      "volume": 0.4
+    },
+    "ex10_gun_shot_sfx": {
+      "looping": false,
+      "path": "sounds/gun_shot.wav",
+      "volume": 0.45
     },
     "ex10_ice_beam_sfx": {
       "looping": false,
@@ -745,6 +844,26 @@
       "looping": false,
       "path": "sounds/player_hit.wav",
       "volume": 0.6
+    },
+    "ex10_ricochet_sfx": {
+      "looping": false,
+      "path": "sounds/ricochet.wav",
+      "volume": 0.35
+    },
+    "ex10_steam_burst_sfx": {
+      "looping": false,
+      "path": "sounds/steam_burst.wav",
+      "volume": 0.5
+    },
+    "ex10_summon_sfx": {
+      "looping": false,
+      "path": "sounds/summon.wav",
+      "volume": 0.5
+    },
+    "ex10_thunder_sfx": {
+      "looping": false,
+      "path": "sounds/thunder.wav",
+      "volume": 0.75
     },
     "ex10_toss_sfx": {
       "looping": false,
@@ -949,6 +1068,38 @@
       "normal_map": "sprites/ball_small_5_n.png",
       "path": "sprites/ball_small_5.png"
     },
+    "ex10_bolt_0": {
+      "filter": "nearest",
+      "path": "sprites/bolt_0.png"
+    },
+    "ex10_bolt_1": {
+      "filter": "nearest",
+      "path": "sprites/bolt_1.png"
+    },
+    "ex10_bolt_2": {
+      "filter": "nearest",
+      "path": "sprites/bolt_2.png"
+    },
+    "ex10_bolt_3": {
+      "filter": "nearest",
+      "path": "sprites/bolt_3.png"
+    },
+    "ex10_bolt_4": {
+      "filter": "nearest",
+      "path": "sprites/bolt_4.png"
+    },
+    "ex10_bolt_5": {
+      "filter": "nearest",
+      "path": "sprites/bolt_5.png"
+    },
+    "ex10_bolt_6": {
+      "filter": "nearest",
+      "path": "sprites/bolt_6.png"
+    },
+    "ex10_bolt_7": {
+      "filter": "nearest",
+      "path": "sprites/bolt_7.png"
+    },
     "ex10_bowling_ball": {
       "emissive_mask": "sprites/bowling_ball_e.png",
       "filter": "nearest",
@@ -1074,6 +1225,10 @@
     "ex10_droplet": {
       "filter": "nearest",
       "path": "sprites/droplet.png"
+    },
+    "ex10_dummy": {
+      "filter": "nearest",
+      "path": "sprites/dummy.png"
     },
     "ex10_dust": {
       "filter": "nearest",
@@ -1361,6 +1516,10 @@
       "filter": "nearest",
       "path": "sprites/ice_ring.png"
     },
+    "ex10_ice_shell": {
+      "filter": "nearest",
+      "path": "sprites/ice_shell.png"
+    },
     "ex10_icon_black_hole": {
       "filter": "nearest",
       "path": "sprites/icon_black_hole.png"
@@ -1368,6 +1527,10 @@
     "ex10_icon_bowling_ball": {
       "filter": "nearest",
       "path": "sprites/icon_bowling_ball.png"
+    },
+    "ex10_icon_dummy": {
+      "filter": "nearest",
+      "path": "sprites/icon_dummy.png"
     },
     "ex10_icon_fire_missile": {
       "filter": "nearest",
@@ -1381,6 +1544,10 @@
       "filter": "nearest",
       "path": "sprites/icon_force_push.png"
     },
+    "ex10_icon_gun": {
+      "filter": "nearest",
+      "path": "sprites/icon_gun.png"
+    },
     "ex10_icon_ice_spray": {
       "filter": "nearest",
       "path": "sprites/icon_ice_spray.png"
@@ -1388,6 +1555,10 @@
     "ex10_icon_iron_block": {
       "filter": "nearest",
       "path": "sprites/icon_iron_block.png"
+    },
+    "ex10_icon_lightning": {
+      "filter": "nearest",
+      "path": "sprites/icon_lightning.png"
     },
     "ex10_icon_small_balls": {
       "filter": "nearest",
@@ -1608,6 +1779,18 @@
     "ex10_mushrooms": {
       "filter": "nearest",
       "path": "sprites/mushrooms.png"
+    },
+    "ex10_muzzle_0": {
+      "filter": "nearest",
+      "path": "sprites/muzzle_0.png"
+    },
+    "ex10_muzzle_1": {
+      "filter": "nearest",
+      "path": "sprites/muzzle_1.png"
+    },
+    "ex10_muzzle_2": {
+      "filter": "nearest",
+      "path": "sprites/muzzle_2.png"
     },
     "ex10_near_woodland": {
       "filter": "nearest",
@@ -2841,6 +3024,54 @@
       "normal_map": "sprites/spikes_n.png",
       "path": "sprites/spikes.png"
     },
+    "ex10_status_crackle_large_0": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_large_0.png"
+    },
+    "ex10_status_crackle_large_1": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_large_1.png"
+    },
+    "ex10_status_crackle_medium_0": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_medium_0.png"
+    },
+    "ex10_status_crackle_medium_1": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_medium_1.png"
+    },
+    "ex10_status_crackle_small_0": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_small_0.png"
+    },
+    "ex10_status_crackle_small_1": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_small_1.png"
+    },
+    "ex10_status_halo_large": {
+      "filter": "nearest",
+      "path": "sprites/status_halo_large.png"
+    },
+    "ex10_status_halo_medium": {
+      "filter": "nearest",
+      "path": "sprites/status_halo_medium.png"
+    },
+    "ex10_status_halo_small": {
+      "filter": "nearest",
+      "path": "sprites/status_halo_small.png"
+    },
+    "ex10_status_ice_large": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_large.png"
+    },
+    "ex10_status_ice_medium": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_medium.png"
+    },
+    "ex10_status_ice_small": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_small.png"
+    },
     "ex10_stone_platform": {
       "emissive_mask": "sprites/stone_platform_e.png",
       "filter": "nearest",
@@ -2858,6 +3089,10 @@
       "filter": "nearest",
       "normal_map": "sprites/timber_support_n.png",
       "path": "sprites/timber_support.png"
+    },
+    "ex10_tracer": {
+      "filter": "nearest",
+      "path": "sprites/tracer.png"
     },
     "ex10_vines": {
       "emissive_mask": "sprites/vines_e.png",

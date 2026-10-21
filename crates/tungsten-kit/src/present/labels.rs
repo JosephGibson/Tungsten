@@ -367,8 +367,9 @@ const POP_SHARE: f32 = 0.2;
 /// The share of a label's seconds after which it fades.
 const FADE_FROM: f32 = 0.5;
 
-/// The labels the cues floated, a World resource [`CuesPlugin`](crate::CuesPlugin)
-/// inserts: at most [`MAX_LABELS`], oldest first.
+/// The labels the cues and [`float_label`] floated, a World resource
+/// [`CuesPlugin`](crate::CuesPlugin) inserts: at most [`MAX_LABELS`],
+/// oldest first.
 #[derive(Debug, Default)]
 pub(crate) struct LiveLabels {
     labels: VecDeque<Live>,
@@ -414,9 +415,41 @@ pub(crate) fn srgb_byte(linear: f32) -> u8 {
     (encoded * 255.0).round() as u8
 }
 
-/// Floats `amount` at `anchor` in `style`, dropping the oldest label past
-/// [`MAX_LABELS`]; a World without [`LiveLabels`] takes none.
-pub(crate) fn float_label(world: &mut World, style: &LabelStyle, anchor: Vec2, amount: f32) {
+/// Floats `amount` at `anchor`, a world point, in `style`, as a cue's
+/// `label` action does: for a number a game's own code shapes (a crit's
+/// size, ticks summed over a window). The text is the amount, whole as
+/// `3`, else to one decimal. Past 512 live labels the oldest goes; a World
+/// without [`CuesPlugin`](crate::CuesPlugin)'s labels takes none, and a
+/// non-finite amount or anchor floats nothing.
+///
+/// # Examples
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_core::{Plugin, Schedule, Stage, Time, World, WorldLabels};
+/// use tungsten_kit::{CuesPlugin, LabelStyle, float_label};
+///
+/// let mut world = World::new();
+/// world.insert_resource(Time::new());
+/// world.insert_resource(WorldLabels::default());
+/// let mut schedule = Schedule::new();
+/// CuesPlugin.build(&mut schedule, &mut world);
+/// schedule.resolve().unwrap();
+///
+/// // Three burn ticks a game summed, floated once in gold.
+/// let gold = LabelStyle::new("sans").with_size(24.0).with_color([1.0, 0.8, 0.1, 1.0]);
+/// float_label(&mut world, &gold, Vec2::new(40.0, 12.0), 3.0 + 3.0 + 1.5);
+/// float_label(&mut world, &gold, Vec2::new(40.0, 12.0), f32::NAN);
+/// world.resource_mut::<Time>().advance_frame(1.0 / 60.0);
+/// schedule.run_stage(Stage::PostUpdate, &mut world, |_, _| {});
+/// let drawn: Vec<_> = world.resource_mut::<WorldLabels>().drain().collect();
+/// assert_eq!(drawn.len(), 1, "a NaN floats nothing");
+/// assert_eq!((drawn[0].text.as_str(), drawn[0].anchor), ("7.5", Vec2::new(40.0, 12.0)));
+/// ```
+pub fn float_label(world: &mut World, style: &LabelStyle, anchor: Vec2, amount: f32) {
+    if !(amount.is_finite() && anchor.is_finite()) {
+        return;
+    }
     let Some(live) = world.get_resource_mut::<LiveLabels>() else {
         return;
     };

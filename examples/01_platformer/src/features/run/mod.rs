@@ -13,7 +13,11 @@ use tungsten::{GameState, Plugin, StateContext, StateId};
 
 pub use components::Run;
 
-use crate::features::{audio, level, player, spells};
+use crate::features::combat::components::Hints;
+use crate::features::combat::numbers::Numbers;
+use crate::features::elements::cascade::Cascades;
+use crate::features::spells::components::Summon;
+use crate::features::{audio, dummy, level, player, spells};
 use crate::game::GAMEPLAY;
 use crate::save;
 use crate::shared::SaveIds;
@@ -54,7 +58,11 @@ impl GameState for GameplayState {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
         world.insert_resource(SaveIds::default());
+        world.insert_resource(Cascades::default());
+        world.insert_resource(Hints::default());
+        world.insert_resource(Summon::default());
         level::spawn(world);
+        dummy::start(world);
         let feet = level::marker(world, level::SPAWN_MARKER).expect("the map marks the spawn");
         // Half a pixel above the turf, so its first steps find the ground.
         let spawn = feet - Vec2::new(0.0, player::PLAYER_HALF.y + 0.5);
@@ -74,6 +82,12 @@ impl GameState for GameplayState {
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.remove_resource::<Run>();
+        ctx.world
+            .remove_resource::<dummy::components::PlacedDummies>();
+        ctx.world.remove_resource::<Cascades>();
+        ctx.world.remove_resource::<Hints>();
+        ctx.world.remove_resource::<Summon>();
+        ctx.world.remove_resource::<Numbers>();
         level::despawn(ctx.world);
         audio::stop(ctx.world);
         spells::stop(ctx.world);

@@ -225,6 +225,63 @@ def particle_configs():
         initial_velocity=dict(kind='radial', speed=dict(min=150, max=600)),
         gravity=[0, 600], lifetime=dict(min=.35, max=.9), start_scale=dict(min=.08, max=.25),
         angular_velocity=dict(min=-12, max=12))
+    # 01 (b): the gun's flash and ricochets, the statuses' drips, flakes and
+    # sparks, and the endings' bursts, all over today's sprites.
+    configs['muzzle_flash'] = dict(
+        config('spark', 10, 10, .12, 420, .12, direction=(1, 0), spread=50, burst=True),
+        lifetime=dict(min=.06, max=.12), gravity=[0, 0], drag_per_sec=6,
+        alpha_over_life=[[0, 1], [1, 0]],
+        color_over_life=[[0, [1, 1, .85, 1]], [.5, [1, .7, .25, 1]], [1, [1, .35, .1, 0]]])
+    configs['ricochet'] = dict(
+        config('spark', 12, 12, .3, 520, .1, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=160, max=520)),
+        lifetime=dict(min=.12, max=.3), gravity=[0, 600], drag_per_sec=1.2,
+        alpha_over_life=[[0, 1], [.7, .8], [1, 0]],
+        color_over_life=[[0, [1, 1, .8, 1]], [.5, [1, .75, .3, 1]], [1, [.6, .3, .1, 0]]])
+    configs['steam_burst'] = dict(
+        config('dust', 28, 28, 1.1, 420, .7, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=140, max=420)),
+        lifetime=dict(min=.6, max=1.1), start_scale=dict(min=.35, max=.7),
+        gravity=[0, -120], drag_per_sec=2.2, angular_velocity=dict(min=-1.5, max=1.5),
+        scale_over_life=[[0, .5], [.3, 1.1], [1, 1.6]],
+        alpha_over_life=[[0, 0], [.08, .8], [.6, .45], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [1, [.75, .8, .88, 1]]])
+    configs['bleed_drips'] = dict(
+        config('droplet', 10, 6, .8, 40, .08, direction=(0, 1), spread=40),
+        gravity=[0, 420], drag_per_sec=.2, lifetime=dict(min=.45, max=.8),
+        start_scale=dict(min=.05, max=.09), scale_over_life=[[0, 1], [1, .8]],
+        alpha_over_life=[[0, 0], [.08, 1], [.8, .9], [1, 0]],
+        color_over_life=[[0, [.52, .12, .18, 1]], [1, [.33, .07, .12, 0]]])
+    configs['chill_flakes'] = dict(
+        config('ice_crystal', 10, 6, 1.4, 30, .12, spread=180),
+        gravity=[0, 40], drag_per_sec=.8, angular_velocity=dict(min=-3, max=3),
+        lifetime=dict(min=.8, max=1.4), start_scale=dict(min=.06, max=.12),
+        alpha_over_life=[[0, 0], [.15, .9], [.7, .7], [1, 0]], color_over_life=ice_ramp)
+    configs['shock_sparks'] = dict(
+        config('spark', 12, 14, .25, 260, .1, spread=360),
+        initial_velocity=dict(kind='radial', speed=dict(min=80, max=260)),
+        lifetime=dict(min=.1, max=.25), gravity=[0, 0], drag_per_sec=3,
+        angular_velocity=dict(min=-12, max=12), alpha_over_life=[[0, 1], [.6, .9], [1, 0]],
+        color_over_life=[[0, [1, .95, 1, 1]], [.3, [.75, .55, 1, 1]], [1, [.45, .25, .85, 0]]])
+    configs['burn_out'] = dict(
+        config('dust', 16, 16, 1.4, 160, .6, spread=120, burst=True),
+        lifetime=dict(min=.8, max=1.4), gravity=[0, -140], drag_per_sec=1.4,
+        angular_velocity=dict(min=-1.5, max=1.5), start_scale=dict(min=.3, max=.6),
+        scale_over_life=[[0, .5], [.4, 1.2], [1, 1.6]],
+        alpha_over_life=[[0, 0], [.1, .75], [.6, .5], [1, 0]],
+        color_over_life=[[0, [.75, .3, .1, 1]], [.25, [.2, .17, .17, 1]], [1, [.08, .07, .08, 1]]])
+    configs['poof'] = dict(
+        config('dust', 14, 14, .7, 220, .45, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=60, max=220)),
+        lifetime=dict(min=.4, max=.7), gravity=[0, -40], drag_per_sec=3,
+        scale_over_life=[[0, .5], [.3, 1], [1, 1.3]],
+        alpha_over_life=[[0, 0], [.08, .85], [.6, .5], [1, 0]],
+        color_over_life=[[0, [.88, .84, .76, 1]], [1, [.6, .58, .55, 1]]])
+    configs['frost_blast'] = dict(
+        configs['ice_shatter'], sprite='ex10_ice_crystal', max_alive=40,
+        emission=dict(kind='burst', count=40, once=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=200, max=720)),
+        gravity=[0, 220], lifetime=dict(min=.3, max=.8), start_scale=dict(min=.1, max=.28))
     return configs
 
 

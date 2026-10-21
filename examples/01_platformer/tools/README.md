@@ -4,7 +4,7 @@ The example runs from checked-in PNGs, JSON and WAVs. Nothing here runs from
 Cargo, engine startup or asset loading. Python 3 and `Pillow==12.3.0` are needed
 only to edit or regenerate the artwork, the level and the sounds.
 
-Paths below are relative to this `tools/` directory unless a command starts at the repository root. For art, read [Editing art](#editing-art); for geometry, [Editing the level](#editing-the-level); for presentation, [Runtime and visual checks](#runtime-and-visual-checks); for the spells and the sounds, [Spells and the HUD](#spells-and-the-hud), [Fire missile](#fire-missile-extinguishing-and-sound-effects) and [Ice spray](#ice-spray-and-thermal-shattering). The game's Rust is in `src/features/`, relative to the example root, and [its README](../README.md) maps each mechanic to the kit item and the data file behind it.
+Paths below are relative to this `tools/` directory unless a command starts at the repository root. For art, read [Editing art](#editing-art); for geometry, [Editing the level](#editing-the-level); for presentation, [Runtime and visual checks](#runtime-and-visual-checks); for the spells and the sounds, [Spells and the HUD](#spells-and-the-hud), [Fire missile](#fire-missile-extinguishing-and-sound-effects) and [Ice spray](#ice-spray-and-thermal-shattering); for the elements, the gun and the dummy, [Elements, weapons and the dummy](#elements-weapons-and-the-dummy). The game's Rust is in `src/features/`, relative to the example root, and [its README](../README.md) maps each mechanic to the kit item and the data file behind it.
 
 From the repository root:
 
@@ -56,11 +56,11 @@ pixel) for any hand-authored sprite. The modules:
 | Module | Draws |
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
-| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball and the bowling ball |
+| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball and the training dummy |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the eight 32-pixel spell icons |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the dummy, the lightning bolt's segments, the status overlays, the ice shell, the muzzle flash and the tracer |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, and the music loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
@@ -173,6 +173,7 @@ when a run starts, each object taking the run's next save ID:
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area` name |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands | None: the game reads it by name |
+| `dummies` | The training dummy in the Lantern clearing, the map's last object layer, so every earlier object keeps its save ID | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
@@ -387,11 +388,13 @@ cost a second over 60. The mana stats are `content/data/stats/game.json`; the
 `casting` tag is in `content/data/tags/game.json`. The values, the slots and the
 controls are in [the example's README](../README.md).
 
-The HUD draws the eight icons (`effects.py`, 32 pixels, nearest filtering) at the
+The HUD draws the icons (`effects.py`, 32 pixels, nearest filtering) at the
 largest whole number of screen pixels per art pixel the UI's scale allows, each in
-its element's border colour: ember orange for fire, ice cyan for cold, indigo for
-mana and bone white for the physical toys. The palette's indigo shades (`Γ Π Ξ`)
-are the mana's, and its violet ones (`Δ Λ Σ`) the black hole's icon.
+its element's border colour: ember orange for fire, ice cyan for cold, violet for
+shock (lightning), indigo for mana and the summon, and bone white for the physical
+toys and the gun's magazine. Slot 0 shows the summon's selected type, the dummy's
+icon. The palette's indigo shades (`Γ Π Ξ`) are the mana's, and its violet ones
+(`Δ Λ Σ`) the black hole's icon and the lightning's.
 
 ## Fire missile, extinguishing and sound effects
 
@@ -477,6 +480,15 @@ The sprays' loops are voices of their own.
 | `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
 | `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
 | `music_explore`, `music_pause` | `music_*.wav` | A run's exploration loop, and pause's over the quieted run |
+| `ex10_gun_shot_sfx` | `gun_shot.wav` | A shot: a cracking burst over a low punch and a slide's tick |
+| `ex10_gun_reload_sfx` | `gun_reload.wav` | The magazine whole again: a slide, two clicks and an iron ring |
+| `ex10_ricochet_sfx` | `ricochet.wav` | A bullet turns off iron: a ping that whines away |
+| `ex10_thunder_sfx` | `thunder.wav` | A lightning strike: a splitting crack and a rolling rumble |
+| `ex10_crackle_sfx` | `crackle.wav` | A conduction jump: a short electric buzz |
+| `ex10_steam_burst_sfx` | `steam_burst.wav` | Cold on fire, or a fire hazard put out: a wet whoosh into a hiss |
+| `ex10_frost_blast_sfx` | `frost_blast.wav` | Thermal shock: fracturing ice, a cold boom and falling shards |
+| `ex10_dummy_hit_sfx` | `dummy_hit.wav` | The dummy takes damage, through its `damaged` cue: a sackcloth thump |
+| `ex10_summon_sfx` | `summon.wav` | A dummy summoned: rising bells over a soft swell |
 
 The music loops are 16-bit mono at 22,050 Hz, on the music bus. Each renders a
 bar past its end and folds that tail onto its start, so it repeats at its bar
@@ -566,6 +578,36 @@ spray translucency, thermal fracture with cold shards, and control/heart spacing
 The final shatter pass was also checked at 1920×1080: a surface fireball blast
 throws the broken-metal chunks in a visible fan, with varied angles and a brief tumble.
 The audible mix and resized-window presentation still need human review.
+
+## Elements, weapons and the dummy
+
+01 (b)'s art follows the house style, and `--check` covers it like the rest. The
+palette gains `Θ` and `ϑ` (maroon, the bleed's), `ϖ` (the crit yellow, which the
+damage numbers' crits use), `ϰ`, `ϱ` and `ς` (translucent ice) and `ϕ` (a
+near-white violet). Every new sprite is unlit, drawn over the lit world:
+
+- **Statuses**, generic per size class, never drawn per target: small 32, medium 64
+  and large 128 pixels, by the target's sprite. `status_ice_<class>` is an ice
+  block over the frame's box, `status_crackle_<class>_<0|1>` a two-frame violet
+  crackle, and `status_halo_<class>` the stun's ring above the head. Chilled shows
+  a frost tint and `chill_flakes`, bleeding `bleed_drips`, burning today's `fire_*`
+  flames.
+- **The lightning bolt**: eight 24 × 64 segments, `bolt_0` to `bolt_7`, each entering
+  at its top centre and leaving `BOLT_EXITS` pixels aside at its bottom, so a strike
+  stacks five to eight of them from the sky down, each starting where the last left;
+  a violet haze, a glow, a light core and a white spine, every third forking a twig.
+- **The ice shell** over a frozen ball, `ice_shell`.
+- **The gun**: a three-frame 16-pixel muzzle flash (`muzzle_0` to `muzzle_2`) and a
+  32 × 3 tracer along +x, a dim tail to a white-hot head, whose head the lightning's
+  arcs and veil also take their white from.
+- **The training dummy** (`actors.py`, `dummy`): a straw target on a post, 64 × 64,
+  its lowest pixel on row 60 as the courier's is, drawn unlit with no normal or
+  emissive map, so the kit's hit flash shows through `damage_flash`.
+
+Nine particle configs join, over today's sprites: `muzzle_flash` and `ricochet`
+(the gun), `steam_burst`, `burn_out`, `poof` and `frost_blast` (the endings and
+the dummy's), and `bleed_drips`, `chill_flakes` and `shock_sparks` (the statuses),
+each under the shared emitter and particle caps.
 
 ## Iron blocks and crushing
 

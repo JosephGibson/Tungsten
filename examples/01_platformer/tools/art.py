@@ -11,10 +11,23 @@ TOOLS = Path(__file__).resolve().parent
 # Black-hole layers are drawn larger so their soft edges hold up when scaled.
 EFFECT_SIZES = {name: (96, 96) for name in (
     'vortex', 'vortex_core', 'accretion_disk', 'photon_ring', 'infall_streak')}
-# The spell icons, which the HUD shows at whole-number scale.
+# The spell, gun and summon icons, which the HUD shows at whole-number scale.
 ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
-         'iron_block', 'bowling_ball', 'small_balls')
+         'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy')
 ICON_SIZES = {'icon_' + name: (32, 32) for name in ICONS}
+# The elements' and weapons' art off the 64 px grid: the bolt's segments, the
+# status overlays' small and large classes (the medium class is 64), the
+# muzzle flash's frames and the tracer.
+STATUS_CLASSES = {'small': 32, 'medium': 64, 'large': 128}
+ELEMENT_SIZES = {
+    **{f'bolt_{i}': (24, 64) for i in range(8)},
+    **{f'status_{look}_{name}{frame}': (size, size)
+       for name, size in STATUS_CLASSES.items() if size != 64
+       for look, frames in (('ice', ('',)), ('halo', ('',)), ('crackle', ('_0', '_1')))
+       for frame in frames},
+    **{f'muzzle_{i}': (16, 16) for i in range(3)},
+    'tracer': (32, 3),
+}
 def validate_palette(palette):
     if palette.get('.') != [0, 0, 0, 0]:
         raise ValueError('palette must define transparent dot')
@@ -109,7 +122,7 @@ def auxiliary(im, relief=False):
 
 
 def build_art():
-    from actors import build_balls, build_fireball, build_player
+    from actors import build_balls, build_dummy, build_fireball, build_player
     from backdrops import build_backdrops
     from effects import build_effects
     from scenery import build_scenery
@@ -118,6 +131,7 @@ def build_art():
     build_player(images, lit, animations)
     build_fireball(images, animations)
     build_balls(images, lit, animations)
+    build_dummy(images)
     build_scenery(images, lit, animations)
     build_terrain(images, lit)
     build_backdrops(images)
@@ -132,7 +146,7 @@ def validate_art(images,lit):
     for name,im in images.items():
         # A moving platform's deck is its width wide.
         wide=name.startswith('lift_deck_') and im.height==64
-        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!={**EFFECT_SIZES,**ICON_SIZES}.get(name,(64,64)):raise ValueError(f'{name}: wrong dimensions')
+        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!={**EFFECT_SIZES,**ICON_SIZES,**ELEMENT_SIZES}.get(name,(64,64)):raise ValueError(f'{name}: wrong dimensions')
         if not set(im.get_flattened_data())<=allowed:raise ValueError(f'{name}: outside palette')
         if name.startswith(('player', 'ball', 'lantern', 'vines')) or name == 'marker':
             box=im.getbbox()

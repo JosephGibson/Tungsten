@@ -8,8 +8,8 @@ tinted at extraction; each fades to transparent before its canvas edge.
 """
 import math
 
-from art import EFFECT_SIZES, ICON_SIZES, PALETTE, canvas
-from pixels import Part, dither, outline, shade, smoothstep, to_image
+from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
+from pixels import NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -335,6 +335,72 @@ def icon_small_balls():
     return pixels
 
 
+def zigzag(start, end, kinks, seed, jitter):
+    """A jagged line from `start` to `end` through `kinks` hashed offsets
+    across it: the shape of every bolt, arc and crack."""
+    (x0, y0), (x1, y1) = start, end
+    nx, ny = -(y1 - y0), x1 - x0
+    n = math.hypot(nx, ny) or 1.0
+    points = [start]
+    for i in range(1, kinks):
+        u = i / kinks
+        side = (unit('zig', seed, i) - 0.5) * 2 * jitter
+        points.append((x0 + (x1 - x0) * u + nx / n * side, y0 + (y1 - y0) * u + ny / n * side))
+    points.append(end)
+    return points
+
+
+def icon_lightning():
+    """A storm cloud over a bolt: a violet glow, a light core, a white spine."""
+    cloud = Part((ICON, ICON))
+    for cx, cy, r in ((10, 9, 6), (17, 7, 7), (24, 9, 6), (16, 11, 6)):
+        cloud.ellipse((cx, cy), r, r * 0.8)
+    pixels = shade(cloud.pixels(), 'α', light='δ', shadow='β')
+    path = [(18, 12), (13, 19), (18, 19), (11, 29)]
+    for width, symbol in ((5, 'Λ'), (3, 'Σ'), (1, 'Ψ')):
+        bolt = Part((ICON, ICON))
+        bolt.limb(path, width)
+        pixels.update({p: symbol for p in bolt.pixels()})
+    return pixels
+
+
+def icon_gun():
+    """A short pistol side on: an iron slide and barrel, a wooden grip."""
+    slide = Part((ICON, ICON))
+    slide.polygon([(5, 10), (27, 10), (27, 16), (5, 16)])
+    slide.rectangle((27, 11, 29, 14))
+    grip = Part((ICON, ICON))
+    grip.polygon([(7, 16), (14, 16), (12, 27), (5, 27)])
+    guard = Part((ICON, ICON))
+    guard.limb([(14, 16), (15, 20), (19, 20), (19, 16)], 1)
+    pixels = compose([
+        (shade(grip.pixels(), "'", light='a', shadow='('), 'o'),
+        (shade(guard.pixels(), 'Φ'), None),
+        (shade(slide.pixels(), 'Ω', light='χ', shadow='Φ'), 'o'),
+    ])
+    for x in range(8, 25, 3):  # the slide's grip ridges
+        pixels[(x, 13)] = 'Φ'
+    pixels[(26, 10)] = 'φ'  # the front sight catching the moon
+    return pixels
+
+
+def icon_dummy():
+    """The training dummy, the summon slot's first type, at half size on an
+    indigo summoning ring."""
+    from actors import dummy_canvas
+    ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
+    ring.ellipse((16, 28), 13, 3)
+    inner.ellipse((16, 28), 10, 2)
+    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
+    dummy = dummy_canvas()
+    for y in range(ICON):
+        for x in range(ICON):
+            symbol = dummy.get((2 * x + 1, 2 * y + 1))
+            if symbol and y >= 2:
+                pixels[(x, y - 2)] = symbol
+    return pixels
+
+
 ICON_ART = {
     'icon_fire_missile': icon_fire_missile,
     'icon_flamethrower': icon_flamethrower,
@@ -344,6 +410,9 @@ ICON_ART = {
     'icon_iron_block': icon_iron_block,
     'icon_bowling_ball': icon_bowling_ball,
     'icon_small_balls': icon_small_balls,
+    'icon_lightning': icon_lightning,
+    'icon_gun': icon_gun,
+    'icon_dummy': icon_dummy,
 }
 
 
@@ -352,6 +421,164 @@ def build_icons(images):
         raise ValueError('every spell icon needs its art')
     for name, draw in ICON_ART.items():
         images[name] = icon_image(draw())
+
+
+# Lightning: eight segments, each entering at its top centre and leaving
+# `BOLT_EXITS` pixels aside at its bottom, which a strike stacks from the sky
+# down, each piece starting where the last left.
+BOLT_SIZE = ELEMENT_SIZES['bolt_0']
+BOLT_EXITS = (-8, -4, 0, 4, 8, -6, 6, 2)
+
+
+def bolt_segment(index):
+    """A violet haze, a glow, a light core and a white spine along one jagged
+    path; every third piece forks a short twig."""
+    width, height = BOLT_SIZE
+    start, end = (width / 2, 0), (width / 2 + BOLT_EXITS[index], height - 1)
+    path = zigzag(start, end, 5, ('bolt', index), 4.5)
+    pixels = {}
+    for stroke, symbol in ((9, '*'), (5, 'Λ'), (3, 'Σ'), (1, 'Ψ')):
+        line = Part(BOLT_SIZE)
+        line.limb(path, stroke)
+        pixels.update({p: symbol for p in line.pixels()})
+    if index % 3 == 1:
+        twig_end = (path[2][0] + (7 if BOLT_EXITS[index] <= 0 else -7), path[2][1] + 14)
+        twig = Part(BOLT_SIZE)
+        twig.limb(zigzag(path[2], twig_end, 3, ('twig', index), 2), 1)
+        pixels.update({p: 'Λ' for p in twig.pixels() if pixels.get(p, '*') == '*'})
+    return to_image(pixels, BOLT_SIZE)
+
+
+def status_box(size):
+    """The box a status overlay covers in a sprite of `size`: inset at the
+    sides and the top, down to where the frame's feet stand."""
+    side, top = round(size * 0.094), round(size * 0.05)
+    return side, top, size - 1 - side, round(size * 0.97) - 1
+
+
+def status_ice(size):
+    """Frozen: a translucent block of ice over the frame, which shows through
+    it under the game's cold tint: bright edges, glints and two cracks."""
+    x0, y0, x1, y1 = status_box(size)
+    pixels = {(x, y): 'ϱ' if x in (x0, x1) or y in (y0, y1) else 'ϰ'
+              for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)}
+    span = max(4, (x1 - x0) // 3)
+    for i in range(3):  # diagonal glints near the top
+        gx, gy = x0 + 2 + i * span // 2, y0 + 2
+        for t in range(max(2, span // 2)):
+            if (gx + t, gy + t) in pixels and gx + t < x1 - 1:
+                pixels[(gx + t, gy + t)] = 'Ψ' if t < 2 else 'ϱ'
+    for i in range(2):  # cracks rising from the foot
+        cx = x0 + int(unit('crack', size, i) * (x1 - x0))
+        end = (cx + (6 if i else -5) * size // 64, y1 - (y1 - y0) // 2)
+        crack = Part((size, size))
+        crack.limb(zigzag((cx, y1 - 1), end, 4, ('crack', size, i), 2), 1)
+        for p in crack.pixels():
+            if p in pixels and pixels[p] == 'ϰ':
+                pixels[p] = 'ς'
+    return to_image(pixels, (size, size))
+
+
+def status_outline(size):
+    """The outline a generic body leaves in a sprite of `size`: an upright
+    ellipse over most of the frame, which the crackle hugs."""
+    cx, cy, rx, ry = size / 2, size * 0.55, size * 0.34, size * 0.42
+    inside = {(x, y) for y in range(size) for x in range(size)
+              if ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1}
+    return sorted(p for p in inside
+                  if any((p[0] + dx, p[1] + dy) not in inside for dx, dy in NEIGHBOURS))
+
+
+def status_crackle(size, frame):
+    """Shocked: violet arcs along the body's outline with a near-white spine,
+    in two frames the game flickers between."""
+    edge = status_outline(size)
+    pixels = {}
+    for i in range(3 + size // 32):
+        a = edge[int(unit('arc', size, frame, i) * len(edge))]
+        b = edge[int(unit('arc-b', size, frame, i) * len(edge))]
+        if math.dist(a, b) > size * 0.45:
+            b = (a[0] + (b[0] - a[0]) * 0.4, a[1] + (b[1] - a[1]) * 0.4)
+        path = zigzag(a, b, 4, ('arc', size, frame, i), max(2, size // 16))
+        glow, spine = Part((size, size)), Part((size, size))
+        glow.limb(path, 3 if size >= 64 else 2)
+        spine.limb(path, 1)
+        pixels.update({p: 'Λ' for p in glow.pixels()})
+        pixels.update({p: 'Σ' if (p[0] + p[1] + frame) % 3 else 'ϕ' for p in spine.pixels()})
+    return to_image(pixels, (size, size))
+
+
+def status_halo(size):
+    """Stunned: small stars in a ring above the head."""
+    pixels = {}
+    cx, cy, rx, ry = size / 2, max(3, round(size * 0.07)), size * 0.22, size * 0.06
+    stars = 4 if size < 64 else 5
+    arm = 1 if size < 64 else 2
+    for i in range(stars):
+        a = i * math.tau / stars
+        x, y = round(cx + rx * math.cos(a)), round(cy + ry * math.sin(a))
+        pixels[(x, y)] = 'Z'
+        for d in range(1, arm + 1):
+            for dx, dy in NEIGHBOURS:
+                pixels[(x + dx * d, y + dy * d)] = 'Y' if d < arm else 'J'
+    return to_image(pixels, (size, size))
+
+
+def ice_shell():
+    """A frozen ball's shell, drawn over its sprite under a cold tint: a
+    translucent disc with a bright rim and a glint."""
+    pixels = {}
+    c, r = 31.5, 30.0
+    for y in range(64):
+        for x in range(64):
+            d = math.hypot(x - c, y - c)
+            if d <= r:
+                pixels[(x, y)] = 'ϱ' if d > r - 1.5 else 'ϰ'
+    for t in range(10):
+        pixels[(round(c - r * 0.45) + t, round(c - r * 0.55) + t // 2)] = 'Ψ'
+    return to_image(pixels)
+
+
+def muzzle(frame):
+    """The gun's flash, three frames: a hot star with diagonal sparks."""
+    pixels = {}
+    c = 8
+    arm, diagonal = ((4, 2), (6, 3), (3, 1))[frame]
+    pixels[(c, c)] = 'Ψ'
+    for d in range(1, arm + 1):
+        for dx, dy in NEIGHBOURS:
+            pixels[(c + dx * d, c + dy * d)] = 'ZZYJK'[min(d, 4)]
+    for d in range(1, diagonal + 1):
+        for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+            pixels[(c + dx * d, c + dy * d)] = 'Y' if d < 2 else 'J'
+    return to_image(pixels, ELEMENT_SIZES['muzzle_0'])
+
+
+def tracer():
+    """A bullet's streak along +x: a dim tail to a white-hot head."""
+    pixels = {}
+    for x in range(32):
+        pixels[(x, 1)] = 'Ψ' if x > 26 else 'Z' if x > 18 else 'Y' if x > 10 else 'x' if x > 4 else 'q'
+        if x > 20:
+            pixels[(x, 0)] = pixels[(x, 2)] = 'u'
+    return to_image(pixels, ELEMENT_SIZES['tracer'])
+
+
+def build_element_art(images):
+    """The elements' and the gun's art: the bolt's segments, the status
+    overlays in their three size classes, the ice shell, the muzzle flash and
+    the tracer. All unlit: overlays and flashes draw over the lit world."""
+    for i in range(len(BOLT_EXITS)):
+        images[f'bolt_{i}'] = bolt_segment(i)
+    for name, size in STATUS_CLASSES.items():
+        images[f'status_ice_{name}'] = status_ice(size)
+        images[f'status_halo_{name}'] = status_halo(size)
+        for frame in range(2):
+            images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
+    images['ice_shell'] = ice_shell()
+    for frame in range(3):
+        images[f'muzzle_{frame}'] = muzzle(frame)
+    images['tracer'] = tracer()
 
 
 def build_effects(images):
@@ -363,3 +590,4 @@ def build_effects(images):
     spark_and_cursor(images)
     build_black_hole(images)
     build_icons(images)
+    build_element_art(images)

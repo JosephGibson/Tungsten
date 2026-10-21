@@ -329,6 +329,7 @@ shape ailment_rung: One rung of a damage type's ladder, written from the lowest 
   field effect: effects ID or entry — applied to the target from the part's source, scaled by the fill over the threshold; the load checks it
   field needs: f32 (> 0) = null — the fraction of the target's threshold the bucket must hold; any fill when left out
   field requires: list of tag = [] — tags the target must carry, the tags of effects the feed queued for it this step counted; the load checks them
+  field blocked_by: list of tag = [] — tags that skip the rung while the target carries one, the tags of effects the feed queued for it this step counted, so the bucket fills on for the rungs above; the load checks them
   field chance: f32 (> 0, <= 1) = 1.0 — drawn from the kit's random stream once the rung is reached
   field window: f32 (> 0) = null — seconds the bucket drains a threshold over, the first `needs` rung's; required with `needs`
   sample: { "effect": "chilled", "window": 4 }

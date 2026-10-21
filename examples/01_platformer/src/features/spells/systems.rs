@@ -6,9 +6,14 @@ use glam::Vec2;
 use tungsten::core::{Entity, Time, With, Without, World};
 use tungsten::kit::{Aim, Health, Used, cursor_to_world, use_ability};
 
-use super::components::{Spell, Spellbook};
-use super::{CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, cost, mana, select, selected};
+use super::components::{Spell, Spellbook, Summon};
+use super::{
+    CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, cost, mana, select,
+    selected, summon_type,
+};
 use crate::features::audio::{self, components::Sound};
+use crate::features::dummy;
+use crate::features::lightning;
 use crate::features::player::{self, BODY_OFFSET};
 use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
@@ -55,9 +60,21 @@ pub fn cast(world: &mut World) {
     }
 }
 
-/// The slot actions select their slot; `spell_next` and `spell_prev` step
-/// to the next or the previous spell, wrapping past the empty slots.
+/// `summon_next` and `summon_prev` turn the summon's type, wrapping; the
+/// slot actions select their slot; `spell_next` and `spell_prev` step to
+/// the next or the previous spell, wrapping past the empty slots.
 fn choose(world: &mut World, player: Entity) {
+    let turn = match (
+        just_pressed(world, SUMMON_NEXT),
+        just_pressed(world, SUMMON_PREV),
+    ) {
+        (true, false) => 1,
+        (false, true) => SUMMONS.len() - 1,
+        _ => 0,
+    };
+    if let Some(summon) = world.get_resource_mut::<Summon>() {
+        summon.selected = (summon.selected + turn) % SUMMONS.len();
+    }
     if let Some(slot) = SLOT_ACTIONS
         .iter()
         .position(|action| just_pressed(world, action))
@@ -98,8 +115,8 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> bool {
 }
 
 /// A press of `spell`: refused before its ability spends anything while
-/// its toy is at its cap or it needs the cursor and has none, then its
-/// use, then its toy.
+/// its toy is at its cap, it needs the cursor and has none, or a summon's
+/// box would overlap a solid tile there; then its use, then its toy.
 fn press(world: &mut World, player: Entity, spell: Spell) {
     let Some(centre) = player::centre(world, player) else {
         return;
@@ -108,7 +125,8 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
     let refused = match spell {
         Spell::FireMissile => toys::missile_count(world) >= MISSILE_CAP,
         Spell::BowlingBall => toys::ball_count(world) >= BALL_CAP,
-        Spell::BlackHole | Spell::IronBlock => at.is_none(),
+        Spell::BlackHole | Spell::IronBlock | Spell::Lightning => at.is_none(),
+        Spell::Summon => at.is_none_or(|at| !dummy::fits(world, at)),
         _ => false,
     };
     if refused || use_ability(world, player, spell.ability()) != Used::Used {
@@ -131,6 +149,13 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::BowlingBall => {
             toys::toss_bowling_ball(world, centre, aim);
+        }
+        Spell::Lightning => {
+            lightning::strike(world, player, at);
+        }
+        Spell::Summon => {
+            dummy::summon(world, summon_type(world).prefab, at);
+            audio::play(world, Sound::Summoned, at);
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}
     }

@@ -1,0 +1,10 @@
+{
+  "duration": 4,
+  "period": 0.5,
+  "damage": {
+    "damage.physical.bleed": 2
+  },
+  "grant": [
+    "status.bleeding"
+  ]
+}

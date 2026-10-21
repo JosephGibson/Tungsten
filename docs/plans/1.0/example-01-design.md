@@ -275,6 +275,16 @@ Enemy attacks also carry the difficulty multiplier, from (c).
 - smoke is green;
 - the owner has played the elements through on the dummy.
 
+- **As built (M74, `D-200`).** Where the plan's answers departed from this section:
+  - balls, iron and scraps keep 01's own element components (burn, chill, a five-second `Frozen`, douse), and only what has health takes the kit's effects and ladders (Q1); each ending runs through a saved cascade queue, at most 48 entries a step, bounded at 16,384;
+  - the dummy draws unlit through `damage_flash`, so the kit's flash shows (Q2); it takes every pulse, with a 0 s window (Q3), and stands in the Lantern clearing left of the spawn, placed by the map's last layer, `dummies`, its tags a Tiled property (Q4);
+  - getting hit keeps the courier's set from (a), with no flash on its lit sprite (A20);
+  - lightning's rod is the nearest conductive thing within 160 px of the aim (Q9), and conduction decides a jump a step, so ice that forms while a jump waits stops it (Q21); a rod under a ceiling is not struck, so that strike starts no chain;
+  - the gun decides each bullet's step once, from what its path met first (Q22); the kit's `charges.all` refill starts at the first spent charge, so the ability counts the rounds and 01 times the 1.2 s reload, and the magazine reads "reloading" at none, with no sweep (Q20);
+  - damage numbers float through the kit's `float_label` from 01's code: a type's parts merge while they arrive within 0.6 s, floated 0.6 s after the last or 1 s after the first, and a crit floats at once (Q13);
+  - the summon slot places its dummy by 01's code once `use_ability` returns `Used::Used`, with no `place` payload (Q15), refused over a solid tile, four live at most, the oldest going (Q14);
+  - the save is schema 5, which migrates 01 (a)'s schema 4 by moving every save ID from its player's up by the map's one dummy; a full pit saves in 1.94 MiB with each ball's one `ice` field.
+
 ## 01 (c): bestiary (level C, XL)
 
 | Enemy | Moves | Physical | Fire | Cold | Shock | Bleeds | Notes |

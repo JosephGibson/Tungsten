@@ -3,6 +3,7 @@
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::Entity;
+use tungsten::kit::ContactDamage;
 
 /// A level emitter of torch embers, spray or motes: the map's `emitters`
 /// objects spawn it from the `ex10_ambient_emitter` prefab, which names it
@@ -15,6 +16,14 @@ pub struct AmbientEmitter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
+}
+
+/// A fire hazard cold put out, for `left` game seconds: its touch held
+/// aside until it relights, its glow and trail hidden meanwhile.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Doused {
+    pub left: f32,
+    pub touch: Option<ContactDamage>,
 }
 
 /// One of the level's areas: a zone across its columns, named after the

@@ -3,8 +3,12 @@
 //! `systems.rs` its systems. `game::register` adds the plugins.
 
 pub mod audio;
+pub mod combat;
+pub mod dummy;
 pub mod elements;
+pub mod gun;
 pub mod level;
+pub mod lightning;
 pub mod player;
 pub mod run;
 pub mod spells;

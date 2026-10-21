@@ -4,9 +4,11 @@
 //! a third or less) and the mana in indigo; at the bottom centre the spell
 //! bar, each slot its icon inside its element's border, its key, its cost,
 //! its cooldown's sweep and its charges, the selected slot outlined in the
-//! accent and one the player cannot pay for greyed, slots 4 and 0 empty,
-//! above the lane where the shell's toasts rise. Two roots gameplay owns,
-//! drawn and frozen under a pause, which the pointer passes through.
+//! accent and one the player cannot pay for greyed, slot 0 the summon's
+//! selected type's icon, and beside it the gun's magazine, its icon, its rounds and a pip a round,
+//! greyed and "reloading" at none; above the lane where the shell's toasts
+//! rise. Two roots gameplay owns, drawn and frozen under a pause, which the
+//! pointer passes through.
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
@@ -20,7 +22,8 @@ use tungsten::core::{AssetRegistry, DataRegistry, Entity, ScaleFactor, World};
 use tungsten::kit::{Abilities, Ability, Health, Stats};
 
 use super::components::{School, Spell, Spellbook};
-use super::{SLOT_KEYS, SLOTS, STEPS_PER_SECOND, mana};
+use super::{SLOT_KEYS, SLOTS, STEPS_PER_SECOND, mana, summon_type};
+use crate::features::gun;
 use crate::features::run::Run;
 use crate::shell::{self, theme, widgets};
 
@@ -44,6 +47,15 @@ pub struct Slot {
     pub pips: Option<[WidgetId; PIPS]>,
 }
 
+/// The gun's magazine beside the bar: its icon, its rounds and its pips.
+#[derive(Debug, Clone, Copy)]
+pub struct Magazine {
+    pub icon: WidgetId,
+    /// "left / most", or "reloading" at none.
+    pub text: WidgetId,
+    pub pips: [WidgetId; ROUNDS],
+}
+
 /// The HUD's widgets: a `World` resource while gameplay runs.
 #[derive(Debug, Clone, Copy)]
 pub struct Hud {
@@ -54,6 +66,7 @@ pub struct Hud {
     pub health: Meter,
     pub mana: Meter,
     pub slots: [Slot; 10],
+    pub magazine: Magazine,
     /// The icons' size in UI units: a whole number of screen pixels for
     /// each of their own.
     pub icon_size: f32,
@@ -72,6 +85,11 @@ const BORDER: f32 = 2.0;
 /// The most charges a slot shows, and a pip's side.
 pub const PIPS: usize = 3;
 const PIP: f32 = 4.0;
+/// The most rounds the magazine shows, the gun's icon, and the room its
+/// readout takes, so "reloading" never shifts the bar.
+pub const ROUNDS: usize = 12;
+const GUN_ICON: &str = "ex10_icon_gun";
+const MAGAZINE_READOUT: f32 = 72.0;
 /// The veil over the part of a cooldown still to run.
 const VEIL: [u8; 4] = [11, 12, 16, 170];
 /// What an icon the player cannot pay for is multiplied by.
@@ -90,9 +108,12 @@ pub fn start(world: &mut World) {
             (spell, icon, cost_label(world, spell))
         })
     });
+    let gun_icon = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(GUN_ICON);
     let size = icon_size(world);
     let tree = world.resource_mut::<UiTree>();
-    let hud = build(tree, icons, size);
+    let hud = build(tree, icons, gun_icon, size);
     theme::slide_in(tree, hud.meters);
     theme::slide_in(tree, hud.bar);
     let stack = shell::stack(world);
@@ -128,7 +149,12 @@ fn cost_label(world: &World, spell: Spell) -> String {
 
 type SlotArt = Option<(Spell, tungsten::core::SpriteAssetId, String)>;
 
-fn build(tree: &mut UiTree, icons: [SlotArt; 10], size: f32) -> Hud {
+fn build(
+    tree: &mut UiTree,
+    icons: [SlotArt; 10],
+    gun_icon: tungsten::core::SpriteAssetId,
+    size: f32,
+) -> Hud {
     let style = LayoutStyle::column()
         .with_gap(theme::GAP)
         .with_padding(theme::GAP)
@@ -149,13 +175,56 @@ fn build(tree: &mut UiTree, icons: [SlotArt; 10], size: f32) -> Hud {
     for (key, art) in SLOT_KEYS.iter().zip(icons) {
         slots.push(slot(tree, bar, key, art, size));
     }
+    let magazine = magazine(tree, bar, gun_icon, size);
     Hud {
         meters,
         bar,
         health,
         mana,
         slots: slots.try_into().expect("ten slots"),
+        magazine,
         icon_size: size,
+    }
+}
+
+/// The magazine: a slot's ring and frame round the gun's icon, then its
+/// readout and its row of pips.
+fn magazine(
+    tree: &mut UiTree,
+    bar: WidgetId,
+    icon: tungsten::core::SpriteAssetId,
+    size: f32,
+) -> Magazine {
+    let mut style = LayoutStyle::column();
+    style.align_items = Align::Center;
+    let column = tree.panel(bar, style);
+    widgets::fill(tree, column, CLEAR);
+    let ring = tree.panel(column, LayoutStyle::row().with_padding(BORDER / 2.0));
+    edged(tree, ring, CLEAR, CLEAR);
+    let frame = tree.panel(ring, LayoutStyle::column().with_padding(BORDER));
+    let colors = tree.theme().tokens.colors;
+    edged(tree, frame, School::Physical.color(), colors.surface);
+    let square = LayoutStyle::default().with_size(Sizing::Px(size), Sizing::Px(size));
+    let image = tree.image(frame, icon, Vec2::splat(ICON), square);
+    let text = widgets::small(tree, column, "");
+    widgets::mono(tree, text);
+    let mut style = tree.layout_style(text).cloned().unwrap_or_default();
+    style.min_width = Some(MAGAZINE_READOUT);
+    tree.set_layout_style(text, style);
+    let row = tree.panel(column, LayoutStyle::row().with_gap(PIP / 2.0));
+    widgets::fill(tree, row, CLEAR);
+    let pips = [(); ROUNDS].map(|()| {
+        let pip = tree.panel(
+            row,
+            LayoutStyle::default().with_size(Sizing::Px(PIP), Sizing::Px(PIP)),
+        );
+        widgets::fill(tree, pip, colors.text);
+        pip
+    });
+    Magazine {
+        icon: image,
+        text,
+        pips,
     }
 }
 
@@ -306,6 +375,11 @@ pub fn update(world: &mut World) {
         .unwrap_or(1.0);
     let selected = world.get::<Spellbook>(player).map(|book| book.slot);
     let states = SLOTS.map(|slot| slot.and_then(|spell| shown(world, player, spell, held)));
+    let rounds = gun::rounds(world, player);
+    let summoned = summon_type(world).icon;
+    let summoned = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(summoned);
     let size = icon_size(world);
     let tree = world.resource_mut::<UiTree>();
     let colors = tree.theme().tokens.colors;
@@ -328,6 +402,9 @@ pub fn update(world: &mut World) {
             edged(tree, slot.ring, ring, CLEAR);
         }
         if let (Some(icon), Some(sweep)) = (slot.icon, slot.sweep) {
+            if SLOTS[index] == Some(Spell::Summon) && tree.image_sprite(icon) != Some(summoned) {
+                tree.set_image(icon, summoned, Vec2::splat(ICON));
+            }
             if resized {
                 for id in [icon, sweep] {
                     let style =
@@ -356,6 +433,36 @@ pub fn update(world: &mut World) {
                         widgets::fill(tree, pip, color);
                     }
                 }
+            }
+        }
+    }
+    if resized {
+        let style = LayoutStyle::default().with_size(Sizing::Px(size), Sizing::Px(size));
+        let mut kept = tree
+            .layout_style(hud.magazine.icon)
+            .cloned()
+            .unwrap_or_default();
+        (kept.width, kept.height) = (style.width, style.height);
+        tree.set_layout_style(hud.magazine.icon, kept);
+    }
+    if let Some((left, most)) = rounds {
+        let readout = if left == 0 {
+            "reloading".to_string()
+        } else {
+            format!("{left} / {most}")
+        };
+        tree.set_plain_text(hud.magazine.text, &readout);
+        let tint = if left == 0 { GREYED } else { WHITE };
+        tree.set_image_tint(hud.magazine.icon, tint);
+        for (i, pip) in hud.magazine.pips.into_iter().enumerate() {
+            let color = if i < left as usize {
+                colors.text
+            } else {
+                colors.disabled_text
+            };
+            widgets::show(tree, pip, i < most as usize);
+            if tree.overrides(pip).and_then(|style| style.background) != Some(color) {
+                widgets::fill(tree, pip, color);
             }
         }
     }

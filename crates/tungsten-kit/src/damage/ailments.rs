@@ -48,16 +48,19 @@ const AILMENT_THRESHOLD_MULT: &str = "ailment_threshold_mult";
 
 /// One rung of a damage type's ladder: the effect it applies when the
 /// bucket's fill reaches `needs` of the target's threshold, the target
-/// carries every `requires` tag and the `chance` draws. A ladder is
-/// written from the lowest rung up, and the feed climbs it from the top
-/// rung down, so a full bucket takes the highest rung the target can reach.
+/// carries every `requires` tag and none of its `blocked_by` tags, and the
+/// `chance` draws. A ladder is written from the lowest rung up, and the
+/// feed climbs it from the top rung down, so a full bucket takes the
+/// highest rung the target can reach. A rung skipped by a `blocked_by` tag
+/// leaves the bucket filling for the rungs above: a chill that holds while
+/// the cold builds to a freeze.
 ///
 /// Data form, in a `damage_types` definition's `ailments` list:
-/// `{ "effect": "chilled", "needs": 0.5, "requires": [], "chance": 1, "window": 4 }`,
-/// `needs` a fraction above 0 or left out, `requires` declared tags,
-/// `chance` in `(0, 1]` (1 by default) and `window` seconds above 0,
-/// required with `needs`: the first `needs` rung's window is what the
-/// bucket drains over.
+/// `{ "effect": "chilled", "needs": 0.5, "requires": [], "blocked_by": [], "chance": 1, "window": 4 }`,
+/// `needs` a fraction above 0 or left out, `requires` and `blocked_by`
+/// declared tags, `chance` in `(0, 1]` (1 by default) and `window` seconds
+/// above 0, required with `needs`: the first `needs` rung's window is what
+/// the bucket drains over.
 ///
 /// # Examples
 ///
@@ -71,6 +74,11 @@ const AILMENT_THRESHOLD_MULT: &str = "ailment_threshold_mult";
 ///     .with_chance(0.75);
 /// assert_eq!((frozen.needs(), frozen.window(), frozen.chance()), (Some(1.0), Some(4.0), 0.75));
 /// assert_eq!(frozen.requires(), ["status.chilled"]);
+/// // Skipped while chilled, so the cold climbs on to `frozen`.
+/// let chilled = AilmentRung::new(DataRef::by_id("chilled"))
+///     .with_needs(0.3, 4.0)
+///     .with_blocked_by(["status.chilled"]);
+/// assert_eq!(chilled.blocked_by(), ["status.chilled"]);
 /// let read: AilmentRung = serde_json::from_str(r#"{ "effect": "chilled", "needs": 0.5, "window": 4 }"#).unwrap();
 /// assert_eq!(read.needs(), Some(0.5));
 /// assert!(serde_json::from_str::<AilmentRung>(r#"{ "effect": "chilled", "needs": 0.5 }"#).is_err(), "needs a window");
@@ -81,6 +89,7 @@ pub struct AilmentRung {
     effect: DataRef<Effect>,
     needs: Option<f32>,
     requires: Vec<String>,
+    blocked_by: Vec<String>,
     chance: f32,
     window: Option<f32>,
 }
@@ -94,6 +103,8 @@ struct RungFields {
     needs: Option<f32>,
     #[serde(default)]
     requires: Vec<String>,
+    #[serde(default)]
+    blocked_by: Vec<String>,
     #[serde(default = "full_chance")]
     chance: f32,
     #[serde(default, deserialize_with = "optional_positive")]
@@ -114,15 +125,21 @@ impl TryFrom<RungFields> for AilmentRung {
         if fields.needs.is_some() && fields.window.is_none() {
             return Err("window: required with `needs`".to_string());
         }
-        if let Some(tag) = fields.requires.iter().find(|tag| !valid_tag(tag)) {
-            return Err(format!(
-                "requires: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
-            ));
+        for (field, tags) in [
+            ("requires", &fields.requires),
+            ("blocked_by", &fields.blocked_by),
+        ] {
+            if let Some(tag) = tags.iter().find(|tag| !valid_tag(tag)) {
+                return Err(format!(
+                    "{field}: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+                ));
+            }
         }
         Ok(Self {
             effect: fields.effect,
             needs: fields.needs,
             requires: fields.requires,
+            blocked_by: fields.blocked_by,
             chance: fields.chance,
             window: fields.window,
         })
@@ -135,6 +152,7 @@ impl From<AilmentRung> for RungFields {
             effect: rung.effect,
             needs: rung.needs,
             requires: rung.requires,
+            blocked_by: rung.blocked_by,
             chance: rung.chance,
             window: rung.window,
         }
@@ -149,6 +167,7 @@ impl AilmentRung {
             effect,
             needs: None,
             requires: Vec::new(),
+            blocked_by: Vec::new(),
             chance: 1.0,
             window: None,
         }
@@ -191,6 +210,28 @@ impl AilmentRung {
         self
     }
 
+    /// The rung, skipped while the target carries any of `tags` or the
+    /// step's feed has granted one to it already: a skipped rung leaves the
+    /// bucket filling for the rungs above, as a chill that holds while the
+    /// cold builds to a freeze. Each tag is checked as declared at load.
+    ///
+    /// # Panics
+    ///
+    /// When a name is not a tag name.
+    #[must_use]
+    #[track_caller]
+    pub fn with_blocked_by(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        for tag in tags {
+            let tag = tag.into();
+            assert!(
+                valid_tag(&tag),
+                "AilmentRung::with_blocked_by: `{tag}` is not a tag name (`[a-z][a-z0-9_]*` segments joined by dots)"
+            );
+            self.blocked_by.push(tag);
+        }
+        self
+    }
+
     /// The rung, taken with probability `chance` once reached.
     ///
     /// # Panics
@@ -225,6 +266,12 @@ impl AilmentRung {
         &self.requires
     }
 
+    /// The tags that skip the rung.
+    #[must_use]
+    pub fn blocked_by(&self) -> &[String] {
+        &self.blocked_by
+    }
+
     /// Its chance once reached.
     #[must_use]
     pub fn chance(&self) -> f32 {
@@ -242,6 +289,9 @@ impl AilmentRung {
         self.effect.check(world, &format!("{field}.effect"))?;
         for (i, tag) in self.requires.iter().enumerate() {
             check_declared(world, &format!("{field}.requires.{i}"), tag)?;
+        }
+        for (i, tag) in self.blocked_by.iter().enumerate() {
+            check_declared(world, &format!("{field}.blocked_by.{i}"), tag)?;
         }
         Ok(())
     }
@@ -517,8 +567,9 @@ impl Feeder {
     }
 
     /// Whether rung `index` of the ladder a part of `kinds` feeds is
-    /// reached by `target` at `fill` of `threshold`: its effect and chance
-    /// when it is.
+    /// reached by `target` at `fill` of `threshold`, carrying every
+    /// `requires` tag and no `blocked_by` one, the tags this run queued for
+    /// it counted: its effect and chance when it is.
     fn reaches(
         &self,
         world: &World,
@@ -541,13 +592,20 @@ impl Feeder {
                 || self
                     .pending
                     .iter()
-                    .any(|(entity, pending)| *entity == target && pending == tag)
+                    .any(|(entity, pending)| *entity == target && grants(pending, tag))
         };
-        if !rung.requires.iter().all(has) {
+        if !rung.requires.iter().all(has) || rung.blocked_by.iter().any(has) {
             return None;
         }
         Some((rung.effect.clone(), rung.chance))
     }
+}
+
+/// Whether a tag the feed queued, `name`, is `tag` or under it, as
+/// [`Tags::has`] matches a carried one: a pending `status.chilled` meets a
+/// rung's `status`.
+fn grants(name: &str, tag: &str) -> bool {
+    name == tag || (name.starts_with(tag) && name.as_bytes().get(tag.len()) == Some(&b'.'))
 }
 
 /// [`AILMENT_TICK`]'s state between steps.
@@ -678,6 +736,14 @@ pub(crate) fn register_ailments(schedule: &mut Schedule, world: &mut World) {
                 "requires",
                 FieldType::List(Box::new(FieldType::Tag)),
                 "tags the target must carry, the tags of effects the feed queued for it this step counted; the load checks them",
+            )
+            .default("[]"),
+        )
+        .field(
+            FieldDescription::new(
+                "blocked_by",
+                FieldType::List(Box::new(FieldType::Tag)),
+                "tags that skip the rung while the target carries one, the tags of effects the feed queued for it this step counted, so the bucket fills on for the rungs above; the load checks them",
             )
             .default("[]"),
         )

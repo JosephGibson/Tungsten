@@ -24,11 +24,16 @@ use super::{
     SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
+use crate::features::combat::{self, BLAST_FIRE, FROZEN, Kind, SPRAY_DPS, SPRAY_PULSE, has_status};
+use crate::features::dummy::components::Dummy;
+use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::{BallBurn, Frozen};
-use crate::features::elements::{self, freeze_amount};
+use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, freeze_amount};
+use crate::features::level::components::{Doused, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
+use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, despawn_tree, spawn_burst};
 
@@ -129,9 +134,27 @@ pub fn hole_pull(holes: &[Vec2], at: Vec2) -> Vec2 {
     pull
 }
 
-/// `toys_pull`, in the move phase: the holes pull every dynamic body in
-/// reach, iron at a fifth of a ball's pull and scraps as balls, the rest
+/// How much of a hole's pull `entity` takes: iron a fifth of a ball's,
+/// scraps as balls, a frozen dummy as iron and a thawed one none, the rest
 /// by their mass.
+fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
+    if world.has::<IronBlock>(entity) {
+        IRON_PULL
+    } else if world.has::<IronScrap>(entity) {
+        SCRAP_PULL
+    } else if world.has::<Dummy>(entity) {
+        if has_status(world, entity, FROZEN) {
+            IRON_PULL
+        } else {
+            0.0
+        }
+    } else {
+        inv_mass
+    }
+}
+
+/// `toys_pull`, in the move phase: the holes pull every dynamic body in
+/// reach by its response.
 pub fn pull(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let holes = holes(world);
@@ -142,13 +165,7 @@ pub fn pull(world: &mut World) {
         .query::<(Entity, &RigidBody, &Position, &Collider)>()
         .filter(|(_, body, ..)| body.kind == BodyKind::Dynamic)
         .filter_map(|(entity, body, at, collider)| {
-            let response = if world.has::<IronBlock>(entity) {
-                IRON_PULL
-            } else if world.has::<IronScrap>(entity) {
-                SCRAP_PULL
-            } else {
-                body.inv_mass
-            };
+            let response = pull_response(world, entity, body.inv_mass);
             let pull = hole_pull(&holes, at.0 + collider.offset) * response;
             (pull != Vec2::ZERO).then_some((entity, pull * dt))
         })
@@ -273,9 +290,10 @@ pub fn missile_contacts(world: &mut World) {
     }
 }
 
-/// `missile_ends`, in the react phase: a missile the kit's projectile step
-/// ended at a wall blasts there; one that flew its range fizzles. `cursor`
-/// reads each end once.
+/// `missile_ends`, in the overlap phase after the kit's projectile step,
+/// so its blast's hits take the step's resolve: a missile that step ended
+/// at a wall blasts there; one that flew its range fizzles. `cursor` reads
+/// each end once.
 pub fn missile_ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpired>) {
     let Some(events) = world.get_resource::<EventQueue<ProjectileExpired>>() else {
         return;
@@ -341,8 +359,11 @@ pub fn flares(world: &mut World) {
     }
 }
 
-/// A fireball's blast at `at`.
+/// A fireball's blast at `at`: its fire on each live target in its heat but
+/// the player who cast it, [`BLAST_FIRE`] at its centre falling to half at
+/// the heat's edge, from the player.
 pub fn explode(world: &mut World, at: Vec2) {
+    burn_targets(world, at);
     for burst in [
         "ex10_fireball_blast",
         "ex10_blast_embers",
@@ -370,6 +391,39 @@ pub fn explode(world: &mut World, at: Vec2) {
         elements::ignite(world, ball);
     }
     audio::play(world, Sound::Blasted, at);
+}
+
+/// Queues the blast's fire on each live target with a body within
+/// [`BLAST_RADIUS`] of `at`, its surface's distance, in save-ID order.
+fn burn_targets(world: &mut World, at: Vec2) {
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let mut targets: Vec<(Option<SaveId>, Entity, f32)> = world
+        .query::<(Entity, &tungsten::kit::Health, &Position, &Collider)>()
+        .filter(|(entity, health, ..)| !health.is_dead() && Some(*entity) != player)
+        .filter_map(|(entity, _, p, collider)| {
+            let distance = surface_distance(at, p.0 + collider.offset, collider.shape);
+            (distance <= BLAST_RADIUS)
+                .then(|| (world.get::<SaveId>(entity).copied(), entity, distance))
+        })
+        .collect();
+    targets.sort_by_key(|(id, ..)| *id);
+    for (_, target, distance) in targets {
+        let amount = BLAST_FIRE * (1.0 - 0.5 * distance / BLAST_RADIUS);
+        let mut hit = combat::Hit::new(target, [(Kind::Fire, amount)]).at(at);
+        if let Some(player) = player {
+            hit = hit.from(player);
+        }
+        hit.queue(world);
+    }
+}
+
+/// How far `at` lies from a body of `shape` about `centre`: 0 inside it.
+fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
+    let offset = at - centre;
+    match shape {
+        Shape::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
+        Shape::Circle { radius } => (offset.length() - radius).max(0.0),
+    }
 }
 
 /// A shock ring at `at`, growing to `size`, unless [`RING_CAP`] live.
@@ -432,8 +486,8 @@ fn blast_trauma(world: &World, at: Vec2) -> f32 {
     BLAST_TRAUMA * (1.0 - beyond / (1.25 * width)).clamp(0.0, 1.0)
 }
 
-/// `toys_bounds`, in the overlap phase: a ball, block or scrap that has
-/// left the level's box goes, as the player's escape ends a run.
+/// `toys_bounds`, in the overlap phase: a ball, block, scrap or dummy that
+/// has left the level's box goes, as the player's escape ends a run.
 pub fn bounds(world: &mut World) {
     let escaped: Vec<Entity> = world
         .query::<(Entity, &Position, Option<&Collider>)>()
@@ -441,6 +495,7 @@ pub fn bounds(world: &mut World) {
             world.has::<Ball>(*entity)
                 || world.has::<IronBlock>(*entity)
                 || world.has::<IronScrap>(*entity)
+                || world.has::<Dummy>(*entity)
         })
         .filter(|(_, at, collider)| escaped(at.0, *collider))
         .map(|(entity, ..)| entity)
@@ -451,8 +506,9 @@ pub fn bounds(world: &mut World) {
 }
 
 /// `iron_friction`, in the overlap phase after the physics step: the solver
-/// has no friction, so iron resting on something loses horizontal speed,
-/// frozen iron less, a scrap a sixteenth.
+/// has no friction, so iron or a dummy resting on something loses
+/// horizontal speed, frozen iron or a frozen dummy less, a scrap a
+/// sixteenth.
 pub fn friction(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let Some(events) = world.get_resource::<EventQueue<tungsten::core::CollisionEvent>>() else {
@@ -470,10 +526,12 @@ pub fn friction(world: &mut World) {
                 None
             }
         })
-        .filter(|e| world.has::<IronBlock>(*e) || world.has::<IronScrap>(*e))
+        .filter(|e| {
+            world.has::<IronBlock>(*e) || world.has::<IronScrap>(*e) || world.has::<Dummy>(*e)
+        })
         .collect();
     for iron in supported {
-        let base = if world.has::<Frozen>(iron) {
+        let base = if world.has::<Frozen>(iron) || has_status(world, iron, FROZEN) {
             FROZEN_FRICTION
         } else {
             IRON_FRICTION
@@ -614,7 +672,27 @@ pub fn hold_spray(
     Some((centre, aim))
 }
 
-/// Holds `caster`'s spray of `element` for this step.
+/// The fire hazards a ray from `start` along `aim` crosses before `length`,
+/// burning ones only, by their touch boxes.
+fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Entity> {
+    world
+        .query::<(Entity, &Hazard, &Position)>()
+        .filter(|(entity, hazard, _)| hazard.fire && !world.has::<Doused>(*entity))
+        .filter(|(_, _, at)| {
+            let shape = Shape::Aabb {
+                half_extents: FIRE_HALF,
+            };
+            ray_distance(start, aim, at.0 + FIRE_CENTRE, shape, length).is_some_and(|t| t <= length)
+        })
+        .map(|(entity, ..)| entity)
+        .collect()
+}
+
+/// Holds `caster`'s spray of `element` for this step. In a cold cone, iron
+/// and balls chill, a burning small ball bursts into steam and a fire
+/// hazard goes out for a while; in a fire cone small balls light and a
+/// frozen body explodes. Every pulse of [`SPRAY_PULSE`] the live targets
+/// its rays meet take the element's damage from the caster.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let Some((centre, aim)) = hold_spray(world, caster, aim, element) else {
         return;
@@ -625,24 +703,85 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     }
     // Each surface counts once, however many rays meet it.
     let mut met: Vec<(Entity, Vec2)> = Vec::new();
+    let mut fires: Vec<Entity> = Vec::new();
     for direction in rays(aim) {
-        if let (at, Some(hit)) = trace(world, caster, centre, direction, reach(element))
+        let (at, hit) = trace(world, caster, centre, direction, reach(element));
+        if element == Element::Cold {
+            for fire in fires_crossed(world, centre, direction, centre.distance(at)) {
+                if !fires.contains(&fire) {
+                    fires.push(fire);
+                }
+            }
+        }
+        if let Some(hit) = hit
             && !met.iter().any(|&(e, _)| e == hit)
         {
             met.push((hit, at));
         }
     }
+    for fire in fires {
+        elements::douse_hazard(world, fire);
+    }
+    let pulses = world
+        .query_mut::<&mut Spray>()
+        .find(|spray| spray.caster == caster && spray.element == element)
+        .map_or(0, |spray| {
+            spray.pulse += dt;
+            let mut pulses = 0;
+            while spray.pulse >= SPRAY_PULSE - 1e-4 {
+                spray.pulse -= SPRAY_PULSE;
+                pulses += 1;
+            }
+            pulses
+        });
+    let kind = match element {
+        Element::Cold => Kind::Cold,
+        Element::Fire => Kind::Fire,
+    };
+    for &(target, contact) in &met {
+        let live = world
+            .get::<tungsten::kit::Health>(target)
+            .is_some_and(|health| !health.is_dead());
+        if !live || target == caster {
+            continue;
+        }
+        for _ in 0..pulses {
+            combat::Hit::new(target, [(kind, SPRAY_DPS * SPRAY_PULSE)])
+                .from(caster)
+                .at(contact)
+                .queue(world);
+        }
+    }
     match element {
         Element::Cold => {
             for (hit, contact) in met {
-                if world.has::<IronBlock>(hit) || world.has::<IronScrap>(hit) {
+                let burning = world
+                    .get::<BallBurn>(hit)
+                    .is_some_and(|burn| burn.remaining > 0.0);
+                if burning && world.has::<SmallBall>(hit) {
+                    let at = body_centre(world, hit).unwrap_or(contact);
+                    cascade::queue(
+                        world,
+                        CascadeKind::Steam,
+                        Some(hit),
+                        at,
+                        at,
+                        SMALL_STEAM_REACH,
+                    );
+                } else if world.has::<IronBlock>(hit)
+                    || world.has::<IronScrap>(hit)
+                    || world.has::<Ball>(hit)
+                {
                     elements::chill(world, hit, dt / FREEZE_TIME, contact);
                 }
             }
         }
         Element::Fire => {
-            for (hit, _) in met {
-                if world.has::<SmallBall>(hit) {
+            for (hit, contact) in met {
+                if world.has::<Frozen>(hit) {
+                    let at = body_centre(world, hit).unwrap_or(contact);
+                    cascade::thermal_shock(world, hit, at, at);
+                } else if world.has::<SmallBall>(hit) {
                     elements::ignite(world, hit);
                 }
             }
@@ -702,6 +841,7 @@ fn start_spray(
             emitters,
             voice,
             kept: true,
+            pulse: SPRAY_PULSE,
         },
         SceneEntity { state_id: GAMEPLAY },
     ))
@@ -882,11 +1022,17 @@ fn orient_newborns(world: &mut World) {
     }
 }
 
-/// `ball_look`, in the present phase: a burning or spent small ball takes
-/// its ember tint, another small ball its rainbow hue, and a bowling ball
-/// its own colours.
+/// `ball_look`, in the present phase: a frozen or chilled ball takes the
+/// frost's tint, as deep as the frost; a burning or spent small ball its
+/// ember tint, another small ball its rainbow hue, and a bowling ball its
+/// own colours.
 pub fn ball_look(world: &mut World) {
     let time = drawn_time(world);
+    let frost: Vec<(Entity, f32)> = world
+        .query::<(Entity, &Ball)>()
+        .map(|(entity, _)| (entity, freeze_amount(world, entity)))
+        .filter(|&(_, amount)| amount > 0.0)
+        .collect();
     for (_, id, sprite, burn, hue) in world.query_mut::<(
         &Ball,
         &SaveId,
@@ -899,6 +1045,11 @@ pub fn ball_look(world: &mut World) {
             (None, Some(hue)) => rainbow_rgba(hue.hue),
             (None, None) => [255; 4],
         };
+    }
+    for (ball, amount) in frost {
+        if let Some(sprite) = world.get_mut::<Sprite>(ball) {
+            sprite.color = frost_tint(amount);
+        }
     }
 }
 

@@ -35,6 +35,9 @@
       {
         "effect": "chilled",
         "needs": 0.5,
+        "blocked_by": [
+          "status.chilled"
+        ],
         "window": 4
       },
       {

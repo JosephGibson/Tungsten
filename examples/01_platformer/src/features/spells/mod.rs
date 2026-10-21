@@ -1,9 +1,10 @@
-//! The spells: ten slots, eight filled in (a) and two left for (b), each
-//! cast with `cast` through one of the player's kit abilities, whose data
-//! holds its cost in mana, its cooldown, its charges and the `casting`
-//! effect that pauses the mana's regeneration, over the toys' rules. The
-//! slot actions and the wheel choose one; the fire missile flies from the
-//! kit's spawn payload. The HUD shows the health, the mana and the bar.
+//! The spells: ten slots, each cast with `cast` through one of the
+//! player's kit abilities, whose data holds its cost in mana, its cooldown,
+//! its charges and the `casting` effect that pauses the mana's
+//! regeneration, over the toys' rules. The slot actions and the wheel
+//! choose one; the fire missile flies from the kit's spawn payload; slot 0
+//! summons the type `summon_next` and `summon_prev` pick. The HUD shows the
+//! health, the mana, the bar and the gun's magazine.
 
 pub mod components;
 pub mod hud;
@@ -15,18 +16,18 @@ use tungsten::kit::{ABILITY_TICK, Ability, Phase, Stats, ensure_phases};
 
 use components::{Spell, Spellbook};
 
-/// The spell bar's slots, keys 1 to 9 then 0; slots 4 and 0 wait for (b).
+/// The spell bar's slots, keys 1 to 9 then 0.
 pub const SLOTS: [Option<Spell>; 10] = [
     Some(Spell::FireMissile),
     Some(Spell::Flamethrower),
     Some(Spell::IceSpray),
-    None,
+    Some(Spell::Lightning),
     Some(Spell::ForcePush),
     Some(Spell::BlackHole),
     Some(Spell::IronBlock),
     Some(Spell::BowlingBall),
     Some(Spell::SmallBalls),
-    None,
+    Some(Spell::Summon),
 ];
 /// The action that selects each slot, and the key the bar labels it with.
 pub const SLOT_ACTIONS: [&str; 10] = [
@@ -39,6 +40,34 @@ pub const CAST: &str = "cast";
 /// Select the next or the previous spell, wrapping past the empty slots.
 pub const NEXT: &str = "spell_next";
 pub const PREV: &str = "spell_prev";
+/// Pick the next or the previous summon type, wrapping, whichever slot is
+/// selected.
+pub const SUMMON_NEXT: &str = "summon_next";
+pub const SUMMON_PREV: &str = "summon_prev";
+
+/// A type the summon slot places: its name, its prefab and its icon.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SummonType {
+    pub name: &'static str,
+    pub prefab: &'static str,
+    pub icon: &'static str,
+}
+
+/// The types slot 0 summons: the training dummy.
+pub const SUMMONS: [SummonType; 1] = [SummonType {
+    name: "dummy",
+    prefab: crate::features::dummy::DUMMY_PREFAB,
+    icon: "ex10_icon_dummy",
+}];
+
+/// The type the summon slot places now.
+#[must_use]
+pub fn summon_type(world: &World) -> SummonType {
+    let selected = world
+        .get_resource::<components::Summon>()
+        .map_or(0, |summon| summon.selected);
+    SUMMONS[selected % SUMMONS.len()]
+}
 /// The fixed steps in a second, which a held spell's cost assumes: its
 /// data's cost is one step's, its cost per second over this.
 pub const STEPS_PER_SECOND: f32 = 60.0;

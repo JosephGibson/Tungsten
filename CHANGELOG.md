@@ -6,6 +6,21 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.95.0] - 2026-10-21
+
+Summary: M74, example 01's second stop, 01 (b) elements and weapons (plan archived at `docs/plans/archive/1.0/phase6-milestone-74-example-01-elements-weapons.md`; `D-200`): example 01's hits are typed on the kit's damage types with crits, its targets take the kit's effects and ailment ladders and its bodies keep their own element states, thermal shock, shatters, steam bursts and conduction run through a saved queue capped per step, lightning strikes from the sky onto rods, a gun fires from a magazine, damage numbers float by type, a training dummy stands in the clearing and a summon slot places more, first-time hints toast, and saves at schema 5 migrate 01 (a)'s. The kit gains `Effects::set_source`, `float_label`, `DamageKinds::label_style`, a rung's `blocked_by` and `DamagedPart::crit`, and its hash moves.
+
+### Added
+
+- **The kit's additions** (`D-200`): `Effects::set_source(serial, source)` names a loaded instance's source again; `float_label` floats a game's number in a `LabelStyle`; `DamageKinds::label_style` reads the style a type's label takes; `AilmentRung::with_blocked_by` and `blocked_by` in data, a grant still pending in the step counting as carried by ancestor; `DamagedPart::crit` and `with_crit`. Six recipes join the top-down and shmup fixtures; `api/tungsten-kit.txt` gains 14 lines and the components snapshot 1, with no break.
+- **Example 01 (b)** (`D-200`): a damage model on `damage.physical`, `damage.fire`, `damage.cold` and `damage.shock` with their ladders and 5 % crits; the endings in `Cascades`, at most 48 a step; lightning in slot 4 with rods and a six-jump chain; the gun on `shoot` (left mouse, RT), twelve rounds, one decision a bullet a step; damage numbers merged by type, a crit's at once in yellow; the training dummy in the Lantern clearing and the summon in slot 0, its type turned by E and Q; hints for the first freeze, shatter, steam burst and shock; generated art (the bolt, the status overlays, the dummy, the icons, the muzzle flash and the tracer), nine particle configs and nine sounds; 159 tests.
+
+### Changed
+
+- **Example 01's save** (`D-200`): schema 5, with the dummies, the map's gone ones, the cascades, the bullets, the hints, the summon's type and the player's ailment buckets, effect sources and reload; a schema-4 save migrates, its save IDs from the player's moved up by the map's one dummy.
+- **The kit hash** moves to `0x3334_9665_de0c_501a`, through the top-down fixture's chilled rung, now blocked by chilled.
+- **Records**: `DESIGN.md`, example 01's README and tools README, the 01 design's "As built (M74)", `docs/known-issues.md` (the kit's unsaved queues, `charges.all` refilling from the first spent charge, the lit sprites' flash and effect sources), four kit rows in the backlog and the register.
+
 ## [0.94.0] - 2026-10-21
 
 Summary: M73, the template final pass (plan archived at `docs/plans/archive/1.0/phase6-milestone-73-template-final-pass.md`; `D-198`, `D-199`), the owner's request of 2026-10-20 before 01 (b): UI text takes letter spacing; the template's continued runs survive their first seconds, its toggles take their first click, its saves rotate through three autosaves the player can turn off and ask before an older version's save loads, its settings gain Bloom, a 75 % UI, a smaller outlined slider thumb and Uncapped from 60 fps, its game over lands as a band over a pixelating world, its play area clears to black, its sample gains a still enemy and its builds a Windows icon; example 01 takes each shell change by copy, and every maintained doc was read and brought to the tree. `templates/basic/tests/fixtures/title.png` moved twice, for the 75 % UI and the black clear (sha256 `304c9257…cd311f` → `9ac6dc5a…30052a` → `9f7141e4…e49581`); no hash moves.

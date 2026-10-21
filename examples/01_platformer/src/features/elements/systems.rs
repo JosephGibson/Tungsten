@@ -1,29 +1,34 @@
 //! The element rules' systems.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::f32::consts::TAU;
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    Collider, CollisionEvent, Entity, EventQueue, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Shape, Time, Transform,
-    Velocity, With, World,
+    BodyKind, Collider, CollisionEvent, Entity, EventQueue, Particle, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, Sprite, Time,
+    Transform, Velocity, With, World,
 };
-use tungsten::kit::{DamageRequest, Hit};
+use tungsten::kit::{Children, ContactDamage, Health, Hit};
 use tungsten::physics::wake;
 
+use super::cascade::{self, CascadeKind};
 use super::components::{BallBurn, Chill, FireEmitter, Frozen, IcePulse};
 use super::{
-    BASE_SMASH, BURN_SECS, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, EMITTER_DWELL,
-    FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN,
-    IMPACT_SPEED, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE,
+    BASE_SMASH, BODY_HIT_K, BODY_HIT_MOST, BODY_HIT_SPEED, BURN_SECS, CRUSH_HIT, CRUSH_SPEED,
+    DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF,
+    FROZEN_SECS, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE,
+    SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE,
     freeze_amount,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::level::components::Hazard;
+use crate::features::combat::components::Reaction;
+use crate::features::combat::{self, FROZEN, Kind, has_status};
+use crate::features::level::components::{Doused, Glow, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
+use crate::features::run::Run;
 use crate::features::toys::components::{
     Ball, BowlingBall, IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
 };
@@ -78,9 +83,10 @@ fn prev_centre(world: &World, entity: Entity) -> Option<Vec2> {
     )
 }
 
-/// Lights `ball` when it is a small ball that never burned.
+/// Lights `ball` when it is a small ball that never burned and is not
+/// frozen.
 pub fn ignite(world: &mut World, ball: Entity) {
-    if world.has::<SmallBall>(ball) && !world.has::<BallBurn>(ball) {
+    if world.has::<SmallBall>(ball) && !world.has::<BallBurn>(ball) && !world.has::<Frozen>(ball) {
         world.insert(
             ball,
             BallBurn {
@@ -391,14 +397,15 @@ fn fire_centres(world: &World, fire: Entity) -> Option<(Vec2, Vec2)> {
     Some((start + FIRE_CENTRE, end + FIRE_CENTRE))
 }
 
-/// `fire_contacts`, in the overlap phase: a fireball hazard that meets a
-/// ball over the step, either moving fast, lights a small ball and bursts
-/// a bowling ball where they met, one burst per ball however many fires
-/// overlap. The player's touch is the kit's contact damage.
+/// `fire_contacts`, in the overlap phase: a burning fireball hazard that
+/// meets a ball over the step, either moving fast, lights a small ball and
+/// bursts a bowling ball where they met, one burst per ball however many
+/// fires overlap; a frozen ball it meets explodes instead. The player's
+/// touch is the kit's contact damage.
 pub fn fire_contacts(world: &mut World) {
     let fires: Vec<(Vec2, Vec2)> = world
         .query::<(Entity, &Hazard)>()
-        .filter(|(_, hazard)| hazard.fire)
+        .filter(|(entity, hazard)| hazard.fire && !world.has::<Doused>(*entity))
         .filter_map(|(entity, _)| fire_centres(world, entity))
         .collect();
     if fires.is_empty() {
@@ -432,6 +439,10 @@ pub fn fire_contacts(world: &mut World) {
         .collect();
     touched.sort_by_key(|(id, ..)| *id);
     for (_, ball, at) in touched {
+        if world.has::<Frozen>(ball) {
+            cascade::thermal_shock(world, ball, at, at);
+            continue;
+        }
         if world.has::<SmallBall>(ball) {
             ignite(world, ball);
             continue;
@@ -541,7 +552,8 @@ fn is_iron(world: &World, entity: Entity) -> bool {
 
 /// `iron_crush`, in the overlap phase after the physics step: a moving
 /// block crushes the small balls it drives into, more the faster it goes,
-/// hurts the player, and shatters frozen iron on a hard head-on impact. It
+/// hurts the player with physical damage, and shatters frozen iron on a
+/// hard head-on impact. It
 /// reads its velocity from before the step, since the solver has stopped
 /// it on what it met; one that smashed something keeps [`SMASH_KEEP`] of
 /// it, so it plows on into the next layer.
@@ -667,9 +679,10 @@ pub fn crush(world: &mut World) {
         for (player, speed, target) in players {
             let hits = severity(speed, SPEED_PER_HIT) as f32;
             let push = (target - at).normalize_or_zero() * speed.min(600.0);
-            let hit = DamageRequest::new(player, CRUSH_HIT * hits)
-                .with_position(at)
-                .with_knockback(push)
+            let hit = combat::Hit::new(player, [(Kind::Physical, CRUSH_HIT * hits)])
+                .at(at)
+                .push(push)
+                .request(world)
                 .apply(world);
             hurt |= matches!(hit, Hit::Hurt | Hit::Killed);
         }
@@ -680,7 +693,9 @@ pub fn crush(world: &mut World) {
         .collect();
     shattered.sort_by_key(|(id, _)| *id);
     for &(_, entity) in &shattered {
-        shatter_iron(world, entity, None);
+        if let Some(at) = centre(world, entity) {
+            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
+        }
     }
     let positions: Vec<Vec2> = smashed.iter().filter_map(|&e| centre(world, e)).collect();
     if hurt || !smashed.is_empty() || !shattered.is_empty() {
@@ -700,10 +715,20 @@ pub fn crush(world: &mut World) {
     }
 }
 
-/// Chills `iron` by `amount` this step, frozen at a full coating with its
-/// frost burst at `contact` and its cue.
+/// Whether `entity` is one of 01's bodies with element states: iron, a
+/// scrap or a ball.
+fn is_body(world: &World, entity: Entity) -> bool {
+    is_iron(world, entity) || world.has::<Ball>(entity)
+}
+
+/// Chills a body, iron or a ball, by `amount` this step, frozen at a full
+/// coating with its frost burst at `contact` and its cue; a burning ball
+/// takes no frost.
 pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
-    if !is_iron(world, iron) || world.has::<Frozen>(iron) {
+    let burning = world
+        .get::<BallBurn>(iron)
+        .is_some_and(|burn| burn.remaining > 0.0);
+    if !is_body(world, iron) || world.has::<Frozen>(iron) || burning {
         return;
     }
     let total = freeze_amount(world, iron) + amount;
@@ -712,6 +737,8 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
         let at = centre(world, iron).unwrap_or(contact);
         let size = if world.has::<IronBlock>(iron) {
             128.0
+        } else if world.has::<SmallBall>(iron) {
+            16.0
         } else {
             32.0
         };
@@ -729,12 +756,37 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
     }
 }
 
-/// Freezes iron through: its chill gives way to [`Frozen`], and it wakes.
+/// Freezes a body through: its chill gives way to [`Frozen`] for
+/// [`FROZEN_SECS`], it wakes, and its reaction goes to the hints. A burning
+/// ball does not freeze.
 pub fn freeze_iron(world: &mut World, iron: Entity) {
-    if is_iron(world, iron) && !world.has::<Frozen>(iron) {
-        world.insert(iron, Frozen);
+    let burning = world
+        .get::<BallBurn>(iron)
+        .is_some_and(|burn| burn.remaining > 0.0);
+    if is_body(world, iron) && !world.has::<Frozen>(iron) && !burning {
+        world.insert(iron, Frozen { left: FROZEN_SECS });
         world.remove_component::<Chill>(iron);
         wake(world, iron);
+        combat::react(world, Reaction::Freeze);
+    }
+}
+
+/// `frozen_tick`, in the tick phase: each frozen body's clock runs down by
+/// the step, and at 0 it thaws.
+pub fn tick_frozen(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    if dt <= 0.0 {
+        return;
+    }
+    let mut thawed = Vec::new();
+    for (entity, frozen) in world.query_mut::<(Entity, &mut Frozen)>() {
+        frozen.left -= dt;
+        if frozen.left <= 1e-5 {
+            thawed.push(entity);
+        }
+    }
+    for entity in thawed {
+        world.remove_component::<Frozen>(entity);
     }
 }
 
@@ -757,25 +809,290 @@ pub fn thaw(world: &mut World) {
     }
 }
 
-/// Shatters the frozen iron whose surface lies within `radius` of `at`.
+/// A blast's heat at `at`: each frozen body whose surface lies within
+/// `radius` of it queues thermal shock, its chain begun at `at`.
 pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
-    let mut targets: Vec<(Option<SaveId>, Entity)> = world
+    let mut targets: Vec<(Option<SaveId>, Entity, Vec2)> = world
         .query::<(Entity, &Frozen, &Position, &Collider)>()
-        .filter(|(entity, ..)| is_iron(world, *entity))
+        .filter(|(entity, ..)| is_body(world, *entity))
         .filter_map(|(entity, _, p, collider)| {
-            let offset = at - (p.0 + collider.offset);
+            let body = p.0 + collider.offset;
+            let offset = at - body;
             let distance = match collider.shape {
                 Shape::Aabb { half_extents } => {
                     (offset.abs() - half_extents).max(Vec2::ZERO).length()
                 }
                 Shape::Circle { radius } => (offset.length() - radius).max(0.0),
             };
-            (distance <= radius).then(|| (world.get::<SaveId>(entity).copied(), entity))
+            (distance <= radius).then(|| (world.get::<SaveId>(entity).copied(), entity, body))
         })
         .collect();
-    targets.sort_by_key(|(id, _)| *id);
-    for (_, entity) in targets {
-        shatter_iron(world, entity, Some(at));
+    targets.sort_by_key(|(id, ..)| *id);
+    for (_, entity, body) in targets {
+        cascade::thermal_shock(world, entity, body, at);
+    }
+}
+
+/// A body's velocity as the step began, which an impact reads.
+fn before_step(world: &World, entity: Entity) -> Vec2 {
+    world
+        .get::<PreviousVelocity>(entity)
+        .map(|v| v.0)
+        .or_else(|| world.get::<Velocity>(entity).map(|v| v.0))
+        .unwrap_or(Vec2::ZERO)
+}
+
+/// Whether `entity` is a dynamic body.
+fn moves(world: &World, entity: Entity) -> bool {
+    world
+        .get::<RigidBody>(entity)
+        .is_some_and(|body| body.kind == BodyKind::Dynamic)
+}
+
+/// A dynamic body's mass.
+fn mass(world: &World, entity: Entity) -> f32 {
+    world
+        .get::<RigidBody>(entity)
+        .filter(|body| body.inv_mass > 0.0)
+        .map_or(f32::INFINITY, |body| 1.0 / body.inv_mass)
+}
+
+/// The gap between two bodies' surfaces, boxes or circles: below 0 where
+/// they overlap.
+fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
+    let half = |shape: Shape| match shape {
+        Shape::Aabb { half_extents } => half_extents,
+        Shape::Circle { radius } => Vec2::splat(radius),
+    };
+    match (a_shape, b_shape) {
+        (Shape::Circle { radius: ra }, Shape::Circle { radius: rb }) => a.distance(b) - ra - rb,
+        (Shape::Circle { radius }, other) | (other, Shape::Circle { radius }) => {
+            let (circle, boxed) = if matches!(a_shape, Shape::Circle { .. }) {
+                (a, b)
+            } else {
+                (b, a)
+            };
+            ((circle - boxed).abs() - half(other))
+                .max(Vec2::ZERO)
+                .length()
+                - radius
+        }
+        _ => ((a - b).abs() - (half(a_shape) + half(b_shape))).max_element(),
+    }
+}
+
+/// The moving bodies that end the step touching a live target other than
+/// the player, each with its closing speed along the line between their
+/// centres from their speeds before the step: the solver stops a body at a
+/// target's face in the step it arrives, before any contact reports it.
+fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f32)> {
+    let targets: Vec<(Entity, Vec2, Shape)> = world
+        .query::<(Entity, &Health, &Position, &Collider)>()
+        .filter(|(entity, health, ..)| !health.is_dead() && Some(*entity) != player)
+        .map(|(entity, _, at, collider)| (entity, at.0 + collider.offset, collider.shape))
+        .collect();
+    if targets.is_empty() {
+        return Vec::new();
+    }
+    let mut hits = Vec::new();
+    for (body, at, collider, before) in
+        world.query::<(Entity, &Position, &Collider, &PreviousVelocity)>()
+    {
+        if before.0.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED || !is_body(world, body) {
+            continue;
+        }
+        let centre = at.0 + collider.offset;
+        for &(target, target_at, shape) in &targets {
+            if gap(centre, collider.shape, target_at, shape) > CONTACT_MARGIN {
+                continue;
+            }
+            let towards = (target_at - centre).normalize_or_zero();
+            let closing = (before.0 - before_step(world, target)).dot(towards);
+            if closing >= BODY_HIT_SPEED {
+                hits.push((body, target, closing));
+            }
+        }
+    }
+    hits
+}
+
+/// A moving body's hit on a target: the body, the target and the closing
+/// speed.
+type Hurt = (Entity, Entity, f32);
+
+/// `body_impacts`, in the overlap phase after the physics step: a frozen
+/// body meeting something that does not move, or a body of at least
+/// [`SHATTER_MASS`], at a closing speed of [`SHATTER_SPEED`] or more, from
+/// the step's contacts and the bodies' speeds before it, queues its
+/// shatter; a moving body that ends the step touching a live target other
+/// than the player, closing at [`BODY_HIT_SPEED`] or more, hurts it by
+/// [`BODY_HIT_K`] × its mass × the speed past that, at most
+/// [`BODY_HIT_MOST`], credited to the player; and a frozen target landing
+/// as hard takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`].
+/// Each pair counts once a step, at its hardest.
+pub fn body_impacts(world: &mut World) {
+    let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
+        return;
+    };
+    let player = world.get_resource::<Run>().map(|run| run.player);
+    let mut shatters: Vec<Entity> = Vec::new();
+    let mut hits: BTreeMap<(Option<SaveId>, Option<SaveId>), Hurt> = BTreeMap::new();
+    let mut landings: BTreeMap<Option<SaveId>, (Entity, f32)> = BTreeMap::new();
+    for event in events.iter_current() {
+        let va = before_step(world, event.a);
+        let vb = event.b.map_or(Vec2::ZERO, |b| before_step(world, b));
+        let closing = -(va - vb).dot(event.normal);
+        for (this, other) in [(Some(event.a), event.b), (event.b, Some(event.a))] {
+            let Some(this) = this else { continue };
+            let still = other.is_none_or(|other| !moves(world, other));
+            let heavy = other
+                .is_some_and(|other| moves(world, other) && mass(world, other) >= SHATTER_MASS);
+            if closing >= SHATTER_SPEED
+                && world.has::<Frozen>(this)
+                && is_body(world, this)
+                && (still || heavy)
+                && !shatters.contains(&this)
+            {
+                shatters.push(this);
+            }
+            let target = Some(this) != player
+                && world
+                    .get::<Health>(this)
+                    .is_some_and(|health| !health.is_dead());
+            if !target {
+                continue;
+            }
+            let id = world.get::<SaveId>(this).copied();
+            if still && closing >= SHATTER_SPEED && has_status(world, this, FROZEN) {
+                let best = landings.entry(id).or_insert((this, closing));
+                best.1 = best.1.max(closing);
+            }
+        }
+    }
+    for (body, target, closing) in target_hits(world, player) {
+        let key = (
+            world.get::<SaveId>(target).copied(),
+            world.get::<SaveId>(body).copied(),
+        );
+        let best = hits.entry(key).or_insert((body, target, closing));
+        best.2 = best.2.max(closing);
+    }
+    let mut shatters: Vec<(Option<SaveId>, Entity)> = shatters
+        .into_iter()
+        .map(|entity| (world.get::<SaveId>(entity).copied(), entity))
+        .collect();
+    shatters.sort_by_key(|(id, _)| *id);
+    for (_, entity) in shatters {
+        if let Some(at) = centre(world, entity) {
+            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
+        }
+    }
+    for (body, target, closing) in hits.into_values() {
+        let amount =
+            (BODY_HIT_K * mass(world, body) * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
+        let at = centre(world, target).unwrap_or_default();
+        let mut hit = combat::Hit::new(target, [(Kind::Physical, amount)]).at(at);
+        if let Some(player) = player {
+            hit = hit.from(player);
+        }
+        hit.queue(world);
+    }
+    for (target, closing) in landings.into_values() {
+        let amount = (closing - SHATTER_SPEED) * LANDING_SHARE;
+        if amount > 0.0 {
+            combat::Hit::new(target, [(Kind::Physical, amount)]).queue(world);
+        }
+    }
+}
+
+/// Puts the fire hazard `hazard` out for [`DOUSE_SECS`]: its touch held
+/// aside, its glow and trail hidden, with a steam burst; one already out
+/// starts its time again.
+pub fn douse_hazard(world: &mut World, hazard: Entity) {
+    if let Some(doused) = world.get_mut::<Doused>(hazard) {
+        doused.left = DOUSE_SECS;
+        return;
+    }
+    if !world.get::<Hazard>(hazard).is_some_and(|h| h.fire) {
+        return;
+    }
+    let touch = world.remove_component::<ContactDamage>(hazard);
+    world.insert(
+        hazard,
+        Doused {
+            left: DOUSE_SECS,
+            touch,
+        },
+    );
+    if let Some((_, at)) = fire_centres(world, hazard) {
+        spawn_burst(world, "ex10_steam_burst", at);
+        audio::play(world, Sound::Steamed, at);
+    }
+    combat::react(world, Reaction::Steam);
+}
+
+/// `douse_tick`, in the tick phase: each doused hazard's time runs down by
+/// the step, and at 0 it relights, its touch back and its trail emitting.
+pub fn tick_doused(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    if dt <= 0.0 {
+        return;
+    }
+    let mut relit = Vec::new();
+    for (entity, doused) in world.query_mut::<(Entity, &mut Doused)>() {
+        doused.left -= dt;
+        if doused.left <= 1e-5 {
+            relit.push(entity);
+        }
+    }
+    for hazard in relit {
+        if let Some(touch) = world
+            .remove_component::<Doused>(hazard)
+            .and_then(|doused| doused.touch)
+        {
+            world.insert(hazard, touch);
+        }
+        let children: Vec<Entity> = world
+            .get::<Children>(hazard)
+            .map(|children| children.iter().collect())
+            .unwrap_or_default();
+        for child in children {
+            if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
+                state.drained = false;
+            }
+        }
+    }
+}
+
+/// `doused_look`, before the frame's particles: a doused hazard's glow is
+/// hidden, its trail stops and its fireball dims; a burning one shows.
+pub fn doused_look(world: &mut World) {
+    let hazards: Vec<(Entity, bool, Vec<Entity>)> = world
+        .query::<(Entity, &Hazard, Option<&Children>)>()
+        .filter(|(_, hazard, _)| hazard.fire)
+        .map(|(entity, _, children)| {
+            let children = children.map(|c| c.iter().collect()).unwrap_or_default();
+            (entity, world.has::<Doused>(entity), children)
+        })
+        .collect();
+    for (hazard, doused, children) in hazards {
+        if let Some(glow) = world.get_mut::<Glow>(hazard) {
+            glow.hidden = doused;
+        }
+        if let Some(sprite) = world.get_mut::<Sprite>(hazard) {
+            sprite.color = if doused {
+                [110, 110, 122, 255]
+            } else {
+                [255; 4]
+            };
+        }
+        if doused {
+            for child in children {
+                if let Some(state) = world.get_mut::<ParticleEmitterState>(child) {
+                    state.drained = true;
+                }
+            }
+        }
     }
 }
 
@@ -815,8 +1132,12 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
 }
 
 /// A cold pulse at `at`, unless [`BURST_CAP`] show, with its sound: a group
-/// of shattering or freezing iron shares one through the cue's interval.
+/// of shattering or freezing iron shares one through the cue's interval. A
+/// shatter's goes to the hints, past the cap too.
 pub fn ice_pulse(world: &mut World, at: Vec2, size: f32, shatter: bool) {
+    if shatter {
+        combat::react(world, Reaction::Shatter);
+    }
     if world.query::<&IcePulse>().count() >= BURST_CAP {
         return;
     }

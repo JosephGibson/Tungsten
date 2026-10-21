@@ -1106,6 +1106,74 @@ fn the_component_saves_its_instances_and_table_without_the_source() {
 }
 
 #[test]
+fn set_source_restores_a_loaded_instances_source_by_serial() {
+    let (mut world, mut schedule) = rig();
+    let mark = insert(&mut world, "mark", Effect::new().with_duration(2.0));
+    let burn = insert(
+        &mut world,
+        "burn",
+        Effect::new()
+            .with_duration(1.0)
+            .with_period(0.5)
+            .with_damage(2.0)
+            .with_on_expire(mark),
+    );
+    let mage = world.spawn();
+    let golem = world.spawn_with((Health::new(100.0),));
+    EffectRequest::new(golem, burn)
+        .with_source(mage)
+        .apply(&mut world);
+    // A save and a load: the instance comes back with no source.
+    let saved = serde_json::to_value(world.get::<Effects>(golem).unwrap()).unwrap();
+    let mut loaded: Effects = serde_json::from_value(saved).unwrap();
+    let serial = loaded.instances().next().unwrap().serial();
+    assert_eq!(loaded.instances().next().unwrap().source(), None);
+    let before = loaded.clone();
+    assert!(
+        !loaded.set_source(serial + 7, Some(mage)),
+        "no such instance"
+    );
+    assert_eq!(loaded, before, "an unknown serial changes nothing");
+    assert!(loaded.set_source(serial, Some(mage)));
+    let (named, was) = (
+        loaded.instances().next().unwrap(),
+        before.instances().next().unwrap(),
+    );
+    assert_eq!(named.source(), Some(mage));
+    assert_eq!(
+        (named.stacks(), named.left(), named.factor(), named.serial()),
+        (was.stacks(), was.left(), was.factor(), was.serial()),
+        "only the source changes"
+    );
+    world.insert(golem, loaded);
+    // Its ticks, and the `on_expire` it hands on, come from the mage.
+    let mut ticks = Vec::new();
+    for _ in 0..62 {
+        steps(&mut world, &mut schedule, 1);
+        ticks.extend(
+            world
+                .resource::<EventQueue<Damaged>>()
+                .iter()
+                .map(|hit| (hit.source, hit.periodic)),
+        );
+    }
+    assert!(!ticks.is_empty());
+    assert!(
+        ticks.iter().all(|&tick| tick == (Some(mage), true)),
+        "{ticks:?}"
+    );
+    let effects = world.get_mut::<Effects>(golem).unwrap();
+    let next = effects.instances().next().unwrap();
+    assert_eq!(
+        (next.effect().id(), next.source()),
+        (Some("mark"), Some(mage))
+    );
+    let serial = next.serial();
+    assert!(effects.set_source(serial, None), "cleared");
+    assert_eq!(effects.instances().next().unwrap().source(), None);
+}
+
+#[test]
 fn the_data_form_round_trips_and_refuses_bad_values() {
     let effect: Effect = serde_json::from_value(json!({
         "duration": 3, "period": 0.5,

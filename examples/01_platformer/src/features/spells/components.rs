@@ -13,7 +13,7 @@ pub struct Spellbook {
     pub slot: usize,
 }
 
-/// A spell of (a). Each casts the player's ability of [`Spell::ability`]'s
+/// A spell of the bar. Each casts the player's ability of [`Spell::ability`]'s
 /// name, whose data holds its cost, cooldown, charges and payloads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Spell {
@@ -25,6 +25,8 @@ pub enum Spell {
     IronBlock,
     BowlingBall,
     SmallBalls,
+    Lightning,
+    Summon,
 }
 
 impl Spell {
@@ -40,10 +42,13 @@ impl Spell {
             Spell::IronBlock => "iron_block",
             Spell::BowlingBall => "bowling_ball",
             Spell::SmallBalls => "small_balls",
+            Spell::Lightning => "lightning",
+            Spell::Summon => "summon",
         }
     }
 
-    /// Its icon's sprite ID.
+    /// Its icon's sprite ID: the summon's first type's, which the bar
+    /// follows to the type selected.
     #[must_use]
     pub const fn icon(self) -> &'static str {
         match self {
@@ -55,6 +60,8 @@ impl Spell {
             Spell::IronBlock => "ex10_icon_iron_block",
             Spell::BowlingBall => "ex10_icon_bowling_ball",
             Spell::SmallBalls => "ex10_icon_small_balls",
+            Spell::Lightning => "ex10_icon_lightning",
+            Spell::Summon => super::SUMMONS[0].icon,
         }
     }
 
@@ -64,8 +71,9 @@ impl Spell {
         match self {
             Spell::FireMissile | Spell::Flamethrower => School::Fire,
             Spell::IceSpray => School::Cold,
-            Spell::ForcePush | Spell::BlackHole => School::Mana,
+            Spell::ForcePush | Spell::BlackHole | Spell::Summon => School::Mana,
             Spell::IronBlock | Spell::BowlingBall | Spell::SmallBalls => School::Physical,
+            Spell::Lightning => School::Shock,
         }
     }
 
@@ -97,11 +105,12 @@ pub enum School {
     Cold,
     Mana,
     Physical,
+    Shock,
 }
 
 impl School {
-    /// Its border colour, from the palette: ember orange, ice cyan, indigo
-    /// and bone white.
+    /// Its border colour, from the palette: ember orange, ice cyan, indigo,
+    /// bone white and violet.
     #[must_use]
     pub const fn color(self) -> [u8; 4] {
         match self {
@@ -109,6 +118,16 @@ impl School {
             School::Cold => [176, 236, 244, 255],
             School::Mana => [132, 128, 236, 255],
             School::Physical => [242, 234, 200, 255],
+            School::Shock => [184, 140, 255, 255],
         }
     }
+}
+
+/// The type the summon slot places, by its place in [`SUMMONS`]: a World
+/// resource a run's start inserts, saved.
+///
+/// [`SUMMONS`]: super::SUMMONS
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Summon {
+    pub selected: usize,
 }
