@@ -357,6 +357,7 @@ struct TextFile {
     align: Option<AlignFile>,
     wrap: Option<WrapFile>,
     overflow: Option<OverflowFile>,
+    letter_spacing: Option<f32>,
 }
 
 impl TextFile {
@@ -387,6 +388,9 @@ impl TextFile {
         }
         if let Some(overflow) = self.overflow {
             text.overflow = Some(overflow.into());
+        }
+        if let Some(letter_spacing) = self.letter_spacing {
+            text.letter_spacing = Some(letter_spacing);
         }
     }
 }

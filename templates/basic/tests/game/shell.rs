@@ -4,6 +4,7 @@
 
 use std::path::Path;
 
+use tungsten::core::post::{PostPass, PostStack, VignetteParams};
 use tungsten::core::text::{TextAlign, TextNodeStore};
 use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId};
 use tungsten::core::{
@@ -18,11 +19,12 @@ use tungsten_template_basic::sample::{GEM_STARTS, PLAYER_START, SampleRun};
 use tungsten_template_basic::save::{self, SaveGame};
 use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::game_over::GAME_OVER;
+use tungsten_template_basic::shell::options::GameOptions;
 use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
 use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
 use tungsten_template_basic::shell::{
-    AUTOSAVE, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
+    AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
 };
 
 use super::{
@@ -65,14 +67,20 @@ fn focused(harness: &UiHarness) -> Option<WidgetId> {
     harness.tree().focused()
 }
 
-/// A run in `dir` that leaves an autosave: started, walked, paused.
+/// A run in `dir` that leaves two autosaves: started, which writes the
+/// first, walked, then paused, which writes the second, returned.
 fn leave_autosave(dir: &Path) -> SaveGame {
     let mut harness = harness_with(UserFolder::At(dir.to_path_buf()));
     start(&mut harness);
     walk(&mut harness, 20);
     tap(&mut harness, "state_pause");
     harness.step(1);
-    read(dir, AUTOSAVE)
+    read(dir, AUTOSAVES[1])
+}
+
+/// Each autosave's bytes in `dir`, `None` without a file.
+fn autosave_bytes(dir: &Path) -> [Option<Vec<u8>>; 3] {
+    AUTOSAVES.map(|slot| std::fs::read(slot_file(dir, slot)).ok())
 }
 
 #[test]
@@ -99,7 +107,7 @@ fn new_game_picks_a_difficulty_and_writes_a_fresh_autosave() {
     press(&mut harness, "Hard");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     assert_eq!(health(&harness, player_entity(&harness)), (3.0, 3.0));
-    let save = read(&dir, AUTOSAVE);
+    let save = read(&dir, AUTOSAVES[0]);
     assert_eq!(save.meta.difficulty, Difficulty::Hard);
     assert_eq!(save.player, PLAYER_START);
     assert_eq!(save.gems_left, [0, 1, 2]);
@@ -111,12 +119,15 @@ fn new_game_picks_a_difficulty_and_writes_a_fresh_autosave() {
 fn new_game_asks_first_over_an_autosave() {
     let dir = user_folder("new-game-asks");
     let old = leave_autosave(&dir);
-    let file = slot_file(&dir, AUTOSAVE);
-    let bytes = std::fs::read(&file).unwrap();
+    let bytes = autosave_bytes(&dir);
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
     assert_eq!(top(&harness), Some(CONFIRM));
+    assert!(shows(
+        &harness,
+        "Start a new game? Its autosaves will replace the oldest ones."
+    ));
     assert_eq!(
         focused(&harness),
         find(&harness, "Cancel"),
@@ -124,7 +135,7 @@ fn new_game_asks_first_over_an_autosave() {
     );
     press(&mut harness, "Cancel");
     assert_eq!(top(&harness), Some(TITLE));
-    assert_eq!(std::fs::read(&file).unwrap(), bytes, "the autosave stays");
+    assert_eq!(autosave_bytes(&dir), bytes, "the autosaves stay");
     assert_eq!(
         focused(&harness),
         find(&harness, "Normal"),
@@ -134,9 +145,9 @@ fn new_game_asks_first_over_an_autosave() {
     press(&mut harness, "Normal");
     press(&mut harness, "Start");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
-    let fresh = read(&dir, AUTOSAVE);
-    assert_ne!(fresh.player, old.player);
-    assert_eq!(fresh.player, PLAYER_START, "the autosave is replaced");
+    let fresh = read(&dir, AUTOSAVES[2]);
+    assert_eq!(fresh.player, PLAYER_START, "the empty autosave takes it");
+    assert_eq!(read(&dir, AUTOSAVES[1]).player, old.player, "the rest stay");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -184,15 +195,18 @@ fn quit_to_title_autosaves_and_returns_to_the_title() {
     start(&mut harness);
     walk(&mut harness, 20);
     let walked = player_position(&harness).unwrap();
+    // Pause's autosave, on its first frame with no step, which Quit to
+    // Title's rewrites, with no step between.
     tap(&mut harness, "state_pause");
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    harness.step(1);
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit to Title");
     assert!(shows(&harness, "Quit to the title?"), "one question");
     press(&mut harness, "Quit");
     assert_eq!(top(&harness), Some(TITLE));
     assert_eq!(depth(&harness), 1);
     assert!(!harness.world().has_resource::<RunState>(), "the run ended");
-    assert_eq!(read(&dir, AUTOSAVE).player, walked);
+    assert_eq!(read(&dir, AUTOSAVES[1]).player, walked);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -218,11 +232,15 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    harness.step(1);
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit to Title");
     assert_eq!(top(&harness), Some(CONFIRM));
     assert!(shows(&harness, "Quit to the title?") && !shows(&harness, lost));
-    assert!(slot_file(&dir, AUTOSAVE).is_file(), "saved before asking");
+    assert!(
+        slot_file(&dir, AUTOSAVES[1]).is_file(),
+        "saved before asking"
+    );
     assert_eq!(focused(&harness), find(&harness, "Stay"), "the safe answer");
     press(&mut harness, "Stay");
     assert_eq!(top(&harness), Some(PAUSE));
@@ -237,18 +255,24 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     assert!(shows(&harness, lost), "no user folder");
     press(&mut harness, "Stay");
 
-    // A read-only autosave: one from a newer build.
+    // Read-only autosaves: three from a newer build.
     let dir = user_folder("quit-read-only");
-    let file = slot_file(&dir, AUTOSAVE);
-    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
-    let newer = r#"{ "envelope": 1, "slot": "autosave", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
-    std::fs::write(&file, newer).unwrap();
+    std::fs::create_dir_all(dir.join("saves")).unwrap();
+    let newer = r#"{ "envelope": 1, "slot": "autosave_1", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
+    for slot in AUTOSAVES {
+        std::fs::write(slot_file(&dir, slot), newer).unwrap();
+    }
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
-    assert!(shows(&harness, lost), "a read-only autosave");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), newer);
+    assert!(shows(&harness, lost), "read-only autosaves");
+    for slot in AUTOSAVES {
+        assert_eq!(
+            std::fs::read_to_string(slot_file(&dir, slot)).unwrap(),
+            newer
+        );
+    }
     press(&mut harness, "Quit");
     assert_eq!(top(&harness), Some(TITLE));
     assert_eq!(depth(&harness), 1);
@@ -262,10 +286,14 @@ fn quit_game_asks_first_from_pause_and_title() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    harness.step(1);
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit Game");
     assert!(shows(&harness, "Quit the game?"));
-    assert!(slot_file(&dir, AUTOSAVE).is_file(), "saved before asking");
+    assert!(
+        slot_file(&dir, AUTOSAVES[1]).is_file(),
+        "saved before asking"
+    );
     assert!(!harness.harness().exit_requested());
     press(&mut harness, "Stay");
     assert_eq!(top(&harness), Some(PAUSE));
@@ -310,7 +338,7 @@ fn continue_names_its_slot_and_age() {
         .map(|id| widgets::text_of(tree, *id))
         .filter(|text| !text.is_empty())
         .collect();
-    assert_eq!(texts, ["Continue", "Autosave ·", "just now"]);
+    assert_eq!(texts, ["Continue", "Autosave 2 ·", "just now"]);
     let age = descendants(tree, resume)
         .into_iter()
         .find(|id| widgets::text_of(tree, *id) == "just now")
@@ -321,7 +349,52 @@ fn continue_names_its_slot_and_age() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `id` and everything under it, depth first.
+/// A save in `dir`'s `slot_1` that version 0.0.1 wrote, at (41, 42).
+fn older_slot(dir: &Path) -> SaveGame {
+    let mut harness = harness();
+    start(&mut harness);
+    let mut save = save::capture(harness.world()).unwrap();
+    (save.meta.game_version, save.player) = ("0.0.1".into(), [41.0, 42.0]);
+    SaveSlots::new(Some(dir.join("saves")))
+        .save("slot_1", &save)
+        .unwrap();
+    save
+}
+
+#[test]
+fn continue_asks_before_an_older_save() {
+    let dir = user_folder("continue-older");
+    older_slot(&dir);
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "Continue");
+    assert_eq!(top(&harness), Some(CONFIRM));
+    assert!(shows(
+        &harness,
+        "Slot 1 was saved by an older version, 0.0.1. Load it?"
+    ));
+    press(&mut harness, "Load");
+    assert_eq!(top(&harness), Some(game::GAMEPLAY));
+    assert_eq!(player_position(&harness), Some([41.0, 42.0]));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn retry_reloads_an_older_save_without_asking() {
+    let dir = user_folder("retry-older");
+    older_slot(&dir);
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "Continue");
+    press(&mut harness, "Load");
+    // The run's first autosave took this version; Retry from the old save.
+    harness.world_mut().resource_mut::<RunState>().retry_from = Some("slot_1");
+    kill(&mut harness);
+    press(&mut harness, "Retry");
+    assert_eq!(top(&harness), Some(game::GAMEPLAY), "no question");
+    assert_eq!(player_position(&harness), Some([41.0, 42.0]));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `id` and everything under it, depth first./// `id` and everything under it, depth first.
 fn descendants(tree: &UiTree, id: WidgetId) -> Vec<WidgetId> {
     let mut out = Vec::new();
     let mut stack = vec![id];
@@ -362,7 +435,7 @@ fn the_picker_notes_what_each_difficulty_changes() {
 }
 
 #[test]
-fn a_killed_player_opens_game_over_and_holds_the_clock() {
+fn game_over_reads_you_died_on_a_crimson_band() {
     let mut harness = harness();
     start(&mut harness);
     let player = player_entity(&harness);
@@ -370,16 +443,71 @@ fn a_killed_player_opens_game_over_and_holds_the_clock() {
     assert!(paused(&harness));
     assert!(harness.world().is_alive(player), "the dead stay under it");
     assert_eq!(focused(&harness), find(&harness, "Retry"));
-    // "You died" in the danger colour, over a scrim deepened to red once
-    // the entrance has run.
+    // "YOU DIED" in spaced crimson serif on a dark band across the screen.
     let root = front(&harness).expect("game over's root");
     let tree = harness.tree();
-    let heading = labelled(tree, root, "You died").expect("the heading");
-    let danger = tree.theme().tokens.colors.danger;
-    assert_eq!(tree.resolved_style(heading).unwrap().text.color, danger);
-    harness.step(60);
-    let scrim = harness.tree().overrides(root).unwrap().background;
-    assert_eq!(scrim, Some(theme::DIED_TINT));
+    let heading = labelled(tree, root, "YOU DIED").expect("the heading");
+    let text = &tree.resolved_style(heading).unwrap().text;
+    assert_eq!(text.color, theme::DIED_RED);
+    assert_eq!(text.layout.letter_spacing, theme::DIED_SPACING);
+    assert_eq!(text.family, tree.theme().tokens.fonts.heading);
+    let band = tree.parent(heading).unwrap();
+    let style = tree.resolved_style(band).unwrap();
+    assert_eq!(style.background, theme::DIED_BAND);
+    let (band, root) = (harness.rect(band).unwrap(), harness.rect(root).unwrap());
+    assert_eq!(band.width(), root.width(), "as wide as the root");
+}
+
+#[test]
+fn game_overs_buttons_wait_for_its_entrance() {
+    let mut harness = harness();
+    start(&mut harness);
+    let player = player_entity(&harness);
+    assert_eq!(damage(harness.world_mut(), player, 99.0), Hit::Killed);
+    harness.step(2);
+    assert_eq!(top(&harness), Some(GAME_OVER));
+    for frame in 0..60 {
+        assert!(tungsten_template_basic::shell::transitioning(
+            harness.world()
+        ));
+        assert_eq!(find(&harness, "Retry"), None, "frame {frame}");
+        harness.step(1);
+    }
+    settle(&mut harness);
+    let retry = find(&harness, "Retry");
+    assert!(retry.is_some());
+    assert_eq!(focused(&harness), retry, "Retry, once the entrance ends");
+}
+
+#[test]
+fn game_over_pixelates_and_dims_and_removes_exactly_its_passes() {
+    let dir = user_folder("game-over-passes");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    let vignette = PostPass::Vignette(VignetteParams::default());
+    let stack = |harness: &UiHarness| harness.world().resource::<PostStack>().0.clone();
+    harness
+        .world_mut()
+        .insert_resource(PostStack(vec![vignette]));
+    harness.step(1);
+    kill(&mut harness);
+    let dead = stack(&harness);
+    assert_eq!(dead[..2], [vignette, PostPass::Pixelate(48.0)], "{dead:?}");
+    let dim = matches!(dead[2..], [PostPass::Fade(fade)] if (fade.progress - 0.8).abs() < 1e-5);
+    assert!(dim, "{dead:?}");
+    harness.step(10);
+    assert_eq!(stack(&harness), dead, "held across frames");
+    press(&mut harness, "Load");
+    assert_eq!(stack(&harness), dead, "under the Load screen");
+    tap(&mut harness, "ui_cancel");
+    assert_eq!(stack(&harness), dead, "and back");
+    press(&mut harness, "Retry");
+    let after = stack(&harness);
+    let left = after
+        .iter()
+        .any(|pass| matches!(pass, PostPass::Pixelate(_) | PostPass::Fade(_)));
+    assert!(!left, "none of its passes after Retry: {after:?}");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -426,7 +554,7 @@ fn retry_starts_fresh_when_the_runs_first_autosave_failed() {
         .set("gems", 1);
     tap(&mut harness, "state_pause");
     harness.step(1);
-    assert_eq!(read(&dir, AUTOSAVE).gems_left.len(), 2);
+    assert_eq!(read(&dir, AUTOSAVES[1]).gems_left.len(), 2);
 
     let writable = make_read_only(&dir.join("saves"));
     let mut harness = harness_with(UserFolder::At(dir.clone()));
@@ -492,9 +620,9 @@ fn retry_autosaves_only_the_new_runs_gems() {
     kill(&mut harness);
     press(&mut harness, "Retry");
     assert_eq!(
-        read(&dir, AUTOSAVE).gems_left,
+        read(&dir, AUTOSAVES[1]).gems_left,
         [2],
-        "the new run's gem alone"
+        "the new run's gem alone, in the next autosave"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -505,14 +633,15 @@ fn quit_game_requests_exit_and_the_last_frame_autosaves() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    harness.step(1);
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit Game");
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[1])).unwrap();
     press(&mut harness, "Quit");
     assert!(harness.harness().exit_requested());
     assert!(
-        slot_file(&dir, AUTOSAVE).is_file(),
-        "saved in the last frame"
+        slot_file(&dir, AUTOSAVES[1]).is_file(),
+        "saved in the last frame, over pause's"
     );
     assert_eq!(harness.step(1), 0);
     let _ = std::fs::remove_dir_all(&dir);
@@ -525,11 +654,11 @@ fn a_close_in_gameplay_autosaves_in_the_last_frame() {
     start(&mut harness);
     walk(&mut harness, 20);
     let walked = player_position(&harness).unwrap();
-    assert_ne!(read(&dir, AUTOSAVE).player, walked);
+    assert_ne!(read(&dir, AUTOSAVES[0]).player, walked);
     harness.harness_mut().request_close();
     assert_eq!(harness.step(1), 1, "the last frame runs");
     assert!(harness.harness().exit_requested());
-    assert_eq!(read(&dir, AUTOSAVE).player, walked);
+    assert_eq!(read(&dir, AUTOSAVES[1]).player, walked);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -539,18 +668,15 @@ fn no_autosave_on_the_title_or_while_dead() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     harness.harness_mut().request_close();
     harness.step(1);
-    assert!(
-        !slot_file(&dir, AUTOSAVE).exists(),
-        "the title saves nothing"
-    );
+    assert_eq!(autosave_bytes(&dir), [None, None, None], "the title");
 
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
-    std::fs::remove_file(slot_file(&dir, AUTOSAVE)).unwrap();
+    std::fs::remove_file(slot_file(&dir, AUTOSAVES[0])).unwrap();
     kill(&mut harness);
     harness.harness_mut().request_close();
     harness.step(1);
-    assert!(!slot_file(&dir, AUTOSAVE).exists(), "the dead save nothing");
+    assert_eq!(autosave_bytes(&dir), [None, None, None], "the dead");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -939,11 +1065,11 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
         peak = peak.max(opacity);
         if top(&harness) == Some(TITLE) {
             assert!(
-                !slot_file(&dir, AUTOSAVE).exists(),
+                !slot_file(&dir, AUTOSAVES[0]).exists(),
                 "nothing saved before the swap"
             );
         }
-        let bytes = std::fs::read(slot_file(&dir, AUTOSAVE)).ok();
+        let bytes = std::fs::read(slot_file(&dir, AUTOSAVES[0])).ok();
         if bytes.is_some() && bytes != written {
             saves += 1;
             written = bytes;
@@ -954,8 +1080,9 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     harness.step(10);
     assert_eq!(saves, 1, "the first frame's autosave, once");
-    assert_eq!(std::fs::read(slot_file(&dir, AUTOSAVE)).ok(), written);
-    let save = read(&dir, AUTOSAVE);
+    assert_eq!(std::fs::read(slot_file(&dir, AUTOSAVES[0])).ok(), written);
+    assert_eq!(autosave_bytes(&dir)[1..], [None, None], "in one slot");
+    let save = read(&dir, AUTOSAVES[0]);
     assert_eq!(save.meta.difficulty, Difficulty::Normal);
     assert_eq!(save.player, PLAYER_START, "the new run's");
     let _ = std::fs::remove_dir_all(&dir);
@@ -1032,14 +1159,14 @@ fn hiding(dir: &Path, frames: u32) -> UiHarness {
     harness
 }
 
-/// The autosave's writes over `frames` frames, as changes of its bytes.
+/// The autosaves' writes over `frames` frames, as changes of their bytes.
 fn autosaves(harness: &mut UiHarness, dir: &Path, frames: u32) -> usize {
-    let mut bytes = std::fs::read(slot_file(dir, AUTOSAVE)).ok();
+    let mut bytes = autosave_bytes(dir);
     let mut writes = 0;
     for _ in 0..frames {
         harness.step(1);
-        let now = std::fs::read(slot_file(dir, AUTOSAVE)).ok();
-        writes += usize::from(now != bytes);
+        let now = autosave_bytes(dir);
+        writes += now.iter().zip(&bytes).filter(|(a, b)| a != b).count();
         bytes = now;
     }
     writes
@@ -1051,14 +1178,14 @@ fn a_first_autosave_waits_for_a_capture() {
     let mut harness = hiding(&dir, u32::MAX);
     start(&mut harness);
     assert_eq!(autosaves(&mut harness, &dir, 10), 0, "none while hidden");
-    assert!(!slot_file(&dir, AUTOSAVE).exists());
+    assert_eq!(autosave_bytes(&dir), [None, None, None]);
     harness.world_mut().resource_mut::<Hidden>().0 = 0;
     assert_eq!(
         autosaves(&mut harness, &dir, 20),
         1,
         "one, once it has a save"
     );
-    assert_eq!(read(&dir, AUTOSAVE).player, PLAYER_START);
+    assert_eq!(read(&dir, AUTOSAVES[0]).player, PLAYER_START);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1072,7 +1199,7 @@ fn a_requested_autosave_waits_for_a_capture() {
         0,
         "the first came already"
     );
-    assert!(slot_file(&dir, AUTOSAVE).exists());
+    assert!(slot_file(&dir, AUTOSAVES[0]).exists());
     harness.world_mut().resource_mut::<Hidden>().0 = u32::MAX;
     harness.step(1);
     request_autosave(harness.world_mut());
@@ -1094,7 +1221,8 @@ fn a_close_during_a_run_change_saves_one_run_whole() {
     );
     harness.harness_mut().request_close();
     assert_eq!(harness.step(1), 1, "the last frame runs");
-    let save = read(&dir, AUTOSAVE);
+    // Over pause's autosave: the clock held, so no step ran since.
+    let save = read(&dir, AUTOSAVES[1]);
     assert_eq!(
         (save.meta.difficulty, save.player),
         (Difficulty::Normal, walked)
@@ -1109,11 +1237,88 @@ fn a_close_during_a_run_change_saves_one_run_whole() {
     }
     harness.harness_mut().request_close();
     assert_eq!(harness.step(1), 1);
-    let save = read(&dir, AUTOSAVE);
+    // The loaded run's first autosave, in the slot left empty.
+    let save = read(&dir, AUTOSAVES[2]);
     assert_eq!(
         (save.meta.difficulty, save.player),
         (Difficulty::Hard, [50.0, 60.0])
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn pause_then_quit_game_keeps_the_earlier_autosaves() {
+    let dir = user_folder("pause-quit-one-slot");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    start(&mut harness);
+    walk(&mut harness, 20);
+    request_autosave(harness.world_mut());
+    harness.step(1);
+    let earlier = autosave_bytes(&dir);
+    assert!(earlier[0].is_some() && earlier[1].is_some() && earlier[2].is_none());
+    assert_ne!(
+        read(&dir, AUTOSAVES[0]).player,
+        read(&dir, AUTOSAVES[1]).player
+    );
+    walk(&mut harness, 20);
+    let walked = player_position(&harness).unwrap();
+    // Pause, Quit Game's question and the exit's last frame: one slot.
+    tap(&mut harness, "state_pause");
+    harness.step(1);
+    press(&mut harness, "Quit Game");
+    press(&mut harness, "Quit");
+    assert!(harness.harness().exit_requested());
+    assert_eq!(harness.step(1), 0, "the last frame ran");
+    let now = autosave_bytes(&dir);
+    assert_eq!(now[..2], earlier[..2], "the earlier autosaves stay");
+    assert_eq!(read(&dir, AUTOSAVES[2]).player, walked);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn autosave_off_writes_no_automatic_or_requested_save() {
+    let dir = user_folder("autosave-off");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let set = |harness: &mut UiHarness, on: bool| {
+        harness.world_mut().resource_mut::<GameOptions>().autosave = on;
+    };
+    set(&mut harness, false);
+    let none = [None, None, None];
+    start(&mut harness);
+    harness.step(5);
+    assert_eq!(autosave_bytes(&dir), none, "the run's start");
+    request_autosave(harness.world_mut());
+    harness.step(5);
+    assert_eq!(autosave_bytes(&dir), none, "request_autosave");
+    tap(&mut harness, "state_pause");
+    harness.step(1);
+    assert_eq!(autosave_bytes(&dir), none, "pause");
+    press(&mut harness, "Quit to Title");
+    let lost = "Quit to the title? Progress since your last save will be lost.";
+    assert!(shows(&harness, lost), "quitting names the loss");
+    assert_eq!(autosave_bytes(&dir), none, "quit");
+    press(&mut harness, "Stay");
+    press(&mut harness, "Resume");
+    // On again: the dropped autosaves stay dropped; the next pause writes.
+    set(&mut harness, true);
+    harness.step(5);
+    assert_eq!(autosave_bytes(&dir), none, "nothing kept for later");
+    tap(&mut harness, "state_pause");
+    harness.step(1);
+    let paused = autosave_bytes(&dir);
+    assert!(paused[0].is_some(), "a pause with the option on");
+    press(&mut harness, "Resume");
+    set(&mut harness, false);
+    harness.harness_mut().request_close();
+    assert_eq!(harness.step(1), 1, "the last frame runs");
+    assert_eq!(autosave_bytes(&dir), paused, "the exit");
+    // New Game asks over a ready autosave only while the option is on.
+    tungsten_template_basic::shell::options::save(harness.world());
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    assert!(!harness.world().resource::<GameOptions>().autosave);
+    press(&mut harness, "New Game");
+    press(&mut harness, "Normal");
+    assert_eq!(top(&harness), Some(game::GAMEPLAY), "no question");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1154,7 +1359,7 @@ fn delete_buttons_and_low_health_use_danger() {
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let danger = harness.tree().theme().tokens.colors.danger;
     press(&mut harness, "Load");
-    let delete = find(&harness, "Delete Autosave").expect("a save to delete");
+    let delete = find(&harness, "Delete Autosave 2").expect("a save to delete");
     assert_eq!(
         harness.tree().resolved_style(delete).unwrap().text.color,
         danger

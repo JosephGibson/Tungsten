@@ -6,6 +6,28 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.94.0] - 2026-10-21
+
+Summary: M73, the template final pass (plan archived at `docs/plans/archive/1.0/phase6-milestone-73-template-final-pass.md`; `D-198`, `D-199`), the owner's request of 2026-10-20 before 01 (b): UI text takes letter spacing; the template's continued runs survive their first seconds, its toggles take their first click, its saves rotate through three autosaves the player can turn off and ask before an older version's save loads, its settings gain Bloom, a 75 % UI, a smaller outlined slider thumb and Uncapped from 60 fps, its game over lands as a band over a pixelating world, its play area clears to black, its sample gains a still enemy and its builds a Windows icon; example 01 takes each shell change by copy, and every maintained doc was read and brought to the tree. `templates/basic/tests/fixtures/title.png` moved twice, for the 75 % UI and the black clear (sha256 `304c9257…cd311f` → `9ac6dc5a…30052a` → `9f7141e4…e49581`); no hash moves.
+
+### Added
+
+- **Letter spacing on UI text** (`D-198`): `TextOverrides::letter_spacing`, in em, passes down the tree with the other text properties, a non-finite value ignored; a theme file sets it as `text.letter_spacing`; the debug views pin it at 0. One break-ledger row.
+- **The template's Autosave and Bloom options** (`D-199`): `GameOptions::autosave` on the Gameplay tab and `GameOptions::bloom` on the Display tab, both on by default; while Bloom is off the shell's one `PostStack` edit a frame takes the game's Bloom passes out, and puts them back when it comes on, so a game builds its stack whole.
+- **A still enemy and a Windows icon** (`D-199`): `enemy_still` stands at the sample's second orbiter's place; `templates/basic/tools/icon.py` draws the gem into `windows/icon.ico` and `windows/icon.res`, which `build.rs` links into a Windows MSVC build, its `--check` in `just script-test`.
+
+### Changed
+
+- **The template's saves** (`D-199`): three autosaves, `autosave_1` to `autosave_3`, written in turn (the run's last while no fixed step has run since, else the first empty, else the oldest) while the Autosave option is on, a 0.93 `autosave` renamed into them at the shell's start; Continue and the Load screen ask before a save an older version wrote loads (`shell::older`); the save screen groups autosaves and slots, each row its name and muted details.
+- **The template's settings and screens** (`D-199`): the frame-rate limit runs from 60 to 480 fps beside an Uncapped toggle; an unset UI scale applies as 75 % (`theme::UI_SCALE`); an 18-unit slider thumb outlined in `#0b0c10`; each tab's Reset resets its own rows; game over's "YOU DIED" band fades in over 1.6 s while the world pixelates and dims, then its buttons; the window clears to black; `src/shell/` within 2,900 lines of code and `src/` within 3,400.
+- **Example 01 and the repository check** (`D-199`): example 01 copies each shell change; `check_shell_copies` holds each shell example's `assets/ui/themes/shell.json` to the template's.
+- **Records**: `DESIGN.md`, the getting-started guide, the template's `AGENTS.md`, READMEs and tools README, example 01's READMEs, `docs/{agent-setup,assets,known-issues,LLM_INDEX,README,releases,validation}.md`, W12 and the W4 ledger.
+
+### Fixed
+
+- **The template's death loop** (`D-199`): a continued run's player spawns under `spawn_grace`, 2.5 s of `status.spawning`, which every enemy's touch filters out, so a save made within an enemy's reach no longer dies again on each load.
+- **The template's toggles** (`D-199`): a Settings toggle takes its first click, right after the screen opens or its tab changes.
+
 ## [0.93.0] - 2026-10-20
 
 Summary: M72, example 01's first stop, 01 (a) (plan archived at `docs/plans/archive/1.0/phase6-milestone-72-example-01-rebuild.md`; `D-197`): example 01 rebuilt from scratch as a game on the template, run from its own folder with the template's shell byte for byte, its player on the kit's platformer controller with an air jump, eight spells on the kit's abilities paid in mana on its effects, a HUD, a headless playthrough and saves that load back to themselves. The kit gains air jumps, the `restore` payload, `suppressed_by` and saved runtime state for its controller, path follower and random stream; the template's due autosaves are captured after the last frame's flush; the release archives run the platformer from its folder. With them ship the session tiers (`D-195`) and the players' release archives (`D-196`). No hash moves.

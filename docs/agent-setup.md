@@ -5,7 +5,7 @@ How Claude Code and Codex pick up this repo's instructions, skills and search fi
 ## Instructions
 
 - `AGENTS.md` is the only instruction body. `CLAUDE.md` contains just `@AGENTS.md`, so both tools read the same text. Keep `@` imports out of `AGENTS.md`: Codex doesn't document expanding them.
-- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import.
+- Scoped rules: `crates/tungsten-render/AGENTS.md`, with a matching one-line `CLAUDE.md` import. `templates/basic/AGENTS.md` and its `CLAUDE.md` are the rules of a game made from the template, which `tungsten new` copies; `just ctx` holds them to 12,288 bytes and 100 lines (`D-183`), and they load when a session works in the template.
 - **Codex** reads one instruction file per directory from the repo root to the launch directory (`AGENTS.override.md`, then `AGENTS.md`); the combined default budget is 32 KiB. A root launch doesn't preload nested files, so the root `AGENTS.md` tells agents to read the render file before editing there.
 - **Claude Code:** the [current official guidance](https://code.claude.com/docs/en/memory#agentsmd) (consulted 2026-10-12) documents native `AGENTS.md` support from 2.1.277. With a project `CLAUDE.md` present, the default still uses it and its imports; even the mode that reads both files deduplicates an imported `AGENTS.md`. Keep the one-line compatibility imports for older or unsupported sessions. This newer behavior is documented, not locally re-probed.
 - **Historical local probe**, Claude Code 2.1.110 (2026-09-25), which loaded ancestor `CLAUDE.md` files at launch and nested ones on reads:

@@ -21,6 +21,12 @@ pub struct GameOptions {
     pub pause_unfocused: bool,
     /// Float the damage a hit deals.
     pub damage_numbers: bool,
+    /// Write the autosaves: at a run's start, at pause, on quitting and at
+    /// the exit, and when the game asks.
+    pub autosave: bool,
+    /// Draw the game's Bloom passes; off, the shell takes them out of its
+    /// `PostStack` until the option comes back on.
+    pub bloom: bool,
     screen_shake: f32,
 }
 
@@ -30,6 +36,8 @@ impl Default for GameOptions {
             mute_unfocused: false,
             pause_unfocused: true,
             damage_numbers: true,
+            autosave: true,
+            bloom: true,
             screen_shake: 1.0,
         }
     }

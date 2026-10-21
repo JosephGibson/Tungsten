@@ -7,6 +7,7 @@ use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::run::Run;
 use example_01_platformer::game::GAMEPLAY;
+use example_01_platformer::shell::AUTOSAVES;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use example_01_platformer::shell::toast::Toasts;
 use glam::Vec2;
@@ -29,8 +30,9 @@ const CROSSINGS: [(&str, f32, f32, f32, bool); 3] = [
 /// The spawn's area, which a run's first step enters.
 const FIRST: &str = "Lantern clearing";
 
-fn autosave(dir: &Path) -> Option<Vec<u8>> {
-    std::fs::read(dir.join("saves").join("autosave.json")).ok()
+/// Each autosave's bytes, `None` without a file.
+fn autosaves(dir: &Path) -> [Option<Vec<u8>>; 3] {
+    AUTOSAVES.map(|slot| std::fs::read(dir.join("saves").join(format!("{slot}.json"))).ok())
 }
 
 fn area(harness: &UiHarness) -> Option<String> {
@@ -67,7 +69,7 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
             harness.step(1);
         }
         seen.clear();
-        let (mut bytes, mut writes) = (autosave(&dir), 0);
+        let (mut bytes, mut writes) = (autosaves(&dir), 0);
         harness.harness_mut().press_action("move_right");
         if jump {
             harness.harness_mut().press_action("jump");
@@ -76,8 +78,8 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
         let mut after = None;
         for frame in 0..120 {
             step(&mut harness, &mut seen);
-            let now = autosave(&dir);
-            writes += usize::from(now != bytes);
+            let now = autosaves(&dir);
+            writes += now.iter().zip(&bytes).filter(|(a, b)| a != b).count();
             bytes = now;
             if after.is_none() && area(&harness).as_deref() == Some(name) {
                 after = Some(frame);

@@ -137,6 +137,15 @@ class RepoChecks(unittest.TestCase):
         self.write("examples/01_game/src/shell/theme.rs", "// theme.rs\n")
         self.write("examples/01_game/src/shell/extra.rs", "// extra\n")
         self.assertEqual(copies(), ["examples/01_game/src/shell/extra.rs: not in templates/basic/src/shell/"])
+        (self.root / "examples/01_game/src/shell/extra.rs").unlink()
+        theme = "assets/ui/themes/shell.json"
+        self.write(f"templates/basic/{theme}", '{"tokens": {}}\n')
+        self.write(f"examples/01_game/{theme}", '{"tokens": {}}\n')
+        self.assertEqual(copies(), [], "an equal theme")
+        self.write(f"examples/01_game/{theme}", '{"tokens": {"text": {}}}\n')
+        self.assertEqual(copies(), [f"examples/01_game/{theme}: differs from templates/basic/{theme}"])
+        (self.root / f"examples/01_game/{theme}").unlink()
+        self.assertEqual(copies(), [f"examples/01_game/{theme}: missing; templates/basic has it"])
 
     def test_directory_symlinks_are_not_walked(self):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)

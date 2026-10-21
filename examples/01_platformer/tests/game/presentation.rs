@@ -13,6 +13,7 @@ use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, spawn_burst};
+use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, ResolvedManifest, TilemapData, TilemapLayer};
 use tungsten::core::post::{PostPass, PostStack};
@@ -22,14 +23,14 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, Position, Sprite, TilemapInstance, TilemapRegistry,
     Transform, Visibility,
 };
-use tungsten::kit::{Facing, PlatformerController};
+use tungsten::kit::{Facing, PlatformerController, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::toys::{self, components::BlackHole};
 
-use super::{centre, mock_sprite, run, teleport};
+use super::{centre, mock_sprite, press, run, settle, teleport};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -512,6 +513,40 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     let world = harness.world();
     assert!(!world.get::<Glow>(player).unwrap().hidden);
     assert!(world.query::<&Light>().all(|light| light.intensity > 0.0));
+}
+
+#[test]
+fn bloom_and_vignette_survive_game_over_and_retry() {
+    let (mut harness, player) = run();
+    let stack = |harness: &UiHarness| harness.world().resource::<PostStack>().0.clone();
+    let night = stack(&harness);
+    let pair = matches!(
+        night.as_slice(),
+        [PostPass::Bloom(_), PostPass::Vignette(_)]
+    );
+    assert!(pair, "{night:?}");
+    damage(harness.world_mut(), player, 1000.0);
+    harness.step(2);
+    settle(&mut harness);
+    let dead = stack(&harness);
+    assert_eq!(dead[..2], night[..], "under game over's passes: {dead:?}");
+    press(&mut harness, "Retry");
+    assert_eq!(stack(&harness), night, "after Retry");
+}
+
+#[test]
+fn the_bloom_option_keeps_the_vignette() {
+    let (mut harness, _) = run();
+    let set = |harness: &mut UiHarness, on: bool| {
+        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        harness.step(1);
+        harness.world().resource::<PostStack>().0.clone()
+    };
+    let off = set(&mut harness, false);
+    assert!(matches!(off.as_slice(), [PostPass::Vignette(_)]), "{off:?}");
+    let on = set(&mut harness, true);
+    let both = matches!(on.as_slice(), [PostPass::Bloom(_), PostPass::Vignette(_)]);
+    assert!(both, "{on:?}");
 }
 
 #[test]

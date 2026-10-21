@@ -34,7 +34,7 @@
       "pressed": { "background": "#0b0c10" }
     },
     "slider": {
-      "normal": { "background": "#646b7a", "corner_radius": 0, "text": { "color": "#f0a830" } },
+      "normal": { "background": "#646b7a", "border": "#0b0c10", "border_width": 1, "corner_radius": 0, "text": { "color": "#f0a830" } },
       "focused": { "border": "#ffd36b", "border_width": 2 },
       "hovered": { "text": { "color": "#ffd36b" } }
     }

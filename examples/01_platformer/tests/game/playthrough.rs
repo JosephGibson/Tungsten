@@ -9,6 +9,7 @@ use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::player::{self, PLAYER_HALF};
 use example_01_platformer::game;
 use example_01_platformer::save::SaveGame;
+use example_01_platformer::shell::AUTOSAVES;
 use example_01_platformer::shell::toast::Toasts;
 use glam::Vec2;
 use serde::Deserialize;
@@ -73,13 +74,13 @@ struct Platform {
     row: f32,
 }
 
-/// What the run has shown and saved so far: the toasts in order, and the
-/// area of each autosave written.
+/// What the run has shown and saved so far: the toasts in order, the area
+/// of each autosave written, and each autosave slot's last save time.
 #[derive(Default)]
 struct Watch {
     toasts: Vec<String>,
     autosaves: Vec<Option<String>>,
-    saved_at: u64,
+    saved_at: [u64; 3],
 }
 
 /// The courier on its way: the run, its player, what it has been shown and
@@ -136,18 +137,17 @@ impl Walker {
                 self.watch.toasts.push(text);
             }
         }
+        // The autosave slot that changed, each area's taking the oldest.
         let slots = world.resource::<SaveSlots>();
-        let written = slots
-            .list()
-            .ok()
-            .and_then(|list| list.slots.into_iter().find(|s| s.name == "autosave"))
-            .map_or(0, |info| info.saved_at_ms);
-        if written != self.watch.saved_at {
-            self.watch.saved_at = written;
-            let save = slots
-                .load::<SaveGame>("autosave")
-                .expect("the autosave reads");
-            self.watch.autosaves.push(save.area);
+        let list = slots.list().unwrap_or_default();
+        for (at, slot) in AUTOSAVES.into_iter().enumerate() {
+            let info = list.slots.iter().find(|info| info.name == slot);
+            let written = info.map_or(0, |info| info.saved_at_ms);
+            if written != self.watch.saved_at[at] {
+                self.watch.saved_at[at] = written;
+                let save = slots.load::<SaveGame>(slot).expect("the autosave reads");
+                self.watch.autosaves.push(save.area);
+            }
         }
     }
 

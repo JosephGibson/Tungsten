@@ -37,8 +37,8 @@ pub const GAMEPLAY_TAB: usize = 4;
 /// first is the least any monitor's list offers.
 pub const SIZES: [(u32, u32); 4] = [(1280, 720), (1600, 900), (1920, 1080), (2560, 1440)];
 /// The frame-rate limit's slider: its least, its most and its step, and
-/// where it rests while Unlimited is on.
-pub const FPS: [f32; 3] = [30.0, 480.0, 5.0];
+/// where it rests while Uncapped is on.
+pub const FPS: [f32; 3] = [60.0, 480.0, 5.0];
 pub const FPS_REST: u32 = 60;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,7 +47,8 @@ enum Row {
     Size,
     Vsync,
     Cap,
-    Unlimited,
+    Uncapped,
+    Bloom,
     Apply,
     Master,
     Music,
@@ -61,6 +62,7 @@ enum Row {
     Shake,
     Damage,
     PauseUnfocused,
+    Autosave,
 }
 
 /// How a row is built: a button that cycles its value, a toggle, a slider
@@ -83,12 +85,13 @@ const UI_SCALE: Kind = Kind::Slider(*UI_SCALES.start(), *UI_SCALES.end(), 0.25);
 const TEXT_SCALE: Kind = Kind::Slider(*TEXT.start(), *TEXT.end(), 0.25);
 
 /// Every row: its tab, its caption and how it is built.
-const ROWS: [(Row, usize, &str, Kind); 18] = [
+const ROWS: [(Row, usize, &str, Kind); 20] = [
     (Row::Mode, 0, "Window mode", Kind::Choice),
     (Row::Size, 0, "Window size", Kind::Choice),
     (Row::Vsync, 0, "VSync", Kind::Toggle),
     (Row::Cap, 0, "Frame rate limit", CAP),
-    (Row::Unlimited, 0, "Unlimited", Kind::Toggle),
+    (Row::Uncapped, 0, "Uncapped", Kind::Toggle),
+    (Row::Bloom, 0, "Bloom", Kind::Toggle),
     (Row::Apply, 0, "Apply", Kind::Button),
     (Row::Master, 1, "Master", PERCENT),
     (Row::Music, 1, "Music", PERCENT),
@@ -102,6 +105,7 @@ const ROWS: [(Row, usize, &str, Kind); 18] = [
     (Row::Shake, 4, "Screen shake", PERCENT),
     (Row::Damage, 4, "Damage numbers", Kind::Toggle),
     (Row::PauseUnfocused, 4, "Pause when unfocused", Kind::Toggle),
+    (Row::Autosave, 4, "Autosave", Kind::Toggle),
 ];
 
 struct Ui {
@@ -322,12 +326,14 @@ impl SettingsState {
                     continue;
                 }
                 Row::Cap => {
-                    // An off-grid cap applies as stored and reads exactly;
-                    // under Unlimited the slider keeps its value, off.
+                    // A cap applies as stored: off the grid it reads exactly,
+                    // under the floor it reads the floor the slider clamps it
+                    // to; under Uncapped the slider keeps its value, off.
                     if let Some(fps) = cap {
                         tree.set_slider_value(id, fps as f32);
                     }
-                    let fps = cap.map_or(tree.slider_value(id).unwrap_or(0.0), |fps| fps as f32);
+                    let held = tree.slider_value(id).unwrap_or(0.0);
+                    let fps = cap.map_or(held, |fps| (fps as f32).max(FPS[0]));
                     tree.set_enabled(id, cap.is_some());
                     self.show(tree, id, readout(row, fps));
                     continue;
@@ -340,14 +346,16 @@ impl SettingsState {
                 }
                 Row::Keys | Row::ResetKeys => continue,
                 Row::Vsync => UiValue::Bool(display.vsync),
-                Row::Unlimited => UiValue::Bool(cap.is_none()),
+                Row::Uncapped => UiValue::Bool(cap.is_none()),
+                Row::Bloom => UiValue::Bool(options.bloom),
                 Row::MuteUnfocused => UiValue::Bool(options.mute_unfocused),
                 Row::Damage => UiValue::Bool(options.damage_numbers),
                 Row::PauseUnfocused => UiValue::Bool(options.pause_unfocused),
+                Row::Autosave => UiValue::Bool(options.autosave),
                 Row::Master => UiValue::Number(volumes[0]),
                 Row::Music => UiValue::Number(volumes[1]),
                 Row::Effects => UiValue::Number(volumes[2]),
-                Row::UiScale => UiValue::Number(settings.ui_scale().unwrap_or(1.0)),
+                Row::UiScale => UiValue::Number(settings.ui_scale().unwrap_or(theme::UI_SCALE)),
                 Row::TextScale => UiValue::Number(settings.text_scale().unwrap_or(1.0)),
                 Row::Shake => UiValue::Number(options.screen_shake() * 100.0),
             };
@@ -418,7 +426,7 @@ impl SettingsState {
     }
 
     /// A slider or toggle took `value`: the frame-rate limit the slider's,
-    /// or none while Unlimited is on.
+    /// or none while Uncapped is on.
     fn set(&self, world: &mut World, row: Row, value: UiValue) {
         let number = value.as_number().unwrap_or(0.0);
         let on = value.as_bool().unwrap_or(false);
@@ -426,7 +434,7 @@ impl SettingsState {
         match row {
             Row::Vsync => change(world, |settings| settings.set_vsync(Some(on))),
             Row::Cap => change(world, |settings| settings.set_frame_rate_cap(fps(number))),
-            Row::Unlimited => {
+            Row::Uncapped => {
                 let slider = self.ui.as_ref().map(|ui| ui.control(Row::Cap));
                 let value = slider.and_then(|id| world.resource::<UiTree>().slider_value(id));
                 let cap = if on {
@@ -435,7 +443,6 @@ impl SettingsState {
                     value.and_then(fps)
                 };
                 change(world, |settings| settings.set_frame_rate_cap(cap));
-                self.refresh(world);
             }
             Row::Master => set_volume(world, None, number),
             Row::Music => set_volume(world, Some(AudioBus::Music), number),
@@ -447,6 +454,8 @@ impl SettingsState {
                     Row::MuteUnfocused => options.mute_unfocused = on,
                     Row::Damage => options.damage_numbers = on,
                     Row::PauseUnfocused => options.pause_unfocused = on,
+                    Row::Autosave => options.autosave = on,
+                    Row::Bloom => options.bloom = on,
                     Row::Shake => options.set_screen_shake(number / 100.0),
                     _ => {}
                 }
@@ -481,14 +490,17 @@ impl SettingsState {
             }
             _ => {}
         });
+        // Each tab's own options only: Display's Bloom, Audio's mute, and
+        // Gameplay's rest.
+        let options = world.resource_mut::<GameOptions>();
+        let (mute_unfocused, bloom) = (options.mute_unfocused, options.bloom);
         match self.tab {
-            1 => world.resource_mut::<GameOptions>().mute_unfocused = defaults.mute_unfocused,
+            0 => options.bloom = defaults.bloom,
+            1 => options.mute_unfocused = defaults.mute_unfocused,
             3 => keybindings::reset(world, None),
             GAMEPLAY_TAB => {
-                let options = world.resource_mut::<GameOptions>();
-                let kept = options.mute_unfocused;
                 *options = defaults;
-                options.mute_unfocused = kept;
+                (options.mute_unfocused, options.bloom) = (mute_unfocused, bloom);
                 options::apply(world);
             }
             _ => {}
@@ -603,7 +615,7 @@ impl GameState for SettingsState {
             let tab = (self.tab + step) % TABS.len();
             self.select(world.resource_mut::<UiTree>(), tab);
         }
-        let events = events(world);
+        let (events, mut stale) = (events(world), false);
         let row_of = |widget: WidgetId| {
             rows.iter()
                 .position(|id| *id == widget)
@@ -618,10 +630,12 @@ impl GameState for SettingsState {
                     let tab = tabs.iter().position(|tab| *tab == widget).unwrap_or(0);
                     self.select(world.resource_mut::<UiTree>(), tab);
                 }
+                // The rows refresh after the loop, once this routing's
+                // `ValueChanged` has applied a toggle's new value.
                 UiEvent::Activated { widget, .. } => {
                     if let Some(row) = row_of(widget) {
                         self.activate(world, row);
-                        self.refresh(world);
+                        stale = true;
                     }
                 }
                 UiEvent::Pressed { widget, .. }
@@ -655,6 +669,9 @@ impl GameState for SettingsState {
                 }
                 _ => {}
             }
+        }
+        if stale {
+            self.refresh(world);
         }
     }
 }

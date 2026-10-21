@@ -123,6 +123,7 @@ fn hostile_theme() -> Theme {
             at: EllipsisAt::End,
             lines: Some(1),
         }),
+        letter_spacing: Some(0.5),
     };
     let variant = |color: [u8; 4]| StyleOverrides {
         background: Some([255, 0, 0, 255]),
@@ -155,8 +156,8 @@ const TEXT_COLORS: [[u8; 4]; 13] = [
 
 /// Whether every node under `root` resolved to the view's look, not the
 /// theme's (M58): the engine font at the body's 15 on 20 or a title's 17
-/// on 22, at weight 400 or 600, in a palette colour, wrapped by glyph to
-/// one line that ends in `…`, and no hostile fill or border.
+/// on 22, at weight 400 or 600, in a palette colour, unspaced, wrapped by
+/// glyph to one line that ends in `…`, and no hostile fill or border.
 fn assert_own_look(tree: &UiTree, root: WidgetId) {
     for id in subtree(tree, root) {
         let style = tree.resolved_style(id).expect("resolved");
@@ -195,6 +196,10 @@ fn assert_own_look(tree: &UiTree, root: WidgetId) {
                 lines: Some(1),
             },
             "{what}"
+        );
+        assert_eq!(
+            text.layout.letter_spacing, 0.0,
+            "{what}: the theme's 0.5 em"
         );
     }
 }

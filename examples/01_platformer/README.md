@@ -2,7 +2,7 @@
 
 A courier with a lantern crosses a ruin at night: four areas from the lantern clearing to the ruined tower, then a collection pit, with spikes, moving fire and moving platforms on the way. Eight spells cast physics toys and the elements: a fire missile, a flamethrower, an ice spray, a force push, a black hole, iron blocks, a bowling ball and a stream of small balls, which burn, freeze, shatter, crush and fall into the pit.
 
-It is a game on the [template](../../templates/basic/README.md): the template's shell (title, pause, game over, saves, settings, keybindings, toasts) copied byte for byte into `src/shell/`, the seam in `src/game.rs` and `src/save.rs`, and the game in `src/features/`, built on the engine kit (`tungsten::kit`) wherever the kit has the mechanic.
+It is a game on the [template](../../templates/basic/README.md): the template's shell (title, pause, game over, saves, settings, keybindings, toasts) and its theme copied byte for byte into `src/shell/` and `assets/ui/themes/shell.json`, the seam in `src/game.rs` and `src/save.rs`, and the game in `src/features/`, built on the engine kit (`tungsten::kit`) wherever the kit has the mechanic. Its night is a bloom and a vignette that each run builds whole (`features/level/`); the shell's Bloom option, on the Display tab, takes the bloom out and leaves the vignette.
 
 ## Run and test
 
@@ -63,7 +63,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Moving platforms | `tungsten::kit::PathFollower` (`kit::motion::path`) | `ex10_platform_<n>.json` | |
 | Knockback and the hit flash | `kit::Knockback`, `kit::HitFlash` | `player.json` | The lit courier shows no flash (known issues) |
 | Facing and clips | `kit::Facing`, `kit::CharacterAnimator` | `player.json`, the fireballs' prefabs | The one-shot clips, the toss, the aim frames and the lantern's cast (`features/player/`) |
-| Areas | `tungsten::kit::Zone` and `kit::ZoneEntered` | `ex10_area_<n>.json` | Each new area's toast and autosave (`features/run/`) |
+| Areas | `tungsten::kit::Zone` and `kit::ZoneEntered` | `ex10_area_<n>.json` | Each new area's toast and autosave (`features/run/`; [Saves](#saves)) |
 | The camera | `kit::CameraTarget` | `player.json`'s `camera_target` | The zoom (`features/player/`, `features/level/`) |
 | Art pieces, trails and drips as children | `kit::Children`, `spawn_children` | `iron_block.json`, `fire_missile.json`, the fireballs' prefabs | |
 | Spells: cost, cooldown, charges, payloads | `tungsten::kit::Abilities` and `kit::use_ability` | `data/abilities/*.json`; `player.json`'s `abilities` | The choice, the cast and the toys (`features/spells/`) |
@@ -76,7 +76,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 
 ## Saves
 
-`src/save.rs` holds the save (schema 4): the run's next save ID, the random stream, the last area, the selected spell, the lantern, and every saved entity by its save ID: the player's body, controller, health, stats, effects, abilities and tags; the moving platforms and fire; the balls, iron and scraps; the black hole; the missiles in flight. Loading spawns the map, writes each saved state over the map object with its save ID and spawns the rest from their prefabs. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music.
+`src/save.rs` holds the save (schema 4): the run's next save ID, the random stream, the last area, the selected spell, the lantern, and every saved entity by its save ID: the player's body, controller, health, stats, effects, abilities and tags; the moving platforms and fire; the balls, iron and scraps; the black hole; the missiles in flight. Loading spawns the map, writes each saved state over the map object with its save ID and spawns the rest from their prefabs. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music. Each area's entry asks for an autosave (`shell::request_autosave`), which the shell writes to one of its three autosaves, an empty one or else the oldest, while its Autosave option is on.
 
 ## Tests
 

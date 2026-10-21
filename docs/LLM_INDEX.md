@@ -40,7 +40,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
 | Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
 | Prefabs, spawn inheritance, Tiled objects, tilemap builder (`D-157`, `D-170`) | `core/assets/prefab.rs`, `core/assets/tilemap.rs`, `tungsten/asset_loader/prefab.rs` |
-| UI theme asset, nine-slice insets (`D-148`) | `core/ui/theme_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/tests/asset_loader.rs` |
+| UI theme asset, nine-slice insets, letter spacing (`D-148`, `D-198`) | `core/ui/theme_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/tests/asset_loader.rs` |
 
 ## Physics
 
@@ -80,7 +80,7 @@ Run with `cargo run -p example-NN-name`.
 | Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
-| Game template (shell, sample, seam) and the `tungsten` CLI (`D-181`–`D-183`, `D-187`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
+| Game template (shell, sample, seam) and the `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |

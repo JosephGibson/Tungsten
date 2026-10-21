@@ -33,14 +33,26 @@ pub const TITLE_FADE: f32 = 1.0;
 /// out.
 pub const GAME_OVER_SOUNDS: [&str; 2] = ["game_over", "music_over"];
 pub const GAME_OVER_FADE: f32 = 1.2;
-/// Game over's entrance: the seconds its scrim takes to deepen from clear
-/// to [`DIED_TINT`] while its heading falls into place.
-pub const DIED_SECS: f32 = 0.9;
-pub const DIED_TINT: [u8; 4] = [64, 6, 10, 216];
+/// Game over's entrance, in real seconds: its band fades in while the
+/// world pixelates to [`DIED_BLOCK_PX`] and dims to [`DIED_DIM`] under a
+/// near-black crimson; then its buttons fade in over [`DIED_BUTTONS_SECS`].
+pub const DIED_SECS: f32 = 1.6;
+pub const DIED_BUTTONS_SECS: f32 = 0.3;
+pub const DIED_BLOCK_PX: f32 = 48.0;
+pub const DIED_DIM: f32 = 0.8;
+pub const DIED_FADE: [f32; 4] = [0.03, 0.002, 0.008, 1.0];
+/// Game over's band across the screen, and its heading's crimson, 3:1 or
+/// more against the band in linear light, and letter spacing, in em.
+pub const DIED_BAND: [u8; 4] = [0, 0, 0, 200];
+pub const DIED_RED: [u8; 4] = [0xbe, 0x14, 0x20, 0xff];
+pub const DIED_SPACING: f32 = 0.2;
 /// The window height, in physical pixels, that lays the UI out at scale 1:
 /// a taller window scales the UI up with it, a shorter one keeps the OS
 /// scale (`D-184`).
 pub const REFERENCE_HEIGHT: f32 = 720.0;
+/// The UI scale an unset setting applies as, 75 %: the Interface tab's
+/// slider reads it until the player moves it, and Reset returns to it.
+pub const UI_SCALE: f32 = 0.75;
 /// The smallest viewport the UI lays out in, in UI units, whatever the
 /// scales: a 1280 × 720 window at the OS scale 1.75.
 pub const MIN_VIEWPORT: [f32; 2] = [731.0, 411.0];
@@ -62,6 +74,9 @@ pub const WIDE_WIDTH: f32 = 600.0;
 /// and wraps.
 pub const CONTROL_WIDTH: f32 = 170.0;
 pub const READOUT_WIDTH: f32 = 64.0;
+/// A slider's line height, which sizes it: an 18-unit thumb, outlined by
+/// the theme, on a 4.5-unit track at text 100 %, beside a 22-unit caption.
+pub const SLIDER_LINE: f32 = 18.0;
 /// A heading's size and line height, in the heading family; body text is
 /// the theme's 16 on 22.
 pub const HEADING_SIZE: f32 = 20.0;
@@ -77,11 +92,10 @@ pub const TITLE_GAP: f32 = 14.0;
 pub const TITLE_SPACE: f32 = 40.0;
 pub const TITLE_MENU_WIDTH: f32 = 220.0;
 pub const TITLE_BUTTON_PADDING: [f32; 2] = [14.0, 3.0];
-/// Game over's "You died": its size and line height, in the heading family
-/// and the danger colour, and the most its size grows to, which still fits
-/// a menu's width.
-pub const DIED: [f32; 2] = [44.0, 52.0];
-pub const DIED_CAP: f32 = 52.0;
+/// Game over's "YOU DIED": its size and line height, in the heading family,
+/// and the most its size grows to, which keeps it to one line at the floor.
+pub const DIED: [f32; 2] = [64.0, 72.0];
+pub const DIED_CAP: f32 = 96.0;
 /// Small print: the title's version and "Saving is off".
 pub const SMALL: [f32; 2] = [13.0, 18.0];
 
@@ -114,16 +128,11 @@ pub fn slide_in(tree: &mut UiTree, root: WidgetId) {
     );
 }
 
-/// Game over's entrance over [`DIED_SECS`]: its scrim deepens from clear
-/// to [`DIED_TINT`], and its heading fades in, falling from 1.6 times its
-/// size.
-pub fn died(tree: &mut UiTree, root: WidgetId, heading: WidgetId) {
-    let [r, g, b, _] = DIED_TINT;
-    let ease = |track: UiTrack| track.with_easing(Easing::CubicOut);
-    let tint = UiTrack::background([r, g, b, 0], DIED_TINT, DIED_SECS);
-    tree.animate(root, ease(tint));
-    tree.animate(heading, ease(UiTrack::scale(1.6, 1.0, DIED_SECS)));
-    tree.animate(heading, ease(UiTrack::opacity(0.0, 1.0, DIED_SECS)));
+/// Fades `id` in over `secs` on the real clock, easing out: game over's band
+/// over [`DIED_SECS`], then its buttons over [`DIED_BUTTONS_SECS`].
+pub fn fade_in(tree: &mut UiTree, id: WidgetId, secs: f32) {
+    let track = UiTrack::opacity(0.0, 1.0, secs).with_easing(Easing::QuadOut);
+    tree.animate(id, track);
 }
 
 /// Fades `root` out and slides it down [`SLIDE_UNITS`] over [`POP_SECS`]:

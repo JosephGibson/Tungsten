@@ -512,9 +512,9 @@ fn a_cast_in_the_step_that_asks_for_an_autosave_saves_its_cost_and_its_missile()
     harness.step(1);
     harness.harness_mut().release_action("cast");
     harness.step(1);
+    // The newest autosave: the aqueduct's, after the run's first.
     let (slots, _) = game_shell::read_slots(harness.world_mut());
-    let Some((_, SlotState::Ready(saved, _))) = slots.into_iter().find(|(s, _)| *s == "autosave")
-    else {
+    let Some((_, saved)) = game_shell::newest(&slots) else {
         panic!("the autosave is written");
     };
     assert_eq!(saved.area.as_deref(), Some("Broken aqueduct"));

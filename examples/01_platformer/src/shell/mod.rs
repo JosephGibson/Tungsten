@@ -4,12 +4,13 @@
 //! gameplay state plays. It calls the game through seven names in
 //! `game.rs` and `save.rs` (the seam) and nothing else outside this folder.
 //!
-//! A run starts with [`start_run`] and ends at the title. Saves go to eleven
-//! slots of `SaveSlots`: the autosave, written when the game pauses, when it
-//! quits to the title or exits, and once a run's first frame or the game's
-//! [`request_autosave`] has a save to capture, and ten the player saves to. A slot that fails to load (a newer build's, or a damaged
-//! file) is never loaded or overwritten for the rest of the run of the
-//! program. One screen change runs at a time, and screens act only when
+//! A run starts with [`start_run`] and ends at the title. Saves go to
+//! thirteen slots of `SaveSlots`: three autosaves, written in turn while the
+//! Autosave option is on, when the game pauses, when it quits to the title
+//! or exits, and once a run's first frame or the game's [`request_autosave`]
+//! has a save to capture, and ten the player saves to. A slot that fails to
+//! load (a newer build's, or a damaged file) is never loaded or overwritten
+//! for the rest of the run of the program. One screen change runs at a time, and screens act only when
 //! none runs: a push acts at once, a pop after its screen fades out, and a
 //! change of run, through [`goto`] or [`start_run`], behind a curtain.
 
@@ -26,6 +27,7 @@ pub mod toast;
 pub mod widgets;
 
 use serde::{Deserialize, Serialize};
+use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::save::SaveError;
 use tungsten::core::ui::{UiEvent, UiRouter, UiTrack, UiTree, Visibility, WidgetId};
 use tungsten::core::{
@@ -40,12 +42,26 @@ use tungsten::{
 use crate::game;
 use crate::save::{self, SaveGame};
 
-/// The autosave's slot name.
-pub const AUTOSAVE: &str = "autosave";
-/// Every slot the shell reads, the autosave first.
-pub const SLOTS: [&str; 11] = [
-    AUTOSAVE, "slot_1", "slot_2", "slot_3", "slot_4", "slot_5", "slot_6", "slot_7", "slot_8",
-    "slot_9", "slot_10",
+/// The autosaves' slots, which the shell writes in turn.
+pub const AUTOSAVES: [&str; 3] = ["autosave_1", "autosave_2", "autosave_3"];
+/// The one autosave of the shell before 0.94: its start renames the file to
+/// an autosave slot with no file, and lists one that stays, never writing it.
+pub const OLD_AUTOSAVE: &str = "autosave";
+/// Every slot the shell writes, the autosaves first.
+pub const SLOTS: [&str; 13] = [
+    AUTOSAVES[0],
+    AUTOSAVES[1],
+    AUTOSAVES[2],
+    "slot_1",
+    "slot_2",
+    "slot_3",
+    "slot_4",
+    "slot_5",
+    "slot_6",
+    "slot_7",
+    "slot_8",
+    "slot_9",
+    "slot_10",
 ];
 
 /// What the title shows: the window's title and the game's version.
@@ -124,6 +140,9 @@ pub struct RunState {
     /// An autosave is due, the run's first or a requested one: it waits
     /// until `capture` returns a save.
     autosave_due: bool,
+    /// The autosave slot this run wrote last, until the next fixed step: an
+    /// autosave before then rewrites it, so a pause and a quit take one.
+    last_autosave: Option<&'static str>,
 }
 
 /// One slot as the shell reads it.
@@ -157,6 +176,9 @@ enum Change {
     /// A change of run: the curtain, its seconds so far and the flow, which
     /// applies once the curtain is opaque.
     Curtain(WidgetId, f32, Option<Flow>),
+    /// Game over's entrance: its seconds so far and its buttons, which show
+    /// once it ends.
+    Entrance(f32, WidgetId),
 }
 
 /// The shell's own state: a `World` resource.
@@ -177,11 +199,31 @@ pub(crate) struct Shell {
     incoming: Option<RunState>,
     /// Slots that failed to load: never loaded or written this run.
     pub(crate) read_only: Vec<&'static str>,
+    /// The slots this program wrote, the first written first: of two saves
+    /// of one time, the first written is the older.
+    written: Vec<&'static str>,
+    post: Post,
+    /// Real seconds since game over came on, while it is on the stack: the
+    /// clock of its post passes.
+    died: Option<f32>,
+}
+
+/// The shell's edits of `PostStack`, which [`post`] makes.
+#[derive(Default)]
+struct Post {
+    /// The game's Bloom passes taken out while the option is off, each with
+    /// its index in the game's stack.
+    kept: Vec<(usize, PostPass)>,
+    /// The passes the shell appended last frame.
+    tail: Vec<PostPass>,
+    /// The stack as the shell left it last frame.
+    left: Vec<PostPass>,
 }
 
 /// The shell as a plugin: the title first, the run's systems, the options
 /// store, the engine's HUD at the top right, hidden until F4 shows it, and
-/// the UI sized from the window's height under a floor (`D-184`).
+/// the UI sized from the window's height under a floor (`D-184`), at
+/// [`theme::UI_SCALE`] while the player has set no UI scale.
 pub struct ShellPlugin {
     info: GameInfo,
 }
@@ -200,9 +242,13 @@ impl Plugin for ShellPlugin {
         world.insert_resource(toast::Toasts::default());
         world.insert_resource(widgets::Capped::default());
         options::load(world);
+        let unset = world.resource::<Settings>().ui_scale().is_none();
         if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
             scale.set_reference_height(Some(theme::REFERENCE_HEIGHT));
             scale.set_min_viewport(Some(theme::MIN_VIEWPORT.into()));
+            if unset {
+                scale.set_ui_scale(theme::UI_SCALE);
+            }
         }
         if let Some(hud) = world.get_resource_mut::<DebugHud>() {
             hud.enabled = false;
@@ -221,7 +267,25 @@ impl Plugin for ShellPlugin {
 /// `Startup` on its first step.
 pub fn start(world: &mut World) {
     options::apply(world);
+    adopt_old_autosave(world);
     stack(world).request_push(title::TitleState::default());
+}
+
+/// Renames the shell's old `autosave` file to the first autosave slot with
+/// no file, which keeps its data and its time; a file that cannot move
+/// stays, listed under its old name.
+fn adopt_old_autosave(world: &World) {
+    let Some(dir) = world.resource::<SaveSlots>().dir() else {
+        return;
+    };
+    let file = |slot: &str| dir.join(format!("{slot}.json"));
+    let old = file(OLD_AUTOSAVE);
+    let free = AUTOSAVES.map(file).into_iter().find(|to| !to.exists());
+    if let (true, Some(to)) = (old.is_file(), free)
+        && let Err(error) = std::fs::rename(&old, &to)
+    {
+        log::warn!("The old autosave stays where it is: {error}");
+    }
 }
 
 /// The live run, if any.
@@ -255,13 +319,14 @@ pub fn start_run(world: &mut World, start: RunStart, from: Option<&'static str>)
         checkpointed: false,
         retry_from: from,
         autosave_due: true,
+        last_autosave: None,
     };
     set_flow(world, game::gameplay(start), Some(run));
 }
 
 /// Asks for an autosave at the start of the next frame whose `capture`
 /// returns a save; nothing with no live run or during a change of run, whose
-/// first autosave covers it.
+/// first autosave covers it, and dropped while the Autosave option is off.
 pub fn request_autosave(world: &mut World) {
     if !flow_pending(world)
         && let Some(run) = world.get_resource_mut::<RunState>()
@@ -295,8 +360,9 @@ pub fn flow_pending(world: &World) -> bool {
     matches!(shell.change, Some(Change::Curtain(_, _, Some(_)))) || shell.incoming.is_some()
 }
 
-/// `shell_flow`: the closing screen's pop and the curtain's swap once their
-/// time comes, then the toasts, which stay above the curtain.
+/// `shell_flow`: the closing screen's pop, the curtain's swap and the end of
+/// game over's entrance once their time comes, then the toasts, which stay
+/// above the curtain.
 fn flow(world: &mut World) {
     let time = world.resource::<Time>();
     let (dt, frame) = (time.real_delta(), time.frame());
@@ -308,6 +374,10 @@ fn flow(world: &mut World) {
             stack(world).request_pop();
         }
         Some(Change::Curtain(root, secs, flow)) => curtain(world, root, secs + dt, flow),
+        Some(Change::Entrance(secs, card)) if secs + dt < theme::DIED_SECS => {
+            shell.change = Some(Change::Entrance(secs + dt, card));
+        }
+        Some(Change::Entrance(_, card)) => game_over::reveal(world, card),
         change => shell.change = change,
     }
     toast::tick(world);
@@ -326,6 +396,8 @@ fn curtain(world: &mut World, root: WidgetId, secs: f32, mut flow: Option<Flow>)
         && let Some(Flow { replace, run }) = flow.take()
     {
         tree.animate(root, UiTrack::opacity(1.0, 0.0, theme::CURTAIN_OUT_SECS));
+        // The game's stack back as it built it, before its run leaves.
+        post(world, Vec::new(), true);
         let stack = stack(world);
         for _ in 1..stack.depth() {
             stack.request_pop();
@@ -380,17 +452,22 @@ pub fn game_over(world: &mut World) {
 
 /// Applies `Settings` through the engine, keeping the focus mute: while it
 /// holds, the engine sees a copy at volume 0, so no other master volume is
-/// queued.
+/// queued. An unset UI scale applies as [`theme::UI_SCALE`].
 pub fn apply_settings(world: &mut World) {
-    if !world.resource::<Shell>().focus_muted {
-        return tungsten::apply_settings(world);
-    }
     let saved = world.resource::<Settings>().clone();
-    let mut quiet = saved.clone();
-    quiet.set_master_volume(Some(0.0));
-    world.insert_resource(quiet);
-    tungsten::apply_settings(world);
-    world.insert_resource(saved);
+    let unset = saved.ui_scale().is_none();
+    if world.resource::<Shell>().focus_muted {
+        let mut quiet = saved.clone();
+        quiet.set_master_volume(Some(0.0));
+        world.insert_resource(quiet);
+        tungsten::apply_settings(world);
+        world.insert_resource(saved);
+    } else {
+        tungsten::apply_settings(world);
+    }
+    if let (true, Some(scale)) = (unset, world.get_resource_mut::<ScaleFactor>()) {
+        scale.set_ui_scale(theme::UI_SCALE);
+    }
 }
 
 /// Whether the game has a user folder to save in.
@@ -399,16 +476,20 @@ pub fn saving_on(world: &World) -> bool {
     world.resource::<SaveSlots>().dir().is_some()
 }
 
-/// Reads every slot of [`SLOTS`], in order, marking the ones that fail to
-/// load read-only; with how many files in the folder could not be read.
+/// Reads every slot of [`SLOTS`], in order, with [`OLD_AUTOSAVE`] after the
+/// autosaves while its file stays, marking the ones that fail to load
+/// read-only; with how many files in the folder could not be read.
 pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) {
-    if !saving_on(world) {
+    let slots = world.resource::<SaveSlots>();
+    let Some(dir) = slots.dir() else {
         return (
             SLOTS.iter().map(|slot| (*slot, SlotState::Off)).collect(),
             0,
         );
-    }
-    let slots = world.resource::<SaveSlots>();
+    };
+    let old = dir.join(format!("{OLD_AUTOSAVE}.json")).exists();
+    let names = AUTOSAVES.into_iter().chain(old.then_some(OLD_AUTOSAVE));
+    let names = names.chain(SLOTS[AUTOSAVES.len()..].iter().copied());
     let list = slots.list().unwrap_or_default();
     let read = |slot: &'static str| {
         let saved = list.slots.iter().find(|info| info.name == slot);
@@ -425,7 +506,7 @@ pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) 
         };
         (slot, state)
     };
-    let scan: Vec<_> = SLOTS.into_iter().map(read).collect();
+    let scan: Vec<_> = names.map(read).collect();
     let shell = world.resource_mut::<Shell>();
     for (slot, state) in &scan {
         let failed = matches!(state, SlotState::Newer | SlotState::Damaged);
@@ -434,6 +515,63 @@ pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) 
         }
     }
     (scan, list.warnings.len())
+}
+
+/// A version's leading dot-separated numbers, a pre-release or build suffix
+/// dropped; `None` when they do not parse.
+fn version_numbers(version: &str) -> Option<Vec<u64>> {
+    let core = version.split(['-', '+']).next()?;
+    core.split('.').map(|part| part.parse().ok()).collect()
+}
+
+/// Whether a save written by version `saved` is older than `current`: their
+/// numbers compare in order, a suffix ignored; one that does not parse, such
+/// as the migrated `"unknown"`, is older.
+#[must_use]
+pub fn older(saved: &str, current: &str) -> bool {
+    match (version_numbers(saved), version_numbers(current)) {
+        (Some(saved), Some(current)) => saved < current,
+        (saved, _) => saved.is_none(),
+    }
+}
+
+/// A save's version on its row: none for this version or a newer one.
+#[must_use]
+pub fn version_note(world: &World, saved: &str) -> Option<String> {
+    let current = &world.resource::<GameInfo>().version;
+    match version_numbers(saved) {
+        _ if !older(saved, current) => None,
+        Some(_) => Some(format!("Older version {saved}")),
+        None => Some("Unknown version".to_owned()),
+    }
+}
+
+/// Starts a run from `slot`'s `save`, asking first, in one question, when
+/// an older version wrote it or a live run would lose its progress since
+/// its last save; Retry loads with no question.
+pub fn load(world: &mut World, slot: &'static str, save: SaveGame) {
+    let checkpointed = run(world).is_some_and(|run| run.checkpointed);
+    let lose = save::capture(world).is_some() && !checkpointed;
+    let name = saves::slot_name(slot);
+    let version = &save.meta.game_version;
+    let older = version_note(world, version).is_some();
+    let shown = [version.as_str(), "unknown"][usize::from(version.is_empty())];
+    let mut question = match older {
+        true => format!("{name} was saved by an older version, {shown}. Load it?"),
+        false => format!("Load {name}?"),
+    };
+    let start = RunStart::from(save);
+    if !older && !lose {
+        return start_run(world, start, Some(slot));
+    }
+    if lose {
+        question.push_str(" Progress since your last save will be lost.");
+    }
+    let ask = confirm::ConfirmState::new(&question, "Load", "Cancel");
+    confirm::ask(
+        world,
+        ask.on_yes(move |world| start_run(world, start, Some(slot))),
+    );
 }
 
 /// The newest readable slot of `slots`, by its save time.
@@ -463,6 +601,9 @@ fn write(world: &mut World, slot: &'static str, save: &SaveGame) -> bool {
             let run = world.resource_mut::<RunState>();
             run.checkpointed = true;
             run.retry_from = Some(slot);
+            let written = &mut world.resource_mut::<Shell>().written;
+            written.retain(|each| *each != slot);
+            written.push(slot);
             true
         }
         Err(SaveError::NoFolder) => false,
@@ -473,9 +614,47 @@ fn write(world: &mut World, slot: &'static str, save: &SaveGame) -> bool {
     }
 }
 
-/// [`save_to`] the autosave.
+/// Saves the live run to an autosave while the Autosave option is on: to
+/// the slot the run wrote last when no fixed step has run since, else the
+/// first autosave with no save, else the oldest; `false` when nothing was
+/// written.
 pub fn autosave(world: &mut World) -> bool {
-    save_to(world, AUTOSAVE)
+    world.resource::<options::GameOptions>().autosave
+        && save::capture(world).is_some_and(|save| write_autosave(world, &save))
+}
+
+/// Writes `save` to the autosave slot [`autosave`] names, skipping
+/// read-only ones; of two saves of one time, the one this program wrote
+/// first is the older, then the lower number.
+fn write_autosave(world: &mut World, save: &SaveGame) -> bool {
+    let last = world.resource::<RunState>().last_autosave;
+    let slot = last.or_else(|| {
+        let (slots, _) = read_slots(world);
+        let shell = world.resource::<Shell>();
+        let order = |slot| shell.written.iter().position(|each| *each == slot);
+        let free = |slot| AUTOSAVES.contains(&slot) && !shell.read_only.contains(&slot);
+        let keys = slots
+            .into_iter()
+            .enumerate()
+            .filter_map(|(at, (slot, state))| {
+                let key = match state {
+                    SlotState::Empty => (false, 0, None, at),
+                    SlotState::Ready(_, time) => (true, time, order(slot), at),
+                    _ => return None,
+                };
+                free(slot).then_some((key, slot))
+            });
+        keys.min_by_key(|(key, _)| *key).map(|(_, slot)| slot)
+    });
+    let Some(slot) = slot else {
+        log::warn!("No autosave slot can be written");
+        return false;
+    };
+    let written = write(world, slot, save);
+    if written {
+        world.resource_mut::<RunState>().last_autosave = Some(slot);
+    }
+    written
 }
 
 /// Quits to the title after one question, autosaving a live run first.
@@ -561,21 +740,69 @@ fn save_due(world: &mut World) {
         .get_resource::<RunState>()
         .is_some_and(|run| run.autosave_due);
     let exit = world.has_resource::<Exiting>() && !world.resource::<Shell>().exit_saved;
-    if let Some(save) = (due || exit).then(|| save::capture(world)).flatten() {
+    let on = world.resource::<options::GameOptions>().autosave;
+    if due && !on {
         world.resource_mut::<RunState>().autosave_due = false;
-        write(world, AUTOSAVE, &save);
+    }
+    if let Some(save) = (on && (due || exit))
+        .then(|| save::capture(world))
+        .flatten()
+    {
+        world.resource_mut::<RunState>().autosave_due = false;
+        write_autosave(world, &save);
     }
     if let Some(run) = world.resource_mut::<Shell>().incoming.take() {
         world.insert_resource(run);
     }
 }
 
+/// The shell's one edit of `PostStack` a frame. A stack as the shell left it
+/// loses the passes the shell appended; one the game rebuilt drops the
+/// Bloom the shell took, and those passes only if it still ends with them.
+/// While the Bloom option is off the game's Bloom passes are taken out,
+/// each with its index, and put back at it when the option comes on;
+/// then `tail` goes at the end. At a change of run (`swap`) the stack goes
+/// back to the game's own, as it built it.
+fn post(world: &mut World, tail: Vec<PostPass>, swap: bool) {
+    let bloom = swap || world.resource::<options::GameOptions>().bloom;
+    let mut post = std::mem::take(&mut world.resource_mut::<Shell>().post);
+    let stack = &mut world.resource_mut::<PostStack>().0;
+    if *stack != post.left {
+        post.kept.clear();
+    }
+    if stack.ends_with(&post.tail) {
+        stack.truncate(stack.len() - post.tail.len());
+    }
+    if bloom {
+        for (at, pass) in std::mem::take(&mut post.kept) {
+            stack.insert(at.min(stack.len()), pass);
+        }
+    } else {
+        for (at, pass) in std::mem::take(stack).into_iter().enumerate() {
+            match pass {
+                PostPass::Bloom(_) => post.kept.push((at, pass)),
+                pass => stack.push(pass),
+            }
+        }
+    }
+    stack.extend(tail.iter().copied());
+    (post.tail, post.left) = (tail, stack.clone());
+    world.resource_mut::<Shell>().post = post;
+}
+
 /// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
 /// of the Settings screen's changes while it is open, after a confirm's
-/// safe answer, the menu sounds, the pause key and focus loss.
+/// safe answer, the menu sounds, the pause key, focus loss and the post
+/// stack.
 fn frame(world: &mut World) {
     widgets::recap(world);
     display_keys(world);
+    let real = world.resource::<Time>().real_delta();
+    let died = world.resource_mut::<Shell>().died.as_mut().map(|secs| {
+        *secs += real;
+        *secs
+    });
+    post(world, died.map_or_else(Vec::new, game_over::passes), false);
     let delta = f64::from(world.resource::<Time>().delta());
     if let Some(run) = world.get_resource_mut::<RunState>() {
         run.playtime_secs += delta;
@@ -680,10 +907,10 @@ fn focus(world: &mut World, open: bool) {
 }
 
 /// `shell_checkpoint`: a fixed step ran, so the run has moved past its last
-/// save.
+/// save, and its next autosave takes a slot of its own.
 fn checkpoint(world: &mut World) {
     if let Some(run) = world.get_resource_mut::<RunState>() {
-        run.checkpointed = false;
+        (run.checkpointed, run.last_autosave) = (false, None);
     }
 }
 

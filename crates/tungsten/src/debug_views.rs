@@ -273,8 +273,8 @@ pub(crate) struct Look {
 
 impl Look {
     /// Every text property, so nothing inherits from a game's theme: the
-    /// engine font in `ink`, wrapped by glyph and held to one line that
-    /// ends in `…` (M58).
+    /// engine font in `ink`, unspaced, wrapped by glyph and held to one line
+    /// that ends in `…` (M58).
     fn text(&self, ink: Ink) -> TextOverrides {
         let step = if ink.title { TITLE_STEP } else { 0.0 };
         TextOverrides {
@@ -290,6 +290,7 @@ impl Look {
                 at: EllipsisAt::End,
                 lines: Some(1),
             }),
+            letter_spacing: Some(0.0),
         }
     }
 
