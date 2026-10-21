@@ -286,6 +286,28 @@ impl World {
         self.archetypes.has::<T>(entity)
     }
 
+    /// The type and [`type_name`] of each component `entity` holds, sorted
+    /// by name; empty for a dead entity.
+    ///
+    /// An introspection for tests and tools, such as a save's coverage test.
+    /// The names are the compiler's spelling, which no release promises, and
+    /// no system or frame calls it.
+    #[must_use]
+    pub fn component_types(&self, entity: Entity) -> Vec<(TypeId, &'static str)> {
+        let Some(location) = self.archetypes.entities.get(entity) else {
+            return Vec::new();
+        };
+        let archetype = &self.archetypes.archetypes[location.archetype_id as usize];
+        let mut types: Vec<(TypeId, &'static str)> = archetype
+            .component_types
+            .iter()
+            .zip(&archetype.columns)
+            .map(|(&type_id, column)| (type_id, column.type_name()))
+            .collect();
+        types.sort_by_key(|&(_, name)| name);
+        types
+    }
+
     /// Rows matching the query data `Q`, read-only: one item (`&A`,
     /// `Option<&A>`, `Entity`) or a tuple of up to eight, as in
     /// `world.query::<(Entity, &A, Option<&B>)>()`. Rows come in archetype

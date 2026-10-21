@@ -207,6 +207,7 @@ component platformer_controller: A side-view character on a kinematic body: it r
   field coyote_time: f32 (>= 0) = 0.1 — seconds after leaving an edge a jump still starts
   field jump_buffer: f32 (>= 0) = 0.1 — seconds a press before it can jump is kept
   field jump_cut: f32 (>= 0, <= 1) = 0.5 — the rising speed kept when the jump is released early
+  field air_jumps: u32 = 0 — jumps a press starts in the air, past coyote time; being grounded refills them
   genres: platformer, shmup
   sample: { "run_speed": 200, "jump_speed": 600 }
 component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces or bounces.
@@ -387,6 +388,8 @@ shape effect: A change an entity carries: timed, infinite or instant, with a pay
   field resist: list of shape resist_modifier = [] — on the target's resistances, per stack
   field grant: list of tag = [] — tags the target carries while an instance runs; the load checks each
   field blocked_by: list of tag = [] — tags that refuse the effect; the load checks each
+  field restore: shape effect_restore = null — raises one of the target's stat bases with each payload, at once in the tick, up to another stat's value
+  field suppressed_by: list of tag = [] — tags that hold a running instance: its time and period wait, no payload lands; the load checks each
   field scale: shape effect_scale = null — a curve at the request's scale, multiplying what `into` names; the load refuses a `y` below 0
   field on_expire: effects ID or entry = null — applied to the target from the same source at a timed end; the load checks it
   sample: {}
@@ -394,6 +397,11 @@ shape effect_action: An effect applied at the next effect resolve, from the even
   field id: effects ID or entry — an `effects` entry or the effect in place; the load checks it
   field target: one of self | other = "self" — the subject or the other entity
   sample: { "id": "burning" }
+shape effect_restore: A payload that raises one of the target's stat bases, capped by another stat.
+  field stat: text — the stat whose base it raises, `[a-z][a-z0-9_]*`; a target without it takes nothing
+  field amount: f32 (> 0) — added to the base with each payload, times the payload's factor
+  field max: text — the stat whose value caps the base; a base already there is left alone
+  sample: { "stat": "mana", "amount": 1.5, "max": "max_mana" }
 shape effect_scale: A curve at the request's scale, as a factor on what `into` names.
   field curve: curves ID or entry — every `y` at least 0; the load checks it
   field into: list of one of duration | periodic | modifiers = ["duration", "periodic", "modifiers"] — what the factor multiplies: the duration, the damage and heal payload, the `add` and `pct` modifiers

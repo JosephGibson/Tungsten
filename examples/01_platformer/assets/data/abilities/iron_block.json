@@ -1,0 +1,20 @@
+{
+  "cost": {
+    "stat": "mana",
+    "amount": 15
+  },
+  "cooldown": 0.4,
+  "charges": {
+    "max": 3,
+    "refill": 2,
+    "all": false
+  },
+  "target": {
+    "self": {}
+  },
+  "payload": [
+    {
+      "effect": "casting"
+    }
+  ]
+}

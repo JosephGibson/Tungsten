@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_vines_sway"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_vines",
+    "z_order": -20
+  }
+}

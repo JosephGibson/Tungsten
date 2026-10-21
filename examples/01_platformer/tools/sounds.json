@@ -53,5 +53,78 @@
     "looping": false,
     "path": "sounds/iron_crush.wav",
     "volume": 0.65
+  },
+  "ui_move": {
+    "bus": "effects",
+    "looping": false,
+    "path": "sounds/ui_move.wav",
+    "volume": 0.5
+  },
+  "ui_select": {
+    "bus": "effects",
+    "looping": false,
+    "path": "sounds/ui_select.wav",
+    "volume": 0.6
+  },
+  "ui_back": {
+    "bus": "effects",
+    "looping": false,
+    "path": "sounds/ui_back.wav",
+    "volume": 0.6
+  },
+  "game_over": {
+    "bus": "effects",
+    "looping": false,
+    "path": "sounds/game_over.wav",
+    "volume": 0.7
+  },
+  "music_title": {
+    "bus": "music",
+    "looping": true,
+    "path": "sounds/music_title.wav",
+    "volume": 0.4
+  },
+  "music_over": {
+    "bus": "music",
+    "looping": true,
+    "path": "sounds/music_over.wav",
+    "volume": 0.45
+  },
+  "music_explore": {
+    "bus": "music",
+    "looping": true,
+    "path": "sounds/music_explore.wav",
+    "volume": 0.45
+  },
+  "music_pause": {
+    "bus": "music",
+    "looping": true,
+    "path": "sounds/music_pause.wav",
+    "volume": 0.45
+  },
+  "ex10_flame_start_sfx": {
+    "looping": false,
+    "path": "sounds/flame_start.wav",
+    "volume": 0.45
+  },
+  "ex10_flame_spray_sfx": {
+    "looping": true,
+    "path": "sounds/flame_spray.wav",
+    "volume": 0.3
+  },
+  "ex10_toss_sfx": {
+    "looping": false,
+    "path": "sounds/toss.wav",
+    "volume": 0.5
+  },
+  "ex10_place_sfx": {
+    "looping": false,
+    "path": "sounds/place.wav",
+    "volume": 0.5
+  },
+  "ex10_force_push_sfx": {
+    "looping": false,
+    "path": "sounds/force_push.wav",
+    "volume": 0.55
   }
 }

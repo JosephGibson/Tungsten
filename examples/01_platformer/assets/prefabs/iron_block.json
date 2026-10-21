@@ -1,0 +1,79 @@
+{
+  "components": {
+    "iron_block": null,
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          60,
+          60
+        ]
+      },
+      "offset": [
+        64,
+        64
+      ],
+      "mass": 200,
+      "restitution": 0.05
+    },
+    "spawn_children": [
+      {
+        "prefab": "ex10_iron_quarter_0_0",
+        "offset": [
+          0,
+          0
+        ]
+      },
+      {
+        "prefab": "ex10_iron_quarter_0_1",
+        "offset": [
+          64,
+          0
+        ]
+      },
+      {
+        "prefab": "ex10_iron_quarter_1_0",
+        "offset": [
+          0,
+          64
+        ]
+      },
+      {
+        "prefab": "ex10_iron_quarter_1_1",
+        "offset": [
+          64,
+          64
+        ]
+      },
+      {
+        "prefab": "ex10_iron_frost_0_0",
+        "offset": [
+          0,
+          0
+        ]
+      },
+      {
+        "prefab": "ex10_iron_frost_0_1",
+        "offset": [
+          64,
+          0
+        ]
+      },
+      {
+        "prefab": "ex10_iron_frost_1_0",
+        "offset": [
+          0,
+          64
+        ]
+      },
+      {
+        "prefab": "ex10_iron_frost_1_1",
+        "offset": [
+          64,
+          64
+        ]
+      }
+    ]
+  }
+}

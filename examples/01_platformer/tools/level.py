@@ -1,12 +1,167 @@
-"""Hand-authored platforms -> Tiled and typed Rust placement tables."""
+"""Hand-authored platforms -> the Tiled map: tile layers, and object layers whose
+classes name the prefabs generated here for the level's props, slab colliders,
+hazards, moving platforms and areas."""
 import json
 import math
-import re
-import subprocess
+from PIL import Image
 from art import TOOLS, rng_for
 
+# What the player's touch on a hazard costs, and the push away from it.
+HAZARD_DAMAGE = 34
+HAZARD_KNOCKBACK = 560
+# Each hazard's touch box, its half extents and centre from the sprite's
+# top-left: the spikes' teeth sit low in their tile, the fireball fills it.
+SPIKES_HALF, SPIKES_CENTRE = [27, 14], [32, 48]
+FIRE_HALF, FIRE_CENTRE = [18, 24], [32, 32]
+# Draw order among the level's sprites, every tile layer under them: props
+# behind the world, then the world's props, hazards and decks.
+Z_BACK, Z_WORLD, Z_DECK, Z_SPIKES, Z_FIRE = -20, -10, -4, -5, 6
+# The soft glow and point light a prop or a hazard carries: its centre from the
+# sprite's top-left, its radius and its colour, the light's strength (0.8 when
+# left out) and a fireball's hot core.
+GLOWS = {'ex10_lantern': dict(offset=[32, 36], radius=150, color=[255, 181, 98, 200]),
+         'ex10_crystal': dict(offset=[32, 36], radius=150, color=[94, 210, 255, 180])}
+FIRE_GLOW = dict(offset=FIRE_CENTRE, radius=175, color=[255, 125, 45, 255], light=1.6, core=62)
+# Molten drips leak from each fireball's underside, a child emitter.
+FIRE_DRIPS = 'ex10_fire_drips'
 
-def build_level(images):
+
+def slab_runs(slabs):
+    """`slabs` (`[x, y, width, height]`) with every run that shares a row and a
+    height and touches end to end merged into one box, by row, then x: one
+    collider per platform, so a body sunk into a deck meets no join."""
+    runs = []
+    for x, y, w, h in sorted(slabs, key=lambda s: (s[1], s[3], s[0])):
+        if runs and runs[-1][1] == y and runs[-1][3] == h and runs[-1][0] + runs[-1][2] == x:
+            runs[-1][2] += w
+        else:
+            runs.append([x, y, w, h])
+    return runs
+
+
+def build_objects(source, images, lit):
+    """The map's object layers, in spawn order, and the prefabs their classes
+    name: `{id: prefab}`. A parameter held in an array (a box's half extents,
+    an oscillator's amplitude, a path's points) takes a prefab of its own."""
+    tile = source['tile']
+    prefabs, layers = {}, []
+
+    def layer(name, objects):
+        layers.append(dict(id=0, type='objectgroup', name=name, draworder='index', visible=True,
+            opacity=1, x=0, y=0, objects=objects))
+
+    def obj(cls, x, y, name='', properties=()):
+        return dict(id=0, name=name, type=cls, x=x, y=y, width=0, height=0, rotation=0,
+            visible=True, point=True, properties=list(properties))
+
+    props = []
+    for p in source['props']:
+        cls = f"ex10_prop_{p['sprite'].removeprefix('ex10_')}_{p['depth']}"
+        prefab = dict(sprite=dict(asset_id=p['sprite'], z_order=Z_BACK if p['depth'] == 'back' else Z_WORLD),
+            components={})
+        if p['animation']:
+            prefab['components']['animation'] = dict(id=p['animation'])
+        if p['sprite'] in GLOWS:
+            prefab['components']['glow'] = GLOWS[p['sprite']]
+        if prefabs.setdefault(cls, prefab) != prefab:
+            raise ValueError('prop class with two shapes: ' + cls)
+        props.append(obj(cls, p['x'] * tile, p['y'] * tile))
+    layer('props', props)
+
+    slabs = []
+    for x, y, w, h in slab_runs(source['slab_colliders']):
+        cls = f'ex10_slab_{int(w)}x{int(h)}'
+        prefabs[cls] = dict(components=dict(rigid_body=dict(kind='static',
+            shape=dict(kind='aabb', half_extents=[w / 2, h / 2]), offset=[w / 2, h / 2])))
+        slabs.append(dict(obj(cls, x, y), width=w, height=h, point=False))
+    layer('slabs', slabs)
+
+    hazards = []
+    touch = dict(damage=HAZARD_DAMAGE, filter=dict(all=['team.player']), knockback=HAZARD_KNOCKBACK)
+    for i, h in enumerate(source['hazards']):
+        centre = [v * tile for v in h['position']]
+        if not h['fire']:
+            prefabs['ex10_spikes'] = dict(sprite=dict(asset_id='ex10_spikes', z_order=Z_SPIKES), components=dict(
+                hazard=dict(fire=False), contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
+            hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1]))
+            continue
+        # Today's sine motion, centre + travel * sin(2 pi t / period + phase), on the
+        # kit's oscillator: it starts where the sine stands at t 0.
+        phase = (h['phase'] / math.tau) % 1.0
+        start = [c + t * tile * math.sin(h['phase']) for c, t in zip(centre, h['travel'])]
+        cls = f'ex10_fire_{i}'
+        prefabs[FIRE_DRIPS] = dict(components=dict(particle_emitter=dict(config='ex10_fireball_drips')))
+        # A fireball faces its horizontal travel; one that only rises and falls, or
+        # stands, watches the player. The animator shows the mirrored clip by facing.
+        # Its trail and drips are children at its centre and underside, since an
+        # emitter emits from its entity's point, the sprite's top-left.
+        trail = f'ex10_fire_trail_{i}'
+        prefabs[trail] = dict(components=dict(particle_emitter=dict(config='ex10_fire_trail', seed=700 + i)))
+        components = dict(hazard=dict(fire=True), glow=FIRE_GLOW,
+            character_animator=dict(idle=dict(left='ex10_fireball_left', right='ex10_fireball')),
+            contact_damage=dict(touch, shape=dict(aabb=FIRE_HALF), offset=FIRE_CENTRE),
+            spawn_children=[dict(prefab=trail, offset=FIRE_CENTRE),
+                            dict(prefab=FIRE_DRIPS, offset=[FIRE_CENTRE[0], FIRE_CENTRE[1] + 12])])
+        if h['travel'][0]:
+            components['facing'] = {'from': 'motion', 'snap': 'horizontal'}
+        else:
+            components['aim'] = dict({'from': 'target'}, target=dict(nearest=dict(all=['team.player'])),
+                offset=FIRE_CENTRE)
+            components['facing'] = {'from': 'aim', 'snap': 'horizontal'}
+        if any(h['travel']):
+            components['oscillator'] = dict(position=dict(amplitude=[t * tile for t in h['travel']],
+                period=h['period']), phase=phase)
+        prefabs[cls] = dict(sprite=dict(asset_id='ex10_fireball_0', z_order=Z_FIRE), components=components)
+        hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1]))
+    layer('hazards', hazards)
+
+    platforms = []
+    deck = images['lift_deck']
+    for i, m in enumerate(source['moving_platforms']):
+        half = [m['half_width'] * tile, source['deck_depth'] / 2]
+        # Three deck tiles across its width, as today's deck draws.
+        width = round(2 * half[0])
+        art = Image.new('RGBA', (width, tile))
+        for col in range(3):
+            left, right = round(col * width / 3), round((col + 1) * width / 3)
+            art.paste(deck.resize((right - left, tile), Image.NEAREST), (left, 0))
+        name = f'lift_deck_{i}'
+        images[name] = art
+        lit.add(name)
+        # A ping-pong between the sine's two ends, eased by a sine, is today's motion:
+        # each leg takes half a period.
+        travel = [t * tile for t in m['travel']]
+        centre = [v * tile for v in m['position']]
+        cls = f'ex10_platform_{i}'
+        prefabs[cls] = dict(sprite=dict(asset_id='ex10_' + name, z_order=Z_DECK), components=dict(
+            rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half), offset=half),
+            path_follower=dict(points=[[0, 0], [2 * travel[0], 2 * travel[1]]],
+                speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out')))
+        platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1]))
+    layer('platforms', platforms)
+
+    areas = []
+    for i, area in enumerate(source['landmarks']):
+        first, last = area['columns']
+        half = [(last + 1 - first) * tile / 2, source['rows'] * tile / 2]
+        cls = f'ex10_area_{i}'
+        prefabs[cls] = dict(components=dict(area=dict(name=area['name']), zone=dict(filter=dict(all=['team.player'])),
+            rigid_body=dict(kind='sensor', shape=dict(kind='aabb', half_extents=half), offset=half)))
+        areas.append(obj(cls, first * tile, 0, name=area['name']))
+    layer('areas', areas)
+
+    # The ambient emitters as point objects of the prefab class
+    # `ex10_ambient_emitter`; their properties set the emitter's config and seed.
+    layer('emitters', [obj('ex10_ambient_emitter', p['x'] * tile, p['y'] * tile, properties=[
+        dict(name='particle_emitter.config', type='string', value=p['config']),
+        dict(name='particle_emitter.seed', type='int', value=p['seed'])]) for p in source['emitters']])
+    # Markers the game reads by name: the player's feet at a fresh run's start.
+    spawn = source['spawn']
+    layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')])
+    return layers, prefabs
+
+
+def build_level(images, lit):
     source=json.loads((TOOLS/'level.json').read_text())
     from placement import prepare
     source=prepare(source,images)
@@ -41,17 +196,19 @@ def build_level(images):
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
     tile=source['tile']
     tile_layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())]
-    # The ambient emitters as point objects of the prefab class
-    # `ex10_ambient_emitter`; their properties set the emitter's config and seed.
-    # Before `collision`, so the first and last layers stay tile layers.
-    emitters=dict(id=len(tile_layers)+1,type='objectgroup',name='emitters',draworder='topdown',visible=True,opacity=1,x=0,y=0,
-        objects=[dict(id=i+1,name='',type='ex10_ambient_emitter',x=p['x']*tile,y=p['y']*tile,width=0,height=0,rotation=0,visible=True,point=True,
-            properties=[dict(name='particle_emitter.config',type='string',value=p['config']),dict(name='particle_emitter.seed',type='int',value=p['seed'])]) for i,p in enumerate(source['emitters'])])
+    # The object layers sit before `collision`, so the first and last layers stay
+    # tile layers; IDs number layers, then objects, through the map.
+    objects,prefabs=build_objects(source,images,lit)
+    next_id=1
+    for group in objects:
+        for o in group['objects']:
+            o['id']=next_id;next_id+=1
     tiled=dict(type='map',version='1.10',orientation='orthogonal',renderorder='right-down',infinite=False,width=cols,height=rows,tilewidth=tile,tileheight=tile,
-        layers=tile_layers[:-1]+[emitters]+tile_layers[-1:],
+        nextobjectid=next_id,layers=tile_layers[:-1]+objects+tile_layers[-1:],
         tilesets=[dict(firstgid=1,name='twilight_ruin',tilewidth=tile,tileheight=tile,tilecount=len(catalog),columns=0,tiles=[dict(id=i,image='../sprites/'+s.removeprefix('ex10_')+'.png',imagewidth=tile,imageheight=tile,properties=[dict(name='sprite_id',type='string',value=s)]) for i,s in enumerate(catalog)])])
+    for i,group in enumerate(tiled['layers']):group['id']=i+1
     validate_level(source,tiled,set(gids))
-    return tiled,rust_layout(source),source
+    return tiled,source,prefabs
 
 
 def validate_level(source,tiled,sprite_ids):
@@ -85,45 +242,3 @@ def validate_level(source,tiled,sprite_ids):
         if all(abs(center-safe)<abs(travel)+1 for center,safe,travel in zip(p['position'],spawn,p['travel'])):raise ValueError('hazard at spawn')
     for p in source['props']+source['decorations']:
         if p['sprite'] not in sprite_ids:raise ValueError('unknown prop reference')
-
-
-def rust_layout(s):
-    lines=['//! Generated by tools/generate.py from tools/level.json; edit the source.',
-        'pub(crate) const TILE: f32 = '+str(float(s['tile']))+';',
-        f'pub(crate) const MAP_COLS: u32 = {s["cols"]};',f'pub(crate) const MAP_ROWS: u32 = {s["rows"]};',
-        f'pub(crate) const SPAWN_COL: f32 = {float(s["spawn"]["col"])};',f'pub(crate) const SPAWN_ROW: f32 = {float(s["spawn"]["surface_row"])};',f'pub(crate) const KILL_ROW: f32 = {float(s["kill_row"])};',
-        '#[derive(Clone, Copy, Debug, PartialEq, Eq)] pub(crate) enum PropDepth { Back, World }',
-        'pub(crate) struct PropPlacement { pub(crate) sprite: &\'static str, pub(crate) animation: Option<&\'static str>, pub(crate) tile_position: [f32; 2], pub(crate) depth: PropDepth }',
-        'pub(crate) const PROPS: &[PropPlacement] = &[']
-    for p in s['props']:
-        anim='Some("'+p['animation']+'")' if p['animation'] else 'None'
-        lines.append(f'PropPlacement {{ sprite: "{p["sprite"]}", animation: {anim}, tile_position: [{float(p["x"])}, {float(p["y"])}], depth: PropDepth::{p["depth"].title()} }},')
-    lines += ['];', 'pub(crate) const LANTERN_ANCHORS: &[(&str, [f32;2])] = &[']
-    for name,anchor in s['lantern_anchors']:
-        lines.append(f'("ex10_{name}", [{anchor[0]}, {anchor[1]}]),')
-    lines += ['];', f"pub(crate) const DECK_DEPTH: f32 = {float(s['deck_depth'])};", 'pub(crate) const SLAB_COLLIDERS: &[[f32; 4]] = &[']
-    for rectangle in s['slab_colliders']:lines.append('['+', '.join(str(float(v)) for v in rectangle)+'],')
-    # The level map's `emitters` object layer places them; this table checks it.
-    lines+= ['];','#[cfg(test)] pub(crate) struct EmitterPlacement { pub(crate) config: &\'static str, pub(crate) tile_position: [f32; 2], pub(crate) seed: u64 }','#[cfg(test)] pub(crate) const EMITTERS: &[EmitterPlacement] = &[']
-    for p in s['emitters']:lines.append(f'EmitterPlacement {{ config: "{p["config"]}", tile_position: [{float(p["x"])}, {float(p["y"])}], seed: {p["seed"]} }},')
-    lines += ['];', '#[derive(Clone, Copy)] pub(crate) struct MotionPlacement { pub(crate) position: [f32;2], pub(crate) travel: [f32;2], pub(crate) period: f32, pub(crate) phase: f32 }',
-        'pub(crate) struct HazardPlacement { pub(crate) fire: bool, pub(crate) motion: MotionPlacement }',
-        'pub(crate) const HAZARDS: &[HazardPlacement] = &[']
-    def motion(p):
-        return 'MotionPlacement { position: ['+', '.join(str(float(v)) for v in p['position'])+'], travel: ['+', '.join(str(float(v)) for v in p['travel'])+f"], period: {float(p['period'])}, phase: {float(p['phase'])} }}"
-    for p in s['hazards']:lines.append('HazardPlacement { fire: '+str(p['fire']).lower()+', motion: '+motion(p)+' },')
-    lines += ['];', 'pub(crate) struct PlatformPlacement { pub(crate) motion: MotionPlacement, pub(crate) half_width: f32 }', 'pub(crate) const MOVING_PLATFORMS: &[PlatformPlacement] = &[']
-    for p in s['moving_platforms']:lines.append('PlatformPlacement { motion: '+motion(p)+f", half_width: {float(p['half_width'])} }},")
-    lines+= ['];','#[cfg(test)] pub(crate) struct RoutePlatform { pub(crate) name: &\'static str, pub(crate) left: f32, pub(crate) right: f32, pub(crate) row: f32 }','#[cfg(test)] pub(crate) const PLATFORMS: &[RoutePlatform] = &[']
-    for p in s['platforms']:lines.append(f'RoutePlatform {{ name: "{p["name"]}", left: {float(p["left"])}, right: {float(p["right"])}, row: {float(p["row"])} }},')
-    lines+= ['];','#[cfg(test)] pub(crate) const ROUTES: &[(&str, &[&str])] = &[']
-    for name,route in sorted(s['routes'].items()):lines.append(f'("{name}", &['+', '.join('"'+n+'"' for n in route)+']),')
-    lines+= ['];']
-    # Emit the same formatting used by cargo fmt; no post-generation drift.
-    def readable_float(match):
-        whole,fraction=match.groups()
-        whole=f'{int(whole):_}'
-        fraction='_'.join(fraction[i:i+3] for i in range(0,len(fraction),3))
-        return whole+'.'+fraction
-    text=re.sub(r'\b(\d+)\.(\d+)\b',readable_float,'\n'.join(lines)+'\n')
-    return subprocess.run(['rustfmt' ,'--edition','2024','--emit','stdout'],input=text,text=True,capture_output=True,check=True).stdout

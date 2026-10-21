@@ -1,0 +1,125 @@
+//! The player: a courier on the kit's platformer controller, from the
+//! `player` prefab, which the camera follows. The prefab holds its kit
+//! items: input, the controller with one air jump, the aim, health,
+//! hurtbox, knockback, hit flash, the hit's cues, facing, the character
+//! animator and the camera target. 01 adds the lantern, the zoom, the kill
+//! row, the bursts its moves raise, the land and air-jump one-shots, and a
+//! cast's toss, pose and hot lantern.
+
+pub mod components;
+pub mod systems;
+
+use glam::Vec2;
+use tungsten::core::{Entity, Schedule, Stage, World, system};
+use tungsten::kit::{CHARACTER_ANIMATOR, Phase, Stats, ensure_phases};
+use tungsten::{Plugin, SceneEntity};
+
+use crate::features::level::GLOWS;
+use crate::game::GAMEPLAY;
+use crate::shared::{Bursts, SaveIds};
+use crate::shell::Difficulty;
+use components::{Lantern, LanternAnchors, Moves};
+
+/// The player's prefab, by its manifest ID.
+pub const PLAYER_PREFAB: &str = "player";
+/// The body's half size and where its centre sits from the sprite's
+/// top-left corner, the entity's point: the art's feet stand on its row 61.
+pub const PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
+pub const BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
+/// Game seconds a landing holds the land clip.
+pub const LAND_SECS: f32 = 0.18;
+/// Game seconds the toss clip plays, and a cast holds its pose and the
+/// lantern's glow.
+pub const TOSS_SECS: f32 = 0.3;
+pub const CAST_SECS: f32 = 0.3;
+/// The zoom's range over the window's base, and one press's step.
+pub const ZOOM_MIN: f32 = 0.35;
+pub const ZOOM_MAX: f32 = 3.0;
+pub const ZOOM_STEP: f32 = 0.25;
+
+/// The player's full health at `difficulty`: its `max_health` stat's base.
+/// A hazard's touch takes 34, so Normal falls on the third.
+#[must_use]
+pub const fn max_health(difficulty: Difficulty) -> f32 {
+    match difficulty {
+        Difficulty::Easy => 150.0,
+        Difficulty::Normal => 100.0,
+        Difficulty::Hard => 68.0,
+    }
+}
+
+/// The player as a plugin: the `player` marker its prefab names, the
+/// lantern's anchors, its actions in the intent phase, the kill row in the
+/// overlap phase, its moves' bursts in the react phase, and in the present
+/// phase its one-shot clips after the animator and its lantern's glow
+/// before the level draws the glows.
+pub struct PlayerPlugin;
+
+impl Plugin for PlayerPlugin {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        // Before the manifest loads, which checks each prefab's components.
+        world.register_component::<components::Player>("player");
+        world.register_data_kind::<LanternAnchors>("lantern_anchors");
+        ensure_phases(schedule);
+        let fixed = [
+            (Phase::Intent, system("player_actions", systems::actions)),
+            (Phase::Overlap, system("player_bounds", systems::bounds)),
+            (Phase::React, system("player_moves", systems::moves)),
+        ];
+        for (phase, desc) in fixed {
+            schedule.add(Stage::FixedUpdate, phase.join(desc));
+        }
+        let clips = system("player_clips", systems::clips).after(CHARACTER_ANIMATOR);
+        let lantern = system("player_lantern", systems::lantern)
+            .after("player_clips")
+            .before(GLOWS);
+        for desc in [clips, lantern] {
+            schedule.add(Stage::PostUpdate, Phase::Present.join(desc));
+        }
+    }
+}
+
+/// Spawns the player with its body's centre at `centre`, owned by gameplay,
+/// at `difficulty`'s health, with the run's next save ID, its lantern lit.
+pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity {
+    let at = centre - BODY_OFFSET;
+    let id = world.resource_mut::<SaveIds>().take();
+    let player = world
+        .prepare_prefab(PLAYER_PREFAB, at.to_array())
+        .expect("the manifest's prefabs load with it")
+        .with((
+            SceneEntity { state_id: GAMEPLAY },
+            id,
+            Lantern::default(),
+            Moves::default(),
+        ))
+        .spawn(world);
+    // Before any step, so the first one already runs at this max.
+    if let Some(stats) = world.get_mut::<Stats>(player) {
+        stats.set_base(Stats::MAX_HEALTH, max_health(difficulty));
+    }
+    world.insert_resource(Bursts::default());
+    player
+}
+
+/// Shows a cast by `player` along `aim`: its lantern burns hot, and it
+/// tosses toward the aim or, standing, faces it with its arm and gun along
+/// it, for [`CAST_SECS`].
+pub fn cast(world: &mut World, player: Entity, aim: Vec2, toss: bool) {
+    if let Some(moves) = world.get_mut::<Moves>(player) {
+        moves.glow = CAST_SECS;
+        moves.aim = aim;
+        if toss {
+            moves.toss = TOSS_SECS;
+            moves.pose = 0.0;
+        } else {
+            moves.pose = CAST_SECS;
+        }
+    }
+}
+
+/// Where the player's body is: its centre.
+#[must_use]
+pub fn centre(world: &World, player: Entity) -> Option<Vec2> {
+    systems::centre(world, player)
+}

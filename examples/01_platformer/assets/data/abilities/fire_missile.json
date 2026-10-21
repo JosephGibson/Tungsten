@@ -1,0 +1,22 @@
+{
+  "cost": {
+    "stat": "mana",
+    "amount": 8
+  },
+  "cooldown": 0.25,
+  "target": {
+    "aim": {}
+  },
+  "payload": [
+    {
+      "effect": "casting"
+    },
+    {
+      "spawn": {
+        "prefab": "fire_missile",
+        "speed": 900,
+        "offset": 24
+      }
+    }
+  ]
+}

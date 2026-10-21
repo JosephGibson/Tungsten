@@ -294,6 +294,116 @@ def render(pose):
     return to_image(outline(canvas)), glass
 
 
+def finish(canvas, lamp):
+    """The frame's image and its lantern glass, the specks dropped first."""
+    for p in [p for p in canvas if not any((p[0] + dx, p[1] + dy) in canvas for dx, dy in NEIGHBOURS)]:
+        del canvas[p]
+    glass = {p for p, s in lamp.items() if s in 'yY' and canvas.get(p) == s}
+    return to_image(outline(canvas)), glass
+
+
+def render_toss(pose, front, ball):
+    """A toss frame: the free (far) hand swings a bowling ball from behind
+    the cloak on the wind-up and over it after, the lantern hand braced."""
+    hip = pose.hip
+    neck = (hip[0] + pose.lean, hip[1] - 17)
+    near_shoulder = (neck[0] + 2, neck[1] + 3)
+    far_shoulder = (neck[0] - 3, neck[1] + 3)
+    wrap, tail = scarf(neck, pose)
+    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe,
+                            pose.far_planted, FAR_TROUSERS, FAR_BOOT)
+    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe,
+                              pose.near_planted, NEAR_TROUSERS, NEAR_BOOT)
+    bag, bag_anchor = satchel(hip, pose)
+    near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
+                                         NEAR_GLOVE, cuff='W')
+    lamp = lantern(wrist, pose.lantern)
+    sleeve, glove = (NEAR_SLEEVE, NEAR_GLOVE) if front else (FAR_SLEEVE, FAR_GLOVE)
+    throw_sleeve, throw_glove, throw_wrist = arm(far_shoulder, pose.far_hand, sleeve, glove)
+    held = {}
+    if ball:
+        orb = Part()
+        orb.ellipse((throw_wrist[0] + 1, throw_wrist[1] - 1), 3, 3)
+        held = shade(orb.pixels(), 'β', light='δ', shadow='γ')
+    throw = [(throw_sleeve, 'o'), (throw_glove, 'o'), (held, 'o')]
+    body = [(far_leg, 'o'), (far_boot, 'o'), (near_leg, 'o'), (near_boot, 'o'), (bag, 'o'),
+            (cloak(neck, hip, pose), 'o'), (strap(neck, bag_anchor), None),
+            (hood(neck, pose), 'o'), (wrap, 'o')]
+    behind, over = ([], throw) if front else (throw, [])
+    canvas = compose([(tail, None), *behind, *body, *over,
+                      (lamp, 'o'), (near_sleeve, 'o'), (near_glove, 'o')])
+    return finish(canvas, lamp)
+
+
+def gun(wrist, aim):
+    """A short pistol at the wrist along `aim` (radians, up positive), drawn
+    as a polygon at that angle: no raster is rotated."""
+    ax, ay = math.cos(aim), -math.sin(aim)
+    px, py = -ay, ax
+    def at(u, v):
+        return (wrist[0] + ax * u + px * v, wrist[1] + ay * u + py * v)
+    barrel = Part()
+    barrel.polygon([at(-1, -1.6), at(8, -1.6), at(8, 0.6), at(-1, 0.6)])
+    grip = Part()
+    grip.polygon([at(-1, 0.0), at(1.5, 0.0), at(0.5, 3.5), at(-2, 3.5)])
+    colors = shade(grip.pixels(), '[', shadow='o')
+    colors.update(shade(barrel.pixels(), 'Ω', light='χ', shadow='Φ'))
+    return colors
+
+
+# The aim frames' directions, degrees up from forward: the five the courier
+# draws facing the aim; the three behind it are these mirrored.
+AIMS = (90, 45, 0, -45, -90)
+
+
+def render_aim(degrees):
+    """Standing, the free arm and its gun along the aim, drawn over the
+    cloak so a downward aim stays visible."""
+    aim = math.radians(degrees)
+    pose = Pose(lantern=0.1, scarf_angle=132, scarf_curl=-22, scarf_amp=8)
+    hip = pose.hip
+    neck = (hip[0] + pose.lean, hip[1] - 17)
+    near_shoulder = (neck[0] + 2, neck[1] + 3)
+    far_shoulder = (neck[0] - 1, neck[1] + 4)
+    hand = (far_shoulder[0] + math.cos(aim) * 12.0, far_shoulder[1] - math.sin(aim) * 12.0)
+    wrap, tail = scarf(neck, pose)
+    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe, True,
+                            FAR_TROUSERS, FAR_BOOT)
+    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe, True,
+                              NEAR_TROUSERS, NEAR_BOOT)
+    bag, bag_anchor = satchel(hip, pose)
+    near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
+                                         NEAR_GLOVE, cuff='W')
+    lamp = lantern(wrist, pose.lantern)
+    gun_sleeve, gun_glove, gun_wrist = arm(far_shoulder, hand, FAR_SLEEVE, FAR_GLOVE)
+    canvas = compose([
+        (tail, None),
+        (far_leg, 'o'), (far_boot, 'o'), (near_leg, 'o'), (near_boot, 'o'),
+        (bag, 'o'), (cloak(neck, hip, pose), 'o'), (strap(neck, bag_anchor), None),
+        (hood(neck, pose), 'o'), (wrap, 'o'),
+        (gun_sleeve, 'o'), (gun_glove, 'o'), (gun(gun_wrist, aim), 'o'),
+        (lamp, 'o'), (near_sleeve, 'o'), (near_glove, 'o'),
+    ])
+    return finish(canvas, lamp)
+
+
+def cast_frame(im):
+    """A frame's cast twin: its lantern's glass all at the hot core and the
+    frame round it lit, so its emissive mask widens."""
+    out = im.copy()
+    px = out.load()
+    x0, y0, x1, y1 = LANTERN_REGION
+    hot = (PALETTE['y'], PALETTE['Y'])
+    glass = {(x, y) for y in range(y0, y1) for x in range(x0, x1) if px[x, y] in hot}
+    for p in glass:
+        px[p] = PALETTE['Y']
+    ring = {(x + dx, y + dy) for x, y in glass for dx in (-1, 0, 1) for dy in (-1, 0, 1)} - glass
+    for p in ring:
+        if px[p][3]:
+            px[p] = PALETTE['y']
+    return out
+
+
 def run_foot(hip_x, phase):
     """Foot target, planted flag and toe angle for a 50% stance run cycle."""
     if phase < 0.5:
@@ -449,9 +559,46 @@ PLAYER_CLIPS = {
 }
 
 
+def toss_frames():
+    """The toss: wind-up, swing, release and follow-through; the ball
+    leaves the hand at the release."""
+    hip = REST_HIP
+    base = dict(lantern=0.15, scarf_angle=132, scarf_curl=-22, scarf_amp=8, hem_amp=0.7)
+    wind = Pose(hip=(hip[0] - 1, hip[1] + 1), lean=-0.5, near_hand=(41, 38), far_hand=(15, 44),
+                far_foot=(24, ANKLE), near_foot=(36, ANKLE), hem_flare=1.5, **base)
+    swing = Pose(hip=hip, lean=1.5, near_hand=(42, 38), far_hand=(31, 45), hem_front=1,
+                 far_foot=(25, ANKLE), near_foot=(37, ANKLE), **base)
+    release = Pose(hip=(hip[0] + 1, hip[1]), lean=3.0, near_hand=(42, 37), far_hand=(45, 31),
+                   hem_front=2, far_foot=(25, ANKLE), near_foot=(38, ANKLE), near_toe=0.2, **base)
+    follow = Pose(hip=(hip[0] + 1, hip[1]), lean=2.5, near_hand=(42, 37), far_hand=(47, 25),
+                  hem_front=1.5, far_foot=(25, ANKLE), near_foot=(37, ANKLE), near_toe=0.1, **base)
+    poses = [wind, swing, release, follow]
+    frames = [render_toss(pose, front=i > 0, ball=i < 2) for i, pose in enumerate(poses)]
+    return frames, [70, 50, 60, 120]
+
+
+def aim_frames():
+    """The arm and gun at each of [`AIMS`], from straight up to straight
+    down; 01 shows the frame itself, so the clip only holds them."""
+    return [render_aim(degrees) for degrees in AIMS], [100] * len(AIMS)
+
+
+# Clips drawn frame by frame, not posed through `render`.
+DRAWN_CLIPS = {
+    'player_toss': (toss_frames, False),
+    'player_aim': (aim_frames, False),
+}
+
+
 def frame_name(clip, index):
     # The idle clip starts on the registry's start sprite, `player`.
     return 'player' if clip == 'player_idle' and index == 0 else f'{clip}_{index}'
+
+
+def posed(poses_for):
+    """A posed clip's frames rendered, with their durations."""
+    poses, durations = poses_for()
+    return [render(pose) for pose in poses], durations
 
 
 def check_frame(name, im, glass):
@@ -466,12 +613,12 @@ def check_frame(name, im, glass):
 
 
 def build_player(images, lit, animations):
-    for clip, (poses_for, looping) in PLAYER_CLIPS.items():
-        poses, durations = poses_for()
+    clips = [(clip, posed(poses_for), looping) for clip, (poses_for, looping) in PLAYER_CLIPS.items()]
+    clips += [(clip, frames_for(), looping) for clip, (frames_for, looping) in DRAWN_CLIPS.items()]
+    for clip, (rendered, durations), looping in clips:
         frames = []
-        for i, (pose, duration) in enumerate(zip(poses, durations, strict=True)):
+        for i, ((im, glass), duration) in enumerate(zip(rendered, durations, strict=True)):
             name = frame_name(clip, i)
-            im, glass = render(pose)
             check_frame(name, im, glass)
             images[name] = im
             lit.add(name)
@@ -611,9 +758,36 @@ def glass_marble(frame):
     return to_image(upscale(outline(canvas, 'Φ', size=(16, 16)), 4))
 
 
+BOWLING = 'θνγβαδ'  # resin from its darkest hole to its lit crown
+
+
+def bowling_ball(frame):
+    """Heavy resin bowling ball, drawn at its 32-pixel render size: a dark slate
+    shell with a paler swirl and three finger holes that roll over its face; the
+    holes are three-fold, so a third of a turn loops in six frames."""
+    spin = frame * (math.tau / 3) / BALL_FRAMES
+    canvas = {}
+    for x, y, nx, ny, nz in sphere(32, 13.8):
+        light = 0.18 + 0.82 * lambert(nx, ny, nz, (0.4, -0.7, 0.6))
+        tone = min(5, 1 + int(light * 4.6))
+        # The swirl: a soft band of paler resin across the shell.
+        if abs(math.sin(3.1 * nx + 2.2 * ny + spin * 2)) < 0.16 and tone < 5:
+            tone += 1
+        canvas[(x, y)] = BOWLING[tone]
+        # Three holes on a small triangle that turns with the roll.
+        for k in range(3):
+            angle = spin + k * math.tau / 3
+            hx, hy = 0.34 * math.cos(angle), -0.12 + 0.3 * math.sin(angle)
+            if (nx - hx) ** 2 + (ny - hy) ** 2 < 0.012 and nz > 0.35:
+                canvas[(x, y)] = 'θ'
+    canvas[(11, 9)] = canvas[(12, 9)] = canvas[(11, 10)] = 'π'  # the shell's gloss
+    return to_image(upscale(outline(canvas, size=(32, 32)), 2))
+
+
 def build_balls(images, lit, animations):
     for clip, first, draw, duration in (('ball_spin', 'ball', rune_orb, 90),
-                                        ('ball_small_spin', 'ball_small', glass_marble, 65)):
+                                        ('ball_small_spin', 'ball_small', glass_marble, 65),
+                                        ('bowling_roll', 'bowling_ball', bowling_ball, 80)):
         names = [first if i == 0 else f'{first}_{i}' for i in range(BALL_FRAMES)]
         for i, name in enumerate(names):
             images[name] = draw(i)

@@ -1,0 +1,32 @@
+{
+  "sprite": { "asset_id": "ex10_player", "z_order": 10 },
+  "components": {
+    "player": null,
+    "tags": ["team.player"],
+    "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [20, 28] }, "offset": [32, 33] },
+    "platformer_controller": { "run_speed": 560, "jump_speed": 1280, "air_jumps": 1 },
+    "action_input": { "move": ["move_left", "move_right"], "slots": { "jump": "jump" } },
+    "aim": { "from": "cursor", "offset": [32, 33] },
+    "health": { "max": 100, "invulnerability": 1.1 },
+    "hurtbox": { "shape": { "aabb": [20, 28] }, "offset": [32, 33] },
+    "knockback": { "seconds": 0.18 },
+    "hit_flash": { "color": [1.0, 0.2, 0.1, 1.0], "seconds": 0.25 },
+    "cues": {
+      "damaged": [{ "shake": 0.5 }, { "sound": { "id": "ex10_player_hit_sfx" } }]
+    },
+    "facing": { "from": "intent", "snap": "horizontal" },
+    "character_animator": {
+      "idle": { "left": "ex10_player_idle_left", "right": "ex10_player_idle" },
+      "move": { "left": "ex10_player_walk_left", "right": "ex10_player_walk" },
+      "rise": { "left": "ex10_player_jump_left", "right": "ex10_player_jump" },
+      "fall": { "left": "ex10_player_fall_left", "right": "ex10_player_fall" },
+      "min_speed": 1
+    },
+    "stats": { "max_health": 100, "mana": 100, "max_mana": 100 },
+    "effects": ["mana_regen"],
+    "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls"],
+    "spellbook": {},
+    "camera_target": null,
+    "glow": { "offset": [43.5, 46.5], "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
+  }
+}

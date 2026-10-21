@@ -1,6 +1,6 @@
 //! Release-archive launcher (`D-072`): runs the fastest build of an example or
-//! a template that this CPU supports, from the archive's [`DATA`] folder or the
-//! template's folder under it.
+//! a template that this CPU supports, from the archive's [`DATA`] folder or,
+//! for a folder game, its own folder under it.
 //!
 //! Archives ship one copy of this binary per build at their top, named like it
 //! (`Platformer[.exe]`), beside a [`DATA`] folder that holds
@@ -12,7 +12,7 @@
 //! folder under [`DATA`] (`D-186`). It names the chosen level on stderr;
 //! `TUNGSTEN_CPU_LEVEL` forces one. Standard library only; the levels must
 //! match `LEVELS` in `scripts/release.py`, the folder its `DATA`, and the
-//! folders its templates under their `TITLES`.
+//! folders its folder games under their `TITLES`.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -27,8 +27,12 @@ const LEVELS: [&str; 4] = ["x86-64-v4", "x86-64-v3", "x86-64-v2", "x86-64"];
 /// files (`D-196`).
 const DATA: &str = "data";
 /// Builds that read their files from a folder under [`DATA`], by launcher
-/// file stem: the templates `scripts/release.py` archives (`D-186`).
-const FOLDERS: [(&str, &str); 1] = [("Template", "templates/basic")];
+/// file stem: the folder games `scripts/release.py` archives, the templates
+/// and the examples with their own `tungsten.json` (`D-186`, `D-196`).
+const FOLDERS: [(&str, &str); 2] = [
+    ("Template", "templates/basic"),
+    ("Platformer", "examples/01_platformer"),
+];
 /// Environment override naming one of [`LEVELS`].
 const OVERRIDE: &str = "TUNGSTEN_CPU_LEVEL";
 
@@ -182,12 +186,22 @@ mod tests {
             working_dir(&data, OsStr::new("Template")),
             data.join("templates").join("basic")
         );
+        assert_eq!(
+            working_dir(&data, OsStr::new("Platformer")),
+            data.join("examples").join("01_platformer")
+        );
     }
 
     #[test]
     fn an_example_runs_from_the_data_folder() {
         let data = Path::new("archive").join("data");
-        for stem in ["Platformer", "template", "tungsten-template-basic", ""] {
+        for stem in [
+            "Benchmark",
+            "template",
+            "platformer",
+            "tungsten-template-basic",
+            "",
+        ] {
             assert_eq!(working_dir(&data, OsStr::new(stem)), data, "{stem:?}");
         }
     }

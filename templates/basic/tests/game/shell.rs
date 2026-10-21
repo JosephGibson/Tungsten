@@ -4,12 +4,14 @@
 
 use std::path::Path;
 
-use tungsten::StateStack;
 use tungsten::core::text::{TextAlign, TextNodeStore};
 use tungsten::core::ui::{ThemeFile, UiTree, Visibility, WidgetId};
-use tungsten::core::{InputState, KeyCode, SaveSlots, Time, UserFolder};
-use tungsten::kit::{Hit, damage};
+use tungsten::core::{
+    InputState, KeyCode, SaveSlots, Schedule, Stage, Time, UserFolder, World, system,
+};
+use tungsten::kit::{Health, Hit, damage};
 use tungsten::testing::UiHarness;
+use tungsten::{Plugin, StateStack};
 use tungsten_template_basic::game;
 use tungsten_template_basic::sample::hud::Hud;
 use tungsten_template_basic::sample::{GEM_STARTS, PLAYER_START, SampleRun};
@@ -19,7 +21,9 @@ use tungsten_template_basic::shell::game_over::GAME_OVER;
 use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::title::TITLE;
 use tungsten_template_basic::shell::toast::{self, TOAST_SECS, Toasts};
-use tungsten_template_basic::shell::{AUTOSAVE, Difficulty, RunStart, RunState, theme, widgets};
+use tungsten_template_basic::shell::{
+    AUTOSAVE, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
+};
 
 use super::{
     act, find, harness, harness_with, health, heard, player_entity, player_position, plays, press,
@@ -980,6 +984,102 @@ fn load_under_the_curtain(dir: &Path) -> (UiHarness, [f32; 2]) {
         harness.world()
     ));
     (harness, walked)
+}
+
+/// How many more frames the sample player's `Health` stays hidden, and the
+/// hidden `Health`.
+struct Hidden(u32, Option<Health>);
+
+/// A system before `shell_save` that hides the player's `Health` while
+/// [`Hidden`] counts, so `capture` returns `None`, then gives it back.
+struct HideHealth;
+
+impl Plugin for HideHealth {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        world.insert_resource(Hidden(0, None));
+        let hide = system("test_hide_health", hide_health).before("shell_save");
+        schedule.add(Stage::PreUpdate, hide);
+    }
+}
+
+fn hide_health(world: &mut World) {
+    let Some(player) = world.get_resource::<SampleRun>().map(|run| run.player) else {
+        return;
+    };
+    let Hidden(left, held) = world.remove_resource::<Hidden>().unwrap();
+    let held = match left {
+        0 => {
+            if let Some(health) = held {
+                world.insert(player, health);
+            }
+            None
+        }
+        _ => world.remove_component::<Health>(player).or(held),
+    };
+    world.insert_resource(Hidden(left.saturating_sub(1), held));
+}
+
+/// The game in `dir` with [`HideHealth`], hiding for `frames` frames of a
+/// run once it starts.
+fn hiding(dir: &Path, frames: u32) -> UiHarness {
+    let mut app = super::app(UserFolder::At(dir.to_path_buf()));
+    app.add_plugin(HideHealth);
+    let mut harness = UiHarness::new(app);
+    let manifest = harness.harness_mut().load_manifest(game::MANIFEST);
+    manifest.expect("the manifest loads");
+    harness.world_mut().insert_resource(Hidden(frames, None));
+    harness.step(1);
+    harness
+}
+
+/// The autosave's writes over `frames` frames, as changes of its bytes.
+fn autosaves(harness: &mut UiHarness, dir: &Path, frames: u32) -> usize {
+    let mut bytes = std::fs::read(slot_file(dir, AUTOSAVE)).ok();
+    let mut writes = 0;
+    for _ in 0..frames {
+        harness.step(1);
+        let now = std::fs::read(slot_file(dir, AUTOSAVE)).ok();
+        writes += usize::from(now != bytes);
+        bytes = now;
+    }
+    writes
+}
+
+#[test]
+fn a_first_autosave_waits_for_a_capture() {
+    let dir = user_folder("first-autosave-waits");
+    let mut harness = hiding(&dir, u32::MAX);
+    start(&mut harness);
+    assert_eq!(autosaves(&mut harness, &dir, 10), 0, "none while hidden");
+    assert!(!slot_file(&dir, AUTOSAVE).exists());
+    harness.world_mut().resource_mut::<Hidden>().0 = 0;
+    assert_eq!(
+        autosaves(&mut harness, &dir, 20),
+        1,
+        "one, once it has a save"
+    );
+    assert_eq!(read(&dir, AUTOSAVE).player, PLAYER_START);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_requested_autosave_waits_for_a_capture() {
+    let dir = user_folder("requested-autosave-waits");
+    let mut harness = hiding(&dir, 0);
+    start(&mut harness);
+    assert_eq!(
+        autosaves(&mut harness, &dir, 5),
+        0,
+        "the first came already"
+    );
+    assert!(slot_file(&dir, AUTOSAVE).exists());
+    harness.world_mut().resource_mut::<Hidden>().0 = u32::MAX;
+    harness.step(1);
+    request_autosave(harness.world_mut());
+    assert_eq!(autosaves(&mut harness, &dir, 10), 0, "none while hidden");
+    harness.world_mut().resource_mut::<Hidden>().0 = 0;
+    assert_eq!(autosaves(&mut harness, &dir, 20), 1, "one for the request");
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

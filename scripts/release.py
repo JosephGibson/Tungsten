@@ -22,9 +22,11 @@
                       launcher per build under the build's player-facing name (`TITLES`),
                       README.txt, LICENSE.txt and THIRD-PARTY-NOTICES.txt; data/ holds
                       the builds under bin/<level>/, the files the examples read relative
-                      to the working directory, and each template's own tungsten.json,
+                      to the working directory, and each folder game's own tungsten.json,
                       input.json and assets/ under its folder, which its launcher runs it
-                      from. Linux binaries are stripped with objcopy; no debug file ships.
+                      from: the templates and every example whose folder holds its own
+                      tungsten.json. Linux binaries are stripped with objcopy; no debug
+                      file ships.
   split-debug BINARY DEBUG
                       The Linux split alone: moves BINARY's debug info to DEBUG, links
                       it, and checks the build-ids and DEBUG's .debug_line.
@@ -77,8 +79,9 @@ TARGET_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 RELATIVE_LINK_RE = re.compile(r"\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)")
 # What every example reads relative to the working directory.
 SHARED_RUNTIME = ("tungsten.json", "input.json", "assets")
-# What a template reads from its own folder, which its launcher runs it from (D-186).
-TEMPLATE_RUNTIME = ("tungsten.json", "input.json", "assets")
+# What a folder game, a template or an example with its own tungsten.json, reads from its own
+# folder, which its launcher runs it from (D-186, D-196).
+FOLDER_RUNTIME = ("tungsten.json", "input.json", "assets")
 ARCHIVE_PREFIX = "tungsten-examples"
 # The archive folder that holds the builds and every file they read, beside the launchers; must
 # match `DATA` in tools/launcher/src/main.rs (D-196).
@@ -89,8 +92,8 @@ PLATFORMS = {
     "x86_64-unknown-linux-gnu": ("linux-x64", "Linux (x64)"),
 }
 # What players see each shipped package as: its launcher's and builds' file name and its README
-# line. A package missing here keeps its package name. Template titles must match `FOLDERS` in
-# tools/launcher/src/main.rs.
+# line. A package missing here keeps its package name. Folder games' titles must match `FOLDERS`
+# in tools/launcher/src/main.rs.
 TITLES = {
     "example-01-platformer": ("Platformer", "a small platformer level"),
     "example-02-bench": ("Benchmark", "the engine's stress tests; Tab moves to the next one"),
@@ -382,6 +385,14 @@ def templates(root):
     return members(root, "templates")
 
 
+def folder_games(root):
+    """(package name, directory) for each build its launcher runs from its own folder under `DATA`
+    (D-186, D-196): every template, then each shipped example whose folder holds its own
+    `tungsten.json`."""
+    return templates(root) + [(name, folder) for name, folder in examples(root)
+                              if (root / folder / "tungsten.json").is_file()]
+
+
 def title(package):
     """The name players see `package` under (`TITLES`), else the package name."""
     return TITLES.get(package, (package, None))[0]
@@ -389,8 +400,8 @@ def title(package):
 
 def readme(tag, target, members, suffix, levels, game=None, templates=()):
     """README.txt for players (D-196); `members` holds (package name, folder) for each shipped
-    build and `templates` (package name, folder, game id) for each template, which logs under its
-    own game id."""
+    build and `templates` (package name, folder, game id) for each folder game, which logs under
+    its own game id."""
     def wrapped(*sentences):
         return textwrap.fill(" ".join(sentences), 78, break_on_hyphens=False, break_long_words=False)
 
@@ -1026,15 +1037,18 @@ def package(root, tag, target, out, bin_dir=None, strip=strip_debug):
         raise ValueError(f"{bin_dir}: no {BASELINE}/{target}/release build; the launcher needs the portable fallback")
     starts = templates(root)
     members = examples(root) + starts
+    games = folder_games(root)
+    in_folder = {d for _, d in games}
     needed = [(level, binary) for level in levels for binary, _ in members] + [(BASELINE, LAUNCHER)]
     missing = [f"{level}/{binary}{suffix}" for level, binary in needed if not built(level, binary).is_file()]
     if missing:
         raise ValueError(f"{bin_dir}: missing {', '.join(missing)}")
     licenses = load_license_data(bin_dir / LICENSE_DATA, target)
     notices = third_party_notices(root, licenses)
+    # The examples read the shared root files and their own assets; a folder game, its folder's.
     runtime = list(SHARED_RUNTIME) + [f"{d}/assets" for _, d in examples(root)
-                                      if (root / d / "assets").is_dir()]
-    runtime += [f"{d}/{rel}" for _, d in starts for rel in TEMPLATE_RUNTIME if (root / d / rel).exists()]
+                                      if d not in in_folder and (root / d / "assets").is_dir()]
+    runtime += [f"{d}/{rel}" for _, d in games for rel in FOLDER_RUNTIME if (root / d / rel).exists()]
     name = f"{ARCHIVE_PREFIX}-{tag[1:]}-{PLATFORMS.get(target, (target, target))[0]}"
     out.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
@@ -1063,8 +1077,8 @@ def package(root, tag, target, out, bin_dir=None, strip=strip_debug):
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(src, dest)
         shutil.copyfile(root / "LICENSE", stage / "LICENSE.txt")
-        games = [(binary, d, game_id(root, d)) for binary, d in starts]
-        write_text(stage / "README.txt", readme(tag, target, members, suffix, levels, game_id(root), games))
+        logs = [(binary, d, game_id(root, d)) for binary, d in games]
+        write_text(stage / "README.txt", readme(tag, target, members, suffix, levels, game_id(root), logs))
         write_text(stage / NOTICES, notices)
         archive = shutil.make_archive(str(out / name), "zip", root_dir=tmp, base_dir=name)
     return Path(archive)

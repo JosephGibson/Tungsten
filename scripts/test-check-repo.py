@@ -119,6 +119,25 @@ class RepoChecks(unittest.TestCase):
             f"templates/basic/AGENTS.md: names no `hit`, which {snapshot} lists",
             f"templates/basic/AGENTS.md: names no `tags`, which {snapshot} lists"])
 
+    def test_example_shells_copy_the_templates_byte_for_byte(self):
+        def copies():
+            errors = []
+            qa.check_shell_copies(self.root, errors, [])
+            return errors
+        self.assertEqual(copies(), [])  # no template shell
+        for name in ("mod.rs", "theme.rs"):
+            self.write(f"templates/basic/src/shell/{name}", f"// {name}\n")
+            self.write(f"examples/01_game/src/shell/{name}", f"// {name}\n")
+        self.write("examples/02_other/src/main.rs", "fn main() {}\n")
+        self.assertEqual(copies(), [], "an equal copy, and an example with no shell")
+        self.write("examples/01_game/src/shell/theme.rs", "// theme.rs!\n")
+        self.assertEqual(copies(), ["examples/01_game/src/shell/theme.rs: differs from templates/basic/src/shell/theme.rs"])
+        (self.root / "examples/01_game/src/shell/theme.rs").unlink()
+        self.assertEqual(copies(), ["examples/01_game/src/shell/theme.rs: missing; templates/basic/src/shell/ has it"])
+        self.write("examples/01_game/src/shell/theme.rs", "// theme.rs\n")
+        self.write("examples/01_game/src/shell/extra.rs", "// extra\n")
+        self.assertEqual(copies(), ["examples/01_game/src/shell/extra.rs: not in templates/basic/src/shell/"])
+
     def test_directory_symlinks_are_not_walked(self):
         (self.root / "assets/loop").symlink_to(self.root / "assets", target_is_directory=True)
         self.assertEqual(self.assets()[0], [])
@@ -378,7 +397,7 @@ class CheckSelection(unittest.TestCase):
 
     def test_generator_inputs_and_generated_outputs_select_consistency_and_routes(self):
         for path in ("examples/01_platformer/tools/level.json", "examples/01_platformer/tools/actors.py",
-                     "examples/01_platformer/tools/shaders/soft_glow.wgsl", "examples/01_platformer/src/level_layout.rs"):
+                     "examples/01_platformer/tools/shaders/soft_glow.wgsl", "examples/01_platformer/tools/level.py"):
             commands, review, unknown = self.selection(path)
             self.assertTrue({"just level-check", "cargo test -p example-01-platformer --locked",
                              "cargo test -p tungsten-core --test manifests --locked", "just smoke"} <= commands.keys())
@@ -389,6 +408,11 @@ class CheckSelection(unittest.TestCase):
         self.assertIn("just level-check", self.selection("examples/01_platformer/assets/tilemaps/ruin.tmj")[0])
         self.assertNotIn("just level-check", self.selection("examples/01_platformer/assets/sounds/black_hole.ogg")[0])
         self.assertNotIn("just level-check", self.selection("examples/01_platformer/tools/README.md")[0])
+
+    def test_an_example_shell_selects_the_copy_check(self):
+        commands, review, unknown = self.selection("examples/01_platformer/src/shell/mod.rs")
+        self.assertIn("just repo-check", commands)
+        self.assertEqual(unknown, [])
 
     def test_solver_needs_release_checks_that_debug_tests_skip(self):
         commands, review, unknown = self.selection("crates/tungsten-core/src/physics/step/solver.rs")
@@ -443,6 +467,7 @@ class CheckSelection(unittest.TestCase):
             "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked",
                                             "cargo test -p tungsten-cli --locked"},
             "tools/cli/src/main.rs": {"cargo test -p tungsten-cli --locked", "just template-check"},
+            "tools/launcher/src/main.rs": {"cargo test -p tungsten-launcher --locked", "just script-test"},
             ".github/workflows/ci.yml": {"just script-test", "just repo-check"},
             "Cargo.lock": {"just deps", "just smoke"},
         }

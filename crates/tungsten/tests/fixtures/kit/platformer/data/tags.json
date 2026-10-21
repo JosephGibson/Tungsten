@@ -1,5 +1,6 @@
 [
   "team.player",
   "team.enemy",
-  "damage.fire"
+  "damage.fire",
+  "casting"
 ]

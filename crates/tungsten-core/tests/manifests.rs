@@ -24,6 +24,7 @@ fn collect_manifests(root: &Path) -> Vec<PathBuf> {
     if let Ok(entries) = std::fs::read_dir(&examples_dir) {
         let mut example_paths: Vec<PathBuf> = entries
             .flatten()
+            .filter(|e| !e.path().join("tungsten.json").exists())
             .map(|e| e.path().join("assets").join("manifest.json"))
             .filter(|p| p.exists())
             .collect();
@@ -34,15 +35,21 @@ fn collect_manifests(root: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Each `templates/*/assets/manifest.json`. A game loads its template's
-/// manifest as its only root, so each one loads and resolves on its own,
-/// outside the examples' uniqueness merge (`D-123`).
-fn collect_template_manifests(root: &Path) -> Vec<PathBuf> {
-    let mut out: Vec<PathBuf> = std::fs::read_dir(root.join("templates"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|e| e.path().join("assets").join("manifest.json"))
+/// Each `templates/*/assets/manifest.json`, and each example's whose folder
+/// holds `tungsten.json`: a game run from its own folder loads its manifest
+/// as its only root, so each one loads and resolves on its own, outside the
+/// examples' uniqueness merge (`D-123`).
+fn collect_own_root_manifests(root: &Path) -> Vec<PathBuf> {
+    let folder_games = ["templates", "examples"].into_iter().flat_map(|parent| {
+        std::fs::read_dir(root.join(parent))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.path())
+            .filter(move |path| parent == "templates" || path.join("tungsten.json").exists())
+    });
+    let mut out: Vec<PathBuf> = folder_games
+        .map(|path| path.join("assets").join("manifest.json"))
         .filter(|p| p.exists())
         .collect();
     out.sort();
@@ -51,9 +58,11 @@ fn collect_template_manifests(root: &Path) -> Vec<PathBuf> {
 
 #[test]
 fn each_template_manifest_loads_as_its_own_root() {
-    let manifests = collect_template_manifests(&workspace_root());
+    let manifests = collect_own_root_manifests(&workspace_root());
     assert!(
-        !manifests.is_empty(),
+        manifests
+            .iter()
+            .any(|path| path.starts_with(workspace_root().join("templates"))),
         "no template manifest under templates/ — test is broken"
     );
     for manifest in &manifests {
@@ -125,7 +134,7 @@ fn all_manifest_ids_are_globally_unique() {
 fn every_prefab_file_parses() {
     let root = workspace_root();
     let mut manifests = collect_manifests(&root);
-    manifests.extend(collect_template_manifests(&root));
+    manifests.extend(collect_own_root_manifests(&root));
     let mut failures = Vec::new();
     for manifest in &manifests {
         let loaded = ResolvedManifest::load(manifest)
@@ -162,7 +171,7 @@ fn every_prefab_file_parses() {
 fn every_data_file_parses() {
     let root = workspace_root();
     let mut manifests = collect_manifests(&root);
-    manifests.extend(collect_template_manifests(&root));
+    manifests.extend(collect_own_root_manifests(&root));
     let mut failures = Vec::new();
     for manifest in &manifests {
         let loaded = ResolvedManifest::load(manifest)

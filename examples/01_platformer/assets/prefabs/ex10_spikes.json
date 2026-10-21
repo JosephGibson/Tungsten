@@ -1,0 +1,30 @@
+{
+  "components": {
+    "contact_damage": {
+      "damage": 34,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "knockback": 560,
+      "offset": [
+        32,
+        48
+      ],
+      "shape": {
+        "aabb": [
+          27,
+          14
+        ]
+      }
+    },
+    "hazard": {
+      "fire": false
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_spikes",
+    "z_order": -5
+  }
+}

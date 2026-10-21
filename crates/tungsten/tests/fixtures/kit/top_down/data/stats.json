@@ -5,5 +5,11 @@
   },
   "ailment_threshold_mult": {
     "min": 0
+  },
+  "stamina": {
+    "min": 0
+  },
+  "max_stamina": {
+    "min": 0
   }
 }

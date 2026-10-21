@@ -1,0 +1,690 @@
+{
+  "ex10_player": [
+    43.5,
+    46.5
+  ],
+  "ex10_player_aim_0": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_0_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_0_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_0_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_1": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_1_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_1_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_1_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_2": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_2_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_2_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_2_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_3": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_3_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_3_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_3_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_4": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_4_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_aim_4_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_aim_4_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_cast": [
+    43.5,
+    46.5
+  ],
+  "ex10_player_cast_left": [
+    20.5,
+    46.5
+  ],
+  "ex10_player_double_jump_0": [
+    47.5,
+    49.5
+  ],
+  "ex10_player_double_jump_0_cast": [
+    47.5,
+    49.5
+  ],
+  "ex10_player_double_jump_0_cast_left": [
+    16.5,
+    49.5
+  ],
+  "ex10_player_double_jump_0_left": [
+    16.5,
+    49.5
+  ],
+  "ex10_player_double_jump_1": [
+    44.5,
+    39.5
+  ],
+  "ex10_player_double_jump_1_cast": [
+    44.5,
+    39.5
+  ],
+  "ex10_player_double_jump_1_cast_left": [
+    19.5,
+    39.5
+  ],
+  "ex10_player_double_jump_1_left": [
+    19.5,
+    39.5
+  ],
+  "ex10_player_double_jump_2": [
+    46.5,
+    40.5
+  ],
+  "ex10_player_double_jump_2_cast": [
+    46.5,
+    40.5
+  ],
+  "ex10_player_double_jump_2_cast_left": [
+    17.5,
+    40.5
+  ],
+  "ex10_player_double_jump_2_left": [
+    17.5,
+    40.5
+  ],
+  "ex10_player_double_jump_3": [
+    46.5,
+    40.5
+  ],
+  "ex10_player_double_jump_3_cast": [
+    46.5,
+    40.5
+  ],
+  "ex10_player_double_jump_3_cast_left": [
+    17.5,
+    40.5
+  ],
+  "ex10_player_double_jump_3_left": [
+    17.5,
+    40.5
+  ],
+  "ex10_player_fall_0": [
+    47.5,
+    40.5
+  ],
+  "ex10_player_fall_0_cast": [
+    47.5,
+    40.5
+  ],
+  "ex10_player_fall_0_cast_left": [
+    16.5,
+    40.5
+  ],
+  "ex10_player_fall_0_left": [
+    16.5,
+    40.5
+  ],
+  "ex10_player_fall_1": [
+    47.5,
+    41.5
+  ],
+  "ex10_player_fall_1_cast": [
+    47.5,
+    41.5
+  ],
+  "ex10_player_fall_1_cast_left": [
+    16.5,
+    41.5
+  ],
+  "ex10_player_fall_1_left": [
+    16.5,
+    41.5
+  ],
+  "ex10_player_fall_2": [
+    45.5,
+    40.5
+  ],
+  "ex10_player_fall_2_cast": [
+    45.5,
+    40.5
+  ],
+  "ex10_player_fall_2_cast_left": [
+    18.5,
+    40.5
+  ],
+  "ex10_player_fall_2_left": [
+    18.5,
+    40.5
+  ],
+  "ex10_player_fall_3": [
+    45.5,
+    39.5
+  ],
+  "ex10_player_fall_3_cast": [
+    45.5,
+    39.5
+  ],
+  "ex10_player_fall_3_cast_left": [
+    18.5,
+    39.5
+  ],
+  "ex10_player_fall_3_left": [
+    18.5,
+    39.5
+  ],
+  "ex10_player_idle_1": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_idle_1_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_idle_1_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_idle_1_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_idle_2": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_2_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_2_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_2_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_3": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_3_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_3_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_3_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_4": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_4_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_idle_4_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_4_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_idle_5": [
+    44.5,
+    45.5
+  ],
+  "ex10_player_idle_5_cast": [
+    44.5,
+    45.5
+  ],
+  "ex10_player_idle_5_cast_left": [
+    19.5,
+    45.5
+  ],
+  "ex10_player_idle_5_left": [
+    19.5,
+    45.5
+  ],
+  "ex10_player_idle_6": [
+    43.5,
+    45.5
+  ],
+  "ex10_player_idle_6_cast": [
+    43.5,
+    45.5
+  ],
+  "ex10_player_idle_6_cast_left": [
+    20.5,
+    45.5
+  ],
+  "ex10_player_idle_6_left": [
+    20.5,
+    45.5
+  ],
+  "ex10_player_idle_7": [
+    43.5,
+    46.5
+  ],
+  "ex10_player_idle_7_cast": [
+    43.5,
+    46.5
+  ],
+  "ex10_player_idle_7_cast_left": [
+    20.5,
+    46.5
+  ],
+  "ex10_player_idle_7_left": [
+    20.5,
+    46.5
+  ],
+  "ex10_player_jump_0": [
+    44.5,
+    38.5
+  ],
+  "ex10_player_jump_0_cast": [
+    44.5,
+    38.5
+  ],
+  "ex10_player_jump_0_cast_left": [
+    19.5,
+    38.5
+  ],
+  "ex10_player_jump_0_left": [
+    19.5,
+    38.5
+  ],
+  "ex10_player_jump_1": [
+    44.5,
+    39.5
+  ],
+  "ex10_player_jump_1_cast": [
+    44.5,
+    39.5
+  ],
+  "ex10_player_jump_1_cast_left": [
+    19.5,
+    39.5
+  ],
+  "ex10_player_jump_1_left": [
+    19.5,
+    39.5
+  ],
+  "ex10_player_jump_2": [
+    47.5,
+    42.5
+  ],
+  "ex10_player_jump_2_cast": [
+    47.5,
+    42.5
+  ],
+  "ex10_player_jump_2_cast_left": [
+    16.5,
+    42.5
+  ],
+  "ex10_player_jump_2_left": [
+    16.5,
+    42.5
+  ],
+  "ex10_player_land_0": [
+    47.5,
+    48.5
+  ],
+  "ex10_player_land_0_cast": [
+    47.5,
+    48.5
+  ],
+  "ex10_player_land_0_cast_left": [
+    16.5,
+    48.5
+  ],
+  "ex10_player_land_0_left": [
+    16.5,
+    48.5
+  ],
+  "ex10_player_land_1": [
+    43.5,
+    47.5
+  ],
+  "ex10_player_land_1_cast": [
+    43.5,
+    47.5
+  ],
+  "ex10_player_land_1_cast_left": [
+    20.5,
+    47.5
+  ],
+  "ex10_player_land_1_left": [
+    20.5,
+    47.5
+  ],
+  "ex10_player_land_2": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_land_2_cast": [
+    44.5,
+    46.5
+  ],
+  "ex10_player_land_2_cast_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_land_2_left": [
+    19.5,
+    46.5
+  ],
+  "ex10_player_left": [
+    20.5,
+    46.5
+  ],
+  "ex10_player_toss_0": [
+    43.5,
+    47.5
+  ],
+  "ex10_player_toss_0_cast": [
+    43.5,
+    47.5
+  ],
+  "ex10_player_toss_0_cast_left": [
+    20.5,
+    47.5
+  ],
+  "ex10_player_toss_0_left": [
+    20.5,
+    47.5
+  ],
+  "ex10_player_toss_1": [
+    45.5,
+    47.5
+  ],
+  "ex10_player_toss_1_cast": [
+    45.5,
+    47.5
+  ],
+  "ex10_player_toss_1_cast_left": [
+    18.5,
+    47.5
+  ],
+  "ex10_player_toss_1_left": [
+    18.5,
+    47.5
+  ],
+  "ex10_player_toss_2": [
+    45.5,
+    46.5
+  ],
+  "ex10_player_toss_2_cast": [
+    45.5,
+    46.5
+  ],
+  "ex10_player_toss_2_cast_left": [
+    18.5,
+    46.5
+  ],
+  "ex10_player_toss_2_left": [
+    18.5,
+    46.5
+  ],
+  "ex10_player_toss_3": [
+    45.5,
+    46.5
+  ],
+  "ex10_player_toss_3_cast": [
+    45.5,
+    46.5
+  ],
+  "ex10_player_toss_3_cast_left": [
+    18.5,
+    46.5
+  ],
+  "ex10_player_toss_3_left": [
+    18.5,
+    46.5
+  ],
+  "ex10_player_walk_0": [
+    46.5,
+    46.5
+  ],
+  "ex10_player_walk_0_cast": [
+    46.5,
+    46.5
+  ],
+  "ex10_player_walk_0_cast_left": [
+    17.5,
+    46.5
+  ],
+  "ex10_player_walk_0_left": [
+    17.5,
+    46.5
+  ],
+  "ex10_player_walk_1": [
+    46.5,
+    47.5
+  ],
+  "ex10_player_walk_10": [
+    45.5,
+    43.5
+  ],
+  "ex10_player_walk_10_cast": [
+    45.5,
+    43.5
+  ],
+  "ex10_player_walk_10_cast_left": [
+    18.5,
+    43.5
+  ],
+  "ex10_player_walk_10_left": [
+    18.5,
+    43.5
+  ],
+  "ex10_player_walk_11": [
+    46.5,
+    44.5
+  ],
+  "ex10_player_walk_11_cast": [
+    46.5,
+    44.5
+  ],
+  "ex10_player_walk_11_cast_left": [
+    17.5,
+    44.5
+  ],
+  "ex10_player_walk_11_left": [
+    17.5,
+    44.5
+  ],
+  "ex10_player_walk_1_cast": [
+    46.5,
+    47.5
+  ],
+  "ex10_player_walk_1_cast_left": [
+    17.5,
+    47.5
+  ],
+  "ex10_player_walk_1_left": [
+    17.5,
+    47.5
+  ],
+  "ex10_player_walk_2": [
+    46.5,
+    46.5
+  ],
+  "ex10_player_walk_2_cast": [
+    46.5,
+    46.5
+  ],
+  "ex10_player_walk_2_cast_left": [
+    17.5,
+    46.5
+  ],
+  "ex10_player_walk_2_left": [
+    17.5,
+    46.5
+  ],
+  "ex10_player_walk_3": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_3_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_3_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_walk_3_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_walk_4": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_4_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_4_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_walk_4_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_walk_5": [
+    45.5,
+    47.5
+  ],
+  "ex10_player_walk_5_cast": [
+    45.5,
+    47.5
+  ],
+  "ex10_player_walk_5_cast_left": [
+    18.5,
+    47.5
+  ],
+  "ex10_player_walk_5_left": [
+    18.5,
+    47.5
+  ],
+  "ex10_player_walk_6": [
+    45.5,
+    49.5
+  ],
+  "ex10_player_walk_6_cast": [
+    45.5,
+    49.5
+  ],
+  "ex10_player_walk_6_cast_left": [
+    18.5,
+    49.5
+  ],
+  "ex10_player_walk_6_left": [
+    18.5,
+    49.5
+  ],
+  "ex10_player_walk_7": [
+    45.5,
+    50.5
+  ],
+  "ex10_player_walk_7_cast": [
+    45.5,
+    50.5
+  ],
+  "ex10_player_walk_7_cast_left": [
+    18.5,
+    50.5
+  ],
+  "ex10_player_walk_7_left": [
+    18.5,
+    50.5
+  ],
+  "ex10_player_walk_8": [
+    45.5,
+    48.5
+  ],
+  "ex10_player_walk_8_cast": [
+    45.5,
+    48.5
+  ],
+  "ex10_player_walk_8_cast_left": [
+    18.5,
+    48.5
+  ],
+  "ex10_player_walk_8_left": [
+    18.5,
+    48.5
+  ],
+  "ex10_player_walk_9": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_9_cast": [
+    45.5,
+    45.5
+  ],
+  "ex10_player_walk_9_cast_left": [
+    18.5,
+    45.5
+  ],
+  "ex10_player_walk_9_left": [
+    18.5,
+    45.5
+  ]
+}

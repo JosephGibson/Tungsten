@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_player_land_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_player_land_1_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_player_land_2_left"
+    }
+  ],
+  "looping": false
+}

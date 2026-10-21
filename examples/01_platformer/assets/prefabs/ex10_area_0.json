@@ -1,0 +1,28 @@
+{
+  "components": {
+    "area": {
+      "name": "Lantern clearing"
+    },
+    "rigid_body": {
+      "kind": "sensor",
+      "offset": [
+        768.0,
+        1600.0
+      ],
+      "shape": {
+        "half_extents": [
+          768.0,
+          1600.0
+        ],
+        "kind": "aabb"
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

@@ -63,3 +63,38 @@ fn an_index_below_zero_panics() {
 fn a_reversed_range_panics() {
     let _ = KitRng::seeded(1).range(2.0, 1.0);
 }
+
+#[test]
+fn a_saved_stream_continues_where_it_stopped() {
+    let mut rng = KitRng::seeded(11);
+    for _ in 0..1000 {
+        rng.next_u32();
+    }
+    let saved = serde_json::to_value(&rng).unwrap();
+    let keys: Vec<&str> = saved
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(keys.len(), 3);
+    for key in ["seed", "draws", "rng"] {
+        assert!(keys.contains(&key), "{key} in {saved}");
+    }
+    let mut loaded: KitRng = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(loaded, rng);
+    assert_eq!((loaded.seed(), loaded.draws()), (11, 1000));
+    for _ in 0..64 {
+        assert_eq!(loaded.next_u32(), rng.next_u32());
+    }
+    assert_eq!(loaded.draws(), 1064);
+    let mut even = saved.clone();
+    even["rng"]["inc"] = serde_json::json!(2);
+    assert!(
+        serde_json::from_value::<KitRng>(even).is_err(),
+        "an even increment"
+    );
+    let mut extra = saved;
+    extra["roll"] = serde_json::json!(1);
+    assert!(serde_json::from_value::<KitRng>(extra).is_err());
+}

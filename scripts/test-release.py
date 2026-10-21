@@ -812,6 +812,31 @@ The MIT License (MIT)
                 self.assertRegex(readme, rf"\n  {re.escape(run)} +the starting game every new Tungsten project gets\n")
                 self.assertIn(f"Template's logs and crash reports go to {folder}.", self.readme_text(archive))
 
+    def test_package_ships_a_folder_game_example_from_its_folder(self):
+        """An example whose folder holds its own tungsten.json runs from it, as a template does: its
+        config, bindings and assets ship under its folder, and its log folder joins the README;
+        the other examples keep the shared root files (D-196)."""
+        self.template()
+        self.write("examples/01_demo/tungsten.json", '{ "game": { "id": "demo-game" } }')
+        self.write("examples/01_demo/input.json", "{}")
+        self.write("examples/01_demo/src/main.rs", "fn main() {}")
+        self.assertEqual(rel.folder_games(self.root), [("tungsten-template-basic", "templates/basic"),
+                                                       ("example-01-demo", "examples/01_demo")])
+        self.bins(LINUX, "")
+        archive = self.package("v0.26.0", LINUX)
+        names = set(self.members(archive))
+        for path in ("example-01-demo", "data/bin/x86-64/example-01-demo", "data/examples/01_demo/tungsten.json",
+                     "data/examples/01_demo/input.json", "data/examples/01_demo/assets/manifest.json",
+                     "data/templates/basic/tungsten.json", "data/tungsten.json", "data/input.json",
+                     "data/assets/manifest.json"):
+            self.assertIn(path, names)
+        for path in ("data/examples/01_demo/Cargo.toml", "data/examples/01_demo/src/main.rs"):
+            self.assertNotIn(path, names, "only what the game reads")
+        readme = self.readme_text(archive)
+        self.assertIn("example-01-demo's logs and crash reports go to ~/.local/state/demo-game/logs.", readme)
+        self.assertIn("Template's logs and crash reports go to ~/.local/state/tungsten-template-basic/logs.",
+                      readme)
+
     def test_the_fixtures_crate_is_not_shipped(self):
         """A workspace member that no archive carries: the test-only fixtures crate (D-193)."""
         self.edit("Cargo.toml", '    "examples/02_bare",\n', '    "examples/02_bare",\n    "examples/03_fixtures",\n')
@@ -842,7 +867,8 @@ The MIT License (MIT)
         source = (repo / "tools/launcher/src/main.rs").read_text()
         table = re.search(r"const FOLDERS: \[\(&str, &str\); \d+\] = \[(.*?)\];", source, re.S)
         folders = re.findall(r'\("([^"]+)", "([^"]+)"\)', table[1])
-        self.assertEqual(folders, [(rel.title(name), folder) for name, folder in rel.templates(repo)])
+        self.assertEqual(folders, [(rel.title(name), folder) for name, folder in rel.folder_games(repo)])
+        self.assertIn(("Platformer", "examples/01_platformer"), folders)
         self.assertEqual(re.search(r'const DATA: &str = "([^"]+)";', source)[1], rel.DATA)
 
     def test_every_shipped_package_has_a_title(self):

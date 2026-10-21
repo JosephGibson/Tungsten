@@ -6,8 +6,8 @@
 //!
 //! A run starts with [`start_run`] and ends at the title. Saves go to eleven
 //! slots of `SaveSlots`: the autosave, written when the game pauses, when it
-//! quits to the title or exits and on a run's first frame, and ten the
-//! player saves to. A slot that fails to load (a newer build's, or a damaged
+//! quits to the title or exits, and once a run's first frame or the game's
+//! [`request_autosave`] has a save to capture, and ten the player saves to. A slot that fails to load (a newer build's, or a damaged
 //! file) is never loaded or overwritten for the rest of the run of the
 //! program. One screen change runs at a time, and screens act only when
 //! none runs: a push acts at once, a pop after its screen fades out, and a
@@ -33,7 +33,8 @@ use tungsten::core::{
     SaveSlots, ScaleFactor, Schedule, Settings, SoundRegistry, Stage, Time, Voice, World, system,
 };
 use tungsten::{
-    DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack, request_exit,
+    DebugHud, Exiting, GameState, HudCorner, Plugin, RootCover, StateId, StateStack,
+    plugins::STATE_DISPATCHER, request_exit,
 };
 
 use crate::game;
@@ -120,8 +121,9 @@ pub struct RunState {
     /// The slot this run last loaded or saved successfully, which Retry
     /// loads; `None` starts Retry fresh.
     pub retry_from: Option<&'static str>,
-    /// The run's first-frame autosave is due.
-    first_save: bool,
+    /// An autosave is due, the run's first or a requested one: it waits
+    /// until `capture` returns a save.
+    autosave_due: bool,
 }
 
 /// One slot as the shell reads it.
@@ -138,8 +140,8 @@ pub enum SlotState {
 }
 
 /// A change of run [`goto`] asked for, which `shell_flow` applies under
-/// the curtain: the replace, and the incoming run's state, staged so a save
-/// before the swap holds the old run whole.
+/// the curtain: the replace, and the incoming run's state, staged until
+/// `shell_save` has run before the replace, so a save holds one run whole.
 struct Flow {
     replace: Box<dyn FnOnce(&mut StateStack)>,
     run: Option<RunState>,
@@ -171,6 +173,8 @@ pub(crate) struct Shell {
     pub(crate) settings_open: bool,
     pub(crate) warned: bool,
     change: Option<Change>,
+    /// The run a change of run swapped in, live after the next `shell_save`.
+    incoming: Option<RunState>,
     /// Slots that failed to load: never loaded or written this run.
     pub(crate) read_only: Vec<&'static str>,
 }
@@ -205,8 +209,8 @@ impl Plugin for ShellPlugin {
             hud.corner = HudCorner::TopRight;
         }
         schedule.add(Stage::Startup, system("shell_start", start));
-        // `shell_frame` first, so a run's first-frame autosave waits for the
-        // frame after `shell_flow` swapped the run in.
+        let save = system("shell_save", save_due).before(STATE_DISPATCHER);
+        schedule.add(Stage::PreUpdate, save);
         schedule.add(Stage::Update, system("shell_frame", frame));
         schedule.add(Stage::Update, system("shell_flow", flow));
         schedule.add(Stage::FixedUpdate, system("shell_checkpoint", checkpoint));
@@ -250,9 +254,20 @@ pub fn start_run(world: &mut World, start: RunStart, from: Option<&'static str>)
         playtime_secs,
         checkpointed: false,
         retry_from: from,
-        first_save: true,
+        autosave_due: true,
     };
     set_flow(world, game::gameplay(start), Some(run));
+}
+
+/// Asks for an autosave at the start of the next frame whose `capture`
+/// returns a save; nothing with no live run or during a change of run, whose
+/// first autosave covers it.
+pub fn request_autosave(world: &mut World) {
+    if !flow_pending(world)
+        && let Some(run) = world.get_resource_mut::<RunState>()
+    {
+        run.autosave_due = true;
+    }
 }
 
 /// Replaces the whole stack with `state` behind the curtain: a screen's
@@ -273,11 +288,11 @@ fn set_flow(world: &mut World, state: impl GameState, run: Option<RunState>) {
     world.resource_mut::<Shell>().change = Some(Change::Curtain(curtain, 0.0, flow));
 }
 
-/// Whether a [`goto`] waits for the curtain.
+/// Whether a [`goto`] waits for the curtain, or its run for the replace.
 #[must_use]
 pub fn flow_pending(world: &World) -> bool {
-    let change = &world.resource::<Shell>().change;
-    matches!(change, Some(Change::Curtain(_, _, Some(_))))
+    let shell = world.resource::<Shell>();
+    matches!(shell.change, Some(Change::Curtain(_, _, Some(_)))) || shell.incoming.is_some()
 }
 
 /// `shell_flow`: the closing screen's pop and the curtain's swap once their
@@ -316,9 +331,7 @@ fn curtain(world: &mut World, root: WidgetId, secs: f32, mut flow: Option<Flow>)
             stack.request_pop();
         }
         replace(stack);
-        if let Some(run) = run {
-            world.insert_resource(run);
-        }
+        world.resource_mut::<Shell>().incoming = run;
     }
     world.resource_mut::<Shell>().change = Some(Change::Curtain(root, secs, flow));
 }
@@ -437,13 +450,15 @@ pub fn newest(slots: &[(&'static str, SlotState)]) -> Option<(&'static str, Save
 /// Saves the live run to `slot`; `false` when there is nothing to save,
 /// no folder, a read-only slot or a failed write, which keeps the old file.
 pub fn save_to(world: &mut World, slot: &'static str) -> bool {
-    let Some(save) = save::capture(world) else {
-        return false;
-    };
+    save::capture(world).is_some_and(|save| write(world, slot, &save))
+}
+
+/// Writes `save` to `slot`, as [`save_to`] does once it has one.
+fn write(world: &mut World, slot: &'static str, save: &SaveGame) -> bool {
     if world.resource::<Shell>().read_only.contains(&slot) {
         return false;
     }
-    match world.resource::<SaveSlots>().save(slot, &save) {
+    match world.resource::<SaveSlots>().save(slot, save) {
         Ok(()) => {
             let run = world.resource_mut::<RunState>();
             run.checkpointed = true;
@@ -537,23 +552,37 @@ impl Menu {
     }
 }
 
-/// `shell_frame`: the F11 and F9 keys, the run's playtime and first
-/// autosave, the exit's saves (the run, and the Settings screen's changes
-/// while it is open), the menu sounds, the pause key and focus loss.
+/// `shell_save`, before the dispatcher, so a capture reads the world as the
+/// last frame's command flush left it: the run's due autosave once
+/// `capture` returns a save, even if the write then fails, or its exit
+/// save; then a staged run goes live for its replace.
+fn save_due(world: &mut World) {
+    let due = world
+        .get_resource::<RunState>()
+        .is_some_and(|run| run.autosave_due);
+    let exit = world.has_resource::<Exiting>() && !world.resource::<Shell>().exit_saved;
+    if let Some(save) = (due || exit).then(|| save::capture(world)).flatten() {
+        world.resource_mut::<RunState>().autosave_due = false;
+        write(world, AUTOSAVE, &save);
+    }
+    if let Some(run) = world.resource_mut::<Shell>().incoming.take() {
+        world.insert_resource(run);
+    }
+}
+
+/// `shell_frame`: the F11 and F9 keys, the run's playtime, the exit's save
+/// of the Settings screen's changes while it is open, after a confirm's
+/// safe answer, the menu sounds, the pause key and focus loss.
 fn frame(world: &mut World) {
     widgets::recap(world);
     display_keys(world);
     let delta = f64::from(world.resource::<Time>().delta());
-    let first_save = world.get_resource_mut::<RunState>().is_some_and(|run| {
+    if let Some(run) = world.get_resource_mut::<RunState>() {
         run.playtime_secs += delta;
-        std::mem::take(&mut run.first_save)
-    });
-    let exit_save = world.has_resource::<Exiting>()
-        && !std::mem::replace(&mut world.resource_mut::<Shell>().exit_saved, true);
-    if first_save || exit_save {
-        autosave(world);
     }
-    if exit_save && world.resource::<Shell>().settings_open {
+    let exit = world.has_resource::<Exiting>()
+        && !std::mem::replace(&mut world.resource_mut::<Shell>().exit_saved, true);
+    if exit && world.resource::<Shell>().settings_open {
         settings::save(world);
     }
     menu_sounds(world);

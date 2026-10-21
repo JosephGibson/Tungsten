@@ -1,0 +1,32 @@
+{
+  "sprite": {
+    "asset_id": "ex10_iron_scrap_0",
+    "z_order": 13
+  },
+  "components": {
+    "iron_scrap": {
+      "variant": 0
+    },
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          15,
+          15
+        ]
+      },
+      "offset": [
+        16,
+        16
+      ],
+      "mass": 12.5,
+      "restitution": 0.2
+    },
+    "spawn_children": [
+      {
+        "prefab": "ex10_iron_scrap_frost"
+      }
+    ]
+  }
+}

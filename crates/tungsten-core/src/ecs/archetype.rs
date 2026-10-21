@@ -100,6 +100,8 @@ pub(crate) trait AnyColumn: Any {
     fn swap_remove_drop(&mut self, row: usize);
     /// Empty column of same concrete type.
     fn new_empty(&self) -> Box<dyn AnyColumn>;
+    /// [`type_name`](std::any::type_name) of the component type it stores.
+    fn type_name(&self) -> &'static str;
 }
 
 impl dyn AnyColumn {
@@ -143,6 +145,10 @@ impl<T: 'static> AnyColumn for TypedVec<T> {
 
     fn new_empty(&self) -> Box<dyn AnyColumn> {
         Box::new(TypedVec::<T>(Vec::new()))
+    }
+
+    fn type_name(&self) -> &'static str {
+        std::any::type_name::<T>()
     }
 }
 

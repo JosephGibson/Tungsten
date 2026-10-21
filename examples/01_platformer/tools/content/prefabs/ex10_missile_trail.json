@@ -1,0 +1,7 @@
+{
+  "components": {
+    "particle_emitter": {
+      "config": "ex10_spell_trail"
+    }
+  }
+}

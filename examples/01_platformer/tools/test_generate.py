@@ -13,7 +13,7 @@ class AuthoringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.images,cls.lit,cls.animations=build_art()
-        cls.tiled,_,cls.source=build_level(cls.images)
+        cls.tiled,cls.source,_=build_level(cls.images,cls.lit)
         cls.ids={'ex10_'+n for n in cls.images}
 
     def test_palette_rejects_malformed_symbols_rgba_and_transparency(self):

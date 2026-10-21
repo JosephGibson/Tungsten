@@ -455,6 +455,138 @@ fn a_blocking_tag_refuses_the_effect() {
 }
 
 #[test]
+fn restore_stops_at_the_max_stat() {
+    let (mut world, mut schedule) = rig();
+    let regen = DataRef::inline(
+        Effect::new()
+            .with_period(0.1)
+            .with_restore("mana", 1.5, "max_mana"),
+    );
+    let mage = world.spawn_with((Stats::new().with("mana", 95.0).with("max_mana", 100.0),));
+    let full = world.spawn_with((Stats::new().with("mana", 120.0).with("max_mana", 100.0),));
+    let mute = world.spawn_with((Stats::new().with("max_mana", 100.0),));
+    for entity in [mage, full, mute] {
+        EffectRequest::new(entity, regen.clone()).apply(&mut world);
+    }
+    let base = |world: &World, entity: Entity| world.get::<Stats>(entity).unwrap().base("mana");
+    steps(&mut world, &mut schedule, 12);
+    assert_eq!(base(&world, mage), Some(98.0), "two payloads in 0.2 s");
+    steps(&mut world, &mut schedule, 12);
+    assert_eq!(
+        base(&world, mage),
+        Some(100.0),
+        "capped at max_mana's value"
+    );
+    steps(&mut world, &mut schedule, 60);
+    assert_eq!(base(&world, mage), Some(100.0));
+    assert_eq!(
+        base(&world, full),
+        Some(120.0),
+        "a base above the cap is left alone"
+    );
+    assert_eq!(base(&world, mute), None, "a stat it lacks is not added");
+    assert!(skipped(&world, mute).contains(&("restore", NO_RESTORE)));
+    // The cap is the max stat's value, its modifiers counted.
+    world
+        .get_mut::<Stats>(mage)
+        .unwrap()
+        .add_modifier("max_mana", "ring", Modifier::Add(10.0));
+    steps(&mut world, &mut schedule, 60);
+    assert_eq!(base(&world, mage), Some(110.0));
+    // An instant restore lands once, at the application.
+    let potion = DataRef::inline(
+        Effect::new()
+            .with_duration(0.0)
+            .with_restore("mana", 30.0, "max_mana"),
+    );
+    world.get_mut::<Stats>(mage).unwrap().set_base("mana", 50.0);
+    EffectRequest::new(mage, potion).apply(&mut world);
+    assert_eq!(base(&world, mage), Some(80.0));
+}
+
+#[test]
+fn a_suppressing_tag_pauses_and_resumes_a_running_effect() {
+    let (mut world, mut schedule) = rig();
+    let regen = DataRef::inline(
+        Effect::new()
+            .with_duration(2.0)
+            .with_period(0.1)
+            .with_restore("mana", 1.0, "max_mana")
+            .with_grant(["status.warm"])
+            .with_modifier("armor", Modifier::Add(1.0))
+            .with_suppressed_by(["status.frozen"]),
+    );
+    let stats = || {
+        Stats::new()
+            .with("mana", 0.0)
+            .with("max_mana", 100.0)
+            .with("armor", 0.0)
+    };
+    let held = world.spawn_with((stats(),));
+    let free = world.spawn_with((stats(),));
+    let frozen = world.spawn_with((stats(), Tags::new(["status.frozen"])));
+    for entity in [held, free] {
+        EffectRequest::new(entity, regen.clone()).apply(&mut world);
+    }
+    assert_eq!(
+        EffectRequest::new(frozen, regen).apply(&mut world),
+        Applied::Applied,
+        "an application while held still applies"
+    );
+    let mana = |world: &World, entity: Entity| world.get::<Stats>(entity).unwrap().base("mana");
+    let clock = |world: &World, entity: Entity| {
+        world
+            .get::<Effects>(entity)
+            .and_then(|effects| effects.instances().next())
+            .map(|instance| (instance.left(), instance.period_left))
+    };
+    let mut ended = [None, None];
+    let mut during = None;
+    for n in 0..200 {
+        if n == 15 {
+            world.get_mut::<Tags>(held).unwrap().insert("status.frozen");
+            during = clock(&world, held);
+        }
+        if n == 45 {
+            assert_eq!(clock(&world, held), during, "its time and period held");
+            assert_eq!(mana(&world, held), Some(2.0), "no payload while held");
+            assert!(has_tag(&world, held, "status.warm"), "its tags stay");
+            assert_eq!(stat(&world, held, "armor"), Some(1.0), "its modifiers stay");
+            world.get_mut::<Tags>(held).unwrap().remove("status.frozen");
+        }
+        step(&mut world, &mut schedule, STEP);
+        for (k, entity) in [held, free].into_iter().enumerate() {
+            if ended[k].is_none() && instances(&world, entity).is_empty() {
+                ended[k] = Some(n);
+            }
+        }
+    }
+    let (held_end, free_end) = (ended[0].unwrap(), ended[1].unwrap());
+    assert_eq!(held_end, free_end + 30, "it ends 30 held steps later");
+    assert_eq!(mana(&world, held), mana(&world, free), "the same payloads");
+    assert_eq!(mana(&world, frozen), Some(0.0));
+    assert_eq!(clock(&world, frozen), Some((Some(2.0), Some(0.1))));
+    let held_lines = |entity| {
+        skipped(&world, entity)
+            .into_iter()
+            .filter(|&(action, why)| (action, why) == ("tick", SUPPRESSED))
+            .count()
+    };
+    assert_eq!(held_lines(held), 1, "traced once per suppression");
+    assert_eq!(held_lines(frozen), 1);
+    assert_eq!(held_lines(free), 0);
+    // Each suppressing tag is checked at load.
+    let undeclared = Effect::new().with_suppressed_by(["status.nope"]);
+    assert!(undeclared.check(&world).is_err());
+    assert!(
+        Effect::new()
+            .with_suppressed_by(["status.frozen"])
+            .check(&world)
+            .is_ok()
+    );
+}
+
+#[test]
 fn an_instant_effect_lands_its_payload_and_queues_its_on_expire() {
     let (mut world, mut schedule) = rig();
     let mark = insert(
@@ -982,6 +1114,8 @@ fn the_data_form_round_trips_and_refuses_bad_values() {
         "modifiers": [{ "stat": "move_speed", "modifier": { "pct": -0.2 } }],
         "resist": [{ "tag": "digital", "modifier": { "add": 0.25 } }],
         "grant": ["status.burning"], "blocked_by": ["status.wet"],
+        "restore": { "stat": "mana", "amount": 1.5, "max": "max_mana" },
+        "suppressed_by": ["casting", "casting"],
         "scale": { "curve": "burn_scale", "into": ["duration", "periodic", "modifiers"] },
         "on_expire": "thawed"
     }))
@@ -997,9 +1131,13 @@ fn the_data_form_round_trips_and_refuses_bad_values() {
             .with_resist("digital", Modifier::Add(0.25))
             .with_grant(["status.burning"])
             .with_blocked_by(["status.wet"])
+            .with_restore("mana", 1.5, "max_mana")
+            .with_suppressed_by(["casting"])
             .with_scale(DataRef::by_id("burn_scale"), Scaled::ALL)
             .with_on_expire(DataRef::by_id("thawed"))
     );
+    assert_eq!(effect.restore(), Some(("mana", 1.5, "max_mana")));
+    assert_eq!(effect.suppressed_by(), ["casting"]);
     let back = serde_json::to_value(&effect).unwrap();
     assert_eq!(serde_json::from_value::<Effect>(back).unwrap(), effect);
     assert_eq!(
@@ -1008,6 +1146,7 @@ fn the_data_form_round_trips_and_refuses_bad_values() {
             "duration": null, "period": null, "damage": 0.0, "heal": 0.0,
             "stack": { "limit": 1, "refresh": "refresh", "expire": "clear" },
             "modifiers": [], "resist": [], "grant": [], "blocked_by": [],
+            "restore": null, "suppressed_by": [],
             "scale": null, "on_expire": null
         })
     );
@@ -1024,6 +1163,14 @@ fn the_data_form_round_trips_and_refuses_bad_values() {
         json!({ "scale": { "curve": "x", "into": ["heal"] } }),
         json!({ "scale": { "into": [] } }),
         json!({ "extra": 1 }),
+        json!({ "restore": { "stat": "mana", "amount": 1 } }),
+        json!({ "restore": { "amount": 1, "max": "max_mana" } }),
+        json!({ "restore": { "stat": "mana", "amount": 0, "max": "max_mana" } }),
+        json!({ "restore": { "stat": "mana", "amount": -1, "max": "max_mana" } }),
+        json!({ "restore": { "stat": "Mana", "amount": 1, "max": "max_mana" } }),
+        json!({ "restore": { "stat": "mana", "amount": 1, "max": "max mana" } }),
+        json!({ "restore": { "stat": "mana", "amount": 1, "max": "max_mana", "per": 1 } }),
+        json!({ "suppressed_by": ["Bad Tag"] }),
     ] {
         assert!(
             serde_json::from_value::<Effect>(bad.clone()).is_err(),
@@ -1051,6 +1198,26 @@ fn the_data_form_round_trips_and_refuses_bad_values() {
             .is_err()
     );
     assert!(std::panic::catch_unwind(|| Effect::new().with_typed_damage("x", -1.0)).is_err());
+    for (stat, amount, max) in [
+        ("Mana", 1.0, "max_mana"),
+        ("mana", 1.0, "max mana"),
+        ("mana", 0.0, "max_mana"),
+        ("mana", f32::NAN, "max_mana"),
+        ("mana", f32::INFINITY, "max_mana"),
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| Effect::new().with_restore(stat, amount, max)).is_err(),
+            "{stat} {amount} {max}"
+        );
+    }
+    assert!(std::panic::catch_unwind(|| Effect::new().with_suppressed_by(["Bad Tag"])).is_err());
+    assert_eq!(
+        Effect::new()
+            .with_suppressed_by(["b", "a"])
+            .with_suppressed_by(["b"])
+            .suppressed_by(),
+        ["a", "b"]
+    );
     let typed = Effect::new()
         .with_damage(4.0)
         .with_typed_damage("a", 1.0)

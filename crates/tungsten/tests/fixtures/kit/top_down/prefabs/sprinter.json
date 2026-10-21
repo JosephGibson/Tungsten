@@ -1,0 +1,40 @@
+{
+  "tag": "sprinter",
+  "components": {
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          10
+        ]
+      }
+    },
+    "top_down_mover": {
+      "speed": 120
+    },
+    "action_input": {
+      "move": [
+        "move_left",
+        "move_right",
+        "move_up",
+        "move_down"
+      ],
+      "slots": {
+        "dash": "dash"
+      }
+    },
+    "stats": {
+      "move_speed": 120,
+      "stamina": 50,
+      "max_stamina": 100
+    },
+    "effects": [
+      "stamina_regen"
+    ],
+    "abilities": [
+      "sprint"
+    ]
+  }
+}

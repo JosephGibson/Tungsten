@@ -9,9 +9,18 @@ from PIL import __version__ as pillow_version
 from art import TOOLS, auxiliary, build_art, relief, validate_art
 from effects import LINEAR_FILTER
 from level import build_level
-from sfx import HAND_AUTHORED_SOUNDS, build_sounds
+from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
 
 ROOT=TOOLS.parent
+# The template whose shell 01 copies: its theme, fonts and damage-flash
+# material come with it, copied byte for byte so `--check` catches drift.
+TEMPLATE=ROOT.parent.parent/'templates'/'basic'
+SHELL_ASSETS=('ui/themes/shell.json','fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
+    'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt','shaders/damage_flash.wgsl')
+SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes')
+# Prefab and data sources, copied verbatim under assets/ and listed by file:
+# `prefabs/<id>.json`, `data/<kind>/<id>.json`.
+CONTENT=TOOLS/'content'
 
 
 def particle_configs():
@@ -182,6 +191,22 @@ def particle_configs():
         scale_over_life=[[0, .3], [.3, 1.2], [.8, 2], [1, 2.5]],
         color_over_life=[[0, [.9, 1, 1, 1]], [.4, [.4, .8, 1, 1]], [1, [.2, .55, 1, 0]]],
         alpha_over_life=[[0, 0], [.12, .65], [.6, .4], [1, 0]])
+    # The fire spray: sparks streaming along the aim through a hot haze, a
+    # shorter reach than the cold spray's.
+    fire_ramp = [[0, [1, .95, .6, 1]], [.45, [1, .5, .12, 1]], [1, [.45, .12, .05, 0]]]
+    configs['flame_spray'] = dict(
+        config('spark', 120, 220, .4, 620, .22, direction=(1, 0), spread=28),
+        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
+                              speed=dict(min=420, max=620)),
+        lifetime=dict(min=.25, max=.4), gravity=[0, -60], drag_per_sec=.3,
+        angular_velocity=dict(min=-6, max=6), start_scale=dict(min=.1, max=.24),
+        scale_over_life=[[0, .6], [.2, 1], [1, .2]],
+        color_over_life=fire_ramp, alpha_over_life=[[0, .6], [.1, 1], [.7, .8], [1, 0]])
+    configs['flame_mist'] = dict(
+        configs['ice_mist'],
+        color_over_life=[[0, [1, .9, .5, 1]], [.4, [1, .45, .1, 1]], [1, [.3, .1, .05, 0]]],
+        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
+                              speed=dict(min=380, max=520)))
     configs['ice_contact'] = dict(
         config('ice_crystal', 48, 100, .55, 190, .2, spread=360),
         initial_velocity=dict(kind='radial', speed=dict(min=55, max=190)),
@@ -208,6 +233,32 @@ SHADERS=('soft_glow',)
 MATERIALS={'soft_halo':('soft_glow',[1.8,0.0,1.0,0.1]),'soft_flame':('soft_glow',[2.2,0.35,1.0,0.6])}
 
 
+def mirror_facing(images,lit,animations):
+    """Left-facing copies of the courier's frames and clips, and of the fireball's:
+    nothing flips a sprite in place, so the kit's animator, and 01's fireballs, show
+    mirrored art by facing. Their maps derive from the mirrored silhouettes."""
+    from PIL import ImageOps
+    for clip in sorted(c for c in animations if c.startswith('player') or c=='fireball'):
+        frames=[]
+        for frame in animations[clip]['frames']:
+            name=frame['sprite'].removeprefix('ex10_');left=name+'_left'
+            images[left]=ImageOps.mirror(images[name])
+            if name in lit:lit.add(left)
+            frames.append(dict(frame,sprite='ex10_'+left))
+        animations[clip+'_left']=dict(animations[clip],frames=frames)
+
+
+def cast_twins(images,lit):
+    """Each courier frame's twin on a cast, its lantern hot (`actors.cast_frame`):
+    01 shows it for a moment after each cast. A left-facing twin is the
+    right-facing one mirrored, as its frame is."""
+    from PIL import ImageOps
+    from actors import cast_frame
+    for name in sorted(n for n in images if n.startswith('player') and not n.endswith('_left')):
+        twin=cast_frame(images[name]);images[name+'_cast']=twin;lit.add(name+'_cast')
+        if name+'_left' in images:images[name+'_cast_left']=ImageOps.mirror(twin);lit.add(name+'_cast_left')
+
+
 def write_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
@@ -215,11 +266,15 @@ def write_json(path,data):
 
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
-    images,lit,animations=build_art();validate_art(images,lit)
-    tiled,rust,source=build_level(images)
+    images,lit,animations=build_art();mirror_facing(images,lit,animations);cast_twins(images,lit)
+    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())
+    template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
+    for section in SHELL_SECTIONS:manifest[section]=template[section]
+    manifest['shaders']['damage_flash']=template['shaders']['damage_flash']
+    manifest['materials']['damage_flash']=template['materials']['damage_flash']
     owned=[]
     def output(path):
         owned.append(path);out=dest/path;out.parent.mkdir(parents=True,exist_ok=True);return out
@@ -244,6 +299,16 @@ def generate(dest):
     write_json(output('assets/prefabs/ambient_emitter.json'),dict(components=dict(
         ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
     manifest['prefabs']['ex10_ambient_emitter']=dict(path='prefabs/ambient_emitter.json')
+    for path in SHELL_ASSETS:
+        output('assets/'+path).write_bytes((TEMPLATE/'assets'/path).read_bytes())
+    for item in sorted(CONTENT.rglob('*')):
+        if not item.is_file():continue
+        path=item.relative_to(CONTENT).as_posix()
+        output('assets/'+path).write_bytes(item.read_bytes())
+        parts=path.removesuffix('.json').split('/')
+        if parts[0]=='prefabs' and len(parts)==2:manifest['prefabs'][parts[1]]=dict(path=path)
+        elif parts[0]=='data' and len(parts)==3:manifest.setdefault('data',{}).setdefault(parts[1],{})[parts[2]]=dict(path=path)
+        else:raise ValueError('content outside prefabs/ and data/<kind>/: '+path)
     # The soft-glow shader is authored in tools/shaders and owned like any output.
     for name in SHADERS:
         path=f'shaders/{name}.wgsl'
@@ -256,13 +321,22 @@ def generate(dest):
     # them or an explicitly hand-authored file.
     sounds = build_sounds()
     for name, data in sorted(sounds.items()):
+        if name in LOOPS and (problem := seam_problem(name, data)):
+            raise ValueError(f'loop {name}: {problem}')
         output('assets/sounds/' + name).write_bytes(data)
     authored = {'sounds/' + name for name in sounds} | set(HAND_AUTHORED_SOUNDS)
     for sound in manifest['sounds'].values():
         if sound['path'] not in authored:
             raise ValueError(f"sound {sound['path']} is neither synthesized nor hand-authored")
     write_json(output('assets/tilemaps/level.tmj'),tiled)
-    output('src/level_layout.rs').write_text(rust)
+    # Where each courier frame's lantern flame sits, which the lantern's glow follows.
+    path='data/lantern_anchors/player.json'
+    write_json(output('assets/'+path),{'ex10_'+name:anchor for name,anchor in source['lantern_anchors']})
+    manifest.setdefault('data',{}).setdefault('lantern_anchors',{})['player']=dict(path=path)
+    # The prefabs the map's object layers name, one per class.
+    for name,prefab in sorted(level_prefabs.items()):
+        path=f'prefabs/{name}.json';write_json(output('assets/'+path),prefab)
+        manifest['prefabs'][name]=dict(path=path)
     validate_references(manifest,animations,configs,source)
     write_json(output('assets/manifest.json'),manifest)
     owned.append('tools/outputs.json')
@@ -271,10 +345,10 @@ def generate(dest):
 
 
 def validate_references(manifest,animations,configs,source):
-    ids=[s for entries in manifest.values() for s in entries]
-    if len(ids)!=len(set(ids)) or any(not s.startswith('ex10_') for s in ids):raise ValueError('duplicate or unprefixed ID')
-    shared=json.loads((ROOT.parent.parent/'assets/manifest.json').read_text())
-    if set(ids)&{s for entries in shared.values() if isinstance(entries,dict) for s in entries}:raise ValueError('shared manifest ID collision')
+    # 01 loads its manifest as its only root, so IDs need only be unique in
+    # it; the art's keep their `ex10_` prefix, the shell's take theirs.
+    for section in ('sprites','animations','particles'):
+        if any(not s.startswith('ex10_') for s in manifest[section]):raise ValueError('unprefixed '+section+' ID')
     sprites=set(manifest['sprites'])
     for clip in animations.values():
         for frame in clip['frames']:

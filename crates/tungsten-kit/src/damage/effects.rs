@@ -1,8 +1,8 @@
 //! Effects: timed, infinite or instant changes an entity carries, with a
 //! periodic payload, stacking, modifiers on its stats and resistances,
-//! granted and blocking tags, and a transition at the end; the `effects`
-//! data kind, the `effects` scene component and the requests that apply
-//! them.
+//! granted, blocking and suppressing tags, and a transition at the end; the
+//! `effects` data kind, the `effects` scene component and the requests that
+//! apply them.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -22,7 +22,7 @@ use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, GRID, PLATFORMER, describe,
     describe_kind, describe_shape, round_trip,
 };
-use crate::foundation::inspect::register_rows;
+use crate::foundation::inspect::register_rows_with;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::stats::{Modifier, STATS_APPLY, Stats};
 use crate::foundation::tags::{Tags, check_declared, valid_tag};
@@ -49,6 +49,7 @@ pub(crate) const EFFECTS: &str = "effects";
 const EFFECT: &str = "effect";
 const EFFECT_STACK: &str = "effect_stack";
 const EFFECT_SCALE: &str = "effect_scale";
+const EFFECT_RESTORE: &str = "effect_restore";
 const STAT_MODIFIER: &str = "stat_modifier";
 const RESIST_MODIFIER: &str = "resist_modifier";
 pub(crate) const MODIFIER: &str = "modifier";
@@ -237,7 +238,13 @@ impl FromIterator<IntoName> for Scaled {
 /// `effect#<serial>`, and leave with it; its `grant` tags go into the
 /// target's [`Tags`] and leave when no instance grants them and the entity
 /// did not carry them before; a target carrying a `blocked_by` tag refuses
-/// it. A `scale` turns the request's scale into a factor through a curve
+/// it. A `restore` raises the base of one of the target's stats with each
+/// payload, by its amount times the payload's factor as `heal` takes it, up
+/// to the value of the stat its `max` names, at once in the tick, since an
+/// ability's cost reads the base; a base at or above that cap is left
+/// alone. While the target carries a `suppressed_by` tag, a running instance
+/// holds: its time left and its period wait, no payload lands and it cannot
+/// end, while its modifiers and tags stay. A `scale` turns the request's scale into a factor through a curve
 /// whose every `y` is at least 0, which multiplies what
 /// [`Scaled`] names; a timed end applies `on_expire` to the target from
 /// the same source.
@@ -253,14 +260,16 @@ impl FromIterator<IntoName> for Scaled {
 ///   "modifiers": [{ "stat": "move_speed", "modifier": { "pct": -0.2 } }],
 ///   "resist": [{ "tag": "digital", "modifier": { "mul": 2 } }],
 ///   "grant": ["status.burning"], "blocked_by": ["status.wet"],
+///   "restore": { "stat": "mana", "amount": 1.5, "max": "max_mana" },
+///   "suppressed_by": ["casting"],
 ///   "scale": { "curve": "burn_scale", "into": ["duration", "periodic"] },
 ///   "on_expire": "thawed"
 /// }
 /// ```
 ///
-/// `damage` a number or declared damage types to amounts; the load checks
-/// its types, the tags, the curve (every `y` at least 0) and the `on_expire`
-/// effect.
+/// `damage` a number or declared damage types to amounts; a `restore` names
+/// its three fields, its amount above 0; the load checks the damage types,
+/// the tags, the curve (every `y` at least 0) and the `on_expire` effect.
 ///
 /// # Examples
 ///
@@ -301,8 +310,20 @@ pub struct Effect {
     /// Sorted and deduplicated.
     grant: Vec<String>,
     blocked_by: Vec<String>,
+    restore: Option<Restore>,
+    /// Sorted and deduplicated.
+    suppressed_by: Vec<String>,
     scale: Option<(DataRef<Curve>, Scaled)>,
     on_expire: Option<DataRef<Effect>>,
+}
+
+/// A restore payload: the stat it raises, by how much a payload, and the
+/// stat whose value caps it.
+#[derive(Debug, Clone, PartialEq)]
+struct Restore {
+    stat: String,
+    amount: f32,
+    max: String,
 }
 
 impl Default for Effect {
@@ -343,6 +364,8 @@ impl Effect {
             resist: Vec::new(),
             grant: Vec::new(),
             blocked_by: Vec::new(),
+            restore: None,
+            suppressed_by: Vec::new(),
             scale: None,
             on_expire: None,
         }
@@ -540,6 +563,50 @@ impl Effect {
         self
     }
 
+    /// The effect, raising the target's base of `stat` by `amount` with each
+    /// payload, times the payload's factor, up to the value of the stat
+    /// `max`: mana that regenerates to `max_mana`.
+    ///
+    /// # Panics
+    ///
+    /// When `stat` or `max` is not `[a-z][a-z0-9_]*`, or `amount` is not
+    /// finite and above 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_restore(mut self, stat: &str, amount: f32, max: &str) -> Self {
+        for name in [stat, max] {
+            assert!(
+                valid_stat(name),
+                "Effect::with_restore: `{name}` is not a stat name (`[a-z][a-z0-9_]*`)"
+            );
+        }
+        assert!(
+            amount.is_finite() && amount > 0.0,
+            "Effect::with_restore: amount must be finite and > 0 (got {amount})"
+        );
+        self.restore = Some(Restore {
+            stat: stat.to_owned(),
+            amount,
+            max: max.to_owned(),
+        });
+        self
+    }
+
+    /// The effect, holding a running instance while its target carries any
+    /// of `tags`: time and period wait, no payload lands, nothing ends.
+    ///
+    /// # Panics
+    ///
+    /// When a name is not a tag name.
+    #[must_use]
+    #[track_caller]
+    pub fn with_suppressed_by(mut self, tags: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let mut names = std::mem::take(&mut self.suppressed_by);
+        names.extend(tags.into_iter().map(Into::into));
+        self.suppressed_by = tag_list("Effect::with_suppressed_by", names);
+        self
+    }
+
     /// The effect, scaled: `curve` at the request's scale is the factor,
     /// which multiplies what `into` names. The load refuses a curve with a
     /// `y` below 0.
@@ -633,6 +700,21 @@ impl Effect {
         &self.blocked_by
     }
 
+    /// Its restore, when it has one: the stat it raises, the amount a
+    /// payload and the stat whose value caps it.
+    #[must_use]
+    pub fn restore(&self) -> Option<(&str, f32, &str)> {
+        self.restore
+            .as_ref()
+            .map(|restore| (restore.stat.as_str(), restore.amount, restore.max.as_str()))
+    }
+
+    /// The tags that hold a running instance, sorted.
+    #[must_use]
+    pub fn suppressed_by(&self) -> &[String] {
+        &self.suppressed_by
+    }
+
     /// Its scale curve and what the factor reaches, when it has one.
     #[must_use]
     pub fn scale(&self) -> Option<(&DataRef<Curve>, Scaled)> {
@@ -716,7 +798,9 @@ impl Effect {
     }
 
     /// The load's check: the payload's types, the tags, the curve and the
-    /// `on_expire` effect.
+    /// `on_expire` effect. A restore's stats are checked as names when it
+    /// is read, as the `stats` kind's are; a target that lacks one takes
+    /// nothing, as a modifier's stat.
     pub(crate) fn check(&self, world: &World) -> Result<(), MissingAsset> {
         self.damage.check(world)?;
         for (i, tag) in self.grant.iter().enumerate() {
@@ -724,6 +808,9 @@ impl Effect {
         }
         for (i, tag) in self.blocked_by.iter().enumerate() {
             check_declared(world, &format!("blocked_by.{i}"), tag)?;
+        }
+        for (i, tag) in self.suppressed_by.iter().enumerate() {
+            check_declared(world, &format!("suppressed_by.{i}"), tag)?;
         }
         for (i, (tag, _)) in self.resist.iter().enumerate() {
             check_declared(world, &format!("resist.{i}.tag"), tag)?;
@@ -774,6 +861,10 @@ struct EffectDef {
     grant: TagList,
     #[serde(default)]
     blocked_by: TagList,
+    #[serde(default)]
+    restore: Option<RestoreDef>,
+    #[serde(default)]
+    suppressed_by: TagList,
     #[serde(default)]
     scale: Option<ScaleDef>,
     #[serde(default)]
@@ -899,6 +990,48 @@ impl TryFrom<ResistModifierFields> for ResistModifierDef {
     }
 }
 
+/// A restore as data writes it, its three fields required.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields, try_from = "RestoreFields")]
+struct RestoreDef {
+    stat: String,
+    amount: f32,
+    max: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RestoreFields {
+    stat: String,
+    amount: f32,
+    max: String,
+}
+
+impl TryFrom<RestoreFields> for RestoreDef {
+    type Error = String;
+
+    fn try_from(fields: RestoreFields) -> Result<Self, Self::Error> {
+        for (field, name) in [("stat", &fields.stat), ("max", &fields.max)] {
+            if !valid_stat(name) {
+                return Err(format!(
+                    "{field}: `{name}` is not a stat name (`[a-z][a-z0-9_]*`)"
+                ));
+            }
+        }
+        if !(fields.amount.is_finite() && fields.amount > 0.0) {
+            return Err(format!(
+                "amount: must be finite and > 0 (got {})",
+                fields.amount
+            ));
+        }
+        Ok(Self {
+            stat: fields.stat,
+            amount: fields.amount,
+            max: fields.max,
+        })
+    }
+}
+
 /// Tag names as data writes them, each checked, sorted and deduplicated.
 #[derive(Default, Serialize, Deserialize)]
 #[serde(try_from = "Vec<String>")]
@@ -956,6 +1089,12 @@ impl TryFrom<EffectDef> for Effect {
                 .collect(),
             grant: def.grant.0,
             blocked_by: def.blocked_by.0,
+            restore: def.restore.map(|restore| Restore {
+                stat: restore.stat,
+                amount: restore.amount,
+                max: restore.max,
+            }),
+            suppressed_by: def.suppressed_by.0,
             scale: def
                 .scale
                 .map(|scale| (scale.curve, scale.into.into_iter().collect())),
@@ -988,6 +1127,12 @@ impl From<Effect> for EffectDef {
                 .collect(),
             grant: TagList(effect.grant),
             blocked_by: TagList(effect.blocked_by),
+            restore: effect.restore.map(|restore| RestoreDef {
+                stat: restore.stat,
+                amount: restore.amount,
+                max: restore.max,
+            }),
+            suppressed_by: TagList(effect.suppressed_by),
             scale: effect.scale.map(|(curve, into)| ScaleDef {
                 curve,
                 into: into.names(),
@@ -1610,6 +1755,8 @@ const NO_EFFECT: &str = "the World's data has no such effect";
 const BLOCKED: &str = "the target carries a blocking tag";
 const NO_STATS: &str = "the target has no Stats for the modifiers";
 const NO_RESIST: &str = "the target has no Resist for the modifiers";
+const NO_RESTORE: &str = "the target has no Stats with the restore's stat and its max";
+const SUPPRESSED: &str = "the target carries a suppressing tag";
 
 /// Traces why `request`'s work on `target` did not run.
 fn skip(world: &mut World, target: Entity, action: &'static str, why: &'static str) {
@@ -1704,6 +1851,55 @@ fn land_payload(
     if let Some(request) = effect.heal_request(target, source, factor) {
         request.apply(world);
     }
+    if let Some(restore) = &effect.restore {
+        restore_stat(world, target, restore, factor);
+    }
+}
+
+/// Raises `target`'s base of the restore's stat by its amount times
+/// `factor`, up to the value of its `max` stat; a base at or above that is
+/// left alone, and a target without [`Stats`] or either stat takes nothing,
+/// traced.
+fn restore_stat(world: &mut World, target: Entity, restore: &Restore, factor: f64) {
+    let Some(stats) = world.get_mut::<Stats>(target) else {
+        skip(world, target, "restore", NO_RESTORE);
+        return;
+    };
+    let (Some(base), Some(cap)) = (stats.base(&restore.stat), stats.get(&restore.max)) else {
+        skip(world, target, "restore", NO_RESTORE);
+        return;
+    };
+    if base >= cap {
+        return;
+    }
+    let raised = (f64::from(base) + f64::from(restore.amount) * factor)
+        .min(f64::from(cap))
+        .min(f64::from(f32::MAX));
+    stats.set_base(&restore.stat, raised as f32);
+}
+
+/// Lands `count` of `instance`'s restore payloads on `target` at once, when
+/// its effect has a restore.
+fn restore_instance(world: &mut World, target: Entity, instance: &EffectInstance, count: u32) {
+    let Some((restore, factor)) = definition(world, &instance.effect).and_then(|effect| {
+        Some((
+            effect.restore.clone()?,
+            effect.payload_factor(instance.factor),
+        ))
+    }) else {
+        return;
+    };
+    restore_stat(world, target, &restore, factor * f64::from(count));
+}
+
+/// Whether `entity` carries a tag that holds `instance`'s effect.
+fn suppressed(world: &World, entity: Entity, instance: &EffectInstance) -> bool {
+    definition(world, &instance.effect).is_some_and(|effect| {
+        !effect.suppressed_by.is_empty()
+            && world
+                .get::<Tags>(entity)
+                .is_some_and(|tags| effect.suppressed_by.iter().any(|tag| tags.has(tag)))
+    })
 }
 
 /// Puts `effect`'s modifiers on `target` under the instance's source,
@@ -1978,6 +2174,10 @@ struct Ticker {
     entities: Vec<Entity>,
     payloads: Vec<Payload>,
     expired: Vec<EffectInstance>,
+    /// The instances held last step and this step, as (entity, serial)
+    /// sorted by index and serial: the trace notes each suppression once.
+    suppressed: Vec<(Entity, u64)>,
+    suppressed_now: Vec<(Entity, u64)>,
 }
 
 impl Ticker {
@@ -2000,6 +2200,25 @@ impl Ticker {
             self.tick_entity(world, entity, dt);
         }
         self.entities = entities;
+        if dt > 0.0 {
+            self.suppressed_now
+                .sort_by_key(|&(entity, serial)| (entity.id(), serial));
+            std::mem::swap(&mut self.suppressed, &mut self.suppressed_now);
+            self.suppressed_now.clear();
+        }
+    }
+
+    /// Notes `entity`'s instance `serial` as held this step, tracing it
+    /// when it was not held the step before.
+    fn note_suppressed(&mut self, world: &mut World, entity: Entity, serial: u64) {
+        let held = self
+            .suppressed
+            .binary_search_by_key(&(entity.id(), serial), |&(e, s)| (e.id(), s))
+            .is_ok_and(|at| self.suppressed[at].0 == entity);
+        if !held {
+            skip(world, entity, "tick", SUPPRESSED);
+        }
+        self.suppressed_now.push((entity, serial));
     }
 
     fn tick_entity(&mut self, world: &mut World, entity: Entity, dt: f32) {
@@ -2013,13 +2232,22 @@ impl Ticker {
         if dt > 0.0 {
             let mut i = 0;
             while i < effects.instances.len() {
-                let step = tick_instance(
+                if suppressed(world, entity, &effects.instances[i]) {
+                    let serial = effects.instances[i].serial;
+                    self.note_suppressed(world, entity, serial);
+                    i += 1;
+                    continue;
+                }
+                let (step, landed) = tick_instance(
                     world,
                     entity,
                     &mut effects.instances[i],
                     dt,
                     &mut self.payloads,
                 );
+                if landed > 0 {
+                    restore_instance(world, entity, &effects.instances[i], landed);
+                }
                 match step {
                     Tick::Keep => i += 1,
                     Tick::RemoveOne => {
@@ -2074,14 +2302,15 @@ impl Ticker {
 
 /// One instance's step: its period counted down by the step's time inside
 /// its lifetime, each elapse a payload into `payloads`, at most 16; then
-/// its time left, and what its end does.
+/// its time left, and what its end does, with the elapses, which a restore
+/// lands at once.
 fn tick_instance(
     world: &World,
     entity: Entity,
     instance: &mut EffectInstance,
     dt: f32,
     payloads: &mut Vec<Payload>,
-) -> Tick {
+) -> (Tick, u32) {
     let EffectInstance {
         effect: effect_ref,
         source,
@@ -2093,6 +2322,7 @@ fn tick_instance(
     } = instance;
     let effect = definition(world, effect_ref);
     let elapsed = left.map_or(dt, |left| dt.min(left));
+    let mut landed = 0;
     match (effect.and_then(|effect| effect.period), *period_left) {
         (Some(period), Some(period_was)) => {
             let effect = effect.unwrap_or_else(|| unreachable!("the period came from it"));
@@ -2108,6 +2338,7 @@ fn tick_instance(
                 next = period;
             }
             *period_left = Some(next);
+            landed = elapses;
             let payload_factor = effect.payload_factor(*factor);
             for _ in 0..elapses {
                 if let Some(request) = effect.damage_request(entity, *source, payload_factor) {
@@ -2124,17 +2355,18 @@ fn tick_instance(
         (None, None) => {}
     }
     let Some(was) = *left else {
-        return Tick::Keep;
+        return (Tick::Keep, landed);
     };
     let rest = count_down(was, dt);
     *left = Some(rest);
     if rest > 0.0 {
-        return Tick::Keep;
+        return (Tick::Keep, landed);
     }
-    match effect.map_or(Expire::Clear, |effect| effect.expire) {
+    let end = match effect.map_or(Expire::Clear, |effect| effect.expire) {
         Expire::RemoveOne if *stacks > 1 => Tick::RemoveOne,
         _ => Tick::Clear,
-    }
+    };
+    (end, landed)
 }
 
 /// Registers the `effects` data kind and scene component, the `curves`
@@ -2156,7 +2388,9 @@ fn tick_instance(
 /// lifetime (so no payload falls past the end), each elapse queueing a
 /// periodic [`DamageRequest`](crate::DamageRequest) or
 /// [`HealRequest`](crate::HealRequest) for this step's damage resolve, at
-/// most 16 a step, and counts its time left: at 0, `clear` removes the
+/// most 16 a step, a restore's raising its stat's base at once, and counts
+/// its time left, unless the entity carries a `suppressed_by` tag, which
+/// holds the instance whole for the step: at 0, `clear` removes the
 /// instance with its modifiers and tags, sends [`EffectExpired`] and queues
 /// its `on_expire`; `remove_one` drops a stack and restarts the time, the
 /// last stack ending as `clear`. [`EFFECT_RESOLVE`] applies the step's
@@ -2184,7 +2418,11 @@ pub struct EffectsPlugin;
 impl Plugin for EffectsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
-        register_rows::<Effects>(world, "Effects");
+        register_rows_with(world, "Effects", |world, entity| {
+            world
+                .get::<Effects>(entity)
+                .map_or_else(Vec::new, |effects| effects.rows(Some((world, entity))))
+        });
         register_curves(world);
         describe_effects(world);
         world.register_event::<EffectApplied>();
@@ -2339,6 +2577,22 @@ fn describe_effects(world: &mut World) {
         )
         .field(
             FieldDescription::new(
+                "restore",
+                FieldType::Shape(EFFECT_RESTORE),
+                "raises one of the target's stat bases with each payload, at once in the tick, up to another stat's value",
+            )
+            .default("null"),
+        )
+        .field(
+            FieldDescription::new(
+                "suppressed_by",
+                FieldType::List(Box::new(FieldType::Tag)),
+                "tags that hold a running instance: its time and period wait, no payload lands; the load checks each",
+            )
+            .default("[]"),
+        )
+        .field(
+            FieldDescription::new(
                 "scale",
                 FieldType::Shape(EFFECT_SCALE),
                 "a curve at the request's scale, multiplying what `into` names; the load refuses a `y` below 0",
@@ -2385,6 +2639,30 @@ fn describe_effects(world: &mut World) {
             )
             .sample("{}")
             .roundtrip(round_trip::<StackDef>),
+        ComponentDescription::new(
+            EFFECT_RESTORE,
+            "A payload that raises one of the target's stat bases, capped by another stat.",
+        )
+        .field(FieldDescription::new(
+            "stat",
+            FieldType::Text,
+            "the stat whose base it raises, `[a-z][a-z0-9_]*`; a target without it takes nothing",
+        ))
+        .field(FieldDescription::new(
+            "amount",
+            FieldType::F32 {
+                min: Bound::Exclusive(0.0),
+                max: Bound::Open,
+            },
+            "added to the base with each payload, times the payload's factor",
+        ))
+        .field(FieldDescription::new(
+            "max",
+            FieldType::Text,
+            "the stat whose value caps the base; a base already there is left alone",
+        ))
+        .sample(r#"{ "stat": "mana", "amount": 1.5, "max": "max_mana" }"#)
+        .roundtrip(round_trip::<RestoreDef>),
         ComponentDescription::new(STAT_MODIFIER, "A modifier on one of the target's stats.")
             .field(FieldDescription::new(
                 "stat",
@@ -2466,6 +2744,15 @@ fn describe_effects(world: &mut World) {
 impl Inspectable for Effects {
     /// Each instance in a line, the pending entries and the granted tags.
     fn inspect_rows(&self) -> Vec<(&'static str, String)> {
+        self.rows(None)
+    }
+}
+
+impl Effects {
+    /// [`inspect_rows`](Inspectable::inspect_rows); with the World and the
+    /// entity, an instance's line also names its restore and whether a tag
+    /// holds it.
+    fn rows(&self, at: Option<(&World, Entity)>) -> Vec<(&'static str, String)> {
         let name = |effect: &DataRef<Effect>| effect.id().unwrap_or("inline").to_owned();
         let mut rows: Vec<(&'static str, String)> = self
             .instances
@@ -2486,6 +2773,16 @@ impl Inspectable for Effects {
                 }
                 if let Some(source) = instance.source {
                     let _ = write!(line, ", from {source}");
+                }
+                if let Some((world, entity)) = at {
+                    if let Some((stat, ..)) =
+                        definition(world, &instance.effect).and_then(Effect::restore)
+                    {
+                        let _ = write!(line, ", restores {stat}");
+                    }
+                    if suppressed(world, entity, instance) {
+                        line.push_str(", suppressed");
+                    }
                 }
                 ("effect", line)
             })

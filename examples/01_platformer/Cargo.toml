@@ -5,15 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 publish = false
 
+# A game on the template: `src/lib.rs` for the game, `src/main.rs` to run it
+# from this folder and `tests/game/` on the engine's headless harness. The
+# workspace's lints stay off, as in the template, whose shell `src/shell/`
+# copies byte for byte.
+
 [dependencies]
-tungsten = { workspace = true }
-glam = { workspace = true }
 anyhow = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
+tungsten = { workspace = true }
 
 [dev-dependencies]
-# The headless test harness, `tungsten::testing` (D-110).
+serde_json = { workspace = true }
 tungsten = { workspace = true, features = ["testing"] }
-
-[lints]
-workspace = true

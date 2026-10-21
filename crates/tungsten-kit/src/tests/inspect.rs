@@ -1,14 +1,14 @@
 use super::*;
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, RigidBodyBundle};
-use tungsten_core::{Bundle, InspectRegistry, Schedule, Transform};
+use tungsten_core::{Bundle, DataRef, InspectRegistry, Schedule, Transform};
 
 use crate::{
     ActionInput, Aim, CameraTarget, CharacterAnimator, Conversion, Cooldown, Counters, CueAction,
-    Cues, DepthSort, Facing, Flags, Follow, Health, HitFlash, Intent, KitDescriptions, KitPlugins,
-    Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator, PathFollower, Penetration,
-    Resist, SpawnChildren, Spawner, SpeedLimit, Stats, StayInView, Steering, TagFilter, Tags,
-    Target, TopDownMover, Wrap, Zone, spawn_child,
+    Cues, DepthSort, Effect, EffectRequest, Facing, Flags, Follow, Health, HitFlash, Intent,
+    KitDescriptions, KitPlugins, Knockback, Lifetime, LinearMotion, Modifier, Orbit, Oscillator,
+    PathFollower, Penetration, Resist, SpawnChildren, Spawner, SpeedLimit, Stats, StayInView,
+    Steering, TagFilter, Tags, Target, TopDownMover, Wrap, Zone, spawn_child,
 };
 
 fn world() -> World {
@@ -257,6 +257,41 @@ fn the_rows_print_each_components_state() {
             .any(|(l, n, v)| *l == "LocalOffset" && *n == "offset" && v == "(4.00, 0.00)")
     );
     assert!(pod_rows.iter().any(|(l, ..)| *l == "Parent"));
+}
+
+#[test]
+fn an_effect_row_names_its_restore_and_its_hold_only_when_set() {
+    let mut world = world();
+    let regen = DataRef::inline(
+        Effect::new()
+            .with_period(0.1)
+            .with_restore("mana", 1.5, "max_mana")
+            .with_suppressed_by(["casting"]),
+    );
+    let plain = DataRef::inline(Effect::new().with_duration(2.0));
+    let mage = world.spawn_with((Stats::new().with("mana", 0.0).with("max_mana", 10.0),));
+    for effect in [regen, plain] {
+        EffectRequest::new(mage, effect).apply(&mut world);
+    }
+    let lines = |world: &World| -> Vec<String> {
+        rows_of(world, mage)
+            .into_iter()
+            .filter(|(label, name, _)| *label == "Effects" && *name == "effect")
+            .map(|(.., value)| value)
+            .collect()
+    };
+    let free = lines(&world);
+    assert_eq!(free.len(), 2, "{free:?}");
+    assert!(free[0].ends_with(", restores mana"), "{}", free[0]);
+    assert!(!free[1].contains("restores") && !free[1].contains("suppressed"));
+    world.insert(mage, Tags::new(["casting"]));
+    let held = lines(&world);
+    assert!(
+        held[0].ends_with(", restores mana, suppressed"),
+        "{}",
+        held[0]
+    );
+    assert!(!held[1].contains("suppressed"), "{}", held[1]);
 }
 
 #[test]

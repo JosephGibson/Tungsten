@@ -1,0 +1,11 @@
+{
+  "period": 0.1,
+  "restore": {
+    "stat": "mana",
+    "amount": 1.5,
+    "max": "max_mana"
+  },
+  "suppressed_by": [
+    "casting"
+  ]
+}

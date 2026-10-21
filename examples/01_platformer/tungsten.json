@@ -1,0 +1,6 @@
+{
+  "game": { "id": "tungsten-platformer" },
+  "window": { "title": "Platformer", "width": 1280, "height": 720 },
+  "render": { "clear_color": [0.00335, 0.00368, 0.00518, 1.0] },
+  "audio": { "master_volume": 0.8, "bus_volumes": { "music": 0.8, "effects": 0.8 } }
+}

@@ -1,0 +1,7 @@
+{
+  "components": {
+    "particle_emitter": {
+      "config": "ex10_black_hole_dust"
+    }
+  }
+}

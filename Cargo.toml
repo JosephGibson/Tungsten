@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.92.0"
+version = "0.93.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -28,7 +28,6 @@ ignored-paths = [
     "crates/tungsten-core/src/tests/{assets,ecs,input,physics,ui}/*.rs",
     "crates/tungsten-render/src/tests/{bloom,passes_order,post,smaa,text,text_fonts,text_nodes}.rs",
     "crates/tungsten/src/tests/{asset_loader,testing_ui,check}.rs",
-    "examples/01_platformer/src/tests/*.rs",
 ]
 
 [workspace.dependencies]

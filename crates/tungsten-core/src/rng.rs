@@ -3,14 +3,42 @@
 //! Not cryptographic.
 
 use glam::Vec2;
+use serde::{Deserialize, Serialize};
 
 const PCG32_MULT: u64 = 6_364_136_223_846_793_005;
 
 /// PCG32 XSH-RR 64/32.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Saves as its two state words, `{ "state": u64, "inc": u64 }`, so a loaded
+/// generator continues its stream at no cost per draw. A load refuses an even
+/// `inc`, which no seed gives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "Pcg32Words")]
 pub struct Pcg32 {
     state: u64,
     inc: u64,
+}
+
+/// [`Pcg32`]'s save form, before its check.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Pcg32Words {
+    state: u64,
+    inc: u64,
+}
+
+impl TryFrom<Pcg32Words> for Pcg32 {
+    type Error = String;
+
+    fn try_from(words: Pcg32Words) -> Result<Self, String> {
+        if words.inc & 1 == 0 {
+            return Err(format!("`inc` must be odd (got {})", words.inc));
+        }
+        Ok(Self {
+            state: words.state,
+            inc: words.inc,
+        })
+    }
 }
 
 impl Pcg32 {

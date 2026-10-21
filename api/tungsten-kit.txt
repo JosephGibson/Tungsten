@@ -1314,8 +1314,10 @@ pub fn tungsten_kit::Effect::on_expire(&self) -> core::option::Option<&tungsten_
 pub fn tungsten_kit::Effect::period(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::refresh(&self) -> tungsten_kit::Refresh
 pub fn tungsten_kit::Effect::resist(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, &str)>
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
+pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
@@ -1325,8 +1327,10 @@ pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_resist(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_restore(self, &str, f32, &str) -> Self
 pub fn tungsten_kit::Effect::with_scale(self, tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled) -> Self
 pub fn tungsten_kit::Effect::with_stack(self, u32, tungsten_kit::Refresh, tungsten_kit::Expire) -> Self
+pub fn tungsten_kit::Effect::with_suppressed_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_typed_damage(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Effect
 pub fn tungsten_kit::Effect::clone(&self) -> tungsten_kit::Effect
@@ -1955,10 +1959,17 @@ pub fn tungsten_kit::KitRng::seeded(u64) -> Self
 pub fn tungsten_kit::KitRng::unit(&mut self) -> f32
 impl core::clone::Clone for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::clone(&self) -> tungsten_kit::KitRng
+impl core::cmp::PartialEq for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::eq(&self, &tungsten_kit::KitRng) -> bool
 impl core::default::Default for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::default() -> Self
 impl core::fmt::Debug for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::KitRng
+impl serde_core::ser::Serialize for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::KitRng
 impl core::marker::Send for tungsten_kit::KitRng
 impl core::marker::Sync for tungsten_kit::KitRng
@@ -2396,10 +2407,17 @@ pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower
+impl core::cmp::PartialEq for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::eq(&self, &tungsten_kit::PathFollower) -> bool
 impl core::fmt::Debug for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::PathFollower
+impl serde_core::ser::Serialize for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::PathFollower
 impl core::marker::Send for tungsten_kit::PathFollower
 impl core::marker::Sync for tungsten_kit::PathFollower
@@ -2522,6 +2540,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
 pub struct tungsten_kit::prelude::PlatformerController
 impl tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
+pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
@@ -2532,6 +2552,7 @@ pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)
+pub fn tungsten_kit::PlatformerController::with_air_jumps(self, u32) -> Self
 pub fn tungsten_kit::PlatformerController::with_coyote_time(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
@@ -2539,10 +2560,17 @@ pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController
+impl core::cmp::PartialEq for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::eq(&self, &tungsten_kit::PlatformerController) -> bool
 impl core::fmt::Debug for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::PlatformerController
+impl serde_core::ser::Serialize for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::PlatformerController
 impl core::marker::Send for tungsten_kit::PlatformerController
 impl core::marker::Sync for tungsten_kit::PlatformerController
@@ -4880,8 +4908,10 @@ pub fn tungsten_kit::Effect::on_expire(&self) -> core::option::Option<&tungsten_
 pub fn tungsten_kit::Effect::period(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Effect::refresh(&self) -> tungsten_kit::Refresh
 pub fn tungsten_kit::Effect::resist(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_kit::Modifier)>
+pub fn tungsten_kit::Effect::restore(&self) -> core::option::Option<(&str, f32, &str)>
 pub fn tungsten_kit::Effect::scale(&self) -> core::option::Option<(&tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled)>
 pub fn tungsten_kit::Effect::stack_limit(&self) -> u32
+pub fn tungsten_kit::Effect::suppressed_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::Effect::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_damage(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_duration(self, f32) -> Self
@@ -4891,8 +4921,10 @@ pub fn tungsten_kit::Effect::with_modifier(self, &str, tungsten_kit::Modifier) -
 pub fn tungsten_kit::Effect::with_on_expire(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::Effect::with_period(self, f32) -> Self
 pub fn tungsten_kit::Effect::with_resist(self, &str, tungsten_kit::Modifier) -> Self
+pub fn tungsten_kit::Effect::with_restore(self, &str, f32, &str) -> Self
 pub fn tungsten_kit::Effect::with_scale(self, tungsten_core::assets::data::DataRef<tungsten_kit::Curve>, tungsten_kit::Scaled) -> Self
 pub fn tungsten_kit::Effect::with_stack(self, u32, tungsten_kit::Refresh, tungsten_kit::Expire) -> Self
+pub fn tungsten_kit::Effect::with_suppressed_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::Effect::with_typed_damage(self, &str, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Effect
 pub fn tungsten_kit::Effect::clone(&self) -> tungsten_kit::Effect
@@ -5563,10 +5595,17 @@ pub fn tungsten_kit::KitRng::seeded(u64) -> Self
 pub fn tungsten_kit::KitRng::unit(&mut self) -> f32
 impl core::clone::Clone for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::clone(&self) -> tungsten_kit::KitRng
+impl core::cmp::PartialEq for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::eq(&self, &tungsten_kit::KitRng) -> bool
 impl core::default::Default for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::default() -> Self
 impl core::fmt::Debug for tungsten_kit::KitRng
 pub fn tungsten_kit::KitRng::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::KitRng
+impl serde_core::ser::Serialize for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::KitRng
+pub fn tungsten_kit::KitRng::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::KitRng
 impl core::marker::Send for tungsten_kit::KitRng
 impl core::marker::Sync for tungsten_kit::KitRng
@@ -6004,10 +6043,17 @@ pub fn tungsten_kit::PathFollower::ping_pong(self) -> Self
 pub fn tungsten_kit::PathFollower::with_easing(self, tungsten_core::tween::Easing) -> Self
 impl core::clone::Clone for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::clone(&self) -> tungsten_kit::PathFollower
+impl core::cmp::PartialEq for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::eq(&self, &tungsten_kit::PathFollower) -> bool
 impl core::fmt::Debug for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::PathFollower
+impl serde_core::ser::Serialize for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::PathFollower
 pub fn tungsten_kit::PathFollower::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::PathFollower
+pub fn tungsten_kit::PathFollower::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::PathFollower
 impl core::marker::Send for tungsten_kit::PathFollower
 impl core::marker::Sync for tungsten_kit::PathFollower
@@ -6130,6 +6176,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
 pub struct tungsten_kit::PlatformerController
 impl tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
+pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
@@ -6140,6 +6188,7 @@ pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)
+pub fn tungsten_kit::PlatformerController::with_air_jumps(self, u32) -> Self
 pub fn tungsten_kit::PlatformerController::with_coyote_time(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
@@ -6147,10 +6196,17 @@ pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController
+impl core::cmp::PartialEq for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::eq(&self, &tungsten_kit::PlatformerController) -> bool
 impl core::fmt::Debug for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::PlatformerController
+impl serde_core::ser::Serialize for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::PlatformerController
 impl core::marker::Send for tungsten_kit::PlatformerController
 impl core::marker::Sync for tungsten_kit::PlatformerController

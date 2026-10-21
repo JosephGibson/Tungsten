@@ -71,3 +71,22 @@ fn next_unit_vec2_length_is_one() {
         assert!((len - 1.0).abs() < 1.0e-5, "|v| = {len}");
     }
 }
+
+#[test]
+fn a_saved_pcg32_continues_its_stream() {
+    let mut rng = Pcg32::seeded(0x5eed);
+    for _ in 0..37 {
+        rng.next_u32();
+    }
+    let saved = serde_json::to_string(&rng).unwrap();
+    let mut loaded: Pcg32 = serde_json::from_str(&saved).unwrap();
+    assert_eq!(loaded, rng);
+    for _ in 0..64 {
+        assert_eq!(loaded.next_u32(), rng.next_u32());
+    }
+
+    let even = r#"{ "state": 1, "inc": 2 }"#;
+    let err = serde_json::from_str::<Pcg32>(even).unwrap_err().to_string();
+    assert!(err.contains("`inc` must be odd"), "{err}");
+    assert!(serde_json::from_str::<Pcg32>(r#"{ "state": 1 }"#).is_err());
+}
