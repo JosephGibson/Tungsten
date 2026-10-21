@@ -1,0 +1,28 @@
+{
+  "components": {
+    "area": {
+      "name": "Waterfall ravine"
+    },
+    "rigid_body": {
+      "kind": "sensor",
+      "offset": [
+        1152.0,
+        1600.0
+      ],
+      "shape": {
+        "half_extents": [
+          1152.0,
+          1600.0
+        ],
+        "kind": "aabb"
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

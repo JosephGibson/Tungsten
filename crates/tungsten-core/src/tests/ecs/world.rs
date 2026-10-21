@@ -18,6 +18,34 @@ struct Velocity {
 struct Name(String);
 
 #[test]
+fn component_types_lists_an_entitys_components() {
+    let mut world = World::new();
+    let entity = world.spawn_with((Velocity { dx: 1.0, dy: 0.0 }, Name("a".into())));
+    world.insert(entity, Position { x: 0.0, y: 0.0 });
+
+    let types = world.component_types(entity);
+    let names: Vec<&str> = types.iter().map(|&(_, name)| name).collect();
+    let mut sorted = names.clone();
+    sorted.sort_unstable();
+    assert_eq!(names, sorted, "sorted by name");
+    assert_eq!(names.len(), 3);
+    for (type_id, name) in [
+        (TypeId::of::<Position>(), type_name::<Position>()),
+        (TypeId::of::<Velocity>(), type_name::<Velocity>()),
+        (TypeId::of::<Name>(), type_name::<Name>()),
+    ] {
+        assert!(types.contains(&(type_id, name)), "{name} missing");
+    }
+
+    world.remove_component::<Name>(entity);
+    assert_eq!(world.component_types(entity).len(), 2);
+    let bare = world.spawn();
+    assert!(world.component_types(bare).is_empty());
+    world.despawn(entity);
+    assert!(world.component_types(entity).is_empty(), "dead entity");
+}
+
+#[test]
 fn spawn_and_check_alive() {
     let mut world = World::new();
     let e = world.spawn();

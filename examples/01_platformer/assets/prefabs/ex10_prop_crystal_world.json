@@ -1,0 +1,21 @@
+{
+  "components": {
+    "glow": {
+      "color": [
+        94,
+        210,
+        255,
+        180
+      ],
+      "offset": [
+        32,
+        36
+      ],
+      "radius": 150
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_crystal",
+    "z_order": -10
+  }
+}

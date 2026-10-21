@@ -1,0 +1,11 @@
+{
+  "period": 0.1,
+  "restore": {
+    "stat": "stamina",
+    "amount": 2,
+    "max": "max_stamina"
+  },
+  "suppressed_by": [
+    "sprinting"
+  ]
+}

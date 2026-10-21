@@ -1,0 +1,14 @@
+{
+  "trigger": {
+    "action": "attack"
+  },
+  "cost": {
+    "stat": "mana",
+    "amount": 20
+  },
+  "payload": [
+    {
+      "effect": "casting"
+    }
+  ]
+}

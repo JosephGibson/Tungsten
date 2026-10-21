@@ -5821,6 +5821,7 @@ pub fn tungsten_core::World::check_prefab_id(&self, &str, &str) -> core::result:
 pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
+pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
@@ -8034,6 +8035,10 @@ impl core::fmt::Debug for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::Pcg32::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::rng::Pcg32
 impl core::marker::StructuralPartialEq for tungsten_core::rng::Pcg32
+impl serde_core::ser::Serialize for tungsten_core::rng::Pcg32
+pub fn tungsten_core::rng::Pcg32::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::rng::Pcg32
+pub fn tungsten_core::rng::Pcg32::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::rng::Pcg32
 impl core::marker::Send for tungsten_core::rng::Pcg32
 impl core::marker::Sync for tungsten_core::rng::Pcg32
@@ -16003,6 +16008,10 @@ impl core::fmt::Debug for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::Pcg32::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tungsten_core::rng::Pcg32
 impl core::marker::StructuralPartialEq for tungsten_core::rng::Pcg32
+impl serde_core::ser::Serialize for tungsten_core::rng::Pcg32
+pub fn tungsten_core::rng::Pcg32::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::rng::Pcg32
+pub fn tungsten_core::rng::Pcg32::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_core::rng::Pcg32
 impl core::marker::Send for tungsten_core::rng::Pcg32
 impl core::marker::Sync for tungsten_core::rng::Pcg32
@@ -18120,6 +18129,7 @@ pub fn tungsten_core::World::check_prefab_id(&self, &str, &str) -> core::result:
 pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str) -> bool
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
+pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)

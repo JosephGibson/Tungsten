@@ -7,16 +7,16 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 - `tungsten.json`, `input.json` and `assets/` sit in the game's folder, its working directory: run `cargo run` and `cargo test` from there.
 - `src/main.rs` builds the app, turns `engine_exit` off and calls `game::register`, which adds the kit, the shell and the game.
 - `src/shell/` holds the screens every game keeps: title, pause, game over, saves, settings, keybindings, a confirm and toasts, with their theme and widgets. Change it only to fix it, so a later template's shell can replace it whole.
-- The shell calls the game through seven names, the seam, and nothing else: `game::GAMEPLAY` (the gameplay state's ID), `game::gameplay(RunStart)` (the state a run starts with), `game::BINDABLE_ACTIONS` (the Keybindings rows), `game::difficulty_note` (the picker's note) in `src/game.rs`, and `save::SaveGame`, `save::capture` and `save::summary` in `src/save.rs`. The game calls the shell back through `shell::game_over`, `shell::run` and `shell::run_meta`; the sample also uses `shell::{play, top, stack}`, `theme`, `widgets`, `options::GameOptions` and the screens' IDs, which a later shell may change.
+- The shell calls the game through seven names, the seam, and nothing else: `game::GAMEPLAY` (the gameplay state's ID), `game::gameplay(RunStart)` (the state a run starts with), `game::BINDABLE_ACTIONS` (the Keybindings rows), `game::difficulty_note` (the picker's note) in `src/game.rs`, and `save::SaveGame`, `save::capture` and `save::summary` in `src/save.rs`. The game calls the shell back through `shell::game_over`, `shell::run`, `shell::run_meta` and `shell::request_autosave`; the sample also uses `shell::{play, top, stack}`, `theme`, `widgets`, `options::GameOptions` and the screens' IDs, which a later shell may change.
 - `src/sample/` is the demo: a new game deletes it, with `tests/game/sample.rs`, writes its own gameplay and points the seam at it. The shell's tests that read the sample follow the new gameplay.
 - Each feature lives in `src/features/<name>/`: `mod.rs` holds its `Plugin`, its `GameState` and constants, `components.rs` its components and resources, `systems.rs` its systems; a part the size of the sample's HUD takes a file of its own. `game.rs` only adds the feature plugins. A component two features share goes in `src/shared.rs`. A feature plugin registers its own prefab components, data kinds and systems, as a kit item does. The kit's scene names and data kinds are reserved: the registries fail startup on a duplicate.
 - In the template itself, `src/shell/` stays within 2,400 lines of code and `src/` within 2,900 (`tokei`, `D-187`). Scripts in `tools/` make its sounds and sprites.
 - `tests/game/` holds the tests, one module per part: `sample`, `shell`, `saves`, `settings`, `keys`, `fit` (every screen at six windows and the scale extremes) and `visual` (the title's pixels, behind `TUNGSTEN_VISUAL_REGRESSION=1`).
-- `tungsten check`, the engine's command line, loads every file the game reads and reports every error with its file; `tungsten package` makes the players' archive in `dist/`.
+- `tungsten check`, the engine's command line, loads every file the game reads; `tungsten package` makes the players' archive in `dist/`.
 
 ## Saves and options
 
-- The shell saves `save::capture`'s `SaveGame` to the `autosave` slot when the game pauses, quits to the title, exits and starts a run, and to `slot_1`–`slot_10` when the player saves; `capture` returns `None`, saving nothing, with no live run or a dead player. Bump `SaveGame::SCHEMA` and extend `migrate` whenever `SaveGame` changes shape.
+- The shell saves `save::capture`'s `SaveGame` to the `autosave` slot when the game pauses, quits to the title, exits, starts a run or asks through `shell::request_autosave`, which waits until `capture` returns a save, and to `slot_1`–`slot_10` when the player saves; `capture` returns `None`, saving nothing, with no live run or a dead player. Bump `SaveGame::SCHEMA` and extend `migrate` whenever `SaveGame` changes shape.
 - A slot that fails to load, a newer build's or a damaged file, is never loaded or overwritten until the program restarts; the player can delete it.
 - Keep the player's choices in `Settings`: change one, apply it with `shell::apply_settings(world)`, which keeps the mute while the window has no focus, then `save()`. Gameplay options are `GameOptions`, in a store of their own under the user folder's `options`: the shell pauses and mutes, Screen shake scales the `shake_max_offset` the game's plugin sets, and the game shows damage numbers itself, as `sample_frame` tags what has `health`, and quiets its own music under pause and game over.
 - End the run with `tungsten::request_exit(world)`: the next frame, the last, has `Exiting`, as the window's close button's does, so one save system covers both.
@@ -54,5 +54,5 @@ Rules for this game's repository; `CLAUDE.md` imports this file.
 
 ## Engine documentation
 
-- The API: `cargo doc -p tungsten -p tungsten-core -p tungsten-kit --no-deps --open`, `tungsten::core` and `tungsten::kit` being those crates.
+- The API: `cargo doc -p tungsten -p tungsten-core -p tungsten-kit --no-deps --open`.
 - The getting-started guide: `docs/getting-started.md` at the engine tag in `Cargo.toml`, on <https://github.com/JosephGibson/Tungsten>.

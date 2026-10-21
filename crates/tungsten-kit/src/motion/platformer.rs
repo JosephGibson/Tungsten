@@ -1,5 +1,6 @@
 //! The platformer controller: a side-view character on a kinematic body,
-//! with a ground check, coyote time, a jump buffer and variable jump height.
+//! with a ground check, coyote time, a jump buffer, variable jump height and
+//! air jumps.
 
 use std::collections::HashSet;
 
@@ -17,7 +18,9 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::{fraction, non_negative, optional_non_negative, positive};
+use crate::foundation::{
+    fraction, non_negative, optional_non_negative, optional_vec2, positive, vec2,
+};
 use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
 use crate::motion::slide::{SKIN, is_kinematic, move_and_slide, probe_ground, step_dt};
@@ -59,8 +62,10 @@ const DEFAULT_JUMP_CUT: f32 = 0.5;
 ///    it grounds it and snaps it down onto the surface.
 /// 3. Applies a pending [`launch`](Self::launch), which ungrounds it.
 /// 4. Unless the input is locked, runs at `run · run_speed` and jumps on a
-///    buffered press while grounded or within coyote time. While locked,
-///    presses are dropped and the horizontal speed holds.
+///    buffered press while grounded or within coyote time; past them, a
+///    press with [air jumps](Self::with_air_jumps) left jumps again, one a
+///    press, and being grounded refills them. While locked, presses are
+///    dropped and the horizontal speed holds.
 /// 5. Adds the [`push`](Self::push)es made since its last step.
 /// 6. Cuts a rising jump by the jump cut once, when the jump is released.
 /// 7. Applies gravity, `with_gravity`'s or the world's
@@ -81,11 +86,17 @@ const DEFAULT_JUMP_CUT: f32 = 0.5;
 /// seen until the next, and nothing pushes a kinematic body out of an
 /// overlap, though a move may leave one.
 ///
+/// It is data: a save holds its settings and its runtime state, the air
+/// jumps left among them, but not its filter, which loads as
+/// [`SpatialFilter::new`], or its first-step flag. A loaded controller
+/// therefore takes its still first step, as a fresh one does, while the
+/// physics index fills, and a game that set its own filter sets it again.
+///
 /// Scene name `platformer_controller`, on a prefab with a kinematic
 /// `rigid_body`:
-/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5 }`,
-/// `gravity` optional (the world's by default) and the last three with
-/// those defaults.
+/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5, "air_jumps": 1 }`,
+/// `gravity` optional (the world's by default) and the last four with
+/// the defaults 0.1, 0.1, 0.5 and 0.
 ///
 /// # Examples
 ///
@@ -161,7 +172,8 @@ const DEFAULT_JUMP_CUT: f32 = 0.5;
 /// frames(&mut world, 60);
 /// assert!(world.get::<PlatformerController>(hero).unwrap().grounded());
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ControllerSave", into = "ControllerSave")]
 #[allow(clippy::struct_excessive_bools)] // Input and step flags read at different points of a step; no two are a state machine.
 pub struct PlatformerController {
     run_speed: f32,
@@ -170,6 +182,8 @@ pub struct PlatformerController {
     coyote_time: f32,
     jump_buffer: f32,
     jump_cut: f32,
+    air_jumps: u32,
+    /// Not saved: a load takes `new`'s.
     filter: SpatialFilter,
     /// The run input, in `[-1, 1]`.
     run: f32,
@@ -185,9 +199,13 @@ pub struct PlatformerController {
     velocity: Vec2,
     grounded: bool,
     jumped: bool,
+    /// The jump its last step started was an air jump.
+    air_jumped: bool,
     /// The jump cut may still act on the current jump.
     cut_armed: bool,
-    /// Its first step has run.
+    air_jumps_left: u32,
+    /// Its first step has run. Not saved: a loaded controller takes its
+    /// still first step.
     started: bool,
 }
 
@@ -217,6 +235,7 @@ impl PlatformerController {
             coyote_time: DEFAULT_GRACE,
             jump_buffer: DEFAULT_GRACE,
             jump_cut: DEFAULT_JUMP_CUT,
+            air_jumps: 0,
             filter: SpatialFilter::new(),
             run: 0.0,
             jump_held: false,
@@ -229,7 +248,9 @@ impl PlatformerController {
             velocity: Vec2::ZERO,
             grounded: false,
             jumped: false,
+            air_jumped: false,
             cut_armed: false,
+            air_jumps_left: 0,
             started: false,
         }
     }
@@ -300,6 +321,16 @@ impl PlatformerController {
             "PlatformerController::with_jump_cut: factor must be in [0, 1] (got {factor})"
         );
         self.jump_cut = factor;
+        self
+    }
+
+    /// The controller with `jumps` air jumps: past the ground and coyote
+    /// time, each press with one left jumps at `jump_speed` again, and
+    /// being grounded refills them. 0, the default, has none.
+    #[must_use]
+    pub fn with_air_jumps(mut self, jumps: u32) -> Self {
+        self.air_jumps = jumps;
+        self.air_jumps_left = jumps;
         self
     }
 
@@ -409,10 +440,23 @@ impl PlatformerController {
         (self.grounded || self.coyote_left > 0.0) && self.lock_left <= 0.0
     }
 
-    /// Its last step started a jump.
+    /// Its last step started a jump, from the ground or in the air.
     #[must_use]
     pub fn jumped(&self) -> bool {
         self.jumped
+    }
+
+    /// The air jumps it has left until it is grounded again.
+    #[must_use]
+    pub fn air_jumps_left(&self) -> u32 {
+        self.air_jumps_left
+    }
+
+    /// Its last step started an air jump, which [`jumped`](Self::jumped)
+    /// also reports.
+    #[must_use]
+    pub fn air_jumped(&self) -> bool {
+        self.air_jumped
     }
 
     /// One step of `dt` for the body at `position` with `collider`: the
@@ -427,6 +471,7 @@ impl PlatformerController {
         dt: f32,
     ) -> Vec2 {
         self.jumped = false;
+        self.air_jumped = false;
         if !self.started {
             self.started = true;
             return Vec2::ZERO;
@@ -442,6 +487,7 @@ impl PlatformerController {
             && let Some(hit) = probe_ground(world, collider.shape, origin, &filter)
         {
             self.grounded = true;
+            self.air_jumps_left = self.air_jumps;
             at.y += (hit.distance - SKIN).max(0.0);
             ground = hit.entity;
         }
@@ -466,6 +512,14 @@ impl PlatformerController {
                 self.coyote_left = 0.0;
                 self.grounded = false;
                 self.jumped = true;
+                self.cut_armed = true;
+                lifted = true;
+            } else if pressed && self.air_jumps_left > 0 {
+                self.air_jumps_left -= 1;
+                self.velocity.y = -self.jump_speed;
+                self.buffer_left = 0.0;
+                self.jumped = true;
+                self.air_jumped = true;
                 self.cut_armed = true;
                 lifted = true;
             }
@@ -512,6 +566,7 @@ impl PlatformerController {
         at += slide.moved;
         if slide.floor && self.velocity.y >= 0.0 {
             self.grounded = true;
+            self.air_jumps_left = self.air_jumps;
             self.velocity.y = 0.0;
             ground = slide.floor_body;
         }
@@ -620,6 +675,17 @@ impl Plugin for PlatformerControllerPlugin {
                 )
                 .default("0.5"),
             )
+            .field(
+                FieldDescription::new(
+                    "air_jumps",
+                    FieldType::U32 {
+                        min: None,
+                        max: None,
+                    },
+                    "jumps a press starts in the air, past coyote time; being grounded refills them",
+                )
+                .default("0"),
+            )
             .genre(PLATFORMER)
             .genre(SHMUP)
             .sample(r#"{ "run_speed": 200, "jump_speed": 600 }"#)
@@ -631,7 +697,8 @@ impl Plugin for PlatformerControllerPlugin {
                 let controller = PlatformerController::new(def.run_speed, def.jump_speed)
                     .with_coyote_time(def.coyote_time)
                     .with_jump_buffer(def.jump_buffer)
-                    .with_jump_cut(def.jump_cut);
+                    .with_jump_cut(def.jump_cut)
+                    .with_air_jumps(def.air_jumps);
                 (def.gravity.map_or_else(
                     || controller.clone(),
                     |gravity| controller.clone().with_gravity(gravity),
@@ -666,6 +733,147 @@ struct PlatformerControllerDef {
     jump_buffer: f32,
     #[serde(default = "default_jump_cut", deserialize_with = "fraction")]
     jump_cut: f32,
+    #[serde(default)]
+    air_jumps: u32,
+}
+
+/// A controller as a save writes it: its settings and its runtime state,
+/// without the filter or the first-step flag.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(clippy::struct_excessive_bools)] // The controller's own flags, saved as they are.
+struct ControllerSave {
+    run_speed: f32,
+    jump_speed: f32,
+    gravity: Option<f32>,
+    coyote_time: f32,
+    jump_buffer: f32,
+    jump_cut: f32,
+    air_jumps: u32,
+    run: f32,
+    jump_held: bool,
+    pressed: bool,
+    #[serde(with = "optional_vec2")]
+    launch: Option<Vec2>,
+    #[serde(with = "vec2")]
+    push: Vec2,
+    buffer_left: f32,
+    coyote_left: f32,
+    lock_left: f32,
+    #[serde(with = "vec2")]
+    velocity: Vec2,
+    grounded: bool,
+    jumped: bool,
+    air_jumped: bool,
+    cut_armed: bool,
+    air_jumps_left: u32,
+}
+
+impl TryFrom<ControllerSave> for PlatformerController {
+    type Error = String;
+
+    fn try_from(save: ControllerSave) -> Result<Self, Self::Error> {
+        let at_least_0 = |v: f32| v.is_finite() && v >= 0.0;
+        for (field, value) in [
+            ("run_speed", save.run_speed),
+            ("coyote_time", save.coyote_time),
+            ("jump_buffer", save.jump_buffer),
+            ("buffer_left", save.buffer_left),
+            ("coyote_left", save.coyote_left),
+            ("lock_left", save.lock_left),
+        ] {
+            if !at_least_0(value) {
+                return Err(format!("{field}: must be finite and >= 0 (got {value})"));
+            }
+        }
+        if !(save.jump_speed.is_finite() && save.jump_speed > 0.0) {
+            return Err(format!(
+                "jump_speed: must be finite and > 0 (got {})",
+                save.jump_speed
+            ));
+        }
+        if let Some(gravity) = save.gravity
+            && !at_least_0(gravity)
+        {
+            return Err(format!("gravity: must be finite and >= 0 (got {gravity})"));
+        }
+        for (field, value, range) in [
+            ("jump_cut", save.jump_cut, 0.0..=1.0),
+            ("run", save.run, -1.0..=1.0),
+        ] {
+            if !range.contains(&value) {
+                return Err(format!("{field}: must be in {range:?} (got {value})"));
+            }
+        }
+        for (field, value) in [
+            ("launch", save.launch.unwrap_or(Vec2::ZERO)),
+            ("push", save.push),
+            ("velocity", save.velocity),
+        ] {
+            if !value.is_finite() {
+                return Err(format!("{field}: must be finite (got {value})"));
+            }
+        }
+        if save.air_jumps_left > save.air_jumps {
+            return Err(format!(
+                "air_jumps_left: must be at most air_jumps, {} (got {})",
+                save.air_jumps, save.air_jumps_left
+            ));
+        }
+        Ok(Self {
+            run_speed: save.run_speed,
+            jump_speed: save.jump_speed,
+            gravity: save.gravity,
+            coyote_time: save.coyote_time,
+            jump_buffer: save.jump_buffer,
+            jump_cut: save.jump_cut,
+            air_jumps: save.air_jumps,
+            filter: SpatialFilter::new(),
+            run: save.run,
+            jump_held: save.jump_held,
+            pressed: save.pressed,
+            launch: save.launch,
+            push: save.push,
+            buffer_left: save.buffer_left,
+            coyote_left: save.coyote_left,
+            lock_left: save.lock_left,
+            velocity: save.velocity,
+            grounded: save.grounded,
+            jumped: save.jumped,
+            air_jumped: save.air_jumped,
+            cut_armed: save.cut_armed,
+            air_jumps_left: save.air_jumps_left,
+            started: false,
+        })
+    }
+}
+
+impl From<PlatformerController> for ControllerSave {
+    fn from(controller: PlatformerController) -> Self {
+        Self {
+            run_speed: controller.run_speed,
+            jump_speed: controller.jump_speed,
+            gravity: controller.gravity,
+            coyote_time: controller.coyote_time,
+            jump_buffer: controller.jump_buffer,
+            jump_cut: controller.jump_cut,
+            air_jumps: controller.air_jumps,
+            run: controller.run,
+            jump_held: controller.jump_held,
+            pressed: controller.pressed,
+            launch: controller.launch,
+            push: controller.push,
+            buffer_left: controller.buffer_left,
+            coyote_left: controller.coyote_left,
+            lock_left: controller.lock_left,
+            velocity: controller.velocity,
+            grounded: controller.grounded,
+            jumped: controller.jumped,
+            air_jumped: controller.air_jumped,
+            cut_armed: controller.cut_armed,
+            air_jumps_left: controller.air_jumps_left,
+        }
+    }
 }
 
 fn default_grace() -> f32 {

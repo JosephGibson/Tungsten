@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "duration_ms": 300,
+      "sprite": "ex10_player_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_player_idle_1_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_player_idle_2_left"
+    },
+    {
+      "duration_ms": 300,
+      "sprite": "ex10_player_idle_3_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_player_idle_4_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_player_idle_5_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_idle_6_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_player_idle_7_left"
+    }
+  ],
+  "looping": true
+}

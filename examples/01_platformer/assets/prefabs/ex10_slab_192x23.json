@@ -1,0 +1,18 @@
+{
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "offset": [
+        96.0,
+        11.5
+      ],
+      "shape": {
+        "half_extents": [
+          96.0,
+          11.5
+        ],
+        "kind": "aabb"
+      }
+    }
+  }
+}

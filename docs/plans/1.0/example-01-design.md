@@ -200,6 +200,15 @@ Also needed:
   - smoke is green;
   - the owner has played it through.
 
+- **As built (M72, `D-197`).** Where the plan's answers departed from this section:
+  - the fire hazards move on the kit's oscillator in (a), not (b) (Q2), since writing sine motion again would copy a kit feature;
+  - the element rules (burning, chill and freezing, shattering, crushing, putting out fire) are game code ported with their tests (Q3); (b) moves burning and freezing onto damage types, effects and the ailment ladder;
+  - the black hole opens at the cursor for 4 s, one at a time, and the drag while held went (Q4);
+  - the iron block, the black hole and the small balls are placed by 01's code once a manual `use_ability` returns `Used::Used` (Q5), and the fire missile flies from the kit's `spawn` payload; a `place` payload waits in the backlog;
+  - the courier draws lit, so a hit shows by its knockback, window and shake, with no flash (Q6);
+  - a full pit's 12,000 balls save in 1.78 MiB, each ball one flat array (Q11), captured and written in 4.9 ms;
+  - facing stays the movement's, and a cast's pose and the toss face the aim; the spell bar sits above the shell's toast lane at the bottom centre; the right stick's aim waits for the gamepad backend.
+
 ## 01 (b): elements and weapons (level C, XL)
 
 **Damage model.** Kit damage types physical, fire, cold and shock, under one `damage` parent tag. A type's parent comes from its dotted name, so they are `damage.physical`, `damage.fire`, `damage.cold` and `damage.shock`, and a factor on `damage` reaches every part (`damage/kinds.rs`, `damage/defense.rs`). A hit resolves in this order:

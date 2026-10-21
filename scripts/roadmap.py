@@ -39,10 +39,12 @@ SUMMARY_FIELDS = ("Workspace", "First open stop", "Stop state", "Next milestone"
 # hold through the merge (D-152).
 CLOSED = ("ready", "review", "done", "skip")
 
-# Session recommendations (D-118, D-136, D-151). A stage's tier comes from its stop's complexity,
-# effort and level and the stage's key; the fixed steps never vary. Every session stage runs in auto
-# mode, and none keeps another stage's session (D-150).
+# Session recommendations (D-118, D-136, D-151, D-195). A stage's tier comes from its stop's own
+# `tier` when the owner sets one, else from its complexity, effort and level and the stage's key; the
+# fixed steps never vary. Every session stage runs in auto mode, and none keeps another stage's
+# session (D-150).
 MODELS = {"opus": "Opus 5.5", "fable": "Fable 5.1"}
+EFFORTS = ("high", "xhigh", "max")
 SCALED = ("plan", "qa-plan", "gate", "run", "experiment", "rc-fix")
 FIXED = {"rc-checklist": ("opus", "xhigh"), "release": ("opus", "xhigh"), "verify": ("opus", "high")}
 FINAL = ("gate",)  # with a level C plan, the stages whose judgment no command checks (D-151)
@@ -157,10 +159,17 @@ def flow_row(stop):
 
 
 def tier(stop, key=None):
-    """(model, effort) for stage `key` of a stop (D-151): Fable for large architectural stops
+    """(model, effort) for stage `key` of a stop: the stop's own `tier`, `{model, effort}`, for every
+    stage when the owner sets one (D-195); else D-151's rule: Fable for large architectural stops
     (complexity 4, or 3 and XL) unless a level A or B release (D-136); Opus high for very small ones
     (1 and S); Opus max only where the stage's judgment is final, a gate or a level C plan, at
     complexity 2–4; else the Opus xhigh default."""
+    own = stop.get("tier")
+    if own is not None:
+        if not isinstance(own, dict) or own.get("model") not in MODELS or own.get("effort") not in EFFORTS:
+            raise ValueError(f"{stop.get('id')}: tier {own!r}: model one of {', '.join(MODELS)}, "
+                             f"effort one of {', '.join(EFFORTS)}")
+        return own["model"], own["effort"]
     c, e, level = stop.get("complexity"), stop.get("effort"), stop.get("level")
     if (c == 4 or (c == 3 and e == "XL")) and level not in ("A", "B"):
         return "fable", "xhigh"

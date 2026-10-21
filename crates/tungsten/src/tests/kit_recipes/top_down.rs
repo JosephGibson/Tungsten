@@ -1207,3 +1207,43 @@ fn a_toxic_hit_poisons_by_chance_under_a_seed() {
         );
     }
 }
+
+// M72: stamina that sprinting pauses.
+
+#[test]
+fn a_sprinters_stamina_regenerates_and_a_sprint_spends_and_pauses_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let sprinter = spawn(&mut harness, "sprinter", [0.0, 0.0]);
+        harness.step(2);
+        let stamina = |harness: &Harness| {
+            let stats = harness.world().get::<Stats>(sprinter).unwrap();
+            stats.base("stamina").unwrap()
+        };
+        // 2 each 0.1 s: 20 a second.
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            (stamina(&harness) - 70.0).abs() <= 2.0,
+            "dt {dt}: {}",
+            stamina(&harness)
+        );
+        harness.press_action("move_right");
+        harness.press_action("dash");
+        harness.step(1);
+        harness.release_action("dash");
+        harness.step(1);
+        let sprint = stamina(&harness);
+        assert!(sprint < 62.0, "dt {dt}: the sprint cost 10: {sprint}");
+        let speed = harness.world().get::<Velocity>(sprinter).unwrap().0.x;
+        assert!(
+            (speed - 180.0).abs() < 1e-3,
+            "dt {dt}: half again as fast: {speed}"
+        );
+        harness.step(frames_for(0.4, dt));
+        assert_eq!(stamina(&harness), sprint, "dt {dt}: held while sprinting");
+        harness.step(frames_for(0.5, dt));
+        assert!(stamina(&harness) > sprint + 3.0, "dt {dt}: it resumed");
+        harness.step(frames_for(4.0, dt));
+        assert_eq!(stamina(&harness), 100.0, "dt {dt}: capped at max_stamina");
+    }
+}

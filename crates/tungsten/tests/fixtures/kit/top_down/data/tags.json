@@ -15,5 +15,6 @@
   "status.frozen",
   "status.thawed",
   "status.poisoned",
-  "flammable"
+  "flammable",
+  "sprinting"
 ]

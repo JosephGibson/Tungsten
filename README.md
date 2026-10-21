@@ -36,7 +36,7 @@ just check                              # fmt check, clippy -D warnings, tests
 just script-test                        # script regressions and ShellCheck
 cargo test --workspace                  # raw equivalent of the test step
 cargo build --workspace
-cargo run -p example-01-platformer      # comprehensive engine demo
+cd examples/01_platformer && cargo run   # a platformer sandbox on the template
 cargo run -p example-02-bench           # benchmark suite; TUNGSTEN_BENCH selects one
 ```
 

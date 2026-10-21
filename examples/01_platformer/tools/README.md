@@ -1,10 +1,10 @@
 # Twilight ruin authoring
 
-The example runs from checked-in PNGs, JSON and Rust tables. Nothing here runs
-from Cargo, engine startup or asset loading. Python 3, Rust's `rustfmt`, and
-`Pillow==12.3.0` are needed only to edit/regenerate the artwork and layout.
+The example runs from checked-in PNGs, JSON and WAVs. Nothing here runs from
+Cargo, engine startup or asset loading. Python 3 and `Pillow==12.3.0` are needed
+only to edit or regenerate the artwork, the level and the sounds.
 
-Paths below are relative to this `tools/` directory unless a command starts at the repository root. For art, read [Editing art](#editing-art); for geometry, [Editing the level](#editing-the-level); for presentation, [Runtime and visual checks](#runtime-and-visual-checks); for spells/audio, [Fireball spell](#fireball-spell-extinguishing-and-sound-effects) and [Ice beam](#ice-beam-and-thermal-shattering). Current Rust wiring is in `src/{setup,systems,gameplay,extract,fireball,burning,ice,brick}.rs`, relative to the example root.
+Paths below are relative to this `tools/` directory unless a command starts at the repository root. For art, read [Editing art](#editing-art); for geometry, [Editing the level](#editing-the-level); for presentation, [Runtime and visual checks](#runtime-and-visual-checks); for the spells and the sounds, [Spells and the HUD](#spells-and-the-hud), [Fire missile](#fire-missile-extinguishing-and-sound-effects) and [Ice spray](#ice-spray-and-thermal-shattering). The game's Rust is in `src/features/`, relative to the example root, and [its README](../README.md) maps each mechanic to the kit item and the data file behind it.
 
 From the repository root:
 
@@ -22,7 +22,7 @@ different guarantees; keep both. For visible or audible changes, apply the
 content-specific acceptance below by running:
 
 ```sh
-cargo run -p example-01-platformer
+cd examples/01_platformer && cargo run
 ```
 
 The local Python tests are separate from `just script-test`. `just level-check` runs
@@ -30,13 +30,20 @@ The local Python tests are separate from `just script-test`. `just level-check` 
 recipes leave it out. `--check` regenerates
 into a temporary directory, compares every owned byte, and fails on missing,
 stale or uncovered output. It does not rewrite the working tree. PNG compression
-is fixed with no timestamps; JSON is sorted; Rust output goes through `rustfmt`.
+is fixed with no timestamps, and JSON is sorted.
 All generated files must accompany their sources in a change. `outputs.json` is
 the exact ownership inventory. Normal generation removes only files explicitly
 listed by the previous inventory (or `legacy_outputs.json` on the first migration).
 It never sweeps unrelated files from the assets directory. `sounds.json` is the
 sound registration; synthesized WAVs are owned outputs, and `black_hole.ogg` stays
 hand-authored (see "Fireball spell, extinguishing and sound effects").
+
+The shell's assets come with its code: the `shell` theme, Inter and Source
+Serif 4 with their licence files, and the `damage_flash` shader and material are
+copied byte for byte from `templates/basic/assets/`, with their manifest entries,
+so `--check` also catches drift from the template. `content/` holds the prefab
+and data sources, copied verbatim: `content/prefabs/<id>.json` becomes the prefab
+`<id>`, and `content/data/<kind>/<id>.json` the `<kind>` entry `<id>`.
 
 ## Editing art
 
@@ -48,13 +55,13 @@ pixel) for any hand-authored sprite. The modules:
 | Module | Draws |
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
-| `actors.py` | Courier, fireball and both balls |
+| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball and the bowling ball |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers |
-| `polish_art.py` | HUD hearts, burning-ball flames, explosion shock ring, iron brick and scraps with frost, snowflakes, ice shards and cold rings |
-| `sfx.py` | Synthesized sound effects (WAV) |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the eight 32-pixel spell icons |
+| `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
+| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, and the music loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
 `actors.py` draws the courier and the fireball. The courier is one rig posed per
@@ -76,6 +83,13 @@ or whose window contains any other `y`/`Y` pixel. Clips:
 | fall | 4, 80 ms | loop: cloak, hood tip and scarf streaming upward |
 | land | 3, 60 ms | impact squint and bent knees (at most 2 px), recover, settle; runtime squash owns scale |
 | double jump | 4, 300 ms total | crouched tuck, then the cloak bursts open and the courier springs up |
+| toss | 4, 300 ms total | wind-up, swing, release, follow-through: the free hand throws a bowling ball toward the aim, the lantern hand braced |
+| aim | 5 | the free arm and its gun from straight up to straight down by eighths of a turn, drawn over the cloak so a downward aim shows; 01 shows the one nearest a cast's aim, standing |
+
+`generate.py` mirrors every courier and fireball frame into a `_left` twin, since
+nothing flips a sprite in place, and gives every courier frame a `_cast` twin
+(`actors.cast_frame`): all its lantern glass at the hot core and the frame round it
+lit, so its emissive mask widens. 01 shows the twins for 0.3 seconds after a cast.
 
 Palette symbols `O P Q U W` (cloak), `X z +` (scarf), `[ ] (` (trousers and leather)
 belong to the courier. `M L K J Z` are the fireball's ember-to-white-hot ramp.
@@ -144,65 +158,76 @@ colliders. Run those tests after any layout change; geometric jump estimates
 alone do not prove clearance beneath the solid platforms.
 
 `level.py` emits the embedded Tiled catalog (`firstgid=1`, contiguous local IDs,
-zero for empty, no flip bits) and `src/level_layout.rs`. Edit their source instead
-of the generated output. One object layer, `emitters`, sits before `collision`: a
-point object per ambient emitter, of the prefab class `ex10_ambient_emitter`
-(`assets/prefabs/ambient_emitter.json`), whose `particle_emitter.config` and
-`particle_emitter.seed` properties set the emitter; `spawn_level_objects` spawns
-them through `World::spawn_map_objects`, and the generated `EMITTERS` table stays
-for the tests. No other runtime paths are used.
+zero for empty, no flip bits) and the map's object layers, with the prefabs their
+classes name. Edit their source instead of the generated output. The object layers
+sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
+when a run starts, each object taking the run's next save ID:
+
+| Layer | Objects | Prefab class |
+| --- | --- | --- |
+| `props` | Every prop, at its tile position | `ex10_prop_<sprite>_<depth>`: its sprite, behind (`back`) or among (`world`) the world's sprites, and its animation |
+| `slabs` | One box per thin platform: slab runs that share a row and a depth and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body |
+| `hazards` | The spikes and the fireballs | `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: today's sine motion on the kit's `oscillator`, starting where the sine stands at time 0. Both hurt through the kit's `contact_damage` (34 a touch, pushing 560 px/s away) |
+| `platforms` | The moving platforms | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width |
+| `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area` name |
+| `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
+| `markers` | `spawn`, where a fresh run's player stands | None: the game reads it by name |
+
+A parameter that lives in an array (a box's half extents, an oscillator's
+amplitude, a path's points) gives its object a prefab of its own; a scalar would
+be an object property over a shared prefab. No other runtime paths are used.
 
 ## Runtime and visual checks
 
-Draw order is parallax, background/decorations, back props, terrain, world props,
-particles/actors, foreground, cursor. Tile/prop extraction culls to the viewport
-and retains contiguous atlas/filter runs within each layer. Background coverage
-fills the actual viewport for the sky and repeats the other strips using their
-scroll factors, the current aspect ratio and shake overhang, including vertical
-travel. Two translucent cloud layers drift independently. Cursor size remains 32 screen pixels.
+Draw order: 01 replaces the engine's sprite base with its backdrop (the sky filling
+the viewport, the moon, and the strips at their scroll factors with the shake's
+overhang, two translucent cloud layers drifting), then the engine's tilemaps and its
+default sprites by z (props, glows, the toys and the actors). The toys' and the
+elements' effects (flames, shock rings, the vortex, spray wisps, cold pulses) draw
+after them, and the cursor last, at 32 screen pixels. The foreground tiles draw
+under the sprites.
 
-Input captures accepted jumps before physics. Current collision contacts and
-sleep state determine grounding afterward. Restart clears presentation and
-suppresses the initial settling effect. Clip selection and one-shot effects
-follow those triggers. The engine retains its single particle count/emit/tick
-pass and deferred flush. Cleanup waits for first tick, drained report and zero
-owned particles, allowing next-frame counts to catch up.
+The kit's platformer controller reads the jump each fixed step, with coyote time
+and a jump buffer, and its ground probe decides grounding. The clips and the jump,
+air-jump and landing bursts follow its flags, and a fresh run settles onto the
+ground silently. A burst's emitter goes once it has drained and its particles are
+gone.
 
 Manual acceptance still requires both full routes and the switchback; deliberate
-falls; jump/landing particles; idle/airborne lit frames; animated props; balls,
-black holes, hazard damage flash/shake and audible controls. Inspect resized windows
+falls; jump/landing particles; idle/airborne lit frames; animated props; every
+spell; a hazard's knockback and shake; and the HUD and the sounds. Inspect resized windows
 and both zoom limits for uncovered edges, seams, foreground occlusion and clutter.
 Startup smoke alone does not establish these properties. Actual results and
 remaining visual checks are listed here; archived implementation plans are historical evidence.
 
 ## Gameplay and presentation
 
-LMB balls render at 32 pixels with a 15-pixel collider radius and cause no damage.
-Spikes and moving fire use swept relative contact tests after physics. The
-player has three health points. Every hit, from a hazard or a falling iron
-brick, goes through `gameplay::damage_player`: it plays the hit sound, flashes
-the damage material red, kicks the camera (trauma 0.5, a few pixels) and starts
-1.1 seconds of immunity in which further hits are ignored and the player blinks,
-with brief knockback and loss of control. The last heart opens the death screen
-(see "Iron brick, death screen and restart"). Falling below the kill plane or
-fully outside the active world bounds also kills the player, even during hit
-immunity; **Enter** starts a fresh run. Fire destroys normal balls with a short
-particle burst and expanding ring. Those effects cannot hurt the player; both emitter and ring
-counts are capped at 16. The HUD shows remaining health.
+Balls never hurt the player, nor does iron but for a block driven into it fast
+(see [Iron blocks and crushing](#iron-blocks-and-crushing)). Spikes and moving fire
+hurt through the kit's `contact_damage`: 34 a touch, pushing 560 pixels/second
+away, so the third touch takes Normal's 100 health (Easy has 150, Hard 68). Each
+hit plays the hit sound and kicks the camera through the player's `damaged` cues,
+knocks it back for 0.18 seconds and opens the kit's 1.1-second window in which
+further hits are ignored; the lit courier shows no hit flash. Falling below the
+kill row or wholly out of the world box deals all the health left, window or not.
+Game over is the shell's, and its Retry loads the run's last good save. A fireball
+bursts a bowling ball with a short particle burst and an expanding ring; both
+burst and ring counts are capped at 16. The HUD's bars show the health and the mana.
 
 `hazards` and `moving_platforms` in `level.json` use tile-space center `position`
-and `travel` amplitudes, a `period` in seconds, and a `phase` in radians. Platforms
-carry supported bodies before the engine physics step; upward jumps release
-immediately. Static main routes remain available. Route tests avoid static
-spikes; moving-fire timing still needs a human playthrough. Platform sweeps are
-checked for terrain and rider headroom, and a complete physics cycle verifies
+and `travel` amplitudes, a `period` in seconds, and a `phase` in radians, which the
+kit's `oscillator` and `path_follower` take. The kit's controller rides a moving
+deck and leaves it on a jump. Static main routes remain available. Route tests run
+on the map without hazards or moving platforms; the playthrough test walks the
+lower route with them, jumping the spikes and waiting out the fire. Platform sweeps
+are checked for terrain and rider headroom, and a complete physics cycle verifies
 support without slipping through the deck.
 
 Scene lights illuminate the normal-mapped terrain and the lit props: lamp posts,
 ivy, waystones, gate, oaks, arch, roots, undergrowth, hanging moss and spikes.
 Crystals, glowing mushrooms, the waterfall and the fireball stay unlit so they
-keep their own glow. The player retains the
-ordinary damage material and fixture lighting paths. Counter-rotating vortex
+keep their own glow. The courier draws lit, with its normal and emissive maps.
+Counter-rotating vortex
 layers and inward orbiting sparks animate independently of the existing ball
 attraction. Camera zoom spans 35–300%.
 
@@ -225,10 +250,10 @@ solid terrain retains native tile collision. Keep platform art and generated
 collision together when changing silhouettes.
 
 Press **L** to toggle the player's lantern halo and point light. Per-frame flame
-anchors are generated from the art; both effects follow facing, animation and
-squash. A fresh run restores the lantern's default state. Fireballs have a
-brighter inner halo and a stronger native light. They face their horizontal travel (vertical-only movers
-face the player) and stretch up to 8% with speed. Each leaks rising flame wisps
+anchors are generated from the art, the cast twins' and the mirrored frames'
+too; both effects follow facing and animation. A fresh run lights the lantern.
+Fireballs have a brighter inner halo and a stronger native light. They face their
+horizontal travel (vertical-only movers face the player). Each leaks rising flame wisps
 from its seeded `fire_trail` emitter (32 live) and molten drips from a
 `fireball_drips` emitter anchored 12 pixels below its center (16 live). That is
 48 particles per fireball, 288 in total. All emitters remain subject to the
@@ -237,12 +262,11 @@ global 2048-particle budget.
 
 ## Midnight presentation and double jump
 
-One aerial jump is available after takeoff (or walking off an edge). Release and
-press Space again to use it; holding Space cannot consume it automatically. The
-second jump plays the tuck-and-burst clip until the ascent ends, then the fall
-clip, and emits a short 18-spark amber burst at the captured feet position.
-Landing and restart replenish it. Ground jump/hold behavior remains unchanged,
-and existing routes still pass with single jumps.
+The kit's controller allows one air jump after takeoff (or walking off an edge):
+release and press Space again to use it; holding Space cannot spend it. It plays the
+tuck-and-burst clip until the ascent ends, then the fall clip, and emits a short
+18-spark amber burst at the feet. Landing gives it back. The routes still pass with
+single jumps.
 
 The entry clearing is 16 tiles wide. Its first steps, optional overhead platforms,
 and lift sit farther from spawn, with fewer foreground props in the launch area.
@@ -279,26 +303,25 @@ and soft halo keep their aspect ratio on resize;
 clouds and landscape can pass in front. The example selects the existing stock
 Bloom and Vignette post passes at restrained strengths (0.22 and 0.18), alongside
 normal/emissive lighting and a weak neutral moon fill. No engine or shader-source
-changes are required. Three red/empty pixel hearts read current HP every frame
-and stay at a fixed screen size across zoom and camera movement.
+changes are required. The HUD's bars read the health and the mana every frame and
+keep their screen size across zoom and camera movement.
 
 ## Small balls, collection pit and particles
 
-Hold MMB for small balls at 156.25/second (five times LMB's 31.25/second).
+Hold `cast` on slot 9 for small balls at 156.25 a second, set down at the cursor.
 Their collider radius is 7.5 pixels and render diameter is 16 pixels.
 
 The two balls are deliberately different objects, each drawn at its render size
 and stored as 2×2 or 4×4 pixel blocks so that nearest sampling stays exact:
 
-- **LMB orbs** (`ball*`, 32 pixels): heavy bronze spheres with fill light and a
-  specular glint. Three glowing teal meridians and rune rings roll around a
-  tilted axis. They keep their authored colors; they carry no `BallHue`.
-- **MMB marbles** (`ball_small*`, 16 pixels): neutral-grey glass with a thin rim,
-  a fixed glint and a turning cat's-eye ribbon. Only these carry `BallHue`, so
-  only they cycle through the rainbow; burning and charring tint the same greys. Both buttons have independent spawn timers.
-
-S alone stops audio. The example reapplies its local ball, spell and audio bindings after
-shared input hot reloads without writing the shared input file.
+- **Bowling balls** (`bowling_ball*`, 32 pixels, slot 8): dark resin with finger
+  holes and an iron sheen, tossed from the hand toward the aim; they land low and
+  roll, keep their authored colours and carry no `BallHue`. The bronze rune orbs
+  (`ball*`) they replaced are still drawn, unused.
+- **Small balls** (`ball_small*`, 16 pixels, slot 9): neutral-grey glass with a
+  thin rim, a fixed glint and a turning cat's-eye ribbon. Only these carry
+  `BallHue`, so only they cycle through the rainbow; burning and charring tint the
+  same greys.
 
 Beyond the gate, walk across the four-tile apron to the open collection pit.
 Its clear interior spans columns 132–180 and rows 18–46: **48 × 28 tiles,
@@ -313,7 +336,7 @@ finite; keep the pile below the open rim when stress-testing.
 speed along the contact normal. Faster small-ball contacts emit 18 rainbow sparks,
 with hues distributed by launch direction. Tangential/separating contacts and
 slower pile motion stay quiet. A 0.12-second cooldown per ball, at most four bursts
-per frame, the shared 16-transient-emitter cap and global 2,048-particle budget
+per step, the shared 16-transient-emitter cap and global 2,048-particle budget
 bound the effect. Finished transient emitters use the existing cleanup.
 
 Black-hole sparks start in a 135–175-pixel annulus, spiral inward with increasing
@@ -332,7 +355,7 @@ timer. Burned-out balls remain as dark, nonflammable physics bodies.
 A burning pile reads as coals under a flickering crest. Every burning ball takes
 an ember tint pulsing between deep red and orange at its own rate, darkening to
 char over its last two seconds. Only balls with nothing resting on them
-(`burning::flame_exposure`: no ball directly above, nor one above on each side)
+(the elements' `flame_exposure`: no ball directly above, nor one above on each side)
 draw a flame tongue and a soft glow, so a slope's surface burns too; buried balls
 only glow. Flames on every ball of a large pile stacked into one opaque orange
 sheet with diagonal banding, which is what this replaced. Each tongue is one of eight
@@ -346,55 +369,69 @@ stays on one ball for half a second and the pairs hop in turn. Each pair emits
 stays near half the global 2,048-particle budget and blasts over a burning pit
 still get theirs. The pool shrinks as balls burn out or despawn, and remaining
 particles finish their short lifetimes.
-Normal balls retain their fire-destruction behavior; burning small balls do not
-damage the player or ignite normal balls.
+Burning small balls do not hurt the player or light a bowling ball.
 
 Startup smoke and CPU tests do not verify sprite readability at 16 pixels, the
 pit's visual fit during camera travel, or particle appearance and density in
-motion. Review those by running `cargo run -p example-01-platformer`.
+motion. Review those by running the game from its folder (`cargo run`).
 
-## Fireball spell, extinguishing and sound effects
+## Spells and the HUD
 
-Press **Mouse 4** (winit `Back`, `"button4"` in input files) to cast a fireball
-from the player toward the cursor. The binding is example-local, applied by
-`platformer_bindings` like MMB. Each fresh press casts one missile: at most six
-alive, 0.2 seconds apart. It leaves the body at 900 pixels/second, falls under a
-tenth of world gravity, is pulled by black holes like a unit-mass physics body,
-and burns out silently after 2.1 seconds or outside the world
-bounds. The missile is example-moved, not a physics body; only its blast pushes.
+The spells are the player's kit abilities (`content/data/abilities/*.json`, listed
+in `content/prefabs/player.json`): each names its mana cost, cooldown and charges,
+targets the aim or the player, and grants `casting` (`content/data/effects/casting.json`),
+which pauses `mana_regen` for a second. A held spell's cost is one fixed step's, its
+cost a second over 60. The mana stats are `content/data/stats/game.json`; the
+`casting` tag is in `content/data/tags/game.json`. The values, the slots and the
+controls are in [the example's README](../README.md).
+
+The HUD draws the eight icons (`effects.py`, 32 pixels, nearest filtering) at the
+largest whole number of screen pixels per art pixel the UI's scale allows, each in
+its element's border colour: ember orange for fire, ice cyan for cold, indigo for
+mana and bone white for the physical toys. The palette's indigo shades (`Γ Π Ξ`)
+are the mana's, and its violet ones (`Δ Λ Σ`) the black hole's icon.
+
+## Fire missile, extinguishing and sound effects
+
+Slot 1 casts a fire missile toward the cursor through the kit's `spawn` payload: one
+a press, at most six alive, 0.25 seconds apart, for 8 mana. It leaves 24 pixels out
+from the courier's centre at 900 pixels/second on the kit's `linear_motion`, falls
+at 360 pixels/second² (a tenth of world gravity), is pulled by black holes like a
+unit-mass body, and fizzles at the kit's projectile range of 1,890 pixels (2.1
+seconds). It is not a physics body; only its blast pushes.
 
 It explodes on the first solid it touches: any collider except the player's
-(balls of either size, slab decks, lifts, iron bricks) or a solid collision tile.
+(balls of either size, slab decks, lifts, iron) or a solid collision tile.
 The blast spawns 48 flame bodies (`fireball_blast`), 64 fast hot fragments
 (`blast_embers`), 24 outward dust puffs (`blast_dust`) and 20 lingering smoke
 puffs (`blast_smoke`): 156 particles, subject to the shared emitter and particle
 caps. A white-hot flash fades over 0.18 seconds while two shock fronts expand
 rapidly toward the blast's push radius. It pushes every dynamic body within
 288 pixels straight away from it: 2,500 pixels/second for a
-unit-mass body (a ball, the player) at the centre, falling linearly to nothing at
-the edge and divided by mass, so an iron brick barely moves. A pushed player loses
-control for up to 0.15 seconds, so a point-blank shove carries several tiles.
-The blast ignites every small ball within 72 pixels through `burning::ignite`, so
-spent balls stay spent and normal balls never burn. It does not hurt the player.
+unit-mass body (a ball) at the centre, falling linearly to nothing at the edge and
+divided by mass, so an iron block barely moves. The courier, a kinematic body,
+stays put. The blast ignites every small ball within 72 pixels through
+`elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
+not hurt the player.
 The camera shakes with trauma 0.68 for a blast within a quarter view width of
 the view's centre, less with distance, and
 not at all a view width and a half away.
 In flight it draws the fireball frames at 40 pixels, turned along its velocity,
-with a soft flame glow, a dense `spell_trail` comet tail and molten drips, and it
+with a soft flame glow, a dense comet tail and molten drips as its children, and it
 carries one warm point light (192-pixel radius). The light fades over 0.3 seconds
 where the missile burns out, or flares and fades over 0.5 seconds where it
 explodes, flaring to four times its flight intensity with twice the light radius.
-Point lights warm the lit terrain, props and bricks around the explosion.
+Point lights warm the lit terrain, props and iron around the explosion.
 
-A black hole puts out every burning small ball inside its 384-pixel pull radius
-in the same frame, leaving it spent exactly as after a normal burnout. At most
-four sampled balls per frame puff an ember-to-steam `extinguish` burst, and the
-sizzle plays at most every 0.15 seconds.
+A black hole, slot 6, opens at the cursor for 4 seconds, one at a time. It puts out
+every burning small ball inside its 384-pixel pull radius in the same fixed step,
+leaving it spent exactly as after a normal burnout. At most four sampled balls a
+step puff an ember-to-steam `extinguish` burst, and the sizzle plays at most every
+0.15 seconds.
 
-The black hole draws in two passes around the engine particles. Under them: the
-soft halo, a hot accretion disk and two counter-rotating vortex layers. Over
-them: 48 infalling streaks turned along their spiral, the photon ring and the
-horizon, so sparks visibly vanish into the core. Its five sprites (`vortex`,
+The black hole draws its soft halo, a hot accretion disk and two counter-rotating
+vortex layers, then 48 infalling streaks turned along their spiral, the photon
+ring and the horizon, all after the engine's sprites and particles. Its five sprites (`vortex`,
 `vortex_core`, `accretion_disk`, `photon_ring`, `infall_streak`) are white alpha
 fields on 96-pixel canvases, the only exception to the 64 × 64 rule. They are
 tinted at extraction, fade to transparent before their edges, and use `linear`
@@ -411,7 +448,10 @@ Regeneration is byte-identical, so `--check` covers the WAVs like any other
 output. To add a sound: write its function, add it to `build_sounds()`, register
 its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 `sounds.json` path that is neither synthesized nor listed in
-`HAND_AUTHORED_SOUNDS` (currently only `black_hole.ogg`).
+`HAND_AUTHORED_SOUNDS` (currently only `black_hole.ogg`). The one-shot sounds play
+through the kit's cues: 01 sends a `Sounded` game event, and
+`content/data/cue_rules/sounds.json` plays its sound, throttled by `min_interval`.
+The sprays' loops are voices of their own.
 
 | ID | File | Event |
 | --- | --- | --- |
@@ -419,17 +459,33 @@ its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 | `ex10_fireball_blast_sfx` | `fireball_blast.wav` | A missile explodes |
 | `ex10_extinguish_sfx` | `extinguish.wav` | A black hole puts out burning balls |
 | `ex10_player_hit_sfx` | `player_hit.wav` | The player takes damage |
-| `ex10_iron_crush_sfx` | `iron_crush.wav` | A brick crushes marbles or damages the player |
-| `ex10_ice_beam_sfx` | `ice_beam.wav` | The ice channel starts |
-| `ex10_ice_spray_sfx` | `ice_spray.wav` | Cold rushing wind loops while F is held |
+| `ex10_iron_crush_sfx` | `iron_crush.wav` | Iron crushes small balls or hurts the player |
+| `ex10_ice_beam_sfx` | `ice_beam.wav` | The ice spray starts |
+| `ex10_ice_spray_sfx` | `ice_spray.wav` | Cold rushing wind loops while the ice spray is held |
 | `ex10_ice_freeze_sfx` | `ice_freeze.wav` | Iron finishes freezing, with crackles and glassy chimes |
-| `ex10_ice_end_sfx` | `ice_end.wav` | A soft pressure release when F is released |
+| `ex10_ice_end_sfx` | `ice_end.wav` | A soft pressure release when the ice spray is let go |
 | `ex10_ice_shatter_sfx` | `ice_shatter.wav` | Brittle iron fractures under heat or a fast iron impact |
+| `ex10_flame_start_sfx` | `flame_start.wav` | The flamethrower catches: a low whoomph opening into a hiss |
+| `ex10_flame_spray_sfx` | `flame_spray.wav` | Its roar loops while it is held |
+| `ex10_force_push_sfx` | `force_push.wav` | A force push: a deep whump and a rush of air |
+| `ex10_toss_sfx` | `toss.wav` | A bowling ball leaves the hand |
+| `ex10_place_sfx` | `place.wav` | An iron block or small balls set down |
+| `ex10_black_hole_sfx` | `black_hole.ogg` | A black hole opens (hand-authored) |
+| `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs it plays: a plucked tick, two bells rising, two falling |
+| `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
+| `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
+| `music_explore`, `music_pause` | `music_*.wav` | A run's exploration loop, and pause's over the quieted run |
 
-## Ice beam and thermal shattering
+The music loops are 16-bit mono at 22,050 Hz, on the music bus. Each renders a
+bar past its end and folds that tail onto its start, so it repeats at its bar
+line; generation fails a loop whose length is not its bars exactly or whose seam
+jumps further than any step inside it (`sfx.seam_problem`).
 
-Hold **F** to channel an ice flamethrower toward the cursor, or in the facing
-direction without a cursor. The 28-degree cone reaches 448 pixels; seven rays
+## Ice spray and thermal shattering
+
+Hold `cast` on slot 3 to channel the ice spray toward the cursor, for 18 mana a
+second; slot 2's flamethrower is the same spray in fire, half the reach, lighting
+the small balls it meets. The 28-degree cone reaches 448 pixels; seven rays
 stop on colliders and solid tiles, so exposed iron at the sides freezes too.
 The nozzle follows the interpolated caster and current aim every drawn frame.
 Its visuals and sound start on press even before the next fixed physics step;
@@ -457,7 +513,7 @@ and 0.32 seconds for fracture.
 Release, death or loss of the caster immediately stops the loop and removes its
 emitters, including on frames with no fixed step; existing particles finish fading.
 Normal release adds a quiet 0.18-second pressure tail; death and caster loss stop
-quietly. The control hints use three short rows that fit above the hearts.
+quietly.
 
 Iron under the spray gradually gains a pale ice shell, white frost rims, crystalline facets,
 branching cracks and hanging icicles. Four unlit `iron_frost_big_*` overlays keep
@@ -465,11 +521,11 @@ the coating visible at night over the lit iron plates. The block stays frozen
 and brittle. Supported frozen
 iron loses horizontal speed at 120 pixels/second², independently of normal friction.
 A fireball's thermal blast shatters every frozen iron surface within 72 pixels,
-including contact at a block's edge. Each full brick becomes exactly 16 physical
-30-pixel scrap blocks in a 4×4 grid. Each scrap has 1/16 of a full brick's mass
+including contact at a block's edge. Each full block becomes exactly 16 physical
+30-pixel scrap blocks in a 4×4 grid. Each scrap has 1/16 of a full block's mass
 (12.5) and sliding friction (93.75 pixels/second²), reduced to 7.5 pixels/second²
 when frozen, so the sixteen pieces preserve the block's total mass.
-They inherit the brick's velocity and launch outward at varied speeds of
+They inherit the block's velocity and launch outward at varied speeds of
 800–1,200 pixels/second, with a small upward lift. Surface explosions also throw
 the fragments away from the contacted face, on top of the normal blast push.
 Each piece starts at a different angle and briefly tumbles in either direction,
@@ -509,47 +565,31 @@ The final shatter pass was also checked at 1920×1080: a surface fireball blast
 throws the broken-metal chunks in a visible fan, with varied angles and a brief tumble.
 The audible mix and resized-window presentation still need human review.
 
-## Iron brick, death screen and restart
+## Iron blocks and crushing
 
-Press **R** to place an iron brick at the cursor, at most 24. It is a
+Slot 7 sets an iron block down at the cursor, for 15 mana: three charges, one back
+every 2 seconds; at most 24, the oldest going. It is a
 120-pixel square collider, four large-ball diameters on a side, drawn from four
 64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
 so it keeps the terrain's pixel scale. It weighs 200 balls. Iron receives 20%
 of a ball's black-hole acceleration at the same distance, enough for a nearby
 hole to drag it along the floor. Loose scraps receive a ball's full acceleration;
 other bodies' pull is divided by mass.
-The solver has no friction, so a supported brick loses horizontal
-speed at 1,500 pixels/second². Lifts carry it like the player and balls. `KeyR` is a
-`tungsten-core` `KeyCode` variant added for this binding.
+The solver has no friction, so a supported block loses horizontal
+speed at 1,500 pixels/second². Lifts carry it like the player and balls.
 
-A brick moving at 360 pixels/second or more into a body, taken from its velocity
-before the physics step, hurts the player it drives into (one heart, and one
-more per further 600 pixels/second) and smashes the small balls ahead of it (four
+A block moving at 360 pixels/second or more into a body, taken from its velocity
+before the physics step, hurts the player it drives into (34, and 34 more per
+further 600 pixels/second, with a push) and smashes the small balls ahead of it (four
 per step, and one more per further 60 pixels/second of head-on speed, up to 64,
 most head-on first). Physics contacts count even when the solver has already
-pushed a marble clear of the brick. Smashed balls vanish with up to four sampled
-24-chip `ball_smash` bursts, and the brick keeps 90% of its speed through them,
+pushed a marble clear of the block. Smashed balls vanish with up to four sampled
+24-chip `ball_smash` bursts, and the block keeps 90% of its speed through them,
 so a fast drop plows several layers into a pile. Crushing marbles or damaging
 the player plays a heavy crunch, glass crackle and ringing iron clink, at most
-once per 0.1 seconds across all bricks. A resting or creeping brick does neither,
+once per 0.1 seconds across all blocks. A resting or creeping block does neither,
 and large balls are never smashed.
 
-Losing the last heart or falling out of bounds starts the death screen
-(`death.rs`). The body leaves physics where it fell, a golden burst marks the
-spot, and over 0.9 seconds the frame pixelates to 48-pixel blocks, like the Sprite
-Scene pause transition, and dims 80% toward near-black crimson. A large red
-YOU DIED title settles into place above a pulsing restart prompt, with the
-gameplay HUD hidden. Text scales to the window and draws after the post stack,
-so the title stays sharp. Once the frame is dim, **Enter** restarts: the fade
-closes to full cover in 0.35 seconds, `setup::restart_world` rebuilds the world under it, and
-the cover lifts over 0.5 seconds. The screen runs on real time, so a paused or
-scaled game clock cannot hold it.
-
-`restart_world` despawns every entity, puts the per-run engine state back to what
-`App::new` inserts (physics buffers, pending commands, the example's events,
-camera state and controller, particle counters and the world RNG seed), stops all
-sound and runs `seed_world` and the startup hook's `populate_world` again, so
-resources, timers, spawn counters, cooldowns, zoom and camera match a launch.
-Asset registries, bindings and display settings stay. Freed entity slots are
-reused, so entity ids, and the cosmetic phases and emitter seeds derived from
-them, can differ from a launch's.
+Losing the last health or falling out of bounds ends the run with the shell's game
+over: "You died" over the dimmed world, its sting and its music, and Retry, which
+loads the run's last good save (a fresh run without one), or Quit to Title.

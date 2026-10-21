@@ -320,6 +320,15 @@ class Status(unittest.TestCase):
         ]
         for stop, key, want in cases:
             self.assertEqual(roadmap.tier(stop, key), want, (stop, key))
+        # D-195: a stop's own tier comes first, for every scaled stage.
+        own = {"id": "x", "complexity": 3, "effort": "XL", "level": "C", "tier": {"model": "opus", "effort": "max"}}
+        for key in roadmap.SCALED:
+            self.assertEqual(roadmap.tier(own, key), ("opus", "max"), key)
+        self.assertEqual(roadmap.recommend(own, "run"), {"mode": "auto", "model": "Opus 5.5", "effort": "max"})
+        self.assertEqual(roadmap.recommend(own, "verify"), {"mode": "auto", "model": "Opus 5.5", "effort": "high"})
+        for bad in ({"model": "haiku", "effort": "max"}, {"model": "opus", "effort": "low"}, {"model": "opus"}, "max"):
+            with self.assertRaisesRegex(ValueError, "x: tier"):
+                roadmap.tier({**own, "tier": bad}, "plan")
         stop = {"id": "x", "complexity": 4, "effort": "L"}
         rec = lambda key: roadmap.recommend(stop, key)
         self.assertEqual(rec("run"), {"mode": "auto", "model": "Fable 5.1", "effort": "xhigh"})
@@ -344,9 +353,18 @@ class Status(unittest.TestCase):
 class Repository(unittest.TestCase):
     def test_opus_max_only_where_judgment_is_final(self):
         # D-151 on the repository's own catalog: max if and only if a gate or a level C plan, at complexity 2-4,
-        # outside D-136's Fable rule; re-rating or carding a stop at a gate keeps this true.
+        # outside D-136's Fable rule; re-rating or carding a stop at a gate keeps this true. A stop with its
+        # own tier (D-195) takes it for every scaled stage.
         payload = roadmap.catalog_payload(Path(__file__).resolve().parent.parent)
         for stop in payload["catalog"]["stops"]:
+            if "tier" in stop:
+                for stage in stop["stages"]:
+                    if stage["key"] in roadmap.SCALED:
+                        with self.subTest(stop=stop["id"], stage=stage["key"]):
+                            own = stop["tier"]
+                            self.assertEqual(stage["rec"], {"mode": "auto", "model": roadmap.MODELS[own["model"]],
+                                                            "effort": own["effort"]})
+                continue
             c, e, level = stop.get("complexity"), stop.get("effort"), stop.get("level")
             fable = (c == 4 or (c == 3 and e == "XL")) and level not in ("A", "B")
             for stage in stop["stages"]:

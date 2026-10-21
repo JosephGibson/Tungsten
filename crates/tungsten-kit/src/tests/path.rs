@@ -288,3 +288,69 @@ fn a_stopped_follower_keeps_its_wave_and_one_without_stops_still() {
     assert_eq!(world.get::<Velocity>(still).unwrap().0, Vec2::ZERO);
     assert!((position(&world, still) - Vec2::new(6.0, 0.0)).length() < 1e-4);
 }
+
+#[test]
+fn a_save_mid_cycle_continues_exactly() {
+    for follower in [
+        PathFollower::new(square(), 90.0).looping(),
+        PathFollower::new(square(), 90.0)
+            .ping_pong()
+            .with_easing(Easing::SineInOut),
+    ] {
+        let (mut world, mut schedule) = rig();
+        let lift = platform(&mut world, follower);
+        for _ in 0..100 {
+            step(&mut world, &mut schedule);
+        }
+        let saved = serde_json::to_value(world.get::<PathFollower>(lift).unwrap()).unwrap();
+        let loaded: PathFollower = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(&loaded, world.get::<PathFollower>(lift).unwrap());
+        assert_eq!(serde_json::to_value(&loaded).unwrap(), saved);
+        let (mut twin, mut twin_schedule) = rig();
+        let at = position(&world, lift);
+        let copy = twin.spawn_with(
+            RigidBodyBundle::kinematic(Position(at), Collider::aabb(Vec2::new(30.0, 5.0)))
+                .with((loaded,)),
+        );
+        for n in 0..240 {
+            step(&mut world, &mut schedule);
+            step(&mut twin, &mut twin_schedule);
+            assert_eq!(
+                twin.get::<PathFollower>(copy),
+                world.get::<PathFollower>(lift),
+                "{saved}: step {n}"
+            );
+            assert_eq!(position(&twin, copy), position(&world, lift), "step {n}");
+        }
+    }
+}
+
+#[test]
+fn a_save_outside_its_path_is_refused() {
+    let saved = serde_json::to_value(PathFollower::new(square(), 60.0)).unwrap();
+    let with = |field: &str, value: serde_json::Value| {
+        let mut save = saved.clone();
+        save[field] = value;
+        serde_json::from_value::<PathFollower>(save)
+    };
+    // A stopping square of three 60 px sides at 60 px/s: 3 s in all.
+    assert!(with("time", serde_json::json!(3.0)).is_ok(), "its end");
+    for (field, value) in [
+        ("time", serde_json::json!(3.5)),
+        ("time", serde_json::json!(-0.1)),
+        ("speed", serde_json::json!(0.0)),
+        ("points", serde_json::json!([[0, 0]])),
+        ("points", serde_json::json!([[0, 0], [0, 0]])),
+        ("mode", serde_json::json!("bounce")),
+        ("extra", serde_json::json!(1)),
+    ] {
+        assert!(with(field, value.clone()).is_err(), "{field} = {value}");
+    }
+    let looping = serde_json::to_value(PathFollower::new(square(), 60.0).looping()).unwrap();
+    let mut at_cycle = looping.clone();
+    at_cycle["time"] = serde_json::json!(4.0);
+    assert!(
+        serde_json::from_value::<PathFollower>(at_cycle).is_err(),
+        "a loop's time is below one cycle"
+    );
+}

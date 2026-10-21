@@ -2,5 +2,11 @@
   "jump_boost": {
     "min": 0,
     "max": 2
+  },
+  "mana": {
+    "min": 0
+  },
+  "max_mana": {
+    "min": 0
   }
 }

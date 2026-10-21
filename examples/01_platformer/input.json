@@ -1,0 +1,24 @@
+{
+  "actions": {
+    "move_left":  [{ "kind": "key", "code": "KeyA" }, { "kind": "key", "code": "ArrowLeft" },  { "kind": "gamepad_axis", "axis": "LeftStickX", "direction": "negative" }],
+    "move_right": [{ "kind": "key", "code": "KeyD" }, { "kind": "key", "code": "ArrowRight" }, { "kind": "gamepad_axis", "axis": "LeftStickX", "direction": "positive" }],
+    "jump": [{ "kind": "key", "code": "Space" }, { "kind": "gamepad_button", "button": "South" }],
+    "cast": [{ "kind": "mouse", "button": "right" }, { "kind": "gamepad_button", "button": "LeftTrigger" }],
+    "spell_next": [{ "kind": "scroll", "direction": "down" }, { "kind": "gamepad_button", "button": "RightShoulder" }],
+    "spell_prev": [{ "kind": "scroll", "direction": "up" }, { "kind": "gamepad_button", "button": "LeftShoulder" }],
+    "spell_1": [{ "kind": "key", "code": "Digit1" }],
+    "spell_2": [{ "kind": "key", "code": "Digit2" }],
+    "spell_3": [{ "kind": "key", "code": "Digit3" }],
+    "spell_4": [{ "kind": "key", "code": "Digit4" }],
+    "spell_5": [{ "kind": "key", "code": "Digit5" }],
+    "spell_6": [{ "kind": "key", "code": "Digit6" }],
+    "spell_7": [{ "kind": "key", "code": "Digit7" }],
+    "spell_8": [{ "kind": "key", "code": "Digit8" }],
+    "spell_9": [{ "kind": "key", "code": "Digit9" }],
+    "spell_0": [{ "kind": "key", "code": "Digit0" }],
+    "lantern": [{ "kind": "key", "code": "KeyL" }, { "kind": "gamepad_button", "button": "North" }],
+    "zoom_in": [{ "kind": "key", "code": "Equal" }],
+    "zoom_out": [{ "kind": "key", "code": "Minus" }],
+    "state_pause": [{ "kind": "key", "code": "Escape" }, { "kind": "gamepad_button", "button": "Start" }]
+  }
+}

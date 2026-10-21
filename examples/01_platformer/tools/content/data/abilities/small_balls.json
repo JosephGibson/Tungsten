@@ -1,0 +1,14 @@
+{
+  "cost": {
+    "stat": "mana",
+    "amount": 0.25
+  },
+  "target": {
+    "self": {}
+  },
+  "payload": [
+    {
+      "effect": "casting"
+    }
+  ]
+}

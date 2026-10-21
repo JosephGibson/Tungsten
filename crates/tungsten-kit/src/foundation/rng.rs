@@ -1,6 +1,7 @@
 //! The kit's random stream: one seeded generator that every kit draw
 //! takes from, in a fixed order, so a run repeats under its seed.
 
+use serde::{Deserialize, Serialize};
 use tungsten_core::Pcg32;
 
 /// The kit's random stream, a World resource: a seeded PCG32 that kit
@@ -12,6 +13,10 @@ use tungsten_core::Pcg32;
 /// [`CuesPlugin`](crate::CuesPlugin) insert one at
 /// [`DEFAULT_SEED`](Self::DEFAULT_SEED) when the World has none; a game
 /// reseeds it per run, as from a run seed in a save.
+///
+/// It is data: a save holds `{ "seed": .., "draws": .., "rng": .. }`, the
+/// generator's own state words among them, so a load continues the stream
+/// where it stopped at the same cost however many draws it made.
 ///
 /// # Examples
 ///
@@ -32,12 +37,17 @@ use tungsten_core::Pcg32;
 /// a.reseed(7);
 /// assert_eq!((a.seed(), a.draws()), (7, 0));
 /// assert_eq!(a.unit(), draws[0], "the stream starts over");
+///
+/// let saved = serde_json::to_string(&a).unwrap();
+/// let mut loaded: KitRng = serde_json::from_str(&saved).unwrap();
+/// assert_eq!(loaded.next_u32(), a.next_u32(), "it continues the stream");
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KitRng {
-    rng: Pcg32,
     seed: u64,
     draws: u64,
+    rng: Pcg32,
 }
 
 impl Default for KitRng {

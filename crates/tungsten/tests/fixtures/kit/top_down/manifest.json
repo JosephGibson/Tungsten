@@ -98,6 +98,9 @@
     },
     "ammo": {
       "path": "prefabs/ammo.json"
+    },
+    "sprinter": {
+      "path": "prefabs/sprinter.json"
     }
   },
   "data": {
@@ -147,6 +150,12 @@
       },
       "poisoned": {
         "path": "data/effects/poisoned.json"
+      },
+      "stamina_regen": {
+        "path": "data/effects/stamina_regen.json"
+      },
+      "sprinting": {
+        "path": "data/effects/sprinting.json"
       }
     },
     "curves": {
@@ -166,6 +175,9 @@
       },
       "volley": {
         "path": "data/abilities/volley.json"
+      },
+      "sprint": {
+        "path": "data/abilities/sprint.json"
       }
     },
     "offers": {

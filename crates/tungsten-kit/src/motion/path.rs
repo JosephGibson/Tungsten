@@ -51,6 +51,12 @@ enum Mode {
 /// point plus the wave's offset, so the platform rides the path with the
 /// whole wave, and at a stopped follower's end the wave goes on.
 ///
+/// It is data: a save holds its world points, speed, mode, easing and
+/// time, so a loaded follower continues where it was, and a load checks
+/// what [`new`](Self::new) checks plus a finite time within the path. A
+/// game restoring a level object inserts the saved follower over the
+/// prefab's.
+///
 /// Scene name `path_follower`:
 /// `{ "points": [[0, 0], [0, -100]], "speed": 100, "mode": "ping_pong", "easing": "sine_in_out" }`,
 /// the points offsets from the spawn position, `mode` one of `stop`
@@ -91,7 +97,8 @@ enum Mode {
 /// }
 /// assert_eq!(heights, [150.0, 100.0, 150.0, 200.0]);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "FollowerSave", into = "FollowerSave")]
 pub struct PathFollower {
     points: Vec<Vec2>,
     speed: f32,
@@ -385,6 +392,71 @@ impl TryFrom<PathFollowerFields> for PathFollowerDef {
             mode: fields.mode,
             easing: fields.easing,
         })
+    }
+}
+
+/// A follower as a save writes it: world points and its time.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FollowerSave {
+    points: Vec<[f32; 2]>,
+    speed: f32,
+    mode: Mode,
+    easing: Easing,
+    time: f32,
+}
+
+impl TryFrom<FollowerSave> for PathFollower {
+    type Error = String;
+
+    fn try_from(save: FollowerSave) -> Result<Self, Self::Error> {
+        let PathFollowerDef {
+            points,
+            speed,
+            mode,
+            easing,
+        } = PathFollowerDef::try_from(PathFollowerFields {
+            points: save.points,
+            speed: save.speed,
+            mode: save.mode,
+            easing: save.easing,
+        })?;
+        if !(speed.is_finite() && speed > 0.0) {
+            return Err(format!("speed: must be finite and > 0 (got {speed})"));
+        }
+        let follower = Self {
+            points: points.into_iter().map(Vec2::from).collect(),
+            speed,
+            mode,
+            easing,
+            time: save.time,
+        };
+        let total = follower.total();
+        let within = if mode == Mode::Stop {
+            (0.0..=total).contains(&save.time)
+        } else {
+            (0.0..total).contains(&save.time)
+        };
+        if !within {
+            let end = if mode == Mode::Stop { "]" } else { ")" };
+            return Err(format!(
+                "time: must be in [0, {total}{end} for this path (got {})",
+                save.time
+            ));
+        }
+        Ok(follower)
+    }
+}
+
+impl From<PathFollower> for FollowerSave {
+    fn from(follower: PathFollower) -> Self {
+        Self {
+            points: follower.points.iter().map(Vec2::to_array).collect(),
+            speed: follower.speed,
+            mode: follower.mode,
+            easing: follower.easing,
+            time: follower.time,
+        }
     }
 }
 

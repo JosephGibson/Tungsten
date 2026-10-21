@@ -17,10 +17,14 @@ def prepare(source, images):
             source['slab_colliders'].append([x*tile,p['row']*tile,tile,box[3]])
     source['lantern_anchors']=[]
     for name,im in sorted(images.items()):
-        if not name.startswith('player'):continue
+        if not name.startswith('player') or name.endswith('_left'):continue
         flame=[(x+.5,y+.5) for y in range(30,60) for x in range(40,63) if im.getpixel((x,y)) in (PALETTE['y'],PALETTE['Y'])]
         if not flame:raise ValueError('player frame lacks lantern flame: '+name)
-        source['lantern_anchors'].append((name,[round(sum(p[a] for p in flame)/len(flame),3) for a in (0,1)]))
+        anchor=[round(sum(p[a] for p in flame)/len(flame),3) for a in (0,1)]
+        source['lantern_anchors'].append((name,anchor))
+        # A left-facing frame is the right-facing one mirrored, its lantern too.
+        if name+'_left' in images:source['lantern_anchors'].append((name+'_left',[64-anchor[0],anchor[1]]))
+    source['lantern_anchors'].sort()
     source['deck_depth']=images['lift_deck'].getbbox()[3]
     for p in source['props']:
         if 'support' not in p:continue

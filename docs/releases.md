@@ -1,6 +1,6 @@
 # Internal release procedure
 
-Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`, `D-122`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
+Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`, `D-122`, `D-196`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Global `~/.claude/settings.json` denies agent `git add/commit/push/fetch/tag/merge/checkout`; agents prepare files, run checks and supply commands, without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
 
 **Every release task ends with the exact commands the human still has to run**, values filled in, as one block. Keep them basic: commit, tag, push, open the pull request. A second block follows for after the merge: it starts the next milestone branch. Nothing is published until the human merges that pull request.
 
@@ -111,46 +111,22 @@ git ls-remote origin 'refs/tags/vX.Y.Z*'
 
 For an annotated tag, the `^{}` line identifies its commit; the other line identifies the tag object. GitHub release `target_commitish` is not proof of the tagged commit. Confirm the remote tag, run SHA and intended SHA agree.
 
-The workflow builds the four examples and the template (`tungsten-template-basic`, `D-186`) for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT). Each platform's player archive contains portable x86-64 and x86-64-v3 builds, launchers, runtime assets, the template's own `tungsten.json`, `input.json` and `assets/` under `templates/basic/`, README.txt and the [license notices](#license-notices) `THIRD-PARTY-NOTICES.txt` and `THIRD-PARTY-NOTICES-rust-std.html`, and no debug files. Its debug archive, `tungsten-debug-vX.Y.Z-<target>`, holds each example's and the template's build debug file (Linux `bin/<level>/<binary>.debug`, split off by `release.py package`; Windows `bin/<level>/<binary>.pdb`) under the same top folder, so it extracts over the player archive (`D-120`). Launchers select the fastest supported CPU level and set the working directory to the archive root, or for the template to `templates/basic/`. Hosted runners have no GPU, so nothing with a window runs there; each build job's `Crash-report probe` step runs `tools/crash-probe` from an archive-like copy and symbolizes its crash file, informational only (`continue-on-error`, `D-120`).
+The workflow builds the examples and the template (`tungsten-template-basic`, `D-186`) for Linux (`x86_64-unknown-linux-gnu`, Ubuntu 24.04) and Windows (`x86_64-pc-windows-msvc`, static CRT), and publishes one zip per platform for players (`D-196`): `tungsten-examples-X.Y.Z-linux-x64.zip` and `tungsten-examples-X.Y.Z-windows-x64.zip`. Each one's top folder holds a launcher per build under its player-facing name from `TITLES` in `release.py` (`Platformer`, `Benchmark`, `Template`), README.txt, LICENSE.txt and the [license notices](#license-notices) `THIRD-PARTY-NOTICES.txt`; its `data/` folder holds the portable x86-64 and x86-64-v3 builds under `data/bin/<level>/`, the shared runtime files the examples read, and each folder game's own `tungsten.json`, `input.json` and `assets/` under its folder: the template's under `data/templates/basic/` and the platformer's under `data/examples/01_platformer/` (a folder game is a template or a shipped example whose folder holds its own `tungsten.json`). No debug file ships: packaging strips each Linux binary and the PDBs stay on the runner. Launchers select the fastest supported CPU level and set the working directory to `data/`, or for a folder game to its folder under it (`FOLDERS` in `tools/launcher/src/main.rs`). Hosted runners have no GPU, so nothing with a window runs there; each build job's `Crash-report probe` step runs `tools/crash-probe` from an archive-like copy and symbolizes its crash file, informational only (`continue-on-error`, `D-120`).
 
-Expect a Linux `.tar.gz` and a Windows `.zip` of each prefix, `tungsten-examples-*` and `tungsten-debug-*`, and `SHA256SUMS`, which lists all four. Download the player archives into a fresh directory and verify them; `--ignore-missing` skips the debug archives left out and still fails when no listed file is present (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
+Expect the two zips and `SHA256SUMS`, which lists both; GitHub adds its own `Source code` archives, which `SHA256SUMS` does not list. Download them into a fresh directory and verify them (requires `sha256sum`; use an equivalent SHA-256 tool on Windows):
 
 ```bash
 release_download=$(mktemp -d) &&
 gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download" \
   --pattern 'tungsten-examples-*' --pattern SHA256SUMS &&
-(cd "$release_download" && sha256sum -c --ignore-missing SHA256SUMS)
-```
-
-The debug archives are a separate download, for symbolizing a crash report; with them present every listed file is checked:
-
-```bash
-gh release download vX.Y.Z --repo JosephGibson/Tungsten --dir "$release_download" \
-  --pattern 'tungsten-debug-*' &&
 (cd "$release_download" && sha256sum -c SHA256SUMS)
 ```
 
-Check that all four archive names are present, notes match the tag's changelog section, and prerelease classification matches the tag. Read each player archive's `THIRD-PARTY-NOTICES.txt`: its first line names the target, its crate count is the one `just notices` printed for that target, and the Linux file lists Cantarell under `sctk-adwaita`. Extract the appropriate archive and launch an example and the template (`tungsten-template-basic`) on a GPU machine, including from outside the archive directory. On Linux its first console line reports the selected CPU level; Windows builds open no console, and each run's log and any crash report go to `%LOCALAPPDATA%\tungsten-examples\logs` (Linux: `~/.local/state/tungsten-examples/logs`, `D-119`), the template's to `%LOCALAPPDATA%\tungsten-template-basic\logs` (Linux: `~/.local/state/tungsten-template-basic/logs`). `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
-
-### Crash-report check
-
-On a GPU machine, check that a shipped build's crash file symbolizes from its debug archive. Extract the Linux player and debug archives (downloaded above) into one folder, run an example with `TUNGSTEN_TEST_PANIC=1`, which panics in its first frame, then symbolize the crash file against that folder:
-
-```bash
-crash_check=$(mktemp -d) && target=x86_64-unknown-linux-gnu &&
-tar -xzf "$release_download/tungsten-examples-vX.Y.Z-$target.tar.gz" -C "$crash_check" &&
-tar -xzf "$release_download/tungsten-debug-vX.Y.Z-$target.tar.gz" -C "$crash_check" &&
-root="$crash_check/tungsten-examples-vX.Y.Z-$target" &&
-{ TUNGSTEN_USER_DIR="$crash_check/user" TUNGSTEN_TEST_PANIC=1 "$root/example-01-platformer" || true; } &&
-python3 -B scripts/crash-report.py symbolize "$crash_check"/user/logs/*-crash.txt \
-  --root "$root" --expect crates/tungsten/src/
-```
-
-It first checks the crash file's `build_id` against the debug file, then prints `N: function at file:line` per frame, and exits 1 on a mismatch or when no frame resolves in `crates/tungsten/src/`. The run's two `Crash-report probe` steps give the same verdict for the probe on each runner; read them on a rehearsal tag before merging.
+Check that both zip names are present, notes match the tag's changelog section, and prerelease classification matches the tag. Read each zip's `THIRD-PARTY-NOTICES.txt`: its first line names the target, its crate count is the one `just notices` printed for that target, the Linux file lists Cantarell under `sctk-adwaita`, and the last section is the Rust standard library's notices. Extract the appropriate zip and launch `Platformer` and `Template` on a GPU machine, from the file manager and from a terminal outside the archive folder; on Linux check that the launchers kept their executable bit. On Linux the first console line reports the selected CPU level; Windows builds open no console, and each run's log and any crash report go to `%LOCALAPPDATA%\tungsten-examples\logs` (Linux: `~/.local/state/tungsten-examples/logs`, `D-119`), the template's to `%LOCALAPPDATA%\tungsten-template-basic\logs` (Linux: `~/.local/state/tungsten-template-basic/logs`) and the platformer's to `%LOCALAPPDATA%\tungsten-platformer\logs` (Linux: `~/.local/state/tungsten-platformer/logs`). `TUNGSTEN_CPU_LEVEL=x86-64` exercises the portable path; never force v3 on an unsupported CPU. Report untested platforms explicitly. Linux needs compatible Vulkan/windowing/audio libraries and may need glibc 2.39.
 
 ### License notices
 
-Each player archive's `THIRD-PARTY-NOTICES.txt` and `THIRD-PARTY-NOTICES-rust-std.html` (`D-122`) come from license data that each build job collects after the build. `release.py licenses <target>` takes the crates that `cargo tree -e normal` reaches from the examples, the template and the launcher, reads each crate's license expression and its root-level `LICENSE*`, `LICENCE*`, `COPYING*`, `COPYRIGHT*`, `UNLICENSE*` and `NOTICE*` files, lists its font files, and copies the toolchain's `COPYRIGHT-library.html`. The publish job's `package` reads that `licenses.json` from the artifact and writes both files; `just notices` runs the same two commands for both targets into `target/notices/<target>/`.
+Each zip's `THIRD-PARTY-NOTICES.txt` (`D-122`) comes from license data that each build job collects after the build. `release.py licenses <target>` takes the crates that `cargo tree -e normal` reaches from the examples, the template and the launcher, reads each crate's license expression and its root-level `LICENSE*`, `LICENCE*`, `COPYING*`, `COPYRIGHT*`, `UNLICENSE*` and `NOTICE*` files, lists its font files, and copies the toolchain's `COPYRIGHT-library.html`. The publish job's `package` reads that `licenses.json` from the artifact and writes the file, whose last section is the standard library's notices converted to plain text (`D-196`); `just notices` runs the same two commands for both targets into `target/notices/<target>/`.
 
 A crate is used under the first alternative of its license expression, in the order MIT, Apache-2.0, Zlib, BSD-3-Clause, BSD-2-Clause, ISC, Unlicense, 0BSD, CC0-1.0, Unicode-3.0, MPL-2.0, Apache-2.0 WITH LLVM-exception, whose licenses each match one of its files. The other alternatives' texts stay out, `NOTICE` files always ship, and the file lists each distinct text once, numbered, under the crates that use it. When `just notices` fails, the error names every crate concerned:
 

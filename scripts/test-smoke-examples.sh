@@ -19,24 +19,28 @@ cat >"$work/bin/cargo" <<'EOF'
 # STUB_FAIL_PKG / STUB_HANG_PKG pick an example that panics / hangs;
 # STUB_FAIL_MSAA makes matrix rows with that TUNGSTEN_RENDER_MSAA fail.
 # A run with TUNGSTEN_DISPLAY_FRAME_RATE_CAP takes 1 s, as a capped run
-# would, unless STUB_UNCAPPED is set. A run from templates/basic is marked
-# with its folder; STUB_UNKNOWN_FONT makes it log an unknown font ID.
+# would, unless STUB_UNCAPPED is set. A run from templates/basic or
+# examples/01_platformer is marked with its folder; STUB_UNKNOWN_FONT makes
+# the template's log an unknown font ID.
 case "$1" in
   metadata)
     case "${STUB_METADATA:-ok}" in
       fail) echo "error: stub metadata failure" >&2; exit 101 ;;
       badjson) echo '{"packages": [' ;;
       none) echo '{"packages":[{"name":"tungsten-core"},{"name":"tungsten"}]}' ;;
-      *) echo '{"packages":[{"name":"tungsten"},{"name":"example-01-platformer"},{"name":"example-03-fixtures"},{"name":"example-02-bench"}]}' ;;
+      *) echo "{\"packages\":[{\"name\":\"tungsten\"},{\"name\":\"example-01-platformer\",\"manifest_path\":\"$PWD/examples/01_platformer/Cargo.toml\"},{\"name\":\"example-03-fixtures\",\"manifest_path\":\"$PWD/examples/03_fixtures/Cargo.toml\"},{\"name\":\"example-02-bench\",\"manifest_path\":\"$PWD/examples/02_bench/Cargo.toml\"}]}" ;;
     esac
     ;;
   build) exit 0 ;;
   run)
     pkg="$3"
     where=""
-    case "$PWD" in */templates/basic) where=" dir=templates/basic" ;; esac
+    case "$PWD" in
+      */templates/basic) where=" dir=templates/basic" ;;
+      */examples/01_platformer) where=" dir=examples/01_platformer" ;;
+    esac
     echo "$pkg msaa=${TUNGSTEN_RENDER_MSAA:-} sort=${TUNGSTEN_RENDER_DEPTH_SORT:-} post=${TUNGSTEN_POST_STACK_FIXTURE:-} aa=${TUNGSTEN_POST_AA_FIXTURE:-} bloom=${TUNGSTEN_BLOOM_FIXTURE:-} feel=${TUNGSTEN_GAME_FEEL_FIXTURE:-} frames=${TUNGSTEN_SMOKE_FRAMES:-} timing=${TUNGSTEN_GPU_TIMING:-} bench=${TUNGSTEN_BENCH:-} preset=${TUNGSTEN_BENCH_PRESET:-}${TUNGSTEN_FIXTURE:+ scene=$TUNGSTEN_FIXTURE}${TUNGSTEN_TRANSITION_FIXTURE:+ transition=$TUNGSTEN_TRANSITION_FIXTURE}${TUNGSTEN_UI_LAB_FIXTURE:+ ui=$TUNGSTEN_UI_LAB_FIXTURE}${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:+ cap=$TUNGSTEN_DISPLAY_FRAME_RATE_CAP}$where" >>"$STUB_RUNS"
-    if [ -n "$where" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
+    if [ "$where" = " dir=templates/basic" ] && [ -n "${STUB_UNKNOWN_FONT:-}" ]; then echo "WARN Unknown font ID 'mono', falling back"; fi
     if [ -n "${TUNGSTEN_DISPLAY_FRAME_RATE_CAP:-}" ] && [ -z "${STUB_UNCAPPED:-}" ]; then sleep 1; fi
     if [ "$pkg" = "${STUB_HANG_PKG:-}" ]; then exec sleep 30; fi
     if [ "$pkg" = "${STUB_FAIL_PKG:-}" ]; then echo "thread 'main' panicked at stub"; exit 101; fi
@@ -86,7 +90,7 @@ if run_case "all pass" 0; then
   done
   expected_runs="$work/expected-runs.txt"
   cat >"$expected_runs" <<'EOF'
-example-01-platformer msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
+example-01-platformer msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= dir=examples/01_platformer
 example-02-bench msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
 example-03-fixtures msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset=
 tungsten-template-basic msaa= sort= post= aa= bloom= feel= frames=3 timing= bench= preset= dir=templates/basic

@@ -525,3 +525,136 @@ fn a_non_finite_launch_panics() {
 fn a_non_finite_push_panics() {
     PlatformerController::new(RUN, JUMP).push(Vec2::new(0.0, f32::INFINITY));
 }
+
+#[test]
+fn air_jumps_refill_on_landing_and_spend_once_per_press() {
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_air_jumps(1));
+    assert_eq!(state(&world, entity).air_jumps_left(), 1);
+    controller(&mut world, entity).press_jump();
+    step(&mut world, &mut schedule);
+    let pc = state(&world, entity);
+    assert!(pc.jumped() && !pc.air_jumped(), "a ground jump");
+    assert_eq!(pc.air_jumps_left(), 1, "the ground jump spends none");
+    steps(&mut world, &mut schedule, 10);
+    let before = position(&world, entity).y;
+    controller(&mut world, entity).press_jump();
+    step(&mut world, &mut schedule);
+    let pc = state(&world, entity);
+    assert!(pc.jumped() && pc.air_jumped(), "an air jump");
+    assert_eq!(pc.air_jumps_left(), 0);
+    let rise = before - position(&world, entity).y;
+    let expected = (JUMP - GRAVITY * DT * 0.5) * DT;
+    assert!(
+        (rise - expected).abs() < 0.01,
+        "at jump_speed: {rise} vs {expected}"
+    );
+    // Held, with none left, a second press does nothing.
+    step(&mut world, &mut schedule);
+    assert!(!state(&world, entity).jumped(), "once per press");
+    controller(&mut world, entity).press_jump();
+    step(&mut world, &mut schedule);
+    assert!(!state(&world, entity).jumped(), "none left");
+    // Landing refills it, and the buffered press jumps from the ground.
+    while !state(&world, entity).grounded() {
+        step(&mut world, &mut schedule);
+    }
+    assert_eq!(state(&world, entity).air_jumps_left(), 1, "refilled");
+    // Off an edge, past coyote time, a press is an air jump.
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 10);
+    let mut pc = PlatformerController::new(120.0, JUMP).with_air_jumps(2);
+    pc.set_run(1.0);
+    let entity = hero(&mut world, Vec2::new(140.0, 0.0), pc);
+    steps(&mut world, &mut schedule, 2);
+    while state(&world, entity).grounded() {
+        step(&mut world, &mut schedule);
+    }
+    steps(&mut world, &mut schedule, 8);
+    assert!(!state(&world, entity).can_jump(), "past coyote time");
+    for left in [1, 0] {
+        controller(&mut world, entity).press_jump();
+        step(&mut world, &mut schedule);
+        let pc = state(&world, entity);
+        assert!(pc.air_jumped(), "{left} left after it");
+        assert_eq!(pc.air_jumps_left(), left);
+        steps(&mut world, &mut schedule, 3);
+    }
+    // None by default: a press in the air does nothing, as before.
+    let (mut world, mut schedule, entity) = standing(PlatformerController::new(RUN, JUMP));
+    controller(&mut world, entity).press_jump();
+    steps(&mut world, &mut schedule, 10);
+    controller(&mut world, entity).press_jump();
+    step(&mut world, &mut schedule);
+    assert!(!state(&world, entity).jumped());
+    assert_eq!(state(&world, entity).air_jumps_left(), 0);
+}
+
+#[test]
+fn a_save_mid_jump_continues_exactly() {
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_air_jumps(1));
+    controller(&mut world, entity).set_run(1.0);
+    controller(&mut world, entity).press_jump();
+    steps(&mut world, &mut schedule, 6);
+    controller(&mut world, entity).press_jump();
+    steps(&mut world, &mut schedule, 2);
+    assert_eq!(state(&world, entity).air_jumps_left(), 0, "mid air jump");
+    let saved = serde_json::to_value(state(&world, entity)).unwrap();
+    let loaded: PlatformerController = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&loaded).unwrap(),
+        saved,
+        "the save forms"
+    );
+    assert!(saved.get("filter").is_none() && saved.get("started").is_none());
+
+    let (mut twin, mut twin_schedule) = rig();
+    tile_floor(&mut twin, 64);
+    let at = world.get::<Position>(entity).unwrap().0;
+    let copy = twin
+        .spawn_with(RigidBodyBundle::kinematic(Position(at), Collider::aabb(HALF)).with((loaded,)));
+    step(&mut twin, &mut twin_schedule);
+    assert_eq!(position(&twin, copy), at, "its still first step");
+    // 30 steps of the air jump, then its landing and the refill.
+    for n in 0..60 {
+        step(&mut world, &mut schedule);
+        step(&mut twin, &mut twin_schedule);
+        assert_eq!(state(&twin, copy), state(&world, entity), "step {n}");
+        assert_eq!(position(&twin, copy), position(&world, entity), "step {n}");
+    }
+    assert!(state(&world, entity).grounded(), "it landed in both");
+    assert_eq!(state(&twin, copy).air_jumps_left(), 1);
+}
+
+#[test]
+fn a_save_with_a_bad_value_is_refused() {
+    let saved =
+        serde_json::to_value(PlatformerController::new(RUN, JUMP).with_air_jumps(1)).unwrap();
+    let with = |field: &str, value: serde_json::Value| {
+        let mut save = saved.clone();
+        save[field] = value;
+        serde_json::from_value::<PlatformerController>(save)
+    };
+    assert!(
+        with("run_speed", serde_json::json!(0.0)).is_ok(),
+        "a stat's 0"
+    );
+    for (field, value) in [
+        ("run_speed", serde_json::json!(-1.0)),
+        ("jump_speed", serde_json::json!(0.0)),
+        ("gravity", serde_json::json!(-1.0)),
+        ("coyote_time", serde_json::json!(-0.1)),
+        ("jump_cut", serde_json::json!(1.5)),
+        ("run", serde_json::json!(2.0)),
+        ("lock_left", serde_json::json!(-1.0)),
+        ("air_jumps_left", serde_json::json!(2)),
+        ("velocity", serde_json::json!([1.0])),
+        ("extra", serde_json::json!(1)),
+    ] {
+        assert!(with(field, value.clone()).is_err(), "{field} = {value}");
+    }
+    let mut missing = saved.clone();
+    missing.as_object_mut().unwrap().remove("air_jumps");
+    assert!(serde_json::from_value::<PlatformerController>(missing).is_err());
+}

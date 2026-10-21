@@ -1,0 +1,202 @@
+[
+  {
+    "on": "blasted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_fireball_blast_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "crushed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_iron_crush_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "doused",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_extinguish_sfx",
+          "min_interval": 0.15
+        }
+      }
+    ]
+  },
+  {
+    "on": "froze",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_freeze_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "shattered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_shatter_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "hole_opened",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_black_hole_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "cold_started",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_beam_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "cold_ended",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_end_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "fire_started",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_flame_start_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "tossed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_toss_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "placed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_place_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
+  },
+  {
+    "on": "cast",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_fireball_cast_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "pushed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_force_push_sfx"
+        }
+      }
+    ]
+  }
+]

@@ -1,49 +1,29 @@
-//! Example 01: platformer feature kitchen sink.
-//!
-//! Manifests: shared root plus example-local tilemap/sprites. Hot reload: assets + `input.json`.
+//! Starts the game from its own folder, where `tungsten.json`, `input.json`
+//! and `assets/` sit.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod brick;
-mod burning;
-mod death;
-mod extract;
-mod fireball;
-mod gameplay;
-mod ice;
-mod level_layout;
-mod setup;
-mod state;
-mod systems;
+use std::path::PathBuf;
 
-#[cfg(test)]
-#[path = "tests/main.rs"]
-mod tests;
-
+use example_01_platformer::game;
+use example_01_platformer::shell::GameInfo;
 use tungsten::App;
-use tungsten::core::{Config, DisplayMode, Resolution};
-
-const STARTUP_WINDOW_WIDTH: u32 = 1920;
-const STARTUP_WINDOW_HEIGHT: u32 = 1080;
-
-fn apply_example_window_defaults(config: &mut Config) {
-    config.window.width = STARTUP_WINDOW_WIDTH;
-    config.window.height = STARTUP_WINDOW_HEIGHT;
-    if std::env::var_os("TUNGSTEN_DISPLAY_RESOLUTION").is_none() {
-        config.display.resolution = Some(Resolution {
-            width: STARTUP_WINDOW_WIDTH,
-            height: STARTUP_WINDOW_HEIGHT,
-        });
-    }
-    if std::env::var_os("TUNGSTEN_DISPLAY_MODE").is_none() {
-        config.display.display_mode = Some(DisplayMode::Windowed);
-    }
-}
+use tungsten::core::Config;
 
 fn main() -> anyhow::Result<()> {
-    let mut config = Config::load("tungsten.json")?;
-    apply_example_window_defaults(&mut config);
+    let config = Config::load("tungsten.json")?;
+    let info = GameInfo {
+        title: config.window.title.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    };
     let mut app = App::new(config)?;
-    setup::configure_app(&mut app);
+    app.set_manifest_roots(vec![PathBuf::from(game::MANIFEST)]);
+    if cfg!(debug_assertions) {
+        // Edits under assets/ and to input.json apply while the game runs.
+        app.enable_hot_reload(&[PathBuf::from("assets")], PathBuf::from(game::MANIFEST));
+    }
+    // Escape opens the pause menu; the shell's Quit ends the run.
+    app.set_exit_on_escape(false);
+    game::register(&mut app, info);
     app.run()
 }

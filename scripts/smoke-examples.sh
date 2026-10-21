@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Runs every example in smoke-test mode (renders a few frames, then exits),
-# then the template from its own folder, the render fixture matrices, the
+# one whose folder holds tungsten.json from that folder, as a game on the
+# template runs, then the template from its own folder, the render fixture matrices, the
 # fixtures crate's UI rows, the benchmark rows and a frame-cap timing row, and
 # reports panics, failures and timeouts.
 #
@@ -26,7 +27,9 @@ if ! metadata="$(cargo metadata --no-deps --format-version 1)"; then
   echo "Example discovery failed: cargo metadata exited non-zero." >&2
   exit 1
 fi
-if ! names="$(jq -r '.packages[] | select(.name | test("^example-")) | .name' <<<"$metadata")"; then
+# Each example as "name<TAB>folder/", its folder from its manifest path.
+if ! names="$(jq -r '.packages[] | select(.name | test("^example-"))
+    | [.name, ((.manifest_path // "") | rtrimstr("Cargo.toml"))] | @tsv' <<<"$metadata")"; then
   echo "Example discovery failed: could not parse cargo metadata output." >&2
   exit 1
 fi
@@ -89,13 +92,22 @@ run_row() {
 
 pass=()
 fail=()
-for pkg in "${EXAMPLES[@]}"; do
+for entry in "${EXAMPLES[@]}"; do
+  IFS=$'\t' read -r pkg dir <<<"$entry"
+  # An example whose folder holds tungsten.json is a game on the template:
+  # it reads its own config and assets, so it runs from there.
+  run_in=.
+  if [ -n "$dir" ] && [ -f "${dir}tungsten.json" ]; then
+    run_in="${dir#"$PWD"/}"
+    run_in="${run_in%/}"
+  fi
   if run_row "$pkg" "$log_dir/$pkg.log" "$pkg"; then
     pass+=("$pkg")
   else
     fail+=("$pkg")
   fi
 done
+run_in=.
 
 echo
 echo "Passed: ${#pass[@]}/${#EXAMPLES[@]}"

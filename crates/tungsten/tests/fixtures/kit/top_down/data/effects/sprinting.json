@@ -1,0 +1,14 @@
+{
+  "duration": 0.5,
+  "grant": [
+    "sprinting"
+  ],
+  "modifiers": [
+    {
+      "stat": "move_speed",
+      "modifier": {
+        "pct": 0.5
+      }
+    }
+  ]
+}

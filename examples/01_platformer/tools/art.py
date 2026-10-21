@@ -11,6 +11,10 @@ TOOLS = Path(__file__).resolve().parent
 # Black-hole layers are drawn larger so their soft edges hold up when scaled.
 EFFECT_SIZES = {name: (96, 96) for name in (
     'vortex', 'vortex_core', 'accretion_disk', 'photon_ring', 'infall_streak')}
+# The spell icons, which the HUD shows at whole-number scale.
+ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
+         'iron_block', 'bowling_ball', 'small_balls')
+ICON_SIZES = {'icon_' + name: (32, 32) for name in ICONS}
 def validate_palette(palette):
     if palette.get('.') != [0, 0, 0, 0]:
         raise ValueError('palette must define transparent dot')
@@ -126,7 +130,9 @@ def build_art():
 def validate_art(images,lit):
     allowed=set(PALETTE.values())
     for name,im in images.items():
-        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and im.size!=EFFECT_SIZES.get(name,(64,64)):raise ValueError(f'{name}: wrong dimensions')
+        # A moving platform's deck is its width wide.
+        wide=name.startswith('lift_deck_') and im.height==64
+        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!={**EFFECT_SIZES,**ICON_SIZES}.get(name,(64,64)):raise ValueError(f'{name}: wrong dimensions')
         if not set(im.get_flattened_data())<=allowed:raise ValueError(f'{name}: outside palette')
         if name.startswith(('player', 'ball', 'lantern', 'vines')) or name == 'marker':
             box=im.getbbox()

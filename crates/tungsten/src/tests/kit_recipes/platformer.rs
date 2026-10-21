@@ -628,3 +628,75 @@ fn a_hasted_runner_runs_faster_for_its_seconds_and_no_longer() {
         );
     }
 }
+
+// M72: mana a cast pauses, and an air jump.
+
+#[test]
+fn a_mages_mana_regenerates_to_its_max_and_a_cast_pauses_it() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        spawn(&mut harness, "ground", [0.0, 300.0]);
+        let mage = spawn(&mut harness, "mage", [0.0, 270.0]);
+        harness.step(2);
+        let mana = |harness: &super::Harness| {
+            let stats = harness.world().get::<Stats>(mage).unwrap();
+            stats.base("mana").unwrap()
+        };
+        // 1.5 each 0.1 s: 15 a second.
+        harness.step(frames_for(1.0, dt));
+        assert!(
+            (mana(&harness) - 55.0).abs() <= 1.5,
+            "dt {dt}: {}",
+            mana(&harness)
+        );
+        // The spell costs 20 and casts for a second, which holds the regen.
+        harness.press_action("attack");
+        harness.step(1);
+        harness.release_action("attack");
+        let cast = mana(&harness);
+        assert!(cast < 40.0, "dt {dt}: the cost was spent: {cast}");
+        harness.step(frames_for(0.9, dt));
+        assert_eq!(mana(&harness), cast, "dt {dt}: held while casting");
+        harness.step(frames_for(0.5, dt));
+        assert!(mana(&harness) > cast + 3.0, "dt {dt}: it resumed");
+        harness.step(frames_for(6.0, dt));
+        assert_eq!(mana(&harness), 100.0, "dt {dt}: capped at max_mana");
+    }
+}
+
+#[test]
+fn an_air_jump_reaches_a_ledge_one_jump_cannot() {
+    for dt in DTS {
+        // `jumper` has one air jump, `runner` none; a ledge's top at y 160,
+        // 130 px above the ground's, past one jump's 90 px peak.
+        let land = |id: &str| {
+            let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+            spawn(&mut harness, "ground", [0.0, 300.0]);
+            spawn(&mut harness, "ledge", [200.0, 170.0]);
+            let hero = spawn(&mut harness, id, [0.0, 270.0]);
+            harness.step(2);
+            harness.press_action("move_right");
+            harness.press_action("jump");
+            harness.step(frames_for(0.3, dt));
+            harness.release_action("jump");
+            harness.step(1);
+            harness.press_action("jump");
+            harness.step(frames_for(1.0, dt));
+            harness.release_action("move_right");
+            harness.release_action("jump");
+            harness.step(frames_for(0.5, dt));
+            let controller = harness.world().get::<PlatformerController>(hero).unwrap();
+            (controller.grounded(), body_at(&harness, hero).y)
+        };
+        let (grounded, y) = land("jumper");
+        assert!(
+            grounded && (y - 140.0).abs() < 0.1,
+            "dt {dt}: on the ledge: {y}"
+        );
+        let (grounded, y) = land("runner");
+        assert!(
+            grounded && (y - 270.0).abs() < 0.1,
+            "dt {dt}: back on the ground: {y}"
+        );
+    }
+}

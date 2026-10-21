@@ -6,6 +6,28 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.93.0] - 2026-10-20
+
+Summary: M72, example 01's first stop, 01 (a) (plan archived at `docs/plans/archive/1.0/phase6-milestone-72-example-01-rebuild.md`; `D-197`): example 01 rebuilt from scratch as a game on the template, run from its own folder with the template's shell byte for byte, its player on the kit's platformer controller with an air jump, eight spells on the kit's abilities paid in mana on its effects, a HUD, a headless playthrough and saves that load back to themselves. The kit gains air jumps, the `restore` payload, `suppressed_by` and saved runtime state for its controller, path follower and random stream; the template's due autosaves are captured after the last frame's flush; the release archives run the platformer from its folder. With them ship the session tiers (`D-195`) and the players' release archives (`D-196`). No hash moves.
+
+### Added
+
+- **Air jumps, restore and suppression, and saved state in the kit** (`D-197`): `PlatformerController::with_air_jumps`, `air_jumps` in data, `air_jumped` and `air_jumps_left`; an effect's `restore` payload (a stat's base raised up to another stat's value) and `suppressed_by` (tags that hold a running instance); serde for `PlatformerController` (its filter and first step left out), `PathFollower` and `KitRng`, which saves its generator's words through `Pcg32`'s new serde in `tungsten-core`; `World::component_types`; the recipes of a mage's mana, a runner's stamina and an air jump onto a ledge.
+- **Example 01 on the template** (`D-197`): `examples/01_platformer` with its own `tungsten.json`, `input.json` and `assets/`, the template's shell in `src/shell/`, and the game in `src/features/` (level, player, run, audio, toys, elements, spells): the level's placements as Tiled object layers of generated prefabs, eight spells with mana and a HUD of health, mana and the spell bar, saves of schema 4, generated art for the bowling ball, the spell icons, the toss, the aim frames and the lantern's cast, generated music and sounds, a README that maps each mechanic to its kit item, and 105 tests, the save round trip, coverage and divergence and a scripted playthrough among them.
+
+### Changed
+
+- **Session tiers** (`D-195`): a stop's own `tier` in `docs/plans/1.0/roadmap.json` sets its session stages' model and effort ahead of `D-151`'s rule, and example 01's four stops run every plan and run session on Opus 5.5 at max.
+- **Release archives for players** (`D-196`): each platform's release is one zip, `tungsten-examples-<version>-windows-x64.zip` or `-linux-x64.zip`. Its top folder holds the launchers under player-facing names from `TITLES` in `scripts/release.py` (`Platformer`, `Benchmark`, `Template`), a README written for players, `LICENSE.txt` and `THIRD-PARTY-NOTICES.txt`, and a `data/` folder with the builds and the files they read, which the launcher (`tools/launcher`) runs them from. The notices file ends with the Rust standard library's notices, converted from the toolchain's HTML to plain text.
+- **The template's autosaves** (`D-197`): `shell_save` captures the due autosaves at the start of `PreUpdate`, after the previous frame's command flush, so a save holds a cast's cost and its spawn; a requested autosave waits until `capture` returns a save.
+- **Smoke, the repository check and the archives** (`D-197`): an example whose folder holds `tungsten.json` runs from it in `just smoke` and loads its manifest as its own root in the manifests test; `just repo-check` holds each example's `src/shell/` to the template's; a folder game ships `tungsten.json`, `input.json` and `assets/` under `data/<folder>/`, and the launcher runs `Platformer` from `data/examples/01_platformer/`.
+- **Records**: `DESIGN.md`, the getting-started guide, `docs/validation.md`, `docs/releases.md`, known issues, the backlog, W12, W1, w13, example 01's design and the LLM index.
+
+### Removed
+
+- **Debug archives and the HTML notices** (`D-196`): releases no longer ship `tungsten-debug-*` archives, `THIRD-PARTY-NOTICES-rust-std.html` or a Linux `.tar.gz`; packaging strips each Linux binary, `release.yml` no longer uploads the PDBs, and the release guide's crash-report check on a released build is gone. The crash-report probe stays in the build jobs.
+- **Example 01's old code** (`D-194`, `D-197`): its hand-written systems, extract, death screen and restart, the orbs and their bindings, and the generated `src/level_layout.rs`.
+
 ## [0.92.0] - 2026-10-20
 
 Summary: M71, the example fixtures stop (plan archived at `docs/plans/archive/1.0/phase6-milestone-71-example-fixtures.md`): examples 03, 04 and 05 and example 01's lighting fixture become one test-only crate, `examples/03_fixtures` (package `example-03-fixtures`), whose `TUNGSTEN_FIXTURE` picks the `post`, `transition`, `ui` or `lighting` scene. It keeps 14 smoke rows and three of `just visual`'s suites, with every capture byte-equal and the two UI fixture PNGs unchanged, and stays out of the release archives. The template's shell is the only UI reference. No hash moves.

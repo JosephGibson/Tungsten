@@ -1,0 +1,15 @@
+{
+  "components": {
+    "black_hole": {
+      "left": 4.0
+    },
+    "particle_emitter": {
+      "config": "ex10_black_hole"
+    },
+    "spawn_children": [
+      {
+        "prefab": "ex10_black_hole_dust"
+      }
+    ]
+  }
+}

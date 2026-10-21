@@ -1,0 +1,14 @@
+{
+  "trigger": {
+    "action": "dash"
+  },
+  "cost": {
+    "stat": "stamina",
+    "amount": 10
+  },
+  "payload": [
+    {
+      "effect": "sprinting"
+    }
+  ]
+}

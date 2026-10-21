@@ -59,6 +59,15 @@
     },
     "coin": {
       "path": "prefabs/coin.json"
+    },
+    "mage": {
+      "path": "prefabs/mage.json"
+    },
+    "jumper": {
+      "path": "prefabs/jumper.json"
+    },
+    "ledge": {
+      "path": "prefabs/ledge.json"
     }
   },
   "data": {
@@ -78,11 +87,22 @@
       },
       "hasted": {
         "path": "data/effects/hasted.json"
+      },
+      "mana_regen": {
+        "path": "data/effects/mana_regen.json"
+      },
+      "casting": {
+        "path": "data/effects/casting.json"
       }
     },
     "curves": {
       "regen_scale": {
         "path": "data/curves/regen_scale.json"
+      }
+    },
+    "abilities": {
+      "spell": {
+        "path": "data/abilities/spell.json"
       }
     }
   },

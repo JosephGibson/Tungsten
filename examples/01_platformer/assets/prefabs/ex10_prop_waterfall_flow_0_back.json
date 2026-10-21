@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_waterfall_flow"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_waterfall_flow_0",
+    "z_order": -20
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "tag": "ledge",
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          60,
+          10
+        ]
+      }
+    }
+  }
+}

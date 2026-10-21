@@ -162,6 +162,29 @@ def check_kit_catalogue(root, errors, notes):
             errors.append(f"{agents.relative_to(root).as_posix()}: names no `{name}`, which {KIT_SNAPSHOT} lists")
 
 
+def check_shell_copies(root, errors, notes):
+    """Each example's `src/shell/` is the template's byte for byte: the same
+    files with the same bytes, so a game on the template keeps its shell
+    whole and a later shell can replace it (D-194)."""
+    template, examples = root / "templates" / "basic" / "src" / "shell", root / "examples"
+    if not template.is_dir() or not examples.is_dir():
+        return
+
+    def files(folder):
+        return {p.relative_to(folder).as_posix(): p for p in folder.rglob("*") if p.is_file()}
+
+    want = files(template)
+    for shell in sorted(p for p in examples.glob("*/src/shell") if p.is_dir()):
+        rel, have = shell.relative_to(root).as_posix(), files(shell)
+        for name in sorted(want.keys() - have.keys()):
+            errors.append(f"{rel}/{name}: missing; templates/basic/src/shell/ has it")
+        for name in sorted(have.keys() - want.keys()):
+            errors.append(f"{rel}/{name}: not in templates/basic/src/shell/")
+        for name in sorted(want.keys() & have.keys()):
+            if want[name].read_bytes() != have[name].read_bytes():
+                errors.append(f"{rel}/{name}: differs from templates/basic/src/shell/{name}")
+
+
 def plan_fields(text):
     # YAML frontmatter and the repository's older bold bullet headers.
     header = text.split("\n## ", 1)[0]
@@ -514,8 +537,10 @@ def select_checks(root, paths):
             require("cargo test -p tungsten-core --test manifests --locked", "Edit loop", "layer 1 manifest/asset graph")
             require("just repo-check", "CPU", "asset coverage")
             require("just smoke", "Hardware", "layer 2 asset upload/runtime integration; local GPU/display")
+        if re.match(r"examples/[^/]+/src/shell/", path):
+            require("just repo-check", "CPU", "an example's shell copies the template's byte for byte")
         platformer = "examples/01_platformer/"
-        if path.startswith(platformer + "tools/") or path == platformer + "src/level_layout.rs":
+        if path.startswith(platformer + "tools/"):
             require("just level-check", "CPU", "generator source/inventory/output consistency and tests; Pillow required")
             require("cargo test -p example-01-platformer --locked", "Edit loop", "generated layout and real route/gameplay tests")
             require("just repo-check", "CPU", "generated asset coverage")
@@ -578,6 +603,9 @@ def select_checks(root, paths):
         if path.startswith("tools/cli/"):
             require("cargo test -p tungsten-cli --locked", "Edit loop", "the command line's parser, check, package and new")
             require("just template-check", "Hardware", "new, check and package on an outside game; local GPU/display and disk floor")
+        if path.startswith("tools/launcher/"):
+            require("cargo test -p tungsten-launcher --locked", "Edit loop", "the archive launcher's folder games and CPU levels")
+            require("just script-test", "CPU", "release.py's tables must match the launcher's")
         if path.startswith("api/"):
             require("just api-check", "CPU", "tracked public API agrees with pinned-toolchain rustdoc")
         if path == KIT_SNAPSHOT:
@@ -647,7 +675,7 @@ def main(argv=None):
             print(f"ERROR: check selection: {exc}")
             return 2
         return 0
-    for check in (check_assets, check_templates, check_kit_catalogue, check_plans, check_docs, check_plan_citations, check_roadmap, check_summary):
+    for check in (check_assets, check_templates, check_kit_catalogue, check_shell_copies, check_plans, check_docs, check_plan_citations, check_roadmap, check_summary):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

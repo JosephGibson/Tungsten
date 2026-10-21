@@ -1,0 +1,26 @@
+{
+  "sprite": {
+    "asset_id": "ex10_bowling_ball",
+    "z_order": 12
+  },
+  "components": {
+    "ball": null,
+    "bowling_ball": null,
+    "animation": {
+      "id": "ex10_bowling_roll"
+    },
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 15
+      },
+      "offset": [
+        16,
+        16
+      ],
+      "mass": 8,
+      "restitution": 0.3
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "sprite": {
+    "asset_id": "ex10_fireball_0",
+    "z_order": 14
+  },
+  "visible": false,
+  "components": {
+    "fire_missile": null,
+    "projectile": {
+      "range": 1890
+    },
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ],
+      "acceleration": [
+        0,
+        360
+      ]
+    },
+    "animation": {
+      "id": "ex10_fireball"
+    },
+    "glow": {
+      "offset": [
+        20,
+        20
+      ],
+      "radius": 0,
+      "core": 48,
+      "color": [
+        255,
+        140,
+        50,
+        200
+      ],
+      "light": 2.4,
+      "reach": 192
+    },
+    "spawn_children": [
+      {
+        "prefab": "ex10_missile_trail",
+        "offset": [
+          20,
+          20
+        ]
+      },
+      {
+        "prefab": "ex10_fire_drips",
+        "offset": [
+          20,
+          26
+        ]
+      }
+    ]
+  }
+}

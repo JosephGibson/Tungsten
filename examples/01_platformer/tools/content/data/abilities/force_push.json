@@ -1,0 +1,15 @@
+{
+  "cost": {
+    "stat": "mana",
+    "amount": 25
+  },
+  "cooldown": 2,
+  "target": {
+    "self": {}
+  },
+  "payload": [
+    {
+      "effect": "casting"
+    }
+  ]
+}
