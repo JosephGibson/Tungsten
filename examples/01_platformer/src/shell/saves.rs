@@ -1,28 +1,36 @@
-//! The save and load screen over the autosave and ten slots, in a card that
-//! scrolls. Each row names its slot's state in text, in the mono family:
-//! empty, ready (when, playtime, version and the game's summary), saved by a
-//! newer version, or damaged; a newer or damaged slot is neither loaded nor
+//! The save and load screen in a card that scrolls: the autosaves, newest
+//! first, under a small "Autosaves" label, then the ten slots under
+//! "Slots". Each row's button holds the slot's name and, smaller, muted and
+//! in mono, its details: when, playtime, an older version's number and the
+//! game's summary, or "Empty", "Saved by a newer version" or "Damaged". An
+//! empty row reads quieter; a newer or damaged slot is neither loaded nor
 //! overwritten, and any slot with a file can be deleted after a confirm, a
-//! delete that fails saying so. Save mode (from pause) saves to an empty
-//! slot at once and asks before it overwrites; the autosave is no target.
+//! delete that fails saying so; Delete stays muted until its row has focus.
+//! Save mode (from pause) saves to an empty slot at once and asks before it
+//! overwrites; it shows no autosave, only a note on when they are written.
 //! Load mode (from the title, pause and game over) starts the run from a
-//! ready slot, asking first only over a live run that is not checkpointed.
+//! ready slot, asking first over an older version's save or a live run that
+//! is not checkpointed.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tungsten::core::save::SaveError;
-use tungsten::core::ui::{Sizing, UiTree, WidgetId};
+use tungsten::core::text::{TextAlign, TextWrap};
+use tungsten::core::ui::{Align, Direction, Justify, Sizing, UiTree, WidgetId};
 use tungsten::core::{SaveSlots, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
+use super::options::GameOptions;
 use super::{
-    AUTOSAVE, RunStart, SLOTS, Shell, SlotState, cancelled, clicked, enter, idle, pop, read_slots,
-    run, save_to, start_run, theme, toast, widgets,
+    AUTOSAVES, SLOTS, Shell, SlotState, cancelled, clicked, enter, idle, load, pop, read_slots,
+    save_to, theme, toast, version_note, widgets,
 };
 use crate::save;
 
 pub const SAVES: StateId = "saves";
+/// The rows under "Autosaves": the three and the old shell's one.
+const AUTOSAVE_ROWS: usize = AUTOSAVES.len() + 1;
 
 /// What the screen does with a slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,74 +42,116 @@ pub enum Mode {
 /// The save and load screen.
 pub struct SavesState {
     mode: Mode,
-    /// The root, each slot's button and delete button, and Back.
-    ui: Option<(WidgetId, Vec<[WidgetId; 2]>, WidgetId)>,
-    states: Vec<SlotState>,
+    /// The root, each row's button and Delete, the autosaves' rows first,
+    /// the note that stands for them in Save mode, and Back.
+    ui: Option<(WidgetId, Vec<[WidgetId; 2]>, WidgetId, WidgetId)>,
+    /// Each row's slot and state, as the last refresh drew them; `None`
+    /// for a hidden row.
+    rows: Vec<Option<(&'static str, SlotState)>>,
     opened: Option<WidgetId>,
 }
 
 impl SavesState {
     #[must_use]
     pub fn new(mode: Mode) -> Self {
-        let (ui, states, opened) = (None, Vec::new(), None);
+        let (ui, rows, opened) = (None, Vec::new(), None);
         Self {
             mode,
             ui,
-            states,
+            rows,
             opened,
         }
     }
 
-    /// Reads the slots again, rewrites the rows and focuses the button that
-    /// opened the screen above, else the first slot that can take focus.
+    /// Reads the slots again, the autosaves newest first and none in Save
+    /// mode, rewrites the rows and focuses the button that opened the
+    /// screen above, else the first slot that can take focus.
     fn refresh(&mut self, world: &mut World) {
         let (slots, _) = read_slots(world);
-        let Some((_, rows, back)) = &self.ui else {
+        let (mut autosaves, slots): (Vec<_>, Vec<_>) =
+            slots.into_iter().partition(|(slot, _)| autosave(slot));
+        autosaves.sort_by_key(|(_, state)| match state {
+            SlotState::Ready(_, at) => std::cmp::Reverse(Some(*at)),
+            _ => std::cmp::Reverse(None),
+        });
+        let saving = self.mode == Mode::Save;
+        let mut shown: Vec<_> = autosaves
+            .into_iter()
+            .filter(|_| !saving)
+            .map(Some)
+            .collect();
+        shown.resize_with(AUTOSAVE_ROWS, || None);
+        shown.extend(slots.into_iter().map(Some));
+        let details: Vec<Option<String>> = shown
+            .iter()
+            .map(|row| row.as_ref().map(|(_, state)| details(world, state)))
+            .collect();
+        let on = world.resource::<GameOptions>().autosave;
+        let Some((_, rows, note, back)) = &self.ui else {
             return;
         };
         let tree = world.resource_mut::<UiTree>();
-        for ((slot, state), [button, delete]) in slots.iter().zip(rows) {
+        let colors = tree.theme().tokens.colors;
+        let written = "Written as you play, when you pause and when you quit.";
+        tree.set_text(*note, [written, "Autosave is off."][usize::from(!on)]);
+        widgets::show(tree, *note, saving);
+        for (([button, delete], row), text) in rows.iter().zip(&shown).zip(&details) {
+            if let Some(parent) = tree.parent(*button) {
+                widgets::show(tree, parent, row.is_some());
+            }
+            let (Some((slot, state)), Some(text)) = (row, text) else {
+                continue;
+            };
             let name = slot_name(slot);
-            let (text, usable) = match state {
-                SlotState::Off => (format!("{name} · Saving is off"), false),
-                SlotState::Empty => (format!("{name} · Empty"), self.mode == Mode::Save),
-                SlotState::Ready(save, at) => {
-                    let (meta, ago) = (&save.meta, age(*at));
-                    let played = clock(meta.playtime_secs);
-                    let summary = save::summary(save);
-                    let version = &meta.game_version;
-                    let line = format!("{name} · {ago} · {played} played · v{version}\n{summary}");
-                    (line, true)
-                }
-                SlotState::Newer => (format!("{name} · Saved by a newer version"), false),
-                SlotState::Damaged => (format!("{name} · Damaged"), false),
-            };
-            let target = self.mode == Mode::Load || *slot != AUTOSAVE;
-            let text = match target {
-                true => text,
-                false => format!("{name} · Written when you pause or quit"),
-            };
-            tree.set_text(*button, text.as_str());
-            tree.set_enabled(*button, usable && target);
-            widgets::show(
-                tree,
-                *delete,
-                !matches!(state, SlotState::Off | SlotState::Empty),
-            );
+            widgets::name(tree, *button, &name);
+            widgets::name(tree, *delete, &format!("Delete {name}"));
+            tree.set_text(*button, name.as_str());
+            let empty = matches!(state, SlotState::Empty);
+            let usable = matches!(state, SlotState::Ready(..)) || (empty && saving);
+            tree.set_enabled(*button, usable);
+            // The details as quiet as the row: muted, or disabled with it.
+            if let Some(&label) = tree.children(*button).get(1) {
+                tree.set_text(label, text.as_str());
+                let color = [colors.text_muted, colors.disabled_text][usize::from(!usable)];
+                widgets::restyle(tree, label, |text| text.color = Some(color));
+            }
+            // An empty row has no fill; enabled, its name is muted too.
+            let mut style = tree.overrides(*button).cloned().unwrap_or_default();
+            style.background = empty.then_some([0; 4]);
+            style.text.color = (empty && saving).then_some(colors.text_muted);
+            tree.set_overrides(*button, style);
+            widgets::show(tree, *delete, !matches!(state, SlotState::Off) && !empty);
         }
         let slots_first = rows.iter().map(|[button, _]| *button);
         widgets::focus_first(
             tree,
             self.opened.into_iter().chain(slots_first).chain([*back]),
         );
-        self.states = slots.into_iter().map(|(_, state)| state).collect();
+        self.rows = shown;
     }
 
-    /// The slot at `at` activated.
+    /// Each Delete in the muted colour, in danger while its row's button or
+    /// the Delete itself has focus.
+    fn quiet_deletes(&self, world: &mut World) {
+        let Some((_, rows, ..)) = &self.ui else {
+            return;
+        };
+        let tree = world.resource_mut::<UiTree>();
+        let (colors, focused) = (tree.theme().tokens.colors, tree.focused());
+        for [button, delete] in rows {
+            let hot = focused == Some(*button) || focused == Some(*delete);
+            let color = [colors.text_muted, colors.danger][usize::from(hot)];
+            widgets::restyle(tree, *delete, |text| text.color = Some(color));
+        }
+    }
+
+    /// The row at `at` activated.
     fn pick(&mut self, world: &mut World, at: usize) {
-        let slot = SLOTS[at];
-        let name = slot_name(slot);
-        match (&self.states[at], self.mode) {
+        let Some(Some((slot, state))) = self.rows.get(at) else {
+            return;
+        };
+        let (slot, name) = (*slot, slot_name(slot));
+        match (state, self.mode) {
             (SlotState::Empty, Mode::Save) => {
                 saved(world, slot);
                 self.refresh(world);
@@ -110,21 +160,54 @@ impl SavesState {
                 let ask = ConfirmState::new(&format!("Overwrite {name}?"), "Overwrite", "Cancel");
                 confirm::ask(world, ask.on_yes(move |world| saved(world, slot)));
             }
-            (SlotState::Ready(save, _), Mode::Load) => {
-                let start = RunStart::from(save.as_ref().clone());
-                let checkpointed = run(world).is_some_and(|run| run.checkpointed);
-                if save::capture(world).is_none() || checkpointed {
-                    return start_run(world, start, Some(slot));
-                }
-                let question = format!("Load {name}? Progress since your last save will be lost.");
-                let ask = ConfirmState::new(&question, "Load", "Cancel");
-                confirm::ask(
-                    world,
-                    ask.on_yes(move |world| start_run(world, start, Some(slot))),
-                );
-            }
+            (SlotState::Ready(save, _), Mode::Load) => load(world, slot, save.as_ref().clone()),
             _ => {}
         }
+    }
+}
+
+/// A save row under `parent`: a button holding the slot's name and, beside
+/// it at the end, smaller, muted and in mono, its details; then Delete, as
+/// tall as the row.
+fn save_row(tree: &mut UiTree, parent: WidgetId) -> [WidgetId; 2] {
+    let row = widgets::row(tree, parent);
+    let mut style = tree.layout_style(row).cloned().unwrap_or_default();
+    style.align_items = Align::Stretch;
+    tree.set_layout_style(row, style);
+    let button = widgets::button(tree, row, "");
+    let mut style = tree.layout_style(button).cloned().unwrap_or_default();
+    (style.width, style.direction) = (Sizing::Fill, Direction::Row);
+    (style.align_items, style.gap) = (Align::Center, 2.0 * theme::GAP);
+    tree.set_layout_style(button, style);
+    // The name on one line at its own width, the details in the rest: a
+    // box sized to its text can commit an ulp short and wrap (known issues).
+    let name = tree.children(button)[0];
+    widgets::restyle(tree, name, |text| text.wrap = Some(TextWrap::None));
+    let details = widgets::small(tree, button, "");
+    widgets::set_width(tree, details, Sizing::Fill);
+    widgets::mono(tree, details);
+    widgets::restyle(tree, details, |text| text.align = Some(TextAlign::End));
+    let delete = widgets::button(tree, row, "Delete");
+    let mut style = tree.layout_style(delete).cloned().unwrap_or_default();
+    style.justify_content = Justify::Center;
+    tree.set_layout_style(delete, style);
+    [button, delete]
+}
+
+/// A row's details: when, the playtime, an older version's number and the
+/// game's summary; else the slot's state.
+fn details(world: &World, state: &SlotState) -> String {
+    match state {
+        SlotState::Off => "Saving is off".to_owned(),
+        SlotState::Empty => "Empty".to_owned(),
+        SlotState::Ready(save, at) => {
+            let note = version_note(world, &save.meta.game_version);
+            let note = note.map_or(String::new(), |note| format!(" · {note}"));
+            let (ago, played) = (age(*at), clock(save.meta.playtime_secs));
+            format!("{ago} · {played} played{note}\n{}", save::summary(save))
+        }
+        SlotState::Newer => "Saved by a newer version".to_owned(),
+        SlotState::Damaged => "Damaged".to_owned(),
     }
 }
 
@@ -153,12 +236,19 @@ fn delete(world: &mut World, slot: &'static str) {
     }
 }
 
-/// A slot's name on screen.
+/// A slot's name on screen: "Slot 1", "Autosave 1", or "Autosave" for the
+/// old shell's one.
 pub(crate) fn slot_name(slot: &str) -> String {
-    match slot.strip_prefix("slot_") {
-        Some(number) => format!("Slot {number}"),
-        None => "Autosave".to_owned(),
+    match (slot.strip_prefix("slot_"), slot.strip_prefix("autosave_")) {
+        (Some(number), _) => format!("Slot {number}"),
+        (_, Some(number)) => format!("Autosave {number}"),
+        _ => "Autosave".to_owned(),
     }
+}
+
+/// Whether `slot` is an autosave, the old shell's included.
+fn autosave(slot: &str) -> bool {
+    !slot.starts_with("slot_")
 }
 
 /// How long ago a save written at `at` (Unix ms) was, roughly.
@@ -195,21 +285,18 @@ impl GameState for SavesState {
         let (root, card) = widgets::screen(tree, theme::WIDE_WIDTH);
         let heading = ["Load", "Save"][usize::from(self.mode == Mode::Save)];
         widgets::heading(tree, card, heading, false);
-        let mut rows = Vec::new();
-        for slot in SLOTS {
-            let (row, name) = (widgets::row(tree, card), slot_name(slot));
-            let button = widgets::button(tree, row, &name);
-            widgets::set_width(tree, button, Sizing::Fill);
-            widgets::mono(tree, button);
-            let delete = widgets::button(tree, row, &format!("Delete {name}"));
-            tree.set_text(delete, "Delete");
-            widgets::danger(tree, delete);
-            rows.push([button, delete]);
-        }
+        // Rows for the autosaves and the old shell's, then the slots; the
+        // refresh names them and hides what is left over.
+        widgets::small(tree, card, "Autosaves");
+        let note = widgets::note(tree, card, "");
+        let mut rows: Vec<_> = (0..AUTOSAVE_ROWS).map(|_| save_row(tree, card)).collect();
+        widgets::small(tree, card, "Slots");
+        rows.extend((AUTOSAVES.len()..SLOTS.len()).map(|_| save_row(tree, card)));
         let back = widgets::button(tree, card, "Back");
         enter(ctx.world, root);
-        self.ui = Some((root, rows, back));
+        self.ui = Some((root, rows, note, back));
         self.refresh(ctx.world);
+        self.quiet_deletes(ctx.world);
     }
 
     fn on_exit(&mut self, _ctx: &mut StateContext) {}
@@ -219,7 +306,8 @@ impl GameState for SavesState {
     }
 
     fn update(&mut self, world: &mut World) {
-        let Some((root, rows, back)) = self.ui.clone().filter(|_| idle(world)) else {
+        self.quiet_deletes(world);
+        let Some((root, rows, _, back)) = self.ui.clone().filter(|_| idle(world)) else {
             return;
         };
         let buttons: Vec<WidgetId> = rows.iter().flatten().copied().chain([back]).collect();
@@ -229,7 +317,10 @@ impl GameState for SavesState {
             Some(at) if at == buttons.len() - 1 => pop(world),
             Some(at) if at % 2 == 0 => self.pick(world, at / 2),
             Some(at) => {
-                let slot = SLOTS[at / 2];
+                let Some(Some((slot, _))) = self.rows.get(at / 2) else {
+                    return;
+                };
+                let slot = *slot;
                 let question = format!("Delete {}?", slot_name(slot));
                 let ask = ConfirmState::new(&question, "Delete", "Cancel");
                 confirm::ask(world, ask.on_yes(move |world| delete(world, slot)));

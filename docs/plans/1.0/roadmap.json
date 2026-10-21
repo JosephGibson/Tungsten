@@ -998,6 +998,25 @@
       "questions": []
     },
     {
+      "id": "w12fp",
+      "row": "Template final pass",
+      "label": "Template final pass",
+      "group": "audio-shipping",
+      "kind": "release",
+      "level": "C",
+      "title": "Template final pass",
+      "summary": "The template's last pass before example 01 grows: no dying again right after a load, toggles that take the first click, three rotating autosaves you can turn off, a question before an older save loads, a clearer save screen, bloom, the UI at 75 % by default, a smaller outlined slider thumb, Uncapped with a 60 fps floor, a Dark Souls-style game over over a pixelating world, a black play area, an enemy that stands still and a Windows icon; then every maintained doc brought up to date.",
+      "note": "The owner's request of 2026-10-20, after 01 (a) and before 01 (b); level C for letter spacing on UI text. Example 01 copies each shell change in the same step, and the shell-copy check covers the theme file.",
+      "src": ["docs/plans/1.0/w12-template.md"],
+      "slug": "template-final-pass",
+      "complexity": 2,
+      "effort": "XL",
+      "shows": "see",
+      "roles": ["play"],
+      "flags": ["api", "visual"],
+      "questions": []
+    },
+    {
       "id": "e01b",
       "row": "01 (b) elements and weapons",
       "label": "01 (b) elements and weapons",

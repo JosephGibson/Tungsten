@@ -240,8 +240,9 @@ pub fn choice_row(tree: &mut UiTree, parent: WidgetId, caption: &str, value: &st
     choice
 }
 
-/// A setting row holding a slider at the range's start and its value's
-/// readout in the mono family, which the caller writes; returns both.
+/// A setting row holding a slider at the range's start, [`theme::SLIDER_LINE`]
+/// tall, and its value's readout in the mono family, which the caller
+/// writes; returns both.
 pub fn slider_row(
     tree: &mut UiTree,
     parent: WidgetId,
@@ -251,6 +252,9 @@ pub fn slider_row(
     let row = caption_row(tree, parent, caption);
     let slider = tree.slider(row, range, range.min());
     set_width(tree, slider, Sizing::Px(theme::CONTROL_WIDTH));
+    restyle(tree, slider, |text| {
+        text.line_height = Some(theme::SLIDER_LINE)
+    });
     name(tree, slider, caption);
     let readout = tree.label(row, "");
     at_least(tree, readout, theme::READOUT_WIDTH);

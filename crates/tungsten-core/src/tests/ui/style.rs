@@ -356,6 +356,37 @@ fn a_nodes_own_text_override_beats_the_inherited_one() {
 }
 
 #[test]
+fn letter_spacing_inherits_and_a_labels_own_beats_it() {
+    let (mut tree, _root, button, label) = clean_button();
+    let spaced = |em: f32| StyleOverrides {
+        text: TextOverrides {
+            letter_spacing: Some(em),
+            ..TextOverrides::default()
+        },
+        ..StyleOverrides::default()
+    };
+    tree.set_overrides(button, spaced(0.2));
+    let stats = tree.resolve_styles();
+    assert_eq!(stats.measurement_changed, 2, "the button and its label");
+    assert_eq!(resolved(&tree, button).text.layout.letter_spacing, 0.2);
+    assert_eq!(
+        resolved(&tree, label).text.layout.letter_spacing,
+        0.2,
+        "the button's spacing"
+    );
+    assert!(tree.is_layout_dirty(), "spacing measures");
+
+    tree.set_overrides(label, spaced(0.05));
+    tree.resolve_styles();
+    assert_eq!(resolved(&tree, label).text.layout.letter_spacing, 0.05);
+    assert_eq!(
+        resolved(&tree, button).text.layout.letter_spacing,
+        0.2,
+        "the parent keeps its own"
+    );
+}
+
+#[test]
 fn set_theme_bumps_the_epoch_and_re_resolves_everything() {
     let (mut tree, root, button, label) = clean_button();
     let epoch = tree.theme_epoch();

@@ -4,6 +4,7 @@
 use std::path::Path;
 
 use tungsten::core::assets::manifest::ResolvedManifest;
+use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
     ActionMap, AssetRegistry, AudioCommand, Binding, BodyKind, CameraController, CameraMode,
     CameraState, Entity, ParticleEmitter, Position, PrevPosition, RigidBody, SoundRegistry, Sprite,
@@ -1205,10 +1206,18 @@ fn enemies_move_take_three_hits_and_come_back() {
     let at =
         |harness: &UiHarness, entity: Entity| harness.world().get::<Position>(entity).unwrap().0;
     let first: Vec<_> = spawned.iter().map(|&e| at(&harness, e)).collect();
-    harness.step(30);
-    for (entity, before) in spawned.iter().zip(&first) {
-        assert!(at(&harness, *entity).distance(*before) > 1.0, "it moves");
+    // Two seconds: three move, the still one stands at its place.
+    const STILL: usize = 2;
+    assert_eq!(ENEMIES[STILL].0, "enemy_still");
+    harness.step(120);
+    for (slot, (entity, before)) in spawned.iter().zip(&first).enumerate() {
+        let moved = at(&harness, *entity).distance(*before);
+        match slot {
+            STILL => assert_eq!(moved, 0.0, "the still enemy stands"),
+            _ => assert!(moved > 1.0, "{slot} moves"),
+        }
     }
+    assert_eq!(at(&harness, spawned[STILL]), ENEMIES[STILL].1.into());
     // A bolt hits an enemy: one less health.
     let orbiter = spawned[1];
     let near = at(&harness, orbiter);
@@ -1223,12 +1232,19 @@ fn enemies_move_take_three_hits_and_come_back() {
         damage(harness.world_mut(), orbiter, 1.0);
         harness.step(1);
     }
+    // The still one falls to three hits too.
+    let still = spawned[STILL];
+    for _ in 0..3 {
+        damage(harness.world_mut(), still, 1.0);
+        harness.step(1);
+    }
     harness.step(2);
     assert!(!harness.world().is_alive(orbiter), "three hits end it");
+    assert!(!harness.world().is_alive(still), "and the still one");
     let seconds = (ENEMY_RETURN_SECS * 60.0) as u32;
     harness.step(seconds - 10);
-    let back = enemies(&harness)[1];
-    assert_eq!(back, orbiter, "not yet back");
+    assert_eq!(enemies(&harness)[1], orbiter, "not yet back");
+    assert_eq!(enemies(&harness)[STILL], still, "nor the still one");
     harness.step(20);
     let back = enemies(&harness)[1];
     assert_ne!(back, orbiter, "back after its seconds");
@@ -1237,4 +1253,23 @@ fn enemies_move_take_three_hits_and_come_back() {
     let start = ENEMIES[1].1;
     let distance = at(&harness, back).distance(start.into());
     assert!(distance < 70.0, "on its circle about its place: {distance}");
+    let back = enemies(&harness)[STILL];
+    assert_ne!(back, still, "the still one back too");
+    assert_eq!(current(&harness, back), 3.0);
+    assert_eq!(at(&harness, back), ENEMIES[STILL].1.into(), "at its place");
+}
+
+#[test]
+fn the_runs_post_stack_blooms_below_white() {
+    let mut harness = harness();
+    let stack = |harness: &UiHarness| harness.world().resource::<PostStack>().0.clone();
+    assert_eq!(stack(&harness), [], "the title draws none");
+    start(&mut harness);
+    let run = stack(&harness);
+    let below_white = matches!(run.as_slice(), [PostPass::Bloom(bloom)] if bloom.threshold < 1.0);
+    assert!(below_white, "{run:?}");
+    tap(&mut harness, "state_pause");
+    super::press(&mut harness, "Quit to Title");
+    super::press(&mut harness, "Quit");
+    assert_eq!(stack(&harness), [], "the default after the run");
 }

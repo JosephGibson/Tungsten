@@ -41,7 +41,8 @@ hand-authored (see "Fireball spell, extinguishing and sound effects").
 The shell's assets come with its code: the `shell` theme, Inter and Source
 Serif 4 with their licence files, and the `damage_flash` shader and material are
 copied byte for byte from `templates/basic/assets/`, with their manifest entries,
-so `--check` also catches drift from the template. `content/` holds the prefab
+so `--check` also catches drift from the template; `just repo-check` holds the
+theme to the template's as it holds `src/shell/`. `content/` holds the prefab
 and data sources, copied verbatim: `content/prefabs/<id>.json` becomes the prefab
 `<id>`, and `content/data/<kind>/<id>.json` the `<kind>` entry `<id>`.
 
@@ -302,7 +303,8 @@ curtain wall and spire (two windows still lit). A separate circular pixel moon
 and soft halo keep their aspect ratio on resize;
 clouds and landscape can pass in front. The example selects the existing stock
 Bloom and Vignette post passes at restrained strengths (0.22 and 0.18), alongside
-normal/emissive lighting and a weak neutral moon fill. No engine or shader-source
+normal/emissive lighting and a weak neutral moon fill; the shell's Bloom option
+takes the Bloom out while it is off. No engine or shader-source
 changes are required. The HUD's bars read the health and the mana every frame and
 keep their screen size across zoom and camera movement.
 
@@ -591,5 +593,6 @@ once per 0.1 seconds across all blocks. A resting or creeping block does neither
 and large balls are never smashed.
 
 Losing the last health or falling out of bounds ends the run with the shell's game
-over: "You died" over the dimmed world, its sting and its music, and Retry, which
-loads the run's last good save (a fresh run without one), or Quit to Title.
+over: "YOU DIED" on a dark band while the world pixelates and dims, its sting and
+its music, then Retry, which loads the run's last good save (a fresh run without
+one), Load and Quit to Title.

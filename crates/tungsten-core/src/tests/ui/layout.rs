@@ -525,6 +525,39 @@ fn a_state_change_relayouts_only_when_the_resolved_text_changed() {
 }
 
 #[test]
+fn letter_spacing_widens_a_label_by_its_em_per_glyph_and_ignores_a_non_finite_value() {
+    let label_width = |letter_spacing: Option<f32>| {
+        let mut tree = UiTree::new();
+        let root = tree.add_root(UiLayer::Game, LayoutStyle::row());
+        let label = tree.label(root, "SPACED");
+        tree.set_overrides(
+            label,
+            StyleOverrides {
+                text: TextOverrides {
+                    letter_spacing,
+                    ..TextOverrides::default()
+                },
+                ..StyleOverrides::default()
+            },
+        );
+        let mut store = store();
+        tree.layout(VIEWPORT, &mut store);
+        tree.rect(label).unwrap().width()
+    };
+    let size = Theme::default().tokens.text.size;
+    let plain = label_width(None);
+    assert!(near(plain, 6.0 * 8.0), "{plain}");
+    let spaced = label_width(Some(0.2));
+    assert!(
+        near(spaced - plain, 6.0 * 0.2 * size),
+        "{spaced} against {plain}"
+    );
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        assert!(near(label_width(Some(bad)), plain), "{bad}");
+    }
+}
+
+#[test]
 fn case_g_a_fractional_wrap_boundary() {
     let mut store = store();
     let mut run = |width: f32| {

@@ -487,6 +487,10 @@ pub struct TextOverrides {
     pub wrap: Option<TextWrap>,
     /// Text that does not fit.
     pub overflow: Option<TextOverflow>,
+    /// Space added after each glyph, in em, as `TextLayout::letter_spacing`
+    /// takes it; passes down the tree with the other text properties. A
+    /// value that is not finite is ignored.
+    pub letter_spacing: Option<f32>,
 }
 
 impl TextOverrides {
@@ -524,6 +528,9 @@ impl TextOverrides {
         }
         if let Some(overflow) = self.overflow {
             style.layout.overflow = overflow;
+        }
+        if let Some(letter_spacing) = self.letter_spacing.filter(|value| value.is_finite()) {
+            style.layout.letter_spacing = letter_spacing;
         }
     }
 }

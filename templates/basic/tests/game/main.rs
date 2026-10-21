@@ -126,14 +126,20 @@ pub fn find(harness: &UiHarness, name: &str) -> Option<WidgetId> {
     })
 }
 
+/// The front-most shown screen's root.
+pub fn shown_modal(harness: &UiHarness) -> Option<WidgetId> {
+    let tree = harness.tree();
+    let shown = |root: &&WidgetId| {
+        tree.visibility(**root) == Some(Visibility::Visible) && tree.modal(**root)
+    };
+    tree.roots().iter().rev().find(shown).copied()
+}
+
 /// The widget named `name` on the front-most shown screen, enabled or not.
 pub fn named(harness: &UiHarness, name: &str) -> Option<WidgetId> {
     let tree = harness.tree();
-    let root =
-        tree.roots().iter().rev().find(|root| {
-            tree.visibility(**root) == Some(Visibility::Visible) && tree.modal(**root)
-        })?;
-    let mut stack = vec![*root];
+    let root = shown_modal(harness)?;
+    let mut stack = vec![root];
     while let Some(id) = stack.pop() {
         if tree.accessible_name(id) == Some(name) {
             return Some(id);
@@ -146,14 +152,10 @@ pub fn named(harness: &UiHarness, name: &str) -> Option<WidgetId> {
 /// Whether a label on the front-most shown screen reads `text`.
 pub fn shows(harness: &UiHarness, text: &str) -> bool {
     let tree = harness.tree();
-    let Some(root) =
-        tree.roots().iter().rev().find(|root| {
-            tree.visibility(**root) == Some(Visibility::Visible) && tree.modal(**root)
-        })
-    else {
+    let Some(root) = shown_modal(harness) else {
         return false;
     };
-    let mut stack = vec![*root];
+    let mut stack = vec![root];
     while let Some(id) = stack.pop() {
         if game_shell::widgets::text_of(tree, id) == text {
             return true;
@@ -161,6 +163,14 @@ pub fn shows(harness: &UiHarness, text: &str) -> bool {
         stack.extend(tree.children(id).iter().copied());
     }
     false
+}
+
+/// Clicks the control named `name` on the front-most shown screen and steps
+/// the frame that routes the click.
+pub fn click(harness: &mut UiHarness, name: &str) {
+    let id = find(harness, name).unwrap_or_else(|| panic!("no enabled control '{name}'"));
+    harness.click(id);
+    harness.step(1);
 }
 
 /// Focuses the control named `name` and activates it with `ui_accept`.

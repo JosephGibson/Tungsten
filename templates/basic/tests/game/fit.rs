@@ -1,6 +1,7 @@
 //! Each screen at the smallest viewport a player gets, a 1280 × 720 window
-//! at the OS scale 1.75 (731 × 411 UI units), and at a 1920 × 1080 window
-//! (1280 × 720 units): every shown control, enabled or not, lies inside the
+//! at the OS scale 1.75 (731 × 411 UI units at the UI scale 1), and at a
+//! 1920 × 1080 window (1280 × 720 units), each at the UI scale 1 and at the
+//! shell's 75 %: every shown control, enabled or not, lies inside the
 //! viewport; a scroll panel must fit, and its rows scroll inside it. Then
 //! a matrix of six windows and scale extremes, box by box.
 
@@ -10,45 +11,55 @@ use tungsten::core::ui::Visibility;
 use tungsten::core::{ScaleFactor, Settings, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
-use tungsten_template_basic::shell::widgets;
+use tungsten_template_basic::shell::{theme, widgets};
 
 use super::{harness, harness_with, player_entity, press, settle, start, tap, user_folder};
 
 const SIZES: [[u32; 2]; 2] = [[731, 411], [1920, 1080]];
 
-/// Lays the tree out at `size` and checks every focusable widget's box.
+/// Lays the tree out at `size` and checks every focusable widget's box: at
+/// the UI scale 1, where the 731 × 411 window reaches the floor, and at the
+/// shell's default, which it keeps.
 fn assert_fits(harness: &mut UiHarness, size: [u32; 2], what: &str) {
     harness.world_mut().insert_resource(WindowSize {
         width: size[0],
         height: size[1],
     });
-    harness.layout();
-    let tree = harness.tree();
-    let [width, height] = size.map(|side| side as f32);
-    let mut checked = 0;
-    let mut stack: Vec<_> = tree.roots().to_vec();
-    while let Some(id) = stack.pop() {
-        // A hidden or collapsed widget takes its subtree off the screen.
-        if tree.visibility(id) != Some(Visibility::Visible) {
-            continue;
+    for ui in [1.0, theme::UI_SCALE] {
+        let world = harness.world_mut();
+        world.resource_mut::<ScaleFactor>().set_ui_scale(ui);
+        harness.layout();
+        let tree = harness.tree();
+        let factor = harness.world().resource::<ScaleFactor>().get();
+        let [width, height] = size.map(|side| side as f32 / factor);
+        let mut checked = 0;
+        let mut stack: Vec<_> = tree.roots().to_vec();
+        while let Some(id) = stack.pop() {
+            // A hidden or collapsed widget takes its subtree off the screen.
+            if tree.visibility(id) != Some(Visibility::Visible) {
+                continue;
+            }
+            // A scroll panel clips its rows: the panel must fit, they scroll.
+            let scrolls = tree.scroll_max(id).is_some();
+            if !scrolls {
+                stack.extend(tree.children(id).iter().copied());
+            }
+            if !tree.focusable(id) && !scrolls {
+                continue;
+            }
+            let rect = harness.rect(id).expect("a focusable widget has a box");
+            assert!(
+                rect.min.x >= 0.0
+                    && rect.min.y >= 0.0
+                    && rect.max.x <= width
+                    && rect.max.y <= height,
+                "{what} at {size:?}, UI scale {ui}: {:?} at {rect:?}",
+                tree.accessible_name(id)
+            );
+            checked += 1;
         }
-        // A scroll panel clips its rows: the panel must fit, they scroll.
-        let scrolls = tree.scroll_max(id).is_some();
-        if !scrolls {
-            stack.extend(tree.children(id).iter().copied());
-        }
-        if !tree.focusable(id) && !scrolls {
-            continue;
-        }
-        let rect = harness.rect(id).expect("a focusable widget has a box");
-        assert!(
-            rect.min.x >= 0.0 && rect.min.y >= 0.0 && rect.max.x <= width && rect.max.y <= height,
-            "{what} at {size:?}: {:?} at {rect:?}",
-            tree.accessible_name(id)
-        );
-        checked += 1;
+        assert!(checked > 0, "{what}: nothing focusable");
     }
-    assert!(checked > 0, "{what}: nothing focusable");
 }
 
 fn each_size(harness: &mut UiHarness, what: &str) {
@@ -142,7 +153,7 @@ fn set_scales(harness: &mut UiHarness, window: [u32; 2], [os, ui, text]: [f32; 3
 /// The fit rules on the shown screens: every root inside the viewport, every
 /// visible widget's box inside its parent's, horizontally always and
 /// vertically unless a scroll panel above it scrolls it, and the title's
-/// label, when shown, one line.
+/// name and game over's "YOU DIED", when shown, one line each.
 fn assert_rules(harness: &mut UiHarness, what: &str) {
     harness.layout();
     let tree = harness.tree();
@@ -187,18 +198,21 @@ fn assert_rules(harness: &mut UiHarness, what: &str) {
         }
     }
     assert!(checked > 0, "{what}: nothing shown");
-    let title = tree.roots().iter().find_map(|root| {
+    // Each sits first in its root's first child: the title's card, game
+    // over's band.
+    let lines = tree.roots().iter().filter_map(|root| {
         let card = *tree.children(*root).first()?;
         let label = *tree.children(card).first()?;
-        (widgets::text_of(tree, label) == super::info().title).then_some(label)
+        let text = widgets::text_of(tree, label);
+        (text == super::info().title || text == "YOU DIED").then_some((label, text))
     });
-    if let Some(title) = title.filter(|_| tree.visibility(tree.roots()[0]).is_some()) {
-        let node = tree.text_node(title).unwrap();
+    for (label, text) in lines.filter(|_| tree.visibility(tree.roots()[0]).is_some()) {
+        let node = tree.text_node(label).unwrap();
         let lines = harness
             .text()
             .committed(node)
             .map(|metrics| metrics.line_count);
-        assert_eq!(lines, Some(1), "{what}: the title on one line");
+        assert_eq!(lines, Some(1), "{what}: '{text}' on one line");
     }
 }
 

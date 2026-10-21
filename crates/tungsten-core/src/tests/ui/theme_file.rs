@@ -147,6 +147,24 @@ fn text_fields_map_onto_the_text_overrides() {
     assert_eq!(hovered.wrap, Some(TextWrap::WordOrGlyph));
     assert_eq!(hovered.align, None);
 
+    let spaced = theme_of(
+        r#"{ "kinds": { "label": { "normal": { "text": { "letter_spacing": 0.2 } } },
+                       "button": { "focused": { "text": { "letter_spacing": -0.05 } } } } }"#,
+    );
+    assert_eq!(spaced.kinds.label.normal.text.letter_spacing, Some(0.2));
+    assert_eq!(spaced.kinds.button.focused.text.letter_spacing, Some(-0.05));
+    assert_eq!(
+        spaced.kinds.button.normal,
+        Theme::default().kinds.button.normal
+    );
+    assert!(
+        ThemeFile::from_json(
+            r#"{ "kinds": { "label": { "normal": { "text": { "tracking": 0.2 } } } } }"#
+        )
+        .is_err(),
+        "an unknown text field still fails"
+    );
+
     let open = theme_of(
         r#"{ "kinds": { "label": { "normal": { "text": { "overflow": { "ellipsis": { "at": "end" } } } } } } }"#,
     );

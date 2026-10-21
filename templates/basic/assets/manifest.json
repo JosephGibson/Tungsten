@@ -216,6 +216,9 @@
     "enemy_orbit": {
       "path": "prefabs/enemy_orbit.json"
     },
+    "enemy_still": {
+      "path": "prefabs/enemy_still.json"
+    },
     "enemy_patrol": {
       "path": "prefabs/enemy_patrol.json"
     },
@@ -256,6 +259,9 @@
       },
       "swift": {
         "path": "data/effects/swift.json"
+      },
+      "spawn_grace": {
+        "path": "data/effects/spawn_grace.json"
       }
     },
     "abilities": {

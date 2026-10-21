@@ -3,8 +3,9 @@
 //! the game's note on it), Load, Settings and Quit, smaller and spaced wider
 //! than a menu's, with the version and "Saving is off" small at the bottom
 //! left, and its song playing until a run starts. Continue loads the newest
-//! readable slot, named with its age under it, and is focused when there
-//! is one, disabled otherwise. Quit asks first.
+//! readable slot, named with its age under it, asking first when an older
+//! version wrote it, and is focused when there is one, disabled otherwise.
+//! Quit asks first.
 
 use tungsten::core::text::TextWrap;
 use tungsten::core::ui::{Align, Anchor, Edges, Justify, LayoutStyle, Sizing, UiTree, WidgetId};
@@ -12,11 +13,13 @@ use tungsten::core::{AudioCommands, Voice, World};
 use tungsten::{GameState, StateContext, StateId};
 
 use super::confirm::{self, ConfirmState};
+use super::options::GameOptions;
 use super::saves::{Mode, SavesState, age, slot_name};
 use super::settings::SettingsState;
 use super::{
-    Difficulty, GameInfo, RunStart, RunState, Shell, SlotState, cancelled, clicked, enter, idle,
-    newest, play, push, quit_game, read_slots, saving_on, start_run, theme, toast, widgets,
+    AUTOSAVES, Difficulty, GameInfo, RunStart, RunState, Shell, SlotState, cancelled, clicked,
+    enter, idle, load, newest, play, push, quit_game, read_slots, saving_on, start_run, theme,
+    toast, widgets,
 };
 use crate::game::difficulty_note;
 use crate::save::SaveGame;
@@ -57,8 +60,8 @@ impl TitleState {
         tree.focus(if picking { picks[1] } else { buttons[1] });
     }
 
-    /// Starts a new run at `difficulty`, asking first over a readable
-    /// autosave, which the run's first frame replaces.
+    /// Starts a new run at `difficulty`, asking first while its autosaves
+    /// will replace readable ones.
     fn new_game(&mut self, world: &mut World, difficulty: Difficulty) {
         let start = RunStart {
             difficulty,
@@ -67,7 +70,7 @@ impl TitleState {
         if !self.autosave_ready {
             return start_run(world, start, None);
         }
-        let question = "Start a new game? The autosave will be replaced.";
+        let question = "Start a new game? Its autosaves will replace the oldest ones.";
         let ask = ConfirmState::new(question, "Start", "Cancel");
         confirm::ask(
             world,
@@ -87,7 +90,10 @@ impl GameState for TitleState {
         theme::apply(world);
         let (slots, warnings) = read_slots(world);
         self.newest = newest(&slots);
-        self.autosave_ready = matches!(slots[0].1, SlotState::Ready(..));
+        let ready = |(slot, state): &(&str, SlotState)| {
+            AUTOSAVES.contains(slot) && matches!(state, SlotState::Ready(..))
+        };
+        self.autosave_ready = world.resource::<GameOptions>().autosave && slots.iter().any(ready);
         let info = world.resource::<GameInfo>().clone();
         let saving = saving_on(world);
         let tree = world.resource_mut::<UiTree>();
@@ -211,7 +217,7 @@ impl GameState for TitleState {
             }
             (false, Some(0)) => {
                 if let Some((slot, save)) = self.newest.clone() {
-                    start_run(world, RunStart::from(save), Some(slot));
+                    load(world, slot, save);
                 }
             }
             (false, Some(1)) => self.show_picker(world.resource_mut::<UiTree>(), true),

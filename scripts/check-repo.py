@@ -165,10 +165,13 @@ def check_kit_catalogue(root, errors, notes):
 def check_shell_copies(root, errors, notes):
     """Each example's `src/shell/` is the template's byte for byte: the same
     files with the same bytes, so a game on the template keeps its shell
-    whole and a later shell can replace it (D-194)."""
+    whole and a later shell can replace it (D-194). The shell's theme,
+    `assets/ui/themes/shell.json`, is held the same way."""
     template, examples = root / "templates" / "basic" / "src" / "shell", root / "examples"
     if not template.is_dir() or not examples.is_dir():
         return
+    theme = "assets/ui/themes/shell.json"
+    template_theme = root / "templates" / "basic" / theme
 
     def files(folder):
         return {p.relative_to(folder).as_posix(): p for p in folder.rglob("*") if p.is_file()}
@@ -183,6 +186,13 @@ def check_shell_copies(root, errors, notes):
         for name in sorted(want.keys() & have.keys()):
             if want[name].read_bytes() != have[name].read_bytes():
                 errors.append(f"{rel}/{name}: differs from templates/basic/src/shell/{name}")
+        if template_theme.is_file():
+            game = shell.parent.parent
+            copy, name = game / theme, f"{game.relative_to(root).as_posix()}/{theme}"
+            if not copy.is_file():
+                errors.append(f"{name}: missing; templates/basic has it")
+            elif copy.read_bytes() != template_theme.read_bytes():
+                errors.append(f"{name}: differs from templates/basic/{theme}")
 
 
 def plan_fields(text):

@@ -11,7 +11,7 @@
       "damage": 1,
       "interval": 0.5,
       "knockback": 360,
-      "filter": { "all": ["team.player"] },
+      "filter": { "all": ["team.player"], "none": ["status.spawning"] },
       "shape": { "circle": 14 },
       "offset": [16, 16]
     },

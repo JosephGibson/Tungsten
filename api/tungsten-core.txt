@@ -10377,6 +10377,7 @@ pub tungsten_core::ui::theme::TextOverrides::align: core::option::Option<tungste
 pub tungsten_core::ui::theme::TextOverrides::color: core::option::Option<[u8; 4]>
 pub tungsten_core::ui::theme::TextOverrides::family: core::option::Option<alloc::string::String>
 pub tungsten_core::ui::theme::TextOverrides::italic: core::option::Option<bool>
+pub tungsten_core::ui::theme::TextOverrides::letter_spacing: core::option::Option<f32>
 pub tungsten_core::ui::theme::TextOverrides::line_height: core::option::Option<f32>
 pub tungsten_core::ui::theme::TextOverrides::overflow: core::option::Option<tungsten_core::text::TextOverflow>
 pub tungsten_core::ui::theme::TextOverrides::size: core::option::Option<f32>
@@ -11753,6 +11754,7 @@ pub tungsten_core::ui::TextOverrides::align: core::option::Option<tungsten_core:
 pub tungsten_core::ui::TextOverrides::color: core::option::Option<[u8; 4]>
 pub tungsten_core::ui::TextOverrides::family: core::option::Option<alloc::string::String>
 pub tungsten_core::ui::TextOverrides::italic: core::option::Option<bool>
+pub tungsten_core::ui::TextOverrides::letter_spacing: core::option::Option<f32>
 pub tungsten_core::ui::TextOverrides::line_height: core::option::Option<f32>
 pub tungsten_core::ui::TextOverrides::overflow: core::option::Option<tungsten_core::text::TextOverflow>
 pub tungsten_core::ui::TextOverrides::size: core::option::Option<f32>

@@ -1,0 +1,20 @@
+{
+  "sprite": { "asset_id": "enemy" },
+  "components": {
+    "tags": ["team.enemy"],
+    "animation": { "id": "enemy_spin" },
+    "rigid_body": { "kind": "kinematic", "shape": { "kind": "circle", "radius": 12 }, "offset": [16, 16] },
+    "health": { "max": 3, "despawn_on_death": 0 },
+    "hurtbox": { "shape": { "circle": 13 }, "offset": [16, 16] },
+    "hit_flash": { "color": [1, 1, 1, 1], "seconds": 0.12 },
+    "contact_damage": {
+      "damage": 1,
+      "interval": 0.5,
+      "knockback": 360,
+      "filter": { "all": ["team.player"], "none": ["status.spawning"] },
+      "shape": { "circle": 14 },
+      "offset": [16, 16]
+    },
+    "cues": { "damaged": [{ "sound": { "id": "hit" } }] }
+  }
+}
