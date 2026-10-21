@@ -365,6 +365,15 @@ impl DamageKinds {
         names
     }
 
+    /// The style a `damaged_part` cue's style-less `label` floats a part of
+    /// these kinds in, from the current `damage_types` entries: the deepest
+    /// type's `label_style`, else its nearest ancestor's; `None` for no
+    /// kinds or when no type of its line sets one.
+    #[must_use]
+    pub fn label_style(self, world: &World) -> Option<LabelStyle> {
+        label_style(world, self)
+    }
+
     /// Both kinds' types.
     pub(crate) fn union(self, other: Self) -> Self {
         Self {

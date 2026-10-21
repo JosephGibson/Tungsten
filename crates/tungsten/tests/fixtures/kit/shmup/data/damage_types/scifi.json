@@ -24,6 +24,22 @@
       {
         "effect": "eaten",
         "needs": 0.5,
+        "blocked_by": [
+          "status.eaten"
+        ],
+        "window": 2
+      },
+      {
+        "effect": {
+          "duration": 2,
+          "grant": [
+            "status.dissolved"
+          ]
+        },
+        "needs": 1,
+        "requires": [
+          "status.eaten"
+        ],
         "window": 2
       }
     ]

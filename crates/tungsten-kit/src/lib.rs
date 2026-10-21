@@ -175,7 +175,8 @@
 //!   [`DepthSort`] and [`DepthSortPlugin`]: a sprite sorted by how low it
 //!   stands. [`CameraTarget`] and [`CameraTargetPlugin`]: the marker the
 //!   camera follows. [`SoundOnEvent`]: a manifest sound played once per
-//!   event. [`LabelStyle`]: how a cue's `label` floats an amount.
+//!   event. [`LabelStyle`] and [`float_label`]: how a cue's `label`, or a
+//!   game's own code, floats an amount.
 //! - **Transform.** [`spawn_child`], [`Parent`], [`Children`],
 //!   [`LocalOffset`], [`despawn_recursive`] and [`HierarchyPlugin`]: the
 //!   hierarchy that moves children with their parents' positions after the
@@ -283,7 +284,7 @@ pub use present::character::{
 };
 pub use present::depth::{DEPTH_SORT, DepthSort, DepthSortPlugin};
 pub use present::facing::{FACING, Facing, FacingPlugin};
-pub use present::labels::{LABEL_TICK, LabelStyle};
+pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
 pub use react::cues::{CUES, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin};
@@ -320,8 +321,8 @@ pub mod prelude {
         StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
         Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger,
         TriggerEntered, TriggerZone, Used, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered,
-        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, heal,
-        knock_back, spawn_child, use_ability,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
+        float_label, heal, knock_back, spawn_child, use_ability,
     };
 }
 

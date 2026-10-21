@@ -1,0 +1,77 @@
+{
+  "sprite": {
+    "asset_id": "ex10_dummy",
+    "z_order": 9
+  },
+  "components": {
+    "dummy": null,
+    "tags": [
+      "flesh",
+      "freezable",
+      "conductive"
+    ],
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          14,
+          28
+        ]
+      },
+      "offset": [
+        32,
+        33
+      ],
+      "mass": 120,
+      "restitution": 0.05
+    },
+    "health": {
+      "max": 400,
+      "invulnerability": 0,
+      "despawn_on_death": 0.4
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          14,
+          28
+        ]
+      },
+      "offset": [
+        32,
+        33
+      ]
+    },
+    "knockback": {
+      "seconds": 0.15
+    },
+    "hit_flash": {
+      "color": [
+        1.0,
+        0.85,
+        0.7,
+        1.0
+      ],
+      "seconds": 0.15
+    },
+    "resist": {},
+    "ailment_threshold": {
+      "flat": 20,
+      "of_max_health": 0.05
+    },
+    "effects": [
+      "dummy_regen"
+    ],
+    "cues": {
+      "damaged": [
+        {
+          "sound": {
+            "id": "ex10_dummy_hit_sfx",
+            "min_interval": 0.12
+          }
+        }
+      ]
+    }
+  }
+}

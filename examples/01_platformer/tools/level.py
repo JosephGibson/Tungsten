@@ -158,6 +158,11 @@ def build_objects(source, images, lit):
     # Markers the game reads by name: the player's feet at a fresh run's start.
     spawn = source['spawn']
     layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')])
+    # The training dummies, the map's last layer, so every earlier object keeps
+    # its save ID; each placement's tags set the `dummy` prefab's, one by one.
+    layer('dummies', [obj('dummy', d['x'] * tile, d['y'] * tile, name=d['name'], properties=[
+        dict(name=f'tags.{i}', type='string', value=tag) for i, tag in enumerate(d['tags'])])
+        for d in source['dummies']])
     return layers, prefabs
 
 

@@ -57,6 +57,14 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::Placed => occurrence::<10>,
         Sound::Cast => occurrence::<11>,
         Sound::Pushed => occurrence::<12>,
+        Sound::Steamed => occurrence::<13>,
+        Sound::FrostBlasted => occurrence::<14>,
+        Sound::Thundered => occurrence::<15>,
+        Sound::Crackled => occurrence::<16>,
+        Sound::Shot => occurrence::<17>,
+        Sound::Reloaded => occurrence::<18>,
+        Sound::Ricocheted => occurrence::<19>,
+        Sound::Summoned => occurrence::<20>,
     }
 }
 

@@ -6,7 +6,9 @@
 //! what draws, `regime` the step's events, `areas` the toasts and
 //! autosaves; `ball_pit`, `spawning`, `burning`, `brick`, `ice` and
 //! `spells` the toys, their element rules and the spells that cast them;
-//! `hud` the bars. The shell's own tests run in the template, on the same
+//! `combat` the damage model, `cascades` the endings and their chains,
+//! `lightning` the strike and its conduction, `gun` the gun and its
+//! shots and `dummy` the training dummy; `hud` the bars. The shell's own tests run in the template, on the same
 //! bytes, which `just repo-check` holds.
 
 mod areas;
@@ -14,11 +16,16 @@ mod ball_pit;
 mod brick;
 mod burning;
 mod camera;
+mod cascades;
+mod combat;
+mod dummy;
 mod fixed_step;
+mod gun;
 mod hazards;
 mod hud;
 mod ice;
 mod level;
+mod lightning;
 mod player;
 mod playthrough;
 mod presentation;
@@ -226,6 +233,12 @@ pub fn contact(harness: &mut UiHarness, a: Entity, b: Option<Entity>, normal: Ve
     let world = harness.world_mut();
     let queue = world.resource_mut::<EventQueue<CollisionEvent>>();
     queue.send(CollisionEvent::new(a, b, normal, 0.1));
+}
+
+/// Runs the cascades waiting now, as the next step's overlap phase would:
+/// a test's direct blast or crush ends its frozen things at once.
+pub fn cascades(harness: &mut UiHarness) {
+    example_01_platformer::features::elements::cascade::run(harness.world_mut());
 }
 
 /// The bursts of the particle config `name`.

@@ -3,15 +3,24 @@
 //! a cast in the step that asks for an autosave saves its cost and its
 //! missile; a save during `casting` loads with the mana still paused; a
 //! loaded run keeps with the run it was saved from, in a fresh harness and
-//! in a churned world; the template sample's schemas are refused; and a
-//! full pit saves within 2 MiB.
+//! in a churned world; statused dummies load with their effects' sources;
+//! a save mid-conduction resumes its chain; a bullet in flight loads and
+//! lands; each reaction's hint toasts once a save; a schema-4 save
+//! migrates past the map's new dummy; the template
+//! sample's schemas are refused; and a full pit saves within 2 MiB.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
+use example_01_platformer::features::combat::components::Reaction;
+use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::elements;
+use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::gun::components::{Bullet, Reload};
+use example_01_platformer::features::gun::{self};
+use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Player;
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
@@ -20,11 +29,12 @@ use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::SaveId;
+use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, RunStart, SlotState};
 use glam::Vec2;
 use tungsten::core::save::Value;
 use tungsten::core::{Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, World};
-use tungsten::kit::{Abilities, Health, Oscillator, PathFollower, Stats, Tags};
+use tungsten::kit::{Abilities, Effects, Health, Oscillator, PathFollower, Stats, Tags};
 use tungsten::testing::UiHarness;
 
 use super::{
@@ -107,10 +117,10 @@ fn rich(harness: &mut UiHarness) {
     stats.set_base("mana", 1000.0);
 }
 
-/// Every kind a save holds, by every spell: two iron blocks, one frozen and
-/// shattered by a missile, the other chilled; a pit of 500 small balls,
-/// its crest burning; a bowling ball, a push, a hole and a missile in
-/// flight.
+/// Every kind a save holds, by every spell and the gun: two iron blocks,
+/// one frozen and shattered by a missile, the other chilled; a pit of 500
+/// small balls, its crest burning; a bowling ball, a push, a hole, and a
+/// missile and a bullet in flight.
 fn busy(harness: &mut UiHarness) {
     rich(harness);
     let iron = TOP - IRON_HALF.y - 10.0;
@@ -133,6 +143,9 @@ fn busy(harness: &mut UiHarness) {
     cast(harness, 5, Vec2::new(1700.0, 700.0), 1);
     harness.step(60);
     cast(harness, 0, Vec2::new(700.0, 0.0), 1);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
     let far = harness
         .world()
         .query::<(Entity, &IronBlock, &Position)>()
@@ -175,6 +188,7 @@ fn a_capture_round_trips_through_a_load_with_a_hazard_and_a_platform_displaced()
         "a platform is off its spawn"
     );
     assert!(!saved.missiles.is_empty() && saved.black_hole.is_some());
+    assert!(!saved.bullets.is_empty(), "a bullet in flight");
     assert!(saved.blocks.iter().any(|b| b.scrap.is_some()));
     assert!(
         saved
@@ -218,9 +232,10 @@ fn lists(kind: &str) -> Lists {
     };
     use tungsten::kit::{
         ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, Effects, Facing,
-        HitFlash, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController, Projectile,
-        Source, Stats, Zone,
+        HitFlash, Hitbox, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController,
+        Projectile, Source, Stats, Zone,
     };
+    use tungsten::kit::{AilmentBuckets, AilmentThreshold, Resist};
     // The payload's emitter, which a load spawns from the saved source again.
     const EMITTER: &str = "tungsten_kit::overlap::grid::Emitter";
     let body = [name::<Collider>(), name::<RigidBody>()];
@@ -237,9 +252,11 @@ fn lists(kind: &str) -> Lists {
                     name::<Stats>(),
                     name::<Effects>(),
                     name::<Abilities>(),
+                    name::<AilmentBuckets>(),
                     name::<Tags>(),
                     name::<Spellbook>(),
                     name::<Lantern>(),
+                    name::<Reload>(),
                 ],
             ]
             .concat(),
@@ -255,6 +272,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Hurtbox>(),
                     name::<Cues>(),
                     name::<Glow>(),
+                    name::<AilmentThreshold>(),
                 ],
             ]
             .concat(),
@@ -370,6 +388,34 @@ fn lists(kind: &str) -> Lists {
             ]),
             presentation: names([name::<Visibility>(), name::<ParticleEmitterState>()]),
         },
+        "dummy" => Lists {
+            saved: [
+                &at[..],
+                &[
+                    name::<Velocity>(),
+                    name::<Health>(),
+                    name::<Resist>(),
+                    name::<Effects>(),
+                    name::<AilmentBuckets>(),
+                    name::<Tags>(),
+                ],
+            ]
+            .concat(),
+            rebuilt: [
+                &body[..],
+                &[
+                    name::<Dummy>(),
+                    name::<SceneEntity>(),
+                    name::<PreviousVelocity>(),
+                    name::<Hurtbox>(),
+                    name::<Knockback>(),
+                    name::<AilmentThreshold>(),
+                    name::<Cues>(),
+                ],
+            ]
+            .concat(),
+            presentation: [&drawn[..], &[name::<HitFlash>()]].concat(),
+        },
         "missile" => Lists {
             saved: [
                 &at[..],
@@ -389,6 +435,21 @@ fn lists(kind: &str) -> Lists {
                 name::<Children>(),
             ]),
             presentation: [&drawn[..], &[name::<AnimationState>(), name::<GlowParts>()]].concat(),
+        },
+        "bullet" => Lists {
+            saved: [
+                &at[..],
+                &[
+                    name::<Projectile>(),
+                    name::<LinearMotion>(),
+                    name::<Source>(),
+                    EMITTER,
+                    name::<Bullet>(),
+                ],
+            ]
+            .concat(),
+            rebuilt: names([name::<SceneEntity>(), name::<Hitbox>()]),
+            presentation: drawn.to_vec(),
         },
         // The map's still objects: props, slabs, spikes, areas, emitters and
         // the spawn's marker, which the map spawns again whole.
@@ -442,6 +503,10 @@ fn kind(world: &World, entity: Entity) -> &'static str {
         "black hole"
     } else if world.has::<FireMissile>(entity) {
         "missile"
+    } else if world.has::<Bullet>(entity) {
+        "bullet"
+    } else if world.has::<Dummy>(entity) {
+        "dummy"
     } else {
         "scenery"
     }
@@ -480,6 +545,8 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "ball",
             "black hole",
             "block",
+            "bullet",
+            "dummy",
             "hazard",
             "missile",
             "platform",
@@ -545,16 +612,49 @@ fn a_save_during_casting_loads_with_the_mana_still_paused() {
 }
 
 /// What two runs are compared by: each saved entity's point by save ID,
-/// what burns and what is frozen, and the player's health, mana and
+/// what burns and what is frozen, balls and iron alike, each dummy's
+/// statuses, the cascades waiting, and the player's health, mana and
 /// cooldowns.
 struct Outcome {
     points: BTreeMap<u64, (&'static str, Vec2)>,
     burning: BTreeSet<u64>,
     frozen: BTreeSet<u64>,
+    statuses: BTreeMap<u64, Vec<String>>,
+    queue: Vec<(CascadeKind, Option<u64>, u64)>,
     health: f32,
     mana: f32,
     cooldowns: Vec<f32>,
     player: Vec2,
+}
+
+/// The cascades waiting: each one's kind, target and due run, by due run,
+/// then target save ID, as their runs order them past ties in distance.
+fn queue(harness: &UiHarness) -> Vec<(CascadeKind, Option<u64>, u64)> {
+    let mut waiting: Vec<(CascadeKind, Option<u64>, u64)> = harness
+        .world()
+        .resource::<Cascades>()
+        .entries
+        .iter()
+        .map(|entry| (entry.kind, entry.target, entry.due))
+        .collect();
+    waiting.sort_by_key(|&(kind, target, due)| (due, target, kind as u8));
+    waiting
+}
+
+/// A frozen pile of `count` small balls on the sky's ground from `x`, 16 px
+/// apart in rows of twelve.
+fn ice_pile(harness: &mut UiHarness, x: f32, count: usize) -> Vec<Entity> {
+    (0..count)
+        .map(|i| {
+            let at = Vec2::new(
+                x + (i % 12) as f32 * 16.0,
+                TOP - 8.0 - (i / 12) as f32 * 16.0,
+            );
+            let ball = toys::spawn_ball(harness.world_mut(), at, true);
+            elements::freeze_iron(harness.world_mut(), ball);
+            ball
+        })
+        .collect()
 }
 
 fn outcome(harness: &UiHarness) -> Outcome {
@@ -582,6 +682,18 @@ fn outcome(harness: &UiHarness) -> Outcome {
             .query::<(Entity, &Frozen)>()
             .map(|(e, _)| id(e))
             .collect(),
+        statuses: world
+            .query::<(Entity, &Dummy, &Tags)>()
+            .map(|(e, _, tags)| {
+                let statuses = tags
+                    .iter()
+                    .filter(|tag| tag.starts_with("status."))
+                    .map(str::to_owned)
+                    .collect();
+                (id(e), statuses)
+            })
+            .collect(),
+        queue: queue(harness),
         health: world.get::<Health>(player).unwrap().current(),
         mana: mana(harness),
         cooldowns: abilities
@@ -627,9 +739,29 @@ fn divergence(churned: bool) {
     cast(&mut uninterrupted, 8, Vec2::new(300.0, 500.0), 90);
     uninterrupted.step(180);
     light(&mut uninterrupted, 5);
+    // A chain mid-run: a frozen pile to the right, its edge's thermal shock
+    // two rings in; the clearing's dummy shocked by the player.
+    let pile = ice_pile(&mut uninterrupted, 1300.0, 48);
+    let edge = super::body(&uninterrupted, pile[0]);
+    elements::thermal_shatter(uninterrupted.world_mut(), edge, 72.0);
+    let player = player_entity(&uninterrupted);
+    let dummy = uninterrupted
+        .world()
+        .query::<(Entity, &Dummy)>()
+        .map(|(e, _)| e)
+        .next()
+        .unwrap();
+    super::combat::apply(&mut uninterrupted, dummy, "shocked", Some(player));
     uninterrupted.step(2);
     let saved = capture(&uninterrupted);
     assert_eq!(saved.area.as_deref(), Some("Lantern clearing"));
+    assert!(!saved.cascades.entries.is_empty(), "mid-chain");
+    let shocked = |save: &SaveGame| {
+        save.dummies
+            .iter()
+            .any(|d| d.tags.iter().any(|tag| tag == "status.shocked"))
+    };
+    assert!(shocked(&saved));
     let mut loaded = harness();
     if churned {
         let world = loaded.world_mut();
@@ -671,7 +803,9 @@ fn divergence(churned: bool) {
         "the same save IDs live"
     );
     assert_eq!(a.burning, b.burning, "the same balls burn");
-    assert_eq!(a.frozen, b.frozen, "the same iron is frozen");
+    assert_eq!(a.frozen, b.frozen, "the same balls and iron are frozen");
+    assert_eq!(a.statuses, b.statuses, "the dummies' statuses");
+    assert_eq!(a.queue, b.queue, "the same cascades wait");
     assert_eq!(a.health, b.health);
     assert!(
         (a.mana - b.mana).abs() <= 1.5,
@@ -707,6 +841,359 @@ fn a_loaded_run_keeps_with_the_uninterrupted_one_from_a_fresh_harness() {
 #[test]
 fn a_loaded_run_keeps_with_the_uninterrupted_one_in_a_churned_world() {
     divergence(true);
+}
+
+#[test]
+fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
+    use super::combat::{apply, dummy_at};
+    let (mut harness, player) = grounded();
+    let dummies: Vec<(Entity, &str)> =
+        [(900.0, "burning"), (1200.0, "frozen"), (1500.0, "shocked")]
+            .into_iter()
+            .map(|(x, effect)| (dummy_at(&mut harness, x), effect))
+            .collect();
+    harness.step(2);
+    for &(dummy, effect) in &dummies {
+        apply(&mut harness, dummy, effect, Some(player));
+    }
+    harness.step(5);
+    let saved = capture(&harness);
+    assert_eq!(saved.dummies.len(), 4, "the clearing's and the three");
+    let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
+    let player_id = id(player);
+    for &(dummy, effect) in &dummies {
+        let save = saved.dummies.iter().find(|d| d.id == id(dummy)).unwrap();
+        assert!(!save.map, "summoned, not the map's");
+        assert!(save.effects.has(effect), "{effect}");
+        assert!(
+            save.sources.iter().any(|&(_, source)| source == player_id),
+            "{effect}: its source by save ID"
+        );
+    }
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    let loaded_player = player_entity(&fresh);
+    for &(dummy, effect) in &dummies {
+        let wanted = id(dummy);
+        let (entity, _) = fresh
+            .world()
+            .query::<(Entity, &SaveId)>()
+            .find(|(_, id)| id.0 == wanted)
+            .expect("the dummy loads");
+        let effects = fresh.world().get::<Effects>(entity).unwrap();
+        let instance = effects
+            .instances()
+            .find(|instance| instance.effect().id() == Some(effect))
+            .unwrap();
+        assert_eq!(
+            instance.source(),
+            Some(loaded_player),
+            "{effect}: named again"
+        );
+        let tag = format!("status.{effect}");
+        assert!(fresh.world().get::<Tags>(entity).unwrap().has(&tag));
+    }
+    assert_eq!(json(&capture(&fresh)), json(&saved));
+}
+
+/// The schema-4 save a short busy run of 0.94 wrote: the run's player 316,
+/// eight balls, frozen iron and the black hole.
+const SCHEMA_FOUR: &str = include_str!("fixtures/schema4.json");
+
+/// A waiting jump: its receiver, strike, count, chain, due run and
+/// strength.
+type Waiting = (Option<u64>, Option<u64>, u32, Vec<u64>, u64, f32);
+
+/// The jumps waiting.
+fn conduction(harness: &UiHarness) -> Vec<Waiting> {
+    harness
+        .world()
+        .resource::<Cascades>()
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == CascadeKind::Jump)
+        .map(|entry| {
+            let chain = entry.chain.clone();
+            (
+                entry.target,
+                entry.strike,
+                entry.jumps,
+                chain,
+                entry.due,
+                entry.strength,
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn a_save_mid_conduction_resumes_the_chain() {
+    let (mut harness, player) = grounded();
+    for i in 0..4 {
+        let at = Vec2::new(800.0 + 200.0 * i as f32, TOP - IRON_HALF.y);
+        toys::place_iron(harness.world_mut(), at);
+    }
+    harness.step(2);
+    let first = Vec2::new(800.0, TOP - IRON_HALF.y);
+    lightning::strike(harness.world_mut(), player, first);
+    harness.step(2);
+    let saved = capture(&harness);
+    assert_eq!(conduction(&harness).len(), 1, "a jump waits");
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    assert_eq!(json(&capture(&fresh)), json(&saved), "the chain whole");
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    assert_eq!(conduction(&harness), conduction(&fresh));
+    for _ in 0..4 {
+        harness.step(1);
+        fresh.step(1);
+        assert_eq!(
+            conduction(&harness),
+            conduction(&fresh),
+            "the same jumps down the same chain"
+        );
+    }
+    assert!(conduction(&fresh).is_empty(), "the line's end");
+}
+
+/// How many of the toasts on screen read `text`.
+fn toasted(harness: &UiHarness, text: &str) -> usize {
+    harness
+        .world()
+        .resource::<Toasts>()
+        .texts(harness.tree())
+        .iter()
+        .filter(|shown| shown.as_str() == text)
+        .count()
+}
+
+#[test]
+fn each_hint_toasts_once_per_save() {
+    let (mut harness, _) = grounded();
+    let dummy = super::combat::dummy_at(&mut harness, 1400.0);
+    let balls: Vec<Entity> = [900.0, 1000.0, 1100.0]
+        .into_iter()
+        .map(|x| toys::spawn_ball(harness.world_mut(), Vec2::new(x, TOP - 8.0), true))
+        .collect();
+    harness.step(2);
+    // Two freezes, one toast.
+    for &ball in &balls[..2] {
+        elements::freeze_iron(harness.world_mut(), ball);
+        harness.step(2);
+        assert_eq!(toasted(&harness, Reaction::Freeze.hint()), 1);
+    }
+    // A shatter, a steam burst and a shock, each once.
+    let at = super::body(&harness, balls[0]);
+    cascade::queue(
+        harness.world_mut(),
+        CascadeKind::Shatter,
+        Some(balls[0]),
+        at,
+        at,
+        0.0,
+    );
+    harness.step(2);
+    elements::ignite(harness.world_mut(), balls[2]);
+    let at = super::body(&harness, balls[2]);
+    cascade::queue(
+        harness.world_mut(),
+        CascadeKind::Steam,
+        Some(balls[2]),
+        at,
+        at,
+        elements::SMALL_STEAM_REACH,
+    );
+    harness.step(2);
+    super::combat::apply(&mut harness, dummy, "shocked", None);
+    harness.step(2);
+    for reaction in [Reaction::Shatter, Reaction::Steam, Reaction::Shock] {
+        assert_eq!(toasted(&harness, reaction.hint()), 1, "{reaction:?}");
+    }
+    let saved = capture(&harness);
+    assert_eq!(
+        saved.hints,
+        [
+            Reaction::Freeze,
+            Reaction::Shatter,
+            Reaction::Steam,
+            Reaction::Shock
+        ]
+    );
+    // The save keeps them seen: a loaded run's freeze toasts nothing.
+    let mut fresh = super::harness();
+    load(&mut fresh, saved);
+    scaffold(&mut fresh);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let ball = toys::spawn_ball(fresh.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
+    fresh.step(2);
+    elements::freeze_iron(fresh.world_mut(), ball);
+    fresh.step(2);
+    assert_eq!(toasted(&fresh, Reaction::Freeze.hint()), 0);
+    // A new run has seen none.
+    let (mut new, _) = grounded();
+    let ball = toys::spawn_ball(new.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
+    new.step(2);
+    elements::freeze_iron(new.world_mut(), ball);
+    new.step(2);
+    assert_eq!(toasted(&new, Reaction::Freeze.hint()), 1);
+}
+
+#[test]
+fn a_bullet_in_flight_loads_and_lands() {
+    let (mut harness, player) = grounded();
+    let dummy = super::combat::dummy_at(&mut harness, 1400.0);
+    harness.step(2);
+    let y = super::body(&harness, dummy).y;
+    let id = *harness.world().get::<SaveId>(dummy).unwrap();
+    gun::fire(
+        harness.world_mut(),
+        Vec2::new(700.0, y),
+        Vec2::X * 2400.0,
+        Some(player),
+    )
+    .expect("a bullet");
+    harness.step(6);
+    let saved = capture(&harness);
+    assert_eq!(saved.bullets.len(), 1, "in flight");
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    assert_eq!(json(&capture(&fresh)), json(&saved), "the bullet whole");
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    // The dummy's hits, step by step, in each world.
+    let hits = |harness: &mut UiHarness| -> Vec<(usize, f32, bool)> {
+        let mut hits = Vec::new();
+        for step in 0..30 {
+            harness.step(1);
+            let world = harness.world();
+            let target = world
+                .query::<(Entity, &Dummy, &SaveId)>()
+                .find(|&(_, _, own)| *own == id)
+                .map(|(entity, ..)| entity)
+                .expect("the test's dummy, not the map's");
+            hits.extend(
+                world
+                    .resource::<tungsten::core::EventQueue<tungsten::kit::DamagedPart>>()
+                    .iter()
+                    .filter(|part| part.entity == target && !part.periodic)
+                    .map(|part| (step, part.amount, part.crit)),
+            );
+        }
+        hits
+    };
+    let (before, after) = (hits(&mut harness), hits(&mut fresh));
+    assert_eq!(before.len(), 1, "it landed: {before:?}");
+    assert_eq!(before, after, "where and when it would have");
+    assert!(capture(&fresh).bullets.is_empty());
+}
+
+#[test]
+fn a_schema_four_save_migrates_past_the_dummy() {
+    let dir = user_folder("schema-four");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let saves = harness
+        .world()
+        .resource::<SaveSlots>()
+        .dir()
+        .expect("a user folder")
+        .to_path_buf();
+    std::fs::create_dir_all(&saves).unwrap();
+    std::fs::write(saves.join("slot_1.json"), SCHEMA_FOUR).unwrap();
+    let save: SaveGame = harness
+        .world()
+        .resource::<SaveSlots>()
+        .load("slot_1")
+        .expect("schema 4 migrates");
+    // The map's dummy took 316: every ID from there moved up by one.
+    assert_eq!((save.player.id, save.next_id), (317, 328));
+    let balls: Vec<u64> = save.balls.iter().map(|ball| ball.id).collect();
+    assert_eq!(balls, (318..326).collect::<Vec<_>>());
+    assert_eq!(save.blocks.iter().map(|b| b.id).collect::<Vec<_>>(), [326]);
+    assert_eq!(save.black_hole.as_ref().map(|hole| hole.id), Some(327));
+    assert!(
+        save.hazards.iter().all(|hazard| hazard.id < 316),
+        "the map's kept theirs"
+    );
+    assert!(save.dummies.is_empty() && save.gone.is_empty());
+    assert_eq!(save.player.stats.base("move_speed"), Some(560.0));
+    assert_eq!(
+        save.player.abilities.cooldown_left("lightning"),
+        Some(0.0),
+        "the new spell, ready"
+    );
+    assert!(
+        save.player.abilities.ready("gun"),
+        "the gun, its magazine whole"
+    );
+    assert!(save.player.abilities.ready("summon"));
+    assert!(save.bullets.is_empty() && save.hints.is_empty());
+    assert_eq!(save.summon, 0);
+    load(&mut harness, save);
+    let player = player_entity(&harness);
+    let world = harness.world();
+    let (dummy, id) = world
+        .query::<(Entity, &Dummy, &SaveId)>()
+        .map(|(entity, _, id)| (entity, id.0))
+        .next()
+        .expect("the map's dummy");
+    assert_eq!(id, 316);
+    assert!(world.is_alive(dummy));
+    assert_eq!(world.get::<SaveId>(player).unwrap().0, 317);
+    harness.world_mut().resource_mut::<Time>().resume();
+    super::combat::apply(&mut harness, player, "chilled", None);
+    harness.step(2);
+    let speed = harness
+        .world()
+        .get::<Stats>(player)
+        .unwrap()
+        .get("move_speed")
+        .unwrap();
+    assert!((speed - 364.0).abs() < 1e-3, "chilled slows it: {speed}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
+    let (mut harness, _) = grounded();
+    let pile = ice_pile(&mut harness, 900.0, 48);
+    harness.step(2);
+    let edge = super::body(&harness, pile[0]);
+    elements::thermal_shatter(harness.world_mut(), edge, 72.0);
+    harness.step(2);
+    let saved = capture(&harness);
+    assert!(!saved.cascades.entries.is_empty(), "mid-chain");
+    let mut fresh = super::harness();
+    load(&mut fresh, saved.clone());
+    assert_eq!(json(&capture(&fresh)), json(&saved), "the queue whole");
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let live = |harness: &UiHarness| -> BTreeSet<u64> {
+        harness
+            .world()
+            .query::<(&SmallBall, &SaveId)>()
+            .map(|(_, id)| id.0)
+            .collect()
+    };
+    // The first run after the load works from the saved queue and the
+    // saved points alone: the same entries run, in save-ID order past ties.
+    assert_eq!(queue(&harness), queue(&fresh));
+    harness.step(1);
+    fresh.step(1);
+    assert_eq!(live(&harness), live(&fresh), "the same balls went");
+    assert_eq!(queue(&harness), queue(&fresh), "and the same queued next");
+    // After it, the solver's warm starts, which no save holds, move the
+    // pile a hair apart; each chain still runs out.
+    harness.step(40);
+    fresh.step(40);
+    assert!(
+        queue(&harness).is_empty() && queue(&fresh).is_empty(),
+        "both chains ran out"
+    );
+    assert!(live(&harness).len() < pile.len() && live(&fresh).len() < pile.len());
 }
 
 #[test]

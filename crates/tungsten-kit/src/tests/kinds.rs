@@ -478,3 +478,114 @@ fn a_rung_with_needs_and_no_window_fails_the_load() {
     assert_eq!(rungs[0].window(), Some(4.0));
     assert!(ladder_of(&world, "elemental").is_none());
 }
+
+#[test]
+fn an_undeclared_blocked_by_tag_fails_the_load() {
+    let (mut world, mut schedule) = rig(&names(&["elemental.cold", "status.chilled"]));
+    crate::EffectsPlugin.build(&mut schedule, &mut world);
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("chilled", crate::Effect::new().with_duration(1.0));
+    let files = Files::new("blocked_by");
+    let write = |file: &str, text: &str| {
+        let path = files.0.join(file);
+        std::fs::write(&path, text).unwrap();
+        path
+    };
+    let undeclared = write(
+        "undeclared.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "chilled", "needs": 0.3, "window": 3, "blocked_by": ["status.chilled", "status.wet"] }] } }"#,
+    );
+    let error = load(&mut world, &[("cold", &undeclared)]).unwrap_err();
+    assert!(
+        error.contains("tag `status.wet`")
+            && error.contains("elemental.cold.ailments.0.blocked_by.1"),
+        "{error}"
+    );
+    let bad = serde_json::from_value::<AilmentRung>(
+        json!({ "effect": "chilled", "blocked_by": ["Bad"] }),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(bad.contains("blocked_by: `Bad` is not a tag name"), "{bad}");
+    let good = write(
+        "good.json",
+        r#"{ "elemental.cold": { "ailments": [{ "effect": "chilled", "needs": 0.3, "window": 3, "blocked_by": ["status.chilled"] }] } }"#,
+    );
+    assert!(load(&mut world, &[("cold", &good)]).is_ok());
+    let rungs = ladder_of(&world, "elemental.cold").unwrap();
+    assert_eq!(rungs[0].blocked_by(), ["status.chilled"]);
+    let back = serde_json::to_value(&rungs[0]).unwrap();
+    assert_eq!(back["blocked_by"], json!(["status.chilled"]));
+    assert!(
+        std::panic::catch_unwind(
+            || AilmentRung::new(tungsten_core::DataRef::by_id("x")).with_blocked_by(["Bad"])
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn label_style_follows_the_deepest_type_then_its_ancestors() {
+    let (mut world, _) = rig(&names(&[
+        "elemental",
+        "elemental.fire",
+        "elemental.fire.blue",
+        "elemental.cold",
+        "toxic",
+    ]));
+    let types: DamageTypes = serde_json::from_value(json!({
+        "elemental": { "label_style": { "font": "sans" } },
+        "elemental.fire": { "label_style": { "font": "sans", "size": 20, "color": [1, 0.4, 0, 1] } },
+        "elemental.fire.blue": {},
+        "elemental.cold": {},
+        "toxic": {}
+    }))
+    .unwrap();
+    world
+        .resource_mut::<tungsten_core::DataRegistry>()
+        .insert("game", types);
+    // A part of each type, as the pipeline sends it.
+    let golem = world.spawn_with((Health::new(100.0),));
+    let mut kinds_of = |name: &str| {
+        DamageRequest::from_parts(golem, [DamagePart::new(1.0).with_tags(Tags::new([name]))])
+            .apply(&mut world);
+        world
+            .resource::<EventQueue<DamagedPart>>()
+            .iter()
+            .last()
+            .unwrap()
+            .kinds
+    };
+    let (fire, blue, cold, toxic) = (
+        kinds_of("elemental.fire"),
+        kinds_of("elemental.fire.blue"),
+        kinds_of("elemental.cold"),
+        kinds_of("toxic"),
+    );
+    let fire_style = LabelStyle::new("sans")
+        .with_size(20.0)
+        .with_color([1.0, 0.4, 0.0, 1.0]);
+    assert_eq!(
+        fire.label_style(&world),
+        Some(fire_style.clone()),
+        "its own"
+    );
+    assert_eq!(blue.label_style(&world), Some(fire_style), "its parent's");
+    assert_eq!(
+        cold.label_style(&world),
+        Some(LabelStyle::new("sans")),
+        "past its own to the root's"
+    );
+    assert_eq!(
+        toxic.label_style(&world),
+        None,
+        "no type of its line sets one"
+    );
+    assert_eq!(DamageKinds::NONE.label_style(&world), None);
+    assert_eq!(
+        blue.union(cold).label_style(&world),
+        blue.label_style(&world),
+        "the deepest type's"
+    );
+}

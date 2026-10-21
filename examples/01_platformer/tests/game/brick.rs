@@ -1,7 +1,7 @@
 //! Iron: a surface blast throws a frozen block's scraps away from it,
 //! keeping its velocity; a blast on the floor scatters them; frozen iron
-//! breaks only under a fast head-on iron impact, once per contact set; a
-//! falling block shatters a frozen one; fast iron hurts the player and
+//! breaks only under a fast head-on iron impact, once per contact set, when
+//! its queued shatter runs; a falling block shatters a frozen one; fast iron hurts the player and
 //! crushes small balls, more the faster, keeping its momentum and sharing
 //! its sound; holes pull iron slowly and scraps as balls; and a fast drop
 //! plows through a pile.
@@ -24,7 +24,7 @@ use tungsten::core::{
 use tungsten::kit::Health;
 use tungsten::testing::UiHarness;
 
-use super::{ball, body, bursts, contact, floor, kick, run, teleport};
+use super::{ball, body, bursts, cascades, contact, floor, kick, run, teleport};
 
 /// A block about `at`.
 fn block(harness: &mut UiHarness, at: Vec2) -> Entity {
@@ -58,6 +58,7 @@ fn surface_blasts_throw_scraps_away_from_the_contact_and_keep_parent_velocity() 
         kick(&mut harness, iron, inherited);
         elements::freeze_iron(harness.world_mut(), iron);
         elements::thermal_shatter(harness.world_mut(), centre - direction * IRON_HALF.x, 72.0);
+        cascades(&mut harness);
         let world = harness.world();
         let kicks: Vec<Vec2> = world
             .query::<(&IronScrap, &Velocity)>()
@@ -124,6 +125,7 @@ fn frozen_iron_breaks_only_under_a_fast_head_on_iron_impact() {
             elements::freeze_iron(harness.world_mut(), target);
         }
         crush(harness.world_mut());
+        cascades(&mut harness);
         let world = harness.world();
         assert_eq!(
             !world.is_alive(target),
@@ -162,6 +164,7 @@ fn frozen_iron_shatters_once_from_solver_contacts_in_either_pair_order() {
         }
         crush(harness.world_mut());
         crush(harness.world_mut());
+        cascades(&mut harness);
         assert!(!harness.world().is_alive(target));
         assert!(harness.world().is_alive(striker));
         assert_eq!(scraps(&harness).len(), 16);

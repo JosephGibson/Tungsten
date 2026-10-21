@@ -198,5 +198,131 @@
         }
       }
     ]
+  },
+  {
+    "on": "steamed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_steam_burst_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "frost_blasted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_frost_blast_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "thundered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_thunder_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "crackled",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crackle_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
+  },
+  {
+    "on": "shot",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_gun_shot_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
+  },
+  {
+    "on": "reloaded",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_gun_reload_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ricocheted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ricochet_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
+  },
+  {
+    "on": "summoned",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_summon_sfx"
+        }
+      }
+    ]
   }
 ]

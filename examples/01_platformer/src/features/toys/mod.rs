@@ -106,8 +106,9 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// The toys as a plugin: the components their prefabs name; in the fixed
 /// step, the holes' life, the balls' hues and cooldowns, the velocities
 /// before physics, the holes' pull, the missiles' bending before their
-/// motion, their contacts before the kit's projectile step, their ends,
-/// the escaped bodies' cull and the sprays' end; in the present phase the
+/// motion, their contacts before the kit's projectile step and their ends
+/// after it, so a blast's hits take the step's resolve, the escaped
+/// bodies' cull and the sprays' end; in the present phase the
 /// toys' looks, and before the frame's particles the sprays' and the
 /// holes' particles; and their effects drawn after the sprites.
 pub struct ToysPlugin;
@@ -134,10 +135,13 @@ impl Plugin for ToysPlugin {
             ),
             Phase::Overlap.join(system("toys_bounds", systems::bounds)),
             Phase::Overlap.join(system("iron_friction", systems::friction)),
-            Phase::React.join(system("missile_ends", {
-                let mut cursor = EventCursor::new();
-                move |world: &mut World| systems::missile_ends(world, &mut cursor)
-            })),
+            Phase::Overlap.join(
+                system("missile_ends", {
+                    let mut cursor = EventCursor::new();
+                    move |world: &mut World| systems::missile_ends(world, &mut cursor)
+                })
+                .after(PROJECTILE_TICK),
+            ),
             Phase::React.join(system("sprays_end", systems::sprays_end)),
         ];
         for desc in fixed {
@@ -451,9 +455,10 @@ pub fn force_push(world: &mut World, at: Vec2) {
     systems::ring(world, at, 2.0 * FORCE_PUSH_RADIUS, Ring::Push);
 }
 
-/// A fireball's blast at `at`: its bursts and hot shock ring, the frozen
-/// iron in its heat shattered, the push, the camera's kick, the small
-/// balls in its heat lit, its sound and its flare.
+/// A fireball's blast at `at`: its fire on the targets in its heat but the
+/// player's, its bursts and hot shock ring, the frozen iron in its heat
+/// shattered, the push, the camera's kick, the small balls in its heat
+/// lit, its sound and its flare.
 pub fn explode(world: &mut World, at: Vec2) {
     systems::explode(world, at);
 }

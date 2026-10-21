@@ -142,7 +142,8 @@ pub struct BallSpawner {
     pub queued_frame: u64,
 }
 
-/// A spray's element: fire ignites small balls, cold frosts iron.
+/// A spray's element: fire ignites small balls, cold frosts iron, and each
+/// deals its damage type to the targets in its cone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Element {
     Fire,
@@ -151,7 +152,8 @@ pub enum Element {
 
 /// A held spray, while its spell holds: its caster, its element, where it
 /// starts and stops this frame, its age, its particle emitters, its loop's
-/// voice, and whether this step's spell kept it.
+/// voice, whether this step's spell kept it, and the game seconds toward
+/// its next pulse of damage on the targets in its cone.
 #[derive(Debug, Clone, Copy)]
 pub struct Spray {
     pub caster: Entity,
@@ -163,6 +165,7 @@ pub struct Spray {
     pub emitters: [Option<Entity>; 3],
     pub voice: Option<Voice>,
     pub kept: bool,
+    pub pulse: f32,
 }
 
 /// A spray emitter's aim, which its newborn particles turn to: the

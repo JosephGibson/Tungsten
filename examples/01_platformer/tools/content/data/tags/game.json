@@ -1,4 +1,18 @@
 [
   "team.player",
-  "casting"
+  "casting",
+  "damage.physical.bleed",
+  "damage.fire",
+  "damage.cold",
+  "damage.shock",
+  "status.burning",
+  "status.bleeding",
+  "status.chilled",
+  "status.frozen",
+  "status.shocked",
+  "status.stunned",
+  "status.doused",
+  "flesh",
+  "freezable",
+  "conductive"
 ]

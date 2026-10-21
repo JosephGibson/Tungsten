@@ -22,8 +22,8 @@ fn exposed() -> bool {
 #[derive(Debug, Clone, Copy)]
 pub struct FireEmitter;
 
-/// Iron's partial frost, 0 to 1; a full coating turns it [`Frozen`]. Iron
-/// a cold spray did not reach this step thaws.
+/// A body's partial frost, iron's or a ball's, 0 to 1; a full coating
+/// turns it [`Frozen`]. A body a cold spray did not reach this step thaws.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Chill {
     pub amount: f32,
@@ -32,10 +32,13 @@ pub struct Chill {
     pub held: bool,
 }
 
-/// Frozen iron: it slides on less friction and shatters under heat or a
-/// hard iron impact.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Frozen;
+/// A frozen body, iron, a scrap or a ball, for `left` game seconds, when it
+/// thaws: frozen iron slides on less friction; fire makes any frozen body
+/// explode and a hard impact shatters it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Frozen {
+    pub left: f32,
+}
 
 /// A brief icy ring where iron froze or shattered: presentation.
 #[derive(Debug, Clone, Copy)]

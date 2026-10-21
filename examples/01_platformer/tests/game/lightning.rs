@@ -1,0 +1,404 @@
+//! Lightning: the bolt stops at the first solid on its way down; it falls
+//! on the nearest rod; its chain jumps one conductor at a time, weaker each
+//! jump, at most six and never past ice; a strike lights nothing; and it
+//! shows its bolt, its veil for one frame, its light and its shake.
+
+use std::collections::BTreeSet;
+
+use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::combat::{BURNING, has_status};
+use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades, Entry};
+use example_01_platformer::features::elements::components::{BallBurn, Frozen};
+use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::level::TILE;
+use example_01_platformer::features::level::draw::view;
+use example_01_platformer::features::lightning::components::{Arc, Bolt, StrikeLight};
+use example_01_platformer::features::lightning::{
+    self, JUMP_KEEP, MAX_JUMPS, ROD_REACH, STRIKE_LIGHT, STRIKE_SHOCK, draw,
+};
+use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::shared::SaveId;
+use glam::Vec2;
+use tungsten::core::{AssetRegistry, CameraController, Entity, Light, TextureHandle, Transform};
+use tungsten::testing::UiHarness;
+
+use super::combat::{TOP, dummy_at, health};
+use super::{
+    aim_at, ball, body, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
+};
+use super::{stand, steps_this_frame};
+
+/// An iron block's centre on the sky's ground.
+const IRON_Y: f32 = TOP - IRON_HALF.y;
+/// The camera's corner over the sky's ground.
+const CORNER: Vec2 = Vec2::new(0.0, 400.0);
+
+/// A run on the sky's ground, the player far to the left and the camera
+/// held over it.
+fn sky() -> (UiHarness, Entity) {
+    let (mut harness, player) = run();
+    ground(&mut harness, TOP);
+    stand(&mut harness, player, 100.0, TOP);
+    harness.step(1);
+    pin_camera(&mut harness, CORNER);
+    (harness, player)
+}
+
+/// `count` iron blocks on the sky's ground, 200 px apart from x 600: each
+/// within a jump of the next and out of reach of the one after.
+fn irons(harness: &mut UiHarness, count: usize) -> Vec<Entity> {
+    (0..count)
+        .map(|i| {
+            let at = Vec2::new(600.0 + 200.0 * i as f32, IRON_Y);
+            toys::place_iron(harness.world_mut(), at)
+        })
+        .collect()
+}
+
+fn id(harness: &UiHarness, entity: Entity) -> u64 {
+    harness.world().get::<SaveId>(entity).expect("a save ID").0
+}
+
+fn ids(harness: &UiHarness, entities: &[Entity]) -> Vec<Option<u64>> {
+    entities
+        .iter()
+        .map(|&entity| Some(id(harness, entity)))
+        .collect()
+}
+
+/// The jumps waiting now.
+fn jumps(harness: &UiHarness) -> Vec<Entry> {
+    harness
+        .world()
+        .resource::<Cascades>()
+        .entries
+        .iter()
+        .filter(|entry| entry.kind == CascadeKind::Jump)
+        .cloned()
+        .collect()
+}
+
+/// Every jump waiting now or queued over the next `frames` frames, each
+/// once, in the order they were queued, and the most that waited at once.
+fn conduction(harness: &mut UiHarness, frames: usize) -> (Vec<Entry>, usize) {
+    let mut seen = jumps(harness);
+    let mut most = seen.len();
+    for _ in 0..frames {
+        harness.step(1);
+        let waiting = jumps(harness);
+        most = most.max(waiting.len());
+        for jump in waiting {
+            if !seen
+                .iter()
+                .any(|known| known.strike == jump.strike && known.target == jump.target)
+            {
+                seen.push(jump);
+            }
+        }
+    }
+    (seen, most)
+}
+
+fn receivers(chain: &[Entry]) -> Vec<Option<u64>> {
+    chain.iter().map(|jump| jump.target).collect()
+}
+
+/// Strikes from `player` on `target`'s body centre, between two frames.
+fn strike_on(harness: &mut UiHarness, player: Entity, target: Entity) -> Vec2 {
+    let aim = body(harness, target);
+    lightning::strike(harness.world_mut(), player, aim)
+}
+
+/// The strike's bolt.
+fn bolt(harness: &UiHarness) -> Bolt {
+    harness
+        .world()
+        .query::<&Bolt>()
+        .next()
+        .cloned()
+        .expect("a bolt")
+}
+
+/// Selects slot 4 and casts it at `at` with one press.
+fn cast_lightning(harness: &mut UiHarness, at: Vec2) {
+    aim_at(harness, at);
+    choose(harness, 3);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert!(steps_this_frame(harness) > 0, "the press met a fixed step");
+}
+
+#[test]
+fn a_strike_under_a_ceiling_hits_the_ceiling() {
+    let (mut harness, player) = sky();
+    // A ceiling over a dummy: the dummy is the rod, but the bolt stops on
+    // the ceiling's top, so it hurts nothing and starts no chain.
+    floor(
+        &mut harness,
+        Vec2::new(1000.0, 700.0),
+        Vec2::new(120.0, 16.0),
+    );
+    let dummy = dummy_at(&mut harness, 1000.0);
+    harness.step(2);
+    let aim = body(&harness, dummy);
+    let landing = lightning::strike(harness.world_mut(), player, aim);
+    assert_eq!(landing, Vec2::new(aim.x, 684.0), "the ceiling's top");
+    harness.step(4);
+    assert_eq!(health(&harness, dummy), 400.0, "unhurt under it");
+    assert!(jumps(&harness).is_empty(), "no chain from an unstruck rod");
+    // The map's tiles stop it too: aimed under the ground the courier
+    // stands on, it lands on that ground's top or above it.
+    let (mut harness, player) = run();
+    harness.step(30);
+    let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
+    let aim = feet + Vec2::Y * 3.0 * TILE;
+    let landing = lightning::bolt_end(harness.world(), aim);
+    assert!(
+        landing.y <= feet.y + 1.0 && (landing.x - aim.x).abs() < 1e-3,
+        "{landing} over the feet at {feet}"
+    );
+}
+
+#[test]
+fn a_strike_jumps_to_the_nearest_rod() {
+    let (mut harness, player) = sky();
+    let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
+    let far = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, IRON_Y));
+    harness.step(2);
+    let aim = Vec2::new(1000.0, IRON_Y - 40.0);
+    assert!(
+        body(&harness, far).distance(aim) <= ROD_REACH,
+        "both are rods"
+    );
+    cast_lightning(&mut harness, aim);
+    assert_eq!(mana(&harness), 70.0, "a strike costs 30");
+    let landing = bolt(&harness).landing;
+    assert!(
+        landing.distance(body(&harness, near)) < 1.0,
+        "on the nearer rod: {landing}"
+    );
+    // The chain starts at the rod, its first jump to the next conductor
+    // due the step after the strike's.
+    let waiting = jumps(&harness);
+    assert_eq!(receivers(&waiting), ids(&harness, &[far]));
+    assert_eq!(waiting[0].chain, [id(&harness, near)]);
+    let step = harness.world().resource::<Cascades>().step;
+    assert_eq!(waiting[0].due, step + 1);
+    // With no conductor within reach, the bolt falls on the aim point.
+    let open = Vec2::new(400.0, TOP - 200.0);
+    assert_eq!(lightning::strike(harness.world_mut(), player, open), open);
+}
+
+#[test]
+fn conduction_loses_strength_each_jump_and_stops_at_six() {
+    let (mut harness, player) = sky();
+    let line = irons(&mut harness, 8);
+    harness.step(2);
+    strike_on(&mut harness, player, line[0]);
+    let (chain, most) = conduction(&mut harness, 20);
+    assert_eq!(
+        receivers(&chain),
+        ids(&harness, &line[1..7]),
+        "six jumps down the line"
+    );
+    assert_eq!(chain.len() as u32, MAX_JUMPS);
+    assert_eq!(most, 1, "a jump at a time");
+    for (k, jump) in chain.iter().enumerate() {
+        assert_eq!(jump.jumps, k as u32 + 1);
+        let strength = STRIKE_SHOCK * JUMP_KEEP.powi(k as i32 + 1);
+        assert!(
+            (jump.strength - strength).abs() < 1e-3,
+            "jump {}: {} for {strength}",
+            k + 1,
+            jump.strength
+        );
+    }
+    assert!(jumps(&harness).is_empty());
+}
+
+#[test]
+fn conduction_stops_at_ice() {
+    let (mut harness, player) = sky();
+    let line = irons(&mut harness, 6);
+    harness.step(2);
+    elements::freeze_iron(harness.world_mut(), line[3]);
+    strike_on(&mut harness, player, line[0]);
+    let (chain, _) = conduction(&mut harness, 20);
+    assert_eq!(
+        receivers(&chain),
+        ids(&harness, &line[1..4]),
+        "the ice takes its jump and passes none on"
+    );
+    let world = harness.world();
+    assert!(
+        world.is_alive(line[3]) && world.has::<Frozen>(line[3]),
+        "shock starts no ending"
+    );
+    // A frozen start passes nothing on either.
+    elements::freeze_iron(harness.world_mut(), line[5]);
+    strike_on(&mut harness, player, line[5]);
+    let (chain, _) = conduction(&mut harness, 5);
+    assert!(chain.is_empty(), "{chain:?}");
+}
+
+#[test]
+fn a_receiver_frozen_before_its_jump_ends_the_chain() {
+    let (mut harness, player) = sky();
+    let line = irons(&mut harness, 4);
+    harness.step(2);
+    strike_on(&mut harness, player, line[0]);
+    // The jump was decided when it was queued, to a receiver not yet ice.
+    assert_eq!(receivers(&jumps(&harness)), ids(&harness, &line[1..2]));
+    elements::freeze_iron(harness.world_mut(), line[1]);
+    let (chain, _) = conduction(&mut harness, 10);
+    assert_eq!(receivers(&chain), ids(&harness, &line[1..2]));
+}
+
+#[test]
+fn two_struck_conductors_start_one_chain_of_at_most_six_jumps() {
+    let (mut harness, player) = sky();
+    // Two dummies within the strike's reach, then a line of iron.
+    let first = dummy_at(&mut harness, 1000.0);
+    let second = dummy_at(&mut harness, 1040.0);
+    let line: Vec<Entity> = (0..7)
+        .map(|i| {
+            let at = Vec2::new(1200.0 + 180.0 * i as f32, IRON_Y);
+            toys::place_iron(harness.world_mut(), at)
+        })
+        .collect();
+    harness.step(2);
+    strike_on(&mut harness, player, first);
+    let members = [id(&harness, first), id(&harness, second)];
+    let waiting = jumps(&harness);
+    assert_eq!(waiting.len(), 1, "one chain");
+    assert_eq!(waiting[0].chain, members, "both struck are its members");
+    let (chain, most) = conduction(&mut harness, 20);
+    assert_eq!(most, 1, "one path");
+    assert_eq!(receivers(&chain), ids(&harness, &line[..6]));
+    let distinct: BTreeSet<Option<u64>> = receivers(&chain).into_iter().collect();
+    assert_eq!(distinct.len(), chain.len(), "none returns");
+    assert!(
+        chain
+            .iter()
+            .all(|jump| jump.strike == waiting[0].strike && jump.jumps <= MAX_JUMPS)
+    );
+    assert!(health(&harness, first) < 400.0 && health(&harness, second) < 400.0);
+}
+
+#[test]
+fn a_strike_lights_nothing() {
+    let (mut harness, player) = sky();
+    let dummy = dummy_at(&mut harness, 1000.0);
+    let balls: Vec<Entity> = [950.0, 966.0, 1034.0, 1050.0]
+        .into_iter()
+        .map(|x| ball(&mut harness, Vec2::new(x, TOP - 8.0), true))
+        .collect();
+    harness.step(2);
+    strike_on(&mut harness, player, dummy);
+    harness.step(30);
+    let world = harness.world();
+    assert!(health(&harness, dummy) < 400.0, "the shock landed");
+    assert!(!has_status(world, dummy, BURNING), "shock never burns");
+    assert!(
+        balls
+            .iter()
+            .all(|&ball| world.get::<BallBurn>(ball).is_none()),
+        "no ball lit"
+    );
+}
+
+/// The instances drawn from the textures `handles`.
+fn drawn(batches: &[tungsten::render::SpriteBatch], handles: &[u32]) -> usize {
+    batches
+        .iter()
+        .filter(|batch| handles.iter().any(|&h| batch.texture == TextureHandle(h)))
+        .map(|batch| batch.instances.len())
+        .sum()
+}
+
+#[test]
+fn a_strike_shows_its_bolt_flash_light_and_shake() {
+    let (mut harness, _) = sky();
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for (i, name) in draw::BOLT_PIECES.iter().enumerate() {
+        mock_sprite(assets, name, 900 + i as u32, false);
+    }
+    mock_sprite(assets, draw::TRACER, 920, false);
+    let line = irons(&mut harness, 2);
+    harness.step(2);
+    let shake = |harness: &UiHarness| harness.world().resource::<CameraController>().shake_trauma;
+    assert_eq!(shake(&harness), 0.0);
+    let aim = body(&harness, line[0]);
+    cast_lightning(&mut harness, aim);
+    let pieces: Vec<u32> = (900..908).collect();
+    let world = harness.world();
+    let strike = bolt(&harness);
+    assert!((5..=8).contains(&strike.pieces.len()));
+    let (min, max) = view(world);
+    let veil = |batches: &[tungsten::render::SpriteBatch]| {
+        batches
+            .iter()
+            .flat_map(|batch| &batch.instances)
+            .filter(|quad| quad.size == (max - min).to_array())
+            .count()
+    };
+    let first = draw::bolts(world);
+    assert_eq!(veil(&first), 1, "the veil over the view");
+    assert_eq!(drawn(&first, &pieces), strike.pieces.len());
+    let quads: Vec<_> = first
+        .iter()
+        .filter(|batch| pieces.iter().any(|&h| batch.texture == TextureHandle(h)))
+        .flat_map(|batch| &batch.instances)
+        .collect();
+    let bottom = quads
+        .iter()
+        .map(|quad| quad.position[1] + quad.size[1])
+        .fold(f32::MIN, f32::max);
+    let top = quads
+        .iter()
+        .map(|quad| quad.position[1])
+        .fold(f32::MAX, f32::min);
+    assert!(
+        (bottom - strike.landing.y).abs() < 1e-3,
+        "down to the strike"
+    );
+    assert!(top <= min.y, "from above the view: {top} over {}", min.y);
+    let glow = |harness: &UiHarness| {
+        harness
+            .world()
+            .query::<(&StrikeLight, &Light, &Transform)>()
+            .map(|(_, light, at)| (light.intensity, at.position))
+            .next()
+    };
+    let (lit, at) = glow(&harness).expect("a light at the strike");
+    assert!(lit > 0.0 && lit < STRIKE_LIGHT && at == strike.landing);
+    assert!(shake(&harness) > 0.0, "the strike shakes the view");
+    let thunder = |harness: &UiHarness, sound: Sound| {
+        harness
+            .harness()
+            .events::<Sounded>()
+            .filter(|sounded| sounded.sound == sound)
+            .count()
+    };
+    assert_eq!(thunder(&harness, Sound::Thundered), 1);
+    // The next frame: the veil is gone, the bolt stays, the light fades;
+    // the chain's first jump crackles and draws its arc.
+    harness.step(1);
+    let second = draw::bolts(harness.world());
+    assert_eq!(veil(&second), 0, "one frame of veil");
+    assert_eq!(drawn(&second, &pieces), strike.pieces.len());
+    assert!(glow(&harness).expect("still lit").0 < lit);
+    let arcs: Vec<Arc> = harness.world().query::<&Arc>().copied().collect();
+    assert_eq!(arcs.len(), 1, "the jump's arc");
+    assert!(arcs[0].from.distance(body(&harness, line[0])) < 1.0);
+    assert!(arcs[0].to.distance(body(&harness, line[1])) < 1.0);
+    assert!(drawn(&second, &[920]) > 1, "the arc's quads");
+    assert_eq!(thunder(&harness, Sound::Crackled), 1);
+    harness.step(14);
+    let world = harness.world();
+    assert_eq!(world.query::<&Bolt>().count(), 0, "gone after 0.15 s");
+    assert_eq!(world.query::<&Arc>().count(), 0);
+    assert!(glow(&harness).is_none(), "the light faded out");
+}

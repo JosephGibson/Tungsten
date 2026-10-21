@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 from art import PALETTE
 from pixels import (
-    BAYER, NEIGHBOURS, Part, add, compose, outline, point, shade, smoothstep, to_image,
+    BAYER, NEIGHBOURS, Part, add, compose, despeckle, outline, point, shade, smoothstep,
+    to_image, unit,
 )
 
 SIZE = 64
@@ -794,3 +795,67 @@ def build_balls(images, lit, animations):
             lit.add(name)
         animations[clip] = {'looping': True, 'frames': [
             {'sprite': 'ex10_' + name, 'duration_ms': duration} for name in names]}
+
+
+# The training dummy stands on the courier's baseline: its base's lowest
+# drawn row is the courier's soles', so the outline ends both boxes at 61.
+DUMMY_FEET = SOLE + 2
+
+
+def dummy_canvas():
+    """A burlap sack stuffed with straw on a wooden post and crossbar: a red
+    target on the chest, rope at the neck and the waist, straw at the seams,
+    stitched eyes and mouth. Drawn unlit, so the kit's hit flash shows on it."""
+    feet = SOLE
+    base = Part()
+    base.polygon([(18, feet), (46, feet), (42, feet - 4), (22, feet - 4)])
+    post = Part()
+    post.rectangle((30, 24, 33, feet - 4))
+    bar = Part()
+    bar.rectangle((12, 27, 51, 30))
+    body = Part()
+    body.ellipse((32, 36), 11, 13)
+    head = Part()
+    head.ellipse((32, 15), 8, 8)
+    canvas = compose([
+        (shade(base.pixels(), '(', light='a', shadow='ω'), 'o'),
+        (shade(post.pixels(), "'", light='a', shadow='('), 'o'),
+        (shade(bar.pixels(), "'", light='a', shadow='('), 'o'),
+        (shade(body.pixels(), 'τ', light='σ', shadow='s', rim='s'), 'o'),
+        (shade(head.pixels(), 'τ', light='σ', shadow='s'), 'o'),
+    ])
+    # Straw at the bar's ends and the neck, hashed per tuft.
+    for x0, y0, side in ((11, 28, -1), (52, 28, 1)):
+        for i in range(5):
+            dx = side * (1 + int(unit('straw', x0, i) * 3))
+            dy = int(unit('straw-y', x0, i) * 5) - 2
+            for t in range(abs(dx) + 1):
+                canvas[(x0 + side * t, y0 + dy)] = 'y' if (i + t) % 2 else 'A'
+    for i, x in enumerate(range(27, 38, 2)):
+        canvas[(x, 23 - (i % 2))] = 'y'
+    # Rope at the neck and the waist.
+    for y, xs in ((23, range(25, 40)), (44, range(21, 44))):
+        for x in xs:
+            if (x, y) in canvas:
+                canvas[(x, y)] = 'a' if x % 2 else "'"
+    # The target: bone and red rings.
+    for y in range(28, 43):
+        for x in range(25, 40):
+            r = math.hypot(x - 32, y - 35)
+            if r <= 6.2 and (x, y) in canvas:
+                canvas[(x, y)] = 'E' if r > 4.4 or r <= 1.6 else 'I'
+    # Stitched eyes, crosses, and a stitched mouth.
+    for x, y in ((29, 13), (30, 14), (29, 15), (31, 13), (31, 15),
+                 (34, 13), (35, 14), (34, 15), (36, 13), (36, 15)):
+        canvas[(x, y)] = 'o'
+    for x in range(29, 36):
+        canvas[(x, 19)] = 's' if x % 2 else 'o'
+    return outline(despeckle(canvas))
+
+
+def build_dummy(images):
+    """The training dummy's one frame, unlit: no normal or emissive map."""
+    im = to_image(dummy_canvas())
+    if im.getbbox()[3] != DUMMY_FEET:
+        raise ValueError(f'dummy: lowest pixel must sit on row {SOLE + 1}')
+    images['dummy'] = im

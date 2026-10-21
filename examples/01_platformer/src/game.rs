@@ -6,8 +6,12 @@ use tungsten::kit::KitPlugins;
 use tungsten::{App, GameState, StateId};
 
 use crate::features::audio::AudioPlugin;
+use crate::features::combat::CombatPlugin;
+use crate::features::dummy::DummyPlugin;
 use crate::features::elements::ElementsPlugin;
+use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
+use crate::features::lightning::LightningPlugin;
 use crate::features::player::{PlayerPlugin, max_health};
 use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
@@ -29,8 +33,11 @@ pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
     ("move_right", "Move right"),
     ("jump", "Jump"),
     ("cast", "Cast"),
+    ("shoot", "Shoot"),
     ("spell_next", "Next spell"),
     ("spell_prev", "Previous spell"),
+    ("summon_next", "Next summon"),
+    ("summon_prev", "Previous summon"),
     ("spell_1", "Spell 1"),
     ("spell_2", "Spell 2"),
     ("spell_3", "Spell 3"),
@@ -72,6 +79,10 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugin(AudioPlugin);
     app.add_plugin(ToysPlugin);
     app.add_plugin(ElementsPlugin);
+    app.add_plugin(DummyPlugin);
+    app.add_plugin(CombatPlugin);
+    app.add_plugin(LightningPlugin);
+    app.add_plugin(GunPlugin);
     app.add_plugin(SpellsPlugin);
     // Last, so the cursor draws over every other contribution.
     app.add_plugin(CursorPlugin);

@@ -2705,5 +2705,17 @@
     "left": 63,
     "right": 67,
     "row": 14
-  }
+  },
+  "dummies": [
+    {
+      "name": "training dummy",
+      "x": 2.0,
+      "y": 35.03125,
+      "tags": [
+        "flesh",
+        "freezable",
+        "conductive"
+      ]
+    }
+  ]
 }

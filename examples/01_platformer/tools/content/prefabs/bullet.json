@@ -1,0 +1,29 @@
+{
+  "sprite": {
+    "asset_id": "ex10_tracer",
+    "z_order": 14
+  },
+  "visible": false,
+  "components": {
+    "bullet": {},
+    "projectile": {
+      "range": 1600
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 2
+      },
+      "offset": [
+        16,
+        1.5
+      ],
+      "damage": 0
+    },
+    "linear_motion": {
+      "velocity": [
+        0,
+        0
+      ]
+    }
+  }
+}

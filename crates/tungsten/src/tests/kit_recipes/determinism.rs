@@ -30,8 +30,10 @@ use crate::testing::Harness;
 /// M67, whose script spawns the ranger's ammo, presses `attack` and `fire`
 /// and lands typed cold and corruption hits, whose prefabs carry effects,
 /// abilities, levels and thresholds, and whose rows add each effect
-/// instance, each bucket, each level and each ability.
-const KIT_RECIPES_HASH: u64 = 0x6fbd_8f24_2114_15a5;
+/// instance, each bucket, each level and each ability, then by M74, whose
+/// fixture's chilled rung skips a chilled golem, so the script's cold hit
+/// fills the golem's bucket instead of chilling it again.
+const KIT_RECIPES_HASH: u64 = 0x3334_9665_de0c_501a;
 
 const FRAMES: u32 = 300;
 
@@ -428,7 +430,10 @@ fn script(genre: &str, harness: &mut Harness) {
 /// orb and the gold collected, the ranger's kill counted on it, the lasers'
 /// kill scored; and M66's typed parts met their kind filters; and M67's
 /// ladders applied (the golem chilled, the mainframe corrupted) and the
-/// adventurer's gold reached its level.
+/// adventurer's gold reached its level. Since M74 the golem's chilled rung
+/// skips a chilled golem (`blocked_by`), so the script's cold hit, landing
+/// while the spellblade's chill holds, stays in the golem's bucket instead
+/// of chilling it again: a bucket still holding it shows the chill held.
 fn reacted(genre: &str, harness: &Harness) -> bool {
     let game = harness.world().resource::<Counters>();
     let counted = |tag: &str, name: &str| -> i64 {
@@ -460,7 +465,12 @@ fn reacted(genre: &str, harness: &Harness) -> bool {
                 && counted("ranger", "kills") >= 1
                 && counted("ranger", "xp") >= 1
                 && game.get("elemental_hits") >= 1
-                && affected("golem", "chilled")
+                && tagged(harness, "golem").iter().any(|&golem| {
+                    harness
+                        .world()
+                        .get::<AilmentBuckets>(golem)
+                        .is_some_and(|buckets| buckets.fill("elemental.cold") > 0.0)
+                })
         }
         // The two wings the script kills, and the carrier the lasers kill.
         "shmup" => {

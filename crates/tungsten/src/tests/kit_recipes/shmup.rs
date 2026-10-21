@@ -3,19 +3,24 @@
 //! on a floor under the same actions; M64's fighter, drifter, asteroid,
 //! mine and gun; M65's interceptor, lasers, carrier and bulwark; M66's
 //! sci-fi damage types: a hacker, its payloads and a mainframe; M67's
-//! corruption ladder, the ship's cannon and the turret's pulse.
+//! corruption ladder, the ship's cannon and the turret's pulse; M74's acid
+//! named after a load, the acid ladder's held rung and a game's own damage
+//! numbers.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
 use tungsten_core::physics::{Position, PrevPosition, Velocity};
-use tungsten_core::{AudioCommand, CameraController, Entity, Transform};
+use tungsten_core::{
+    AudioCommand, CameraController, DataRef, Entity, EventCursor, EventQueue, Plugin, SaveData,
+    SaveSlots, Schedule, Transform, World, system,
+};
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
     Abilities, Aim, Children, CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged,
-    DamagedPart, Effects, Health, Hit, HitShape, Hurtbox, KitPlugins, KitTrace, LinearMotion,
-    PlatformerController, ProjectileExpired, Shield, Source, Steering, Struck, Tags, TopDownMover,
-    TraceKind, damage,
+    DamagedPart, Effect, EffectInstance, EffectRequest, Effects, Health, Hit, HitShape, Hurtbox,
+    KitPlugins, KitTrace, LabelStyle, LinearMotion, Phase, PlatformerController, ProjectileExpired,
+    Shield, Source, Steering, Struck, Tags, TopDownMover, TraceKind, damage, float_label,
 };
 use crate::testing::Harness;
 
@@ -711,5 +716,222 @@ fn the_turrets_pulse_hits_once_per_window() {
             8.0
         );
         assert_eq!(traced_steps(&harness, turret, "ability_used").len(), 2);
+    }
+}
+
+// M74: an effect's source named after a load, a rung a tag skips, and a
+// game's own damage numbers.
+
+/// A game's save of one target's effects, with the game's own ID for their
+/// source: the serials the drone applied.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Etched {
+    effects: Effects,
+    from_drone: Vec<u64>,
+}
+
+impl SaveData for Etched {
+    const SCHEMA: u32 = 1;
+}
+
+#[test]
+fn a_drones_acid_named_after_a_load_credits_the_drone() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let drone = harness.world_mut().spawn_with((Tags::new(["team.enemy"]),));
+        let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
+        harness.step(1);
+        // Acid eating in, 2 each half second for two seconds.
+        let acid = Effect::new()
+            .with_duration(2.0)
+            .with_period(0.5)
+            .with_typed_damage("biological.acid", 2.0);
+        EffectRequest::new(mainframe, DataRef::inline(acid))
+            .with_source(drone)
+            .apply(harness.world_mut());
+        // The game's save holds the effects and its own ID for the source.
+        let effects = harness.world().get::<Effects>(mainframe).unwrap().clone();
+        let from_drone = effects
+            .instances()
+            .filter(|instance| instance.source() == Some(drone))
+            .map(EffectInstance::serial)
+            .collect();
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_acid_{}_{}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = SaveSlots::new(Some(dir.clone()));
+        slots
+            .save(
+                "acid",
+                &Etched {
+                    effects,
+                    from_drone,
+                },
+            )
+            .unwrap();
+        let loaded: Etched = slots.load("acid").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // A save holds no entity: its load names the source again.
+        let mut effects = loaded.effects;
+        assert!(
+            effects
+                .instances()
+                .all(|instance| instance.source().is_none()),
+            "dt {dt}"
+        );
+        for serial in loaded.from_drone {
+            assert!(effects.set_source(serial, Some(drone)), "dt {dt}");
+        }
+        harness.world_mut().insert(mainframe, effects);
+        let mut ticks = Vec::new();
+        for _ in 0..frames_for(1.1, dt) {
+            harness.step(1);
+            ticks.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == mainframe && hit.periodic)
+                    .map(|hit| {
+                        (
+                            hit.source,
+                            hit.kinds.has(harness.world(), "biological.acid"),
+                        )
+                    }),
+            );
+        }
+        assert_eq!(
+            ticks,
+            [(Some(drone), true); 2],
+            "dt {dt}: an acid tick each half second, each the drone's"
+        );
+    }
+}
+
+#[test]
+fn an_acid_stream_builds_through_a_blocked_rung_to_its_top() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let mainframe = spawn(&mut harness, "mainframe", [640.0, 300.0]);
+        harness.step(1);
+        // Acid 4 a frame against the threshold of 30: `eaten` takes the
+        // bucket at half, then its `blocked_by` skips it while the mainframe
+        // is eaten, so the acid fills on to the top rung's whole threshold.
+        let tagged_with = |harness: &Harness, tag: &str| {
+            harness
+                .world()
+                .get::<Tags>(mainframe)
+                .is_some_and(|tags| tags.has(tag))
+        };
+        let (mut eaten_at, mut dissolved_at) = (None, None);
+        for frame in 0..frames_for(1.5, dt) {
+            DamageRequest::from_parts(
+                mainframe,
+                [DamagePart::new(4.0).with_tags(Tags::new(["biological.acid"]))],
+            )
+            .queue(harness.world_mut());
+            harness.step(1);
+            if eaten_at.is_none() && tagged_with(&harness, "status.eaten") {
+                eaten_at = Some(frame);
+            }
+            if tagged_with(&harness, "status.dissolved") {
+                dissolved_at = Some(frame);
+                break;
+            }
+        }
+        let eaten_at = eaten_at.expect("eaten");
+        let dissolved_at = dissolved_at.unwrap_or_else(|| panic!("dt {dt}: never dissolved"));
+        assert!(
+            eaten_at < dissolved_at,
+            "dt {dt}: eaten at {eaten_at}, dissolved at {dissolved_at}"
+        );
+        assert!(tagged_with(&harness, "status.eaten"), "dt {dt}: it held");
+    }
+}
+
+/// Gold, the game's crit colour, and the virus type's green.
+const GOLD: [u8; 4] = [255, 218, 0, 255];
+const GREEN: [u8; 4] = [0, 255, 0, 255];
+
+/// A game's own damage numbers, as its Rust floats them in the react
+/// phase: each part in its type's style, but one target's crit parts in a
+/// step summed into one gold number, larger, where the first landed.
+struct GameNumbers;
+
+impl Plugin for GameNumbers {
+    fn build(&self, schedule: &mut Schedule, _: &mut World) {
+        let mut cursor = EventCursor::<DamagedPart>::default();
+        let gold = LabelStyle::new("sans")
+            .with_size(24.0)
+            .with_color([1.0, 0.7, 0.0, 1.0]);
+        let run = move |world: &mut World| {
+            let Some(queue) = world.get_resource::<EventQueue<DamagedPart>>() else {
+                return;
+            };
+            let parts: Vec<DamagedPart> = cursor.read(queue).copied().collect();
+            let mut crits: Vec<(Entity, Vec2, f32)> = Vec::new();
+            for part in parts {
+                let at = part.position.unwrap_or_default();
+                if part.crit {
+                    match crits.iter_mut().find(|(entity, ..)| *entity == part.entity) {
+                        Some((_, _, sum)) => *sum += part.amount,
+                        None => crits.push((part.entity, at, part.amount)),
+                    }
+                } else if let Some(style) = part.kinds.label_style(world) {
+                    float_label(world, &style, at, part.amount);
+                }
+            }
+            for (_, at, sum) in crits {
+                float_label(world, &gold, at, sum);
+            }
+        };
+        schedule.add(
+            Phase::React.stage(),
+            Phase::React.join(system("game_numbers", run)),
+        );
+    }
+}
+
+#[test]
+fn a_crits_parts_float_gold_from_the_games_code() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(GameNumbers), dt);
+        // No cues of its own: the game's numbers alone.
+        let target = harness.world_mut().spawn_with((Health::new(100.0),));
+        let hacker = harness.world_mut().spawn();
+        harness.step(1);
+        // One step: a crit of virus 4 and exploit 2, and a plain virus 3.
+        let part = |amount: f32, kind: &str| DamagePart::new(amount).with_tags(Tags::new([kind]));
+        let world = harness.world_mut();
+        DamageRequest::from_parts(
+            target,
+            [part(4.0, "digital.virus"), part(2.0, "digital.exploit")],
+        )
+        .with_source(hacker)
+        .with_position(Vec2::new(640.0, 200.0))
+        .with_crit(true)
+        .queue(world);
+        DamageRequest::from_parts(target, [part(3.0, "digital.virus")])
+            .with_position(Vec2::new(680.0, 200.0))
+            .queue(world);
+        harness.step(1);
+        assert_eq!(
+            typed_labels(&harness),
+            [("3".to_string(), GREEN), ("6".to_string(), GOLD)],
+            "dt {dt}: the plain part in the virus style, the crit's two summed in gold"
+        );
+        let mut sizes: Vec<(String, f32)> = harness
+            .draw()
+            .unwrap()
+            .world_labels
+            .iter()
+            .map(|run| (run.content.clone(), run.font_size))
+            .collect();
+        sizes.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            sizes,
+            [("3".to_string(), 16.0), ("6".to_string(), 24.0)],
+            "dt {dt}"
+        );
     }
 }

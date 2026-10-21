@@ -459,12 +459,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentBuckets
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentBuckets
 pub struct tungsten_kit::prelude::AilmentRung
 impl tungsten_kit::AilmentRung
+pub fn tungsten_kit::AilmentRung::blocked_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::AilmentRung::chance(&self) -> f32
 pub fn tungsten_kit::AilmentRung::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
 pub fn tungsten_kit::AilmentRung::needs(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::AilmentRung::new(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::AilmentRung::requires(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::AilmentRung::window(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::AilmentRung::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::AilmentRung::with_chance(self, f32) -> Self
 pub fn tungsten_kit::AilmentRung::with_needs(self, f32, f32) -> Self
 pub fn tungsten_kit::AilmentRung::with_requires(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -1079,6 +1081,7 @@ impl tungsten_kit::DamageKinds
 pub const tungsten_kit::DamageKinds::NONE: Self
 pub fn tungsten_kit::DamageKinds::has(self, &tungsten_core::ecs::world::World, &str) -> bool
 pub fn tungsten_kit::DamageKinds::is_empty(self) -> bool
+pub fn tungsten_kit::DamageKinds::label_style(self, &tungsten_core::ecs::world::World) -> core::option::Option<tungsten_kit::LabelStyle>
 pub fn tungsten_kit::DamageKinds::names(self, &tungsten_core::ecs::world::World) -> alloc::vec::Vec<&str>
 impl core::clone::Clone for tungsten_kit::DamageKinds
 pub fn tungsten_kit::DamageKinds::clone(&self) -> tungsten_kit::DamageKinds
@@ -1192,6 +1195,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Damaged
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Damaged
 #[non_exhaustive] pub struct tungsten_kit::prelude::DamagedPart
 pub tungsten_kit::prelude::DamagedPart::amount: f32
+pub tungsten_kit::prelude::DamagedPart::crit: bool
 pub tungsten_kit::prelude::DamagedPart::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::prelude::DamagedPart::kinds: tungsten_kit::DamageKinds
 pub tungsten_kit::prelude::DamagedPart::periodic: bool
@@ -1199,6 +1203,7 @@ pub tungsten_kit::prelude::DamagedPart::position: core::option::Option<glam::f32
 pub tungsten_kit::prelude::DamagedPart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::DamagedPart
 pub fn tungsten_kit::DamagedPart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamagedPart::with_crit(self, bool) -> Self
 pub fn tungsten_kit::DamagedPart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::DamagedPart::with_periodic(self, bool) -> Self
 pub fn tungsten_kit::DamagedPart::with_position(self, glam::f32::vec2::Vec2) -> Self
@@ -1454,6 +1459,7 @@ pub fn tungsten_kit::Effects::has(&self, &str) -> bool
 pub fn tungsten_kit::Effects::instances(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::EffectInstance>
 pub fn tungsten_kit::Effects::new() -> Self
 pub fn tungsten_kit::Effects::pending(&self) -> &[tungsten_core::assets::data::DataRef<tungsten_kit::Effect>]
+pub fn tungsten_kit::Effects::set_source(&mut self, u64, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::Effects::stacks(&self, &str) -> u32
 pub fn tungsten_kit::Effects::with(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 impl core::clone::Clone for tungsten_kit::Effects
@@ -3507,6 +3513,7 @@ pub fn tungsten_kit::prelude::damage(&mut tungsten_core::ecs::world::World, tung
 pub fn tungsten_kit::prelude::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)
 pub fn tungsten_kit::prelude::end_effect(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> bool
 pub fn tungsten_kit::prelude::ensure_phases(&mut tungsten_core::schedule::Schedule)
+pub fn tungsten_kit::prelude::float_label(&mut tungsten_core::ecs::world::World, &tungsten_kit::LabelStyle, glam::f32::vec2::Vec2, f32)
 pub fn tungsten_kit::prelude::heal(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> f32
 pub fn tungsten_kit::prelude::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::prelude::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity
@@ -4025,12 +4032,14 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::AilmentBuckets
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::AilmentBuckets
 pub struct tungsten_kit::AilmentRung
 impl tungsten_kit::AilmentRung
+pub fn tungsten_kit::AilmentRung::blocked_by(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::AilmentRung::chance(&self) -> f32
 pub fn tungsten_kit::AilmentRung::effect(&self) -> &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>
 pub fn tungsten_kit::AilmentRung::needs(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::AilmentRung::new(tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 pub fn tungsten_kit::AilmentRung::requires(&self) -> &[alloc::string::String]
 pub fn tungsten_kit::AilmentRung::window(&self) -> core::option::Option<f32>
+pub fn tungsten_kit::AilmentRung::with_blocked_by(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
 pub fn tungsten_kit::AilmentRung::with_chance(self, f32) -> Self
 pub fn tungsten_kit::AilmentRung::with_needs(self, f32, f32) -> Self
 pub fn tungsten_kit::AilmentRung::with_requires(self, impl core::iter::traits::collect::IntoIterator<Item = impl core::convert::Into<alloc::string::String>>) -> Self
@@ -4673,6 +4682,7 @@ impl tungsten_kit::DamageKinds
 pub const tungsten_kit::DamageKinds::NONE: Self
 pub fn tungsten_kit::DamageKinds::has(self, &tungsten_core::ecs::world::World, &str) -> bool
 pub fn tungsten_kit::DamageKinds::is_empty(self) -> bool
+pub fn tungsten_kit::DamageKinds::label_style(self, &tungsten_core::ecs::world::World) -> core::option::Option<tungsten_kit::LabelStyle>
 pub fn tungsten_kit::DamageKinds::names(self, &tungsten_core::ecs::world::World) -> alloc::vec::Vec<&str>
 impl core::clone::Clone for tungsten_kit::DamageKinds
 pub fn tungsten_kit::DamageKinds::clone(&self) -> tungsten_kit::DamageKinds
@@ -4786,6 +4796,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Damaged
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Damaged
 #[non_exhaustive] pub struct tungsten_kit::DamagedPart
 pub tungsten_kit::DamagedPart::amount: f32
+pub tungsten_kit::DamagedPart::crit: bool
 pub tungsten_kit::DamagedPart::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::DamagedPart::kinds: tungsten_kit::DamageKinds
 pub tungsten_kit::DamagedPart::periodic: bool
@@ -4793,6 +4804,7 @@ pub tungsten_kit::DamagedPart::position: core::option::Option<glam::f32::vec2::V
 pub tungsten_kit::DamagedPart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten_kit::DamagedPart
 pub fn tungsten_kit::DamagedPart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::DamagedPart::with_crit(self, bool) -> Self
 pub fn tungsten_kit::DamagedPart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
 pub fn tungsten_kit::DamagedPart::with_periodic(self, bool) -> Self
 pub fn tungsten_kit::DamagedPart::with_position(self, glam::f32::vec2::Vec2) -> Self
@@ -5048,6 +5060,7 @@ pub fn tungsten_kit::Effects::has(&self, &str) -> bool
 pub fn tungsten_kit::Effects::instances(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::EffectInstance>
 pub fn tungsten_kit::Effects::new() -> Self
 pub fn tungsten_kit::Effects::pending(&self) -> &[tungsten_core::assets::data::DataRef<tungsten_kit::Effect>]
+pub fn tungsten_kit::Effects::set_source(&mut self, u64, core::option::Option<tungsten_core::ecs::entity::Entity>) -> bool
 pub fn tungsten_kit::Effects::stacks(&self, &str) -> u32
 pub fn tungsten_kit::Effects::with(self, tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> Self
 impl core::clone::Clone for tungsten_kit::Effects
@@ -7202,6 +7215,7 @@ pub fn tungsten_kit::damage(&mut tungsten_core::ecs::world::World, tungsten_core
 pub fn tungsten_kit::despawn_recursive(&mut tungsten_core::ecs::command_buffer::CommandBuffer, tungsten_core::ecs::entity::Entity)
 pub fn tungsten_kit::end_effect(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, &tungsten_core::assets::data::DataRef<tungsten_kit::Effect>) -> bool
 pub fn tungsten_kit::ensure_phases(&mut tungsten_core::schedule::Schedule)
+pub fn tungsten_kit::float_label(&mut tungsten_core::ecs::world::World, &tungsten_kit::LabelStyle, glam::f32::vec2::Vec2, f32)
 pub fn tungsten_kit::heal(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, f32) -> f32
 pub fn tungsten_kit::knock_back(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> bool
 pub fn tungsten_kit::spawn_child<B: tungsten_core::ecs::bundle::Bundle>(&mut tungsten_core::ecs::world::World, tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, B) -> tungsten_core::ecs::entity::Entity

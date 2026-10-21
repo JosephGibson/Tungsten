@@ -49,11 +49,27 @@ pub enum Sound {
     Cast,
     /// A force push.
     Pushed,
+    /// A steam burst: cold on fire, or a fire hazard put out.
+    Steamed,
+    /// Thermal shock: a frozen thing exploding.
+    FrostBlasted,
+    /// A lightning strike's thunder.
+    Thundered,
+    /// A conduction jump's crackle.
+    Crackled,
+    /// A gun's shot.
+    Shot,
+    /// The gun's magazine come back whole.
+    Reloaded,
+    /// A bullet turned off iron.
+    Ricocheted,
+    /// A dummy summoned.
+    Summoned,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 13] = [
+    pub const ALL: [Sound; 21] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -67,6 +83,14 @@ impl Sound {
         Sound::Placed,
         Sound::Cast,
         Sound::Pushed,
+        Sound::Steamed,
+        Sound::FrostBlasted,
+        Sound::Thundered,
+        Sound::Crackled,
+        Sound::Shot,
+        Sound::Reloaded,
+        Sound::Ricocheted,
+        Sound::Summoned,
     ];
 
     /// Its cue event's name.
@@ -86,6 +110,14 @@ impl Sound {
             Sound::Placed => "placed",
             Sound::Cast => "cast",
             Sound::Pushed => "pushed",
+            Sound::Steamed => "steamed",
+            Sound::FrostBlasted => "frost_blasted",
+            Sound::Thundered => "thundered",
+            Sound::Crackled => "crackled",
+            Sound::Shot => "shot",
+            Sound::Reloaded => "reloaded",
+            Sound::Ricocheted => "ricocheted",
+            Sound::Summoned => "summoned",
         }
     }
 }

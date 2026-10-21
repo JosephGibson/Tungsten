@@ -1,12 +1,13 @@
 //! What the element rules draw over the sprites: each exposed burning
-//! ball's flame tongue over a soft glow, and the cold pulses' rings.
+//! ball's flame tongue over a soft glow, each frozen ball's ice shell, and
+//! the cold pulses' rings.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Collider, Transform, World};
 use tungsten::render::SpriteBatch;
 
 use super::FLAME_SIZE;
-use super::components::{BallBurn, IcePulse};
+use super::components::{BallBurn, Frozen, IcePulse};
 use super::systems::flame_look;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, drawn_time};
@@ -24,17 +25,46 @@ pub const FLAME_FRAMES: [&str; 8] = [
     "ex10_fire_6",
     "ex10_fire_7",
 ];
-/// A cold pulse's ring.
+/// A cold pulse's ring, and a frozen ball's shell over its art.
 pub const ICE_RING: &str = "ex10_ice_ring";
+pub const ICE_SHELL: &str = "ex10_ice_shell";
 
-/// The flames, then the cold pulses.
+/// The flames, then the ice shells, then the cold pulses.
 #[must_use]
 pub fn effects(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
     };
     let mut batches = flames(world, assets);
+    batches.extend(shells(world, assets));
     batches.extend(pulses(world, assets));
+    batches
+}
+
+/// A shell of ice over each frozen ball in view, over its 64 px art at the
+/// ball's scale.
+fn shells(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+    let Some(asset) = assets.get_sprite(ICE_SHELL) else {
+        return Vec::new();
+    };
+    let (min, max) = view(world);
+    let mut batches = Vec::new();
+    for (_, _, at) in world.query::<(
+        &Frozen,
+        &crate::features::toys::components::Ball,
+        &Transform,
+    )>() {
+        let size = Vec2::splat(64.0) * at.scale;
+        if (at.position + size).cmplt(min).any() || at.position.cmpgt(max).any() {
+            continue;
+        }
+        push_quad(
+            &mut batches,
+            asset,
+            instance(asset, at.position, size, [255; 4]),
+            None,
+        );
+    }
     batches
 }
 

@@ -1,6 +1,6 @@
 # Example 01: platformer
 
-A courier with a lantern crosses a ruin at night: four areas from the lantern clearing to the ruined tower, then a collection pit, with spikes, moving fire and moving platforms on the way. Eight spells cast physics toys and the elements: a fire missile, a flamethrower, an ice spray, a force push, a black hole, iron blocks, a bowling ball and a stream of small balls, which burn, freeze, shatter, crush and fall into the pit.
+A courier with a lantern crosses a ruin at night: four areas from the lantern clearing to the ruined tower, then a collection pit, with spikes, moving fire and moving platforms on the way. Ten spells cast physics toys and the elements: a fire missile, a flamethrower, an ice spray, lightning, a force push, a black hole, iron blocks, a bowling ball, a stream of small balls and a summoned training dummy; things burn, freeze, explode, shatter, burst into steam, conduct, crush and fall into the pit. A gun fires beside the spells, and a training dummy in the clearing takes every element and shows its damage.
 
 It is a game on the [template](../../templates/basic/README.md): the template's shell (title, pause, game over, saves, settings, keybindings, toasts) and its theme copied byte for byte into `src/shell/` and `assets/ui/themes/shell.json`, the seam in `src/game.rs` and `src/save.rs`, and the game in `src/features/`, built on the engine kit (`tungsten::kit`) wherever the kit has the mechanic. Its night is a bloom and a vignette that each run builds whole (`features/level/`); the shell's Bloom option, on the Display tab, takes the bloom out and leaves the vignette.
 
@@ -24,14 +24,16 @@ Every action is in `input.json` and rebindable in Settings → Controls.
 | --- | --- | --- |
 | Move | A, D, ←, → | Left stick |
 | Jump, and the air jump | Space | South |
+| Shoot, held to repeat | Left mouse button | RT |
 | Cast the selected spell (hold for a held spell) | Right mouse button | LT |
 | Next and previous spell | Wheel down, wheel up | RB, LB |
 | Select a spell slot | 1 … 9, 0 | |
+| Next and previous summon type | E, Q | D-pad right, left |
 | Lantern | L | North |
 | Zoom in and out | =, − | |
 | Pause | Esc | Start |
 
-The cursor aims every spell. Slots 4 and 0 are empty, waiting for the lightning and the summon.
+The cursor aims every spell and the gun.
 
 ## The spells
 
@@ -39,14 +41,24 @@ The cursor aims every spell. Slots 4 and 0 are empty, waiting for the lightning 
 | --- | --- | --- | --- | --- |
 | 1 | Fire missile: a projectile that blasts what it meets, lights small balls and shatters frozen iron | Press | 8 | 0.25 s |
 | 2 | Flamethrower: a short cone that lights small balls | Held | 20/s | |
-| 3 | Ice spray: a cone that freezes iron in 1.5 s | Held | 18/s | |
+| 3 | Ice spray: a cone that chills balls and iron, freezing them in 1.5 s, and puts fire out with steam | Held | 18/s | |
+| 4 | Lightning from the sky onto the cursor, or onto the nearest conductive thing within 160 px of it; it stops at the first solid on its way down, and its shock jumps from conductor to conductor, six times at most | Press | 30 | 0.8 s |
 | 5 | Force push: every body within six tiles, by distance and mass | Press | 25 | 2 s |
 | 6 | Black hole at the cursor for 4 s: it pulls bodies and puts out fire | Press | 30 | 1 s |
 | 7 | Iron block at the cursor, at most 24 | Press | 15 | 0.4 s, 3 charges, one back every 2 s |
 | 8 | Bowling ball, tossed toward the aim | Press | 12 | 0.6 s |
 | 9 | Small balls at the cursor, up to 12,000 | Held | 15/s | |
+| 0 | Summon the selected type at the cursor, the training dummy, four at most, refused inside a wall | Press | 40 | 1 s |
 
-Mana starts at 100 of 100 and comes back at 15 a second, paused for a second after each cast. The HUD shows the health and mana bars at the top left and the spell bar at the bottom: each slot's icon in its element's colour, its key, its cost, its cooldown's sweep and its charges, the selected slot outlined and a spell the mana cannot pay for greyed.
+The gun fires twelve rounds 0.12 s apart, all back 1.2 s after the last: a shot deals 6 physical to what it hits, which can crit, kicks a ball and ends, shatters a frozen ball, and turns off iron twice.
+
+Mana starts at 100 of 100 and comes back at 15 a second, paused for a second after each cast. The HUD shows the health and mana bars at the top left and the spell bar at the bottom: each slot's icon in its element's colour, its key, its cost, its cooldown's sweep and its charges, the selected slot outlined and a spell the mana cannot pay for greyed; slot 0 shows the summon's type. Beside it, the gun's magazine reads its rounds, a pip each, and "reloading" at none.
+
+## The elements
+
+Every hit is typed: `damage.physical` (with its bleed), `damage.fire`, `damage.cold` and `damage.shock`, each in its colour. A hit from the courier crits one time in twenty for twice its damage. What has health climbs each type's ladder: physical bleeds flesh and shatters the frozen, fire burns, cold chills and then freezes what is freezable, and shock leaves its target taking half again from every hit, then stuns it. Balls, iron and scraps keep their own states: small balls burn for ten seconds, and cold freezes balls and iron for five.
+
+A frozen thing ends one of three ways: fire on it explodes it (thermal shock), a hard impact or a fall shatters it, and cold on a burning thing bursts into steam, which puts out what burns around it. Explosions chain through a frozen pile and steam through a burning one, at most 48 a step, so a chain rolls through a pile as a wave. Moving bodies hurt what they hit by their speed and mass. Damage numbers float in each type's colour, a type's ticks merged into one and a crit at once, larger and yellow, while the Damage numbers option is on. The first freeze, shatter, steam burst and shock in a save each show a hint.
 
 ## Mechanics and where they live
 
@@ -61,7 +73,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Spikes and moving fire | `tungsten::kit::ContactDamage`, 34 a touch | `assets/prefabs/ex10_spikes.json`, `ex10_fire_<n>.json` (from `tools/level.py`) | |
 | The fire's motion | `tungsten::kit::Oscillator` (`kit::motion::oscillator`) | `ex10_fire_<n>.json` | Its glow, trail and drips |
 | Moving platforms | `tungsten::kit::PathFollower` (`kit::motion::path`) | `ex10_platform_<n>.json` | |
-| Knockback and the hit flash | `kit::Knockback`, `kit::HitFlash` | `player.json` | The lit courier shows no flash (known issues) |
+| Knockback and the hit flash | `kit::Knockback`, `kit::HitFlash` | `player.json`, `dummy.json` | The lit courier shows no flash; the dummy draws unlit, so it does (known issues) |
 | Facing and clips | `kit::Facing`, `kit::CharacterAnimator` | `player.json`, the fireballs' prefabs | The one-shot clips, the toss, the aim frames and the lantern's cast (`features/player/`) |
 | Areas | `tungsten::kit::Zone` and `kit::ZoneEntered` | `ex10_area_<n>.json` | Each new area's toast and autosave (`features/run/`; [Saves](#saves)) |
 | The camera | `kit::CameraTarget` | `player.json`'s `camera_target` | The zoom (`features/player/`, `features/level/`) |
@@ -71,13 +83,24 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Mana | `tungsten::kit::Stats`, `kit::Effects` (`restore`, `suppressed_by`) | `data/stats/game.json`, `data/effects/mana_regen.json`, `data/effects/casting.json`, `data/tags/game.json` | The HUD (`features/spells/hud.rs`) |
 | Sounds on game events | `tungsten::kit::CuesOnEvent` and the `cue_rules` data kind | `data/cue_rules/sounds.json` | The `Sounded` events (`features/audio/`) |
 | The random stream | `kit::KitRng` | | Saved whole |
+| Damage types and their colours | the `damage_types` kind, `kit::DamageKinds::label_style` | `data/damage_types/game.json` | The hit builder, `combat::Hit` (`features/combat/`) |
+| Resistances, immunities, shocked's half again | `kit::Resist` with an effect's resist modifier | `dummy.json`'s `resist`, `data/effects/shocked.json` | |
+| Burning, bleeding, chill, freeze, shock, stun, shatter | `kit::AilmentThreshold`, the types' ladders with `blocked_by`, `kit::Effects` | `data/damage_types/game.json`, `data/effects/*.json` | The statuses' tints, overlays and particles; thermal shock and steam from the landed parts (`features/combat/`) |
+| Crits | `kit::KitRng`, the request's crit flag | | The roll and the ×2 in the hit builder |
+| Regeneration held by burning | `suppressed_by` | `data/effects/dummy_regen.json` | |
+| The gun, its magazine and reload | `kit::Projectile`, a trigger `kit::Hitbox`, `kit::LinearMotion`, ability charges, the `spawn` payload | `bullet.json`, `data/abilities/gun.json` | One decision a step for each bullet: the hit, balls and ricochets; the reload's timing (`features/gun/`) |
+| Damage numbers | `kit::float_label`, the types' styles, `DamagedPart::crit` | | The merge, the crit's style and the option (`features/combat/numbers.rs`) |
+| The training dummy | `kit::Health`, `kit::Hurtbox`, `kit::Resist`, `kit::Tags`, `kit::Effects`, `kit::AilmentThreshold`, `kit::HitFlash`, `kit::Knockback` | `dummy.json`; the map's `dummies` layer | Its friction, its end in one burst by its state (`features/dummy/`) |
+| The summon | ability cost and cooldown | `data/abilities/summon.json` | Placing at the cursor, the cap of four (`features/dummy/`, `features/spells/`) |
+| Lightning, conduction and the endings' chains | none | `data/abilities/lightning.json` | The strike and the saved cascade queue (`features/lightning/`, `features/elements/cascade.rs`) |
+| Hints | none | | Shell toasts with a saved set (`features/combat/`) |
 
-01's own rules are game code, ported from the example before the rebuild: the toys (small and bowling balls, iron blocks and their scraps, the black hole, the missile's blast), the element rules (burning and its spread, chill and freezing, shattering, crushing, putting out fire) and the sprays (`features/toys/`, `features/elements/`). The level's backdrop, glows and cursor are its presentation (`features/level/`).
+01's own rules are game code: the toys (small and bowling balls, iron blocks and their scraps, the black hole, the missile's blast), the bodies' element rules (burning and its spread, chill and freezing, the endings, crushing, impact damage, putting out fire) and the sprays (`features/toys/`, `features/elements/`), the strike and its conduction (`features/lightning/`), the gun's hits (`features/gun/`) and the dummy's end (`features/dummy/`). The level's backdrop, glows and cursor are its presentation (`features/level/`).
 
 ## Saves
 
-`src/save.rs` holds the save (schema 4): the run's next save ID, the random stream, the last area, the selected spell, the lantern, and every saved entity by its save ID: the player's body, controller, health, stats, effects, abilities and tags; the moving platforms and fire; the balls, iron and scraps; the black hole; the missiles in flight. Loading spawns the map, writes each saved state over the map object with its save ID and spawns the rest from their prefabs. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music. Each area's entry asks for an autosave (`shell::request_autosave`), which the shell writes to one of its three autosaves, an empty one or else the oldest, while its Autosave option is on.
+`src/save.rs` holds the save (schema 5): the run's next save ID, the random stream, the last area, the selected spell, the lantern, the hints seen, the summon's type, the cascades waiting, and every saved entity by its save ID: the player's body, controller, health, stats, effects with their sources, abilities, ailment buckets, tags and the gun's reload; the moving platforms and fire, and whether cold has put a fire out; the balls with their burn and ice, iron and scraps; the black hole; the dummies, the map's gone and the summoned; the missiles and bullets in flight. Loading spawns the map, takes off it the dummies that were gone, writes each saved state over the map object with its save ID, spawns the rest from their prefabs, and names each effect's source again. A save of 01 (a), schema 4, migrates: its save IDs from the player's up move by one for the map's dummy, and its player gains the new spells and the gun. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music. Each area's entry asks for an autosave (`shell::request_autosave`), which the shell writes to one of its three autosaves, an empty one or else the oldest, while its Autosave option is on.
 
 ## Tests
 
-`tests/game/`, one module a part: `seam`, `level` (every route's jumps on the controller), `player`, `camera`, `hazards`, `fixed_step` (30, 60 and 144 Hz), `presentation`, `regime`, `areas`, `ball_pit`, `spawning`, `burning`, `brick`, `ice`, `spells`, `hud`, `saves` (a capture loads back to itself; a loaded run keeps with the run it came from) and `playthrough` (a New Game walks the lower route to the tower and into the pit).
+`tests/game/`, one module a part: `seam`, `level` (every route's jumps on the controller), `player`, `camera`, `hazards`, `fixed_step` (30, 60 and 144 Hz), `presentation`, `regime`, `areas`, `ball_pit`, `spawning`, `burning`, `brick`, `ice`, `spells`, `combat` (the hit builder, the ladders and the damage numbers), `cascades` (the endings and their chains), `lightning`, `gun`, `dummy` (and the summon), `hud`, `saves` (a capture loads back to itself; a loaded run keeps with the run it came from; mid-chain, mid-conduction and in-flight saves; the hints; schema 4's migration) and `playthrough` (a New Game walks the lower route to the tower and into the pit).

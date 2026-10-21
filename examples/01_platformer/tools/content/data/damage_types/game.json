@@ -1,0 +1,147 @@
+{
+  "damage": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.888,
+        0.823,
+        0.578,
+        1
+      ]
+    }
+  },
+  "damage.physical": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.888,
+        0.823,
+        0.578,
+        1
+      ]
+    },
+    "ailments": [
+      {
+        "effect": "bleeding",
+        "needs": 0.4,
+        "window": 3,
+        "requires": [
+          "flesh"
+        ],
+        "blocked_by": [
+          "status.frozen"
+        ]
+      },
+      {
+        "effect": "shattered",
+        "needs": 0.8,
+        "window": 3,
+        "requires": [
+          "status.frozen"
+        ]
+      }
+    ]
+  },
+  "damage.physical.bleed": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.491,
+        0.042,
+        0.072,
+        1
+      ]
+    }
+  },
+  "damage.fire": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.922,
+        0.202,
+        0.021,
+        1
+      ]
+    },
+    "ailments": [
+      {
+        "effect": "burning",
+        "needs": 0.25,
+        "window": 3,
+        "blocked_by": [
+          "status.frozen",
+          "status.doused"
+        ]
+      }
+    ]
+  },
+  "damage.cold": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.434,
+        0.839,
+        0.905,
+        1
+      ]
+    },
+    "ailments": [
+      {
+        "effect": "chilled",
+        "needs": 0.3,
+        "window": 3,
+        "blocked_by": [
+          "status.chilled",
+          "status.burning"
+        ]
+      },
+      {
+        "effect": "frozen",
+        "needs": 1,
+        "window": 3,
+        "requires": [
+          "freezable",
+          "status.chilled"
+        ],
+        "blocked_by": [
+          "status.burning"
+        ]
+      }
+    ]
+  },
+  "damage.shock": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.479,
+        0.262,
+        1.0,
+        1
+      ]
+    },
+    "ailments": [
+      {
+        "effect": "shocked",
+        "needs": 0.3,
+        "window": 3,
+        "blocked_by": [
+          "status.shocked"
+        ]
+      },
+      {
+        "effect": "stunned",
+        "needs": 1,
+        "window": 3,
+        "requires": [
+          "status.shocked"
+        ]
+      }
+    ]
+  }
+}

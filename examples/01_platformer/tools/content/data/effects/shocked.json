@@ -1,0 +1,14 @@
+{
+  "duration": 4,
+  "resist": [
+    {
+      "tag": "damage",
+      "modifier": {
+        "mul": 1.5
+      }
+    }
+  ],
+  "grant": [
+    "status.shocked"
+  ]
+}

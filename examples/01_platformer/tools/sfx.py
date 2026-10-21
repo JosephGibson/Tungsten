@@ -341,6 +341,171 @@ def force_push():
     return finish(samples, fade_in=.002, fade_out=.06)
 
 
+# 01 (b)'s weapons and elements: the gun, the bolt from the sky, the
+# reactions' bursts and the training dummy.
+
+
+def gun_shot():
+    """A sharp report: a cracking noise burst over a short low punch, with a
+    metallic tick of the slide."""
+    noise, low, high = Noise(0x6005), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.3 * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (low(n, 7000) - high(n, 1100)) * math.exp(-t / 0.012)
+        body = low(n, 900) * math.exp(-t / 0.05)
+        phase += math.tau * glide(160, 60, min(1.0, t / 0.06)) / RATE
+        punch = math.sin(phase) * math.exp(-t / 0.035)
+        tick = math.sin(math.tau * 3100 * t) * 0.18 * math.exp(-max(0.0, t - 0.02) / 0.02) * (t > 0.02)
+        samples.append(math.tanh(2.2 * crack + 1.2 * body + punch) + tick)
+    return finish(samples, fade_in=0.0005)
+
+
+def gun_reload():
+    """The magazine back in: a slide pulled and let go, two clicks a beat
+    apart with a short iron ring."""
+    noise = Noise(0x2E10)
+    samples = []
+    for i in range(int(0.42 * RATE)):
+        t = i / RATE
+        out = 0.0
+        for at, pitch in ((0.0, 2400), (0.22, 1700)):
+            u = t - at
+            if u >= 0:
+                click = noise() * math.exp(-u / 0.004)
+                ring = sum(math.sin(math.tau * pitch * ratio * u) * weight
+                           for ratio, weight in ((1, 0.3), (1.53, 0.15))) * math.exp(-u / 0.05)
+                out += click + ring
+        slide = noise() * 0.12 * math.sin(math.pi * min(1.0, t / 0.2)) * (t < 0.2)
+        samples.append(out + slide)
+    return finish(samples, fade_in=0.0005)
+
+
+def ricochet():
+    """A bullet off iron: a bright ping that whines down and away."""
+    noise, high = Noise(0x41C0), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.45 * RATE)):
+        t = i / RATE
+        p = t / 0.45
+        n = noise()
+        hit = (n - high(n, 2500)) * math.exp(-t / 0.006)
+        phase += math.tau * glide(3400, 1500, p) / RATE
+        whine = 0.6 * math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.14)
+        samples.append(hit + whine)
+    return finish(samples, fade_in=0.0005)
+
+
+def thunder():
+    """A strike overhead: a splitting crack, then a low roll that rumbles on
+    and fades."""
+    duration = 1.8
+    noise, rumble, crack_low, low2 = Noise(0x7D0E), Noise(0x0B11), LowPass(), LowPass()
+    roll_low = LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (n - crack_low(n, 1200)) * math.exp(-t / 0.03)
+        # The roll swells after the crack and wobbles as it fades.
+        swell = min(1.0, t / 0.12) * math.exp(-t / 0.55)
+        wobble = 0.7 + 0.3 * math.sin(math.tau * 3.2 * t) * math.sin(math.tau * 1.3 * t + 1)
+        roll = roll_low(low2(rumble(), 260), 120) * 6.0 * swell * wobble
+        samples.append(math.tanh(1.8 * crack + roll))
+    return finish(samples, fade_in=0.0005, fade_out=0.2)
+
+
+def crackle():
+    """A conduction jump: a short electric buzz of sharp sparks."""
+    noise, sparks, high = Noise(0xC2AC), Noise(0x5BA2), LowPass()
+    samples, spark = [], 0.0
+    for i in range(int(0.22 * RATE)):
+        t = i / RATE
+        n = noise()
+        buzz = (n - high(n, 1800)) * (0.5 + 0.5 * math.copysign(1, math.sin(math.tau * 120 * t)))
+        if sparks() > 0.995:
+            spark = 0.9
+        spark *= 0.9
+        samples.append((0.6 * buzz + spark * sparks()) * math.exp(-t / 0.08))
+    return finish(samples, fade_in=0.001)
+
+
+def steam_burst():
+    """Cold on fire: a wet whoosh opening into a hiss, with sizzling pops."""
+    duration = 0.8
+    noise, pops, low, high = Noise(0x57EA), Noise(0x9090), LowPass(), LowPass()
+    samples, pop, phase = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = low(n, glide(1200, 7000, min(1.0, p * 2.5))) - high(n, 600)
+        phase += math.tau * glide(110, 60, p) / RATE
+        whump = 0.8 * math.sin(phase) * math.exp(-t / 0.07)
+        if pops() > 1 - 0.002 * (1 - p):
+            pop = 0.5
+        pop *= 0.96
+        envelope = min(1.0, t / 0.02) * math.exp(-t / 0.28)
+        samples.append((1.4 * hiss + whump) * envelope + pop * pops())
+    return finish(samples, fade_in=0.002)
+
+
+def frost_blast():
+    """Ice bursting: a hard crunch of fracturing ice, a cold boom and a spray
+    of falling shards."""
+    noise, chips, low = Noise(0xF2B1), Noise(0xC41A), LowPass()
+    samples, chip, phase = [], 0.0, 0.0
+    for i in range(int(0.8 * RATE)):
+        t = i / RATE
+        n = noise()
+        crunch = (n - low(n, 700)) * math.exp(-t / 0.03)
+        phase += math.tau * glide(90, 40, min(1.0, t / 0.3)) / RATE
+        boom = math.sin(phase) * min(1.0, t / 0.003) * math.exp(-t / 0.16)
+        if chips() > 1 - 0.01 * math.exp(-t / 0.18):
+            chip = 0.6
+        chip *= 0.96
+        ring = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d)
+                   for f, w, d in ((1240, 0.2, 0.14), (2380, 0.12, 0.1), (3910, 0.07, 0.07)))
+        samples.append(math.tanh(1.5 * crunch + boom + chip * chips()) + ring)
+    return finish(samples, fade_in=0.0005)
+
+
+def dummy_hit():
+    """A blow on the straw dummy: a dull sackcloth thump and a rustle."""
+    noise, rustle, low, high = Noise(0xD077), Noise(0x5A0C), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.3 * RATE)):
+        t = i / RATE
+        n = noise()
+        thump = low(n, 380) * 2.4 * math.exp(-t / 0.035)
+        phase += math.tau * glide(110, 70, min(1.0, t / 0.08)) / RATE
+        body = 0.7 * math.sin(phase) * math.exp(-t / 0.05)
+        r = rustle()
+        straw = (r - high(r, 3500)) * 0.35 * math.exp(-t / 0.09)
+        samples.append(thump + body + straw)
+    return finish(samples, fade_in=0.001)
+
+
+def summon():
+    """A summoning: a rising shimmer of bells over a soft swell, settling as
+    the dummy lands."""
+    duration = 0.7
+    noise, low = Noise(0x5A33), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        phase += math.tau * glide(440, 880, min(1.0, p * 1.4)) / RATE
+        shimmer = sum(math.sin(phase * ratio) * weight
+                      for ratio, weight in ((1, 0.3), (1.5, 0.18), (2.01, 0.12)))
+        swell = low(noise(), 900) * 0.8
+        envelope = math.sin(math.pi * min(1.0, p * 1.2)) ** 1.5
+        land = 0.6 * math.sin(math.tau * 70 * t) * math.exp(-max(0.0, t - 0.55) / 0.05) * (t > 0.55)
+        samples.append((shimmer + swell) * envelope + land)
+    return finish(samples, fade_in=0.004, fade_out=0.05)
+
+
 # The shell's menu sounds and game over's sting, by the IDs it plays them
 # under: 01's own, in its twilight palette of bells and plucked strings.
 
@@ -716,4 +881,13 @@ def build_sounds():
         'toss.wav': toss(),
         'place.wav': set_down(),
         'force_push.wav': force_push(),
+        'gun_shot.wav': gun_shot(),
+        'gun_reload.wav': gun_reload(),
+        'ricochet.wav': ricochet(),
+        'thunder.wav': thunder(),
+        'crackle.wav': crackle(),
+        'steam_burst.wav': steam_burst(),
+        'frost_blast.wav': frost_blast(),
+        'dummy_hit.wav': dummy_hit(),
+        'summon.wav': summon(),
     }

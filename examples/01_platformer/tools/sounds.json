@@ -126,5 +126,50 @@
     "looping": false,
     "path": "sounds/force_push.wav",
     "volume": 0.55
+  },
+  "ex10_gun_shot_sfx": {
+    "looping": false,
+    "path": "sounds/gun_shot.wav",
+    "volume": 0.45
+  },
+  "ex10_gun_reload_sfx": {
+    "looping": false,
+    "path": "sounds/gun_reload.wav",
+    "volume": 0.4
+  },
+  "ex10_ricochet_sfx": {
+    "looping": false,
+    "path": "sounds/ricochet.wav",
+    "volume": 0.35
+  },
+  "ex10_thunder_sfx": {
+    "looping": false,
+    "path": "sounds/thunder.wav",
+    "volume": 0.75
+  },
+  "ex10_crackle_sfx": {
+    "looping": false,
+    "path": "sounds/crackle.wav",
+    "volume": 0.4
+  },
+  "ex10_steam_burst_sfx": {
+    "looping": false,
+    "path": "sounds/steam_burst.wav",
+    "volume": 0.5
+  },
+  "ex10_frost_blast_sfx": {
+    "looping": false,
+    "path": "sounds/frost_blast.wav",
+    "volume": 0.55
+  },
+  "ex10_dummy_hit_sfx": {
+    "looping": false,
+    "path": "sounds/dummy_hit.wav",
+    "volume": 0.45
+  },
+  "ex10_summon_sfx": {
+    "looping": false,
+    "path": "sounds/summon.wav",
+    "volume": 0.5
   }
 }

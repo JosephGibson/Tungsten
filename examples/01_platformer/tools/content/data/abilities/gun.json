@@ -1,0 +1,20 @@
+{
+  "cooldown": 0.12,
+  "charges": {
+    "max": 12,
+    "refill": 3600,
+    "all": true
+  },
+  "target": {
+    "aim": {}
+  },
+  "payload": [
+    {
+      "spawn": {
+        "prefab": "bullet",
+        "speed": 2400,
+        "offset": 24
+      }
+    }
+  ]
+}

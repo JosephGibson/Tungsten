@@ -5,13 +5,15 @@
 //! and drops, orbs and a knight; M66's fantasy damage types: a spellblade
 //! and a golem, a pyromancer, its firebolts and a ward; M67's burning
 //! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
-//! offers, the golem's cold ladder and the ghouls' poison.
+//! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
+//! after a load, the golem's frost stream and a game's own damage numbers.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
 use tungsten_core::{
-    AnimationState, AudioCommand, CameraController, CameraMode, CameraState, Entity, Sprite,
-    Transform,
+    AnimationState, AudioCommand, CameraController, CameraMode, CameraState, DataRef, Entity,
+    EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform, World,
+    system,
 };
 
 use super::{
@@ -20,10 +22,10 @@ use super::{
 };
 use crate::kit::{
     Abilities, Aim, CharacterAnimator, Conversion, CooldownElapsed, Counters, DamagePart,
-    DamageRequest, Damaged, DamagedPart, Effects, Facing, Health, Hit, HitFlash, KitPlugins,
-    KitRng, Knockback, Level, LinearMotion, Modifier, Penetration, ProjectileExpired, Shield,
-    Source, Stats, Steering, Struck, Tags, TopDownMover, TraceKind, ZoneEntered, damage,
-    knock_back,
+    DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest, Effects, Facing, Health,
+    Hit, HitFlash, KitPlugins, KitRng, Knockback, LabelStyle, Level, LinearMotion, Modifier,
+    Penetration, Phase, ProjectileExpired, Shield, Source, Stats, Steering, Struck, Tags,
+    TopDownMover, TraceKind, ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
 use tungsten_core::PluginSet;
@@ -1245,5 +1247,209 @@ fn a_sprinters_stamina_regenerates_and_a_sprint_spends_and_pauses_it() {
         assert!(stamina(&harness) > sprint + 3.0, "dt {dt}: it resumed");
         harness.step(frames_for(4.0, dt));
         assert_eq!(stamina(&harness), 100.0, "dt {dt}: capped at max_stamina");
+    }
+}
+
+// M74: an effect's source named after a load, a rung a tag skips, and a
+// game's own damage numbers.
+
+/// A game's save of one target's effects, with the game's own ID for their
+/// source: the serials the pyromancer applied.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Burned {
+    effects: Effects,
+    from_pyromancer: Vec<u64>,
+}
+
+impl SaveData for Burned {
+    const SCHEMA: u32 = 1;
+}
+
+#[test]
+fn a_burn_named_after_a_load_credits_the_pyromancer() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        // Its bolts fly right along its own row, clear of the golem.
+        let pyromancer = spawn(&mut harness, "pyromancer", [100.0, 1000.0]);
+        let golem = spawn(&mut harness, "golem", [0.0, 0.0]);
+        harness.step(1);
+        EffectRequest::new(golem, DataRef::by_id("burning"))
+            .with_source(pyromancer)
+            .apply(harness.world_mut());
+        // The game's save holds the effects and its own ID for the source.
+        let effects = harness.world().get::<Effects>(golem).unwrap().clone();
+        let from_pyromancer = effects
+            .instances()
+            .filter(|instance| instance.source() == Some(pyromancer))
+            .map(EffectInstance::serial)
+            .collect();
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_burn_{}_{}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = SaveSlots::new(Some(dir.clone()));
+        slots
+            .save(
+                "burn",
+                &Burned {
+                    effects,
+                    from_pyromancer,
+                },
+            )
+            .unwrap();
+        let loaded: Burned = slots.load("burn").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        // A save holds no entity: its load names the source again.
+        let mut effects = loaded.effects;
+        assert!(
+            effects
+                .instances()
+                .all(|instance| instance.source().is_none()),
+            "dt {dt}"
+        );
+        for serial in loaded.from_pyromancer {
+            assert!(effects.set_source(serial, Some(pyromancer)), "dt {dt}");
+        }
+        harness.world_mut().insert(golem, effects);
+        let mut ticks = Vec::new();
+        for _ in 0..frames_for(1.1, dt) {
+            harness.step(1);
+            ticks.extend(
+                harness
+                    .events::<Damaged>()
+                    .filter(|hit| hit.entity == golem && hit.periodic)
+                    .map(|hit| hit.source),
+            );
+        }
+        assert_eq!(
+            ticks,
+            [Some(pyromancer); 2],
+            "dt {dt}: a fire tick each half second, each the pyromancer's"
+        );
+    }
+}
+
+#[test]
+fn a_steady_frost_stream_chills_then_freezes_the_golem() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+        let golem = spawn(&mut harness, "golem", [0.0, 0.0]);
+        harness.step(1);
+        // A spray's pulses, 1 a frame at the golem's 0.8: the chilled rung
+        // takes the bucket at half the threshold of 6, then its
+        // `blocked_by` skips it while the golem is chilled, so the cold
+        // fills on to the frozen rung's whole threshold.
+        let (mut chilled_at, mut frozen_at) = (None, None);
+        for frame in 0..frames_for(1.0, dt) {
+            cold(golem, 1.25).queue(harness.world_mut());
+            harness.step(1);
+            if chilled_at.is_none() && has_effect(&harness, golem, "chilled") {
+                chilled_at = Some(frame);
+            }
+            if has_effect(&harness, golem, "frozen") {
+                frozen_at = Some(frame);
+                break;
+            }
+        }
+        let chilled_at = chilled_at.expect("chilled");
+        let frozen_at = frozen_at.unwrap_or_else(|| panic!("dt {dt}: never frozen"));
+        assert!(
+            (3..5).contains(&chilled_at) && (6..9).contains(&(frozen_at - chilled_at)),
+            "dt {dt}: three pulses to chill, six more to freeze: {chilled_at}, {frozen_at}"
+        );
+        assert!(has_effect(&harness, golem, "chilled"), "dt {dt}: it held");
+    }
+}
+
+/// Gold, the game's crit colour.
+const GOLD: [u8; 4] = [255, 218, 0, 255];
+
+/// A game's own damage numbers, as its Rust floats them in the react
+/// phase: each part in its type's style, but one target's crit parts in a
+/// step summed into one gold number, larger, where the first landed.
+struct GameNumbers;
+
+impl Plugin for GameNumbers {
+    fn build(&self, schedule: &mut Schedule, _: &mut World) {
+        let mut cursor = EventCursor::<DamagedPart>::default();
+        let gold = LabelStyle::new("sans")
+            .with_size(24.0)
+            .with_color([1.0, 0.7, 0.0, 1.0]);
+        let run = move |world: &mut World| {
+            let Some(queue) = world.get_resource::<EventQueue<DamagedPart>>() else {
+                return;
+            };
+            let parts: Vec<DamagedPart> = cursor.read(queue).copied().collect();
+            let mut crits: Vec<(Entity, Vec2, f32)> = Vec::new();
+            for part in parts {
+                let at = part.position.unwrap_or_default();
+                if part.crit {
+                    match crits.iter_mut().find(|(entity, ..)| *entity == part.entity) {
+                        Some((_, _, sum)) => *sum += part.amount,
+                        None => crits.push((part.entity, at, part.amount)),
+                    }
+                } else if let Some(style) = part.kinds.label_style(world) {
+                    float_label(world, &style, at, part.amount);
+                }
+            }
+            for (_, at, sum) in crits {
+                float_label(world, &gold, at, sum);
+            }
+        };
+        schedule.add(
+            Phase::React.stage(),
+            Phase::React.join(system("game_numbers", run)),
+        );
+    }
+}
+
+fn typed_part(amount: f32, kind: &str) -> DamagePart {
+    DamagePart::new(amount).with_tags(Tags::new([kind]))
+}
+
+#[test]
+fn a_crit_floats_gold_and_larger_from_the_games_code() {
+    for dt in DTS {
+        let mut harness = recipe(GENRE, KitPlugins::set().with(GameNumbers), dt);
+        // No cues of its own: the game's numbers alone.
+        let target = harness.world_mut().spawn_with((Health::new(100.0),));
+        let pyromancer = harness.world_mut().spawn();
+        harness.step(1);
+        // One step: a crit of fire 4 and cold 2, and a plain fire 3.
+        let world = harness.world_mut();
+        DamageRequest::from_parts(
+            target,
+            [
+                typed_part(4.0, "elemental.fire"),
+                typed_part(2.0, "elemental.cold"),
+            ],
+        )
+        .with_source(pyromancer)
+        .with_position(Vec2::new(40.0, 20.0))
+        .with_crit(true)
+        .queue(world);
+        DamageRequest::from_parts(target, [typed_part(3.0, "elemental.fire")])
+            .with_position(Vec2::new(80.0, 20.0))
+            .queue(world);
+        harness.step(1);
+        assert_eq!(
+            typed_labels(&harness),
+            [("3".to_string(), RED), ("6".to_string(), GOLD)],
+            "dt {dt}: the plain part in fire's style, the crit's two summed in gold"
+        );
+        let mut sizes: Vec<(String, f32)> = harness
+            .draw()
+            .unwrap()
+            .world_labels
+            .iter()
+            .map(|run| (run.content.clone(), run.font_size))
+            .collect();
+        sizes.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            sizes,
+            [("3".to_string(), 16.0), ("6".to_string(), 24.0)],
+            "dt {dt}"
+        );
     }
 }

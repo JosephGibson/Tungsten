@@ -308,6 +308,107 @@ fn two_full_buckets_in_one_step_chill_then_freeze_as_split_hits_do() {
     }
 }
 
+/// The rig's cold ladder alone, its chilled rung `blocked_by` its own tag
+/// when `blocked`.
+fn cold_ladder(world: &mut World, blocked: bool) {
+    let mut chilled = json!({ "effect": "chilled", "needs": 0.5, "window": 4 });
+    if blocked {
+        chilled["blocked_by"] = json!(["status.chilled"]);
+    }
+    let types: DamageTypes = serde_json::from_value(json!({
+        "elemental.cold": { "ailments": [
+            chilled,
+            { "effect": "frozen", "needs": 1, "requires": ["status.chilled"], "window": 4 }
+        ] }
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("fantasy", types);
+}
+
+#[test]
+fn a_steady_stream_climbs_past_a_blocked_rung() {
+    // A spray's pulses, each a tenth of the threshold: the chilled rung
+    // passes at half and empties the bucket every time, so without
+    // `blocked_by` the stream never fills a bucket to the frozen rung.
+    let stream = |blocked: bool| {
+        let (mut world, mut schedule) = rig();
+        cold_ladder(&mut world, blocked);
+        let golem = spawn_golem(&mut world);
+        let mut frozen_at = None;
+        for step in 0..60 {
+            hit(&mut world, golem, "elemental.cold", 1.0);
+            steps(&mut world, &mut schedule, 1);
+            if frozen_at.is_none() && has(&world, golem, "frozen") {
+                frozen_at = Some(step);
+            }
+        }
+        (has(&world, golem, "chilled"), frozen_at)
+    };
+    let (chilled, frozen_at) = stream(false);
+    assert!(chilled && frozen_at.is_none(), "chilled, never frozen");
+    let (chilled, frozen_at) = stream(true);
+    assert!(chilled, "the chill holds");
+    let frozen_at = frozen_at.expect("the cold climbs past the held chill to frozen");
+    assert!(
+        (14..20).contains(&frozen_at),
+        "about five pulses to chill, then ten more to freeze: step {frozen_at}"
+    );
+}
+
+#[test]
+fn a_pending_grant_skips_a_blocked_rung() {
+    let (mut world, mut schedule) = rig();
+    let types: DamageTypes = serde_json::from_value(json!({
+        "elemental.fire": { "ailments": [
+            { "effect": "burning", "needs": 0.5, "window": 4, "blocked_by": ["status.frozen"] }
+        ] },
+        "elemental.cold": { "ailments": [
+            { "effect": "frozen", "needs": 0.5, "window": 4, "blocked_by": ["status.burning"] }
+        ] }
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("fantasy", types);
+    // Cold, then fire, in one step: the freeze the feed queued for the
+    // first part skips the second's burning, whose bucket keeps its fill.
+    let golem = spawn_golem(&mut world);
+    hit(&mut world, golem, "elemental.cold", 10.0);
+    hit(&mut world, golem, "elemental.fire", 10.0);
+    steps(&mut world, &mut schedule, 1);
+    assert!(has(&world, golem, "frozen") && !has(&world, golem, "burning"));
+    assert_eq!(fill(&world, golem, "elemental.fire"), 10.0, "filling on");
+    // Fire, then cold: the other way round.
+    let other = spawn_golem(&mut world);
+    hit(&mut world, other, "elemental.fire", 10.0);
+    hit(&mut world, other, "elemental.cold", 10.0);
+    steps(&mut world, &mut schedule, 1);
+    assert!(has(&world, other, "burning") && !has(&world, other, "frozen"));
+    assert_eq!(fill(&world, other, "elemental.cold"), 10.0);
+    // Carried now, the freeze skips the next step's fire too.
+    hit(&mut world, golem, "elemental.fire", 10.0);
+    steps(&mut world, &mut schedule, 1);
+    assert!(!has(&world, golem, "burning"));
+    assert!(world.get::<Tags>(golem).unwrap().has("status.frozen"));
+    // A rung blocked by an ancestor meets a pending grant under it, as it
+    // meets a carried one.
+    let types: DamageTypes = serde_json::from_value(json!({
+        "elemental.cold": { "ailments": [{ "effect": "frozen", "needs": 0.5, "window": 4 }] },
+        "toxic": { "ailments": [{ "effect": "poisoned", "blocked_by": ["status"] }] }
+    }))
+    .unwrap();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("fantasy", types);
+    let third = spawn_golem(&mut world);
+    hit(&mut world, third, "elemental.cold", 10.0);
+    hit(&mut world, third, "toxic", 1.0);
+    steps(&mut world, &mut schedule, 1);
+    assert!(has(&world, third, "frozen") && !has(&world, third, "poisoned"));
+}
+
 #[test]
 fn an_inherited_type_feeds_its_ancestors_bucket_and_a_periodic_part_feeds_nothing() {
     let (mut world, mut schedule) = rig();

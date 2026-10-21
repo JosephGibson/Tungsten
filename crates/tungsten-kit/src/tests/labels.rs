@@ -100,6 +100,45 @@ fn past_the_cap_the_oldest_label_goes() {
 }
 
 #[test]
+fn float_label_floats_a_games_number_in_its_style() {
+    let mut world = world();
+    let gold = LabelStyle::new("serif")
+        .with_size(24.0)
+        .with_color([1.0, 0.8, 0.0, 1.0]);
+    crate::float_label(&mut world, &gold, Vec2::new(-8.0, 30.0), 12.5);
+    crate::float_label(&mut world, &gold, Vec2::ZERO, f32::NAN);
+    crate::float_label(&mut world, &gold, Vec2::new(f32::INFINITY, 0.0), 1.0);
+    let drawn = frame(&mut world, 0.0);
+    assert_eq!(
+        drawn.len(),
+        1,
+        "a NaN amount and a non-finite anchor float nothing"
+    );
+    let label = &drawn[0];
+    assert_eq!(
+        (
+            label.text.as_str(),
+            label.font_id.as_str(),
+            label.font_size,
+            label.anchor
+        ),
+        ("12.5", "serif", 24.0, Vec2::new(-8.0, 30.0))
+    );
+    assert_eq!(label.color, [255, 231, 0, 255]);
+    // Past the cap the oldest, the game's first, goes.
+    for i in 0..MAX_LABELS {
+        crate::float_label(&mut world, &gold, Vec2::ZERO, i as f32);
+    }
+    let drawn = frame(&mut world, 0.0);
+    assert_eq!(drawn.len(), MAX_LABELS);
+    assert_eq!(drawn[0].text, "0", "12.5 dropped");
+    // A World without the cues' labels takes none.
+    let mut bare = World::new();
+    crate::float_label(&mut bare, &gold, Vec2::ZERO, 1.0);
+    assert!(!bare.has_resource::<LiveLabels>());
+}
+
+#[test]
 fn without_frame_labels_they_still_age() {
     let mut world = world();
     world.remove_resource::<WorldLabels>();

@@ -1185,8 +1185,9 @@ impl EffectInstance {
         &self.effect
     }
 
-    /// The entity it came from, when the request named one; `None` after a
-    /// load.
+    /// The entity it came from, when the request named one. A save holds
+    /// no entity, so it is `None` after a load until the game names it again
+    /// with [`Effects::set_source`].
     #[must_use]
     pub fn source(&self) -> Option<Entity> {
         self.source
@@ -1312,7 +1313,8 @@ struct Granted {
 /// they granted. [`EFFECT_RESOLVE`] inserts one on a target that lacks it.
 /// It is data: a save holds the pending list, the instances and the
 /// granted-tag table; an instance's source is not saved, since an entity is
-/// not data.
+/// not data, and a game's load names it again with
+/// [`set_source`](Self::set_source).
 ///
 /// Scene name `effects`: `["regen", { "duration": 2, "grant": ["status.blessed"] }]`,
 /// each an `effects` entry's ID or an effect in place; the load checks
@@ -1447,6 +1449,50 @@ impl Effects {
         self.granted
             .iter()
             .map(|row| (row.tag.as_str(), row.owners))
+    }
+
+    /// Names `source` as the source of the active instance numbered
+    /// `serial` ([`EffectInstance::serial`]); `None` clears it. A save holds
+    /// no entity, so a game's load names each source again this way, from
+    /// the game's own ID for it, before the next step: the instance's later
+    /// payloads and its `on_expire` then come from `source`. Nothing else
+    /// changes: stacks, time, factor, modifiers and granted tags stay.
+    /// False, changing nothing, when no active instance has that serial.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_core::{DataRef, Plugin, Schedule, World};
+    /// use tungsten_kit::{Effect, EffectRequest, Effects, EffectsPlugin};
+    ///
+    /// let mut world = World::new();
+    /// let mut schedule = Schedule::new();
+    /// EffectsPlugin.build(&mut schedule, &mut world);
+    /// let (mage, golem) = (world.spawn(), world.spawn());
+    /// let burn = DataRef::inline(Effect::new().with_duration(4.0).with_period(0.5).with_damage(1.0));
+    /// EffectRequest::new(golem, burn).with_source(mage).apply(&mut world);
+    ///
+    /// // A save writes no source; the game keeps its own ID for the mage.
+    /// let saved = serde_json::to_value(world.get::<Effects>(golem).unwrap()).unwrap();
+    /// let mut loaded: Effects = serde_json::from_value(saved).unwrap();
+    /// let serial = loaded.instances().next().unwrap().serial();
+    /// assert_eq!(loaded.instances().next().unwrap().source(), None);
+    /// assert!(loaded.set_source(serial, Some(mage)));
+    /// assert_eq!(loaded.instances().next().unwrap().source(), Some(mage));
+    /// assert!(!loaded.set_source(serial + 1, Some(mage)), "no such instance");
+    /// ```
+    pub fn set_source(&mut self, serial: u64, source: Option<Entity>) -> bool {
+        match self
+            .instances
+            .iter_mut()
+            .find(|instance| instance.serial == serial)
+        {
+            Some(instance) => {
+                instance.source = source;
+                true
+            }
+            None => false,
+        }
     }
 
     fn find(&self, effect: &DataRef<Effect>) -> Option<usize> {

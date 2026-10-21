@@ -137,8 +137,8 @@ impl PartialEq for Parts {
 /// 7. A [`DamagedPart`] goes out per part, in part order, with its amount
 ///    after the resistances and its [`DamageKinds`], then one [`Damaged`]
 ///    with the total and the parts' kinds together, each with the source,
-///    the position, the periodic flag and, on [`Damaged`], the crit flag;
-///    the trace records each part, the hit and any kill.
+///    the position, the periodic flag and the crit flag; the trace records
+///    each part, the hit and any kill.
 /// 8. The outcome is [`Hit::Killed`], [`Hit::Hurt`] or [`Hit::Absorbed`]
 ///    (the shield took it all), and on the last two the knockback goes
 ///    through [`knock_back`](crate::knock_back). A kill of a health with a
@@ -334,7 +334,7 @@ impl DamageRequest {
     }
 
     /// The request, marked a critical hit when `crit`: the kit only carries
-    /// it to [`Damaged`].
+    /// it to [`Damaged`] and to each of its [`DamagedPart`]s.
     #[must_use]
     pub fn with_crit(mut self, crit: bool) -> Self {
         self.crit = crit;
@@ -806,7 +806,8 @@ fn resolve(world: &mut World, request: &DamageRequest, landed: &mut Vec<Landed>)
         for part in landed.iter() {
             let mut event = DamagedPart::new(target, part.amount)
                 .with_kinds(part.kinds)
-                .with_periodic(request.periodic);
+                .with_periodic(request.periodic)
+                .with_crit(request.crit);
             if let Some(source) = request.source {
                 event = event.with_source(source);
             }

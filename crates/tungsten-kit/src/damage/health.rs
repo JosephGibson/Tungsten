@@ -448,11 +448,14 @@ pub struct DamagedPart {
     pub position: Option<Vec2>,
     /// The request was periodic: an effect's payload.
     pub periodic: bool,
+    /// The part's hit was a critical one
+    /// ([`DamageRequest::with_crit`](crate::DamageRequest::with_crit)).
+    pub crit: bool,
 }
 
 impl DamagedPart {
-    /// An event with these fields, no kind, no source, no position and not
-    /// periodic.
+    /// An event with these fields, no kind, no source, no position, not
+    /// periodic and no crit.
     #[must_use]
     pub fn new(entity: Entity, amount: f32) -> Self {
         Self {
@@ -462,6 +465,7 @@ impl DamagedPart {
             source: None,
             position: None,
             periodic: false,
+            crit: false,
         }
     }
 
@@ -469,6 +473,13 @@ impl DamagedPart {
     #[must_use]
     pub fn with_periodic(mut self, periodic: bool) -> Self {
         self.periodic = periodic;
+        self
+    }
+
+    /// The event, a critical hit's part when `crit`.
+    #[must_use]
+    pub fn with_crit(mut self, crit: bool) -> Self {
+        self.crit = crit;
         self
     }
 
