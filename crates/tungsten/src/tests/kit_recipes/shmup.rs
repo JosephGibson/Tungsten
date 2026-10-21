@@ -5,7 +5,7 @@
 //! sci-fi damage types: a hacker, its payloads and a mainframe; M67's
 //! corruption ladder, the ship's cannon and the turret's pulse; M74's acid
 //! named after a load, the acid ladder's held rung and a game's own damage
-//! numbers.
+//! numbers; M75's drone saved mid-volley.
 
 use glam::Vec2;
 use tungsten_core::RigidBody;
@@ -17,10 +17,12 @@ use tungsten_core::{
 
 use super::{DTS, body_at, drawn_at, frames_for, recipe, spawn, tagged, traced_steps};
 use crate::kit::{
-    Abilities, Aim, Children, CooldownElapsed, Counters, DamagePart, DamageRequest, Damaged,
-    DamagedPart, Effect, EffectInstance, EffectRequest, Effects, Health, Hit, HitShape, Hurtbox,
-    KitPlugins, KitTrace, LabelStyle, LinearMotion, Phase, PlatformerController, ProjectileExpired,
-    Shield, Source, Steering, Struck, Tags, TopDownMover, TraceKind, damage, float_label,
+    Abilities, Aim, Children, ContactDamage, ContactTouch, CooldownElapsed, Counters, DamagePart,
+    DamageRequest, Damaged, DamagedPart, Effect, EffectInstance, EffectRequest, Effects, Health,
+    Hit, HitShape, Hitbox, Hurtbox, KitPlugins, KitTrace, LabelStyle, LinearMotion, Phase,
+    PlatformerController, Projectile, ProjectileExpired, Shield, Source, StateMachine,
+    StateMachinePlugin, Steering, Struck, TagFilter, Tags, TopDownMover, TraceKind, damage,
+    float_label,
 };
 use crate::testing::Harness;
 
@@ -933,5 +935,279 @@ fn a_crits_parts_float_gold_from_the_games_code() {
             [("3".to_string(), 16.0), ("6".to_string(), 24.0)],
             "dt {dt}"
         );
+    }
+}
+
+// M75: a drone saved mid-volley: its state machine, its piercing beam's
+// passed targets, its ram's touches and its mover's turn, the targets named
+// again after the load by the game's own IDs.
+
+/// The dts M75's save recipes run at: one step a frame, two, and under one.
+const SAVE_DTS: [f32; 3] = [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0];
+
+/// A drone's states: its approach, its volley, which turns it down and
+/// fires a beam, and its retreat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Drone {
+    Approach,
+    Volley,
+    Retreat,
+}
+
+fn drone_approach(world: &mut World, drone: Entity) {
+    let machine = world.get_mut::<StateMachine<Drone>>(drone).unwrap();
+    if machine.elapsed() > 0.2 {
+        machine.go(Drone::Volley);
+    }
+}
+
+/// The volley's beam: a piercing bolt four times as long as its step.
+fn drone_volley(world: &mut World, drone: Entity) {
+    world
+        .get_mut::<TopDownMover>(drone)
+        .unwrap()
+        .set_direction(Vec2::Y);
+    let at = world.get::<Position>(drone).unwrap().0;
+    world.spawn_with((
+        Position(at),
+        PrevPosition(at),
+        Transform::from_position(at),
+        LinearMotion::new(Vec2::new(0.0, 600.0)),
+        Hitbox::new(HitShape::aabb(Vec2::new(3.0, 40.0)), 1.0)
+            .with_filter(TagFilter::new().all(["team.player"])),
+        Projectile::new().with_pierce(3).with_range(600.0),
+    ));
+}
+
+fn drone_retreat(world: &mut World, drone: Entity) {
+    world
+        .get_mut::<TopDownMover>(drone)
+        .unwrap()
+        .set_direction(-Vec2::Y);
+    world.resource_mut::<DroneTrail>().retreats += 1;
+}
+
+/// One fixed step of the drone and its beam, after the kit's react phase.
+#[derive(Debug, Clone, PartialEq)]
+struct DroneStep {
+    /// State, previous, pending, held and elapsed.
+    machine: (Drone, Option<Drone>, Option<Drone>, bool, f32),
+    /// The step's hits: (hitter, target).
+    struck: Vec<(Entity, Entity)>,
+    at: Vec2,
+    beam: Option<Vec2>,
+}
+
+#[derive(Default)]
+struct DroneTrail {
+    steps: Vec<DroneStep>,
+    retreats: u32,
+}
+
+/// The game's drone: its machine's hooks and its trail.
+struct DroneGame;
+
+impl Plugin for DroneGame {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        StateMachinePlugin::<Drone>::new("drone_states")
+            .on_update(Drone::Approach, drone_approach)
+            .on_enter(Drone::Volley, drone_volley)
+            .on_enter(Drone::Retreat, drone_retreat)
+            .build(schedule, world);
+        world.insert_resource(DroneTrail::default());
+        let mut cursor = EventCursor::<Struck>::default();
+        let run = move |world: &mut World| {
+            let struck = world
+                .get_resource::<EventQueue<Struck>>()
+                .map(|queue| {
+                    cursor
+                        .read(queue)
+                        .map(|hit| (hit.entity, hit.target))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let Some((drone, machine)) = world
+                .query::<(Entity, &StateMachine<Drone>)>()
+                .next()
+                .map(|(drone, m)| {
+                    let at = (
+                        m.state(),
+                        m.previous(),
+                        m.pending(),
+                        m.is_held(),
+                        m.elapsed(),
+                    );
+                    (drone, at)
+                })
+            else {
+                return;
+            };
+            let at = world.get::<Position>(drone).unwrap().0;
+            let beam = world
+                .query::<(&Projectile, &Position)>()
+                .next()
+                .map(|(_, at)| at.0);
+            world.resource_mut::<DroneTrail>().steps.push(DroneStep {
+                machine,
+                struck,
+                at,
+                beam,
+            });
+        };
+        schedule.add(
+            Phase::React.stage(),
+            Phase::React.join(system("drone_trail", run)),
+        );
+    }
+}
+
+/// The game's save of its drone and its beam in flight: the kit items, and
+/// its own IDs, an index into its targets, for the entities they name.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct DroneSave {
+    machine: StateMachine<Drone>,
+    mover: TopDownMover,
+    ram: ContactDamage,
+    ram_touches: Vec<(usize, f32, f32)>,
+    beam: Hitbox,
+    beam_passed: Vec<usize>,
+    beam_flight: Projectile,
+}
+
+impl SaveData for DroneSave {
+    const SCHEMA: u32 = 1;
+}
+
+/// A drone run at `dt` from its save point on: its trail, its retreats and
+/// its targets. With `load`, the game saves it there and loads it back,
+/// naming its targets again or not.
+fn drone_run(dt: f32, load: Option<bool>) -> (Vec<DroneStep>, u32, Vec<Entity>) {
+    let mut harness = recipe(GENRE, KitPlugins::set().with(DroneGame), dt);
+    let world = harness.world_mut();
+    let mut mover = TopDownMover::new(150.0).with_acceleration(450.0);
+    mover.set_direction(Vec2::X);
+    let drone = world.spawn_with((
+        Position(Vec2::ZERO),
+        PrevPosition(Vec2::ZERO),
+        Transform::from_position(Vec2::ZERO),
+        Tags::new(["team.enemy"]),
+        mover,
+        ContactDamage::new(1.0)
+            .with_interval(0.2)
+            .with_shape(HitShape::circle(20.0), Vec2::ZERO)
+            .with_filter(TagFilter::new().all(["team.player"])),
+        StateMachine::new(Drone::Approach),
+    ));
+    // Two targets down the beam's line, and one on the drone's path, in its
+    // ram's reach from before the volley to the end.
+    let targets: Vec<Entity> = [
+        Vec2::new(10.0, 80.0),
+        Vec2::new(10.0, 200.0),
+        Vec2::new(32.0, 8.0),
+    ]
+    .into_iter()
+    .map(|at| {
+        world.spawn_with((
+            Transform::from_position(at),
+            Tags::new(["team.player"]),
+            Hurtbox::new(HitShape::circle(8.0)),
+            Health::new(1000.0),
+        ))
+    })
+    .collect();
+    // Mid-volley: the beam inside the first target, the ram between two
+    // touches and the turn under way. The game stuns it with a retreat
+    // asked for: a transition pending, and the machine held.
+    harness.step(frames_for(0.38, dt));
+    let world = harness.world_mut();
+    let machine = world.get_mut::<StateMachine<Drone>>(drone).unwrap();
+    assert_eq!(machine.state(), Drone::Volley, "dt {dt}");
+    machine.go(Drone::Retreat);
+    machine.set_held(true);
+    if let Some(named_again) = load {
+        let id = |entity: &Entity| targets.iter().position(|target| target == entity).unwrap();
+        let (beam, beam_hitbox) = world
+            .query::<(Entity, &Hitbox)>()
+            .next()
+            .map(|(beam, hitbox)| (beam, hitbox.clone()))
+            .unwrap();
+        let ram = world.get::<ContactDamage>(drone).unwrap().clone();
+        assert_eq!(beam_hitbox.hit_targets(), &targets[..1], "dt {dt}");
+        assert_eq!(ram.touches().count(), 1, "dt {dt}");
+        let save = DroneSave {
+            machine: world.get::<StateMachine<Drone>>(drone).unwrap().clone(),
+            mover: world.get::<TopDownMover>(drone).unwrap().clone(),
+            ram_touches: ram
+                .touches()
+                .map(|touch| (id(&touch.target()), touch.since_hit(), touch.since_met()))
+                .collect(),
+            ram,
+            beam_passed: beam_hitbox.hit_targets().iter().map(id).collect(),
+            beam: beam_hitbox,
+            beam_flight: world.get::<Projectile>(beam).unwrap().clone(),
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_drone_{}_{}_{named_again}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = SaveSlots::new(Some(dir.clone()));
+        slots.save("drone", &save).unwrap();
+        let loaded: DroneSave = slots.load("drone").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let (mut ram, mut beam_hitbox) = (loaded.ram, loaded.beam);
+        assert_eq!(loaded.beam_flight.hits(), 1, "dt {dt}");
+        if named_again {
+            ram.set_touches(
+                loaded
+                    .ram_touches
+                    .iter()
+                    .map(|&(id, hit, met)| ContactTouch::new(targets[id], hit, met)),
+            );
+            beam_hitbox.set_hit_targets(loaded.beam_passed.iter().map(|&id| targets[id]));
+        }
+        world.insert(drone, loaded.machine);
+        world.insert(drone, loaded.mover);
+        world.insert(drone, ram);
+        world.insert(beam, beam_hitbox);
+        world.insert(beam, loaded.beam_flight);
+    }
+    let start = world.resource::<DroneTrail>().steps.len();
+    harness.step(frames_for(0.1, dt));
+    harness
+        .world_mut()
+        .get_mut::<StateMachine<Drone>>(drone)
+        .unwrap()
+        .set_held(false);
+    harness.step(frames_for(0.5, dt));
+    let trail = harness.world().resource::<DroneTrail>();
+    (trail.steps[start..].to_vec(), trail.retreats, targets)
+}
+
+#[test]
+fn a_drone_saved_mid_volley_resumes_exactly() {
+    for dt in SAVE_DTS {
+        let (kept, retreats, targets) = drone_run(dt, None);
+        let (loaded, loaded_retreats, _) = drone_run(dt, Some(true));
+        assert!(kept.len() > 30, "dt {dt}");
+        assert_eq!((retreats, loaded_retreats), (1, 1), "dt {dt}: once");
+        // A bodiless mover takes no still step: all of it, exactly.
+        assert_eq!(loaded, kept, "dt {dt}");
+        let passed = |steps: &[DroneStep]| {
+            steps
+                .iter()
+                .flat_map(|step| step.struck.iter().map(|&(_, target)| target))
+                .collect::<Vec<_>>()
+        };
+        let hits = passed(&kept);
+        assert!(
+            hits.contains(&targets[1]) && hits.contains(&targets[2]),
+            "dt {dt}: the beam and the ram went on: {hits:?}"
+        );
+        assert!(kept.iter().any(|step| step.beam.is_some()), "dt {dt}");
+        assert!(kept[0].struck.is_empty(), "dt {dt}");
+        // Loaded without its targets named, the beam and the ram hit at once.
+        let (unnamed, _, _) = drone_run(dt, Some(false));
+        assert_eq!(unnamed[0].struck.len(), 2, "dt {dt}: {:?}", unnamed[0]);
     }
 }

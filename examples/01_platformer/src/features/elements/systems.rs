@@ -25,6 +25,8 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, FROZEN, Kind, has_status};
+use crate::features::enemies::beetle;
+use crate::features::enemies::components::{Enemy, Throws};
 use crate::features::level::components::{Doused, Glow, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
@@ -552,8 +554,9 @@ fn is_iron(world: &World, entity: Entity) -> bool {
 
 /// `iron_crush`, in the overlap phase after the physics step: a moving
 /// block crushes the small balls it drives into, more the faster it goes,
-/// hurts the player with physical damage, and shatters frozen iron on a
-/// hard head-on impact. It
+/// hurts the player with physical damage unless a troll threw it, kills a
+/// live beetle with a whole hit of its health, and shatters frozen iron on
+/// a hard head-on impact. It
 /// reads its velocity from before the step, since the solver has stopped
 /// it on what it met; one that smashed something keeps [`SMASH_KEEP`] of
 /// it, so it plows on into the next layer.
@@ -588,7 +591,11 @@ pub fn crush(world: &mut World) {
                     continue;
                 }
                 let frozen = world.has::<Frozen>(target) && is_iron(world, target);
-                if !world.has::<SmallBall>(target) && !world.has::<Player>(target) && !frozen {
+                if !world.has::<SmallBall>(target)
+                    && !world.has::<Player>(target)
+                    && !frozen
+                    && !beetle::is_beetle(world, target)
+                {
                     continue;
                 }
                 let velocity = world
@@ -662,11 +669,40 @@ pub fn crush(world: &mut World) {
             .collect();
         keep |= !frozen_hits.is_empty();
         shattered.extend(frozen_hits);
+        let beetles: Vec<(Entity, f32, Vec2)> = world
+            .query::<(Entity, &Health, &Position, &Collider)>()
+            .filter(|(entity, health, ..)| !health.is_dead() && beetle::is_beetle(world, *entity))
+            .filter_map(|(entity, health, p, c)| {
+                let half = match c.shape {
+                    Shape::Aabb { half_extents } => half_extents,
+                    Shape::Circle { radius } => Vec2::splat(radius),
+                };
+                let target = p.0 + c.offset;
+                speed_into(entity, target, half)?;
+                Some((entity, health.current(), target))
+            })
+            .collect();
+        for (crushed, left, target) in beetles {
+            let push = (target - at).normalize_or_zero() * 300.0;
+            let hit = combat::Hit::new(crushed, [(Kind::Physical, left)])
+                .at(target)
+                .push(push)
+                .whole()
+                .request(world)
+                .apply(world);
+            hurt |= matches!(hit, Hit::Hurt | Hit::Killed);
+            keep = true;
+        }
         if keep && let Some(current) = world.get_mut::<Velocity>(block) {
             current.0 = velocity * SMASH_KEEP;
         }
+        // A thrown block hurts the player by its impact alone, once.
+        let thrown = world
+            .get_resource::<Throws>()
+            .is_some_and(|throws| throws.of(block).is_some());
         let players: Vec<(Entity, f32, Vec2)> = world
             .query::<(Entity, &Player, &Position, &Collider)>()
+            .filter(|_| !thrown)
             .filter_map(|(entity, _, p, c)| {
                 let half = match c.shape {
                     Shape::Aabb { half_extents } => half_extents,
@@ -857,6 +893,23 @@ fn mass(world: &World, entity: Entity) -> f32 {
         .map_or(f32::INFINITY, |body| 1.0 / body.inv_mass)
 }
 
+/// A thrown body's mass: a dynamic body's own, an enemy's its kind's, whose
+/// kinematic body has none.
+fn thrown_mass(world: &World, entity: Entity) -> f32 {
+    match world.get::<Enemy>(entity) {
+        Some(enemy) if !moves(world, entity) => enemy.kind.info().mass,
+        _ => mass(world, entity),
+    }
+}
+
+/// The live entity of save ID `id`.
+fn live_by_id(world: &World, id: u64) -> Option<Entity> {
+    world
+        .query::<(Entity, &SaveId, &Health)>()
+        .find(|(_, own, health)| own.0 == id && !health.is_dead())
+        .map(|(entity, ..)| entity)
+}
+
 /// The gap between two bodies' surfaces, boxes or circles: below 0 where
 /// they overlap.
 fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
@@ -881,33 +934,47 @@ fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
     }
 }
 
-/// The moving bodies that end the step touching a live target other than
-/// the player, each with its closing speed along the line between their
-/// centres from their speeds before the step: the solver stops a body at a
-/// target's face in the step it arrives, before any contact reports it.
+/// The moving bodies that end the step touching a live target, each with
+/// its closing speed along the line between their centres from their
+/// speeds before the step: the solver stops a body at a target's face in
+/// the step it arrives, before any contact reports it. A body is iron, a
+/// scrap or a ball, or any body a troll threw; the player is a target of
+/// thrown bodies alone, and a thrown body never hits its thrower.
 fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f32)> {
-    let targets: Vec<(Entity, Vec2, Shape)> = world
+    let targets: Vec<(Entity, Vec2, Shape, Option<u64>)> = world
         .query::<(Entity, &Health, &Position, &Collider)>()
-        .filter(|(entity, health, ..)| !health.is_dead() && Some(*entity) != player)
-        .map(|(entity, _, at, collider)| (entity, at.0 + collider.offset, collider.shape))
+        .filter(|(_, health, ..)| !health.is_dead())
+        .map(|(entity, _, at, collider)| {
+            let id = world.get::<SaveId>(entity).map(|id| id.0);
+            (entity, at.0 + collider.offset, collider.shape, id)
+        })
         .collect();
     if targets.is_empty() {
         return Vec::new();
     }
+    let throws = world.get_resource::<Throws>();
     let mut hits = Vec::new();
-    for (body, at, collider, before) in
-        world.query::<(Entity, &Position, &Collider, &PreviousVelocity)>()
-    {
-        if before.0.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED || !is_body(world, body) {
+    for (body, at, collider) in world.query::<(Entity, &Position, &Collider)>() {
+        let throw = throws.and_then(|throws| throws.of(body));
+        if throw.is_none() && !is_body(world, body) {
+            continue;
+        }
+        let before = before_step(world, body);
+        if before.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED {
             continue;
         }
         let centre = at.0 + collider.offset;
-        for &(target, target_at, shape) in &targets {
+        for &(target, target_at, shape, id) in &targets {
+            let thrower = throw.is_some_and(|throw| id == Some(throw.thrower));
+            let spared = Some(target) == player && throw.is_none();
+            if target == body || thrower || spared {
+                continue;
+            }
             if gap(centre, collider.shape, target_at, shape) > CONTACT_MARGIN {
                 continue;
             }
             let towards = (target_at - centre).normalize_or_zero();
-            let closing = (before.0 - before_step(world, target)).dot(towards);
+            let closing = (before - before_step(world, target)).dot(towards);
             if closing >= BODY_HIT_SPEED {
                 hits.push((body, target, closing));
             }
@@ -924,12 +991,14 @@ type Hurt = (Entity, Entity, f32);
 /// body meeting something that does not move, or a body of at least
 /// [`SHATTER_MASS`], at a closing speed of [`SHATTER_SPEED`] or more, from
 /// the step's contacts and the bodies' speeds before it, queues its
-/// shatter; a moving body that ends the step touching a live target other
-/// than the player, closing at [`BODY_HIT_SPEED`] or more, hurts it by
+/// shatter; a moving body that ends the step touching a live target
+/// ([`target_hits`]), closing at [`BODY_HIT_SPEED`] or more, hurts it by
 /// [`BODY_HIT_K`] × its mass × the speed past that, at most
-/// [`BODY_HIT_MOST`], credited to the player; and a frozen target landing
-/// as hard takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`].
-/// Each pair counts once a step, at its hardest.
+/// [`BODY_HIT_MOST`], credited to the player, or for a thrown body by its
+/// thrower's damage factor, credited to its thrower while it lives, the
+/// throw ending at its first such hit; and a frozen target landing as hard
+/// takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`]. Each pair
+/// counts once a step, at its hardest. The throws count down.
 pub fn body_impacts(world: &mut World) {
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
@@ -987,15 +1056,54 @@ pub fn body_impacts(world: &mut World) {
             cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
         }
     }
+    let mut landed: Vec<Entity> = Vec::new();
     for (body, target, closing) in hits.into_values() {
-        let amount =
-            (BODY_HIT_K * mass(world, body) * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
+        let throw = world
+            .get_resource::<Throws>()
+            .and_then(|throws| throws.of(body))
+            .copied();
+        let heavy = match throw {
+            Some(_) => thrown_mass(world, body),
+            None => mass(world, body),
+        };
+        let amount = (BODY_HIT_K * heavy * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
         let at = centre(world, target).unwrap_or_default();
-        let mut hit = combat::Hit::new(target, [(Kind::Physical, amount)]).at(at);
-        if let Some(player) = player {
-            hit = hit.from(player);
-        }
-        hit.queue(world);
+        let hit = match throw {
+            Some(throw) => {
+                landed.push(body);
+                let hit = combat::Hit::new(target, [(Kind::Physical, amount * throw.factor)]);
+                match live_by_id(world, throw.thrower) {
+                    Some(thrower) => hit.from(thrower),
+                    None => hit,
+                }
+            }
+            None => {
+                let hit = combat::Hit::new(target, [(Kind::Physical, amount)]);
+                match player {
+                    Some(player) => hit.from(player),
+                    None => hit,
+                }
+            }
+        };
+        hit.at(at).queue(world);
+    }
+    let dt = world.resource::<Time>().delta();
+    let gone: Vec<Entity> = world
+        .get_resource::<Throws>()
+        .map(|throws| {
+            throws
+                .0
+                .iter()
+                .map(|throw| throw.body)
+                .filter(|&body| !world.is_alive(body))
+                .collect()
+        })
+        .unwrap_or_default();
+    if let Some(throws) = world.get_resource_mut::<Throws>() {
+        throws.0.retain_mut(|throw| {
+            throw.left -= dt;
+            throw.left > 0.0 && !landed.contains(&throw.body) && !gone.contains(&throw.body)
+        });
     }
     for (target, closing) in landings.into_values() {
         let amount = (closing - SHATTER_SPEED) * LANDING_SHARE;

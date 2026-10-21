@@ -324,5 +324,197 @@
         }
       }
     ]
+  },
+  {
+    "on": "wisp_flared",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_wisp_flare_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_hissed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_hiss_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_lunged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_lunge_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "beetle_pawed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_beetle_paw_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "beetle_charged",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_beetle_charge_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "bat_screeched",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_bat_screech_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "bat_dived",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_bat_dive_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_stepped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_step_sfx",
+          "min_interval": 0.15
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_roared",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_roar_sfx",
+          "min_interval": 1.0
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_slammed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_slam_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_threw",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_throw_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "spotted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_enemy_spotted_sfx",
+          "min_interval": 0.5
+        }
+      }
+    ]
   }
 ]

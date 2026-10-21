@@ -171,5 +171,86 @@
     "looping": false,
     "path": "sounds/summon.wav",
     "volume": 0.5
+  },
+  "ex10_wisp_hum_sfx": {
+    "looping": true,
+    "path": "sounds/wisp_hum.wav",
+    "volume": 0.35
+  },
+  "ex10_wisp_flare_sfx": {
+    "looping": false,
+    "path": "sounds/wisp_flare.wav",
+    "volume": 0.5
+  },
+  "ex10_crawler_hiss_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_hiss.wav",
+    "volume": 0.45
+  },
+  "ex10_crawler_lunge_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_lunge.wav",
+    "volume": 0.5
+  },
+  "ex10_beetle_paw_sfx": {
+    "looping": false,
+    "path": "sounds/beetle_paw.wav",
+    "volume": 0.45
+  },
+  "ex10_beetle_charge_sfx": {
+    "looping": false,
+    "path": "sounds/beetle_charge.wav",
+    "volume": 0.55
+  },
+  "ex10_bat_screech_sfx": {
+    "looping": false,
+    "path": "sounds/bat_screech.wav",
+    "volume": 0.35
+  },
+  "ex10_bat_dive_sfx": {
+    "looping": false,
+    "path": "sounds/bat_dive.wav",
+    "volume": 0.45
+  },
+  "ex10_troll_step_sfx": {
+    "looping": false,
+    "path": "sounds/troll_step.wav",
+    "volume": 0.55
+  },
+  "ex10_troll_roar_sfx": {
+    "looping": false,
+    "path": "sounds/troll_roar.wav",
+    "volume": 0.6
+  },
+  "ex10_troll_slam_sfx": {
+    "looping": false,
+    "path": "sounds/troll_slam.wav",
+    "volume": 0.7
+  },
+  "ex10_troll_throw_sfx": {
+    "looping": false,
+    "path": "sounds/troll_throw.wav",
+    "volume": 0.55
+  },
+  "ex10_enemy_hit_sfx": {
+    "looping": false,
+    "path": "sounds/enemy_hit.wav",
+    "volume": 0.45
+  },
+  "ex10_enemy_spotted_sfx": {
+    "looping": false,
+    "path": "sounds/enemy_spotted.wav",
+    "volume": 0.5
+  },
+  "ex10_orb_pickup_sfx": {
+    "looping": false,
+    "path": "sounds/orb_pickup.wav",
+    "volume": 0.5
+  },
+  "music_combat": {
+    "bus": "music",
+    "looping": true,
+    "path": "sounds/music_combat.wav",
+    "volume": 0.4
   }
 }

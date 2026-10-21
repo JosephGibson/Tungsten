@@ -176,3 +176,68 @@ fn a_typed_projectiles_hits_carry_its_hitboxs_parts() {
     );
     assert_eq!(world.get::<Projectile>(bolt).unwrap().hits(), 1);
 }
+
+#[test]
+fn a_loaded_piercing_projectile_given_its_targets_passes_none_twice() {
+    use tungsten_core::physics::{Position, PrevPosition};
+
+    // A beam twice as long as its step, so a target stays in it for steps.
+    let run = |named_again: bool| -> (Vec<f32>, u32) {
+        let (mut world, mut schedule) = projectile_rig(&[]);
+        let targets: Vec<Entity> = [30.0, 70.0]
+            .into_iter()
+            .map(|x| {
+                world.spawn_with((
+                    Position(Vec2::new(x, 0.0)),
+                    PrevPosition(Vec2::new(x, 0.0)),
+                    Hurtbox::new(HitShape::circle(4.0)),
+                    crate::Health::new(100.0),
+                ))
+            })
+            .collect();
+        let beam = world.spawn_with((
+            Position(Vec2::new(20.0, 0.0)),
+            PrevPosition(Vec2::ZERO),
+            Hitbox::new(HitShape::aabb(Vec2::new(20.0, 2.0)), 10.0),
+            Projectile::new().with_pierce(3),
+        ));
+        fixed_step(&mut world, &mut schedule);
+        assert_eq!(world.get::<Projectile>(beam).unwrap().hits(), 1);
+        // The game's save: the projectile, its hitbox and the passed
+        // targets by the game's IDs.
+        let hitbox = world.get::<Hitbox>(beam).unwrap();
+        let ids: Vec<usize> = hitbox
+            .hit_targets()
+            .iter()
+            .map(|hit| targets.iter().position(|target| target == hit).unwrap())
+            .collect();
+        assert_eq!(ids, [0]);
+        let mut loaded: Hitbox =
+            serde_json::from_value(serde_json::to_value(hitbox).unwrap()).unwrap();
+        let projectile: Projectile = serde_json::from_value(
+            serde_json::to_value(world.get::<Projectile>(beam).unwrap()).unwrap(),
+        )
+        .unwrap();
+        if named_again {
+            loaded.set_hit_targets(ids.iter().map(|&id| targets[id]));
+        }
+        world.insert(beam, loaded);
+        world.insert(beam, projectile);
+        // Its next step: the first target still in the beam, the second
+        // reached.
+        world.get_mut::<PrevPosition>(beam).unwrap().0 = Vec2::new(20.0, 0.0);
+        world.get_mut::<Position>(beam).unwrap().0 = Vec2::new(50.0, 0.0);
+        fixed_step(&mut world, &mut schedule);
+        let health = targets
+            .iter()
+            .map(|&target| world.get::<crate::Health>(target).unwrap().current())
+            .collect();
+        (health, world.get::<Projectile>(beam).unwrap().hits())
+    };
+    assert_eq!(run(true), (vec![90.0, 90.0], 2), "each passed once");
+    assert_eq!(
+        run(false),
+        (vec![80.0, 90.0], 3),
+        "unnamed: the first again"
+    );
+}

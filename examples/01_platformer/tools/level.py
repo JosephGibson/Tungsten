@@ -68,11 +68,14 @@ def build_objects(source, images, lit):
         props.append(obj(cls, p['x'] * tile, p['y'] * tile))
     layer('props', props)
 
+    # The slabs sit in physics layer 1, which an enemy's sight casts against
+    # beside the tiles; every other body stays in layer 0, and the slabs'
+    # mask keeps every layer, so nothing collides differently.
     slabs = []
     for x, y, w, h in slab_runs(source['slab_colliders']):
         cls = f'ex10_slab_{int(w)}x{int(h)}'
         prefabs[cls] = dict(components=dict(rigid_body=dict(kind='static',
-            shape=dict(kind='aabb', half_extents=[w / 2, h / 2]), offset=[w / 2, h / 2])))
+            shape=dict(kind='aabb', half_extents=[w / 2, h / 2]), offset=[w / 2, h / 2], layers=[1])))
         slabs.append(dict(obj(cls, x, y), width=w, height=h, point=False))
     layer('slabs', slabs)
 
@@ -158,11 +161,16 @@ def build_objects(source, images, lit):
     # Markers the game reads by name: the player's feet at a fresh run's start.
     spawn = source['spawn']
     layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')])
-    # The training dummies, the map's last layer, so every earlier object keeps
-    # its save ID; each placement's tags set the `dummy` prefab's, one by one.
+    # The training dummies; each placement's tags set the `dummy` prefab's, one
+    # by one.
     layer('dummies', [obj('dummy', d['x'] * tile, d['y'] * tile, name=d['name'], properties=[
         dict(name=f'tags.{i}', type='string', value=tag) for i, tag in enumerate(d['tags'])])
         for d in source['dummies']])
+    # The enemies, the map's last layer, so every earlier object keeps its save
+    # ID; each object's class names its kind's prefab, its point the sprite's
+    # top-left.
+    layer('enemies', [obj(e['kind'], e['x'] * tile, e['y'] * tile, name=e['name'])
+        for e in source['enemies']])
     return layers, prefabs
 
 

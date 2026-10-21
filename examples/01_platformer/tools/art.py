@@ -13,7 +13,8 @@ EFFECT_SIZES = {name: (96, 96) for name in (
     'vortex', 'vortex_core', 'accretion_disk', 'photon_ring', 'infall_streak')}
 # The spell, gun and summon icons, which the HUD shows at whole-number scale.
 ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
-         'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy')
+         'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy',
+         'wisp', 'crawler', 'beetle', 'bat', 'troll')
 ICON_SIZES = {'icon_' + name: (32, 32) for name in ICONS}
 # The elements' and weapons' art off the 64 px grid: the bolt's segments, the
 # status overlays' small and large classes (the medium class is 64), the
@@ -27,7 +28,26 @@ ELEMENT_SIZES = {
        for frame in frames},
     **{f'muzzle_{i}': (16, 16) for i in range(3)},
     'tracer': (32, 3),
+    # 01 (c): the troll's fitted ice cube on its 128 frame, the frozen
+    # look's glint and the drops' orbs.
+    'status_ice_troll': (128, 128),
+    'ice_glint': (16, 16),
+    'health_orb': (24, 24),
+    'mana_orb': (24, 24),
 }
+# Art sized by its name's prefix: the troll's frames are 128 px, the one
+# enemy drawn larger than a tile.
+SIZE_PREFIXES = {'troll_': (128, 128)}
+# A walker's frames keep their lowest pixel on its feet's row: the outline's
+# row under its soles (`actors.SOLE` and `BIG_SOLE`), as the courier's 61 is.
+WALKER_FEET = {'crawler_': 61, 'beetle_': 61, 'troll_': 125}
+
+
+def expected_size(name):
+    for prefix, size in SIZE_PREFIXES.items():
+        if name.startswith(prefix):
+            return size
+    return {**EFFECT_SIZES, **ICON_SIZES, **ELEMENT_SIZES}.get(name, (64, 64))
 def validate_palette(palette):
     if palette.get('.') != [0, 0, 0, 0]:
         raise ValueError('palette must define transparent dot')
@@ -122,7 +142,7 @@ def auxiliary(im, relief=False):
 
 
 def build_art():
-    from actors import build_balls, build_dummy, build_fireball, build_player
+    from actors import build_balls, build_dummy, build_enemies, build_fireball, build_player
     from backdrops import build_backdrops
     from effects import build_effects
     from scenery import build_scenery
@@ -132,6 +152,7 @@ def build_art():
     build_fireball(images, animations)
     build_balls(images, lit, animations)
     build_dummy(images)
+    build_enemies(images, animations)
     build_scenery(images, lit, animations)
     build_terrain(images, lit)
     build_backdrops(images)
@@ -146,12 +167,14 @@ def validate_art(images,lit):
     for name,im in images.items():
         # A moving platform's deck is its width wide.
         wide=name.startswith('lift_deck_') and im.height==64
-        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!={**EFFECT_SIZES,**ICON_SIZES,**ELEMENT_SIZES}.get(name,(64,64)):raise ValueError(f'{name}: wrong dimensions')
+        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!=expected_size(name):raise ValueError(f'{name}: wrong dimensions')
         if not set(im.get_flattened_data())<=allowed:raise ValueError(f'{name}: outside palette')
         if name.startswith(('player', 'ball', 'lantern', 'vines')) or name == 'marker':
             box=im.getbbox()
             if not box or box[0]<1 or box[1]<1 or box[2]>63 or box[3]>63:raise ValueError(f'{name}: clipped frame')
             if name.startswith('player') and box[3]!=61:raise ValueError(f'{name}: unstable foot anchor')
+        for prefix,feet in WALKER_FEET.items():
+            if name.startswith(prefix) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
     for name in ('ground_1','ground_2','ground_3'):
         if images[name].crop((0,0,64,6)).tobytes()!=images['ground'].crop((0,0,64,6)).tobytes():raise ValueError('terrain seam')
     from backdrops import validate_backdrops

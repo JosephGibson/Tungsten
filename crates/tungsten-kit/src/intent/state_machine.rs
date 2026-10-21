@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
 use tungsten_core::{Entity, Plugin, Schedule, Time, World, system};
 
 use crate::foundation::inspect::register_rows_with;
@@ -16,7 +17,15 @@ type Hook = fn(&mut World, Entity);
 /// fixed step and runs the hooks the game registered for its states.
 /// [`go`](Self::go) asks for the next state, which the next visit enters;
 /// [`elapsed`](Self::elapsed) reads the game time spent in the current
-/// one.
+/// one. A game [holds](Self::set_held) the machine of an entity that must
+/// not think, a stunned or a far-off one: no visit runs until it lets go.
+///
+/// It is data: a save holds its state, the one before, its elapsed, a
+/// pending `go`, whether its first visit ran and whether it is held, as
+/// `{ "state", "previous", "elapsed", "next", "entered", "held" }` with the
+/// states in `S`'s own form. So a loaded machine's first visit is the one
+/// the uninterrupted run would have made: it runs no enter hook again, and
+/// a pending `go` is entered then, the old state's exit hook first.
 ///
 /// # Examples
 ///
@@ -64,7 +73,15 @@ type Hook = fn(&mut World, Entity);
 /// assert_eq!(machine.previous(), Some(Boss::Idle));
 /// assert_eq!(world.resource::<Charges>().0, 1);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(
+    bound(
+        serialize = "S: Serialize + Copy",
+        deserialize = "S: Deserialize<'de> + Copy"
+    ),
+    try_from = "MachineSave<S>",
+    into = "MachineSave<S>"
+)]
 pub struct StateMachine<S> {
     state: S,
     previous: Option<S>,
@@ -72,6 +89,54 @@ pub struct StateMachine<S> {
     next: Option<S>,
     /// Its first visit has run.
     entered: bool,
+    /// The game holds it: no visit runs.
+    held: bool,
+}
+
+/// A machine as a save writes it, before its values are checked.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MachineSave<S> {
+    state: S,
+    previous: Option<S>,
+    elapsed: f32,
+    next: Option<S>,
+    entered: bool,
+    held: bool,
+}
+
+impl<S> TryFrom<MachineSave<S>> for StateMachine<S> {
+    type Error = String;
+
+    fn try_from(save: MachineSave<S>) -> Result<Self, Self::Error> {
+        if !(save.elapsed.is_finite() && save.elapsed >= 0.0) {
+            return Err(format!(
+                "elapsed: must be finite and >= 0 (got {})",
+                save.elapsed
+            ));
+        }
+        Ok(Self {
+            state: save.state,
+            previous: save.previous,
+            elapsed: save.elapsed,
+            next: save.next,
+            entered: save.entered,
+            held: save.held,
+        })
+    }
+}
+
+impl<S> From<StateMachine<S>> for MachineSave<S> {
+    fn from(machine: StateMachine<S>) -> Self {
+        Self {
+            state: machine.state,
+            previous: machine.previous,
+            elapsed: machine.elapsed,
+            next: machine.next,
+            entered: machine.entered,
+            held: machine.held,
+        }
+    }
 }
 
 impl<S: Copy + Eq + 'static> StateMachine<S> {
@@ -85,6 +150,7 @@ impl<S: Copy + Eq + 'static> StateMachine<S> {
             elapsed: 0.0,
             next: None,
             entered: false,
+            held: false,
         }
     }
 
@@ -114,6 +180,27 @@ impl<S: Copy + Eq + 'static> StateMachine<S> {
     pub fn go(&mut self, next: S) {
         self.next = Some(next);
     }
+
+    /// The state a [`go`](Self::go) asked for, which the next visit
+    /// enters; `None` when none waits.
+    #[must_use]
+    pub fn pending(&self) -> Option<S> {
+        self.next
+    }
+
+    /// Holds it, or lets it go: a held machine is not visited, so a
+    /// pending [`go`](Self::go) waits, no hook runs and its
+    /// [`elapsed`](Self::elapsed) stands until it is let go. A game holds
+    /// a stunned, frozen or far-off entity's machine.
+    pub fn set_held(&mut self, held: bool) {
+        self.held = held;
+    }
+
+    /// Whether it is held.
+    #[must_use]
+    pub fn is_held(&self) -> bool {
+        self.held
+    }
 }
 
 /// Registers the system that visits every [`StateMachine<S>`], under the
@@ -122,12 +209,13 @@ impl<S: Copy + Eq + 'static> StateMachine<S> {
 /// `Velocity` moves it in the same step, and a paused game, which runs no
 /// step, holds every machine; a step of 0 visits nothing.
 ///
-/// Each step it visits the machines in entity order. A first visit enters
-/// the state `go` asked for, else the initial one, and runs its enter hook.
-/// A later visit with a pending `go` runs the old state's exit hook, then
-/// the new state's enter hook, and resets `elapsed`. Every visit then runs
-/// the current state's update hook and adds the step to `elapsed`. A hook
-/// that despawns its entity or removes its machine ends that visit.
+/// Each step it visits the machines in entity order, skipping the held
+/// ones. A first visit enters the state `go` asked for, else the initial
+/// one, and runs its enter hook. A later visit with a pending `go` runs the
+/// old state's exit hook, then the new state's enter hook, and resets
+/// `elapsed`. Every visit then runs the current state's update hook and
+/// adds the step to `elapsed`. A hook that despawns its entity or removes
+/// its machine ends that visit.
 ///
 /// Hooks are plain `fn` pointers. See [`StateMachine`] for an example.
 pub struct StateMachinePlugin<S> {
@@ -279,6 +367,9 @@ fn visit<S: Copy + Eq + 'static>(world: &mut World, hooks: &Hooks<S>, entity: En
     let Some(machine) = world.get_mut::<StateMachine<S>>(entity) else {
         return;
     };
+    if machine.held {
+        return;
+    }
     let next = machine.next.take();
     if !machine.entered {
         machine.entered = true;

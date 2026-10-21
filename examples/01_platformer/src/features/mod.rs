@@ -6,6 +6,7 @@ pub mod audio;
 pub mod combat;
 pub mod dummy;
 pub mod elements;
+pub mod enemies;
 pub mod gun;
 pub mod level;
 pub mod lightning;

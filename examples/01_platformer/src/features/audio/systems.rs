@@ -1,9 +1,15 @@
 //! The audio's systems.
 
 use tungsten::core::{AudioCommands, SoundRegistry, World};
+use tungsten::kit::{Health, StateMachine};
 
 use super::components::Music;
-use super::{MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE};
+use super::{
+    COMBAT_IN, COMBAT_OUT, HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE,
+    PAUSE_FADE, WISP_HUM,
+};
+use crate::features::enemies;
+use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::game::GAMEPLAY;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::pause::PAUSE;
@@ -40,9 +46,98 @@ pub fn duck(world: &mut World) {
     if let Some(looped) = music.pause {
         audio.stop_voice(looped, PAUSE_FADE);
     }
+    let mut hum_level = music.hum_level;
+    if let (Some(hum), true) = (music.hum, on) {
+        audio.set_voice_volume(hum, 0.0, PAUSE_FADE);
+        hum_level = 0.0;
+    }
     world.insert_resource(Music {
         pause,
+        hum_level,
         ducked: on,
+        ..music
+    });
+}
+
+/// `audio_hum`, after the duck: while gameplay is on top, the wisps' hum
+/// sounds at its level by the nearest live, thinking wisp, falling to 0 at
+/// [`HUM_REACH`] from the player.
+pub fn hum(world: &mut World) {
+    let Some(music) = world.get_resource::<Music>().copied() else {
+        return;
+    };
+    let Some(voice) = music.hum.filter(|_| !music.ducked) else {
+        return;
+    };
+    let player = enemies::systems::player(world).map(|(_, at)| at);
+    let nearest = player.and_then(|player| {
+        world
+            .query::<(
+                tungsten::core::Entity,
+                &Enemy,
+                &Health,
+                &StateMachine<EnemyState>,
+            )>()
+            .filter(|(_, enemy, health, machine)| {
+                enemy.kind == EnemyKind::Wisp && !health.is_dead() && !machine.is_held()
+            })
+            .filter_map(|(entity, ..)| enemies::centre(world, entity))
+            .map(|at| at.distance(player))
+            .min_by(f32::total_cmp)
+    });
+    let registry = world.resource::<SoundRegistry>();
+    let level = registry
+        .get_by_id(WISP_HUM)
+        .map_or(0.0, |handle| registry.get_volume(handle));
+    let volume = nearest.map_or(0.0, |distance| {
+        level * (1.0 - distance / HUM_REACH).clamp(0.0, 1.0)
+    });
+    if (volume - music.hum_level).abs() < 0.01 {
+        return;
+    }
+    world
+        .resource_mut::<AudioCommands>()
+        .set_voice_volume(voice, volume, HUM_FADE);
+    world.insert_resource(Music {
+        hum_level: volume,
+        ..music
+    });
+}
+
+/// `audio_combat`, after the duck: the combat layer rises to its level over
+/// [`COMBAT_IN`] while any live, thinking enemy sees the player and falls
+/// to 0 over [`COMBAT_OUT`] after the last stops; ducked under pause and
+/// game over, it falls to 0 with the exploration loop. Presentation.
+pub fn combat(world: &mut World) {
+    let Some(music) = world.get_resource::<Music>().copied() else {
+        return;
+    };
+    let Some(voice) = music.combat else {
+        return;
+    };
+    let seen = world
+        .query::<(&Enemy, &Health, &StateMachine<EnemyState>, &Sight)>()
+        .any(|(_, health, machine, sight)| !health.is_dead() && !machine.is_held() && sight.sees);
+    let registry = world.resource::<SoundRegistry>();
+    let level = registry
+        .get_by_id(MUSIC_COMBAT)
+        .map_or(0.0, |handle| registry.get_volume(handle));
+    let volume = if seen && !music.ducked { level } else { 0.0 };
+    if (volume - music.combat_level).abs() < 1e-4 {
+        return;
+    }
+    let seconds = if music.ducked {
+        PAUSE_FADE
+    } else if volume > music.combat_level {
+        COMBAT_IN
+    } else {
+        COMBAT_OUT
+    };
+    world
+        .resource_mut::<AudioCommands>()
+        .set_voice_volume(voice, volume, seconds);
+    world.insert_resource(Music {
+        combat_level: volume,
         ..music
     });
 }

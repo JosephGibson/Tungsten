@@ -1,6 +1,8 @@
 //! The audio: the exploration loop a run plays, quieted under pause's loop
-//! and game over's music, as the template's sample does, and the game's
-//! one-shot sounds as cue events about the player, which the
+//! and game over's music, as the template's sample does; the combat layer
+//! over it while an enemy sees the player; the wisps' hum on one shared
+//! voice, louder as the nearest wisp comes near; and the game's one-shot
+//! sounds as cue events about the player, which the
 //! `cue_rules/sounds.json` data plays through the kit.
 
 pub mod components;
@@ -8,7 +10,7 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::Plugin;
-use tungsten::core::{AudioCommands, EventQueue, Schedule, Stage, World, system};
+use tungsten::core::{AudioCommands, EventQueue, Schedule, SoundRegistry, Stage, World, system};
 use tungsten::kit::{CueEvent, CuesOnEvent};
 
 use crate::features::run::Run;
@@ -21,10 +23,20 @@ pub const MUSIC_EXPLORE: &str = "music_explore";
 pub const MUSIC_PAUSE: &str = "music_pause";
 pub const MUSIC_FADE: f32 = 0.5;
 pub const PAUSE_FADE: f32 = 0.3;
+/// The combat layer, by manifest ID, and the seconds it fades in over while
+/// an awake enemy sees the player and out over after the last stops.
+pub const MUSIC_COMBAT: &str = "music_combat";
+pub const COMBAT_IN: f32 = 1.5;
+pub const COMBAT_OUT: f32 = 3.0;
+/// The wisps' hum, its reach from the nearest wisp, and the seconds its
+/// volume moves over.
+pub const WISP_HUM: &str = "ex10_wisp_hum_sfx";
+pub const HUM_REACH: f32 = 600.0;
+pub const HUM_FADE: f32 = 0.15;
 
 /// The audio as a plugin: each [`Sound`] a cue event the kit's cues read,
-/// before the manifest's `cue_rules` load and name them, and
-/// `audio_duck` in `Update`.
+/// before the manifest's `cue_rules` load and name them, and in `Update`
+/// `audio_duck`, then `audio_hum` and `audio_combat`.
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
@@ -33,6 +45,10 @@ impl Plugin for AudioPlugin {
             CuesOnEvent::<Sounded>::new(sound.event(), cue_of(sound)).build(schedule, world);
         }
         schedule.add(Stage::Update, system("audio_duck", systems::duck));
+        let hum = system("audio_hum", systems::hum).after("audio_duck");
+        schedule.add(Stage::Update, hum);
+        let combat = system("audio_combat", systems::combat).after("audio_duck");
+        schedule.add(Stage::Update, combat);
     }
 }
 
@@ -65,6 +81,17 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::Reloaded => occurrence::<18>,
         Sound::Ricocheted => occurrence::<19>,
         Sound::Summoned => occurrence::<20>,
+        Sound::WispFlare => occurrence::<21>,
+        Sound::CrawlerHiss => occurrence::<22>,
+        Sound::CrawlerLunge => occurrence::<23>,
+        Sound::BeetlePaw => occurrence::<24>,
+        Sound::BeetleCharge => occurrence::<25>,
+        Sound::BatScreech => occurrence::<26>,
+        Sound::BatDive => occurrence::<27>,
+        Sound::TrollStep => occurrence::<28>,
+        Sound::TrollRoar => occurrence::<29>,
+        Sound::TrollSlam => occurrence::<30>,
+        Sound::TrollThrow => occurrence::<31>,
     }
 }
 
@@ -79,21 +106,38 @@ pub fn play(world: &mut World, sound: Sound, at: Vec2) {
     }
 }
 
-/// Starts a run's music: the exploration loop fades in.
+/// Starts a run's music: the exploration loop fades in, and the wisps' hum
+/// and the combat layer start silent.
 pub fn start(world: &mut World) {
     let explore = shell::play(world, MUSIC_EXPLORE, MUSIC_FADE);
+    let silent = |world: &mut World, id: &str| {
+        let handle = world.resource::<SoundRegistry>().get_by_id(id)?;
+        Some(
+            world
+                .resource_mut::<AudioCommands>()
+                .play_with(handle, 0.0, true),
+        )
+    };
+    let hum = silent(world, WISP_HUM);
+    let combat = silent(world, MUSIC_COMBAT);
     world.insert_resource(Music {
         explore,
+        hum,
+        combat,
         ..Music::default()
     });
 }
 
-/// Stops a run's music, pause's loop too: a Quit to Title from pause
-/// leaves the stack in one pass, with gameplay never on top.
+/// Stops a run's music, pause's loop, the hum and the combat layer too: a
+/// Quit to Title from pause leaves the stack in one pass, with gameplay
+/// never on top.
 pub fn stop(world: &mut World) {
     let music = world.remove_resource::<Music>().unwrap_or_default();
     let audio = world.resource_mut::<AudioCommands>();
-    for voice in [music.explore, music.pause].into_iter().flatten() {
+    for voice in [music.explore, music.pause, music.hum, music.combat]
+        .into_iter()
+        .flatten()
+    {
         audio.stop_voice(voice, MUSIC_FADE);
     }
 }

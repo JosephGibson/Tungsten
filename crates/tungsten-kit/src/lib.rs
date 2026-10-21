@@ -125,13 +125,13 @@
 //!   of another. [`HitShape`], [`Hitbox`], [`Hurtbox`], [`Struck`] and
 //!   [`HitPlugin`]: hit shapes on the kit's grid, each hit tested over the
 //!   step's motion, so a fast bolt skips nothing; a windowed hitbox hits
-//!   while an ability or `arm` keeps it open. [`ContactDamage`] and
-//!   [`ContactDamagePlugin`]: a hazard or an aura that hurts what it
-//!   touches, again each interval. [`Projectile`], [`ProjectileExpired`]
-//!   and [`ProjectilePlugin`]: a bolt that ends at its first hit, its first
-//!   wall or its range, unless it pierces or bounces. [`Pickup`],
-//!   [`PickedUp`] and [`PickupPlugin`]: collected once, drawn in by a
-//!   magnet.
+//!   while an ability or `arm` keeps it open. [`ContactDamage`],
+//!   [`ContactTouch`] and [`ContactDamagePlugin`]: a hazard or an aura that
+//!   hurts what it touches, again each interval. [`Projectile`],
+//!   [`ProjectileExpired`] and [`ProjectilePlugin`]: a bolt that ends at its
+//!   first hit, its first wall or its range, unless it pierces or bounces.
+//!   [`Pickup`], [`PickedUp`] and [`PickupPlugin`]: collected once, drawn in
+//!   by a magnet.
 //! - **Damage.** [`Health`], [`damage`], [`heal`], [`Hit`], [`Damaged`],
 //!   [`Healed`], [`HitFlash`] and [`HealthPlugin`]: health with an
 //!   invulnerability window, a death policy and a hit flash on the
@@ -271,7 +271,7 @@ pub use motion::steering::{STEERING, Steering, SteeringPlugin};
 pub use motion::target::Target;
 pub use motion::top_down::{TOP_DOWN_MOVER, TopDownMover, TopDownMoverPlugin};
 pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
-pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin};
+pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
 pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtbox, Struck};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
 pub use overlap::projectile::{PROJECTILE_TICK, Projectile, ProjectileExpired, ProjectilePlugin};

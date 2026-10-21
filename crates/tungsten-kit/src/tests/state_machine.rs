@@ -1,10 +1,11 @@
 use super::*;
 use crate::{DAMAGE_RESOLVE, HEALTH_TICK, KIT_DESPAWN, SHIELD_TICK};
 use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use serde_json::json;
 use tungsten_core::Stage;
 use tungsten_core::physics::{PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 enum Mode {
     Idle,
     Walk,
@@ -213,5 +214,143 @@ fn the_plugin_prints_its_name_and_hook_counts() {
     assert_eq!(
         format!("{:?}", plugin.clone()),
         "StateMachinePlugin { name: \"modes\", enter_hooks: 1, exit_hooks: 0, update_hooks: 0 }"
+    );
+}
+
+/// `e`'s machine through a save: written, read back and spawned in a
+/// fresh rig as the load does, with the log of the steps before it gone.
+fn loaded(world: &World, e: Entity) -> (World, Schedule, Entity) {
+    let saved = serde_json::to_value(world.get::<StateMachine<Mode>>(e).unwrap()).unwrap();
+    let machine: StateMachine<Mode> = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&machine).unwrap(),
+        saved,
+        "the save forms"
+    );
+    let (mut twin, schedule) = rig();
+    let copy = twin.spawn_with((machine,));
+    (twin, schedule, copy)
+}
+
+#[test]
+fn a_machine_saved_with_a_pending_go_enters_it_once_after_the_load() {
+    let (mut world, mut schedule) = rig();
+    let e = world.spawn_with((StateMachine::new(Mode::Idle),));
+    step(&mut world, &mut schedule);
+    machine(&mut world, e).go(Mode::Walk);
+    assert_eq!(machine(&mut world, e).pending(), Some(Mode::Walk));
+    let (mut twin, mut twin_schedule, copy) = loaded(&world, e);
+    assert_eq!(machine(&mut twin, copy).pending(), Some(Mode::Walk));
+    // The first visit after the load is the uninterrupted run's next one:
+    // idle's exit, walk's enter once, then walk's own go to jump.
+    for n in 0..2 {
+        let expected = step(&mut world, &mut schedule);
+        assert_eq!(step(&mut twin, &mut twin_schedule), expected, "step {n}");
+    }
+    assert!(
+        !world.is_alive(e) && !twin.is_alive(copy),
+        "jump's enter ran in both"
+    );
+}
+
+#[test]
+fn a_loaded_machine_runs_no_enter_hook_again_and_keeps_its_elapsed() {
+    let (mut world, mut schedule) = rig();
+    let e = world.spawn_with((StateMachine::new(Mode::Idle),));
+    for _ in 0..3 {
+        step(&mut world, &mut schedule);
+    }
+    let saved = serde_json::to_value(world.get::<StateMachine<Mode>>(e).unwrap()).unwrap();
+    assert_eq!(
+        saved,
+        json!({
+            "state": "Idle", "previous": null, "elapsed": 0.75, "next": null,
+            "entered": true, "held": false
+        })
+    );
+    let (mut twin, mut twin_schedule, copy) = loaded(&world, e);
+    assert_eq!(machine(&mut twin, copy).elapsed(), 0.75);
+    assert_eq!(step(&mut twin, &mut twin_schedule), ["0 update idle"]);
+    assert_eq!(step(&mut world, &mut schedule), ["0 update idle"]);
+    assert_eq!(
+        twin.get::<StateMachine<Mode>>(copy),
+        world.get::<StateMachine<Mode>>(e)
+    );
+    assert_eq!(machine(&mut twin, copy).elapsed(), 1.0);
+    // A machine saved before its first visit enters at its first visit.
+    let (mut world, _) = rig();
+    let fresh = world.spawn_with((StateMachine::new(Mode::Idle),));
+    let (mut twin, mut twin_schedule, copy) = loaded(&world, fresh);
+    assert_eq!(
+        step(&mut twin, &mut twin_schedule),
+        ["0 enter idle", "0 update idle"]
+    );
+    assert_eq!(machine(&mut twin, copy).elapsed(), 0.25);
+}
+
+#[test]
+fn a_machine_save_refuses_a_negative_or_non_finite_elapsed() {
+    let saved = serde_json::to_value(StateMachine::new(Mode::Walk)).unwrap();
+    let with = |field: &str, value: serde_json::Value| {
+        let mut save = saved.clone();
+        save[field] = value;
+        serde_json::from_value::<StateMachine<Mode>>(save)
+    };
+    assert!(with("elapsed", json!(2.5)).is_ok());
+    for (field, value) in [
+        ("elapsed", json!(-0.1)),
+        // Past f32's range: read as infinity.
+        ("elapsed", json!(1e39)),
+        ("state", json!("Run")),
+        ("held", json!(1)),
+        ("extra", json!(true)),
+    ] {
+        assert!(with(field, value.clone()).is_err(), "{field} = {value}");
+    }
+    let mut missing = saved.clone();
+    missing.as_object_mut().unwrap().remove("entered");
+    assert!(serde_json::from_value::<StateMachine<Mode>>(missing).is_err());
+}
+
+#[test]
+fn a_held_machine_keeps_its_pending_go_its_hooks_and_its_elapsed_until_released() {
+    let (mut world, mut schedule) = rig();
+    let e = world.spawn_with((StateMachine::new(Mode::Idle),));
+    step(&mut world, &mut schedule);
+    machine(&mut world, e).go(Mode::Walk);
+    machine(&mut world, e).set_held(true);
+    for _ in 0..3 {
+        assert!(step(&mut world, &mut schedule).is_empty(), "no hook runs");
+    }
+    let m = machine(&mut world, e);
+    assert!(m.is_held());
+    assert_eq!(
+        (m.state(), m.pending(), m.elapsed()),
+        (Mode::Idle, Some(Mode::Walk), 0.25),
+        "the go waits and the elapsed stands"
+    );
+    // A save holds the hold.
+    let (mut twin, mut twin_schedule, copy) = loaded(&world, e);
+    assert!(machine(&mut twin, copy).is_held());
+    assert!(step(&mut twin, &mut twin_schedule).is_empty());
+    for (world, schedule, e) in [
+        (&mut world, &mut schedule, e),
+        (&mut twin, &mut twin_schedule, copy),
+    ] {
+        machine(world, e).set_held(false);
+        assert_eq!(
+            step(world, schedule),
+            ["0 exit idle", "0 enter walk", "0 update walk"]
+        );
+    }
+    // Held before its first visit, it enters once let go.
+    let (mut world, mut schedule) = rig();
+    let e = world.spawn_with((StateMachine::new(Mode::Idle),));
+    machine(&mut world, e).set_held(true);
+    assert!(step(&mut world, &mut schedule).is_empty());
+    machine(&mut world, e).set_held(false);
+    assert_eq!(
+        step(&mut world, &mut schedule),
+        ["0 enter idle", "0 update idle"]
     );
 }

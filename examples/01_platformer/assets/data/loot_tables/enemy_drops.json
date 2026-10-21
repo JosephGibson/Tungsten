@@ -1,0 +1,16 @@
+{
+  "rolls": 1,
+  "entries": [
+    {
+      "prefab": "health_orb",
+      "weight": 30
+    },
+    {
+      "prefab": "mana_orb",
+      "weight": 30
+    },
+    {
+      "weight": 40
+    }
+  ]
+}

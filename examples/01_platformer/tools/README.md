@@ -56,11 +56,11 @@ pixel) for any hand-authored sprite. The modules:
 | Module | Draws |
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
-| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball and the training dummy |
+| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy and the five enemies (wisp, crawler, beetle, bat, troll) |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the dummy, the lightning bolt's segments, the status overlays, the ice shell, the muzzle flash and the tracer |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, and the music loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
@@ -124,7 +124,12 @@ Terrain is one masonry texture that repeats exactly every 64 pixels:
 - **Legacy names.** The older unplaced terrain names are copies of the new
   family, so no sprite ID changed.
 
-Backdrops are the only art larger than 64×64. Strips are 1024 pixels wide and
+Art is 64 × 64 unless `art.py`'s size tables say otherwise: the backdrops, the
+black hole's 96-pixel layers, the 32-pixel icons, the elements' sizes (the bolt's
+segments, the status overlays' small and large classes, the muzzle flash, the
+tracer, the glint and the orbs) and the troll, whose frames and fitted ice cube
+are 128 pixels, the one enemy larger than a tile (`SIZE_PREFIXES`). Backdrop
+strips are 1024 pixels wide and
 wrap seamlessly: profiles are whole-period sine sums, and shapes are drawn at x
 and x ± 1024. The ridges' and woodland's last row stays opaque, because the
 runtime stretches it downward. The sky must keep a mean luminance below 25; the
@@ -438,7 +443,8 @@ The black hole draws its soft halo, a hot accretion disk and two counter-rotatin
 vortex layers, then 48 infalling streaks turned along their spiral, the photon
 ring and the horizon, all after the engine's sprites and particles. Its five sprites (`vortex`,
 `vortex_core`, `accretion_disk`, `photon_ring`, `infall_streak`) are white alpha
-fields on 96-pixel canvases, the only exception to the 64 × 64 rule. They are
+fields on 96-pixel canvases, an exception to the 64 × 64 rule as the troll's
+128-pixel frames are. They are
 tinted at extraction, fade to transparent before their edges, and use `linear`
 filtering. Its 1,200-particle budget splits into 900 sparks and 300 dark-gas
 `black_hole_dust` particles; the dust emitter is anchored to the hole, and both
@@ -638,3 +644,46 @@ Losing the last health or falling out of bounds ends the run with the shell's ga
 over: "YOU DIED" on a dark band while the world pixelates and dims, its sting and
 its music, then Retry, which loads the run's last good save (a fresh run without
 one), Load and Quit to Title.
+
+## The bestiary
+
+01 (c)'s five enemies (`actors.py`), drawn from the art-review sheet the owner
+reviewed on 2026-10-21. Each is one rig posed per frame, drawn unlit with no normal or
+emissive map, so the kit's hit flash shows through `damage_flash`; the moonlit top
+and right edges and the glowing eyes are painted into their colours. Every clip's
+frames are `<clip>_<i>`, and `generate.py` mirrors each into a `_left` twin, as it
+does the courier's. `art.py` holds the walkers to their feet's row: the crawler's
+and the beetle's lowest pixel on row 60, as the courier's is, the troll's on row
+124 of its 128 frame (`WALKER_FEET`).
+
+| Enemy | Rig | Clips |
+| --- | --- | --- |
+| Wisp | A round flame with a face, self-lit like the fireball hazards; its tongues stream up and behind | `wisp_float` (8, flickering, a pixel's bob), `wisp_flare` (6, its alert: wider, eyes and mouth open) |
+| Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open) |
+| Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (4: a front foot scraping, dust), `beetle_charge` (4: head down, horn levelled, dust behind) |
+| Bat | A near-black furred body, dark purple wings with their finger bones showing, red eyes, fangs | `bat_roost` (4: hanging by its feet, swaying), `bat_fly` (6: the wings turned about their roots, folding a little on the downstroke), `bat_windup` (4: wings raised, the outline flashing white), `bat_dive` (2: wings swept back) |
+| Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
+
+The frozen look (`effects.py`) is a frosty cube of ice in three-quarter view: a snow
+cap, a side in shade, frost thick at the edges, a drift at the foot, frost ferns,
+bubbles, cracks, a chipped corner and sparkles, the body showing through a clearer
+window. `status_ice_<kind>` fits each kind's hurtbox plus 2 pixels on a full frame
+(`HURTBOXES`: the wisp, the crawler, the beetle, the bat, the troll and the dummy),
+so what lies outside the hurtbox shows outside the ice; `generate.check_ice_fits`
+holds each box to its prefab's hurtbox wherever that prefab exists. The size
+classes' `status_ice_<class>` and the ball's `ice_shell` are cubes too. A frozen
+target with health shows `frozen_glints` over the 16-pixel `ice_glint`; frozen balls
+and iron show none. The wisp's embers are `wisp_embers` over the spark. The drops are
+24-pixel orbs, `health_orb` (red) and `mana_orb` (indigo), in a dithered halo,
+palette pixels only. The summon slot's icons (`icon_wisp` to `icon_troll`) are each
+enemy's frame at half size, the troll's at a quarter, on the dummy's ring.
+
+`sfx.py` adds each enemy's sounds, 16-bit mono at 44,100 Hz: `wisp_hum` (a 2-second
+crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `beetle_paw`,
+`beetle_charge`, `bat_screech`, `bat_dive`, `troll_step`, `troll_roar`, `troll_slam`,
+`troll_throw`, `enemy_hit`, `enemy_spotted` (the alert) and `orb_pickup`, registered
+as `ex10_<name>_sfx`. `music_combat` is a fifth music loop at 22,050 Hz, sixteen bars
+at 128 BPM in step with `music_explore`'s bars and chords, which it plays over while
+an enemy sees the courier: toms on every beat, an eighth-note low pulse, string stabs
+on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
+seam.

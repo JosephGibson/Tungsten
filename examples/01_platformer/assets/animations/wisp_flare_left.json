@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_1_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_2_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_3_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_4_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_wisp_flare_5_left"
+    }
+  ],
+  "looping": true
+}

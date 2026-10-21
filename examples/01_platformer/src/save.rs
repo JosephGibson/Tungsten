@@ -1,8 +1,9 @@
 //! What a save holds, part of the seam the shell calls: [`SaveGame`], how
 //! a live run becomes one ([`capture`]), the slot row's line ([`summary`])
-//! and how a loaded run takes it back ([`restore`]). Schema 5 counts on
+//! and how a loaded run takes it back ([`restore`]). Schema 6 counts on
 //! from the template sample's 3, so a sample save reads as damaged, never
-//! as a newer version's; schema 4, 01 (a)'s, migrates.
+//! as a newer version's; schema 4, 01 (a)'s, and schema 5, 01 (b)'s,
+//! migrate.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects take theirs
 //! in the order the map spawns them, which a load repeats, and whatever
@@ -20,14 +21,20 @@ use tungsten::core::{
     CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
 };
 use tungsten::kit::{
-    Abilities, AilmentBuckets, Effects, Health, KitRng, LinearMotion, Oscillator, PathFollower,
-    PlatformerController, Projectile, Resist, Source, Stats, Tags,
+    Abilities, AilmentBuckets, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng,
+    Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
+    Projectile, Resist, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
 use crate::features::combat::components::{Hints, Reaction};
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::{BallBurn, Chill, Frozen};
+use crate::features::enemies::components::{
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, Sight, Throw, Throws,
+};
+use crate::features::enemies::drops::{self, Orb, OrbKind};
+use crate::features::enemies::{self, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
@@ -65,8 +72,12 @@ pub struct SaveGame {
     pub missiles: Vec<MissileSave>,
     pub bullets: Vec<BulletSave>,
     pub dummies: Vec<DummySave>,
-    /// The map's objects the run removed, by save ID: its placed dummies no
-    /// longer alive, which a load takes off the map.
+    pub enemies: Vec<EnemySave>,
+    /// The throws in flight, by their bodies' save IDs.
+    pub throws: Vec<ThrowSave>,
+    pub orbs: Vec<OrbSave>,
+    /// The map's objects the run removed, by save ID: its placed dummies and
+    /// enemies no longer alive, which a load takes off the map.
     pub gone: Vec<u64>,
     /// The element endings waiting, whole.
     pub cascades: Cascades,
@@ -77,23 +88,31 @@ pub struct SaveGame {
 }
 
 /// The dummies the map's `dummies` layer places: schema 5 added the layer,
-/// the map's last, whose objects take the save IDs schema 4's player and
-/// later spawns had.
+/// whose objects take the save IDs schema 4's player and later spawns had.
 pub const MAP_DUMMIES: u64 = 1;
+/// The enemies the map's `enemies` layer places: schema 6 added the layer,
+/// the map's last, whose objects take the save IDs schema 5's player and
+/// later spawns had.
+pub const MAP_ENEMIES: u64 = 9;
 /// The player prefab's `move_speed`, its run speed, which schema 5 added.
 pub const MOVE_SPEED: f32 = 560.0;
+/// The player prefab's `pickup_radius`, its orb magnet's reach, which
+/// schema 6 added.
+pub const PICKUP_RADIUS: f32 = 96.0;
 /// A freeze's seconds, which schema 4's frozen block takes whole.
 const FROZEN_SECS: f32 = crate::features::elements::FROZEN_SECS;
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`.
-    const SCHEMA: u32 = 5;
+    const SCHEMA: u32 = 6;
 
-    /// Schema 4, 01 (a)'s, migrates ([`migrate_four`]); schemas 1 to 3 are
-    /// the template sample's, and none migrates.
+    /// Schema 5, 01 (b)'s, migrates ([`migrate_five`]), and schema 4, 01
+    /// (a)'s, through schema 5 ([`migrate_four`], then the same); schemas 1
+    /// to 3 are the template sample's, and none migrates.
     fn migrate(from: u32, data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
         match from {
-            4 => migrate_four(data),
+            4 => migrate_five(migrate_four(data)?),
+            5 => migrate_five(data),
             _ => Err(format!("no migration from schema {from}: not this game's save").into()),
         }
     }
@@ -188,6 +207,85 @@ fn migrate_four(mut data: Value) -> Result<Value, Box<dyn std::error::Error + Se
     Ok(data)
 }
 
+/// Schema 5 into schema 6. The map's new `enemies` layer takes the save IDs
+/// from schema 5's player's on, so every save ID at or above it moves up by
+/// [`MAP_ENEMIES`], wherever a save holds one: the next ID, every list's
+/// `id`, the missiles' and bullets' sources, each `sources` list, `gone`
+/// and the cascade entries' target, source and chain; the map's earlier
+/// objects keep theirs. The new lists start empty, so the placed enemies
+/// load as the map spawns them, and the player gains the prefab's
+/// `pickup_radius` stat.
+fn migrate_five(mut data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+    let player = data["player"]["id"]
+        .as_u64()
+        .ok_or("schema 5: the player has no save ID")?;
+    let by = MAP_ENEMIES;
+    shift_id(&mut data["next_id"], player, by);
+    shift_id(&mut data["player"]["id"], player, by);
+    for source in data["player"]["sources"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        shift_id(&mut source[1], player, by);
+    }
+    for list in ["platforms", "hazards", "blocks"] {
+        for item in data[list].as_array_mut().into_iter().flatten() {
+            shift_id(&mut item["id"], player, by);
+        }
+    }
+    for ball in data["balls"].as_array_mut().into_iter().flatten() {
+        shift_id(&mut ball[0], player, by);
+    }
+    if data["black_hole"].is_object() {
+        shift_id(&mut data["black_hole"]["id"], player, by);
+    }
+    for list in ["missiles", "bullets"] {
+        for item in data[list].as_array_mut().into_iter().flatten() {
+            shift_id(&mut item["id"], player, by);
+            shift_id(&mut item["source"], player, by);
+        }
+    }
+    for dummy in data["dummies"].as_array_mut().into_iter().flatten() {
+        shift_id(&mut dummy["id"], player, by);
+        for source in dummy["sources"].as_array_mut().into_iter().flatten() {
+            shift_id(&mut source[1], player, by);
+        }
+    }
+    for id in data["gone"].as_array_mut().into_iter().flatten() {
+        shift_id(id, player, by);
+    }
+    for entry in data["cascades"]["entries"]
+        .as_array_mut()
+        .into_iter()
+        .flatten()
+    {
+        shift_id(&mut entry["target"], player, by);
+        shift_id(&mut entry["source"], player, by);
+        // An empty chain is left out of the entry; indexing would add a null.
+        let chain = entry.get_mut("chain").and_then(Value::as_array_mut);
+        for id in chain.into_iter().flatten() {
+            shift_id(id, player, by);
+        }
+    }
+    let save = data.as_object_mut().ok_or("schema 5: not an object")?;
+    for list in ["enemies", "throws", "orbs"] {
+        save.insert(list.into(), Value::Array(Vec::new()));
+    }
+    let stats = data["player"]["stats"]
+        .as_object_mut()
+        .ok_or("schema 5: the player has no stats")?;
+    if !stats.contains_key(Stats::PICKUP_RADIUS) {
+        let radius = [
+            ("base", Value::from(PICKUP_RADIUS)),
+            ("min", Value::from(0.0)),
+            ("max", Value::Null),
+        ];
+        stats.insert(Stats::PICKUP_RADIUS.into(), Value::from_iter(radius));
+    }
+    Ok(data)
+}
+
 /// Gives the saved player the ability `name` when it has none of that
 /// name: ready, with no cooldown and `charges` full.
 fn grant_ability(
@@ -255,6 +353,68 @@ pub struct DummySave {
     pub sources: Vec<(u64, u64)>,
     pub buckets: AilmentBuckets,
     pub tags: Tags,
+}
+
+/// An enemy: one the map placed (`map`), found by its save ID, or a
+/// summoned one, spawned; its body, its driver (a walker's controller or a
+/// flyer's mover, and a frozen flyer's mover set aside beside the
+/// controller it falls on), its machine, what it knows and sees, its
+/// health, stats, resistances, effects with their sources, ailment buckets,
+/// tags, abilities, knockback, its hitbox with the targets its activation
+/// has hit and its touches' times, by save ID, and what a troll holds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EnemySave {
+    pub id: u64,
+    pub kind: EnemyKind,
+    pub map: bool,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub controller: Option<PlatformerController>,
+    pub mover: Option<TopDownMover>,
+    pub displaced: Option<TopDownMover>,
+    pub machine: StateMachine<EnemyState>,
+    pub enemy: Enemy,
+    pub brain: Brain,
+    pub sight: Sight,
+    pub health: Health,
+    pub stats: Stats,
+    pub resist: Resist,
+    pub effects: Effects,
+    pub sources: Vec<(u64, u64)>,
+    pub buckets: AilmentBuckets,
+    pub tags: Tags,
+    pub abilities: Option<Abilities>,
+    pub knockback: Option<Knockback>,
+    pub hitbox: Option<Hitbox>,
+    /// Its hitbox's activation's targets.
+    pub hit: Vec<u64>,
+    /// Each target its touch times: (save ID, seconds since its hit, since
+    /// they met).
+    pub touches: Vec<(u64, f32, f32)>,
+    /// What a troll holds over its head, by save ID.
+    pub held: Option<u64>,
+}
+
+/// An orb: its save ID, kind, point and the seconds before it fades.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OrbSave {
+    pub id: u64,
+    pub kind: OrbKind,
+    pub position: [f32; 2],
+    pub left: f32,
+}
+
+/// A throw in flight: the body's and the thrower's save IDs, the
+/// thrower's damage factor at the throw and the seconds it still credits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThrowSave {
+    pub body: u64,
+    pub thrower: u64,
+    pub factor: f32,
+    pub left: f32,
 }
 
 /// A moving platform: where it is and where its path has it going.
@@ -534,6 +694,42 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .into_iter()
         .filter_map(|(id, entity)| capture_dummy(world, id, entity))
         .collect();
+    let enemies = enemies::live(world)
+        .into_iter()
+        .filter_map(|(id, entity)| capture_enemy(world, id, entity))
+        .collect();
+    let mut throws: Vec<ThrowSave> = world
+        .get_resource::<Throws>()
+        .map(|throws| {
+            throws
+                .0
+                .iter()
+                .filter_map(|throw| {
+                    Some(ThrowSave {
+                        body: world.get::<SaveId>(throw.body)?.0,
+                        thrower: throw.thrower,
+                        factor: throw.factor,
+                        left: throw.left,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    throws.sort_by_key(|throw| throw.body);
+    let mut orbs: Vec<OrbSave> = world
+        .query::<(&Orb, &SaveId, &Position, &Lifetime, &Pickup)>()
+        .filter(|(.., pickup)| !pickup.is_collected())
+        .map(|(orb, id, at, lifetime, _)| OrbSave {
+            id: id.0,
+            kind: orb.kind,
+            position: at.0.to_array(),
+            left: lifetime.timer().remaining(),
+        })
+        .collect();
+    orbs.sort_by_key(|orb| orb.id);
+    let mut gone = dummy::gone(world);
+    gone.extend(enemies::gone(world));
+    gone.sort_unstable();
     Some(SaveGame {
         meta,
         next_id: world.resource::<SaveIds>().peek(),
@@ -554,7 +750,10 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         missiles,
         bullets,
         dummies,
-        gone: dummy::gone(world),
+        enemies,
+        throws,
+        orbs,
+        gone,
         cascades: world
             .get_resource::<Cascades>()
             .cloned()
@@ -601,6 +800,62 @@ fn capture_dummy(world: &World, id: u64, entity: Entity) -> Option<DummySave> {
             .cloned()
             .unwrap_or_default(),
         tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
+    })
+}
+
+/// A live enemy's part.
+fn capture_enemy(world: &World, id: u64, entity: Entity) -> Option<EnemySave> {
+    let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
+    let hitbox = world.get::<Hitbox>(entity).cloned();
+    let hit = hitbox.as_ref().map_or_else(Vec::new, |hitbox| {
+        hitbox
+            .hit_targets()
+            .iter()
+            .filter_map(|&target| id_of(target))
+            .collect()
+    });
+    let touches = world
+        .get::<ContactDamage>(entity)
+        .map_or_else(Vec::new, |contact| {
+            contact
+                .touches()
+                .filter_map(|touch| {
+                    Some((id_of(touch.target())?, touch.since_hit(), touch.since_met()))
+                })
+                .collect()
+        });
+    let enemy = *world.get::<Enemy>(entity)?;
+    Some(EnemySave {
+        id,
+        kind: enemy.kind,
+        map: enemies::placed(world, id),
+        position: world.get::<Position>(entity)?.0.to_array(),
+        velocity: world.get::<Velocity>(entity)?.0.to_array(),
+        controller: world.get::<PlatformerController>(entity).cloned(),
+        mover: world.get::<TopDownMover>(entity).cloned(),
+        displaced: world
+            .get::<Displaced>(entity)
+            .map(|displaced| displaced.0.clone()),
+        machine: world.get::<StateMachine<EnemyState>>(entity)?.clone(),
+        enemy,
+        brain: *world.get::<Brain>(entity)?,
+        sight: *world.get::<Sight>(entity)?,
+        health: world.get::<Health>(entity)?.clone(),
+        stats: world.get::<Stats>(entity)?.clone(),
+        resist: world.get::<Resist>(entity).cloned().unwrap_or_default(),
+        effects: world.get::<Effects>(entity).cloned().unwrap_or_default(),
+        sources: sources(world, entity),
+        buckets: world
+            .get::<AilmentBuckets>(entity)
+            .cloned()
+            .unwrap_or_default(),
+        tags: world.get::<Tags>(entity).cloned().unwrap_or_default(),
+        abilities: world.get::<Abilities>(entity).cloned(),
+        knockback: world.get::<Knockback>(entity).cloned(),
+        hitbox,
+        hit,
+        touches,
+        held: troll::held(world, entity).and_then(id_of),
     })
 }
 
@@ -730,6 +985,21 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             ),
         );
     }
+    for saved in &save.enemies {
+        let entity = match by_id.get(&saved.id) {
+            Some(&entity) if saved.map && world.has::<Enemy>(entity) => entity,
+            _ => {
+                let corner = Vec2::from(saved.position);
+                let Some(entity) = enemies::spawn(world, saved.kind, corner, SaveId(saved.id))
+                else {
+                    continue;
+                };
+                by_id.insert(saved.id, entity);
+                entity
+            }
+        };
+        restore_enemy(world, entity, saved);
+    }
     for ball in &save.balls {
         let entity = toys::restore_ball(world, ball.small, Vec2::from(ball.position));
         world.insert_bundle(
@@ -767,6 +1037,15 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             world.insert(entity, Frozen { left });
         }
     }
+    for orb in &save.orbs {
+        drops::spawn(
+            world,
+            orb.kind,
+            Vec2::from(orb.position),
+            SaveId(orb.id),
+            orb.left,
+        );
+    }
     if let Some(hole) = &save.black_hole {
         let entity = toys::restore_hole(world, Vec2::from(hole.position));
         world.insert_bundle(entity, (SaveId(hole.id), BlackHole { left: hole.left }));
@@ -793,17 +1072,48 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         .query::<(Entity, &SaveId)>()
         .map(|(entity, id)| (id.0, entity))
         .collect();
-    let named = std::iter::once((player, &p.sources)).chain(
-        save.dummies
-            .iter()
-            .filter_map(|saved| Some((*by_id.get(&saved.id)?, &saved.sources))),
-    );
+    let named = std::iter::once((player, &p.sources))
+        .chain(
+            save.dummies
+                .iter()
+                .filter_map(|saved| Some((*by_id.get(&saved.id)?, &saved.sources))),
+        )
+        .chain(
+            save.enemies
+                .iter()
+                .filter_map(|saved| Some((*by_id.get(&saved.id)?, &saved.sources))),
+        );
     let named: Vec<(Entity, Vec<(u64, u64)>)> = named
         .map(|(entity, sources)| (entity, sources.clone()))
         .collect();
     for (entity, sources) in named {
         name_sources(world, entity, &sources, &by_id);
     }
+    for saved in &save.enemies {
+        if let Some(&entity) = by_id.get(&saved.id) {
+            name_targets(world, entity, saved, &by_id);
+        }
+    }
+    // Each troll's hold again, the object put back at its hands.
+    for saved in &save.enemies {
+        let held = saved.held.and_then(|id| by_id.get(&id).copied());
+        if let (Some(&entity), Some(held)) = (by_id.get(&saved.id), held) {
+            troll::pick_up(world, entity, held);
+        }
+    }
+    let throws = save
+        .throws
+        .iter()
+        .filter_map(|throw| {
+            Some(Throw {
+                body: *by_id.get(&throw.body)?,
+                thrower: throw.thrower,
+                factor: throw.factor,
+                left: throw.left,
+            })
+        })
+        .collect();
+    world.insert_resource(Throws(throws));
     world.insert_resource(save.cascades.clone());
     world.insert_resource(Hints {
         seen: save.hints.clone(),
@@ -813,6 +1123,76 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     });
     world.insert_resource(save.rng.clone());
     world.insert_resource(SaveIds::starting_at(save.next_id));
+}
+
+/// Puts a saved enemy's state over `entity`: its point, its driver or
+/// drivers, its machine and the rest; its targets wait for every entity to
+/// be back ([`name_targets`]).
+fn restore_enemy(world: &mut World, entity: Entity, saved: &EnemySave) {
+    place(world, entity, saved.position);
+    world.insert_bundle(
+        entity,
+        (
+            SaveId(saved.id),
+            Velocity(Vec2::from(saved.velocity)),
+            saved.machine.clone(),
+            saved.enemy,
+            saved.brain,
+            saved.sight,
+            saved.health.clone(),
+            saved.stats.clone(),
+            saved.resist.clone(),
+            saved.effects.clone(),
+            saved.buckets.clone(),
+            saved.tags.clone(),
+        ),
+    );
+    match &saved.controller {
+        Some(controller) => world.insert(entity, controller.clone()),
+        None => {
+            world.remove_component::<PlatformerController>(entity);
+        }
+    }
+    match &saved.mover {
+        Some(mover) => world.insert(entity, mover.clone()),
+        None => {
+            world.remove_component::<TopDownMover>(entity);
+        }
+    }
+    if let Some(mover) = &saved.displaced {
+        world.insert(entity, Displaced(mover.clone()));
+    }
+    if let Some(abilities) = &saved.abilities {
+        world.insert(entity, abilities.clone());
+    }
+    if let Some(knockback) = &saved.knockback {
+        world.insert(entity, knockback.clone());
+    }
+    if let Some(hitbox) = &saved.hitbox {
+        world.insert(entity, hitbox.clone());
+    }
+}
+
+/// Names a loaded enemy's targets again from their save IDs: its hitbox's
+/// activation's, so it hits none twice, and its touches', so each keeps its
+/// schedule.
+fn name_targets(
+    world: &mut World,
+    entity: Entity,
+    saved: &EnemySave,
+    by_id: &std::collections::HashMap<u64, Entity>,
+) {
+    if let Some(hitbox) = world.get_mut::<Hitbox>(entity) {
+        hitbox.set_hit_targets(saved.hit.iter().filter_map(|id| by_id.get(id).copied()));
+    }
+    if let Some(contact) = world.get_mut::<ContactDamage>(entity) {
+        contact.set_touches(
+            saved
+                .touches
+                .iter()
+                .filter_map(|&(id, hit, met)| Some(ContactTouch::new(*by_id.get(&id)?, hit, met))),
+        );
+    }
 }
 
 /// Names each of `entity`'s effect instances' source again, from its saved

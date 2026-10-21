@@ -78,17 +78,23 @@ fn cycling_the_summon_type_names_the_slots_icon() {
     };
     let dummy = sprite(&mut harness, SUMMONS[0].icon);
     assert_eq!(harness.tree().image_sprite(icon), Some(dummy));
-    // One type in (b): each way wraps to it, and the slot names its icon,
-    // whatever it showed before.
-    for action in [SUMMON_NEXT, SUMMON_PREV] {
+    // Each way steps through the types, wrapping, and the slot names the
+    // type's icon, whatever it showed before.
+    let last = SUMMONS.len() - 1;
+    for (action, selected) in [(SUMMON_NEXT, 1), (SUMMON_PREV, 0), (SUMMON_PREV, last)] {
         let other = sprite(&mut harness, "ex10_icon_gun");
         harness
             .world_mut()
             .resource_mut::<tungsten::core::ui::UiTree>()
             .set_image(icon, other, Vec2::splat(32.0));
         turn(&mut harness, action);
-        assert_eq!(harness.world().resource::<Summon>().selected, 0, "{action}");
-        assert_eq!(summon_type(harness.world()).name, "dummy");
-        assert_eq!(harness.tree().image_sprite(icon), Some(dummy), "{action}");
+        assert_eq!(
+            harness.world().resource::<Summon>().selected,
+            selected,
+            "{action}"
+        );
+        assert_eq!(summon_type(harness.world()).name, SUMMONS[selected].name);
+        let shown = sprite(&mut harness, SUMMONS[selected].icon);
+        assert_eq!(harness.tree().image_sprite(icon), Some(shown), "{action}");
     }
 }

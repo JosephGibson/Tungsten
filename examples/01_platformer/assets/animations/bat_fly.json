@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_0"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_1"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_2"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_3"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_4"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_bat_fly_5"
+    }
+  ],
+  "looping": true
+}

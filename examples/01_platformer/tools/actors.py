@@ -859,3 +859,803 @@ def build_dummy(images):
     if im.getbbox()[3] != DUMMY_FEET:
         raise ValueError(f'dummy: lowest pixel must sit on row {SOLE + 1}')
     images['dummy'] = im
+
+
+# ------------------------------------------------------------ the bestiary
+# 01 (c)'s five enemies, from the art-review sheet the owner reviewed on
+# 2026-10-21 (M75's plan). Each is posed per frame from one rig and drawn
+# unlit, with no normal or emissive map, so the kit's hit flash shows
+# through `damage_flash`; the moon catching their top and right edges and
+# their glowing eyes are painted into their colours. The walkers keep their
+# feet on a fixed row: the crawler's and the beetle's lowest pixel on row 60,
+# as the courier's is, the troll's on row 124 of its 128 frame.
+
+BIG = 128
+BIG_SOLE = 123  # the troll's lowest drawn row; the outline adds row 124
+
+
+def strand(points, widths):
+    """A polygon along `points`, each point its own width wide: a limb with
+    its muscles' swell, or a horn's taper."""
+    left, right = [], []
+    n = len(points)
+    for i, (x, y) in enumerate(points):
+        a, b = points[max(0, i - 1)], points[min(n - 1, i + 1)]
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy) or 1.0
+        nx, ny = -dy / length, dx / length
+        w = widths[i] / 2
+        left.append((x + nx * w, y + ny * w))
+        right.append((x - nx * w, y - ny * w))
+    return left + right[::-1]
+
+
+def speckle(canvas, region, keys, symbols, chance, only=None):
+    """Scatters `symbols` over `region`'s pixels already in `canvas`."""
+    for (x, y) in sorted(region):
+        here = canvas.get((x, y))
+        if here and here != 'o' and (only is None or here in only) and unit(keys, x, y) < chance:
+            canvas[(x, y)] = symbols[int(unit(keys, 'pick', x, y) * len(symbols))]
+
+
+def turned(points, pivot, angle):
+    """`points` turned by `angle` radians about `pivot`: a rig's limb, not a
+    raster, so the pixels stay crisp."""
+    cos, sin = math.cos(angle), math.sin(angle)
+    px, py = pivot
+    return [(px + (x - px) * cos - (y - py) * sin, py + (x - px) * sin + (y - py) * cos)
+            for x, y in points]
+
+
+# The wisp: a round flame with a face, self-lit like the fireball hazards.
+
+WISP_FRAMES = 8
+
+
+def wisp_canvas(t=0.0, flare=False, bob=0.0):
+    """A round flame with a face; its tongues stream up and behind, shorter
+    than the fireball's, longer and wider in a flare (its alert)."""
+    cx, cy = 32.0, 34.0 + bob
+    radius = 15.0 if flare else 12.0
+    reach = 15.0 if flare else 8.0
+    trail = math.atan2(-0.95, -0.3)
+    canvas = {}
+    for y in range(SIZE):
+        for x in range(SIZE):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            r = math.hypot(dx, dy)
+            theta = math.atan2(dy, dx)
+            behind = max(0.0, math.cos(theta - trail))
+            wave_a = 0.5 + 0.5 * math.sin(5 * theta - math.tau * 2 * t)
+            wave_b = 0.5 + 0.5 * math.sin(8 * theta + math.tau * 3 * t + 1.3)
+            tongues = 0.75 * wave_a ** 5 + 0.25 * wave_b ** 6
+            envelope = radius + 1.0 + behind ** 1.2 * (2 + reach * tongues) + (1 - behind) * 0.6 * wave_b
+            if r > envelope:
+                continue
+            heat = 1 - r / envelope + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.05
+            if r < radius:  # plasma swirling about the core
+                heat += 0.05 * math.sin(3 * theta + 0.4 * r - math.tau * t)
+            for limit, symbol in ((0.08, 'M'), (0.2, 'L'), (0.37, 'K'), (0.54, 'J'), (0.7, 'Y')):
+                if heat < limit:
+                    canvas[(x, y)] = symbol
+                    break
+            else:
+                canvas[(x, y)] = 'Z'
+    top = round(cy) - 3 - (1 if flare else 0)
+    for ex in (37, 44):  # dark eyes with a hot glint; wider in a flare
+        for y in range(top, round(cy) + 2):
+            for x in (ex, ex + 1) + ((ex + 2,) if flare else ()):
+                canvas[(x, y)] = 'M'
+        canvas[(ex + 1, top + 1)] = 'Z'
+    if flare:  # an open mouth
+        for x in range(39, 44):
+            for y in (round(cy) + 5, round(cy) + 6):
+                canvas[(x, y)] = 'M'
+    return canvas
+
+
+def wisp_float_frames():
+    """Its flame flickering, bobbing a pixel."""
+    frames = [to_image(wisp_canvas(i / WISP_FRAMES, bob=round(math.sin(i * math.tau / WISP_FRAMES))))
+              for i in range(WISP_FRAMES)]
+    return frames, [80] * WISP_FRAMES
+
+
+def wisp_flare_frames():
+    """Its alert: the flame flaring wide, eyes and mouth open."""
+    return [to_image(wisp_canvas(i / 6, flare=True)) for i in range(6)], [60] * 6
+
+
+# The crawler: alien and low, its plates and crystals frost-blue.
+
+CRAWLER_FRAMES = 6
+
+
+def crawler_canvas(phase=0.0, lunge=0.0):
+    """Five carapace plates, eight high-kneed jointed legs, a wedge head with
+    a cluster of four glowing eyes, mandibles and swept feelers, faceted ice
+    crystals growing from its back and a crystal sting; a faint cold glow
+    between its plates. `phase` steps its legs in two alternating sets of
+    four; `lunge` (0 to 1) rears its front and lifts its front leg."""
+    far_legs, near_legs, plates, head, crystals, feelers = (Part() for _ in range(6))
+    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not lunge else 0
+
+    def tilt(x):  # the front rises in a lunge
+        return (x - 30) * 0.12 * lunge
+
+    def stride(k):  # (forward offset, lift) of leg set k's foot
+        angle = math.tau * (phase + 0.5 * k)
+        return 3.0 * math.sin(angle), 2.5 * max(0.0, math.cos(angle))
+
+    centres = [(11, 51 - bob), (19, 49 - bob), (28, 48 - bob), (37, 48 - bob), (45, 49 - bob)]
+    for i, x in enumerate((10, 20, 30, 40)):
+        ahead, lift = stride((i + 1) % 2) if not lunge else (0.0, 0.0)
+        y0 = 50 - bob - tilt(x)
+        knee = ((x - 4 if i < 2 else x + 4) + ahead * 0.5, 39 - bob - tilt(x) - lift * 0.6)
+        foot = ((x - 8 if i < 2 else x + 7) + ahead, SOLE - 1 - lift)
+        far_legs.limb([(x + 2, y0), (knee[0] + 2, knee[1]), (foot[0] + 2, foot[1])], 2)
+    for i, x in enumerate((13, 23, 33, 43)):
+        ahead, lift = stride(i % 2) if not lunge else (0.0, 0.0)
+        y0 = 52 - bob - tilt(x)
+        knee = ((x - 5 if i < 2 else x + 5) + ahead * 0.5, 40 - bob - tilt(x) - lift * 0.6)
+        foot = ((x - 9 if i < 2 else x + 9) + ahead, SOLE - lift)
+        if lunge >= 0.5 and i == 3:
+            knee, foot = (x + 7, 32 - tilt(x)), (x + 14, 30 - tilt(x))
+        near_legs.limb([(x, y0), knee, foot], 2)
+    for cx, cy in centres:
+        plates.ellipse((cx, cy - tilt(cx)), 7, 6)
+    hx = 53 + round(3 * lunge)
+    hy = round(49 - bob - tilt(53) - 2 * lunge)
+    head.polygon([(hx - 6, hy - 5), (hx + 4, hy - 4), (hx + 9, hy), (hx + 4, hy + 4), (hx - 6, hy + 5)])
+    gape = 1 + round(2 * lunge)
+    for side in (-1, 1):  # mandibles
+        head.limb([(hx + 7, hy + side * 2), (hx + 10, hy + side * (2 + gape)), (hx + 9, hy + side * (4 + gape))], 2)
+    sweep = round(2 * lunge)
+    feelers.limb([(hx - 1, hy - 4), (hx + 2 + sweep, hy - 12), (hx - 4 + 2 * sweep, hy - 19)], 1)
+    feelers.limb([(hx + 2, hy - 4), (hx + 7 + sweep, hy - 11), (hx + 6 + 2 * sweep, hy - 18)], 1)
+    for i, (cx, cy) in enumerate(centres[1:4]):
+        top = cy - tilt(cx) - 6
+        h = 9 if i == 1 else 7
+        crystals.polygon([(cx - 3, top + 2), (cx + 2, top + 2), (cx + 1, top - h)])
+        crystals.polygon([(cx + 2, top + 2), (cx + 5, top + 1), (cx + 4, top - h + 4)])
+    crystals.polygon([(6, 50 - bob - tilt(6)), (2, 46 - bob - tilt(2)), (0, 41 - bob), (4, 47 - bob - tilt(4))])
+    canvas = compose([
+        (shade(far_legs.pixels(), '{', shadow='|'), None),
+        (shade(feelers.pixels(), '}', light='_'), None),
+        (shade(plates.pixels(), '}', light='_', shadow='{', back='|', rim='`'), None),
+        (shade(head.pixels(), ')', light='_', shadow='{', back='|', rim='`'), 'o'),
+        (shade(near_legs.pixels(), ')', light='}', shadow='{'), 'o'),
+    ])
+    for (ax, ay), (bx, _) in zip(centres, centres[1:]):  # the cold glow between plates
+        sx = (ax + bx) // 2 + 3
+        base = round(ay - tilt(ax))
+        for y in range(base - 5, base + 5):
+            if (sx, y) in canvas and canvas[(sx, y)] != 'o':
+                canvas[(sx, y)] = '|' if y % 3 else ','
+    for (x, y) in sorted(crystals.pixels()):
+        lit = (x + y) % 2 == 0 and unit('facet', x // 2, y // 3) < 0.6
+        canvas[(x, y)] = 'Ψ' if lit and unit('glint', x, y) < 0.25 else ('ϱ' if lit else '`')
+    for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1)):  # four glowing eyes
+        canvas[(hx + dx, hy + dy)] = 'Ψ' if (dx, dy) == (4, -1) else '`'
+    speckle(canvas, plates.pixels(), 'pore', ['{'], 0.05)
+    return outline(canvas)
+
+
+def crawler_walk_frames():
+    """Its legs stepping in two sets of four, its body rising between."""
+    frames = [to_image(crawler_canvas(i / CRAWLER_FRAMES)) for i in range(CRAWLER_FRAMES)]
+    return frames, [90] * CRAWLER_FRAMES
+
+
+def crawler_lunge_frames():
+    """The lunge's tell and leap: rearing, the front leg raised, jaws open."""
+    return [to_image(crawler_canvas(lunge=t)) for t in (0.35, 0.7, 1.0, 1.0)], [70, 70, 100, 160]
+
+
+# The beetle: a rhinoceros beetle of riveted iron, rusting.
+
+BEETLE_FRAMES = 6
+BEETLE_IRON = dict(base='Ω', light='χ', shadow='Φ', rim='ψ', back='B')
+IRON_TONES = ('Ω', 'χ', 'Φ', 'ψ', 'B', 'b', 'φ')
+
+
+def beetle_canvas(pose='walk', phase=0.0):
+    """A dome of banded wing cases with rows of punctures, a riveted shield
+    with a short horn, the long ridged horn of its head, red eyes, a fanned
+    antenna and mouthparts, legs with spines and hooked claws, belly plates,
+    scratches, and rust flaking along its seams, rim and rivets. `pose` is
+    `walk`, `paw` (a front foot scraping the ground before a charge) or
+    `charge` (head down, running); `phase` steps its legs."""
+    dip = 3 if pose == 'charge' else 0
+    amp = 4.0 if pose == 'charge' else 2.5
+    far, near, dome, plate, head, horn, horn2, belly = (Part() for _ in range(8))
+
+    def stride(k):  # (forward offset, lift) of leg set k's foot
+        angle = math.tau * (phase + 0.5 * k)
+        return amp * math.sin(angle), 2.0 * max(0.0, math.cos(angle))
+
+    bob = round(0.6 * abs(math.sin(math.tau * phase))) if pose != 'paw' else 0
+    for i, x in enumerate((17, 31, 43)):  # the far legs: sets B, A, B
+        ahead, lift = stride((i + 1) % 2) if pose != 'paw' else (0.0, 0.0)
+        far.limb([(x + 2, 52 - bob), (x - 2 + ahead * 0.5, 55 - bob - lift * 0.5),
+                  (x - 1 + ahead, SOLE - 2 - lift)], 3)
+    legs = []
+    # A width-3 limb reaches a row past its points, so its feet sit a row up.
+    for i, (hip, knee, foot) in enumerate((((21, 52), (15, 55), (16, SOLE - 1)),
+                                          ((33, 53), (31, 56), (34, SOLE - 1)),
+                                          ((45, 52), (50, 55), (51, SOLE - 1)))):
+        if pose == 'paw' and i == 2:  # the scraping foot: raised, forward, down, back
+            reach, lift = ((4, 7), (6, 4), (2, 0), (-3, 0))[int(phase * 4) % 4]
+            legs.append([(45, 51), (50 + reach // 2, 50 - lift // 2), (51 + reach, SOLE - 1 - lift)])
+            continue
+        ahead, lift = stride(i % 2) if pose != 'paw' else (0.0, 0.0)
+        legs.append([(hip[0], hip[1] - bob), (knee[0] + ahead * 0.5, knee[1] - bob - lift * 0.5),
+                     (foot[0] + ahead, foot[1] - lift)])
+    for leg in legs:
+        near.limb(leg, 3)
+    dome.ellipse((25, 47 - bob), 20, 17)
+    dome.draw.rectangle((0, 53 - bob, 63, 63), fill=0)
+    dome.rectangle((7, 47 - bob, 43, 53 - bob))
+    belly.polygon([(9, 52 - bob), (44, 52 - bob), (42, 55 - bob), (11, 55 - bob)])
+    plate.polygon([(39, 35 + dip - bob), (48, 33 + dip - bob), (53, 38 + dip - bob), (53, 49 + dip - bob),
+                   (41, 53 - bob)])
+    horn2.polygon(strand([(47, 35 + dip - bob), (50, 30 + dip - bob), (52, 27 + dip - bob)], [4, 2.5, 1]))
+    hx, hy = 56, 47 + dip - bob
+    head.ellipse((hx, hy), 5, 5)
+    horn_path = [(hx + 1, hy - 3), (hx + 4, hy - 9), (hx + 6, hy - 16), (hx + 5, hy - 21), (hx + 3, hy - 23)]
+    if pose == 'charge':  # the horn levelled at what it charges
+        horn_path = [(hx + 2, hy - 2), (hx + 6, hy - 6), (hx + 7, hy - 12), (hx + 7, hy - 17), (hx + 5, hy - 20)]
+    horn.polygon(strand(horn_path, [5, 4, 3, 2, 1]))
+    canvas = compose([
+        (shade(far.pixels(), 'b', shadow='o'), None),
+        (shade(belly.pixels(), 'b', light='B', shadow='o'), None),
+        (shade(dome.pixels(), **BEETLE_IRON), None),
+        (shade(plate.pixels(), 'Φ', light='φ', shadow='b', rim='χ'), 'o'),
+        (shade(horn2.pixels(), 'B', light='ψ', shadow='b'), None),
+        (shade(head.pixels(), 'B', light='ψ', shadow='b'), 'o'),
+        (shade(horn.pixels(), 'Ω', light='χ', shadow='Φ', rim='φ'), 'o'),
+        (shade(near.pixels(), 'B', light='Ω', shadow='b'), 'o'),
+    ])
+    top = 31 - bob
+    rivets = []
+    for bx in (14, 25, 35):  # bands across the wing cases, rivets along them
+        for y in range(top, 53 - bob):
+            x = bx + round((y - top) * 0.18)
+            if canvas.get((x, y)) in ('Ω', 'χ', 'Φ', 'ψ'):
+                canvas[(x, y)] = 'Φ'
+                if (y - top) % 6 == 3:
+                    canvas[(x + 1, y)] = 'χ'
+                    rivets.append((x + 1, y))
+    for bx in (19, 30):  # rows of punctures between the bands
+        for y in range(top + 3, 50 - bob, 3):
+            x = bx + round((y - top) * 0.18)
+            if canvas.get((x, y)) == 'Ω':
+                canvas[(x, y)] = 'Φ'
+    for x in range(8, 44):  # the cases' lower rim
+        if canvas.get((x, 50 - bob), 'o') != 'o':
+            canvas[(x, 50 - bob)] = 'ψ' if x % 2 else 'Φ'
+    for x in range(12, 43, 5):  # belly plates
+        for y in (53 - bob, 54 - bob):
+            if canvas.get((x, y)) in ('b', 'B'):
+                canvas[(x, y)] = 'o'
+    for x, y in ((44, 39 + dip - bob), (48, 37 + dip - bob), (50, 43 + dip - bob)):  # the shield's rivets
+        if (x, y) in canvas:
+            canvas[(x, y)] = 'χ'
+    for x, y in horn_path[1:4]:  # ridges along the horn
+        if (x, y) in canvas:
+            canvas[(x, y)] = 'Φ'
+    for x0, y0 in ((12, 38 - bob), (22, 35 - bob), (33, 41 - bob)):  # scratches
+        for t in range(3):
+            if canvas.get((x0 + t, y0 + t)) in IRON_TONES:
+                canvas[(x0 + t, y0 + t)] = 'ψ'
+    seams = {(bx + round((y - top) * 0.18), y) for bx in (14, 25, 35) for y in range(top, 53 - bob)}
+    for (x, y), symbol in sorted(canvas.items()):  # rust along the seams and the rim
+        if symbol not in IRON_TONES:
+            continue
+        noise = (unit('rust-a', x // 3, (y + bob) // 3) + unit('rust-b', x // 2, (y + bob) // 2)) / 2
+        near_seam = any((x + dx, y) in seams for dx in (-1, 0, 1)) or 47 - bob <= y <= 51 - bob
+        if noise + (0.22 if near_seam else 0.0) > 0.8:
+            canvas[(x, y)] = 'a' if noise > 0.86 else ('(' if (x + y + bob) % 2 else '"')
+    for x, y in rivets[::2]:  # streaks running down from rivets
+        for t in range(1, 4):
+            if canvas.get((x, y + t), 'o') != 'o':
+                canvas[(x, y + t)] = '(' if t < 3 else '"'
+    for leg in legs:  # spines along the shins, hooked claws
+        (kx, ky), (fx, fy) = leg[1], leg[2]
+        for t in (0.35, 0.65):
+            canvas[(round(kx + (fx - kx) * t) + 2, round(ky + (fy - ky) * t))] = 'ψ'
+        canvas[(round(fx) + 2, round(fy))] = 'B'
+    canvas[(hx + 6, hy + 1)] = 'b'  # mouthparts
+    canvas[(hx + 6, hy + 2)] = 'B'
+    for x, y in ((hx + 4, hy - 1), (hx + 6, hy - 2), (hx + 7, hy - 3), (hx + 7, hy - 1), (hx + 8, hy - 2)):
+        canvas[(x, y)] = 'Φ' if x < hx + 7 else 'ψ'  # a fanned antenna
+    for (ex, ey), tone in (((hx + 1, hy - 2), 'z'), ((hx + 2, hy - 2), 'F'), ((hx + 1, hy - 1), 'F'),
+                           ((hx + 2, hy - 1), 'F'), ((hx + 1, hy), 'E'), ((hx + 2, hy), 'z')):
+        canvas[(ex, ey)] = tone  # red eyes, glowing
+    canvas[(hx + 2, hy - 2)] = 'Ψ'
+    canvas[(hx + 3, hy - 1)] = 'E'
+    if pose == 'charge':  # dust kicked up behind
+        for k, (dx, dy) in enumerate(((-2, 0), (-5, -2), (-8, 1), (-4, -3), (-11, -1))):
+            if (k + int(phase * 4)) % 2 == 0 or k < 2:
+                canvas[(6 + dx, SOLE - 1 + dy)] = 'σ'
+    elif pose == 'paw' and int(phase * 4) % 4 >= 2:  # dust from the scrape
+        for dx, dy in ((-1, -1), (-4, -2), (-6, 0)):
+            canvas[(50 + dx, SOLE - 1 + dy)] = 'σ'
+    return outline(canvas)
+
+
+def beetle_walk_frames():
+    """Its legs stepping in two alternating sets of three."""
+    frames = [to_image(beetle_canvas('walk', i / BEETLE_FRAMES)) for i in range(BEETLE_FRAMES)]
+    return frames, [110] * BEETLE_FRAMES
+
+
+def beetle_paw_frames():
+    """The charge's tell: a front foot pawing the ground, raising dust."""
+    return [to_image(beetle_canvas('paw', i / 4)) for i in range(4)], [100] * 4
+
+
+def beetle_charge_frames():
+    """The charge: head down, horn levelled, legs churning, dust behind."""
+    return [to_image(beetle_canvas('charge', i / 4)) for i in range(4)], [60] * 4
+
+
+# The bat: near-black fur, dark purple wings with their bones showing.
+
+BAT_FUR = dict(base='[', light=']', shadow='θ', rim='v')
+BAT_WING = dict(base='Δ', light='Π', shadow='Γ', rim='Λ')
+BAT_FLAPS = 6
+
+
+def scallop(left, right, low, high, points=5):
+    """A wing's trailing edge from `left` to `right`, dipping to `low` and
+    rising to `high` between its finger tips."""
+    edge = []
+    for i in range(points * 2 + 1):
+        u = i / (points * 2)
+        x = left[0] + (right[0] - left[0]) * u
+        y = (low if i % 2 == 0 else high) + (left[1] - right[1]) * (1 - u) * 0.2
+        edge.append((x, y))
+    return edge
+
+
+def bat_canvas(pose='fly', flap=0.0, flash=None, sway=0.0):
+    """A near-black furred body and dark purple wings with their finger
+    bones showing, red eyes and small fangs. `pose` is `fly` (its wings at
+    `flap` radians above level), `roost` (hanging by its feet, swaying by
+    `sway` radians) or `dive` (wings swept back); `flash` outlines it in
+    that symbol, the tell before its dive."""
+    wing, fur, head = Part(), Part(), Part()
+    bones = []
+    if pose == 'roost':
+        pivot = (32, 1)
+        fur.limb(turned([(30, 1), (31, 6)], pivot, sway), 2)
+        fur.limb(turned([(34, 1), (33, 6)], pivot, sway), 2)
+        (cx, cy), = turned([(32, 17)], pivot, sway)
+        wing.ellipse((cx, cy), 9, 12)
+        wing.polygon(turned([(23, 10), (41, 10), (37, 30), (27, 30)], pivot, sway))
+        (hx, hy), = turned([(32, 31)], pivot, sway)
+        head.ellipse((hx, hy), 5, 4)
+        head.polygon(turned([(28, 33), (30, 38), (31, 33)], pivot, sway))
+        head.polygon(turned([(33, 33), (34, 38), (36, 33)], pivot, sway))
+        eyes = [point(p) for p in turned([(30, 30), (34, 30)], pivot, sway)]
+        fangs = [point(p) for p in turned([(31, 28), (33, 28)], pivot, sway)]
+        bones = [turned([(26, 9), (27, 29)], pivot, sway), turned([(38, 9), (37, 29)], pivot, sway)]
+    elif pose == 'dive':
+        fur.ellipse((38, 38), 7, 5)
+        head.ellipse((47, 44), 5, 4)
+        head.polygon([(44, 40), (45, 34), (48, 40)])
+        upper = [(36, 33), (8, 12), (14, 20), (10, 23), (18, 26), (14, 30), (24, 31), (34, 37)]
+        lower = [(34, 41), (6, 34), (13, 38), (9, 42), (18, 43), (15, 47), (26, 45), (36, 43)]
+        wing.polygon(turned(upper, (36, 35), flap))
+        wing.polygon(turned(lower, (35, 42), -flap))
+        eyes, fangs = [(49, 44)], [(50, 47)]
+        bones = [turned([(34, 34), (9, 13)], (36, 35), flap), turned([(33, 36), (15, 29)], (36, 35), flap),
+                 turned([(34, 42), (7, 35)], (35, 42), -flap), turned([(34, 43), (16, 46)], (35, 42), -flap)]
+    else:
+        lift = round(-1.5 * math.sin(flap))  # the body rises as the wings beat down
+        fur.ellipse((32, 30 + lift), 5, 8)
+        fur.limb([(30, 37 + lift), (29, 42 + lift)], 2)
+        fur.limb([(34, 37 + lift), (35, 42 + lift)], 2)
+        head.ellipse((32, 21 + lift), 5, 4)
+        head.polygon([(28, 19 + lift), (29, 12 + lift), (31, 18 + lift)])
+        head.polygon([(33, 18 + lift), (35, 12 + lift), (36, 19 + lift)])
+        for side in (-1, 1):
+            root, tip = (32 + side * 3, 25 + lift), (32 + side * 29, 15 + lift)
+            edge = scallop(tip, (32 + side * 4, 33 + lift), 33 + lift, 27 + lift)
+            elbow = (32 + side * 18, 14 + lift)
+            fold = 1 - 0.15 * max(0.0, -flap)  # the wing folds a little as it beats down
+            tip, elbow = ((root[0] + (x - root[0]) * fold, y) for x, y in (tip, elbow))
+            edge = [(root[0] + (x - root[0]) * fold, y) for x, y in edge]
+            outline_points = turned([root, (root[0] + (side * 15) * fold, 13 + lift), tip] + edge, root,
+                                    -side * flap)
+            wing.polygon(outline_points)
+            elbow, tip = turned([elbow, tip], root, -side * flap)
+            edge = turned(edge, root, -side * flap)
+            bones.append([root, elbow, tip])
+            for k in (2, 4, 6):  # fingers fanning to the trailing spikes
+                bones.append([elbow, edge[k]])
+        eyes, fangs = [(30, 21 + lift), (34, 21 + lift)], [(31, 24 + lift), (33, 24 + lift)]
+    canvas = compose([(shade(wing.pixels(), **BAT_WING), None),
+                      (shade(fur.pixels(), **BAT_FUR), 'o'),
+                      (shade(head.pixels(), **BAT_FUR), 'o')])
+    wing_px = wing.pixels()
+    for path in bones:  # finger bones across the membrane
+        line = Part()
+        line.limb(path, 1)
+        for p in sorted(line.pixels()):
+            if p in wing_px and canvas.get(p) in ('Δ', 'Γ', 'Π'):
+                canvas[p] = 'Λ' if (p[0] + p[1]) % 3 else 'Π'
+    speckle(canvas, wing_px, 'membrane', ['Γ'], 0.12, only=('Δ',))
+    for eye in eyes:
+        canvas[eye] = 'F'
+    for fang in fangs:
+        canvas[fang] = 'w'
+    return outline(canvas, flash or 'o')
+
+
+def bat_roost_frames():
+    """Hanging from a ceiling by its feet, swaying, wings wrapped."""
+    return [to_image(bat_canvas('roost', sway=a)) for a in (0.0, 0.05, 0.0, -0.05)], [220] * 4
+
+
+def bat_fly_frames():
+    """Its wings beating."""
+    flaps = [0.55 * math.sin(i * math.tau / BAT_FLAPS) for i in range(BAT_FLAPS)]
+    return [to_image(bat_canvas('fly', flap)) for flap in flaps], [70] * BAT_FLAPS
+
+
+def bat_windup_frames():
+    """The dive's tell: wings raised and its outline flashing white."""
+    poses = ((0.2, 'Ψ'), (0.4, 'x'), (0.55, 'Ψ'), (0.55, 'x'))
+    return [to_image(bat_canvas('fly', flap, flash)) for flap, flash in poses], [60] * 4
+
+
+def bat_dive_frames():
+    """The dive: wings swept back, fluttering."""
+    return [to_image(bat_canvas('dive', flap)) for flap in (0.0, 0.07)], [60] * 2
+
+
+# The troll: lanky on a 128 frame, no hump, built on a skeleton.
+
+TROLL_MOSS = dict(base='g', light='W', shadow='T', rim='m', back='N')
+TROLL_MOSS_FAR = dict(base='T', light='g', shadow='N', rim='G')
+TROLL_HIDE = dict(base='(', light='a', shadow='[', rim="'")
+TROLL_THIGH, TROLL_SHIN = 23.0, 19.0
+TROLL_WALK = 8
+# Each hand in its forearm's frame, wrist at the origin and fingers along +y:
+# its palm, its fingers (each a bone chain) and, on the near hand, a thumb.
+NEAR_PALM = [(-6, -1), (5, -1), (7, 9), (-7, 10)]
+NEAR_FINGERS = [[(-6, 8), (-7, 15), (-6, 19)], [(-2, 9), (-2, 17), (-1, 21)],
+                [(2, 9), (3, 17), (3, 21)], [(6, 8), (7, 15), (6, 18)], [(5, 1), (9, 5), (9, 9)]]
+FAR_PALM = [(-5, 0), (5, 0), (6, 9), (-6, 10)]
+FAR_FINGERS = [[(-4, 9), (-5, 16)], [(0, 10), (0, 18)], [(4, 9), (5, 15)]]
+# A fist, for a hand raised overhead or swung: the fingers curled under.
+FIST = [(-6, -1), (6, -1), (7, 6), (4, 9), (-4, 9), (-7, 6)]
+FIST_KNUCKLES = [(-4, 8), (-1, 9), (2, 9), (5, 7)]
+NEAR_FOOT = [(-6, -1), (5, -1), (13, 2), (15, 6), (-7, 6)]
+FAR_FOOT = [(-6, -1), (3, -1), (10, 2), (11, 6), (-7, 6)]
+
+
+@dataclass
+class TrollPose:
+    """One frame of the troll, facing right. Positions are frame pixels."""
+    crouch: float = 0.0  # the hips drop this far: a slam's or a pickup's bend
+    lean: float = 0.0  # the chest ahead of the hips; negative leans back
+    breath: float = 0.0  # the chest's rise
+    lift: float = 0.0  # the head's rise
+    near_ankle: tuple = (72.0, 117.0)
+    far_ankle: tuple = (52.0, 117.0)
+    near_toe: float = 0.0  # radians a raised foot's toes point down
+    far_toe: float = 0.0
+    near_elbow: tuple = (91.0, 68.0)
+    near_wrist: tuple = (94.0, 91.0)
+    far_elbow: tuple = (52.0, 67.0)
+    far_wrist: tuple = (52.0, 89.0)
+    hands: str = 'open'  # open, fists, or clasped overhead (both hands as one)
+    sway: float = 0.0  # the hide's front flap swings this far
+    dust: bool = False  # a slam's impact kicks up dust at the hands
+
+
+def in_hand(wrist, elbow, points):
+    """`points` from a hand's own frame to the frame: the wrist at the
+    origin, the fingers along the forearm's direction."""
+    angle = math.atan2(wrist[1] - elbow[1], wrist[0] - elbow[0]) - math.pi / 2
+    return turned([(wrist[0] + x, wrist[1] + y) for x, y in points], wrist, angle)
+
+
+def troll_canvas(pose):
+    """Lanky, no hump, on a skeleton: a thick neck that flows from the upper
+    back into the skull, rounded shoulders, arms with a swell above a bony
+    elbow and forearms thickening to big long-fingered hands, a lean chest
+    over a narrow waist, long legs with bony knees and calves, broad clawed
+    feet. A long head thrust forward: a jutting brow, a deep-set ember eye,
+    a hooked nose, an underbite with tusks, a pointed ear with a ring, mossy
+    hair down the neck. A hide loincloth on a strap that follows the waist,
+    its front flap folded with a ragged hem, its back flap behind the far
+    thigh, a bone at the knot; a scar, ribs, warts, nails."""
+    size = (BIG, BIG)
+    names = ('far_leg', 'far_foot', 'far_arm', 'far_hand', 'back_flap', 'glute', 'torso',
+             'far_shoulder', 'neck', 'near_leg', 'near_foot', 'strap', 'front_flap', 'head', 'brow',
+             'nose', 'jaw', 'tusks', 'ear', 'near_shoulder', 'near_arm', 'near_hand')
+    P = {name: Part(size) for name in names}
+    c, lean, up = pose.crouch, pose.lean, pose.breath
+
+    def chest(x, y):  # a point on the trunk: it leans and breathes above the waist
+        share = max(0.0, min(1.0, (76 - y) / 40))
+        return (x + lean * share, y + c - up * share)
+
+    # Legs: thigh, a bony knee, a swelling calf, broad feet with toes.
+    ankles = {}
+    for side, hip, ankle, toe, foot, widths in (
+            ('far', (59, 76 + c), pose.far_ankle, pose.far_toe, FAR_FOOT, ([13, 11, 8], [8, 9, 6], 4)),
+            ('near', (69, 77 + c), pose.near_ankle, pose.near_toe, NEAR_FOOT, ([14, 12, 9], [9, 11, 7], 5))):
+        knee, end = two_bone(hip, ankle, TROLL_THIGH, TROLL_SHIN, 1)
+        thigh, shin, knob = widths
+        P[side + '_leg'].polygon(strand([hip, ((hip[0] + knee[0]) / 2, (hip[1] + knee[1]) / 2), knee], thigh))
+        P[side + '_leg'].ellipse(knee, knob, knob)
+        P[side + '_leg'].polygon(strand([knee, ((knee[0] + end[0]) / 2, (knee[1] + end[1]) / 2), end], shin))
+        P[side + '_foot'].polygon(turned([(end[0] + x, end[1] + y) for x, y in foot], end, toe))
+        ankles[side] = end
+    # The trunk: a lean chest over a narrow waist, the glutes behind the hide.
+    P['glute'].ellipse((63, 75 + c), 11, 6)
+    P['torso'].polygon([chest(66, 36), chest(85, 43), chest(87, 52), chest(84, 60), chest(80, 68),
+                        chest(77, 76), chest(60, 76), chest(58, 62), chest(60, 48)])
+    far_shoulder, near_shoulder = chest(66, 42), chest(82, 45)
+    P['far_shoulder'].ellipse(far_shoulder, 6, 7)
+    P['near_shoulder'].ellipse(near_shoulder, 7, 8)
+    # The neck flows from the upper back into the skull's base, thick; the
+    # head drops as the chest leans past the hips.
+    hx = 90 + lean
+    hy = 24 + c - up - pose.lift + max(0.0, lean) * 0.8
+    back, front = chest(66, 36), chest(85, 43)
+    P['neck'].polygon([back, (hx - 8, hy - 6), (hx, hy + 2), (hx + 3, hy + 10), front, chest(72, 42)])
+    P['head'].ellipse((hx, hy), 10, 11)
+    P['brow'].polygon([(hx - 3, hy - 9), (hx + 9, hy - 8), (hx + 10, hy - 4), (hx + 1, hy - 5)])
+    P['nose'].polygon([(hx + 6, hy - 6), (hx + 15, hy), (hx + 14, hy + 5), (hx + 9, hy + 6), (hx + 7, hy + 1)])
+    P['jaw'].polygon([(hx - 6, hy + 4), (hx + 10, hy + 6), (hx + 9, hy + 11), (hx - 3, hy + 13)])
+    P['tusks'].polygon([(hx + 3, hy + 6), (hx + 4, hy + 1), (hx + 6, hy + 6)])
+    P['tusks'].polygon([(hx + 7, hy + 6), (hx + 8, hy + 2), (hx + 10, hy + 6)])
+    P['ear'].polygon([(hx - 6, hy - 6), (hx - 18, hy - 14), (hx - 8, hy + 3)])
+    # The hide: a strap along the waist, the front flap, the back flap.
+    w = c
+    P['strap'].polygon(strand([(53, 73 + w), (66, 75 + w), (81, 74 + w)], [3, 3, 3]))
+    s = pose.sway
+    P['front_flap'].polygon([(58, 75 + w), (81, 74 + w), (82 + s, 83 + w), (80 + s, 92 + w), (77 + s, 88 + w),
+                             (74 + s, 95 + w), (71 + s, 89 + w), (67 + s, 94 + w), (64 + s, 89 + w),
+                             (60 + s, 93 + w), (57, 84 + w)])
+    P['back_flap'].polygon([(51, 73 + w), (59, 75 + w), (58 - s, 87 + w), (55 - s, 91 + w), (51 - s, 86 + w)])
+    # Arms: a shoulder, a swelling upper arm, a bony elbow, a forearm that
+    # thickens to the hand; each hand turned with its forearm. The elbows
+    # and wrists are the pose's own joints, so a hanging arm keeps the
+    # sheet's bend and the far one hangs behind the far leg.
+    hands = {}
+    for side, root, elbow, end, upper, fore, palm, fingers in (
+            ('far', chest(64, 43), pose.far_elbow, pose.far_wrist, [10, 9, 7], [7, 10, 8], FAR_PALM,
+             FAR_FINGERS),
+            ('near', chest(83, 46), pose.near_elbow, pose.near_wrist, [12, 10, 8], [8, 11, 9], NEAR_PALM,
+             NEAR_FINGERS)):
+        arm = P[side + '_arm']
+        arm.polygon(strand([root, ((root[0] + elbow[0]) / 2, (root[1] + elbow[1]) / 2), elbow], upper))
+        arm.ellipse(elbow, 4, 4)
+        arm.polygon(strand([elbow, ((elbow[0] + end[0]) / 2, (elbow[1] + end[1]) / 2), end], fore))
+        hand = P[side + '_hand']
+        if pose.hands == 'fists':
+            hand.polygon(in_hand(end, elbow, FIST))
+        elif pose.hands == 'open':
+            hand.polygon(in_hand(end, elbow, palm))
+            for bones in fingers:
+                hand.limb(in_hand(end, elbow, bones), 3)
+        hands[side] = (end, elbow, pose.hands != 'open')
+    if pose.hands == 'clasped':  # both hands locked together over the head
+        (nx, ny), (fx, fy) = pose.near_wrist, pose.far_wrist
+        P['near_hand'].ellipse(((nx + fx) / 2, min(ny, fy) - 1), 10, 4)
+    canvas = compose([
+        (shade(P['far_arm'].pixels(), **TROLL_MOSS_FAR), None),
+        (shade(P['far_hand'].pixels(), **TROLL_MOSS_FAR), None),
+        (shade(P['far_leg'].pixels(), **TROLL_MOSS_FAR), 'o'),
+        (shade(P['far_foot'].pixels(), **TROLL_MOSS_FAR), None),
+        (shade(P['back_flap'].pixels(), '[', light='(', shadow='o'), None),
+        (shade(P['glute'].pixels(), **TROLL_MOSS), None),
+        (shade(P['far_shoulder'].pixels(), **TROLL_MOSS_FAR), None),
+        (shade(P['torso'].pixels(), **TROLL_MOSS), None),
+        (shade(P['neck'].pixels(), **TROLL_MOSS), None),
+        (shade(P['near_leg'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['near_foot'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['front_flap'].pixels(), **TROLL_HIDE), 'o'),
+        (shade(P['strap'].pixels(), '"', light="'", shadow='('), None),
+        (shade(P['ear'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['head'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['jaw'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['brow'].pixels(), 'T', light='g', shadow='N', rim='G'), None),
+        (shade(P['nose'].pixels(), 'G', light='W', shadow='T', rim='m'), 'o'),
+        (shade(P['tusks'].pixels(), 'w', light='Z', shadow='σ'), None),
+        (shade(P['near_shoulder'].pixels(), **TROLL_MOSS), None),
+        (shade(P['near_arm'].pixels(), **TROLL_MOSS), 'o'),
+        (shade(P['near_hand'].pixels(), **TROLL_MOSS), 'o'),
+    ])
+    skin = set().union(*(P[n].pixels() for n in ('torso', 'near_leg', 'near_arm', 'head', 'neck', 'near_shoulder')))
+    speckle(canvas, skin, 'wart', ['T'], 0.025, only=('g',))
+    hx, hy = round(hx), round(hy)
+    for x, y in ((hx + 3, hy - 3), (hx + 4, hy - 4), (hx + 7, hy - 3), (hx + 4, hy - 2)):
+        canvas[(x, y)] = 'N'  # the eye's socket under the brow
+    canvas[(hx + 5, hy - 3)] = 'J'  # a deep-set ember eye
+    canvas[(hx + 6, hy - 3)] = 'K'
+    canvas[(hx + 12, hy + 4)] = 'N'  # a nostril
+    canvas[(hx + 13, hy + 4)] = 'T'
+    for t in range(4):  # the ear's inside
+        canvas[(hx - 9 - t * 2, hy - 7 - t * 2)] = 'T'
+        canvas[(hx - 8 - t * 2, hy - 6 - t * 2)] = 'T'
+    for x in range(hx - 2, hx + 9):  # the mouth's line under the tusks
+        if canvas.get((x, hy + 6)) in ('g', 'W', 'm', 'T'):
+            canvas[(x, hy + 6)] = 'N'
+    for dx, dy in ((0, 0), (1, 1), (0, 2), (-1, 1)):  # a ring in the ear
+        canvas[(hx - 10 + dx, hy - 6 + dy)] = 'A'
+    for i in range(8):  # mossy hair from the scalp down the back of the neck
+        x, y = hx - 2 - i * 3, hy - 9 + i * 3 + (1 if i % 2 else 0)
+        for t in range(4):
+            canvas[(x - t // 2, y - t)] = 'D' if t < 2 else ('Q' if t < 3 else 'U')
+            canvas[(x - t // 2 + 1, y - t)] = 'D' if t < 3 else 'Q'
+    trunk = P['torso'].pixels()
+    for t in range(8):  # a scar across the chest, stitched
+        x, y = point(chest(75 + t, 49 + t))
+        if (x, y) in trunk and canvas.get((x, y)) in ('g', 'W', 'T', 'm'):
+            canvas[(x, y)] = 'm'
+            if t % 3 == 1 and canvas.get((x - 1, y + 1)) in ('g', 'T'):
+                canvas[(x - 1, y + 1)] = 'W'
+    for i in range(3):  # ribs along the flank
+        for t in range(6):
+            x, y = point(chest(64 + t, 54 + i * 5 + round(math.sin(t / 2) * 1.0)))
+            if (x, y) in trunk and canvas.get((x, y)) in ('g', 'W'):
+                canvas[(x, y)] = 'T'
+    navel = point(chest(78, 67))
+    if canvas.get(navel) in ('g', 'W'):
+        canvas[navel] = 'T'
+    near_hand, near_elbow, near_fist = hands['near']
+    knuckles = FIST_KNUCKLES if near_fist else [(-6, 9), (-2, 9), (2, 9), (6, 9)]
+    for x, y in in_hand(near_hand, near_elbow, knuckles):
+        if canvas.get(point((x, y))) in ('g', 'T', 'm'):
+            canvas[point((x, y))] = 'W'  # knuckles
+    if not near_fist:
+        for bones in NEAR_FINGERS:  # nails at the finger tips
+            tip = point(in_hand(near_hand, near_elbow, [bones[-1]])[0])
+            if tip in canvas:
+                canvas[tip] = 'w'
+    folds = ((63, 79), (69, 78), (75, 78))
+    for x, y in folds:  # folds in the front flap
+        for t in range(8):
+            if canvas.get((x, round(y + c + t))) in ('(', 'a', "'"):
+                canvas[(x, round(y + c + t))] = '['
+    for x in range(59, 81, 3):  # stitches along its top
+        if canvas.get((x, round(76 + c))) in ('(', 'a', "'"):
+            canvas[(x, round(76 + c))] = 'a'
+    for x in range(69, 75):  # a bone at the knot
+        canvas[(x, round(74 + c))] = 'w'
+    for x, y in ((68, 73), (68, 75), (75, 73), (75, 75)):
+        canvas[(x, round(y + c))] = 'w'
+    for side, claws, toes in (('near', ((12, 4), (14, 5), (9, 5)), (7, 10)), ('far', ((8, 4), (10, 5)), ())):
+        ankle = ankles[side]
+        toe = pose.near_toe if side == 'near' else pose.far_toe
+        for x, y in turned([(ankle[0] + dx, ankle[1] + dy) for dx, dy in claws], ankle, toe):
+            if point((x, y)) in canvas:
+                canvas[point((x, y))] = 'w'  # toe claws
+        for x, y in turned([(ankle[0] + dx, ankle[1] + 3) for dx in toes], ankle, toe):
+            if canvas.get(point((x, y))) in ('g', 'W', 'm'):
+                canvas[point((x, y))] = 'T'  # toes
+    if pose.dust:  # the slam's dust at the hands
+        for hand, _, _ in hands.values():
+            for k in range(6):
+                x = round(hand[0] + (k - 2.5) * 4 + unit('slam', k) * 3)
+                y = BIG_SOLE - round(unit('slam-y', k) * 5)
+                if (x, y) not in canvas and 0 < x < BIG - 1:
+                    canvas[(x, y)] = 'σ' if k % 2 else 'τ'
+    return outline(canvas, 'o', size)
+
+
+def troll_idle_frames():
+    """Breathing: the chest rising, its hands swaying with it."""
+    poses = [TrollPose(breath=b, near_elbow=(91, 68 - b), near_wrist=(94 - b * 0.5, 91 - b),
+                       far_elbow=(52, 67 - b), far_wrist=(52, 89 - b)) for b in (0, 1, 1, 0)]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [260, 220, 260, 220]
+
+
+def troll_walk_frames():
+    """A heavy stride: each foot lifting and reaching while the other plants,
+    the arms swinging against the legs."""
+    poses = []
+    for i in range(TROLL_WALK):
+        a = i * math.tau / TROLL_WALK
+        near_x, near_lift = 72 + 9 * math.sin(a), 4 * max(0.0, math.cos(a))
+        far_x, far_lift = 54 - 9 * math.sin(a), 4 * max(0.0, -math.cos(a))
+        swing = 6 * math.sin(a)  # the near arm back as the near leg goes ahead
+        poses.append(TrollPose(
+            crouch=1 - round(1.2 * abs(math.cos(a))), lean=2,
+            near_ankle=(near_x, 117 - near_lift), near_toe=0.06 * near_lift,
+            far_ankle=(far_x, 117 - far_lift), far_toe=0.06 * far_lift,
+            near_elbow=(92 - swing * 0.4, 68), near_wrist=(95 - swing, 91 - abs(swing) * 0.25),
+            far_elbow=(53 + swing * 0.4, 67), far_wrist=(53 + swing, 89 - abs(swing) * 0.25),
+            sway=round(-1.5 * math.sin(a))))
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [120] * TROLL_WALK
+
+
+# The arms locked overhead, as the sheet's wind-up draws them: what the slam
+# swings down from and the throw flings forward.
+OVERHEAD = dict(lean=-3, lift=4, near_elbow=(92, 20), near_wrist=(81, 7), far_elbow=(53, 20),
+                far_wrist=(68, 7), hands='clasped')
+
+
+def troll_windup_frames():
+    """The slam's wind-up: its arms rising before it to lock overhead,
+    leaning back."""
+    poses = [TrollPose(lean=-1, lift=1, near_elbow=(96, 62), near_wrist=(110, 50), far_elbow=(80, 62),
+                       far_wrist=(98, 52), hands='fists'),
+             TrollPose(lean=-2, lift=3, near_elbow=(100, 34), near_wrist=(98, 14), far_elbow=(86, 32),
+                       far_wrist=(88, 12), hands='fists'),
+             TrollPose(**OVERHEAD)]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [200, 300, 700]
+
+
+def troll_slam_frames():
+    """The slam: its fists swinging down to the ground before it, a deep
+    crouch, dust."""
+    poses = [TrollPose(lean=3, lift=2, near_elbow=(98, 30), near_wrist=(110, 22), far_elbow=(90, 30),
+                       far_wrist=(102, 20), hands='fists'),
+             TrollPose(lean=8, crouch=3, near_elbow=(102, 58), near_wrist=(114, 76), far_elbow=(96, 60),
+                       far_wrist=(108, 78), hands='fists'),
+             TrollPose(lean=12, crouch=7, near_elbow=(104, 86), near_wrist=(110, 106), far_elbow=(98, 88),
+                       far_wrist=(104, 106), hands='fists', dust=True)]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [60, 60, 260]
+
+
+def troll_pickup_frames():
+    """Lifting something: bending to the ground, then raising it overhead."""
+    poses = [TrollPose(lean=7, crouch=4, near_elbow=(98, 78), near_wrist=(104, 96), far_elbow=(90, 78),
+                       far_wrist=(98, 96)),
+             TrollPose(lean=12, crouch=8, near_elbow=(102, 86), near_wrist=(108, 100), far_elbow=(96, 86),
+                       far_wrist=(102, 100)),
+             TrollPose(**dict(OVERHEAD, lean=-2, lift=3))]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [140, 200, 200]
+
+
+def troll_throw_frames():
+    """A throw: locked overhead, flung forward, the arms following through."""
+    poses = [TrollPose(**OVERHEAD),
+             TrollPose(lean=5, lift=2, near_elbow=(96, 28), near_wrist=(110, 30), far_elbow=(88, 26),
+                       far_wrist=(102, 26), hands='fists'),
+             TrollPose(lean=9, crouch=2, near_elbow=(98, 62), near_wrist=(108, 80), far_elbow=(92, 62),
+                       far_wrist=(102, 78))]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [140, 80, 260]
+
+
+# The enemies' clips: (frames and their durations, looping). Each clip's
+# frames are `<clip>_<i>`, and `generate.mirror_facing` gives every clip a
+# left-facing twin.
+ENEMY_CLIPS = {
+    'wisp_float': (wisp_float_frames, True),
+    'wisp_flare': (wisp_flare_frames, True),
+    'crawler_walk': (crawler_walk_frames, True),
+    'crawler_lunge': (crawler_lunge_frames, False),
+    'beetle_walk': (beetle_walk_frames, True),
+    'beetle_paw': (beetle_paw_frames, True),
+    'beetle_charge': (beetle_charge_frames, True),
+    'bat_roost': (bat_roost_frames, True),
+    'bat_fly': (bat_fly_frames, True),
+    'bat_windup': (bat_windup_frames, True),
+    'bat_dive': (bat_dive_frames, True),
+    'troll_idle': (troll_idle_frames, True),
+    'troll_walk': (troll_walk_frames, True),
+    'troll_windup': (troll_windup_frames, False),
+    'troll_slam': (troll_slam_frames, False),
+    'troll_pickup': (troll_pickup_frames, False),
+    'troll_throw': (troll_throw_frames, False),
+}
+def build_enemies(images, animations):
+    """The five enemies' clips, unlit: no normal or emissive map."""
+    for clip, (frames_for, looping) in ENEMY_CLIPS.items():
+        rendered, durations = frames_for()
+        frames = []
+        for i, (im, duration) in enumerate(zip(rendered, durations, strict=True)):
+            name = f'{clip}_{i}'
+            images[name] = im
+            frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
+        animations[clip] = {'looping': looping, 'frames': frames}

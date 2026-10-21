@@ -6,14 +6,15 @@
 //! and a golem, a pyromancer, its firebolts and a ward; M67's burning
 //! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
 //! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
-//! after a load, the golem's frost stream and a game's own damage numbers.
+//! after a load, the golem's frost stream and a game's own damage numbers;
+//! M75's guard saved mid-swing.
 
 use glam::Vec2;
-use tungsten_core::physics::Velocity;
+use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
 use tungsten_core::{
-    AnimationState, AudioCommand, CameraController, CameraMode, CameraState, DataRef, Entity,
-    EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform, World,
-    system,
+    AnimationState, AudioCommand, Bundle, CameraController, CameraMode, CameraState, DataRef,
+    Entity, EventCursor, EventQueue, Plugin, SaveData, SaveSlots, Schedule, Sprite, Transform,
+    World, system,
 };
 
 use super::{
@@ -21,10 +22,11 @@ use super::{
     teleport, traced_steps,
 };
 use crate::kit::{
-    Abilities, Aim, CharacterAnimator, Conversion, CooldownElapsed, Counters, DamagePart,
-    DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest, Effects, Facing, Health,
-    Hit, HitFlash, KitPlugins, KitRng, Knockback, LabelStyle, Level, LinearMotion, Modifier,
-    Penetration, Phase, ProjectileExpired, Shield, Source, Stats, Steering, Struck, Tags,
+    Abilities, Aim, CharacterAnimator, ContactDamage, ContactTouch, Conversion, CooldownElapsed,
+    Counters, DamagePart, DamageRequest, Damaged, DamagedPart, EffectInstance, EffectRequest,
+    Effects, Facing, Health, Hit, HitFlash, HitShape, Hitbox, Hurtbox, KitPlugins, KitRng,
+    Knockback, LabelStyle, Level, LinearMotion, Modifier, Penetration, Phase, ProjectileExpired,
+    Shield, Source, StateMachine, StateMachinePlugin, Stats, Steering, Struck, TagFilter, Tags,
     TopDownMover, TraceKind, ZoneEntered, damage, float_label, knock_back,
 };
 use crate::testing::Harness;
@@ -1451,5 +1453,289 @@ fn a_crit_floats_gold_and_larger_from_the_games_code() {
             [("3".to_string(), 16.0), ("6".to_string(), 24.0)],
             "dt {dt}"
         );
+    }
+}
+
+// M75: a guard saved mid-swing: its state machine, its sword's activation,
+// its spiked shield's touches and its mover's turn, the targets named again
+// after the load by the game's own IDs.
+
+/// The dts M75's save recipes run at: one step a frame, two, and under one.
+const SAVE_DTS: [f32; 3] = [1.0 / 60.0, 1.0 / 30.0, 1.0 / 144.0];
+
+/// A guard's states: its patrol, its swing, which turns it down and opens
+/// its sword's window, and its rest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+enum Guard {
+    Patrol,
+    Swing,
+    Rest,
+}
+
+fn guard_patrol(world: &mut World, guard: Entity) {
+    let machine = world.get_mut::<StateMachine<Guard>>(guard).unwrap();
+    if machine.elapsed() > 0.24 {
+        machine.go(Guard::Swing);
+    }
+}
+
+fn guard_swing(world: &mut World, guard: Entity) {
+    world
+        .get_mut::<TopDownMover>(guard)
+        .unwrap()
+        .set_direction(Vec2::Y);
+    world.get_mut::<Hitbox>(guard).unwrap().arm();
+}
+
+fn guard_rest(world: &mut World, _: Entity) {
+    world.resource_mut::<GuardTrail>().rests += 1;
+}
+
+/// One fixed step of the guard, after the kit's react phase.
+#[derive(Debug, Clone, PartialEq)]
+struct GuardStep {
+    /// State, previous, pending, held and elapsed.
+    machine: (Guard, Option<Guard>, Option<Guard>, bool, f32),
+    /// The step's hits: (hitter, target).
+    struck: Vec<(Entity, Entity)>,
+    at: Vec2,
+    velocity: Vec2,
+}
+
+#[derive(Default)]
+struct GuardTrail {
+    steps: Vec<GuardStep>,
+    rests: u32,
+}
+
+/// The game's guard: its machine's hooks and its trail.
+struct GuardGame;
+
+impl Plugin for GuardGame {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
+        StateMachinePlugin::<Guard>::new("guard_states")
+            .on_update(Guard::Patrol, guard_patrol)
+            .on_enter(Guard::Swing, guard_swing)
+            .on_enter(Guard::Rest, guard_rest)
+            .build(schedule, world);
+        world.insert_resource(GuardTrail::default());
+        let mut cursor = EventCursor::<Struck>::default();
+        let run = move |world: &mut World| {
+            let struck = world
+                .get_resource::<EventQueue<Struck>>()
+                .map(|queue| {
+                    cursor
+                        .read(queue)
+                        .map(|hit| (hit.entity, hit.target))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let Some((guard, machine)) = world
+                .query::<(Entity, &StateMachine<Guard>)>()
+                .next()
+                .map(|(guard, m)| {
+                    let at = (
+                        m.state(),
+                        m.previous(),
+                        m.pending(),
+                        m.is_held(),
+                        m.elapsed(),
+                    );
+                    (guard, at)
+                })
+            else {
+                return;
+            };
+            let at = world.get::<Position>(guard).unwrap().0;
+            let velocity = world.get::<Velocity>(guard).unwrap().0;
+            world.resource_mut::<GuardTrail>().steps.push(GuardStep {
+                machine,
+                struck,
+                at,
+                velocity,
+            });
+        };
+        schedule.add(
+            Phase::React.stage(),
+            Phase::React.join(system("guard_trail", run)),
+        );
+    }
+}
+
+/// The game's save of its guard: the four kit items, and its own IDs, an
+/// index into its targets, for the entities they name.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct GuardSave {
+    machine: StateMachine<Guard>,
+    mover: TopDownMover,
+    sword: Hitbox,
+    sword_hit: Vec<usize>,
+    shield: ContactDamage,
+    shield_touches: Vec<(usize, f32, f32)>,
+}
+
+impl SaveData for GuardSave {
+    const SCHEMA: u32 = 1;
+}
+
+/// A guard run at `dt` from its save point on: its trail, its rests and
+/// where it was at the save. With `load`, the game saves it there and
+/// loads it back, naming its targets again or not.
+fn guard_run(dt: f32, load: Option<bool>) -> (Vec<GuardStep>, u32, Vec2) {
+    let mut harness = recipe(GENRE, KitPlugins::set().with(GuardGame), dt);
+    let world = harness.world_mut();
+    let player = TagFilter::new().all(["team.player"]);
+    let mut mover = TopDownMover::new(40.0).with_acceleration(100.0);
+    mover.set_direction(Vec2::X);
+    let guard = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::splat(10.0))).with((
+            PrevPosition(Vec2::ZERO),
+            Transform::from_position(Vec2::ZERO),
+            Tags::new(["team.enemy"]),
+            mover,
+            Hitbox::new(HitShape::circle(30.0), 1.0)
+                .with_window(0.6)
+                .with_filter(player.clone()),
+            ContactDamage::new(1.0)
+                .with_interval(0.25)
+                .with_shape(HitShape::circle(24.0), Vec2::ZERO)
+                .with_filter(player),
+            StateMachine::new(Guard::Patrol),
+        )),
+    );
+    // Two targets in both its reaches all along its path.
+    let targets: Vec<Entity> = [Vec2::new(-6.0, 12.0), Vec2::new(4.0, 12.0)]
+        .into_iter()
+        .map(|at| {
+            world.spawn_with((
+                Transform::from_position(at),
+                Tags::new(["team.player"]),
+                Hurtbox::new(HitShape::circle(4.0)),
+                Health::new(1000.0),
+            ))
+        })
+        .collect();
+    // Mid-swing: the window open on both targets hit, the shield between
+    // two touches and the turn under way. The game stuns it with a rest
+    // asked for: a transition pending, and the machine held.
+    harness.step(frames_for(0.55, dt));
+    let world = harness.world_mut();
+    let machine = world.get_mut::<StateMachine<Guard>>(guard).unwrap();
+    assert_eq!(machine.state(), Guard::Swing, "dt {dt}");
+    machine.go(Guard::Rest);
+    machine.set_held(true);
+    let saved_at = world.get::<Position>(guard).unwrap().0;
+    if let Some(named_again) = load {
+        let id = |entity: &Entity| targets.iter().position(|target| target == entity).unwrap();
+        let sword = world.get::<Hitbox>(guard).unwrap().clone();
+        let shield = world.get::<ContactDamage>(guard).unwrap().clone();
+        assert!(
+            sword.is_armed() && sword.hit_targets().len() == 2,
+            "dt {dt}"
+        );
+        assert_eq!(shield.touches().count(), 2, "dt {dt}");
+        let save = GuardSave {
+            machine: world.get::<StateMachine<Guard>>(guard).unwrap().clone(),
+            mover: world.get::<TopDownMover>(guard).unwrap().clone(),
+            sword_hit: sword.hit_targets().iter().map(id).collect(),
+            sword,
+            shield_touches: shield
+                .touches()
+                .map(|touch| (id(&touch.target()), touch.since_hit(), touch.since_met()))
+                .collect(),
+            shield,
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_guard_{}_{}_{named_again}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = SaveSlots::new(Some(dir.clone()));
+        slots.save("guard", &save).unwrap();
+        let loaded: GuardSave = slots.load("guard").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        let (mut sword, mut shield) = (loaded.sword, loaded.shield);
+        assert!(sword.hit_targets().is_empty() && shield.touches().count() == 0);
+        if named_again {
+            sword.set_hit_targets(loaded.sword_hit.iter().map(|&id| targets[id]));
+            shield.set_touches(
+                loaded
+                    .shield_touches
+                    .iter()
+                    .map(|&(id, hit, met)| ContactTouch::new(targets[id], hit, met)),
+            );
+        }
+        world.insert(guard, loaded.machine);
+        world.insert(guard, loaded.mover);
+        world.insert(guard, sword);
+        world.insert(guard, shield);
+    }
+    let start = world.resource::<GuardTrail>().steps.len();
+    harness.step(frames_for(0.1, dt));
+    harness
+        .world_mut()
+        .get_mut::<StateMachine<Guard>>(guard)
+        .unwrap()
+        .set_held(false);
+    harness.step(frames_for(0.5, dt));
+    let trail = harness.world().resource::<GuardTrail>();
+    (trail.steps[start..].to_vec(), trail.rests, saved_at)
+}
+
+#[test]
+fn a_guard_saved_mid_swing_resumes_exactly() {
+    for dt in SAVE_DTS {
+        let (kept, rests, saved_at) = guard_run(dt, None);
+        let (loaded, loaded_rests, _) = guard_run(dt, Some(true));
+        assert!(kept.len() > 30 && kept.len() == loaded.len(), "dt {dt}");
+        assert_eq!(
+            (rests, loaded_rests),
+            (1, 1),
+            "dt {dt}: the rest entered once"
+        );
+        for (n, (kept, loaded)) in kept.iter().zip(&loaded).enumerate() {
+            assert_eq!(loaded.machine, kept.machine, "dt {dt} step {n}");
+            assert_eq!(loaded.struck, kept.struck, "dt {dt} step {n}");
+        }
+        // The rest waited for the hold, then came at the same step.
+        let rest_at = |steps: &[GuardStep]| {
+            steps
+                .iter()
+                .position(|step| step.machine.0 == Guard::Rest)
+                .unwrap()
+        };
+        assert!(rest_at(&kept) >= 5, "dt {dt}");
+        assert!(
+            kept.iter().any(|step| !step.struck.is_empty()),
+            "dt {dt}: the shield's touches went on"
+        );
+        // Its mover's still first step, then its path a step behind.
+        assert_eq!(
+            (loaded[0].at, loaded[0].velocity),
+            (saved_at, Vec2::ZERO),
+            "dt {dt}"
+        );
+        for (n, (kept, loaded)) in kept.iter().zip(&loaded[1..]).enumerate() {
+            assert!(
+                loaded.velocity.distance(kept.velocity) < 1e-3
+                    && loaded.at.distance(kept.at) < 1e-3,
+                "dt {dt} step {n}: {kept:?} against {loaded:?}"
+            );
+        }
+        assert!(
+            kept[0].velocity.x > 1.0 && kept[0].velocity.y > 1.0,
+            "dt {dt}: mid-turn"
+        );
+        // Loaded without its targets named, the sword and the shield hit at once.
+        let (unnamed, _, _) = guard_run(dt, Some(false));
+        let first_hits = |steps: &[GuardStep]| {
+            steps
+                .iter()
+                .find(|step| !step.struck.is_empty())
+                .map(|step| step.struck.len())
+        };
+        assert_eq!(first_hits(&unnamed), Some(4), "dt {dt}");
+        assert!(kept[0].struck.is_empty(), "dt {dt}");
+        assert_eq!(unnamed[0].struck.len(), 4, "dt {dt}");
     }
 }

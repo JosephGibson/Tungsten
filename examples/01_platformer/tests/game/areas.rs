@@ -16,7 +16,7 @@ use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
 
 use super::{
-    centre, harness_with, player_entity, press, settle, start, teleport, top, user_folder,
+    calm, centre, harness_with, player_entity, press, settle, start, teleport, top, user_folder,
 };
 
 /// Each area after the spawn's, its first column, and where the walk into
@@ -52,6 +52,7 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
     let dir = user_folder("areas");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
+    calm(&mut harness);
     let player = player_entity(&harness);
     // The run's first steps, as the curtain lifts, enter the spawn's area.
     harness.step(10);

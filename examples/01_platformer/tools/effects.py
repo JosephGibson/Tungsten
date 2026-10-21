@@ -9,7 +9,7 @@ tinted at extraction; each fades to transparent before its canvas edge.
 import math
 
 from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
-from pixels import NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
+from pixels import BAYER, NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -401,6 +401,48 @@ def icon_dummy():
     return pixels
 
 
+def icon_of(canvas, step, lift):
+    """A summon type's icon: its frame's canvas at 1/`step` size, raised
+    `lift` pixels, standing on an indigo summoning ring."""
+    ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
+    ring.ellipse((16, 28), 13, 3)
+    inner.ellipse((16, 28), 10, 2)
+    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
+    half = step // 2
+    for y in range(ICON + lift):
+        for x in range(ICON):
+            symbol = canvas.get((step * x + half, step * y + half))
+            if symbol and 0 <= y - lift < ICON:
+                pixels[(x, y - lift)] = symbol
+    return pixels
+
+
+def icon_wisp():
+    from actors import wisp_canvas
+    return icon_of(wisp_canvas(0.25), 2, 4)
+
+
+def icon_crawler():
+    from actors import crawler_canvas
+    return icon_of(crawler_canvas(), 2, 2)
+
+
+def icon_beetle():
+    from actors import beetle_canvas
+    return icon_of(beetle_canvas(), 2, 2)
+
+
+def icon_bat():
+    from actors import bat_canvas
+    return icon_of(bat_canvas('fly', 0.3), 2, 0)
+
+
+def icon_troll():
+    """The troll at a quarter of its 128 frame."""
+    from actors import TrollPose, troll_canvas
+    return icon_of(troll_canvas(TrollPose()), 4, 2)
+
+
 ICON_ART = {
     'icon_fire_missile': icon_fire_missile,
     'icon_flamethrower': icon_flamethrower,
@@ -413,6 +455,11 @@ ICON_ART = {
     'icon_lightning': icon_lightning,
     'icon_gun': icon_gun,
     'icon_dummy': icon_dummy,
+    'icon_wisp': icon_wisp,
+    'icon_crawler': icon_crawler,
+    'icon_beetle': icon_beetle,
+    'icon_bat': icon_bat,
+    'icon_troll': icon_troll,
 }
 
 
@@ -456,27 +503,160 @@ def status_box(size):
     return side, top, size - 1 - side, round(size * 0.97) - 1
 
 
-def status_ice(size):
-    """Frozen: a translucent block of ice over the frame, which shows through
-    it under the game's cold tint: bright edges, glints and two cracks."""
-    x0, y0, x1, y1 = status_box(size)
-    pixels = {(x, y): 'ϱ' if x in (x0, x1) or y in (y0, y1) else 'ϰ'
-              for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)}
-    span = max(4, (x1 - x0) // 3)
-    for i in range(3):  # diagonal glints near the top
-        gx, gy = x0 + 2 + i * span // 2, y0 + 2
-        for t in range(max(2, span // 2)):
-            if (gx + t, gy + t) in pixels and gx + t < x1 - 1:
-                pixels[(gx + t, gy + t)] = 'Ψ' if t < 2 else 'ϱ'
+# The frozen look (01 (c), after the owner's reviews): a frosty cube of ice
+# in three-quarter view fitted to the frozen body's hurtbox, in place of (b)'s
+# flat block. Each kind with a hurtbox has its own cube on a full frame, so
+# what lies outside the hurtbox (the bat's wings, the beetle's horn, the
+# dummy's arms) shows outside the ice; the size classes keep a cube for a
+# frozen body with no fitted one.
+#
+# Each kind's hurtbox in its frame, (left, top, right, bottom): the box its
+# prefab's hurtbox makes, which `generate.check_ice_fits` holds it to.
+HURTBOXES = {
+    'wisp': (19, 21, 45, 47),  # a circle of 13 about (32, 34), as its box
+    'crawler': (8, 41, 56, 59),  # aabb 24 x 9 about (32, 50)
+    'beetle': (8, 35, 56, 59),  # aabb 24 x 12 about (32, 47)
+    'bat': (22, 19, 42, 37),  # aabb 10 x 9 about (32, 28)
+    'troll': (44, 12, 104, 123),  # aabb 30 x 55.5 about (74, 67.5), on its 128 frame
+    'dummy': (18, 5, 46, 61),  # aabb 14 x 28 about (32, 33)
+}
+# The pixels a cube reaches past its hurtbox on each side.
+ICE_MARGIN = 2
+
+
+def ice_frame(kind):
+    """The side of `kind`'s frame: the troll's 128, the others' 64."""
+    return 128 if kind == 'troll' else 64
+
+
+def fitted_box(kind):
+    """`kind`'s hurtbox grown by the margin, inside its frame."""
+    x0, y0, x1, y1 = HURTBOXES[kind]
+    side = ice_frame(kind)
+    return (max(0, x0 - ICE_MARGIN), max(0, y0 - ICE_MARGIN),
+            min(side - 1, x1 + ICE_MARGIN), min(side - 1, y1 + ICE_MARGIN))
+
+
+def ice_cube(size, box, keys):
+    """A frosty cube of ice in three-quarter view over `box` of a frame of
+    `size`, which the body shows through, a clearer window in its middle: a
+    snow cap on the top, a side in shade, white frost thick at the edges and
+    corners, a drift along the foot, frost ferns from the corners, bubbles,
+    cracks rising from the foot, a chipped corner and sparkles."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    d = max(2, min(6, round(min(w, h) * 0.14)))
+    xf, yt = x1 - d, y0 + d
+    fw, fh = xf - x0, y1 - yt
+    px = {}
+    for y in range(yt, y1 + 1):  # the front: clear in the middle, frosting outward
+        for x in range(x0, xf + 1):
+            u = (x - x0) / max(1, fw) - 0.5
+            v = (y - yt) / max(1, fh) - 0.5
+            edge = max(abs(u) * 2, abs(v) * 2)  # 0 at the centre, 1 at the edges
+            corner = (abs(u) * 2) * (abs(v) * 2)
+            frost = max(0.0, edge - 0.5) / 0.5 + corner * 0.3
+            b = BAYER[y % 4][x % 4] / 16
+            if frost > 0.85 and b < frost - 0.3:
+                px[(x, y)] = 'φ'
+            elif frost > b + 0.15:
+                px[(x, y)] = 'x' if frost > 0.6 else 'u'
+            elif edge < 0.6:
+                px[(x, y)] = 'ϰ' if b > 0.12 else 'ϱ'
+            else:
+                px[(x, y)] = 'ϱ'
+    drift = max(2, fh // 8)  # a drift of frost along the foot
+    for x in range(x0, xf + 1):
+        top = y1 - drift - round(1.2 * math.sin(x * 0.7) + unit(keys, 'drift', x) * 1.5)
+        for y in range(max(yt, top), y1 + 1):
+            px[(x, y)] = 'φ' if y > top + 1 or (x + y) % 3 else 'Ψ'
+    for k in range(1, d + 1):  # the top: a snow cap
+        y = yt - k
+        for x in range(x0 + k, xf + k + 1):
+            px[(x, y)] = 'Ψ' if BAYER[y % 4][x % 4] < 7 else 'φ'
+    for k in range(1, d + 1):  # the side: in shade, frosted toward the top
+        x = xf + k
+        for y in range(yt - k, y1 - k + 1):
+            v = (y - (yt - k)) / max(1, fh)
+            b = BAYER[y % 4][x % 4]
+            px[(x, y)] = 'x' if v < 0.25 and b < 8 else ('ς' if v > 0.55 and b > 5 else 'ϱ')
+    for x in range(x0, xf + 1):  # edges: white along the top, frost at the sides
+        px[(x, yt)] = 'Ψ'
+    for y in range(yt, y1 + 1):
+        px[(x0, y)] = 'φ'
+        px[(xf, y)] = 'Ψ' if y < yt + fh // 3 else 'φ'
+    for k in range(1, d + 1):
+        px[(x0 + k, yt - k)] = 'Ψ'
+        px[(xf + k, yt - k)] = 'Ψ'
+        px[(xf + k, y1 - k)] = 'φ'
+    for x in range(x0 + d, x1 + 1):
+        px[(x, y0)] = 'Ψ'
+    for y in range(y0, y1 - d + 1):
+        px[(x1, y)] = 'φ'
+    for cx, cy, sx, sy in ((x0, y1, 1, -1), (xf, y1, -1, -1), (x0, yt, 1, 1)):  # frost ferns
+        length = max(3, min(fw, fh) // 3)
+        for branch in range(2):
+            angle = (0.35 + 0.5 * branch) * math.pi / 2
+            for t in range(length):
+                x = round(cx + sx * t * math.cos(angle))
+                y = round(cy + sy * t * math.sin(angle))
+                if (x, y) in px:
+                    px[(x, y)] = 'Ψ'
+                if t % 3 == 1:
+                    for side in (-1, 1):
+                        fx = round(x + sx * math.cos(angle + side * 0.8))
+                        fy = round(y + sy * math.sin(angle + side * 0.8))
+                        if (fx, fy) in px:
+                            px[(fx, fy)] = 'x'
+    r = 1 if min(w, h) < 60 else 2
+    for i in range(2 + min(w, h) // 20):  # bubbles in the clear window
+        bx = x0 + fw // 4 + int(unit(keys, 'bubble', i) * fw / 2)
+        by = yt + fh // 4 + int(unit(keys, 'bubble-y', i) * fh / 2)
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                if max(abs(dx), abs(dy)) == r and (bx + dx, by + dy) in px:
+                    px[(bx + dx, by + dy)] = 'ϱ'
+        px[(bx - r + 1, by - r + 1)] = 'Ψ'
     for i in range(2):  # cracks rising from the foot
-        cx = x0 + int(unit('crack', size, i) * (x1 - x0))
-        end = (cx + (6 if i else -5) * size // 64, y1 - (y1 - y0) // 2)
-        crack = Part((size, size))
-        crack.limb(zigzag((cx, y1 - 1), end, 4, ('crack', size, i), 2), 1)
-        for p in crack.pixels():
-            if p in pixels and pixels[p] == 'ϰ':
-                pixels[p] = 'ς'
-    return to_image(pixels, (size, size))
+        x, y = x0 + 2 + int(unit(keys, 'crack', i) * (fw - 4)), y1 - drift - 1
+        for t in range(fh // 3):
+            y -= 1
+            if t % 3 == 0:
+                x += 1 if unit(keys, 'crack-turn', i, t) < 0.5 else -1
+            if (x, y) in px and px[(x, y)] in ('ϰ', 'ϱ', 'u'):
+                px[(x, y)] = 'ς' if t % 4 else 'Ψ'
+    for corner in ((x0, yt), (x0 + 1, yt), (x0, yt + 1)):  # a chipped corner
+        px.pop(corner, None)
+    arm = 1 if min(w, h) < 40 else 2 if min(w, h) < 90 else 3
+    for gx, gy in ((x0 + fw // 4, yt + 2), (x0 + fw // 2, yt - d // 2), (xf - 2, yt + fh // 3)):
+        if (gx, gy) in px:  # sparkles
+            px[(gx, gy)] = 'Ψ'
+            for t in range(1, arm + 1):
+                for ddx, ddy in NEIGHBOURS:
+                    if (gx + ddx * t, gy + ddy * t) in px:
+                        px[(gx + ddx * t, gy + ddy * t)] = 'Ψ' if t < arm else 'x'
+    return to_image(px, (size, size))
+
+
+def status_ice(size):
+    """Frozen, for a body with no fitted cube: the cube over the frame's
+    status box."""
+    return ice_cube(size, status_box(size), ('class', size))
+
+
+def ice_glint():
+    """A four-point sparkle, which a frozen target's `frozen_glints` twinkle
+    over its cube."""
+    size = ELEMENT_SIZES['ice_glint'][0]
+    px, c = {}, size // 2
+    px[(c, c)] = 'Ψ'
+    for t in range(1, 6):
+        for dx, dy in NEIGHBOURS:
+            px[(c + dx * t, c + dy * t)] = 'Ψ' if t < 3 else 'x' if t < 5 else 'q'
+    for t in (1, 2):
+        for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+            px[(c + dx * t, c + dy * t)] = 'u' if t == 1 else 'p'
+    return to_image(px, (size, size))
 
 
 def status_outline(size):
@@ -525,18 +705,27 @@ def status_halo(size):
 
 
 def ice_shell():
-    """A frozen ball's shell, drawn over its sprite under a cold tint: a
-    translucent disc with a bright rim and a glint."""
-    pixels = {}
-    c, r = 31.5, 30.0
-    for y in range(64):
-        for x in range(64):
-            d = math.hypot(x - c, y - c)
-            if d <= r:
-                pixels[(x, y)] = 'ϱ' if d > r - 1.5 else 'ϰ'
-    for t in range(10):
-        pixels[(round(c - r * 0.45) + t, round(c - r * 0.55) + t // 2)] = 'Ψ'
-    return to_image(pixels)
+    """A frozen ball's ice, drawn over its sprite under a cold tint: a small
+    frosty cube, matching the bodies'."""
+    return ice_cube(64, (3, 3, 60, 60), ('ball',))
+
+
+def orb(base, light, shadow, glint, halo):
+    """A drop's orb: a sphere of `base` with a moonlit crown and a glint, in
+    a dithered halo of `halo`, palette pixels only."""
+    size = ELEMENT_SIZES['health_orb'][0]
+    part = Part((size, size))
+    c = size / 2 - 0.5
+    part.ellipse((c, c), size / 2 - 5, size / 2 - 5)
+    canvas = outline(shade(part.pixels(), base, light=light, shadow=shadow, rim=light), 'o', (size, size))
+    for dx, dy in ((-3, -3), (-2, -3), (-3, -2)):
+        canvas[(size // 2 + dx, size // 2 + dy)] = glint
+    for y in range(size):
+        for x in range(size):
+            r = math.hypot(x - c, y - c)
+            if (x, y) not in canvas and r <= size / 2 - 0.5 and dither(x, y, (size / 2 - r) / 4 * 0.6):
+                canvas[(x, y)] = halo
+    return to_image(canvas, (size, size))
 
 
 def muzzle(frame):
@@ -566,8 +755,9 @@ def tracer():
 
 def build_element_art(images):
     """The elements' and the gun's art: the bolt's segments, the status
-    overlays in their three size classes, the ice shell, the muzzle flash and
-    the tracer. All unlit: overlays and flashes draw over the lit world."""
+    overlays in their three size classes, the fitted ice cubes, the ball's
+    cube, the glint, the muzzle flash, the tracer and the drops' orbs. All
+    unlit: overlays and flashes draw over the lit world."""
     for i in range(len(BOLT_EXITS)):
         images[f'bolt_{i}'] = bolt_segment(i)
     for name, size in STATUS_CLASSES.items():
@@ -575,7 +765,12 @@ def build_element_art(images):
         images[f'status_halo_{name}'] = status_halo(size)
         for frame in range(2):
             images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
+    for kind in HURTBOXES:
+        images[f'status_ice_{kind}'] = ice_cube(ice_frame(kind), fitted_box(kind), (kind,))
     images['ice_shell'] = ice_shell()
+    images['ice_glint'] = ice_glint()
+    images['health_orb'] = orb('z', 'F', 'M', 'Ψ', 'X')
+    images['mana_orb'] = orb('Π', 'Ξ', 'Γ', 'ϕ', 'Δ')
     for frame in range(3):
         images[f'muzzle_{frame}'] = muzzle(frame)
     images['tracer'] = tracer()

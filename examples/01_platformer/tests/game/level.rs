@@ -18,7 +18,7 @@ use tungsten::kit::{PathFollower, PlatformerController};
 use tungsten::physics::BodyKind;
 use tungsten::testing::UiHarness;
 
-use super::{harness, start};
+use super::{calm, harness, start};
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -120,6 +120,7 @@ const LAUNCHES: &[(&str, &str, f32, f32, bool)] = &[
 fn bare_level() -> UiHarness {
     let mut harness = harness();
     start(&mut harness);
+    calm(&mut harness);
     harness.harness_mut().set_dt(DT);
     let world = harness.world_mut();
     let movers: Vec<Entity> = world

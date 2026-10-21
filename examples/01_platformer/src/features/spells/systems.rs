@@ -12,12 +12,12 @@ use super::{
     selected, summon_type,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::dummy;
 use crate::features::lightning;
 use crate::features::player::{self, BODY_OFFSET};
 use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
 use crate::features::toys::{self, BALL_CAP, MISSILE_CAP};
+use crate::features::{dummy, enemies};
 use crate::shared::{SaveId, just_pressed, pressed};
 
 /// The run's player while it lives.
@@ -126,7 +126,13 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         Spell::FireMissile => toys::missile_count(world) >= MISSILE_CAP,
         Spell::BowlingBall => toys::ball_count(world) >= BALL_CAP,
         Spell::BlackHole | Spell::IronBlock | Spell::Lightning => at.is_none(),
-        Spell::Summon => at.is_none_or(|at| !dummy::fits(world, at)),
+        Spell::Summon => at.is_none_or(|at| {
+            let fits = match summon_type(world).enemy {
+                Some(kind) => enemies::fits(world, kind, at),
+                None => dummy::fits(world, at),
+            };
+            !fits
+        }),
         _ => false,
     };
     if refused || use_ability(world, player, spell.ability()) != Used::Used {
@@ -154,7 +160,15 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
             lightning::strike(world, player, at);
         }
         Spell::Summon => {
-            dummy::summon(world, summon_type(world).prefab, at);
+            let summoned = summon_type(world);
+            match summoned.enemy {
+                Some(kind) => {
+                    enemies::summon(world, kind, at);
+                }
+                None => {
+                    dummy::summon(world, summoned.prefab, at);
+                }
+            }
             audio::play(world, Sound::Summoned, at);
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}

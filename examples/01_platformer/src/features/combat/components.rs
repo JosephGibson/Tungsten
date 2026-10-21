@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use tungsten::core::Entity;
 
 /// A status's particles on the target `owner`: chilled's flakes,
-/// bleeding's drips or shocked's sparks, which follow it while it carries
-/// the status. Presentation, never saved.
+/// bleeding's drips, shocked's sparks or frozen's glints, which follow it
+/// while it carries the status. Presentation, never saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatusEmitter {
     pub owner: Entity,
@@ -19,14 +19,16 @@ pub enum StatusLook {
     Chilled,
     Bleeding,
     Shocked,
+    Frozen,
 }
 
 impl StatusLook {
     /// Every status shown with particles.
-    pub const ALL: [StatusLook; 3] = [
+    pub const ALL: [StatusLook; 4] = [
         StatusLook::Chilled,
         StatusLook::Bleeding,
         StatusLook::Shocked,
+        StatusLook::Frozen,
     ];
 
     /// The status tag it shows.
@@ -36,6 +38,7 @@ impl StatusLook {
             StatusLook::Chilled => super::CHILLED,
             StatusLook::Bleeding => super::BLEEDING,
             StatusLook::Shocked => super::SHOCKED,
+            StatusLook::Frozen => super::FROZEN,
         }
     }
 
@@ -46,6 +49,7 @@ impl StatusLook {
             StatusLook::Chilled => "ex10_chill_flakes",
             StatusLook::Bleeding => "ex10_bleed_drips",
             StatusLook::Shocked => "ex10_shock_sparks",
+            StatusLook::Frozen => "ex10_frozen_glints",
         }
     }
 }

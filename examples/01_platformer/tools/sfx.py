@@ -506,6 +506,275 @@ def summon():
     return finish(samples, fade_in=0.004, fade_out=0.05)
 
 
+# 01 (c)'s bestiary: each enemy's tells, attacks and steps, a hit and an
+# alert any enemy plays, and the drops' pickup.
+
+
+def wisp_hum():
+    """The wisp's burning: a seamless low flame roar, a slow flicker and
+    soft crackles."""
+    duration, overlap = 2.0, int(.12 * RATE)
+    noise, crackles, low, high = Noise(0x0715), Noise(0x0C4A), LowPass(), LowPass()
+    count = int(duration * RATE)
+    samples, crack, phase = [], 0.0, 0.0
+    for i in range(count + overlap):
+        t = i / RATE
+        n = noise()
+        roar = low(n, 520) - high(n, 90) * 0.6
+        flicker = .72 + .18 * math.sin(math.tau * 5 * t) + .1 * math.sin(math.tau * 11.5 * t + 1)
+        phase += math.tau * (96 + 6 * math.sin(math.tau * 1.5 * t)) / RATE
+        drone = .22 * math.sin(phase) + .08 * math.sin(2 * phase)
+        if crackles() > .9993:
+            crack = .45
+        crack *= .93
+        samples.append(2.4 * roar * flicker + drone + crack * crackles())
+    loop = samples[overlap:count]
+    for i in range(overlap):
+        blend = i / (overlap - 1)
+        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
+    return finish(loop, fade_in=0, fade_out=0)
+
+
+def wisp_flare():
+    """The wisp's alert: a flame flaring up, a rising whoosh with a hot
+    crackle."""
+    duration = 0.45
+    noise, crackles, low, high = Noise(0xF1A2), Noise(0xF1A3), LowPass(), LowPass()
+    samples, crack = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        band = low(n, glide(500, 4200, min(1.0, p * 1.6))) - high(n, 300)
+        envelope = min(1.0, t / 0.06) * math.exp(-2.6 * p)
+        if crackles() > 1 - .004 * (1 - p):
+            crack = .6
+        crack *= .9
+        samples.append(1.8 * band * envelope + crack * crackles())
+    return finish(samples)
+
+
+def crawler_hiss():
+    """The crawler's warning: an insect hiss chattering, over a cold tinkle
+    of its crystals."""
+    duration = 0.5
+    noise, low = Noise(0xC4A1), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = n - low(n, 3200)
+        chatter = .45 + .55 * max(0.0, math.sin(math.tau * 34 * t)) ** 3
+        tinkle = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d)
+                     for f, w, d in ((2637, .12, .16), (3520, .08, .11), (4699, .05, .08)))
+        envelope = min(1.0, t / 0.02) * math.sin(math.pi * min(1.0, p * 1.1)) ** 0.6
+        samples.append((1.2 * hiss * chatter) * envelope + tinkle)
+    return finish(samples)
+
+
+def crawler_lunge():
+    """The lunge: a quick skitter of legs and a snap of mandibles."""
+    noise, clicks, low = Noise(0xC4A2), Noise(0xC4A3), LowPass()
+    samples, click = [], 0.0
+    for i in range(int(0.36 * RATE)):
+        t = i / RATE
+        n = noise()
+        if t < 0.22 and clicks() > .993:
+            click = .7
+        click *= .82
+        skitter = click * (n - low(n, 1800))
+        snap = 0.0
+        if t > 0.24:
+            u = t - 0.24
+            snap = (math.sin(math.tau * 1900 * u) + .6 * math.sin(math.tau * 3100 * u)) * math.exp(-u / .012)
+        samples.append(1.5 * skitter + snap)
+    return finish(samples, fade_in=0.001)
+
+
+def beetle_paw():
+    """The beetle's tell: an iron claw scraping stone, grit and a rasp."""
+    duration = 0.42
+    noise, grit, low, high = Noise(0xBE71), Noise(0xBE72), LowPass(), LowPass()
+    samples, chip = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        scrape = low(n, glide(2600, 1400, p)) - high(n, 500)
+        rasp = .6 + .4 * math.sin(math.tau * 46 * t) * math.sin(math.tau * 7 * t)
+        if grit() > .996:
+            chip = .5
+        chip *= .9
+        envelope = min(1.0, t / 0.03) * (1 - p) ** 0.8
+        samples.append((1.6 * scrape * rasp + chip * grit()) * envelope)
+    return finish(samples)
+
+
+def beetle_charge():
+    """The charge: a heavy iron rumble rolling forward, plates clanking."""
+    duration = 0.8
+    noise, low, rumble = Noise(0xBE73), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        roll = rumble(low(n, 300), 140) * 5.0 * (.7 + .3 * math.sin(math.tau * 13 * t))
+        phase += math.tau * glide(58, 72, p) / RATE
+        engine = .5 * math.sin(phase) + .25 * math.sin(2 * phase + .5)
+        clank = 0.0
+        for start in (0.06, 0.24, 0.42, 0.6):
+            if t >= start:
+                u = t - start
+                clank += sum(math.sin(math.tau * f * u) * w for f, w in ((410, .4), (933, .25), (1617, .15))) \
+                    * math.exp(-u / .05)
+        envelope = min(1.0, t / 0.05) * (1 - p) ** 0.5
+        samples.append(math.tanh(1.2 * (roll + engine) * envelope + .5 * clank))
+    return finish(samples)
+
+
+def bat_screech():
+    """The bat's cry: a thin screech sweeping up, warbling."""
+    duration = 0.34
+    noise, low = Noise(0xBA71), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        freq = glide(2300, 4100, p ** 0.7) * (1 + .03 * math.sin(math.tau * 55 * t))
+        phase += math.tau * freq / RATE
+        tone = math.sin(phase + 1.8 * math.sin(phase * 0.5))
+        n = noise()
+        air = (n - low(n, 5000)) * .25
+        envelope = min(1.0, t / 0.015) * math.exp(-3 * p)
+        samples.append((tone + air) * envelope)
+    return finish(samples)
+
+
+def bat_dive():
+    """The dive: wings folded, a whoosh falling in pitch with a flutter."""
+    duration = 0.55
+    noise, low, high = Noise(0xBA72), LowPass(), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        whoosh = low(n, glide(4200, 700, p)) - high(n, 250)
+        flutter = .7 + .3 * math.sin(math.tau * 24 * t)
+        envelope = math.sin(math.pi * min(1.0, p * 1.05)) ** 1.2
+        samples.append(1.8 * whoosh * flutter * envelope)
+    return finish(samples)
+
+
+def troll_step():
+    """A troll's footfall: a deep thud and a scatter of grit."""
+    noise, low = Noise(0x7801), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.36 * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(62, 34, min(1.0, t / 0.18)) / RATE
+        thud = math.sin(phase) * min(1.0, t / 0.003) * math.exp(-t / 0.09)
+        n = noise()
+        grit = low(n, 900) * 1.6 * math.exp(-t / 0.05)
+        samples.append(math.tanh(1.4 * thud + grit))
+    return finish(samples, fade_in=0.001)
+
+
+def troll_roar():
+    """The troll's roar: a deep growl swelling and breaking, with a rasp in
+    its throat."""
+    duration = 1.3
+    noise, throat, low, formant = Noise(0x7802), Noise(0x7803), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        freq = (74 + 22 * math.sin(math.pi * min(1.0, p * 1.3))) * (1 + .04 * math.sin(math.tau * 6.5 * t))
+        phase += freq / RATE
+        saw = 2 * (phase % 1.0) - 1
+        voice = formant(saw, 620 + 340 * math.sin(math.pi * p))
+        rasp = low(throat(), 1400) * (.5 + .5 * math.sin(math.tau * 31 * t))
+        envelope = min(1.0, t / 0.12) * (1 - p) ** 0.7
+        samples.append(math.tanh(2.2 * (voice + .7 * rasp) * envelope + .15 * noise() * envelope))
+    return finish(samples, fade_out=0.08)
+
+
+def troll_slam():
+    """The slam: two fists on the ground, a boom, a crack and stone falling."""
+    duration = 1.1
+    noise, debris, low, rumble = Noise(0x7804), Noise(0x7805), LowPass(), LowPass()
+    samples, phase, rock = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        crack = (n - low(n, 1500)) * math.exp(-t / 0.025)
+        phase += math.tau * glide(55, 28, min(1.0, t / 0.4)) / RATE
+        boom = 1.2 * math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.3)
+        roll = rumble(n, 160) * 3.0 * math.exp(-t / 0.45)
+        if t > 0.08 and debris() > 1 - .003 * (1 - p):
+            rock = .5
+        rock *= .95
+        samples.append(math.tanh(1.6 * (crack + boom + roll) + rock * debris()))
+    return finish(samples, fade_in=0.0005, fade_out=0.1)
+
+
+def troll_throw():
+    """A throw: a heaving grunt and the whoosh of what it flings."""
+    duration = 0.55
+    noise, low, high, formant = Noise(0x7806), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        phase += glide(120, 80, p) / RATE
+        saw = 2 * (phase % 1.0) - 1
+        grunt = formant(saw, 700) * math.exp(-t / 0.12) * min(1.0, t / 0.02)
+        n = noise()
+        whoosh = (low(n, glide(900, 3800, p)) - high(n, 400)) * math.sin(math.pi * max(0.0, min(1.0, (t - .1) / .45)))
+        samples.append(1.6 * grunt + 1.7 * whoosh)
+    return finish(samples)
+
+
+def enemy_hit():
+    """A blow landing on an enemy: a meaty thwack and a short crunch."""
+    noise, crunch, low, high = Noise(0xE401), Noise(0xE402), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.26 * RATE)):
+        t = i / RATE
+        n = noise()
+        thwack = low(n, 1100) * 2.2 * math.exp(-t / 0.03)
+        phase += math.tau * glide(170, 90, min(1.0, t / 0.06)) / RATE
+        body = .8 * math.sin(phase) * math.exp(-t / 0.045)
+        c = crunch()
+        bits = (c - high(c, 2500)) * .5 * math.exp(-t / 0.06)
+        samples.append(math.tanh(1.3 * (thwack + body) + bits))
+    return finish(samples, fade_in=0.0005)
+
+
+def enemy_spotted():
+    """The alert: an enemy has seen the courier, a low thump under two
+    quick bells a minor second apart, uneasy."""
+    samples = [0.0] * int(0.6 * RATE)
+    noise, low = Noise(0xE403), LowPass()
+    for i in range(int(0.2 * RATE)):
+        t = i / RATE
+        samples[i] += (.9 * math.sin(math.tau * glide(90, 60, t / .2) * t) + low(noise(), 400)) * math.exp(-t / 0.06)
+    place(samples, int(0.01 * RATE), chime(note('E5'), 0.5, 0.7, decay=0.16))
+    place(samples, int(0.09 * RATE), chime(note('F5'), 0.5, 0.8, decay=0.2))
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
+
+
+def orb_pickup():
+    """A drop collected: a quick bright arpeggio of glassy bells."""
+    samples = [0.0] * int(0.42 * RATE)
+    for k, name in enumerate(('A5', 'C#6', 'E6', 'A6')):
+        place(samples, int(k * 0.045 * RATE), chime(note(name), 0.3, 0.55 + 0.1 * k, decay=0.1))
+    return finish(samples, fade_in=0.0005, fade_out=0.04)
+
+
 # The shell's menu sounds and game over's sting, by the IDs it plays them
 # under: 01's own, in its twilight palette of bells and plucked strings.
 
@@ -583,7 +852,7 @@ def game_over():
     return finish(samples, fade_out=0.4)
 
 
-# The music: four loops at 22,050 Hz, each rendered a bar past its end with
+# The music: five loops at 22,050 Hz, each rendered a bar past its end with
 # that tail folded onto its start, so it repeats at its bar line without a
 # click. `--check` holds each one's length and seam (`seam_problem`).
 MUSIC_RATE = 22050
@@ -815,6 +1084,63 @@ def music_over():
     return render_loop(len(chords), beat, events)
 
 
+def tom(freq, seconds, level, seed, rate=MUSIC_RATE):
+    """A taiko-like drum: a pitched skin falling a little in pitch, and a
+    slap of noise."""
+    noise, low = Noise(seed), LowPass()
+    out, phase = [], 0.0
+    for i in range(int(seconds * rate)):
+        t = i / rate
+        phase += glide(freq * 1.4, freq, min(1.0, t / 0.05)) / rate
+        slap = low(noise(), 2400) * math.exp(-t / 0.012)
+        out.append(level * (math.sin(math.tau * phase) * math.exp(-t / (seconds * 0.35)) + 0.35 * slap))
+    return out
+
+
+def stab(freqs, seconds, level, rate=MUSIC_RATE):
+    """A short string stab: a few detuned saws on the chord, bright then
+    closing fast."""
+    out = []
+    low = LowPass()
+    for i in range(int(seconds * rate)):
+        t = i / rate
+        tone = sum(2 * ((f * k * t) % 1.0) - 1 for f in freqs for k in (0.997, 1.003)) / (2 * len(freqs))
+        # LowPass is tuned for RATE; at MUSIC_RATE its cutoff reads halved.
+        out.append(level * low(tone, glide(2200, 500, min(1.0, t / seconds))) * math.exp(-t / (seconds * 0.4)))
+    return out
+
+
+def music_combat():
+    """The combat layer: sixteen bars at 128 BPM in A minor, in step with
+    music_explore's bars and chords, which it plays over while an enemy sees
+    the courier. Toms drive every beat under an eighth-note low pulse, string
+    stabs push the off-beats and a tense bell figure climbs in the second
+    half."""
+    rate, beat = MUSIC_RATE, MUSIC_RATE * 60 // 128
+    bar, eighth = 4 * beat, beat // 2
+    progression = [('A2', 'C3', 'E3'), ('F2', 'A2', 'C3'), ('C3', 'E3', 'G3'), ('G2', 'B2', 'D3'),
+                   ('D3', 'F3', 'A3'), ('A2', 'C3', 'E3'), ('F2', 'A2', 'C3'), ('E2', 'G#2', 'B2')]
+    chords = progression * 2
+    events = []
+    for index, (root, third, fifth) in enumerate(chords):
+        start = index * bar
+        for quarter in range(4):
+            at = start + quarter * beat
+            events.append((at, tom(55 if quarter in (0, 2) else 82, 0.45, 0.42, 0xC300 + index * 4 + quarter)))
+            if quarter == 3:
+                events.append((at + eighth, tom(110, 0.25, 0.22, 0xC340 + index)))
+        for step in range(8):
+            octave = 2 if step % 4 == 3 else 1
+            events.append((start + step * eighth, bass(note(root) / 2 * octave, eighth / rate * 0.8, 0.3)))
+        for step in (1, 3, 5, 6):
+            events.append((start + step * eighth, stab([note(n) * 2 for n in (root, third, fifth)], 0.16, 0.16)))
+        if index >= 8:
+            figure = (fifth, root, third, root) if index % 2 else (root, third, fifth, third)
+            for k, name in enumerate(figure):
+                events.append((start + k * beat + eighth, chime(note(name) * 4, 0.35, 0.09, decay=0.12, rate=rate)))
+    return render_loop(len(chords), beat, events)
+
+
 def encode(samples, rate):
     """Normalize `samples` to PEAK and encode them as a WAV file at `rate`."""
     scale = PEAK / max(abs(s) for s in samples)
@@ -835,6 +1161,7 @@ LOOPS = {
     'music_explore.wav': 16 * 4 * (MUSIC_RATE * 60 // 128),
     'music_pause.wav': 5 * 4 * (MUSIC_RATE * 60 // 80),
     'music_over.wav': 4 * 4 * (MUSIC_RATE * 60 // 66),
+    'music_combat.wav': 16 * 4 * (MUSIC_RATE * 60 // 128),
 }
 
 
@@ -866,6 +1193,7 @@ def build_sounds():
         'music_explore.wav': encode(music_explore(), MUSIC_RATE),
         'music_pause.wav': encode(music_pause(), MUSIC_RATE),
         'music_over.wav': encode(music_over(), MUSIC_RATE),
+        'music_combat.wav': encode(music_combat(), MUSIC_RATE),
         'fireball_cast.wav': fireball_cast(),
         'fireball_blast.wav': fireball_blast(),
         'extinguish.wav': extinguish(),
@@ -890,4 +1218,19 @@ def build_sounds():
         'frost_blast.wav': frost_blast(),
         'dummy_hit.wav': dummy_hit(),
         'summon.wav': summon(),
+        'wisp_hum.wav': wisp_hum(),
+        'wisp_flare.wav': wisp_flare(),
+        'crawler_hiss.wav': crawler_hiss(),
+        'crawler_lunge.wav': crawler_lunge(),
+        'beetle_paw.wav': beetle_paw(),
+        'beetle_charge.wav': beetle_charge(),
+        'bat_screech.wav': bat_screech(),
+        'bat_dive.wav': bat_dive(),
+        'troll_step.wav': troll_step(),
+        'troll_roar.wav': troll_roar(),
+        'troll_slam.wav': troll_slam(),
+        'troll_throw.wav': troll_throw(),
+        'enemy_hit.wav': enemy_hit(),
+        'enemy_spotted.wav': enemy_spotted(),
+        'orb_pickup.wav': orb_pickup(),
     }

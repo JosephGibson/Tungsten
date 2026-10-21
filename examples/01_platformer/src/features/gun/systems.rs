@@ -8,8 +8,8 @@ use tungsten::core::{
     Shape, Sprite, Time, Transform, Velocity, Visibility, With, Without, World,
 };
 use tungsten::kit::{
-    Abilities, Aim, Health, LinearMotion, Projectile, ProjectileExpired, Source, Struck, Used,
-    use_ability,
+    Abilities, Aim, Health, Hurtbox, LinearMotion, Projectile, ProjectileExpired, Source, Struck,
+    Used, use_ability,
 };
 use tungsten::physics::wake;
 
@@ -19,9 +19,10 @@ use super::{
     MUZZLE_OFFSET, RELOAD_SECS, SHOOT, SHOT_DAMAGE, SHOT_PUSH, heading, rounds,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{Hit, Kind};
+use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
+use crate::features::enemies::beetle;
 use crate::features::player::{self, BODY_OFFSET};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock};
@@ -151,49 +152,84 @@ pub fn paths(world: &mut World) {
     }
 }
 
-/// A ball or an iron block a bullet's step met: when, as a fraction of the
-/// step, the body and its save ID, whether it is iron, the bullet's centre
-/// there and the face's outward normal.
+/// What a bullet's step can meet beside the kit's hurtboxes: a ball, an
+/// iron block, or a live beetle's hurtbox, which the bullets' filter skips.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum What {
+    Ball,
+    Iron,
+    Beetle,
+}
+
+/// A body a bullet's step met: when, as a fraction of the step, the body,
+/// its save ID and what it is, the bullet's centre there, the face's
+/// outward normal, and how far the body moves on from there to the step's
+/// end.
 #[derive(Debug, Clone, Copy)]
 struct Contact {
     t: f32,
     body: Entity,
     id: u64,
-    iron: bool,
+    what: What,
     point: Vec2,
     normal: Vec2,
+    moved: Vec2,
 }
 
-/// One ball or iron block over the step: its centre at the step's start and
-/// end, its shape and its save ID.
+/// One body over the step: its centre at the step's start and end, its
+/// shape, its save ID and what it is.
 #[derive(Debug, Clone, Copy)]
 struct Swept {
     body: Entity,
     id: u64,
-    iron: bool,
+    what: What,
     start: Vec2,
     end: Vec2,
     shape: Shape,
 }
 
 /// The step's balls and iron blocks, each swept from its `PrevPosition` to
-/// its `Position`.
+/// its `Position`, and its live beetles' hurtboxes.
 fn bodies(world: &World) -> Vec<Swept> {
     let mut swept = Vec::new();
     for (body, at, prev, collider, id) in
         world.query::<(Entity, &Position, &PrevPosition, &Collider, &SaveId)>()
     {
-        let iron = world.has::<IronBlock>(body);
-        if !iron && !world.has::<Ball>(body) {
+        let what = if world.has::<IronBlock>(body) {
+            What::Iron
+        } else if world.has::<Ball>(body) {
+            What::Ball
+        } else {
             continue;
-        }
+        };
         swept.push(Swept {
             body,
             id: id.0,
-            iron,
+            what,
             start: prev.0 + collider.offset,
             end: at.0 + collider.offset,
             shape: collider.shape,
+        });
+    }
+    for (body, at, prev, hurtbox, health, id) in world.query::<(
+        Entity,
+        &Position,
+        Option<&PrevPosition>,
+        &Hurtbox,
+        &Health,
+        &SaveId,
+    )>() {
+        if health.is_dead() || !beetle::is_beetle(world, body) {
+            continue;
+        }
+        let start = prev.map_or(at.0, |prev| prev.0);
+        swept.push(Swept {
+            body,
+            id: id.0,
+            what: What::Beetle,
+            start: start + hurtbox.offset(),
+            end: at.0 + hurtbox.offset(),
+            shape: hurtbox.shape().shape(),
         });
     }
     swept
@@ -256,9 +292,8 @@ fn box_contact(start: Vec2, motion: Vec2, half: Vec2) -> Option<(f32, Vec2)> {
     (enter <= exit && (0.0..=1.0).contains(&enter)).then_some((enter, normal))
 }
 
-/// The first ball or iron block the bullet's path `from` to `to` meets,
-/// each swept with its own step's motion: the earliest, then the lower
-/// save ID.
+/// The first body the bullet's path `from` to `to` meets, each swept with
+/// its own step's motion: the earliest, then the lower save ID.
 fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
     let path = to - from;
     let (low, high) = (
@@ -295,9 +330,10 @@ fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
                 t,
                 body: body.body,
                 id: body.id,
-                iron: body.iron,
+                what: body.what,
                 point: from + path * t,
                 normal,
+                moved: (body.end - body.start) * (1.0 - t),
             });
         }
     }
@@ -307,12 +343,14 @@ fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
 /// `gun_hits`, in the overlap phase after the kit's projectile pass: one
 /// decision a bullet, by what its step met first, each a fraction of the
 /// path `bullet_paths` recorded: the kit's hurtbox hit, its wall or range
-/// end, or a ball or iron block, swept with its own motion. A hit deals
-/// [`SHOT_DAMAGE`] physical with its push, from the shooter, so it can
-/// crit; a ball takes [`BALL_KICK`] over its mass, a frozen one shatters,
-/// and the shot ends; iron turns the shot about the face it met, at most
-/// [`MAX_RICOCHETS`] times, when the pass left it alive, else ends it
-/// there. A `Struck` the decision passes over deals nothing.
+/// end, or a ball, an iron block or a beetle, swept with its own motion. A
+/// hit deals [`SHOT_DAMAGE`] physical with its push, from the shooter, so
+/// it can crit; a ball takes [`BALL_KICK`] over its mass, a frozen one
+/// shatters, and the shot ends; iron, and a live beetle's front, turn the
+/// shot about the face it met, at most [`MAX_RICOCHETS`] times, when the
+/// pass left it alive, else end it there; a beetle's rear, or a frozen
+/// beetle anywhere, takes the shot as a hit, which its rear takes whole.
+/// A `Struck` the decision passes over deals nothing.
 pub fn hits(
     world: &mut World,
     struck: &mut EventCursor<Struck>,
@@ -374,22 +412,48 @@ pub fn hits(
             .is_some_and(Projectile::is_spent);
         let along_shot = path / length;
         match body {
-            Some(contact) if contact.iron => ricochet(world, bullet, contact, spent),
+            Some(contact) if contact.what == What::Iron => {
+                ricochet(world, bullet, contact, spent);
+            }
+            Some(contact) if contact.what == What::Beetle => {
+                shell(world, bullet, contact, along_shot, spent);
+            }
             Some(contact) => kick(world, bullet, contact, along_shot, spent),
             None => {
                 if let Some((_, target, at)) = hit {
-                    let mut shot = Hit::new(target, [(Kind::Physical, SHOT_DAMAGE)])
-                        .at(at)
-                        .push(along_shot * SHOT_PUSH);
-                    if let Some(source) = world.get::<Source>(bullet).map(|source| source.entity())
-                    {
-                        shot = shot.from(source);
-                    }
-                    shot.queue(world);
+                    strike(world, bullet, target, at, along_shot);
                 }
             }
         }
     }
+}
+
+/// The shot's hit on `target` at `at`: [`SHOT_DAMAGE`] physical with its
+/// push along the shot, from the shooter.
+fn strike(world: &mut World, bullet: Entity, target: Entity, at: Vec2, along: Vec2) {
+    let mut shot = Hit::new(target, [(Kind::Physical, SHOT_DAMAGE)])
+        .at(at)
+        .push(along * SHOT_PUSH);
+    if let Some(source) = world.get::<Source>(bullet).map(|source| source.entity()) {
+        shot = shot.from(source);
+    }
+    shot.queue(world);
+}
+
+/// A shot's beetle, its contact moved on with the beetle to the step's
+/// end: a live beetle's front turns the shot as iron does; its rear, or a
+/// frozen beetle anywhere, takes the shot as a hit and ends it.
+fn shell(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
+    let contact = Contact {
+        point: contact.point + contact.moved,
+        ..contact
+    };
+    let frozen = has_status(world, contact.body, FROZEN);
+    if !frozen && beetle::front(world, contact.body, contact.point) {
+        return ricochet(world, bullet, contact, spent);
+    }
+    strike(world, bullet, contact.body, contact.point, along);
+    end_at(world, bullet, contact.point, spent);
 }
 
 /// Puts the bullet's centre at `point`, its history too.
@@ -434,9 +498,10 @@ fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent:
     end_at(world, bullet, contact.point, spent);
 }
 
-/// A shot's iron: while the kit's pass left it alive and it has turned
-/// fewer than [`MAX_RICOCHETS`] times, it turns about the face it met from
-/// where it met it, with sparks and their sound; else it ends there.
+/// A shot's iron or beetle's front: while the kit's pass left it alive and
+/// it has turned fewer than [`MAX_RICOCHETS`] times, it turns about the
+/// face it met from where it met it, with sparks and their sound; else it
+/// ends there.
 fn ricochet(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
     let turns = world
         .get::<Bullet>(bullet)

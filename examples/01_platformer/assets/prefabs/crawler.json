@@ -1,0 +1,109 @@
+{
+  "sprite": {
+    "asset_id": "ex10_crawler_walk_0",
+    "z_order": 8
+  },
+  "components": {
+    "enemy": {
+      "kind": "crawler"
+    },
+    "tags": [
+      "team.enemy",
+      "flesh"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          24,
+          10
+        ]
+      },
+      "offset": [
+        32,
+        51
+      ]
+    },
+    "platformer_controller": {
+      "run_speed": 160,
+      "jump_speed": 600
+    },
+    "health": {
+      "max": 60,
+      "invulnerability": 0,
+      "despawn_on_death": 0
+    },
+    "stats": {
+      "max_health": 60,
+      "damage": 12,
+      "move_speed": 160
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          24,
+          9
+        ]
+      },
+      "offset": [
+        32,
+        50
+      ]
+    },
+    "contact_damage": {
+      "damage": {
+        "damage.cold": 12
+      },
+      "interval": 0.6,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "knockback": 300
+    },
+    "resist": {
+      "damage.fire": 2,
+      "damage.cold": 0
+    },
+    "ailment_threshold": {
+      "flat": 20
+    },
+    "knockback": {
+      "seconds": 0.2
+    },
+    "hit_flash": {
+      "color": [
+        1.0,
+        0.95,
+        0.85,
+        1.0
+      ],
+      "seconds": 0.12
+    },
+    "animation": {
+      "id": "ex10_crawler_walk"
+    },
+    "cues": {
+      "damaged": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx",
+            "min_interval": 0.1
+          }
+        }
+      ],
+      "killed": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx"
+          }
+        },
+        {
+          "roll": "enemy_drops"
+        }
+      ]
+    }
+  }
+}

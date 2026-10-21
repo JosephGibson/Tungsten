@@ -618,3 +618,68 @@ fn a_windowed_hitbox_hits_only_while_armed() {
         .inspect_rows();
     assert_eq!(rows[2].1, "0 targets, disarmed (0.20 s window)");
 }
+
+#[test]
+fn a_loaded_hitbox_given_its_targets_hits_none_again() {
+    use tungsten_core::physics::{Position, PrevPosition};
+
+    // A sword's swing over two targets in its reach, then a third.
+    let run = |named_again: bool| -> Vec<f32> {
+        let (mut world, mut schedule) = windowed_rig();
+        let sword = world.spawn_with((
+            Position(Vec2::ZERO),
+            PrevPosition(Vec2::ZERO),
+            Hitbox::new(HitShape::circle(30.0), 1.0).with_window(0.5),
+        ));
+        let mut targets: Vec<Entity> = [10.0, -10.0]
+            .into_iter()
+            .map(|x| {
+                world.spawn_with((
+                    Position(Vec2::new(x, 0.0)),
+                    PrevPosition(Vec2::new(x, 0.0)),
+                    Hurtbox::new(HitShape::circle(4.0)),
+                    crate::Health::new(100.0),
+                ))
+            })
+            .collect();
+        world.get_mut::<Hitbox>(sword).unwrap().arm();
+        fixed_step(&mut world, &mut schedule);
+        let hitbox = world.get::<Hitbox>(sword).unwrap();
+        assert_eq!(hitbox.hit_targets(), targets.as_slice(), "in the order hit");
+        // The game's save: the hitbox, and its targets by the game's IDs.
+        let ids: Vec<usize> = hitbox
+            .hit_targets()
+            .iter()
+            .map(|hit| targets.iter().position(|target| target == hit).unwrap())
+            .collect();
+        let mut loaded: Hitbox =
+            serde_json::from_value(serde_json::to_value(hitbox).unwrap()).unwrap();
+        assert!(loaded.hit_targets().is_empty() && loaded.is_armed());
+        if named_again {
+            // Named twice, kept once.
+            loaded.set_hit_targets(ids.iter().chain(&ids).map(|&id| targets[id]));
+            assert_eq!(loaded.hit_targets(), targets.as_slice());
+        }
+        world.insert(sword, loaded);
+        // A third steps into the reach while the window runs.
+        targets.push(world.spawn_with((
+            Position(Vec2::new(0.0, 20.0)),
+            PrevPosition(Vec2::new(0.0, 20.0)),
+            Hurtbox::new(HitShape::circle(4.0)),
+            crate::Health::new(100.0),
+        )));
+        for _ in 0..10 {
+            fixed_step(&mut world, &mut schedule);
+        }
+        targets
+            .iter()
+            .map(|&target| world.get::<crate::Health>(target).unwrap().current())
+            .collect()
+    };
+    assert_eq!(run(true), [99.0, 99.0, 99.0], "each once in the activation");
+    assert_eq!(
+        run(false),
+        [98.0, 98.0, 99.0],
+        "unnamed: a fresh activation"
+    );
+}

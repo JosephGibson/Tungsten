@@ -14,7 +14,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::{optional_positive, positive};
+use crate::foundation::{optional_positive, positive, vec2};
 use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
 use crate::motion::platformer::kinematic_body;
@@ -63,6 +63,13 @@ const TOP_DOWN_MOVER_COMPONENT: &str = "top_down_mover";
 /// spawns the mover with a `Position`, a `PrevPosition` and a `Velocity` at
 /// the spawn position, so a prefab without a `rigid_body` moves bodiless
 /// and one with a kinematic `rigid_body` keeps the body's.
+///
+/// It is data: a save holds its speed, direction, rates and kept velocity,
+/// without its filter or its first-step flag, so a loaded mover has `new`'s
+/// filter until the game sets its own again and, on a kinematic body,
+/// takes its still first step, as a loaded
+/// [`PlatformerController`](crate::PlatformerController) does. That step
+/// keeps the kept velocity, so the mover resumes from it.
 ///
 /// # Examples
 ///
@@ -116,12 +123,15 @@ const TOP_DOWN_MOVER_COMPONENT: &str = "top_down_mover";
 /// let down = 120.0 * std::f32::consts::FRAC_1_SQRT_2 * 29.0 / 60.0;
 /// assert!((at.y - down).abs() < 0.01);
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "MoverSave", into = "MoverSave")]
 pub struct TopDownMover {
     speed: f32,
     direction: Vec2,
+    /// Not saved: a load takes `new`'s.
     filter: SpatialFilter,
-    /// Its first step has run.
+    /// Its first step has run. Not saved: a loaded mover takes its still
+    /// first step.
     started: bool,
     /// px/s² toward the target while it has a direction; `None` jumps.
     acceleration: Option<f32>,
@@ -328,6 +338,72 @@ struct TopDownMoverDef {
     deceleration: Option<f32>,
 }
 
+/// A mover as a save writes it: its settings and its runtime state,
+/// without the filter or the first-step flag.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MoverSave {
+    speed: f32,
+    #[serde(with = "vec2")]
+    direction: Vec2,
+    acceleration: Option<f32>,
+    deceleration: Option<f32>,
+    #[serde(with = "vec2")]
+    velocity: Vec2,
+}
+
+impl TryFrom<MoverSave> for TopDownMover {
+    type Error = String;
+
+    fn try_from(save: MoverSave) -> Result<Self, Self::Error> {
+        // 0 is a `move_speed` stat's stand-still.
+        if !(save.speed.is_finite() && save.speed >= 0.0) {
+            return Err(format!(
+                "speed: must be finite and >= 0 (got {})",
+                save.speed
+            ));
+        }
+        for (field, rate) in [
+            ("acceleration", save.acceleration),
+            ("deceleration", save.deceleration),
+        ] {
+            if let Some(rate) = rate
+                && !(rate.is_finite() && rate > 0.0)
+            {
+                return Err(format!("{field}: must be finite and > 0 (got {rate})"));
+            }
+        }
+        for (field, value) in [("direction", save.direction), ("velocity", save.velocity)] {
+            if !value.is_finite() {
+                return Err(format!("{field}: must be finite (got {value})"));
+            }
+        }
+        let mut mover = Self {
+            speed: save.speed,
+            direction: Vec2::ZERO,
+            filter: SpatialFilter::new(),
+            started: false,
+            acceleration: save.acceleration,
+            deceleration: save.deceleration,
+            velocity: save.velocity,
+        };
+        mover.set_direction(save.direction);
+        Ok(mover)
+    }
+}
+
+impl From<TopDownMover> for MoverSave {
+    fn from(mover: TopDownMover) -> Self {
+        Self {
+            speed: mover.speed,
+            direction: mover.direction,
+            acceleration: mover.acceleration,
+            deceleration: mover.deceleration,
+            velocity: mover.velocity,
+        }
+    }
+}
+
 /// The system's state between steps.
 #[derive(Default)]
 struct Runner {
@@ -387,7 +463,9 @@ impl Runner {
                     Vec2::ZERO
                 };
                 world.get_mut::<Velocity>(entity).unwrap().0 = velocity;
-                velocity
+                // The still first step keeps the kept velocity, so a loaded
+                // mover resumes from it; a new one's is 0.
+                if started { velocity } else { mover.3 }
             } else {
                 // Bodiless: the position moves, with no cast.
                 let Some(position) = world.get_mut::<Position>(entity) else {

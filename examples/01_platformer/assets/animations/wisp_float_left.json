@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_0_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_1_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_2_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_3_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_4_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_5_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_6_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_7_left"
+    }
+  ],
+  "looping": true
+}
