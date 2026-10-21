@@ -1,0 +1,39 @@
+{
+  "sprite": {
+    "asset_id": "ex10_health_orb",
+    "z_order": 12
+  },
+  "components": {
+    "orb": {
+      "kind": "health"
+    },
+    "pickup": {
+      "shape": {
+        "circle": 12
+      },
+      "offset": [
+        12,
+        12
+      ],
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "magnet": 360
+    },
+    "lifetime": {
+      "seconds": 20
+    },
+    "cues": {
+      "picked_up": [
+        {
+          "sound": {
+            "id": "ex10_orb_pickup_sfx",
+            "min_interval": 0.05
+          }
+        }
+      ]
+    }
+  }
+}

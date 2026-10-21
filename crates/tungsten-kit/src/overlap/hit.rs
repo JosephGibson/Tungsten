@@ -357,10 +357,15 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// `pen`, points by damage type in `[0, 1]`, and `convert`, a list of
 /// `{ "from", "to", "pct" }` rules, are its own penetration and conversion,
 /// none by default; `window`, seconds above 0, makes it a windowed hitbox,
-/// none by default. It is data, without the targets it has hit: a loaded
-/// one starts a fresh activation, and a save writes a typed one's parts as
-/// `parts`, a list of `{ "tags", "amount" }`, beside its damage, and a
-/// windowed one's `window` and `armed_left`.
+/// none by default. It is data, without the targets it has hit, which are
+/// entities: a loaded one starts a fresh activation unless the game names
+/// them again by its own IDs through
+/// [`set_hit_targets`](Self::set_hit_targets), from the
+/// [`hit_targets`](Self::hit_targets) it saved; a piercing projectile's
+/// passed targets are its hitbox's, so a loaded bolt given them again
+/// passes none twice. A save writes a typed one's parts as `parts`, a list
+/// of `{ "tags", "amount" }`, beside its damage, and a windowed one's
+/// `window` and `armed_left`.
 ///
 /// # Examples
 ///
@@ -846,6 +851,25 @@ impl Hitbox {
     #[must_use]
     pub fn has_hit(&self, target: Entity) -> bool {
         self.hit.contains(&target)
+    }
+
+    /// The targets it has hit in this activation, in the order it hit
+    /// them: what a game's save holds by its own IDs.
+    #[must_use]
+    pub fn hit_targets(&self) -> &[Entity] {
+        &self.hit
+    }
+
+    /// Replaces the targets it has hit in this activation, each once: a
+    /// loaded activation, given its targets again by the game's IDs, hits
+    /// none of them twice.
+    pub fn set_hit_targets(&mut self, targets: impl IntoIterator<Item = Entity>) {
+        self.hit.clear();
+        for target in targets {
+            if !self.hit.contains(&target) {
+                self.hit.push(target);
+            }
+        }
     }
 
     /// Records a hit on `target` in this activation.

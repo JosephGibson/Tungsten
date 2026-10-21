@@ -14,5 +14,9 @@
   "status.doused",
   "flesh",
   "freezable",
-  "conductive"
+  "conductive",
+  "team.enemy",
+  "beetle",
+  "brittle",
+  "troll"
 ]

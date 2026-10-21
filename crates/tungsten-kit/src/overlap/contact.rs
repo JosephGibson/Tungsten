@@ -63,7 +63,10 @@ const DEFAULT_INTERVAL: f32 = 0.5;
 /// default; without `shape` it takes the hurtbox's shape and offset, and
 /// an `offset` comes only with a `shape`. `damage`, `pen` and `convert`
 /// take a hitbox's forms. It is data, without the times it keeps per
-/// target: a loaded one starts over.
+/// target, which name entities: a loaded one starts over unless the game
+/// names its targets again by its own IDs through
+/// [`set_touches`](Self::set_touches), from the [`touches`](Self::touches)
+/// it saved.
 ///
 /// # Examples
 ///
@@ -105,6 +108,75 @@ struct Timed {
     target: Entity,
     hit: f64,
     met: f64,
+}
+
+/// One target a [`ContactDamage`] touches: the game seconds since it last
+/// hurt it and since they last met, which a game's save holds beside its
+/// own ID for the target.
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::World;
+/// use tungsten_kit::{ContactDamage, ContactTouch};
+///
+/// let mut world = World::new();
+/// let hero = world.spawn();
+/// // Hurt 0.2 s ago and met this step: due again in 0.3 s.
+/// let mut spikes = ContactDamage::new(1.0).with_interval(0.5);
+/// spikes.set_touches([ContactTouch::new(hero, 0.2, 0.0)]);
+/// let touch = spikes.touches().next().unwrap();
+/// assert_eq!((touch.target(), touch.since_hit(), touch.since_met()), (hero, 0.2, 0.0));
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ContactTouch {
+    target: Entity,
+    since_hit: f32,
+    since_met: f32,
+}
+
+impl ContactTouch {
+    /// `target`, hurt `since_hit` seconds ago and met `since_met` seconds
+    /// ago.
+    ///
+    /// # Panics
+    ///
+    /// When either seconds is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn new(target: Entity, since_hit: f32, since_met: f32) -> Self {
+        assert!(
+            since_hit.is_finite() && since_hit >= 0.0,
+            "ContactTouch::new: since_hit must be finite and >= 0 (got {since_hit})"
+        );
+        assert!(
+            since_met.is_finite() && since_met >= 0.0,
+            "ContactTouch::new: since_met must be finite and >= 0 (got {since_met})"
+        );
+        Self {
+            target,
+            since_hit,
+            since_met,
+        }
+    }
+
+    /// The target it touches.
+    #[must_use]
+    pub fn target(&self) -> Entity {
+        self.target
+    }
+
+    /// The game seconds since it last hurt the target.
+    #[must_use]
+    pub fn since_hit(&self) -> f32 {
+        self.since_hit
+    }
+
+    /// The game seconds since a step last met the target.
+    #[must_use]
+    pub fn since_met(&self) -> f32 {
+        self.since_met
+    }
 }
 
 /// A contact damage as a save writes it, before its values are checked.
@@ -395,6 +467,39 @@ impl ContactDamage {
         self.knockback
     }
 
+    /// The targets it touches, in entity order, each with its seconds since
+    /// its last hit and since they last met: what a game's save holds by
+    /// its own IDs.
+    pub fn touches(&self) -> impl Iterator<Item = ContactTouch> + '_ {
+        let clock = self.clock;
+        self.timed.iter().map(move |timed| ContactTouch {
+            target: timed.target,
+            since_hit: seconds_since(clock, timed.hit),
+            since_met: seconds_since(clock, timed.met),
+        })
+    }
+
+    /// Replaces the targets it touches, each once, the first of a target
+    /// named twice kept: after a load, each is next due an interval after
+    /// its last hit and forgotten an interval after it last met, as before
+    /// the save.
+    pub fn set_touches(&mut self, touches: impl IntoIterator<Item = ContactTouch>) {
+        let clock = self.clock;
+        self.timed.clear();
+        for touch in touches {
+            if self.timed.iter().any(|timed| timed.target == touch.target) {
+                continue;
+            }
+            self.timed.push(Timed {
+                target: touch.target,
+                hit: clock - f64::from(touch.since_hit),
+                met: clock - f64::from(touch.since_met),
+            });
+        }
+        // `due` finds a target by its index.
+        self.timed.sort_by_key(|timed| timed.target.id());
+    }
+
     /// Sets the damage a `damage` stat gives; one that is not finite and at
     /// least 0 is ignored.
     pub(crate) fn set_damage(&mut self, damage: f32) {
@@ -402,6 +507,11 @@ impl ContactDamage {
             self.damage = damage;
         }
     }
+}
+
+/// The seconds from `then` to `clock`, as an `f32` of at least 0.
+fn seconds_since(clock: f64, then: f64) -> f32 {
+    ((clock - then).max(0.0)).min(f64::from(f32::MAX)) as f32
 }
 
 /// `components.contact_damage` as a scene writes it, before the pairing

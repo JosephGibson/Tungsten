@@ -4,11 +4,19 @@ use glam::Vec2;
 use tungsten::core::{Entity, Voice};
 
 /// The music playing: the exploration loop, which plays on at 0 under
-/// pause and game over, and pause's loop while pause is on top.
+/// pause and game over, and pause's loop while pause is on top; the wisps'
+/// shared hum, whose volume follows the nearest wisp; and the combat layer
+/// over the exploration while an enemy sees the player.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,
     pub pause: Option<Voice>,
+    pub hum: Option<Voice>,
+    /// The hum's volume last set.
+    pub hum_level: f32,
+    pub combat: Option<Voice>,
+    /// The combat layer's volume last set.
+    pub combat_level: f32,
     pub ducked: bool,
 }
 
@@ -63,13 +71,35 @@ pub enum Sound {
     Reloaded,
     /// A bullet turned off iron.
     Ricocheted,
-    /// A dummy summoned.
+    /// A dummy or an enemy summoned.
     Summoned,
+    /// A wisp's alert: its flame flaring.
+    WispFlare,
+    /// A crawler's tell before its lunge.
+    CrawlerHiss,
+    /// A crawler's lunge.
+    CrawlerLunge,
+    /// A beetle's paw before its charge.
+    BeetlePaw,
+    /// A beetle's charge.
+    BeetleCharge,
+    /// A bat's screech with its white flash before its dive.
+    BatScreech,
+    /// A bat's dive.
+    BatDive,
+    /// A troll's foot landing as it walks.
+    TrollStep,
+    /// A troll's roar on sight.
+    TrollRoar,
+    /// A troll's slam.
+    TrollSlam,
+    /// A troll's throw.
+    TrollThrow,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 21] = [
+    pub const ALL: [Sound; 32] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -91,6 +121,17 @@ impl Sound {
         Sound::Reloaded,
         Sound::Ricocheted,
         Sound::Summoned,
+        Sound::WispFlare,
+        Sound::CrawlerHiss,
+        Sound::CrawlerLunge,
+        Sound::BeetlePaw,
+        Sound::BeetleCharge,
+        Sound::BatScreech,
+        Sound::BatDive,
+        Sound::TrollStep,
+        Sound::TrollRoar,
+        Sound::TrollSlam,
+        Sound::TrollThrow,
     ];
 
     /// Its cue event's name.
@@ -118,6 +159,17 @@ impl Sound {
             Sound::Reloaded => "reloaded",
             Sound::Ricocheted => "ricocheted",
             Sound::Summoned => "summoned",
+            Sound::WispFlare => "wisp_flared",
+            Sound::CrawlerHiss => "crawler_hissed",
+            Sound::CrawlerLunge => "crawler_lunged",
+            Sound::BeetlePaw => "beetle_pawed",
+            Sound::BeetleCharge => "beetle_charged",
+            Sound::BatScreech => "bat_screeched",
+            Sound::BatDive => "bat_dived",
+            Sound::TrollStep => "troll_stepped",
+            Sound::TrollRoar => "troll_roared",
+            Sound::TrollSlam => "troll_slammed",
+            Sound::TrollThrow => "troll_threw",
         }
     }
 }

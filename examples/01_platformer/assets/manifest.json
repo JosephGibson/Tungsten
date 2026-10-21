@@ -6,8 +6,62 @@
     "ex10_ball_spin": {
       "path": "animations/ball_spin.json"
     },
+    "ex10_bat_dive": {
+      "path": "animations/bat_dive.json"
+    },
+    "ex10_bat_dive_left": {
+      "path": "animations/bat_dive_left.json"
+    },
+    "ex10_bat_fly": {
+      "path": "animations/bat_fly.json"
+    },
+    "ex10_bat_fly_left": {
+      "path": "animations/bat_fly_left.json"
+    },
+    "ex10_bat_roost": {
+      "path": "animations/bat_roost.json"
+    },
+    "ex10_bat_roost_left": {
+      "path": "animations/bat_roost_left.json"
+    },
+    "ex10_bat_windup": {
+      "path": "animations/bat_windup.json"
+    },
+    "ex10_bat_windup_left": {
+      "path": "animations/bat_windup_left.json"
+    },
+    "ex10_beetle_charge": {
+      "path": "animations/beetle_charge.json"
+    },
+    "ex10_beetle_charge_left": {
+      "path": "animations/beetle_charge_left.json"
+    },
+    "ex10_beetle_paw": {
+      "path": "animations/beetle_paw.json"
+    },
+    "ex10_beetle_paw_left": {
+      "path": "animations/beetle_paw_left.json"
+    },
+    "ex10_beetle_walk": {
+      "path": "animations/beetle_walk.json"
+    },
+    "ex10_beetle_walk_left": {
+      "path": "animations/beetle_walk_left.json"
+    },
     "ex10_bowling_roll": {
       "path": "animations/bowling_roll.json"
+    },
+    "ex10_crawler_lunge": {
+      "path": "animations/crawler_lunge.json"
+    },
+    "ex10_crawler_lunge_left": {
+      "path": "animations/crawler_lunge_left.json"
+    },
+    "ex10_crawler_walk": {
+      "path": "animations/crawler_walk.json"
+    },
+    "ex10_crawler_walk_left": {
+      "path": "animations/crawler_walk_left.json"
     },
     "ex10_fireball": {
       "path": "animations/fireball.json"
@@ -66,15 +120,69 @@
     "ex10_torch_flicker": {
       "path": "animations/torch_flicker.json"
     },
+    "ex10_troll_idle": {
+      "path": "animations/troll_idle.json"
+    },
+    "ex10_troll_idle_left": {
+      "path": "animations/troll_idle_left.json"
+    },
+    "ex10_troll_pickup": {
+      "path": "animations/troll_pickup.json"
+    },
+    "ex10_troll_pickup_left": {
+      "path": "animations/troll_pickup_left.json"
+    },
+    "ex10_troll_slam": {
+      "path": "animations/troll_slam.json"
+    },
+    "ex10_troll_slam_left": {
+      "path": "animations/troll_slam_left.json"
+    },
+    "ex10_troll_throw": {
+      "path": "animations/troll_throw.json"
+    },
+    "ex10_troll_throw_left": {
+      "path": "animations/troll_throw_left.json"
+    },
+    "ex10_troll_walk": {
+      "path": "animations/troll_walk.json"
+    },
+    "ex10_troll_walk_left": {
+      "path": "animations/troll_walk_left.json"
+    },
+    "ex10_troll_windup": {
+      "path": "animations/troll_windup.json"
+    },
+    "ex10_troll_windup_left": {
+      "path": "animations/troll_windup_left.json"
+    },
     "ex10_vines_sway": {
       "path": "animations/vines_sway.json"
     },
     "ex10_waterfall_flow": {
       "path": "animations/waterfall_flow.json"
+    },
+    "ex10_wisp_flare": {
+      "path": "animations/wisp_flare.json"
+    },
+    "ex10_wisp_flare_left": {
+      "path": "animations/wisp_flare_left.json"
+    },
+    "ex10_wisp_float": {
+      "path": "animations/wisp_float.json"
+    },
+    "ex10_wisp_float_left": {
+      "path": "animations/wisp_float_left.json"
     }
   },
   "data": {
     "abilities": {
+      "bat_dive": {
+        "path": "data/abilities/bat_dive.json"
+      },
+      "beetle_charge": {
+        "path": "data/abilities/beetle_charge.json"
+      },
       "black_hole": {
         "path": "data/abilities/black_hole.json"
       },
@@ -144,6 +252,12 @@
       "mana_regen": {
         "path": "data/effects/mana_regen.json"
       },
+      "orb_heal": {
+        "path": "data/effects/orb_heal.json"
+      },
+      "orb_mana": {
+        "path": "data/effects/orb_mana.json"
+      },
       "shattered": {
         "path": "data/effects/shattered.json"
       },
@@ -152,11 +266,22 @@
       },
       "stunned": {
         "path": "data/effects/stunned.json"
+      },
+      "troll_regen": {
+        "path": "data/effects/troll_regen.json"
       }
     },
     "lantern_anchors": {
       "player": {
         "path": "data/lantern_anchors/player.json"
+      }
+    },
+    "loot_tables": {
+      "enemy_drops": {
+        "path": "data/loot_tables/enemy_drops.json"
+      },
+      "troll_drops": {
+        "path": "data/loot_tables/troll_drops.json"
       }
     },
     "stats": {
@@ -385,6 +510,9 @@
     "ex10_frost_blast": {
       "path": "particles/frost_blast.json"
     },
+    "ex10_frozen_glints": {
+      "path": "particles/frozen_glints.json"
+    },
     "ex10_ice_beam": {
       "path": "particles/ice_beam.json"
     },
@@ -435,9 +563,18 @@
     },
     "ex10_wind_motes": {
       "path": "particles/wind_motes.json"
+    },
+    "ex10_wisp_embers": {
+      "path": "particles/wisp_embers.json"
     }
   },
   "prefabs": {
+    "bat": {
+      "path": "prefabs/bat.json"
+    },
+    "beetle": {
+      "path": "prefabs/beetle.json"
+    },
     "black_hole": {
       "path": "prefabs/black_hole.json"
     },
@@ -446,6 +583,9 @@
     },
     "bullet": {
       "path": "prefabs/bullet.json"
+    },
+    "crawler": {
+      "path": "prefabs/crawler.json"
     },
     "dummy": {
       "path": "prefabs/dummy.json"
@@ -723,17 +863,32 @@
     "fire_missile": {
       "path": "prefabs/fire_missile.json"
     },
+    "health_orb": {
+      "path": "prefabs/health_orb.json"
+    },
     "iron_block": {
       "path": "prefabs/iron_block.json"
     },
     "iron_scrap": {
       "path": "prefabs/iron_scrap.json"
     },
+    "mana_orb": {
+      "path": "prefabs/mana_orb.json"
+    },
     "player": {
       "path": "prefabs/player.json"
     },
     "small_ball": {
       "path": "prefabs/small_ball.json"
+    },
+    "troll": {
+      "path": "prefabs/troll.json"
+    },
+    "wisp": {
+      "path": "prefabs/wisp.json"
+    },
+    "wisp_embers": {
+      "path": "prefabs/wisp_embers.json"
     }
   },
   "shaders": {
@@ -745,6 +900,26 @@
     }
   },
   "sounds": {
+    "ex10_bat_dive_sfx": {
+      "looping": false,
+      "path": "sounds/bat_dive.wav",
+      "volume": 0.45
+    },
+    "ex10_bat_screech_sfx": {
+      "looping": false,
+      "path": "sounds/bat_screech.wav",
+      "volume": 0.35
+    },
+    "ex10_beetle_charge_sfx": {
+      "looping": false,
+      "path": "sounds/beetle_charge.wav",
+      "volume": 0.55
+    },
+    "ex10_beetle_paw_sfx": {
+      "looping": false,
+      "path": "sounds/beetle_paw.wav",
+      "volume": 0.45
+    },
     "ex10_black_hole_sfx": {
       "looping": false,
       "path": "sounds/black_hole.ogg",
@@ -755,10 +930,30 @@
       "path": "sounds/crackle.wav",
       "volume": 0.4
     },
+    "ex10_crawler_hiss_sfx": {
+      "looping": false,
+      "path": "sounds/crawler_hiss.wav",
+      "volume": 0.45
+    },
+    "ex10_crawler_lunge_sfx": {
+      "looping": false,
+      "path": "sounds/crawler_lunge.wav",
+      "volume": 0.5
+    },
     "ex10_dummy_hit_sfx": {
       "looping": false,
       "path": "sounds/dummy_hit.wav",
       "volume": 0.45
+    },
+    "ex10_enemy_hit_sfx": {
+      "looping": false,
+      "path": "sounds/enemy_hit.wav",
+      "volume": 0.45
+    },
+    "ex10_enemy_spotted_sfx": {
+      "looping": false,
+      "path": "sounds/enemy_spotted.wav",
+      "volume": 0.5
     },
     "ex10_extinguish_sfx": {
       "looping": false,
@@ -835,6 +1030,11 @@
       "path": "sounds/iron_crush.wav",
       "volume": 0.65
     },
+    "ex10_orb_pickup_sfx": {
+      "looping": false,
+      "path": "sounds/orb_pickup.wav",
+      "volume": 0.5
+    },
     "ex10_place_sfx": {
       "looping": false,
       "path": "sounds/place.wav",
@@ -870,11 +1070,47 @@
       "path": "sounds/toss.wav",
       "volume": 0.5
     },
+    "ex10_troll_roar_sfx": {
+      "looping": false,
+      "path": "sounds/troll_roar.wav",
+      "volume": 0.6
+    },
+    "ex10_troll_slam_sfx": {
+      "looping": false,
+      "path": "sounds/troll_slam.wav",
+      "volume": 0.7
+    },
+    "ex10_troll_step_sfx": {
+      "looping": false,
+      "path": "sounds/troll_step.wav",
+      "volume": 0.55
+    },
+    "ex10_troll_throw_sfx": {
+      "looping": false,
+      "path": "sounds/troll_throw.wav",
+      "volume": 0.55
+    },
+    "ex10_wisp_flare_sfx": {
+      "looping": false,
+      "path": "sounds/wisp_flare.wav",
+      "volume": 0.5
+    },
+    "ex10_wisp_hum_sfx": {
+      "looping": true,
+      "path": "sounds/wisp_hum.wav",
+      "volume": 0.35
+    },
     "game_over": {
       "bus": "effects",
       "looping": false,
       "path": "sounds/game_over.wav",
       "volume": 0.7
+    },
+    "music_combat": {
+      "bus": "music",
+      "looping": true,
+      "path": "sounds/music_combat.wav",
+      "volume": 0.4
     },
     "music_explore": {
       "bus": "music",
@@ -1068,6 +1304,246 @@
       "normal_map": "sprites/ball_small_5_n.png",
       "path": "sprites/ball_small_5.png"
     },
+    "ex10_bat_dive_0": {
+      "filter": "nearest",
+      "path": "sprites/bat_dive_0.png"
+    },
+    "ex10_bat_dive_0_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_dive_0_left.png"
+    },
+    "ex10_bat_dive_1": {
+      "filter": "nearest",
+      "path": "sprites/bat_dive_1.png"
+    },
+    "ex10_bat_dive_1_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_dive_1_left.png"
+    },
+    "ex10_bat_fly_0": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_0.png"
+    },
+    "ex10_bat_fly_0_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_0_left.png"
+    },
+    "ex10_bat_fly_1": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_1.png"
+    },
+    "ex10_bat_fly_1_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_1_left.png"
+    },
+    "ex10_bat_fly_2": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_2.png"
+    },
+    "ex10_bat_fly_2_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_2_left.png"
+    },
+    "ex10_bat_fly_3": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_3.png"
+    },
+    "ex10_bat_fly_3_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_3_left.png"
+    },
+    "ex10_bat_fly_4": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_4.png"
+    },
+    "ex10_bat_fly_4_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_4_left.png"
+    },
+    "ex10_bat_fly_5": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_5.png"
+    },
+    "ex10_bat_fly_5_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_fly_5_left.png"
+    },
+    "ex10_bat_roost_0": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_0.png"
+    },
+    "ex10_bat_roost_0_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_0_left.png"
+    },
+    "ex10_bat_roost_1": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_1.png"
+    },
+    "ex10_bat_roost_1_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_1_left.png"
+    },
+    "ex10_bat_roost_2": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_2.png"
+    },
+    "ex10_bat_roost_2_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_2_left.png"
+    },
+    "ex10_bat_roost_3": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_3.png"
+    },
+    "ex10_bat_roost_3_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_roost_3_left.png"
+    },
+    "ex10_bat_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_0.png"
+    },
+    "ex10_bat_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_0_left.png"
+    },
+    "ex10_bat_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_1.png"
+    },
+    "ex10_bat_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_1_left.png"
+    },
+    "ex10_bat_windup_2": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_2.png"
+    },
+    "ex10_bat_windup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_2_left.png"
+    },
+    "ex10_bat_windup_3": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_3.png"
+    },
+    "ex10_bat_windup_3_left": {
+      "filter": "nearest",
+      "path": "sprites/bat_windup_3_left.png"
+    },
+    "ex10_beetle_charge_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_0.png"
+    },
+    "ex10_beetle_charge_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_0_left.png"
+    },
+    "ex10_beetle_charge_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_1.png"
+    },
+    "ex10_beetle_charge_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_1_left.png"
+    },
+    "ex10_beetle_charge_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_2.png"
+    },
+    "ex10_beetle_charge_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_2_left.png"
+    },
+    "ex10_beetle_charge_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_3.png"
+    },
+    "ex10_beetle_charge_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_charge_3_left.png"
+    },
+    "ex10_beetle_paw_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_0.png"
+    },
+    "ex10_beetle_paw_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_0_left.png"
+    },
+    "ex10_beetle_paw_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_1.png"
+    },
+    "ex10_beetle_paw_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_1_left.png"
+    },
+    "ex10_beetle_paw_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_2.png"
+    },
+    "ex10_beetle_paw_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_2_left.png"
+    },
+    "ex10_beetle_paw_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_3.png"
+    },
+    "ex10_beetle_paw_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_paw_3_left.png"
+    },
+    "ex10_beetle_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_0.png"
+    },
+    "ex10_beetle_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_0_left.png"
+    },
+    "ex10_beetle_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_1.png"
+    },
+    "ex10_beetle_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_1_left.png"
+    },
+    "ex10_beetle_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_2.png"
+    },
+    "ex10_beetle_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_2_left.png"
+    },
+    "ex10_beetle_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_3.png"
+    },
+    "ex10_beetle_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_3_left.png"
+    },
+    "ex10_beetle_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_4.png"
+    },
+    "ex10_beetle_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_4_left.png"
+    },
+    "ex10_beetle_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_5.png"
+    },
+    "ex10_beetle_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_walk_5_left.png"
+    },
     "ex10_bolt_0": {
       "filter": "nearest",
       "path": "sprites/bolt_0.png"
@@ -1209,6 +1685,86 @@
       "filter": "nearest",
       "normal_map": "sprites/corner_convex_right_n.png",
       "path": "sprites/corner_convex_right.png"
+    },
+    "ex10_crawler_lunge_0": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_0.png"
+    },
+    "ex10_crawler_lunge_0_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_0_left.png"
+    },
+    "ex10_crawler_lunge_1": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_1.png"
+    },
+    "ex10_crawler_lunge_1_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_1_left.png"
+    },
+    "ex10_crawler_lunge_2": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_2.png"
+    },
+    "ex10_crawler_lunge_2_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_2_left.png"
+    },
+    "ex10_crawler_lunge_3": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_3.png"
+    },
+    "ex10_crawler_lunge_3_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_lunge_3_left.png"
+    },
+    "ex10_crawler_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_0.png"
+    },
+    "ex10_crawler_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_0_left.png"
+    },
+    "ex10_crawler_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_1.png"
+    },
+    "ex10_crawler_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_1_left.png"
+    },
+    "ex10_crawler_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_2.png"
+    },
+    "ex10_crawler_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_2_left.png"
+    },
+    "ex10_crawler_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_3.png"
+    },
+    "ex10_crawler_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_3_left.png"
+    },
+    "ex10_crawler_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_4.png"
+    },
+    "ex10_crawler_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_4_left.png"
+    },
+    "ex10_crawler_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_5.png"
+    },
+    "ex10_crawler_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_walk_5_left.png"
     },
     "ex10_crystal": {
       "filter": "nearest",
@@ -1496,6 +2052,10 @@
       "normal_map": "sprites/hanging_moss_n.png",
       "path": "sprites/hanging_moss.png"
     },
+    "ex10_health_orb": {
+      "filter": "nearest",
+      "path": "sprites/health_orb.png"
+    },
     "ex10_heart_empty": {
       "filter": "nearest",
       "path": "sprites/heart_empty.png"
@@ -1512,6 +2072,10 @@
       "filter": "nearest",
       "path": "sprites/ice_crystal.png"
     },
+    "ex10_ice_glint": {
+      "filter": "nearest",
+      "path": "sprites/ice_glint.png"
+    },
     "ex10_ice_ring": {
       "filter": "nearest",
       "path": "sprites/ice_ring.png"
@@ -1520,6 +2084,14 @@
       "filter": "nearest",
       "path": "sprites/ice_shell.png"
     },
+    "ex10_icon_bat": {
+      "filter": "nearest",
+      "path": "sprites/icon_bat.png"
+    },
+    "ex10_icon_beetle": {
+      "filter": "nearest",
+      "path": "sprites/icon_beetle.png"
+    },
     "ex10_icon_black_hole": {
       "filter": "nearest",
       "path": "sprites/icon_black_hole.png"
@@ -1527,6 +2099,10 @@
     "ex10_icon_bowling_ball": {
       "filter": "nearest",
       "path": "sprites/icon_bowling_ball.png"
+    },
+    "ex10_icon_crawler": {
+      "filter": "nearest",
+      "path": "sprites/icon_crawler.png"
     },
     "ex10_icon_dummy": {
       "filter": "nearest",
@@ -1563,6 +2139,14 @@
     "ex10_icon_small_balls": {
       "filter": "nearest",
       "path": "sprites/icon_small_balls.png"
+    },
+    "ex10_icon_troll": {
+      "filter": "nearest",
+      "path": "sprites/icon_troll.png"
+    },
+    "ex10_icon_wisp": {
+      "filter": "nearest",
+      "path": "sprites/icon_wisp.png"
     },
     "ex10_infall_streak": {
       "filter": "linear",
@@ -1713,6 +2297,10 @@
       "filter": "nearest",
       "normal_map": "sprites/lift_deck_2_n.png",
       "path": "sprites/lift_deck_2.png"
+    },
+    "ex10_mana_orb": {
+      "filter": "nearest",
+      "path": "sprites/mana_orb.png"
     },
     "ex10_marker": {
       "emissive_mask": "sprites/marker_e.png",
@@ -3060,6 +3648,22 @@
       "filter": "nearest",
       "path": "sprites/status_halo_small.png"
     },
+    "ex10_status_ice_bat": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_bat.png"
+    },
+    "ex10_status_ice_beetle": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_beetle.png"
+    },
+    "ex10_status_ice_crawler": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_crawler.png"
+    },
+    "ex10_status_ice_dummy": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_dummy.png"
+    },
     "ex10_status_ice_large": {
       "filter": "nearest",
       "path": "sprites/status_ice_large.png"
@@ -3071,6 +3675,14 @@
     "ex10_status_ice_small": {
       "filter": "nearest",
       "path": "sprites/status_ice_small.png"
+    },
+    "ex10_status_ice_troll": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_troll.png"
+    },
+    "ex10_status_ice_wisp": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_wisp.png"
     },
     "ex10_stone_platform": {
       "emissive_mask": "sprites/stone_platform_e.png",
@@ -3093,6 +3705,198 @@
     "ex10_tracer": {
       "filter": "nearest",
       "path": "sprites/tracer.png"
+    },
+    "ex10_troll_idle_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_0.png"
+    },
+    "ex10_troll_idle_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_0_left.png"
+    },
+    "ex10_troll_idle_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_1.png"
+    },
+    "ex10_troll_idle_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_1_left.png"
+    },
+    "ex10_troll_idle_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_2.png"
+    },
+    "ex10_troll_idle_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_2_left.png"
+    },
+    "ex10_troll_idle_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_3.png"
+    },
+    "ex10_troll_idle_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_idle_3_left.png"
+    },
+    "ex10_troll_pickup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_0.png"
+    },
+    "ex10_troll_pickup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_0_left.png"
+    },
+    "ex10_troll_pickup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_1.png"
+    },
+    "ex10_troll_pickup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_1_left.png"
+    },
+    "ex10_troll_pickup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_2.png"
+    },
+    "ex10_troll_pickup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_pickup_2_left.png"
+    },
+    "ex10_troll_slam_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_0.png"
+    },
+    "ex10_troll_slam_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_0_left.png"
+    },
+    "ex10_troll_slam_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_1.png"
+    },
+    "ex10_troll_slam_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_1_left.png"
+    },
+    "ex10_troll_slam_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_2.png"
+    },
+    "ex10_troll_slam_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_slam_2_left.png"
+    },
+    "ex10_troll_throw_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_0.png"
+    },
+    "ex10_troll_throw_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_0_left.png"
+    },
+    "ex10_troll_throw_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_1.png"
+    },
+    "ex10_troll_throw_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_1_left.png"
+    },
+    "ex10_troll_throw_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_2.png"
+    },
+    "ex10_troll_throw_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_throw_2_left.png"
+    },
+    "ex10_troll_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_0.png"
+    },
+    "ex10_troll_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_0_left.png"
+    },
+    "ex10_troll_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_1.png"
+    },
+    "ex10_troll_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_1_left.png"
+    },
+    "ex10_troll_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_2.png"
+    },
+    "ex10_troll_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_2_left.png"
+    },
+    "ex10_troll_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_3.png"
+    },
+    "ex10_troll_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_3_left.png"
+    },
+    "ex10_troll_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_4.png"
+    },
+    "ex10_troll_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_4_left.png"
+    },
+    "ex10_troll_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_5.png"
+    },
+    "ex10_troll_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_5_left.png"
+    },
+    "ex10_troll_walk_6": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_6.png"
+    },
+    "ex10_troll_walk_6_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_6_left.png"
+    },
+    "ex10_troll_walk_7": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_7.png"
+    },
+    "ex10_troll_walk_7_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_walk_7_left.png"
+    },
+    "ex10_troll_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_0.png"
+    },
+    "ex10_troll_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_0_left.png"
+    },
+    "ex10_troll_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_1.png"
+    },
+    "ex10_troll_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_1_left.png"
+    },
+    "ex10_troll_windup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_2.png"
+    },
+    "ex10_troll_windup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_windup_2_left.png"
     },
     "ex10_vines": {
       "emissive_mask": "sprites/vines_e.png",
@@ -3141,6 +3945,118 @@
     "ex10_waterfall_flow_3": {
       "filter": "nearest",
       "path": "sprites/waterfall_flow_3.png"
+    },
+    "ex10_wisp_flare_0": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_0.png"
+    },
+    "ex10_wisp_flare_0_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_0_left.png"
+    },
+    "ex10_wisp_flare_1": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_1.png"
+    },
+    "ex10_wisp_flare_1_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_1_left.png"
+    },
+    "ex10_wisp_flare_2": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_2.png"
+    },
+    "ex10_wisp_flare_2_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_2_left.png"
+    },
+    "ex10_wisp_flare_3": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_3.png"
+    },
+    "ex10_wisp_flare_3_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_3_left.png"
+    },
+    "ex10_wisp_flare_4": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_4.png"
+    },
+    "ex10_wisp_flare_4_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_4_left.png"
+    },
+    "ex10_wisp_flare_5": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_5.png"
+    },
+    "ex10_wisp_flare_5_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_flare_5_left.png"
+    },
+    "ex10_wisp_float_0": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_0.png"
+    },
+    "ex10_wisp_float_0_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_0_left.png"
+    },
+    "ex10_wisp_float_1": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_1.png"
+    },
+    "ex10_wisp_float_1_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_1_left.png"
+    },
+    "ex10_wisp_float_2": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_2.png"
+    },
+    "ex10_wisp_float_2_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_2_left.png"
+    },
+    "ex10_wisp_float_3": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_3.png"
+    },
+    "ex10_wisp_float_3_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_3_left.png"
+    },
+    "ex10_wisp_float_4": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_4.png"
+    },
+    "ex10_wisp_float_4_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_4_left.png"
+    },
+    "ex10_wisp_float_5": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_5.png"
+    },
+    "ex10_wisp_float_5_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_5_left.png"
+    },
+    "ex10_wisp_float_6": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_6.png"
+    },
+    "ex10_wisp_float_6_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_6_left.png"
+    },
+    "ex10_wisp_float_7": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_7.png"
+    },
+    "ex10_wisp_float_7_left": {
+      "filter": "nearest",
+      "path": "sprites/wisp_float_7_left.png"
     }
   },
   "tilemaps": {

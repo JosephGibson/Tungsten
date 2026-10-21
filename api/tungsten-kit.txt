@@ -726,8 +726,10 @@ pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
+pub fn tungsten_kit::ContactDamage::set_touches(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::ContactTouch>)
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::ContactDamage::touches(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_kit::ContactTouch> + '_
 pub fn tungsten_kit::ContactDamage::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::ContactDamage::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
@@ -1804,6 +1806,7 @@ pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
+pub fn tungsten_kit::Hitbox::hit_targets(&self) -> &[tungsten_core::ecs::entity::Entity]
 pub fn tungsten_kit::Hitbox::is_armed(&self) -> bool
 pub fn tungsten_kit::Hitbox::knockback(&self) -> f32
 pub fn tungsten_kit::Hitbox::new(tungsten_kit::HitShape, f32) -> Self
@@ -1811,6 +1814,7 @@ pub fn tungsten_kit::Hitbox::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Hitbox::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::Hitbox::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::Hitbox::rearm(&mut self)
+pub fn tungsten_kit::Hitbox::set_hit_targets(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::Hitbox::shape(&self) -> tungsten_kit::HitShape
 pub fn tungsten_kit::Hitbox::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::Hitbox::window(&self) -> core::option::Option<f32>
@@ -2957,13 +2961,23 @@ pub struct tungsten_kit::prelude::StateMachine<S>
 impl<S: core::marker::Copy + core::cmp::Eq + 'static> tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::elapsed(&self) -> f32
 pub fn tungsten_kit::StateMachine<S>::go(&mut self, S)
+pub fn tungsten_kit::StateMachine<S>::is_held(&self) -> bool
 pub fn tungsten_kit::StateMachine<S>::new(S) -> Self
+pub fn tungsten_kit::StateMachine<S>::pending(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::previous(&self) -> core::option::Option<S>
+pub fn tungsten_kit::StateMachine<S>::set_held(&mut self, bool)
 pub fn tungsten_kit::StateMachine<S>::state(&self) -> S
+impl<'de, S> serde_core::de::Deserialize<'de> for tungsten_kit::StateMachine<S> where S: serde_core::de::Deserialize<'de> + core::marker::Copy
+pub fn tungsten_kit::StateMachine<S>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl<S: core::clone::Clone> core::clone::Clone for tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::clone(&self) -> tungsten_kit::StateMachine<S>
+impl<S: core::cmp::PartialEq> core::cmp::PartialEq for tungsten_kit::StateMachine<S>
+pub fn tungsten_kit::StateMachine<S>::eq(&self, &tungsten_kit::StateMachine<S>) -> bool
+impl<S: core::cmp::PartialEq> core::marker::StructuralPartialEq for tungsten_kit::StateMachine<S>
 impl<S: core::fmt::Debug> core::fmt::Debug for tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<S> serde_core::ser::Serialize for tungsten_kit::StateMachine<S> where S: serde_core::ser::Serialize + core::marker::Copy
+pub fn tungsten_kit::StateMachine<S>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<S> core::marker::Freeze for tungsten_kit::StateMachine<S> where S: core::marker::Freeze
 impl<S> core::marker::Send for tungsten_kit::StateMachine<S> where S: core::marker::Send
 impl<S> core::marker::Sync for tungsten_kit::StateMachine<S> where S: core::marker::Sync
@@ -3285,10 +3299,17 @@ pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 impl core::clone::Clone for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::clone(&self) -> tungsten_kit::TopDownMover
+impl core::cmp::PartialEq for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::eq(&self, &tungsten_kit::TopDownMover) -> bool
 impl core::fmt::Debug for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TopDownMover
+impl serde_core::ser::Serialize for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::TopDownMover
 impl core::marker::Send for tungsten_kit::TopDownMover
 impl core::marker::Sync for tungsten_kit::TopDownMover
@@ -4327,8 +4348,10 @@ pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
+pub fn tungsten_kit::ContactDamage::set_touches(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::ContactTouch>)
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
+pub fn tungsten_kit::ContactDamage::touches(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_kit::ContactTouch> + '_
 pub fn tungsten_kit::ContactDamage::with_conversion(self, tungsten_kit::Conversion) -> Self
 pub fn tungsten_kit::ContactDamage::with_filter(self, tungsten_kit::TagFilter) -> Self
 pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
@@ -4374,6 +4397,27 @@ impl core::marker::Unpin for tungsten_kit::ContactDamagePlugin
 impl core::marker::UnsafeUnpin for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ContactDamagePlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ContactDamagePlugin
+pub struct tungsten_kit::ContactTouch
+impl tungsten_kit::ContactTouch
+pub fn tungsten_kit::ContactTouch::new(tungsten_core::ecs::entity::Entity, f32, f32) -> Self
+pub fn tungsten_kit::ContactTouch::since_hit(&self) -> f32
+pub fn tungsten_kit::ContactTouch::since_met(&self) -> f32
+pub fn tungsten_kit::ContactTouch::target(&self) -> tungsten_core::ecs::entity::Entity
+impl core::clone::Clone for tungsten_kit::ContactTouch
+pub fn tungsten_kit::ContactTouch::clone(&self) -> tungsten_kit::ContactTouch
+impl core::cmp::PartialEq for tungsten_kit::ContactTouch
+pub fn tungsten_kit::ContactTouch::eq(&self, &tungsten_kit::ContactTouch) -> bool
+impl core::fmt::Debug for tungsten_kit::ContactTouch
+pub fn tungsten_kit::ContactTouch::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ContactTouch
+impl core::marker::StructuralPartialEq for tungsten_kit::ContactTouch
+impl core::marker::Freeze for tungsten_kit::ContactTouch
+impl core::marker::Send for tungsten_kit::ContactTouch
+impl core::marker::Sync for tungsten_kit::ContactTouch
+impl core::marker::Unpin for tungsten_kit::ContactTouch
+impl core::marker::UnsafeUnpin for tungsten_kit::ContactTouch
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ContactTouch
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ContactTouch
 pub struct tungsten_kit::Conversion
 impl tungsten_kit::Conversion
 pub fn tungsten_kit::Conversion::new() -> Self
@@ -5424,6 +5468,7 @@ pub fn tungsten_kit::Hitbox::conversion(&self) -> core::option::Option<&tungsten
 pub fn tungsten_kit::Hitbox::damage(&self) -> f32
 pub fn tungsten_kit::Hitbox::filter(&self) -> &tungsten_kit::TagFilter
 pub fn tungsten_kit::Hitbox::has_hit(&self, tungsten_core::ecs::entity::Entity) -> bool
+pub fn tungsten_kit::Hitbox::hit_targets(&self) -> &[tungsten_core::ecs::entity::Entity]
 pub fn tungsten_kit::Hitbox::is_armed(&self) -> bool
 pub fn tungsten_kit::Hitbox::knockback(&self) -> f32
 pub fn tungsten_kit::Hitbox::new(tungsten_kit::HitShape, f32) -> Self
@@ -5431,6 +5476,7 @@ pub fn tungsten_kit::Hitbox::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::Hitbox::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::Hitbox::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
 pub fn tungsten_kit::Hitbox::rearm(&mut self)
+pub fn tungsten_kit::Hitbox::set_hit_targets(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_core::ecs::entity::Entity>)
 pub fn tungsten_kit::Hitbox::shape(&self) -> tungsten_kit::HitShape
 pub fn tungsten_kit::Hitbox::tags(&self) -> &tungsten_kit::Tags
 pub fn tungsten_kit::Hitbox::window(&self) -> core::option::Option<f32>
@@ -6600,13 +6646,23 @@ pub struct tungsten_kit::StateMachine<S>
 impl<S: core::marker::Copy + core::cmp::Eq + 'static> tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::elapsed(&self) -> f32
 pub fn tungsten_kit::StateMachine<S>::go(&mut self, S)
+pub fn tungsten_kit::StateMachine<S>::is_held(&self) -> bool
 pub fn tungsten_kit::StateMachine<S>::new(S) -> Self
+pub fn tungsten_kit::StateMachine<S>::pending(&self) -> core::option::Option<S>
 pub fn tungsten_kit::StateMachine<S>::previous(&self) -> core::option::Option<S>
+pub fn tungsten_kit::StateMachine<S>::set_held(&mut self, bool)
 pub fn tungsten_kit::StateMachine<S>::state(&self) -> S
+impl<'de, S> serde_core::de::Deserialize<'de> for tungsten_kit::StateMachine<S> where S: serde_core::de::Deserialize<'de> + core::marker::Copy
+pub fn tungsten_kit::StateMachine<S>::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl<S: core::clone::Clone> core::clone::Clone for tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::clone(&self) -> tungsten_kit::StateMachine<S>
+impl<S: core::cmp::PartialEq> core::cmp::PartialEq for tungsten_kit::StateMachine<S>
+pub fn tungsten_kit::StateMachine<S>::eq(&self, &tungsten_kit::StateMachine<S>) -> bool
+impl<S: core::cmp::PartialEq> core::marker::StructuralPartialEq for tungsten_kit::StateMachine<S>
 impl<S: core::fmt::Debug> core::fmt::Debug for tungsten_kit::StateMachine<S>
 pub fn tungsten_kit::StateMachine<S>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<S> serde_core::ser::Serialize for tungsten_kit::StateMachine<S> where S: serde_core::ser::Serialize + core::marker::Copy
+pub fn tungsten_kit::StateMachine<S>::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl<S> core::marker::Freeze for tungsten_kit::StateMachine<S> where S: core::marker::Freeze
 impl<S> core::marker::Send for tungsten_kit::StateMachine<S> where S: core::marker::Send
 impl<S> core::marker::Sync for tungsten_kit::StateMachine<S> where S: core::marker::Sync
@@ -6928,10 +6984,17 @@ pub fn tungsten_kit::TopDownMover::with_deceleration(self, f32) -> Self
 pub fn tungsten_kit::TopDownMover::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
 impl core::clone::Clone for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::clone(&self) -> tungsten_kit::TopDownMover
+impl core::cmp::PartialEq for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::eq(&self, &tungsten_kit::TopDownMover) -> bool
 impl core::fmt::Debug for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_kit::TopDownMover
+impl serde_core::ser::Serialize for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
 impl tungsten_core::inspect::Inspectable for tungsten_kit::TopDownMover
 pub fn tungsten_kit::TopDownMover::inspect_rows(&self) -> alloc::vec::Vec<(&'static str, alloc::string::String)>
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_kit::TopDownMover
+pub fn tungsten_kit::TopDownMover::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tungsten_kit::TopDownMover
 impl core::marker::Send for tungsten_kit::TopDownMover
 impl core::marker::Sync for tungsten_kit::TopDownMover

@@ -26,11 +26,12 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, EventQueue, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Phase, Tags, ensure_phases,
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Penetration, Phase, Tags, ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
+use crate::features::enemies::beetle;
 use crate::features::run::Run;
 use components::{Hints, Reaction};
 
@@ -85,7 +86,9 @@ impl Kind {
 /// the entity it comes from, where it lands and its push. [`Hit::request`]
 /// turns it into the kit's request: a hit from the player crits on one
 /// [`KitRng`] draw under [`CRIT_CHANCE`], doubling every part; a blast's or
-/// a steam burst's on the player takes [`PLAYER_BLAST_SHARE`].
+/// a steam burst's on the player takes [`PLAYER_BLAST_SHARE`]; one landing
+/// on a beetle's rear half, or one made whole, takes physical penetration
+/// 1, so its shell's physical resistance takes nothing.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     target: Entity,
@@ -94,6 +97,7 @@ pub struct Hit {
     at: Option<Vec2>,
     push: Option<Vec2>,
     blast: bool,
+    whole: bool,
 }
 
 impl Hit {
@@ -107,6 +111,7 @@ impl Hit {
             at: None,
             push: None,
             blast: false,
+            whole: false,
         }
     }
 
@@ -139,8 +144,17 @@ impl Hit {
         self
     }
 
+    /// The hit, landing whole wherever it lands, as on a beetle's rear: an
+    /// iron crush.
+    #[must_use]
+    pub fn whole(mut self) -> Self {
+        self.whole = true;
+        self
+    }
+
     /// The kit's request: the base amounts, doubled on a crit (one draw,
-    /// for a hit from the run's player), halved on the player for a blast.
+    /// for a hit from the run's player), halved on the player for a blast,
+    /// with physical penetration 1 when whole or on a beetle's rear half.
     pub fn request(&self, world: &mut World) -> DamageRequest {
         let player = world.get_resource::<Run>().map(|run| run.player);
         let crit = self.source.is_some() && self.source == player && roll_crit(world);
@@ -160,6 +174,13 @@ impl Hit {
         }
         if let Some(push) = self.push {
             request = request.with_knockback(push);
+        }
+        let rear = self
+            .at
+            .is_some_and(|at| beetle::rear(world, self.target, at));
+        if self.whole || rear {
+            let pen = Penetration::new().with_points(Kind::Physical.tag(), 1.0);
+            request = request.with_penetration(pen);
         }
         request
     }

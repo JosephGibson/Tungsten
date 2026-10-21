@@ -341,3 +341,118 @@ fn typed_contact_damage_carries_its_parts_penetration_and_conversion() {
         .unwrap();
     assert_eq!((sent.amount, sent.source), (6.0, Some(pool)));
 }
+
+#[test]
+fn a_loaded_contact_given_its_touches_keeps_their_schedule() {
+    use tungsten_core::physics::{Position, PrevPosition};
+
+    // The target's health each step over 100 steps of an aura's touch: in
+    // it, out for ten steps, back, then gone for good. `load` saves the
+    // aura at step 40 and puts it back, naming its touches again or not.
+    let run = |load: Option<bool>| -> Vec<f32> {
+        let (mut world, mut schedule) = contact_rig(&[]);
+        let aura = world.spawn_with((
+            Position(Vec2::ZERO),
+            PrevPosition(Vec2::ZERO),
+            ContactDamage::new(1.0)
+                .with_interval(0.5)
+                .with_shape(HitShape::circle(20.0), Vec2::ZERO),
+        ));
+        let target = world.spawn_with((
+            Position(Vec2::new(10.0, 0.0)),
+            PrevPosition(Vec2::new(10.0, 0.0)),
+            Hurtbox::new(HitShape::circle(4.0)),
+            crate::Health::new(1000.0),
+        ));
+        let mut health = Vec::new();
+        for step in 1..=100 {
+            if step == 41
+                && let Some(named_again) = load
+            {
+                let contact = world.get::<ContactDamage>(aura).unwrap();
+                // The game's save: the item, and its touches by its own IDs.
+                let touches: Vec<(usize, f32, f32)> = contact
+                    .touches()
+                    .map(|touch| {
+                        assert_eq!(touch.target(), target);
+                        (0, touch.since_hit(), touch.since_met())
+                    })
+                    .collect();
+                let mut loaded: ContactDamage =
+                    serde_json::from_value(serde_json::to_value(contact).unwrap()).unwrap();
+                assert_eq!(loaded.touches().count(), 0, "a save holds no entity");
+                if named_again {
+                    loaded.set_touches(
+                        touches
+                            .iter()
+                            .map(|&(_, hit, met)| ContactTouch::new(target, hit, met)),
+                    );
+                }
+                world.insert(aura, loaded);
+            }
+            let x = if (46..=55).contains(&step) || step >= 70 {
+                100.0
+            } else {
+                10.0
+            };
+            world.get_mut::<Position>(target).unwrap().0 = Vec2::new(x, 0.0);
+            world.get_mut::<PrevPosition>(target).unwrap().0 = Vec2::new(x, 0.0);
+            fixed_step(&mut world, &mut schedule);
+            health.push(world.get::<crate::Health>(target).unwrap().current());
+        }
+        health
+    };
+    let hits = |health: &[f32]| -> Vec<usize> {
+        let mut last = 1000.0;
+        let mut at = Vec::new();
+        for (i, &now) in health.iter().enumerate() {
+            if now < last {
+                at.push(i + 1);
+            }
+            last = now;
+        }
+        at
+    };
+    let uninterrupted = run(None);
+    // At once, an interval on, the interval out from step 31 once back.
+    assert_eq!(hits(&uninterrupted), [1, 31, 61]);
+    assert_eq!(run(Some(true)), uninterrupted, "the schedule kept");
+    // Unnamed, it starts over: at once at the load, and back at 56 inside
+    // that hit's interval, then gone.
+    assert_eq!(hits(&run(Some(false))), [1, 31, 41]);
+}
+
+#[test]
+fn a_contact_touch_refuses_negative_or_non_finite_seconds() {
+    let mut world = World::new();
+    let target = world.spawn();
+    let touch = ContactTouch::new(target, 0.0, 0.25);
+    assert_eq!(
+        (touch.target(), touch.since_hit(), touch.since_met()),
+        (target, 0.0, 0.25)
+    );
+    for (hit, met) in [
+        (-0.1, 0.0),
+        (0.0, -0.1),
+        (f32::NAN, 0.0),
+        (0.0, f32::INFINITY),
+    ] {
+        assert!(
+            std::panic::catch_unwind(|| ContactTouch::new(target, hit, met)).is_err(),
+            "{hit}, {met}"
+        );
+    }
+    // Touches go back sorted by target and each once.
+    let other = world.spawn();
+    let mut spikes = ContactDamage::new(1.0);
+    spikes.set_touches([
+        ContactTouch::new(other, 0.1, 0.0),
+        ContactTouch::new(target, 0.2, 0.0),
+        ContactTouch::new(other, 0.4, 0.0),
+    ]);
+    let back: Vec<(Entity, f32)> = spikes
+        .touches()
+        .map(|touch| (touch.target(), touch.since_hit()))
+        .collect();
+    assert_eq!(back, [(target, 0.2), (other, 0.1)]);
+}

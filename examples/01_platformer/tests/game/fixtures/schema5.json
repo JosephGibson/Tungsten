@@ -1,0 +1,701 @@
+{
+  "envelope": 1,
+  "slot": "slot_1",
+  "schema": 5,
+  "engine_version": "0.95.0",
+  "saved_at_ms": 1792613445444,
+  "data": {
+    "meta": {
+      "game_version": "0.95.0",
+      "difficulty": "normal",
+      "playtime_secs": 0.8666667118668556
+    },
+    "next_id": 329,
+    "rng": {
+      "seed": 7739845387903461153,
+      "draws": 0,
+      "rng": {
+        "state": 4293549164649142860,
+        "inc": 17142672548756564293
+      }
+    },
+    "area": "Lantern clearing",
+    "spell": 0,
+    "lantern": true,
+    "player": {
+      "id": 317,
+      "position": [
+        568.0,
+        939.0
+      ],
+      "velocity": [
+        0.0,
+        0.0
+      ],
+      "controller": {
+        "run_speed": 560.0,
+        "jump_speed": 1280.0,
+        "gravity": null,
+        "coyote_time": 0.1,
+        "jump_buffer": 0.1,
+        "jump_cut": 0.5,
+        "air_jumps": 1,
+        "run": 0.0,
+        "jump_held": false,
+        "pressed": false,
+        "launch": null,
+        "push": [
+          0.0,
+          0.0
+        ],
+        "buffer_left": 0.0,
+        "coyote_left": 0.1,
+        "lock_left": 0.0,
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "grounded": true,
+        "jumped": false,
+        "air_jumped": false,
+        "cut_armed": false,
+        "air_jumps_left": 1
+      },
+      "health": {
+        "current": 100.0,
+        "max": 100.0,
+        "invulnerability": 1.1,
+        "window_left": 0.0
+      },
+      "stats": {
+        "mana": {
+          "base": 977.0,
+          "min": 0.0,
+          "max": null
+        },
+        "max_health": {
+          "base": 100.0,
+          "min": 1.0,
+          "max": null
+        },
+        "max_mana": {
+          "base": 1000.0,
+          "min": 0.0,
+          "max": null
+        },
+        "move_speed": {
+          "base": 560.0,
+          "min": 0.0,
+          "max": null
+        }
+      },
+      "effects": {
+        "pending": [],
+        "instances": [
+          {
+            "effect": "mana_regen",
+            "stacks": 1,
+            "left": null,
+            "period_left": 0.016666679,
+            "factor": 1.0,
+            "serial": 0,
+            "granted": []
+          },
+          {
+            "effect": "casting",
+            "stacks": 1,
+            "left": 0.95000005,
+            "period_left": null,
+            "factor": 1.0,
+            "serial": 1,
+            "granted": [
+              "casting"
+            ]
+          }
+        ],
+        "next_serial": 2,
+        "granted": [
+          {
+            "tag": "casting",
+            "owners": 1,
+            "prior": false
+          }
+        ]
+      },
+      "sources": [
+        [
+          1,
+          317
+        ]
+      ],
+      "abilities": {
+        "entries": [
+          {
+            "name": "fire_missile",
+            "ability": "fire_missile",
+            "cooldown_left": 0.2,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "flamethrower",
+            "ability": "flamethrower",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "ice_spray",
+            "ability": "ice_spray",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "force_push",
+            "ability": "force_push",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "black_hole",
+            "ability": "black_hole",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "iron_block",
+            "ability": "iron_block",
+            "cooldown_left": 0.0,
+            "charges": 2,
+            "refill_left": 1.333334,
+            "interval_left": 0.0
+          },
+          {
+            "name": "bowling_ball",
+            "ability": "bowling_ball",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "small_balls",
+            "ability": "small_balls",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "lightning",
+            "ability": "lightning",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "gun",
+            "ability": "gun",
+            "cooldown_left": 0.10333333,
+            "charges": 11,
+            "refill_left": 3599.9834,
+            "interval_left": 0.0
+          },
+          {
+            "name": "summon",
+            "ability": "summon",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          }
+        ]
+      },
+      "buckets": {},
+      "tags": [
+        "casting",
+        "team.player"
+      ]
+    },
+    "platforms": [
+      {
+        "id": 299,
+        "position": [
+          556.8,
+          2154.9878
+        ],
+        "follower": {
+          "points": [
+            [
+              556.8,
+              2126.1
+            ],
+            [
+              556.8,
+              2254.1
+            ]
+          ],
+          "speed": 46.545456,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.8666665
+        }
+      },
+      {
+        "id": 300,
+        "position": [
+          2612.4194,
+          2132.5
+        ],
+        "follower": {
+          "points": [
+            [
+              2566.4,
+              2132.5
+            ],
+            [
+              2886.4,
+              2132.5
+            ]
+          ],
+          "speed": 91.42857,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.8666665
+        }
+      },
+      {
+        "id": 301,
+        "position": [
+          4300.327,
+          2516.5
+        ],
+        "follower": {
+          "points": [
+            [
+              4236.8,
+              2516.5
+            ],
+            [
+              4620.8,
+              2516.5
+            ]
+          ],
+          "speed": 118.15385,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.8666665
+        }
+      }
+    ],
+    "hazards": [
+      {
+        "id": 293,
+        "position": [
+          2332.9683,
+          2227.2
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              70.4,
+              0.0
+            ],
+            "period": 5.2
+          },
+          "phase": 0.0,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      },
+      {
+        "id": 294,
+        "position": [
+          2848.0,
+          2175.298
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              0.0,
+              96.0
+            ],
+            "period": 6.0
+          },
+          "phase": 0.19098593,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      },
+      {
+        "id": 295,
+        "position": [
+          4220.72,
+          1868.4462
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              96.0,
+              41.6
+            ],
+            "period": 6.5
+          },
+          "phase": 0.31830987,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      },
+      {
+        "id": 296,
+        "position": [
+          5311.3184,
+          1491.2
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              96.0,
+              0.0
+            ],
+            "period": 5.5
+          },
+          "phase": 0.11140846,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      },
+      {
+        "id": 297,
+        "position": [
+          6426.388,
+          1296.0576
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              83.2,
+              32.0
+            ],
+            "period": 7.0
+          },
+          "phase": 0.0,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      },
+      {
+        "id": 298,
+        "position": [
+          7708.243,
+          1030.4
+        ],
+        "oscillator": {
+          "position": {
+            "amplitude": [
+              102.4,
+              0.0
+            ],
+            "period": 6.2
+          },
+          "phase": 0.36605638,
+          "clock": 0.8666667118668556,
+          "prev_clock": 0.8500000443309546
+        },
+        "doused": null
+      }
+    ],
+    "balls": [
+      [
+        319,
+        true,
+        192.0,
+        984.7749,
+        0.0,
+        0.0,
+        0.46798843,
+        -0.18992886,
+        null,
+        null
+      ],
+      [
+        320,
+        true,
+        212.0,
+        984.7749,
+        0.0,
+        0.0,
+        0.5714308,
+        0.25659811,
+        null,
+        null
+      ],
+      [
+        321,
+        true,
+        232.0,
+        984.7749,
+        0.0,
+        0.0,
+        0.2936294,
+        -0.2530942,
+        null,
+        null
+      ],
+      [
+        322,
+        true,
+        252.0,
+        984.7749,
+        0.0,
+        0.0,
+        0.3544776,
+        0.3064884,
+        null,
+        null
+      ]
+    ],
+    "blocks": [
+      {
+        "id": 318,
+        "scrap": null,
+        "position": [
+          836.0,
+          876.2749
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null
+      }
+    ],
+    "black_hole": null,
+    "missiles": [
+      {
+        "id": 327,
+        "position": [
+          587.06146,
+          883.8123
+        ],
+        "projectile": {
+          "pierce": 0,
+          "range": 1890.0,
+          "bounces": 0,
+          "hits": 0,
+          "travelled": 44.552387,
+          "bounced": 0,
+          "spent": false
+        },
+        "motion": {
+          "velocity": [
+            92.10643,
+            -877.2745
+          ],
+          "acceleration": [
+            0.0,
+            360.0
+          ]
+        },
+        "source": 317
+      }
+    ],
+    "bullets": [
+      {
+        "id": 328,
+        "position": [
+          590.5498,
+          906.83606
+        ],
+        "projectile": {
+          "pierce": 0,
+          "range": 1600.0,
+          "bounces": 0,
+          "hits": 0,
+          "travelled": 40.0,
+          "bounced": 0,
+          "spent": false
+        },
+        "motion": {
+          "velocity": [
+            245.61714,
+            -2387.3987
+          ],
+          "acceleration": [
+            0.0,
+            0.0
+          ]
+        },
+        "ricochets": 0,
+        "source": 317
+      }
+    ],
+    "dummies": [
+      {
+        "id": 316,
+        "map": true,
+        "position": [
+          128.0,
+          2243.2737
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "health": {
+          "current": 400.0,
+          "max": 400.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.4
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [
+            {
+              "effect": "dummy_regen",
+              "stacks": 1,
+              "left": null,
+              "period_left": 0.15,
+              "factor": 1.0,
+              "serial": 0,
+              "granted": []
+            }
+          ],
+          "next_serial": 1,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "conductive",
+          "flesh",
+          "freezable"
+        ]
+      },
+      {
+        "id": 323,
+        "map": false,
+        "position": [
+          1168.0,
+          939.272
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "health": {
+          "current": 400.0,
+          "max": 400.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.4
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [
+            {
+              "effect": "dummy_regen",
+              "stacks": 1,
+              "left": null,
+              "period_left": 0.23333333,
+              "factor": 1.0,
+              "serial": 0,
+              "granted": []
+            },
+            {
+              "effect": "burning",
+              "stacks": 1,
+              "left": 3.8833334,
+              "period_left": 0.38333324,
+              "factor": 1.0,
+              "serial": 1,
+              "granted": [
+                "status.burning"
+              ]
+            }
+          ],
+          "next_serial": 2,
+          "granted": [
+            {
+              "tag": "status.burning",
+              "owners": 1,
+              "prior": false
+            }
+          ]
+        },
+        "sources": [
+          [
+            1,
+            317
+          ]
+        ],
+        "buckets": {},
+        "tags": [
+          "conductive",
+          "flesh",
+          "freezable",
+          "status.burning"
+        ]
+      }
+    ],
+    "gone": [],
+    "cascades": {
+      "step": 52,
+      "strike": 0,
+      "entries": [
+        {
+          "kind": "explosion",
+          "target": 325,
+          "at": [
+            1516.0,
+            992.76587
+          ],
+          "origin": [
+            1500.0,
+            992.4874
+          ],
+          "source": 317,
+          "strength": 48.0,
+          "due": 53
+        },
+        {
+          "kind": "explosion",
+          "target": 326,
+          "at": [
+            1532.0,
+            992.76587
+          ],
+          "origin": [
+            1500.0,
+            992.4874
+          ],
+          "source": 317,
+          "strength": 48.0,
+          "due": 53
+        }
+      ]
+    },
+    "hints": [
+      "freeze"
+    ],
+    "summon": 0
+  }
+}

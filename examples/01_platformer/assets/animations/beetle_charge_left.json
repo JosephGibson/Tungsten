@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_beetle_charge_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_beetle_charge_1_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_beetle_charge_2_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_beetle_charge_3_left"
+    }
+  ],
+  "looping": true
+}

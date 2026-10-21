@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_dive_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_dive_1_left"
+    }
+  ],
+  "looping": true
+}

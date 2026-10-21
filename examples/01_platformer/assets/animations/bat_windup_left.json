@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_windup_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_windup_1_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_windup_2_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_bat_windup_3_left"
+    }
+  ],
+  "looping": true
+}

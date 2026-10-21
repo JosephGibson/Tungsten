@@ -41,6 +41,15 @@
         "requires": [
           "status.frozen"
         ]
+      },
+      {
+        "effect": "shattered",
+        "needs": 0.04,
+        "window": 3,
+        "requires": [
+          "brittle",
+          "status.frozen"
+        ]
       }
     ]
   },
@@ -109,6 +118,25 @@
           "status.chilled"
         ],
         "blocked_by": [
+          "status.burning",
+          "troll"
+        ]
+      },
+      {
+        "effect": {
+          "duration": 1.5,
+          "grant": [
+            "status.frozen"
+          ]
+        },
+        "needs": 4,
+        "window": 3,
+        "requires": [
+          "troll",
+          "freezable",
+          "status.chilled"
+        ],
+        "blocked_by": [
           "status.burning"
         ]
       }
@@ -139,6 +167,18 @@
         "needs": 1,
         "window": 3,
         "requires": [
+          "status.shocked"
+        ],
+        "blocked_by": [
+          "troll"
+        ]
+      },
+      {
+        "effect": "stunned",
+        "needs": 4,
+        "window": 3,
+        "requires": [
+          "troll",
           "status.shocked"
         ]
       }

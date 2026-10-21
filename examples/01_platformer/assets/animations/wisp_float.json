@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_0"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_3"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_4"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_5"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_6"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_wisp_float_7"
+    }
+  ],
+  "looping": true
+}

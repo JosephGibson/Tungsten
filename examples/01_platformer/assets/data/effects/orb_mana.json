@@ -1,0 +1,8 @@
+{
+  "duration": 0,
+  "restore": {
+    "stat": "mana",
+    "amount": 25,
+    "max": "max_mana"
+  }
+}

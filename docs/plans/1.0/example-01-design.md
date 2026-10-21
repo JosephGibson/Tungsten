@@ -338,6 +338,15 @@ Done-when:
 - smoke is green;
 - the owner has played it through.
 
+- **As built (M75, `D-201`).** Where the plan's answers departed from this section:
+  - the six fire hazards stay, and the wisp is a new enemy whose flame starts from the fireball's (Q2); nine enemies stand on today's map through its last layer, `enemies`, which (d) replaces (Q3): wisps over the tower's bridges, crawlers on the aqueduct's ledges, beetles and the troll on the gate's top, bats under the switch slabs;
+  - the enemies draw unlit through `damage_flash`, as the dummy does, their rims and eyes painted in, and a lit sprite's flash waits in the backlog (Q1); the frozen look is a cube of ice fitted to each kind's hurtbox on a full frame, a small cube for a ball, in place of (b)'s flat block and round ice ball (Q17, Q18), with icy particles on a frozen target;
+  - a spotting reaches the enemies within 320 px through 01's intent phase, the `spotted` cue playing its sting (Q5); an enemy past 1,200 px from the player thinks nothing (Q7); the flyers move on the kit's top-down mover and a frozen one falls on a borrowed controller (Q4); six summoned enemies live at most, the oldest going (Q12);
+  - the crawler holds at the lantern's light and lunges only at an unlit player; the beetle's front is its saved heading, not the kit's facing (Q8): bullets pass it in the kit's pass and turn off its front in `gun_hits`, its rear takes every hit 01 builds whole, while an enemy's kit hitbox meets the shell (Q16), and its brittle freeze is a low shatter rung of its own; a frozen bat that lands takes a hit of all its health;
+  - the troll lifts an iron block, a bowling ball, or a frozen enemy or dummy within 200 px, held as a sensor at its hands, not a child on the kit's hierarchy, since a body cannot be one (Q10); `Throws` credits a throw's first impact to its thrower at its damage factor, and the player takes impact damage from thrown bodies alone (Q9); its second slow is 01's, past twice its threshold, since a rung that fires empties its bucket; its freeze lasts 1.5 s; the black hole halves its speed; a left frame, its right one mirrored, draws 20 px over, so its overlays sit off its hurtbox facing left ([known issues](../../known-issues.md));
+  - the orbs' pickup queues its heal or mana in 01's overlap phase, since a `picked_up` cue's effect would queue after the resolve (Q6); the combat layer fades in over 1.5 s and out over 3 s;
+  - the save is schema 6 (`enemies`, `throws`, `orbs`), which migrates schema 5 by moving every save ID from its player's up by the map's nine enemies; a full pit with them alive saves in 1.97 MiB.
+
 ## 01 (d): new level (level B, XL)
 
 Six areas, built in `tools/level.json` and emitted by the generator (tiles, art and the tmj object layer). The level is larger than today's 184 × 50 tiles at 64 px; the plan sets the size.

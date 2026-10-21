@@ -6,6 +6,20 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.96.0] - 2026-10-21
+
+Summary: M75, example 01's third stop, 01 (c) bestiary (plan archived at `docs/plans/archive/1.0/phase6-milestone-75-example-01-bestiary.md`; `D-201`): five enemies, a fire wisp, a frost crawler, a rust beetle, a cave bat and a cave troll, patrol, see the courier along a clear line, alert their neighbours, chase, attack after a tell, search and return on the kit's state machine; they hurt each other, scale with the difficulty, drop health and mana orbs and bring in a combat music layer; the troll slams, lifts and throws; and saves at schema 6 keep every enemy, migrating 01 (b)'s. The kit gains saved forms for `StateMachine` and `TopDownMover`, `StateMachine::pending` and `set_held`, `Hitbox::set_hit_targets` and `ContactDamage::set_touches`, and its hash holds.
+
+### Added
+
+- **The kit's exact saves** (`D-201`): `StateMachine<S>` serializes its state, previous state, elapsed, pending `go`, first visit and hold, so a loaded machine runs no enter hook again and enters a pending `go` once; `pending()`, `set_held()` and `is_held()`, a held machine's visit skipped whole; `Hitbox::hit_targets` and `set_hit_targets`; `ContactDamage::touches` and `set_touches` with `ContactTouch`; `TopDownMover`'s saved form, its kept velocity carried through a loaded mover's still first step. The top-down and shmup recipes resume a guard mid-swing and a drone mid-volley exactly; `api/tungsten-kit.txt` gains 63 lines, with no break.
+- **Example 01 (c)** (`D-201`): the five enemies on the map's last layer, `enemies`, and in the summon slot, six at most; line of sight, alerts and dormancy; the beetle's shell, which turns bullets off its front and takes 01's hits whole from behind; the bat's roost and dive; the troll's slam, its hold of an iron block, a bowling ball or a frozen enemy or dummy, and its throws, credited to it at its damage factor; health and mana orbs rolled on `killed` and drawn by the player's `pickup_radius`; the combat layer over the exploration loop; ice cubes fitted to each kind's hurtbox, with icy particles; generated art, sixteen sounds and the combat loop; 209 tests.
+
+### Changed
+
+- **Example 01's save** (`D-201`): schema 6, with the enemies (their movers, machines, knowledge, health and effects, their attacks' targets and touches, a troll's hold), the throws in flight and the orbs; a schema-5 save migrates, its save IDs from the player's moved up by the map's nine enemies, and its player gains the orbs' magnet.
+- **Records**: `DESIGN.md`, example 01's README, the 01 design's "As built (M75)", `docs/known-issues.md` (the lit flash answered, a loaded top-down mover's still step, the hazards' contact times, a shot ended past iron or a beetle's front, a left-facing troll's overlays), two kit rows in the backlog and the line-of-sight row's alert, and the register.
+
 ## [0.95.0] - 2026-10-21
 
 Summary: M74, example 01's second stop, 01 (b) elements and weapons (plan archived at `docs/plans/archive/1.0/phase6-milestone-74-example-01-elements-weapons.md`; `D-200`): example 01's hits are typed on the kit's damage types with crits, its targets take the kit's effects and ailment ladders and its bodies keep their own element states, thermal shock, shatters, steam bursts and conduction run through a saved queue capped per step, lightning strikes from the sky onto rods, a gun fires from a magazine, damage numbers float by type, a training dummy stands in the clearing and a summon slot places more, first-time hints toast, and saves at schema 5 migrate 01 (a)'s. The kit gains `Effects::set_source`, `float_label`, `DamageKinds::label_style`, a rung's `blocked_by` and `DamagedPart::crit`, and its hash moves.

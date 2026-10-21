@@ -1,0 +1,122 @@
+{
+  "sprite": {
+    "asset_id": "ex10_beetle_walk_0",
+    "z_order": 8
+  },
+  "components": {
+    "enemy": {
+      "kind": "beetle"
+    },
+    "tags": [
+      "team.enemy",
+      "freezable",
+      "conductive",
+      "brittle",
+      "beetle"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          24,
+          13
+        ]
+      },
+      "offset": [
+        32,
+        48
+      ]
+    },
+    "platformer_controller": {
+      "run_speed": 90,
+      "jump_speed": 600
+    },
+    "health": {
+      "max": 120,
+      "invulnerability": 0,
+      "despawn_on_death": 0
+    },
+    "stats": {
+      "max_health": 120,
+      "damage": 30,
+      "move_speed": 90
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          24,
+          12
+        ]
+      },
+      "offset": [
+        32,
+        47
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "aabb": [
+          30,
+          14
+        ]
+      },
+      "offset": [
+        32,
+        47
+      ],
+      "damage": {
+        "damage.physical": 30
+      },
+      "window": 0.8,
+      "knockback": 520
+    },
+    "abilities": [
+      "beetle_charge"
+    ],
+    "resist": {
+      "damage.physical": 0.25,
+      "damage.fire": 0.5,
+      "damage.shock": 2
+    },
+    "ailment_threshold": {
+      "flat": 30
+    },
+    "knockback": {
+      "seconds": 0.2,
+      "resist": 0.5
+    },
+    "hit_flash": {
+      "color": [
+        1.0,
+        0.92,
+        0.8,
+        1.0
+      ],
+      "seconds": 0.12
+    },
+    "animation": {
+      "id": "ex10_beetle_walk"
+    },
+    "cues": {
+      "damaged": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx",
+            "min_interval": 0.1
+          }
+        }
+      ],
+      "killed": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx"
+          }
+        },
+        {
+          "roll": "enemy_drops"
+        }
+      ]
+    }
+  }
+}

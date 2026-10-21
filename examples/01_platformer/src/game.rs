@@ -9,6 +9,7 @@ use crate::features::audio::AudioPlugin;
 use crate::features::combat::CombatPlugin;
 use crate::features::dummy::DummyPlugin;
 use crate::features::elements::ElementsPlugin;
+use crate::features::enemies::{self, EnemiesPlugin};
 use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
 use crate::features::lightning::LightningPlugin;
@@ -62,10 +63,15 @@ pub fn gameplay(start: RunStart) -> impl GameState {
 }
 
 /// What `difficulty` changes, the note beside it in the New Game picker:
-/// the player's health.
+/// the player's health and the enemies' factor on their health and damage
+/// (Q11).
 #[must_use]
 pub fn difficulty_note(difficulty: Difficulty) -> String {
-    format!("{} health", max_health(difficulty))
+    format!(
+        "{} health · enemies ×{}",
+        max_health(difficulty),
+        enemies::factor(difficulty)
+    )
 }
 
 /// Registers the game with `app`: the kit's plugins, the shell, then the
@@ -80,6 +86,7 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugin(ToysPlugin);
     app.add_plugin(ElementsPlugin);
     app.add_plugin(DummyPlugin);
+    app.add_plugin(EnemiesPlugin);
     app.add_plugin(CombatPlugin);
     app.add_plugin(LightningPlugin);
     app.add_plugin(GunPlugin);

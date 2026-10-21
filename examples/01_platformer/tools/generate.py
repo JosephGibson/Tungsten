@@ -282,6 +282,22 @@ def particle_configs():
         emission=dict(kind='burst', count=40, once=True),
         initial_velocity=dict(kind='radial', speed=dict(min=200, max=720)),
         gravity=[0, 220], lifetime=dict(min=.3, max=.8), start_scale=dict(min=.1, max=.28))
+    # 01 (c): a frozen target's glints twinkling about its cube and drifting
+    # off it over the 16 px `ice_glint`, and the wisp's embers rising and
+    # cooling off its trailing side over the spark.
+    configs['frozen_glints'] = dict(
+        config('ice_glint', 14, 9, 1.2, 30, 1.0, spread=360),
+        initial_velocity=dict(kind='radial', speed=dict(min=6, max=30)),
+        lifetime=dict(min=.6, max=1.2), gravity=[0, 14], drag_per_sec=1.4,
+        angular_velocity=dict(min=-2, max=2), start_scale=dict(min=.4, max=1.0),
+        scale_over_life=[[0, .2], [.2, 1], [.45, .45], [.7, 1], [1, 0]],
+        alpha_over_life=[[0, 0], [.1, 1], [.35, .35], [.6, 1], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [1, [.72, .9, 1, 1]]])
+    configs['wisp_embers'] = dict(
+        configs['torch_embers'], max_alive=24, emission=dict(kind='continuous', rate_hz=14),
+        initial_velocity=dict(kind='cone', direction=[-.3, -1], spread_deg=50,
+                              speed=dict(min=20, max=75)),
+        gravity=[0, -90], lifetime=dict(min=.4, max=1.2), start_scale=dict(min=.04, max=.15))
     return configs
 
 
@@ -291,11 +307,13 @@ MATERIALS={'soft_halo':('soft_glow',[1.8,0.0,1.0,0.1]),'soft_flame':('soft_glow'
 
 
 def mirror_facing(images,lit,animations):
-    """Left-facing copies of the courier's frames and clips, and of the fireball's:
-    nothing flips a sprite in place, so the kit's animator, and 01's fireballs, show
-    mirrored art by facing. Their maps derive from the mirrored silhouettes."""
+    """Left-facing copies of the courier's frames and clips, the fireball's and
+    the enemies': nothing flips a sprite in place, so the kit's animator, and 01's
+    fireballs and enemies, show mirrored art by facing. Their maps derive from the
+    mirrored silhouettes."""
     from PIL import ImageOps
-    for clip in sorted(c for c in animations if c.startswith('player') or c=='fireball'):
+    from actors import ENEMY_CLIPS
+    for clip in sorted(c for c in animations if c.startswith('player') or c=='fireball' or c in ENEMY_CLIPS):
         frames=[]
         for frame in animations[clip]['frames']:
             name=frame['sprite'].removeprefix('ex10_');left=name+'_left'
@@ -316,6 +334,21 @@ def cast_twins(images,lit):
         if name+'_left' in images:images[name+'_cast_left']=ImageOps.mirror(twin);lit.add(name+'_cast_left')
 
 
+def check_ice_fits():
+    """Each kind's fitted ice cube sits on the box its prefab's hurtbox makes,
+    wherever that prefab exists: the dummy's, and each enemy's once its prefab
+    lands, so a hurtbox the run tunes cannot leave its ice behind."""
+    from effects import HURTBOXES
+    for kind,box in HURTBOXES.items():
+        path=CONTENT/'prefabs'/f'{kind}.json'
+        if not path.exists():continue
+        hurtbox=json.loads(path.read_text())['components']['hurtbox']
+        (ox,oy),shape=hurtbox.get('offset',[0,0]),hurtbox['shape']
+        hx,hy=(shape['circle'],)*2 if 'circle' in shape else shape['aabb']
+        made=(ox-hx,oy-hy,ox+hx,oy+hy)
+        if made!=box:raise ValueError(f'status_ice_{kind}: its cube fits {box}; its prefab hurtbox makes {made}')
+
+
 def write_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
@@ -324,7 +357,7 @@ def write_json(path,data):
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
     images,lit,animations=build_art();mirror_facing(images,lit,animations);cast_twins(images,lit)
-    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit)
+    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits()
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())

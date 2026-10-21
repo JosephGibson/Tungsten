@@ -2717,5 +2717,61 @@
         "conductive"
       ]
     }
+  ],
+  "enemies": [
+    {
+      "kind": "wisp",
+      "name": "tower wisp a",
+      "x": 91.5,
+      "y": 14.46875
+    },
+    {
+      "kind": "wisp",
+      "name": "tower wisp b",
+      "x": 101.5,
+      "y": 13.53125
+    },
+    {
+      "kind": "crawler",
+      "name": "aqueduct crawler a",
+      "x": 44.5,
+      "y": 27.046875
+    },
+    {
+      "kind": "crawler",
+      "name": "aqueduct crawler b",
+      "x": 50.5,
+      "y": 27.046875
+    },
+    {
+      "kind": "beetle",
+      "name": "gate beetle a",
+      "x": 110.0,
+      "y": 17.046875
+    },
+    {
+      "kind": "beetle",
+      "name": "gate beetle b",
+      "x": 115.0,
+      "y": 17.046875
+    },
+    {
+      "kind": "bat",
+      "name": "switch bat a",
+      "x": 76.5,
+      "y": 20.359375
+    },
+    {
+      "kind": "bat",
+      "name": "switch bat b",
+      "x": 82.5,
+      "y": 18.359375
+    },
+    {
+      "kind": "troll",
+      "name": "gate troll",
+      "x": 126.84375,
+      "y": 16.046875
+    }
   ]
 }

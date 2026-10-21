@@ -17,7 +17,7 @@ use tungsten::core::{Entity, SaveSlots, Transform, UserFolder};
 use tungsten::kit::{Health, PlatformerController};
 use tungsten::testing::UiHarness;
 
-use super::{harness_with, player_entity, start, top, user_folder};
+use super::{calm, harness_with, player_entity, start, top, user_folder};
 
 /// The areas the route crosses, in order.
 const AREAS: [&str; 4] = [
@@ -283,6 +283,7 @@ fn a_new_game_walks_the_lower_route_into_the_collection_pit() {
     let dir = user_folder("playthrough");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
+    calm(&mut harness);
     let player = player_entity(&harness);
     let mut walker = Walker {
         harness,

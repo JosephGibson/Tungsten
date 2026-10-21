@@ -1,0 +1,100 @@
+{
+  "sprite": {
+    "asset_id": "ex10_troll_idle_0",
+    "z_order": 8
+  },
+  "components": {
+    "enemy": {
+      "kind": "troll"
+    },
+    "tags": [
+      "team.enemy",
+      "flesh",
+      "freezable",
+      "troll"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          28,
+          55
+        ]
+      },
+      "offset": [
+        74,
+        70
+      ]
+    },
+    "platformer_controller": {
+      "run_speed": 70,
+      "jump_speed": 600
+    },
+    "health": {
+      "max": 600,
+      "invulnerability": 0,
+      "despawn_on_death": 0
+    },
+    "stats": {
+      "max_health": 600,
+      "damage": 40,
+      "move_speed": 70
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          30,
+          55.5
+        ]
+      },
+      "offset": [
+        74,
+        67.5
+      ]
+    },
+    "resist": {},
+    "ailment_threshold": {
+      "flat": 40
+    },
+    "knockback": {
+      "seconds": 0.2,
+      "resist": 1
+    },
+    "effects": [
+      "troll_regen"
+    ],
+    "hit_flash": {
+      "color": [
+        1.0,
+        0.92,
+        0.85,
+        1.0
+      ],
+      "seconds": 0.12
+    },
+    "animation": {
+      "id": "ex10_troll_idle"
+    },
+    "cues": {
+      "damaged": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx",
+            "min_interval": 0.1
+          }
+        }
+      ],
+      "killed": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx"
+          }
+        },
+        {
+          "roll": "troll_drops"
+        }
+      ]
+    }
+  }
+}

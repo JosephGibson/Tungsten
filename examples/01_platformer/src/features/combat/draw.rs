@@ -1,15 +1,18 @@
 //! What combat draws over the sprites: each target's status overlays in
-//! its sprite's size class, flames while burning, an ice block while
-//! frozen, a crackle while shocked and a halo of stars while stunned.
+//! its sprite's size class, flames while burning, an ice cube while frozen
+//! (fitted to the body's hurtbox where its kind has one), a crackle while
+//! shocked and a halo of stars while stunned.
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Sprite, Transform, World};
+use tungsten::core::{AssetRegistry, Entity, Sprite, Transform, World};
 use tungsten::kit::{Health, Tags};
 use tungsten::render::SpriteBatch;
 
 use super::systems::flicker;
 use super::{BURNING, FROZEN, SHOCKED, STUNNED};
+use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
+use crate::features::enemies::components::Enemy;
 use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
 
@@ -29,6 +32,18 @@ pub fn class(side: f32) -> &'static str {
     } else {
         "large"
     }
+}
+
+/// The ice cube a frozen `entity` shows: its kind's own, fitted to its
+/// hurtbox on a frame of its sprite's size, else its size class's.
+fn ice(world: &World, entity: Entity, class: &str) -> String {
+    if world.has::<Dummy>(entity) {
+        return "ex10_status_ice_dummy".to_string();
+    }
+    if let Some(enemy) = world.get::<Enemy>(entity) {
+        return enemy.kind.info().ice.to_string();
+    }
+    format!("ex10_status_ice_{class}")
 }
 
 /// Pushes the sprite `name` over the box at `origin` of `size`, when it is
@@ -59,7 +74,9 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
     let (min, max) = view(world);
     let time = drawn_time(world);
     let mut batches = Vec::new();
-    for (health, tags, sprite, at) in world.query::<(&Health, &Tags, &Sprite, &Transform)>() {
+    for (entity, health, tags, sprite, at) in
+        world.query::<(Entity, &Health, &Tags, &Sprite, &Transform)>()
+    {
         if health.is_dead() {
             continue;
         }
@@ -90,7 +107,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             quad(
                 &mut batches,
                 assets,
-                &format!("ex10_status_ice_{class}"),
+                &ice(world, entity, class),
                 origin,
                 size,
             );

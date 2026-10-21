@@ -16,6 +16,8 @@ use tungsten::kit::{ABILITY_TICK, Ability, Phase, Stats, ensure_phases};
 
 use components::{Spell, Spellbook};
 
+use crate::features::enemies::components::EnemyKind;
+
 /// The spell bar's slots, keys 1 to 9 then 0.
 pub const SLOTS: [Option<Spell>; 10] = [
     Some(Spell::FireMissile),
@@ -45,20 +47,42 @@ pub const PREV: &str = "spell_prev";
 pub const SUMMON_NEXT: &str = "summon_next";
 pub const SUMMON_PREV: &str = "summon_prev";
 
-/// A type the summon slot places: its name, its prefab and its icon.
+/// A type the summon slot places: its name, its prefab, its icon and, for
+/// an enemy, its kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SummonType {
     pub name: &'static str,
     pub prefab: &'static str,
     pub icon: &'static str,
+    pub enemy: Option<EnemyKind>,
 }
 
-/// The types slot 0 summons: the training dummy.
-pub const SUMMONS: [SummonType; 1] = [SummonType {
-    name: "dummy",
-    prefab: crate::features::dummy::DUMMY_PREFAB,
-    icon: "ex10_icon_dummy",
-}];
+/// An enemy's summon type.
+const fn enemy(kind: EnemyKind) -> SummonType {
+    let info = kind.info();
+    SummonType {
+        name: kind.name(),
+        prefab: info.prefab,
+        icon: info.icon,
+        enemy: Some(kind),
+    }
+}
+
+/// The types slot 0 summons: the training dummy, then each enemy as its
+/// kind lands.
+pub const SUMMONS: [SummonType; 6] = [
+    SummonType {
+        name: "dummy",
+        prefab: crate::features::dummy::DUMMY_PREFAB,
+        icon: "ex10_icon_dummy",
+        enemy: None,
+    },
+    enemy(EnemyKind::Wisp),
+    enemy(EnemyKind::Crawler),
+    enemy(EnemyKind::Beetle),
+    enemy(EnemyKind::Bat),
+    enemy(EnemyKind::Troll),
+];
 
 /// The type the summon slot places now.
 #[must_use]

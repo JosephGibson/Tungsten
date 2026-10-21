@@ -401,3 +401,107 @@ fn rates_refuse_zero_negative_and_non_finite() {
         json!({ "speed": 240.0 })
     );
 }
+
+#[test]
+fn a_loaded_top_down_mover_resumes_from_its_kept_velocity_after_its_still_step() {
+    // Mid-turn under an acceleration, mid-stop under a deceleration, and a
+    // reversal under both.
+    for (rates, turn) in [
+        ((Some(600.0), None), Vec2::Y),
+        ((None, Some(600.0)), Vec2::ZERO),
+        ((Some(600.0), Some(900.0)), -Vec2::X),
+    ] {
+        let (mut world, mut schedule) = rig();
+        let mut mover = TopDownMover::new(120.0);
+        if let Some(rate) = rates.0 {
+            mover = mover.with_acceleration(rate);
+        }
+        if let Some(rate) = rates.1 {
+            mover = mover.with_deceleration(rate);
+        }
+        mover.set_direction(Vec2::X);
+        let half = Vec2::splat(10.0);
+        let entity = world.spawn_with(
+            RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(half)).with((mover,)),
+        );
+        steps(&mut world, &mut schedule, 20);
+        steer(&mut world, entity, turn);
+        steps(&mut world, &mut schedule, 3);
+        let saved = serde_json::to_value(world.get::<TopDownMover>(entity).unwrap()).unwrap();
+        assert!(saved.get("filter").is_none() && saved.get("started").is_none());
+        let loaded: TopDownMover = serde_json::from_value(saved.clone()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&loaded).unwrap(),
+            saved,
+            "the save forms"
+        );
+        let kept = loaded.velocity;
+        assert!(
+            kept != Vec2::ZERO && kept != turn * 120.0,
+            "mid-turn: {kept}"
+        );
+
+        let (mut twin, mut twin_schedule) = rig();
+        let at = position(&world, entity);
+        let copy = twin.spawn_with(
+            RigidBodyBundle::kinematic(Position(at), Collider::aabb(half)).with((loaded,)),
+        );
+        steps(&mut twin, &mut twin_schedule, 1);
+        assert_eq!(position(&twin, copy), at, "its still first step");
+        assert_eq!(velocity(&twin, copy), Vec2::ZERO);
+        assert_eq!(
+            twin.get::<TopDownMover>(copy).unwrap().velocity,
+            kept,
+            "kept through it"
+        );
+        for n in 0..12 {
+            steps(&mut world, &mut schedule, 1);
+            steps(&mut twin, &mut twin_schedule, 1);
+            assert_eq!(
+                twin.get::<TopDownMover>(copy),
+                world.get::<TopDownMover>(entity),
+                "{rates:?} step {n}"
+            );
+            assert_eq!(position(&twin, copy), position(&world, entity), "step {n}");
+        }
+    }
+}
+
+#[test]
+fn a_top_down_mover_save_refuses_a_bad_speed_or_rate() {
+    let saved = serde_json::to_value(TopDownMover::new(120.0).with_acceleration(1800.0)).unwrap();
+    assert_eq!(
+        saved,
+        json!({
+            "speed": 120.0, "direction": [0.0, 0.0], "acceleration": 1800.0,
+            "deceleration": null, "velocity": [0.0, 0.0]
+        })
+    );
+    let with = |field: &str, value: serde_json::Value| {
+        let mut save = saved.clone();
+        save[field] = value;
+        serde_json::from_value::<TopDownMover>(save)
+    };
+    assert!(with("speed", json!(0.0)).is_ok(), "a stat's 0");
+    let long = with("direction", json!([3.0, 4.0])).unwrap();
+    assert!(
+        (long.direction() - Vec2::new(0.6, 0.8)).length() < 1e-6,
+        "normalized, as set_direction does"
+    );
+    for (field, value) in [
+        ("speed", json!(-1.0)),
+        // Past f32's range: read as infinity.
+        ("speed", json!(1e39)),
+        ("acceleration", json!(0.0)),
+        ("acceleration", json!(1e39)),
+        ("deceleration", json!(-5.0)),
+        ("direction", json!([1.0])),
+        ("velocity", json!([1e39, 0.0])),
+        ("friction", json!(3)),
+    ] {
+        assert!(with(field, value.clone()).is_err(), "{field} = {value}");
+    }
+    let mut missing = saved.clone();
+    missing.as_object_mut().unwrap().remove("velocity");
+    assert!(serde_json::from_value::<TopDownMover>(missing).is_err());
+}

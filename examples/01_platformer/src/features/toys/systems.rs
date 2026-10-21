@@ -11,7 +11,10 @@ use tungsten::core::{
     SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform, Velocity, Visibility,
     With, World,
 };
-use tungsten::kit::{Children, LinearMotion, Projectile, ProjectileExpired};
+use tungsten::kit::{
+    Children, Health, LinearMotion, Modifier, PlatformerController, Projectile, ProjectileExpired,
+    Stats, knock_back,
+};
 use tungsten::physics::wake;
 
 use super::components::{
@@ -29,6 +32,7 @@ use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::{BallBurn, Frozen};
 use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, freeze_amount};
+use crate::features::enemies::components::{Enemy, EnemyKind};
 use crate::features::level::components::{Doused, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
@@ -153,11 +157,44 @@ fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
     }
 }
 
+/// The seconds of a hole's pull an enemy's mover takes each step.
+pub const ENEMY_PULL_SECS: f32 = 0.25;
+/// A troll within a hole's reach is slowed by this share of its speed, from
+/// the source [`HOLE_SLOW_SOURCE`], since the pull barely moves it.
+pub const HOLE_SLOW: f32 = 0.5;
+pub const HOLE_SLOW_SOURCE: &str = "black_hole";
+
+/// Slows each live troll within a hole's reach, and lets the others go.
+fn slow_trolls(world: &mut World, holes: &[Vec2]) {
+    let trolls: Vec<(Entity, bool)> = world
+        .query::<(Entity, &Enemy, &Position, &Health)>()
+        .filter(|(_, enemy, ..)| enemy.kind == EnemyKind::Troll)
+        .map(|(entity, enemy, at, health)| {
+            let centre = at.0 + enemy.kind.info().centre;
+            let inside = holes
+                .iter()
+                .any(|&hole| hole.distance(centre) < HOLE_RADIUS);
+            (entity, inside && !health.is_dead())
+        })
+        .collect();
+    for (troll, inside) in trolls {
+        if let Some(stats) = world.get_mut::<Stats>(troll) {
+            stats.remove_modifiers(HOLE_SLOW_SOURCE);
+            if inside {
+                let slow = Modifier::Pct(-HOLE_SLOW);
+                stats.add_modifier(Stats::MOVE_SPEED, HOLE_SLOW_SOURCE, slow);
+            }
+        }
+    }
+}
+
 /// `toys_pull`, in the move phase: the holes pull every dynamic body in
-/// reach by its response.
+/// reach by its response, and every live enemy through its mover; a troll,
+/// which the pull barely moves, is slowed ([`HOLE_SLOW`]) while in reach.
 pub fn pull(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let holes = holes(world);
+    slow_trolls(world, &holes);
     if dt <= 0.0 || holes.is_empty() {
         return;
     }
@@ -175,6 +212,26 @@ pub fn pull(world: &mut World) {
             velocity.0 += kick;
         }
         wake(world, entity);
+    }
+    // The enemies' kinematic bodies ride their movers, so the pull reaches
+    // them as the velocity it would build over [`ENEMY_PULL_SECS`], by each
+    // kind's hold: a walker's controller takes it as a push, a flyer's
+    // knockback as a push it renews each step.
+    let enemies: Vec<(Entity, Vec2)> = world
+        .query::<(Entity, &Enemy, &Position, &Health)>()
+        .filter(|(.., health)| !health.is_dead())
+        .filter_map(|(entity, enemy, at, _)| {
+            let info = enemy.kind.info();
+            let pull = hole_pull(&holes, at.0 + info.centre) * info.pull * ENEMY_PULL_SECS;
+            (pull != Vec2::ZERO).then_some((entity, pull))
+        })
+        .collect();
+    for (enemy, push) in enemies {
+        if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
+            controller.push(push);
+        } else {
+            knock_back(world, enemy, push);
+        }
     }
 }
 

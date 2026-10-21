@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_bat_roost_0_left"
+    },
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_bat_roost_1_left"
+    },
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_bat_roost_2_left"
+    },
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_bat_roost_3_left"
+    }
+  ],
+  "looping": true
+}

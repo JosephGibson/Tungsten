@@ -8,7 +8,7 @@
 //! `spells` the toys, their element rules and the spells that cast them;
 //! `combat` the damage model, `cascades` the endings and their chains,
 //! `lightning` the strike and its conduction, `gun` the gun and its
-//! shots and `dummy` the training dummy; `hud` the bars. The shell's own tests run in the template, on the same
+//! shots, `dummy` the training dummy and `enemies` the bestiary; `hud` the bars. The shell's own tests run in the template, on the same
 //! bytes, which `just repo-check` holds.
 
 mod areas;
@@ -19,6 +19,7 @@ mod camera;
 mod cascades;
 mod combat;
 mod dummy;
+mod enemies;
 mod fixed_step;
 mod gun;
 mod hazards;
@@ -37,12 +38,13 @@ mod spells;
 
 use std::path::PathBuf;
 
+use example_01_platformer::features::enemies::components::Enemy;
 use example_01_platformer::features::player as courier;
 use example_01_platformer::features::run::Run;
 use example_01_platformer::features::spells as game_spells;
 use example_01_platformer::features::toys;
 use example_01_platformer::game;
-use example_01_platformer::shared::Burst;
+use example_01_platformer::shared::{Burst, despawn_tree};
 use example_01_platformer::shell::{self as game_shell, Difficulty, GameInfo, RunStart};
 use glam::Vec2;
 use tungsten::core::assets::UvRect;
@@ -180,6 +182,19 @@ pub fn player_entity(harness: &UiHarness) -> Entity {
         .get_resource::<Run>()
         .expect("a run is live")
         .player
+}
+
+/// Takes the map's enemies off, with what hangs from them: a test that
+/// walks the level meets its terrain alone.
+pub fn calm(harness: &mut UiHarness) {
+    let world = harness.world_mut();
+    let enemies: Vec<Entity> = world
+        .query::<(Entity, &Enemy)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for enemy in enemies {
+        despawn_tree(world, enemy);
+    }
 }
 
 /// A New Game at Normal, stepped into, and its player.
