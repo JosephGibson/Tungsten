@@ -20,7 +20,7 @@ fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
     let world = harness.world_mut();
     world.remove_component::<CameraTarget>(player);
     let probe = world.spawn_with((
-        Transform::from_position(Vec2::splat(20_000.0)),
+        Transform::from_position(Vec2::splat(40_000.0)),
         CameraTarget,
     ));
     for (width, height) in [(1920, 1080), (960, 720), (2560, 720)] {
@@ -28,7 +28,7 @@ fn camera_clamps_both_axes_and_keeps_cursor_inverse_after_resize_and_zoom() {
             let world = harness.world_mut();
             world.insert_resource(WindowSize { width, height });
             world.resource_mut::<Zoom>().0 = multiplier;
-            world.get_mut::<Transform>(probe).unwrap().position = Vec2::splat(20_000.0);
+            world.get_mut::<Transform>(probe).unwrap().position = Vec2::splat(40_000.0);
             harness.step(1);
             let camera = *harness.world().resource::<CameraState>();
             let zoom = height as f32 / (CAMERA_ROWS * TILE) * multiplier;

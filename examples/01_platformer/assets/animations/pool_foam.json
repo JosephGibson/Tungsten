@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_foam_0"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_foam_1"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_foam_2"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_foam_3"
+    }
+  ],
+  "looping": true
+}

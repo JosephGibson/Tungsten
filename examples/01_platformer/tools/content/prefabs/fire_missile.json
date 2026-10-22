@@ -7,7 +7,11 @@
   "components": {
     "fire_missile": null,
     "projectile": {
-      "range": 1890
+      "range": 1890,
+      "bounces": 1,
+      "bounce_layers": [
+        2
+      ]
     },
     "linear_motion": {
       "velocity": [

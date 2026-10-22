@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_0"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_1"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_2"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_3"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_4"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_5"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_6"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_river_rapids_7"
+    }
+  ],
+  "looping": true
+}

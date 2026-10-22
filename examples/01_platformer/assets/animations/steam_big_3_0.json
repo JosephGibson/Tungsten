@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_0"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_1"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_2"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_3"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_4"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_steam_big_3_0_5"
+    }
+  ],
+  "looping": true
+}

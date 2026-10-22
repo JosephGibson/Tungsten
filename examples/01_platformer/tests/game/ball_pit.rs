@@ -182,16 +182,71 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     }
 }
 
+/// The ball pit's interior, `tools/level.json`'s `pit`: its columns and
+/// rows, from the rim's row down to the floor's.
+#[derive(serde::Deserialize)]
+struct Pit {
+    left: f32,
+    right: f32,
+    rim: f32,
+    floor: f32,
+}
+
+/// A platform of `tools/level.json`'s, as far as these tests read it.
+#[derive(serde::Deserialize)]
+struct Platform {
+    name: String,
+    left: f32,
+    right: f32,
+    row: f32,
+}
+
+#[derive(serde::Deserialize)]
+struct Source {
+    pit: Pit,
+    platforms: Vec<Platform>,
+}
+
+fn source() -> Source {
+    let text = std::fs::read_to_string("tools/level.json").expect("tools/level.json reads");
+    serde_json::from_str(&text).expect("tools/level.json parses")
+}
+
 #[test]
 fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
+    let level = source();
+    let pit = level.pit;
+    // The climbing shelves in the pit, each a tile deep with a margin round
+    // it: no ball starts inside one.
+    let shelves: Vec<(Vec2, Vec2)> = level
+        .platforms
+        .iter()
+        .filter(|p| p.name.starts_with("pit_shelf"))
+        .map(|p| {
+            (
+                Vec2::new(p.left * TILE - 20.0, p.row * TILE - 20.0),
+                Vec2::new(p.right * TILE + 20.0, p.row * TILE + 44.0),
+            )
+        })
+        .collect();
+    let across = (((pit.right - pit.left) * TILE - 96.0) / 31.0) as usize;
     let (mut harness, _) = run();
     let mut placed = Vec::new();
-    for i in 0..2048 {
-        let small = i % 2 == 0;
+    let mut slot = 0;
+    while placed.len() < 2048 {
         let at = Vec2::new(
-            132.0 * TILE + 48.0 + (i % 96) as f32 * 31.0,
-            46.0 * TILE - 16.0 - (i / 96) as f32 * 31.0,
+            pit.left * TILE + 48.0 + (slot % across) as f32 * 31.0,
+            pit.floor * TILE - 16.0 - (slot / across) as f32 * 31.0,
         );
+        slot += 1;
+        if shelves
+            .iter()
+            .any(|(min, max)| at.cmpge(*min).all() && at.cmple(*max).all())
+        {
+            continue;
+        }
+        let i = placed.len();
+        let small = i % 2 == 0;
         let e = ball(&mut harness, at, small);
         if i < 2 {
             kick(
@@ -206,13 +261,16 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
         harness.step(1);
         for &e in &placed {
             let p = body(&harness, e);
-            // Containment, allowing the solver's shallow contact penetration.
+            // Containment, allowing the solver's shallow contact penetration:
+            // the narrow pit's pile stands twice as deep, and its foot presses
+            // a ball up to its radius into the floor (`D-094`); one through
+            // the floor would fall on past half a tile.
             assert!(
-                p.x >= 132.0 * TILE && p.x <= 180.0 * TILE,
+                p.x >= pit.left * TILE && p.x <= pit.right * TILE,
                 "wall escape {p}"
             );
             assert!(
-                p.y >= 18.0 * TILE && p.y <= 46.0 * TILE,
+                p.y >= pit.rim * TILE && p.y <= (pit.floor + 0.5) * TILE,
                 "vertical escape {p}"
             );
         }

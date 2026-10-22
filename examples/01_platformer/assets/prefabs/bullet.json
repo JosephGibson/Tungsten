@@ -7,7 +7,14 @@
   "components": {
     "bullet": {},
     "projectile": {
-      "range": 1600
+      "range": 1600,
+      "bounces": 2,
+      "bounce_layers": [
+        2
+      ],
+      "pass_layers": [
+        3
+      ]
     },
     "hitbox": {
       "shape": {

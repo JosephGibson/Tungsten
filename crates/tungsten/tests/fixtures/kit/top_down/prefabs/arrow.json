@@ -1,0 +1,27 @@
+{
+  "tag": "arrow",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        600,
+        0
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 2
+      },
+      "damage": 1,
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "pass_layers": [
+        3
+      ]
+    }
+  }
+}

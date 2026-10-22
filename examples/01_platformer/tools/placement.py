@@ -2,19 +2,33 @@
 from PIL import Image
 from art import PALETTE
 
+# How far a prop hung under a platform (`anchor` `under`) tucks its top
+# opaque row up into the underside's ragged lip, in pixels.
+UNDER_TUCK = 6
+
+
+def underside(support, images, tile):
+    """Where `support`'s underside lies, in tiles: a ground platform's
+    bottom, a deck's visible depth under its row."""
+    from level import FAMILIES
+    if support['style'] in FAMILIES:
+        return support['bottom']
+    return support['row'] + images[support['style']].getbbox()[3] / tile
+
 
 def prepare(source, images):
     tile=source['tile'];platforms={p['name']:p for p in source['platforms']}
     # Every thin platform owns shallow rectangles instead of full tile collision.
     source['slab_colliders']=[]
+    from level import FAMILIES
     for p in source['platforms']:
-        if p['style']=='ground':continue
+        if p['style'] in FAMILIES:continue
         box=images[p['style']].getbbox()
         if box[:2]!=(0,0) or box[2]!=tile:raise ValueError('platform silhouette needs explicit horizontal bounds')
         for x in range(p['left'],p['right']):
             # Portions buried in solid terrain need no second, overlapping body.
-            if any(q['style']=='ground' and q['left']<=x<q['right'] and q['row']<=p['row']<q['bottom'] for q in source['platforms']):continue
-            source['slab_colliders'].append([x*tile,p['row']*tile,tile,box[3]])
+            if any(q['style'] in FAMILIES and q['left']<=x<q['right'] and q['row']<=p['row']<q['bottom'] for q in source['platforms']):continue
+            source['slab_colliders'].append([x*tile,p['row']*tile,tile,box[3],p['style'] in ('bridge_rope','bridge_weathered')])
     source['lantern_anchors']=[]
     for name,im in sorted(images.items()):
         if not name.startswith('player') or name.endswith('_left'):continue
@@ -30,12 +44,14 @@ def prepare(source, images):
         if 'support' not in p:continue
         support=platforms[p['support']];im=images[p['sprite'].removeprefix('ex10_')];box=im.getbbox()
         center=p['x']+(box[0]+box[2])/2/tile
-        if not support['left']<=center<support['right']:raise ValueError('prop outside support')
+        if not support['left']<=center<support['right']:raise ValueError(f"prop outside support: {p['sprite']} at {p['x']} on {support['name']}")
         if p['anchor']=='ground':
             # A new solid stair supersedes its buried parent surface.
-            covers=[q for q in source['platforms'] if q['style']=='ground' and q['left']<=center<q['right'] and q['row']<support['row']<=q['bottom']]
+            covers=[q for q in source['platforms'] if q['style'] in FAMILIES and q['left']<=center<q['right'] and q['row']<support['row']<=q['bottom']]
             if covers:support=min(covers,key=lambda q:q['row']);p['support']=support['name']
             p['y']=support['row']-box[3]/tile
+        elif p['anchor']=='under':
+            p['y']=underside(support,images,tile)-(UNDER_TUCK+box[1])/tile
         else:
             depth=images[support['style']].getbbox()[3]
             p['y']=support['row']+(depth-box[1])/tile
@@ -44,8 +60,9 @@ def prepare(source, images):
         composite=Image.new('RGBA',(w*tile,h*tile))
         for r in range(h):
             for c in range(w):composite.paste(images[f'{name.removeprefix("ex10_")}_big_{r}_{c}'],(c*tile,r*tile))
-        box=composite.getbbox();edge=box[1] if group['anchor']=='wall' else box[3]
+        box=composite.getbbox();edge=box[1] if group['anchor'] in ('wall','under') else box[3]
         target_y=support['row']-edge/tile
+        if group['anchor']=='under':target_y=underside(support,images,tile)-(UNDER_TUCK+box[1])/tile
         # Ground both feet/trunk, not merely the center of a wide composition.
         if group['anchor']=='ground':
             foot=composite.getchannel('A').crop((0,box[3]-1,w*tile,box[3])).getbbox()
@@ -60,13 +77,6 @@ def prepare(source, images):
         while y<ground['row']:
             source['props'].append(dict(sprite='ex10_timber_support',x=support['x'],y=y,depth='back',animation=None))
             y+=1
-    # The cliff face anchors the waterfall's lip and the full falling column.
-    waterfall=source['waterfall_source']
-    for x in range(waterfall['left'],waterfall['right']):
-        for row in range(waterfall['row'],source['rows']):
-            # The column's top tile is a mossy spring where the water breaks out.
-            sprite='ex10_cliff_back_top' if row==waterfall['row'] else 'ex10_cliff_back'
-            source['decorations'].append(dict(sprite=sprite,col=x,row=row,layer='background'))
     # Reposition flame emitters to the grounded lantern's actual flame.
     for emitter in source['emitters']:
         if emitter['config']=='ex10_torch_embers':

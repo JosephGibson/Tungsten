@@ -57,12 +57,12 @@ pixel) for any hand-authored sprite. The modules:
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
 | `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy and the five enemies (wisp, crawler, beetle, bat, troll) |
-| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing |
-| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes |
-| `backdrops.py` | Sky, moon, clouds, ridges, woodland |
+| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
+| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, and its mist plumes |
+| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
-| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, and the music loops (WAV) |
+| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
 `actors.py` draws the courier and the fireball. The courier is one rig posed per
@@ -124,6 +124,22 @@ Terrain is one masonry texture that repeats exactly every 64 pixels:
 - **Legacy names.** The older unplaced terrain names are copies of the new
   family, so no sprite ID changed.
 
+The level (01 (d)) adds a family per ground style (`level.FAMILIES`): `ground`
+and `pit` are masonry, `wet` the ravine's rock, `basalt` the hollow's, `mine`
+the cut's, `channel` the aqueduct's and `bridge_deck` the troll bridge's.
+Masonry keeps the rules above and adds `under_*` for a face open below and the
+pit's lining (`pit_rim_*`, `pit_wall_<kind>_*` drawn by `PIT_KINDS`' weights,
+`pit_floor_*`). Wet and mine rock take one of 16 masks by their open sides (up
+1, right 2, down 4, left 8) and four variants each, `wet_rock_<mask>_<v>` and
+`mine_rock_<mask>_<v>`; basalt takes tops, undersides, cliffs and sixteen fill
+variants. In the mine, a cell under cover on an open face, or the cell behind
+one, is iron cladding, `iron_clad_<mask>_<v>`, never under open air; those
+cells become the `iron` layer's boxes. Where two families meet left to right,
+`level.BORDER_PAIRS` draws the left cell as `border_<pair>`, or
+`border_<pair>_top` on the surface: masonry into wet rock, wet rock into
+basalt, basalt into mine rock and mine rock into masonry. `validate_terrain`
+holds every variant to its family's shared edges on both sides.
+
 Art is 64 × 64 unless `art.py`'s size tables say otherwise: the backdrops, the
 black hole's 96-pixel layers, the 32-pixel icons, the elements' sizes (the bolt's
 segments, the status overlays' small and large classes, the muzzle flash, the
@@ -133,8 +149,32 @@ strips are 1024 pixels wide and
 wrap seamlessly: profiles are whole-period sine sums, and shapes are drawn at x
 and x ± 1024. The ridges' and woodland's last row stays opaque, because the
 runtime stretches it downward. The sky must keep a mean luminance below 25; the
-moon keeps bounds `(7,7,57,57)` and a bright centre. Particle sprites stay 64×64
-and render small via config scale.
+moon keeps bounds `(7,7,57,57)` and a bright centre. The outdoor areas' far strips
+(`far_tower`, `far_arcade`, `far_cliffs`, `far_mine`, `far_valley`) wrap the same
+way; `far_arcade` wraps in the middle of an opening and `far_mine`'s heaps are
+periodic. `sky_black` is true black, the palette's `■` (0, 0, 0, 255), and
+`mist_0` is the ravine's translucent band over its far strip. `backdrops.BACKDROPS`
+keeps them all out of the tileset and out of `art.py`'s size check. Particle
+sprites stay 64×64 and render small via config scale.
+
+The far walls draw as the review drew them: the gorge's `wet_back` and the
+cut's `cut_back` and `cut_back_iron` under the far tint (`terrain.FAR_TINT`,
+104, 112, 136 out of 255), unlit, so they stand dark and cool behind the lit
+terrain. `terrain.tinted` maps each symbol to the palette colour nearest its
+colour times the tint; the palette's far ramp (`а` to `ь`) holds those colours
+exactly, so the tint stays palette-only. The cut's far props (`far_trestle`, a
+step darker, `far_boulder_0`, `far_boulder_1`, `far_rubble` and the lantern's
+speck, `far_lantern`) take the same tint (`scenery.FAR_PROPS`). The far mist,
+`far_mist_<band>_big_<row>_<col>`, cuts `backdrops.FAR_MISTS`' bands into
+tiles for the decorations layer, over the far walls and under the terrain. The
+lava's heat haze (`haze`, `haze_small`) is the plume in the palette's warm
+translucents (`э` to `Д`), and the river darkens below its first rows
+(`river_dark_1`, `river_dark_2`). The rising mist is animated
+(`scenery.RISING`): the falls' `plume`, and at the hollow's mouth the `steam`
+and `steam_small` columns (`steam_column`: wisps from a narrow foot that sway
+and widen as they climb) and the warm `heat`, each drawn at six phases of one
+loop, 150 ms a frame, each tile of its cut its own clip
+(`<name>_big_<row>_<col>`, frames `_0` to `_5`).
 
 Cosmetic RNG streams use the first eight bytes of SHA-256 of the asset name,
 not Python's process-randomized hash. Changing one asset does not perturb others.
@@ -154,11 +194,40 @@ Emitters specify point positions and distinct deterministic seeds. Their summed
 maximum live count is 248, with a global runtime budget of 2048 and at most 16
 transient jump/landing/explosion emitters. Black holes retain their own 1200-particle cap.
 
-`routes` names platform waypoints. Both main routes start at the lantern apron;
-the upper aqueduct joins the waterfall climb, with a switchback to the high
-bridge. Recovery and grotto routes climb back to the main path. The tower routes
-join at the gate; the high overlook is optional. Gameplay geometry is authored,
-never randomized. Route tests use actual engine input and physics against the
+The map is 430 × 72 tiles with its kill row at 71. `landmarks` are its six
+areas, which must tile its columns from 0 to the last; each names its
+`ambience` loop and, outdoors, its `backdrop` (the far strip), and takes
+`indoor` (a cave: the light dims and the moon goes out, and its open cells
+under a roof get cave backs), `night` (the true-black sky), `shoring` (the
+columns whose cave backs are the miners' timbers), `horizon` (rows its strips
+stand lower than the start's, each times its scroll) and `ridges` and
+`woodland` (false where the area's far strip stands without them: the ravine
+drops both, the mine and the bridge the woodland). The level's other fields:
+
+| Field | What it places |
+| --- | --- |
+| `pit` | The ball pit's interior, `left` to `right` and `rim` to `floor`, lined by the pit's tiles |
+| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain, a `ContactDamage` hazard over its surface and, with `light`, its glow and light |
+| `river` | The bridge's river: its surface row, its `rapids` and `rocks` columns, and its depths in the background layer |
+| `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
+| `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
+| `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
+| `iron` | Markers where a fresh run sets a loose iron block down, its centre |
+
+`routes` names platform waypoints: `main` runs from the spawn through all six
+areas to the bridge's east end, over the pit's chutes and the gap between its
+bridge's decks, up the aqueduct's ledges (`aq_ledge_*`), through its first
+fallen span onto the channel and over the next two (`channel_mid`,
+`channel_east_a`, `channel_east_b`), and down the ravine's jutting rocks
+(`rv_ledge_*`) back and forth across the falls. `pit_in_west` and
+`pit_in_east` drop down the pit's chutes, `pit_climb` climbs its ten shelves to
+the gap and out onto the west deck, `aqueduct_low` takes the aqueduct's floor
+over its rubble (`aq_rubble_*`) and the ravine's west steps to the pool, and
+`forest_shrine`, `ravine_east` and `cut_upper` are side routes. Routes keep to
+fixed platforms, so the route test can run them without the moving decks; the
+lifts (up the aqueduct's third span, by the ravine's east ledges, in the
+mine) and the aqueduct's ferry are other ways round.
+Gameplay geometry is authored, never randomized. Route tests use actual engine input and physics against the
 real generated map, searching launch positions without changing gravity or
 colliders. Run those tests after any layout change; geometric jump estimates
 alone do not prove clearance beneath the solid platforms.
@@ -172,24 +241,50 @@ when a run starts, each object taking the run's next save ID:
 | Layer | Objects | Prefab class |
 | --- | --- | --- |
 | `props` | Every prop, at its tile position | `ex10_prop_<sprite>_<depth>`: its sprite, behind (`back`) or among (`world`) the world's sprites, and its animation |
-| `slabs` | One box per thin platform: slab runs that share a row and a depth and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body |
-| `hazards` | The spikes and the fireballs | `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: today's sine motion on the kit's `oscillator`, starting where the sine stands at time 0. Both hurt through the kit's `contact_damage` (34 a touch, pushing 560 px/s away) |
+| `slabs` | One box per thin platform: slab runs that share a row, a depth and a material and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body in physics layer 1 (stone); `ex10_wood_<width>x<height>` for the rope bridge's and the scaffolds' wooden decks, in layer 3 |
+| `iron` | The mine's iron cladding, merged into the fewest boxes a greedy pass finds (`level.boxes`) | `ex10_iron_<width>x<height>`: a static body in physics layer 2 |
+| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's touch over its surface row, `hazard.lava` set so cold never douses it, the lake with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage` (34 a touch, pushing 560 px/s away) |
 | `platforms` | The moving platforms | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width |
-| `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area` name |
+| `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
-| `markers` | `spawn`, where a fresh run's player stands | None: the game reads it by name |
-| `dummies` | The training dummy in the Lantern clearing, the map's last object layer, so every earlier object keeps its save ID | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
+| `markers` | `spawn`, where a fresh run's player stands, and an `iron` marker at each loose block's centre | None: the game reads them by name |
+| `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
+| `enemies` | The 13 enemies, the map's last object layer, so every earlier object keeps its save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`), its point the sprite's top-left |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
 be an object property over a shared prefab. No other runtime paths are used.
 
+Shots meet the walls by these layers (`D-202`): the bullet's `bounce_layers`
+are `[2]` and its `pass_layers` `[3]`, so it turns off iron, passes wood and
+ends at stone and the tiles (layer 0); the missile banks once off iron. The
+enemies' sight casts against the tiles and layers 1 to 3.
+
+Besides `validate_level`'s references, `level.validate_layout` checks the
+layout as the generator writes it: the areas tile the columns; the tests' sky
+(columns 0–37, rows 0–19) holds no tile or object but the areas' zones; no
+92 × 52 window, the 16:9 view at the minimum zoom, holds more than 10 of the
+map's lights (`LIGHT_WINDOW`, `LIGHT_BUDGET`), which leaves the player's
+lantern, a strike and three missiles under the renderer's 16; each bat has a
+roof within 480 px above it; each fire's sweep stays clear of the terrain; the
+pit's shell holds the balls; no iron lies under open air; lava stays in its
+basin; and `backs` stay outdoors.
+
 ## Runtime and visual checks
 
 Draw order: 01 replaces the engine's sprite base with its backdrop (the sky filling
-the viewport, the moon, and the strips at their scroll factors with the shake's
-overhang, two translucent cloud layers drifting), then the engine's tilemaps and its
-default sprites by z (props, glows, the toys and the actors). The toys' and the
+the viewport, the night areas' true-black sky over it at their share, the moon, and
+the strips at their scroll factors with the shake's overhang, each outdoor area's
+far strip between the ridges and the woodland, the ravine's mist band, two
+translucent cloud layers drifting), then the engine's tilemaps (the background
+layer, the decorations with the far mist, the terrain, then the foreground) and
+its default sprites by z (props, glows, the toys and the actors). An area's
+share is how far the view stands into it within five tiles of each border, so
+the far strips, the night sky and the ridges and woodland it drops crossfade
+as the view crosses. The strips follow the view up and down but for 30 % of
+their parallax (`draw::VERTICAL`) about the start's view, so the deep ravine,
+hollow, cut and pit keep their backdrop in view, and each area's `horizon`
+lowers them. The toys' and the
 elements' effects (flames, shock rings, the vortex, spray wisps, cold pulses) draw
 after them, and the cursor last, at 32 screen pixels. The foreground tiles draw
 under the sprites.
@@ -200,7 +295,7 @@ air-jump and landing bursts follow its flags, and a fresh run settles onto the
 ground silently. A burst's emitter goes once it has drained and its particles are
 gone.
 
-Manual acceptance still requires both full routes and the switchback; deliberate
+Manual acceptance still requires `main`, the pit's chutes and shelves, the lifts and the side routes; deliberate
 falls; jump/landing particles; idle/airborne lit frames; animated props; every
 spell; a hazard's knockback and shake; and the HUD and the sounds. Inspect resized windows
 and both zoom limits for uncovered edges, seams, foreground occlusion and clutter.
@@ -210,8 +305,8 @@ remaining visual checks are listed here; archived implementation plans are histo
 ## Gameplay and presentation
 
 Balls never hurt the player, nor does iron but for a block driven into it fast
-(see [Iron blocks and crushing](#iron-blocks-and-crushing)). Spikes and moving fire
-hurt through the kit's `contact_damage`: 34 a touch, pushing 560 pixels/second
+(see [Iron blocks and crushing](#iron-blocks-and-crushing)). Lava, and any spikes
+or moving fire the level's data places, hurt through the kit's `contact_damage`: 34 a touch, pushing 560 pixels/second
 away, so the third touch takes Normal's 100 health (Easy has 150, Hard 68). Each
 hit plays the hit sound and kicks the camera through the player's `damaged` cues,
 knocks it back for 0.18 seconds and opens the kit's 1.1-second window in which
@@ -225,8 +320,8 @@ burst and ring counts are capped at 16. The HUD's bars show the health and the m
 and `travel` amplitudes, a `period` in seconds, and a `phase` in radians, which the
 kit's `oscillator` and `path_follower` take. The kit's controller rides a moving
 deck and leaves it on a jump. Static main routes remain available. Route tests run
-on the map without hazards or moving platforms; the playthrough test walks the
-lower route with them, jumping the spikes and waiting out the fire. Platform sweeps
+on the map without hazards or moving platforms; the playthrough test walks `main`
+with them through the six areas, jumping the lava. Platform sweeps
 are checked for terrain and rider headroom, and a complete physics cycle verifies
 support without slipping through the deck.
 
@@ -243,12 +338,11 @@ attraction. Camera zoom spans 35–300%.
 
 `placement.py` resolves `support` names in `level.json`. Grounded props place their
 visible bottom edge on the named surface; hanging moss attaches its first pixel
-to the deck underside. Composite `groups` preserve relative piece positions and
-validate both feet/trunk against the support width. Wall roots remain attached
-to cliff faces. Four timber trestles join deck undersides to ground, and the
-waterfall has a continuous wet cliff backing, capped by a mossy spring tile
-(`cliff_back_top`). One decorative arch remains. Summit
-stairs and a grotto stepping stone add geometry without removing existing routes.
+to the deck underside. The `under` anchor hangs a prop or a group from its
+support's underside, a ground platform's `bottom` or a deck's visible depth,
+tucked `UNDER_TUCK` (6) pixels into it. Composite `groups` preserve relative
+piece positions and validate both feet/trunk against the support width. Wall
+roots remain attached to cliff faces.
 
 `SLAB_COLLIDERS` and `DECK_DEPTH` derive from the art's opaque bounds. Current
 slabs, bridges and moving decks are 23 pixels deep, rather than the old 64-pixel
@@ -259,12 +353,13 @@ collision together when changing silhouettes.
 Press **L** to toggle the player's lantern halo and point light. Per-frame flame
 anchors are generated from the art, the cast twins' and the mirrored frames'
 too; both effects follow facing and animation. A fresh run lights the lantern.
-Fireballs have a brighter inner halo and a stronger native light. They face their
-horizontal travel (vertical-only movers face the player). Each leaks rising flame wisps
-from its seeded `fire_trail` emitter (32 live) and molten drips from a
-`fireball_drips` emitter anchored 12 pixels below its center (16 live). That is
-48 particles per fireball, 288 in total. All emitters remain subject to the
-global 2048-particle budget.
+Fireball hazards, which the level's data may place (none today), have a brighter
+inner halo and a stronger native light. They face their horizontal travel
+(vertical-only movers face the player). Each leaks rising flame wisps from its
+seeded `fire_trail` emitter (32 live) and molten drips from a `fireball_drips`
+emitter anchored 12 pixels below its center (16 live), 48 particles a fireball;
+the fire missile borrows the drips. All emitters remain subject to the global
+2048-particle budget.
 
 
 ## Midnight presentation and double jump
@@ -298,8 +393,11 @@ radial blur turns the moon into a glaring sun and casts a blocky yellow haze,
 which fights the restrained night look; the stack stays Bloom plus Vignette.
 Stock `Fog` fades toward the top of the screen in screen space, which is not
 ground mist. The engine packs at most 16 lights total, keeping directionals first and then
-the point lights nearest the camera view. At the widest zoom some off-centre pools can drop out; that
-selection lives in the engine.
+the point lights nearest the camera view; every light inside the view ties, and ties keep
+query order. The map holds 10 lights in any window at the widest zoom (`LIGHT_BUDGET`), so
+the courier's lantern stays; past that, with more missiles, flares or summoned wisps, the
+lantern can drop out ([known issues](../../../docs/known-issues.md)). That selection lives
+in the engine.
 
 Wind motes are fireflies: a soft dot that blinks yellow-green as it wanders.
 
@@ -314,7 +412,7 @@ takes the Bloom out while it is off. No engine or shader-source
 changes are required. The HUD's bars read the health and the mana every frame and
 keep their screen size across zoom and camera movement.
 
-## Small balls, collection pit and particles
+## Small balls, the ball pit and particles
 
 Hold `cast` on slot 9 for small balls at 156.25 a second, set down at the cursor.
 Their collider radius is 7.5 pixels and render diameter is 16 pixels.
@@ -331,11 +429,15 @@ and stored as 2×2 or 4×4 pixel blocks so that nearest sampling stays exact:
   `BallHue`, so only they cycle through the rainbow; burning and charring tint the
   same greys.
 
-Beyond the gate, walk across the four-tile apron to the open collection pit.
-Its clear interior spans columns 132–180 and rows 18–46: **48 × 28 tiles,
-3,072 × 1,792 pixels**. Solid walls and floor are at least four tiles (256 pixels)
-thick; the far wall rises six tiles above the entry rim. The map is 184 × 50 tiles,
-and the kill plane lies below the floor. No hazards occupy the pit. The physics
+The ball pit is dug into the Lantern clearing east of the start (`level.json`'s
+`pit`). Its clear interior spans columns 48–72 and rows 36–68: **24 × 32 tiles,
+1,536 × 2,048 pixels**, with an open chute at each end (columns 48–51 and 69–72)
+and the rope bridge in two decks over its middle with a four-tile gap between
+them. `pit_in_west` and `pit_in_east` drop down the chutes, and `pit_climb`
+climbs ten shelves zig-zagging up the middle to the gap. `validate_layout` holds
+the interior to at least 3.1 Mpx² (BALL_CAP's 12,000 small balls fill it to about
+its rim) and its shell to four tiles. The kill plane lies below the floor. No
+hazards occupy the pit. The physics
 regression runs 2,048 mixed-size balls for three seconds, including fast wall
 impacts, and checks that their centers remain inside the bucket. Capacity is
 finite; keep the pile below the open rim when stress-testing.
@@ -355,7 +457,7 @@ smaller sizes and longer lifetimes. Both accelerate upward with varied speeds,
 sizes, lifetimes and rotation. The fire-destruction explosion remains a separate
 outward burst.
 
-Small balls ignite on contact with moving fire hazards and spread fire to other
+Small balls ignite on contact with moving fire hazards, where the data places any, and spread fire to other
 small balls they touch, including settled piles that emit no new physics contacts.
 Each ball burns for 10 seconds from its first ignition; contact never resets the
 timer. Burned-out balls remain as dark, nonflammable physics bodies.
@@ -495,11 +597,25 @@ The sprays' loops are voices of their own.
 | `ex10_frost_blast_sfx` | `frost_blast.wav` | Thermal shock: fracturing ice, a cold boom and falling shards |
 | `ex10_dummy_hit_sfx` | `dummy_hit.wav` | The dummy takes damage, through its `damaged` cue: a sackcloth thump |
 | `ex10_summon_sfx` | `summon.wav` | A dummy summoned: rising bells over a soft swell |
+| `ex10_splinter_sfx` | `splinter.wav` | A bullet through a wooden deck, through the `splintered` rule: a sharp crack, a hollow knock and splinters rattling away |
+| `ambience_clearing` | `ambience_clearing.wav` | The clearing at night: crickets, a breeze in the oaks, an owl |
+| `ambience_aqueduct` | `ambience_aqueduct.wav` | Water trickling along the channel and dripping from its leaks |
+| `ambience_ravine` | `ambience_ravine.wav` | The falls' roar with slow surges and a hiss of mist |
+| `ambience_hollow` | `ambience_hollow.wav` | A low rumble under the basalt and the crackle of embers |
+| `ambience_mine` | `ambience_mine.wav` | Wind over the spoil, a creaking timber and a distant clank of iron |
+| `ambience_bridge` | `ambience_bridge.wav` | The river under the arches, wind across the bridge, the ropes' creak |
 
 The music loops are 16-bit mono at 22,050 Hz, on the music bus. Each renders a
 bar past its end and folds that tail onto its start, so it repeats at its bar
 line; generation fails a loop whose length is not its bars exactly or whose seam
 jumps further than any step inside it (`sfx.seam_problem`).
+
+The six ambience loops (`sfx.AMBIENCE`) are 6 seconds each at 22,050 Hz, on the
+effects bus at volumes 0.3 to 0.4. `sfx.ambience_loop` renders a quarter second
+past the end and crossfades it into the head, and `LOOPS` holds each to its
+132,300 samples under the same seam check. 01 starts all six silent; the current
+area's rises over 1.5 seconds and the others fall, and all are silent under pause
+and game over.
 
 ## Ice spray and thermal shattering
 

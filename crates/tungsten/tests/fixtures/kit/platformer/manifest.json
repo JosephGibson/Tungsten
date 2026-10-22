@@ -68,6 +68,12 @@
     },
     "ledge": {
       "path": "prefabs/ledge.json"
+    },
+    "bolt": {
+      "path": "prefabs/bolt.json"
+    },
+    "armour": {
+      "path": "prefabs/armour.json"
     }
   },
   "data": {

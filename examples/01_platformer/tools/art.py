@@ -155,7 +155,7 @@ def build_art():
     build_enemies(images, animations)
     build_scenery(images, lit, animations)
     build_terrain(images, lit)
-    build_backdrops(images)
+    build_backdrops(images, lit)
     build_effects(images)
     from polish_art import enrich_art
     enrich_art(images,lit,animations)
@@ -163,11 +163,12 @@ def build_art():
 
 
 def validate_art(images,lit):
+    from backdrops import BACKDROPS
     allowed=set(PALETTE.values())
     for name,im in images.items():
         # A moving platform's deck is its width wide.
         wide=name.startswith('lift_deck_') and im.height==64
-        if name not in ('sky','distant_ridges','near_woodland','clouds_far','clouds_near') and not wide and im.size!=expected_size(name):raise ValueError(f'{name}: wrong dimensions')
+        if name not in BACKDROPS and not wide and im.size!=expected_size(name):raise ValueError(f'{name}: wrong dimensions')
         if not set(im.get_flattened_data())<=allowed:raise ValueError(f'{name}: outside palette')
         if name.startswith(('player', 'ball', 'lantern', 'vines')) or name == 'marker':
             box=im.getbbox()

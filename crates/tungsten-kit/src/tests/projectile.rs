@@ -1,5 +1,6 @@
 use super::*;
 use serde_json::json;
+use tungsten_core::physics::{Collider, Position, RigidBody};
 use tungsten_core::{ComponentRegistry, Stage};
 
 use crate::damage::pipeline::DamagePart;
@@ -88,11 +89,18 @@ fn the_plugin_registers_its_queues_its_tick_after_the_grid_and_the_despawn() {
     ProjectilePlugin.build(&mut schedule, &mut world);
     schedule.resolve().unwrap();
     assert!(world.has_event::<ProjectileExpired>() && world.has_event::<Struck>());
+    assert!(world.has_event::<ProjectileBounced>() && world.has_event::<ProjectilePassed>());
     let order: Vec<&str> = schedule.names(Stage::FixedUpdate).collect();
     let at = |name: &str| order.iter().position(|n| *n == name).unwrap();
     assert!(at(HIT_GRID) < at(PROJECTILE_TICK) && at(PROJECTILE_TICK) < at(KIT_DESPAWN));
     let expired = ProjectileExpired::new(world.spawn(), glam::Vec2::new(1.0, 2.0));
-    assert_eq!(expired.position, glam::Vec2::new(1.0, 2.0));
+    assert_eq!(
+        (expired.position, expired.wall),
+        (glam::Vec2::new(1.0, 2.0), None)
+    );
+    let wall = WallContact::new(None, glam::Vec2::Y, 1);
+    let at_wall = ProjectileExpired::at_wall(expired.entity, glam::Vec2::ZERO, wall);
+    assert_eq!(at_wall.wall, Some(wall));
 }
 
 #[test]
@@ -240,4 +248,329 @@ fn a_loaded_piercing_projectile_given_its_targets_passes_none_twice() {
         (vec![80.0, 90.0], 3),
         "unnamed: the first again"
     );
+}
+
+// M76: walls by their physics layers.
+
+#[test]
+fn the_wall_masks_default_to_every_layer_and_none_and_round_trip() {
+    let plain = Projectile::new();
+    assert_eq!((plain.bounce_layers(), plain.pass_layers()), (u32::MAX, 0));
+    // A save without the masks is today's projectile, and one at their
+    // defaults leaves them out.
+    let saved = serde_json::to_value(&plain).unwrap();
+    assert!(saved.get("bounce_layers").is_none() && saved.get("pass_layers").is_none());
+    let bolt = Projectile::new()
+        .with_bounces(2)
+        .with_bounce_layers(1 << 2)
+        .with_pass_layers(1 << 3);
+    let saved = serde_json::to_value(&bolt).unwrap();
+    assert_eq!(
+        (saved["bounce_layers"].clone(), saved["pass_layers"].clone()),
+        (json!(4), json!(8))
+    );
+    assert_eq!(serde_json::from_value::<Projectile>(saved).unwrap(), bolt);
+    assert_eq!(
+        serde_json::from_value::<Projectile>(json!({ "bounces": 1 })).unwrap(),
+        Projectile::new().with_bounces(1)
+    );
+    // The scene form takes layer numbers.
+    let mut world = World::new();
+    let mut schedule = Schedule::new();
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    let components = world.resource::<ComponentRegistry>();
+    let good = json!({ "bounces": 2, "bounce_layers": [0, 2], "pass_layers": [3, 31] });
+    assert!(components.check_in(PROJECTILE, &good, &world).is_ok());
+    for bad in [
+        json!({ "pass_layers": [32] }),
+        json!({ "bounce_layers": [-1] }),
+        json!({ "bounce_layers": 4 }),
+    ] {
+        assert!(
+            components.check_in(PROJECTILE, &bad, &world).is_err(),
+            "{bad}"
+        );
+    }
+    let def: ProjectileDef = serde_json::from_value(good).unwrap();
+    let read = Projectile::from(def);
+    assert_eq!(
+        (read.bounce_layers(), read.pass_layers()),
+        (0b101, (1 << 3) | (1 << 31))
+    );
+}
+
+/// A World with physics, linear motion and projectiles, and room for a
+/// tile map.
+fn wall_rig() -> (World, Schedule) {
+    use tungsten_core::physics::PhysicsPlugin;
+
+    let mut world = World::new();
+    world.insert_resource(tungsten_core::Time::new());
+    world.insert_resource(tungsten_core::CommandBuffer::new());
+    world.insert_resource(tungsten_core::TilemapRegistry::new());
+    let mut schedule = Schedule::new();
+    PhysicsPlugin.build(&mut schedule, &mut world);
+    crate::LinearMotionPlugin.build(&mut schedule, &mut world);
+    ProjectilePlugin.build(&mut schedule, &mut world);
+    schedule.resolve().unwrap();
+    (world, schedule)
+}
+
+/// A static box of half extents (5, 50) at (`x`, 40) in `layers`.
+fn slab(world: &mut World, x: f32, layers: u32) -> Entity {
+    use tungsten_core::physics::RigidBodyBundle;
+
+    let wall = world.spawn_with(RigidBodyBundle::r#static(
+        Position::new(x, 40.0),
+        Collider::aabb(Vec2::new(5.0, 50.0)),
+    ));
+    world.get_mut::<RigidBody>(wall).unwrap().layers = layers;
+    wall
+}
+
+/// A column of 16 px tiles over x 160 to 176, rows 0 to 11.
+fn tile_column(world: &mut World) {
+    use tungsten_core::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+
+    let mut map = TilemapData::new(16, 16, 12, 12);
+    let solid = map.add_tile("solid");
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    for row in 0..12 {
+        map.set_tile(layer, 10, row, solid);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("column".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("column", Vec2::ZERO));
+}
+
+/// A bolt of radius 2 at (`x`, 40), flying at `vx` px/s.
+fn flier(world: &mut World, x: f32, vx: f32, projectile: Projectile) -> Entity {
+    use tungsten_core::physics::PrevPosition;
+
+    let at = Vec2::new(x, 40.0);
+    world.spawn_with((
+        Position(at),
+        PrevPosition(at),
+        crate::LinearMotion::new(Vec2::new(vx, 0.0)),
+        Hitbox::new(HitShape::circle(2.0), 1.0),
+        projectile,
+    ))
+}
+
+/// What a projectile met, in order: "passed", "bounced" or "expired", the
+/// x it met it at and the wall.
+type Meeting = (&'static str, f32, Option<WallContact>);
+
+/// Steps of `dt` until `bolt` ends, at most a second's worth, and every
+/// meeting sent, in step order.
+fn meetings(world: &mut World, schedule: &mut Schedule, bolt: Entity, dt: f32) -> Vec<Meeting> {
+    let mut seen = (0, 0, 0);
+    let mut out = Vec::new();
+    for _ in 0..=((1.0 / dt).ceil() as u32) {
+        world
+            .resource_mut::<tungsten_core::Time>()
+            .advance_frame(dt);
+        schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+        let passed: Vec<_> = world
+            .resource::<EventQueue<ProjectilePassed>>()
+            .iter()
+            .filter(|event| event.entity == bolt)
+            .map(|event| ("passed", event.position.x, Some(event.wall)))
+            .collect();
+        let bounced: Vec<_> = world
+            .resource::<EventQueue<ProjectileBounced>>()
+            .iter()
+            .filter(|event| event.entity == bolt)
+            .map(|event| ("bounced", event.position.x, Some(event.wall)))
+            .collect();
+        let expired: Vec<_> = world
+            .resource::<EventQueue<ProjectileExpired>>()
+            .iter()
+            .filter(|event| event.entity == bolt)
+            .map(|event| ("expired", event.position.x, event.wall))
+            .collect();
+        out.extend(passed[seen.0..].iter().copied());
+        out.extend(bounced[seen.1..].iter().copied());
+        out.extend(expired[seen.2..].iter().copied());
+        seen = (passed.len(), bounced.len(), expired.len());
+        if !expired.is_empty() {
+            break;
+        }
+    }
+    out
+}
+
+/// `got` matches `want` by kind, x within 1e-3 and wall.
+fn same_meetings(got: &[Meeting], want: &[Meeting]) -> bool {
+    got.len() == want.len()
+        && got
+            .iter()
+            .zip(want)
+            .all(|(a, b)| a.0 == b.0 && (a.1 - b.1).abs() < 1e-3 && a.2 == b.2)
+}
+
+const DTS: [f32; 3] = [1.0 / 30.0, 1.0 / 60.0, 1.0 / 144.0];
+
+#[test]
+fn a_wall_in_the_pass_layers_is_passed_and_the_next_ends_it_at_three_step_rates() {
+    for dt in DTS {
+        let (mut world, mut schedule) = wall_rig();
+        let wood = slab(&mut world, 100.0, 1 << 3);
+        let stone = slab(&mut world, 200.0, 1);
+        let bolt = flier(
+            &mut world,
+            0.0,
+            1200.0,
+            Projectile::new().with_pass_layers(1 << 3),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let left = Vec2::new(-1.0, 0.0);
+        let want = [
+            (
+                "passed",
+                93.0,
+                Some(WallContact::new(Some(wood), left, 1 << 3)),
+            ),
+            (
+                "expired",
+                193.0,
+                Some(WallContact::new(Some(stone), left, 1)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "dt {dt}: {got:?}");
+    }
+}
+
+#[test]
+fn a_wall_outside_the_bounce_layers_ends_a_shot_with_bounces_left() {
+    for dt in DTS {
+        let (mut world, mut schedule) = wall_rig();
+        let iron = slab(&mut world, 100.0, 1 << 2);
+        let stone = slab(&mut world, -100.0, 1);
+        let bolt = flier(
+            &mut world,
+            0.0,
+            1200.0,
+            Projectile::new().with_bounces(2).with_bounce_layers(1 << 2),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            (
+                "bounced",
+                93.0,
+                Some(WallContact::new(Some(iron), Vec2::new(-1.0, 0.0), 1 << 2)),
+            ),
+            (
+                "expired",
+                -93.0,
+                Some(WallContact::new(Some(stone), Vec2::new(1.0, 0.0), 1)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "dt {dt}: {got:?}");
+        let projectile = world.get::<Projectile>(bolt).unwrap();
+        assert_eq!(
+            (projectile.bounces(), projectile.is_spent()),
+            (2, true),
+            "a bounce left, spent at stone"
+        );
+    }
+}
+
+#[test]
+fn a_tile_is_in_layer_0_and_follows_the_masks() {
+    let left = Vec2::new(-1.0, 0.0);
+    let tile = Some(WallContact::new(None, left, 1));
+    for dt in DTS {
+        // Passed: met where it enters the column, then the box behind.
+        let (mut world, mut schedule) = wall_rig();
+        tile_column(&mut world);
+        let iron = slab(&mut world, 260.0, 1 << 2);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_pass_layers(1),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            ("passed", 158.0, tile),
+            (
+                "expired",
+                253.0,
+                Some(WallContact::new(Some(iron), left, 1 << 2)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "passed, dt {dt}: {got:?}");
+        // Turned, then ended at a box in layer 0.
+        let (mut world, mut schedule) = wall_rig();
+        tile_column(&mut world);
+        let stone = slab(&mut world, 40.0, 1);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_bounces(1).with_bounce_layers(1),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            ("bounced", 158.0, tile),
+            (
+                "expired",
+                47.0,
+                Some(WallContact::new(Some(stone), Vec2::new(1.0, 0.0), 1)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "bounced, dt {dt}: {got:?}");
+        // Outside its bounce layers: ended with its bounce left.
+        let (mut world, mut schedule) = wall_rig();
+        tile_column(&mut world);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_bounces(1).with_bounce_layers(1 << 2),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        assert!(
+            same_meetings(&got, &[("expired", 158.0, tile)]),
+            "ended, dt {dt}: {got:?}"
+        );
+    }
+}
+
+#[test]
+fn a_pass_and_a_pierce_are_independent_and_a_hit_before_the_wall_lands_first() {
+    let (mut world, mut schedule) = wall_rig();
+    let wood = slab(&mut world, 100.0, 1 << 3);
+    // Behind the wood, before the stone.
+    let target = world.spawn_with((
+        Position::new(150.0, 40.0),
+        tungsten_core::physics::PrevPosition(Vec2::new(150.0, 40.0)),
+        Hurtbox::new(HitShape::circle(4.0)),
+        crate::Health::new(100.0),
+    ));
+    slab(&mut world, 200.0, 1);
+    let bolt = flier(
+        &mut world,
+        0.0,
+        1200.0,
+        Projectile::new().with_pass_layers(1 << 3),
+    );
+    let got = meetings(&mut world, &mut schedule, bolt, 1.0 / 60.0);
+    assert_eq!(got.len(), 2, "{got:?}");
+    assert_eq!((got[0].0, got[0].2.unwrap().entity), ("passed", Some(wood)));
+    assert_eq!(
+        (got[1].0, got[1].2),
+        ("expired", None),
+        "ended at the target, past the wood"
+    );
+    assert!((got[1].1 - 144.0).abs() < 1e-3, "{got:?}");
+    let struck: Vec<Entity> = world
+        .resource::<EventQueue<Struck>>()
+        .iter()
+        .map(|event| event.target)
+        .collect();
+    assert_eq!(struck, [target]);
 }

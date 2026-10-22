@@ -1,6 +1,6 @@
 //! The level from its generator, on the kit's controller and path follower:
 //! every route's jumps, a ride through a platform's cycle, the platforms'
-//! sweeps, a thin deck's underside, and one collider per slab.
+//! sweeps, a thin deck's underside, and one collider per slab and iron box.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -40,6 +40,19 @@ struct Platform {
     row: f32,
 }
 
+impl Source {
+    fn platform(&self, name: &str) -> &Platform {
+        self.platforms
+            .iter()
+            .find(|p| p.name == name)
+            .unwrap_or_else(|| panic!("no platform {name}"))
+    }
+}
+
+/// The deck the underside test reads: a wooden one over the ball pit, with
+/// open air under it.
+const UNDERSIDE_DECK: &str = "bridge_b";
+
 #[derive(Deserialize)]
 struct SourceHazard {
     fire: bool,
@@ -68,51 +81,79 @@ const SPIKES_HALF: Vec2 = Vec2::new(27.0, 14.0);
 /// pair a route takes has one row, and a row no route takes fails, so the
 /// table never keeps dead data.
 const LAUNCHES: &[(&str, &str, f32, f32, bool)] = &[
-    ("terrace_a", "forest_perch", 16.35, 12.75, true),
-    ("forest_perch", "forest_shrine", 12.35, 8.75, true),
-    ("climb_b", "grotto", 67.85, 74.25, true),
-    ("grotto", "grotto_step", 71.85, 73.75, true),
-    ("grotto_step", "grotto_exit", 75.85, 77.75, true),
-    ("grotto_exit", "grotto_return", 78.85, 80.75, true),
-    ("grotto_return", "climb_d", 80.85, 74.75, true),
-    ("grotto", "grotto_stone", 70.35, 70.75, true),
-    ("grotto_stone", "grotto_step", 71.85, 73.75, true),
     ("clearing", "terrace_a", 15.85, 16.75, true),
     ("terrace_a", "terrace_b", 18.35, 23.25, true),
-    ("terrace_b", "lower_a", 23.85, 24.75, true),
-    ("lower_a", "lower_b", 31.85, 34.75, true),
-    ("lower_b", "aqueduct_step", 37.85, 38.75, true),
-    ("aqueduct_step", "lower_b_exit", 40.85, 41.75, true),
-    ("lower_b_exit", "lower_c", 43.85, 46.75, true),
-    ("lower_c", "climb_a", 55.85, 56.75, true),
-    ("climb_a", "climb_b", 60.85, 62.75, true),
-    ("climb_b", "climb_c", 66.85, 68.75, true),
-    ("climb_c", "climb_d", 72.85, 74.75, true),
-    ("climb_d", "climb_e", 78.85, 80.75, true),
-    ("climb_e", "climb_f", 84.85, 86.75, true),
-    ("climb_f", "tower_lower_a", 91.85, 92.75, true),
-    ("tower_lower_a", "tower_lower_b", 96.85, 98.75, true),
-    ("tower_lower_b", "tower_lower_c", 102.85, 104.75, true),
-    ("tower_lower_c", "gate", 107.85, 108.75, true),
-    ("gate", "overlook_a", 114.35, 116.75, true),
-    ("overlook_a", "overlook_b", 119.85, 123.75, true),
-    ("recovery_a", "lower_b", 33.85, 34.75, true),
-    ("recovery_b", "lower_c", 45.85, 46.75, true),
-    ("gate", "gate_step", 118.85, 119.75, true),
-    ("gate_step", "gate_crest", 120.85, 121.75, true),
-    ("gate_crest", "overlook_a", 121.35, 116.75, true),
-    ("terrace_b", "upper_a", 22.85, 24.75, true),
-    ("upper_a", "upper_b", 29.85, 32.75, true),
-    ("upper_b", "upper_c", 37.85, 40.75, true),
-    ("upper_c", "upper_d", 45.85, 48.75, true),
-    ("upper_d", "climb_a", 53.85, 56.75, true),
-    ("climb_f", "switch_a", 86.85, 80.75, true),
-    ("switch_a", "switch_b", 80.85, 74.75, true),
-    ("switch_b", "switch_c", 78.85, 80.75, true),
-    ("switch_c", "tower_upper_a", 85.85, 88.75, true),
-    ("tower_upper_a", "tower_upper_b", 95.85, 98.75, true),
-    ("tower_upper_b", "gate", 105.85, 108.75, true),
-    ("wet_shelf", "grotto", 75.85, 66.75, true),
+    ("terrace_b", "meadow", 23.85, 24.75, true),
+    ("meadow", "bridge_a", 47.85, 51.75, true),
+    ("bridge_a", "bridge_b", 57.85, 62.75, true),
+    ("east_rim", "aqueduct_step", 91.85, 92.75, true),
+    ("aqueduct_step", "aqueduct_floor", 94.85, 95.75, true),
+    ("aqueduct_floor", "ravine_step_1", 157.85, 158.75, true),
+    ("ravine_step_1", "ravine_step_2", 165.85, 166.75, true),
+    ("ravine_step_2", "ravine_step_3", 169.85, 170.75, true),
+    ("ravine_step_3", "ravine_step_4", 173.85, 174.75, true),
+    ("ravine_step_4", "pool_bed", 176.85, 177.75, true),
+    ("pool_bed", "cleft", 205.85, 206.75, true),
+    ("cleft", "hollow_floor_1", 215.85, 216.75, true),
+    ("hollow_floor_1", "stepping_stone", 231.85, 235.75, true),
+    ("stepping_stone", "hollow_floor_2", 236.85, 240.75, true),
+    ("hollow_floor_2", "hollow_step", 249.85, 250.75, true),
+    ("hollow_step", "hollow_shelf_a", 253.85, 254.75, true),
+    ("hollow_shelf_a", "hollow_shelf_b", 259.85, 262.75, true),
+    ("hollow_shelf_b", "gallery", 267.85, 268.75, true),
+    ("gallery", "cut_floor_1", 282.85, 283.75, true),
+    ("cut_floor_1", "cut_floor_2", 305.35, 306.75, true),
+    ("cut_floor_2", "cut_floor_3", 323.35, 324.75, true),
+    ("cut_floor_3", "cut_step_1", 341.35, 342.75, true),
+    ("cut_step_1", "cut_step_2", 344.35, 345.75, true),
+    ("cut_step_2", "cut_step_3", 347.35, 348.75, true),
+    ("cut_step_3", "ridge", 350.85, 351.75, true),
+    ("ridge", "bridge_head", 359.85, 360.75, true),
+    ("bridge_head", "troll_bridge", 365.85, 366.75, true),
+    ("troll_bridge", "east_bank", 423.85, 424.75, true),
+    ("terrace_a", "forest_perch", 16.35, 12.75, true),
+    ("forest_perch", "forest_shrine", 12.35, 8.75, true),
+    ("pit_floor", "pit_shelf_1", 57.85, 55.75, true),
+    ("pit_shelf_1", "pit_shelf_2", 56.85, 59.75, true),
+    ("pit_shelf_2", "pit_shelf_3", 61.35, 63.75, true),
+    ("pit_shelf_3", "pit_shelf_4", 63.35, 59.75, true),
+    ("pit_shelf_4", "pit_shelf_5", 59.35, 55.75, true),
+    ("pit_shelf_5", "pit_shelf_6", 56.85, 59.75, true),
+    ("pool_bed", "ravine_east_1", 198.85, 200.75, true),
+    ("ravine_east_1", "ravine_east_2", 201.35, 197.75, true),
+    ("ravine_east_2", "ravine_east_3", 198.85, 200.75, true),
+    ("ravine_east_3", "ravine_east_4", 201.35, 197.75, true),
+    ("ravine_east_4", "ravine_east_5", 198.85, 200.75, true),
+    ("cut_floor_1", "scaffold_1", 297.35, 293.75, true),
+    ("scaffold_1", "scaffold_2", 294.35, 290.75, true),
+    ("scaffold_2", "scaffold_3", 291.35, 293.75, true),
+    ("scaffold_3", "cut_top", 293.35, 281.75, true),
+    ("aqueduct_floor", "aq_rubble_1", 114.85, 112.75, true),
+    ("aq_rubble_1", "aqueduct_floor", 114.85, 95.75, true),
+    ("aqueduct_floor", "aq_rubble_2", 123.85, 121.75, true),
+    ("aq_rubble_2", "aqueduct_floor", 123.85, 95.75, true),
+    ("bridge_b", "east_rim", 68.85, 72.75, true),
+    ("aqueduct_step", "aq_ledge_1", 94.85, 97.75, true),
+    ("aq_ledge_1", "aq_ledge_2", 100.85, 103.75, true),
+    ("aq_ledge_2", "aq_ledge_3", 106.85, 109.75, true),
+    ("aq_ledge_3", "channel_mid", 111.85, 113.75, true),
+    ("channel_mid", "channel_east_a", 128.85, 133.75, true),
+    ("channel_east_a", "channel_east_b", 144.85, 149.75, true),
+    ("channel_east_b", "rv_ledge_1", 177.85, 181.75, true),
+    ("rv_ledge_1", "rv_ledge_2", 184.85, 187.75, true),
+    ("rv_ledge_2", "rv_ledge_3", 187.35, 182.75, true),
+    ("rv_ledge_3", "rv_ledge_4", 185.85, 188.75, true),
+    ("rv_ledge_4", "rv_ledge_5", 188.35, 182.75, true),
+    ("rv_ledge_5", "rv_ledge_6", 185.85, 188.75, true),
+    ("rv_ledge_6", "rv_ledge_7", 188.35, 183.75, true),
+    ("rv_ledge_7", "pool_bed", 186.85, 177.75, true),
+    ("pit_shelf_6", "pit_shelf_7", 61.35, 63.75, true),
+    ("pit_shelf_7", "pit_shelf_8", 63.35, 59.75, true),
+    ("pit_shelf_8", "pit_shelf_9", 59.35, 55.75, true),
+    ("pit_shelf_9", "pit_shelf_10", 56.85, 59.75, true),
+    ("pit_shelf_10", "bridge_a", 59.35, 51.75, true),
+    ("east_rim", "pit_floor", 72.35, 48.75, false),
+    ("meadow", "pit_floor", 47.85, 48.75, true),
 ];
 
 /// A run with no hazard or moving platform, so a route's jumps meet the map
@@ -386,21 +427,29 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
 
 #[test]
 fn thin_platform_underside_and_edges_match_visible_art() {
+    let level = source();
+    let deck = level.platform(UNDERSIDE_DECK);
     let mut harness = bare_level();
     harness.world_mut().resource_mut::<PhysicsConfig>().gravity = Vec2::ZERO;
-    // Below the transparent portion of the bridge tile, horizontal movement
+    // Below the transparent portion of the deck's tiles, horizontal movement
     // stays unobstructed: no full 64 px tile collides there.
-    let below = Vec2::new(23.5 * TILE, 30.0 * TILE + 56.0);
+    let below = Vec2::new((deck.left + 1.5) * TILE, deck.row * TILE + 56.0);
     let player = fresh_player(&mut harness, below);
     harness.step(1);
     harness.harness_mut().press_action("move_right");
     harness.step(45);
     harness.harness_mut().release_action("move_right");
     let at = centre(&harness, player);
-    assert!(at.x > 25.5 * TILE, "it passed under the bridge: {at}");
+    assert!(
+        at.x > (deck.left + 3.5) * TILE,
+        "it passed under the deck: {at}"
+    );
     assert!((at.y - below.y).abs() < 0.5, "and kept its height: {at}");
     // A rising player meets the visible underside at row * 64 + 23, not + 64.
-    let player = fresh_player(&mut harness, Vec2::new(27.0 * TILE, 31.0 * TILE + 30.0));
+    let player = fresh_player(
+        &mut harness,
+        Vec2::new((deck.left + 5.0) * TILE, (deck.row + 1.0) * TILE + 30.0),
+    );
     harness.step(1);
     let controller = harness
         .world_mut()
@@ -410,13 +459,13 @@ fn thin_platform_underside_and_edges_match_visible_art() {
     harness.step(40);
     let head = centre(&harness, player).y - PLAYER_HALF.y;
     assert!(
-        (head - (30.0 * TILE + DECK_DEPTH)).abs() < 1.0,
+        (head - (deck.row * TILE + DECK_DEPTH)).abs() < 1.0,
         "head stopped at {head}"
     );
 }
 
 #[test]
-fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
+fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
     let mut harness = harness();
     start(&mut harness);
     let world = harness.world();
@@ -427,7 +476,7 @@ fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
     let slabs: Vec<[f32; 4]> = map
         .object_layers
         .iter()
-        .filter(|layer| layer.name == "slabs")
+        .filter(|layer| layer.name == "slabs" || layer.name == "iron")
         .flat_map(|layer| &layer.objects)
         .map(|object| {
             [
@@ -447,7 +496,7 @@ fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
             );
         }
     }
-    // Every static body is a slab's, its box the slab object's.
+    // Every static body is a slab's or an iron box's, its box the object's.
     let mut boxes: Vec<[f32; 4]> = world
         .query::<(
             &RigidBody,
@@ -459,7 +508,7 @@ fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
         .map(|(_, collider, at, sprite)| {
             assert!(sprite.is_none(), "a slab draws nothing: its tiles do");
             let Shape::Aabb { half_extents } = collider.shape else {
-                panic!("a slab is a box");
+                panic!("a slab or an iron box is a box");
             };
             let min = at.0 + collider.offset - half_extents;
             [min.x, min.y, 2.0 * half_extents.x, 2.0 * half_extents.y]
@@ -469,5 +518,5 @@ fn each_slab_platform_spawns_one_collider_with_no_join_inside() {
     let key = |b: &[f32; 4]| (b[1] as i64, b[0] as i64, b[2] as i64, b[3] as i64);
     boxes.sort_by_key(key);
     want.sort_by_key(key);
-    assert_eq!(boxes, want, "one collider per slab object");
+    assert_eq!(boxes, want, "one collider per slab and iron object");
 }

@@ -13,7 +13,7 @@ use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{Enemy, EnemyKind, EnemyState};
 use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, SLAB_LAYER, centre};
+use super::{ARRIVED, WALL_LAYERS, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind};
 
@@ -38,13 +38,14 @@ pub const DIVING: &str = "dive";
 
 /// Where a bat placed with its body's centre at `at` hangs, as its body's
 /// centre: its frame's top, where its feet grip, on the first ceiling within
-/// [`ROOST_REACH`] above, a solid tile or a slab; with none, `at`.
+/// [`ROOST_REACH`] above, a solid tile or a wall (a slab, iron or a wooden
+/// deck); with none, `at`.
 #[must_use]
 pub fn roost(world: &World, at: Vec2) -> Vec2 {
     let grip = EnemyKind::Bat.info().centre.y;
     let tiles = SpatialFilter::new().with_bodies(false);
-    let slabs = SpatialFilter::new().with_mask(SLAB_LAYER);
-    [tiles, slabs]
+    let walls = SpatialFilter::new().with_mask(WALL_LAYERS);
+    [tiles, walls]
         .iter()
         .filter_map(|filter| cast_ray(world, at, -Vec2::Y, ROOST_REACH, filter))
         .map(|hit| hit.distance)

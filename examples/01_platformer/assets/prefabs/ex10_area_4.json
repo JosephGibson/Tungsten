@@ -1,0 +1,35 @@
+{
+  "components": {
+    "area": {
+      "ambience": "ambience_mine",
+      "backdrop": "ex10_far_mine",
+      "horizon": -2,
+      "indoor": false,
+      "name": "Iron mine",
+      "night": true,
+      "ridges": true,
+      "woodland": false
+    },
+    "rigid_body": {
+      "kind": "sensor",
+      "offset": [
+        2240.0,
+        2304.0
+      ],
+      "shape": {
+        "half_extents": [
+          2240.0,
+          2304.0
+        ],
+        "kind": "aabb"
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

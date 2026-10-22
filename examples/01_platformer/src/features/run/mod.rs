@@ -17,7 +17,7 @@ use crate::features::combat::components::Hints;
 use crate::features::combat::numbers::Numbers;
 use crate::features::elements::cascade::Cascades;
 use crate::features::spells::components::Summon;
-use crate::features::{audio, dummy, enemies, level, player, spells};
+use crate::features::{audio, dummy, enemies, level, player, spells, toys};
 use crate::game::GAMEPLAY;
 use crate::save;
 use crate::shared::SaveIds;
@@ -71,6 +71,14 @@ impl GameState for GameplayState {
             Vec2::from(save.player.position) + player::BODY_OFFSET
         });
         let player = player::spawn(world, centre, start.difficulty);
+        // A fresh run sets the mine's loose iron down, the blocks taking the
+        // save IDs after the player's, before the run sounds; a load restores
+        // the blocks it saved.
+        if start.save.is_none() {
+            for at in level::markers(world, level::IRON_MARKER) {
+                toys::place_iron(world, at);
+            }
+        }
         // The area a save names is the run's already: no toast, no autosave.
         let area = start.save.as_ref().and_then(|save| save.area.clone());
         world.insert_resource(Run { player, area });

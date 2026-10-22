@@ -210,11 +210,13 @@ component platformer_controller: A side-view character on a kinematic body: it r
   field air_jumps: u32 = 0 — jumps a press starts in the air, past coyote time; being grounded refills them
   genres: platformer, shmup
   sample: { "run_speed": 200, "jump_speed": 600 }
-component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces or bounces.
+component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces, bounces or passes the wall.
   field pierce: u32 = 0 — targets it passes before the next ends it
   field range: f32 (> 0) = null — world pixels it travels before it ends; none when left out
   field bounces: u32 = 0 — walls it turns at before the next ends it
-  events: ProjectileExpired, Struck
+  field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, tiles in layer 0; a wall outside them ends it; every layer when left out
+  field pass_layers: list of u32 (<= 31) = [] — physics layers whose walls it passes as if open, before the bounce layers
+  events: ProjectileExpired, ProjectileBounced, ProjectilePassed, Struck
   genres: top_down, platformer, shmup
   sample: {}
 component resist: Damage factors by damage tag: a hit part's matching factors multiply its amount, and a factor of 0 is immunity.

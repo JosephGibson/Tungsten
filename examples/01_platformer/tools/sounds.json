@@ -252,5 +252,46 @@
     "looping": true,
     "path": "sounds/music_combat.wav",
     "volume": 0.4
+  },
+  "ambience_clearing": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_clearing.wav",
+    "volume": 0.35
+  },
+  "ambience_aqueduct": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_aqueduct.wav",
+    "volume": 0.35
+  },
+  "ambience_ravine": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_ravine.wav",
+    "volume": 0.4
+  },
+  "ambience_hollow": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_hollow.wav",
+    "volume": 0.4
+  },
+  "ambience_mine": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_mine.wav",
+    "volume": 0.3
+  },
+  "ambience_bridge": {
+    "bus": "effects",
+    "looping": true,
+    "path": "sounds/ambience_bridge.wav",
+    "volume": 0.35
+  },
+  "ex10_splinter_sfx": {
+    "looping": false,
+    "path": "sounds/splinter.wav",
+    "volume": 0.55
   }
 }

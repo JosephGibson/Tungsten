@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_campfire_0"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_campfire_1"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_campfire_2"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_campfire_3"
+    }
+  ],
+  "looping": true
+}

@@ -14,7 +14,7 @@ use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted};
 use super::{
-    ALERT_REACH, DORMANT_PAST, ENEMY_STATES, RECOVER_SECS, SEARCH_SECS, SIGHT_EVERY, SLAB_LAYER,
+    ALERT_REACH, DORMANT_PAST, ENEMY_STATES, RECOVER_SECS, SEARCH_SECS, SIGHT_EVERY, WALL_LAYERS,
     bat, beetle, centre, crawler, troll, wisp,
 };
 use crate::features::audio::{self, components::Sound};
@@ -359,7 +359,7 @@ fn enemies(world: &World) -> Vec<Entity> {
 }
 
 /// Whether nothing blocks the line from `from` to `to`: no solid tile, and
-/// no body in the slabs' layer, the nearer hit blocking.
+/// no body in a wall layer, the nearer hit blocking.
 #[must_use]
 pub fn clear(world: &World, from: Vec2, to: Vec2) -> bool {
     let delta = to - from;
@@ -369,8 +369,8 @@ pub fn clear(world: &World, from: Vec2, to: Vec2) -> bool {
     }
     let direction = delta / distance;
     let tiles = SpatialFilter::new().with_bodies(false);
-    let slabs = SpatialFilter::new().with_mask(SLAB_LAYER);
-    [tiles, slabs].iter().all(|filter| {
+    let walls = SpatialFilter::new().with_mask(WALL_LAYERS);
+    [tiles, walls].iter().all(|filter| {
         cast_ray(world, from, direction, distance, filter)
             .is_none_or(|hit| hit.distance >= distance - 1.0)
     })

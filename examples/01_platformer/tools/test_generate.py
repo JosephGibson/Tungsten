@@ -6,7 +6,8 @@ import unittest
 
 from art import build_art, read_grid, validate_art, validate_palette
 from generate import generate
-from level import build_level, validate_level
+from level import FAMILIES, build_level, validate_level
+from placement import UNDER_TUCK, underside
 
 
 class AuthoringTests(unittest.TestCase):
@@ -52,8 +53,10 @@ class AuthoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'disagreement'):validate_level(self.source,tiled,self.ids)
 
     def test_motion_rejects_invalid_period_bounds_and_unsafe_spawn(self):
+        # The map places no hazard today; the data may, so the test brings one.
+        fire=dict(fire=True,position=[30,25],travel=[1,0],period=5,phase=0)
         for change,error in [({'period':0},'motion'),({'position':[-2,10]},'outside'),({'position':[6.5,35.5]},'spawn')]:
-            source=copy.deepcopy(self.source);source['hazards'][0].update(change)
+            source=copy.deepcopy(self.source);source['hazards']=[dict(fire,**change)]
             with self.assertRaisesRegex(ValueError,error):validate_level(source,self.tiled,self.ids)
 
     def test_walk_has_distinct_intermediates_and_fixed_foot_anchors(self):
@@ -70,16 +73,17 @@ class AuthoringTests(unittest.TestCase):
             if 'support' not in p:continue
             support=platforms[p['support']];box=self.images[p['sprite'].removeprefix('ex10_')].getbbox()
             if p['anchor']=='ground':self.assertAlmostEqual(p['y']*64+box[3],support['row']*64,msg=str(p))
+            elif p['anchor']=='under':self.assertAlmostEqual(p['y']*64+box[1],underside(support,self.images,64)*64-UNDER_TUCK,msg=str(p))
             else:self.assertAlmostEqual(p['y']*64+box[1],support['row']*64+self.images[support['style']].getbbox()[3],msg=str(p))
         self.assertEqual(sum(g['sprite']=='ex10_arch' for g in self.source['groups']),1)
 
     def test_shallow_collision_matches_alpha_and_never_uses_full_tile(self):
         layer=next(l['data'] for l in self.tiled['layers'] if l['name']=='collision')
-        for x,y,width,height in self.source['slab_colliders']:
+        for x,y,width,height,wood in self.source['slab_colliders']:
             self.assertEqual(height,23);self.assertEqual(width,64)
             self.assertEqual(layer[int(y/64)*self.source['cols']+int(x/64)],0)
         for p in self.source['platforms']:
-            if p['style']!='ground':self.assertEqual(self.images[p['style']].getbbox(),(0,0,64,23))
+            if p['style'] not in FAMILIES:self.assertEqual(self.images[p['style']].getbbox(),(0,0,64,23))
         self.assertEqual(self.source['deck_depth'],23)
 
     def test_open_starting_courtyard_has_unobstructed_launch_space(self):
@@ -111,15 +115,16 @@ class AuthoringTests(unittest.TestCase):
             self.assertNotEqual(self.images[name].tobytes(),self.images['ball'].tobytes())
 
     def test_pit_has_clear_interior_and_four_tile_shell(self):
-        cols=self.source['cols']
+        cols=self.source['cols'];pit=self.source['pit']
         collision=next(l['data'] for l in self.tiled['layers'] if l['name']=='collision')
-        for y in range(18,46):
-            for x in range(132,180):self.assertEqual(collision[y*cols+x],0)
-            for x in list(range(128,132))+list(range(180,184)):
+        left,right,rim,floor=pit['left'],pit['right'],pit['rim'],pit['floor']
+        for y in range(rim,floor):
+            for x in range(left,right):self.assertEqual(collision[y*cols+x],0)
+            for x in list(range(left-4,left))+list(range(right,right+4)):
                 self.assertNotEqual(collision[y*cols+x],0)
-        for y in range(46,50):
-            for x in range(128,184):self.assertNotEqual(collision[y*cols+x],0)
-        self.assertGreater(self.source['kill_row'],46)
+        for y in range(floor,floor+4):
+            for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
+        self.assertGreater(self.source['kill_row'],floor)
 
 
 if __name__=='__main__':unittest.main()

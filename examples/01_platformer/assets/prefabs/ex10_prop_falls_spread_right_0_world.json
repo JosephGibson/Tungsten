@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_falls_spread_right"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_falls_spread_right_0",
+    "z_order": -10
+  }
+}

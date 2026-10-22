@@ -1,18 +1,25 @@
 {
   "components": {
     "area": {
-      "name": "Lantern clearing"
+      "ambience": "ambience_clearing",
+      "backdrop": "ex10_far_tower",
+      "horizon": 0,
+      "indoor": false,
+      "name": "Lantern clearing",
+      "night": false,
+      "ridges": true,
+      "woodland": true
     },
     "rigid_body": {
       "kind": "sensor",
       "offset": [
-        768.0,
-        1600.0
+        2976.0,
+        2304.0
       ],
       "shape": {
         "half_extents": [
-          768.0,
-          1600.0
+          2976.0,
+          2304.0
         ],
         "kind": "aabb"
       }

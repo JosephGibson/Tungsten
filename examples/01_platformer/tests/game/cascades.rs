@@ -10,13 +10,15 @@ use example_01_platformer::features::combat::{Hit, Kind};
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
 use example_01_platformer::features::elements::{self, CASCADE_BOUND, CASCADE_CAP, FROZEN_SECS};
-use example_01_platformer::features::level::components::Doused;
+use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::features::toys::components::IronScrap;
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
+use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, SaveId};
 use glam::Vec2;
-use tungsten::core::{Entity, EventQueue, Position};
-use tungsten::kit::{ContactDamage, DamageRequest, DamagedPart, KitRng, Oscillator};
+use tungsten::SceneEntity;
+use tungsten::core::{Entity, EventQueue, Position, PrevPosition, Transform};
+use tungsten::kit::{ContactDamage, DamageRequest, DamagedPart, KitRng};
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, apply, dummy_at, has, health, with_dummy};
@@ -268,13 +270,20 @@ fn frozen_things_thaw_after_five_seconds() {
 #[test]
 fn cold_douses_a_fire_hazard_for_a_while() {
     let (mut harness, player) = sky();
-    // A fireball of the level's, set still in the sky beside the player.
-    let fire = harness
-        .world_mut()
-        .prepare_prefab("ex10_fire_6", [420.0, TOP - 200.0])
-        .expect("the level's fireball prefab")
-        .spawn(harness.world_mut());
-    harness.world_mut().remove_component::<Oscillator>(fire);
+    // A still fire hazard in the sky beside the player: the level places
+    // none, but its data may, and the cold still puts one out.
+    let at = Vec2::new(420.0, TOP - 200.0);
+    let fire = harness.world_mut().spawn_with((
+        Hazard {
+            fire: true,
+            lava: false,
+        },
+        Position(at),
+        PrevPosition(at),
+        Transform::from_position(at),
+        ContactDamage::new(34.0),
+        SceneEntity { state_id: GAMEPLAY },
+    ));
     harness.step(1);
     let at = harness.world().get::<Position>(fire).unwrap().0 + elements::FIRE_CENTRE;
     let eye = super::centre(&harness, player);

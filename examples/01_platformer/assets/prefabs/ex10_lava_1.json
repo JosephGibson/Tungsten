@@ -1,0 +1,27 @@
+{
+  "components": {
+    "contact_damage": {
+      "damage": 34,
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "knockback": 560,
+      "offset": [
+        64.0,
+        35.0
+      ],
+      "shape": {
+        "aabb": [
+          64.0,
+          29.0
+        ]
+      }
+    },
+    "hazard": {
+      "fire": false,
+      "lava": true
+    }
+  }
+}

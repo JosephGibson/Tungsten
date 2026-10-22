@@ -162,7 +162,7 @@ fn real_map_dimensions_spawn_and_fall_death() {
     let map = world.resource::<TilemapRegistry>().get(MAP).unwrap();
     assert_eq!(
         (map.width, map.height, map.tile_width, map.tile_height),
-        (184, 50, 64, 64)
+        (430, 72, 64, 64)
     );
     let text = std::fs::read_to_string("tools/level.json").unwrap();
     let source: serde_json::Value = serde_json::from_str(&text).unwrap();

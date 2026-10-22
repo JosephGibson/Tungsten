@@ -1,0 +1,21 @@
+{
+  "components": {
+    "glow": {
+      "color": [
+        255,
+        181,
+        98,
+        200
+      ],
+      "offset": [
+        32,
+        24
+      ],
+      "radius": 130
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_hanging_lantern",
+    "z_order": -10
+  }
+}

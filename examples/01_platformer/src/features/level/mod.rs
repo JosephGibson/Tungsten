@@ -2,9 +2,9 @@
 //! the props, the slab colliders, the hazards, the moving platforms, the
 //! areas and the ambient emitters from generated prefabs, under the world's
 //! gravity, with the camera's bounds and its zoom by the window's height.
-//! Its presentation: the sky, the moon and the parallax strips, the glows
-//! with their lights, the cursor, the midnight light and today's post
-//! stack.
+//! Its presentation: the sky, the moon and the parallax strips with each
+//! area's far strip and night sky, the glows with their lights, the cursor,
+//! each area's light and today's post stack.
 
 pub mod components;
 pub mod draw;
@@ -28,9 +28,9 @@ use components::SceneTime;
 pub const MAP: &str = "ex10_level";
 /// A tile's side, in world pixels.
 pub const TILE: f32 = 64.0;
-/// The map's size, in tiles.
-pub const MAP_COLS: u32 = 184;
-pub const MAP_ROWS: u32 = 50;
+/// The map's size, in tiles: `tools/level.json`'s `cols` and `rows`.
+pub const MAP_COLS: u32 = 430;
+pub const MAP_ROWS: u32 = 72;
 /// The world's gravity, px/s² with y down, which the player and the bodies
 /// fall by.
 pub const GRAVITY: f32 = 3600.0;
@@ -39,7 +39,7 @@ pub const CAMERA_ROWS: f32 = 18.0;
 /// The map's marker where a fresh run's player stands, its feet's point.
 pub const SPAWN_MARKER: &str = "spawn";
 /// Below this, `tools/level.json`'s `kill_row`, a fall ends the run.
-pub const KILL_Y: f32 = 49.0 * TILE;
+pub const KILL_Y: f32 = 71.0 * TILE;
 /// The box the bodies live in: past it, one has escaped the level.
 pub const WORLD_MIN: Vec2 = Vec2::new(-2.0 * TILE, -8.0 * TILE);
 pub const WORLD_MAX: Vec2 = Vec2::new(
@@ -56,6 +56,14 @@ pub const SHAKE_DECAY: f32 = 2.2;
 pub const AMBIENT: Vec3 = Vec3::new(0.62, 0.62, 0.57);
 pub const MOONLIGHT: Vec3 = Vec3::new(0.85, 0.85, 0.72);
 pub const MOONLIGHT_INTENSITY: f32 = 0.1;
+/// Indoors, a cave: the ambient the lit sprites take there, the moon out.
+pub const AMBIENT_INDOOR: Vec3 = Vec3::new(0.30, 0.28, 0.32);
+/// The real seconds an area's light takes to ease from outdoors to indoors
+/// or back.
+pub const LIGHT_EASE: f32 = 1.0;
+/// How far, in world pixels, a far strip and the night sky crossfade each
+/// side of the border between two areas.
+pub const AREA_FADE: f32 = 5.0 * TILE;
 /// [`systems::glows`]'s name: the player's lantern writes its glow before.
 pub const GLOWS: &str = "level_glows";
 /// Most particles alive at once, the emitters' shared budget.
@@ -105,6 +113,10 @@ impl Plugin for LevelPlugin {
             Stage::PostUpdate,
             Phase::Present.join(system(GLOWS, systems::glows)),
         );
+        schedule.add(
+            Stage::PostUpdate,
+            Phase::Present.join(system("level_light", systems::light)),
+        );
         schedule.add(Stage::Update, system("burst_cleanup", burst_cleanup));
     }
 }
@@ -142,6 +154,7 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         SceneEntity { state_id: GAMEPLAY },
     ));
     world.insert_resource(SceneTime::default());
+    world.insert_resource(components::AreaLight::default());
     world.insert_resource(AmbientLight(AMBIENT));
     world.insert_resource(post_stack());
     let size = Vec2::new(MAP_COLS as f32, MAP_ROWS as f32) * TILE;
@@ -154,9 +167,11 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with
-/// gameplay: the clock, the ambient light and the post stack.
+/// gameplay: the clock, the area's light, the ambient light and the post
+/// stack.
 pub fn despawn(world: &mut World) {
     world.remove_resource::<SceneTime>();
+    world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());
     world.insert_resource(PostStack::default());
 }
@@ -184,10 +199,27 @@ pub fn post_stack() -> PostStack {
 /// The point of the map's marker `name`, an object with no class.
 #[must_use]
 pub fn marker(world: &World, name: &str) -> Option<Vec2> {
-    let map = world.get_resource::<TilemapRegistry>()?.get(MAP)?;
+    markers(world, name).into_iter().next()
+}
+
+/// The points of every map marker named `name`, objects with no class, in
+/// file order.
+#[must_use]
+pub fn markers(world: &World, name: &str) -> Vec<Vec2> {
+    let Some(map) = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+    else {
+        return Vec::new();
+    };
     map.object_layers
         .iter()
         .flat_map(|layer| &layer.objects)
-        .find(|object| object.class.is_empty() && object.name == name)
+        .filter(|object| object.class.is_empty() && object.name == name)
         .map(|object| object.position)
+        .collect()
 }
+
+/// The map's markers where a fresh run sets a loose iron block down: each
+/// a block's centre, on the mine's cut, a lightning rod.
+pub const IRON_MARKER: &str = "iron";

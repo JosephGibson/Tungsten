@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_pool_foam"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_pool_foam_0",
+    "z_order": -10
+  }
+}

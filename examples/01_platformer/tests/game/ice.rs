@@ -528,6 +528,8 @@ fn beam_stops_on_colliders_and_tiles_and_has_a_finite_range() {
 #[test]
 fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let (mut harness, player) = sprayer(300.0);
+    // The mine's loose iron, far off, which the shatter leaves be.
+    let others = harness.world().query::<&IronBlock>().count();
     let at = Vec2::new(600.0, TOP - IRON_HALF.y);
     let brick = block(&mut harness, at);
     let eye = centre(&harness, player);
@@ -553,7 +555,7 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
     let world = harness.world();
     assert!(!world.is_alive(missile));
     assert!(!world.is_alive(brick));
-    assert_eq!(world.query::<&IronBlock>().count(), 0);
+    assert_eq!(world.query::<&IronBlock>().count(), others);
     let pieces: Vec<(Entity, IronScrap, Vec2, f32)> = world
         .query::<(Entity, &IronScrap, &Position, &RigidBody)>()
         .map(|(e, scrap, p, body)| (e, *scrap, p.0, 1.0 / body.inv_mass))

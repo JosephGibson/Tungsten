@@ -61,9 +61,14 @@ pub const RECOVER_SECS: f32 = 0.5;
 pub const SUMMON_CAP: usize = 6;
 /// The source of the difficulty's modifiers on an enemy's stats.
 pub const DIFFICULTY: &str = "difficulty";
-/// The physics layer the level's slabs sit in, which a sight check casts
-/// against besides the tiles (`tools/level.py`).
+/// The physics layers of the level's static walls besides its tiles
+/// (`tools/level.py`): stone slabs, the mine's iron and wooden decks.
 pub const SLAB_LAYER: u32 = 1 << 1;
+pub const IRON_LAYER: u32 = 1 << 2;
+pub const WOOD_LAYER: u32 = 1 << 3;
+/// Every wall layer, which a sight line and a roost meet besides the tiles:
+/// iron and wood block sight and hold a bat as a slab does.
+pub const WALL_LAYERS: u32 = SLAB_LAYER | IRON_LAYER | WOOD_LAYER;
 /// How close a mover counts as at its point.
 pub const ARRIVED: f32 = 10.0;
 

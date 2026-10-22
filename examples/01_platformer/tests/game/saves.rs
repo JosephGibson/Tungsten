@@ -5,10 +5,8 @@
 //! loaded run keeps with the run it was saved from, in a fresh harness and
 //! in a churned world; statused dummies load with their effects' sources;
 //! a save mid-conduction resumes its chain; a bullet in flight loads and
-//! lands; each reaction's hint toasts once a save; a schema-4 save
-//! migrates past the map's new dummy; the template
-//! sample's schemas are refused; a schema-5 save migrates past the map's
-//! new enemies; an enemy's hit, pending transition, touch and frozen
+//! lands; each reaction's hint toasts once a save; the template sample's
+//! schemas and 01's older ones are refused; an enemy's hit, pending transition, touch and frozen
 //! flight load as they were, and a loaded run with enemies mid-attack and
 //! mid-search keeps with the uninterrupted one; and a full pit saves
 //! within 2 MiB with the map's enemies alive.
@@ -35,7 +33,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
-use example_01_platformer::save::{self, MAP_DUMMIES, MAP_ENEMIES, SaveGame};
+use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
@@ -179,7 +177,7 @@ fn busy(harness: &mut UiHarness) {
 }
 
 #[test]
-fn a_capture_round_trips_through_a_load_with_a_hazard_and_a_platform_displaced() {
+fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
     let (mut harness, _) = grounded();
     let first = capture(&harness);
     busy(&mut harness);
@@ -191,20 +189,12 @@ fn a_capture_round_trips_through_a_load_with_a_hazard_and_a_platform_displaced()
             .any(|(a, b)| Vec2::from(*a).distance(Vec2::from(*b)) > 8.0)
     };
     let points = |save: &SaveGame| {
-        (
-            save.hazards.iter().map(|h| h.position).collect::<Vec<_>>(),
-            save.platforms
-                .iter()
-                .map(|p| p.position)
-                .collect::<Vec<_>>(),
-        )
+        save.platforms
+            .iter()
+            .map(|p| p.position)
+            .collect::<Vec<_>>()
     };
-    let (hazards, platforms) = points(&first);
-    let (hazards_now, platforms_now) = points(&saved);
-    assert!(
-        moved(&hazards, &hazards_now),
-        "a fire hazard is off its spawn"
-    );
+    let (platforms, platforms_now) = (points(&first), points(&saved));
     assert!(
         moved(&platforms, &platforms_now),
         "a platform is off its spawn"
@@ -645,7 +635,6 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "bullet",
             "crawler",
             "dummy",
-            "hazard",
             "missile",
             "orb",
             "platform",
@@ -664,18 +653,23 @@ fn a_cast_in_the_step_that_asks_for_an_autosave_saves_its_cost_and_its_missile()
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     let player = player_entity(&harness);
-    ground(&mut harness, TOP);
-    // The Lantern clearing ends at x 1,536; the aqueduct starts there.
-    stand(&mut harness, player, 1400.0, TOP);
+    // The Lantern clearing ends at x 5,952; the aqueduct starts there. A
+    // floor in the empty sky over the border.
+    floor(
+        &mut harness,
+        Vec2::new(5952.0, TOP + 50.0),
+        Vec2::new(600.0, 50.0),
+    );
+    stand(&mut harness, player, 5800.0, TOP);
     harness.step(1);
-    pin_camera(&mut harness, CORNER);
-    aim_at(&mut harness, Vec2::new(1800.0, 600.0));
+    pin_camera(&mut harness, Vec2::new(5400.0, CORNER.y));
+    aim_at(&mut harness, Vec2::new(6200.0, 600.0));
     choose(&mut harness, 0);
     assert_eq!(mana(&harness), 100.0);
     // One step casts and walks into the aqueduct, whose entry asks for an
     // autosave; the next frame's capture takes both.
     let eye = centre(&harness, player);
-    teleport(&mut harness, player, Vec2::new(1700.0, eye.y));
+    teleport(&mut harness, player, Vec2::new(6000.0, eye.y));
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -1323,10 +1317,6 @@ fn burning_frozen_and_shocked_dummies_load_with_their_sources() {
     assert_eq!(json(&capture(&fresh)), json(&saved));
 }
 
-/// The schema-4 save a short busy run of 0.94 wrote: the run's player 316,
-/// eight balls, frozen iron and the black hole.
-const SCHEMA_FOUR: &str = include_str!("fixtures/schema4.json");
-
 /// A waiting jump: its receiver, strike, count, chain, due run and
 /// strength.
 type Waiting = (Option<u64>, Option<u64>, u32, Vec<u64>, u64, f32);
@@ -1518,237 +1508,6 @@ fn a_bullet_in_flight_loads_and_lands() {
 }
 
 #[test]
-fn a_schema_four_save_migrates_past_the_dummy() {
-    let dir = user_folder("schema-four");
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    std::fs::write(saves.join("slot_1.json"), SCHEMA_FOUR).unwrap();
-    let save: SaveGame = harness
-        .world()
-        .resource::<SaveSlots>()
-        .load("slot_1")
-        .expect("schema 4 migrates");
-    // Schema 4's player had 316, which the map's dummy took, its enemies the
-    // IDs after: every ID from there moved up past both.
-    let (dummy_id, shift) = (316, MAP_DUMMIES + MAP_ENEMIES);
-    assert_eq!(
-        (save.player.id, save.next_id),
-        (dummy_id + shift, 327 + shift)
-    );
-    let balls: Vec<u64> = save.balls.iter().map(|ball| ball.id).collect();
-    assert_eq!(balls, (317 + shift..325 + shift).collect::<Vec<_>>());
-    assert_eq!(
-        save.blocks.iter().map(|b| b.id).collect::<Vec<_>>(),
-        [325 + shift]
-    );
-    assert_eq!(
-        save.black_hole.as_ref().map(|hole| hole.id),
-        Some(326 + shift)
-    );
-    assert!(
-        save.hazards.iter().all(|hazard| hazard.id < dummy_id),
-        "the map's kept theirs"
-    );
-    assert!(save.dummies.is_empty() && save.gone.is_empty() && save.enemies.is_empty());
-    assert_eq!(save.player.stats.base("move_speed"), Some(560.0));
-    assert_eq!(
-        save.player.abilities.cooldown_left("lightning"),
-        Some(0.0),
-        "the new spell, ready"
-    );
-    assert!(
-        save.player.abilities.ready("gun"),
-        "the gun, its magazine whole"
-    );
-    assert!(save.player.abilities.ready("summon"));
-    assert!(save.bullets.is_empty() && save.hints.is_empty());
-    assert_eq!(save.summon, 0);
-    load(&mut harness, save);
-    let player = player_entity(&harness);
-    let world = harness.world();
-    let (dummy, id) = world
-        .query::<(Entity, &Dummy, &SaveId)>()
-        .map(|(entity, _, id)| (entity, id.0))
-        .next()
-        .expect("the map's dummy");
-    assert_eq!(id, dummy_id);
-    assert!(world.is_alive(dummy));
-    assert_eq!(world.get::<SaveId>(player).unwrap().0, dummy_id + shift);
-    harness.world_mut().resource_mut::<Time>().resume();
-    super::combat::apply(&mut harness, player, "chilled", None);
-    harness.step(2);
-    let speed = harness
-        .world()
-        .get::<Stats>(player)
-        .unwrap()
-        .get("move_speed")
-        .unwrap();
-    assert!((speed - 364.0).abs() < 1e-3, "chilled slows it: {speed}");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-/// 01 (b)'s save of a light scene: balls, an iron block, a summoned dummy
-/// burning from the player, a cascade naming balls, a missile and a bullet.
-const SCHEMA_FIVE: &str = include_str!("fixtures/schema5.json");
-
-#[test]
-fn a_schema_five_save_migrates_past_the_map_enemies() {
-    let dir = user_folder("schema-five");
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    std::fs::write(saves.join("slot_1.json"), SCHEMA_FIVE).unwrap();
-    let old: serde_json::Value = serde_json::from_str(SCHEMA_FIVE).unwrap();
-    let old = &old["data"];
-    let save: SaveGame = harness
-        .world()
-        .resource::<SaveSlots>()
-        .load("slot_1")
-        .expect("schema 5 migrates");
-    // Every save ID from schema 5's player on moved up past the enemies.
-    let player = old["player"]["id"].as_u64().unwrap();
-    let moved = |id: u64| if id >= player { id + MAP_ENEMIES } else { id };
-    let ids = |list: &serde_json::Value, key: &str| -> Vec<u64> {
-        list.as_array()
-            .unwrap()
-            .iter()
-            .map(|item| item[key].as_u64().unwrap())
-            .collect()
-    };
-    assert_eq!(save.player.id, player + MAP_ENEMIES);
-    assert_eq!(save.next_id, moved(old["next_id"].as_u64().unwrap()));
-    let balls: Vec<u64> = save.balls.iter().map(|ball| ball.id).collect();
-    let old_balls: Vec<u64> = old["balls"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|ball| moved(ball[0].as_u64().unwrap()))
-        .collect();
-    assert_eq!(balls, old_balls);
-    let blocks: Vec<u64> = save.blocks.iter().map(|b| b.id).collect();
-    assert_eq!(
-        blocks,
-        ids(&old["blocks"], "id")
-            .into_iter()
-            .map(moved)
-            .collect::<Vec<_>>()
-    );
-    let flying = |save_list: Vec<(u64, Option<u64>)>, key: &str| {
-        let expected: Vec<(u64, Option<u64>)> = old[key]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|item| {
-                (
-                    moved(item["id"].as_u64().unwrap()),
-                    item["source"].as_u64().map(moved),
-                )
-            })
-            .collect();
-        assert_eq!(save_list, expected, "{key}");
-        assert!(!expected.is_empty(), "{key}: one in flight");
-    };
-    flying(
-        save.missiles.iter().map(|m| (m.id, m.source)).collect(),
-        "missiles",
-    );
-    flying(
-        save.bullets.iter().map(|b| (b.id, b.source)).collect(),
-        "bullets",
-    );
-    let summoned = save
-        .dummies
-        .iter()
-        .find(|d| !d.map)
-        .expect("the summoned dummy");
-    assert!(summoned.id > player + MAP_ENEMIES);
-    assert_eq!(
-        summoned
-            .sources
-            .iter()
-            .map(|&(_, source)| source)
-            .collect::<Vec<_>>(),
-        [player + MAP_ENEMIES],
-        "its burn names the player"
-    );
-    let map_dummy = save
-        .dummies
-        .iter()
-        .find(|d| d.map)
-        .expect("the map's dummy");
-    assert!(map_dummy.id < player, "the map's dummy keeps its ID");
-    let entries: Vec<(Option<u64>, Option<u64>)> = save
-        .cascades
-        .entries
-        .iter()
-        .map(|entry| (entry.target, entry.source))
-        .collect();
-    let old_entries: Vec<(Option<u64>, Option<u64>)> = old["cascades"]["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|entry| {
-            (
-                entry["target"].as_u64().map(moved),
-                entry["source"].as_u64().map(moved),
-            )
-        })
-        .collect();
-    assert!(!entries.is_empty());
-    assert_eq!(entries, old_entries, "the cascades name the same things");
-    assert!(save.enemies.is_empty() && save.gone.is_empty());
-    // The run loads: the map's enemies as the map places them, the player
-    // past them, the burn's source named again.
-    load(&mut harness, save);
-    let world = harness.world();
-    let player_entity = player_entity(&harness);
-    assert_eq!(
-        world.get::<SaveId>(player_entity).unwrap().0,
-        player + MAP_ENEMIES
-    );
-    let mut enemy_ids: Vec<u64> = world
-        .query::<(&Enemy, &SaveId)>()
-        .map(|(_, id)| id.0)
-        .collect();
-    enemy_ids.sort_unstable();
-    assert_eq!(
-        enemy_ids,
-        (player..player + MAP_ENEMIES).collect::<Vec<_>>()
-    );
-    let burning = world
-        .query::<(&Dummy, &SaveId, &Effects)>()
-        .find(|(_, id, _)| id.0 == summoned_id(&harness))
-        .map(|(_, _, effects)| {
-            effects
-                .instances()
-                .any(|instance| instance.source() == Some(player_entity))
-        });
-    assert_eq!(burning, Some(true), "the burn credits the player");
-    let _ = std::fs::remove_dir_all(dir);
-}
-
-/// The summoned dummy's save ID: the live dummy the map did not place.
-fn summoned_id(harness: &UiHarness) -> u64 {
-    let world = harness.world();
-    example_01_platformer::features::dummy::live(world)
-        .into_iter()
-        .find(|&(id, _)| !example_01_platformer::features::dummy::placed(world, id))
-        .map(|(id, _)| id)
-        .expect("the summoned dummy")
-}
-
-#[test]
 fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
     let (mut harness, _) = grounded();
     let pile = ice_pile(&mut harness, 900.0, 48);
@@ -1790,14 +1549,16 @@ fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
 }
 
 #[test]
-fn schemas_one_to_three_are_refused() {
-    for from in 1..=3 {
+fn schemas_one_to_six_are_refused() {
+    // The template sample's 1 to 3, and 01 (a) to (c)'s 4 to 6, whose map
+    // 01 (d) replaced: every save ID and place moved.
+    for from in 1..=6 {
         assert!(
             SaveGame::migrate(from, Value::Null).is_err(),
             "schema {from}"
         );
     }
-    // A sample save on disk reads as damaged, never loads.
+    // An older save on disk reads as damaged, never loads.
     let dir = user_folder("schemas");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let saves = harness
@@ -1807,7 +1568,15 @@ fn schemas_one_to_three_are_refused() {
         .expect("a user folder")
         .to_path_buf();
     std::fs::create_dir_all(&saves).unwrap();
-    for (slot, schema) in [("slot_1", 1), ("slot_2", 2), ("slot_3", 3)] {
+    let older = [
+        ("slot_1", 1),
+        ("slot_2", 2),
+        ("slot_3", 3),
+        ("slot_4", 4),
+        ("slot_5", 5),
+        ("slot_6", 6),
+    ];
+    for (slot, schema) in older {
         let envelope = serde_json::json!({
             "envelope": 1, "slot": slot, "schema": schema, "engine_version": "0.92.0",
             "saved_at_ms": 1_760_400_000_000_u64, "data": { "player": [0.0, 0.0] }
@@ -1815,7 +1584,7 @@ fn schemas_one_to_three_are_refused() {
         std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
     }
     let (slots, _) = game_shell::read_slots(harness.world_mut());
-    for slot in ["slot_1", "slot_2", "slot_3"] {
+    for (slot, _) in older {
         let state = slots.iter().find(|(s, _)| *s == slot).map(|(_, s)| s);
         assert!(matches!(state, Some(SlotState::Damaged)), "{slot}");
     }
