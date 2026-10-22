@@ -15,7 +15,8 @@ pub struct AmbientEmitter;
 
 /// A hazard the map places: spikes, a fireball on its oscillator, or a
 /// lava basin's surface, whose touch the kit's contact damage deals. Its
-/// prefab names it `hazard`. Cold douses a fire; lava, never.
+/// prefab names it `hazard`. Cold douses a fire; lava, never. A basin's
+/// child touches what is frozen with fire, which blows it apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
@@ -90,7 +91,8 @@ pub struct Glow {
     /// The halo's radius, in world pixels, 0 for none.
     pub radius: f32,
     pub color: [u8; 4],
-    /// The light's intensity before its flicker.
+    /// The light's intensity before its flicker; 0 for no light, a glow
+    /// drawn alone, which takes none of the frame's lights (an orb's).
     #[serde(default = "default_light")]
     pub light: f32,
     /// A hot core's radius drawn over the halo through the flame material,
@@ -129,7 +131,7 @@ impl Glow {
 pub struct GlowParts {
     pub halo: Option<Entity>,
     pub core: Option<Entity>,
-    pub light: Entity,
+    pub light: Option<Entity>,
     /// The pulse's phase, from the owner's save ID.
     pub phase: f32,
 }

@@ -214,8 +214,15 @@ fn the_staff_light_burns_mana_and_gutters_out() {
             .is_some_and(|tags| tags.has(STAFF_LIT))
     };
     assert!(
+        !lantern(&harness).on && !tagged(&harness),
+        "dark at the start"
+    );
+    harness.harness_mut().press_action("lantern");
+    harness.step(2);
+    harness.harness_mut().release_action("lantern");
+    assert!(
         lantern(&harness).lit() && tagged(&harness),
-        "lit at the start"
+        "lit by its action"
     );
     assert_eq!(
         mana(&harness),

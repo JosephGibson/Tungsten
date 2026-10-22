@@ -53,6 +53,7 @@ class Pose:
     hood_tip: tuple = (0.0, 0.0)
     satchel: tuple = (0.0, 0.0)
     eyes: str = 'open'  # open, closed or squint
+    flame: float = 1.0  # the lantern's flame: 1 whole, 0 an ember
 
 
 def two_bone(root, target, upper, lower, bend):
@@ -236,8 +237,9 @@ def strap(neck, anchor):
     return {p: '(' for p in band.pixels()}
 
 
-def lantern(hand, angle):
-    """Upright lantern hanging from the hand by its bail; only the bail swings."""
+def lantern(hand, angle, flame=1.0):
+    """Upright lantern hanging from the hand by its bail; only the bail swings.
+    A flame below 1 dies down the glass from the top, to an ember at 0."""
     pivot = (hand[0] + 2, hand[1] + 1)
     top = add(pivot, (math.sin(angle), math.cos(angle)), 4.5)
     cx, ty = point(top)
@@ -257,6 +259,16 @@ def lantern(hand, angle):
         colors[(cx + 3, y)] = 'o'
         for x in range(cx - 2, cx + 3):
             colors[(x, y)] = 'Y' if abs(x - cx) <= 1 and ty + 3 <= y <= ty + 5 else 'y'
+    if flame < 1.0:
+        # The glass darkens from the top down; below half, the hot core goes
+        # and the ember keeps the bottom row's middle.
+        lit = ty + 6 - round(4 * flame)
+        for y in range(ty + 2, ty + 7):
+            for x in range(cx - 2, cx + 3):
+                if y < lit or (y == ty + 6 and abs(x - cx) > 1 and flame < 0.5):
+                    colors[(x, y)] = 'o'
+                elif flame < 0.5:
+                    colors[(x, y)] = 'y'
     return colors
 
 
@@ -274,7 +286,7 @@ def render(pose):
     bag, bag_anchor = satchel(hip, pose)
     near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
                                          NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern)
+    lamp = lantern(wrist, pose.lantern, pose.flame)
     canvas = compose([
         (tail, None),
         (far_sleeve, 'o'), (far_glove, None),
@@ -318,7 +330,7 @@ def render_toss(pose, front, ball):
     bag, bag_anchor = satchel(hip, pose)
     near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
                                          NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern)
+    lamp = lantern(wrist, pose.lantern, pose.flame)
     sleeve, glove = (NEAR_SLEEVE, NEAR_GLOVE) if front else (FAR_SLEEVE, FAR_GLOVE)
     throw_sleeve, throw_glove, throw_wrist = arm(far_shoulder, pose.far_hand, sleeve, glove)
     held = {}
@@ -375,7 +387,7 @@ def render_aim(degrees):
     bag, bag_anchor = satchel(hip, pose)
     near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
                                          NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern)
+    lamp = lantern(wrist, pose.lantern, pose.flame)
     gun_sleeve, gun_glove, gun_wrist = arm(far_shoulder, hand, FAR_SLEEVE, FAR_GLOVE)
     canvas = compose([
         (tail, None),
@@ -549,6 +561,46 @@ def double_jump_poses():
     return [tuck, burst, spread, rise], [50, 60, 70, 120]
 
 
+def death_poses():
+    """The courier's death: it staggers back from the blow, its knees
+    buckle, it kneels and slumps forward over the lantern it sets down, and
+    the flame dies to an ember; the last frame holds."""
+    h = REST_HIP
+    stagger = Pose(hip=(h[0] - 2, h[1] + 1), lean=-2.0, head=(-1.0, 0.5),
+                   near_foot=(34, ANKLE), far_foot=(23, ANKLE), far_toe=0.15,
+                   near_hand=(46, 35), far_hand=(16, 37), lantern=-0.15,
+                   hem_flare=3, hem_front=-1, hem_wave=1.0, hem_amp=0.8,
+                   scarf_angle=165, scarf_curl=-14, scarf_amp=6, scarf_phase=1.0,
+                   hood_tip=(-1, -2), eyes='squint')
+    buckle = Pose(hip=(h[0] - 1, h[1] + 4), lean=2.0, head=(0.5, 2.0),
+                  near_foot=(36, ANKLE), far_foot=(24, ANKLE),
+                  near_hand=(43, 41), far_hand=(22, 46), lantern=0.35,
+                  hem_flare=1.5, hem_wave=2.0, hem_amp=0.6, hem_rise=-1,
+                  scarf_angle=140, scarf_curl=-10, scarf_amp=4, scarf_phase=2.0,
+                  hood_tip=(0, 1), eyes='closed')
+    # The far knee meets the ground, its boot behind it; the near foot stays
+    # planted ahead, the lantern resting on the ground in the near hand.
+    kneel = Pose(hip=(h[0], h[1] + 7), lean=4.5, head=(1.5, 4.0),
+                 near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
+                 near_hand=(42, 45), far_hand=(31, 53), lantern=0.1,
+                 hem_flare=0.5, hem_wave=3.0, hem_amp=0.4, hem_rise=-2,
+                 scarf_angle=110, scarf_curl=-4, scarf_amp=3, scarf_phase=3.0,
+                 hood_tip=(1, 2), eyes='closed', flame=0.6)
+    slump = Pose(hip=(h[0], h[1] + 8), lean=6.0, head=(3.0, 6.0),
+                 near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
+                 near_hand=(42, 45), far_hand=(36, 55), lantern=0.0,
+                 hem_wave=3.6, hem_amp=0.2, hem_rise=-2.5,
+                 scarf_angle=96, scarf_curl=0, scarf_amp=2, scarf_phase=3.6,
+                 hood_tip=(2, 3), eyes='closed', flame=0.3)
+    rest = Pose(hip=(h[0], h[1] + 8), lean=6.5, head=(3.5, 6.5),
+                near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
+                near_hand=(42, 45), far_hand=(36, 55), lantern=0.0,
+                hem_wave=3.6, hem_amp=0.1, hem_rise=-2.5,
+                scarf_angle=92, scarf_curl=0, scarf_amp=1, scarf_phase=3.6,
+                hood_tip=(2.5, 3.5), eyes='closed', flame=0.0)
+    return [stagger, buckle, kneel, slump, rest], [90, 110, 140, 160, 260]
+
+
 PLAYER_CLIPS = {
     # clip: (pose and duration source, looping)
     'player_idle': (idle_poses, True),
@@ -557,6 +609,7 @@ PLAYER_CLIPS = {
     'player_fall': (fall_poses, True),
     'player_land': (land_poses, False),
     'player_double_jump': (double_jump_poses, False),
+    'player_death': (death_poses, False),
 }
 
 
@@ -971,58 +1024,70 @@ def wisp_flare_frames():
 CRAWLER_FRAMES = 6
 
 
-def crawler_canvas(phase=0.0, lunge=0.0, scared=0.0, shiver=0):
+def crawler_canvas(phase=0.0, scared=0.0, shiver=0, coil=0.0, stretch=0.0, squash=0.0):
     """Five carapace plates, eight high-kneed jointed legs, a wedge head with
     a cluster of four glowing eyes, mandibles and swept feelers, faceted ice
     crystals growing from its back and a crystal sting; a faint cold glow
     between its plates. `phase` steps its legs in two alternating sets of
-    four; `lunge` (0 to 1) rears its front and lifts its front leg; `scared`
-    (0 to 1) recoils it from the light: its body drawn back over its planted
-    feet and low at the front, its plates raised, its feelers swept back
-    flat, its jaws shut and its eyes squinting; `shiver` draws its body a
-    pixel further back, a tremble."""
+    four; `scared` (0 to 1) recoils it from the light: its body drawn back
+    over its planted feet and low at the front, its plates raised, its
+    feelers swept back flat, its jaws shut and its eyes squinting; `shiver`
+    draws its body a pixel further back, a tremble. The lunge in three
+    parts: `coil` (0 to 1) winds it up, drawn back and pressed low at the
+    front, knees high, sting raised, jaws parting, every eye lit; `stretch`
+    (0 to 1) is the leap, the body long and raised, the forelegs reaching
+    and the hind legs trailing, jaws wide, feelers swept back, its feet on
+    the anchor row like every walker frame's;
+    `squash` (0 to 1) is the landing, low and splayed, jaws shut."""
     far_legs, near_legs, plates, head, crystals, feelers = (Part() for _ in range(6))
-    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not (lunge or scared) else 0
-    back = round(3 * scared) + shiver  # the recoil, over planted feet
-    lifted = round(2 * scared)  # the plates raised
+    posed = scared or coil or stretch or squash
+    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not posed else 0
+    back = round(3 * scared) + shiver + round(4 * coil) - round(2 * stretch)
+    # The body raised in the leap and pressed in a coil and a landing, its
+    # plates raised in a scare besides.
+    raised = round(3 * stretch) - round(coil) - round(3 * squash)
+    lifted = round(2 * scared) + raised
+    spread = 2.0 * stretch  # each plate further from the middle: the leap's length
 
-    def tilt(x):  # the front rises in a lunge and drops in a scare
-        return (x - 30) * (0.12 * lunge - 0.07 * scared)
+    def tilt(x):  # the front drops in a scare and a coil, rises in the leap
+        return (x - 30) * (0.05 * stretch - 0.07 * scared - 0.09 * coil)
 
     def stride(k):  # (forward offset, lift) of leg set k's foot
         angle = math.tau * (phase + 0.5 * k)
         return 3.0 * math.sin(angle), 2.5 * max(0.0, math.cos(angle))
 
-    still = lunge or scared
-    centres = [(11 - back, 51 - bob - lifted), (19 - back, 49 - bob - lifted),
-               (28 - back, 48 - bob - lifted), (37 - back, 48 - bob - lifted),
-               (45 - back, 49 - bob - lifted)]
+    still = posed
+    centres = [(11 - back - 2 * spread, 51 - bob - lifted), (19 - back - spread, 49 - bob - lifted),
+               (28 - back, 48 - bob - lifted), (37 - back + spread, 48 - bob - lifted),
+               (45 - back + 2 * spread, 49 - bob - lifted)]
     for i, x in enumerate((10, 20, 30, 40)):
         ahead, lift = stride((i + 1) % 2) if not still else (0.0, 0.0)
-        y0 = 50 - bob - tilt(x)
-        hip = x - back
-        knee = ((hip - 4 if i < 2 else hip + 4) + ahead * 0.5, 39 - bob - tilt(x) - lift * 0.6)
-        foot = ((x - 8 if i < 2 else x + 7) + ahead, SOLE - 1 - lift)
+        y0 = 50 - bob - tilt(x) - raised
+        hip = x - back + spread * (i - 1.5)
+        reach = (6 * stretch + 5 * squash) * (1 if i >= 2 else -1)  # forelegs ahead, hind legs back
+        knee = ((hip - 4 if i < 2 else hip + 4) + ahead * 0.5 + reach * 0.5,
+                39 - bob - tilt(x) - lift * 0.6 - 5 * coil - raised)
+        foot = ((x - 8 if i < 2 else x + 7) + ahead + reach, SOLE - 1 - lift)
         far_legs.limb([(hip + 2, y0), (knee[0] + 2, knee[1]), (foot[0] + 2, foot[1])], 2)
     for i, x in enumerate((13, 23, 33, 43)):
         ahead, lift = stride(i % 2) if not still else (0.0, 0.0)
-        y0 = 52 - bob - tilt(x)
-        hip = x - back
-        knee = ((hip - 5 if i < 2 else hip + 5) + ahead * 0.5, 40 - bob - tilt(x) - lift * 0.6)
-        foot = ((x - 9 if i < 2 else x + 9) + ahead, SOLE - lift)
-        if lunge >= 0.5 and i == 3:
-            knee, foot = (x + 7, 32 - tilt(x)), (x + 14, 30 - tilt(x))
+        y0 = 52 - bob - tilt(x) - raised
+        hip = x - back + spread * (i - 1.5)
+        reach = (7 * stretch + 5 * squash) * (1 if i >= 2 else -1)
+        knee = ((hip - 5 if i < 2 else hip + 5) + ahead * 0.5 + reach * 0.5,
+                40 - bob - tilt(x) - lift * 0.6 - 5 * coil - raised)
+        foot = ((x - 9 if i < 2 else x + 9) + ahead + reach, SOLE - lift)
         near_legs.limb([(hip, y0), knee, foot], 2)
     for cx, cy in centres:
-        plates.ellipse((cx, cy - tilt(cx)), 7, 6 + round(scared))
-    hx = 53 + round(3 * lunge) - round(5 * scared) - shiver
-    hy = round(49 - bob - tilt(53) - 2 * lunge + scared)
+        plates.ellipse((cx, cy - tilt(cx)), 7 + round(squash), 6 + round(scared) - round(squash))
+    hx = 53 - round(5 * scared) - shiver - round(2 * coil) + round(4 * stretch)
+    hy = round(49 - bob - tilt(53) + scared - raised - 2 * stretch + squash)
     head.polygon([(hx - 6, hy - 5), (hx + 4, hy - 4), (hx + 9, hy), (hx + 4, hy + 4), (hx - 6, hy + 5)])
-    gape = 1 + round(2 * lunge) - (1 if scared >= 0.5 else 0)
+    gape = 1 - (1 if scared >= 0.5 else 0) + round(coil) + round(3 * stretch) - round(squash)
     for side in (-1, 1):  # mandibles
         head.limb([(hx + 7, hy + side * 2), (hx + 10, hy + side * (2 + gape)), (hx + 9, hy + side * (4 + gape))], 2)
-    sweep = round(2 * lunge) - round(5 * scared)
-    flat = round(3 * scared)  # the feelers laid back
+    sweep = round(2 * coil) - round(5 * scared) - round(6 * stretch)
+    flat = round(3 * scared) + round(4 * stretch)  # the feelers laid back, or swept by the leap
     feelers.limb([(hx - 1, hy - 4), (hx + 2 + sweep, hy - 12 + flat), (hx - 4 + 2 * sweep, hy - 19 + 2 * flat)], 1)
     feelers.limb([(hx + 2, hy - 4), (hx + 7 + sweep, hy - 11 + flat), (hx + 6 + 2 * sweep, hy - 18 + 2 * flat)], 1)
     for i, (cx, cy) in enumerate(centres[1:4]):
@@ -1030,7 +1095,7 @@ def crawler_canvas(phase=0.0, lunge=0.0, scared=0.0, shiver=0):
         h = 9 if i == 1 else 7
         crystals.polygon([(cx - 3, top + 2), (cx + 2, top + 2), (cx + 1, top - h)])
         crystals.polygon([(cx + 2, top + 2), (cx + 5, top + 1), (cx + 4, top - h + 4)])
-    sting = round(4 * scared)  # raised in a scare, inside the frame
+    sting = round(4 * scared) + round(7 * coil) - round(2 * stretch)  # raised in a scare and a coil
     crystals.polygon([(6 - back, 50 - bob - tilt(6)), (2 - back + sting // 2, 46 - bob - tilt(2) - sting),
                       (max(0, sting - back), 41 - bob - sting), (4 - back + sting // 2, 47 - bob - tilt(4) - sting // 2)])
     canvas = compose([
@@ -1053,8 +1118,9 @@ def crawler_canvas(phase=0.0, lunge=0.0, scared=0.0, shiver=0):
         for dx in (1, 2, 3, 4):
             canvas[(hx + dx, hy - 1)] = '`'
     else:
+        fierce = coil >= 0.5 or stretch > 0  # every eye lit for the lunge
         for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1)):  # four glowing eyes
-            canvas[(hx + dx, hy + dy)] = 'Ψ' if (dx, dy) == (4, -1) else '`'
+            canvas[(hx + dx, hy + dy)] = 'Ψ' if fierce or (dx, dy) == (4, -1) else '`'
     speckle(canvas, plates.pixels(), 'pore', ['{'], 0.05)
     return outline(canvas)
 
@@ -1065,9 +1131,20 @@ def crawler_walk_frames():
     return frames, [90] * CRAWLER_FRAMES
 
 
+def crawler_windup_frames():
+    """The lunge's tell: it coils over its 0.4 s, then trembles, set."""
+    frames = [crawler_canvas(coil=t, shiver=s) for t, s in ((0.35, 0), (0.7, 0), (1.0, 0), (1.0, 1))]
+    return [to_image(c) for c in frames], [100, 100, 100, 100]
+
+
 def crawler_lunge_frames():
-    """The lunge's tell and leap: rearing, the front leg raised, jaws open."""
-    return [to_image(crawler_canvas(lunge=t)) for t in (0.35, 0.7, 1.0, 1.0)], [70, 70, 100, 160]
+    """The leap: it stretches out long and flies, the last frame held."""
+    return [to_image(crawler_canvas(stretch=t)) for t in (0.6, 1.0, 1.0)], [60, 80, 400]
+
+
+def crawler_recover_frames():
+    """The landing: low and splayed, then gathering itself."""
+    return [to_image(crawler_canvas(squash=t)) for t in (1.0, 0.55, 0.2)], [100, 120, 140]
 
 
 def crawler_scared_frames():
@@ -1658,7 +1735,9 @@ ENEMY_CLIPS = {
     'wisp_float': (wisp_float_frames, True),
     'wisp_flare': (wisp_flare_frames, True),
     'crawler_walk': (crawler_walk_frames, True),
+    'crawler_windup': (crawler_windup_frames, False),
     'crawler_lunge': (crawler_lunge_frames, False),
+    'crawler_recover': (crawler_recover_frames, False),
     'crawler_scared': (crawler_scared_frames, True),
     'beetle_walk': (beetle_walk_frames, True),
     'beetle_paw': (beetle_paw_frames, True),

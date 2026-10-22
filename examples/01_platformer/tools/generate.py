@@ -18,6 +18,9 @@ TEMPLATE=ROOT.parent.parent/'templates'/'basic'
 SHELL_ASSETS=('ui/themes/shell.json','fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
     'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt','shaders/damage_flash.wgsl')
 SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes')
+# 01's own face beside the template's: Source Serif 4 Bold, under the same
+# licence as its Regular, for the area titles, from the repository's fonts.
+SERIF_BOLD=ROOT.parent.parent/'assets'/'fonts'/'SourceSerif4'/'static'/'SourceSerif4-Bold.ttf'
 # Prefab and data sources, copied verbatim under assets/ and listed by file:
 # `prefabs/<id>.json`, `data/<kind>/<id>.json`.
 CONTENT=TOOLS/'content'
@@ -314,6 +317,16 @@ def particle_configs():
         initial_velocity=dict(kind='cone', direction=[-.3, -1], spread_deg=50,
                               speed=dict(min=20, max=75)),
         gravity=[0, -90], lifetime=dict(min=.4, max=1.2), start_scale=dict(min=.04, max=.15))
+    # The quick fixes: an orb taken, a ring of sparks in its own colour that
+    # rise and fade, with a few glints among them.
+    for kind, ramp in (('health', [[0, [1, .78, .74, 1]], [.3, [1, .3, .28, 1]], [1, [.55, .06, .1, 0]]]),
+                       ('mana', [[0, [.85, .92, 1, 1]], [.3, [.4, .55, 1, 1]], [1, [.18, .14, .62, 0]]])):
+        configs[f'orb_{kind}'] = dict(
+            config('spark', 26, 26, .75, 190, .3, spread=360, burst=True),
+            initial_velocity=dict(kind='radial', speed=dict(min=70, max=190)),
+            lifetime=dict(min=.45, max=.75), gravity=[0, -60], drag_per_sec=2.2,
+            start_scale=dict(min=.14, max=.3), scale_over_life=[[0, .6], [.2, 1], [1, .1]],
+            alpha_over_life=[[0, 0], [.08, 1], [.6, .7], [1, 0]], color_over_life=ramp)
     return configs
 
 
@@ -378,7 +391,9 @@ def generate(dest):
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
-    for section in SHELL_SECTIONS:manifest[section]=template[section]
+    for section in SHELL_SECTIONS:manifest[section]=json.loads(json.dumps(template[section]))
+    manifest['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
+    manifest['font_families']['serif']['faces'].append('serif_bold')
     manifest['shaders']['damage_flash']=template['shaders']['damage_flash']
     manifest['materials']['damage_flash']=template['materials']['damage_flash']
     owned=[]
@@ -407,6 +422,7 @@ def generate(dest):
     manifest['prefabs']['ex10_ambient_emitter']=dict(path='prefabs/ambient_emitter.json')
     for path in SHELL_ASSETS:
         output('assets/'+path).write_bytes((TEMPLATE/'assets'/path).read_bytes())
+    output('assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf').write_bytes(SERIF_BOLD.read_bytes())
     for item in sorted(CONTENT.rglob('*')):
         if not item.is_file():continue
         path=item.relative_to(CONTENT).as_posix()

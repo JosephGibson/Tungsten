@@ -118,7 +118,7 @@ component health: Health with an invulnerability window after each hit, which `d
   field max: f32 (> 0) — the full health, which it starts at
   field invulnerability: f32 (>= 0) = 0.0 — seconds of game time a hit is ignored after one lands
   field despawn_on_death: f32 (>= 0) = null — game seconds from a kill, counted from the step after it, until the kit despawns the entity after its `killed` cues; kept when left out
-  events: Damaged, DamagedPart, Healed
+  events: Damaged, DamagedPart, ImmunePart, Healed
   genres: platformer, top_down, shmup, grid
   sample: { "max": 5 }
 component hit_flash: A flash of colour on the sprite when `damage` hits the entity, through the `damage_flash` material.

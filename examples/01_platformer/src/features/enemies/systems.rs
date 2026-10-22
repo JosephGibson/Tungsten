@@ -12,7 +12,9 @@ use tungsten::kit::{
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
-use super::components::{Brain, Displaced, Enemy, EnemyKind, EnemyState, Shown, Sight, Spotted};
+use super::components::{
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted,
+};
 use super::{
     ALERT_REACH, DORMANT_PAST, ENEMY_STATES, RECOVER_SECS, SEARCH_SECS, SIGHT_EVERY, WALL_LAYERS,
     bat, beetle, centre, crawler, troll, wisp,
@@ -505,7 +507,9 @@ pub fn alerts(world: &mut World, cursor: &mut EventCursor<Spotted>) {
 /// tell with the recovery, so the attack never lands; a freeze holds it,
 /// so the tell resumes at the thaw with the time it had left. A frozen
 /// flyer falls on a borrowed controller, its own mover set aside until the
-/// thaw; a frozen bat shatters once it lands.
+/// thaw; a frozen bat shatters once it lands. A frozen enemy's touch is set
+/// aside until the thaw too, so a frozen crawler chills nothing and a
+/// thrown one hurts by the throw.
 pub fn hold(world: &mut World) {
     let player = player(world).map(|(_, at)| at);
     for enemy in enemies(world) {
@@ -513,6 +517,7 @@ pub fn hold(world: &mut World) {
         let frozen = has_status(world, enemy, FROZEN);
         let stunned = has_status(world, enemy, STUNNED);
         swap_driver(world, enemy, frozen);
+        swap_touch(world, enemy, frozen);
         if frozen && kind(world, enemy) == Some(EnemyKind::Bat) {
             bat::land(world, enemy);
         }
@@ -550,6 +555,18 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
     }
 }
 
+/// An enemy's touch for its state: frozen, set aside; thawed, back with
+/// its targets' times.
+fn swap_touch(world: &mut World, enemy: Entity, frozen: bool) {
+    if frozen {
+        if let Some(touch) = world.remove_component::<ContactDamage>(enemy) {
+            world.insert(enemy, HeldTouch(touch));
+        }
+    } else if let Some(HeldTouch(touch)) = world.remove_component::<HeldTouch>(enemy) {
+        world.insert(enemy, touch);
+    }
+}
+
 /// `enemy_deaths`, in the react phase after the step's reactions: each
 /// enemy a hit killed stops hurting at once, since its despawn comes at the
 /// next step's end and its touch and hitbox would act until then; it ends
@@ -565,6 +582,7 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         .collect();
     for enemy in killed {
         world.remove_component::<ContactDamage>(enemy);
+        world.remove_component::<HeldTouch>(enemy);
         world.remove_component::<Hitbox>(enemy);
         end(world, enemy);
     }

@@ -11,13 +11,14 @@ use tungsten::core::AnimationState;
 pub struct Player;
 
 /// The player's lantern, the staff light's flame until the wizard's staff
-/// (01 (h)): on until the `lantern` action turns it off. While on it burns
+/// (01 (h)): off at a run's start until the `lantern` action turns it on,
+/// and a loaded run's as its save had it. While on it burns
 /// mana through the `staff_light` ability each step; refused, it gutters
 /// out until the mana reaches [`RELIGHT_MANA`]. Its glow follows the flame
 /// in each frame's art.
 ///
 /// [`RELIGHT_MANA`]: super::RELIGHT_MANA
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Lantern {
     pub on: bool,
     /// It guttered out for want of mana and waits for the relight.
@@ -29,15 +30,6 @@ impl Lantern {
     #[must_use]
     pub fn lit(&self) -> bool {
         self.on && !self.guttered
-    }
-}
-
-impl Default for Lantern {
-    fn default() -> Self {
-        Self {
-            on: true,
-            guttered: false,
-        }
     }
 }
 
@@ -73,6 +65,8 @@ pub struct Moves {
     pub shown: Option<Shown>,
     /// It died: its controller drops it, its input locked for good.
     pub dead: bool,
+    /// It faced left when it died, as its death clip keeps it.
+    pub dead_left: bool,
 }
 
 /// A one-shot clip shown over the character animator's: its state as last

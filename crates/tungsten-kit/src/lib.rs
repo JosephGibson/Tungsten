@@ -148,7 +148,8 @@
 //!   through [`Conversion`], [`Penetration`] and the target's [`Resist`],
 //!   with its modifiers, on its own, then the parts fall once through the
 //!   shield and health, a [`DamagedPart`] out for each part and one
-//!   [`Damaged`] for the hit, each carrying its [`DamageKinds`]. [`Effect`],
+//!   [`Damaged`] for the hit, each carrying its [`DamageKinds`], and an
+//!   [`ImmunePart`] for each part an immunity dropped. [`Effect`],
 //!   [`Effects`], [`EffectRequest`], [`EffectApplied`], [`EffectExpired`]
 //!   and [`EffectsPlugin`]: timed, infinite or instant changes an entity
 //!   carries, the `effects` data kind and scene component: a periodic
@@ -225,7 +226,7 @@ pub use damage::effects::{
 };
 pub use damage::health::{
     Damaged, DamagedPart, HEALTH_TICK, HIT_FLASH_MATERIAL, HIT_FLASH_TICK, Health, HealthPlugin,
-    Hit, HitFlash, damage,
+    Hit, HitFlash, ImmunePart, damage,
 };
 pub use damage::kinds::{Conversion, DamageKinds, Penetration};
 pub use damage::pipeline::{DAMAGE_RESOLVE, DamagePart, DamageRequest, HealRequest, Healed, heal};
@@ -314,21 +315,21 @@ pub mod prelude {
         DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Effect,
         EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects, EffectsPlugin,
         Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest, Healed, Health,
-        HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox, Intent,
-        KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback, KnockbackPlugin,
-        LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin, LinearMotion,
-        LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator,
-        OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Payload, Penetration, Phase,
-        PickedUp, Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin,
-        Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin,
-        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
-        SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine,
-        StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
-        SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
-        TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
-        WallContact, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
-        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, float_label, heal,
-        knock_back, spawn_child, use_ability,
+        HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox,
+        ImmunePart, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback,
+        KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin,
+        LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin,
+        Oscillator, OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Payload,
+        Penetration, Phase, PickedUp, Pickup, PickupPlugin, PlatformerController,
+        PlatformerControllerPlugin, Projectile, ProjectileBounced, ProjectileExpired,
+        ProjectilePassed, ProjectilePlugin, Refresh, Resist, Scaled, Shield, SoundOnEvent, Source,
+        SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit,
+        SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats, StatsPlugin, StayInView,
+        StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target,
+        TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered,
+        TriggerZone, Used, WallContact, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered,
+        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
+        float_label, heal, knock_back, spawn_child, use_ability,
     };
 }
 

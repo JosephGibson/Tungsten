@@ -103,6 +103,7 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::PlayerHurt => occurrence::<33>,
         Sound::StaffGuttered => occurrence::<34>,
         Sound::CrawlerScared => occurrence::<35>,
+        Sound::PlayerDied => occurrence::<36>,
     }
 }
 

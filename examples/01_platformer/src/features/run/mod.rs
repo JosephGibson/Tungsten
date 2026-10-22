@@ -1,7 +1,7 @@
 //! A run: the gameplay state, which spawns the level and the player fresh or
 //! from a save, plays the run's music, holds the game clock while a screen
 //! covers it, names each area the player enters on its banner and
-//! autosaves, and opens the shell's game over three game seconds after the
+//! autosaves, and opens the shell's game over two game seconds after the
 //! player dies.
 
 pub mod banner;
@@ -41,9 +41,9 @@ impl Plugin for RunPlugin {
     }
 }
 
-/// Game seconds a dead player falls, as its controller drops it, before
-/// the shell's game over opens (F13).
-pub const DEATH_SECS: f32 = 3.0;
+/// Game seconds a dead player falls, as its controller drops it, and its
+/// death clip plays and holds, before the shell's game over opens (F13).
+pub const DEATH_SECS: f32 = 2.0;
 
 /// Gameplay: the run's entities spawn with it and leave with it.
 pub struct GameplayState {
@@ -78,6 +78,7 @@ impl GameState for GameplayState {
         level::spawn(world);
         dummy::start(world);
         enemies::start(world, start.difficulty);
+        enemies::drops::start(world);
         let feet = level::marker(world, level::SPAWN_MARKER).expect("the map marks the spawn");
         // Half a pixel above the turf, so its first steps find the ground.
         let spawn = feet - Vec2::new(0.0, player::PLAYER_HALF.y + 0.5);
@@ -111,6 +112,7 @@ impl GameState for GameplayState {
             .remove_resource::<dummy::components::PlacedDummies>();
         ctx.world
             .remove_resource::<enemies::components::PlacedEnemies>();
+        ctx.world.remove_resource::<enemies::drops::PlacedOrbs>();
         ctx.world.remove_resource::<Cascades>();
         ctx.world.remove_resource::<Hints>();
         ctx.world.remove_resource::<Summon>();

@@ -22,6 +22,10 @@ pub const PATROL_PACE: f32 = 0.5;
 pub const SEARCH_PACE: f32 = 0.7;
 /// How near the player, across, its chase winds up a lunge.
 pub const LUNGE_RANGE: f32 = 220.0;
+/// How far above its centre the player's may be for a lunge: the leap
+/// rises about 20 px, so at a player higher up it would only hop into the
+/// step below them.
+pub const LUNGE_RISE: f32 = 64.0;
 /// The lunge's tell, its launch and how long its input stays locked.
 pub const TELL_SECS: f32 = 0.4;
 pub const LUNGE_SPEED: f32 = 520.0;
@@ -131,11 +135,19 @@ fn walk(world: &mut World, crawler: Entity, heading: f32, pace: f32) -> bool {
     true
 }
 
-/// On patrol it walks its ledge, turning at each end and at walls.
+/// On patrol it walks its ledge, turning at each end, at walls and, on a
+/// leash, once that far from its home.
 pub fn patrol(world: &mut World, crawler: Entity) {
-    let Some(heading) = world.get::<Enemy>(crawler).map(|mine| mine.heading) else {
+    let Some(mine) = world.get::<Enemy>(crawler).copied() else {
         return;
     };
+    let mut heading = mine.heading;
+    if let (Some(leash), Some(at)) = (mine.leash, centre(world, crawler)) {
+        let out = at.x - mine.home().x;
+        if out.abs() >= leash && out.signum() == heading {
+            heading = -heading;
+        }
+    }
     let grounded = world
         .get::<PlatformerController>(crawler)
         .is_some_and(PlatformerController::grounded);
@@ -152,8 +164,9 @@ pub fn patrol(world: &mut World, crawler: Entity) {
 }
 
 /// The chase: toward the player while it sees it, winding up a lunge once
-/// within [`LUNGE_RANGE`] across, unless the staff light burns, which it
-/// keeps out of; it searches once it loses sight.
+/// within [`LUNGE_RANGE`] across and no more than [`LUNGE_RISE`] above it,
+/// unless the staff light burns, which it keeps out of; it searches once it
+/// loses sight.
 pub fn chase(world: &mut World, crawler: Entity) {
     if !sees(world, crawler) {
         go(world, crawler, EnemyState::Search);
@@ -167,10 +180,12 @@ pub fn chase(world: &mut World, crawler: Entity) {
         .is_some_and(PlatformerController::grounded);
     let across = target.x - at.x;
     let lit = light(world).is_some();
+    let rise = at.y - target.y;
     if grounded
         && !lit
         && across.abs() <= LUNGE_RANGE
-        && (target.y - at.y).abs() <= 2.0 * LUNGE_RANGE
+        && rise <= LUNGE_RISE
+        && -rise <= 2.0 * LUNGE_RANGE
     {
         face(world, crawler, target.x);
         go(world, crawler, EnemyState::WindUp);
@@ -240,12 +255,17 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
         && !into_light(world, crawler, across.signum())
 }
 
-/// Its clip for `state`: the lunge's through its tell and its leap, else
-/// its scare while it shows one, else its walk.
+/// Its clip for `state`: the lunge's three, its coil through the tell, its
+/// stretch through the leap and its landing through the recovery, else its
+/// scare while it shows one, else its walk.
 #[must_use]
 pub fn clip(state: EnemyState, scared: bool) -> &'static str {
-    if matches!(state, EnemyState::WindUp | EnemyState::Attack) {
+    if state == EnemyState::WindUp {
+        "crawler_windup"
+    } else if state == EnemyState::Attack {
         "crawler_lunge"
+    } else if state == EnemyState::Recover {
+        "crawler_recover"
     } else if scared {
         "crawler_scared"
     } else {

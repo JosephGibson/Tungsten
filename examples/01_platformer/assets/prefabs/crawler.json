@@ -61,7 +61,17 @@
           "team.player"
         ]
       },
-      "knockback": 300
+      "knockback": 300,
+      "shape": {
+        "aabb": [
+          28,
+          12
+        ]
+      },
+      "offset": [
+        32,
+        51
+      ]
     },
     "resist": {
       "damage.fire": 2,

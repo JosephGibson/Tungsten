@@ -3,7 +3,7 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::core::{Entity, RigidBody};
-use tungsten::kit::TopDownMover;
+use tungsten::kit::{ContactDamage, TopDownMover};
 
 /// One of the five enemies, which its prefab names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -44,9 +44,11 @@ fn right() -> f32 {
 }
 
 /// An enemy, which its prefab names `enemy` with its kind: where it patrols
-/// and returns to, its body's centre, which its spawn sets, and its heading,
+/// and returns to, its body's centre, which its spawn sets, its heading,
 /// 1 right or -1 left, which its hooks set and gameplay reads (the beetle's
-/// front). Saved.
+/// front), and how far from its home, across, a patrol may take it, which
+/// a map placement may set (the falls' crawler). Saved; a schema 8 save's
+/// enemies have no leash.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enemy {
@@ -55,6 +57,8 @@ pub struct Enemy {
     pub home: [f32; 2],
     #[serde(default = "right")]
     pub heading: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leash: Option<f32>,
 }
 
 impl Enemy {
@@ -111,6 +115,13 @@ pub enum EnemyState {
 /// controller and given back at the thaw. Saved.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Displaced(pub TopDownMover);
+
+/// A frozen enemy's touch, set aside so it hurts nothing by touch and given
+/// back at the thaw with its targets' times. The save holds those times; a
+/// load gives the touch back to the prefab's, and the next hold sets it
+/// aside again.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HeldTouch(pub ContactDamage);
 
 /// What a troll holds over its head: the troll, and the object's own body,
 /// which it gets back at the throw or the drop; while held, its body is a

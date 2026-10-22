@@ -12,7 +12,8 @@
 //! 01 adds what the kit has no item for: the sight (two casts, the tiles
 //! and the slabs' layer), the alert passed to the enemies near the one that
 //! saw, the hold that stops a dead, dormant, frozen or stunned enemy's
-//! machine, the difficulty's factor on health and damage, a frozen flyer's
+//! machine and sets a frozen one's touch aside, the difficulty's factor on
+//! health and damage, a frozen flyer's
 //! fall, a bat's roost, a troll's hold and throws, the deaths' bursts, their
 //! clips and the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot

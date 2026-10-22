@@ -101,7 +101,8 @@ impl Plugin for PlayerPlugin {
 }
 
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
-/// at `difficulty`'s health, with the run's next save ID, its lantern lit.
+/// at `difficulty`'s health, with the run's next save ID, its staff light
+/// off.
 pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity {
     let at = centre - BODY_OFFSET;
     let id = world.resource_mut::<SaveIds>().take();

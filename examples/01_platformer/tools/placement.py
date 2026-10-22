@@ -55,6 +55,20 @@ def prepare(source, images):
         else:
             depth=images[support['style']].getbbox()[3]
             p['y']=support['row']+(depth-box[1])/tile
+    # The placed health orbs: each over its support's surface, its centre
+    # `float` tiles up, refused off its support; a solid stair over the
+    # support takes its place, as for a grounded prop.
+    for p in source.get('pickups', []):
+        support = platforms[p['support']]
+        if not support['left'] <= p['x'] < support['right']:
+            raise ValueError(f"pickup outside support: {p['name']} at {p['x']} on {support['name']}")
+        covers = [q for q in source['platforms'] if q['style'] in FAMILIES and q['left'] <= p['x'] < q['right']
+                  and q['row'] < support['row'] <= q['bottom']]
+        if covers:
+            support = min(covers, key=lambda q: q['row'])
+            p['support'] = support['name']
+        half = images['health_orb'].width / 2 / tile
+        p['left'], p['top'] = p['x'] - half, support['row'] - p['float'] - half
     for group in source['groups']:
         name=group['sprite'];x=group['x'];y=group['y'];w=group['width'];h=group['height'];support=platforms[group['support']]
         composite=Image.new('RGBA',(w*tile,h*tile))

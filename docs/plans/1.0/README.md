@@ -5,10 +5,10 @@ Planning for Tungsten 1.0: what it means, which workstreams reach it, in what or
 ## Now
 
 <!-- roadmap-summary:start -->
-- **Workspace:** `0.98.0`
-- **First open stop:** `e01f`
+- **Workspace:** `0.99.0`
+- **First open stop:** `e01level`
 - **Stop state:** `todo`
-- **Next milestone:** `M78`
+- **Next milestone:** `M79`
 <!-- roadmap-summary:end -->
 
 This is the local tree's snapshot, not proof of publication. `python3 -B scripts/roadmap.py summary` prints the four owned fields above, and `--write` replaces them; `just repo-check` checks them against workspace metadata and the existing status derivation. `python3 -B scripts/roadmap.py status` reports the branch, tags, stop evidence and last fetch without fetching. Refresh/review local refs before claiming a release is merged or published.
@@ -33,7 +33,7 @@ Phase 5 is complete in the local refs. The [queue](implementation-plan.md#6-crit
 | [release-checklist.md](release-checklist.md) | The checks that tag 1.0; C3 runs them on a release candidate |
 | [acceptance-game.md](acceptance-game.md) | The game that tests definition A; its feature list cuts W5, W6 and W13 |
 | [example-01-design.md](example-01-design.md) | Example 01 rebuilt as a sandbox on the template in four stops before the feature gate (`D-194`): the rules all four share, the assets, and each stop's scope and done-when, with starting values each stop's plan tunes |
-| [example-01-feedback.md](example-01-feedback.md) | Example 01's four stops after (d), from the owner's playtest notes of 2026-10-21: (e) fixes, (f) feel, (g) props and foes, (h) the look; the notes triaged with `file:line` evidence, each stop's scope and steps, the shell routes, open questions with defaults and the kit and engine gaps they expose |
+| [example-01-feedback.md](example-01-feedback.md) | Example 01's six stops after (d), from the owner's playtest notes of 2026-10-21 and 2026-10-22: (e) fixes, quick fixes, a level and title pass, (f) feel, (g) props and foes, (h) the look; the notes triaged with `file:line` evidence, each stop's scope and steps, the shell routes, open questions with defaults and the kit and engine gaps they expose |
 | [backlog-1.x.md](backlog-1.x.md) | What 1.0 defers, and what would bring each item back |
 | [roadmap.json](roadmap.json) | The catalog the [roadmap page](https://claude.ai/artifact/EyM2iTgnnActfbMBZKcav9) shows: every stop in register order with its group, kind, level, title, summary, sources and ratings, a session tier where the owner sets one (`D-195`), and the owner questions with their states and answers (`D-109`). `just repo-check` compares it with the register, and gate and graduation sessions update it with the register |
 

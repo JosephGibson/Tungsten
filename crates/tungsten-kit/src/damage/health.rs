@@ -505,6 +505,109 @@ impl DamagedPart {
     }
 }
 
+/// One part of a hit that the target's immunity dropped: a type its
+/// [`Resist`](crate::Resist) holds at a factor of 0, a modifier's 0
+/// included. Sent once [`HealthPlugin`] has registered its queue, in part
+/// order, whether the hit's other parts land or the hit is ignored, so a
+/// game can still react to the type that struck (fire on a frozen
+/// fire-proof creature). A part of 0, a part a factor above 0 brings to
+/// nothing, and a target that takes no hits (gone, dead or, unless the
+/// request is periodic, inside its window) send none; nothing else of the
+/// hit happens for it, and it is no cue event. Build one with
+/// [`ImmunePart::new`].
+///
+/// # Examples
+///
+/// ```
+/// use tungsten_core::{EventQueue, Plugin, Schedule, World};
+/// use tungsten_kit::{
+///     DamagePart, DamageRequest, DamagedPart, Health, HealthPlugin, Hit, ImmunePart, Resist,
+///     Tags,
+/// };
+///
+/// let mut world = World::new();
+/// let mut schedule = Schedule::new();
+/// HealthPlugin.build(&mut schedule, &mut world);
+/// let ember = world.spawn_with((Health::new(10.0), Resist::new().with_factor("fire", 0.0)));
+/// let fire = DamagePart::new(3.0).with_tags(Tags::new(["fire"]));
+/// assert_eq!(DamageRequest::from_parts(ember, [fire]).apply(&mut world), Hit::Ignored);
+/// let immune: Vec<ImmunePart> = world.resource::<EventQueue<ImmunePart>>().iter().copied().collect();
+/// assert_eq!(immune.len(), 1);
+/// assert_eq!((immune[0].entity, immune[0].amount), (ember, 3.0), "its amount before resistances");
+/// assert!(world.resource::<EventQueue<DamagedPart>>().iter().next().is_none());
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct ImmunePart {
+    /// The entity struck.
+    pub entity: Entity,
+    /// The part's amount before the target's resistances.
+    pub amount: f32,
+    /// The part's damage types.
+    pub kinds: DamageKinds,
+    /// The entity the hit came from, when the request named one.
+    pub source: Option<Entity>,
+    /// Where the hit landed, when the request said.
+    pub position: Option<Vec2>,
+    /// The request was periodic: an effect's payload.
+    pub periodic: bool,
+    /// The part's hit was a critical one
+    /// ([`DamageRequest::with_crit`](crate::DamageRequest::with_crit)).
+    pub crit: bool,
+}
+
+impl ImmunePart {
+    /// An event with these fields, no kind, no source, no position, not
+    /// periodic and no crit.
+    #[must_use]
+    pub fn new(entity: Entity, amount: f32) -> Self {
+        Self {
+            entity,
+            amount,
+            kinds: DamageKinds::NONE,
+            source: None,
+            position: None,
+            periodic: false,
+            crit: false,
+        }
+    }
+
+    /// The event, periodic when `periodic`.
+    #[must_use]
+    pub fn with_periodic(mut self, periodic: bool) -> Self {
+        self.periodic = periodic;
+        self
+    }
+
+    /// The event, a critical hit's part when `crit`.
+    #[must_use]
+    pub fn with_crit(mut self, crit: bool) -> Self {
+        self.crit = crit;
+        self
+    }
+
+    /// The event, of the damage types `kinds`.
+    #[must_use]
+    pub fn with_kinds(mut self, kinds: DamageKinds) -> Self {
+        self.kinds = kinds;
+        self
+    }
+
+    /// The event, from `source`.
+    #[must_use]
+    pub fn with_source(mut self, source: Entity) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// The event, landing at `position`.
+    #[must_use]
+    pub fn with_position(mut self, position: Vec2) -> Self {
+        self.position = Some(position);
+        self
+    }
+}
+
 /// Damages `target` by `amount` at once, so the caller knows the outcome
 /// in the same step: `DamageRequest::new(target, amount).apply(world)`,
 /// one untyped part with no source, tags, position, knockback or crit. An amount of 0, a
@@ -687,7 +790,8 @@ pub(crate) fn start_flash(world: &mut World, target: Entity) {
 }
 
 /// Registers the damage pipeline: `EventQueue<Damaged>`,
-/// `EventQueue<DamagedPart>` and `EventQueue<Healed>`, the request queue,
+/// `EventQueue<DamagedPart>`, `EventQueue<ImmunePart>` and
+/// `EventQueue<Healed>`, the request queue,
 /// the `damage_types` data kind with the World's type table, the `health`,
 /// `hit_flash`, `resist`, `shield`, `penetration` and `conversion` scene
 /// components, [`HEALTH_TICK`] and
@@ -743,6 +847,7 @@ impl Plugin for HealthPlugin {
             )
             .event("Damaged")
             .event("DamagedPart")
+            .event("ImmunePart")
             .event("Healed")
             .genre(PLATFORMER)
             .genre(TOP_DOWN)
@@ -786,6 +891,7 @@ impl Plugin for HealthPlugin {
         register_types(world);
         world.register_event::<Damaged>();
         world.register_event::<DamagedPart>();
+        world.register_event::<ImmunePart>();
         world.register_event::<Healed>();
         if !world.has_resource::<Requests>() {
             world.insert_resource(Requests::default());

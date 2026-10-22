@@ -33,7 +33,7 @@ use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::{BallBurn, Chill, Frozen};
 use crate::features::enemies::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, Sight, Throw, Throws,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Throw, Throws,
 };
 use crate::features::enemies::drops::{self, Orb, OrbKind};
 use crate::features::enemies::{self, troll};
@@ -84,7 +84,8 @@ pub struct SaveGame {
     pub throws: Vec<ThrowSave>,
     pub orbs: Vec<OrbSave>,
     /// The map's objects the run removed, by save ID: its placed dummies and
-    /// enemies no longer alive, which a load takes off the map.
+    /// enemies no longer alive and its health orbs taken, which a load takes
+    /// off the map.
     pub gone: Vec<u64>,
     /// The element endings waiting, whole.
     pub cascades: Cascades,
@@ -96,37 +97,130 @@ pub struct SaveGame {
 
 /// The dummies the map's `dummies` layer places.
 pub const MAP_DUMMIES: u64 = 1;
-/// The enemies the map's `enemies` layer places, its last.
-pub const MAP_ENEMIES: u64 = 13;
+/// The enemies the map's `enemies` layer places, and the health orbs its
+/// `pickups` layer places after them, its last.
+pub const MAP_ENEMIES: u64 = 18;
+pub const MAP_PICKUPS: u64 = 8;
+/// Schema 8's map's enemies, before 01's quick fixes placed five more.
+const SCHEMA_8_ENEMIES: u64 = 13;
+/// How far schema 9 moves every save ID at or above schema 8's player's:
+/// the map objects it added, which take theirs before the player's.
+pub const SHIFT_9: u64 = MAP_ENEMIES - SCHEMA_8_ENEMIES + MAP_PICKUPS;
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
     /// is 01 (d)'s new map: its objects take every save ID anew and every
     /// place moved, so `migrate` refuses each older schema and the slot
     /// reads as an older version's (`D-204`). Schema 8 adds the staff light
-    /// to the player's abilities.
-    const SCHEMA: u32 = 8;
+    /// to the player's abilities. Schema 9 places new map objects before
+    /// the player, which take the save IDs from schema 8's player's on.
+    const SCHEMA: u32 = 9;
 
     fn migrate(
         from: u32,
         mut data: Value,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        if from != 7 {
-            return Err(
-                format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
-            );
+        match from {
+            7 => {
+                // The staff light's entry, last, ready, as a fresh run's.
+                let entries = data
+                    .pointer_mut("/player/abilities/entries")
+                    .and_then(Value::as_array_mut)
+                    .ok_or("schema 7: the player has no abilities")?;
+                let entry = format!(
+                    r#"{{"name": "{STAFF_LIGHT}", "ability": "{STAFF_LIGHT}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
+                );
+                entries.push(entry.parse()?);
+                shift_ids(&mut data)?;
+                Ok(data)
+            }
+            8 => {
+                shift_ids(&mut data)?;
+                Ok(data)
+            }
+            _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
         }
-        // The staff light's entry, last, ready, as a fresh run's.
-        let entries = data
-            .pointer_mut("/player/abilities/entries")
-            .and_then(Value::as_array_mut)
-            .ok_or("schema 7: the player has no abilities")?;
-        let entry = format!(
-            r#"{{"name": "{STAFF_LIGHT}", "ability": "{STAFF_LIGHT}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
-        );
-        entries.push(entry.parse()?);
-        Ok(data)
     }
+}
+
+/// Moves `id` up by [`SHIFT_9`] when it is a save ID at or above `from`.
+fn shift_id(id: Option<&mut Value>, from: u64) {
+    if let Some(id) = id
+        && let Some(value) = id.as_u64().filter(|&value| value >= from)
+    {
+        *id = Value::from(value + SHIFT_9);
+    }
+}
+
+/// The elements of the array at `pointer` in `data`, none when it is
+/// missing or no array.
+fn each<'a>(data: &'a mut Value, pointer: &str) -> impl Iterator<Item = &'a mut Value> {
+    data.pointer_mut(pointer)
+        .and_then(Value::as_array_mut)
+        .into_iter()
+        .flatten()
+}
+
+/// Schema 8 to 9: every save ID at or above schema 8's player's, which the
+/// new map objects now take, moves up by [`SHIFT_9`], in every field that
+/// names one; a field it lacks stays lacking.
+fn shift_ids(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let from = data
+        .pointer("/player/id")
+        .and_then(Value::as_u64)
+        .ok_or("schema 8: the player has no save ID")?;
+    shift_id(data.get_mut("next_id"), from);
+    shift_id(data.pointer_mut("/player/id"), from);
+    shift_id(data.pointer_mut("/black_hole/id"), from);
+    for source in each(data, "/player/sources") {
+        shift_id(source.get_mut(1), from);
+    }
+    for list in ["/platforms", "/hazards", "/blocks", "/orbs"] {
+        for entry in each(data, list) {
+            shift_id(entry.get_mut("id"), from);
+        }
+    }
+    for list in ["/missiles", "/bullets"] {
+        for entry in each(data, list) {
+            shift_id(entry.get_mut("id"), from);
+            shift_id(entry.get_mut("source"), from);
+        }
+    }
+    for list in ["/dummies", "/enemies"] {
+        for entry in each(data, list) {
+            shift_id(entry.get_mut("id"), from);
+            for source in each(entry, "/sources") {
+                shift_id(source.get_mut(1), from);
+            }
+        }
+    }
+    for enemy in each(data, "/enemies") {
+        for target in each(enemy, "/hit") {
+            shift_id(Some(target), from);
+        }
+        for touch in each(enemy, "/touches") {
+            shift_id(touch.get_mut(0), from);
+        }
+        shift_id(enemy.get_mut("held"), from);
+    }
+    for throw in each(data, "/throws") {
+        shift_id(throw.get_mut("body"), from);
+        shift_id(throw.get_mut("thrower"), from);
+    }
+    for ball in each(data, "/balls") {
+        shift_id(ball.get_mut(0), from);
+    }
+    for id in each(data, "/gone") {
+        shift_id(Some(id), from);
+    }
+    for entry in each(data, "/cascades/entries") {
+        shift_id(entry.get_mut("target"), from);
+        shift_id(entry.get_mut("source"), from);
+        for member in each(entry, "/chain") {
+            shift_id(Some(member), from);
+        }
+    }
+    Ok(())
 }
 
 /// The player: its body's point and velocity, its controller, health,
@@ -547,6 +641,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     orbs.sort_by_key(|orb| orb.id);
     let mut gone = dummy::gone(world);
     gone.extend(enemies::gone(world));
+    gone.extend(enemies::drops::gone(world));
     gone.sort_unstable();
     Some(SaveGame {
         meta,
@@ -637,6 +732,7 @@ fn capture_enemy(world: &World, id: u64, entity: Entity) -> Option<EnemySave> {
     });
     let touches = world
         .get::<ContactDamage>(entity)
+        .or_else(|| world.get::<HeldTouch>(entity).map(|held| &held.0))
         .map_or_else(Vec::new, |contact| {
             contact
                 .touches()

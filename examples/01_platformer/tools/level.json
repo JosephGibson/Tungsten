@@ -9788,6 +9788,87 @@
       "name": "bridge troll",
       "x": 398.0,
       "y": 34.046875
+    },
+    {
+      "kind": "bat",
+      "name": "aqueduct bat a",
+      "x": 98.0,
+      "y": 30.3
+    },
+    {
+      "kind": "bat",
+      "name": "aqueduct bat b",
+      "x": 141.0,
+      "y": 30.3
+    },
+    {
+      "kind": "bat",
+      "name": "ravine bat d",
+      "x": 189.0,
+      "y": 47.3
+    },
+    {
+      "kind": "bat",
+      "name": "ravine bat e",
+      "x": 198.0,
+      "y": 59.3
+    },
+    {
+      "kind": "crawler",
+      "name": "falls crawler",
+      "x": 181.0,
+      "y": 62.046875,
+      "leash": 5
+    }
+  ],
+  "pickups": [
+    {
+      "name": "pit shelf orb",
+      "support": "pit_shelf_10",
+      "x": 60.5,
+      "float": 0.6
+    },
+    {
+      "name": "channel orb",
+      "support": "channel_east_b",
+      "x": 152.5,
+      "float": 0.6
+    },
+    {
+      "name": "rubble orb",
+      "support": "aq_rubble_2",
+      "x": 122.5,
+      "float": 0.6
+    },
+    {
+      "name": "falls orb",
+      "support": "pool_bed",
+      "x": 184.5,
+      "float": 0.6
+    },
+    {
+      "name": "lake orb",
+      "support": "hollow_floor_2",
+      "x": 243.5,
+      "float": 0.6
+    },
+    {
+      "name": "shelf orb",
+      "support": "hollow_shelf_a",
+      "x": 257.0,
+      "float": 0.6
+    },
+    {
+      "name": "bench orb",
+      "support": "cut_floor_2",
+      "x": 321.5,
+      "float": 0.6
+    },
+    {
+      "name": "bridge orb",
+      "support": "bridge_head",
+      "x": 362.5,
+      "float": 0.6
     }
   ]
 }

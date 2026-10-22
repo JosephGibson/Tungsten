@@ -25,6 +25,7 @@ use crate::shared::{just_pressed, spawn_burst};
 pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
 pub const TOSS_CLIP: &str = "ex10_player_toss";
+pub const DEATH_CLIP: &str = "ex10_player_death";
 /// The idle clip, which a cast's pose replaces with an aim frame.
 pub const IDLE_CLIP: &str = "ex10_player_idle";
 /// The aim frames, facing right from straight up (0) to straight down (4)
@@ -174,9 +175,10 @@ pub fn staff_light(world: &mut World) {
     }
 }
 
-/// `player_hurt`, in the react phase: a blow on the player, or the hit
-/// that kills it, plays its hurt sound and shake; a tick of burning or
-/// bleeding shows in the flash alone (X1). `cursor` reads each hit once.
+/// `player_hurt`, in the react phase: a blow on the player plays its hurt
+/// sound and shake, and the hit that kills it, a blow or a tick, its death
+/// sound and a harder shake in their place; a tick of burning or bleeding
+/// shows in the flash alone (X1). `cursor` reads each hit once.
 pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(player) = player(world) else {
         return;
@@ -184,11 +186,20 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
         return;
     };
-    let hurt = cursor
-        .read(events)
-        .any(|hit| hit.entity == player && (!hit.periodic || hit.killed));
-    if hurt && let Some(at) = centre(world, player) {
-        audio::play(world, Sound::PlayerHurt, at);
+    let (mut hurt, mut killed) = (false, false);
+    for hit in cursor.read(events).filter(|hit| hit.entity == player) {
+        hurt |= !hit.periodic;
+        killed |= hit.killed;
+    }
+    let sound = if killed {
+        Sound::PlayerDied
+    } else {
+        Sound::PlayerHurt
+    };
+    if (hurt || killed)
+        && let Some(at) = centre(world, player)
+    {
+        audio::play(world, sound, at);
     }
 }
 
@@ -203,10 +214,20 @@ pub fn moves(world: &mut World) {
     };
     let dead = world.get::<Health>(player).is_some_and(Health::is_dead);
     if dead {
+        let left = world
+            .get::<Facing>(player)
+            .is_some_and(|facing| facing.direction().x < 0.0);
         let first = world.get_mut::<Moves>(player).is_some_and(|moves| {
             moves.landing = 0.0;
             moves.tuck = false;
-            !std::mem::replace(&mut moves.dead, true)
+            let first = !std::mem::replace(&mut moves.dead, true);
+            if first {
+                // The death clip takes over from any toss, pose or hot
+                // lantern, facing as the courier faced.
+                (moves.toss, moves.pose, moves.glow) = (0.0, 0.0, 0.0);
+                moves.dead_left = left;
+            }
+            first
         });
         if first {
             // Straight down from where it died: no run or knockback slides
@@ -261,8 +282,10 @@ pub fn moves(world: &mut World) {
     }
 }
 
-/// `player_clips`, in the present phase after the character animator: a
-/// cast's toss facing its aim, the land clip while it holds on the ground,
+/// `player_clips`, in the present phase after the character animator: the
+/// death clip once the courier dies, held on its last frame, facing as it
+/// died; else a cast's toss facing its aim, the land clip while it holds on
+/// the ground,
 /// and the air jump's tuck while it rises, facing as the player does,
 /// shown over the animator's clip and then handed back to it; then a
 /// cast's dress over the frame shown.
@@ -290,7 +313,9 @@ pub fn clips(world: &mut World) {
         *timer = (*timer - dt).max(0.0);
     }
     let (pose, glow, aim) = (moves.pose > 0.0, moves.glow > 0.0, moves.aim);
-    let clip = if moves.toss > 0.0 {
+    let clip = if moves.dead {
+        Some((DEATH_CLIP, moves.dead_left))
+    } else if moves.toss > 0.0 {
         Some((TOSS_CLIP, aim.x < 0.0))
     } else if !grounded && rising && moves.tuck {
         Some((AIR_JUMP_CLIP, left))

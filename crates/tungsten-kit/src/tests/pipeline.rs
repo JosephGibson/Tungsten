@@ -6,7 +6,7 @@ use tungsten_core::{
     Schedule, Sprite, SpriteAssetId, Stage, Time, World, system,
 };
 
-use crate::damage::health::{DamagedPart, HIT_FLASH_MATERIAL, HealthPlugin, HitFlash};
+use crate::damage::health::{DamagedPart, HIT_FLASH_MATERIAL, HealthPlugin, HitFlash, ImmunePart};
 use crate::damage::kinds::DamageTypes;
 use crate::foundation::phases::Phase;
 use crate::foundation::stats::Modifier;
@@ -75,6 +75,35 @@ fn parts_sent(world: &World) -> Vec<(f32, Vec<&str>)> {
         .resource::<tungsten_core::EventQueue<DamagedPart>>()
         .iter()
         .map(|part| (part.amount, part.kinds.names(world)))
+        .collect()
+}
+
+/// An immune part as [`immune_sent`] reads it: its entity, amount before
+/// the resistances, kind names, source, position and periodic flag.
+type ImmuneRead<'a> = (
+    Entity,
+    f32,
+    Vec<&'a str>,
+    Option<Entity>,
+    Option<Vec2>,
+    bool,
+);
+
+/// The immune parts sent.
+fn immune_sent(world: &World) -> Vec<ImmuneRead<'_>> {
+    world
+        .resource::<tungsten_core::EventQueue<ImmunePart>>()
+        .iter()
+        .map(|part| {
+            (
+                part.entity,
+                part.amount,
+                part.kinds.names(world),
+                part.source,
+                part.position,
+                part.periodic,
+            )
+        })
         .collect()
 }
 
@@ -487,7 +516,7 @@ fn the_source_lends_its_penetration_and_conversion_after_the_hits_own() {
 }
 
 #[test]
-fn a_hit_whose_every_part_drops_is_ignored_with_no_side_effect() {
+fn a_hit_whose_every_part_drops_is_ignored_with_its_immune_parts_alone() {
     let (mut world, _) = rig();
     let target = world.spawn_with((
         Health::new(5.0).with_invulnerability(1.0),
@@ -521,6 +550,73 @@ fn a_hit_whose_every_part_drops_is_ignored_with_no_side_effect() {
     assert!(!world.get::<Knockback>(target).unwrap().is_active());
     assert!(sent(&world).is_empty() && parts_sent(&world).is_empty());
     assert_eq!(world.resource::<KitTrace>().about(target).count(), 0);
+    // The two the immunities dropped, untyped here since no table declares
+    // them; the part of 0 sends none.
+    let immune: Vec<(Entity, f32)> = immune_sent(&world)
+        .into_iter()
+        .map(|(entity, amount, ..)| (entity, amount))
+        .collect();
+    assert_eq!(immune, [(target, 3.0), (target, 2.0)]);
+}
+
+#[test]
+fn an_immune_part_goes_out_beside_the_landed_ones_and_only_when_struck() {
+    let (mut world, _) = rig();
+    declare(&mut world, &["fire", "ice", "physical", "dust"]);
+    let mage = world.spawn();
+    let mut resist = Resist::new()
+        .with_factor("fire", 0.0)
+        .with_factor("ice", 0.5)
+        .with_factor("dust", 1e-30);
+    resist.add_modifier("ice", "ward", Modifier::Mul(0.0));
+    let ember = world.spawn_with((Health::new(100.0).with_invulnerability(1.0), resist));
+    let at = Vec2::new(4.0, 5.0);
+    // A mixed hit: the physical part lands, the fire and the warded ice go
+    // out as immune parts, with their amounts before the resistances, and a
+    // part a factor above 0 brings to nothing sends none.
+    let mixed = DamageRequest::from_parts(
+        ember,
+        [
+            typed(4.0, &["fire"]),
+            typed(3.0, &["physical"]),
+            typed(2.0, &["ice"]),
+            typed(1e-30, &["dust"]),
+        ],
+    )
+    .with_source(mage)
+    .with_position(at);
+    assert_eq!(mixed.apply(&mut world), Hit::Hurt);
+    assert_eq!(parts_sent(&world), [(3.0, vec!["physical"])]);
+    assert_eq!(
+        immune_sent(&world),
+        [
+            (ember, 4.0, vec!["fire"], Some(mage), Some(at), false),
+            (ember, 2.0, vec!["ice"], Some(mage), Some(at), false),
+        ]
+    );
+    assert_eq!(world.get::<Health>(ember).unwrap().current(), 97.0);
+    // Inside its window a struck target takes no hit, so nothing is immune.
+    world.flush_events();
+    world.flush_events();
+    let fire = DamageRequest::from_parts(ember, [typed(5.0, &["fire"])]);
+    assert_eq!(fire.clone().apply(&mut world), Hit::Ignored);
+    assert!(immune_sent(&world).is_empty(), "inside the window");
+    // A periodic request passes the window and flags its immune part.
+    assert_eq!(
+        fire.with_periodic(true).apply(&mut world),
+        Hit::Ignored,
+        "every part dropped"
+    );
+    assert_eq!(
+        immune_sent(&world),
+        [(ember, 5.0, vec!["fire"], None, None, true)]
+    );
+    // A part of 0 is no part, immune or not.
+    world.flush_events();
+    world.flush_events();
+    let zero = DamageRequest::from_parts(ember, [typed(0.0, &["fire"])]).with_periodic(true);
+    assert_eq!(zero.apply(&mut world), Hit::Ignored);
+    assert!(immune_sent(&world).is_empty());
 }
 
 #[test]
