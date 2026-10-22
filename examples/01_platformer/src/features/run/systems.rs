@@ -8,7 +8,7 @@ use crate::features::level::components::Area;
 use crate::shell;
 
 /// `run_areas`, in the react phase: the player entering an area other than
-/// its current one names it in a toast and asks for an autosave, which the
+/// its current one names it on the banner and asks for an autosave, which the
 /// shell takes once a capture succeeds. A body set down astride two areas
 /// enters both in one step: the current one, when it is among them, stays,
 /// else the last entered is taken. `cursor` reads each entry once.
@@ -29,6 +29,6 @@ pub fn areas(world: &mut World, cursor: &mut EventCursor<ZoneEntered>) {
     }
     let name = entered[entered.len() - 1].to_owned();
     world.resource_mut::<Run>().area = Some(name.clone());
-    shell::toast::toast(world, name);
+    super::banner::show(world, &name);
     shell::request_autosave(world);
 }

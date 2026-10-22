@@ -511,7 +511,9 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
             &mut buffers.layers,
             &mut buffers.sensors,
             &mut buffers.tile_ids,
+            &mut buffers.tiles,
         );
+        buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
         for proxy in buffers.proxies.iter_mut().step_by(4) {
             proxy.sleeping = proxy.is_dynamic;
         }
@@ -1584,7 +1586,9 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
+        &mut buffers.tiles,
     );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.events.clear();
@@ -1662,7 +1666,9 @@ fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
         &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
+        &mut buffers.tiles,
     );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.check_pair_contacts = true;
     build_pairs(&config, sub_dt, dt, &mut buffers);
@@ -1775,7 +1781,9 @@ fn oracle_buffers(world: &World) -> PhysicsBuffers {
         &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
+        &mut buffers.tiles,
     );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
     buffers.pairs_invalidated = true;
     buffers.check_pair_contacts = true;
@@ -1919,7 +1927,9 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
         &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
+        &mut buffers.tiles,
     );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.reference_impulses = Some(ImpulseMap::default());
     let body_index = buffers
         .proxies
@@ -4099,4 +4109,396 @@ fn layers_persistent_pairs_match_fresh_contacts_with_masks() {
     );
     assert!(repairs > 0, "the oracle never checked a repaired list");
     assert!(unmet > 0, "no pair that does not meet ever overlapped");
+}
+
+/// A 6 × 3 map of 16 px tiles: `tiles` in its collision layer, after a
+/// render layer when `decor`.
+fn cache_map(tiles: Vec<i32>, decor: bool) -> TilemapData {
+    let mut layers = Vec::new();
+    if decor {
+        layers.push(TilemapLayer {
+            name: "decor".into(),
+            kind: LayerKind::Render,
+            tiles: vec![0; 18],
+        });
+    }
+    layers.push(TilemapLayer {
+        name: "collision".into(),
+        kind: LayerKind::Collision,
+        tiles,
+    });
+    TilemapData {
+        tile_width: 16,
+        tile_height: 16,
+        width: 6,
+        height: 3,
+        tileset: vec!["solid".into()],
+        object_layers: Vec::new(),
+        layers,
+    }
+}
+
+/// Gathers `world` into `buffers`, then asserts the tile proxies after the
+/// entity proxies, and their identities, are a fresh scan's.
+fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
+    gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    let (mut fresh, mut ids, mut maps) = (Vec::new(), Vec::new(), Vec::new());
+    super::gather::gather_tilemap_proxies(world, &mut fresh, &mut ids, &mut maps);
+    let tail = &buffers.proxies[buffers.bodies..];
+    assert_eq!(tail.len(), fresh.len(), "{when}: tile count");
+    for (at, (kept, scanned)) in tail.iter().zip(&fresh).enumerate() {
+        assert!(
+            kept.key == scanned.key
+                && kept.center == scanned.center
+                && kept.half_extents() == scanned.half_extents()
+                && kept.face_mask == scanned.face_mask
+                && kept.entity.is_none()
+                && !kept.is_dynamic,
+            "{when}: tile {at} differs"
+        );
+    }
+    // Identities are gathered in a frame with sensors only.
+    if buffers.sensors.is_empty() {
+        assert!(buffers.tile_ids.is_empty(), "{when}: no identities");
+    } else {
+        assert_eq!(buffers.tile_ids, ids, "{when}: identities");
+    }
+    assert!(
+        buffers.layers.of[buffers.bodies..]
+            .iter()
+            .all(|layers| *layers == Layers::DEFAULT),
+        "{when}: tile layers"
+    );
+}
+
+#[test]
+fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
+    // Edited by a registry insert, moved, joined by a second map, given a
+    // render layer before its collision layer (which moves every
+    // identity), and despawned: after each the gathered tiles are a fresh
+    // scan's, and a frame with no change scans nothing.
+    let mut world = seed_world();
+    let solid = |gaps: &[usize]| {
+        (0..18)
+            .map(|i| if gaps.contains(&i) { -1 } else { 0 })
+            .collect()
+    };
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("a".into(), cache_map(solid(&[2, 9]), false));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("a", Vec2::new(-48.0, 0.0)));
+    // A sensor, so the gather keeps the tiles' identities.
+    world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::ZERO),
+        Collider::aabb(Vec2::splat(4.0)),
+    ));
+    let mut buffers = PhysicsBuffers::default();
+    assert_tiles_fresh(&world, &mut buffers, "first");
+    assert_eq!(buffers.tiles.scans, 1);
+    assert_tiles_fresh(&world, &mut buffers, "unchanged");
+    assert_eq!(buffers.tiles.scans, 1, "an unchanged frame scans nothing");
+
+    type Change<'a> = (&'static str, Box<dyn Fn(&mut World) + 'a>);
+    let changes: [Change<'_>; 5] = [
+        (
+            "edited",
+            Box::new(|world: &mut World| {
+                world
+                    .get_resource_mut::<TilemapRegistry>()
+                    .unwrap()
+                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), false));
+            }),
+        ),
+        (
+            "moved",
+            Box::new(move |world: &mut World| {
+                world.get_mut::<TilemapInstance>(map).unwrap().origin = Vec2::new(-40.0, 8.0);
+            }),
+        ),
+        (
+            "joined",
+            Box::new(|world: &mut World| {
+                world
+                    .get_resource_mut::<TilemapRegistry>()
+                    .unwrap()
+                    .insert("b".into(), cache_map(solid(&[0]), false));
+                let second = world.spawn();
+                world.insert(second, TilemapInstance::new("b", Vec2::new(64.0, 0.0)));
+            }),
+        ),
+        (
+            "decor before collision",
+            Box::new(|world: &mut World| {
+                world
+                    .get_resource_mut::<TilemapRegistry>()
+                    .unwrap()
+                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), true));
+            }),
+        ),
+        (
+            "despawned",
+            Box::new(move |world: &mut World| {
+                world.despawn(map);
+            }),
+        ),
+    ];
+    let mut scans = 1;
+    let mut version = buffers.tiles.version;
+    for (when, change) in changes {
+        let ids_before = buffers.tile_ids.clone();
+        change(&mut world);
+        assert_tiles_fresh(&world, &mut buffers, when);
+        scans += 1;
+        assert_eq!(buffers.tiles.scans, scans, "{when}: one scan");
+        assert!(buffers.tiles.version > version, "{when}: a new version");
+        version = buffers.tiles.version;
+        if when == "decor before collision" {
+            assert_ne!(
+                buffers.tile_ids, ids_before,
+                "the layer index is in each identity"
+            );
+        }
+        assert_tiles_fresh(&world, &mut buffers, when);
+        assert_eq!(buffers.tiles.scans, scans, "{when}: then no more");
+    }
+}
+
+#[test]
+fn a_changed_linear_slop_restages_the_tile_grid() {
+    // The tile grid's boxes are grown by 2·linear_slop: a new slop with the
+    // same map stages them again, so the pair boxes are a fresh build's.
+    let mut world = seed_world();
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("a".into(), cache_map(vec![0; 18], false));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("a", Vec2::ZERO));
+    world.spawn_with(
+        RigidBodyBundle::dynamic(
+            Position(Vec2::new(40.0, -20.0)),
+            Collider::aabb(Vec2::splat(4.0)),
+        )
+        .with_velocity(Velocity(Vec2::new(0.0, 30.0))),
+    );
+    let mut buffers = PhysicsBuffers::default();
+    for slop in [0.25_f32, 1.5, 0.25] {
+        world
+            .get_resource_mut::<PhysicsConfig>()
+            .unwrap()
+            .linear_slop = slop;
+        let config = *world.get_resource::<PhysicsConfig>().unwrap();
+        assert_tiles_fresh(&world, &mut buffers, "gathered");
+        build_pairs(&config, 1.0 / 240.0, 1.0 / 60.0, &mut buffers);
+        for (at, proxy) in buffers.proxies.iter().enumerate().skip(buffers.bodies) {
+            let mut want = proxy.world_aabb();
+            want.half_extents += Vec2::splat(2.0 * slop);
+            let got = buffers.pair_aabbs[at];
+            assert!(
+                got.center == want.center && got.half_extents == want.half_extents,
+                "slop {slop}: tile {at}'s pair box"
+            );
+        }
+    }
+}
+
+/// The step's sensor pairs and new pairs as a test of every proxy and tile
+/// finds them, from the buffers after the step: each sensor in gather order
+/// against the entity proxies, then the tiles, in a layer its mask holds.
+fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
+    use crate::physics::query::shapes_overlap;
+    let mut pairs = Vec::new();
+    let mut order = Vec::new();
+    let tiles = buffers.proxies.len() - buffers.bodies;
+    for sensor in &buffers.sensors {
+        let others = buffers.proxies[..buffers.bodies]
+            .iter()
+            .zip(&buffers.layers.of)
+            .map(|(proxy, layers)| (proxy, proxy.key, layers.layers));
+        let tile_ids = if buffers.tile_ids.len() == tiles {
+            buffers.tile_ids.clone()
+        } else {
+            vec![0; tiles]
+        };
+        let tiles = buffers.proxies[buffers.bodies..]
+            .iter()
+            .zip(tile_ids)
+            .map(|(proxy, id)| (proxy, id, Layers::DEFAULT.layers));
+        for (proxy, identity, layers) in others.chain(tiles) {
+            if sensor.layers.mask & layers != 0
+                && shapes_overlap(sensor.shape, sensor.center, proxy.shape, proxy.center)
+            {
+                pairs.push((u128::from(sensor.key) << 64) | u128::from(identity));
+                order.push((sensor.key, identity));
+            }
+        }
+    }
+    pairs.sort_unstable();
+    (pairs, order)
+}
+
+#[test]
+fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
+    // A still sensor keeps its tile pairs from step to step, one that moves
+    // every third step and one whose mask leaves out the tiles' layer test
+    // again; a body falls through them, the map is edited and a step runs
+    // without sensors. Every step's pairs and new-pair events are a full
+    // test's (`sensor_oracle`).
+    let mut world = seed_world();
+    let gaps = |gaps: &[usize]| {
+        (0..18)
+            .map(|i| if gaps.contains(&i) { -1 } else { 0 })
+            .collect()
+    };
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("a".into(), cache_map(gaps(&[3, 8]), false));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("a", Vec2::new(-48.0, 0.0)));
+    let still = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(0.0, 16.0)),
+        Collider::aabb(Vec2::new(30.0, 20.0)),
+    ));
+    let mover = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(-30.0, 8.0)),
+        Collider::aabb(Vec2::splat(10.0)),
+    ));
+    let masked = world.spawn_with(
+        RigidBodyBundle::sensor(Position(Vec2::new(10.0, 20.0)), Collider::circle(14.0))
+            .with_mask(!RigidBody::DEFAULT_LAYERS),
+    );
+    world.spawn_with(
+        RigidBodyBundle::dynamic(Position(Vec2::new(4.0, -40.0)), Collider::circle(5.0))
+            .with_velocity(Velocity(Vec2::new(0.0, 60.0))),
+    );
+    let mut previous: Vec<u128> = Vec::new();
+    let mut kept_steps = 0;
+    for step in 0..48 {
+        if step % 3 == 0 {
+            world.get_mut::<Position>(mover).unwrap().0.x += 8.0;
+        }
+        if step == 20 {
+            world
+                .get_resource_mut::<TilemapRegistry>()
+                .unwrap()
+                .insert("a".into(), cache_map(gaps(&[3, 8, 14]), false));
+        }
+        let sensorless = step == 30;
+        if sensorless {
+            for sensor in [still, mover, masked] {
+                world.get_mut::<RigidBody>(sensor).unwrap().kind = BodyKind::Static;
+            }
+            previous.clear();
+        }
+        if step == 31 {
+            for sensor in [still, mover, masked] {
+                world.get_mut::<RigidBody>(sensor).unwrap().kind = BodyKind::Sensor;
+            }
+        }
+        physics_step(&mut world);
+        let events: Vec<SensorEntered> = {
+            let queue = world
+                .get_resource_mut::<EventQueue<SensorEntered>>()
+                .unwrap();
+            let sent = queue.iter_current().copied().collect();
+            queue.flush();
+            sent
+        };
+        if sensorless {
+            continue;
+        }
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        let (want, order) = sensor_oracle(buffers);
+        assert_eq!(buffers.sensor_pairs, want, "step {step}: the pairs");
+        let new: Vec<(u64, u64)> = order
+            .into_iter()
+            .filter(|&(sensor, other)| {
+                previous
+                    .binary_search(&((u128::from(sensor) << 64) | u128::from(other)))
+                    .is_err()
+            })
+            .collect();
+        assert_eq!(events.len(), new.len(), "step {step}: the new pairs");
+        for (event, (sensor, _)) in events.iter().zip(&new) {
+            assert_eq!(
+                entity_key(event.sensor),
+                *sensor,
+                "step {step}: event order"
+            );
+        }
+        kept_steps += buffers
+            .sensor_tiles
+            .iter()
+            .filter(|kept| kept.used == buffers.sensor_passes && !kept.pairs.is_empty())
+            .count();
+        previous = want;
+    }
+    assert!(
+        kept_steps > 40,
+        "the still sensor's pairs were kept: {kept_steps}"
+    );
+}
+
+#[test]
+fn both_pair_grid_layouts_build_the_same_pairs() {
+    // The tiles in a grid of their own or staged with the entity proxies:
+    // a matter of cost, so a build's pair list is the same, pair for pair
+    // and in order, with sleepers, statics, kinematic bodies and tiles.
+    use crate::Pcg32;
+    for seed in 0..4_u64 {
+        let mut rng = Pcg32::seeded(0x5917 + seed);
+        let mut world = seed_world();
+        let tiles = (0..72).map(|i| if i % 7 == 3 { -1 } else { 0 }).collect();
+        let mut map = cache_map(tiles, seed % 2 == 1);
+        (map.width, map.height) = (12, 6);
+        world
+            .get_resource_mut::<TilemapRegistry>()
+            .unwrap()
+            .insert("a".into(), map);
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("a", Vec2::new(-96.0, 20.0)));
+        for i in 0..80 {
+            let at = Position(Vec2::new(
+                rng.next_range(-120.0, 120.0),
+                rng.next_range(-60.0, 140.0),
+            ));
+            let collider = if i % 2 == 0 {
+                Collider::aabb(Vec2::splat(rng.next_range(2.0, 14.0)))
+            } else {
+                Collider::circle(rng.next_range(2.0, 10.0))
+            };
+            let velocity = Velocity(rng.next_unit_vec2() * rng.next_range(0.0, 500.0));
+            let bundle = match i % 4 {
+                0 => RigidBodyBundle::r#static(at, collider),
+                1 => RigidBodyBundle::kinematic(at, collider).with_velocity(velocity),
+                _ => RigidBodyBundle::dynamic(at, collider).with_velocity(velocity),
+            };
+            world.spawn_with(bundle);
+        }
+        let config = *world.get_resource::<PhysicsConfig>().unwrap();
+        let mut built = Vec::new();
+        for split in [true, false] {
+            let mut buffers = PhysicsBuffers::default();
+            assert_tiles_fresh(&world, &mut buffers, "gathered");
+            for proxy in buffers.proxies.iter_mut().step_by(5) {
+                proxy.sleeping = proxy.is_dynamic;
+            }
+            buffers.grid.force_split = Some(split);
+            build_pairs(&config, 1.0 / 240.0, 1.0 / 60.0, &mut buffers);
+            built.push(buffers.pairs.clone());
+        }
+        assert_eq!(built[0], built[1], "seed {seed}");
+        assert!(built[0].len() > 40, "seed {seed}: too few pairs");
+    }
 }

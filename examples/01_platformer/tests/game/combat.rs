@@ -4,7 +4,9 @@
 //! numbers in their types' colours, a crit's at once and larger in yellow,
 //! a type's ticks merged, all following the Damage numbers option.
 
-use example_01_platformer::features::combat::numbers::{CRIT_SIZE, MERGE_SECS, Numbers};
+use example_01_platformer::features::combat::numbers::{
+    CRIT_SIZE, FOLLOW_SECS, Numbers, TICK_SIZE,
+};
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
 use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
@@ -354,17 +356,13 @@ fn watched() -> (UiHarness, Entity, Entity) {
 fn numbers_float_in_their_types_colour_and_a_crit_larger_in_yellow() {
     let (mut harness, player, dummy) = watched();
     // Fire and cold from nobody, below their ladders' first rungs: each
-    // plain part floats in its type's colour once 0.6 s pass without more.
+    // plain part floats at once in its type's colour.
     let plain = Hit::new(dummy, [(Kind::Fire, 6.0), (Kind::Cold, 8.0)]);
     assert!(plain.queue(harness.world_mut()));
     let floated_plain = floated(&mut harness, 50);
     assert_eq!(floated_plain.len(), 2, "{floated_plain:?}");
-    let wait = (MERGE_SECS * 60.0) as usize;
     for (frame, (_, size, _)) in &floated_plain {
-        assert!(
-            (wait - 1..=wait + 3).contains(frame),
-            "after 0.6 s: {frame}"
-        );
+        assert!(*frame <= 1, "at once: {frame}");
         assert_eq!(*size, 16.0);
     }
     let colour = |text: &str| {
@@ -409,18 +407,18 @@ fn two_hits_in_a_step_float_apart_and_only_the_crits_in_yellow() {
     assert_eq!(*crit_size, CRIT_SIZE);
     assert!(near(*crit_rgb, YELLOW));
     let (cold_frame, (cold_text, cold_size, cold_rgb)) = &floated[1];
-    assert!(*cold_frame > *crit_frame, "apart");
+    assert!(*cold_frame <= 1, "apart, and at once too");
     assert_eq!((cold_text.as_str(), *cold_size), ("5", 16.0));
     assert!(near(*cold_rgb, School::Cold.color()) && !near(*cold_rgb, YELLOW));
 }
 
 #[test]
-fn burn_ticks_merge_into_one_number() {
+fn burn_ticks_float_at_once_and_smaller() {
     let (mut harness, _, dummy) = watched();
     apply(&mut harness, dummy, "burning", None);
-    // Every tick and every label over two and a half seconds: the first
-    // tick comes half a second in, its number a second after it.
-    let mut ticks: Vec<(usize, f32)> = Vec::new();
+    // Every tick and every label over two and a half seconds: each tick
+    // half a second apart, so each floats at once, at the tick size.
+    let mut ticks: Vec<usize> = Vec::new();
     let mut shown: Vec<(usize, f32)> = Vec::new();
     let mut before = labels(&harness);
     for frame in 0..150 {
@@ -431,35 +429,44 @@ fn burn_ticks_merge_into_one_number() {
                 .resource::<EventQueue<DamagedPart>>()
                 .iter()
                 .filter(|part| part.entity == dummy && part.periodic)
-                .map(|part| (frame, part.amount)),
+                .map(|_| frame),
         );
         let now = labels(&harness);
+        let mut old = before;
         for label in &now {
-            if !before.contains(label) {
-                shown.push((frame, label.0.parse().expect("a number")));
+            match old.iter().position(|seen| seen == label) {
+                Some(i) => {
+                    old.remove(i);
+                }
+                None => shown.push((frame, label.1)),
             }
         }
         before = now;
     }
     assert!(ticks.len() >= 2, "{ticks:?}");
-    let (at, first) = shown[0];
-    let merged: f32 = ticks
-        .iter()
-        .filter(|&&(frame, _)| frame <= at)
-        .map(|&(_, amount)| amount)
-        .sum();
-    assert_eq!(first, merged, "the sum of every tick before it: {ticks:?}");
-    assert!(first >= 6.0, "two ticks or more in one number: {shown:?}");
-    assert!(shown.len() < ticks.len(), "{shown:?} for {ticks:?}");
-    assert!(
-        harness
-            .world()
-            .resource::<Numbers>()
-            .open
-            .iter()
-            .all(|open| open.target == dummy),
-        "the open sums are the dummy's"
-    );
+    let sizes: Vec<f32> = shown.iter().map(|&(_, size)| size).collect();
+    assert!(sizes.iter().all(|&size| size == TICK_SIZE), "{shown:?}");
+    let at: Vec<usize> = shown.iter().map(|&(frame, _)| frame).collect();
+    assert_eq!(at, ticks, "each tick at once");
+}
+
+#[test]
+fn a_hit_floats_its_number_at_once() {
+    // The first part floats at once; parts that follow within 0.25 s merge
+    // into one number when that window closes.
+    let (mut harness, _, dummy) = watched();
+    assert!(Hit::new(dummy, [(Kind::Cold, 4.0)]).queue(harness.world_mut()));
+    let first = floated(&mut harness, 2);
+    let texts: Vec<&str> = first.iter().map(|(_, l)| l.0.as_str()).collect();
+    assert_eq!(texts, ["4"], "at once: {first:?}");
+    assert!(Hit::new(dummy, [(Kind::Cold, 3.0)]).queue(harness.world_mut()));
+    harness.step(1);
+    assert!(Hit::new(dummy, [(Kind::Cold, 2.0)]).queue(harness.world_mut()));
+    let rest = floated(&mut harness, 40);
+    let texts: Vec<&str> = rest.iter().map(|(_, l)| l.0.as_str()).collect();
+    assert_eq!(texts, ["5"], "the follow-ups' sum: {rest:?}");
+    let window = (FOLLOW_SECS * 60.0) as usize;
+    assert!(rest[0].0 <= window, "when the window closes: {rest:?}");
 }
 
 #[test]

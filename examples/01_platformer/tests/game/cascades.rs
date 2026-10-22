@@ -17,8 +17,10 @@ use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, SaveId};
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::{Entity, EventQueue, Position, PrevPosition, Transform};
-use tungsten::kit::{ContactDamage, DamageRequest, DamagedPart, KitRng};
+use tungsten::core::{
+    DataRef, DataRegistry, Entity, EventQueue, Position, PrevPosition, Transform,
+};
+use tungsten::kit::{ContactDamage, DamageRequest, DamagedPart, Effect, KitRng};
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, apply, dummy_at, has, health, with_dummy};
@@ -251,20 +253,33 @@ fn frozen_things_thaw_after_five_seconds() {
     let (mut harness, _) = sky();
     let iron = toys::place_iron(harness.world_mut(), Vec2::new(1200.0, TOP - IRON_HALF.y));
     let small = ball(&mut harness, Vec2::new(1500.0, TOP - 8.0), true);
-    let (mut dummy_harness, _, dummy) = with_dummy();
     for body in [iron, small] {
         elements::freeze_iron(harness.world_mut(), body);
     }
-    apply(&mut dummy_harness, dummy, "frozen", None);
     let steps = (FROZEN_SECS * 60.0) as u32;
     harness.step(steps - 6);
-    dummy_harness.step(steps - 6);
     assert!(harness.world().has::<Frozen>(iron) && harness.world().has::<Frozen>(small));
-    assert!(has(&dummy_harness, dummy, "frozen"));
     harness.step(12);
-    dummy_harness.step(12);
     assert!(!harness.world().has::<Frozen>(iron) && !harness.world().has::<Frozen>(small));
-    assert!(!has(&dummy_harness, dummy, "frozen"));
+}
+
+#[test]
+fn a_frozen_creature_thaws_after_its_effects_duration() {
+    let (mut harness, _, dummy) = with_dummy();
+    let frozen = {
+        let data = harness.world().resource::<DataRegistry>();
+        DataRef::<Effect>::by_id("frozen")
+            .resolve(data)
+            .expect("the frozen effect")
+            .duration()
+    };
+    assert_eq!(frozen, Some(7.5), "creatures freeze longer than iron (X5)");
+    apply(&mut harness, dummy, "frozen", None);
+    let steps = (7.5 * 60.0) as u32;
+    harness.step(steps - 6);
+    assert!(has(&harness, dummy, "frozen"));
+    harness.step(12);
+    assert!(!has(&harness, dummy, "frozen"));
 }
 
 #[test]

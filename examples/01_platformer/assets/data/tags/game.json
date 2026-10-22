@@ -1,6 +1,7 @@
 [
   "team.player",
   "casting",
+  "staff.lit",
   "damage.physical.bleed",
   "damage.fire",
   "damage.cold",

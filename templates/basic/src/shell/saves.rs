@@ -206,6 +206,7 @@ fn details(world: &World, state: &SlotState) -> String {
             let (ago, played) = (age(*at), clock(save.meta.playtime_secs));
             format!("{ago} · {played} played{note}\n{}", save::summary(save))
         }
+        SlotState::Older(_) => "Saved by an older version".to_owned(),
         SlotState::Newer => "Saved by a newer version".to_owned(),
         SlotState::Damaged => "Damaged".to_owned(),
     }

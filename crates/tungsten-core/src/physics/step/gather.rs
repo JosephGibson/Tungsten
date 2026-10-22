@@ -1,9 +1,11 @@
 //! Once-per-frame gather of entity and tilemap collider proxies in
 //! deterministic `World` order (D-066), their warm-start keys and their
-//! layers; sensors are gathered beside the proxies, never as one.
+//! layers; sensors are gathered beside the proxies, never as one. Tile
+//! proxies come from a cache of the collision layers that is checked every
+//! frame and rescanned only when a map changed.
 
 use super::{Layers, Proxy, ProxyLayers, SensorBody};
-use crate::assets::{LayerKind, TilemapInstance, TilemapRegistry};
+use crate::assets::{LayerKind, TileIndex, TilemapData, TilemapInstance, TilemapRegistry};
 use crate::ecs::{Entity, World};
 use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
@@ -42,7 +44,8 @@ fn tile_identity(map: Entity, layer: usize, col: u32, row: u32) -> u64 {
 /// `layers`, in proxy order, which notes whether any proxy or sensor is off
 /// the defaults. A sensor row joins `sensors` instead of the proxies; in a
 /// frame with sensors, `tile_ids` gets each tile proxy's identity, in proxy
-/// order, and stays empty otherwise. Returns how many kinematic proxies it
+/// order, and stays empty otherwise. The tile proxies are `tiles`', brought
+/// up to the World's maps first. Returns how many kinematic proxies it
 /// staged, which sets the frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
@@ -50,6 +53,7 @@ pub(super) fn gather_proxies(
     layers: &mut ProxyLayers,
     sensors: &mut Vec<SensorBody>,
     tile_ids: &mut Vec<u64>,
+    tiles: &mut TileCache,
 ) -> usize {
     proxies.clear();
     layers.of.clear();
@@ -115,18 +119,120 @@ pub(super) fn gather_proxies(
     }
     layers.layered = layered;
 
-    let tile_ids = (!sensors.is_empty()).then_some(tile_ids);
-    gather_tilemap_proxies(world, proxies, &mut layers.of, tile_ids);
+    tiles.refresh(world);
+    proxies.extend_from_slice(&tiles.proxies);
+    layers.of.resize(proxies.len(), Layers::DEFAULT);
+    if !sensors.is_empty() {
+        tile_ids.extend_from_slice(&tiles.ids);
+    }
     kinematics
 }
 
-/// Emit transient static tile proxies for collision layers, in layer 0 and
-/// meeting every layer, and their identities when `tile_ids` is given.
-fn gather_tilemap_proxies(
+/// The static tile proxies of every collision layer, in layer 0 and meeting
+/// every layer, as the last scan built them in gather order, with each
+/// one's sensor identity and the maps they came from. The gather checks the
+/// maps every frame, the tiles of each collision layer compared whole, and
+/// scans again only when one differs, so the proxies, their order, keys,
+/// face masks and identities are what a scan of this frame would give.
+#[derive(Debug, Default)]
+pub(super) struct TileCache {
+    /// Bumped by every scan; 0 before the first.
+    pub(super) version: u64,
+    maps: Vec<CachedMap>,
+    /// The tile proxies, in gather order.
+    pub(super) proxies: Vec<Proxy>,
+    /// Each tile proxy's identity in sensor overlap keys, in the same order.
+    pub(super) ids: Vec<u64>,
+    #[cfg(test)]
+    pub(super) scans: usize,
+}
+
+/// One map as the last scan read it: what a later frame compares.
+#[derive(Debug)]
+pub(super) struct CachedMap {
+    entity: Entity,
+    origin: [u32; 2],
+    tile: [u32; 2],
+    size: [u32; 2],
+    /// Each collision layer's index and tiles.
+    layers: Vec<(usize, Vec<TileIndex>)>,
+}
+
+impl CachedMap {
+    /// Whether `data`, placed by `instance` on `entity`, is this map.
+    fn is(&self, entity: Entity, instance: &TilemapInstance, data: &TilemapData) -> bool {
+        let mut collision = data
+            .layers
+            .iter()
+            .enumerate()
+            .filter(|(_, layer)| layer.kind == LayerKind::Collision);
+        self.entity == entity
+            && self.origin == [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
+            && self.tile == [data.tile_width, data.tile_height]
+            && self.size == [data.width, data.height]
+            && self.layers.iter().all(|(index, tiles)| {
+                collision
+                    .next()
+                    .is_some_and(|(at, layer)| at == *index && layer.tiles == *tiles)
+            })
+            && collision.next().is_none()
+    }
+}
+
+impl TileCache {
+    /// The tile proxies the gather appends.
+    pub(super) fn len(&self) -> usize {
+        self.proxies.len()
+    }
+
+    /// Brings the cache up to `world`'s maps: unchanged maps keep it, any
+    /// difference scans them all again.
+    fn refresh(&mut self, world: &World) {
+        if self.matches(world) {
+            return;
+        }
+        self.scan(world);
+    }
+
+    /// Whether the maps with registered data, in query order, are the ones
+    /// the last scan read.
+    fn matches(&self, world: &World) -> bool {
+        let Some(registry) = world.get_resource::<TilemapRegistry>() else {
+            return self.maps.is_empty();
+        };
+        let mut cached = self.maps.iter();
+        for (map, instance) in world.query::<(Entity, &TilemapInstance)>() {
+            let Some(data) = registry.get(&instance.id) else {
+                continue;
+            };
+            if !cached.next().is_some_and(|old| old.is(map, instance, data)) {
+                return false;
+            }
+        }
+        cached.next().is_none()
+    }
+
+    /// Scans every collision layer of every map again.
+    fn scan(&mut self, world: &World) {
+        self.proxies.clear();
+        self.ids.clear();
+        self.maps.clear();
+        gather_tilemap_proxies(world, &mut self.proxies, &mut self.ids, &mut self.maps);
+        self.version += 1;
+        #[cfg(test)]
+        {
+            self.scans += 1;
+        }
+    }
+}
+
+/// Scan the static tile proxies of collision layers, their identities and
+/// the maps they came from.
+pub(super) fn gather_tilemap_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
-    layers: &mut Vec<Layers>,
-    mut tile_ids: Option<&mut Vec<u64>>,
+    tile_ids: &mut Vec<u64>,
+    maps: &mut Vec<CachedMap>,
 ) {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
         return;
@@ -136,6 +242,19 @@ fn gather_tilemap_proxies(
         let Some(data) = registry.get(&instance.id) else {
             continue;
         };
+        maps.push(CachedMap {
+            entity: map,
+            origin: [instance.origin.x.to_bits(), instance.origin.y.to_bits()],
+            tile: [data.tile_width, data.tile_height],
+            size: [data.width, data.height],
+            layers: data
+                .layers
+                .iter()
+                .enumerate()
+                .filter(|(_, layer)| layer.kind == LayerKind::Collision)
+                .map(|(index, layer)| (index, layer.tiles.clone()))
+                .collect(),
+        });
         let tw = data.tile_width as f32;
         let th = data.tile_height as f32;
         let half = Vec2::new(tw * 0.5, th * 0.5);
@@ -197,10 +316,7 @@ fn gather_tilemap_proxies(
                         kinematic: false,
                         kept_awake: false,
                     });
-                    layers.push(Layers::DEFAULT);
-                    if let Some(ids) = tile_ids.as_deref_mut() {
-                        ids.push(tile_identity(map, layer_index, col, row));
-                    }
+                    tile_ids.push(tile_identity(map, layer_index, col, row));
                 }
             }
         }

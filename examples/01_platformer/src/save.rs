@@ -1,9 +1,11 @@
 //! What a save holds, part of the seam the shell calls: [`SaveGame`], how
 //! a live run becomes one ([`capture`]), the slot row's line ([`summary`])
-//! and how a loaded run takes it back ([`restore`]). Schema 7 counts on
-//! from the template sample's 3, so a sample save reads as damaged, never
-//! as a newer version's; it marks 01 (d)'s map, whose objects take every
-//! save ID anew, so no older schema migrates (`D-202`).
+//! and how a loaded run takes it back ([`restore`]). The schema counts on
+//! from the template sample's 3, so a sample save reads as an older
+//! version's, never as a newer one's. Schema 7 marks 01 (d)'s map, whose
+//! objects take every save ID anew, so nothing older migrates (`D-202`);
+//! schema 8 gives the player the staff light, which [`SaveData::migrate`]
+//! adds to a schema 7 save.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects take theirs
 //! in the order the map spawns them, which a load repeats, and whatever
@@ -16,6 +18,7 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
+use tungsten::core::save::Value;
 use tungsten::core::{
     CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
 };
@@ -37,6 +40,7 @@ use crate::features::enemies::{self, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
+use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
@@ -62,6 +66,10 @@ pub struct SaveGame {
     /// The spell bar's selected slot.
     pub spell: usize,
     pub lantern: bool,
+    /// The staff light guttered out and waits for the relight; a schema 7
+    /// save, from before the light, has none.
+    #[serde(default)]
+    pub lantern_guttered: bool,
     pub player: PlayerSave,
     pub platforms: Vec<PlatformSave>,
     pub hazards: Vec<HazardSave>,
@@ -94,9 +102,31 @@ pub const MAP_ENEMIES: u64 = 13;
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
     /// is 01 (d)'s new map: its objects take every save ID anew and every
-    /// place moved, so the trait's `migrate` refuses each older schema and
-    /// the slot reads as damaged.
-    const SCHEMA: u32 = 7;
+    /// place moved, so `migrate` refuses each older schema and the slot
+    /// reads as an older version's (`D-204`). Schema 8 adds the staff light
+    /// to the player's abilities.
+    const SCHEMA: u32 = 8;
+
+    fn migrate(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        if from != 7 {
+            return Err(
+                format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
+            );
+        }
+        // The staff light's entry, last, ready, as a fresh run's.
+        let entries = data
+            .pointer_mut("/player/abilities/entries")
+            .and_then(Value::as_array_mut)
+            .ok_or("schema 7: the player has no abilities")?;
+        let entry = format!(
+            r#"{{"name": "{STAFF_LIGHT}", "ability": "{STAFF_LIGHT}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
+        );
+        entries.push(entry.parse()?);
+        Ok(data)
+    }
 }
 
 /// The player: its body's point and velocity, its controller, health,
@@ -529,6 +559,9 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         lantern: world
             .get::<Lantern>(run.player)
             .is_none_or(|lantern| lantern.on),
+        lantern_guttered: world
+            .get::<Lantern>(run.player)
+            .is_some_and(|lantern| lantern.guttered),
         player,
         platforms,
         hazards,
@@ -682,7 +715,7 @@ pub fn summary(save: &SaveGame) -> String {
     let most = stats.get("max_mana").unwrap_or(0.0);
     let meters = format!(
         "HP {} / {} · Mana {mana} / {most}",
-        health.current(),
+        crate::features::spells::hud::whole_health(Some(health)),
         health.max()
     );
     match &save.area {
@@ -725,10 +758,11 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             p.tags.clone(),
         ),
     );
-    world.insert_bundle(
-        player,
-        (Spellbook { slot: save.spell }, Lantern { on: save.lantern }),
-    );
+    let lantern = Lantern {
+        on: save.lantern,
+        guttered: save.lantern_guttered,
+    };
+    world.insert_bundle(player, (Spellbook { slot: save.spell }, lantern));
     if let Some(left) = p.reload {
         world.insert(player, Reload { left });
     }

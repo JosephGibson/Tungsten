@@ -159,6 +159,14 @@ pub struct Spotted {
     pub player: Entity,
 }
 
+/// A crawler's scare: the game time the staff light's edge last refused
+/// its walk, whose scared clip shows for `crawler::SCARED_HOLD` after (B4).
+/// Presentation, never saved.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Scared {
+    pub at: f64,
+}
+
 /// The clip an enemy shows and its frame at the last look, and the second
 /// ember emitter a wisp's flare lights. Presentation, never saved.
 #[derive(Debug, Clone, Default, PartialEq)]

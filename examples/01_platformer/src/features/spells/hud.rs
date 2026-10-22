@@ -14,6 +14,7 @@ use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
 use glam::Vec2;
 use tungsten::RootCover;
+use tungsten::core::text::TextWrap;
 use tungsten::core::ui::{
     Align, Anchor, LayoutStyle, Placement, Sizing, StyleOverrides, UiLayer, UiTree, UiVertex,
     WidgetId,
@@ -73,9 +74,9 @@ pub struct Hud {
 }
 
 /// The bars' size, and the room their "current / max" takes, so the
-/// numbers never wrap or shift, in UI units.
+/// numbers never shift, in UI units; the readouts never wrap.
 const METER: [f32; 2] = [160.0, 10.0];
-const READOUT: f32 = 84.0;
+const READOUT: f32 = 96.0;
 /// The room under the spell bar for one toast: its padding and its line.
 const TOAST_LANE: f32 = 2.0 * theme::GAP + 20.0;
 /// The icons' art, in its pixels.
@@ -245,6 +246,7 @@ fn meter(tree: &mut UiTree, parent: WidgetId, color: [u8; 4]) -> Meter {
     style.min_width = Some(READOUT);
     tree.set_layout_style(text, style);
     widgets::mono(tree, text);
+    widgets::restyle(tree, text, |text| text.wrap = Some(TextWrap::None));
     Meter { fill, text }
 }
 
@@ -368,6 +370,7 @@ pub fn update(world: &mut World) {
     let health = world
         .get::<Health>(player)
         .map_or((0.0, 1.0), |health| (health.current(), health.max()));
+    let shown_health = whole_health(world.get::<Health>(player));
     let held = mana(world, player);
     let most = world
         .get::<Stats>(player)
@@ -388,9 +391,11 @@ pub fn update(world: &mut World) {
         tree,
         hud.health,
         health,
+        shown_health,
         [colors.accent, colors.danger][usize::from(low)],
     );
-    fill(tree, hud.mana, (held.floor(), most), School::Mana.color());
+    let held = held.floor();
+    fill(tree, hud.mana, (held, most), held, School::Mana.color());
     let resized = size != hud.icon_size;
     for (index, (slot, state)) in hud.slots.iter().zip(states).enumerate() {
         let ring = if selected == Some(index) {
@@ -472,9 +477,23 @@ pub fn update(world: &mut World) {
     }
 }
 
-/// Writes `(current, max)` into `meter`, its fill `color`.
-fn fill(tree: &mut UiTree, meter: Meter, (current, max): (f32, f32), color: [u8; 4]) {
-    tree.set_plain_text(meter.text, &format!("{current} / {max}"));
+/// Health as the HUD and a save's summary read it: whole, rounded up while
+/// alive, so a scratch never reads as dead, and 0 once dead.
+#[must_use]
+pub fn whole_health(health: Option<&Health>) -> f32 {
+    health.map_or(0.0, |health| {
+        if health.is_dead() {
+            0.0
+        } else {
+            health.current().ceil()
+        }
+    })
+}
+
+/// Writes `shown / max` into `meter` and fills it to `current / max` in
+/// `color`.
+fn fill(tree: &mut UiTree, meter: Meter, (current, max): (f32, f32), shown: f32, color: [u8; 4]) {
+    tree.set_plain_text(meter.text, &format!("{shown} / {max}"));
     if tree
         .overrides(meter.fill)
         .and_then(|style| style.background)

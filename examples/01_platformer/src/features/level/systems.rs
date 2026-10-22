@@ -15,6 +15,7 @@ use super::{
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::SaveId;
+use crate::shell::options::GameOptions;
 
 /// The halo's sprite and material, and the hot core's.
 pub const HALO: &str = "ex10_halo";
@@ -60,11 +61,22 @@ pub fn drawn_time(world: &World) -> f32 {
     }
 }
 
+/// Whether the Bloom option is on: the halos, bloom's look drawn as
+/// sprites, show only then (B6).
+#[must_use]
+pub fn bloom_on(world: &World) -> bool {
+    world
+        .get_resource::<GameOptions>()
+        .is_none_or(|options| options.bloom)
+}
+
 /// `level_glows`: each glow's halo, its core and its light, spawned the
 /// first frame the glow is seen and moved each frame to its owner's drawn
 /// point, pulsing by the level's clock; a part whose owner has gone goes.
+/// The halos hide while the Bloom option is off.
 pub fn glows(world: &mut World) {
     let time = drawn_time(world);
+    let bloom = bloom_on(world);
     let owners: Vec<(Entity, Glow, Vec2, Option<GlowParts>)> = world
         .query::<(Entity, &Glow, &Transform, Option<&GlowParts>)>()
         .map(|(entity, glow, at, parts)| (entity, *glow, at.position, parts.copied()))
@@ -74,7 +86,13 @@ pub fn glows(world: &mut World) {
         let pulse = 1.0 + 0.04 * (time * 4.0 + parts.phase).sin();
         let centre = glow.centre(at);
         if let Some(halo) = parts.halo {
-            place(world, halo, centre, glow.radius * pulse, glow.hidden);
+            place(
+                world,
+                halo,
+                centre,
+                glow.radius * pulse,
+                glow.hidden || !bloom,
+            );
         }
         if let Some(core) = parts.core {
             place(world, core, centre, glow.core, glow.hidden);

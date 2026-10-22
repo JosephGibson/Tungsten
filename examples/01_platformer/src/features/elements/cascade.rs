@@ -321,7 +321,9 @@ pub fn run(world: &mut World) {
             cascades.keys.remove(&(entry.kind, target));
         }
     }
-    let bin = Bin::build(world);
+    let mut wanted: Vec<u64> = due.iter().filter_map(|entry| entry.target).collect();
+    wanted.sort_unstable();
+    let bin = Bin::build(world, &wanted);
     for entry in &due {
         execute(world, &bin, entry);
     }
@@ -348,7 +350,8 @@ struct Item {
     what: What,
 }
 
-/// A run's bodies and targets, binned once by their centres' cells.
+/// A run's bodies and targets, binned once by their centres' cells, and
+/// the due entries' targets by save ID.
 struct Bin {
     items: Vec<Item>,
     cells: HashMap<(i32, i32), Vec<usize>>,
@@ -369,17 +372,27 @@ fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
 }
 
 impl Bin {
-    /// The step's balls, iron, scraps and live targets.
-    fn build(world: &World) -> Self {
+    /// The step's balls, iron, scraps and live targets, and the entities of
+    /// the save IDs `wanted` (sorted), the due entries' targets (P6).
+    fn build(world: &World, wanted: &[u64]) -> Self {
         let mut items = Vec::new();
-        for (entity, at, collider, id) in world.query::<(Entity, &Position, &Collider, &SaveId)>() {
-            let what = if world.has::<SmallBall>(entity) {
+        for (entity, at, collider, id, small, ball, iron, scrap) in world.query::<(
+            Entity,
+            &Position,
+            &Collider,
+            &SaveId,
+            Option<&SmallBall>,
+            Option<&Ball>,
+            Option<&IronBlock>,
+            Option<&IronScrap>,
+        )>() {
+            let what = if small.is_some() {
                 What::SmallBall
-            } else if world.has::<Ball>(entity) {
+            } else if ball.is_some() {
                 What::BowlingBall
-            } else if world.has::<IronBlock>(entity) {
+            } else if iron.is_some() {
                 What::Iron
-            } else if world.has::<IronScrap>(entity) {
+            } else if scrap.is_some() {
                 What::Scrap
             } else if world
                 .get::<Health>(entity)
@@ -398,10 +411,12 @@ impl Bin {
             });
         }
         let mut cells: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-        let mut ids = HashMap::with_capacity(items.len());
+        let mut ids = HashMap::with_capacity(wanted.len());
         for (index, item) in items.iter().enumerate() {
             cells.entry(cell_of(item.centre)).or_default().push(index);
-            ids.insert(item.id, item.entity);
+            if wanted.binary_search(&item.id).is_ok() {
+                ids.insert(item.id, item.entity);
+            }
         }
         Self { items, cells, ids }
     }

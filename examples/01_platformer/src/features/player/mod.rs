@@ -2,16 +2,16 @@
 //! `player` prefab, which the camera follows. The prefab holds its kit
 //! items: input, the controller with one air jump, the aim, health,
 //! hurtbox, knockback, hit flash, the hit's cues, facing, the character
-//! animator and the camera target. 01 adds the lantern, the zoom, the kill
-//! row, the bursts its moves raise, the land and air-jump one-shots, and a
-//! cast's toss, pose and hot lantern.
+//! animator and the camera target. 01 adds the lantern, whose staff light
+//! burns mana, the zoom, the kill row, the bursts its moves raise, the land
+//! and air-jump one-shots, and a cast's toss, pose and hot lantern.
 
 pub mod components;
 pub mod systems;
 
 use glam::Vec2;
-use tungsten::core::{Entity, Schedule, Stage, World, system};
-use tungsten::kit::{CHARACTER_ANIMATOR, Phase, Stats, ensure_phases};
+use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
+use tungsten::kit::{CHARACTER_ANIMATOR, CUES, Phase, Stats, ensure_phases};
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::level::GLOWS;
@@ -32,6 +32,13 @@ pub const LAND_SECS: f32 = 0.18;
 /// lantern's glow.
 pub const TOSS_SECS: f32 = 0.3;
 pub const CAST_SECS: f32 = 0.3;
+/// The staff light: its ability, which burns mana each step it is lit, the
+/// tag its effect grants while it burns, the mana it relights at after
+/// guttering out, and the puff it gutters with (L5's first half, Q15).
+pub const STAFF_LIGHT: &str = "staff_light";
+pub const STAFF_LIT: &str = "staff.lit";
+pub const RELIGHT_MANA: f32 = 10.0;
+pub const GUTTER_PUFF: &str = "ex10_staff_gutter";
 /// The zoom's range over the window's base, and one press's step.
 pub const ZOOM_MIN: f32 = 0.35;
 pub const ZOOM_MAX: f32 = 3.0;
@@ -49,8 +56,10 @@ pub const fn max_health(difficulty: Difficulty) -> f32 {
 }
 
 /// The player as a plugin: the `player` marker its prefab names, the
-/// lantern's anchors, its actions in the intent phase, the kill row in the
-/// overlap phase, its moves' bursts in the react phase, and in the present
+/// lantern's anchors, its actions and its staff light in the intent phase
+/// before the spells, the kill row in the
+/// overlap phase, its hurt and its moves' bursts in the react phase, and in
+/// the present
 /// phase its one-shot clips after the animator and its lantern's glow
 /// before the level draws the glows.
 pub struct PlayerPlugin;
@@ -61,9 +70,21 @@ impl Plugin for PlayerPlugin {
         world.register_component::<components::Player>("player");
         world.register_data_kind::<LanternAnchors>("lantern_anchors");
         ensure_phases(schedule);
+        let mut cursor = EventCursor::new();
+        // Before the kit's cues, which play its sound in the same step.
+        let hurt = system("player_hurt", move |world: &mut World| {
+            systems::hurt(world, &mut cursor);
+        })
+        .before(CUES);
+        // Before the spells, so a cast at full mana leaves its cost alone.
+        let staff = system("player_staff_light", systems::staff_light)
+            .after("player_actions")
+            .before("spells_cast");
         let fixed = [
             (Phase::Intent, system("player_actions", systems::actions)),
+            (Phase::Intent, staff),
             (Phase::Overlap, system("player_bounds", systems::bounds)),
+            (Phase::React, hurt),
             (Phase::React, system("player_moves", systems::moves)),
         ];
         for (phase, desc) in fixed {

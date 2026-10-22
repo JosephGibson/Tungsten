@@ -192,6 +192,16 @@
     "path": "sounds/crawler_lunge.wav",
     "volume": 0.5
   },
+  "ex10_crawler_scared_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_scared.wav",
+    "volume": 0.45
+  },
+  "ex10_staff_gutter_sfx": {
+    "looping": false,
+    "path": "sounds/staff_gutter.wav",
+    "volume": 0.5
+  },
   "ex10_beetle_paw_sfx": {
     "looping": false,
     "path": "sounds/beetle_paw.wav",

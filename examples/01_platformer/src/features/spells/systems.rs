@@ -6,7 +6,7 @@ use glam::Vec2;
 use tungsten::core::{Entity, Time, With, Without, World};
 use tungsten::kit::{Aim, Health, Used, cursor_to_world, use_ability};
 
-use super::components::{Spell, Spellbook, Summon};
+use super::components::{Refused, Spell, Spellbook, Summon};
 use super::{
     CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, cost, mana, select,
     selected, summon_type,
@@ -39,18 +39,31 @@ fn aim(world: &World, player: Entity) -> Vec2 {
 /// slot actions and the wheel choose a spell, then `cast` uses it, once a
 /// press or each step it is held, as its ability allows. A held spell let
 /// go, or one its ability refuses, stops: a spray no step keeps ends in the
-/// react phase, and the small balls forget what they owed.
+/// react phase, and the small balls forget what they owed, spending nothing
+/// at the balls' cap. One refused for mana stays off until the cast is
+/// released (I2).
 pub fn cast(world: &mut World) {
     let Some(player) = caster(world) else {
         toys::stop_small_balls(world);
         return;
     };
     choose(world, player);
+    let held = pressed(world, CAST);
+    if !held {
+        refuse(world, false);
+    }
     let mut placing = false;
     match selected(world, player) {
         Some(spell) if spell.held() => {
-            placing =
-                pressed(world, CAST) && hold(world, player, spell) && spell == Spell::SmallBalls;
+            // The small balls' cap refuses before the spend (I1).
+            let capped = spell == Spell::SmallBalls && toys::ball_count(world) >= BALL_CAP;
+            if held && !refused(world) && !capped {
+                let used = hold(world, player, spell);
+                if used == Used::NoCost {
+                    refuse(world, true);
+                }
+                placing = used == Used::Used && spell == Spell::SmallBalls;
+            }
         }
         Some(spell) if just_pressed(world, CAST) => press(world, player, spell),
         _ => {}
@@ -97,11 +110,26 @@ fn choose(world: &mut World, player: Entity) {
     }
 }
 
+/// Whether the held spell was refused for mana since the cast was pressed.
+fn refused(world: &World) -> bool {
+    world
+        .get_resource::<Refused>()
+        .is_some_and(|refused| refused.0)
+}
+
+/// Sets whether the held spell was refused for mana.
+fn refuse(world: &mut World, refused: bool) {
+    if let Some(flag) = world.get_resource_mut::<Refused>() {
+        flag.0 = refused;
+    }
+}
+
 /// One step of the held `spell`: its ability's use, then its spray along
-/// the aim or its small balls at the cursor. Whether it was used.
-fn hold(world: &mut World, player: Entity, spell: Spell) -> bool {
-    if use_ability(world, player, spell.ability()) != Used::Used {
-        return false;
+/// the aim or its small balls at the cursor. The use's outcome.
+fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
+    let used = use_ability(world, player, spell.ability());
+    if used != Used::Used {
+        return used;
     }
     let aim = aim(world, player);
     if let Some(element) = spell.spray() {
@@ -111,7 +139,7 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> bool {
         toys::place_small_balls(world, at, dt);
     }
     player::cast(world, player, aim, false);
-    true
+    Used::Used
 }
 
 /// A press of `spell`: refused before its ability spends anything while
@@ -178,10 +206,14 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
 
 /// `spells_held`, in `Update`: a spray shows from the frame its cast
 /// begins and stops in the frame it ends, between two steps too. `cast`
-/// held on a spray the player can pay a step of starts it when none runs;
-/// a release, another spell, a death or the player's loss ends it at once.
-/// Its cost and its exposure wait for the step.
+/// held on a spray the player can pay a step of starts it when none runs
+/// and none was refused for mana since the press; a release, another
+/// spell, a death or the player's loss ends it at once. Its cost and its
+/// exposure wait for the step.
 pub fn held(world: &mut World) {
+    if !pressed(world, CAST) {
+        refuse(world, false);
+    }
     let wanted = caster(world).and_then(|player| {
         let spell = selected(world, player)?;
         let element = spell.spray()?;
@@ -203,7 +235,7 @@ pub fn held(world: &mut World) {
         return;
     };
     let payable = cost(world, spell).is_some_and(|cost| mana(world, player) >= cost);
-    if payable && toys::spraying(world, player).is_none() {
+    if payable && !refused(world) && toys::spraying(world, player).is_none() {
         let aim = aim(world, player);
         toys::start_spray(world, player, aim, element);
     }

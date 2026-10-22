@@ -105,11 +105,17 @@ pub enum Sound {
     TrollThrow,
     /// A shot through a wooden deck.
     Splintered,
+    /// The player hurt by a blow or killed, never by a tick (X1).
+    PlayerHurt,
+    /// The staff light guttering out for want of mana.
+    StaffGuttered,
+    /// A crawler shrinking from the light's edge.
+    CrawlerScared,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 33] = [
+    pub const ALL: [Sound; 36] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -143,6 +149,9 @@ impl Sound {
         Sound::TrollSlam,
         Sound::TrollThrow,
         Sound::Splintered,
+        Sound::PlayerHurt,
+        Sound::StaffGuttered,
+        Sound::CrawlerScared,
     ];
 
     /// Its cue event's name.
@@ -182,6 +191,9 @@ impl Sound {
             Sound::TrollSlam => "troll_slammed",
             Sound::TrollThrow => "troll_threw",
             Sound::Splintered => "splintered",
+            Sound::PlayerHurt => "player_hurt",
+            Sound::StaffGuttered => "staff_guttered",
+            Sound::CrawlerScared => "crawler_scared",
         }
     }
 }

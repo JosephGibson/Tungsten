@@ -6,16 +6,16 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    AssetRegistry, CameraState, MaterialAssetId, MaterialRegistry, SpriteAsset, World,
-    parallax_world_position,
+    AssetRegistry, CameraState, DataRegistry, MaterialAssetId, MaterialRegistry, SpriteAsset,
+    World, parallax_world_position,
 };
 use tungsten::kit::cursor_to_world;
 use tungsten::render::{SpriteBatch, SpriteInstance};
 use tungsten::{WindowSize, extract_sprites_default, extract_tilemaps};
 
 use super::TILE;
-use super::components::{Area, SceneTime};
-use super::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, area_shares, drawn_time};
+use super::components::{Area, AssetsReload, Cover, OpaqueTiles, SceneTime};
+use super::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, area_shares, bloom_on, drawn_time};
 use crate::game::GAMEPLAY;
 use crate::shell;
 
@@ -191,6 +191,18 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             .map(|(area, share)| area.horizon as f32 * TILE * share)
             .sum::<f32>();
     let alpha = |share: f32| (share.clamp(0.0, 1.0) * 255.0).round() as u8;
+    // While no reload can change their pixels, the opaque sprites' tiles
+    // hide what lies under them, as a fully black night sky hides the sky.
+    let cover = world
+        .get_resource::<Cover>()
+        .filter(|_| !world.has_resource::<AssetsReload>());
+    let opaque = |sprite: &str| {
+        cover.is_some()
+            && world
+                .get_resource::<DataRegistry>()
+                .and_then(|data| data.get::<OpaqueTiles>(super::OPAQUE))
+                .is_some_and(|tiles| tiles.sprites.contains(sprite))
+    };
     let mut batches = Vec::new();
     for (id, top, scroll, scale) in BACKDROP {
         let Some(asset) = assets.get_sprite(id) else {
@@ -200,9 +212,14 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             // The sky fills the view rather than stretching a strip of it.
             let size = max - min + overhang * 2.0;
             let mut batch = SpriteBatch::new(asset.atlas, asset.filter);
-            batch
-                .instances
-                .push(instance(asset, min - overhang, size, [255; 4]));
+            // The black night sky, drawn over it at full night, hides it.
+            let hidden =
+                alpha(night) == 255 && opaque(SKY_BLACK) && assets.get_sprite(SKY_BLACK).is_some();
+            if !hidden {
+                batch
+                    .instances
+                    .push(instance(asset, min - overhang, size, [255; 4]));
+            }
             batches.push(batch);
             if let (Some(black), true) = (assets.get_sprite(SKY_BLACK), night > 0.0) {
                 let mut batch = SpriteBatch::new(black.atlas, black.filter);
@@ -251,6 +268,34 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             }
         }
     }
+    // A quad whose part in the view, a tile wider each side for the shake,
+    // lies wholly on opaque tiles, or that misses the view, is never seen;
+    // a foot, one row of texels run down the view, ends where the tiles
+    // below it fill every cell, which leaves each pixel it still covers as
+    // it was.
+    if let Some(cover) = cover {
+        let margin = Vec2::splat(TILE);
+        let (low, high) = (min - margin, max + margin);
+        for batch in &mut batches {
+            batch.instances.retain_mut(|quad| {
+                let at = Vec2::from(quad.position);
+                let (seen_min, mut seen_max) =
+                    (at.max(low), (at + Vec2::from(quad.size)).min(high));
+                if seen_min.x >= seen_max.x || seen_min.y >= seen_max.y {
+                    return false;
+                }
+                if quad.uv_size[1] == 0.0 {
+                    let bottom = cover.open_bottom(seen_min, seen_max);
+                    if bottom < seen_max.y {
+                        quad.size[1] = bottom - at.y;
+                        seen_max.y = bottom;
+                    }
+                }
+                seen_min.y < seen_max.y && !cover.hides(seen_min, seen_max)
+            });
+        }
+        batches.retain(|batch| !batch.instances.is_empty());
+    }
     batches
 }
 
@@ -296,7 +341,8 @@ fn strip(
 }
 
 /// The moon's discs, round whatever the view's aspect, each glow through
-/// its soft material when the manifest has it.
+/// its soft material when the manifest has it, and only while the Bloom
+/// option is on.
 fn moon(
     world: &World,
     assets: &AssetRegistry,
@@ -315,7 +361,12 @@ fn moon(
         };
         materials.and_then(|registry| registry.get(name))
     };
+    // The moon's glow discs, bloom's look, hide while the option is off.
+    let bloom = bloom_on(world);
     for (id, size, color) in MOON_DISCS {
+        if id != MOON && !bloom {
+            continue;
+        }
         let Some(asset) = assets.get_sprite(id) else {
             continue;
         };

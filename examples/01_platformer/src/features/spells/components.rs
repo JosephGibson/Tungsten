@@ -131,3 +131,10 @@ impl School {
 pub struct Summon {
     pub selected: usize,
 }
+
+/// A held spell its ability refused for mana since the cast was pressed: a
+/// World resource a run's start inserts. It stays off until the cast is
+/// released, so a spray at empty mana does not restart each step the
+/// regeneration pays for (I2).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Refused(pub bool);

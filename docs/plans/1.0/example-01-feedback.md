@@ -42,7 +42,7 @@ Kinds: **B** bug, **X** found on the way, **P** performance, **T** tuning, **F**
 | X3 | Enemies are never removed when they leave the level (`toys/systems.rs:548-559`); once pushes move them, one knocked off the map falls forever | 01 | f |
 | X4 | Two open black holes (900 + 300 particles each) would overflow the 2,048-particle cap (`level/mod.rs:62`) | data | f |
 | X5 | The troll's stun rung looks unreachable within 100 mana (about five strikes); estimated, not traced | data | e |
-| X6 | `World::query` matches every archetype per call (`crates/tungsten-core/src/ecs/world.rs:338-348`): 5.3 µs a query in a 01 run, dev profile; B1 paid it per sample | K6 | follow-up |
+| X6 | `World::query` matches every archetype per call (`crates/tungsten-core/src/ecs/world.rs:338-348`): 5.3 µs a query in a 01 run, dev profile; B1 paid it per sample | K6 | e (M77, `D-206`: 146 queries a frame, 1.76–1.85 µs a walk in release, taken) |
 
 ### Performance
 
@@ -51,12 +51,12 @@ With 12,000 settled balls and nothing happening, four of 01's own systems cost m
 | # | Hot path | Fix | Measured | Stop |
 | --- | --- | --- | --- | --- |
 | P1 | `fire_contacts` (`elements/systems.rs:407-458`), every step: two random lookups per ball and a swept-box test against each fire, for sleeping balls far from any fire (verified) | The previous position read in the query; balls whose swept box misses the fires' joined box skipped first (patch) | 4.10 → 1.41 ms | e |
-| P2 | `ball_look` (`toys/systems.rs:1086-1111`), every frame: `freeze_amount` per ball and three passes | One `query_mut` with `Option` columns (patch) | 2.25 → 2.43 ms: no gain; its cost is the per-ball rainbow tint (`powf`), which a table would change (`tests/game/spawning.rs:167` pins exact colours) | e |
+| P2 | `ball_look` (`toys/systems.rs:1086-1111`), every frame: `freeze_amount` per ball and three passes | One `query_mut` with `Option` columns (patch) | 2.25 → 2.43 ms: no gain; its cost is the per-ball rainbow tint (`powf`), which a table would change (`tests/game/spawning.rs:167` pins exact colours) | e (the patch); f (the tint table: 0.26 ms a frame for 12,000 unburnt balls, M77) |
 | P3 | `body_impacts` (`elements/systems.rs:1002-1114`): `target_hits` (`:943-984`) runs a `Throws` scan, three `has` and a lookup per body before its speed check; the event loop does 3–5 lookups per side before `closing < SHATTER_SPEED`, which rules everything out | Speed checks first (patch) | 1.71 → 1.31 ms | e |
 | P4 | `toys_bounds` (`toys/systems.rs:548-563`): four `has` per entity before the cheap `escaped` test | The two filters swapped (patch) | 1.04 → 0.85 ms | e |
 | P5 | While anything burns: `fire_spread` rebuilds a cell map of every unburnt ball each step (`elements/systems.rs:140-150`) | Bucket only the balls near the burning ones, as `fire_exposure` bounds itself (`:186-203`) | not yet | e |
 | P6 | Conditional scans over every body: a chasing troll's `nearest_liftable` (`troll.rs:129-140`) and its slam (`:298-305`), the cascade queue's `Bin::build` (`cascade.rs:373-406`, an ID map of every body for at most 48 entries), the gun's `bodies()` while a bullet flies (`gun/systems.rs:193-236`), the black hole's `pull_response` before its reach (`toys/systems.rs:201-209`), `iron_friction`'s per-event lookups (`:575-589`), particle scans with no hole open (`:1287-1294`), `impact_sparks`, `burst_cleanup` (`shared.rs:100-102`), `ball_count` (`toys/mod.rs:207`), `crush` (`elements/systems.rs:629-636`), lightning's `conductors` (`lightning/mod.rs:115-121`) | Distance or speed checks before lookups; `Option` columns for `has`; maps filled only for what is used | not yet | e |
-| P7 | After a pit burns out, every spent ball keeps `BallBurn { remaining: 0 }` (`elements/systems.rs:104-109`), and `fire_tick`, `fire_spread`'s sources, `fire_exposure`, `fire_particles`, each wisp's scan (`wisp.rs:65-77`) and the flames' draw walk all 12,000 every step or frame | A `Spent` marker, a save field (schema 8) | not yet | e |
+| P7 | After a pit burns out, every spent ball keeps `BallBurn { remaining: 0 }` (`elements/systems.rs:104-109`), and `fire_tick`, `fire_spread`'s sources, `fire_exposure`, `fire_particles`, each wisp's scan (`wisp.rs:65-77`) and the flames' draw walk all 12,000 every step or frame | A `Spent` marker, a save field (schema 8) | M77: the spent pit's walkers cost about 0.05 ms a release frame (`fire_tick` 0.014 ms, the extract 0.024 ms more), under its 0.3 ms bar | f |
 | P8 | The dev profile builds 01, the kit and the engine's umbrella crate at opt-level 0 (root `Cargo.toml` `[profile.dev]`; core is already at 1, dependencies at 2), and `cargo run` is how 01 is played | `[profile.dev.package.example-01-platformer]`, `tungsten-kit` and `tungsten` at opt-level 1, beside core's | With B1 and P1–P4: idle no balls 3.1 → 1.3 ms, idle 12,000 balls 13.2 → 5.6, spraying into 12,000 balls 17.5 → 7.8 (§2.1) | e, the owner's call |
 
 Together B1 and P1–P4 bring an idle full pit from 16.4 to 13.2 ms; P8 then to 5.6 ms. The release profile was not measured.
@@ -175,6 +175,8 @@ Each stop's plan session follows tungsten-milestone: audit with `file:line` at i
 5. **Consistency and records of state.** I1's cap check before the spend, I16's data test, I20's text; schema 8 with P7's `Spent`.
 6. **Records and release 0.98.**
 
+**Landed (M77, 0.98, `D-205`).** Every (e) row landed but P7, which moved to (f) when its measurement came in under its bar, and P2's tint table, (f)'s as well. The owner's prompt of 2026-10-22 widened the stop past this plan's non-goals: core physics caches a tilemap's collision proxies (`D-203`), the GPU's share of the new level was attributed and 01's backdrop culled, the template's autosave writes over an older schema's slots (`D-204`), P8 was taken, and X6 was taken on its measurement (`D-206`). One check fell short: step 4's "the hollow at least 3 ms lower" (its view keeps a band of sky). From 0.97, release: the idle spawn 2.504 → 0.485 ms, an ice spray into air 13.740 → 0.569 ms, the frame-time harness with a full pit and six enemies 6.091 → 3.547 ms ([plan](../archive/1.0/phase6-milestone-77-example-01-fixes.md)).
+
 ### 3.2 01 (f): feel — 0.99, level B, XL
 
 1. **Pushes.** I17's `body_centre` and `radial_push`; F6 and F9 on it; X3's level bounds for enemies.
@@ -249,7 +251,7 @@ The shell stays the template's, byte for byte; no stop changes the template.
 | K3 | A kit hitbox cannot follow its owner's facing | `crates/tungsten-kit/src/overlap/hit.rs` (`with_offset` only, `:774`) | Kit backlog | The swipe as a box hit in 01 (C2) |
 | K4 | An animation cannot play slower or faster | No rate on the playback state, `crates/tungsten-core/src/assets/animation.rs` | Engine; before the freeze if wanted | The chill by tint and speed (F4) |
 | K5 | UI text has no outline or shadow | `crates/tungsten-core/src/ui/theme.rs:471` | Engine backlog | Keys on a dark backing (L3) |
-| K6 | `World::query` matches every archetype per call | `crates/tungsten-core/src/ecs/world.rs:338-348`; 5.3 µs | Known issue; C2 | Queries hoisted (B1) |
+| K6 | `World::query` matches every archetype per call | `crates/tungsten-core/src/ecs/world.rs:338-348`; 5.3 µs | Done in M77 as X6 (`D-206`) | Queries hoisted (B1) |
 | K7 | The platformer controller never pushes dynamic bodies or is pushed by them | `crates/tungsten-kit/src/motion/platformer.rs:82-87` | Kit backlog (`D-172`) | The jump's shove (T8) |
 | K8 | `charges { all: true }` refills from the first spent charge | `docs/known-issues.md:45` (P2) | Existing P2 | 01 times its reload (T7) |
 | K9 | Lit sprites draw without the hit-flash material | `docs/known-issues.md:62` | Existing known issue | A tint (I15) |
@@ -269,4 +271,4 @@ The shell stays the template's, byte for byte; no stop changes the template.
 
 ## Follow-ups
 
-- K6 and K12–K14 into `docs/known-issues.md` and C2's candidates.
+- K12–K14 went into `docs/known-issues.md` in M77, for C2's candidates; K6 landed as X6 (`D-206`).

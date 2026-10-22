@@ -156,12 +156,16 @@ pub fn mana(world: &World, player: Entity) -> f32 {
         .unwrap_or(0.0)
 }
 
-/// Builds the HUD for the run gameplay starts, owned by gameplay.
+/// Builds the HUD for the run gameplay starts, owned by gameplay, and its
+/// held spell's refusal.
 pub fn start(world: &mut World) {
     hud::start(world);
+    world.insert_resource(components::Refused::default());
 }
 
-/// Forgets the run's HUD, whose roots leave with gameplay.
+/// Forgets the run's HUD, whose roots leave with gameplay, and its held
+/// spell's refusal.
 pub fn stop(world: &mut World) {
     world.remove_resource::<hud::Hud>();
+    world.remove_resource::<components::Refused>();
 }

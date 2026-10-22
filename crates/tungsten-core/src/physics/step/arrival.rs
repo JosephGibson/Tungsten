@@ -2,6 +2,7 @@
 //! against what that velocity reaches within the substep.
 
 use super::pairs::PAIR_REPAIRED;
+use super::pairs::PairGrid;
 use super::solver::narrow_phase_at;
 use super::{Proxy, ProxyLayers};
 use crate::physics::PhysicsConfig;
@@ -178,7 +179,7 @@ pub(super) fn arrival_pass(
     config: &PhysicsConfig,
     sub_dt: f32,
     proxies: &mut [Proxy],
-    grid: &mut SpatialGrid,
+    grid: &mut PairGrid,
     repair_grid: &mut SpatialGrid,
     pair_flags: &[u8],
     layers: &ProxyLayers,

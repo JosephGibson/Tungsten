@@ -18,6 +18,7 @@
 //! cube fitted to each body.
 
 use example_01_platformer::features::audio::components::Music;
+use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::audio::{COMBAT_IN, COMBAT_OUT, MUSIC_COMBAT};
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::combat::{Hit, Kind};
@@ -31,9 +32,7 @@ use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Shown, Sight,
 };
-use example_01_platformer::features::enemies::crawler::{
-    LANTERN_OFFSET, LANTERN_REACH, LUNGE_SPEED,
-};
+use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
 use example_01_platformer::features::enemies::{self, ARRIVED, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
@@ -51,8 +50,8 @@ use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, AudioCommand, Bundle, CameraState, Collider, Entity, EventQueue, Position,
-    RigidBodyBundle, Time, Velocity,
+    AnimationState, AssetRegistry, AudioCommand, Bundle, CameraState, Collider, Entity, EventQueue,
+    Position, RigidBodyBundle, Time, Velocity,
 };
 use tungsten::kit::{
     AilmentThreshold, ContactDamage, Damaged, Health, Hitbox, KitRng, PlatformerController,
@@ -615,8 +614,8 @@ fn cold_freezes_the_wisp() {
         "fallen: {}",
         at(&harness, wisp)
     );
-    // Five seconds, then it thaws and flies again.
-    assert!(until(&mut harness, 360, |h| !tagged(
+    // Seven and a half seconds, then it thaws and flies again.
+    assert!(until(&mut harness, 480, |h| !tagged(
         h,
         wisp,
         "status.frozen"
@@ -690,34 +689,66 @@ fn the_crawler_walks_its_ledge_and_turns_at_the_ends() {
 }
 
 #[test]
-fn the_crawler_keeps_out_of_the_lanterns_light() {
-    let (mut harness, player) = arena();
-    let crawler = walker(&mut harness, EnemyKind::Crawler, 640.0, TOP);
-    let light =
-        |h: &UiHarness| h.world().get::<Position>(player_entity(h)).unwrap().0 + LANTERN_OFFSET;
-    let mut nearest = f32::MAX;
-    for _ in 0..240 {
+fn a_crawler_is_scared_at_the_drawn_light() {
+    // From each side, the player facing it: facing left, the drawn glow
+    // hangs on the body's left, where the crawler reads it (I8).
+    for side in [1.0_f32, -1.0] {
+        let (mut harness, player) = arena();
+        let action = if side > 0.0 {
+            "move_right"
+        } else {
+            "move_left"
+        };
+        harness.harness_mut().press_action(action);
         harness.step(1);
-        nearest = nearest.min(at(&harness, crawler).distance(light(&harness)));
+        harness.harness_mut().release_action(action);
+        stand(&mut harness, player, 900.0, TOP);
+        harness.step(2);
+        let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0 + side * 340.0, TOP);
+        let light = |h: &UiHarness| crawler::light(h.world()).expect("the light burns");
+        let (mut nearest, mut hisses) = (f32::MAX, 0);
+        let mut puffs = 0;
+        for _ in 0..240 {
+            harness.step(1);
+            let (centre, reach) = light(&harness);
+            nearest = nearest.min(at(&harness, crawler).distance(centre) - reach);
+            hisses += harness
+                .harness()
+                .events::<Sounded>()
+                .filter(|sounded| sounded.sound == Sound::CrawlerScared)
+                .count();
+            puffs = puffs.max(super::bursts(&harness, FROST_BREATH));
+        }
+        assert!(nearest >= -1.0, "outside the drawn light: {nearest}");
+        assert!(nearest <= 24.0, "held at its edge: {nearest}");
+        let heading = harness.world().get::<Enemy>(crawler).unwrap().heading;
+        assert_eq!(heading, -side, "facing the player");
+        let clip = &harness
+            .world()
+            .get::<AnimationState>(crawler)
+            .unwrap()
+            .animation_id;
+        let facing = if heading < 0.0 { "_left" } else { "" };
+        assert_eq!(*clip, format!("ex10_crawler_scared{facing}"), "scared");
+        assert_eq!(
+            (hisses, puffs),
+            (1, 1),
+            "one hiss and one puff as it starts"
+        );
+        // With the light out, it comes in, its scare over.
+        let (centre, reach) = light(&harness);
+        harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+        let came = until(&mut harness, 240, |h| {
+            at(h, crawler).distance(centre) < reach - 30.0
+        });
+        assert!(came, "the dark lets it in");
+        let clip = &harness
+            .world()
+            .get::<AnimationState>(crawler)
+            .unwrap()
+            .animation_id;
+        assert!(!clip.contains("scared"), "{clip}");
     }
-    assert!(
-        nearest >= LANTERN_REACH - 1.0,
-        "outside the light: {nearest}"
-    );
-    assert!(
-        nearest <= LANTERN_REACH + 24.0,
-        "held at its edge: {nearest}"
-    );
-    assert!(
-        harness.world().get::<Enemy>(crawler).unwrap().heading < 0.0,
-        "facing the player"
-    );
-    // With the lantern out, it comes in.
-    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
-    let came = until(&mut harness, 240, |h| {
-        at(h, crawler).distance(light(h)) < LANTERN_REACH - 30.0
-    });
-    assert!(came, "the dark lets it in");
 }
 
 #[test]
@@ -816,7 +847,7 @@ fn a_freeze_mid_tell_holds_the_lunge_until_the_thaw() {
         .x;
     assert!(speed.abs() < 1.0, "no lunge while frozen: {speed}");
     // At the thaw the tell resumes with the time it had left.
-    assert!(until(&mut harness, 300, |h| !tagged(
+    assert!(until(&mut harness, 420, |h| !tagged(
         h,
         crawler,
         "status.frozen"
@@ -971,13 +1002,16 @@ fn the_beetle_takes_a_quarter_physical_half_fire_double_shock_and_conducts() {
     land(&mut harness, beetle, Kind::Shock, 10.0);
     assert_eq!(health(&harness, beetle), 90.0, "double shock");
     assert!(lightning::conductive(harness.world(), beetle));
-    // A strike beside it takes it as its rod.
-    let aim = at(&harness, beetle) + Vec2::new(60.0, -40.0);
+    // A strike above it falls onto it and doubles on it.
+    let aim = at(&harness, beetle) + Vec2::new(0.0, -200.0);
     let landing = lightning::strike(harness.world_mut(), player, aim);
+    let centre = body(&harness, beetle);
     assert!(
-        landing.distance(body(&harness, beetle)) < 1.0,
-        "on the beetle: {landing}"
+        (landing.x - aim.x).abs() < 0.01 && landing.y < centre.y && landing.y > centre.y - 40.0,
+        "on the beetle: {landing} against {centre}"
     );
+    harness.step(2);
+    assert_eq!(health(&harness, beetle), 10.0, "double the strike's shock");
 }
 
 #[test]
@@ -1500,7 +1534,7 @@ fn knockback_the_black_hole_balls_and_iron_barely_move_the_troll() {
 }
 
 #[test]
-fn the_troll_slows_in_stages_and_freezes_only_past_a_high_threshold() {
+fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
     let (mut harness, _) = arena();
     let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
     still(&mut harness, troll);
@@ -1517,10 +1551,7 @@ fn the_troll_slows_in_stages_and_freezes_only_past_a_high_threshold() {
         (first - 70.0 * 0.65).abs() < 0.01,
         "the first stage: {first}"
     );
-    // Past the others' freezing needs, it is not frozen.
-    cold(&mut harness, 60.0);
-    assert!(!tagged(&harness, troll, "status.frozen"));
-    assert!((move_speed(&harness, troll) - first).abs() < 0.01);
+    // Past half its threshold, the second stage, not frozen yet.
     cold(&mut harness, 30.0);
     let second = move_speed(&harness, troll);
     assert!(
@@ -1528,16 +1559,47 @@ fn the_troll_slows_in_stages_and_freezes_only_past_a_high_threshold() {
         "the second stage: {second}"
     );
     assert!(!tagged(&harness, troll, "status.frozen"));
-    // Past four times the needs, a short freeze.
-    cold(&mut harness, 80.0);
-    assert!(tagged(&harness, troll, "status.frozen"), "frozen at last");
+    // Past its threshold within the chill, a three-second freeze.
+    cold(&mut harness, 15.0);
+    assert!(tagged(&harness, troll, "status.frozen"), "frozen");
     let mut frames = 0;
-    assert!(until(&mut harness, 200, |h| {
+    assert!(until(&mut harness, 300, |h| {
         frames += 1;
         !tagged(h, troll, "status.frozen")
     }));
     let held = frames as f32 / 60.0;
-    assert!(held <= 1.6, "a short freeze: {held} s");
+    assert!(
+        (2.9..=3.1).contains(&held),
+        "a three-second freeze: {held} s"
+    );
+}
+
+#[test]
+fn a_steady_ice_spray_freezes_the_troll() {
+    // The feedback's probe: a still troll 260 px away under the ice spray
+    // held on it, mana kept full, freezes within five seconds.
+    let (mut harness, player) = arena();
+    let troll = troll_at(&mut harness, 560.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    harness.step(2);
+    choose(&mut harness, 2);
+    let eye = super::centre(&harness, player);
+    let target = Vec2::new(at(&harness, troll).x, eye.y);
+    aim_at(&mut harness, target);
+    harness.harness_mut().press_action("cast");
+    let mut frozen = None;
+    for frame in 0..300 {
+        if let Some(stats) = harness.world_mut().get_mut::<tungsten::kit::Stats>(player) {
+            stats.set_base("mana", 100.0);
+        }
+        harness.step(1);
+        if tagged(&harness, troll, "status.frozen") {
+            frozen = Some(frame);
+            break;
+        }
+    }
+    harness.harness_mut().release_action("cast");
+    assert!(frozen.is_some(), "never frozen in five seconds");
 }
 
 #[test]
@@ -1555,7 +1617,7 @@ fn the_troll_stuns_only_past_a_high_threshold() {
     // 45 landed, past the others' stunning needs.
     shock(&mut harness, 30.0);
     assert!(!tagged(&harness, troll, "status.stunned"), "not yet");
-    // 120 more, past four times.
+    // 120 more, past three times.
     shock(&mut harness, 80.0);
     assert!(tagged(&harness, troll, "status.stunned"), "stunned");
 }

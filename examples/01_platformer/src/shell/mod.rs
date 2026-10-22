@@ -153,6 +153,9 @@ pub enum SlotState {
     Empty,
     /// A save this build reads, with when it was written (Unix ms).
     Ready(Box<SaveGame>, u64),
+    /// Written by an older version under a schema this build cannot read,
+    /// with when.
+    Older(u64),
     /// Written by a newer version of the game.
     Newer,
     Damaged,
@@ -477,11 +480,10 @@ pub fn saving_on(world: &World) -> bool {
 }
 
 /// Reads every slot of [`SLOTS`], in order, with [`OLD_AUTOSAVE`] after the
-/// autosaves while its file stays, marking the ones that fail to load
-/// read-only; with how many files in the folder could not be read.
+/// autosaves while its file stays; with how many files in the folder could
+/// not be read.
 pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) {
-    let slots = world.resource::<SaveSlots>();
-    let Some(dir) = slots.dir() else {
+    let Some(dir) = world.resource::<SaveSlots>().dir() else {
         return (
             SLOTS.iter().map(|slot| (*slot, SlotState::Off)).collect(),
             0,
@@ -489,19 +491,33 @@ pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) 
     };
     let old = dir.join(format!("{OLD_AUTOSAVE}.json")).exists();
     let names = AUTOSAVES.into_iter().chain(old.then_some(OLD_AUTOSAVE));
-    let names = names.chain(SLOTS[AUTOSAVES.len()..].iter().copied());
+    read_named(world, names.chain(SLOTS[AUTOSAVES.len()..].iter().copied()))
+}
+
+/// Reads `names`' slots, marking read-only the ones that fail to load but
+/// an older schema's autosave, which the next autosave may take.
+fn read_named(
+    world: &mut World,
+    names: impl Iterator<Item = &'static str>,
+) -> (Vec<(&'static str, SlotState)>, usize) {
+    let slots = world.resource::<SaveSlots>();
     let list = slots.list().unwrap_or_default();
+    let time = |slot| list.slots.iter().find(|info| info.name == slot);
+    let time = |slot| time(slot).map_or(0, |info| info.saved_at_ms);
     let read = |slot: &'static str| {
-        let saved = list.slots.iter().find(|info| info.name == slot);
         let state = match slots.load::<SaveGame>(slot) {
-            Ok(save) => SlotState::Ready(Box::new(save), saved.map_or(0, |info| info.saved_at_ms)),
+            Ok(save) => SlotState::Ready(Box::new(save), time(slot)),
             Err(SaveError::NotFound { .. }) => SlotState::Empty,
+            Err(SaveError::NoFolder) => SlotState::Off,
             Err(SaveError::NewerSchema { .. } | SaveError::UnknownEnvelope { .. }) => {
                 SlotState::Newer
             }
             Err(error) => {
                 log::warn!("Save slot '{slot}' not loaded: {error}");
-                SlotState::Damaged
+                match error {
+                    SaveError::Migration { .. } => SlotState::Older(time(slot)),
+                    _ => SlotState::Damaged,
+                }
             }
         };
         (slot, state)
@@ -509,7 +525,11 @@ pub fn read_slots(world: &mut World) -> (Vec<(&'static str, SlotState)>, usize) 
     let scan: Vec<_> = names.map(read).collect();
     let shell = world.resource_mut::<Shell>();
     for (slot, state) in &scan {
-        let failed = matches!(state, SlotState::Newer | SlotState::Damaged);
+        let failed = match state {
+            SlotState::Newer | SlotState::Damaged => true,
+            SlotState::Older(_) => !AUTOSAVES.contains(slot),
+            _ => false,
+        };
         if failed && !shell.read_only.contains(slot) {
             shell.read_only.push(slot);
         }
@@ -616,40 +636,51 @@ fn write(world: &mut World, slot: &'static str, save: &SaveGame) -> bool {
 
 /// Saves the live run to an autosave while the Autosave option is on: to
 /// the slot the run wrote last when no fixed step has run since, else the
-/// first autosave with no save, else the oldest; `false` when nothing was
-/// written.
+/// first autosave with no save, else the oldest an older schema left, else
+/// the oldest, else a damaged one; never a newer version's; `false` when
+/// nothing was written.
 pub fn autosave(world: &mut World) -> bool {
     world.resource::<options::GameOptions>().autosave
         && save::capture(world).is_some_and(|save| write_autosave(world, &save))
 }
 
 /// Writes `save` to the autosave slot [`autosave`] names, skipping
-/// read-only ones; of two saves of one time, the one this program wrote
-/// first is the older, then the lower number.
+/// read-only ones but a damaged one, the last resort, which stops being
+/// read-only; of two saves of one time, the one this program wrote first
+/// is the older, then the lower number.
 fn write_autosave(world: &mut World, save: &SaveGame) -> bool {
     let last = world.resource::<RunState>().last_autosave;
-    let slot = last.or_else(|| {
-        let (slots, _) = read_slots(world);
+    let slot = last.map(|slot| (slot, false)).or_else(|| {
+        let (slots, _) = read_named(world, AUTOSAVES.into_iter());
         let shell = world.resource::<Shell>();
         let order = |slot| shell.written.iter().position(|each| *each == slot);
-        let free = |slot| AUTOSAVES.contains(&slot) && !shell.read_only.contains(&slot);
+        let free = |slot| !shell.read_only.contains(&slot);
         let keys = slots
             .into_iter()
             .enumerate()
             .filter_map(|(at, (slot, state))| {
                 let key = match state {
-                    SlotState::Empty => (false, 0, None, at),
-                    SlotState::Ready(_, time) => (true, time, order(slot), at),
+                    SlotState::Empty if free(slot) => (0, 0, None, at),
+                    SlotState::Older(time) if free(slot) => (1, time, None, at),
+                    SlotState::Ready(_, time) if free(slot) => (2, time, order(slot), at),
+                    SlotState::Damaged => (3, 0, None, at),
                     _ => return None,
                 };
-                free(slot).then_some((key, slot))
+                Some((key, slot))
             });
-        keys.min_by_key(|(key, _)| *key).map(|(_, slot)| slot)
+        let (key, slot) = keys.min_by_key(|(key, _)| *key)?;
+        Some((slot, key.0 == 3))
     });
-    let Some(slot) = slot else {
+    let Some((slot, damaged)) = slot else {
         log::warn!("No autosave slot can be written");
         return false;
     };
+    if damaged {
+        world
+            .resource_mut::<Shell>()
+            .read_only
+            .retain(|each| *each != slot);
+    }
     let written = write(world, slot, save);
     if written {
         world.resource_mut::<RunState>().last_autosave = Some(slot);

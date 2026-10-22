@@ -1,8 +1,10 @@
 //! The level's components and resources.
 
+use std::collections::BTreeSet;
+
 use glam::Vec2;
 use serde::Deserialize;
-use tungsten::core::Entity;
+use tungsten::core::{Entity, LayerKind, TilemapData};
 use tungsten::kit::ContactDamage;
 
 /// A level emitter of torch embers, spray or motes: the map's `emitters`
@@ -150,3 +152,117 @@ pub struct AreaLight {
 /// lights pulse by it, drawn between its last two steps.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct SceneTime(pub f32);
+
+/// The sprites every pixel of which is opaque, as the generator measured
+/// them (`data/opaque_tiles/level.json`).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct OpaqueTiles {
+    pub sprites: BTreeSet<String>,
+}
+
+/// Which of the map's cells a drawn tile of an opaque sprite fills, as a
+/// summed-area table of the others, built at a run's spawn: a backdrop quad
+/// whose visible part lies wholly on filled cells is never seen.
+#[derive(Debug, Clone, Default)]
+pub struct Cover {
+    cols: usize,
+    rows: usize,
+    origin: Vec2,
+    tile: Vec2,
+    /// `(cols + 1) × (rows + 1)`: the open cells above and left of each.
+    open: Vec<u32>,
+}
+
+impl Cover {
+    /// The cells `data`'s drawn layers fill with a sprite of `opaque`,
+    /// placed at `origin`.
+    #[must_use]
+    pub fn of(data: &TilemapData, origin: Vec2, opaque: &OpaqueTiles) -> Self {
+        let (cols, rows) = (data.width as usize, data.height as usize);
+        let solid: Vec<bool> = data
+            .tileset
+            .iter()
+            .map(|sprite| opaque.sprites.contains(sprite))
+            .collect();
+        let mut filled = vec![false; cols * rows];
+        for layer in data.layers.iter().filter(|l| l.kind == LayerKind::Render) {
+            for (cell, &tile) in layer.tiles.iter().take(cols * rows).enumerate() {
+                if usize::try_from(tile).is_ok_and(|tile| solid.get(tile) == Some(&true)) {
+                    filled[cell] = true;
+                }
+            }
+        }
+        let width = cols + 1;
+        let mut open = vec![0; width * (rows + 1)];
+        for row in 0..rows {
+            let mut run = 0;
+            for col in 0..cols {
+                run += u32::from(!filled[row * cols + col]);
+                open[(row + 1) * width + col + 1] = open[row * width + col + 1] + run;
+            }
+        }
+        Self {
+            cols,
+            rows,
+            origin,
+            tile: Vec2::new(data.tile_width as f32, data.tile_height as f32),
+            open,
+        }
+    }
+
+    /// Whether every cell the world box `min..max` touches is filled; a box
+    /// reaching past the map never is.
+    #[must_use]
+    pub fn hides(&self, min: Vec2, max: Vec2) -> bool {
+        let lo = ((min - self.origin) / self.tile).floor();
+        let hi = ((max - self.origin) / self.tile).ceil();
+        if !(lo.cmpge(Vec2::ZERO).all() && hi.x <= self.cols as f32 && hi.y <= self.rows as f32)
+            || lo.x >= hi.x
+            || lo.y >= hi.y
+        {
+            return false;
+        }
+        let (c0, r0, c1, r1) = (lo.x as usize, lo.y as usize, hi.x as usize, hi.y as usize);
+        let width = self.cols + 1;
+        let at = |row: usize, col: usize| self.open[row * width + col];
+        at(r1, c1) + at(r0, c0) == at(r0, c1) + at(r1, c0)
+    }
+}
+
+impl Cover {
+    /// The bottom edge, in world y, of the lowest row of cells within the
+    /// world box `min..max` that holds an unfilled cell, or `min.y` when
+    /// every row is filled: what of the box lies below it is hidden. Rows
+    /// past the map are unfilled.
+    #[must_use]
+    pub fn open_bottom(&self, min: Vec2, max: Vec2) -> f32 {
+        let lo = ((min - self.origin) / self.tile).floor();
+        let hi = ((max - self.origin) / self.tile).ceil();
+        if !(lo.cmpge(Vec2::ZERO).all() && hi.x <= self.cols as f32 && hi.y <= self.rows as f32)
+            || lo.x >= hi.x
+            || lo.y >= hi.y
+        {
+            return max.y;
+        }
+        let (c0, c1) = (lo.x as usize, hi.x as usize);
+        let (r0, r1) = (lo.y as usize, hi.y as usize);
+        let width = self.cols + 1;
+        let at = |row: usize, col: usize| self.open[row * width + col];
+        let filled = |row: usize| at(row + 1, c1) + at(row, c0) == at(row, c1) + at(row + 1, c0);
+        let mut bottom = r1;
+        while bottom > r0 && filled(bottom - 1) {
+            bottom -= 1;
+        }
+        if bottom == r1 {
+            max.y
+        } else {
+            (self.origin.y + bottom as f32 * self.tile.y).max(min.y)
+        }
+    }
+}
+
+/// Marks a game whose assets hot-reload (`main.rs` in a debug build): a
+/// sprite reload can change a tile's pixels under its ID with the map as it
+/// was, so the backdrop culls nothing then.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct AssetsReload;

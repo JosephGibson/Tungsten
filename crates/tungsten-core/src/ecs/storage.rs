@@ -1,5 +1,8 @@
 use std::any::TypeId;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+use std::sync::Arc;
 
 use super::archetype::{AnyColumn, Archetype, ArchetypeId, EMPTY_ARCHETYPE, TypedVec};
 use super::command_buffer::InsertQueues;
@@ -14,6 +17,42 @@ pub(crate) struct Archetypes {
     /// Sorted `TypeId` set -> archetype.
     index: HashMap<Box<[TypeId]>, ArchetypeId>,
     pub entities: Entities,
+    /// Each query shape's matching archetypes ([`Archetypes::matching`]),
+    /// boxed so the cell's interior mutability stays out of `World`'s own
+    /// layout: `World` keeps its auto traits.
+    matches: Box<RefCell<HashMap<ShapeKey, Matched, BuildHasherDefault<KeyHasher>>>>,
+}
+
+/// A query shape: the addresses of its data's and its filter's `matches`.
+type ShapeKey = (usize, usize);
+
+/// A shape's matching archetypes, one bit each in archetype order, and how
+/// many archetypes the bits cover.
+type Matched = (usize, Arc<[u64]>);
+
+/// A hasher for [`ShapeKey`]s, which are code addresses: a multiply and a
+/// fold of each word.
+#[derive(Default)]
+pub(crate) struct KeyHasher(u64);
+
+impl Hasher for KeyHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.write_u64(u64::from(byte));
+        }
+    }
+
+    fn write_usize(&mut self, value: usize) {
+        self.write_u64(value as u64);
+    }
+
+    fn write_u64(&mut self, value: u64) {
+        self.0 = (self.0.rotate_left(5) ^ value).wrapping_mul(0x9e37_79b9_7f4a_7c15);
+    }
 }
 
 impl Archetypes {
@@ -25,7 +64,40 @@ impl Archetypes {
             archetypes: vec![empty],
             index,
             entities: Entities::new(),
+            matches: Box::default(),
         }
+    }
+
+    /// The archetypes a query shape selects, `data`'s test then `filter`'s,
+    /// one bit each in archetype order: worked out once per shape and
+    /// archetype, since an archetype's types never change and archetypes are
+    /// only ever added (`find_or_create`).
+    ///
+    /// A shape is keyed by its two functions' addresses. A function the
+    /// compiler copies into two places gets a second entry with the same
+    /// bits, and two it folds into one share code, so their bits agree.
+    pub fn matching(
+        &self,
+        data: fn(&[TypeId]) -> bool,
+        filter: fn(&[TypeId]) -> bool,
+    ) -> Arc<[u64]> {
+        let mut cache = self.matches.borrow_mut();
+        let (covered, bits) = cache
+            .entry((data as usize, filter as usize))
+            .or_insert_with(|| (0, Arc::from(Vec::new())));
+        let count = self.archetypes.len();
+        if *covered < count {
+            let mut grown = bits.to_vec();
+            grown.resize(count.div_ceil(64), 0);
+            for (index, arch) in self.archetypes.iter().enumerate().skip(*covered) {
+                if data(&arch.component_types) && filter(&arch.component_types) {
+                    grown[index / 64] |= 1 << (index % 64);
+                }
+            }
+            *covered = count;
+            *bits = grown.into();
+        }
+        Arc::clone(bits)
     }
 
     /// Find the archetype for sorted `types`, or create it with `columns`:

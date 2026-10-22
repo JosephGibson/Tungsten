@@ -3,9 +3,91 @@
 //! across pair rebuilds and frames (D-076).
 
 use super::PhysicsBuffers;
+use super::gather::TileCache;
 use crate::physics::PhysicsConfig;
-use crate::physics::broadphase::ProxyId;
+use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
+use crate::physics::collision::Aabb;
 use glam::Vec2;
+
+/// The pair grid: the entity proxies, staged at every pair build, and the
+/// tile proxies, staged once for each tile cache version, cell size and
+/// inflation, their ids offset by the entity count. While the tiles
+/// outnumber the build's moving proxies a query walks both in the order one
+/// grid staging every proxy in proxy order returns; otherwise the build
+/// stages the tiles into the entity grid, that one grid. Either way no
+/// candidate order changes (D-080's rule), so the choice is cost alone:
+/// each moving proxy's query pays the walk, each build the staging.
+#[derive(Debug, Default)]
+pub(super) struct PairGrid {
+    pub(super) bodies: SpatialGrid,
+    pub(super) tiles: SpatialGrid,
+    /// The first tile proxy's index: the frame's entity proxy count.
+    pub(super) tile_base: ProxyId,
+    /// The last build left the tiles in `tiles` alone, not in `bodies`.
+    split: bool,
+    /// Tests: the layout every build takes, whatever the cost.
+    #[cfg(test)]
+    pub(super) force_split: Option<bool>,
+    /// What `tiles` holds: the cache version and the cell size and
+    /// inflation bits it was staged with.
+    staged: Option<(u64, u32, u32)>,
+    /// The tiles' inflated boxes, in tile order, for the pair arrays.
+    pub(super) tile_aabbs: Vec<Aabb>,
+}
+
+impl PairGrid {
+    pub(super) fn cell_size(&self) -> f32 {
+        self.bodies.cell_size()
+    }
+
+    /// Visit each proxy overlapping `query`, as one grid would: the entity
+    /// grid's walk when it holds the tiles too, else both grids' walk.
+    #[inline(always)]
+    pub(super) fn for_each_in(
+        &mut self,
+        query: &Aabb,
+        exclude: Option<ProxyId>,
+        visit: impl FnMut(ProxyId),
+    ) {
+        if !self.split {
+            self.bodies.for_each_in(query, exclude, visit);
+            return;
+        }
+        for_each_in_both(
+            &mut self.bodies,
+            &mut self.tiles,
+            self.tile_base,
+            query,
+            exclude,
+            visit,
+        );
+    }
+
+    /// Collect the proxies overlapping `query`, in [`Self::for_each_in`]'s
+    /// order.
+    pub(super) fn query(&mut self, query: &Aabb, exclude: Option<ProxyId>, out: &mut Vec<ProxyId>) {
+        out.clear();
+        self.for_each_in(query, exclude, |id| out.push(id));
+    }
+
+    /// Stage `tiles`' proxies at `cell_size`, each box grown by `radius`,
+    /// unless the grid holds them so already.
+    pub(super) fn stage_tiles(&mut self, tiles: &TileCache, cell_size: f32, radius: f32) {
+        let key = (tiles.version, cell_size.to_bits(), radius.to_bits());
+        if self.staged == Some(key) {
+            return;
+        }
+        self.tiles.set_cell_size(cell_size);
+        self.tile_aabbs.clear();
+        for (ordinal, proxy) in tiles.proxies.iter().enumerate() {
+            let mut aabb = proxy.world_aabb();
+            aabb.half_extents += Vec2::splat(radius);
+            self.tile_aabbs.push(aabb);
+            self.tiles.insert(ordinal as ProxyId, &aabb);
+        }
+        self.staged = Some(key);
+    }
+}
 
 /// Sentinel for empty slots; unreachable as a real key because a pair key
 /// of `u128::MAX` would need both members to share the same proxy key.
@@ -162,6 +244,8 @@ pub(super) fn build_pairs(
     sync_impulses(buffers);
     let PhysicsBuffers {
         proxies,
+        bodies,
+        tiles,
         grid,
         static_grid,
         pair_aabbs,
@@ -173,10 +257,11 @@ pub(super) fn build_pairs(
         pairs_invalidated,
         ..
     } = buffers;
+    let bodies = *bodies;
     if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
-        grid.set_cell_size(config.broadphase_cell_size);
+        grid.bodies.set_cell_size(config.broadphase_cell_size);
     }
-    grid.clear();
+    grid.bodies.clear();
     pair_aabbs.clear();
     pair_budgets.clear();
     pair_flags.clear();
@@ -185,9 +270,11 @@ pub(super) fn build_pairs(
     static_grid.statics = 0;
     let static_radius = 2.0 * config.linear_slop;
     let gravity_allowance = gravity_allowance(config, sub_dt, time_left);
-    for (id, proxy) in proxies.iter().enumerate() {
+    let mut moving = 0;
+    for (id, proxy) in proxies[..bodies].iter().enumerate() {
         static_grid.statics += usize::from(!proxy.is_dynamic && !proxy.kinematic);
         let awake = proxy.moves();
+        moving += usize::from(awake);
         let radius = if awake {
             awake_pair_radius(
                 config,
@@ -210,9 +297,40 @@ pub(super) fn build_pairs(
             travel: 0.0,
         });
         pair_flags.push(if awake { PAIR_AWAKE } else { 0 });
-        grid.insert(id as ProxyId, &aabb);
+        grid.bodies.insert(id as ProxyId, &aabb);
     }
-    for (a_idx, aabb) in pair_aabbs.iter().enumerate() {
+    // The tiles: static, never awake, grown by the static radius; staged
+    // once for the cache and kept across builds, and into the entity grid
+    // too, after the entity proxies, when the moving proxies' queries
+    // outnumber them.
+    grid.stage_tiles(tiles, grid.cell_size(), static_radius);
+    grid.tile_base = bodies as ProxyId;
+    grid.split = tiles.len() > moving;
+    #[cfg(test)]
+    if let Some(split) = grid.force_split {
+        grid.split = split;
+    }
+    if !grid.split {
+        let PairGrid {
+            bodies: entity_grid,
+            tile_aabbs,
+            ..
+        } = grid;
+        for (ordinal, aabb) in tile_aabbs.iter().enumerate() {
+            entity_grid.insert((bodies + ordinal) as ProxyId, aabb);
+        }
+    }
+    static_grid.statics += tiles.len();
+    pair_aabbs.extend_from_slice(&grid.tile_aabbs);
+    pair_budgets.resize(
+        proxies.len(),
+        PairBudget {
+            radius: static_radius,
+            travel: 0.0,
+        },
+    );
+    pair_flags.resize(proxies.len(), 0);
+    for (a_idx, aabb) in pair_aabbs[..bodies].iter().enumerate() {
         if pair_flags[a_idx] & PAIR_AWAKE == 0 {
             continue;
         }
@@ -249,6 +367,7 @@ pub(super) fn collect_tripped(
 ) -> usize {
     let PhysicsBuffers {
         proxies,
+        bodies,
         pair_budgets,
         tripped,
         ..
@@ -256,7 +375,12 @@ pub(super) fn collect_tripped(
     tripped.clear();
     let slack = 2.0 * config.linear_slop;
     let mut awake = 0;
-    for (index, (proxy, budget)) in proxies.iter().zip(pair_budgets.iter()).enumerate() {
+    // Tile proxies never move, so the entity proxies are every candidate.
+    for (index, (proxy, budget)) in proxies[..*bodies]
+        .iter()
+        .zip(pair_budgets.iter())
+        .enumerate()
+    {
         if !proxy.moves() {
             continue;
         }

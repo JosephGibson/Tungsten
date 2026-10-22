@@ -16,7 +16,9 @@ use tungsten::core::{
 use tungsten::kit::{Health, PlatformerController, damage};
 use tungsten::testing::UiHarness;
 
-use super::{centre, run, settle, teleport, top};
+use example_01_platformer::game::GAMEPLAY;
+
+use super::{centre, fall_dead, run, settle, teleport, top};
 
 /// The kit's step at the harness's 60 Hz.
 const DT: f32 = 1.0 / 60.0;
@@ -103,7 +105,7 @@ fn exhausted_air_jump_requires_ground_contact() {
 }
 
 #[test]
-fn despawn_out_of_bounds_kills_escaped_player_and_holds_the_death_position() {
+fn despawn_out_of_bounds_kills_escaped_player_whose_body_drops() {
     let (mut harness, player) = run();
     harness.step(5);
     // Past the box's right side at a height the kill row leaves alone.
@@ -111,14 +113,54 @@ fn despawn_out_of_bounds_kills_escaped_player_and_holds_the_death_position() {
     teleport(&mut harness, player, out);
     harness.step(1);
     assert!(health(&harness, player).is_dead());
-    assert!(!harness.world().has::<PlatformerController>(player));
     let held = centre(&harness, player);
     harness.step(30);
-    assert_eq!(
-        centre(&harness, player),
-        held,
-        "the body stays where it died"
+    let fell = centre(&harness, player);
+    assert!(
+        (fell.x - held.x).abs() < 0.01 && fell.y > held.y + 10.0,
+        "the body drops where it died: {held} -> {fell}"
     );
+    fall_dead(&mut harness);
+    assert_eq!(top(&harness), Some(GAME_OVER));
+}
+
+#[test]
+fn the_dead_fall_for_three_seconds_before_game_over() {
+    let (mut harness, player) = run();
+    harness.step(5);
+    // Killed in the air above the spawn's turf, running right.
+    let at = centre(&harness, player);
+    teleport(&mut harness, player, at - Vec2::new(0.0, 200.0));
+    harness.harness_mut().press_action("move_right");
+    harness.step(3);
+    damage(harness.world_mut(), player, 1000.0);
+    harness.step(1);
+    assert!(health(&harness, player).is_dead());
+    let died = centre(&harness, player);
+    // Its input is dead: it runs and jumps no more and drops straight down
+    // until it lands.
+    harness.harness_mut().press_action("jump");
+    let mut since = 0;
+    while !controller(&harness, player).grounded() {
+        harness.step(1);
+        since += 1;
+        assert!(since < 120, "it lands");
+    }
+    harness.harness_mut().release_action("jump");
+    harness.harness_mut().release_action("move_right");
+    let landed = centre(&harness, player);
+    assert!(
+        (landed.x - died.x).abs() < 0.01 && landed.y > died.y + 150.0,
+        "{died} -> {landed}"
+    );
+    // Game over waits out the fall's three game seconds.
+    harness.step(174 - since);
+    assert_eq!(top(&harness), Some(GAMEPLAY), "2.9 s after the death");
+    assert!(
+        (centre(&harness, player) - landed).length() < 0.01,
+        "it lies still"
+    );
+    harness.step(12);
     settle(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
 }
@@ -183,9 +225,7 @@ fn real_map_dimensions_spawn_and_fall_death() {
     assert!(health(&harness, player).is_dead());
     let moves = harness.world().get::<Moves>(player).unwrap();
     assert!(moves.landing == 0.0 && moves.shown.is_none(), "{moves:?}");
-    // Gameplay's update sees the death at the next frame's dispatch.
-    harness.step(2);
-    settle(&mut harness);
+    fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
 }
 
@@ -278,8 +318,7 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
         health(&harness, player).is_dead(),
         "the window does not save a fall"
     );
-    harness.step(2);
-    settle(&mut harness);
+    fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
     assert!(harness.world().resource::<Time>().is_paused());
     harness.step(60);

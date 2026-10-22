@@ -26,7 +26,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
 use crate::features::elements::components::Frozen;
-use crate::features::level::WORLD_MIN;
+use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
@@ -36,8 +36,6 @@ use components::{Arc, Bolt, StrikeLight};
 /// A strike's shock and its reach from where it lands.
 pub const STRIKE_SHOCK: f32 = 40.0;
 pub const STRIKE_REACH: f32 = 40.0;
-/// How far from the aim point a conductive thing draws the bolt (Q9).
-pub const ROD_REACH: f32 = 160.0;
 /// A jump's reach, the share of its shock each jump keeps, and the most
 /// jumps a strike makes.
 pub const JUMP_REACH: f32 = 256.0;
@@ -95,14 +93,17 @@ fn surface_distance(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
 /// `conductive`.
 #[must_use]
 pub fn conductive(world: &World, entity: Entity) -> bool {
-    world.has::<IronBlock>(entity)
-        || world.has::<IronScrap>(entity)
-        || (world
-            .get::<Health>(entity)
-            .is_some_and(|health| !health.is_dead())
-            && world
-                .get::<Tags>(entity)
-                .is_some_and(|tags| tags.has("conductive")))
+    conducts(
+        world.has::<IronBlock>(entity) || world.has::<IronScrap>(entity),
+        world.get::<Health>(entity),
+        world.get::<Tags>(entity),
+    )
+}
+
+/// Whether a thing conducts: iron, or a live thing tagged `conductive`.
+fn conducts(iron: bool, health: Option<&Health>, tags: Option<&Tags>) -> bool {
+    iron || (health.is_some_and(|health| !health.is_dead())
+        && tags.is_some_and(|tags| tags.has("conductive")))
 }
 
 /// Whether `entity` is frozen: a frozen body, or a target carrying frozen.
@@ -113,10 +114,20 @@ pub fn frozen(world: &World, entity: Entity) -> bool {
 
 /// The conductive things with save IDs, their centres, but `spared`.
 fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)> {
+    // From the query's columns, not a lookup each (P6).
     world
-        .query::<(Entity, &SaveId)>()
-        .filter(|&(entity, _)| Some(entity) != spared && conductive(world, entity))
-        .filter_map(|(entity, id)| Some((entity, centre(world, entity)?, id.0)))
+        .query::<(
+            Entity,
+            &SaveId,
+            Option<&IronBlock>,
+            Option<&IronScrap>,
+            Option<&Health>,
+            Option<&Tags>,
+        )>()
+        .filter(|&(entity, _, iron, scrap, health, tags)| {
+            Some(entity) != spared && conducts(iron.is_some() || scrap.is_some(), health, tags)
+        })
+        .filter_map(|(entity, id, ..)| Some((entity, centre(world, entity)?, id.0)))
         .collect()
 }
 
@@ -141,16 +152,18 @@ pub fn nearest_conductor(
         .map(|(entity, centre, _)| (entity, centre))
 }
 
-/// Where a bolt falling from the top of the level at `point.x` stops on its
-/// way down to `point`: the first solid tile, else the top of the first
-/// static collider its line crosses, else `point`. Balls, iron and targets
-/// never stop it.
+/// Where a bolt falling from the top of the level at `point.x` stops: the
+/// first solid tile or body its line meets, `caster`'s body aside, or the
+/// top of the first static collider it crosses, else the level's foot. The
+/// aim point's height does not stop it.
 #[must_use]
-pub fn bolt_end(world: &World, point: Vec2) -> Vec2 {
+pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
     let top = Vec2::new(point.x, WORLD_MIN.y);
-    let mut stop = (point.y - top.y).max(0.0);
-    let tiles = SpatialFilter::new().with_bodies(false);
-    if let Some(hit) = cast_ray(world, top, Vec2::Y, stop, &tiles) {
+    let mut stop = WORLD_MAX.y - top.y;
+    let filter = caster.map_or_else(SpatialFilter::new, |caster| {
+        SpatialFilter::new().excluding(caster)
+    });
+    if let Some(hit) = cast_ray(world, top, Vec2::Y, stop, &filter) {
         stop = stop.min(hit.distance);
     }
     for (at, collider, body) in world.query::<(&Position, &Collider, &RigidBody)>() {
@@ -169,15 +182,13 @@ pub fn bolt_end(world: &World, point: Vec2) -> Vec2 {
     top + Vec2::Y * stop
 }
 
-/// Strikes from `caster` at the aim point `aim`: the bolt falls on the rod
-/// or the aim point and stops at the first solid; its shock hurts the
-/// targets within [`STRIKE_REACH`] of where it lands, `caster` spared; and
-/// one chain of conduction starts, its first jump due the step after.
+/// Strikes from `caster` at the aim point `aim`: the bolt falls at the
+/// aim's x from the sky until it meets a tile or a body; its shock hurts
+/// the targets within [`STRIKE_REACH`] of where it lands, `caster` spared;
+/// and one chain of conduction starts, its first jump due the step after.
 /// Where it landed.
 pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
-    let rod = nearest_conductor(world, aim, ROD_REACH, &[], Some(caster));
-    let point = rod.map_or(aim, |(_, centre)| centre);
-    let landing = bolt_end(world, point);
+    let landing = bolt_end(world, aim, Some(caster));
     let mut struck: Vec<(Option<SaveId>, Entity)> = world
         .query::<(Entity, &Collider)>()
         .filter(|&(entity, _)| entity != caster)
@@ -207,20 +218,17 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .filter(|&&(_, entity)| conductive(world, entity))
         .filter_map(|&(id, entity)| Some((entity, id?.0)))
         .collect();
-    let start = rod
-        .map(|(entity, _)| entity)
-        .filter(|rod| conductors.iter().any(|&(entity, _)| entity == *rod))
-        .or_else(|| {
-            conductors
-                .iter()
-                .filter_map(|&(entity, id)| Some((entity, centre(world, entity)?, id)))
-                .min_by(|a, b| {
-                    a.1.distance(point)
-                        .total_cmp(&b.1.distance(point))
-                        .then(a.2.cmp(&b.2))
-                })
-                .map(|(entity, ..)| entity)
-        });
+    // The chain starts at the struck conductor nearest where the bolt
+    // landed.
+    let start = conductors
+        .iter()
+        .filter_map(|&(entity, id)| Some((entity, centre(world, entity)?, id)))
+        .min_by(|a, b| {
+            a.1.distance(landing)
+                .total_cmp(&b.1.distance(landing))
+                .then(a.2.cmp(&b.2))
+        })
+        .map(|(entity, ..)| entity);
     if let Some(start) = start.filter(|&start| !frozen(world, start)) {
         let members: Vec<u64> = conductors.iter().map(|&(_, id)| id).collect();
         let from = centre(world, start).unwrap_or(landing);

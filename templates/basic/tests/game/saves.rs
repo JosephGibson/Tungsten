@@ -1043,3 +1043,92 @@ fn an_empty_row_reads_quieter() {
     assert_eq!(style(&harness, "Slot 2"), ([0; 4], colors.text_muted));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// What a build of schema 0 wrote to `slot` at `at`, which this build's
+/// `migrate` refuses.
+fn older_slot(dir: &Path, slot: &str, at: u64) {
+    let text = format!(
+        r#"{{ "envelope": 1, "slot": "{slot}", "schema": 0, "engine_version": "0.1.0", "saved_at_ms": {at}, "data": {{ "player": [1.0, 2.0] }} }}"#
+    );
+    std::fs::create_dir_all(dir.join("saves")).unwrap();
+    std::fs::write(slot_file(dir, slot), text).unwrap();
+}
+
+#[test]
+fn older_autosaves_take_the_next_autosaves() {
+    // An upgrader's three autosaves, of a schema this build refuses: the
+    // run's first autosave takes the oldest, the next two the others, and
+    // then the three rotate as ever.
+    let dir = user_folder("older-autosaves");
+    for (slot, at) in AUTOSAVES.into_iter().zip([300, 100, 200]) {
+        older_slot(&dir, slot, at);
+    }
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "Load");
+    assert_eq!(details(&harness, "Autosave 1"), "Saved by an older version");
+    tap(&mut harness, "ui_cancel");
+    press(&mut harness, "New Game");
+    press(&mut harness, "Normal");
+    assert_eq!(retry_from(&harness), Some(AUTOSAVES[1]), "the oldest");
+    for next in [AUTOSAVES[2], AUTOSAVES[0], AUTOSAVES[1]] {
+        moved_autosave(&mut harness);
+        assert_eq!(retry_from(&harness), Some(next));
+    }
+    let slots = SaveSlots::new(Some(dir.join("saves")));
+    for slot in AUTOSAVES {
+        assert!(
+            slots.load::<SaveGame>(slot).is_ok(),
+            "{slot} holds this run"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_newer_autosave_is_never_written() {
+    // A newer version's autosave sits out every rotation; the other two
+    // take turns.
+    let dir = user_folder("newer-autosave");
+    let newer = r#"{ "envelope": 1, "slot": "autosave_2", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
+    std::fs::create_dir_all(dir.join("saves")).unwrap();
+    std::fs::write(slot_file(&dir, AUTOSAVES[1]), newer).unwrap();
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "New Game");
+    press(&mut harness, "Normal");
+    let mut seen = vec![retry_from(&harness)];
+    for _ in 0..3 {
+        moved_autosave(&mut harness);
+        seen.push(retry_from(&harness));
+    }
+    let (first, third) = (Some(AUTOSAVES[0]), Some(AUTOSAVES[2]));
+    assert_eq!(seen, [first, third, first, third]);
+    assert_eq!(
+        std::fs::read_to_string(slot_file(&dir, AUTOSAVES[1])).unwrap(),
+        newer
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn damaged_autosaves_give_way_only_when_nothing_else_can() {
+    // Three damaged autosaves: the first is written, as the last resort,
+    // and then holds the run's autosaves; the other two stay as they were.
+    let dir = user_folder("damaged-autosaves");
+    std::fs::create_dir_all(dir.join("saves")).unwrap();
+    for slot in AUTOSAVES {
+        std::fs::write(slot_file(&dir, slot), "{ not json").unwrap();
+    }
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    press(&mut harness, "New Game");
+    press(&mut harness, "Normal");
+    assert_eq!(retry_from(&harness), Some(AUTOSAVES[0]));
+    for _ in 0..2 {
+        moved_autosave(&mut harness);
+        assert_eq!(retry_from(&harness), Some(AUTOSAVES[0]));
+    }
+    for slot in &AUTOSAVES[1..] {
+        let text = std::fs::read_to_string(slot_file(&dir, slot)).unwrap();
+        assert_eq!(text, "{ not json", "{slot} kept");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

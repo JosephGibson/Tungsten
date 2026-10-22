@@ -1,16 +1,22 @@
 //! The player's systems and queries: the lantern and zoom actions, the
-//! kill row, the bursts and one-shot clips its moves start, and the
-//! lantern's glow.
+//! kill row, the hurt a blow plays, the bursts and one-shot clips its moves
+//! start, and the lantern's glow.
 
 use glam::Vec2;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity, Position,
-    PrevPosition, Shape, Sprite, Time, Velocity, With, World,
+    AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity, EventCursor,
+    EventQueue, Position, PrevPosition, Shape, Sprite, Time, Velocity, With, World,
 };
-use tungsten::kit::{DamageRequest, Facing, Health, PlatformerController};
+use tungsten::kit::{
+    DamageRequest, Damaged, Facing, Health, PlatformerController, Stats, Used, use_ability,
+};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown};
-use super::{BODY_OFFSET, LAND_SECS, PLAYER_HALF, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP};
+use super::{
+    BODY_OFFSET, GUTTER_PUFF, LAND_SECS, PLAYER_HALF, RELIGHT_MANA, STAFF_LIGHT, ZOOM_MAX,
+    ZOOM_MIN, ZOOM_STEP,
+};
+use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
 use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
 use crate::shared::{just_pressed, spawn_burst};
@@ -63,8 +69,11 @@ pub fn actions(world: &mut World) {
         (false, true) => -ZOOM_STEP,
         _ => return,
     };
+    // Onto the step's grid before the clamp, so a press back from the
+    // floor returns to 1 (I18).
     if let Some(zoom) = world.get_resource_mut::<Zoom>() {
-        zoom.0 = (zoom.0 + step).clamp(ZOOM_MIN, ZOOM_MAX);
+        let snapped = ((zoom.0 + step) / ZOOM_STEP).round() * ZOOM_STEP;
+        zoom.0 = snapped.clamp(ZOOM_MIN, ZOOM_MAX);
     }
 }
 
@@ -109,25 +118,107 @@ pub fn bounds(world: &mut World) {
     }
 }
 
+/// `player_staff_light`, in the intent phase before the spells: a lit
+/// staff light burns its ability's mana each step, its effect granting
+/// `staff.lit`; at full mana the regeneration's surplus feeds it, so the
+/// step's cost goes back. Refused, it gutters out with a puff at its flame
+/// and a sound, and relights once the mana reaches [`RELIGHT_MANA`] (L5's
+/// first half, Q15).
+pub fn staff_light(world: &mut World) {
+    let Some(player) = player(world) else {
+        return;
+    };
+    let alive = world
+        .get::<Health>(player)
+        .is_some_and(|health| !health.is_dead());
+    let Some(lantern) = world.get::<Lantern>(player).copied() else {
+        return;
+    };
+    if !alive || !lantern.on {
+        return;
+    }
+    let (mana, max) = world.get::<Stats>(player).map_or((0.0, 0.0), |stats| {
+        (
+            stats.base("mana").unwrap_or(0.0),
+            stats.get("max_mana").unwrap_or(0.0),
+        )
+    });
+    if lantern.guttered {
+        if mana < RELIGHT_MANA {
+            return;
+        }
+        if let Some(lantern) = world.get_mut::<Lantern>(player) {
+            lantern.guttered = false;
+        }
+    }
+    match use_ability(world, player, STAFF_LIGHT) {
+        Used::Used if mana >= max => {
+            if let Some(stats) = world.get_mut::<Stats>(player) {
+                stats.set_base("mana", mana);
+            }
+        }
+        Used::NoCost => {
+            if let Some(lantern) = world.get_mut::<Lantern>(player) {
+                lantern.guttered = true;
+            }
+            let flame = world
+                .get::<Glow>(player)
+                .zip(world.get::<Position>(player))
+                .map(|(glow, at)| glow.centre(at.0));
+            if let Some(at) = flame {
+                spawn_burst(world, GUTTER_PUFF, at);
+                audio::play(world, Sound::StaffGuttered, at);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// `player_hurt`, in the react phase: a blow on the player, or the hit
+/// that kills it, plays its hurt sound and shake; a tick of burning or
+/// bleeding shows in the flash alone (X1). `cursor` reads each hit once.
+pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
+    let Some(player) = player(world) else {
+        return;
+    };
+    let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
+        return;
+    };
+    let hurt = cursor
+        .read(events)
+        .any(|hit| hit.entity == player && (!hit.periodic || hit.killed));
+    if hurt && let Some(at) = centre(world, player) {
+        audio::play(world, Sound::PlayerHurt, at);
+    }
+}
+
 /// `player_moves`, in the react phase: a jump puffs at the feet it left
 /// from and an air jump bursts there and tucks; a landing after the first
-/// raises dust and holds the land clip. A dead player's body stops where
-/// it fell, its controller gone, and its clips and bursts end.
+/// raises dust and holds the land clip. A dead player's body drops where it
+/// died and falls as its controller falls, its input locked for good
+/// (F13), and its clips and bursts end.
 pub fn moves(world: &mut World) {
     let Some(player) = player(world) else {
         return;
     };
     let dead = world.get::<Health>(player).is_some_and(Health::is_dead);
     if dead {
-        if world.has::<PlatformerController>(player) {
-            world.remove_component::<PlatformerController>(player);
-            if let Some(velocity) = world.get_mut::<Velocity>(player) {
-                velocity.0 = Vec2::ZERO;
-            }
-        }
-        if let Some(moves) = world.get_mut::<Moves>(player) {
+        let first = world.get_mut::<Moves>(player).is_some_and(|moves| {
             moves.landing = 0.0;
             moves.tuck = false;
+            !std::mem::replace(&mut moves.dead, true)
+        });
+        if first {
+            // Straight down from where it died: no run or knockback slides
+            // it, and its rise or fall carries on.
+            let fall = world
+                .get::<Velocity>(player)
+                .map_or(0.0, |velocity| velocity.0.y);
+            if let Some(controller) = world.get_mut::<PlatformerController>(player) {
+                controller.set_run(0.0);
+                controller.launch(Vec2::new(0.0, fall));
+                controller.lock_input(f32::MAX);
+            }
         }
         return;
     }
@@ -345,14 +436,12 @@ fn show(world: &mut World, player: Entity, state: AnimationState, registry: &Ani
 
 /// `player_lantern`, in the present phase before the level's glows: the
 /// lantern's glow sits on the flame of the frame shown, and goes dark while
-/// the lantern is off or the player is dead.
+/// the lantern is off or guttered out, or the player is dead.
 pub fn lantern(world: &mut World) {
     let Some(player) = player(world) else {
         return;
     };
-    let on = world
-        .get::<Lantern>(player)
-        .is_some_and(|lantern| lantern.on);
+    let on = world.get::<Lantern>(player).is_some_and(Lantern::lit);
     let dead = world.get::<Health>(player).is_some_and(Health::is_dead);
     let anchor = world.get::<Sprite>(player).and_then(|sprite| {
         let name = world

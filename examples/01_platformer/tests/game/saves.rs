@@ -465,7 +465,7 @@ fn lists(kind: &str) -> Lists {
         },
         "wisp" | "crawler" | "beetle" | "bat" | "troll" => {
             use example_01_platformer::features::enemies::components::{
-                Brain, Displaced, EnemyState, Shown, Sight,
+                Brain, Displaced, EnemyState, Scared, Shown, Sight,
             };
             use tungsten::kit::{Abilities, StateMachine, TopDownMover};
             Lists {
@@ -513,6 +513,7 @@ fn lists(kind: &str) -> Lists {
                         name::<HitFlash>(),
                         name::<GlowParts>(),
                         name::<Shown>(),
+                        name::<Scared>(),
                     ],
                 ]
                 .concat(),
@@ -680,17 +681,23 @@ fn a_cast_in_the_step_that_asks_for_an_autosave_saves_its_cost_and_its_missile()
         panic!("the autosave is written");
     };
     assert_eq!(saved.area.as_deref(), Some("Broken aqueduct"));
-    assert_eq!(saved.player.stats.base("mana"), Some(92.0), "its cost");
+    assert_eq!(saved.player.stats.base("mana"), Some(96.0), "its cost");
     assert_eq!(saved.missiles.len(), 1, "and its missile");
     let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn a_save_during_casting_loads_with_the_mana_still_paused() {
-    let (mut harness, _) = run();
+    let (mut harness, player) = run();
+    // The staff light off, which would burn through the pause.
+    harness
+        .world_mut()
+        .get_mut::<example_01_platformer::features::player::components::Lantern>(player)
+        .unwrap()
+        .on = false;
     cast(&mut harness, 4, Vec2::new(800.0, 400.0), 1);
     let spent = mana(&harness);
-    assert!(spent < 76.0);
+    assert!(spent < 88.0, "a push's 12.5 spent: {spent}");
     let saved = capture(&harness);
     let casting = |tags: &Tags| tags.iter().any(|tag| tag == "casting");
     assert!(casting(&saved.player.tags));
@@ -1162,7 +1169,7 @@ fn a_flyer_saved_frozen_mid_flight_thaws_into_its_saved_flight() {
     assert!(world.get::<PlatformerController>(wisp).is_some());
     let thaw = |harness: &mut UiHarness| -> (TopDownMover, Vec2) {
         let wisp = by_id(harness, wisp_id);
-        let thawed = until(harness, 360, |h| {
+        let thawed = until(harness, 480, |h| {
             h.world().get::<TopDownMover>(wisp).is_some()
         });
         assert!(thawed, "it thaws");
@@ -1558,7 +1565,7 @@ fn schemas_one_to_six_are_refused() {
             "schema {from}"
         );
     }
-    // An older save on disk reads as damaged, never loads.
+    // An older save on disk reads as an older version's, never loads.
     let dir = user_folder("schemas");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     let saves = harness
@@ -1586,8 +1593,140 @@ fn schemas_one_to_six_are_refused() {
     let (slots, _) = game_shell::read_slots(harness.world_mut());
     for (slot, _) in older {
         let state = slots.iter().find(|(s, _)| *s == slot).map(|(_, s)| s);
-        assert!(matches!(state, Some(SlotState::Damaged)), "{slot}");
+        assert!(matches!(state, Some(SlotState::Older(_))), "{slot}");
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn schema_6_autosaves_get_an_autosave() {
+    // An upgrader from 0.96: three autosaves of schema 6, which this build
+    // refuses, read as an older version's and give way to the run's, the
+    // oldest first.
+    let dir = user_folder("schema-6-autosaves");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let saves = harness
+        .world()
+        .resource::<SaveSlots>()
+        .dir()
+        .expect("a user folder")
+        .to_path_buf();
+    std::fs::create_dir_all(&saves).unwrap();
+    for (slot, at) in game_shell::AUTOSAVES.into_iter().zip([3_u64, 1, 2]) {
+        let envelope = serde_json::json!({
+            "envelope": 1, "slot": slot, "schema": 6, "engine_version": "0.96.0",
+            "saved_at_ms": 1_760_400_000_000_u64 + at, "data": { "player": [0.0, 0.0] }
+        });
+        std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
+    }
+    start(&mut harness);
+    harness.step(5);
+    let slots = SaveSlots::new(Some(saves));
+    let written: Vec<_> = game_shell::AUTOSAVES
+        .into_iter()
+        .filter(|slot| slots.load::<SaveGame>(slot).is_ok())
+        .collect();
+    assert_eq!(written, ["autosave_2"], "the run's first autosave");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_guttered_staff_light_loads_guttered() {
+    use example_01_platformer::features::player::components::Lantern;
+    let (mut harness, player) = run();
+    harness.step(2);
+    // Out of mana under a cast's pause the light gutters, and a save at once
+    // keeps it so, while its effect's tag is still on.
+    let stats = harness
+        .world_mut()
+        .get_mut::<tungsten::kit::Stats>(player)
+        .unwrap();
+    stats.set_base("mana", 0.0);
+    super::combat::apply(&mut harness, player, "casting", None);
+    harness.step(1);
+    assert!(harness.world().get::<Lantern>(player).unwrap().guttered);
+    let saved = capture(&harness);
+    assert!(saved.lantern && saved.lantern_guttered);
+    let mut fresh = super::harness();
+    load(&mut fresh, saved);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    fresh.step(2);
+    let lantern = *fresh.world().get::<Lantern>(player_entity(&fresh)).unwrap();
+    assert!(lantern.guttered && !lantern.lit(), "{lantern:?}");
+}
+
+#[test]
+fn schema_7_autosaves_migrate_and_rotate() {
+    // A 0.97 upgrader's three autosaves: schema 7, the player's abilities
+    // without the staff light, its lantern on.
+    let (mut source, player) = run();
+    let lantern = example_01_platformer::features::player::components::Lantern {
+        on: false,
+        guttered: false,
+    };
+    source.world_mut().insert(player, lantern);
+    source.step(12);
+    let mut data = serde_json::to_value(capture(&source)).unwrap();
+    let entries = data
+        .pointer_mut("/player/abilities/entries")
+        .and_then(serde_json::Value::as_array_mut)
+        .unwrap();
+    entries.retain(|entry| entry["name"] != "staff_light");
+    assert_eq!(entries.len(), 11, "0.97's eleven");
+    data["lantern"] = true.into();
+    let dir = user_folder("schema-7-autosaves");
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let saves = harness
+        .world()
+        .resource::<SaveSlots>()
+        .dir()
+        .expect("a user folder")
+        .to_path_buf();
+    std::fs::create_dir_all(&saves).unwrap();
+    for (slot, at) in game_shell::AUTOSAVES.into_iter().zip([3_u64, 1, 2]) {
+        let envelope = serde_json::json!({
+            "envelope": 1, "slot": slot, "schema": 7, "engine_version": "0.97.0",
+            "saved_at_ms": 1_760_400_000_000_u64 + at, "data": data.clone()
+        });
+        std::fs::write(saves.join(format!("{slot}.json")), envelope.to_string()).unwrap();
+    }
+    // Each migrates: ready, with the staff light.
+    let slots = SaveSlots::new(Some(saves.clone()));
+    for slot in game_shell::AUTOSAVES {
+        let migrated = slots.load::<SaveGame>(slot).expect("schema 7 migrates");
+        let names: Vec<&str> = migrated.player.abilities.names().collect();
+        assert_eq!(names.last(), Some(&"staff_light"), "{slot}");
+    }
+    let (states, _) = game_shell::read_slots(harness.world_mut());
+    for slot in game_shell::AUTOSAVES {
+        let state = states.iter().find(|(s, _)| *s == slot).map(|(_, s)| s);
+        assert!(matches!(state, Some(SlotState::Ready(..))), "{slot}");
+    }
+    // The run's first autosave takes the oldest.
+    start(&mut harness);
+    harness.step(5);
+    let schemas: Vec<u64> = game_shell::AUTOSAVES
+        .into_iter()
+        .map(|slot| {
+            let text = std::fs::read_to_string(saves.join(format!("{slot}.json"))).unwrap();
+            let envelope: serde_json::Value = serde_json::from_str(&text).unwrap();
+            envelope["schema"].as_u64().unwrap()
+        })
+        .collect();
+    assert_eq!(schemas, [7, 8, 7], "autosave_2, the oldest, rotated");
+    // A migrated save loads with its light, which relights at once.
+    let migrated = slots.load::<SaveGame>("autosave_1").unwrap();
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    fresh.step(2);
+    let player = player_entity(&fresh);
+    let lantern = fresh
+        .world()
+        .get::<example_01_platformer::features::player::components::Lantern>(player)
+        .copied()
+        .unwrap();
+    assert!(lantern.lit(), "{lantern:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
 

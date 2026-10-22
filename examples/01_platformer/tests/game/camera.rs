@@ -83,6 +83,23 @@ fn zoom_input_reaches_and_clamps_expanded_range() {
 }
 
 #[test]
+fn zoom_returns_to_one() {
+    let (mut harness, _) = run();
+    let press = |harness: &mut tungsten::testing::UiHarness, action: &str| {
+        harness.harness_mut().press_action(action);
+        harness.step(1);
+        harness.harness_mut().release_action(action);
+        harness.step(1);
+        harness.world().resource::<Zoom>().0
+    };
+    for _ in 0..10 {
+        press(&mut harness, "zoom_out");
+    }
+    let back: Vec<f32> = (0..3).map(|_| press(&mut harness, "zoom_in")).collect();
+    assert_eq!(back, [0.5, 0.75, 1.0], "on the 0.25 grid from the floor");
+}
+
+#[test]
 fn parallax_covers_camera_extremes_resizes_zoom_and_shake() {
     let (mut harness, _) = run();
     let world = harness.world_mut();

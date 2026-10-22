@@ -327,6 +327,55 @@ fn unbounded_component_types_query() {
 }
 
 #[test]
+fn a_query_shape_sees_the_archetypes_added_after_its_first_run() {
+    // Each shape runs once, so its matching archetypes are worked out; then
+    // new archetypes appear, and each run again matches per-entity lookups.
+    let mut world = fragmented();
+    let filtered = |world: &World| -> Vec<Entity> {
+        world
+            .query_filtered::<Entity, (With<Regen>, Without<Stats>)>()
+            .collect()
+    };
+    let before = (rows(&world).len(), filtered(&world).len());
+    for index in 0..5_u32 {
+        let entity = world.spawn();
+        world.insert(entity, Pos(index as f32, 0.0));
+        world.insert(entity, Vel(0.0, 1.0));
+        world.insert(entity, Health(1.0));
+        world.insert(entity, Regen(0.25));
+        match index {
+            0 => world.insert(entity, Tag::<7>),
+            1 => {
+                world.insert(entity, Tag::<7>);
+                world.insert(entity, Tag::<8>);
+            }
+            _ => world.insert(entity, Follow(index)),
+        }
+    }
+    let expected: Vec<_> = entities(&world)
+        .into_iter()
+        .filter_map(|e| row_by_lookup(&world, e))
+        .collect();
+    assert_eq!(rows(&world), expected);
+    assert_eq!(rows(&world).len(), before.0 + 5);
+    let expected: Vec<Entity> = entities(&world)
+        .into_iter()
+        .filter(|&e| world.has::<Regen>(e) && !world.has::<Stats>(e))
+        .collect();
+    assert_eq!(filtered(&world), expected);
+    assert_eq!(expected.len(), before.1 + 5);
+    // A write through the same shape reaches the new rows too.
+    for (_, regen) in world.query_mut_filtered::<(&Health, &mut Regen), With<Tag<7>>>() {
+        regen.0 = 9.0;
+    }
+    let tagged: Vec<f32> = world
+        .query_filtered::<&Regen, With<Tag<7>>>()
+        .map(|regen| regen.0)
+        .collect();
+    assert_eq!(tagged, [9.0, 9.0]);
+}
+
+#[test]
 fn structural_changes_between_queries_are_seen() {
     let mut world = fragmented();
     let mut buffer = CommandBuffer::new();

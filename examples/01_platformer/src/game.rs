@@ -49,7 +49,7 @@ pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
     ("spell_8", "Spell 8"),
     ("spell_9", "Spell 9"),
     ("spell_0", "Spell 0"),
-    ("lantern", "Lantern"),
+    ("lantern", "Staff light"),
     ("zoom_in", "Zoom in"),
     ("zoom_out", "Zoom out"),
     ("state_pause", "Pause"),

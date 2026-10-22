@@ -587,6 +587,36 @@ fn fireball_contact_shatters_frozen_iron_into_sixteen_physical_scraps() {
 }
 
 #[test]
+fn a_spray_refused_for_mana_waits_for_the_release() {
+    let (mut harness, player) = sprayer(300.0);
+    let eye = centre(&harness, player);
+    // A few steps' mana, which the hold spends; then the regeneration's,
+    // which a held cast it refused never takes up (I2).
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("mana", 1.0);
+    spray_at(&mut harness, Vec2::new(900.0, eye.y));
+    let (mut starts, mut was) = (0, false);
+    for _ in 0..240 {
+        harness.step(1);
+        let now = sprays(&harness) > 0;
+        starts += usize::from(now && !was);
+        was = now;
+    }
+    assert_eq!(starts, 1, "one start, then off while held");
+    assert!(!was, "off at the end");
+    let stats = harness.world().get::<Stats>(player).unwrap();
+    assert!(
+        stats.base("mana").unwrap() > 10.0,
+        "the regeneration ran meanwhile"
+    );
+    release(&mut harness);
+    harness.step(1);
+    spray_at(&mut harness, Vec2::new(900.0, eye.y));
+    harness.step(1);
+    assert_eq!(sprays(&harness), 1, "a new press sprays again");
+}
+
+#[test]
 fn repeated_channels_and_long_holds_keep_particles_bounded_and_stop_on_death() {
     let (mut harness, player) = sprayer(300.0);
     // Mana for ten seconds of spraying past the channels.

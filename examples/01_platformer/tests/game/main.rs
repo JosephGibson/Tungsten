@@ -3,13 +3,14 @@
 //! the seam the shell calls, `level` the map and its routes, `player` the
 //! courier's moves and death, `camera` the view, `hazards` the spikes and
 //! fireballs, `fixed_step` the moves across frame rates, `presentation`
-//! what draws, `regime` the step's events, `areas` the toasts and
+//! what draws, `regime` the step's events, `areas` the banners and
 //! autosaves; `ball_pit`, `spawning`, `burning`, `brick`, `ice` and
 //! `spells` the toys, their element rules and the spells that cast them;
-//! `combat` the damage model, `cascades` the endings and their chains,
-//! `lightning` the strike and its conduction, `gun` the gun and its
-//! shots, `dummy` the training dummy and `enemies` the bestiary; `hud` the bars. The shell's own tests run in the template, on the same
-//! bytes, which `just repo-check` holds.
+//! `combat` the damage model, `data` the constants that restate the data,
+//! `cascades` the endings and their chains, `lightning` the strike and its
+//! conduction, `gun` the gun and its shots, `dummy` the training dummy and
+//! `enemies` the bestiary; `hud` the bars. The shell's own tests run in the
+//! template, on the same bytes, which `just repo-check` holds.
 
 mod areas;
 mod ball_pit;
@@ -18,6 +19,7 @@ mod burning;
 mod camera;
 mod cascades;
 mod combat;
+mod data;
 mod dummy;
 mod enemies;
 mod fixed_step;
@@ -41,7 +43,7 @@ use std::path::PathBuf;
 
 use example_01_platformer::features::enemies::components::Enemy;
 use example_01_platformer::features::player as courier;
-use example_01_platformer::features::run::Run;
+use example_01_platformer::features::run::{DEATH_SECS, Run};
 use example_01_platformer::features::spells as game_spells;
 use example_01_platformer::features::toys;
 use example_01_platformer::game;
@@ -123,6 +125,13 @@ pub fn settle(harness: &mut UiHarness) {
         frames += 1;
         assert!(frames < 200, "the transition never ended");
     }
+}
+
+/// Steps a dead player's fall, [`DEATH_SECS`] of game time and two frames
+/// for gameplay's update to see it, then waits out game over's arrival.
+pub fn fall_dead(harness: &mut UiHarness) {
+    harness.step((DEATH_SECS * 60.0).ceil() as u32 + 2);
+    settle(harness);
 }
 
 /// Presses `action` for a frame, releases it the next, then waits out the

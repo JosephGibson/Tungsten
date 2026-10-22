@@ -282,6 +282,22 @@ def particle_configs():
         emission=dict(kind='burst', count=40, once=True),
         initial_velocity=dict(kind='radial', speed=dict(min=200, max=720)),
         gravity=[0, 220], lifetime=dict(min=.3, max=.8), start_scale=dict(min=.1, max=.28))
+    # 01 (e): the staff light guttering out, a curl of smoke off its last
+    # orange, and a crawler's puff of frost breath as it shrinks from the light.
+    configs['staff_gutter'] = dict(
+        config('dust', 10, 10, 1.1, 70, .32, spread=40, burst=True),
+        lifetime=dict(min=.7, max=1.1), gravity=[0, -70], drag_per_sec=1.8,
+        angular_velocity=dict(min=-1.2, max=1.2), start_scale=dict(min=.14, max=.32),
+        scale_over_life=[[0, .4], [.3, 1], [1, 1.6]],
+        alpha_over_life=[[0, 0], [.1, .7], [.6, .35], [1, 0]],
+        color_over_life=[[0, [1, .7, .35, 1]], [.15, [.55, .52, .5, 1]], [1, [.3, .3, .32, 1]]])
+    configs['frost_breath'] = dict(
+        config('flame_glow', 12, 12, .7, 90, .5, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=25, max=90)),
+        lifetime=dict(min=.45, max=.7), gravity=[0, -20], drag_per_sec=2.4,
+        start_scale=dict(min=.25, max=.5), scale_over_life=[[0, .4], [.35, 1], [1, 1.5]],
+        color_over_life=[[0, [.9, 1, 1, 1]], [.5, [.55, .85, 1, 1]], [1, [.3, .6, 1, 0]]],
+        alpha_over_life=[[0, 0], [.1, .7], [.6, .4], [1, 0]])
     # 01 (c): a frozen target's glints twinkling about its cube and drifting
     # off it over the 16 px `ice_glint`, and the wisp's embers rising and
     # cooling off its trailing side over the spark.
@@ -419,6 +435,13 @@ def generate(dest):
         if sound['path'] not in authored:
             raise ValueError(f"sound {sound['path']} is neither synthesized nor hand-authored")
     write_json(output('assets/tilemaps/level.tmj'),tiled)
+    # The sprites every pixel of which is opaque: a backdrop quad the map's
+    # tiles of them cover is never seen, so the level skips it (level/draw.rs).
+    path='data/opaque_tiles/level.json'
+    opaque=sorted('ex10_'+name for name,image in images.items()
+        if image.mode!='RGBA' or image.getchannel('A').getextrema()==(255,255))
+    write_json(output('assets/'+path),{'sprites':opaque})
+    manifest.setdefault('data',{}).setdefault('opaque_tiles',{})['level']=dict(path=path)
     # Where each courier frame's lantern flame sits, which the lantern's glow follows.
     path='data/lantern_anchors/player.json'
     write_json(output('assets/'+path),{'ex10_'+name:anchor for name,anchor in source['lantern_anchors']})
