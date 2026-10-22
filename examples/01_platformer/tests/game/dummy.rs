@@ -7,7 +7,7 @@ use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::dummy::{self, DUMMY_CENTRE, SUMMON_CAP};
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::toys;
-use example_01_platformer::save::MAP_ENEMIES;
+use example_01_platformer::save::{MAP_ENEMIES, MAP_PICKUPS};
 use example_01_platformer::shared::SaveId;
 use glam::Vec2;
 use tungsten::core::{Entity, Velocity};
@@ -42,9 +42,9 @@ fn the_clearing_holds_a_dummy_with_its_three_tags() {
     );
     let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
     assert_eq!(
-        id(dummy) + 1 + MAP_ENEMIES,
+        id(dummy) + 1 + MAP_ENEMIES + MAP_PICKUPS,
         id(player),
-        "the map's dummies, then its enemies"
+        "the map's dummies, then its enemies and its pickups"
     );
 }
 

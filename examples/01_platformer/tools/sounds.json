@@ -24,6 +24,11 @@
     "path": "sounds/player_hit.wav",
     "volume": 0.6
   },
+  "ex10_player_death_sfx": {
+    "looping": false,
+    "path": "sounds/player_death.wav",
+    "volume": 0.7
+  },
   "ex10_ice_beam_sfx": {
     "looping": false,
     "path": "sounds/ice_beam.wav",
@@ -267,37 +272,37 @@
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_clearing.wav",
-    "volume": 0.35
+    "volume": 0.175
   },
   "ambience_aqueduct": {
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_aqueduct.wav",
-    "volume": 0.35
+    "volume": 0.175
   },
   "ambience_ravine": {
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_ravine.wav",
-    "volume": 0.4
+    "volume": 0.2
   },
   "ambience_hollow": {
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_hollow.wav",
-    "volume": 0.4
+    "volume": 0.2
   },
   "ambience_mine": {
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_mine.wav",
-    "volume": 0.3
+    "volume": 0.15
   },
   "ambience_bridge": {
     "bus": "effects",
     "looping": true,
     "path": "sounds/ambience_bridge.wav",
-    "volume": 0.35
+    "volume": 0.175
   },
   "ex10_splinter_sfx": {
     "looping": false,

@@ -77,7 +77,7 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
 }
 
 #[test]
-fn a_burn_tick_plays_no_hurt_but_a_killing_one_does() {
+fn a_burn_tick_plays_no_hurt_and_a_killing_one_plays_the_death() {
     let (mut harness, player) = run();
     harness.step(10);
     let tick = |harness: &mut UiHarness, amount: f32| {
@@ -102,9 +102,12 @@ fn a_burn_tick_plays_no_hurt_but_a_killing_one_does() {
     tick(&mut harness, 200.0);
     assert!(harness.world().get::<Health>(player).unwrap().is_dead());
     assert_eq!(
-        plays(&harness, "ex10_player_hit_sfx"),
-        1,
-        "the killing tick hurts"
+        (
+            plays(&harness, "ex10_player_hit_sfx"),
+            plays(&harness, "ex10_player_death_sfx")
+        ),
+        (0, 1),
+        "the killing tick plays the death in place of the hurt"
     );
     assert!(harness.world().resource::<CameraController>().shake_trauma > 0.0);
 }

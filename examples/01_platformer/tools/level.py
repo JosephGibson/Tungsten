@@ -183,12 +183,18 @@ def build_objects(source, images, lit):
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_fireball_0', z_order=Z_FIRE), components=components)
         hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1]))
     # The lava basins after the fires: a touch over each one's surface row, as
-    # the fires' touch, and the lake's light.
+    # the fires' touch, and the lake's light. A child of each touches what is
+    # frozen with fire, which blows it apart whether it takes fire or not (a
+    # frozen wisp); the player, which cannot freeze, keeps the untyped touch.
     for i, basin in enumerate(source.get('lava', [])):
         width = (basin['right'] - basin['left']) * tile
-        half = [width / 2, LAVA_DEPTH / 2]
-        components = dict(hazard=dict(fire=False, lava=True), contact_damage=dict(
-            touch, shape=dict(aabb=half), offset=[width / 2, LAVA_TOP + LAVA_DEPTH / 2]))
+        box = dict(shape=dict(aabb=[width / 2, LAVA_DEPTH / 2]),
+                   offset=[width / 2, LAVA_TOP + LAVA_DEPTH / 2])
+        frost = f'ex10_lava_frost_{i}'
+        prefabs[frost] = dict(components=dict(contact_damage=dict(
+            box, damage={'damage.fire': HAZARD_DAMAGE}, filter=dict(all=['status.frozen']))))
+        components = dict(hazard=dict(fire=False, lava=True), contact_damage=dict(touch, **box),
+                          spawn_children=[dict(prefab=frost, offset=[0, 0])])
         if basin.get('light'):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
         cls = f'ex10_lava_{i}'
@@ -250,11 +256,16 @@ def build_objects(source, images, lit):
     layer('dummies', [obj('dummy', d['x'] * tile, d['y'] * tile, name=d['name'], properties=[
         dict(name=f'tags.{i}', type='string', value=tag) for i, tag in enumerate(d['tags'])])
         for d in source['dummies']])
-    # The enemies, the map's last layer, so every earlier object keeps its save
-    # ID; each object's class names its kind's prefab, its point the sprite's
-    # top-left.
-    layer('enemies', [obj(e['kind'], e['x'] * tile, e['y'] * tile, name=e['name'])
+    # The enemies, after every other layer but the pickups, so every earlier
+    # object keeps its save ID; each object's class names its kind's prefab,
+    # its point the sprite's top-left, and a leash in tiles bounds a patrol.
+    layer('enemies', [obj(e['kind'], e['x'] * tile, e['y'] * tile, name=e['name'], properties=[
+        dict(name='enemy.leash', type='float', value=e['leash'] * tile)] if 'leash' in e else [])
         for e in source['enemies']])
+    # The placed health orbs, the map's last layer, after the enemies so the
+    # map's earlier objects keep their save IDs; the run takes their fade off.
+    layer('pickups', [obj('health_orb', p['left'] * tile, p['top'] * tile, name=p['name'])
+        for p in source.get('pickups', [])])
     return layers, prefabs
 
 
@@ -376,6 +387,12 @@ def background_tiles(source, cells, props, rng):
                     continue
                 if not roofed or (x, y) in cells:
                     continue
+                if (x, y - 1) in ground:
+                    # Behind the roof's lowest cell, whose underside the art
+                    # cuts away, the back runs on up, so the cut shows the
+                    # cave's wall and never the sky; a plain tile, outside
+                    # the random stream.
+                    out[(x, y - 1)] = f'cave_back_rock_{x % 4}'
                 if shoring[0] <= x <= shoring[1]:
                     kind = weighted(rng, (('timber_0', 3), ('timber_1', 3), ('xbrace_0', 2), ('ore_0', 1), ('ore_1', 1), ('rock_0', 2)))
                     out[(x, y)] = 'cave_back_ladder' if x == shoring[0] + 1 and rng.randrange(3) == 0 else f'cave_back_{kind}'
@@ -415,6 +432,11 @@ def background_tiles(source, cells, props, rng):
             out[(x, y)] = f'cut_back_iron_{mask}_{rng.randrange(2)}'
         else:
             out[(x, y)] = f'cut_back_{mask}_{rng.randrange(2)}'
+    # The same behind each ceiling's or ledge's lowest cell over a wall:
+    # plain inner tiles, after the walls' own, outside the random stream.
+    for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
+        if (x, y - 1) in ground and (x, y - 1) not in out:
+            out[(x, y - 1)] = f'{family}_0_{x % 2}'
     river = source.get('river')
     if river:
         for x in range(river['left'], river['right']):
@@ -470,13 +492,17 @@ def build_level(images, lit):
         put('background',x,y,'ex10_'+sprite)
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
     # The far mist: each band's tiles across its columns in the decorations
-    # layer, over the far walls and under the terrain, where no terrain is.
+    # layer, over the far walls and under the terrain, where no terrain is or
+    # the terrain's art leaves room for it to show (a ceiling's cut-away
+    # underside, a deck), so a band never starts on a hard edge.
     from backdrops import FAR_MISTS, TILE as BAND_TILE
+    def opaque(cell):
+        return cell in tiles and images[tiles[cell]].getchannel('A').getextrema()[0] == 255
     for mist in source.get('mists', []):
         band = FAR_MISTS[mist['band']]
         for r in range(-(-band[0] // BAND_TILE)):
             for x in range(mist['left'], mist['right']):
-                if (x, mist['row'] + r) not in cells:
+                if not opaque((x, mist['row'] + r)):
                     put('decorations', x, mist['row'] + r, f"ex10_far_mist_{mist['band']}_big_{r}_{x % 16}")
     tile_layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())]
     # The object layers sit before `collision`, so the first and last layers stay

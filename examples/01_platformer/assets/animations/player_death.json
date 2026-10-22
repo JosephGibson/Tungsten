@@ -1,0 +1,25 @@
+{
+  "frames": [
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_player_death_0"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_player_death_1"
+    },
+    {
+      "duration_ms": 140,
+      "sprite": "ex10_player_death_2"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_player_death_3"
+    },
+    {
+      "duration_ms": 260,
+      "sprite": "ex10_player_death_4"
+    }
+  ],
+  "looping": false
+}

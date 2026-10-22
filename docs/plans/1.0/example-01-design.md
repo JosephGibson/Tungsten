@@ -97,7 +97,7 @@ Saturated yellow is reserved for crits. The palette gains violet, maroon and ind
 | Bleeding | Drip particles |
 | Stunned | A spark halo |
 
-Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatter, a burn-out, a steam pop or a plain poof), so no enemy needs hurt or death frames.
+Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatter, a burn-out, a steam pop or a plain poof), so no enemy needs hurt or death frames. The courier has one death clip since the quick fixes (`D-207`).
 
 **Animation.** Each enemy is one rig posed per frame, like the courier, the player's rig (`tools/actors.py`), with its feet anchored to a fixed row and no raster rotated.
 
@@ -382,7 +382,7 @@ Fallback: (d) is content with no public API. If Phase 6 runs long, the feature g
 
 ## After (d): the feedback stops
 
-The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release.
+The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release; their notes of 2026-10-22 added two between (e) and (f), the quick fixes and a level and title pass.
 
 - **As built, 01 (e) (M77, `D-205`).** Where it changed this file's rules and its stops' rows:
   - the player's lantern is the staff light's flame until (h)'s wizard: a kit ability burns 3 mana a second while it is lit, handed back at full mana, where the regeneration covers it; without mana it gutters out and relights at 10 (feedback Q15); 01 (c)'s crawler holds at the light's drawn edge, scared, with a clip, a hiss and a puff of frost breath, where it parked unexplained;
@@ -391,3 +391,11 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - spells cost half and mana comes back at 30 a second; creatures freeze 7.5 s and the troll 3 s; the bolt falls at the cursor's x to the first thing below;
   - the save is schema 8, migrating schema 7 (the staff light's ability); the template's autosave writes over an older schema's slots (`D-204`);
   - the engine work the owner added past the feedback plan's non-goals: core physics keeps a tilemap's collision proxies across steps (`D-203`), the World keeps each query shape's matching archetypes (`D-206`, the feedback's X6, taken on its measurement), and the dev profile builds 01, the kit and the umbrella at opt-level 1 (P8).
+- **As built, the quick fixes (M78, `D-207`).** Where they changed this file's rules and (e)'s:
+  - the staff light is off at a new run's start, and a load keeps its saved light;
+  - the courier has a death clip, shown from the first dead step and held, and the killing hit plays a death sound in place of the hurt; game over comes two game seconds after the death;
+  - the area banner is Source Serif 4 Bold, 01's own copy beside the Regular, over no box, with a shadow of copies;
+  - the crawler's touch reaches past its body, so its lunge lands; a frozen enemy touches nothing until it thaws; a placement may leash a patrol;
+  - the map places eighteen enemies and eight health orbs that never fade; orbs glow without a light;
+  - fire on a frozen fire-proof wisp blows it apart through the kit's `ImmunePart`, and lava blows apart what is frozen;
+  - the save is schema 9, shifting the thirteen new map objects' save IDs.

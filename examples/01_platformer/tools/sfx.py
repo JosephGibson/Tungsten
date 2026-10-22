@@ -126,6 +126,52 @@ def extinguish():
     return finish(samples)
 
 
+def thud(freq, seconds, level, seed):
+    """A body meeting the ground: a short low sine drop under a muffled
+    knock of noise."""
+    noise, low = Noise(seed), LowPass()
+    out, phase = [], 0.0
+    for i in range(int(seconds * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(freq, freq * 0.55, min(1.0, t / seconds)) / RATE
+        knock = low(noise(), 700) * math.exp(-t / 0.012)
+        out.append(level * (math.sin(phase) * math.exp(-t / (0.3 * seconds)) + 1.2 * knock))
+    return out
+
+
+def player_death():
+    """The courier falling: a breathy groan sinking through an open vowel,
+    a knee and then the body meeting the ground, the lantern's clink as it
+    is set down, and its flame guttering out."""
+    duration = 1.1
+    samples = [0.0] * int(duration * RATE)
+    breath, low = Noise(0xDEA7), LowPass()
+    phase = 0.0
+    for i in range(int(0.62 * RATE)):
+        t = i / RATE
+        p = t / 0.62
+        f = glide(205, 92, p ** 0.8)
+        phase += math.tau * f / RATE
+        voice = sum(math.sin(k * phase) / k * (1.0 if k < 4 else 0.45) for k in range(1, 7))
+        # An open "oh": the voice's upper partials leaned on near 550 Hz.
+        vowel = low(voice + 0.5 * breath(), 900 - 300 * p)
+        envelope = min(1.0, t / 0.05) * (1 - p) ** 1.4
+        samples[i] += 0.8 * vowel * envelope
+    place(samples, int(0.26 * RATE), thud(110, 0.16, 0.9, 0xDEA8))
+    place(samples, int(0.5 * RATE), thud(80, 0.24, 1.0, 0xDEA9))
+    place(samples, int(0.56 * RATE), chime(1760.0, 0.18, 0.18, decay=0.03))
+    place(samples, int(0.585 * RATE), chime(2349.0, 0.14, 0.1, decay=0.025))
+    gutter, high = Noise(0xDEAA), LowPass()
+    start = int(0.66 * RATE)
+    for i in range(int(0.42 * RATE)):
+        t = i / RATE
+        n = gutter()
+        flutter = .5 + .5 * math.sin(math.tau * glide(18, 6, t / 0.42) * t)
+        hiss = high(n, glide(1400, 400, t / 0.42))
+        samples[start + i] += 0.35 * hiss * flutter * min(1.0, t / 0.02) * math.exp(-t / 0.16)
+    return finish(samples, fade_in=0.002, fade_out=0.06)
+
+
 def player_hit():
     """A hurt: a dull body thump under a short gritty crack and a falling yelp tone."""
     duration = 0.32
@@ -811,12 +857,36 @@ def enemy_spotted():
     return finish(samples, fade_in=0.0005, fade_out=0.05)
 
 
+def gulp(freq, seconds, level):
+    """One swallow of a draught: a bubble's tone rising through a soft
+    throat formant, quick to swell and quicker to close."""
+    out, phase = [], 0.0
+    for i in range(int(seconds * RATE)):
+        t = i / RATE
+        p = t / seconds
+        phase += math.tau * glide(freq, freq * 1.7, min(1.0, p * 1.4)) / RATE
+        body = math.sin(phase) + 0.35 * math.sin(2 * phase + 0.6)
+        out.append(level * body * min(1.0, t / 0.006) * math.exp(-t / (0.32 * seconds)))
+    return out
+
+
 def orb_pickup():
-    """A drop collected: a quick bright arpeggio of glassy bells."""
-    samples = [0.0] * int(0.42 * RATE)
-    for k, name in enumerate(('A5', 'C#6', 'E6', 'A6')):
-        place(samples, int(k * 0.045 * RATE), chime(note(name), 0.3, 0.55 + 0.1 * k, decay=0.1))
-    return finish(samples, fade_in=0.0005, fade_out=0.04)
+    """A drop taken, as a potion: a cork's pop, three quick gulps of the
+    draught, each a little lower, and a bright shimmer as it takes hold."""
+    samples = [0.0] * int(0.62 * RATE)
+    noise, low, high = Noise(0x0B1A), LowPass(), LowPass()
+    phase = 0.0
+    for i in range(int(0.035 * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(1100, 420, t / 0.035) / RATE
+        n = noise()
+        snap = (low(n, 5200) - high(n, 1400)) * math.exp(-t / 0.004)
+        samples[i] += 0.9 * math.sin(phase) * math.exp(-t / 0.009) + 0.6 * snap
+    for start, freq in ((0.075, 300), (0.165, 270), (0.255, 240)):
+        place(samples, int(start * RATE), gulp(freq, 0.085, 0.8))
+    for k, name in enumerate(('E6', 'G#6', 'B6', 'E7')):
+        place(samples, int((0.35 + 0.035 * k) * RATE), chime(note(name), 0.25, 0.22, decay=0.07))
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
 
 
 # The shell's menu sounds and game over's sting, by the IDs it plays them
@@ -1409,6 +1479,7 @@ def build_sounds():
         'fireball_blast.wav': fireball_blast(),
         'extinguish.wav': extinguish(),
         'player_hit.wav': player_hit(),
+        'player_death.wav': player_death(),
         'iron_crush.wav': iron_crush(),
         'ice_beam.wav': ice_beam(),
         'ice_spray.wav': ice_spray(),

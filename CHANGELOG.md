@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.99.0] - 2026-10-22
+
+Summary: M78, example 01's quick fixes from the owner's notes of 2026-10-22 (plan archived at `docs/plans/archive/1.0/phase6-milestone-78-example-01-quick-fixes.md`; `D-207`): the kit sends `ImmunePart` for each part of a hit that an immunity drops, so example 01's fire and lava blow a frozen wisp apart; example 01's crawler lunge lands, its orbs glow and sound like potions with eight placed around the level, its death takes two seconds with a clip and a sound, its ambience is half as loud, its area titles are bold over no box, its staff light starts off, four more bats and a leashed crawler join the map, its cave ceilings close, and it saves at schema 9, migrating 0.98's.
+
+### Added
+
+- **The kit's `ImmunePart`** (`D-207`): an event for each part of a hit that the target's immunity drops (a resist factor of 0), sent in part order whether the rest of the hit lands or it is ignored, with the part's amount before the resistances, its kinds, source, position and flags; `HealthPlugin` registers its queue. An addition in the break ledger; `damage_resolve`'s rows within noise.
+- **Example 01's quick fixes** (`D-207`): eight health orbs placed around the level from `level.json`'s `pickups`, never fading, a taken one gone through a save; red and blue halos on the orbs, a potion sound and a burst; the courier's death clip and a death sound; four bats, two in the aqueduct and two in the ravine, and a crawler at the falls' foot on a leash (`enemy.leash`); the crawler's wind-up, leap and landing clips; lava's frost touch, which blows apart what is frozen; Source Serif 4 Bold in 01's serif family.
+
+### Changed
+
+- **Example 01** (`D-207`): game over two seconds after the death, not three; ambience at half its volume; area titles bold, larger and letter-spaced over a shadow, with eased fades of 0.8 s in and 1.2 s out; the staff light off at a new run's start, a load keeping its own; a frozen enemy's touch set aside until the thaw; an orb's glow with no light of its own (`Glow` with `light` 0).
+- **Example 01's save** (`D-207`): schema 9; `migrate` moves a schema 8 save's IDs at or above its player's up by the thirteen new map objects, and takes schema 7 through 8.
+- **Records**: the feedback plan's §3.1a landing and K15, the 01 design's death clip and its quick fixes' notes, `docs/known-issues.md` (a dark light holds a light slot), the break ledger, example 01's READMEs and the register.
+
+### Fixed
+
+- **Example 01** (`D-207`): a crawler lunge that stopped flush against the player dealt nothing, since its touch was its body's width, and its wind-up fired at players on ledges far above; a frozen fire wisp ignored fire, since the kit dropped the part before any event, and lava never touched it; a lighter stripe under the ravine's and the hollow's ceilings, where the backdrop showed through; the area banner's box, its root panel's fill and border.
+
 ## [0.98.0] - 2026-10-22
 
 Summary: M77, example 01's fifth stop, 01 (e) fixes (plan archived at `docs/plans/archive/1.0/phase6-milestone-77-example-01-fixes.md`; `D-205`), widened by the owner's prompt of 2026-10-22 to the engine and the template: the held spells' frame-time collapse and the full pit's per-ball scans are gone (from 0.97, release, the idle spawn 2.504 → 0.485 ms, an ice spray into air 13.740 → 0.569 ms, the frame-time harness 6.091 → 3.547 ms); core physics keeps a tilemap's collision proxies across steps (`D-203`) and queries keep their matching archetypes (`D-206`); the template's autosave writes over an older version's autosaves again (`D-204`); example 01 fixes its readouts, area titles, bloom, damage numbers, lightning, troll, crawler and death, halves its spell costs, turns its lantern into a staff light that burns mana and scares the crawlers, and saves at schema 8, migrating 0.97's.

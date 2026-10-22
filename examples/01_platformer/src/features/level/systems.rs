@@ -98,10 +98,13 @@ pub fn glows(world: &mut World) {
             place(world, core, centre, glow.core, glow.hidden);
         }
         let flicker = glow.light + 0.13 * (time * 5.0 + parts.phase).sin();
-        if let Some(transform) = world.get_mut::<Transform>(parts.light) {
+        let Some(lamp) = parts.light else {
+            continue;
+        };
+        if let Some(transform) = world.get_mut::<Transform>(lamp) {
             transform.position = centre;
         }
-        if let Some(light) = world.get_mut::<Light>(parts.light) {
+        if let Some(light) = world.get_mut::<Light>(lamp) {
             light.intensity = if glow.hidden { 0.0 } else { flicker };
         }
     }
@@ -119,14 +122,16 @@ pub fn glows(world: &mut World) {
 fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
     let phase = world.get::<SaveId>(owner).map_or(0.0, |id| id.0 as f32);
     let [r, g, b, _] = glow.color.map(|c| f32::from(c) / 255.0);
-    let mut light = Light::point(Vec3::new(r, g, b), glow.reach());
-    light.intensity = glow.light;
-    let light = world.spawn_with((
-        Transform::from_position(glow.centre(Vec2::ZERO)),
-        light,
-        GlowPart { owner },
-        SceneEntity { state_id: GAMEPLAY },
-    ));
+    let light = (glow.light > 0.0).then(|| {
+        let mut light = Light::point(Vec3::new(r, g, b), glow.reach());
+        light.intensity = glow.light;
+        world.spawn_with((
+            Transform::from_position(glow.centre(Vec2::ZERO)),
+            light,
+            GlowPart { owner },
+            SceneEntity { state_id: GAMEPLAY },
+        ))
+    });
     let halo = (glow.radius > 0.0)
         .then(|| spawn_sprite(world, owner, HALO, HALO_MATERIAL, HALO_Z, glow.color));
     let core = (glow.core > 0.0)

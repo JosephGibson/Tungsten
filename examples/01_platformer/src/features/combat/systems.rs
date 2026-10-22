@@ -9,7 +9,7 @@ use tungsten::core::{
     Collider, Entity, EventCursor, EventQueue, ParticleConfigRegistry, ParticleEmitter,
     ParticleEmitterState, Position, Sprite, Transform, World,
 };
-use tungsten::kit::{DamagedPart, EffectApplied, Health, Tags};
+use tungsten::kit::{DamagedPart, EffectApplied, Health, ImmunePart, Tags};
 
 use super::components::{Reaction, StatusEmitter, StatusLook};
 use super::{BURNING, CHILLED, FROZEN, Kind, SHOCKED};
@@ -53,15 +53,17 @@ fn centre(world: &World, entity: Entity) -> Option<Vec2> {
     )
 }
 
-/// `combat_reactions`, in the react phase: a fire part landed on a target
-/// that was frozen queues thermal shock's explosion at it, and a cold part
-/// on one that was burning a steam burst, dead or alive; `shattered`
-/// applied queues its shatter, and `frozen` and `shocked` applied send
-/// their reactions for the hints. Each queued entry runs from the next
-/// step.
+/// `combat_reactions`, in the react phase: a fire part on a target that
+/// was frozen queues thermal shock's explosion at it, landed or dropped by
+/// the target's immunity (the kit's `ImmunePart`: a frozen wisp, which
+/// takes no fire), and a cold part landed on one that was burning a steam
+/// burst, dead or alive; `shattered` applied queues its shatter, and
+/// `frozen` and `shocked` applied send their reactions for the hints. Each
+/// queued entry runs from the next step.
 pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
+    immune: &mut EventCursor<ImmunePart>,
     applied: &mut EventCursor<EffectApplied>,
 ) {
     let states = world
@@ -81,6 +83,16 @@ pub fn reactions(
             }
             if cold && states.burning.contains(&part.entity) {
                 queued.push((CascadeKind::Steam, part.entity, STEAM_REACH));
+            }
+        }
+    }
+    if let Some(events) = world.get_resource::<EventQueue<ImmunePart>>() {
+        for part in immune.read(events) {
+            if !part.periodic
+                && part.kinds.has(world, Kind::Fire.tag())
+                && states.frozen.contains(&part.entity)
+            {
+                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST));
             }
         }
     }

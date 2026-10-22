@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use example_01_platformer::features::level::components::{AmbientEmitter, Glow, GlowParts};
 use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::HALO_MATERIAL;
-use example_01_platformer::features::player::components::{LanternAnchors, Moves};
+use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::game::GAMEPLAY;
@@ -428,6 +428,11 @@ fn landing_clip_completes_without_resetting_idle_and_props_stay_synchronized() {
 fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     let (mut harness, player) = run();
     harness.step(5);
+    // A run starts dark: the first press lights it.
+    assert!(harness.world().get::<Glow>(player).unwrap().hidden);
+    harness.harness_mut().press_action("lantern");
+    harness.step(1);
+    harness.harness_mut().release_action("lantern");
     let world = harness.world();
     let anchors = world
         .resource::<DataRegistry>()
@@ -492,12 +497,25 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     };
     harness.step(1);
     let on = count(&harness);
-    assert!(harness.world().get::<Light>(parts.light).unwrap().intensity > 0.0);
+    assert!(
+        harness
+            .world()
+            .get::<Light>(parts.light.expect("its light"))
+            .unwrap()
+            .intensity
+            > 0.0
+    );
     harness.harness_mut().press_action("lantern");
     harness.step(1);
     let world = harness.world();
     assert!(world.get::<Glow>(player).unwrap().hidden);
-    assert_eq!(world.get::<Light>(parts.light).unwrap().intensity, 0.0);
+    assert_eq!(
+        world
+            .get::<Light>(parts.light.expect("its light"))
+            .unwrap()
+            .intensity,
+        0.0
+    );
     let dark = world
         .query::<&Light>()
         .filter(|light| light.intensity == 0.0)
@@ -553,6 +571,8 @@ fn the_bloom_option_keeps_the_vignette() {
 #[test]
 fn the_bloom_option_hides_the_halos_and_the_moons_glow() {
     let (mut harness, player) = run();
+    // Lit, so its halo and core draw.
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = true;
     let assets = harness.world_mut().resource_mut::<AssetRegistry>();
     mock_sprite(assets, "ex10_sky", 700, false);
     mock_sprite(assets, draw::MOON, 701, false);

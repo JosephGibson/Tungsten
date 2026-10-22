@@ -33,7 +33,7 @@ use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Shown, Sight,
 };
 use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
-use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
+use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind, PlacedOrbs};
 use example_01_platformer::features::enemies::{self, ARRIVED, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
@@ -583,6 +583,71 @@ fn the_wisp_is_immune_to_fire_and_burning_balls_draw_and_heal_it() {
     assert!(!tagged(&harness, wisp, "status.burning"), "never burning");
 }
 
+/// Waits, at most `frames` frames, for a thermal shock's frost blast to
+/// burst more often than `before`.
+fn blown(harness: &mut UiHarness, before: usize, frames: u32) -> bool {
+    until(harness, frames, |h| bursts(h, "ex10_frost_blast") > before)
+}
+
+#[test]
+fn a_frozen_wisp_blows_apart_under_a_fire_missile() {
+    let (mut harness, _) = arena();
+    // Within the missile's arc from the player at x 300: its blast reaches
+    // 72 px from where it lands.
+    let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(520.0, 850.0));
+    harness.step(2);
+    apply(&mut harness, wisp, "frozen", None);
+    // It falls to the ground and lies there, frozen.
+    harness.step(60);
+    assert!(tagged(&harness, wisp, "status.frozen"));
+    let before = bursts(&harness, "ex10_frost_blast");
+    let aim = at(&harness, wisp);
+    aim_at(&mut harness, aim);
+    choose(&mut harness, 0);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert!(
+        blown(&mut harness, before, 120),
+        "thermal shock, from fire it takes none of"
+    );
+    harness.step(2);
+    assert!(!tagged(&harness, wisp, "status.frozen"), "its ice ends");
+    assert_eq!(
+        health(&harness, wisp),
+        24.0,
+        "the blast's 16 physical alone"
+    );
+}
+
+#[test]
+fn a_frozen_wisp_blows_apart_in_the_lava() {
+    let (mut harness, player) = arena();
+    // Basin 0's lake, columns 232 to 239 under row 64; the player on the
+    // hollow's floor west of it, the wisp over its east pool.
+    stand(&mut harness, player, 226.0 * 64.0, 63.0 * 64.0);
+    harness.step(1);
+    let wisp = enemy(
+        &mut harness,
+        EnemyKind::Wisp,
+        Vec2::new(238.5 * 64.0, 64.0 * 64.0 - 160.0),
+    );
+    harness.step(2);
+    apply(&mut harness, wisp, "frozen", None);
+    let before = bursts(&harness, "ex10_frost_blast");
+    assert!(
+        blown(&mut harness, before, 120),
+        "the lava's fire blows it apart"
+    );
+    harness.step(2);
+    assert!(!tagged(&harness, wisp, "status.frozen"));
+    assert_eq!(
+        health(&harness, wisp),
+        24.0,
+        "the blast's 16 physical alone"
+    );
+}
+
 #[test]
 fn cold_freezes_the_wisp() {
     let (mut harness, _) = arena();
@@ -650,7 +715,9 @@ fn the_wisp_burns_on_touch_and_lights_the_scene() {
         .get::<example_01_platformer::features::level::components::GlowParts>(wisp)
         .expect("its glow");
     assert!(
-        world.get::<tungsten::core::Light>(parts.light).is_some(),
+        world
+            .get::<tungsten::core::Light>(parts.light.expect("its light"))
+            .is_some(),
         "a light"
     );
 }
@@ -694,6 +761,7 @@ fn a_crawler_is_scared_at_the_drawn_light() {
     // hangs on the body's left, where the crawler reads it (I8).
     for side in [1.0_f32, -1.0] {
         let (mut harness, player) = arena();
+        harness.world_mut().get_mut::<Lantern>(player).unwrap().on = true;
         let action = if side > 0.0 {
             "move_right"
         } else {
@@ -817,6 +885,67 @@ fn the_crawler_chills_on_touch_and_lunges_after_its_tell() {
     assert!(
         (speed + LUNGE_SPEED).abs() < 1.0,
         "a lunge at the player: {speed}"
+    );
+}
+
+/// The crawler's hits on `player` over `frames` frames.
+fn crawler_hits(harness: &mut UiHarness, player: Entity, crawler: Entity, frames: u32) -> Vec<f32> {
+    hits_over(harness, player, frames)
+        .into_iter()
+        .filter(|&(_, source, _)| source == Some(crawler))
+        .map(|(amount, ..)| amount)
+        .collect()
+}
+
+#[test]
+fn a_crawler_lunge_at_a_still_player_lands_its_touch() {
+    let (mut harness, player, crawler) = stalker();
+    assert!(
+        until(&mut harness, 240, |h| state(h, crawler)
+            == EnemyState::Attack),
+        "its lunge"
+    );
+    // Both bodies block each other, so the leap stops flush against the
+    // player; the touch reaches past its body and lands.
+    let hits = crawler_hits(&mut harness, player, crawler, 45);
+    assert_eq!(hits, [12.0], "one touch, 12 cold");
+}
+
+#[test]
+fn a_crawler_lunge_needs_its_target_within_reach_above() {
+    let (mut harness, player, crawler) = stalker();
+    // A ledge two tiles up, within its range across: out of the leap's reach.
+    let ledge = TOP - 128.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(420.0, ledge + 10.0),
+        Vec2::new(80.0, 10.0),
+    );
+    harness.step(1);
+    stand(&mut harness, player, 420.0, ledge);
+    let wound = until(&mut harness, 180, |h| {
+        state(h, crawler) == EnemyState::WindUp
+    });
+    assert!(!wound, "no tell at a player 128 px up");
+}
+
+#[test]
+fn a_crawler_lunge_landing_on_the_players_head_lands_its_touch() {
+    let (mut harness, player) = arena();
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let head = super::centre(&harness, player).y - courier::PLAYER_HALF.y;
+    let half = EnemyKind::Crawler.info().half.y;
+    // Dropped from 40 px over the player's head, it lands flush on it.
+    let crawler = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(300.0, head - half - 40.0),
+    );
+    let hits = crawler_hits(&mut harness, player, crawler, 60);
+    assert_eq!(
+        hits.first(),
+        Some(&12.0),
+        "its touch reaches the head it stands on"
     );
 }
 
@@ -1678,13 +1807,14 @@ fn seed_for(harness: &UiHarness, table: &str, prefab: Option<&str>) -> u64 {
         .expect("a seed")
 }
 
-/// The live orbs of `kind`.
+/// The live orbs of `kind` that dropped: the map's placed ones left out.
 fn orbs(harness: &UiHarness, kind: OrbKind) -> Vec<Entity> {
-    harness
-        .world()
-        .query::<(Entity, &Orb)>()
-        .filter(|(_, orb)| orb.kind == kind)
-        .map(|(entity, _)| entity)
+    let world = harness.world();
+    let placed = &world.resource::<PlacedOrbs>().0;
+    world
+        .query::<(Entity, &Orb, Option<&SaveId>)>()
+        .filter(|(_, orb, id)| orb.kind == kind && !id.is_some_and(|id| placed.contains(&id.0)))
+        .map(|(entity, ..)| entity)
         .collect()
 }
 

@@ -1873,6 +1873,36 @@ impl core::marker::Unpin for tungsten_kit::Hurtbox
 impl core::marker::UnsafeUnpin for tungsten_kit::Hurtbox
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hurtbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hurtbox
+#[non_exhaustive] pub struct tungsten_kit::prelude::ImmunePart
+pub tungsten_kit::prelude::ImmunePart::amount: f32
+pub tungsten_kit::prelude::ImmunePart::crit: bool
+pub tungsten_kit::prelude::ImmunePart::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::ImmunePart::kinds: tungsten_kit::DamageKinds
+pub tungsten_kit::prelude::ImmunePart::periodic: bool
+pub tungsten_kit::prelude::ImmunePart::position: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_kit::prelude::ImmunePart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::ImmunePart::with_crit(self, bool) -> Self
+pub fn tungsten_kit::ImmunePart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
+pub fn tungsten_kit::ImmunePart::with_periodic(self, bool) -> Self
+pub fn tungsten_kit::ImmunePart::with_position(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::ImmunePart::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::clone(&self) -> tungsten_kit::ImmunePart
+impl core::cmp::PartialEq for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::eq(&self, &tungsten_kit::ImmunePart) -> bool
+impl core::fmt::Debug for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ImmunePart
+impl core::marker::StructuralPartialEq for tungsten_kit::ImmunePart
+impl core::marker::Freeze for tungsten_kit::ImmunePart
+impl core::marker::Send for tungsten_kit::ImmunePart
+impl core::marker::Sync for tungsten_kit::ImmunePart
+impl core::marker::Unpin for tungsten_kit::ImmunePart
+impl core::marker::UnsafeUnpin for tungsten_kit::ImmunePart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ImmunePart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ImmunePart
 pub struct tungsten_kit::prelude::Intent
 impl tungsten_kit::Intent
 pub fn tungsten_kit::Intent::aim(&self) -> core::option::Option<glam::f32::vec2::Vec2>
@@ -5604,6 +5634,36 @@ impl core::marker::Unpin for tungsten_kit::Hurtbox
 impl core::marker::UnsafeUnpin for tungsten_kit::Hurtbox
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Hurtbox
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Hurtbox
+#[non_exhaustive] pub struct tungsten_kit::ImmunePart
+pub tungsten_kit::ImmunePart::amount: f32
+pub tungsten_kit::ImmunePart::crit: bool
+pub tungsten_kit::ImmunePart::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::ImmunePart::kinds: tungsten_kit::DamageKinds
+pub tungsten_kit::ImmunePart::periodic: bool
+pub tungsten_kit::ImmunePart::position: core::option::Option<glam::f32::vec2::Vec2>
+pub tungsten_kit::ImmunePart::source: core::option::Option<tungsten_core::ecs::entity::Entity>
+impl tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::new(tungsten_core::ecs::entity::Entity, f32) -> Self
+pub fn tungsten_kit::ImmunePart::with_crit(self, bool) -> Self
+pub fn tungsten_kit::ImmunePart::with_kinds(self, tungsten_kit::DamageKinds) -> Self
+pub fn tungsten_kit::ImmunePart::with_periodic(self, bool) -> Self
+pub fn tungsten_kit::ImmunePart::with_position(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::ImmunePart::with_source(self, tungsten_core::ecs::entity::Entity) -> Self
+impl core::clone::Clone for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::clone(&self) -> tungsten_kit::ImmunePart
+impl core::cmp::PartialEq for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::eq(&self, &tungsten_kit::ImmunePart) -> bool
+impl core::fmt::Debug for tungsten_kit::ImmunePart
+pub fn tungsten_kit::ImmunePart::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ImmunePart
+impl core::marker::StructuralPartialEq for tungsten_kit::ImmunePart
+impl core::marker::Freeze for tungsten_kit::ImmunePart
+impl core::marker::Send for tungsten_kit::ImmunePart
+impl core::marker::Sync for tungsten_kit::ImmunePart
+impl core::marker::Unpin for tungsten_kit::ImmunePart
+impl core::marker::UnsafeUnpin for tungsten_kit::ImmunePart
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ImmunePart
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ImmunePart
 pub struct tungsten_kit::Intent
 impl tungsten_kit::Intent
 pub fn tungsten_kit::Intent::aim(&self) -> core::option::Option<glam::f32::vec2::Vec2>

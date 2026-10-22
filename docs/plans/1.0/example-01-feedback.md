@@ -1,10 +1,10 @@
 # Example 01 feedback after 0.97 — draft
 
 - **status:** draft
-- **goal:** Turn the owner's playtest notes on example 01 (2026-10-21, with the same day's follow-up) and an improvement pass into four stops after M76, each its own milestone and release: (e) fixes, the held-spell frame-time collapse first, with the staff light's mana and the crawler's fear; (f) feel: knockback, toys, effects, sounds and the gun; (g) props and foes: burnable crates, powder kegs, the goblin and the troll's swipe; (h) the look: a wizard with the light at his staff's tip, one icon family, the HUD, 01's own theme colours, the title.
-- **non-goals:** M76's ground (the map, ambience, each area's light, schema 7); engine or kit changes not recorded as a gap (§6; the design's kit-first rule); options of 01's own (the shell's option set is fixed); new spells; slopes, ramps and water physics; any template change.
+- **goal:** Turn the owner's playtest notes on example 01 (2026-10-21, with the same day's follow-up) and an improvement pass into four stops after M76, each its own milestone and release: (e) fixes, the held-spell frame-time collapse first, with the staff light's mana and the crawler's fear; (f) feel: knockback, toys, effects, sounds and the gun; (g) props and foes: burnable crates, powder kegs, the goblin and the troll's swipe; (h) the look: a wizard with the light at his staff's tip, one icon family, the HUD, 01's own theme colours, the title. The owner's notes of 2026-10-22 add two stops between (e) and (f) (§3.1a, §3.1b): quick fixes, and a level and title pass.
+- **non-goals:** M76's ground (the map, ambience, each area's light, schema 7), except where §3.1a and §3.1b change it; engine or kit changes not recorded as a gap (§6; the design's kit-first rule); options of 01's own (the shell's option set is fixed); new spells; slopes, ramps and water physics; any template change but §3.1b's difficulty picker.
 - **files to touch:** `examples/01_platformer/` (`src/`, `tests/game/`, `tools/` and the generated `assets/`, `input.json`, `README.md`); `scripts/check-repo.py` and `scripts/test-check-repo.py` for 01's theme (h); the root `Cargo.toml`'s dev profile if the owner takes P8; per stop `DECISIONS.md`, `docs/DECISION_INDEX.md`, `CHANGELOG.md`, the design, the backlog and known issues.
-- **ordered steps:** (1) 01 (e) fixes, 0.98. (2) 01 (f) feel, 0.99. (3) 01 (g) props and foes, 0.100. (4) 01 (h) the look, 0.101. Then the Phase 6 QA pass. §3 sketches each stop's steps.
+- **ordered steps:** (1) 01 (e) fixes, 0.98. (2) 01 quick fixes, 0.99. (3) 01 level and title pass, 0.100. (4) 01 (f) feel, 0.101. (5) 01 (g) props and foes, 0.102. (6) 01 (h) the look, 0.103. Then the Phase 6 QA pass. §3 sketches each stop's steps.
 - **done-when:** each stop's milestone plan passes its own done-when and release; the owner has played each stop through; every row of §1 is landed, moved to a later stop, or dropped with a reason in §5.
 
 Read at `82327ce` on 2026-10-21, while M76 (0.97, `phase6-milestone-76-example-01-new-level.md`) was being planned; its scope has grown since (level C: the kit's projectile walls by layer, five transitions). Line numbers move when M76 lands; each stop's plan session re-reads its rows. Paths are under `examples/01_platformer/src/features/` unless rooted. The evidence (the probes, their logs, both patches) is machine-local in `perf-runs/20261021-e01-feedback/`.
@@ -12,7 +12,7 @@ Read at `82327ce` on 2026-10-21, while M76 (0.97, `phase6-milestone-76-example-0
 ## Context digest
 
 - Example 01 is a sandbox on the template, rebuilt in four stops (`D-194`): (a) rebuild, (b) elements, (c) bestiary and (d) the new level (M76, 0.97). The shell is a byte copy of `templates/basic/src/shell/`; kit first, so a kit gap becomes a level C step or a 1.x backlog row, never a workaround in 01.
-- These stops are new to the design. Their register rows, §4 rows and cards, and `roadmap.json` stops `e01e`–`e01h` with the `{"model": "opus", "effort": "max"}` tier (`D-195`: each generates art or sound) were written with this file on 2026-10-21, before the Phase 6 QA pass; (e)'s landing decision amends `D-194` for them.
+- These stops are new to the design. Their register rows, §4 rows and cards, and `roadmap.json` stops `e01e`–`e01h` with the `{"model": "opus", "effort": "max"}` tier (`D-195`: each generates art or sound) were written with this file on 2026-10-21, before the Phase 6 QA pass; (e)'s landing decision amends `D-194` for them. On 2026-10-22, after 0.98 was cut, `e01fixes` and `e01level` were added the same way between `e01e` and `e01f`, and (f), (g) and (h) moved to 0.101, 0.102 and 0.103.
 - Sequencing: (e)'s plan is written on the `0.98` branch that 0.97's post-merge block creates (tungsten-milestone, Branch). M76 changes `tools/` (`sfx.py`, `sounds.json`, `generate.py`), `save.rs` (schema 7, older saves refused), `level/`, `run/`, `audio/` and `tests/game/`, so every stop starts from its tree.
 - Ready: `spray-trace-fix.patch` (B1) and `perf-p1-p4.patch` (P1–P4) in `perf-runs/20261021-e01-feedback/` (machine-local), applied in that order: 209 of 209 game tests pass; the held spray drops from 35–53 ms to about 4 ms a frame, and an idle full pit from 16.4 to 13.2 ms (dev profile). Both touch only `toys/systems.rs` and `elements/systems.rs`, which M76 does not.
 
@@ -164,7 +164,7 @@ At `82327ce`, `spray_look` took 32.8 ms and `spells_cast` 15.7 ms of the 53.2 (i
 
 ## 3. The stops
 
-Each stop's plan session follows tungsten-milestone: audit with `file:line` at its commit, steps with command done-whens, critique, then the run in one session. Examples test lightly: the tests a done-when names, and the tests that pin a changed value updated, not multiplied. Each stop that adds saved state bumps the schema with a `migrate` (design rule): (e) 8, (f) 9, (g) 10.
+Each stop's plan session follows tungsten-milestone: audit with `file:line` at its commit, steps with command done-whens, critique, then the run in one session. Examples test lightly: the tests a done-when names, and the tests that pin a changed value updated, not multiplied. Each stop that adds saved state bumps the schema with a `migrate` (design rule): (e) 8, the quick fixes 9, the level and title pass 10 if it adds saved state, then (f) and (g) the next two.
 
 ### 3.1 01 (e): fixes — 0.98, level B, L
 
@@ -177,36 +177,67 @@ Each stop's plan session follows tungsten-milestone: audit with `file:line` at i
 
 **Landed (M77, 0.98, `D-205`).** Every (e) row landed but P7, which moved to (f) when its measurement came in under its bar, and P2's tint table, (f)'s as well. The owner's prompt of 2026-10-22 widened the stop past this plan's non-goals: core physics caches a tilemap's collision proxies (`D-203`), the GPU's share of the new level was attributed and 01's backdrop culled, the template's autosave writes over an older schema's slots (`D-204`), P8 was taken, and X6 was taken on its measurement (`D-206`). One check fell short: step 4's "the hollow at least 3 ms lower" (its view keeps a band of sky). From 0.97, release: the idle spawn 2.504 → 0.485 ms, an ice spray into air 13.740 → 0.569 ms, the frame-time harness with a full pit and six enemies 6.091 → 3.547 ms ([plan](../archive/1.0/phase6-milestone-77-example-01-fixes.md)).
 
-### 3.2 01 (f): feel — 0.99, level B, XL
+### 3.1a 01 quick fixes — 0.99, level B, L
+
+The owner's notes of 2026-10-22, after 0.98 was cut, split by size into this stop and §3.1b. Read at `67f00c3`; the plan session re-reads each anchor. The owner asked for the plan and the run in one session, with a stop for the owner's review of in-game captures before the test pass and the release.
+
+1. **Orbs** (`enemies/drops.rs`): a red glow on health orbs, a blue one on mana orbs; a potion sound and a small burst when taken. I9 (§1, (f)) only if it comes free.
+2. **Death:** `DEATH_SECS` 3.0 → 2.0 (`run/mod.rs:46`); a death clip on today's wizard and a death sound, so the dead frames read as a death, not a freeze. (h) redraws the wizard.
+3. **Ambience:** every area's loop at half its volume (`tools/sounds.json`, 0.3–0.4 at `67f00c3`).
+4. **The crawler's lunge:** find why a lunge sometimes deals no damage (`crawler.rs`, the `LUNGE_*` constants and the hitbox's arming), fix and pin it; a clearer lunge clip (wind-up, stretch, recovery).
+5. **Bats and a crawler:** two bats in the Broken aqueduct (columns 93–161, crawlers only at `67f00c3`) and two more in the Waterfall ravine (162–210), each on a roost it can dive from; a frost crawler at the foot of the falls.
+6. **Area titles** (`run/banner.rs`): bold serif with no background and a clear fade in. Source Serif 4 Bold added to 01's `serif` family (OFL, beside the Regular face) and the label at weight 700; anything reading as a background removed; larger, letter-spaced, a fade in of about 0.8 s and a slower fade out, a soft shadow or outline rather than a box. 01's banner and manifest only; the shell's toasts stay.
+7. **The staff light off at the start:** `Lantern::default()` (`player/components.rs:35-42`) `on: false`; saves keep theirs. Check the crawlers' fear and the caves' light with it off; the tests that assume a lit start move.
+8. **Placed health orbs:** a `pickups` layer in `tools/level.json` through `level.py`, the `health_orb` prefab with no `Lifetime`; about eight, at least one per area, a couple off the main path, each over a surface the stand helper confirms and reachable without the ice spray; 20 health unless play says more. Taken orbs stay gone in a save: schema 9 with a `migrate`. §3.1b re-checks the ones near the lava and the mine.
+9. **The caves' ceiling seam** in the Waterfall ravine and the Ember hollow: fixed at its cause in the generator (the backs' `top`, the back tiles' edge rows, a strip boundary), and in any other cave that shows it.
+10. **Frozen wisps and fire:** any fire hit (missile, flamethrower, blast, lava) shatters a frozen wisp; an unfrozen one still takes no fire damage. Today `combat_reactions` (`combat/systems.rs:55-84`) queues thermal shock only from a non-periodic fire `DamagedPart`, and `wisp.json` resists `damage.fire` at 0. A cause in the kit's resist or event path is a kit gap, fixed at the kit.
+11. **Records and release 0.99.**
+
+**Landed (M78, 0.99, `D-207`).** Every item landed but I9, which stays (f)'s. The lunge missed because its touch was exactly its body's width and the two bodies stop 0.01 px apart; the touch now reaches past the body, the wind-up asks for the player within 64 px above, and three tests pin it. Item 10's cause was in the kit, a part an immunity drops sending no event (K15, fixed with `ImmunePart`), with lava's untyped touch besides. The ceiling seam was a missing back behind the cut-away undersides. The schema is 9, shifting the thirteen new map objects' save IDs, tested on a schema 8 save from the 0.98 code. The test pass found the wider touch letting a thrown frozen crawler's chill land before the throw, so a frozen enemy's touch is set aside until the thaw. The owner's review of the captures took every item with no notes, so the defaults stand: a frozen wisp survives its blast, placed orbs heal 20, the hollow's ambient and the aqueduct's crawlers unchanged ([plan](../archive/1.0/phase6-milestone-78-example-01-quick-fixes.md)).
+
+### 3.1b 01 level and title pass — 0.100, level B, XL
+
+The rest of the owner's notes of 2026-10-22: the larger items, each with art, and the one template change.
+
+1. **Lava** (`Hazard { lava: true }`, `level/components.rs:17-24`; basins from `tools/level.json`'s `lava` through `level.py:185-196`, columns 232–240 row 64 and 260–262 row 57 at `67f00c3`):
+   - Its touch as Mario 64's: the player never sinks below the surface, takes the hit and is thrown up and out, with a burn effect and a sound, on the kit's contact damage and knockback; a missing kit piece is a gap, not a workaround.
+   - Each basin about a third wider, its walls, tiles, art and props regenerated; the hollow still crossable without the ice spray.
+   - The ice spray hardens a basin into stone for a while, on the path that douses fire hazards (`toys/systems.rs:830-880`, `Doused`): no touch, a solid crust, a hiss and steam as it sets, glowing cracks before it melts, and a player still on it thrown as above. Default: the whole basin after about half a second of spray, for about 6 s. The timer is saved as `Doused` is (schema 10). The "lava, never" doc comment and design text change.
+2. **The iron mine** (columns 281–350): the vertical deck at (316, 47) as an elevator and the only way up to the mine's next level; a fourth beetle; a visible effect while a beetle charges.
+3. **The Ember hollow's entrance:** the steam (`ex10_steam_big`, x 204.6) replaced by a cave mouth drawn with the generator's toolkit and surface-checked props.
+4. **The title's difficulty picker** (`templates/basic/src/shell/title.rs`, the "Difficulty" page): a proper look, in the template first and copied to 01 byte for byte, within `D-199`'s caps, with a decision amending `D-181`. The one template change in these stops (§4).
+5. **Records and release 0.100.**
+
+### 3.2 01 (f): feel — 0.101, level B, XL
 
 1. **Pushes.** I17's `body_centre` and `radial_push`; F6 and F9 on it; X3's level bounds for enemies.
 2. **Toys.** T4 with X4, F7 and I6, I19's broom; F8's iron; T8's unstick.
 3. **Effects.** F1 with X2 and I15, F2, F3, F4, F5, F10, I3, I4, I5, I11.
 4. **The gun (T7).**
 5. **Sounds.** F11, I1's refusal feedback, I9, I12, and every sound steps 1–4 named, through `sfx.py`, `sounds.json`, `Sound`, `cue_of` and the cue rules; I13's gravity colour row.
-6. **Saves (schema 9: `black_holes`) and records; release 0.99.**
+6. **Saves (the next schema: `black_holes`) and records; release 0.101.**
 
-### 3.3 01 (g): props and foes — 0.100, level B, XL
+### 3.3 01 (g): props and foes — 0.102, level B, XL
 
 The keg and the goblin's bomb are one mechanism: a body with a fuse that sets off a sourced `Detonation`, built once.
 
 1. **Art and sound,** drawn first on the plan session's art-review sheet (the owner's direction: anatomy, material, telling details, effects with their particles): the crate (two boxes, a char overlay), the keg and its lit fuse, the goblin's rig, clips, icon and hurtbox, the rock and the bomb, the troll's swipe clip, summon icons; catching fire, a crackle loop (one shared voice on the nearest lit crate, as the wisps' hum), a collapse, a fuse hiss as long as the fuse, a boom. M76's mine has decorative `crate`/`barrel` sprites: the props take other IDs and a clearly different look.
 2. **Crates and kegs (C3, C4).**
 3. **The goblin (C1); the troll's swipe (C2), T5 and I7; I10's alert and search marks.** Trolls lift crates.
-4. **Placement and saves (schema 10).** Class-less `crate` and `keg` markers on M76's map, set down by a fresh run as M76 sets its iron, off the walking line; the summon slot's types an enum (dummy, enemy, crate, keg), appended; `props`, rocks and bombs saved; the coverage test; the map's goblins.
-5. **Records and release 0.100.**
+4. **Placement and saves (the schema after (f)'s).** Class-less `crate` and `keg` markers on M76's map, set down by a fresh run as M76 sets its iron, off the walking line; the summon slot's types an enum (dummy, enemy, crate, keg), appended; `props`, rocks and bombs saved; the coverage test; the map's goblins.
+5. **Records and release 0.102.**
 
-### 3.4 01 (h): the look — 0.101, level B
+### 3.4 01 (h): the look — 0.103, level B
 
 1. **The art-review sheet first,** in the plan session: the wizard's poses and cast clips with the staff and its light, the icon family, the bars and the bar, the theme's colours on a Settings screen, the title, and a cave with missiles in flight (§7).
 2. **The wizard (L4, L5's second half),** its cast clips per spell, the hurt clip (F1).
 3. **Icons and the HUD (L1–L3, I14).**
 4. **01's theme colours and the title (L6, L7).**
-5. **Records and release 0.101.**
+5. **Records and release 0.103.**
 
 ## 4. Shell routes
 
-The shell stays the template's, byte for byte; no stop changes the template.
+The shell stays the template's, byte for byte. Only §3.1b's difficulty picker changes the template, and 01 takes it by copy.
 
 | Item | Route |
 | --- | --- |
@@ -260,6 +291,7 @@ The shell stays the template's, byte for byte; no stop changes the template.
 | K12 | `World::has` scans the archetype's type list linearly, where `get` uses the hashed slot | Verified: `crates/tungsten-core/src/ecs/archetype.rs:196-198`, `:219-234` | Engine, identical behaviour; C2 with its captures | P1–P7 move 01 off per-entity `has` |
 | K13 | `animation_tick` hashes the clip name twice per sprite: 0.90 ms for 12,000 balls on one clip | `crates/tungsten-kit/src/present/animation.rs:130-136`; `crates/tungsten-core/src/assets/animation.rs:88`, `:152`, `:163` | Kit and engine; C2 | — |
 | K14 | The spatial index rebuilds from every body, the sleeping pit included, on the first query after each step; the controllers' probes and the enemies' sight casts trigger it every step | `crates/tungsten-core/src/physics/query.rs:255-276` | A C1/C2 row to watch | — |
+| K15 | A part a target's immunity drops sends no event, so nothing can react to the type that struck: fire on a frozen fire-proof wisp never queues thermal shock (§3.1a item 10) | `crates/tungsten-kit/src/damage/defense.rs:258-262`, `crates/tungsten-kit/src/damage/pipeline.rs:662-677`, `:785-788` at `be16369` | Fixed in M78 (`D-207`): the kit's `ImmunePart` | 01's reactions read it for fire on the frozen; cold on a burning cold-immune target, which sends no steam, is (f)'s |
 
 ## 7. Overlap with M76
 

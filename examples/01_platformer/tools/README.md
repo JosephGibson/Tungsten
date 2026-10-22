@@ -42,7 +42,10 @@ The shell's assets come with its code: the `shell` theme, Inter and Source
 Serif 4 with their licence files, and the `damage_flash` shader and material are
 copied byte for byte from `templates/basic/assets/`, with their manifest entries,
 so `--check` also catches drift from the template; `just repo-check` holds the
-theme to the template's as it holds `src/shell/`. `content/` holds the prefab
+theme to the template's as it holds `src/shell/`. 01 adds one face of its own:
+Source Serif 4 Bold, copied from the repository's `assets/fonts/` beside the
+Regular and under its licence, as `serif_bold` in the `serif` family, which
+the area titles draw at weight 700. `content/` holds the prefab
 and data sources, copied verbatim: `content/prefabs/<id>.json` becomes the prefab
 `<id>`, and `content/data/<kind>/<id>.json` the `<kind>` entry `<id>`.
 
@@ -207,12 +210,13 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | Field | What it places |
 | --- | --- |
 | `pit` | The ball pit's interior, `left` to `right` and `rim` to `floor`, lined by the pit's tiles |
-| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain, a `ContactDamage` hazard over its surface and, with `light`, its glow and light |
+| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain, a `ContactDamage` hazard over its surface, a child `ex10_lava_frost_<i>` whose fire touches only what is frozen and, with `light`, its glow and light |
 | `river` | The bridge's river: its surface row, its `rapids` and `rocks` columns, and its depths in the background layer |
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
 | `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
+| `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
 
 `routes` names platform waypoints: `main` runs from the spawn through all six
 areas to the bridge's east end, over the pit's chutes and the gap between its
@@ -249,7 +253,8 @@ when a run starts, each object taking the run's next save ID:
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, and an `iron` marker at each loose block's centre | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 13 enemies, the map's last object layer, so every earlier object keeps its save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`), its point the sprite's top-left |
+| `enemies` | The 18 enemies, after every other object layer but `pickups`, so every earlier object keeps its save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `pickups` | The eight placed health orbs, the map's last object layer | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
@@ -352,7 +357,8 @@ collision together when changing silhouettes.
 
 Press **L** to toggle the staff light, the player's lantern halo and point light, which burns mana while lit (01 (e)). Per-frame flame
 anchors are generated from the art, the cast twins' and the mirrored frames'
-too; both effects follow facing and animation. A fresh run lights the lantern.
+too; both effects follow facing and animation. A fresh run starts with the
+staff light off; L or the pad's North lights it, and a loaded run keeps its save's.
 Fireball hazards, which the level's data may place (none today), have a brighter
 inner halo and a stronger native light. They face their horizontal travel
 (vertical-only movers face the player). Each leaks rising flame wisps from its
@@ -612,7 +618,7 @@ line; generation fails a loop whose length is not its bars exactly or whose seam
 jumps further than any step inside it (`sfx.seam_problem`).
 
 The six ambience loops (`sfx.AMBIENCE`) are 6 seconds each at 22,050 Hz, on the
-effects bus at volumes 0.3 to 0.4. `sfx.ambience_loop` renders a quarter second
+effects bus at volumes 0.15 to 0.2, half their first levels. `sfx.ambience_loop` renders a quarter second
 past the end and crossfades it into the head, and `LOOPS` holds each to its
 132,300 samples under the same seam check. 01 starts all six silent; the current
 area's rises over 1.5 seconds and the others fall, and all are silent under pause

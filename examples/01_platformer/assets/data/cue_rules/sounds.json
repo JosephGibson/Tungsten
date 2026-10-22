@@ -552,6 +552,24 @@
     ]
   },
   {
+    "on": "player_died",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "shake": 0.8
+      },
+      {
+        "sound": {
+          "id": "ex10_player_death_sfx"
+        }
+      }
+    ]
+  },
+  {
     "on": "staff_guttered",
     "filter": {
       "all": [

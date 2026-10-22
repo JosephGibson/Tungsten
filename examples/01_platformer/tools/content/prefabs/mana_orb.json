@@ -25,6 +25,20 @@
     "lifetime": {
       "seconds": 20
     },
+    "glow": {
+      "offset": [
+        12,
+        12
+      ],
+      "radius": 64,
+      "color": [
+        90,
+        120,
+        255,
+        255
+      ],
+      "light": 0
+    },
     "cues": {
       "picked_up": [
         {

@@ -8,7 +8,7 @@ use glam::Vec2;
 use tungsten_core::{Entity, EventQueue, World};
 
 use crate::damage::defense::{Resist, Shield};
-use crate::damage::health::{Damaged, DamagedPart, Health, Hit, start_flash};
+use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start_flash};
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
@@ -126,10 +126,13 @@ impl PartialEq for Parts {
 /// 3. Penetration: each part's points, the hit's own [`Penetration`]'s and
 ///    its source's matching entries, summed and capped at 1.
 /// 4. The target's [`Resist`], per part: a matching factor of 0 drops the
-///    part before any product; a factor in `(0, 1)` gains the part's points,
-///    capped at 1; the factors multiply the part in `f64`, clamped to
-///    `f32::MAX`, and a result of 0 drops the part.
-/// 5. No part left is [`Hit::Ignored`], with no side effect.
+///    part before any product, and an [`ImmunePart`] goes out for it with
+///    its amount before the resistances and its [`DamageKinds`]; a factor
+///    in `(0, 1)` gains the part's points, capped at 1; the factors
+///    multiply the part in `f64`, clamped to `f32::MAX`, and a result of 0
+///    drops the part.
+/// 5. No part left is [`Hit::Ignored`], with no side effect but step 4's
+///    [`ImmunePart`]s.
 /// 6. The parts' total falls once: its [`Shield`] takes what it can and
 ///    waits its delay again, health falls by the rest, and the window and
 ///    the [`HitFlash`](crate::HitFlash) start, unless the request is
@@ -421,7 +424,7 @@ impl DamageRequest {
     /// same step; see the type for the steps.
     pub fn apply(self, world: &mut World) -> Hit {
         merge_types(world);
-        resolve(world, &self, &mut Vec::new())
+        resolve(world, &self, &mut Vec::new(), &mut Vec::new())
     }
 
     /// Queues the request for [`DAMAGE_RESOLVE`], this step's when it has
@@ -588,12 +591,14 @@ pub(crate) struct Requests {
 }
 
 /// [`DAMAGE_RESOLVE`]'s state between steps: the drained lists and a
-/// resolution's landed parts, kept so a step allocates nothing once warm.
+/// resolution's landed and immune parts, kept so a step allocates nothing
+/// once warm.
 #[derive(Default)]
 pub(crate) struct Resolver {
     damage: Vec<DamageRequest>,
     heals: Vec<HealRequest>,
     landed: Vec<Landed>,
+    immune: Vec<Landed>,
 }
 
 impl Resolver {
@@ -615,7 +620,7 @@ impl Resolver {
         self.damage
             .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
         for request in self.damage.drain(..) {
-            resolve(world, &request, &mut self.landed);
+            resolve(world, &request, &mut self.landed, &mut self.immune);
         }
         self.heals
             .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
@@ -656,32 +661,69 @@ struct Defences<'a> {
     table: Option<&'a DamageTypeTable>,
 }
 
+/// What one part comes to after the target's defences.
+#[derive(Clone, Copy)]
+enum Landing {
+    /// It lands, its amount after the resistances.
+    Landed(Landed),
+    /// A factor of 0 dropped it: its amount before the resistances.
+    Immune(Landed),
+    /// It came to 0.
+    Dropped,
+}
+
 impl Defences<'_> {
-    /// Steps 3 and 4 for one part: its points, then its factors; `None`
-    /// when it drops.
-    fn land(&self, tags: &Tags, amount: f64) -> Option<Landed> {
+    /// Steps 3 and 4 for one part: its points, then its factors.
+    fn land(&self, tags: &Tags, amount: f64) -> Landing {
+        let kinds = || {
+            self.table
+                .map_or(DamageKinds::NONE, |table| table.mask(tags))
+        };
         let amount = match self.resist {
             None => clamped(amount),
             Some(resist) => {
                 let points = self.own.map_or(0.0, |own| own.sum(tags))
                     + self.lent.map_or(0.0, |lent| lent.sum(tags));
-                clamped(amount * resist.product_with(tags, points.min(1.0))?)
+                let Some(product) = resist.product_with(tags, points.min(1.0)) else {
+                    return Landing::Immune(Landed {
+                        amount: clamped(amount),
+                        kinds: kinds(),
+                    });
+                };
+                clamped(amount * product)
             }
         };
-        (amount != 0.0).then(|| Landed {
+        if amount == 0.0 {
+            return Landing::Dropped;
+        }
+        Landing::Landed(Landed {
             amount,
-            kinds: self
-                .table
-                .map_or(DamageKinds::NONE, |table| table.mask(tags)),
+            kinds: kinds(),
         })
+    }
+}
+
+/// Puts one part's landing in its list.
+fn record(landing: Landing, landed: &mut Vec<Landed>, immune: &mut Vec<Landed>) {
+    match landing {
+        Landing::Landed(part) => landed.push(part),
+        Landing::Immune(part) => immune.push(part),
+        Landing::Dropped => {}
     }
 }
 
 /// Steps 1 to 4 of `request`'s resolution: its parts after the
 /// conversion, the penetration and the target's resistances, in part
-/// order, into `landed`; empty when every part dropped.
-fn land_parts<'a>(world: &'a World, request: &'a DamageRequest, landed: &mut Vec<Landed>) {
+/// order, into `landed`, and those an immunity dropped into `immune`;
+/// `landed` is empty when every part dropped.
+fn land_parts<'a>(
+    world: &'a World,
+    request: &'a DamageRequest,
+    landed: &mut Vec<Landed>,
+    immune: &mut Vec<Landed>,
+) {
     landed.clear();
+    immune.clear();
     let defences = Defences {
         resist: world.get::<Resist>(request.target),
         own: request.penetration.as_ref(),
@@ -710,10 +752,9 @@ fn land_parts<'a>(world: &'a World, request: &'a DamageRequest, landed: &mut Vec
         && own_rules.is_empty()
         && lent_rules.is_empty()
     {
-        if part.amount != 0.0
-            && let Some(part) = defences.land(typed(part), f64::from(part.amount))
-        {
-            landed.push(part);
+        if part.amount != 0.0 {
+            let landing = defences.land(typed(part), f64::from(part.amount));
+            record(landing, landed, immune);
         }
         return;
     }
@@ -727,9 +768,8 @@ fn land_parts<'a>(world: &'a World, request: &'a DamageRequest, landed: &mut Vec
         );
     }
     for &(tags, amount) in &working {
-        if let Some(part) = defences.land(tags, amount.min(f64::from(f32::MAX))) {
-            landed.push(part);
-        }
+        let landing = defences.land(tags, amount.min(f64::from(f32::MAX)));
+        record(landing, landed, immune);
     }
 }
 
@@ -774,15 +814,47 @@ fn merge_part<'a>(working: &mut Vec<Working<'a>>, tags: &'a Tags, amount: f64) {
     }
 }
 
-/// [`DamageRequest`]'s resolution, its landed parts gathered in `landed`.
-fn resolve(world: &mut World, request: &DamageRequest, landed: &mut Vec<Landed>) -> Hit {
+/// Step 4's [`ImmunePart`]s: one per part of `request` an immunity dropped,
+/// in part order, once [`HealthPlugin`](crate::HealthPlugin) has
+/// registered the queue.
+fn send_immune(world: &mut World, request: &DamageRequest, immune: &[Landed]) {
+    if !world.has_event::<ImmunePart>() {
+        return;
+    }
+    let queue = world.resource_mut::<EventQueue<ImmunePart>>();
+    for part in immune {
+        let mut event = ImmunePart::new(request.target, part.amount)
+            .with_kinds(part.kinds)
+            .with_periodic(request.periodic)
+            .with_crit(request.crit);
+        if let Some(source) = request.source {
+            event = event.with_source(source);
+        }
+        if let Some(position) = request.position {
+            event = event.with_position(position);
+        }
+        queue.send(event);
+    }
+}
+
+/// [`DamageRequest`]'s resolution, its landed parts gathered in `landed`
+/// and those an immunity dropped in `immune`.
+fn resolve(
+    world: &mut World,
+    request: &DamageRequest,
+    landed: &mut Vec<Landed>,
+    immune: &mut Vec<Landed>,
+) -> Hit {
     let target = request.target;
     if request.parts().iter().all(|part| part.amount == 0.0)
         || !takes_hits(world, target, request.periodic)
     {
         return Hit::Ignored;
     }
-    land_parts(world, request, landed);
+    land_parts(world, request, landed, immune);
+    if !immune.is_empty() {
+        send_immune(world, request, immune);
+    }
     if landed.is_empty() {
         return Hit::Ignored;
     }

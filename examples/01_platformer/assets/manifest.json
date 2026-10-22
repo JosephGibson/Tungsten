@@ -60,6 +60,12 @@
     "ex10_crawler_lunge_left": {
       "path": "animations/crawler_lunge_left.json"
     },
+    "ex10_crawler_recover": {
+      "path": "animations/crawler_recover.json"
+    },
+    "ex10_crawler_recover_left": {
+      "path": "animations/crawler_recover_left.json"
+    },
     "ex10_crawler_scared": {
       "path": "animations/crawler_scared.json"
     },
@@ -71,6 +77,12 @@
     },
     "ex10_crawler_walk_left": {
       "path": "animations/crawler_walk_left.json"
+    },
+    "ex10_crawler_windup": {
+      "path": "animations/crawler_windup.json"
+    },
+    "ex10_crawler_windup_left": {
+      "path": "animations/crawler_windup_left.json"
     },
     "ex10_falls_foot_left": {
       "path": "animations/falls_foot_left.json"
@@ -149,6 +161,12 @@
     },
     "ex10_player_aim_left": {
       "path": "animations/player_aim_left.json"
+    },
+    "ex10_player_death": {
+      "path": "animations/player_death.json"
+    },
+    "ex10_player_death_left": {
+      "path": "animations/player_death_left.json"
     },
     "ex10_player_double_jump": {
       "path": "animations/player_double_jump.json"
@@ -530,7 +548,8 @@
     },
     "serif": {
       "faces": [
-        "serif"
+        "serif",
+        "serif_bold"
       ]
     }
   },
@@ -540,6 +559,9 @@
     },
     "serif": {
       "path": "fonts/SourceSerif4/SourceSerif4-Regular.ttf"
+    },
+    "serif_bold": {
+      "path": "fonts/SourceSerif4/SourceSerif4-Bold.ttf"
     }
   },
   "materials": {
@@ -764,6 +786,12 @@
     "ex10_muzzle_flash": {
       "path": "particles/muzzle_flash.json"
     },
+    "ex10_orb_health": {
+      "path": "particles/orb_health.json"
+    },
+    "ex10_orb_mana": {
+      "path": "particles/orb_mana.json"
+    },
     "ex10_poof": {
       "path": "particles/poof.json"
     },
@@ -888,6 +916,12 @@
     },
     "ex10_lava_1": {
       "path": "prefabs/ex10_lava_1.json"
+    },
+    "ex10_lava_frost_0": {
+      "path": "prefabs/ex10_lava_frost_0.json"
+    },
+    "ex10_lava_frost_1": {
+      "path": "prefabs/ex10_lava_frost_1.json"
     },
     "ex10_missile_trail": {
       "path": "prefabs/ex10_missile_trail.json"
@@ -1818,37 +1852,37 @@
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_aqueduct.wav",
-      "volume": 0.35
+      "volume": 0.175
     },
     "ambience_bridge": {
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_bridge.wav",
-      "volume": 0.35
+      "volume": 0.175
     },
     "ambience_clearing": {
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_clearing.wav",
-      "volume": 0.35
+      "volume": 0.175
     },
     "ambience_hollow": {
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_hollow.wav",
-      "volume": 0.4
+      "volume": 0.2
     },
     "ambience_mine": {
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_mine.wav",
-      "volume": 0.3
+      "volume": 0.15
     },
     "ambience_ravine": {
       "bus": "effects",
       "looping": true,
       "path": "sounds/ambience_ravine.wav",
-      "volume": 0.4
+      "volume": 0.2
     },
     "ex10_bat_dive_sfx": {
       "looping": false,
@@ -1994,6 +2028,11 @@
       "looping": false,
       "path": "sounds/place.wav",
       "volume": 0.5
+    },
+    "ex10_player_death_sfx": {
+      "looping": false,
+      "path": "sounds/player_death.wav",
+      "volume": 0.7
     },
     "ex10_player_hit_sfx": {
       "looping": false,
@@ -3405,13 +3444,29 @@
       "filter": "nearest",
       "path": "sprites/crawler_lunge_2_left.png"
     },
-    "ex10_crawler_lunge_3": {
+    "ex10_crawler_recover_0": {
       "filter": "nearest",
-      "path": "sprites/crawler_lunge_3.png"
+      "path": "sprites/crawler_recover_0.png"
     },
-    "ex10_crawler_lunge_3_left": {
+    "ex10_crawler_recover_0_left": {
       "filter": "nearest",
-      "path": "sprites/crawler_lunge_3_left.png"
+      "path": "sprites/crawler_recover_0_left.png"
+    },
+    "ex10_crawler_recover_1": {
+      "filter": "nearest",
+      "path": "sprites/crawler_recover_1.png"
+    },
+    "ex10_crawler_recover_1_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_recover_1_left.png"
+    },
+    "ex10_crawler_recover_2": {
+      "filter": "nearest",
+      "path": "sprites/crawler_recover_2.png"
+    },
+    "ex10_crawler_recover_2_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_recover_2_left.png"
     },
     "ex10_crawler_scared_0": {
       "filter": "nearest",
@@ -3492,6 +3547,38 @@
     "ex10_crawler_walk_5_left": {
       "filter": "nearest",
       "path": "sprites/crawler_walk_5_left.png"
+    },
+    "ex10_crawler_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_0.png"
+    },
+    "ex10_crawler_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_0_left.png"
+    },
+    "ex10_crawler_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_1.png"
+    },
+    "ex10_crawler_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_1_left.png"
+    },
+    "ex10_crawler_windup_2": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_2.png"
+    },
+    "ex10_crawler_windup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_2_left.png"
+    },
+    "ex10_crawler_windup_3": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_3.png"
+    },
+    "ex10_crawler_windup_3_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_windup_3_left.png"
     },
     "ex10_crystal": {
       "filter": "nearest",
@@ -6924,6 +7011,126 @@
       "filter": "nearest",
       "normal_map": "sprites/player_cast_left_n.png",
       "path": "sprites/player_cast_left.png"
+    },
+    "ex10_player_death_0": {
+      "emissive_mask": "sprites/player_death_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_0_n.png",
+      "path": "sprites/player_death_0.png"
+    },
+    "ex10_player_death_0_cast": {
+      "emissive_mask": "sprites/player_death_0_cast_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_0_cast_n.png",
+      "path": "sprites/player_death_0_cast.png"
+    },
+    "ex10_player_death_0_cast_left": {
+      "emissive_mask": "sprites/player_death_0_cast_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_0_cast_left_n.png",
+      "path": "sprites/player_death_0_cast_left.png"
+    },
+    "ex10_player_death_0_left": {
+      "emissive_mask": "sprites/player_death_0_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_0_left_n.png",
+      "path": "sprites/player_death_0_left.png"
+    },
+    "ex10_player_death_1": {
+      "emissive_mask": "sprites/player_death_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_1_n.png",
+      "path": "sprites/player_death_1.png"
+    },
+    "ex10_player_death_1_cast": {
+      "emissive_mask": "sprites/player_death_1_cast_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_1_cast_n.png",
+      "path": "sprites/player_death_1_cast.png"
+    },
+    "ex10_player_death_1_cast_left": {
+      "emissive_mask": "sprites/player_death_1_cast_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_1_cast_left_n.png",
+      "path": "sprites/player_death_1_cast_left.png"
+    },
+    "ex10_player_death_1_left": {
+      "emissive_mask": "sprites/player_death_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_1_left_n.png",
+      "path": "sprites/player_death_1_left.png"
+    },
+    "ex10_player_death_2": {
+      "emissive_mask": "sprites/player_death_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_2_n.png",
+      "path": "sprites/player_death_2.png"
+    },
+    "ex10_player_death_2_cast": {
+      "emissive_mask": "sprites/player_death_2_cast_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_2_cast_n.png",
+      "path": "sprites/player_death_2_cast.png"
+    },
+    "ex10_player_death_2_cast_left": {
+      "emissive_mask": "sprites/player_death_2_cast_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_2_cast_left_n.png",
+      "path": "sprites/player_death_2_cast_left.png"
+    },
+    "ex10_player_death_2_left": {
+      "emissive_mask": "sprites/player_death_2_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_2_left_n.png",
+      "path": "sprites/player_death_2_left.png"
+    },
+    "ex10_player_death_3": {
+      "emissive_mask": "sprites/player_death_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_3_n.png",
+      "path": "sprites/player_death_3.png"
+    },
+    "ex10_player_death_3_cast": {
+      "emissive_mask": "sprites/player_death_3_cast_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_3_cast_n.png",
+      "path": "sprites/player_death_3_cast.png"
+    },
+    "ex10_player_death_3_cast_left": {
+      "emissive_mask": "sprites/player_death_3_cast_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_3_cast_left_n.png",
+      "path": "sprites/player_death_3_cast_left.png"
+    },
+    "ex10_player_death_3_left": {
+      "emissive_mask": "sprites/player_death_3_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_3_left_n.png",
+      "path": "sprites/player_death_3_left.png"
+    },
+    "ex10_player_death_4": {
+      "emissive_mask": "sprites/player_death_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_4_n.png",
+      "path": "sprites/player_death_4.png"
+    },
+    "ex10_player_death_4_cast": {
+      "emissive_mask": "sprites/player_death_4_cast_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_4_cast_n.png",
+      "path": "sprites/player_death_4_cast.png"
+    },
+    "ex10_player_death_4_cast_left": {
+      "emissive_mask": "sprites/player_death_4_cast_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_4_cast_left_n.png",
+      "path": "sprites/player_death_4_cast_left.png"
+    },
+    "ex10_player_death_4_left": {
+      "emissive_mask": "sprites/player_death_4_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_4_left_n.png",
+      "path": "sprites/player_death_4_left.png"
     },
     "ex10_player_double_jump_0": {
       "emissive_mask": "sprites/player_double_jump_0_e.png",

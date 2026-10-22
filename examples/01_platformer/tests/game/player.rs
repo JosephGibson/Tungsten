@@ -4,8 +4,9 @@
 
 use example_01_platformer::features::level::{self, KILL_Y, MAP, TILE, WORLD_MAX, WORLD_MIN};
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::{AIR_JUMP_BURST, escaped};
+use example_01_platformer::features::player::systems::{AIR_JUMP_BURST, DEATH_CLIP, escaped};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
+use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
@@ -125,7 +126,7 @@ fn despawn_out_of_bounds_kills_escaped_player_whose_body_drops() {
 }
 
 #[test]
-fn the_dead_fall_for_three_seconds_before_game_over() {
+fn the_dead_fall_for_two_seconds_before_game_over() {
     let (mut harness, player) = run();
     harness.step(5);
     // Killed in the air above the spawn's turf, running right.
@@ -153,9 +154,11 @@ fn the_dead_fall_for_three_seconds_before_game_over() {
         (landed.x - died.x).abs() < 0.01 && landed.y > died.y + 150.0,
         "{died} -> {landed}"
     );
-    // Game over waits out the fall's three game seconds.
-    harness.step(174 - since);
-    assert_eq!(top(&harness), Some(GAMEPLAY), "2.9 s after the death");
+    assert_eq!(clip(&harness, player), DEATH_CLIP, "the death clip holds");
+    // Game over waits out the death's two game seconds.
+    let wait = (DEATH_SECS * 60.0).round() as u32;
+    harness.step(wait - 6 - since);
+    assert_eq!(top(&harness), Some(GAMEPLAY), "0.1 s before game over");
     assert!(
         (centre(&harness, player) - landed).length() < 0.01,
         "it lies still"
@@ -224,7 +227,14 @@ fn real_map_dimensions_spawn_and_fall_death() {
     harness.step(1);
     assert!(health(&harness, player).is_dead());
     let moves = harness.world().get::<Moves>(player).unwrap();
-    assert!(moves.landing == 0.0 && moves.shown.is_none(), "{moves:?}");
+    let shown = moves
+        .shown
+        .as_ref()
+        .map(|shown| shown.state.animation_id.trim_end_matches("_left"));
+    assert!(
+        moves.landing == 0.0 && shown == Some(DEATH_CLIP),
+        "the death clip at once: {moves:?}"
+    );
     fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
 }

@@ -4,19 +4,28 @@
 //! the player's `pickup_radius` magnet, and fades after [`ORB_SECS`];
 //! [`adopt`] gives each its save ID before the shell's save, and [`collect`]
 //! queues its effect on the player in the overlap phase, so the step's own
-//! resolve takes it.
+//! resolve takes it. The map's `pickups` layer places health orbs that
+//! never fade ([`start`]); one taken stays gone through a save.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
-use tungsten::core::{DataRef, Entity, EventCursor, EventQueue, With, Without, World};
-use tungsten::kit::{EffectRequest, Lifetime, PickedUp};
+use tungsten::core::{DataRef, Entity, EventCursor, EventQueue, Position, With, Without, World};
+use tungsten::kit::{EffectRequest, Lifetime, PickedUp, Pickup};
 
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds};
+use crate::shared::{SaveId, SaveIds, spawn_burst};
+
+/// The orbs the map placed this run, by save ID, sorted: a World resource a
+/// run's start inserts, which a save's `gone` reads.
+#[derive(Debug, Clone, Default)]
+pub struct PlacedOrbs(pub Vec<u64>);
 
 /// An orb's seconds before it fades.
 pub const ORB_SECS: f32 = 20.0;
+/// An orb's centre from its point, its sprite's top-left: the 24 px orb's
+/// middle.
+pub const ORB_CENTRE: Vec2 = Vec2::new(12.0, 12.0);
 
 /// One of the two orbs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +42,15 @@ impl OrbKind {
         match self {
             OrbKind::Health => "health_orb",
             OrbKind::Mana => "mana_orb",
+        }
+    }
+
+    /// The burst it gives where it is taken, in its colour.
+    #[must_use]
+    pub const fn burst(self) -> &'static str {
+        match self {
+            OrbKind::Health => "ex10_orb_health",
+            OrbKind::Mana => "ex10_orb_mana",
         }
     }
 
@@ -54,6 +72,42 @@ pub struct Orb {
     pub kind: OrbKind,
 }
 
+/// At a run's start, after the map spawned: the orbs it placed, which never
+/// fade, recorded by save ID.
+pub fn start(world: &mut World) {
+    let mut placed: Vec<(u64, Entity)> = world
+        .query_filtered::<(Entity, &SaveId), With<Orb>>()
+        .map(|(entity, id)| (id.0, entity))
+        .collect();
+    placed.sort_unstable_by_key(|(id, _)| *id);
+    for &(_, orb) in &placed {
+        world.remove_component::<Lifetime>(orb);
+    }
+    world.insert_resource(PlacedOrbs(placed.into_iter().map(|(id, _)| id).collect()));
+}
+
+/// The placed orbs taken, by save ID: gone, or collected and waiting for
+/// the step's end to go.
+#[must_use]
+pub fn gone(world: &World) -> Vec<u64> {
+    let live: Vec<u64> = world
+        .query_filtered::<(&SaveId, &Pickup), With<Orb>>()
+        .filter(|(_, pickup)| !pickup.is_collected())
+        .map(|(id, _)| id.0)
+        .collect();
+    world
+        .get_resource::<PlacedOrbs>()
+        .map(|placed| {
+            placed
+                .0
+                .iter()
+                .copied()
+                .filter(|id| !live.contains(id))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// `orb_adopt`, in `PreUpdate` before the shell's save: each orb a roll
 /// landed at the last flush joins the run, its save ID its own.
 pub fn adopt(world: &mut World) {
@@ -67,17 +121,27 @@ pub fn adopt(world: &mut World) {
 }
 
 /// `orb_collect`, in the overlap phase after the kit's pickup: each orb
-/// collected queues its kind's effect on its collector, from the orb.
+/// collected queues its kind's effect on its collector, from the orb, and
+/// bursts in its colour where it was; its cue plays the potion's sound.
 pub fn collect(world: &mut World, cursor: &mut EventCursor<PickedUp>) {
     let Some(events) = world.get_resource::<EventQueue<PickedUp>>() else {
         return;
     };
-    let picked: Vec<(Entity, OrbKind)> = cursor
+    let picked: Vec<(Entity, OrbKind, Option<Vec2>)> = cursor
         .read(events)
-        .filter_map(|picked| Some((picked.by, world.get::<Orb>(picked.entity)?.kind)))
+        .filter_map(|picked| {
+            let kind = world.get::<Orb>(picked.entity)?.kind;
+            let at = world
+                .get::<Position>(picked.entity)
+                .map(|at| at.0 + ORB_CENTRE);
+            Some((picked.by, kind, at))
+        })
         .collect();
-    for (by, kind) in picked {
+    for (by, kind, at) in picked {
         EffectRequest::new(by, DataRef::by_id(kind.effect())).queue(world);
+        if let Some(at) = at {
+            spawn_burst(world, kind.burst(), at);
+        }
     }
 }
 
