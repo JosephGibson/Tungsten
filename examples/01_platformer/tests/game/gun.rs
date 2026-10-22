@@ -3,7 +3,8 @@
 //! iron; one decision a step takes what the shot met first, so what lies
 //! behind a nearer dummy or wall is untouched, iron in front of a dummy
 //! ends the shot, and a ball crossing before a wall stop is kicked and one
-//! after it is not; the HUD shows the magazine.
+//! after it is not; the HUD shows the magazine; on the map, a shot turns
+//! off the mine's iron and passes the rope bridge's wood to end at stone.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::gun::components::Bullet;
@@ -14,11 +15,17 @@ use example_01_platformer::shared::SaveId;
 use example_01_platformer::shell::widgets::text_of;
 use glam::Vec2;
 use tungsten::core::{Entity, EventQueue, RigidBody, Velocity};
-use tungsten::kit::{DamagedPart, KitRng};
+use tungsten::kit::{
+    DamagedPart, KitRng, LinearMotion, ProjectileBounced, ProjectileExpired, ProjectilePassed,
+};
 use tungsten::testing::UiHarness;
 
 use super::combat::{CRIT_SEED, PLAIN_SEED, TOP, dummy_at, health};
-use super::{aim_at, ball, body, bursts, floor, ground, kick, pin_camera, player_entity, run};
+use example_01_platformer::features::level::TILE;
+
+use super::{
+    aim_at, ball, body, bursts, calm, floor, ground, kick, pin_camera, player_entity, run,
+};
 use super::{stand, steps_this_frame};
 
 /// A bullet's speed, as the gun's payload fires it.
@@ -362,4 +369,82 @@ fn the_magazine_shows_its_rounds_and_reloading() {
     harness.step(80);
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "12 / 12");
     assert_eq!(lit(&harness), 12);
+}
+
+/// What a shot met on the map over up to a second: its wall meetings in
+/// frame order, each "bounced", "passed" or "expired", with the wall's
+/// layers (none for an end without a wall) and normal.
+fn wall_meetings(harness: &mut UiHarness, shot: Entity) -> Vec<(&'static str, u32, Vec2)> {
+    let mut met = Vec::new();
+    for _ in 0..60 {
+        harness.step(1);
+        let events = harness.harness();
+        met.extend(
+            events
+                .events::<ProjectileBounced>()
+                .filter(|event| event.entity == shot)
+                .map(|event| ("bounced", event.wall.layers, event.wall.normal)),
+        );
+        met.extend(
+            events
+                .events::<ProjectilePassed>()
+                .filter(|event| event.entity == shot)
+                .map(|event| ("passed", event.wall.layers, event.wall.normal)),
+        );
+        let ended: Vec<_> = events
+            .events::<ProjectileExpired>()
+            .filter(|event| event.entity == shot)
+            .map(|event| {
+                let wall = event.wall.map_or((0, Vec2::ZERO), |w| (w.layers, w.normal));
+                ("expired", wall.0, wall.1)
+            })
+            .collect();
+        let done = !ended.is_empty();
+        met.extend(ended);
+        if done {
+            break;
+        }
+    }
+    met
+}
+
+#[test]
+fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    // At the cut's second floor's riser, its west face clad in iron.
+    let face = Vec2::new(306.0 * TILE, 54.5 * TILE);
+    let id = shot(&mut harness, face - Vec2::new(300.0, 0.0), Vec2::X * SPEED);
+    let iron = bullet(&harness, id).expect("it flies");
+    let met = wall_meetings(&mut harness, iron);
+    assert_eq!(
+        met.first().copied(),
+        Some(("bounced", 1 << 2, Vec2::NEG_X)),
+        "it turned off the iron: {met:?}"
+    );
+    let turned = harness
+        .world()
+        .get::<LinearMotion>(iron)
+        .map(LinearMotion::velocity);
+    assert!(
+        turned.is_none() || turned.is_some_and(|v| v.x < 0.0),
+        "flying back west: {turned:?}"
+    );
+    // Down through the rope bridge's deck over the pit to the stone shelf
+    // under it.
+    let id = shot(
+        &mut harness,
+        Vec2::new(79.5 * TILE, 34.0 * TILE),
+        Vec2::Y * SPEED,
+    );
+    let down = bullet(&harness, id).expect("it flies");
+    let met = wall_meetings(&mut harness, down);
+    assert_eq!(
+        met,
+        [
+            ("passed", 1 << 3, Vec2::NEG_Y),
+            ("expired", 1 << 1, Vec2::NEG_Y)
+        ],
+        "it passed the wood and ended at the stone"
+    );
 }

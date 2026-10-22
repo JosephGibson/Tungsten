@@ -1,0 +1,31 @@
+{
+  "tag": "bolt",
+  "components": {
+    "linear_motion": {
+      "velocity": [
+        400,
+        0
+      ]
+    },
+    "hitbox": {
+      "shape": {
+        "circle": 4
+      },
+      "damage": 1,
+      "tags": [
+        "damage.fire"
+      ],
+      "filter": {
+        "all": [
+          "team.enemy"
+        ]
+      }
+    },
+    "projectile": {
+      "bounces": 2,
+      "bounce_layers": [
+        2
+      ]
+    }
+  }
+}

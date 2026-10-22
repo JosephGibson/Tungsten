@@ -1,18 +1,22 @@
 {
   "components": {
     "area": {
-      "name": "Ruined tower"
+      "ambience": "ambience_hollow",
+      "backdrop": null,
+      "indoor": true,
+      "name": "Ember hollow",
+      "night": false
     },
     "rigid_body": {
       "kind": "sensor",
       "offset": [
-        1152.0,
-        1600.0
+        2240.0,
+        2304.0
       ],
       "shape": {
         "half_extents": [
-          1152.0,
-          1600.0
+          2240.0,
+          2304.0
         ],
         "kind": "aabb"
       }

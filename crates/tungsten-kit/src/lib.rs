@@ -128,8 +128,10 @@
 //!   while an ability or `arm` keeps it open. [`ContactDamage`],
 //!   [`ContactTouch`] and [`ContactDamagePlugin`]: a hazard or an aura that
 //!   hurts what it touches, again each interval. [`Projectile`],
-//!   [`ProjectileExpired`] and [`ProjectilePlugin`]: a bolt that ends at its
-//!   first hit, its first wall or its range, unless it pierces or bounces.
+//!   [`ProjectileExpired`], [`ProjectileBounced`], [`ProjectilePassed`],
+//!   [`WallContact`] and [`ProjectilePlugin`]: a bolt that ends at its first
+//!   hit, its first wall or its range, unless it pierces, turns at a wall in
+//!   its bounce layers or passes one in its pass layers.
 //!   [`Pickup`], [`PickedUp`] and [`PickupPlugin`]: collected once, drawn in
 //!   by a magnet.
 //! - **Damage.** [`Health`], [`damage`], [`heal`], [`Hit`], [`Damaged`],
@@ -274,7 +276,10 @@ pub use motion::wrap::{WRAP, Wrap, WrapPlugin};
 pub use overlap::contact::{CONTACT_DAMAGE, ContactDamage, ContactDamagePlugin, ContactTouch};
 pub use overlap::hit::{HIT_GRID, HITBOX_TICK, HitPlugin, HitShape, Hitbox, Hurtbox, Struck};
 pub use overlap::pickup::{PICKUP_MAGNET, PICKUP_TICK, PickedUp, Pickup, PickupPlugin};
-pub use overlap::projectile::{PROJECTILE_TICK, Projectile, ProjectileExpired, ProjectilePlugin};
+pub use overlap::projectile::{
+    PROJECTILE_TICK, Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed,
+    ProjectilePlugin, WallContact,
+};
 pub use overlap::trigger::{TriggerEntered, TriggerZone};
 pub use overlap::zone::{ZONE_TICK, Zone, ZoneEntered, ZonePlugin};
 pub use present::animation::{ANIMATION_TICK, AnimationPlugin};
@@ -315,14 +320,15 @@ pub mod prelude {
         LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin, Oscillator,
         OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Payload, Penetration, Phase,
         PickedUp, Pickup, PickupPlugin, PlatformerController, PlatformerControllerPlugin,
-        Projectile, ProjectileExpired, ProjectilePlugin, Refresh, Resist, Scaled, Shield,
-        SoundOnEvent, Source, SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner,
-        SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine, StateMachinePlugin, Stats,
-        StatsPlugin, StayInView, StayInViewPlugin, Steering, SteeringPlugin, Struck, TagFilter,
-        Tags, TagsPlugin, Target, TopDownMover, TopDownMoverPlugin, TraceEntry, TraceKind, Trigger,
-        TriggerEntered, TriggerZone, Used, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered,
-        ZonePlugin, cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases,
-        float_label, heal, knock_back, spawn_child, use_ability,
+        Projectile, ProjectileBounced, ProjectileExpired, ProjectilePassed, ProjectilePlugin,
+        Refresh, Resist, Scaled, Shield, SoundOnEvent, Source, SourcePlugin, SpawnChildren,
+        SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit, SpeedLimitPlugin, StateMachine,
+        StateMachinePlugin, Stats, StatsPlugin, StayInView, StayInViewPlugin, Steering,
+        SteeringPlugin, Struck, TagFilter, Tags, TagsPlugin, Target, TopDownMover,
+        TopDownMoverPlugin, TraceEntry, TraceKind, Trigger, TriggerEntered, TriggerZone, Used,
+        WallContact, WeightedTable, Wrap, WrapPlugin, Zone, ZoneEntered, ZonePlugin,
+        cursor_to_world, damage, despawn_recursive, end_effect, ensure_phases, float_label, heal,
+        knock_back, spawn_child, use_ability,
     };
 }
 

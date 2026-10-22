@@ -2607,14 +2607,18 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PlatformerControl
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PlatformerControllerPlugin
 pub struct tungsten_kit::prelude::Projectile
 impl tungsten_kit::Projectile
+pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
 pub fn tungsten_kit::Projectile::is_spent(&self) -> bool
 pub fn tungsten_kit::Projectile::new() -> Self
+pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
+pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
+pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
@@ -2639,10 +2643,33 @@ impl core::marker::Unpin for tungsten_kit::Projectile
 impl core::marker::UnsafeUnpin for tungsten_kit::Projectile
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Projectile
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Projectile
+#[non_exhaustive] pub struct tungsten_kit::prelude::ProjectileBounced
+pub tungsten_kit::prelude::ProjectileBounced::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::ProjectileBounced::position: glam::f32::vec2::Vec2
+pub tungsten_kit::prelude::ProjectileBounced::wall: tungsten_kit::WallContact
+impl tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
+impl core::clone::Clone for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::clone(&self) -> tungsten_kit::ProjectileBounced
+impl core::cmp::PartialEq for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::eq(&self, &tungsten_kit::ProjectileBounced) -> bool
+impl core::fmt::Debug for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ProjectileBounced
+impl core::marker::StructuralPartialEq for tungsten_kit::ProjectileBounced
+impl core::marker::Freeze for tungsten_kit::ProjectileBounced
+impl core::marker::Send for tungsten_kit::ProjectileBounced
+impl core::marker::Sync for tungsten_kit::ProjectileBounced
+impl core::marker::Unpin for tungsten_kit::ProjectileBounced
+impl core::marker::UnsafeUnpin for tungsten_kit::ProjectileBounced
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectileBounced
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectileBounced
 #[non_exhaustive] pub struct tungsten_kit::prelude::ProjectileExpired
 pub tungsten_kit::prelude::ProjectileExpired::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::prelude::ProjectileExpired::position: glam::f32::vec2::Vec2
+pub tungsten_kit::prelude::ProjectileExpired::wall: core::option::Option<tungsten_kit::WallContact>
 impl tungsten_kit::ProjectileExpired
+pub fn tungsten_kit::ProjectileExpired::at_wall(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
 pub fn tungsten_kit::ProjectileExpired::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::ProjectileExpired
 pub fn tungsten_kit::ProjectileExpired::clone(&self) -> tungsten_kit::ProjectileExpired
@@ -2659,6 +2686,27 @@ impl core::marker::Unpin for tungsten_kit::ProjectileExpired
 impl core::marker::UnsafeUnpin for tungsten_kit::ProjectileExpired
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectileExpired
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectileExpired
+#[non_exhaustive] pub struct tungsten_kit::prelude::ProjectilePassed
+pub tungsten_kit::prelude::ProjectilePassed::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::prelude::ProjectilePassed::position: glam::f32::vec2::Vec2
+pub tungsten_kit::prelude::ProjectilePassed::wall: tungsten_kit::WallContact
+impl tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
+impl core::clone::Clone for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::clone(&self) -> tungsten_kit::ProjectilePassed
+impl core::cmp::PartialEq for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::eq(&self, &tungsten_kit::ProjectilePassed) -> bool
+impl core::fmt::Debug for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ProjectilePassed
+impl core::marker::StructuralPartialEq for tungsten_kit::ProjectilePassed
+impl core::marker::Freeze for tungsten_kit::ProjectilePassed
+impl core::marker::Send for tungsten_kit::ProjectilePassed
+impl core::marker::Sync for tungsten_kit::ProjectilePassed
+impl core::marker::Unpin for tungsten_kit::ProjectilePassed
+impl core::marker::UnsafeUnpin for tungsten_kit::ProjectilePassed
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePassed
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePassed
 pub struct tungsten_kit::prelude::ProjectilePlugin
 impl core::clone::Clone for tungsten_kit::ProjectilePlugin
 pub fn tungsten_kit::ProjectilePlugin::clone(&self) -> tungsten_kit::ProjectilePlugin
@@ -3392,6 +3440,27 @@ impl<Z, T> core::marker::Unpin for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::marker::UnsafeUnpin for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::panic::unwind_safe::UnwindSafe for tungsten_kit::TriggerZone<Z, T>
+#[non_exhaustive] pub struct tungsten_kit::prelude::WallContact
+pub tungsten_kit::prelude::WallContact::entity: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::prelude::WallContact::layers: u32
+pub tungsten_kit::prelude::WallContact::normal: glam::f32::vec2::Vec2
+impl tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::new(core::option::Option<tungsten_core::ecs::entity::Entity>, glam::f32::vec2::Vec2, u32) -> Self
+impl core::clone::Clone for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::clone(&self) -> tungsten_kit::WallContact
+impl core::cmp::PartialEq for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::eq(&self, &tungsten_kit::WallContact) -> bool
+impl core::fmt::Debug for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::WallContact
+impl core::marker::StructuralPartialEq for tungsten_kit::WallContact
+impl core::marker::Freeze for tungsten_kit::WallContact
+impl core::marker::Send for tungsten_kit::WallContact
+impl core::marker::Sync for tungsten_kit::WallContact
+impl core::marker::Unpin for tungsten_kit::WallContact
+impl core::marker::UnsafeUnpin for tungsten_kit::WallContact
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WallContact
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WallContact
 pub struct tungsten_kit::prelude::WeightedTable
 impl tungsten_kit::WeightedTable
 pub fn tungsten_kit::WeightedTable::draw(&self, &mut tungsten_kit::KitRng) -> core::option::Option<&str>
@@ -6292,14 +6361,18 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PlatformerControl
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PlatformerControllerPlugin
 pub struct tungsten_kit::Projectile
 impl tungsten_kit::Projectile
+pub fn tungsten_kit::Projectile::bounce_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::bounces(&self) -> u32
 pub fn tungsten_kit::Projectile::hits(&self) -> u32
 pub fn tungsten_kit::Projectile::is_spent(&self) -> bool
 pub fn tungsten_kit::Projectile::new() -> Self
+pub fn tungsten_kit::Projectile::pass_layers(&self) -> u32
 pub fn tungsten_kit::Projectile::pierce(&self) -> u32
 pub fn tungsten_kit::Projectile::range(&self) -> core::option::Option<f32>
 pub fn tungsten_kit::Projectile::travelled(&self) -> f32
+pub fn tungsten_kit::Projectile::with_bounce_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_bounces(self, u32) -> Self
+pub fn tungsten_kit::Projectile::with_pass_layers(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_pierce(self, u32) -> Self
 pub fn tungsten_kit::Projectile::with_range(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::Projectile
@@ -6324,10 +6397,33 @@ impl core::marker::Unpin for tungsten_kit::Projectile
 impl core::marker::UnsafeUnpin for tungsten_kit::Projectile
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::Projectile
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::Projectile
+#[non_exhaustive] pub struct tungsten_kit::ProjectileBounced
+pub tungsten_kit::ProjectileBounced::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::ProjectileBounced::position: glam::f32::vec2::Vec2
+pub tungsten_kit::ProjectileBounced::wall: tungsten_kit::WallContact
+impl tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
+impl core::clone::Clone for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::clone(&self) -> tungsten_kit::ProjectileBounced
+impl core::cmp::PartialEq for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::eq(&self, &tungsten_kit::ProjectileBounced) -> bool
+impl core::fmt::Debug for tungsten_kit::ProjectileBounced
+pub fn tungsten_kit::ProjectileBounced::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ProjectileBounced
+impl core::marker::StructuralPartialEq for tungsten_kit::ProjectileBounced
+impl core::marker::Freeze for tungsten_kit::ProjectileBounced
+impl core::marker::Send for tungsten_kit::ProjectileBounced
+impl core::marker::Sync for tungsten_kit::ProjectileBounced
+impl core::marker::Unpin for tungsten_kit::ProjectileBounced
+impl core::marker::UnsafeUnpin for tungsten_kit::ProjectileBounced
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectileBounced
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectileBounced
 #[non_exhaustive] pub struct tungsten_kit::ProjectileExpired
 pub tungsten_kit::ProjectileExpired::entity: tungsten_core::ecs::entity::Entity
 pub tungsten_kit::ProjectileExpired::position: glam::f32::vec2::Vec2
+pub tungsten_kit::ProjectileExpired::wall: core::option::Option<tungsten_kit::WallContact>
 impl tungsten_kit::ProjectileExpired
+pub fn tungsten_kit::ProjectileExpired::at_wall(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
 pub fn tungsten_kit::ProjectileExpired::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2) -> Self
 impl core::clone::Clone for tungsten_kit::ProjectileExpired
 pub fn tungsten_kit::ProjectileExpired::clone(&self) -> tungsten_kit::ProjectileExpired
@@ -6344,6 +6440,27 @@ impl core::marker::Unpin for tungsten_kit::ProjectileExpired
 impl core::marker::UnsafeUnpin for tungsten_kit::ProjectileExpired
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectileExpired
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectileExpired
+#[non_exhaustive] pub struct tungsten_kit::ProjectilePassed
+pub tungsten_kit::ProjectilePassed::entity: tungsten_core::ecs::entity::Entity
+pub tungsten_kit::ProjectilePassed::position: glam::f32::vec2::Vec2
+pub tungsten_kit::ProjectilePassed::wall: tungsten_kit::WallContact
+impl tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::new(tungsten_core::ecs::entity::Entity, glam::f32::vec2::Vec2, tungsten_kit::WallContact) -> Self
+impl core::clone::Clone for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::clone(&self) -> tungsten_kit::ProjectilePassed
+impl core::cmp::PartialEq for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::eq(&self, &tungsten_kit::ProjectilePassed) -> bool
+impl core::fmt::Debug for tungsten_kit::ProjectilePassed
+pub fn tungsten_kit::ProjectilePassed::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::ProjectilePassed
+impl core::marker::StructuralPartialEq for tungsten_kit::ProjectilePassed
+impl core::marker::Freeze for tungsten_kit::ProjectilePassed
+impl core::marker::Send for tungsten_kit::ProjectilePassed
+impl core::marker::Sync for tungsten_kit::ProjectilePassed
+impl core::marker::Unpin for tungsten_kit::ProjectilePassed
+impl core::marker::UnsafeUnpin for tungsten_kit::ProjectilePassed
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::ProjectilePassed
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::ProjectilePassed
 pub struct tungsten_kit::ProjectilePlugin
 impl core::clone::Clone for tungsten_kit::ProjectilePlugin
 pub fn tungsten_kit::ProjectilePlugin::clone(&self) -> tungsten_kit::ProjectilePlugin
@@ -7077,6 +7194,27 @@ impl<Z, T> core::marker::Unpin for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::marker::UnsafeUnpin for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::TriggerZone<Z, T>
 impl<Z, T> core::panic::unwind_safe::UnwindSafe for tungsten_kit::TriggerZone<Z, T>
+#[non_exhaustive] pub struct tungsten_kit::WallContact
+pub tungsten_kit::WallContact::entity: core::option::Option<tungsten_core::ecs::entity::Entity>
+pub tungsten_kit::WallContact::layers: u32
+pub tungsten_kit::WallContact::normal: glam::f32::vec2::Vec2
+impl tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::new(core::option::Option<tungsten_core::ecs::entity::Entity>, glam::f32::vec2::Vec2, u32) -> Self
+impl core::clone::Clone for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::clone(&self) -> tungsten_kit::WallContact
+impl core::cmp::PartialEq for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::eq(&self, &tungsten_kit::WallContact) -> bool
+impl core::fmt::Debug for tungsten_kit::WallContact
+pub fn tungsten_kit::WallContact::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::WallContact
+impl core::marker::StructuralPartialEq for tungsten_kit::WallContact
+impl core::marker::Freeze for tungsten_kit::WallContact
+impl core::marker::Send for tungsten_kit::WallContact
+impl core::marker::Sync for tungsten_kit::WallContact
+impl core::marker::Unpin for tungsten_kit::WallContact
+impl core::marker::UnsafeUnpin for tungsten_kit::WallContact
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::WallContact
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::WallContact
 pub struct tungsten_kit::WeightedTable
 impl tungsten_kit::WeightedTable
 pub fn tungsten_kit::WeightedTable::draw(&self, &mut tungsten_kit::KitRng) -> core::option::Option<&str>

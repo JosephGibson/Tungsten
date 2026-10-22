@@ -1,18 +1,22 @@
 {
   "components": {
     "area": {
-      "name": "Waterfall ravine"
+      "ambience": "ambience_ravine",
+      "backdrop": "ex10_far_cliffs",
+      "indoor": false,
+      "name": "Waterfall ravine",
+      "night": true
     },
     "rigid_body": {
       "kind": "sensor",
       "offset": [
-        1152.0,
-        1600.0
+        1568.0,
+        2304.0
       ],
       "shape": {
         "half_extents": [
-          1152.0,
-          1600.0
+          1568.0,
+          2304.0
         ],
         "kind": "aabb"
       }

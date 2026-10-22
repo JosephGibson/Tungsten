@@ -40,7 +40,10 @@ fn place(harness: &mut UiHarness, e: Entity, centre: Vec2, before: Vec2) {
 fn fire(harness: &mut UiHarness, centre: Vec2) -> Entity {
     let at = centre - FIRE_CENTRE;
     harness.world_mut().spawn_with((
-        Hazard { fire: true },
+        Hazard {
+            fire: true,
+            lava: false,
+        },
         Position(at),
         PrevPosition(at),
         Transform::from_position(at),

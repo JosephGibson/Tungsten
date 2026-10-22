@@ -6,6 +6,20 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.97.0] - 2026-10-22
+
+Summary: M76, example 01's fourth stop, 01 (d) new level (plan archived at `docs/plans/archive/1.0/phase6-milestone-76-example-01-new-level.md`; `D-202`): a 430 × 72 map in six areas flowing into each other, a lantern clearing with the ball pit under a rope bridge, a broken aqueduct, a waterfall ravine, an ember hollow, an iron mine open to the sky and a troll bridge, each with its light, far strip and ambience loop; shots turn off the mine's iron and pass the bridges' wood, through a kit change: projectiles meet walls by their physics layers. Saves move to schema 7, refusing the old map's; the kit's hash holds.
+
+### Added
+
+- **The kit's projectile walls by layer** (`D-202`): `Projectile::bounce_layers` (every layer by default, so today's projectile stands) and `pass_layers` (none), set from data as `bounce_layers` and `pass_layers` lists of physics layers; a wall in a pass layer is passed, one in a bounce layer turns the shot while it has bounces left, and the rest end it; `ProjectileBounced`, `ProjectilePassed` and `ProjectileExpired::wall` with `WallContact` and `at_wall`; tiles meet as layer 0. The platformer recipe's bolt turns off armour and the top-down recipe's arrow passes hedges; `api/tungsten-kit.txt` gains 138 lines, with no break.
+- **Example 01 (d)** (`D-202`): the new level from `tools/level.json`: six areas and five transitions, today's start kept; tile families (masonry with undersides and the pit's lining, wet rock, basalt, mine rock with iron cladding, the aqueduct's channel, the bridge's deck) with masks, variants and borders; cave backs, shoring and tunnel mouths, the ravine's wet backs and the mine's cut; 600 props and 21 clips (water, the river, pools, falls, the pour, lava and the lavafall); five far strips, a true-black night sky over the ravine, the mine and the bridge, and the ravine's mist, crossfaded over each border; a cave's light eased down with the moon out; six ambience loops; the ball pit, 48 × 20 tiles, with its chute and shelves; the mine's iron in physics layer 2 and its wood and the rope bridge in layer 3; four loose iron blocks at markers on a fresh run; two lava basins that hurt and never go out; 13 enemies by area; the bullet turning off iron twice and passing wood with a splinter's sound, the missile banking once; C1's frame-time capture (`tests/game/frame_time.rs`, `perf-runs/20261022-e01d-frame/`, `total` p50 6.306 ms); 209 tests.
+
+### Changed
+
+- **Example 01's save** (`D-202`): schema 7, the trait's default `migrate`, so schemas 1 to 6 are refused and their slots read "Damaged"; schema 4's and 5's migrations and their fixtures are gone. A full pit with the map's 13 enemies saves in 2,079,145 bytes.
+- **Records**: `DESIGN.md`, example 01's README and `tools/README.md`, the 01 design's "As built (M76)", the kit catalogue's wall row, `docs/known-issues.md` (the light cull's ties past 16), two backlog rows (a cue event for wall meetings, materials on tiles), W10's C1 follow-up and the register.
+
 ## [0.96.0] - 2026-10-21
 
 Summary: M75, example 01's third stop, 01 (c) bestiary (plan archived at `docs/plans/archive/1.0/phase6-milestone-75-example-01-bestiary.md`; `D-201`): five enemies, a fire wisp, a frost crawler, a rust beetle, a cave bat and a cave troll, patrol, see the courier along a clear line, alert their neighbours, chase, attack after a tell, search and return on the kit's state machine; they hurt each other, scale with the difficulty, drop health and mana orbs and bring in a combat music layer; the troll slams, lifts and throws; and saves at schema 6 keep every enemy, migrating 01 (b)'s. The kit gains saved forms for `StateMachine` and `TopDownMover`, `StateMachine::pending` and `set_held`, `Hitbox::set_hit_targets` and `ContactDamage::set_touches`, and its hash holds.

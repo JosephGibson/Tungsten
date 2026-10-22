@@ -20,6 +20,14 @@ pub struct Music {
     pub ducked: bool,
 }
 
+/// The areas' ambience loops playing, each its manifest ID, its voice and
+/// the volume last set: every loop the map's areas name, started silent
+/// with the run, the current area's raised.
+#[derive(Debug, Clone, Default)]
+pub struct Ambience {
+    pub loops: Vec<(String, Voice, f32)>,
+}
+
 /// One of the game's one-shot sounds, sent as a cue event of its own name
 /// about the player, who hears it: `cue_rules/sounds.json` plays each.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -95,11 +103,13 @@ pub enum Sound {
     TrollSlam,
     /// A troll's throw.
     TrollThrow,
+    /// A shot through a wooden deck.
+    Splintered,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 32] = [
+    pub const ALL: [Sound; 33] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -132,6 +142,7 @@ impl Sound {
         Sound::TrollRoar,
         Sound::TrollSlam,
         Sound::TrollThrow,
+        Sound::Splintered,
     ];
 
     /// Its cue event's name.
@@ -170,6 +181,7 @@ impl Sound {
             Sound::TrollRoar => "troll_roared",
             Sound::TrollSlam => "troll_slammed",
             Sound::TrollThrow => "troll_threw",
+            Sound::Splintered => "splintered",
         }
     }
 }

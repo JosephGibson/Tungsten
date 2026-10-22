@@ -101,6 +101,12 @@
     },
     "sprinter": {
       "path": "prefabs/sprinter.json"
+    },
+    "arrow": {
+      "path": "prefabs/arrow.json"
+    },
+    "hedge": {
+      "path": "prefabs/hedge.json"
     }
   },
   "data": {

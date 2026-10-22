@@ -48,13 +48,13 @@
       "fire": true
     },
     "oscillator": {
-      "phase": 0.0,
+      "phase": 0.11140846016432673,
       "position": {
         "amplitude": [
-          70.4,
+          64.0,
           0
         ],
-        "period": 5.2
+        "period": 5.5
       }
     },
     "spawn_children": [

@@ -1,7 +1,7 @@
 //! The game across frame-rate regimes on the default 60 Hz step: a walk
-//! along the y = 1920 deck, once six slabs and now one merged collider,
-//! and every collision event reaching a fixed reader before and after
-//! `physics_step` exactly once.
+//! along the rope bridge's deck over the ball pit at y = 2304, one merged
+//! collider over its tiles' slabs, and every collision event reaching a
+//! fixed reader before and after `physics_step` exactly once.
 
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::game;
@@ -20,12 +20,13 @@ const REGIMES: [(&str, f32); 4] = [
     ("1/144 s", 1.0 / 144.0),
     ("1/1000 s", 1.0 / 1000.0),
 ];
-/// The top of the deck the walk crosses, from x 1536 to 1920, where six
-/// slabs once met at 1600, 1664, 1728, 1792 and 1856.
-const ROW_TOP: f32 = 1920.0;
-const START_X: f32 = 1560.0;
-/// Past the last old join: the player's right edge, x + 20, beyond 1856 + 4.
-const PAST_LAST_JOIN: f32 = 1860.0;
+/// The top of the deck the walk crosses, from x 2304, where its tiles'
+/// slabs meet at 2368, 2432, 2496, 2560 and 2624.
+const ROW_TOP: f32 = 2304.0;
+const START_X: f32 = 2328.0;
+/// Past the last join it crosses: the player's right edge, x + 20, beyond
+/// 2624 + 4.
+const PAST_LAST_JOIN: f32 = 2608.0;
 const SETTLE_SECS: f32 = 0.1;
 const WALK_SECS: f32 = 0.6;
 

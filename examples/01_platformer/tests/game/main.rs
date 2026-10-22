@@ -21,6 +21,7 @@ mod combat;
 mod dummy;
 mod enemies;
 mod fixed_step;
+mod frame_time;
 mod gun;
 mod hazards;
 mod hud;

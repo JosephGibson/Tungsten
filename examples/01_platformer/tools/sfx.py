@@ -30,13 +30,14 @@ class Noise:
 
 
 class LowPass:
-    """One-pole low-pass; `cutoff` may change per sample."""
+    """One-pole low-pass at `rate`; `cutoff` may change per sample."""
 
-    def __init__(self):
+    def __init__(self, rate=RATE):
         self.y = 0.0
+        self.rate = rate
 
     def __call__(self, x, cutoff):
-        self.y += (1 - math.exp(-math.tau * cutoff / RATE)) * (x - self.y)
+        self.y += (1 - math.exp(-math.tau * cutoff / self.rate)) * (x - self.y)
         return self.y
 
 
@@ -1155,8 +1156,175 @@ def encode(samples, rate):
     return out.getvalue()
 
 
-# Each loop's length in samples: its bars exactly.
+# 01 (d)'s ambience: one loop per area, 6 s at 22,050 Hz, crossfaded across
+# its seam as `wisp_hum` is; and the splinter of a shot passing wood.
+
+AMBIENCE_RATE = 22050
+AMBIENCE_SECONDS = 6
+AMBIENCE_LENGTH = AMBIENCE_SECONDS * AMBIENCE_RATE
+
+
+def ambience_loop(voice, overlap=0.25):
+    """`voice(i, t)` sampled over the loop and `overlap` s past it, the tail
+    crossfaded into the head so the loop repeats without a seam."""
+    count, extra = AMBIENCE_LENGTH, int(overlap * AMBIENCE_RATE)
+    samples = [voice(i, i / AMBIENCE_RATE) for i in range(count + extra)]
+    loop = samples[extra:count]
+    for i in range(extra):
+        blend = i / (extra - 1)
+        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
+    return encode(loop, AMBIENCE_RATE)
+
+
+def events(seed, count, length=AMBIENCE_SECONDS, margin=0.4):
+    """`count` start times inside the loop, from `seed`, clear of its seam."""
+    noise = Noise(seed)
+    return sorted(margin + (noise() * 0.5 + 0.5) * (length - 2 * margin) for _ in range(count))
+
+
+def tone_burst(t, start, freq, length, glide_to=None, decay=None):
+    """A sine burst from `start`: its frequency gliding to `glide_to`, its
+    envelope a quick rise and an exponential `decay` (a sine hump without)."""
+    u = t - start
+    if not 0 <= u < length:
+        return 0.0
+    f = glide(freq, glide_to, u / length) if glide_to else freq
+    env = math.exp(-u / decay) * min(1.0, u / 0.004) if decay else math.sin(math.pi * u / length)
+    return math.sin(math.tau * f * u) * env
+
+
+def ambience_clearing():
+    """The clearing at night: crickets in pairs of chirps, a breeze in the
+    oaks swelling and falling, an owl's two hoots once a loop."""
+    noise, crickets = Noise(0xC1EA), Noise(0xC21C)
+    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    chirps = [(start, 4100 + 300 * crickets()) for start in events(0xC3, 22)]
+    hoots = (2.1, 2.55)
+
+    def voice(i, t):
+        n = noise()
+        breeze = (low(n, 700) - high(n, 120)) * (0.55 + 0.35 * math.sin(math.tau * t / 3 + 0.4))
+        chirp = sum(tone_burst(t, start + k * 0.07, freq, 0.04) * (0.5 + 0.5 * math.sin(math.tau * 32 * t))
+                    for start, freq in chirps for k in range(2) if 0 <= t - start < 0.2)
+        owl = sum(tone_burst(t, start, 420, 0.32, glide_to=360) for start in hoots)
+        return 0.9 * breeze + 0.16 * chirp + 0.3 * owl
+    return ambience_loop(voice)
+
+
+def ambience_aqueduct():
+    """Water trickling along the channel, fluttering, and drips falling from
+    its leaks into still water below."""
+    noise, flutter = Noise(0xA0DC), Noise(0xA0DD)
+    low, high, wobble = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    drips = [(start, 1700 + 900 * (flutter() * 0.5 + 0.5)) for start in events(0xA1, 11)]
+
+    def voice(i, t):
+        n = noise()
+        trickle = (low(n, 2600) - high(n, 600)) * (0.45 + 0.55 * abs(wobble(flutter(), 14)) * 8)
+        drip = sum(tone_burst(t, start, freq, 0.18, glide_to=freq * 0.6, decay=0.05) for start, freq in drips)
+        return 0.5 * trickle + 0.45 * drip
+    return ambience_loop(voice)
+
+
+def ambience_ravine():
+    """The falls' roar, deep and steady with slow surges, and a hiss of mist
+    over it."""
+    noise, hiss = Noise(0x4A71), Noise(0x4A72)
+    low, mid, air = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+
+    def voice(i, t):
+        n = noise()
+        roar = low(n, 380) * 2.2 + (mid(n, 1400) - low.y) * 0.5
+        surge = 0.8 + 0.2 * math.sin(math.tau * t / 2) * math.sin(math.tau * t / 3 + 1)
+        h = hiss()
+        mist = (h - air(h, 3000)) * (0.25 + 0.1 * math.sin(math.tau * t / 6))
+        return roar * surge + mist
+    return ambience_loop(voice)
+
+
+def ambience_hollow():
+    """A low rumble under the basalt, slowly wavering, and the sparse crackle
+    of embers."""
+    noise, sparks = Noise(0x4011), Noise(0x4012)
+    low, lower = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    state = {'crack': 0.0}
+
+    def voice(i, t):
+        n = noise()
+        rumble = lower(low(n, 160), 90) * 6 * (0.75 + 0.25 * math.sin(math.tau * t / 3))
+        drone = 0.12 * math.sin(math.tau * 41 * t) * (0.6 + 0.4 * math.sin(math.tau * t / 2))
+        if sparks() > 0.9992:
+            state['crack'] = 0.7
+        state['crack'] *= 0.9
+        return rumble + drone + state['crack'] * sparks()
+    return ambience_loop(voice)
+
+
+def ambience_mine():
+    """Wind over the spoil in gusts, a timber creaking under its load, and a
+    distant clank of iron now and then."""
+    noise, jitter = Noise(0x31E0), Noise(0x31E1)
+    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    creaks = events(0x32, 3)
+    clanks = events(0x33, 4)
+
+    def voice(i, t):
+        n = noise()
+        gust = 0.5 + 0.5 * math.sin(math.tau * t / 3) ** 2
+        wind = (low(n, 900 + 500 * gust) - high(n, 250)) * gust
+        creak = sum(math.copysign(1.0, math.sin(math.tau * (130 + 25 * math.sin(math.tau * 7 * (t - c))) * (t - c)))
+                    * math.sin(math.pi * (t - c) / 0.5) * (0.7 + 0.3 * jitter()) for c in creaks if 0 <= t - c < 0.5)
+        clank = sum(tone_burst(t, c, f, 0.9, decay=0.2) for c in clanks for f in (523, 1307, 2213))
+        return 0.9 * wind + 0.05 * creak + 0.12 * clank
+    return ambience_loop(voice)
+
+
+def ambience_bridge():
+    """The river rushing under the arches, wind across the bridge and the
+    creak of the troll's ropes."""
+    noise, rope = Noise(0xB41D), Noise(0xB41E)
+    low, high, gusts = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    creaks = events(0xB5, 4)
+
+    def voice(i, t):
+        n = noise()
+        rush = (low(n, 1500) - high(n, 180)) * (0.85 + 0.15 * math.sin(math.tau * t * 1.5))
+        wind = gusts(rope(), 300) * 3 * (0.4 + 0.6 * math.sin(math.tau * t / 6) ** 2)
+        creak = sum(math.sin(math.tau * (210 + 40 * (t - c)) * (t - c)) * math.sin(math.pi * (t - c) / 0.35)
+                    for c in creaks if 0 <= t - c < 0.35)
+        return rush + 0.5 * wind + 0.08 * creak
+    return ambience_loop(voice)
+
+
+def splinter():
+    """A shot through a wooden deck: a sharp crack, a hollow knock and
+    splinters rattling away."""
+    noise, high = Noise(0x5911), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.4 * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (n - high(n, 1800)) * math.exp(-t / 0.008)
+        phase += math.tau * glide(620, 380, min(1.0, t / 0.12)) / RATE
+        knock = 0.7 * math.sin(phase) * math.exp(-t / 0.05)
+        rattle = n * 0.25 * math.exp(-t / 0.12) * (0.5 + 0.5 * math.sin(math.tau * 37 * t))
+        samples.append(crack + knock + rattle)
+    return finish(samples, fade_in=0.0005)
+
+
+AMBIENCE = {
+    'ambience_clearing.wav': ambience_clearing,
+    'ambience_aqueduct.wav': ambience_aqueduct,
+    'ambience_ravine.wav': ambience_ravine,
+    'ambience_hollow.wav': ambience_hollow,
+    'ambience_mine.wav': ambience_mine,
+    'ambience_bridge.wav': ambience_bridge,
+}
+
+
+# Each loop's length in samples: its bars exactly, an ambience its seconds.
 LOOPS = {
+    **{name: AMBIENCE_LENGTH for name in AMBIENCE},
     'music_title.wav': 12 * 4 * (MUSIC_RATE * 60 // 96),
     'music_explore.wav': 16 * 4 * (MUSIC_RATE * 60 // 128),
     'music_pause.wav': 5 * 4 * (MUSIC_RATE * 60 // 80),
@@ -1233,4 +1401,6 @@ def build_sounds():
         'enemy_hit.wav': enemy_hit(),
         'enemy_spotted.wav': enemy_spotted(),
         'orb_pickup.wav': orb_pickup(),
+        'splinter.wav': splinter(),
+        **{name: make() for name, make in AMBIENCE.items()},
     }

@@ -15,8 +15,8 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{
-    CommandBuffer, DataRegistry, EventCursor, Position, PrevPosition, Schedule, Stage, Transform,
-    Visibility, World, system,
+    CommandBuffer, DataRegistry, Position, PrevPosition, Schedule, Stage, Transform, Visibility,
+    World, system,
 };
 use tungsten::kit::{
     ABILITY_TICK, Abilities, Ability, LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase,
@@ -57,7 +57,7 @@ pub const RELOAD_SECS: f32 = 1.2;
 /// The gun as a plugin. In the fixed step: in the intent phase after the
 /// kit's ability tick, the reload and the trigger; in the move phase after the movers,
 /// each bullet's path; in the overlap phase after the kit's projectile
-/// pass and before the cascades' run, the hits. In `PreUpdate` before the
+/// pass and before the cascades' run, the hits and the walls' answers. In `PreUpdate` before the
 /// shell's save, the bullets the last flush landed taken in; in the present
 /// phase the muzzle flashes.
 pub struct GunPlugin;
@@ -70,9 +70,9 @@ impl Plugin for GunPlugin {
         schedule.add(Stage::FixedUpdate, Phase::Intent.join(shoot));
         let paths = system("bullet_paths", systems::paths).after(LINEAR_MOTION);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(paths));
-        let (mut struck, mut expired) = (EventCursor::new(), EventCursor::new());
+        let mut cursors = systems::ShotCursors::default();
         let hits = system("gun_hits", move |world: &mut World| {
-            systems::hits(world, &mut struck, &mut expired);
+            systems::hits(world, &mut cursors);
         })
         .after(PROJECTILE_TICK)
         .before("cascade_run");

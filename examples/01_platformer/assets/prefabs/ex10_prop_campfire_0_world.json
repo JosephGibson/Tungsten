@@ -1,0 +1,25 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_campfire"
+    },
+    "glow": {
+      "color": [
+        255,
+        125,
+        45,
+        230
+      ],
+      "light": 1.2,
+      "offset": [
+        33,
+        42
+      ],
+      "radius": 175
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_campfire_0",
+    "z_order": -10
+  }
+}

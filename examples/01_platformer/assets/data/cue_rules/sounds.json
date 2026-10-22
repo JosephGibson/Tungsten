@@ -516,5 +516,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "splintered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_splinter_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
   }
 ]

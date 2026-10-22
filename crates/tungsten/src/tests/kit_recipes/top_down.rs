@@ -7,7 +7,8 @@
 //! slimes, the hero's wand and dash, the ranger's volley, ammo, levels and
 //! offers, the golem's cold ladder and the ghouls' poison; M74's burn named
 //! after a load, the golem's frost stream and a game's own damage numbers;
-//! M75's guard saved mid-swing.
+//! M75's guard saved mid-swing; M76's arrow through hedges, saved
+//! mid-flight.
 
 use glam::Vec2;
 use tungsten_core::physics::{Collider, Position, PrevPosition, RigidBodyBundle, Velocity};
@@ -1737,5 +1738,131 @@ fn a_guard_saved_mid_swing_resumes_exactly() {
         assert_eq!(first_hits(&unnamed), Some(4), "dt {dt}");
         assert!(kept[0].struck.is_empty(), "dt {dt}");
         assert_eq!(unnamed[0].struck.len(), 4, "dt {dt}");
+    }
+}
+
+// M76: walls by their physics layers. An arrow passes hedges in layer 3
+// and ends at a stone wall; saved between the hedges, it resumes with the
+// same meetings.
+
+/// A wall as a meeting names it: an entity or a tile, its normal, its
+/// layers.
+type Wall = (bool, Vec2, u32);
+
+/// What a shot met: "passed" or "expired", where, and the wall.
+type Meeting = (&'static str, Vec2, Option<Wall>);
+
+/// Runs `frames` frames, collecting each one's meetings.
+fn meetings(harness: &mut Harness, frames: u32) -> Vec<Meeting> {
+    use crate::kit::{ProjectilePassed, WallContact};
+
+    let wall_of = |wall: WallContact| (wall.entity.is_some(), wall.normal, wall.layers);
+    let mut out = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        out.extend(
+            harness
+                .events::<ProjectilePassed>()
+                .map(|event| ("passed", event.position, Some(wall_of(event.wall)))),
+        );
+        out.extend(
+            harness
+                .events::<ProjectileExpired>()
+                .map(|event| ("expired", event.position, event.wall.map(wall_of))),
+        );
+    }
+    out
+}
+
+/// The garden: hedges whose left faces are at x 90 and 190, and the stone
+/// wall's at x 290.
+fn garden(dt: f32) -> Harness {
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    spawn(&mut harness, "hedge", [100.0, 100.0]);
+    spawn(&mut harness, "hedge", [200.0, 100.0]);
+    spawn(&mut harness, "wall", [300.0, 0.0]);
+    harness
+}
+
+/// The game's save of its arrow in flight.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct ArrowSave {
+    projectile: crate::kit::Projectile,
+    motion: LinearMotion,
+    at: [f32; 2],
+}
+
+impl SaveData for ArrowSave {
+    const SCHEMA: u32 = 1;
+}
+
+/// The arrow's meetings at `dt` before its save point and after it; with
+/// `load`, the game saves it there and loads it into a fresh garden.
+fn arrow_run(dt: f32, load: bool) -> (Vec<Meeting>, Vec<Meeting>) {
+    let mut harness = garden(dt);
+    let arrow = spawn(&mut harness, "arrow", [0.0, 100.0]);
+    let before = meetings(&mut harness, frames_for(0.25, dt));
+    if load {
+        let world = harness.world();
+        let at = body_at(&harness, arrow);
+        let save = ArrowSave {
+            projectile: world.get::<crate::kit::Projectile>(arrow).unwrap().clone(),
+            motion: world.get::<LinearMotion>(arrow).unwrap().clone(),
+            at: [at.x, at.y],
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_arrow_{}_{}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = SaveSlots::new(Some(dir.clone()));
+        slots.save("arrow", &save).unwrap();
+        let loaded: ArrowSave = slots.load("arrow").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        harness = garden(dt);
+        let arrow = spawn(&mut harness, "arrow", loaded.at);
+        let world = harness.world_mut();
+        world.insert(arrow, loaded.projectile);
+        world.insert(arrow, loaded.motion);
+    }
+    let after = meetings(&mut harness, frames_for(0.5, dt));
+    (before, after)
+}
+
+#[test]
+fn an_arrow_passes_hedges_and_ends_at_a_stone_wall_and_resumes_after_a_load() {
+    let left = Vec2::new(-1.0, 0.0);
+    let hedge = Some((true, left, 1 << 3));
+    for dt in DTS {
+        let (before, after) = arrow_run(dt, false);
+        let close = |got: &[Meeting], want: &[(&str, f32, Option<Wall>)]| {
+            got.len() == want.len()
+                && got.iter().zip(want).all(|(a, b)| {
+                    a.0 == b.0 && a.1.distance(Vec2::new(b.1, 100.0)) < 1e-3 && a.2 == b.2
+                })
+        };
+        assert!(
+            close(&before, &[("passed", 88.0, hedge)]),
+            "dt {dt}: {before:?}"
+        );
+        assert!(
+            close(
+                &after,
+                &[
+                    ("passed", 188.0, hedge),
+                    ("expired", 288.0, Some((true, left, 1)))
+                ]
+            ),
+            "dt {dt}: {after:?}"
+        );
+        let (loaded_before, loaded_after) = arrow_run(dt, true);
+        assert_eq!(loaded_before, before, "dt {dt}");
+        assert_eq!(loaded_after.len(), after.len(), "dt {dt}: {loaded_after:?}");
+        for (loaded, kept) in loaded_after.iter().zip(&after) {
+            assert!(
+                loaded.0 == kept.0 && loaded.2 == kept.2 && loaded.1.distance(kept.1) < 1e-3,
+                "dt {dt}: {loaded:?} against {kept:?}"
+            );
+        }
     }
 }

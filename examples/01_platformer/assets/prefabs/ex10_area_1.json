@@ -1,18 +1,22 @@
 {
   "components": {
     "area": {
-      "name": "Broken aqueduct"
+      "ambience": "ambience_aqueduct",
+      "backdrop": "ex10_far_arcade",
+      "indoor": false,
+      "name": "Broken aqueduct",
+      "night": false
     },
     "rigid_body": {
       "kind": "sensor",
       "offset": [
-        1024.0,
-        1600.0
+        2208.0,
+        2304.0
       ],
       "shape": {
         "half_extents": [
-          1024.0,
-          1600.0
+          2208.0,
+          2304.0
         ],
         "kind": "aabb"
       }

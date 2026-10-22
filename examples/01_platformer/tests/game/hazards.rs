@@ -1,8 +1,9 @@
-//! The spikes and fireballs: a touch's damage, window, knockback, flash,
-//! shake and sound, three touches ending a run at Normal, and the fires'
-//! trails, facing and drips.
+//! The spikes, fireballs and lava: a touch's damage, window, knockback,
+//! flash, shake and sound, three touches ending a run at Normal, lava's
+//! touch as a fire's with no douse, and the fires' trails, facing and
+//! drips.
 
-use example_01_platformer::features::level::components::Hazard;
+use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
@@ -12,7 +13,7 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBodyBundle, SoundRegistry,
     Transform,
 };
-use tungsten::kit::{Aim, Children, Facing, Health, HitFlash, damage};
+use tungsten::kit::{Aim, Children, ContactDamage, Facing, Health, HitFlash, damage};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::elements::FIRE_CENTRE;
@@ -34,12 +35,22 @@ fn health(harness: &UiHarness, player: Entity) -> f32 {
     harness.world().get::<Health>(player).unwrap().current()
 }
 
-/// The level's hazards, fires or spikes, in spawn order.
+/// The level's hazards, fires or spikes, in spawn order: lava neither.
 fn hazards(harness: &UiHarness, fire: bool) -> Vec<Entity> {
     harness
         .world()
         .query::<(Entity, &Hazard)>()
-        .filter(|(_, hazard)| hazard.fire == fire)
+        .filter(|(_, hazard)| hazard.fire == fire && !hazard.lava)
+        .map(|(entity, _)| entity)
+        .collect()
+}
+
+/// The level's lava basins, in spawn order.
+fn lava(harness: &UiHarness) -> Vec<Entity> {
+    harness
+        .world()
+        .query::<(Entity, &Hazard)>()
+        .filter(|(_, hazard)| hazard.lava)
         .map(|(entity, _)| entity)
         .collect()
 }
@@ -142,10 +153,34 @@ fn fire_children(harness: &UiHarness, fires: &[Entity], name: &str) -> Vec<Entit
 }
 
 #[test]
+fn lava_touches_as_a_fire_does_and_cold_never_douses_it() {
+    let (mut harness, player) = run();
+    harness.step(10);
+    let basins = lava(&harness);
+    assert_eq!(basins.len(), 2, "the lake and the shelf's pool");
+    let basin = basins[0];
+    let corner = harness.world().get::<Transform>(basin).unwrap().position;
+    // On the lake's skin, over its first lava column.
+    let onto = corner + Vec2::new(32.0, 8.0);
+    teleport(&mut harness, player, onto);
+    harness.step(1);
+    assert_eq!(health(&harness, player), 66.0, "a fire's damage");
+    harness.step(1);
+    assert!(
+        centre(&harness, player).y < onto.y,
+        "the touch knocks the player up and away"
+    );
+    // Cold puts a fire out; lava stays hot.
+    example_01_platformer::features::elements::douse_hazard(harness.world_mut(), basin);
+    let world = harness.world();
+    assert!(!world.has::<Doused>(basin) && world.has::<ContactDamage>(basin));
+}
+
+#[test]
 fn moving_fire_emits_a_bounded_particle_trail() {
     let (mut harness, _) = run();
     let fires = hazards(&harness, true);
-    assert_eq!(fires.len(), 6);
+    assert_eq!(fires.len(), 5);
     harness.step(1);
     let trails = fire_children(&harness, &fires, "ex10_fire_trail");
     harness.step(120);
@@ -248,7 +283,10 @@ fn a_hit_plays_its_sound_and_immunity_ignores_repeat_hits_until_it_runs_out() {
 fn crossing_fire(harness: &mut UiHarness, centre: Vec2, before: Vec2) -> Entity {
     let (at, prev) = (centre - FIRE_CENTRE, before - FIRE_CENTRE);
     harness.world_mut().spawn_with((
-        Hazard { fire: true },
+        Hazard {
+            fire: true,
+            lava: false,
+        },
         Position(at),
         PrevPosition(prev),
         Transform::from_position(at),

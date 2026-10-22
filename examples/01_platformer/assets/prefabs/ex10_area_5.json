@@ -1,0 +1,32 @@
+{
+  "components": {
+    "area": {
+      "ambience": "ambience_bridge",
+      "backdrop": "ex10_far_valley",
+      "indoor": false,
+      "name": "Troll bridge",
+      "night": true
+    },
+    "rigid_body": {
+      "kind": "sensor",
+      "offset": [
+        2528.0,
+        2304.0
+      ],
+      "shape": {
+        "half_extents": [
+          2528.0,
+          2304.0
+        ],
+        "kind": "aabb"
+      }
+    },
+    "zone": {
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      }
+    }
+  }
+}

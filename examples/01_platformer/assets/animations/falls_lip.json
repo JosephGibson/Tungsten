@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_falls_lip_0"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_falls_lip_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_falls_lip_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_falls_lip_3"
+    }
+  ],
+  "looping": true
+}

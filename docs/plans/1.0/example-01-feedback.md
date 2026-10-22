@@ -1,0 +1,272 @@
+# Example 01 feedback after 0.97 — draft
+
+- **status:** draft
+- **goal:** Turn the owner's playtest notes on example 01 (2026-10-21, with the same day's follow-up) and an improvement pass into four stops after M76, each its own milestone and release: (e) fixes, the held-spell frame-time collapse first, with the staff light's mana and the crawler's fear; (f) feel: knockback, toys, effects, sounds and the gun; (g) props and foes: burnable crates, powder kegs, the goblin and the troll's swipe; (h) the look: a wizard with the light at his staff's tip, one icon family, the HUD, 01's own theme colours, the title.
+- **non-goals:** M76's ground (the map, ambience, each area's light, schema 7); engine or kit changes not recorded as a gap (§6; the design's kit-first rule); options of 01's own (the shell's option set is fixed); new spells; slopes, ramps and water physics; any template change.
+- **files to touch:** `examples/01_platformer/` (`src/`, `tests/game/`, `tools/` and the generated `assets/`, `input.json`, `README.md`); `scripts/check-repo.py` and `scripts/test-check-repo.py` for 01's theme (h); the root `Cargo.toml`'s dev profile if the owner takes P8; per stop `DECISIONS.md`, `docs/DECISION_INDEX.md`, `CHANGELOG.md`, the design, the backlog and known issues.
+- **ordered steps:** (1) 01 (e) fixes, 0.98. (2) 01 (f) feel, 0.99. (3) 01 (g) props and foes, 0.100. (4) 01 (h) the look, 0.101. Then the Phase 6 QA pass. §3 sketches each stop's steps.
+- **done-when:** each stop's milestone plan passes its own done-when and release; the owner has played each stop through; every row of §1 is landed, moved to a later stop, or dropped with a reason in §5.
+
+Read at `82327ce` on 2026-10-21, while M76 (0.97, `phase6-milestone-76-example-01-new-level.md`) was being planned; its scope has grown since (level C: the kit's projectile walls by layer, five transitions). Line numbers move when M76 lands; each stop's plan session re-reads its rows. Paths are under `examples/01_platformer/src/features/` unless rooted. The evidence (the probes, their logs, both patches) is machine-local in `perf-runs/20261021-e01-feedback/`.
+
+## Context digest
+
+- Example 01 is a sandbox on the template, rebuilt in four stops (`D-194`): (a) rebuild, (b) elements, (c) bestiary and (d) the new level (M76, 0.97). The shell is a byte copy of `templates/basic/src/shell/`; kit first, so a kit gap becomes a level C step or a 1.x backlog row, never a workaround in 01.
+- These stops are new to the design. Their register rows, §4 rows and cards, and `roadmap.json` stops `e01e`–`e01h` with the `{"model": "opus", "effort": "max"}` tier (`D-195`: each generates art or sound) were written with this file on 2026-10-21, before the Phase 6 QA pass; (e)'s landing decision amends `D-194` for them.
+- Sequencing: (e)'s plan is written on the `0.98` branch that 0.97's post-merge block creates (tungsten-milestone, Branch). M76 changes `tools/` (`sfx.py`, `sounds.json`, `generate.py`), `save.rs` (schema 7, older saves refused), `level/`, `run/`, `audio/` and `tests/game/`, so every stop starts from its tree.
+- Ready: `spray-trace-fix.patch` (B1) and `perf-p1-p4.patch` (P1–P4) in `perf-runs/20261021-e01-feedback/` (machine-local), applied in that order: 209 of 209 game tests pass; the held spray drops from 35–53 ms to about 4 ms a frame, and an idle full pit from 16.4 to 13.2 ms (dev profile). Both touch only `toys/systems.rs` and `elements/systems.rs`, which M76 does not.
+
+## 1. Triage
+
+Kinds: **B** bug, **X** found on the way, **P** performance, **T** tuning, **F** feel, **I** the improvement pass, **C** content, **L** look. Where: **01** game code, **data** `tools/content/` JSON, **art** and **sfx** the generators, **kit**, **engine**. Verified means traced in code or reproduced.
+
+### Bugs
+
+| # | Note | Finding | Where | Stop |
+| --- | --- | --- | --- | --- |
+| B1 | Terrible performance while channeling (HIGH) | Verified and measured (§2.1): each spray ray samples tiles every 4 px at 3 points, and `solid_tile` (`toys/systems.rs:255-274`) builds an ECS query and a registry lookup per sample, about 6.6 µs each in the dev profile; about 21 traces a frame (7 a step in `spray`, 8 a frame in `spray_look`, one per newborn particle in `orient_newborns`) cost 35–53 ms with nothing else in the world. Each trace also scans every rigid body (`:651-689`), about 0.8 ms more per trace with 12,000 balls. Patch ready | 01 | e |
+| B2 | Mana bar doesn't show 100 / 100 at full; HP and mana always integers | The values are right and the HUD writes "100 / 100" (`spells/hud.rs:475-477`). Probable cause, matching known issue P2 (`docs/known-issues.md:49`, "a slot's `12` read `1`"): the readout's floor is 84 units (`hud.rs:75-78`, `:243-247`) and "100 / 100" measures 86.4 in the mono face, so the label sizes to its text and an ulp short of it the last word wraps out of sight, while "99 / 100" fits. Health is written raw (`hud.rs:368-370`), so fractional damage reads "87.5 / 100". The harness measures at a fixed 0.5 em (`crates/tungsten/src/testing/ui.rs:42`), so no test sees it | 01 | e |
+| B3 | Area titles stack when crossing zones quickly; one at a time, in a serif font | Verified: each area is a shell toast (`run/systems.rs:32`), each its own panel for 2.5 s (`shell/toast.rs:10-11`, `:60-64`); the shell has no replace or dismiss. Source Serif 4 already ships as the theme's heading face (`shell/widgets.rs:84-87`) | 01 | e |
+| B4 | Frost crawler doesn't attack (follow-up: keep its fear of the light, shown by an animation) | Verified: the lantern is lit by default (`player/components.rs:20-24`); `crawler::chase` winds up only while it is out (`crawler.rs:141-143`) and `walk` refuses steps within 175 px of it (`:74-92`), so the crawler parks at the light's edge, unexplained. Its clips are picked by state alone (`:218-224`), and its light is a fixed offset, not the drawn one (I8) | 01, art, sfx | e |
+| B5 | Troll can't be frozen | Verified by a probe (§2.2): its freeze rung needs 4 × its threshold of 40 within one 3 s chill; a 30/s spray nets about 16.7/s against the drain, the bucket peaks near 55 and empties each time the chill re-lands, for ten seconds with endless mana. M74's lowest-rung trap. Every other freezable kind (wisp 16, bat 12, beetle 30, dummy 20+) is within a spray's reach | data, 01 | e |
+| B6 | Bloom toggle doesn't seem to work | The toggle works (verified in code and by `tests/game/presentation.rs:537-550`): the shell strips the game's bloom passes by type each frame (`shell/mod.rs:781-786`). 01's bloom is faint (intensity 0.22, radius 0.65, `level/mod.rs:169-174`, about 1/21 of the template sample's), while the glow you see is 01's halo sprites and lights (`level/systems.rs:59-111`), which the option never touches | 01 | e |
+| B7 | Damage numbers should appear as soon as a hit lands | Verified: plain parts open a sum that floats after 0.6 s of quiet or 1.0 s after its first part (`combat/numbers.rs:18-19`, `:115-118`); only crits float at once | 01 | e |
+| B8 | Thunder hits at the cursor; it should keep the cursor's x and fall until it meets something | Verified: `bolt_end` caps the downward ray at the cursor's height and sees tiles and static boxes only (`lightning/mod.rs:149-170`); the strike also snaps to a conductor within 160 px (`:178-179`), which moves its x | 01 | e |
+
+### Found on the way
+
+| # | Finding | Where | Stop |
+| --- | --- | --- | --- |
+| X1 | Verified: every `Damaged` event is a `damaged` cue occurrence with no `periodic` check (`crates/tungsten-kit/src/react/cues.rs:2127-2139`), and the player's prefab shakes and plays its hit sound on it (`player.json:15`): a burning player hears the hurt sound every 0.5 s | 01 plays the hurt from code on non-periodic hits; kit gap K1 | e |
+| X2 | The player's hit flash never shows: lit sprites draw without the flash material (`docs/known-issues.md:62`) | A tint in 01 (I15) | f |
+| X3 | Enemies are never removed when they leave the level (`toys/systems.rs:548-559`); once pushes move them, one knocked off the map falls forever | 01 | f |
+| X4 | Two open black holes (900 + 300 particles each) would overflow the 2,048-particle cap (`level/mod.rs:62`) | data | f |
+| X5 | The troll's stun rung looks unreachable within 100 mana (about five strikes); estimated, not traced | data | e |
+| X6 | `World::query` matches every archetype per call (`crates/tungsten-core/src/ecs/world.rs:338-348`): 5.3 µs a query in a 01 run, dev profile; B1 paid it per sample | K6 | follow-up |
+
+### Performance
+
+With 12,000 settled balls and nothing happening, four of 01's own systems cost more than the physics step (dev profile: `fire_contacts` 4.10 ms, `ball_look` 2.25, `body_impacts` 1.71, `toys_bounds` 1.04, against `physics_step` 1.82 of a 14.8 ms update). C1 takes 01's full pit as a benchmark row, so these count past the debug build. Every row keeps behaviour identical.
+
+| # | Hot path | Fix | Measured | Stop |
+| --- | --- | --- | --- | --- |
+| P1 | `fire_contacts` (`elements/systems.rs:407-458`), every step: two random lookups per ball and a swept-box test against each fire, for sleeping balls far from any fire (verified) | The previous position read in the query; balls whose swept box misses the fires' joined box skipped first (patch) | 4.10 → 1.41 ms | e |
+| P2 | `ball_look` (`toys/systems.rs:1086-1111`), every frame: `freeze_amount` per ball and three passes | One `query_mut` with `Option` columns (patch) | 2.25 → 2.43 ms: no gain; its cost is the per-ball rainbow tint (`powf`), which a table would change (`tests/game/spawning.rs:167` pins exact colours) | e |
+| P3 | `body_impacts` (`elements/systems.rs:1002-1114`): `target_hits` (`:943-984`) runs a `Throws` scan, three `has` and a lookup per body before its speed check; the event loop does 3–5 lookups per side before `closing < SHATTER_SPEED`, which rules everything out | Speed checks first (patch) | 1.71 → 1.31 ms | e |
+| P4 | `toys_bounds` (`toys/systems.rs:548-563`): four `has` per entity before the cheap `escaped` test | The two filters swapped (patch) | 1.04 → 0.85 ms | e |
+| P5 | While anything burns: `fire_spread` rebuilds a cell map of every unburnt ball each step (`elements/systems.rs:140-150`) | Bucket only the balls near the burning ones, as `fire_exposure` bounds itself (`:186-203`) | not yet | e |
+| P6 | Conditional scans over every body: a chasing troll's `nearest_liftable` (`troll.rs:129-140`) and its slam (`:298-305`), the cascade queue's `Bin::build` (`cascade.rs:373-406`, an ID map of every body for at most 48 entries), the gun's `bodies()` while a bullet flies (`gun/systems.rs:193-236`), the black hole's `pull_response` before its reach (`toys/systems.rs:201-209`), `iron_friction`'s per-event lookups (`:575-589`), particle scans with no hole open (`:1287-1294`), `impact_sparks`, `burst_cleanup` (`shared.rs:100-102`), `ball_count` (`toys/mod.rs:207`), `crush` (`elements/systems.rs:629-636`), lightning's `conductors` (`lightning/mod.rs:115-121`) | Distance or speed checks before lookups; `Option` columns for `has`; maps filled only for what is used | not yet | e |
+| P7 | After a pit burns out, every spent ball keeps `BallBurn { remaining: 0 }` (`elements/systems.rs:104-109`), and `fire_tick`, `fire_spread`'s sources, `fire_exposure`, `fire_particles`, each wisp's scan (`wisp.rs:65-77`) and the flames' draw walk all 12,000 every step or frame | A `Spent` marker, a save field (schema 8) | not yet | e |
+| P8 | The dev profile builds 01, the kit and the engine's umbrella crate at opt-level 0 (root `Cargo.toml` `[profile.dev]`; core is already at 1, dependencies at 2), and `cargo run` is how 01 is played | `[profile.dev.package.example-01-platformer]`, `tungsten-kit` and `tungsten` at opt-level 1, beside core's | With B1 and P1–P4: idle no balls 3.1 → 1.3 ms, idle 12,000 balls 13.2 → 5.6, spraying into 12,000 balls 17.5 → 7.8 (§2.1) | e, the owner's call |
+
+Together B1 and P1–P4 bring an idle full pit from 16.4 to 13.2 ms; P8 then to 5.6 ms. The release profile was not measured.
+
+### Tuning
+
+| # | Note | Today | Default | Where | Stop |
+| --- | --- | --- | --- | --- | --- |
+| T1 | Halve every spell's cost; double mana regen | Missile 8, flamethrower 20/s, ice spray 18/s, lightning 30, push 25, black hole 30, iron 15, bowling 12, small balls 15/s, summon 40 (`abilities/*.json` line 4); regen 1.5 per 0.1 s, paused 1 s after a cast (`mana_regen.json`, `casting.json`) | Halved; regen 3.0 per 0.1 s; the pause stays | data | e |
+| T2 | Twice as many bowling balls a second | Cooldown 0.6 s (`bowling_ball.json:6`) | 0.3 s, the toss clip's length | data | e |
+| T3 | Lower the push and black hole cooldowns | Push 2 s, hole 1 s | Push 1 s, hole 0.5 s | data | e |
+| T4 | More than one black hole; duration +50% | Placing despawns the open hole (`toys/mod.rs:388-395`); the save holds one (`save.rs:71`); 4 s (`black_hole.json` `left`) | Up to 3, the oldest closing as iron does; 6 s; each hole's particles cut to a third (X4); `black_holes` in the save | 01, data, save | f |
+| T5 | The troll attacks a bit quicker | Slam tell 1.2 s, attack 0.4 s, shared recovery 0.5 s: a slam every 2.1 s (`troll.rs:50`, `:69`; `enemies/mod.rs:59`) | Tell 0.8 s with its wind-up clip scaled; recovery 0.35 s for the troll alone | 01, art | g |
+| T6 | Freezes last longer | 5 s for creatures (`frozen.json`), the troll's own 1.5 s; iron and balls share `FROZEN_SECS` (`elements/mod.rs:33-37`) | Creatures 7.5 s, the troll 3 s; iron and balls keep theirs, the dummy's thaw test split from the iron constant | data, 01 | e |
+| T7 | Gun: clip of 9, slower fire, more pop per shot, reload on R, a dry click, a rack | 12 rounds 0.12 s apart, reload 1.2 s only at empty (`gun.json`, `gun/mod.rs:55`, `gun/systems.rs:67-69`); no reload action; an empty magazine is silent | 9 rounds 0.2 s apart; `reload` on R and pad West in `input.json` and the bindable list (`game.rs:32`), reloading a part-empty magazine; a heavier shot, shake 0.1, a muzzle light; the click and the rack | data, 01, sfx | f |
+| T8 | A jump that shoves off what traps the player | The controller treats dynamic bodies as walls and ceilings and never pushes them (`crates/tungsten-kit/src/motion/platformer.rs:82-87`); a ceiling zeroes the rise (`:573-575`) | On a jump press with dynamic bodies over or beside the player, 01 kicks them out and up by mass and relaunches next step; jump speed unchanged (the routes depend on it) | 01 | f |
+
+### Feel
+
+| # | Note | Today | Plan | Where | Stop |
+| --- | --- | --- | --- | --- | --- |
+| F1 | Blood and hit effects on the player and NPCs; a hazard touch gives a sound, blood and hit frames | Hazards deal 34 untyped with a shove and the generic `player_hit` sound (`player.json` `cues.damaged`); blood only while bleeding, which needs `flesh`, which the player lacks; no hurt clip; no hit-stop API (`Time::set_scale` exists) | A blood burst on flesh hits and on the player, a hazard sound through the kit's `Struck` event, a red tint for the lit player (X2, I15), the hurt clip with the wizard (h) | 01, sfx, art | f (clip in h) |
+| F2 | A bleeding effect with particles | 10 maroon drips at most, 6/s (`combat/systems.rs:148-205`) | Denser, larger drips, a spurt at the start, a brighter maroon | data, 01 | f |
+| F3 | Burning more noticeable | Two small flame quads at 0.4× (`combat/draw.rs:19-22`, `:93-105`); no particles, tint or glow on creatures | Ember particles, a flickering tint after the balls' `ember_tint`, a glow, bigger flames | 01, data | f |
+| F4 | Chill slows more as it builds and freezes at the threshold; a sound and particles at the freeze | One flat −35% for 3 s (`chilled.json`); only the troll has a second stage (`troll.rs:74-80`, `:362-386`); one frost tint; a silent freeze | A graded slow and tint from the cold bucket's fill over its threshold (`AilmentBuckets::fill`, `crates/tungsten-kit/src/damage/ailments.rs:442-446`), the troll's stages generalized; at chilled → frozen `Sound::Froze` and the frost burst | 01, data | f |
+| F5 | Flamethrower more intense, drawn above NPCs | Quad particles at a hard-coded depth 0 (`crates/tungsten/src/particles.rs:449`), under enemies at 8 | 01 lifts its spray particles above 10 when it orients them (K2 for the clean form); more, hotter particles inside the cap | 01, data | f |
+| F6 | Push: its own sound, particles and graphic, purple and gravity-themed; push enemies | `push_bodies` moves dynamic bodies only (`toys/systems.rs:503-507`); a violet ring close to shock's (I13) and a generic whump | `push_enemies` through the kit's `knock_back` (`crates/tungsten-kit/src/motion/knockback.rs:231-253`), scaled by distance and each kind's `pull`, the troll staying put; a new synth, a gravity-purple warp burst and ring | 01, sfx, data | f |
+| F7 | Black hole sound | One 0.72 s one-shot at opening (`toys/mod.rs:397`) | A looping hum per open hole through a held voice, and a collapse sound (I6) | 01, sfx | f |
+| F8 | Iron: weightier; knock back what it doesn't kill, gore what it does; an impact on a hard landing; refuse placing it inside something, with a fizzle | Mass 200 (`iron_block.json:17`); impacts hurt with no push (`elements/systems.rs:1080-1088`); no placement check (`toys/mod.rs:309-327`) | Mass 400 and extra fall acceleration; pushed iron hits; a gore burst on flesh killed by iron; dust, shake and a thud past ~900 px/s; `iron_fits` through `physics::overlap`, refused before any mana is spent, with a fizzle | 01, data, sfx | f |
+| F9 | Missile knocks NPCs back | The blast pushes dynamic bodies only (`toys/systems.rs:422-451`) | `push_enemies` from the blast | 01 | f |
+| F10 | Lightning: an impact, small particles, a crack | Bolt, light, shake and a thunder roll | Sparks at the contact and a short snap under the roll | data, sfx | f |
+| F11 | Sounds: double jump, out of mana, spell switch | None (`player/systems.rs:164-167`; `spells/systems.rs:66-97`, `:138`; no such ID in `tools/sounds.json`) | Three one-shots; out of mana on a cast or held step refused for cost | sfx, 01 | f |
+| F12 | DoT numbers smaller; numbers at once | See B7; DoT ticks carry `periodic` (`crates/tungsten-kit/src/damage/health.rs:449-450`), as does the instant `shattered` | The first part floats at once, follow-ups merge over 0.25 s; periodic fire and bleed parts at 11 units in their own sum | 01 | e |
+| F13 | Death screen lets the game play on for 3 s | `run/mod.rs:107-115` calls `shell::game_over` on the first dead frame, which pauses game time (`shell/mod.rs:447-451`); a body killed in the air freezes there (`tests/game/player.rs:112-122`) | A death timer in game time, `game_over` at 3 s, the world running and the body falling; the player's input is already dead | 01 | e |
+
+### The improvement pass
+
+| # | Finding | Fix | Stop |
+| --- | --- | --- | --- |
+| I1 | Refusals are silent and inconsistent: the missile and ball caps, a summon in a wall, no cursor, a cooldown (`spells/systems.rs:125-140`). The held small balls spend mana at the 12,000 cap and place nothing, since `hold` uses the ability first (`:102-115`, verified). Iron's cap deletes the oldest block silently (`toys/mod.rs:315-318`), where summons poof theirs | The cap checked before the spend (a bug, e); one `refuse(reason, at)` with F11's out-of-mana sound and F8's fizzle, a tick and slot flash on a cooldown, a poof for the oldest block (f) | e, f |
+| I2 | A held spray at empty mana sputters: it restarts whenever a step is affordable, each use reapplies `casting` and pauses regen, and every restart plays the full start sound (`spells/systems.rs:205-209`, `toys/systems.rs:878-882`), about every 1.1 s | Once refused for mana, a held spell stays off until the cast is released, or restarts only above a reserve | e |
+| I3 | Thaws come unannounced; a troll frozen mid-wind-up can slam on the frame it thaws (`combat/draw.rs:106-114`, `enemies/systems.rs:502-506`) | The cube cracks and flickers under 0.75 s left; a glint burst and a crack sound at the thaw | f |
+| I4 | A doused fire relights at once with its 34-damage touch (`elements/systems.rs:1144-1205`) | Sputtering glow over the last 0.8 s, then a flare and `Sound::FireStarted` | f |
+| I5 | All one-off bursts share 16 slots (`shared.rs:50-70`); a missile blast takes four; an enemy at the cap dies with no burst (`enemies/systems.rs:579-589`), and blood and gore will fill it faster | A priority flag: deaths, summons, shatters and refusals evict the oldest cosmetic burst | f |
+| I6 | The black hole draws over every sprite with an opaque core where it drags enemies (`toys/draw.rs:106-125`, `vortex_core.png`) and closes silently with a 0.25 s fade (`:128`) | A translucent core or its layers under the actors; it shrinks over its last 0.5 s with a collapse sound and a small push ring | f |
+| I7 | The troll's slam has no reach marker, wind-up sound or shake, and reaches about 104 px behind its centre (`troll.rs:51`, `:55`, `:289-331`) | A dust ring growing to the reach during the wind-up, a grunt, a distance-scaled shake | g |
+| I8 | The crawler's fear uses a fixed light offset and 175 px (`crawler.rs:30-33`, `:61-70`), not the drawn glow's per-frame anchors (`player/systems.rs:349-371`): facing left, crawlers stop 23–31 px off the visible light | Read the player's glow centre and reach; the staff tip (h) moves it again | e |
+| I9 | A kill replays the enemy's hit sound (each prefab's `killed` cue); the dummy has none; orbs appear silently and vanish at 20 s unblinking (`enemies/drops.rs:18-19`), though the README says they fade | A death sound and a light shake in `killed`, a thump for the dummy, a pop for an orb, a blink over its last 3 s | f |
+| I10 | The alert sting plays on every regained sight (`enemies/systems.rs:430-441`), mid-fight; a search starts silently (`:285-289`) | The sting from `enter_alert` (`:182-195`); "!" in Alert and "?" in Search over the enemy, drawn as the troll's bar is (`enemies/draw.rs:36-79`) | g |
+| I11 | Bowling balls make no impact sparks or sound (`elements/systems.rs:480-485`); a bowling ball bursting in fire is silent (`:452-456`); a bullet ending at a wall just disappears (`gun/systems.rs:403-427`) | Bowling balls in `ball_impacts` above a higher speed with dust and a thud; `Sound::Blasted` on the burst; sparks where a bullet ends | f |
+| I12 | Spray loops stop with a 0 s fade, a click (`toys/systems.rs:929-931`); only the ice spray has an end sound; small balls retrigger iron's `Placed` up to 20 times a second (`toys/mod.rs:261-263`) | An 0.08 s fade, a flamethrower tail, small balls on a loop of their own | f |
+| I13 | Gravity reads as shock: the push ring [170,150,255] (`toys/draw.rs:49-52`) beside shock's violet [184,140,255] (`lightning/draw.rs:30`); the hole is violet too, while push and the hole are mana-school, indigo in the design's table | The requested purple gravity look built from deep magenta or indigo, a gravity row in the colour table, violet kept for shock | f |
+| I14 | The HUD's health fill and selected ring use the theme's `accent` (`spells/hud.rs:164-166`, `:391`, `:396-399`): with 01's purple accent (L6) the health bar turns purple and the ring vanishes on violet and indigo slots; a cooldown ends silently; E/Q change only slot 0's icon | Health in its own colour (L2), the ring in `focus` or white, a slot flash when ready, the summon's name shown on a switch | h |
+| I15 | Being hit looks like casting: the courier can't flash and its hit shake (0.5) equals its own lightning's (`lightning/mod.rs:57`) | A 0.12 s red tint after damage through `status_tints` (`combat/systems.rs:124-146`), which the lit shader multiplies (`assets/shaders/lit_sprite.wgsl:90`) | f |
+| I16 | Prefab and ability data restated as Rust constants (body sizes and centres, `KindInfo.half`, toy sizes and masses, missile speed, `CHARGE_SECS`, `ORB_SECS`, the gun's), only the bat's dive tested against its data (`tests/game/enemies.rs:1103`) | One test asserting each copy against its data, before (g) and (h) change bodies | e |
+| I17 | Eight identical body-centre helpers, a ninth that differs, three `surface_distance` copies; pushes measured by centre or by surface; the slam's ball kick ignores mass; the hole pushes enemies its own way | `shared::body_centre` and one `radial_push` that moves enemies through `knock_back`, written with F6 and F9 | f |
+| I18 | Zoom can't return to 1.0: from the 0.35 floor it steps 0.6, 0.85, 1.1 (`player/mod.rs:36-38`, `player/systems.rs:67-69`, verified) | Snap to the step grid after the clamp, or a floor of 0.25 | e |
+| I19 | Nothing clears the toys but crushing, steam, shattering, the level's edge or a new run | Small balls reaching a hole's core vanish, a capped number a step with an occasional poof: the hole as the sandbox's broom | f |
+| I20 | Out of date: the README says the hole puts out fire (it douses burning small balls only), gives the summon the dummies' cap of four (enemies have six), and slot 0 a dummy only; the shatter hint reads just "Shattered" | Reword, or let the hole douse burning targets as steam does | e |
+
+### Content
+
+| # | Note | Plan | Where | Stop |
+| --- | --- | --- | --- | --- |
+| C1 | A small goblin that throws rocks; one throw in five a bomb on a fuse that blasts the player and knocks back what is near | A sixth `EnemyKind` (enum, `KindInfo`, the per-kind arms, `goblin.rs` on the beetle's pattern), prefab and loot; the rock a bodiless kit `Projectile` with gravity on `LinearMotion`, its `Source` the goblin, arced with the troll's `ballistic`; the 20% roll from `KitRng` (saved); the bomb C4's fuse body thrown, its `Detonation` credited to the goblin; the summon slot's type appended; rocks and bombs saved; art, sounds; placed on M76's map | 01, data, art, sfx, save | g |
+| C2 | The troll gets a faster swipe | A `Swipe` state: a short tell, a box hit in front of it mirrored by facing, built like `slam` (`troll.rs:289-331`), under ~90 px with the slam kept for 90–140; a clip and a sound. The kit's `Hitbox` has no facing (K3), so it stays 01 code with that reason recorded | 01, art, sfx | g |
+| C3 | Crates that can be set on fire and burn up (follow-up) | An iron-block-like dynamic box toy (`toys/mod.rs:52-57`, `:307-327`): `crate.json` (half ~28, mass ~40), a `Crate` marker, `place_`/`restore_` over `spawn_toy`, a cap, plus what iron's code assumes: `friction` and `bounds` (`toys/systems.rs:546-606`), a black-hole pull constant (`:141-158`), cascade bins (`elements/cascade.rs:330-338`, `:372-407`), `is_body` (`elements/systems.rs:754-758`, which brings chill, freeze, thermal shock and impact shatter), the gun's targets (`gun/systems.rs:191-213`), the troll's `liftable` (`troll.rs:106-124`; a burning thrown crate is a firebomb). Fire as 01's body state, as balls burn (`D-200`): `Fuel { left, lit }`, lit by the flamethrower, missile heat, fire hazards, burning balls, blasts and burning neighbours; 8 s, charring by tint and an ember overlay; it lights touching balls at once and crates within 4 px after 2 s; burnt up, it goes with `burn_out` and a collapse burst; cold puts it out with steam and the black hole douses it, its fuel kept; fed into the pooled fire emitters. Not the kit's `burning`, which needs `Health` (`crates/tungsten-kit/src/damage/pipeline.rs:119-123`) and would bring damage numbers and every hit | 01, data, art, sfx, save | g |
+| C4 | Barrels (follow-up) | Powder kegs on the crate's code: `Keg { fuse }`, lit by C3's fires into a 1.5 s fuse (hiss, sparks), set off at once by a hard impact (≥600 px/s), a bullet, lightning (iron hoops, conductive) or a blast; frozen, it cannot light and fire shatters it. Its blast a new `CascadeKind::Detonation` (backward-compatible, `cascade.rs:46-65`) with thermal shock's body (reach 192, 24 fire and 24 physical, the player taking half) and the missile's look, now with a source, since the queue credits only the player (`cascade.rs:156-162`, `combat/mod.rs:155-161`); it lights crates and balls and queues other kegs, so chains roll in waves of at most 48 a step and save with the queue. An oil barrel (C3 with 12 s of fuel spilling a dozen burning small balls) is cheap later | 01, data, art, sfx, save | g |
+
+### Look
+
+| # | Note | Plan | Where | Stop |
+| --- | --- | --- | --- | --- |
+| L1 | Spell icons in one visual identity, after Path of Exile's | Ten spell icons, the gun and the summons as one family: a shared dark backing, a framed rim glowing in the element's colour, the subject lit from one side (`tools/effects.py:187-470`, 32 × 32; the HUD assumes 32, `spells/hud.rs:81-84`, `:126-133`) | art, 01 | h |
+| L2 | Fluid overlay on the life and mana bars; life bright red, mana deep bright blue | Plain panels: a 160 × 10 track and a fill sized to the share (`hud.rs:231-249`, `:485-494`); health on the theme's `accent`, mana on `School::Mana`. The UI draws rectangles, images, text and per-frame triangles (the cooldown sweep's, `hud.rs:423`), clips children and loops animations; no UI shaders. Plan: the bars' own colours; the fill clips a full-width liquid layer of triangles rebuilt each frame (a gradient, a moving crest, drifting highlights) or a scrolled generated strip; a pulse at low health | 01, art | h |
+| L3 | Spell bar: drop the cost and slot number, show each slot's keybind like a WoW action bar; a look-and-feel pass | A row under each icon holds a fixed key from `SLOT_KEYS` (`spells/mod.rs:39`) and the cost, so a rebind still reads "1". `ActionMap::bindings` and `Binding::label` are public (`crates/tungsten-core/src/input/action_map.rs:54-68`, `:498`). Plan: the row goes; the live key, shortened, pinned in each icon's corner over a dark backing (no text outline, K5), refreshed on a rebind; the magazine keeps its count and pips; I14 | 01 | h |
+| L4 | A wizard with a big hat, and more spell animations | One rig in `tools/actors.py` (`:28-55`, `:122-295`); 64 × 64 with the feet on row 61 and the hood's top at row 7 leave about 7 px for a hat, so the frame grows (or the body shrinks) and `BODY_OFFSET`, `PLAYER_HALF` and the feet row move with it (I16's test guards them); clip IDs `ex10_player_{idle,walk,jump,fall,land,double_jump,toss,aim}` kept, plus cast clips per spell family mapped in `player::cast` (`player/mod.rs:105-119`) and a hurt clip (F1) | art, 01 | h |
+| L5 | The lantern becomes the glowing tip of the wizard's staff and slowly burns mana (follow-up, replacing "remove the lantern") | Today: input `lantern` (L, pad North), `Lantern`/`LanternAnchors`, `player_lantern`, the cast's hot lantern, the prefab's `glow`, the saved `on` flag, the crawler's fear, the lantern on the courier's wrist with per-frame anchors and 86 `_cast` twins. A kit effect cannot drain (`restore` amounts must be above 0, `crates/tungsten-kit/src/damage/effects.rs:585`); a kit ability's cost can, refused with `Used::NoCost` (`crates/tungsten-kit/src/intent/ability.rs:1107-1120`), and needs one payload (`:750-751`). (e): a `staff_light` ability with a per-step cost and an effect payload granting `staff.lit`, used each step while lit; refused, the light gutters out with a puff and a sound and relights only above a floor (Q15). (h): the light at the staff's tip in the wizard's art (anchors per frame, as now), the cast's hot lantern as the staff's flare, the courier's lantern art and twins gone | 01, data, save, art | e, h |
+| L6 | A darker UI background with a slight blue tinge, purple accents, minimal; the game's theme, not the template's (follow-up) | The theme is 42 lines: ten colour tokens plus literal copies in the button, toggle and slider states; 01's is a byte copy, written by its generator (`tools/generate.py:15-20`) and held by `check_shell_copies` (`scripts/check-repo.py:165-195`; `D-199`); the shell bakes colours into screens as it builds them (`shell/widgets.rs:29-30`). Plan (§4): a colour map in 01's tools applied over the template's theme by the generator, so new template keys still arrive; `check_shell_copies` holds 01's theme to the template's structure instead of its bytes; a decision amends `D-199`; the shell's code stays a byte copy. The template's 8.8:1 contrast floor (`templates/basic/tests/game/shell.rs:778-826`) does not bind 01, which checks its own readability | 01, tools, `scripts/check-repo.py` | h |
+| L7 | A starry night with particles on the start screen | `ex10_sky` paints about 980 stars and a milky band (`tools/backdrops.py:29-59`) but draws only during a run (`level/draw.rs:133-196`). 01's sprite drawing runs in every state (`level/mod.rs:96`), so 01 draws the sky while the title is on top, with emitters owned by the title state (`crates/tungsten/src/state.rs:38-45`), bright enough to read through the shell's 72% scrim | 01, art | h |
+
+## 2. Evidence
+
+### 2.1 B1 and P1–P8
+
+Headless probe `perf-runs/20261021-e01-feedback/probe/zz_probe.rs` at dt 1/60, the dev profile (`cargo run`'s), 120 measured frames a row, mean frame total in ms; the player on a test floor in the sky, balls settled in the collection pit, the spray aimed into open air unless the row says otherwise. Another session shared the machine, so times are indicative; the effects are large.
+
+| Row | At `82327ce` | B1 | B1 + P1–P4 | + P8 (opt-level 1) |
+| --- | --- | --- | --- | --- |
+| Idle, no balls | 3.5 | 3.1 | 3.1 | 1.3 |
+| Ice spray, no balls | 53.2 | 4.2 | — | 2.1 |
+| Flamethrower, no balls | 35.3 | 4.0 | — | 2.2 |
+| Idle, 12,000 balls | 20.2 | 16.4 | 13.2 | 5.6 |
+| Ice spray, 12,000 balls | 83.3 | 19.8 | 17.5 | 7.8 |
+| Flamethrower, 12,000 balls | 68.8 | 20.3 | 17.3 | 6.8 |
+| Spraying into a 1,500-ball pile (ice / fire) | 24.2 / 24.7 | 7.3 / 6.3 | — | — |
+
+At `82327ce`, `spray_look` took 32.8 ms and `spells_cast` 15.7 ms of the 53.2 (ice, no balls); a near pile was cheaper than open air because a shorter ray samples fewer tiles. A tilemap query costs 5.3 µs and a `solid_tile` 6.9 µs in a 01 run.
+
+`spray-trace-fix.patch`: `SolidTiles` resolves the maps once and tests points by index (`solid_tile` keeps its signature; the missile's samples share one); `traced_near` collects, in query order with save IDs, the bodies a trace could meet; `trace_among` is `trace`'s loop over them, same intersections and ties; `spray`, `spray_look` and `orient_newborns` share one list per spray. `perf-p1-p4.patch` on top: P1–P4 as §1 has them. With both, 209 game tests pass, unchanged. What B1 leaves: three body scans a frame while a spray runs.
+
+### 2.2 B5: the troll under a steady ice spray
+
+`perf-runs/20261021-e01-feedback/probe/zz_probe.rs` `troll_under_a_steady_ice_spray`: a still troll 260 px away, the ice spray held on it for 10 s, mana refilled each frame. The cold bucket every 0.5 s: 3.0, 11.3, chilled at 1 s and 7.8, 16.1, 24.4, 32.8, 44.1, 55.4, back to 7.8 at 4 s, the same rise, 7.8 at 7 s, 49.4 at 9.5 s; frozen never. The rung needs 160.
+
+## 3. The stops
+
+Each stop's plan session follows tungsten-milestone: audit with `file:line` at its commit, steps with command done-whens, critique, then the run in one session. Examples test lightly: the tests a done-when names, and the tests that pin a changed value updated, not multiplied. Each stop that adds saved state bumps the schema with a `migrate` (design rule): (e) 8, (f) 9, (g) 10.
+
+### 3.1 01 (e): fixes — 0.98, level B, L
+
+1. **Performance.** B1's and P1–P4's patches, then P5–P6 (P7 with step 5's schema), and P8 if the owner takes it; the probe before and after, idle and spraying, 0 and 12,000 balls, dev and release profiles, quoted. M76's C1 reading predates this, so W10's follow-up notes that C1 retakes 01's row after 0.98.
+2. **The bugs.** B7 and F12; B5, X5 and T6 (the troll's rung near 1 × its threshold, `DEEP_CHILL` about 0.5, a longer troll freeze, its stun reachable); B8's fall to the first body or tile (Q4); B2 (`TextWrap::None` on both readouts as `shell/title.rs:34-38` does, the readout about 96 wide, health rounded up while alive and mana down, the save summary too, `save.rs:893-898`), checked first by a screenshot at full mana; B3 (§4's banner); B6 (§4); F13; X1; I2; I18.
+3. **Tuning.** T1–T3 in data, the tests that pin today's values updated.
+4. **The staff light and the crawler's fear (L5's first half, B4, I8).** The `staff_light` ability and its burn (Q15), the gutter-out and relight floor; the crawler's scared state at the light's drawn edge, a `crawler_scared` clip (recoiling, plates raised, eyes squinting), its hiss and a frost-breath puff.
+5. **Consistency and records of state.** I1's cap check before the spend, I16's data test, I20's text; schema 8 with P7's `Spent`.
+6. **Records and release 0.98.**
+
+### 3.2 01 (f): feel — 0.99, level B, XL
+
+1. **Pushes.** I17's `body_centre` and `radial_push`; F6 and F9 on it; X3's level bounds for enemies.
+2. **Toys.** T4 with X4, F7 and I6, I19's broom; F8's iron; T8's unstick.
+3. **Effects.** F1 with X2 and I15, F2, F3, F4, F5, F10, I3, I4, I5, I11.
+4. **The gun (T7).**
+5. **Sounds.** F11, I1's refusal feedback, I9, I12, and every sound steps 1–4 named, through `sfx.py`, `sounds.json`, `Sound`, `cue_of` and the cue rules; I13's gravity colour row.
+6. **Saves (schema 9: `black_holes`) and records; release 0.99.**
+
+### 3.3 01 (g): props and foes — 0.100, level B, XL
+
+The keg and the goblin's bomb are one mechanism: a body with a fuse that sets off a sourced `Detonation`, built once.
+
+1. **Art and sound,** drawn first on the plan session's art-review sheet (the owner's direction: anatomy, material, telling details, effects with their particles): the crate (two boxes, a char overlay), the keg and its lit fuse, the goblin's rig, clips, icon and hurtbox, the rock and the bomb, the troll's swipe clip, summon icons; catching fire, a crackle loop (one shared voice on the nearest lit crate, as the wisps' hum), a collapse, a fuse hiss as long as the fuse, a boom. M76's mine has decorative `crate`/`barrel` sprites: the props take other IDs and a clearly different look.
+2. **Crates and kegs (C3, C4).**
+3. **The goblin (C1); the troll's swipe (C2), T5 and I7; I10's alert and search marks.** Trolls lift crates.
+4. **Placement and saves (schema 10).** Class-less `crate` and `keg` markers on M76's map, set down by a fresh run as M76 sets its iron, off the walking line; the summon slot's types an enum (dummy, enemy, crate, keg), appended; `props`, rocks and bombs saved; the coverage test; the map's goblins.
+5. **Records and release 0.100.**
+
+### 3.4 01 (h): the look — 0.101, level B
+
+1. **The art-review sheet first,** in the plan session: the wizard's poses and cast clips with the staff and its light, the icon family, the bars and the bar, the theme's colours on a Settings screen, the title, and a cave with missiles in flight (§7).
+2. **The wizard (L4, L5's second half),** its cast clips per spell, the hurt clip (F1).
+3. **Icons and the HUD (L1–L3, I14).**
+4. **01's theme colours and the title (L6, L7).**
+5. **Records and release 0.101.**
+
+## 4. Shell routes
+
+The shell stays the template's, byte for byte; no stop changes the template.
+
+| Item | Route |
+| --- | --- |
+| B3 area titles | A gameplay-owned banner in 01, built like the HUD (`hud.rs:119-121`): one serif label at top centre, a new area replacing its text and restarting its fade; areas stop toasting. M76's playthrough counts "six toasts" and the design names a toast: both move to the banner |
+| B6 bloom | 01 makes its bloom visible (intensity raised from 0.22, `tests/game/presentation.rs:552-560`'s "restrained" ceiling of 0.3 moved with it) and its halo sprites follow the option |
+| F13 death | 01's death timer |
+| L6 theme | 01's colour map over the template's theme, by its generator; `check_shell_copies` by structure for the theme; a decision amending `D-199` |
+| L7 title | 01 draws the sky and spawns twinkles and a shooting star owned by the title state |
+
+## 5. Open questions
+
+| # | Question | Default |
+| --- | --- | --- |
+| Q1 | One stop or several | Settled by the owner on 2026-10-21: separate stops, each its own release; four, since the pass outgrew one run session's eight steps |
+| Q2 | Tier: Must, so the feature gate waits, or 1.x | (e) Must; (f)–(h) Must, which the feature gate may re-tier, as `D-194` lets it re-tier (d) |
+| Q3 | Numbers the notes leave open | §1's defaults: push 1 s, hole 0.5 s, three holes, gun 0.2 s, creature freeze 7.5 s, troll freeze 3 s, troll tell 0.8 s, iron mass 400 |
+| Q4 | Lightning's snap to a conductor within 160 px moves the strike off the cursor's x | Dropped: the strike keeps the cursor's x; conduction still jumps from what it hits |
+| Q5 | The player's light in M76's dark caves | Settled by the owner on 2026-10-21: the staff's glowing tip, burning mana, so a cave asks light or mana |
+| Q6 | "Hit frames" | A hurt clip and a red tint for the player, a blood burst on flesh; no hit-stop, since a time-scale stop shifts game-time windows |
+| Q7 | Mana's colour: the design says indigo, the notes say deep bright blue | Deep bright blue for the bar, the orbs and mana's slot borders; I13's gravity purple kept apart from it and from shock's violet |
+| Q8 | Schemas 8–10 after M76's 7 | A `migrate` per stop; M76's saves are on the new map, worth keeping |
+| Q9 | "Twice as many bowling balls a second": the cooldown | Cooldown 0.6 → 0.3 s; speed unchanged |
+| Q10 | Design rules the notes amend: no hurt or death frames, status overlays only, mana's colour | (e)'s decision amends the design's rows; enemies keep no hurt frames, gore is a burst |
+| Q11 | "Drop the mana cost and number text": which numbers | The row under each icon (slot digit and cost) goes; the live key moves onto the icon; the gun's count and pips stay |
+| Q12 | Bloom: the option works but reads as nothing | Make it read: raise 01's bloom and have the halos follow the option |
+| Q13 | The theme: the template's or the game's | Settled by the owner on 2026-10-21: the game's own colours (§4) |
+| Q14 | Area names: a banner of 01's own in place of the shell's toast | Yes; the shell's toasts stay for everything else |
+| Q15 | The staff light's burn | 3 mana/s while lit, regeneration running (after T1, a tenth of it while idle, a drain outright under a cast's regen pause); it gutters out when a step is refused and relights at 10 mana; lit at a run's start. The stronger form, pausing regeneration while lit, is the alternative |
+| Q16 | Barrels: which kind | Powder kegs; the oil barrel deferred |
+| Q17 | Props in the summon slot | Yes: crate and keg join the summon's types (E/Q), refused where they don't fit |
+| Q18 | Who a keg's blast is credited to | Its lighter where known (the player, a goblin's bomb), else the player as today; troll keg throws deferred |
+| Q19 | P8: 01, the kit and the umbrella at opt-level 1 in the dev profile | Yes: about 2.5 times faster `cargo run` frames for slower incremental builds of those crates and shallower debugging; the root `Cargo.toml`, so its own line in (e)'s decision |
+
+## 6. Kit and engine gaps
+
+01 does not work around these. Each becomes a backlog row, a known issue, or, where it adds public API the freeze would fix, a small candidate before W4b. The last column says how 01 lives without it.
+
+| # | Gap | Evidence | Home | Meanwhile in 01 |
+| --- | --- | --- | --- | --- |
+| K1 | Cue rules cannot tell a damage-over-time tick from a hit | `crates/tungsten-kit/src/react/cues.rs:2127-2139` | Kit, before the freeze (data surface) | Hurt from code on non-periodic hits (X1) |
+| K2 | A particle config cannot set its draw depth | `z_order: 0`, `crates/tungsten/src/particles.rs:449`; no field in `crates/tungsten-core/src/assets/particle.rs` | Engine, before the freeze | 01 lifts its spray particles (F5) |
+| K3 | A kit hitbox cannot follow its owner's facing | `crates/tungsten-kit/src/overlap/hit.rs` (`with_offset` only, `:774`) | Kit backlog | The swipe as a box hit in 01 (C2) |
+| K4 | An animation cannot play slower or faster | No rate on the playback state, `crates/tungsten-core/src/assets/animation.rs` | Engine; before the freeze if wanted | The chill by tint and speed (F4) |
+| K5 | UI text has no outline or shadow | `crates/tungsten-core/src/ui/theme.rs:471` | Engine backlog | Keys on a dark backing (L3) |
+| K6 | `World::query` matches every archetype per call | `crates/tungsten-core/src/ecs/world.rs:338-348`; 5.3 µs | Known issue; C2 | Queries hoisted (B1) |
+| K7 | The platformer controller never pushes dynamic bodies or is pushed by them | `crates/tungsten-kit/src/motion/platformer.rs:82-87` | Kit backlog (`D-172`) | The jump's shove (T8) |
+| K8 | `charges { all: true }` refills from the first spent charge | `docs/known-issues.md:45` (P2) | Existing P2 | 01 times its reload (T7) |
+| K9 | Lit sprites draw without the hit-flash material | `docs/known-issues.md:62` | Existing known issue | A tint (I15) |
+| K10 | No radial blast payload (radius, falloff, typed parts, a push, a source) | `crates/tungsten-kit/src/overlap/hit.rs:332-353` | Kit backlog, with 01's four hand-rolled blasts as evidence | `Detonation` in 01 (C4) |
+| K11 | Kit timers have no expiry event and no saved form | `docs/plans/1.0/backlog-1.x.md:62`, `:88`; `crates/tungsten-kit/src/lifecycle/lifetime.rs:61-64` | Existing rows; a keg chain joins row 90's evidence | 01's own fuse and burn fields |
+| K12 | `World::has` scans the archetype's type list linearly, where `get` uses the hashed slot | Verified: `crates/tungsten-core/src/ecs/archetype.rs:196-198`, `:219-234` | Engine, identical behaviour; C2 with its captures | P1–P7 move 01 off per-entity `has` |
+| K13 | `animation_tick` hashes the clip name twice per sprite: 0.90 ms for 12,000 balls on one clip | `crates/tungsten-kit/src/present/animation.rs:130-136`; `crates/tungsten-core/src/assets/animation.rs:88`, `:152`, `:163` | Kit and engine; C2 | — |
+| K14 | The spatial index rebuilds from every body, the sleeping pit included, on the first query after each step; the controllers' probes and the enemies' sight casts trigger it every step | `crates/tungsten-core/src/physics/query.rs:255-276` | A C1/C2 row to watch | — |
+
+## 7. Overlap with M76
+
+- **Files M76 also changes:** `tools/sfx.py`, `sounds.json` and `generate.py` (every new sound and burst here), `save.rs`, `level/` (B6, L7), `run/` (B3, F13), `audio/`, `tests/game/{areas,playthrough,level,saves}.rs`. Untouched by M76, so both patches and B2, B4, B5, B7 and B8 carry over: `toys/systems.rs`, `elements/systems.rs`, `combat/numbers.rs`, `crawler.rs`, `spells/hud.rs`, `lightning/mod.rs`, the damage-type data.
+- **The light and the caves:** M76 dims two indoor areas to an ambient of 0.30 and counts the player's lantern in its light budget, where the cull past 16 lights drops it first (its plan's A5, A25, and the known issue it records). Once the light costs mana, a cave where it is culled reads as a bug: (h)'s sheet checks a cave with missiles in flight.
+- **Goblins and props on the map:** M76 pins each area's enemy counts and makes new enemies a non-goal, so (g) places goblins, crates and kegs on its finished map.
+- **C1's reading:** M76's capture step records 01's full pit with enemies for C1; (e)'s performance work changes it, so C1 retakes the row after 0.98.
+- **Shared machine:** M76's capture (its step 5) refuses to start while another Claude session's working folder is in this tree (`pwdx $(pgrep -x 'claude|codex')`).
+
+## Follow-ups
+
+- K6 and K12–K14 into `docs/known-issues.md` and C2's candidates.

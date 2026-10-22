@@ -11,11 +11,15 @@ use tungsten::kit::ContactDamage;
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct AmbientEmitter;
 
-/// A hazard the map places: spikes, or a fireball on its oscillator, whose
-/// touch the kit's contact damage deals. Its prefab names it `hazard`.
+/// A hazard the map places: spikes, a fireball on its oscillator, or a
+/// lava basin's surface, whose touch the kit's contact damage deals. Its
+/// prefab names it `hazard`. Cold douses a fire; lava, never.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
+    /// A lava basin's surface.
+    #[serde(default)]
+    pub lava: bool,
 }
 
 /// A fire hazard cold put out, for `left` game seconds: its touch held
@@ -27,10 +31,24 @@ pub struct Doused {
 }
 
 /// One of the level's areas: a zone across its columns, named after the
-/// landmark it holds. Its prefab names it `area`.
+/// landmark it holds, with how it is lit and sounds. Its prefab names it
+/// `area`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Area {
     pub name: String,
+    /// A cave: the ambient dims and the moon goes out inside it.
+    #[serde(default)]
+    pub indoor: bool,
+    /// Its ambience loop, a sound ID.
+    #[serde(default)]
+    pub ambience: Option<String>,
+    /// Its far strip, a sprite ID drawn between the ridges and the woodland;
+    /// none indoors.
+    #[serde(default)]
+    pub backdrop: Option<String>,
+    /// Under the black night sky rather than the midnight one.
+    #[serde(default)]
+    pub night: bool,
 }
 
 /// The player's zoom over the window's base zoom: 1 until the zoom actions
@@ -104,6 +122,13 @@ pub struct GlowParts {
 #[derive(Debug, Clone, Copy)]
 pub struct GlowPart {
     pub owner: Entity,
+}
+
+/// Whether `level_light` has lit the run yet: its first frame snaps to the
+/// area's light, so a load in a cave starts dark; later frames ease.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AreaLight {
+    pub lit: bool,
 }
 
 /// The level's clock: game seconds since the run began, which the fixed

@@ -1,7 +1,8 @@
 //! The platformer fixture: a hero on a kinematic body under the move
 //! actions and a jump slot, a ground, a door zone, a spark and a lift; M64's
 //! conveyor, bobbing lift, acrobat, firebar and firefly; M65's fireballs,
-//! bricks, climber, spiker and coin; M67's regen and haste on the runner.
+//! bricks, climber, spiker and coin; M67's regen and haste on the runner;
+//! M76's bolt off armour, saved mid-flight.
 
 use glam::Vec2;
 use tungsten_core::physics::Velocity;
@@ -698,5 +699,149 @@ fn an_air_jump_reaches_a_ledge_one_jump_cannot() {
             grounded && (y - 270.0).abs() < 0.1,
             "dt {dt}: back on the ground: {y}"
         );
+    }
+}
+
+// M76: walls by their physics layers. A bolt turns off armour in layer 2
+// and ends at a tile, outside its bounce layers, with a bounce left; saved
+// mid-flight, it resumes with the same meetings.
+
+/// What a shot met: "passed", "bounced" or "expired", where, and the wall
+/// as (an entity or a tile, its normal, its layers).
+type Meeting = (&'static str, Vec2, Option<(bool, Vec2, u32)>);
+
+/// A wall as a meeting names it.
+fn wall_of(wall: crate::kit::WallContact) -> (bool, Vec2, u32) {
+    (wall.entity.is_some(), wall.normal, wall.layers)
+}
+
+/// Runs `frames` frames, collecting each one's meetings.
+fn meetings(harness: &mut super::Harness, frames: u32) -> Vec<Meeting> {
+    use crate::kit::{ProjectileBounced, ProjectilePassed};
+
+    let mut out = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        out.extend(
+            harness
+                .events::<ProjectilePassed>()
+                .map(|event| ("passed", event.position, Some(wall_of(event.wall)))),
+        );
+        out.extend(
+            harness
+                .events::<ProjectileBounced>()
+                .map(|event| ("bounced", event.position, Some(wall_of(event.wall)))),
+        );
+        out.extend(
+            harness
+                .events::<ProjectileExpired>()
+                .map(|event| ("expired", event.position, event.wall.map(wall_of))),
+        );
+    }
+    out
+}
+
+/// The armoury: armour whose left face is at x 90 and a column of 16 px
+/// tiles over x −120 to −104.
+fn armoury(dt: f32) -> super::Harness {
+    use tungsten_core::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+
+    let mut harness = recipe(GENRE, KitPlugins::set(), dt);
+    spawn(&mut harness, "armour", [100.0, 100.0]);
+    let mut map = TilemapData::new(16, 16, 1, 12);
+    let solid = map.add_tile("solid");
+    let layer = map.add_layer("solid", LayerKind::Collision);
+    map.fill(layer, solid);
+    let world = harness.world_mut();
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("column".into(), map);
+    let instance = world.spawn();
+    world.insert(
+        instance,
+        TilemapInstance::new("column", Vec2::new(-120.0, 0.0)),
+    );
+    harness
+}
+
+/// The game's save of its bolt in flight.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct BoltSave {
+    projectile: crate::kit::Projectile,
+    motion: LinearMotion,
+    at: [f32; 2],
+}
+
+impl tungsten_core::SaveData for BoltSave {
+    const SCHEMA: u32 = 1;
+}
+
+/// The bolt's meetings at `dt` before its save point and after it; with
+/// `load`, the game saves it there and loads it into a fresh armoury.
+fn bolt_run(dt: f32, load: bool) -> (Vec<Meeting>, Vec<Meeting>) {
+    let mut harness = armoury(dt);
+    let bolt = spawn(&mut harness, "bolt", [0.0, 100.0]);
+    let before = meetings(&mut harness, frames_for(0.4, dt));
+    if load {
+        let world = harness.world();
+        let at = body_at(&harness, bolt);
+        let save = BoltSave {
+            projectile: world.get::<crate::kit::Projectile>(bolt).unwrap().clone(),
+            motion: world.get::<LinearMotion>(bolt).unwrap().clone(),
+            at: [at.x, at.y],
+        };
+        let dir = std::env::temp_dir().join(format!(
+            "tungsten_recipe_bolt_{}_{}",
+            std::process::id(),
+            frames_for(1.0, dt)
+        ));
+        let slots = tungsten_core::SaveSlots::new(Some(dir.clone()));
+        slots.save("bolt", &save).unwrap();
+        let loaded: BoltSave = slots.load("bolt").unwrap();
+        std::fs::remove_dir_all(&dir).unwrap();
+        harness = armoury(dt);
+        let bolt = spawn(&mut harness, "bolt", loaded.at);
+        let world = harness.world_mut();
+        world.insert(bolt, loaded.projectile);
+        world.insert(bolt, loaded.motion);
+    }
+    let after = meetings(&mut harness, frames_for(0.6, dt));
+    (before, after)
+}
+
+#[test]
+fn a_bolt_turns_off_armour_and_ends_at_a_tile_and_resumes_after_a_load() {
+    let left = Vec2::new(-1.0, 0.0);
+    for dt in DTS {
+        let (before, after) = bolt_run(dt, false);
+        assert_eq!(before.len(), 1, "dt {dt}: {before:?}");
+        assert_eq!(
+            (before[0].0, before[0].2),
+            ("bounced", Some((true, left, 1 << 2))),
+            "dt {dt}"
+        );
+        assert!(
+            before[0].1.distance(Vec2::new(86.0, 100.0)) < 1e-3,
+            "dt {dt}: {before:?}"
+        );
+        assert_eq!(after.len(), 1, "dt {dt}: {after:?}");
+        assert_eq!(
+            (after[0].0, after[0].2),
+            ("expired", Some((false, -left, 1))),
+            "dt {dt}: at the tile, its bounce left"
+        );
+        assert!(
+            after[0].1.distance(Vec2::new(-100.0, 100.0)) < 1e-3,
+            "dt {dt}: {after:?}"
+        );
+        let (loaded_before, loaded_after) = bolt_run(dt, true);
+        assert_eq!(loaded_before, before, "dt {dt}");
+        assert_eq!(loaded_after.len(), after.len(), "dt {dt}: {loaded_after:?}");
+        for (loaded, kept) in loaded_after.iter().zip(&after) {
+            assert!(
+                loaded.0 == kept.0 && loaded.2 == kept.2 && loaded.1.distance(kept.1) < 1e-3,
+                "dt {dt}: {loaded:?} against {kept:?}"
+            );
+        }
     }
 }

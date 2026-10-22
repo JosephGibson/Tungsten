@@ -347,7 +347,7 @@ Done-when:
   - the orbs' pickup queues its heal or mana in 01's overlap phase, since a `picked_up` cue's effect would queue after the resolve (Q6); the combat layer fades in over 1.5 s and out over 3 s;
   - the save is schema 6 (`enemies`, `throws`, `orbs`), which migrates schema 5 by moving every save ID from its player's up by the map's nine enemies; a full pit with them alive saves in 1.97 MiB.
 
-## 01 (d): new level (level B, XL)
+## 01 (d): new level (level C, XL)
 
 Six areas, built in `tools/level.json` and emitted by the generator (tiles, art and the tmj object layer). The level is larger than today's 184 × 50 tiles at 64 px; the plan sets the size.
 
@@ -357,7 +357,7 @@ Six areas, built in `tools/level.json` and emitted by the generator (tiles, art 
 | Broken aqueduct | Frost crawlers: long ledges |
 | Waterfall ravine | Bats: a tall shaft with ceilings to roost on |
 | Ember hollow | Wisps and fire hazards: dark, lit by the wisps and the lantern |
-| Iron mine | Beetles: iron walls that deflect shots, and loose iron blocks |
+| Iron mine | Beetles: an open cut under the sky, iron on its terraces' faces that deflects shots, and loose iron blocks |
 | Troll bridge | The troll: a long, flat stretch with room to keep away |
 
 Open sky and caves are mixed on purpose, since lightning only strikes outdoors. Long flat runs and stepped drops act as bowling lanes. There are no slopes or ramps, because the physics engine has only axis-aligned boxes and circles. The areas get ambience loops, autosaves and toasts.
@@ -370,3 +370,12 @@ Done-when:
 - the owner has played it through.
 
 Fallback: (d) is content with no public API. If Phase 6 runs long, the feature gate may re-tier it to 1.x without harming the freeze (`D-194`).
+
+- **As built (M76, `D-202`).** Where the plan's answers departed from this section:
+  - level C since the owner's reviews of 2026-10-22: projectiles meet the level, so the kit's `Projectile` turns at walls in its `bounce_layers`, passes those in its `pass_layers` and ends at the rest, with `ProjectileBounced`, `ProjectilePassed` and the wall on `ProjectileExpired` (Q4, Q16); the step 1 API critique raised no concerns, and the fallback is moot;
+  - the level is 430 × 72 (Q1), today's start kept with the tests' sky empty (Q2), six areas joined by five transitions; the ball pit, 48 × 20 tiles dug into the clearing, sits under a rope bridge that stops three tiles short of its east wall: `pit_in` drops down a free chute and `pit_climb` climbs six zig-zag shelves (Q12);
+  - the mine is an open cut under the sky, its iron only on its terraces' faces as static boxes in physics layer 2, its wooden scaffolds and the rope bridge in layer 3; bullets turn off iron and pass wood, the missile banks once off iron; four loose iron blocks are set down at markers on a fresh run, lightning rods near the beetles (Q5, Q15);
+  - each area carries its light (a cave dims and the moon goes out, eased over 1 s; Q6), its ambience loop (Q7), its far strip and, for the ravine, the mine and the bridge, a true-black night sky, crossfaded by where the view stands (Q8, Q18); the hollow's lava lake and shelf pool hurt as the fires do and are never doused (Q17);
+  - the art follows the review's sixth draw, with a pour clip for the gargoyle and the broken span, the river's depths, a fourth border (the mine into the bridge's masonry) and front copies of the arcade for the bridge; the far wall's tint in the sheet stays out, two darker steps carrying its depth in palette pixels;
+  - the save is schema 7, refusing schemas 4 to 6 (Q3); a full pit with the map's 13 enemies saves in 2,079,145 bytes, under 2 MiB (Q13);
+  - C1's reading, headless on the harness in a release build: a full pit with six enemies awake around the player on the rope bridge, `total` p50 6.306 ms (Q9; [W10](w10-closing-phases.md) follow-ups).

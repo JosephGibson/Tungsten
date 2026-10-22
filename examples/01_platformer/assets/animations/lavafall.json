@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lavafall_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lavafall_1"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lavafall_2"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lavafall_3"
+    }
+  ],
+  "looping": true
+}

@@ -1,9 +1,9 @@
 //! What a save holds, part of the seam the shell calls: [`SaveGame`], how
 //! a live run becomes one ([`capture`]), the slot row's line ([`summary`])
-//! and how a loaded run takes it back ([`restore`]). Schema 6 counts on
+//! and how a loaded run takes it back ([`restore`]). Schema 7 counts on
 //! from the template sample's 3, so a sample save reads as damaged, never
-//! as a newer version's; schema 4, 01 (a)'s, and schema 5, 01 (b)'s,
-//! migrate.
+//! as a newer version's; it marks 01 (d)'s map, whose objects take every
+//! save ID anew, so no older schema migrates (`D-202`).
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects take theirs
 //! in the order the map spawns them, which a load repeats, and whatever
@@ -16,7 +16,6 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
-use tungsten::core::save::Value;
 use tungsten::core::{
     CommandBuffer, Entity, Position, PrevPosition, SaveData, Transform, Velocity, Visibility, World,
 };
@@ -87,228 +86,17 @@ pub struct SaveGame {
     pub summon: usize,
 }
 
-/// The dummies the map's `dummies` layer places: schema 5 added the layer,
-/// whose objects take the save IDs schema 4's player and later spawns had.
+/// The dummies the map's `dummies` layer places.
 pub const MAP_DUMMIES: u64 = 1;
-/// The enemies the map's `enemies` layer places: schema 6 added the layer,
-/// the map's last, whose objects take the save IDs schema 5's player and
-/// later spawns had.
-pub const MAP_ENEMIES: u64 = 9;
-/// The player prefab's `move_speed`, its run speed, which schema 5 added.
-pub const MOVE_SPEED: f32 = 560.0;
-/// The player prefab's `pickup_radius`, its orb magnet's reach, which
-/// schema 6 added.
-pub const PICKUP_RADIUS: f32 = 96.0;
-/// A freeze's seconds, which schema 4's frozen block takes whole.
-const FROZEN_SECS: f32 = crate::features::elements::FROZEN_SECS;
+/// The enemies the map's `enemies` layer places, its last.
+pub const MAP_ENEMIES: u64 = 13;
 
 impl SaveData for SaveGame {
-    /// Bump it when `SaveGame` changes shape, and extend `migrate`.
-    const SCHEMA: u32 = 6;
-
-    /// Schema 5, 01 (b)'s, migrates ([`migrate_five`]), and schema 4, 01
-    /// (a)'s, through schema 5 ([`migrate_four`], then the same); schemas 1
-    /// to 3 are the template sample's, and none migrates.
-    fn migrate(from: u32, data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-        match from {
-            4 => migrate_five(migrate_four(data)?),
-            5 => migrate_five(data),
-            _ => Err(format!("no migration from schema {from}: not this game's save").into()),
-        }
-    }
-}
-
-/// Moves `id` up by `by` when it is a save ID at or above `from`.
-fn shift_id(id: &mut Value, from: u64, by: u64) {
-    if let Some(value) = id.as_u64().filter(|&value| value >= from) {
-        *id = Value::from(value + by);
-    }
-}
-
-/// Schema 4 into schema 5. The map's new `dummies` layer takes the save IDs
-/// from schema 4's player's on, so every save ID at or above it moves up by
-/// [`MAP_DUMMIES`]: the next ID, the player, the balls, the blocks, the hole
-/// and the missiles with their sources; the map's earlier objects keep
-/// theirs. A frozen block, frozen for good in schema 4, has a whole freeze
-/// left; each ball gains no ice and each hazard no douse. The new lists
-/// start empty, so the placed dummy loads as the map spawns it, and the
-/// cascades wait on nothing. A restore puts the saved stats and abilities
-/// over the prefab's, so the player gains what the prefab gained, every
-/// saved value kept: its `move_speed` stat and the `lightning`, `gun` and
-/// `summon` abilities, ready. No hint has shown, and the summon slot holds
-/// its first type.
-fn migrate_four(mut data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let player = data["player"]["id"]
-        .as_u64()
-        .ok_or("schema 4: the player has no save ID")?;
-    shift_id(&mut data["next_id"], player, MAP_DUMMIES);
-    shift_id(&mut data["player"]["id"], player, MAP_DUMMIES);
-    for ball in data["balls"].as_array_mut().into_iter().flatten() {
-        shift_id(&mut ball[0], player, MAP_DUMMIES);
-        if let Some(record) = ball.as_array_mut() {
-            record.push(Value::Null);
-        }
-    }
-    for block in data["blocks"].as_array_mut().into_iter().flatten() {
-        shift_id(&mut block["id"], player, MAP_DUMMIES);
-        let frozen = block["frozen"].as_bool().unwrap_or(false);
-        block["frozen"] = if frozen {
-            Value::from(FROZEN_SECS)
-        } else {
-            Value::Null
-        };
-    }
-    for hazard in data["hazards"].as_array_mut().into_iter().flatten() {
-        if let Some(hazard) = hazard.as_object_mut() {
-            hazard.insert("doused".into(), Value::Null);
-        }
-    }
-    if data["black_hole"].is_object() {
-        shift_id(&mut data["black_hole"]["id"], player, MAP_DUMMIES);
-    }
-    for missile in data["missiles"].as_array_mut().into_iter().flatten() {
-        shift_id(&mut missile["id"], player, MAP_DUMMIES);
-        shift_id(&mut missile["source"], player, MAP_DUMMIES);
-    }
-    let save = data.as_object_mut().ok_or("schema 4: not an object")?;
-    save.insert("dummies".into(), Value::Array(Vec::new()));
-    save.insert("bullets".into(), Value::Array(Vec::new()));
-    save.insert("gone".into(), Value::Array(Vec::new()));
-    let cascades = [
-        ("step", Value::from(0)),
-        ("strike", Value::from(0)),
-        ("entries", Value::Array(Vec::new())),
-    ];
-    save.insert("cascades".into(), Value::from_iter(cascades));
-    save.insert("hints".into(), Value::Array(Vec::new()));
-    save.insert("summon".into(), Value::from(0));
-    let saved = data["player"]
-        .as_object_mut()
-        .ok_or("schema 4: no player")?;
-    saved.insert(
-        "buckets".into(),
-        Value::from_iter(Vec::<(String, Value)>::new()),
-    );
-    saved.insert("sources".into(), Value::Array(Vec::new()));
-    let stats = data["player"]["stats"]
-        .as_object_mut()
-        .ok_or("schema 4: the player has no stats")?;
-    if !stats.contains_key(Stats::MOVE_SPEED) {
-        let speed = [
-            ("base", Value::from(MOVE_SPEED)),
-            ("min", Value::from(0.0)),
-            ("max", Value::Null),
-        ];
-        stats.insert(Stats::MOVE_SPEED.into(), Value::from_iter(speed));
-    }
-    grant_ability(&mut data, "lightning", None)?;
-    grant_ability(&mut data, "gun", None)?;
-    grant_ability(&mut data, "summon", None)?;
-    Ok(data)
-}
-
-/// Schema 5 into schema 6. The map's new `enemies` layer takes the save IDs
-/// from schema 5's player's on, so every save ID at or above it moves up by
-/// [`MAP_ENEMIES`], wherever a save holds one: the next ID, every list's
-/// `id`, the missiles' and bullets' sources, each `sources` list, `gone`
-/// and the cascade entries' target, source and chain; the map's earlier
-/// objects keep theirs. The new lists start empty, so the placed enemies
-/// load as the map spawns them, and the player gains the prefab's
-/// `pickup_radius` stat.
-fn migrate_five(mut data: Value) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
-    let player = data["player"]["id"]
-        .as_u64()
-        .ok_or("schema 5: the player has no save ID")?;
-    let by = MAP_ENEMIES;
-    shift_id(&mut data["next_id"], player, by);
-    shift_id(&mut data["player"]["id"], player, by);
-    for source in data["player"]["sources"]
-        .as_array_mut()
-        .into_iter()
-        .flatten()
-    {
-        shift_id(&mut source[1], player, by);
-    }
-    for list in ["platforms", "hazards", "blocks"] {
-        for item in data[list].as_array_mut().into_iter().flatten() {
-            shift_id(&mut item["id"], player, by);
-        }
-    }
-    for ball in data["balls"].as_array_mut().into_iter().flatten() {
-        shift_id(&mut ball[0], player, by);
-    }
-    if data["black_hole"].is_object() {
-        shift_id(&mut data["black_hole"]["id"], player, by);
-    }
-    for list in ["missiles", "bullets"] {
-        for item in data[list].as_array_mut().into_iter().flatten() {
-            shift_id(&mut item["id"], player, by);
-            shift_id(&mut item["source"], player, by);
-        }
-    }
-    for dummy in data["dummies"].as_array_mut().into_iter().flatten() {
-        shift_id(&mut dummy["id"], player, by);
-        for source in dummy["sources"].as_array_mut().into_iter().flatten() {
-            shift_id(&mut source[1], player, by);
-        }
-    }
-    for id in data["gone"].as_array_mut().into_iter().flatten() {
-        shift_id(id, player, by);
-    }
-    for entry in data["cascades"]["entries"]
-        .as_array_mut()
-        .into_iter()
-        .flatten()
-    {
-        shift_id(&mut entry["target"], player, by);
-        shift_id(&mut entry["source"], player, by);
-        // An empty chain is left out of the entry; indexing would add a null.
-        let chain = entry.get_mut("chain").and_then(Value::as_array_mut);
-        for id in chain.into_iter().flatten() {
-            shift_id(id, player, by);
-        }
-    }
-    let save = data.as_object_mut().ok_or("schema 5: not an object")?;
-    for list in ["enemies", "throws", "orbs"] {
-        save.insert(list.into(), Value::Array(Vec::new()));
-    }
-    let stats = data["player"]["stats"]
-        .as_object_mut()
-        .ok_or("schema 5: the player has no stats")?;
-    if !stats.contains_key(Stats::PICKUP_RADIUS) {
-        let radius = [
-            ("base", Value::from(PICKUP_RADIUS)),
-            ("min", Value::from(0.0)),
-            ("max", Value::Null),
-        ];
-        stats.insert(Stats::PICKUP_RADIUS.into(), Value::from_iter(radius));
-    }
-    Ok(data)
-}
-
-/// Gives the saved player the ability `name` when it has none of that
-/// name: ready, with no cooldown and `charges` full.
-fn grant_ability(
-    data: &mut Value,
-    name: &str,
-    charges: Option<u32>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let entries = data["player"]["abilities"]["entries"]
-        .as_array_mut()
-        .ok_or("schema 4: the player has no abilities")?;
-    if entries.iter().any(|entry| entry["name"] == name) {
-        return Ok(());
-    }
-    let entry = [
-        ("name", Value::from(name)),
-        ("ability", Value::from(name)),
-        ("cooldown_left", Value::from(0.0)),
-        ("charges", charges.map_or(Value::Null, Value::from)),
-        ("refill_left", Value::from(0.0)),
-        ("interval_left", Value::from(0.0)),
-    ];
-    entries.push(Value::from_iter(entry));
-    Ok(())
+    /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
+    /// is 01 (d)'s new map: its objects take every save ID anew and every
+    /// place moved, so the trait's `migrate` refuses each older schema and
+    /// the slot reads as damaged.
+    const SCHEMA: u32 = 7;
 }
 
 /// The player: its body's point and velocity, its controller, health,

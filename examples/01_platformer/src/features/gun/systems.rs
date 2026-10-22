@@ -8,8 +8,8 @@ use tungsten::core::{
     Shape, Sprite, Time, Transform, Velocity, Visibility, With, Without, World,
 };
 use tungsten::kit::{
-    Abilities, Aim, Health, Hurtbox, LinearMotion, Projectile, ProjectileExpired, Source, Struck,
-    Used, use_ability,
+    Abilities, Aim, Health, Hurtbox, LinearMotion, Projectile, ProjectileBounced,
+    ProjectileExpired, ProjectilePassed, Source, Struck, Used, use_ability,
 };
 use tungsten::physics::wake;
 
@@ -340,40 +340,73 @@ fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
     first
 }
 
+/// [`hits`]' readers of the kit's projectile events.
+#[derive(Default)]
+pub struct ShotCursors {
+    struck: EventCursor<Struck>,
+    expired: EventCursor<ProjectileExpired>,
+    bounced: EventCursor<ProjectileBounced>,
+    passed: EventCursor<ProjectilePassed>,
+}
+
+/// Where a bullet's step met a wall, its centre there and the wall's
+/// normal: a bounce, a pass or an end.
+type WallMet = (Entity, Vec2, Vec2);
+
+/// The bullets' events in `queue` that `cursor` has not read, each as a
+/// [`WallMet`].
+fn bullet_walls<E: 'static>(
+    world: &World,
+    cursor: &mut EventCursor<E>,
+    meet: impl Fn(&E) -> Option<WallMet>,
+) -> Vec<WallMet> {
+    world
+        .get_resource::<EventQueue<E>>()
+        .map(|queue| {
+            cursor
+                .read(queue)
+                .filter_map(&meet)
+                .filter(|(entity, ..)| world.has::<Bullet>(*entity))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// `gun_hits`, in the overlap phase after the kit's projectile pass: one
 /// decision a bullet, by what its step met first, each a fraction of the
-/// path `bullet_paths` recorded: the kit's hurtbox hit, its wall or range
-/// end, or a ball, an iron block or a beetle, swept with its own motion. A
-/// hit deals [`SHOT_DAMAGE`] physical with its push, from the shooter, so
-/// it can crit; a ball takes [`BALL_KICK`] over its mass, a frozen one
-/// shatters, and the shot ends; iron, and a live beetle's front, turn the
-/// shot about the face it met, at most [`MAX_RICOCHETS`] times, when the
-/// pass left it alive, else end it there; a beetle's rear, or a frozen
-/// beetle anywhere, takes the shot as a hit, which its rear takes whole.
-/// A `Struck` the decision passes over deals nothing.
-pub fn hits(
-    world: &mut World,
-    struck: &mut EventCursor<Struck>,
-    expired: &mut EventCursor<ProjectileExpired>,
-) {
+/// path `bullet_paths` recorded: the kit's hurtbox hit, its turn off iron,
+/// its wall or range end, or a ball, an iron block or a beetle, swept with
+/// its own motion. A hit deals [`SHOT_DAMAGE`] physical with its push,
+/// from the shooter, so it can crit; a ball takes [`BALL_KICK`] over its
+/// mass, a frozen one shatters, and the shot ends; an iron block, and a
+/// live beetle's front, turn the shot about the face it met, at most
+/// [`MAX_RICOCHETS`] times, when the pass left it alive, else end it there;
+/// a beetle's rear, or a frozen beetle anywhere, takes the shot as a hit,
+/// which its rear takes whole. A `Struck` the decision passes over deals
+/// nothing. The walls' answers: the kit's turn off an iron wall throws
+/// sparks with the ricochet's sound, a wooden deck passed throws splinters
+/// with theirs, and a shot ending at a wall puffs dust.
+pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
     let mut met: Vec<(Entity, Entity, Vec2)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<Struck>>() {
         met.extend(
-            struck
+            cursors
+                .struck
                 .read(events)
                 .filter(|hit| world.has::<Bullet>(hit.entity))
                 .map(|hit| (hit.entity, hit.target, hit.position)),
         );
     }
-    let mut ended: Vec<(Entity, Vec2)> = Vec::new();
-    if let Some(events) = world.get_resource::<EventQueue<ProjectileExpired>>() {
-        ended.extend(
-            expired
-                .read(events)
-                .filter(|end| world.has::<Bullet>(end.entity))
-                .map(|end| (end.entity, end.position + BULLET_CENTRE)),
-        );
-    }
+    let ended = bullet_walls(world, &mut cursors.expired, |end: &ProjectileExpired| {
+        let normal = end.wall.map_or(Vec2::ZERO, |wall| wall.normal);
+        Some((end.entity, end.position + BULLET_CENTRE, normal))
+    });
+    let bounced = bullet_walls(world, &mut cursors.bounced, |turn: &ProjectileBounced| {
+        Some((turn.entity, turn.position + BULLET_CENTRE, turn.wall.normal))
+    });
+    let passed = bullet_walls(world, &mut cursors.passed, |pass: &ProjectilePassed| {
+        Some((pass.entity, pass.position + BULLET_CENTRE, pass.wall.normal))
+    });
     let mut bullets: Vec<(u64, Entity, Vec2, Vec2)> = world
         .query::<(Entity, &Bullet, &SaveId)>()
         .filter_map(|(entity, bullet, id)| {
@@ -400,20 +433,37 @@ pub fn hits(
             .iter()
             .find(|&&(entity, ..)| entity == bullet)
             .map(|&(_, target, at)| (along(at), target, at));
-        let stop = hit.map(|(t, ..)| t).or_else(|| {
-            ended
-                .iter()
-                .find(|&&(entity, _)| entity == bullet)
-                .map(|&(_, at)| along(at))
-        });
+        let find = |list: &[WallMet]| {
+            list.iter()
+                .find(|&&(entity, ..)| entity == bullet)
+                .map(|&(_, at, normal)| (along(at), at, normal))
+        };
+        let (end, turn) = (find(&ended), find(&bounced));
+        // The step's travel stops at the first of a hit, the kit's turn and
+        // its end.
+        let stop = [
+            hit.map(|(t, ..)| t),
+            turn.map(|(t, ..)| t),
+            end.map(|(t, ..)| t),
+        ]
+        .into_iter()
+        .flatten()
+        .min_by(f32::total_cmp);
         let body = first_body(&swept, from, to).filter(|body| stop.is_none_or(|t| body.t < t));
+        let reach = body.map_or(1.0, |body| body.t);
+        for &(_, at, _) in passed.iter().filter(|&&(entity, ..)| entity == bullet) {
+            if along(at) <= reach {
+                spawn_burst(world, "ex10_poof", at);
+                audio::play(world, Sound::Splintered, at);
+            }
+        }
         let spent = world
             .get::<Projectile>(bullet)
             .is_some_and(Projectile::is_spent);
         let along_shot = path / length;
         match body {
             Some(contact) if contact.what == What::Iron => {
-                ricochet(world, bullet, contact, spent);
+                ricochet(world, bullet, contact, along_shot, spent);
             }
             Some(contact) if contact.what == What::Beetle => {
                 shell(world, bullet, contact, along_shot, spent);
@@ -422,10 +472,31 @@ pub fn hits(
             None => {
                 if let Some((_, target, at)) = hit {
                     strike(world, bullet, target, at, along_shot);
+                } else if let Some((t, at, _)) = turn
+                    && end.is_none_or(|(end, ..)| t <= end)
+                {
+                    sparks(world, bullet, at);
+                } else if let Some((_, at, normal)) =
+                    end.filter(|&(.., normal)| normal != Vec2::ZERO)
+                {
+                    spawn_burst(world, "ex10_landing_dust", at + normal * BULLET_RADIUS);
                 }
             }
         }
     }
+}
+
+/// The kit's turn of `bullet` off an iron wall at `at`: its tracer turned
+/// along its new flight, sparks and the ricochet's sound.
+fn sparks(world: &mut World, bullet: Entity, at: Vec2) {
+    let velocity = world
+        .get::<LinearMotion>(bullet)
+        .map_or(Vec2::X, LinearMotion::velocity);
+    if let Some(transform) = world.get_mut::<Transform>(bullet) {
+        transform.rotation = heading(velocity);
+    }
+    spawn_burst(world, "ex10_ricochet", at);
+    audio::play(world, Sound::Ricocheted, at);
 }
 
 /// The shot's hit on `target` at `at`: [`SHOT_DAMAGE`] physical with its
@@ -450,7 +521,7 @@ fn shell(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent
     };
     let frozen = has_status(world, contact.body, FROZEN);
     if !frozen && beetle::front(world, contact.body, contact.point) {
-        return ricochet(world, bullet, contact, spent);
+        return ricochet(world, bullet, contact, along, spent);
     }
     strike(world, bullet, contact.body, contact.point, along);
     end_at(world, bullet, contact.point, spent);
@@ -500,9 +571,10 @@ fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent:
 
 /// A shot's iron or beetle's front: while the kit's pass left it alive and
 /// it has turned fewer than [`MAX_RICOCHETS`] times, it turns about the
-/// face it met from where it met it, with sparks and their sound; else it
-/// ends there.
-fn ricochet(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
+/// face it met from where it met it, flying in `along`, at its speed (the
+/// kit's turn off a wall later in the step undone), with sparks and their
+/// sound; else it ends there.
+fn ricochet(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
     let turns = world
         .get::<Bullet>(bullet)
         .map_or(0, |state| state.ricochets);
@@ -511,7 +583,7 @@ fn ricochet(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
     }
     let Some(velocity) = world
         .get::<LinearMotion>(bullet)
-        .map(LinearMotion::velocity)
+        .map(|motion| along * motion.velocity().length())
     else {
         return;
     };

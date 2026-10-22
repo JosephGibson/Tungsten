@@ -1,19 +1,5 @@
 {
   "components": {
-    "aim": {
-      "from": "target",
-      "offset": [
-        32,
-        32
-      ],
-      "target": {
-        "nearest": {
-          "all": [
-            "team.player"
-          ]
-        }
-      }
-    },
     "character_animator": {
       "idle": {
         "left": "ex10_fireball_left",
@@ -40,7 +26,7 @@
       }
     },
     "facing": {
-      "from": "aim",
+      "from": "motion",
       "snap": "horizontal"
     },
     "glow": {
@@ -62,13 +48,13 @@
       "fire": true
     },
     "oscillator": {
-      "phase": 0.1909859317102744,
+      "phase": 0.0,
       "position": {
         "amplitude": [
-          0,
-          96.0
+          96.0,
+          0
         ],
-        "period": 6
+        "period": 7.0
       }
     },
     "spawn_children": [

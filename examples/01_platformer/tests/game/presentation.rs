@@ -180,7 +180,7 @@ fn particle_caps_and_ambient_placements_remain_bounded() {
         .map(|(_, at, emitter)| (at.position, *emitter))
         .collect();
     assert_eq!(spawned.len(), objects.len());
-    assert_eq!(spawned.len(), 10);
+    assert_eq!(spawned.len(), 7);
     let ambient: u32 = spawned
         .iter()
         .map(|(_, emitter)| registry.get(emitter.config).unwrap().max_alive)
@@ -411,11 +411,13 @@ fn landing_clip_completes_without_resetting_idle_and_props_stay_synchronized() {
         .accumulated_ms;
     assert_eq!(before, after);
     let world = harness.world();
+    // The ravine's falls: its lip, its spread, its curtain's two columns
+    // and its foot, every piece a clip of the same frames.
     let waterfalls: Vec<&AnimationState> = world
         .query::<&AnimationState>()
-        .filter(|state| state.animation_id == "ex10_waterfall_flow")
+        .filter(|state| state.animation_id.starts_with("ex10_falls_"))
         .collect();
-    assert_eq!(waterfalls.len(), 48);
+    assert_eq!(waterfalls.len(), 67);
     let first = waterfalls[0];
     assert!(waterfalls.iter().all(|state| {
         state.frame_index == first.frame_index && state.accumulated_ms == first.accumulated_ms

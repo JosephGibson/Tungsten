@@ -3,13 +3,14 @@
 use tungsten::core::{AudioCommands, SoundRegistry, World};
 use tungsten::kit::{Health, StateMachine};
 
-use super::components::Music;
+use super::components::{Ambience, Music};
 use super::{
-    COMBAT_IN, COMBAT_OUT, HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE,
-    PAUSE_FADE, WISP_HUM,
+    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE,
+    MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
+use crate::features::level::systems::current_area;
 use crate::game::GAMEPLAY;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::pause::PAUSE;
@@ -140,4 +141,51 @@ pub fn combat(world: &mut World) {
         combat_level: volume,
         ..music
     });
+}
+
+/// `audio_ambience`, after the duck: the current area's loop rises to its
+/// manifest volume over [`AMBIENCE_FADE`] and every other falls to 0 over
+/// the same; ducked under pause and game over, every loop falls to 0 with
+/// the exploration loop. Presentation.
+pub fn ambience(world: &mut World) {
+    let (Some(mut ambience), Some(music)) = (
+        world.get_resource::<Ambience>().cloned(),
+        world.get_resource::<Music>().copied(),
+    ) else {
+        return;
+    };
+    let here = current_area(world).and_then(|area| area.ambience);
+    let seconds = if music.ducked {
+        PAUSE_FADE
+    } else {
+        AMBIENCE_FADE
+    };
+    let registry = world.resource::<SoundRegistry>();
+    let targets: Vec<f32> = ambience
+        .loops
+        .iter()
+        .map(|(id, ..)| {
+            if music.ducked || here.as_deref() != Some(id) {
+                0.0
+            } else {
+                registry
+                    .get_by_id(id)
+                    .map_or(0.0, |handle| registry.get_volume(handle))
+            }
+        })
+        .collect();
+    let mut changed = false;
+    for ((_, voice, level), target) in ambience.loops.iter_mut().zip(targets) {
+        if (target - *level).abs() < 1e-4 {
+            continue;
+        }
+        world
+            .resource_mut::<AudioCommands>()
+            .set_voice_volume(*voice, target, seconds);
+        *level = target;
+        changed = true;
+    }
+    if changed {
+        world.insert_resource(ambience);
+    }
 }

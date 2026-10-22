@@ -1,14 +1,18 @@
-//! The level's systems: its clock, the camera's zoom and the glows.
+//! The level's systems: its clock, the camera's zoom, the glows and each
+//! area's light; and the areas the view shows.
 
 use glam::{Vec2, Vec3};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, CameraController, Entity, Light, MaterialRegistry, Sprite, Time, Transform,
-    Visibility, WindowSize, World,
+    AmbientLight, AssetRegistry, CameraController, Collider, Entity, Light, LightKind,
+    MaterialRegistry, Position, Shape, Sprite, Time, Transform, Visibility, WindowSize, World,
 };
 
-use super::components::{Glow, GlowPart, GlowParts, SceneTime, Zoom};
-use super::{CAMERA_ROWS, TILE};
+use super::components::{Area, AreaLight, Glow, GlowPart, GlowParts, SceneTime, Zoom};
+use super::{
+    AMBIENT, AMBIENT_INDOOR, AREA_FADE, CAMERA_ROWS, LIGHT_EASE, MOONLIGHT_INTENSITY, TILE,
+};
+use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::SaveId;
 
@@ -160,4 +164,94 @@ fn place(world: &mut World, entity: Entity, centre: Vec2, radius: f32, hidden: b
     if let Some(visibility) = world.get_mut::<Visibility>(entity) {
         visibility.visible = !hidden;
     }
+}
+
+/// The area the run's player last entered, as the run names it.
+#[must_use]
+pub fn current_area(world: &World) -> Option<Area> {
+    let name = world.get_resource::<Run>()?.area.clone()?;
+    world
+        .query::<&Area>()
+        .find(|area| area.name == name)
+        .cloned()
+}
+
+/// `level_light`, in the present phase: an indoor area's ambient
+/// ([`AMBIENT_INDOOR`]) with the moon out, an outdoor one's midnight
+/// ([`AMBIENT`]) with the moon at [`MOONLIGHT_INTENSITY`], eased over
+/// [`LIGHT_EASE`] real seconds; the run's first frame snaps. Presentation.
+pub fn light(world: &mut World) {
+    let Some(state) = world.get_resource::<AreaLight>().copied() else {
+        return;
+    };
+    let indoor = current_area(world).is_some_and(|area| area.indoor);
+    let (ambient, moon) = if indoor {
+        (AMBIENT_INDOOR, 0.0)
+    } else {
+        (AMBIENT, MOONLIGHT_INTENSITY)
+    };
+    // The share of the full ease this frame covers; all of it at the first.
+    let share = if state.lit {
+        world.resource::<Time>().real_delta() / LIGHT_EASE
+    } else {
+        f32::INFINITY
+    };
+    let toward =
+        |from: f32, to: f32, span: f32| from + (to - from).clamp(-span * share, span * share);
+    let span = (AMBIENT - AMBIENT_INDOOR).abs();
+    if let Some(light) = world.get_resource_mut::<AmbientLight>() {
+        let now = light.0;
+        light.0 = Vec3::new(
+            toward(now.x, ambient.x, span.x),
+            toward(now.y, ambient.y, span.y),
+            toward(now.z, ambient.z, span.z),
+        );
+    }
+    for light in world.query_mut::<&mut Light>() {
+        if matches!(light.kind, LightKind::Directional { .. }) {
+            light.intensity = toward(light.intensity, moon, MOONLIGHT_INTENSITY);
+        }
+    }
+    world.insert_resource(AreaLight { lit: true });
+}
+
+/// How much the view centred at `x` shows each area: 1 inside its columns,
+/// crossfading to its neighbour's over [`AREA_FADE`] each side of their
+/// border; west to east, the shares summing to 1.
+#[must_use]
+pub fn area_shares(world: &World, x: f32) -> Vec<(Area, f32)> {
+    let mut spans: Vec<(f32, f32, Area)> = world
+        .query::<(&Area, &Position, &Collider)>()
+        .filter_map(|(area, at, collider)| {
+            let Shape::Aabb { half_extents } = collider.shape else {
+                return None;
+            };
+            let centre = at.0.x + collider.offset.x;
+            Some((
+                centre - half_extents.x,
+                centre + half_extents.x,
+                area.clone(),
+            ))
+        })
+        .collect();
+    spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let last = spans.len().saturating_sub(1);
+    spans
+        .into_iter()
+        .enumerate()
+        .map(|(k, (left, right, area))| {
+            let rise = if k == 0 {
+                1.0
+            } else {
+                ((x - left + AREA_FADE) / (2.0 * AREA_FADE)).clamp(0.0, 1.0)
+            };
+            let fall = if k == last {
+                1.0
+            } else {
+                ((right + AREA_FADE - x) / (2.0 * AREA_FADE)).clamp(0.0, 1.0)
+            };
+            (area, rise * fall)
+        })
+        .filter(|(_, share)| *share > 0.0)
+        .collect()
 }

@@ -1,0 +1,18 @@
+{
+  "tag": "hedge",
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          10,
+          40
+        ]
+      },
+      "layers": [
+        3
+      ]
+    }
+  }
+}

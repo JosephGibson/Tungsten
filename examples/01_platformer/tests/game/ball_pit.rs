@@ -182,15 +182,37 @@ fn impact_particles_span_rainbow_and_vortex_births_spiral_inward() {
     }
 }
 
+/// The ball pit's interior, `tools/level.json`'s `pit`: its columns and
+/// rows, from the rim's row down to the floor's.
+#[derive(serde::Deserialize)]
+struct Pit {
+    left: f32,
+    right: f32,
+    rim: f32,
+    floor: f32,
+}
+
+fn pit() -> Pit {
+    #[derive(serde::Deserialize)]
+    struct Source {
+        pit: Pit,
+    }
+    let text = std::fs::read_to_string("tools/level.json").expect("tools/level.json reads");
+    serde_json::from_str::<Source>(&text)
+        .expect("tools/level.json parses")
+        .pit
+}
+
 #[test]
 fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
+    let pit = pit();
     let (mut harness, _) = run();
     let mut placed = Vec::new();
     for i in 0..2048 {
         let small = i % 2 == 0;
         let at = Vec2::new(
-            132.0 * TILE + 48.0 + (i % 96) as f32 * 31.0,
-            46.0 * TILE - 16.0 - (i / 96) as f32 * 31.0,
+            pit.left * TILE + 48.0 + (i % 96) as f32 * 31.0,
+            pit.floor * TILE - 16.0 - (i / 96) as f32 * 31.0,
         );
         let e = ball(&mut harness, at, small);
         if i < 2 {
@@ -208,11 +230,11 @@ fn pit_contains_two_thousand_mixed_balls_and_fast_wall_impacts() {
             let p = body(&harness, e);
             // Containment, allowing the solver's shallow contact penetration.
             assert!(
-                p.x >= 132.0 * TILE && p.x <= 180.0 * TILE,
+                p.x >= pit.left * TILE && p.x <= pit.right * TILE,
                 "wall escape {p}"
             );
             assert!(
-                p.y >= 18.0 * TILE && p.y <= 46.0 * TILE,
+                p.y >= pit.rim * TILE && p.y <= pit.floor * TILE,
                 "vertical escape {p}"
             );
         }
