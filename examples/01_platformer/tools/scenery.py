@@ -12,7 +12,7 @@ from PIL import Image
 
 from art import rng_for
 from pixels import Part, compose, despeckle, dither, outline, shade, to_image, unit
-from terrain import FROND, LEAF, TILE, ellipse, from_image, line, rect
+from terrain import FROND, LEAF, TILE, darker, ellipse, from_image, line, rect, tinted
 
 STONE = dict(base='~', light=':', shadow='-', back='=')
 PALE_STONE = dict(base=':', light=';', shadow='=', back='~')
@@ -651,17 +651,20 @@ def falls_tiles(frame=0):
                                    ('falls_foot_right', 2, 3))]
 
 
-def plume(width, height, seed, strength=1.0):
+def plume(width, height, seed, strength=1.0, phase=0.0):
     """A mist cloud in the palette's translucent whites (alpha 8 to 68),
     thickest low in its middle, billowing slowly, its levels dithered so it
-    has no bands or holes: the falls' plunge, steam."""
+    has no bands or holes: the falls' plunge, steam. `phase` (0 to 1) turns
+    its billows through one rising cycle, so frames at even phases loop."""
     c = {}
+    turn = math.tau * phase
     for y in range(height):
         for x in range(width):
             dx = (x - width / 2) / (width / 2)
             dy = (y - height * 0.72) / (height * (0.72 if y < height * 0.72 else 0.28))
             fall = max(0.0, 1 - dx * dx - dy * dy) ** 1.4
-            billow = 0.82 + 0.18 * math.sin(x / 11 + seed) * math.cos(y / 9 - x / 29 + seed)
+            billow = (0.82 + 0.18 * math.sin(x / 11 + seed + turn) * math.cos(y / 9 - x / 29 + seed + 2 * turn)
+                      + 0.06 * math.sin(y / 23 + 2 * turn) * math.cos(x / 17 - turn))
             v = fall * billow * strength * len(WHITE_MIST)
             level = int(v) + (1 if dither(x, y, v - int(v)) else 0)
             if level > 0:
@@ -2052,9 +2055,98 @@ HUNG_PROPS = (
     *((f'fire_crystal_hanging_{i}', lambda i=i: fire_crystal(i + 3, hanging=True)) for i in range(2)),
     ('fissure', lambda: fissure(34, 2)),
 )
-# Unlit: mist and steam, which the night shows through, and the campfire's
-# flames, which carry their own light.
-MISTS = (('plume', lambda: plume(300, 170, 1.3, 1.5)), ('steam', lambda: plume(110, 170, 3.0, 1.2)))
+# The heat haze over the lava: the plume's translucent whites warmed, at
+# the same alphas.
+HAZE = {'j': 'э', '^': 'ю', '&': 'я', '*': 'Б', 'p': 'Г', 'q': 'Д'}
+
+
+def steam_column(width, height, seed, strength=1.0, phase=0.0):
+    """Steam rising from a crack: three wisps from a narrow foot, each
+    swaying as it climbs, widening and thinning toward the top, in the
+    translucent whites. `phase` (0 to 1) lifts the wisps through one loop of
+    the column, so frames at even phases loop."""
+    c = {}
+    turn = math.tau * phase
+    for y in range(height):
+        up = 1 - y / height
+        fade = min(1.0, up / 0.25) * (1 - up) ** 0.7
+        spread = width * (0.07 + 0.2 * up)
+        density = []
+        for x in range(width):
+            v = 0.0
+            for k in range(3):
+                sway = width * 0.18 * up * math.sin(math.tau * (1.5 * up + 1 * phase) + seed + k * 2.1)
+                centre = width / 2 + (k - 1) * width * 0.12 * up + sway
+                ribbon = 0.6 + 0.4 * math.sin(math.tau * (3 * up + 1 * phase) * (1 + k % 2) + seed * (k + 1) + x / 9)
+                v += math.exp(-((x - centre) / spread) ** 2) * ribbon
+            density.append(v / 1.6)
+        for x, d in enumerate(density):
+            v = d * fade * strength * len(WHITE_MIST)
+            level = int(v) + (1 if dither(x, y, v - int(v)) else 0)
+            if level > 0:
+                c[(x, y)] = WHITE_MIST[min(level, len(WHITE_MIST)) - 1]
+    return to_image(c, (width, height))
+
+
+def warm(im):
+    """`im`'s translucent whites warmed, as the haze is."""
+    return to_image({p: HAZE.get(s, s) for p, s in from_image(im).items()}, im.size)
+
+
+def haze(width, height, seed, strength):
+    """A plume of heat rising off the lava, in the warm translucents."""
+    return to_image({p: HAZE.get(s, s) for p, s in from_image(plume(width, height, seed, strength)).items()},
+                    (width, height))
+
+
+# Unlit: mist and steam, which the night shows through, the lava's haze, and
+# the campfire's flames, which carry their own light.
+MISTS = (('haze', lambda: haze(330, 150, 4.2, 0.9)), ('haze_small', lambda: haze(150, 90, 5.1, 0.8)))
+# The rising mist, unlit and animated: the falls' plume, the steam where the
+# pool drains into the cleft and the hollow's heat breathing out of its
+# mouth, each drawn at a phase, `MIST_FRAMES` frames through one cycle, each
+# tile of its cut a clip of its own.
+RISING = (
+    ('plume', lambda t: plume(300, 170, 1.3, 1.5, t)),
+    ('steam', lambda t: steam_column(170, 260, 3.0, 1.1, t)),
+    ('steam_small', lambda t: steam_column(110, 180, 3.6, 1.0, t)),
+    ('heat', lambda t: warm(steam_column(130, 200, 4.4, 1.2, t))),
+)
+MIST_FRAMES, MIST_MS = 6, 150
+
+
+def rising_clips(images, animations, name, frames, duration):
+    """`frames` padded as `placed` pads one, foot on the floor, and cut into
+    tiles: each tile's frames `<name>_big_<row>_<col>_<i>` and its looping
+    animation `<name>_big_<row>_<col>`."""
+    cols, rows = -(-frames[0].width // TILE), -(-frames[0].height // TILE)
+    pieces = {}
+    for im in frames:
+        canvas = Image.new('RGBA', (cols * TILE, rows * TILE))
+        canvas.alpha_composite(im, ((cols * TILE - im.width) // 2, rows * TILE - im.height))
+        for row in range(rows):
+            for col in range(cols):
+                pieces.setdefault((row, col), []).append(
+                    canvas.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE)))
+    for (row, col), tiles in pieces.items():
+        clip(images, animations, f'{name}_big_{row}_{col}', tiles, duration)
+
+
+def far_lantern():
+    """A lit lantern on the far scaffold: its glass a speck of the glowing
+    yellows in a dark frame."""
+    return to_image({(1, 0): 'K', (0, 1): 'K', (1, 1): 'y', (2, 1): 'K', (1, 2): 'Y', (1, 3): 'K'}, (3, 4))
+
+
+# Unlit, under the far tint as the review drew them (`terrain.tinted`): the
+# cut's far scaffold, a step darker, and the boulders on its far terraces.
+FAR_PROPS = (
+    ('far_trestle', lambda: to_image(tinted(darker(from_image(trestle(60)))), (TILE, 60))),
+    ('far_boulder_0', lambda: to_image(tinted(from_image(boulder(7, (48, 30)))), (48, 30))),
+    ('far_boulder_1', lambda: to_image(tinted(from_image(boulder(8, (56, 34)))), (56, 34))),
+    ('far_rubble', lambda: to_image(tinted(from_image(rubble_pile(9, (80, 30)))), (80, 30))),
+    ('far_lantern', far_lantern),
+)
 
 
 def build_level_scenery(images, lit, animations):
@@ -2065,11 +2157,19 @@ def build_level_scenery(images, lit, animations):
         lit.update(placed(images, name, draw(), hang=True))
     for name, draw in MISTS:
         placed(images, name, draw())
+    for name, draw in RISING:
+        rising_clips(images, animations, name, [draw(k / MIST_FRAMES) for k in range(MIST_FRAMES)], MIST_MS)
+    for name, draw in FAR_PROPS:
+        placed(images, name, draw())
     clip(images, animations, 'campfire', [campfire(f * 1.6) for f in range(4)], 120)
     lit.update(clip(images, animations, 'water', [water_frame(f) for f in range(8)], 90))
     for kind, name in (('calm', 'river'), ('rapids', 'river_rapids'), ('rock', 'river_rock')):
         lit.update(clip(images, animations, name, [river_frame(f, kind) for f in range(8)], 110))
     lit.update(clip(images, animations, 'river_deep', [river_frame(f, deep=True) for f in range(8)], 110))
+    # The river's depths below its first rows, darker going down.
+    for k in (1, 2):
+        images[f'river_dark_{k}'] = to_image(darker(from_image(images['river_deep_0']), k * 2))
+        lit.add(f'river_dark_{k}')
     for kind, name in (('calm', 'pool'), ('foam', 'pool_foam'), ('edge_left', 'pool_edge_left'), ('edge_right', 'pool_edge_right')):
         lit.update(clip(images, animations, name, [pool_frame(f, kind) for f in range(4)], 160))
     falls = [dict(falls_tiles(f)) for f in range(4)]

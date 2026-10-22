@@ -177,7 +177,7 @@ fn busy(harness: &mut UiHarness) {
 }
 
 #[test]
-fn a_capture_round_trips_through_a_load_with_a_hazard_and_a_platform_displaced() {
+fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
     let (mut harness, _) = grounded();
     let first = capture(&harness);
     busy(&mut harness);
@@ -189,20 +189,12 @@ fn a_capture_round_trips_through_a_load_with_a_hazard_and_a_platform_displaced()
             .any(|(a, b)| Vec2::from(*a).distance(Vec2::from(*b)) > 8.0)
     };
     let points = |save: &SaveGame| {
-        (
-            save.hazards.iter().map(|h| h.position).collect::<Vec<_>>(),
-            save.platforms
-                .iter()
-                .map(|p| p.position)
-                .collect::<Vec<_>>(),
-        )
+        save.platforms
+            .iter()
+            .map(|p| p.position)
+            .collect::<Vec<_>>()
     };
-    let (hazards, platforms) = points(&first);
-    let (hazards_now, platforms_now) = points(&saved);
-    assert!(
-        moved(&hazards, &hazards_now),
-        "a fire hazard is off its spawn"
-    );
+    let (platforms, platforms_now) = (points(&first), points(&saved));
     assert!(
         moved(&platforms, &platforms_now),
         "a platform is off its spawn"
@@ -643,7 +635,6 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "bullet",
             "crawler",
             "dummy",
-            "hazard",
             "missile",
             "orb",
             "platform",

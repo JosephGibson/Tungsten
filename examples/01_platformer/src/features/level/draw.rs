@@ -14,7 +14,7 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use tungsten::{WindowSize, extract_sprites_default, extract_tilemaps};
 
 use super::TILE;
-use super::components::SceneTime;
+use super::components::{Area, SceneTime};
 use super::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, area_shares, drawn_time};
 use crate::game::GAMEPLAY;
 use crate::shell;
@@ -25,20 +25,22 @@ const BACKDROP: [(&str, f32, f32, Vec2); 5] = [
     ("ex10_sky", 0.0, 0.05, Vec2::splat(2.0)),
     ("ex10_clouds_far", 6.0 * TILE, 0.12, Vec2::new(1.5, 0.8)),
     ("ex10_clouds_near", 9.0 * TILE, 0.22, Vec2::new(1.5, 0.8)),
-    ("ex10_distant_ridges", 10.0 * TILE, 0.35, Vec2::splat(2.0)),
-    ("ex10_near_woodland", 18.0 * TILE, 0.6, Vec2::splat(2.0)),
+    (RIDGES, 10.0 * TILE, 0.35, Vec2::splat(2.0)),
+    (WOODLAND, 18.0 * TILE, 0.6, Vec2::splat(2.0)),
 ];
+const RIDGES: &str = "ex10_distant_ridges";
+const WOODLAND: &str = "ex10_near_woodland";
+/// The row the start's view is centred on, where the strips stand as
+/// authored, and how much of their vertical parallax they keep away from it.
+const START_VIEW: f32 = 35.5;
+const VERTICAL: f32 = 0.3;
 /// An outdoor area's far strip, between the ridges and the woodland: its
 /// top in world pixels, its scroll factor and its scale.
 const FAR_STRIP: (f32, f32, Vec2) = (14.0 * TILE, 0.45, Vec2::splat(2.0));
-/// The mist bands over the ravine's far side, drawn with its strip: each
-/// band's sprite, its top and its scroll factor.
+/// The mist band over the ravine's far side, drawn with its strip: its
+/// sprite, its top and its scroll factor.
 const MIST_STRIP: &str = "ex10_far_cliffs";
-const MISTS: [(&str, f32, f32); 3] = [
-    ("ex10_mist_0", 17.0 * TILE, 0.5),
-    ("ex10_mist_1", 20.0 * TILE, 0.55),
-    ("ex10_mist_2", 23.0 * TILE, 0.6),
-];
+const MISTS: [(&str, f32, f32); 1] = [("ex10_mist_0", 17.0 * TILE, 0.5)];
 /// The black night sky, over the midnight one where an area's `night` is
 /// set, and how bright the clouds draw under it at full night.
 pub const SKY_BLACK: &str = "ex10_sky_black";
@@ -171,6 +173,23 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
         .filter(|(area, _)| area.night)
         .map(|(_, share)| share)
         .sum();
+    let shared = |pick: fn(&Area) -> bool| -> f32 {
+        shares
+            .iter()
+            .filter(|(area, _)| pick(area))
+            .map(|(_, share)| share)
+            .sum()
+    };
+    let (ridges, woodland) = (shared(|area| area.ridges), shared(|area| area.woodland));
+    // The strips follow the view down and up but for [`VERTICAL`] of their
+    // parallax, so a deep view keeps them as the start's view shows them;
+    // an area's horizon then lowers them by its rows, each times its scroll.
+    let below = (min.y + max.y) * 0.5 - START_VIEW * TILE;
+    let lift: f32 = below * (1.0 - VERTICAL)
+        + shares
+            .iter()
+            .map(|(area, share)| area.horizon as f32 * TILE * share)
+            .sum::<f32>();
     let alpha = |share: f32| (share.clamp(0.0, 1.0) * 255.0).round() as u8;
     let mut batches = Vec::new();
     for (id, top, scroll, scale) in BACKDROP {
@@ -197,14 +216,18 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             continue;
         }
         let shade = (255.0 * (1.0 - (1.0 - NIGHT_CLOUDS) * night.clamp(0.0, 1.0))).round() as u8;
-        let color = if id.starts_with("ex10_clouds") {
-            [shade, shade, shade, 255]
-        } else {
-            [255; 4]
+        let color = match id {
+            RIDGES => [255, 255, 255, alpha(ridges)],
+            WOODLAND => [255, 255, 255, alpha(woodland)],
+            _ if id.starts_with("ex10_clouds") => [shade, shade, shade, 255],
+            _ => [255; 4],
         };
         let view = (camera.position, min, max, time);
-        batches.push(strip(asset, id, (top, scroll, scale), color, view));
-        if id != "ex10_distant_ridges" {
+        if color[3] > 0 {
+            let at = (top + lift * scroll, scroll, scale);
+            batches.push(strip(asset, id, at, color, view));
+        }
+        if id != RIDGES {
             continue;
         }
         for (area, share) in &shares {
@@ -213,14 +236,17 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             };
             let color = [255, 255, 255, alpha(*share)];
             if let Some(asset) = assets.get_sprite(far) {
-                batches.push(strip(asset, far, FAR_STRIP, color, view));
+                let (top, scroll, scale) = FAR_STRIP;
+                let at = (top + lift * scroll, scroll, scale);
+                batches.push(strip(asset, far, at, color, view));
             }
             if far != MIST_STRIP {
                 continue;
             }
             for (mist, top, scroll) in MISTS {
                 if let Some(asset) = assets.get_sprite(mist) {
-                    batches.push(strip(asset, mist, (top, scroll, FAR_STRIP.2), color, view));
+                    let at = (top + lift * scroll, scroll, FAR_STRIP.2);
+                    batches.push(strip(asset, mist, at, color, view));
                 }
             }
         }

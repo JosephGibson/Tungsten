@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 from art import rng_for
 from pixels import dither, to_image, unit, wave
 from terrain import (IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image, iron_clad, line,
-                     mine_rock, rect, rock_tiles, wet_rock)
+                     mine_rock, rect, rock_tiles, tinted, wet_rock)
 
 WIDTH = 1024
 STRIP = (WIDTH, 256)
@@ -805,8 +805,11 @@ def mist_band(height, seed, dense=0.5):
 
 # The far strips, each outdoor area's; three sit on `sky_black`.
 FAR_STRIPS = ('far_tower', 'far_arcade', 'far_cliffs', 'far_mine', 'far_valley')
-# The ravine's mist bands: height, seed and density.
-MISTS = ((150, 2.5, 0.55), (120, 3.3, 0.5), (110, 4.0, 0.5))
+# The ravine's mist band over its far strip: height, seed and density.
+MISTS = ((120, 1.0, 0.42),)
+# The mist over the far walls, in the decorations layer between them and
+# the terrain: the gorge's three bands, then the cut's two dust bands.
+FAR_MISTS = ((150, 2.5, 0.55), (120, 3.3, 0.5), (110, 4.0, 0.5), (120, 1.7, 0.45), (90, 3.1, 0.35))
 # The backdrop's images by name: none is a tile, so the tileset leaves them
 # out (`level.py`), and none is lit.
 BACKDROPS = ('sky', 'distant_ridges', 'near_woodland', 'clouds_far', 'clouds_near', 'sky_black',
@@ -841,14 +844,24 @@ def build_level_backs(images, lit):
     images['parapet_mossy'] = parapet(2, 'mossy')
     images['parapet_broken'] = parapet(3, 'broken')
     kinds = (None, None, 'sheen')
-    rock_tiles(images, 'wet_back', lambda i, open_: wet_rock(i + 500, open_, kinds[i % 3], back=2), MASKS, 3, 0)
-    rock_tiles(images, 'cut_back', lambda i, open_: to_image(darker(from_image(mine_rock(i + 300, open_)))), MASKS, 2, 0)
-    rock_tiles(images, 'cut_back_iron', lambda i, open_: to_image(darker(from_image(iron_clad(i + 300, open_)))),
+    # The gorge's far wall and the cut's far terraces under the far tint,
+    # unlit, as the review drew them behind their mist.
+    far = set(images)
+    rock_tiles(images, 'wet_back', lambda i, open_: to_image(tinted(from_image(
+        wet_rock(i + 500, open_, kinds[i % 3], back=2)))), MASKS, 3, 0)
+    rock_tiles(images, 'cut_back', lambda i, open_: to_image(tinted(darker(from_image(mine_rock(i + 300, open_))))),
+               MASKS, 2, 0)
+    rock_tiles(images, 'cut_back_iron', lambda i, open_: to_image(tinted(darker(from_image(iron_clad(i + 300, open_))))),
                IRON_MASKS, 2, 0)
+    for k, (height, seed, dense) in enumerate(FAR_MISTS):
+        band = Image.new('RGBA', (WIDTH, -(-height // TILE) * TILE))
+        band.alpha_composite(mist_band(height, seed, dense), (0, (band.height - height) // 2))
+        cut_tiles(images, f'far_mist_{k}', band)
+    far = set(images) - far
     for kind, count in CAVE_BACKS:
         for i in range(count):
             images[f'cave_back_{kind}_{i}'] = cave_back(kind, i)
     images['cave_back_ladder'] = cave_back('ladder', 2)
     cut_tiles(images, 'cave_tunnel_ember', cave_tunnel('ember'))
     cut_tiles(images, 'cave_tunnel_mine', cave_tunnel('timber'))
-    lit.update(set(images) - first)
+    lit.update(set(images) - first - far)

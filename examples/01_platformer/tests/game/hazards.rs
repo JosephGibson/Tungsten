@@ -1,7 +1,7 @@
-//! The spikes, fireballs and lava: a touch's damage, window, knockback,
-//! flash, shake and sound, three touches ending a run at Normal, lava's
-//! touch as a fire's with no douse, and the fires' trails, facing and
-//! drips.
+//! The hazards: the lava's touch, its damage, window and knockback, three
+//! touches ending a run at Normal, never doused; a hit's flash, shake and
+//! sound; and the fire hazards the level's data may place, which burst fast
+//! balls they sweep.
 
 use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::game::GAMEPLAY;
@@ -9,11 +9,10 @@ use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AudioCommand, Bundle, CameraController, Collider, Entity, Particle, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBodyBundle, SoundRegistry,
-    Transform,
+    AudioCommand, Bundle, CameraController, Collider, Entity, Position, PrevPosition,
+    RigidBodyBundle, SoundRegistry, Transform,
 };
-use tungsten::kit::{Aim, Children, ContactDamage, Facing, Health, HitFlash, damage};
+use tungsten::kit::{ContactDamage, Health, HitFlash, damage};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::elements::FIRE_CENTRE;
@@ -25,24 +24,9 @@ use example_01_platformer::shared::BURST_CAP;
 use super::{ball, bursts, centre, run, settle, teleport, top};
 
 const DT: f32 = 1.0 / 60.0;
-/// Where a spike's touch box sits from its sprite's top-left, and a drip's
-/// emitter from its fireball's.
-const SPIKES_CENTRE: Vec2 = Vec2::new(32.0, 48.0);
-const DRIP_OFFSET: Vec2 = Vec2::new(32.0, 44.0);
-const TRAIL_OFFSET: Vec2 = Vec2::new(32.0, 32.0);
 
 fn health(harness: &UiHarness, player: Entity) -> f32 {
     harness.world().get::<Health>(player).unwrap().current()
-}
-
-/// The level's hazards, fires or spikes, in spawn order: lava neither.
-fn hazards(harness: &UiHarness, fire: bool) -> Vec<Entity> {
-    harness
-        .world()
-        .query::<(Entity, &Hazard)>()
-        .filter(|(_, hazard)| hazard.fire == fire && !hazard.lava)
-        .map(|(entity, _)| entity)
-        .collect()
 }
 
 /// The level's lava basins, in spawn order.
@@ -96,9 +80,10 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
 fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen() {
     let (mut harness, player) = run();
     harness.step(10);
-    let spike = hazards(&harness, false)[0];
-    let touch = harness.world().get::<Transform>(spike).unwrap().position + SPIKES_CENTRE;
-    // Standing on the teeth, a little above their centre.
+    let lake = lava(&harness)[0];
+    // The lake's skin over its first lava column.
+    let touch = harness.world().get::<Transform>(lake).unwrap().position + Vec2::new(32.0, 28.0);
+    // Standing in the lava, a little above the skin's middle.
     let onto = |harness: &mut UiHarness| teleport(harness, player, touch - Vec2::new(0.0, 20.0));
     onto(&mut harness);
     harness.step(1);
@@ -115,7 +100,7 @@ fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen()
     assert_eq!(health(&harness, player), 66.0, "once per window");
     // Away until the window runs out, then two more touches, each a new
     // contact, which hits at once.
-    let away = touch - Vec2::new(4.0 * 64.0, 0.0);
+    let away = touch - Vec2::new(4.0 * 64.0, 2.0 * 64.0);
     for left in [32.0, 0.0] {
         teleport(&mut harness, player, away);
         harness.step(70);
@@ -127,29 +112,6 @@ fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen()
     assert!(harness.world().get::<Health>(player).unwrap().is_dead());
     settle(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
-}
-
-/// Each fire's child emitter of the particle config `name`, in fire order:
-/// a fire's trail at its centre and its drips underneath.
-fn fire_children(harness: &UiHarness, fires: &[Entity], name: &str) -> Vec<Entity> {
-    let world = harness.world();
-    let config = world.resource::<ParticleConfigRegistry>().id_for_name(name);
-    fires
-        .iter()
-        .map(|fire| {
-            let children = world.get::<Children>(*fire).expect("its emitters");
-            let found: Vec<Entity> = children
-                .iter()
-                .filter(|child| {
-                    world
-                        .get::<ParticleEmitter>(*child)
-                        .is_some_and(|emitter| Some(emitter.config) == config)
-                })
-                .collect();
-            assert_eq!(found.len(), 1, "one {name} on each fire");
-            found[0]
-        })
-        .collect()
 }
 
 #[test]
@@ -174,75 +136,6 @@ fn lava_touches_as_a_fire_does_and_cold_never_douses_it() {
     example_01_platformer::features::elements::douse_hazard(harness.world_mut(), basin);
     let world = harness.world();
     assert!(!world.has::<Doused>(basin) && world.has::<ContactDamage>(basin));
-}
-
-#[test]
-fn moving_fire_emits_a_bounded_particle_trail() {
-    let (mut harness, _) = run();
-    let fires = hazards(&harness, true);
-    assert_eq!(fires.len(), 5);
-    harness.step(1);
-    let trails = fire_children(&harness, &fires, "ex10_fire_trail");
-    harness.step(120);
-    let world = harness.world();
-    let trail = world
-        .query::<&Particle>()
-        .filter(|particle| {
-            particle
-                .emitter
-                .is_some_and(|emitter| trails.contains(&emitter))
-        })
-        .count();
-    assert!(trail > 60 && trail <= 240, "{trail} trail particles");
-    for (fire, emitter) in fires.iter().zip(&trails) {
-        let state = world.get::<ParticleEmitterState>(*emitter).unwrap();
-        assert!(state.active_count <= 40);
-        let at = world.get::<Transform>(*emitter).unwrap().position;
-        let centre = world.get::<Transform>(*fire).unwrap().position + TRAIL_OFFSET;
-        assert!(
-            (at - centre).length() < 1e-3,
-            "the trail rides the fire's centre"
-        );
-    }
-}
-
-#[test]
-fn fireballs_face_their_travel_and_drag_anchored_drips() {
-    let (mut harness, _) = run();
-    harness.step(1);
-    let fires = hazards(&harness, true);
-    let drips = fire_children(&harness, &fires, "ex10_fireball_drips");
-    let mut seen = vec![[false; 2]; fires.len()];
-    for _ in 0..450 {
-        harness.step(1);
-        let world = harness.world();
-        for (i, fire) in fires.iter().enumerate() {
-            let left = world.get::<Facing>(*fire).unwrap().direction().x < 0.0;
-            if world.has::<Aim>(*fire) {
-                // One that only rises and falls watches the player, who
-                // waits to its left.
-                assert!(left, "fire {i} looks away from the player");
-                continue;
-            }
-            let moved = world.get::<Position>(*fire).unwrap().0
-                - world.get::<PrevPosition>(*fire).unwrap().0;
-            if moved.length() / DT >= 1.0 && moved.x != 0.0 {
-                assert_eq!(left, moved.x < 0.0, "fire {i} faces against its travel");
-            }
-            seen[i][usize::from(left)] = true;
-        }
-        for (fire, drip) in fires.iter().zip(&drips) {
-            let expected = world.get::<Transform>(*fire).unwrap().position + DRIP_OFFSET;
-            let at = world.get::<Transform>(*drip).unwrap().position;
-            assert!((at - expected).length() < 1e-3, "{at} vs {expected}");
-        }
-    }
-    // Over a full period every horizontal mover turns both ways.
-    for (i, fire) in fires.iter().enumerate() {
-        if !harness.world().has::<Aim>(*fire) {
-            assert_eq!(seen[i], [true, true], "fire {i}");
-        }
-    }
 }
 
 #[test]

@@ -606,6 +606,34 @@ def darker(c, steps=1):
     return c
 
 
+# A far wall's tint, as the review drew the gorge's far wall and the cut's far
+# terraces (each channel out of 255), and the far scaffold's, a step deeper.
+FAR_TINT = (104, 112, 136)
+FAR_PROP_TINT = (90, 96, 120)
+
+
+@functools.cache
+def tint_map(tint):
+    """Each opaque symbol to the opaque one nearest its colour times `tint`:
+    a tint kept in palette pixels. True black and the emissive symbols are
+    never chosen, so a tinted piece neither reads as the night sky nor
+    glows."""
+    targets = {s: v for s, v in PALETTE.items() if v[3] == 255 and s not in '■yYCc'}
+    out = {}
+    for s, v in PALETTE.items():
+        if v[3] != 255:
+            continue
+        want = [c * t / 255 for c, t in zip(v[:3], tint)]
+        out[s] = min(targets, key=lambda o: sum((a - b) ** 2 for a, b in zip(targets[o][:3], want)))
+    return out
+
+
+def tinted(c, tint=FAR_TINT):
+    """Canvas `c` under `tint` (`tint_map`); translucent symbols stay."""
+    table = tint_map(tint)
+    return {p: table.get(s, s) for p, s in c.items()}
+
+
 def under(i):
     """Masonry underside, four kinds: roots, a moss curtain, a wet seep and
     lime drips, each hanging from a shadowed lip."""

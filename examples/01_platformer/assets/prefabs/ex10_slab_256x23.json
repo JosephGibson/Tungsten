@@ -1,0 +1,21 @@
+{
+  "components": {
+    "rigid_body": {
+      "kind": "static",
+      "layers": [
+        1
+      ],
+      "offset": [
+        128.0,
+        11.5
+      ],
+      "shape": {
+        "half_extents": [
+          128.0,
+          11.5
+        ],
+        "kind": "aabb"
+      }
+    }
+  }
+}

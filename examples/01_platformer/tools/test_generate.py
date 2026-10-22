@@ -53,8 +53,10 @@ class AuthoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'disagreement'):validate_level(self.source,tiled,self.ids)
 
     def test_motion_rejects_invalid_period_bounds_and_unsafe_spawn(self):
+        # The map places no hazard today; the data may, so the test brings one.
+        fire=dict(fire=True,position=[30,25],travel=[1,0],period=5,phase=0)
         for change,error in [({'period':0},'motion'),({'position':[-2,10]},'outside'),({'position':[6.5,35.5]},'spawn')]:
-            source=copy.deepcopy(self.source);source['hazards'][0].update(change)
+            source=copy.deepcopy(self.source);source['hazards']=[dict(fire,**change)]
             with self.assertRaisesRegex(ValueError,error):validate_level(source,self.tiled,self.ids)
 
     def test_walk_has_distinct_intermediates_and_fixed_foot_anchors(self):

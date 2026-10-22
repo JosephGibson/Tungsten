@@ -93,6 +93,42 @@
     "ex10_fireball_left": {
       "path": "animations/fireball_left.json"
     },
+    "ex10_heat_big_0_0": {
+      "path": "animations/heat_big_0_0.json"
+    },
+    "ex10_heat_big_0_1": {
+      "path": "animations/heat_big_0_1.json"
+    },
+    "ex10_heat_big_0_2": {
+      "path": "animations/heat_big_0_2.json"
+    },
+    "ex10_heat_big_1_0": {
+      "path": "animations/heat_big_1_0.json"
+    },
+    "ex10_heat_big_1_1": {
+      "path": "animations/heat_big_1_1.json"
+    },
+    "ex10_heat_big_1_2": {
+      "path": "animations/heat_big_1_2.json"
+    },
+    "ex10_heat_big_2_0": {
+      "path": "animations/heat_big_2_0.json"
+    },
+    "ex10_heat_big_2_1": {
+      "path": "animations/heat_big_2_1.json"
+    },
+    "ex10_heat_big_2_2": {
+      "path": "animations/heat_big_2_2.json"
+    },
+    "ex10_heat_big_3_0": {
+      "path": "animations/heat_big_3_0.json"
+    },
+    "ex10_heat_big_3_1": {
+      "path": "animations/heat_big_3_1.json"
+    },
+    "ex10_heat_big_3_2": {
+      "path": "animations/heat_big_3_2.json"
+    },
     "ex10_lava_deep": {
       "path": "animations/lava_deep.json"
     },
@@ -150,6 +186,51 @@
     "ex10_player_walk_left": {
       "path": "animations/player_walk_left.json"
     },
+    "ex10_plume_big_0_0": {
+      "path": "animations/plume_big_0_0.json"
+    },
+    "ex10_plume_big_0_1": {
+      "path": "animations/plume_big_0_1.json"
+    },
+    "ex10_plume_big_0_2": {
+      "path": "animations/plume_big_0_2.json"
+    },
+    "ex10_plume_big_0_3": {
+      "path": "animations/plume_big_0_3.json"
+    },
+    "ex10_plume_big_0_4": {
+      "path": "animations/plume_big_0_4.json"
+    },
+    "ex10_plume_big_1_0": {
+      "path": "animations/plume_big_1_0.json"
+    },
+    "ex10_plume_big_1_1": {
+      "path": "animations/plume_big_1_1.json"
+    },
+    "ex10_plume_big_1_2": {
+      "path": "animations/plume_big_1_2.json"
+    },
+    "ex10_plume_big_1_3": {
+      "path": "animations/plume_big_1_3.json"
+    },
+    "ex10_plume_big_1_4": {
+      "path": "animations/plume_big_1_4.json"
+    },
+    "ex10_plume_big_2_0": {
+      "path": "animations/plume_big_2_0.json"
+    },
+    "ex10_plume_big_2_1": {
+      "path": "animations/plume_big_2_1.json"
+    },
+    "ex10_plume_big_2_2": {
+      "path": "animations/plume_big_2_2.json"
+    },
+    "ex10_plume_big_2_3": {
+      "path": "animations/plume_big_2_3.json"
+    },
+    "ex10_plume_big_2_4": {
+      "path": "animations/plume_big_2_4.json"
+    },
     "ex10_pool": {
       "path": "animations/pool.json"
     },
@@ -176,6 +257,69 @@
     },
     "ex10_river_rock": {
       "path": "animations/river_rock.json"
+    },
+    "ex10_steam_big_0_0": {
+      "path": "animations/steam_big_0_0.json"
+    },
+    "ex10_steam_big_0_1": {
+      "path": "animations/steam_big_0_1.json"
+    },
+    "ex10_steam_big_0_2": {
+      "path": "animations/steam_big_0_2.json"
+    },
+    "ex10_steam_big_1_0": {
+      "path": "animations/steam_big_1_0.json"
+    },
+    "ex10_steam_big_1_1": {
+      "path": "animations/steam_big_1_1.json"
+    },
+    "ex10_steam_big_1_2": {
+      "path": "animations/steam_big_1_2.json"
+    },
+    "ex10_steam_big_2_0": {
+      "path": "animations/steam_big_2_0.json"
+    },
+    "ex10_steam_big_2_1": {
+      "path": "animations/steam_big_2_1.json"
+    },
+    "ex10_steam_big_2_2": {
+      "path": "animations/steam_big_2_2.json"
+    },
+    "ex10_steam_big_3_0": {
+      "path": "animations/steam_big_3_0.json"
+    },
+    "ex10_steam_big_3_1": {
+      "path": "animations/steam_big_3_1.json"
+    },
+    "ex10_steam_big_3_2": {
+      "path": "animations/steam_big_3_2.json"
+    },
+    "ex10_steam_big_4_0": {
+      "path": "animations/steam_big_4_0.json"
+    },
+    "ex10_steam_big_4_1": {
+      "path": "animations/steam_big_4_1.json"
+    },
+    "ex10_steam_big_4_2": {
+      "path": "animations/steam_big_4_2.json"
+    },
+    "ex10_steam_small_big_0_0": {
+      "path": "animations/steam_small_big_0_0.json"
+    },
+    "ex10_steam_small_big_0_1": {
+      "path": "animations/steam_small_big_0_1.json"
+    },
+    "ex10_steam_small_big_1_0": {
+      "path": "animations/steam_small_big_1_0.json"
+    },
+    "ex10_steam_small_big_1_1": {
+      "path": "animations/steam_small_big_1_1.json"
+    },
+    "ex10_steam_small_big_2_0": {
+      "path": "animations/steam_small_big_2_0.json"
+    },
+    "ex10_steam_small_big_2_1": {
+      "path": "animations/steam_small_big_2_1.json"
     },
     "ex10_torch_flicker": {
       "path": "animations/torch_flicker.json"
@@ -677,38 +821,8 @@
     "ex10_black_hole_dust": {
       "path": "prefabs/ex10_black_hole_dust.json"
     },
-    "ex10_fire_3": {
-      "path": "prefabs/ex10_fire_3.json"
-    },
-    "ex10_fire_4": {
-      "path": "prefabs/ex10_fire_4.json"
-    },
-    "ex10_fire_5": {
-      "path": "prefabs/ex10_fire_5.json"
-    },
-    "ex10_fire_6": {
-      "path": "prefabs/ex10_fire_6.json"
-    },
-    "ex10_fire_7": {
-      "path": "prefabs/ex10_fire_7.json"
-    },
     "ex10_fire_drips": {
       "path": "prefabs/ex10_fire_drips.json"
-    },
-    "ex10_fire_trail_3": {
-      "path": "prefabs/ex10_fire_trail_3.json"
-    },
-    "ex10_fire_trail_4": {
-      "path": "prefabs/ex10_fire_trail_4.json"
-    },
-    "ex10_fire_trail_5": {
-      "path": "prefabs/ex10_fire_trail_5.json"
-    },
-    "ex10_fire_trail_6": {
-      "path": "prefabs/ex10_fire_trail_6.json"
-    },
-    "ex10_fire_trail_7": {
-      "path": "prefabs/ex10_fire_trail_7.json"
     },
     "ex10_iron_128x128": {
       "path": "prefabs/ex10_iron_128x128.json"
@@ -766,6 +880,9 @@
     },
     "ex10_platform_3": {
       "path": "prefabs/ex10_platform_3.json"
+    },
+    "ex10_platform_4": {
+      "path": "prefabs/ex10_platform_4.json"
     },
     "ex10_prop_arch_big_0_0_world": {
       "path": "prefabs/ex10_prop_arch_big_0_0_world.json"
@@ -932,6 +1049,24 @@
     "ex10_prop_falls_spread_right_0_world": {
       "path": "prefabs/ex10_prop_falls_spread_right_0_world.json"
     },
+    "ex10_prop_far_boulder_0_back": {
+      "path": "prefabs/ex10_prop_far_boulder_0_back.json"
+    },
+    "ex10_prop_far_boulder_1_back": {
+      "path": "prefabs/ex10_prop_far_boulder_1_back.json"
+    },
+    "ex10_prop_far_lantern_back": {
+      "path": "prefabs/ex10_prop_far_lantern_back.json"
+    },
+    "ex10_prop_far_rubble_big_0_0_back": {
+      "path": "prefabs/ex10_prop_far_rubble_big_0_0_back.json"
+    },
+    "ex10_prop_far_rubble_big_0_1_back": {
+      "path": "prefabs/ex10_prop_far_rubble_big_0_1_back.json"
+    },
+    "ex10_prop_far_trestle_back": {
+      "path": "prefabs/ex10_prop_far_trestle_back.json"
+    },
     "ex10_prop_fence_0_world": {
       "path": "prefabs/ex10_prop_fence_0_world.json"
     },
@@ -1004,6 +1139,78 @@
     "ex10_prop_hanging_moss_world": {
       "path": "prefabs/ex10_prop_hanging_moss_world.json"
     },
+    "ex10_prop_haze_big_0_0_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_0_world.json"
+    },
+    "ex10_prop_haze_big_0_1_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_1_world.json"
+    },
+    "ex10_prop_haze_big_0_2_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_2_world.json"
+    },
+    "ex10_prop_haze_big_0_3_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_3_world.json"
+    },
+    "ex10_prop_haze_big_0_4_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_4_world.json"
+    },
+    "ex10_prop_haze_big_0_5_world": {
+      "path": "prefabs/ex10_prop_haze_big_0_5_world.json"
+    },
+    "ex10_prop_haze_big_1_0_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_0_world.json"
+    },
+    "ex10_prop_haze_big_1_1_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_1_world.json"
+    },
+    "ex10_prop_haze_big_1_2_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_2_world.json"
+    },
+    "ex10_prop_haze_big_1_3_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_3_world.json"
+    },
+    "ex10_prop_haze_big_1_4_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_4_world.json"
+    },
+    "ex10_prop_haze_big_1_5_world": {
+      "path": "prefabs/ex10_prop_haze_big_1_5_world.json"
+    },
+    "ex10_prop_haze_big_2_0_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_0_world.json"
+    },
+    "ex10_prop_haze_big_2_1_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_1_world.json"
+    },
+    "ex10_prop_haze_big_2_2_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_2_world.json"
+    },
+    "ex10_prop_haze_big_2_3_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_3_world.json"
+    },
+    "ex10_prop_haze_big_2_4_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_4_world.json"
+    },
+    "ex10_prop_haze_big_2_5_world": {
+      "path": "prefabs/ex10_prop_haze_big_2_5_world.json"
+    },
+    "ex10_prop_haze_small_big_0_0_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_0_0_world.json"
+    },
+    "ex10_prop_haze_small_big_0_1_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_0_1_world.json"
+    },
+    "ex10_prop_haze_small_big_0_2_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_0_2_world.json"
+    },
+    "ex10_prop_haze_small_big_1_0_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_1_0_world.json"
+    },
+    "ex10_prop_haze_small_big_1_1_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_1_1_world.json"
+    },
+    "ex10_prop_haze_small_big_1_2_world": {
+      "path": "prefabs/ex10_prop_haze_small_big_1_2_world.json"
+    },
     "ex10_prop_headframe_big_0_0_world": {
       "path": "prefabs/ex10_prop_headframe_big_0_0_world.json"
     },
@@ -1021,6 +1228,42 @@
     },
     "ex10_prop_headframe_big_2_1_world": {
       "path": "prefabs/ex10_prop_headframe_big_2_1_world.json"
+    },
+    "ex10_prop_heat_big_0_0_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_0_0_0_world.json"
+    },
+    "ex10_prop_heat_big_0_1_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_0_1_0_world.json"
+    },
+    "ex10_prop_heat_big_0_2_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_0_2_0_world.json"
+    },
+    "ex10_prop_heat_big_1_0_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_1_0_0_world.json"
+    },
+    "ex10_prop_heat_big_1_1_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_1_1_0_world.json"
+    },
+    "ex10_prop_heat_big_1_2_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_1_2_0_world.json"
+    },
+    "ex10_prop_heat_big_2_0_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_2_0_0_world.json"
+    },
+    "ex10_prop_heat_big_2_1_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_2_1_0_world.json"
+    },
+    "ex10_prop_heat_big_2_2_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_2_2_0_world.json"
+    },
+    "ex10_prop_heat_big_3_0_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_3_0_0_world.json"
+    },
+    "ex10_prop_heat_big_3_1_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_3_1_0_world.json"
+    },
+    "ex10_prop_heat_big_3_2_0_world": {
+      "path": "prefabs/ex10_prop_heat_big_3_2_0_world.json"
     },
     "ex10_prop_lantern_world": {
       "path": "prefabs/ex10_prop_lantern_world.json"
@@ -1142,50 +1385,50 @@
     "ex10_prop_pillar_stump_1_world": {
       "path": "prefabs/ex10_prop_pillar_stump_1_world.json"
     },
-    "ex10_prop_plume_big_0_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_0_world.json"
+    "ex10_prop_plume_big_0_0_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_0_0_world.json"
     },
-    "ex10_prop_plume_big_0_1_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_1_world.json"
+    "ex10_prop_plume_big_0_1_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_1_0_world.json"
     },
-    "ex10_prop_plume_big_0_2_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_2_world.json"
+    "ex10_prop_plume_big_0_2_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_2_0_world.json"
     },
-    "ex10_prop_plume_big_0_3_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_3_world.json"
+    "ex10_prop_plume_big_0_3_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_3_0_world.json"
     },
-    "ex10_prop_plume_big_0_4_world": {
-      "path": "prefabs/ex10_prop_plume_big_0_4_world.json"
+    "ex10_prop_plume_big_0_4_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_0_4_0_world.json"
     },
-    "ex10_prop_plume_big_1_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_0_world.json"
+    "ex10_prop_plume_big_1_0_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_1_0_0_world.json"
     },
-    "ex10_prop_plume_big_1_1_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_1_world.json"
+    "ex10_prop_plume_big_1_1_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_1_1_0_world.json"
     },
-    "ex10_prop_plume_big_1_2_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_2_world.json"
+    "ex10_prop_plume_big_1_2_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_1_2_0_world.json"
     },
-    "ex10_prop_plume_big_1_3_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_3_world.json"
+    "ex10_prop_plume_big_1_3_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_1_3_0_world.json"
     },
-    "ex10_prop_plume_big_1_4_world": {
-      "path": "prefabs/ex10_prop_plume_big_1_4_world.json"
+    "ex10_prop_plume_big_1_4_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_1_4_0_world.json"
     },
-    "ex10_prop_plume_big_2_0_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_0_world.json"
+    "ex10_prop_plume_big_2_0_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_2_0_0_world.json"
     },
-    "ex10_prop_plume_big_2_1_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_1_world.json"
+    "ex10_prop_plume_big_2_1_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_2_1_0_world.json"
     },
-    "ex10_prop_plume_big_2_2_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_2_world.json"
+    "ex10_prop_plume_big_2_2_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_2_2_0_world.json"
     },
-    "ex10_prop_plume_big_2_3_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_3_world.json"
+    "ex10_prop_plume_big_2_3_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_2_3_0_world.json"
     },
-    "ex10_prop_plume_big_2_4_world": {
-      "path": "prefabs/ex10_prop_plume_big_2_4_world.json"
+    "ex10_prop_plume_big_2_4_0_world": {
+      "path": "prefabs/ex10_prop_plume_big_2_4_0_world.json"
     },
     "ex10_prop_pool_0_world": {
       "path": "prefabs/ex10_prop_pool_0_world.json"
@@ -1222,6 +1465,9 @@
     },
     "ex10_prop_reeds_1_world": {
       "path": "prefabs/ex10_prop_reeds_1_world.json"
+    },
+    "ex10_prop_reeds_2_world": {
+      "path": "prefabs/ex10_prop_reeds_2_world.json"
     },
     "ex10_prop_reeds_3_world": {
       "path": "prefabs/ex10_prop_reeds_3_world.json"
@@ -1331,23 +1577,68 @@
     "ex10_prop_statue_big_1_0_world": {
       "path": "prefabs/ex10_prop_statue_big_1_0_world.json"
     },
-    "ex10_prop_steam_big_0_0_world": {
-      "path": "prefabs/ex10_prop_steam_big_0_0_world.json"
+    "ex10_prop_steam_big_0_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_0_0_0_world.json"
     },
-    "ex10_prop_steam_big_0_1_world": {
-      "path": "prefabs/ex10_prop_steam_big_0_1_world.json"
+    "ex10_prop_steam_big_0_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_0_1_0_world.json"
     },
-    "ex10_prop_steam_big_1_0_world": {
-      "path": "prefabs/ex10_prop_steam_big_1_0_world.json"
+    "ex10_prop_steam_big_0_2_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_0_2_0_world.json"
     },
-    "ex10_prop_steam_big_1_1_world": {
-      "path": "prefabs/ex10_prop_steam_big_1_1_world.json"
+    "ex10_prop_steam_big_1_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_1_0_0_world.json"
     },
-    "ex10_prop_steam_big_2_0_world": {
-      "path": "prefabs/ex10_prop_steam_big_2_0_world.json"
+    "ex10_prop_steam_big_1_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_1_1_0_world.json"
     },
-    "ex10_prop_steam_big_2_1_world": {
-      "path": "prefabs/ex10_prop_steam_big_2_1_world.json"
+    "ex10_prop_steam_big_1_2_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_1_2_0_world.json"
+    },
+    "ex10_prop_steam_big_2_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_2_0_0_world.json"
+    },
+    "ex10_prop_steam_big_2_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_2_1_0_world.json"
+    },
+    "ex10_prop_steam_big_2_2_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_2_2_0_world.json"
+    },
+    "ex10_prop_steam_big_3_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_3_0_0_world.json"
+    },
+    "ex10_prop_steam_big_3_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_3_1_0_world.json"
+    },
+    "ex10_prop_steam_big_3_2_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_3_2_0_world.json"
+    },
+    "ex10_prop_steam_big_4_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_4_0_0_world.json"
+    },
+    "ex10_prop_steam_big_4_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_4_1_0_world.json"
+    },
+    "ex10_prop_steam_big_4_2_0_world": {
+      "path": "prefabs/ex10_prop_steam_big_4_2_0_world.json"
+    },
+    "ex10_prop_steam_small_big_0_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_0_0_0_world.json"
+    },
+    "ex10_prop_steam_small_big_0_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_0_1_0_world.json"
+    },
+    "ex10_prop_steam_small_big_1_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_1_0_0_world.json"
+    },
+    "ex10_prop_steam_small_big_1_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_1_1_0_world.json"
+    },
+    "ex10_prop_steam_small_big_2_0_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_2_0_0_world.json"
+    },
+    "ex10_prop_steam_small_big_2_1_0_world": {
+      "path": "prefabs/ex10_prop_steam_small_big_2_1_0_world.json"
     },
     "ex10_prop_stump_world": {
       "path": "prefabs/ex10_prop_stump_world.json"
@@ -1451,20 +1742,14 @@
     "ex10_slab_192x23": {
       "path": "prefabs/ex10_slab_192x23.json"
     },
-    "ex10_slab_320x23": {
-      "path": "prefabs/ex10_slab_320x23.json"
-    },
-    "ex10_slab_832x23": {
-      "path": "prefabs/ex10_slab_832x23.json"
-    },
-    "ex10_spikes": {
-      "path": "prefabs/ex10_spikes.json"
+    "ex10_slab_256x23": {
+      "path": "prefabs/ex10_slab_256x23.json"
     },
     "ex10_wood_192x23": {
       "path": "prefabs/ex10_wood_192x23.json"
     },
-    "ex10_wood_2880x23": {
-      "path": "prefabs/ex10_wood_2880x23.json"
+    "ex10_wood_448x23": {
+      "path": "prefabs/ex10_wood_448x23.json"
     },
     "fire_missile": {
       "path": "prefabs/fire_missile.json"
@@ -3152,291 +3437,195 @@
       "path": "sprites/cursor.png"
     },
     "ex10_cut_back_0_0": {
-      "emissive_mask": "sprites/cut_back_0_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_0_0_n.png",
       "path": "sprites/cut_back_0_0.png"
     },
     "ex10_cut_back_0_1": {
-      "emissive_mask": "sprites/cut_back_0_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_0_1_n.png",
       "path": "sprites/cut_back_0_1.png"
     },
     "ex10_cut_back_10_0": {
-      "emissive_mask": "sprites/cut_back_10_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_10_0_n.png",
       "path": "sprites/cut_back_10_0.png"
     },
     "ex10_cut_back_10_1": {
-      "emissive_mask": "sprites/cut_back_10_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_10_1_n.png",
       "path": "sprites/cut_back_10_1.png"
     },
     "ex10_cut_back_11_0": {
-      "emissive_mask": "sprites/cut_back_11_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_11_0_n.png",
       "path": "sprites/cut_back_11_0.png"
     },
     "ex10_cut_back_11_1": {
-      "emissive_mask": "sprites/cut_back_11_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_11_1_n.png",
       "path": "sprites/cut_back_11_1.png"
     },
     "ex10_cut_back_12_0": {
-      "emissive_mask": "sprites/cut_back_12_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_12_0_n.png",
       "path": "sprites/cut_back_12_0.png"
     },
     "ex10_cut_back_12_1": {
-      "emissive_mask": "sprites/cut_back_12_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_12_1_n.png",
       "path": "sprites/cut_back_12_1.png"
     },
     "ex10_cut_back_13_0": {
-      "emissive_mask": "sprites/cut_back_13_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_13_0_n.png",
       "path": "sprites/cut_back_13_0.png"
     },
     "ex10_cut_back_13_1": {
-      "emissive_mask": "sprites/cut_back_13_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_13_1_n.png",
       "path": "sprites/cut_back_13_1.png"
     },
     "ex10_cut_back_14_0": {
-      "emissive_mask": "sprites/cut_back_14_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_14_0_n.png",
       "path": "sprites/cut_back_14_0.png"
     },
     "ex10_cut_back_14_1": {
-      "emissive_mask": "sprites/cut_back_14_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_14_1_n.png",
       "path": "sprites/cut_back_14_1.png"
     },
     "ex10_cut_back_15_0": {
-      "emissive_mask": "sprites/cut_back_15_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_15_0_n.png",
       "path": "sprites/cut_back_15_0.png"
     },
     "ex10_cut_back_15_1": {
-      "emissive_mask": "sprites/cut_back_15_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_15_1_n.png",
       "path": "sprites/cut_back_15_1.png"
     },
     "ex10_cut_back_1_0": {
-      "emissive_mask": "sprites/cut_back_1_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_1_0_n.png",
       "path": "sprites/cut_back_1_0.png"
     },
     "ex10_cut_back_1_1": {
-      "emissive_mask": "sprites/cut_back_1_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_1_1_n.png",
       "path": "sprites/cut_back_1_1.png"
     },
     "ex10_cut_back_2_0": {
-      "emissive_mask": "sprites/cut_back_2_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_2_0_n.png",
       "path": "sprites/cut_back_2_0.png"
     },
     "ex10_cut_back_2_1": {
-      "emissive_mask": "sprites/cut_back_2_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_2_1_n.png",
       "path": "sprites/cut_back_2_1.png"
     },
     "ex10_cut_back_3_0": {
-      "emissive_mask": "sprites/cut_back_3_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_3_0_n.png",
       "path": "sprites/cut_back_3_0.png"
     },
     "ex10_cut_back_3_1": {
-      "emissive_mask": "sprites/cut_back_3_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_3_1_n.png",
       "path": "sprites/cut_back_3_1.png"
     },
     "ex10_cut_back_4_0": {
-      "emissive_mask": "sprites/cut_back_4_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_4_0_n.png",
       "path": "sprites/cut_back_4_0.png"
     },
     "ex10_cut_back_4_1": {
-      "emissive_mask": "sprites/cut_back_4_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_4_1_n.png",
       "path": "sprites/cut_back_4_1.png"
     },
     "ex10_cut_back_5_0": {
-      "emissive_mask": "sprites/cut_back_5_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_5_0_n.png",
       "path": "sprites/cut_back_5_0.png"
     },
     "ex10_cut_back_5_1": {
-      "emissive_mask": "sprites/cut_back_5_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_5_1_n.png",
       "path": "sprites/cut_back_5_1.png"
     },
     "ex10_cut_back_6_0": {
-      "emissive_mask": "sprites/cut_back_6_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_6_0_n.png",
       "path": "sprites/cut_back_6_0.png"
     },
     "ex10_cut_back_6_1": {
-      "emissive_mask": "sprites/cut_back_6_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_6_1_n.png",
       "path": "sprites/cut_back_6_1.png"
     },
     "ex10_cut_back_7_0": {
-      "emissive_mask": "sprites/cut_back_7_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_7_0_n.png",
       "path": "sprites/cut_back_7_0.png"
     },
     "ex10_cut_back_7_1": {
-      "emissive_mask": "sprites/cut_back_7_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_7_1_n.png",
       "path": "sprites/cut_back_7_1.png"
     },
     "ex10_cut_back_8_0": {
-      "emissive_mask": "sprites/cut_back_8_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_8_0_n.png",
       "path": "sprites/cut_back_8_0.png"
     },
     "ex10_cut_back_8_1": {
-      "emissive_mask": "sprites/cut_back_8_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_8_1_n.png",
       "path": "sprites/cut_back_8_1.png"
     },
     "ex10_cut_back_9_0": {
-      "emissive_mask": "sprites/cut_back_9_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_9_0_n.png",
       "path": "sprites/cut_back_9_0.png"
     },
     "ex10_cut_back_9_1": {
-      "emissive_mask": "sprites/cut_back_9_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_9_1_n.png",
       "path": "sprites/cut_back_9_1.png"
     },
     "ex10_cut_back_iron_0_0": {
-      "emissive_mask": "sprites/cut_back_iron_0_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_0_0_n.png",
       "path": "sprites/cut_back_iron_0_0.png"
     },
     "ex10_cut_back_iron_0_1": {
-      "emissive_mask": "sprites/cut_back_iron_0_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_0_1_n.png",
       "path": "sprites/cut_back_iron_0_1.png"
     },
     "ex10_cut_back_iron_10_0": {
-      "emissive_mask": "sprites/cut_back_iron_10_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_10_0_n.png",
       "path": "sprites/cut_back_iron_10_0.png"
     },
     "ex10_cut_back_iron_10_1": {
-      "emissive_mask": "sprites/cut_back_iron_10_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_10_1_n.png",
       "path": "sprites/cut_back_iron_10_1.png"
     },
     "ex10_cut_back_iron_12_0": {
-      "emissive_mask": "sprites/cut_back_iron_12_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_12_0_n.png",
       "path": "sprites/cut_back_iron_12_0.png"
     },
     "ex10_cut_back_iron_12_1": {
-      "emissive_mask": "sprites/cut_back_iron_12_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_12_1_n.png",
       "path": "sprites/cut_back_iron_12_1.png"
     },
     "ex10_cut_back_iron_14_0": {
-      "emissive_mask": "sprites/cut_back_iron_14_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_14_0_n.png",
       "path": "sprites/cut_back_iron_14_0.png"
     },
     "ex10_cut_back_iron_14_1": {
-      "emissive_mask": "sprites/cut_back_iron_14_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_14_1_n.png",
       "path": "sprites/cut_back_iron_14_1.png"
     },
     "ex10_cut_back_iron_2_0": {
-      "emissive_mask": "sprites/cut_back_iron_2_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_2_0_n.png",
       "path": "sprites/cut_back_iron_2_0.png"
     },
     "ex10_cut_back_iron_2_1": {
-      "emissive_mask": "sprites/cut_back_iron_2_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_2_1_n.png",
       "path": "sprites/cut_back_iron_2_1.png"
     },
     "ex10_cut_back_iron_4_0": {
-      "emissive_mask": "sprites/cut_back_iron_4_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_4_0_n.png",
       "path": "sprites/cut_back_iron_4_0.png"
     },
     "ex10_cut_back_iron_4_1": {
-      "emissive_mask": "sprites/cut_back_iron_4_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_4_1_n.png",
       "path": "sprites/cut_back_iron_4_1.png"
     },
     "ex10_cut_back_iron_6_0": {
-      "emissive_mask": "sprites/cut_back_iron_6_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_6_0_n.png",
       "path": "sprites/cut_back_iron_6_0.png"
     },
     "ex10_cut_back_iron_6_1": {
-      "emissive_mask": "sprites/cut_back_iron_6_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_6_1_n.png",
       "path": "sprites/cut_back_iron_6_1.png"
     },
     "ex10_cut_back_iron_8_0": {
-      "emissive_mask": "sprites/cut_back_iron_8_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_8_0_n.png",
       "path": "sprites/cut_back_iron_8_0.png"
     },
     "ex10_cut_back_iron_8_1": {
-      "emissive_mask": "sprites/cut_back_iron_8_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/cut_back_iron_8_1_n.png",
       "path": "sprites/cut_back_iron_8_1.png"
     },
     "ex10_distant_ridges": {
@@ -3639,17 +3828,745 @@
       "filter": "nearest",
       "path": "sprites/far_arcade.png"
     },
+    "ex10_far_boulder_0": {
+      "filter": "nearest",
+      "path": "sprites/far_boulder_0.png"
+    },
+    "ex10_far_boulder_1": {
+      "filter": "nearest",
+      "path": "sprites/far_boulder_1.png"
+    },
     "ex10_far_cliffs": {
       "filter": "nearest",
       "path": "sprites/far_cliffs.png"
+    },
+    "ex10_far_lantern": {
+      "filter": "nearest",
+      "path": "sprites/far_lantern.png"
     },
     "ex10_far_mine": {
       "filter": "nearest",
       "path": "sprites/far_mine.png"
     },
+    "ex10_far_mist_0_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_0.png"
+    },
+    "ex10_far_mist_0_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_1.png"
+    },
+    "ex10_far_mist_0_big_0_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_10.png"
+    },
+    "ex10_far_mist_0_big_0_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_11.png"
+    },
+    "ex10_far_mist_0_big_0_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_12.png"
+    },
+    "ex10_far_mist_0_big_0_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_13.png"
+    },
+    "ex10_far_mist_0_big_0_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_14.png"
+    },
+    "ex10_far_mist_0_big_0_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_15.png"
+    },
+    "ex10_far_mist_0_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_2.png"
+    },
+    "ex10_far_mist_0_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_3.png"
+    },
+    "ex10_far_mist_0_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_4.png"
+    },
+    "ex10_far_mist_0_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_5.png"
+    },
+    "ex10_far_mist_0_big_0_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_6.png"
+    },
+    "ex10_far_mist_0_big_0_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_7.png"
+    },
+    "ex10_far_mist_0_big_0_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_8.png"
+    },
+    "ex10_far_mist_0_big_0_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_0_9.png"
+    },
+    "ex10_far_mist_0_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_0.png"
+    },
+    "ex10_far_mist_0_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_1.png"
+    },
+    "ex10_far_mist_0_big_1_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_10.png"
+    },
+    "ex10_far_mist_0_big_1_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_11.png"
+    },
+    "ex10_far_mist_0_big_1_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_12.png"
+    },
+    "ex10_far_mist_0_big_1_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_13.png"
+    },
+    "ex10_far_mist_0_big_1_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_14.png"
+    },
+    "ex10_far_mist_0_big_1_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_15.png"
+    },
+    "ex10_far_mist_0_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_2.png"
+    },
+    "ex10_far_mist_0_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_3.png"
+    },
+    "ex10_far_mist_0_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_4.png"
+    },
+    "ex10_far_mist_0_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_5.png"
+    },
+    "ex10_far_mist_0_big_1_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_6.png"
+    },
+    "ex10_far_mist_0_big_1_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_7.png"
+    },
+    "ex10_far_mist_0_big_1_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_8.png"
+    },
+    "ex10_far_mist_0_big_1_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_1_9.png"
+    },
+    "ex10_far_mist_0_big_2_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_0.png"
+    },
+    "ex10_far_mist_0_big_2_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_1.png"
+    },
+    "ex10_far_mist_0_big_2_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_10.png"
+    },
+    "ex10_far_mist_0_big_2_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_11.png"
+    },
+    "ex10_far_mist_0_big_2_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_12.png"
+    },
+    "ex10_far_mist_0_big_2_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_13.png"
+    },
+    "ex10_far_mist_0_big_2_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_14.png"
+    },
+    "ex10_far_mist_0_big_2_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_15.png"
+    },
+    "ex10_far_mist_0_big_2_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_2.png"
+    },
+    "ex10_far_mist_0_big_2_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_3.png"
+    },
+    "ex10_far_mist_0_big_2_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_4.png"
+    },
+    "ex10_far_mist_0_big_2_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_5.png"
+    },
+    "ex10_far_mist_0_big_2_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_6.png"
+    },
+    "ex10_far_mist_0_big_2_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_7.png"
+    },
+    "ex10_far_mist_0_big_2_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_8.png"
+    },
+    "ex10_far_mist_0_big_2_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_0_big_2_9.png"
+    },
+    "ex10_far_mist_1_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_0.png"
+    },
+    "ex10_far_mist_1_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_1.png"
+    },
+    "ex10_far_mist_1_big_0_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_10.png"
+    },
+    "ex10_far_mist_1_big_0_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_11.png"
+    },
+    "ex10_far_mist_1_big_0_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_12.png"
+    },
+    "ex10_far_mist_1_big_0_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_13.png"
+    },
+    "ex10_far_mist_1_big_0_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_14.png"
+    },
+    "ex10_far_mist_1_big_0_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_15.png"
+    },
+    "ex10_far_mist_1_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_2.png"
+    },
+    "ex10_far_mist_1_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_3.png"
+    },
+    "ex10_far_mist_1_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_4.png"
+    },
+    "ex10_far_mist_1_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_5.png"
+    },
+    "ex10_far_mist_1_big_0_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_6.png"
+    },
+    "ex10_far_mist_1_big_0_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_7.png"
+    },
+    "ex10_far_mist_1_big_0_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_8.png"
+    },
+    "ex10_far_mist_1_big_0_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_0_9.png"
+    },
+    "ex10_far_mist_1_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_0.png"
+    },
+    "ex10_far_mist_1_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_1.png"
+    },
+    "ex10_far_mist_1_big_1_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_10.png"
+    },
+    "ex10_far_mist_1_big_1_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_11.png"
+    },
+    "ex10_far_mist_1_big_1_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_12.png"
+    },
+    "ex10_far_mist_1_big_1_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_13.png"
+    },
+    "ex10_far_mist_1_big_1_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_14.png"
+    },
+    "ex10_far_mist_1_big_1_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_15.png"
+    },
+    "ex10_far_mist_1_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_2.png"
+    },
+    "ex10_far_mist_1_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_3.png"
+    },
+    "ex10_far_mist_1_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_4.png"
+    },
+    "ex10_far_mist_1_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_5.png"
+    },
+    "ex10_far_mist_1_big_1_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_6.png"
+    },
+    "ex10_far_mist_1_big_1_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_7.png"
+    },
+    "ex10_far_mist_1_big_1_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_8.png"
+    },
+    "ex10_far_mist_1_big_1_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_1_big_1_9.png"
+    },
+    "ex10_far_mist_2_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_0.png"
+    },
+    "ex10_far_mist_2_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_1.png"
+    },
+    "ex10_far_mist_2_big_0_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_10.png"
+    },
+    "ex10_far_mist_2_big_0_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_11.png"
+    },
+    "ex10_far_mist_2_big_0_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_12.png"
+    },
+    "ex10_far_mist_2_big_0_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_13.png"
+    },
+    "ex10_far_mist_2_big_0_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_14.png"
+    },
+    "ex10_far_mist_2_big_0_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_15.png"
+    },
+    "ex10_far_mist_2_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_2.png"
+    },
+    "ex10_far_mist_2_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_3.png"
+    },
+    "ex10_far_mist_2_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_4.png"
+    },
+    "ex10_far_mist_2_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_5.png"
+    },
+    "ex10_far_mist_2_big_0_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_6.png"
+    },
+    "ex10_far_mist_2_big_0_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_7.png"
+    },
+    "ex10_far_mist_2_big_0_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_8.png"
+    },
+    "ex10_far_mist_2_big_0_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_0_9.png"
+    },
+    "ex10_far_mist_2_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_0.png"
+    },
+    "ex10_far_mist_2_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_1.png"
+    },
+    "ex10_far_mist_2_big_1_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_10.png"
+    },
+    "ex10_far_mist_2_big_1_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_11.png"
+    },
+    "ex10_far_mist_2_big_1_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_12.png"
+    },
+    "ex10_far_mist_2_big_1_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_13.png"
+    },
+    "ex10_far_mist_2_big_1_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_14.png"
+    },
+    "ex10_far_mist_2_big_1_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_15.png"
+    },
+    "ex10_far_mist_2_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_2.png"
+    },
+    "ex10_far_mist_2_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_3.png"
+    },
+    "ex10_far_mist_2_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_4.png"
+    },
+    "ex10_far_mist_2_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_5.png"
+    },
+    "ex10_far_mist_2_big_1_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_6.png"
+    },
+    "ex10_far_mist_2_big_1_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_7.png"
+    },
+    "ex10_far_mist_2_big_1_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_8.png"
+    },
+    "ex10_far_mist_2_big_1_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_2_big_1_9.png"
+    },
+    "ex10_far_mist_3_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_0.png"
+    },
+    "ex10_far_mist_3_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_1.png"
+    },
+    "ex10_far_mist_3_big_0_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_10.png"
+    },
+    "ex10_far_mist_3_big_0_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_11.png"
+    },
+    "ex10_far_mist_3_big_0_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_12.png"
+    },
+    "ex10_far_mist_3_big_0_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_13.png"
+    },
+    "ex10_far_mist_3_big_0_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_14.png"
+    },
+    "ex10_far_mist_3_big_0_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_15.png"
+    },
+    "ex10_far_mist_3_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_2.png"
+    },
+    "ex10_far_mist_3_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_3.png"
+    },
+    "ex10_far_mist_3_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_4.png"
+    },
+    "ex10_far_mist_3_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_5.png"
+    },
+    "ex10_far_mist_3_big_0_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_6.png"
+    },
+    "ex10_far_mist_3_big_0_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_7.png"
+    },
+    "ex10_far_mist_3_big_0_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_8.png"
+    },
+    "ex10_far_mist_3_big_0_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_0_9.png"
+    },
+    "ex10_far_mist_3_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_0.png"
+    },
+    "ex10_far_mist_3_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_1.png"
+    },
+    "ex10_far_mist_3_big_1_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_10.png"
+    },
+    "ex10_far_mist_3_big_1_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_11.png"
+    },
+    "ex10_far_mist_3_big_1_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_12.png"
+    },
+    "ex10_far_mist_3_big_1_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_13.png"
+    },
+    "ex10_far_mist_3_big_1_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_14.png"
+    },
+    "ex10_far_mist_3_big_1_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_15.png"
+    },
+    "ex10_far_mist_3_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_2.png"
+    },
+    "ex10_far_mist_3_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_3.png"
+    },
+    "ex10_far_mist_3_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_4.png"
+    },
+    "ex10_far_mist_3_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_5.png"
+    },
+    "ex10_far_mist_3_big_1_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_6.png"
+    },
+    "ex10_far_mist_3_big_1_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_7.png"
+    },
+    "ex10_far_mist_3_big_1_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_8.png"
+    },
+    "ex10_far_mist_3_big_1_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_3_big_1_9.png"
+    },
+    "ex10_far_mist_4_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_0.png"
+    },
+    "ex10_far_mist_4_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_1.png"
+    },
+    "ex10_far_mist_4_big_0_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_10.png"
+    },
+    "ex10_far_mist_4_big_0_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_11.png"
+    },
+    "ex10_far_mist_4_big_0_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_12.png"
+    },
+    "ex10_far_mist_4_big_0_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_13.png"
+    },
+    "ex10_far_mist_4_big_0_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_14.png"
+    },
+    "ex10_far_mist_4_big_0_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_15.png"
+    },
+    "ex10_far_mist_4_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_2.png"
+    },
+    "ex10_far_mist_4_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_3.png"
+    },
+    "ex10_far_mist_4_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_4.png"
+    },
+    "ex10_far_mist_4_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_5.png"
+    },
+    "ex10_far_mist_4_big_0_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_6.png"
+    },
+    "ex10_far_mist_4_big_0_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_7.png"
+    },
+    "ex10_far_mist_4_big_0_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_8.png"
+    },
+    "ex10_far_mist_4_big_0_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_0_9.png"
+    },
+    "ex10_far_mist_4_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_0.png"
+    },
+    "ex10_far_mist_4_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_1.png"
+    },
+    "ex10_far_mist_4_big_1_10": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_10.png"
+    },
+    "ex10_far_mist_4_big_1_11": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_11.png"
+    },
+    "ex10_far_mist_4_big_1_12": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_12.png"
+    },
+    "ex10_far_mist_4_big_1_13": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_13.png"
+    },
+    "ex10_far_mist_4_big_1_14": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_14.png"
+    },
+    "ex10_far_mist_4_big_1_15": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_15.png"
+    },
+    "ex10_far_mist_4_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_2.png"
+    },
+    "ex10_far_mist_4_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_3.png"
+    },
+    "ex10_far_mist_4_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_4.png"
+    },
+    "ex10_far_mist_4_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_5.png"
+    },
+    "ex10_far_mist_4_big_1_6": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_6.png"
+    },
+    "ex10_far_mist_4_big_1_7": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_7.png"
+    },
+    "ex10_far_mist_4_big_1_8": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_8.png"
+    },
+    "ex10_far_mist_4_big_1_9": {
+      "filter": "nearest",
+      "path": "sprites/far_mist_4_big_1_9.png"
+    },
+    "ex10_far_rubble_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/far_rubble_big_0_0.png"
+    },
+    "ex10_far_rubble_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/far_rubble_big_0_1.png"
+    },
     "ex10_far_tower": {
       "filter": "nearest",
       "path": "sprites/far_tower.png"
+    },
+    "ex10_far_trestle": {
+      "filter": "nearest",
+      "path": "sprites/far_trestle.png"
     },
     "ex10_far_valley": {
       "filter": "nearest",
@@ -4037,6 +4954,102 @@
       "normal_map": "sprites/hanging_moss_n.png",
       "path": "sprites/hanging_moss.png"
     },
+    "ex10_haze_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_0.png"
+    },
+    "ex10_haze_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_1.png"
+    },
+    "ex10_haze_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_2.png"
+    },
+    "ex10_haze_big_0_3": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_3.png"
+    },
+    "ex10_haze_big_0_4": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_4.png"
+    },
+    "ex10_haze_big_0_5": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_0_5.png"
+    },
+    "ex10_haze_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_0.png"
+    },
+    "ex10_haze_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_1.png"
+    },
+    "ex10_haze_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_2.png"
+    },
+    "ex10_haze_big_1_3": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_3.png"
+    },
+    "ex10_haze_big_1_4": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_4.png"
+    },
+    "ex10_haze_big_1_5": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_1_5.png"
+    },
+    "ex10_haze_big_2_0": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_0.png"
+    },
+    "ex10_haze_big_2_1": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_1.png"
+    },
+    "ex10_haze_big_2_2": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_2.png"
+    },
+    "ex10_haze_big_2_3": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_3.png"
+    },
+    "ex10_haze_big_2_4": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_4.png"
+    },
+    "ex10_haze_big_2_5": {
+      "filter": "nearest",
+      "path": "sprites/haze_big_2_5.png"
+    },
+    "ex10_haze_small_big_0_0": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_0_0.png"
+    },
+    "ex10_haze_small_big_0_1": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_0_1.png"
+    },
+    "ex10_haze_small_big_0_2": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_0_2.png"
+    },
+    "ex10_haze_small_big_1_0": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_1_0.png"
+    },
+    "ex10_haze_small_big_1_1": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_1_1.png"
+    },
+    "ex10_haze_small_big_1_2": {
+      "filter": "nearest",
+      "path": "sprites/haze_small_big_1_2.png"
+    },
     "ex10_headframe_big_0_0": {
       "emissive_mask": "sprites/headframe_big_0_0_e.png",
       "filter": "nearest",
@@ -4084,6 +5097,294 @@
     "ex10_heart_full": {
       "filter": "nearest",
       "path": "sprites/heart_full.png"
+    },
+    "ex10_heat_big_0_0_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_0.png"
+    },
+    "ex10_heat_big_0_0_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_1.png"
+    },
+    "ex10_heat_big_0_0_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_2.png"
+    },
+    "ex10_heat_big_0_0_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_3.png"
+    },
+    "ex10_heat_big_0_0_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_4.png"
+    },
+    "ex10_heat_big_0_0_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_0_5.png"
+    },
+    "ex10_heat_big_0_1_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_0.png"
+    },
+    "ex10_heat_big_0_1_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_1.png"
+    },
+    "ex10_heat_big_0_1_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_2.png"
+    },
+    "ex10_heat_big_0_1_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_3.png"
+    },
+    "ex10_heat_big_0_1_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_4.png"
+    },
+    "ex10_heat_big_0_1_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_1_5.png"
+    },
+    "ex10_heat_big_0_2_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_0.png"
+    },
+    "ex10_heat_big_0_2_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_1.png"
+    },
+    "ex10_heat_big_0_2_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_2.png"
+    },
+    "ex10_heat_big_0_2_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_3.png"
+    },
+    "ex10_heat_big_0_2_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_4.png"
+    },
+    "ex10_heat_big_0_2_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_0_2_5.png"
+    },
+    "ex10_heat_big_1_0_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_0.png"
+    },
+    "ex10_heat_big_1_0_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_1.png"
+    },
+    "ex10_heat_big_1_0_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_2.png"
+    },
+    "ex10_heat_big_1_0_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_3.png"
+    },
+    "ex10_heat_big_1_0_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_4.png"
+    },
+    "ex10_heat_big_1_0_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_0_5.png"
+    },
+    "ex10_heat_big_1_1_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_0.png"
+    },
+    "ex10_heat_big_1_1_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_1.png"
+    },
+    "ex10_heat_big_1_1_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_2.png"
+    },
+    "ex10_heat_big_1_1_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_3.png"
+    },
+    "ex10_heat_big_1_1_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_4.png"
+    },
+    "ex10_heat_big_1_1_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_1_5.png"
+    },
+    "ex10_heat_big_1_2_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_0.png"
+    },
+    "ex10_heat_big_1_2_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_1.png"
+    },
+    "ex10_heat_big_1_2_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_2.png"
+    },
+    "ex10_heat_big_1_2_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_3.png"
+    },
+    "ex10_heat_big_1_2_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_4.png"
+    },
+    "ex10_heat_big_1_2_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_1_2_5.png"
+    },
+    "ex10_heat_big_2_0_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_0.png"
+    },
+    "ex10_heat_big_2_0_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_1.png"
+    },
+    "ex10_heat_big_2_0_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_2.png"
+    },
+    "ex10_heat_big_2_0_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_3.png"
+    },
+    "ex10_heat_big_2_0_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_4.png"
+    },
+    "ex10_heat_big_2_0_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_0_5.png"
+    },
+    "ex10_heat_big_2_1_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_0.png"
+    },
+    "ex10_heat_big_2_1_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_1.png"
+    },
+    "ex10_heat_big_2_1_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_2.png"
+    },
+    "ex10_heat_big_2_1_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_3.png"
+    },
+    "ex10_heat_big_2_1_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_4.png"
+    },
+    "ex10_heat_big_2_1_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_1_5.png"
+    },
+    "ex10_heat_big_2_2_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_0.png"
+    },
+    "ex10_heat_big_2_2_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_1.png"
+    },
+    "ex10_heat_big_2_2_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_2.png"
+    },
+    "ex10_heat_big_2_2_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_3.png"
+    },
+    "ex10_heat_big_2_2_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_4.png"
+    },
+    "ex10_heat_big_2_2_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_2_2_5.png"
+    },
+    "ex10_heat_big_3_0_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_0.png"
+    },
+    "ex10_heat_big_3_0_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_1.png"
+    },
+    "ex10_heat_big_3_0_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_2.png"
+    },
+    "ex10_heat_big_3_0_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_3.png"
+    },
+    "ex10_heat_big_3_0_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_4.png"
+    },
+    "ex10_heat_big_3_0_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_0_5.png"
+    },
+    "ex10_heat_big_3_1_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_0.png"
+    },
+    "ex10_heat_big_3_1_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_1.png"
+    },
+    "ex10_heat_big_3_1_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_2.png"
+    },
+    "ex10_heat_big_3_1_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_3.png"
+    },
+    "ex10_heat_big_3_1_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_4.png"
+    },
+    "ex10_heat_big_3_1_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_1_5.png"
+    },
+    "ex10_heat_big_3_2_0": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_0.png"
+    },
+    "ex10_heat_big_3_2_1": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_1.png"
+    },
+    "ex10_heat_big_3_2_2": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_2.png"
+    },
+    "ex10_heat_big_3_2_3": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_3.png"
+    },
+    "ex10_heat_big_3_2_4": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_4.png"
+    },
+    "ex10_heat_big_3_2_5": {
+      "filter": "nearest",
+      "path": "sprites/heat_big_3_2_5.png"
     },
     "ex10_ice_chip": {
       "filter": "nearest",
@@ -4613,6 +5914,12 @@
       "normal_map": "sprites/lift_deck_3_n.png",
       "path": "sprites/lift_deck_3.png"
     },
+    "ex10_lift_deck_4": {
+      "emissive_mask": "sprites/lift_deck_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/lift_deck_4_n.png",
+      "path": "sprites/lift_deck_4.png"
+    },
     "ex10_lily_pads_big_0_0": {
       "emissive_mask": "sprites/lily_pads_big_0_0_e.png",
       "filter": "nearest",
@@ -5028,14 +6335,6 @@
     "ex10_mist_0": {
       "filter": "nearest",
       "path": "sprites/mist_0.png"
-    },
-    "ex10_mist_1": {
-      "filter": "nearest",
-      "path": "sprites/mist_1.png"
-    },
-    "ex10_mist_2": {
-      "filter": "nearest",
-      "path": "sprites/mist_2.png"
     },
     "ex10_moon": {
       "filter": "nearest",
@@ -6455,65 +7754,365 @@
       "normal_map": "sprites/player_walk_9_left_n.png",
       "path": "sprites/player_walk_9_left.png"
     },
-    "ex10_plume_big_0_0": {
+    "ex10_plume_big_0_0_0": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_0.png"
+      "path": "sprites/plume_big_0_0_0.png"
     },
-    "ex10_plume_big_0_1": {
+    "ex10_plume_big_0_0_1": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_1.png"
+      "path": "sprites/plume_big_0_0_1.png"
     },
-    "ex10_plume_big_0_2": {
+    "ex10_plume_big_0_0_2": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_2.png"
+      "path": "sprites/plume_big_0_0_2.png"
     },
-    "ex10_plume_big_0_3": {
+    "ex10_plume_big_0_0_3": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_3.png"
+      "path": "sprites/plume_big_0_0_3.png"
     },
-    "ex10_plume_big_0_4": {
+    "ex10_plume_big_0_0_4": {
       "filter": "nearest",
-      "path": "sprites/plume_big_0_4.png"
+      "path": "sprites/plume_big_0_0_4.png"
     },
-    "ex10_plume_big_1_0": {
+    "ex10_plume_big_0_0_5": {
       "filter": "nearest",
-      "path": "sprites/plume_big_1_0.png"
+      "path": "sprites/plume_big_0_0_5.png"
     },
-    "ex10_plume_big_1_1": {
+    "ex10_plume_big_0_1_0": {
       "filter": "nearest",
-      "path": "sprites/plume_big_1_1.png"
+      "path": "sprites/plume_big_0_1_0.png"
     },
-    "ex10_plume_big_1_2": {
+    "ex10_plume_big_0_1_1": {
       "filter": "nearest",
-      "path": "sprites/plume_big_1_2.png"
+      "path": "sprites/plume_big_0_1_1.png"
     },
-    "ex10_plume_big_1_3": {
+    "ex10_plume_big_0_1_2": {
       "filter": "nearest",
-      "path": "sprites/plume_big_1_3.png"
+      "path": "sprites/plume_big_0_1_2.png"
     },
-    "ex10_plume_big_1_4": {
+    "ex10_plume_big_0_1_3": {
       "filter": "nearest",
-      "path": "sprites/plume_big_1_4.png"
+      "path": "sprites/plume_big_0_1_3.png"
     },
-    "ex10_plume_big_2_0": {
+    "ex10_plume_big_0_1_4": {
       "filter": "nearest",
-      "path": "sprites/plume_big_2_0.png"
+      "path": "sprites/plume_big_0_1_4.png"
     },
-    "ex10_plume_big_2_1": {
+    "ex10_plume_big_0_1_5": {
       "filter": "nearest",
-      "path": "sprites/plume_big_2_1.png"
+      "path": "sprites/plume_big_0_1_5.png"
     },
-    "ex10_plume_big_2_2": {
+    "ex10_plume_big_0_2_0": {
       "filter": "nearest",
-      "path": "sprites/plume_big_2_2.png"
+      "path": "sprites/plume_big_0_2_0.png"
     },
-    "ex10_plume_big_2_3": {
+    "ex10_plume_big_0_2_1": {
       "filter": "nearest",
-      "path": "sprites/plume_big_2_3.png"
+      "path": "sprites/plume_big_0_2_1.png"
     },
-    "ex10_plume_big_2_4": {
+    "ex10_plume_big_0_2_2": {
       "filter": "nearest",
-      "path": "sprites/plume_big_2_4.png"
+      "path": "sprites/plume_big_0_2_2.png"
+    },
+    "ex10_plume_big_0_2_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_2_3.png"
+    },
+    "ex10_plume_big_0_2_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_2_4.png"
+    },
+    "ex10_plume_big_0_2_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_2_5.png"
+    },
+    "ex10_plume_big_0_3_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_0.png"
+    },
+    "ex10_plume_big_0_3_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_1.png"
+    },
+    "ex10_plume_big_0_3_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_2.png"
+    },
+    "ex10_plume_big_0_3_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_3.png"
+    },
+    "ex10_plume_big_0_3_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_4.png"
+    },
+    "ex10_plume_big_0_3_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_3_5.png"
+    },
+    "ex10_plume_big_0_4_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_0.png"
+    },
+    "ex10_plume_big_0_4_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_1.png"
+    },
+    "ex10_plume_big_0_4_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_2.png"
+    },
+    "ex10_plume_big_0_4_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_3.png"
+    },
+    "ex10_plume_big_0_4_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_4.png"
+    },
+    "ex10_plume_big_0_4_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_0_4_5.png"
+    },
+    "ex10_plume_big_1_0_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_0.png"
+    },
+    "ex10_plume_big_1_0_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_1.png"
+    },
+    "ex10_plume_big_1_0_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_2.png"
+    },
+    "ex10_plume_big_1_0_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_3.png"
+    },
+    "ex10_plume_big_1_0_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_4.png"
+    },
+    "ex10_plume_big_1_0_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_0_5.png"
+    },
+    "ex10_plume_big_1_1_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_0.png"
+    },
+    "ex10_plume_big_1_1_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_1.png"
+    },
+    "ex10_plume_big_1_1_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_2.png"
+    },
+    "ex10_plume_big_1_1_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_3.png"
+    },
+    "ex10_plume_big_1_1_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_4.png"
+    },
+    "ex10_plume_big_1_1_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_1_5.png"
+    },
+    "ex10_plume_big_1_2_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_0.png"
+    },
+    "ex10_plume_big_1_2_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_1.png"
+    },
+    "ex10_plume_big_1_2_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_2.png"
+    },
+    "ex10_plume_big_1_2_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_3.png"
+    },
+    "ex10_plume_big_1_2_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_4.png"
+    },
+    "ex10_plume_big_1_2_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_2_5.png"
+    },
+    "ex10_plume_big_1_3_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_0.png"
+    },
+    "ex10_plume_big_1_3_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_1.png"
+    },
+    "ex10_plume_big_1_3_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_2.png"
+    },
+    "ex10_plume_big_1_3_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_3.png"
+    },
+    "ex10_plume_big_1_3_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_4.png"
+    },
+    "ex10_plume_big_1_3_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_3_5.png"
+    },
+    "ex10_plume_big_1_4_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_0.png"
+    },
+    "ex10_plume_big_1_4_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_1.png"
+    },
+    "ex10_plume_big_1_4_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_2.png"
+    },
+    "ex10_plume_big_1_4_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_3.png"
+    },
+    "ex10_plume_big_1_4_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_4.png"
+    },
+    "ex10_plume_big_1_4_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_1_4_5.png"
+    },
+    "ex10_plume_big_2_0_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_0.png"
+    },
+    "ex10_plume_big_2_0_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_1.png"
+    },
+    "ex10_plume_big_2_0_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_2.png"
+    },
+    "ex10_plume_big_2_0_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_3.png"
+    },
+    "ex10_plume_big_2_0_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_4.png"
+    },
+    "ex10_plume_big_2_0_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_0_5.png"
+    },
+    "ex10_plume_big_2_1_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_0.png"
+    },
+    "ex10_plume_big_2_1_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_1.png"
+    },
+    "ex10_plume_big_2_1_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_2.png"
+    },
+    "ex10_plume_big_2_1_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_3.png"
+    },
+    "ex10_plume_big_2_1_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_4.png"
+    },
+    "ex10_plume_big_2_1_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_1_5.png"
+    },
+    "ex10_plume_big_2_2_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_0.png"
+    },
+    "ex10_plume_big_2_2_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_1.png"
+    },
+    "ex10_plume_big_2_2_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_2.png"
+    },
+    "ex10_plume_big_2_2_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_3.png"
+    },
+    "ex10_plume_big_2_2_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_4.png"
+    },
+    "ex10_plume_big_2_2_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_2_5.png"
+    },
+    "ex10_plume_big_2_3_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_0.png"
+    },
+    "ex10_plume_big_2_3_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_1.png"
+    },
+    "ex10_plume_big_2_3_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_2.png"
+    },
+    "ex10_plume_big_2_3_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_3.png"
+    },
+    "ex10_plume_big_2_3_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_4.png"
+    },
+    "ex10_plume_big_2_3_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_3_5.png"
+    },
+    "ex10_plume_big_2_4_0": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_0.png"
+    },
+    "ex10_plume_big_2_4_1": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_1.png"
+    },
+    "ex10_plume_big_2_4_2": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_2.png"
+    },
+    "ex10_plume_big_2_4_3": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_3.png"
+    },
+    "ex10_plume_big_2_4_4": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_4.png"
+    },
+    "ex10_plume_big_2_4_5": {
+      "filter": "nearest",
+      "path": "sprites/plume_big_2_4_5.png"
     },
     "ex10_pool_0": {
       "emissive_mask": "sprites/pool_0_e.png",
@@ -6736,6 +8335,18 @@
       "filter": "nearest",
       "normal_map": "sprites/river_7_n.png",
       "path": "sprites/river_7.png"
+    },
+    "ex10_river_dark_1": {
+      "emissive_mask": "sprites/river_dark_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/river_dark_1_n.png",
+      "path": "sprites/river_dark_1.png"
+    },
+    "ex10_river_dark_2": {
+      "emissive_mask": "sprites/river_dark_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/river_dark_2_n.png",
+      "path": "sprites/river_dark_2.png"
     },
     "ex10_river_deep_0": {
       "emissive_mask": "sprites/river_deep_0_e.png",
@@ -7227,29 +8838,509 @@
       "filter": "nearest",
       "path": "sprites/status_ice_wisp.png"
     },
-    "ex10_steam_big_0_0": {
+    "ex10_steam_big_0_0_0": {
       "filter": "nearest",
-      "path": "sprites/steam_big_0_0.png"
+      "path": "sprites/steam_big_0_0_0.png"
     },
-    "ex10_steam_big_0_1": {
+    "ex10_steam_big_0_0_1": {
       "filter": "nearest",
-      "path": "sprites/steam_big_0_1.png"
+      "path": "sprites/steam_big_0_0_1.png"
     },
-    "ex10_steam_big_1_0": {
+    "ex10_steam_big_0_0_2": {
       "filter": "nearest",
-      "path": "sprites/steam_big_1_0.png"
+      "path": "sprites/steam_big_0_0_2.png"
     },
-    "ex10_steam_big_1_1": {
+    "ex10_steam_big_0_0_3": {
       "filter": "nearest",
-      "path": "sprites/steam_big_1_1.png"
+      "path": "sprites/steam_big_0_0_3.png"
     },
-    "ex10_steam_big_2_0": {
+    "ex10_steam_big_0_0_4": {
       "filter": "nearest",
-      "path": "sprites/steam_big_2_0.png"
+      "path": "sprites/steam_big_0_0_4.png"
     },
-    "ex10_steam_big_2_1": {
+    "ex10_steam_big_0_0_5": {
       "filter": "nearest",
-      "path": "sprites/steam_big_2_1.png"
+      "path": "sprites/steam_big_0_0_5.png"
+    },
+    "ex10_steam_big_0_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_0.png"
+    },
+    "ex10_steam_big_0_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_1.png"
+    },
+    "ex10_steam_big_0_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_2.png"
+    },
+    "ex10_steam_big_0_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_3.png"
+    },
+    "ex10_steam_big_0_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_4.png"
+    },
+    "ex10_steam_big_0_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_1_5.png"
+    },
+    "ex10_steam_big_0_2_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_0.png"
+    },
+    "ex10_steam_big_0_2_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_1.png"
+    },
+    "ex10_steam_big_0_2_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_2.png"
+    },
+    "ex10_steam_big_0_2_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_3.png"
+    },
+    "ex10_steam_big_0_2_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_4.png"
+    },
+    "ex10_steam_big_0_2_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_0_2_5.png"
+    },
+    "ex10_steam_big_1_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_0.png"
+    },
+    "ex10_steam_big_1_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_1.png"
+    },
+    "ex10_steam_big_1_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_2.png"
+    },
+    "ex10_steam_big_1_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_3.png"
+    },
+    "ex10_steam_big_1_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_4.png"
+    },
+    "ex10_steam_big_1_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_0_5.png"
+    },
+    "ex10_steam_big_1_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_0.png"
+    },
+    "ex10_steam_big_1_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_1.png"
+    },
+    "ex10_steam_big_1_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_2.png"
+    },
+    "ex10_steam_big_1_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_3.png"
+    },
+    "ex10_steam_big_1_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_4.png"
+    },
+    "ex10_steam_big_1_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_1_5.png"
+    },
+    "ex10_steam_big_1_2_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_0.png"
+    },
+    "ex10_steam_big_1_2_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_1.png"
+    },
+    "ex10_steam_big_1_2_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_2.png"
+    },
+    "ex10_steam_big_1_2_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_3.png"
+    },
+    "ex10_steam_big_1_2_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_4.png"
+    },
+    "ex10_steam_big_1_2_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_1_2_5.png"
+    },
+    "ex10_steam_big_2_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_0.png"
+    },
+    "ex10_steam_big_2_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_1.png"
+    },
+    "ex10_steam_big_2_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_2.png"
+    },
+    "ex10_steam_big_2_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_3.png"
+    },
+    "ex10_steam_big_2_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_4.png"
+    },
+    "ex10_steam_big_2_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_0_5.png"
+    },
+    "ex10_steam_big_2_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_0.png"
+    },
+    "ex10_steam_big_2_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_1.png"
+    },
+    "ex10_steam_big_2_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_2.png"
+    },
+    "ex10_steam_big_2_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_3.png"
+    },
+    "ex10_steam_big_2_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_4.png"
+    },
+    "ex10_steam_big_2_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_1_5.png"
+    },
+    "ex10_steam_big_2_2_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_0.png"
+    },
+    "ex10_steam_big_2_2_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_1.png"
+    },
+    "ex10_steam_big_2_2_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_2.png"
+    },
+    "ex10_steam_big_2_2_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_3.png"
+    },
+    "ex10_steam_big_2_2_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_4.png"
+    },
+    "ex10_steam_big_2_2_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_2_2_5.png"
+    },
+    "ex10_steam_big_3_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_0.png"
+    },
+    "ex10_steam_big_3_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_1.png"
+    },
+    "ex10_steam_big_3_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_2.png"
+    },
+    "ex10_steam_big_3_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_3.png"
+    },
+    "ex10_steam_big_3_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_4.png"
+    },
+    "ex10_steam_big_3_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_0_5.png"
+    },
+    "ex10_steam_big_3_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_0.png"
+    },
+    "ex10_steam_big_3_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_1.png"
+    },
+    "ex10_steam_big_3_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_2.png"
+    },
+    "ex10_steam_big_3_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_3.png"
+    },
+    "ex10_steam_big_3_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_4.png"
+    },
+    "ex10_steam_big_3_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_1_5.png"
+    },
+    "ex10_steam_big_3_2_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_0.png"
+    },
+    "ex10_steam_big_3_2_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_1.png"
+    },
+    "ex10_steam_big_3_2_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_2.png"
+    },
+    "ex10_steam_big_3_2_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_3.png"
+    },
+    "ex10_steam_big_3_2_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_4.png"
+    },
+    "ex10_steam_big_3_2_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_3_2_5.png"
+    },
+    "ex10_steam_big_4_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_0.png"
+    },
+    "ex10_steam_big_4_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_1.png"
+    },
+    "ex10_steam_big_4_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_2.png"
+    },
+    "ex10_steam_big_4_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_3.png"
+    },
+    "ex10_steam_big_4_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_4.png"
+    },
+    "ex10_steam_big_4_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_0_5.png"
+    },
+    "ex10_steam_big_4_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_0.png"
+    },
+    "ex10_steam_big_4_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_1.png"
+    },
+    "ex10_steam_big_4_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_2.png"
+    },
+    "ex10_steam_big_4_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_3.png"
+    },
+    "ex10_steam_big_4_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_4.png"
+    },
+    "ex10_steam_big_4_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_1_5.png"
+    },
+    "ex10_steam_big_4_2_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_0.png"
+    },
+    "ex10_steam_big_4_2_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_1.png"
+    },
+    "ex10_steam_big_4_2_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_2.png"
+    },
+    "ex10_steam_big_4_2_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_3.png"
+    },
+    "ex10_steam_big_4_2_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_4.png"
+    },
+    "ex10_steam_big_4_2_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_big_4_2_5.png"
+    },
+    "ex10_steam_small_big_0_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_0.png"
+    },
+    "ex10_steam_small_big_0_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_1.png"
+    },
+    "ex10_steam_small_big_0_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_2.png"
+    },
+    "ex10_steam_small_big_0_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_3.png"
+    },
+    "ex10_steam_small_big_0_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_4.png"
+    },
+    "ex10_steam_small_big_0_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_0_5.png"
+    },
+    "ex10_steam_small_big_0_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_0.png"
+    },
+    "ex10_steam_small_big_0_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_1.png"
+    },
+    "ex10_steam_small_big_0_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_2.png"
+    },
+    "ex10_steam_small_big_0_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_3.png"
+    },
+    "ex10_steam_small_big_0_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_4.png"
+    },
+    "ex10_steam_small_big_0_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_0_1_5.png"
+    },
+    "ex10_steam_small_big_1_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_0.png"
+    },
+    "ex10_steam_small_big_1_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_1.png"
+    },
+    "ex10_steam_small_big_1_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_2.png"
+    },
+    "ex10_steam_small_big_1_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_3.png"
+    },
+    "ex10_steam_small_big_1_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_4.png"
+    },
+    "ex10_steam_small_big_1_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_0_5.png"
+    },
+    "ex10_steam_small_big_1_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_0.png"
+    },
+    "ex10_steam_small_big_1_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_1.png"
+    },
+    "ex10_steam_small_big_1_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_2.png"
+    },
+    "ex10_steam_small_big_1_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_3.png"
+    },
+    "ex10_steam_small_big_1_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_4.png"
+    },
+    "ex10_steam_small_big_1_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_1_1_5.png"
+    },
+    "ex10_steam_small_big_2_0_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_0.png"
+    },
+    "ex10_steam_small_big_2_0_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_1.png"
+    },
+    "ex10_steam_small_big_2_0_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_2.png"
+    },
+    "ex10_steam_small_big_2_0_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_3.png"
+    },
+    "ex10_steam_small_big_2_0_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_4.png"
+    },
+    "ex10_steam_small_big_2_0_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_0_5.png"
+    },
+    "ex10_steam_small_big_2_1_0": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_0.png"
+    },
+    "ex10_steam_small_big_2_1_1": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_1.png"
+    },
+    "ex10_steam_small_big_2_1_2": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_2.png"
+    },
+    "ex10_steam_small_big_2_1_3": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_3.png"
+    },
+    "ex10_steam_small_big_2_1_4": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_4.png"
+    },
+    "ex10_steam_small_big_2_1_5": {
+      "filter": "nearest",
+      "path": "sprites/steam_small_big_2_1_5.png"
     },
     "ex10_stone_platform": {
       "emissive_mask": "sprites/stone_platform_e.png",
@@ -7790,291 +9881,195 @@
       "path": "sprites/waterfall_flow_3.png"
     },
     "ex10_wet_back_0_0": {
-      "emissive_mask": "sprites/wet_back_0_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_0_0_n.png",
       "path": "sprites/wet_back_0_0.png"
     },
     "ex10_wet_back_0_1": {
-      "emissive_mask": "sprites/wet_back_0_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_0_1_n.png",
       "path": "sprites/wet_back_0_1.png"
     },
     "ex10_wet_back_0_2": {
-      "emissive_mask": "sprites/wet_back_0_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_0_2_n.png",
       "path": "sprites/wet_back_0_2.png"
     },
     "ex10_wet_back_10_0": {
-      "emissive_mask": "sprites/wet_back_10_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_10_0_n.png",
       "path": "sprites/wet_back_10_0.png"
     },
     "ex10_wet_back_10_1": {
-      "emissive_mask": "sprites/wet_back_10_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_10_1_n.png",
       "path": "sprites/wet_back_10_1.png"
     },
     "ex10_wet_back_10_2": {
-      "emissive_mask": "sprites/wet_back_10_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_10_2_n.png",
       "path": "sprites/wet_back_10_2.png"
     },
     "ex10_wet_back_11_0": {
-      "emissive_mask": "sprites/wet_back_11_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_11_0_n.png",
       "path": "sprites/wet_back_11_0.png"
     },
     "ex10_wet_back_11_1": {
-      "emissive_mask": "sprites/wet_back_11_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_11_1_n.png",
       "path": "sprites/wet_back_11_1.png"
     },
     "ex10_wet_back_11_2": {
-      "emissive_mask": "sprites/wet_back_11_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_11_2_n.png",
       "path": "sprites/wet_back_11_2.png"
     },
     "ex10_wet_back_12_0": {
-      "emissive_mask": "sprites/wet_back_12_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_12_0_n.png",
       "path": "sprites/wet_back_12_0.png"
     },
     "ex10_wet_back_12_1": {
-      "emissive_mask": "sprites/wet_back_12_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_12_1_n.png",
       "path": "sprites/wet_back_12_1.png"
     },
     "ex10_wet_back_12_2": {
-      "emissive_mask": "sprites/wet_back_12_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_12_2_n.png",
       "path": "sprites/wet_back_12_2.png"
     },
     "ex10_wet_back_13_0": {
-      "emissive_mask": "sprites/wet_back_13_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_13_0_n.png",
       "path": "sprites/wet_back_13_0.png"
     },
     "ex10_wet_back_13_1": {
-      "emissive_mask": "sprites/wet_back_13_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_13_1_n.png",
       "path": "sprites/wet_back_13_1.png"
     },
     "ex10_wet_back_13_2": {
-      "emissive_mask": "sprites/wet_back_13_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_13_2_n.png",
       "path": "sprites/wet_back_13_2.png"
     },
     "ex10_wet_back_14_0": {
-      "emissive_mask": "sprites/wet_back_14_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_14_0_n.png",
       "path": "sprites/wet_back_14_0.png"
     },
     "ex10_wet_back_14_1": {
-      "emissive_mask": "sprites/wet_back_14_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_14_1_n.png",
       "path": "sprites/wet_back_14_1.png"
     },
     "ex10_wet_back_14_2": {
-      "emissive_mask": "sprites/wet_back_14_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_14_2_n.png",
       "path": "sprites/wet_back_14_2.png"
     },
     "ex10_wet_back_15_0": {
-      "emissive_mask": "sprites/wet_back_15_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_15_0_n.png",
       "path": "sprites/wet_back_15_0.png"
     },
     "ex10_wet_back_15_1": {
-      "emissive_mask": "sprites/wet_back_15_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_15_1_n.png",
       "path": "sprites/wet_back_15_1.png"
     },
     "ex10_wet_back_15_2": {
-      "emissive_mask": "sprites/wet_back_15_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_15_2_n.png",
       "path": "sprites/wet_back_15_2.png"
     },
     "ex10_wet_back_1_0": {
-      "emissive_mask": "sprites/wet_back_1_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_1_0_n.png",
       "path": "sprites/wet_back_1_0.png"
     },
     "ex10_wet_back_1_1": {
-      "emissive_mask": "sprites/wet_back_1_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_1_1_n.png",
       "path": "sprites/wet_back_1_1.png"
     },
     "ex10_wet_back_1_2": {
-      "emissive_mask": "sprites/wet_back_1_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_1_2_n.png",
       "path": "sprites/wet_back_1_2.png"
     },
     "ex10_wet_back_2_0": {
-      "emissive_mask": "sprites/wet_back_2_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_2_0_n.png",
       "path": "sprites/wet_back_2_0.png"
     },
     "ex10_wet_back_2_1": {
-      "emissive_mask": "sprites/wet_back_2_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_2_1_n.png",
       "path": "sprites/wet_back_2_1.png"
     },
     "ex10_wet_back_2_2": {
-      "emissive_mask": "sprites/wet_back_2_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_2_2_n.png",
       "path": "sprites/wet_back_2_2.png"
     },
     "ex10_wet_back_3_0": {
-      "emissive_mask": "sprites/wet_back_3_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_3_0_n.png",
       "path": "sprites/wet_back_3_0.png"
     },
     "ex10_wet_back_3_1": {
-      "emissive_mask": "sprites/wet_back_3_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_3_1_n.png",
       "path": "sprites/wet_back_3_1.png"
     },
     "ex10_wet_back_3_2": {
-      "emissive_mask": "sprites/wet_back_3_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_3_2_n.png",
       "path": "sprites/wet_back_3_2.png"
     },
     "ex10_wet_back_4_0": {
-      "emissive_mask": "sprites/wet_back_4_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_4_0_n.png",
       "path": "sprites/wet_back_4_0.png"
     },
     "ex10_wet_back_4_1": {
-      "emissive_mask": "sprites/wet_back_4_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_4_1_n.png",
       "path": "sprites/wet_back_4_1.png"
     },
     "ex10_wet_back_4_2": {
-      "emissive_mask": "sprites/wet_back_4_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_4_2_n.png",
       "path": "sprites/wet_back_4_2.png"
     },
     "ex10_wet_back_5_0": {
-      "emissive_mask": "sprites/wet_back_5_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_5_0_n.png",
       "path": "sprites/wet_back_5_0.png"
     },
     "ex10_wet_back_5_1": {
-      "emissive_mask": "sprites/wet_back_5_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_5_1_n.png",
       "path": "sprites/wet_back_5_1.png"
     },
     "ex10_wet_back_5_2": {
-      "emissive_mask": "sprites/wet_back_5_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_5_2_n.png",
       "path": "sprites/wet_back_5_2.png"
     },
     "ex10_wet_back_6_0": {
-      "emissive_mask": "sprites/wet_back_6_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_6_0_n.png",
       "path": "sprites/wet_back_6_0.png"
     },
     "ex10_wet_back_6_1": {
-      "emissive_mask": "sprites/wet_back_6_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_6_1_n.png",
       "path": "sprites/wet_back_6_1.png"
     },
     "ex10_wet_back_6_2": {
-      "emissive_mask": "sprites/wet_back_6_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_6_2_n.png",
       "path": "sprites/wet_back_6_2.png"
     },
     "ex10_wet_back_7_0": {
-      "emissive_mask": "sprites/wet_back_7_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_7_0_n.png",
       "path": "sprites/wet_back_7_0.png"
     },
     "ex10_wet_back_7_1": {
-      "emissive_mask": "sprites/wet_back_7_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_7_1_n.png",
       "path": "sprites/wet_back_7_1.png"
     },
     "ex10_wet_back_7_2": {
-      "emissive_mask": "sprites/wet_back_7_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_7_2_n.png",
       "path": "sprites/wet_back_7_2.png"
     },
     "ex10_wet_back_8_0": {
-      "emissive_mask": "sprites/wet_back_8_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_8_0_n.png",
       "path": "sprites/wet_back_8_0.png"
     },
     "ex10_wet_back_8_1": {
-      "emissive_mask": "sprites/wet_back_8_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_8_1_n.png",
       "path": "sprites/wet_back_8_1.png"
     },
     "ex10_wet_back_8_2": {
-      "emissive_mask": "sprites/wet_back_8_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_8_2_n.png",
       "path": "sprites/wet_back_8_2.png"
     },
     "ex10_wet_back_9_0": {
-      "emissive_mask": "sprites/wet_back_9_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_9_0_n.png",
       "path": "sprites/wet_back_9_0.png"
     },
     "ex10_wet_back_9_1": {
-      "emissive_mask": "sprites/wet_back_9_1_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_9_1_n.png",
       "path": "sprites/wet_back_9_1.png"
     },
     "ex10_wet_back_9_2": {
-      "emissive_mask": "sprites/wet_back_9_2_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/wet_back_9_2_n.png",
       "path": "sprites/wet_back_9_2.png"
     },
     "ex10_wet_rock_0_0": {

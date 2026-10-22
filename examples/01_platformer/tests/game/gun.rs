@@ -430,11 +430,11 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
         turned.is_none() || turned.is_some_and(|v| v.x < 0.0),
         "flying back west: {turned:?}"
     );
-    // Down through the rope bridge's deck over the pit to the stone shelf
-    // under it.
+    // Down through the rope bridge's west deck over the pit to the stone
+    // shelf under it.
     let id = shot(
         &mut harness,
-        Vec2::new(79.5 * TILE, 34.0 * TILE),
+        Vec2::new(56.0 * TILE, 34.0 * TILE),
         Vec2::Y * SPEED,
     );
     let down = bullet(&harness, id).expect("it flies");

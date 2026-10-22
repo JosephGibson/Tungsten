@@ -1,6 +1,6 @@
 //! C1's frame-time reading of the acceptance game (M76): a New Game at
 //! Normal, the ball pit full under the rope bridge and six enemies awake
-//! about the player on the bridge, its frames timed on the harness, which
+//! about the player on the bridge's east deck, its frames timed on the harness, which
 //! runs the real frame body with dt pinned and copies the extract where
 //! render would draw. Ignored: a release build runs it in one sitting
 //! (`perf-runs/<UTC>-e01d-frame/README.md`).
@@ -90,16 +90,31 @@ fn a_full_pit_with_enemies_awake() {
     let (mut harness, player) = run();
     harness.harness_mut().set_dt(DT);
     // The pit full: the cap's small balls in a grid over its interior, clear
-    // of the climbing shelves at its east wall, settled.
+    // of the climbing shelves up its middle, settled.
     let pit = &level.pit;
+    let shelves: Vec<&Platform> = level
+        .platforms
+        .iter()
+        .filter(|p| p.name.starts_with("pit_shelf"))
+        .collect();
     let world = harness.world_mut();
-    let across = (((pit.right - 6.0 - pit.left) * TILE) / 16.0) as usize;
-    for i in 0..BALL_CAP - toys::ball_count(world) {
+    let across = (((pit.right - pit.left) * TILE - 16.0) / 16.0) as usize;
+    let mut slot = 0;
+    while toys::ball_count(world) < BALL_CAP {
         let at = Vec2::new(
-            pit.left * TILE + 8.0 + (i % across) as f32 * 16.0,
-            pit.floor * TILE - 8.0 - (i / across) as f32 * 16.0,
+            pit.left * TILE + 8.0 + (slot % across) as f32 * 16.0,
+            pit.floor * TILE - 8.0 - (slot / across) as f32 * 16.0,
         );
-        toys::spawn_ball(world, at, true);
+        slot += 1;
+        let on_shelf = shelves.iter().any(|p| {
+            at.x > p.left * TILE - 8.0
+                && at.x < p.right * TILE + 8.0
+                && at.y > p.row * TILE - 8.0
+                && at.y < p.row * TILE + 32.0
+        });
+        if !on_shelf {
+            toys::spawn_ball(world, at, true);
+        }
     }
     harness.step(SETTLE);
     // The player on the deck's middle, six enemies awake within 600 px.
@@ -112,12 +127,14 @@ fn a_full_pit_with_enemies_awake() {
     let surface = deck.row * TILE;
     let walk =
         |kind: EnemyKind, dx: f32| Vec2::new(middle.x + dx, surface - kind.info().half.y - 0.5);
+    // The walkers on the deck and the east rim beyond the chute, never over
+    // the gap or a chute.
     let cast = [
         (EnemyKind::Wisp, middle + Vec2::new(-220.0, -200.0)),
-        (EnemyKind::Crawler, walk(EnemyKind::Crawler, -360.0)),
-        (EnemyKind::Beetle, walk(EnemyKind::Beetle, 320.0)),
+        (EnemyKind::Crawler, walk(EnemyKind::Crawler, -150.0)),
+        (EnemyKind::Beetle, walk(EnemyKind::Beetle, 544.0)),
         (EnemyKind::Bat, middle + Vec2::new(120.0, -260.0)),
-        (EnemyKind::Troll, walk(EnemyKind::Troll, 480.0)),
+        (EnemyKind::Troll, walk(EnemyKind::Troll, 700.0)),
         (EnemyKind::Wisp, middle + Vec2::new(260.0, -180.0)),
     ];
     let six: Vec<Entity> = cast

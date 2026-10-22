@@ -3,9 +3,12 @@
     "area": {
       "ambience": "ambience_clearing",
       "backdrop": "ex10_far_tower",
+      "horizon": 0,
       "indoor": false,
       "name": "Lantern clearing",
-      "night": false
+      "night": false,
+      "ridges": true,
+      "woodland": true
     },
     "rigid_body": {
       "kind": "sensor",

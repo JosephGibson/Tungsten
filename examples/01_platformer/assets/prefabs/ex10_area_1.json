@@ -3,9 +3,12 @@
     "area": {
       "ambience": "ambience_aqueduct",
       "backdrop": "ex10_far_arcade",
+      "horizon": -1,
       "indoor": false,
       "name": "Broken aqueduct",
-      "night": false
+      "night": false,
+      "ridges": true,
+      "woodland": true
     },
     "rigid_body": {
       "kind": "sensor",

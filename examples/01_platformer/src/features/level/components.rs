@@ -49,6 +49,20 @@ pub struct Area {
     /// Under the black night sky rather than the midnight one.
     #[serde(default)]
     pub night: bool,
+    /// How many rows its backdrop's strips stand lower than the start's,
+    /// each times its scroll.
+    #[serde(default)]
+    pub horizon: i32,
+    /// Whether the distant ridges and the near woodland draw behind it; an
+    /// area's far strip may stand alone, as the gorge's and the cut's do.
+    #[serde(default = "shown")]
+    pub ridges: bool,
+    #[serde(default = "shown")]
+    pub woodland: bool,
+}
+
+fn shown() -> bool {
+    true
 }
 
 /// The player's zoom over the window's base zoom: 1 until the zoom actions

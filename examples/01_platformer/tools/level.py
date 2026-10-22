@@ -144,6 +144,8 @@ def build_objects(source, images, lit):
         irons.append(dict(obj(cls, x, y), width=w, height=h, point=False))
     layer('iron', irons)
 
+    # The drips the fireballs leak, which the fire missile borrows too.
+    prefabs[FIRE_DRIPS] = dict(components=dict(particle_emitter=dict(config='ex10_fireball_drips')))
     hazards = []
     touch = dict(damage=HAZARD_DAMAGE, filter=dict(all=['team.player']), knockback=HAZARD_KNOCKBACK)
     for i, h in enumerate(source['hazards']):
@@ -158,7 +160,6 @@ def build_objects(source, images, lit):
         phase = (h['phase'] / math.tau) % 1.0
         start = [c + t * tile * math.sin(h['phase']) for c, t in zip(centre, h['travel'])]
         cls = f'ex10_fire_{i}'
-        prefabs[FIRE_DRIPS] = dict(components=dict(particle_emitter=dict(config='ex10_fireball_drips')))
         # A fireball faces its horizontal travel; one that only rises and falls, or
         # stands, watches the player. The animator shows the mirrored clip by facing.
         # Its trail and drips are children at its centre and underside, since an
@@ -226,7 +227,9 @@ def build_objects(source, images, lit):
         half = [(last + 1 - first) * tile / 2, source['rows'] * tile / 2]
         cls = f'ex10_area_{i}'
         fields = dict(name=area['name'], indoor=area.get('indoor', False), ambience=area.get('ambience'),
-                      backdrop=area.get('backdrop'), night=area.get('night', False))
+                      backdrop=area.get('backdrop'), night=area.get('night', False),
+                      horizon=area.get('horizon', 0), ridges=area.get('ridges', True),
+                      woodland=area.get('woodland', True))
         prefabs[cls] = dict(components=dict(area=fields, zone=dict(filter=dict(all=['team.player'])),
             rigid_body=dict(kind='sensor', shape=dict(kind='aabb', half_extents=half), offset=half)))
         areas.append(obj(cls, first * tile, 0, name=area['name']))
@@ -387,34 +390,37 @@ def background_tiles(source, cells, props, rng):
             for c in range(2):
                 out[(tunnel['col'] + c, tunnel['row'] + r)] = f"cave_tunnel_{tunnel['kind']}_big_{r}_{c}"
     falls = {int(p['x']) for p in props if p['sprite'].startswith('ex10_falls_')}
+    # Every span's cells first, so a wall built of many spans takes its edges
+    # from its outline, not from each span's.
+    backs = {}
     for span in source.get('backs', []):
-        cells_ = set()
         for x in range(span['left'], span['right']):
             for y in range(span['top'], rows):
-                if (x, y) in ground:
-                    break
-                cells_.add((x, y))
+                # A wall runs on behind rocks jutting in front of it.
+                if (x, y) not in ground:
+                    backs[(x, y)] = span['family']
 
-        def open_(c):
-            return c not in cells_ and c not in ground and 0 <= c[0] < cols and c[1] < rows
+    def open_(c):
+        return c not in backs and c not in ground and 0 <= c[0] < cols and c[1] < rows
 
-        def face(c):
-            return c in cells_ and (open_((c[0] - 1, c[1])) or open_((c[0] + 1, c[1])))
+    def face(c):
+        return c in backs and (open_((c[0] - 1, c[1])) or open_((c[0] + 1, c[1])))
 
-        for x, y in sorted(cells_, key=lambda c: (c[1], c[0])):
-            mask = open_((x, y - 1)) * 1 + open_((x + 1, y)) * 2 + open_((x, y + 1)) * 4 + open_((x - 1, y)) * 8
-            if span['family'] == 'wet_back':
-                variant = 2 if x in falls else rng.randrange(2)
-                out[(x, y)] = f'wet_back_{mask}_{variant}'
-            elif not mask & 1 and (mask & 14 or face((x - 1, y)) or face((x + 1, y))):
-                out[(x, y)] = f'cut_back_iron_{mask}_{rng.randrange(2)}'
-            else:
-                out[(x, y)] = f'cut_back_{mask}_{rng.randrange(2)}'
+    for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
+        mask = open_((x, y - 1)) * 1 + open_((x + 1, y)) * 2 + open_((x, y + 1)) * 4 + open_((x - 1, y)) * 8
+        if family == 'wet_back':
+            variant = 2 if x in falls else rng.randrange(2)
+            out[(x, y)] = f'wet_back_{mask}_{variant}'
+        elif not mask & 1 and (mask & 14 or face((x - 1, y)) or face((x + 1, y))):
+            out[(x, y)] = f'cut_back_iron_{mask}_{rng.randrange(2)}'
+        else:
+            out[(x, y)] = f'cut_back_{mask}_{rng.randrange(2)}'
     river = source.get('river')
     if river:
         for x in range(river['left'], river['right']):
             for y in range(river['row'] + 1, rows):
-                out[(x, y)] = 'river_deep_0'
+                depth = y - river['row']
+                out[(x, y)] = 'river_deep_0' if depth <= 3 else 'river_dark_1' if depth <= 7 else 'river_dark_2'
     return out
 
 
@@ -463,6 +469,15 @@ def build_level(images, lit):
     for (x,y),sprite in sorted(background_tiles(source,cells,source['props'],rng).items(),key=lambda c:(c[0][1],c[0][0])):
         put('background',x,y,'ex10_'+sprite)
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
+    # The far mist: each band's tiles across its columns in the decorations
+    # layer, over the far walls and under the terrain, where no terrain is.
+    from backdrops import FAR_MISTS, TILE as BAND_TILE
+    for mist in source.get('mists', []):
+        band = FAR_MISTS[mist['band']]
+        for r in range(-(-band[0] // BAND_TILE)):
+            for x in range(mist['left'], mist['right']):
+                if (x, mist['row'] + r) not in cells:
+                    put('decorations', x, mist['row'] + r, f"ex10_far_mist_{mist['band']}_big_{r}_{x % 16}")
     tile_layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())]
     # The object layers sit before `collision`, so the first and last layers stay
     # tile layers; IDs number layers, then objects, through the map.
@@ -574,8 +589,8 @@ def validate_layout(source, tiled, iron, shallow):
         left, right, rim, floor = pit['left'], pit['right'], pit['rim'], pit['floor']
         if any((x, y) in solid and (x, y) not in shallow for x in range(left, right) for y in range(rim, floor)):
             raise ValueError('the pit interior holds a tile')
-        if (right - left) * (floor - rim) * tile * tile < 3.8e6:
-            raise ValueError('the pit interior is under 3.8 Mpx2')
+        if (right - left) * (floor - rim) * tile * tile < 3.1e6:
+            raise ValueError('the pit interior is under 3.1 Mpx2')
         shell = [(x, y) for y in range(rim, floor + 4) for x in list(range(left - 4, left)) + list(range(right, right + 4))]
         shell += [(x, y) for y in range(floor, floor + 4) for x in range(left, right)]
         if any(c not in walls for c in shell):

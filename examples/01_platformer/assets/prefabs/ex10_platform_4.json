@@ -1,0 +1,37 @@
+{
+  "components": {
+    "path_follower": {
+      "easing": "sine_in_out",
+      "mode": "ping_pong",
+      "points": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          512
+        ]
+      ],
+      "speed": 157.53846153846155
+    },
+    "rigid_body": {
+      "kind": "kinematic",
+      "offset": [
+        83.2,
+        11.5
+      ],
+      "shape": {
+        "half_extents": [
+          83.2,
+          11.5
+        ],
+        "kind": "aabb"
+      }
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_lift_deck_4",
+    "z_order": -4
+  }
+}

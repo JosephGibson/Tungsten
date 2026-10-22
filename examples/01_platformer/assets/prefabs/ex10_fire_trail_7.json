@@ -1,8 +1,0 @@
-{
-  "components": {
-    "particle_emitter": {
-      "config": "ex10_fire_trail",
-      "seed": 707
-    }
-  }
-}

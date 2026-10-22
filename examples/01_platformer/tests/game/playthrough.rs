@@ -36,17 +36,24 @@ const MAIN: &[(&str, f32, f32)] = &[
     ("terrace_a", 15.85, 16.75),
     ("terrace_b", 18.35, 23.25),
     ("meadow", 23.85, 24.75),
-    ("bridge_a", 35.85, 36.75),
-    ("bridge_b", 51.85, 52.75),
-    ("bridge_c", 65.85, 66.75),
-    ("east_rim", 80.85, 84.75),
+    ("bridge_a", 47.85, 51.75),
+    ("bridge_b", 57.85, 62.75),
+    ("east_rim", 68.85, 72.75),
     ("aqueduct_step", 91.85, 92.75),
-    ("aqueduct_floor", 94.85, 95.75),
-    ("ravine_step_1", 157.85, 158.75),
-    ("ravine_step_2", 165.85, 166.75),
-    ("ravine_step_3", 169.85, 170.75),
-    ("ravine_step_4", 173.85, 174.75),
-    ("pool_bed", 176.85, 177.75),
+    ("aq_ledge_1", 94.85, 97.75),
+    ("aq_ledge_2", 100.85, 103.75),
+    ("aq_ledge_3", 106.85, 109.75),
+    ("channel_mid", 111.85, 113.75),
+    ("channel_east_a", 128.85, 133.75),
+    ("channel_east_b", 144.85, 149.75),
+    ("rv_ledge_1", 177.85, 181.75),
+    ("rv_ledge_2", 184.85, 187.75),
+    ("rv_ledge_3", 187.35, 182.75),
+    ("rv_ledge_4", 185.85, 188.75),
+    ("rv_ledge_5", 188.35, 182.75),
+    ("rv_ledge_6", 185.85, 188.75),
+    ("rv_ledge_7", 188.35, 183.75),
+    ("pool_bed", 186.85, 177.75),
     ("cleft", 205.85, 206.75),
     ("hollow_floor_1", 215.85, 216.75),
     ("stepping_stone", 231.85, 235.75),
@@ -70,7 +77,7 @@ const MAIN: &[(&str, f32, f32)] = &[
 /// Frames each launch waits at its start, standing, and the last before the
 /// walk to the bridge's end: found once by replaying the route at dt 1/60,
 /// a wait at a time, until no hazard touched the courier.
-const WAITS: [u32; 33] = [0; 33];
+const WAITS: [u32; 40] = [0; 40];
 
 /// `tools/level.json`, as far as the playthrough reads it.
 #[derive(Deserialize)]

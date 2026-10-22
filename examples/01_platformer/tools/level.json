@@ -24,7 +24,8 @@
         161
       ],
       "ambience": "ambience_aqueduct",
-      "backdrop": "ex10_far_arcade"
+      "backdrop": "ex10_far_arcade",
+      "horizon": -1
     },
     {
       "name": "Waterfall ravine",
@@ -34,7 +35,10 @@
       ],
       "ambience": "ambience_ravine",
       "backdrop": "ex10_far_cliffs",
-      "night": true
+      "night": true,
+      "horizon": -4,
+      "ridges": false,
+      "woodland": false
     },
     {
       "name": "Ember hollow",
@@ -57,7 +61,9 @@
       ],
       "ambience": "ambience_mine",
       "backdrop": "ex10_far_mine",
-      "night": true
+      "night": true,
+      "horizon": -2,
+      "woodland": false
     },
     {
       "name": "Troll bridge",
@@ -67,14 +73,16 @@
       ],
       "ambience": "ambience_bridge",
       "backdrop": "ex10_far_valley",
-      "night": true
+      "night": true,
+      "horizon": -2,
+      "woodland": false
     }
   ],
   "pit": {
-    "left": 36,
-    "right": 84,
+    "left": 48,
+    "right": 72,
     "rim": 36,
-    "floor": 56
+    "floor": 68
   },
   "platforms": [
     {
@@ -120,46 +128,38 @@
     {
       "name": "meadow",
       "left": 24,
-      "right": 36,
+      "right": 48,
       "row": 36,
       "bottom": 72,
       "style": "ground"
     },
     {
       "name": "pit_floor",
-      "left": 36,
-      "right": 84,
-      "row": 56,
+      "left": 48,
+      "right": 72,
+      "row": 68,
       "bottom": 72,
       "style": "pit"
     },
     {
       "name": "bridge_a",
-      "left": 36,
-      "right": 52,
+      "left": 51,
+      "right": 58,
       "row": 36,
       "bottom": 37,
       "style": "bridge_rope"
     },
     {
       "name": "bridge_b",
-      "left": 52,
-      "right": 66,
+      "left": 62,
+      "right": 69,
       "row": 36,
       "bottom": 37,
       "style": "bridge_weathered"
     },
     {
-      "name": "bridge_c",
-      "left": 66,
-      "right": 81,
-      "row": 36,
-      "bottom": 37,
-      "style": "bridge_rope"
-    },
-    {
       "name": "east_rim",
-      "left": 84,
+      "left": 72,
       "right": 92,
       "row": 36,
       "bottom": 72,
@@ -167,50 +167,82 @@
     },
     {
       "name": "pit_shelf_1",
-      "left": 79,
-      "right": 81,
-      "row": 53,
-      "bottom": 54,
+      "left": 55,
+      "right": 57,
+      "row": 66,
+      "bottom": 67,
       "style": "slab_carved"
     },
     {
       "name": "pit_shelf_2",
-      "left": 82,
-      "right": 84,
-      "row": 50,
-      "bottom": 51,
+      "left": 59,
+      "right": 62,
+      "row": 63,
+      "bottom": 64,
       "style": "slab_broken"
     },
     {
       "name": "pit_shelf_3",
-      "left": 79,
-      "right": 81,
-      "row": 47,
-      "bottom": 48,
+      "left": 63,
+      "right": 65,
+      "row": 60,
+      "bottom": 61,
       "style": "slab_carved"
     },
     {
       "name": "pit_shelf_4",
-      "left": 82,
-      "right": 84,
-      "row": 44,
-      "bottom": 45,
+      "left": 59,
+      "right": 62,
+      "row": 57,
+      "bottom": 58,
       "style": "slab_broken"
     },
     {
       "name": "pit_shelf_5",
-      "left": 79,
-      "right": 81,
-      "row": 41,
-      "bottom": 42,
+      "left": 55,
+      "right": 57,
+      "row": 54,
+      "bottom": 55,
       "style": "slab_carved"
     },
     {
       "name": "pit_shelf_6",
-      "left": 82,
-      "right": 84,
-      "row": 38,
-      "bottom": 39,
+      "left": 59,
+      "right": 62,
+      "row": 51,
+      "bottom": 52,
+      "style": "slab_broken"
+    },
+    {
+      "name": "pit_shelf_7",
+      "left": 63,
+      "right": 65,
+      "row": 48,
+      "bottom": 49,
+      "style": "slab_carved"
+    },
+    {
+      "name": "pit_shelf_8",
+      "left": 59,
+      "right": 62,
+      "row": 45,
+      "bottom": 46,
+      "style": "slab_broken"
+    },
+    {
+      "name": "pit_shelf_9",
+      "left": 55,
+      "right": 57,
+      "row": 42,
+      "bottom": 43,
+      "style": "slab_carved"
+    },
+    {
+      "name": "pit_shelf_10",
+      "left": 59,
+      "right": 62,
+      "row": 39,
+      "bottom": 40,
       "style": "slab_broken"
     },
     {
@@ -230,25 +262,41 @@
       "style": "ground"
     },
     {
-      "name": "aqueduct_mid",
-      "left": 99,
-      "right": 112,
+      "name": "aq_rubble_1",
+      "left": 112,
+      "right": 115,
+      "row": 38,
+      "bottom": 72,
+      "style": "ground"
+    },
+    {
+      "name": "aq_rubble_2",
+      "left": 121,
+      "right": 124,
       "row": 37,
-      "bottom": 38,
+      "bottom": 72,
+      "style": "ground"
+    },
+    {
+      "name": "aq_ledge_1",
+      "left": 97,
+      "right": 101,
+      "row": 36,
+      "bottom": 37,
       "style": "slab_carved"
     },
     {
-      "name": "aqueduct_high",
-      "left": 113,
-      "right": 126,
-      "row": 34,
-      "bottom": 35,
+      "name": "aq_ledge_2",
+      "left": 103,
+      "right": 107,
+      "row": 33,
+      "bottom": 34,
       "style": "slab_broken"
     },
     {
-      "name": "aqueduct_top",
-      "left": 127,
-      "right": 132,
+      "name": "aq_ledge_3",
+      "left": 109,
+      "right": 113,
       "row": 31,
       "bottom": 32,
       "style": "slab_carved"
@@ -256,14 +304,30 @@
     {
       "name": "channel_west",
       "left": 90,
+      "right": 109,
+      "row": 28,
+      "bottom": 29,
+      "style": "channel"
+    },
+    {
+      "name": "channel_mid",
+      "left": 113,
       "right": 129,
       "row": 28,
       "bottom": 29,
       "style": "channel"
     },
     {
-      "name": "channel_east",
-      "left": 132,
+      "name": "channel_east_a",
+      "left": 133,
+      "right": 145,
+      "row": 28,
+      "bottom": 29,
+      "style": "channel"
+    },
+    {
+      "name": "channel_east_b",
+      "left": 149,
       "right": 178,
       "row": 28,
       "bottom": 29,
@@ -315,6 +379,62 @@
       "right": 206,
       "row": 63,
       "bottom": 72,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_1",
+      "left": 181,
+      "right": 185,
+      "row": 32,
+      "bottom": 34,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_2",
+      "left": 187,
+      "right": 191,
+      "row": 36,
+      "bottom": 38,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_3",
+      "left": 182,
+      "right": 186,
+      "row": 40,
+      "bottom": 42,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_4",
+      "left": 188,
+      "right": 192,
+      "row": 44,
+      "bottom": 46,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_5",
+      "left": 182,
+      "right": 186,
+      "row": 48,
+      "bottom": 50,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_6",
+      "left": 188,
+      "right": 192,
+      "row": 52,
+      "bottom": 54,
+      "style": "wet"
+    },
+    {
+      "name": "rv_ledge_7",
+      "left": 183,
+      "right": 187,
+      "row": 56,
+      "bottom": 58,
       "style": "wet"
     },
     {
@@ -582,14 +702,21 @@
       "meadow",
       "bridge_a",
       "bridge_b",
-      "bridge_c",
       "east_rim",
       "aqueduct_step",
-      "aqueduct_floor",
-      "ravine_step_1",
-      "ravine_step_2",
-      "ravine_step_3",
-      "ravine_step_4",
+      "aq_ledge_1",
+      "aq_ledge_2",
+      "aq_ledge_3",
+      "channel_mid",
+      "channel_east_a",
+      "channel_east_b",
+      "rv_ledge_1",
+      "rv_ledge_2",
+      "rv_ledge_3",
+      "rv_ledge_4",
+      "rv_ledge_5",
+      "rv_ledge_6",
+      "rv_ledge_7",
       "pool_bed",
       "cleft",
       "hollow_floor_1",
@@ -615,8 +742,12 @@
       "forest_perch",
       "forest_shrine"
     ],
-    "pit_in": [
-      "bridge_c",
+    "pit_in_west": [
+      "meadow",
+      "pit_floor"
+    ],
+    "pit_in_east": [
+      "east_rim",
       "pit_floor"
     ],
     "pit_climb": [
@@ -627,18 +758,24 @@
       "pit_shelf_4",
       "pit_shelf_5",
       "pit_shelf_6",
-      "east_rim"
+      "pit_shelf_7",
+      "pit_shelf_8",
+      "pit_shelf_9",
+      "pit_shelf_10",
+      "bridge_a"
     ],
-    "aqueduct_upper": [
+    "aqueduct_low": [
+      "aqueduct_step",
       "aqueduct_floor",
-      "aqueduct_mid",
-      "aqueduct_high",
-      "aqueduct_top",
-      "channel_east"
-    ],
-    "channel": [
-      "channel_east",
-      "channel_west"
+      "aq_rubble_1",
+      "aqueduct_floor",
+      "aq_rubble_2",
+      "aqueduct_floor",
+      "ravine_step_1",
+      "ravine_step_2",
+      "ravine_step_3",
+      "ravine_step_4",
+      "pool_bed"
     ],
     "ravine_east": [
       "pool_bed",
@@ -685,14 +822,27 @@
     },
     {
       "position": [
-        190,
-        52
+        147,
+        34
       ],
       "travel": [
         0,
-        6
+        5
       ],
-      "period": 8,
+      "period": 7,
+      "phase": 0,
+      "half_width": 1.3
+    },
+    {
+      "position": [
+        194.5,
+        55.5
+      ],
+      "travel": [
+        0,
+        5
+      ],
+      "period": 7.5,
       "phase": 0,
       "half_width": 1.3
     },
@@ -710,151 +860,7 @@
       "half_width": 1.3
     }
   ],
-  "hazards": [
-    {
-      "fire": false,
-      "position": [
-        20.5,
-        31.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    },
-    {
-      "fire": false,
-      "position": [
-        118.5,
-        39.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    },
-    {
-      "fire": false,
-      "position": [
-        146.5,
-        39.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    },
-    {
-      "fire": true,
-      "position": [
-        221,
-        59.5
-      ],
-      "travel": [
-        1.5,
-        0
-      ],
-      "period": 5.2,
-      "phase": 0
-    },
-    {
-      "fire": true,
-      "position": [
-        228,
-        58.5
-      ],
-      "travel": [
-        0,
-        1.0
-      ],
-      "period": 6.0,
-      "phase": 1.2
-    },
-    {
-      "fire": true,
-      "position": [
-        244,
-        59.0
-      ],
-      "travel": [
-        1.5,
-        0.5
-      ],
-      "period": 6.5,
-      "phase": 2.0
-    },
-    {
-      "fire": true,
-      "position": [
-        252,
-        56.5
-      ],
-      "travel": [
-        1.0,
-        0
-      ],
-      "period": 5.5,
-      "phase": 0.7
-    },
-    {
-      "fire": true,
-      "position": [
-        265,
-        54.5
-      ],
-      "travel": [
-        1.5,
-        0
-      ],
-      "period": 7.0,
-      "phase": 0
-    },
-    {
-      "fire": false,
-      "position": [
-        313.5,
-        52.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    },
-    {
-      "fire": false,
-      "position": [
-        331.5,
-        49.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    },
-    {
-      "fire": false,
-      "position": [
-        363.5,
-        35.78125
-      ],
-      "travel": [
-        0,
-        0
-      ],
-      "period": 1,
-      "phase": 0
-    }
-  ],
+  "hazards": [],
   "lava": [
     {
       "left": 232,
@@ -978,7 +984,7 @@
       "y": 30,
       "width": 1,
       "height": 2,
-      "support": "channel_west",
+      "support": "channel_mid",
       "anchor": "under"
     },
     {
@@ -997,24 +1003,6 @@
       "width": 2,
       "height": 1,
       "support": "pool_bed",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_plume",
-      "x": 177.0,
-      "y": 30,
-      "width": 5,
-      "height": 3,
-      "support": "pool_bed",
-      "anchor": "ground"
-    },
-    {
-      "sprite": "ex10_steam",
-      "x": 206.5,
-      "y": 30,
-      "width": 2,
-      "height": 3,
-      "support": "cleft",
       "anchor": "ground"
     },
     {
@@ -1250,6 +1238,159 @@
       "height": 2,
       "support": "troll_bridge",
       "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 99.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "aq_ledge_1",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_curtain_0",
+      "x": 136,
+      "y": 30,
+      "width": 1,
+      "height": 3,
+      "support": "channel_east_a",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 162.2,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rim_west",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 167.6,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rim_west",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 172.8,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rim_west",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 176.2,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rim_west",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 198.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "ravine_east_2",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 201.4,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "ravine_east_3",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 201.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "ravine_east_5",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_fern_clump_0",
+      "x": 201.6,
+      "y": 30,
+      "width": 2,
+      "height": 1,
+      "support": "ravine_east_1",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 183.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_1",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 189.4,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_2",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 183.6,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_3",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 190.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_4",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 184.4,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_5",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_2",
+      "x": 189.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_6",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_vine_0",
+      "x": 185.0,
+      "y": 30,
+      "width": 1,
+      "height": 2,
+      "support": "rv_ledge_7",
+      "anchor": "under"
     }
   ],
   "props": [
@@ -1944,41 +2085,6 @@
     },
     {
       "sprite": "ex10_water_0",
-      "x": 108,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 109,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 110,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 111,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 112,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
       "x": 113,
       "y": 28,
       "depth": "world",
@@ -2155,41 +2261,6 @@
     {
       "sprite": "ex10_water_0",
       "x": 143,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 144,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 145,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 146,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 147,
-      "y": 28,
-      "depth": "world",
-      "animation": "ex10_water"
-    },
-    {
-      "sprite": "ex10_water_0",
-      "x": 148,
       "y": 28,
       "depth": "world",
       "animation": "ex10_water"
@@ -2469,6 +2540,160 @@
     },
     {
       "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 29,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 30,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 31,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 32,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 33,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 34,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 35,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 36,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 37,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 38,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 108.15625,
+      "y": 39,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 29,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 30,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 31,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 32,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 33,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 34,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 35,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 36,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 37,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 38,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 112.8125,
+      "y": 39,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
       "x": 128.15625,
       "y": 29,
       "depth": "world",
@@ -2546,84 +2771,233 @@
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 29,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 30,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 31,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 32,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 33,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 34,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 35,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 36,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 37,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
       "y": 38,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_pour_0",
-      "x": 131.8125,
+      "x": 132.8125,
+      "y": 39,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 30.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 31.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 32.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 33.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 34.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 35.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 36.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 37.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 38.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 144.15625,
+      "y": 39,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 30.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 31.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 32.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 33.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 34.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 35.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 36.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 37.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
+      "y": 38.5,
+      "depth": "world",
+      "animation": "ex10_pour"
+    },
+    {
+      "sprite": "ex10_pour_0",
+      "x": 148.8125,
       "y": 39,
       "depth": "world",
       "animation": "ex10_pour"
     },
     {
       "sprite": "ex10_reeds_0",
-      "x": 127.9,
+      "x": 108.1,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_2",
+      "x": 112.6,
       "y": 0,
       "depth": "world",
       "animation": null,
@@ -2632,7 +3006,34 @@
     },
     {
       "sprite": "ex10_reeds_0",
-      "x": 131.1,
+      "x": 128.1,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_2",
+      "x": 132.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_0",
+      "x": 144.1,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_2",
+      "x": 148.6,
       "y": 0,
       "depth": "world",
       "animation": null,
@@ -2764,21 +3165,21 @@
     },
     {
       "sprite": "ex10_hanging_moss",
-      "x": 146,
+      "x": 151,
       "y": 0,
       "depth": "world",
       "animation": null,
       "anchor": "under",
-      "support": "channel_east"
+      "support": "channel_east_b"
     },
     {
       "sprite": "ex10_hanging_moss",
-      "x": 112,
+      "x": 115,
       "y": 0,
       "depth": "world",
       "animation": null,
       "anchor": "under",
-      "support": "channel_west"
+      "support": "channel_mid"
     },
     {
       "sprite": "ex10_falls_lip_0",
@@ -3456,153 +3857,6 @@
       "sprite": "ex10_splash_rocks_1_big_0_1",
       "x": 178.2,
       "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_0_0",
-      "x": 177.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_0_1",
-      "x": 178.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_0_2",
-      "x": 179.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_0_3",
-      "x": 180.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_0_4",
-      "x": 181.0,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_1_0",
-      "x": 177.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_1_1",
-      "x": 178.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_1_2",
-      "x": 179.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_1_3",
-      "x": 180.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_1_4",
-      "x": 181.0,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_2_0",
-      "x": 177.0,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_2_1",
-      "x": 178.0,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_2_2",
-      "x": 179.0,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_2_3",
-      "x": 180.0,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_plume_big_2_4",
-      "x": 181.0,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_0_0",
-      "x": 206.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_0_1",
-      "x": 207.5,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_1_0",
-      "x": 206.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_1_1",
-      "x": 207.5,
-      "y": 31,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_2_0",
-      "x": 206.5,
-      "y": 32,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_steam_big_2_1",
-      "x": 207.5,
-      "y": 32,
       "depth": "world",
       "animation": null
     },
@@ -4985,6 +5239,1553 @@
       "animation": null,
       "anchor": "ground",
       "support": "east_bank"
+    },
+    {
+      "sprite": "ex10_far_boulder_0",
+      "x": 296,
+      "y": 49.0625,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_far_boulder_1",
+      "x": 319,
+      "y": 45.0625,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_far_trestle",
+      "x": 312,
+      "y": 45.03125,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_far_rubble_big_0_0",
+      "x": 330,
+      "y": 42.0625,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_far_rubble_big_0_1",
+      "x": 331,
+      "y": 42.0625,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_far_lantern",
+      "x": 312,
+      "y": 44.4,
+      "depth": "back",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 26.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 29.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_flowers",
+      "x": 35.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 6.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "clearing"
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 90.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 85.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 99.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_2",
+      "x": 106.3,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_pillar_stump_1",
+      "x": 113.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 118.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 122.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_1",
+      "x": 127.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 133.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 137.8,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_0",
+      "x": 141.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 145.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_pillar_stump_0",
+      "x": 148.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_reeds_3",
+      "x": 152.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 157.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_hanging_moss",
+      "x": 104.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "aq_ledge_2"
+    },
+    {
+      "sprite": "ex10_hanging_moss",
+      "x": 126.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "channel_mid"
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 99.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 99.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_curtain_0_big_0_0",
+      "x": 136,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_curtain_0_big_1_0",
+      "x": 136,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_curtain_0_big_2_0",
+      "x": 136,
+      "y": 32,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_curtain_3",
+      "x": 160,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "channel_east_b"
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 162.2,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 162.2,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 167.6,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 167.6,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 172.8,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 172.8,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 176.2,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 176.2,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 198.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 198.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 201.4,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 201.4,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 201.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 201.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_fern_clump_1",
+      "x": 164.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ravine_step_1"
+    },
+    {
+      "sprite": "ex10_glowcaps_0",
+      "x": 168.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ravine_step_2"
+    },
+    {
+      "sprite": "ex10_grass_tuft_0",
+      "x": 172.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ravine_step_3"
+    },
+    {
+      "sprite": "ex10_grass_tuft_1",
+      "x": 175.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ravine_step_4"
+    },
+    {
+      "sprite": "ex10_fern_clump_0_big_0_0",
+      "x": 201.6,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_fern_clump_0_big_0_1",
+      "x": 202.6,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_glowcaps_2",
+      "x": 198.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ravine_east_4"
+    },
+    {
+      "sprite": "ex10_reeds_2",
+      "x": 191.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "pool_bed"
+    },
+    {
+      "sprite": "ex10_reeds_0",
+      "x": 204.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "pool_bed"
+    },
+    {
+      "sprite": "ex10_stalactite_1",
+      "x": 218.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_2",
+      "x": 225.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_0",
+      "x": 235.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_1",
+      "x": 247.3,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_2",
+      "x": 252.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_0",
+      "x": 264.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_1",
+      "x": 270.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalactite_2",
+      "x": 278.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_fire_crystal_hanging_0",
+      "x": 241.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "under",
+      "support": "hollow_roof"
+    },
+    {
+      "sprite": "ex10_stalagmite_2",
+      "x": 222.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_floor_1"
+    },
+    {
+      "sprite": "ex10_stalagmite_0",
+      "x": 251.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_step"
+    },
+    {
+      "sprite": "ex10_stalagmite_1",
+      "x": 266.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_shelf_b"
+    },
+    {
+      "sprite": "ex10_fire_crystal_1",
+      "x": 220.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_floor_1"
+    },
+    {
+      "sprite": "ex10_fire_crystal_0",
+      "x": 245.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_floor_2"
+    },
+    {
+      "sprite": "ex10_fire_crystal_2",
+      "x": 257.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_shelf_a"
+    },
+    {
+      "sprite": "ex10_obsidian",
+      "x": 225.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_floor_1"
+    },
+    {
+      "sprite": "ex10_obsidian",
+      "x": 263.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_shelf_b"
+    },
+    {
+      "sprite": "ex10_bones_1",
+      "x": 249.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_floor_2"
+    },
+    {
+      "sprite": "ex10_bones_2",
+      "x": 255.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "hollow_shelf_a"
+    },
+    {
+      "sprite": "ex10_haze_big_0_0",
+      "x": 233,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_0_1",
+      "x": 234,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_0_2",
+      "x": 235,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_0_3",
+      "x": 236,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_0_4",
+      "x": 237,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_0_5",
+      "x": 238,
+      "y": 61,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_0",
+      "x": 233,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_1",
+      "x": 234,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_2",
+      "x": 235,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_3",
+      "x": 236,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_4",
+      "x": 237,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_1_5",
+      "x": 238,
+      "y": 62,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_0",
+      "x": 233,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_1",
+      "x": 234,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_2",
+      "x": 235,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_3",
+      "x": 236,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_4",
+      "x": 237,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_big_2_5",
+      "x": 238,
+      "y": 63,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_0_0",
+      "x": 259.5,
+      "y": 55,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_0_1",
+      "x": 260.5,
+      "y": 55,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_0_2",
+      "x": 261.5,
+      "y": 55,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_1_0",
+      "x": 259.5,
+      "y": 56,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_1_1",
+      "x": 260.5,
+      "y": 56,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_haze_small_big_1_2",
+      "x": 261.5,
+      "y": 56,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_pebbles_0",
+      "x": 285.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_1"
+    },
+    {
+      "sprite": "ex10_boulder_1",
+      "x": 291.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_1"
+    },
+    {
+      "sprite": "ex10_pebbles_2",
+      "x": 297.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_1"
+    },
+    {
+      "sprite": "ex10_crate_1",
+      "x": 302.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_1"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 309.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_2"
+    },
+    {
+      "sprite": "ex10_boulder_2",
+      "x": 314.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_2"
+    },
+    {
+      "sprite": "ex10_barrel_0",
+      "x": 320.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_2"
+    },
+    {
+      "sprite": "ex10_barrel_1",
+      "x": 321.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_2"
+    },
+    {
+      "sprite": "ex10_pebbles_1",
+      "x": 327.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_3"
+    },
+    {
+      "sprite": "ex10_boulder_0",
+      "x": 331.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_3"
+    },
+    {
+      "sprite": "ex10_crate_0",
+      "x": 341.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_floor_3"
+    },
+    {
+      "sprite": "ex10_pebbles_0",
+      "x": 343.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_step_1"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 346.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_step_2"
+    },
+    {
+      "sprite": "ex10_barrel_1",
+      "x": 284.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_top"
+    },
+    {
+      "sprite": "ex10_pebbles_2",
+      "x": 287.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cut_top"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 373.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "troll_bridge"
+    },
+    {
+      "sprite": "ex10_bones_1",
+      "x": 385.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "troll_bridge"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 399.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "troll_bridge"
+    },
+    {
+      "sprite": "ex10_bones_0",
+      "x": 419.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "troll_bridge"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 352.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "ridge"
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 426.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_bank"
+    },
+    {
+      "sprite": "ex10_stump",
+      "x": 40.5,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_fence_1",
+      "x": 43.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_flowers",
+      "x": 45.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "meadow"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 74.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 77.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_fence_0",
+      "x": 80.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_grass",
+      "x": 82.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "east_rim"
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 183.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 183.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 189.4,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 189.4,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 183.6,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 183.6,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 190.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 190.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 184.4,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 184.4,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_0_0",
+      "x": 189.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_2_big_1_0",
+      "x": 189.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_0_0",
+      "x": 185.0,
+      "y": 30,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_vine_0_big_1_0",
+      "x": 185.0,
+      "y": 31,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_fern_clump_1",
+      "x": 189.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_2"
+    },
+    {
+      "sprite": "ex10_grass_tuft_0",
+      "x": 182.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_3"
+    },
+    {
+      "sprite": "ex10_glowcaps_1",
+      "x": 190.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_4"
+    },
+    {
+      "sprite": "ex10_grass_tuft_1",
+      "x": 185.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_5"
+    },
+    {
+      "sprite": "ex10_fern_clump_1",
+      "x": 188.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_6"
+    },
+    {
+      "sprite": "ex10_glowcaps_2",
+      "x": 184.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "rv_ledge_7"
+    },
+    {
+      "sprite": "ex10_plume_big_0_0_0",
+      "x": 177.0,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_plume_big_0_0"
+    },
+    {
+      "sprite": "ex10_plume_big_0_1_0",
+      "x": 178.0,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_plume_big_0_1"
+    },
+    {
+      "sprite": "ex10_plume_big_0_2_0",
+      "x": 179.0,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_plume_big_0_2"
+    },
+    {
+      "sprite": "ex10_plume_big_0_3_0",
+      "x": 180.0,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_plume_big_0_3"
+    },
+    {
+      "sprite": "ex10_plume_big_0_4_0",
+      "x": 181.0,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_plume_big_0_4"
+    },
+    {
+      "sprite": "ex10_plume_big_1_0_0",
+      "x": 177.0,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_plume_big_1_0"
+    },
+    {
+      "sprite": "ex10_plume_big_1_1_0",
+      "x": 178.0,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_plume_big_1_1"
+    },
+    {
+      "sprite": "ex10_plume_big_1_2_0",
+      "x": 179.0,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_plume_big_1_2"
+    },
+    {
+      "sprite": "ex10_plume_big_1_3_0",
+      "x": 180.0,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_plume_big_1_3"
+    },
+    {
+      "sprite": "ex10_plume_big_1_4_0",
+      "x": 181.0,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_plume_big_1_4"
+    },
+    {
+      "sprite": "ex10_plume_big_2_0_0",
+      "x": 177.0,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_plume_big_2_0"
+    },
+    {
+      "sprite": "ex10_plume_big_2_1_0",
+      "x": 178.0,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_plume_big_2_1"
+    },
+    {
+      "sprite": "ex10_plume_big_2_2_0",
+      "x": 179.0,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_plume_big_2_2"
+    },
+    {
+      "sprite": "ex10_plume_big_2_3_0",
+      "x": 180.0,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_plume_big_2_3"
+    },
+    {
+      "sprite": "ex10_plume_big_2_4_0",
+      "x": 181.0,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_plume_big_2_4"
+    },
+    {
+      "sprite": "ex10_steam_big_0_0_0",
+      "x": 204.6,
+      "y": 58,
+      "depth": "world",
+      "animation": "ex10_steam_big_0_0"
+    },
+    {
+      "sprite": "ex10_steam_big_0_1_0",
+      "x": 205.6,
+      "y": 58,
+      "depth": "world",
+      "animation": "ex10_steam_big_0_1"
+    },
+    {
+      "sprite": "ex10_steam_big_0_2_0",
+      "x": 206.6,
+      "y": 58,
+      "depth": "world",
+      "animation": "ex10_steam_big_0_2"
+    },
+    {
+      "sprite": "ex10_steam_big_1_0_0",
+      "x": 204.6,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_steam_big_1_0"
+    },
+    {
+      "sprite": "ex10_steam_big_1_1_0",
+      "x": 205.6,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_steam_big_1_1"
+    },
+    {
+      "sprite": "ex10_steam_big_1_2_0",
+      "x": 206.6,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_steam_big_1_2"
+    },
+    {
+      "sprite": "ex10_steam_big_2_0_0",
+      "x": 204.6,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_steam_big_2_0"
+    },
+    {
+      "sprite": "ex10_steam_big_2_1_0",
+      "x": 205.6,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_steam_big_2_1"
+    },
+    {
+      "sprite": "ex10_steam_big_2_2_0",
+      "x": 206.6,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_steam_big_2_2"
+    },
+    {
+      "sprite": "ex10_steam_big_3_0_0",
+      "x": 204.6,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_steam_big_3_0"
+    },
+    {
+      "sprite": "ex10_steam_big_3_1_0",
+      "x": 205.6,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_steam_big_3_1"
+    },
+    {
+      "sprite": "ex10_steam_big_3_2_0",
+      "x": 206.6,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_steam_big_3_2"
+    },
+    {
+      "sprite": "ex10_steam_big_4_0_0",
+      "x": 204.6,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_steam_big_4_0"
+    },
+    {
+      "sprite": "ex10_steam_big_4_1_0",
+      "x": 205.6,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_steam_big_4_1"
+    },
+    {
+      "sprite": "ex10_steam_big_4_2_0",
+      "x": 206.6,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_steam_big_4_2"
+    },
+    {
+      "sprite": "ex10_steam_small_big_0_0_0",
+      "x": 208.6,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_0_0"
+    },
+    {
+      "sprite": "ex10_steam_small_big_0_1_0",
+      "x": 209.6,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_0_1"
+    },
+    {
+      "sprite": "ex10_steam_small_big_1_0_0",
+      "x": 208.6,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_1_0"
+    },
+    {
+      "sprite": "ex10_steam_small_big_1_1_0",
+      "x": 209.6,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_1_1"
+    },
+    {
+      "sprite": "ex10_steam_small_big_2_0_0",
+      "x": 208.6,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_2_0"
+    },
+    {
+      "sprite": "ex10_steam_small_big_2_1_0",
+      "x": 209.6,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_steam_small_big_2_1"
+    },
+    {
+      "sprite": "ex10_heat_big_0_0_0",
+      "x": 212.4,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_heat_big_0_0"
+    },
+    {
+      "sprite": "ex10_heat_big_0_1_0",
+      "x": 213.4,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_heat_big_0_1"
+    },
+    {
+      "sprite": "ex10_heat_big_0_2_0",
+      "x": 214.4,
+      "y": 59,
+      "depth": "world",
+      "animation": "ex10_heat_big_0_2"
+    },
+    {
+      "sprite": "ex10_heat_big_1_0_0",
+      "x": 212.4,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_heat_big_1_0"
+    },
+    {
+      "sprite": "ex10_heat_big_1_1_0",
+      "x": 213.4,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_heat_big_1_1"
+    },
+    {
+      "sprite": "ex10_heat_big_1_2_0",
+      "x": 214.4,
+      "y": 60,
+      "depth": "world",
+      "animation": "ex10_heat_big_1_2"
+    },
+    {
+      "sprite": "ex10_heat_big_2_0_0",
+      "x": 212.4,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_heat_big_2_0"
+    },
+    {
+      "sprite": "ex10_heat_big_2_1_0",
+      "x": 213.4,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_heat_big_2_1"
+    },
+    {
+      "sprite": "ex10_heat_big_2_2_0",
+      "x": 214.4,
+      "y": 61,
+      "depth": "world",
+      "animation": "ex10_heat_big_2_2"
+    },
+    {
+      "sprite": "ex10_heat_big_3_0_0",
+      "x": 212.4,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_heat_big_3_0"
+    },
+    {
+      "sprite": "ex10_heat_big_3_1_0",
+      "x": 213.4,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_heat_big_3_1"
+    },
+    {
+      "sprite": "ex10_heat_big_3_2_0",
+      "x": 214.4,
+      "y": 62,
+      "depth": "world",
+      "animation": "ex10_heat_big_3_2"
+    },
+    {
+      "sprite": "ex10_ember_pool_0",
+      "x": 214.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cleft"
+    },
+    {
+      "sprite": "ex10_fire_crystal_1",
+      "x": 211.8,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "anchor": "ground",
+      "support": "cleft"
     }
   ],
   "decorations": [
@@ -5443,36 +7244,6 @@
       "row": 30,
       "layer": "background",
       "sprite": "ex10_arcade_capital"
-    },
-    {
-      "col": 109,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_left"
-    },
-    {
-      "col": 110,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_key"
-    },
-    {
-      "col": 111,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_right"
-    },
-    {
-      "col": 109,
-      "row": 30,
-      "layer": "background",
-      "sprite": "ex10_arcade_spring_left"
-    },
-    {
-      "col": 111,
-      "row": 30,
-      "layer": "background",
-      "sprite": "ex10_arcade_spring_right"
     },
     {
       "col": 108,
@@ -6277,36 +8048,6 @@
       "row": 30,
       "layer": "background",
       "sprite": "ex10_arcade_capital"
-    },
-    {
-      "col": 145,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_left"
-    },
-    {
-      "col": 146,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_key"
-    },
-    {
-      "col": 147,
-      "row": 29,
-      "layer": "background",
-      "sprite": "ex10_arcade_arch_right"
-    },
-    {
-      "col": 145,
-      "row": 30,
-      "layer": "background",
-      "sprite": "ex10_arcade_spring_left"
-    },
-    {
-      "col": 147,
-      "row": 30,
-      "layer": "background",
-      "sprite": "ex10_arcade_spring_right"
     },
     {
       "col": 144,
@@ -7713,14 +9454,134 @@
     {
       "family": "wet_back",
       "left": 162,
-      "right": 178,
+      "right": 176,
       "top": 34
     },
     {
       "family": "wet_back",
-      "left": 178,
-      "right": 203,
+      "left": 176,
+      "right": 183,
       "top": 30
+    },
+    {
+      "family": "wet_back",
+      "left": 183,
+      "right": 184,
+      "top": 33
+    },
+    {
+      "family": "wet_back",
+      "left": 184,
+      "right": 185,
+      "top": 35
+    },
+    {
+      "family": "wet_back",
+      "left": 185,
+      "right": 186,
+      "top": 37
+    },
+    {
+      "family": "wet_back",
+      "left": 186,
+      "right": 187,
+      "top": 40
+    },
+    {
+      "family": "wet_back",
+      "left": 187,
+      "right": 188,
+      "top": 42
+    },
+    {
+      "family": "wet_back",
+      "left": 188,
+      "right": 189,
+      "top": 45
+    },
+    {
+      "family": "wet_back",
+      "left": 189,
+      "right": 190,
+      "top": 47
+    },
+    {
+      "family": "wet_back",
+      "left": 190,
+      "right": 191,
+      "top": 46
+    },
+    {
+      "family": "wet_back",
+      "left": 191,
+      "right": 192,
+      "top": 48
+    },
+    {
+      "family": "wet_back",
+      "left": 192,
+      "right": 193,
+      "top": 50
+    },
+    {
+      "family": "wet_back",
+      "left": 193,
+      "right": 194,
+      "top": 49
+    },
+    {
+      "family": "wet_back",
+      "left": 194,
+      "right": 195,
+      "top": 47
+    },
+    {
+      "family": "wet_back",
+      "left": 195,
+      "right": 196,
+      "top": 45
+    },
+    {
+      "family": "wet_back",
+      "left": 196,
+      "right": 197,
+      "top": 42
+    },
+    {
+      "family": "wet_back",
+      "left": 197,
+      "right": 198,
+      "top": 40
+    },
+    {
+      "family": "wet_back",
+      "left": 198,
+      "right": 199,
+      "top": 38
+    },
+    {
+      "family": "wet_back",
+      "left": 199,
+      "right": 200,
+      "top": 37
+    },
+    {
+      "family": "wet_back",
+      "left": 200,
+      "right": 201,
+      "top": 35
+    },
+    {
+      "family": "wet_back",
+      "left": 201,
+      "right": 202,
+      "top": 33
+    },
+    {
+      "family": "wet_back",
+      "left": 202,
+      "right": 203,
+      "top": 31
     },
     {
       "family": "wet_back",
@@ -7757,6 +9618,38 @@
       "left": 342,
       "right": 351,
       "top": 37
+    }
+  ],
+  "mists": [
+    {
+      "band": 0,
+      "row": 43,
+      "left": 158,
+      "right": 211
+    },
+    {
+      "band": 1,
+      "row": 50,
+      "left": 158,
+      "right": 211
+    },
+    {
+      "band": 2,
+      "row": 56,
+      "left": 158,
+      "right": 211
+    },
+    {
+      "band": 3,
+      "row": 47,
+      "left": 281,
+      "right": 351
+    },
+    {
+      "band": 4,
+      "row": 52,
+      "left": 281,
+      "right": 351
     }
   ],
   "tunnels": [
@@ -7822,18 +9715,18 @@
       "kind": "crawler",
       "name": "aqueduct crawler a",
       "x": 104.5,
-      "y": 36.046875
+      "y": 39.046875
     },
     {
       "kind": "crawler",
       "name": "aqueduct crawler b",
       "x": 119.5,
-      "y": 33.046875
+      "y": 27.046875
     },
     {
       "kind": "crawler",
       "name": "aqueduct crawler c",
-      "x": 132.5,
+      "x": 137.5,
       "y": 39.046875
     },
     {

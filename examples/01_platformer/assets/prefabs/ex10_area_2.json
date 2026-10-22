@@ -3,9 +3,12 @@
     "area": {
       "ambience": "ambience_ravine",
       "backdrop": "ex10_far_cliffs",
+      "horizon": -4,
       "indoor": false,
       "name": "Waterfall ravine",
-      "night": true
+      "night": true,
+      "ridges": false,
+      "woodland": false
     },
     "rigid_body": {
       "kind": "sensor",
