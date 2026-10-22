@@ -1,7 +1,7 @@
 {
   "cost": {
     "stat": "mana",
-    "amount": 15
+    "amount": 7.5
   },
   "cooldown": 0.4,
   "charges": {

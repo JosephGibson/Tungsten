@@ -30,7 +30,7 @@ use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::toys::{self, components::BlackHole};
 
-use super::{centre, mock_sprite, press, run, settle, teleport};
+use super::{centre, fall_dead, mock_sprite, press, run, teleport};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -528,8 +528,7 @@ fn bloom_and_vignette_survive_game_over_and_retry() {
     );
     assert!(pair, "{night:?}");
     damage(harness.world_mut(), player, 1000.0);
-    harness.step(2);
-    settle(&mut harness);
+    fall_dead(&mut harness);
     let dead = stack(&harness);
     assert_eq!(dead[..2], night[..], "under game over's passes: {dead:?}");
     press(&mut harness, "Retry");
@@ -552,12 +551,42 @@ fn the_bloom_option_keeps_the_vignette() {
 }
 
 #[test]
+fn the_bloom_option_hides_the_halos_and_the_moons_glow() {
+    let (mut harness, player) = run();
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    mock_sprite(assets, "ex10_sky", 700, false);
+    mock_sprite(assets, draw::MOON, 701, false);
+    mock_sprite(assets, "ex10_halo", 702, false);
+    mock_sprite(assets, "ex10_flame_glow", 703, false);
+    let shown = |harness: &mut UiHarness, on: bool| {
+        harness.world_mut().resource_mut::<GameOptions>().bloom = on;
+        harness.step(1);
+        let world = harness.world();
+        let parts = *world.get::<GlowParts>(player).unwrap();
+        let visible =
+            |part: Option<Entity>| world.get::<Visibility>(part.unwrap()).unwrap().visible;
+        let moon: Vec<u32> = draw::backdrop(world)
+            .iter()
+            .map(|batch| batch.texture.0)
+            .filter(|texture| (701..=703).contains(texture))
+            .collect();
+        (visible(parts.halo), visible(parts.core), moon)
+    };
+    assert_eq!(shown(&mut harness, true), (true, true, vec![702, 703, 701]));
+    assert_eq!(
+        shown(&mut harness, false),
+        (false, true, vec![701]),
+        "the halos and the moon's glow go, the flame's core and the moon stay"
+    );
+}
+
+#[test]
 fn midnight_uses_restrained_stock_post_passes_and_round_moon_at_all_aspects() {
     let (mut harness, _) = run();
     let world = harness.world_mut();
     let stack = world.resource::<PostStack>();
     assert!(
-        matches!(stack.0.as_slice(), [PostPass::Bloom(b), PostPass::Vignette(v)] if b.intensity <= 0.3 && v.strength <= 0.2),
+        matches!(stack.0.as_slice(), [PostPass::Bloom(b), PostPass::Vignette(v)] if b.intensity <= 0.7 && v.strength <= 0.2),
         "{stack:?}"
     );
     let assets = world.resource_mut::<AssetRegistry>();
@@ -679,4 +708,65 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
         "drawing moves nothing"
     );
     assert_eq!(world.query::<&BlackHole>().count(), 1);
+}
+
+#[test]
+fn the_backdrop_skips_quads_opaque_tiles_cover() {
+    // Inside the Ember hollow the cave's opaque backs and walls cover most
+    // of the backdrop, which draws nothing there; in the clearing's sky the
+    // sky shows; and a game whose assets hot-reload culls nothing.
+    use example_01_platformer::features::level::TILE;
+    use example_01_platformer::features::level::components::AssetsReload;
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let assets = world.resource_mut::<AssetRegistry>();
+    let names = [
+        "ex10_sky",
+        draw::SKY_BLACK,
+        "ex10_clouds_far",
+        "ex10_clouds_near",
+        "ex10_distant_ridges",
+        "ex10_near_woodland",
+    ];
+    for (i, name) in names.iter().enumerate() {
+        mock_sprite(assets, name, 800 + i as u32, false);
+    }
+    world.insert_resource(WindowSize {
+        width: 1920,
+        height: 1080,
+    });
+    let quads = |world: &tungsten::core::World| -> usize {
+        draw::backdrop(world)
+            .iter()
+            .map(|b| b.instances.len())
+            .sum()
+    };
+    let mut seen = Vec::new();
+    for corner in [Vec2::new(240.0, 46.0), Vec2::new(10.0, 0.0)] {
+        world.resource_mut::<CameraState>().position = corner * TILE;
+        let culled = quads(world);
+        world.insert_resource(AssetsReload);
+        let all = quads(world);
+        world.remove_resource::<AssetsReload>();
+        seen.push((culled, all));
+    }
+    let [(hollow, hollow_all), (sky, sky_all)] = seen[..] else {
+        unreachable!()
+    };
+    assert!(
+        hollow < hollow_all,
+        "the hollow culls: {hollow} of {hollow_all}"
+    );
+    assert!(
+        sky > 0 && sky <= sky_all,
+        "the sky shows: {sky} of {sky_all}"
+    );
+    world.resource_mut::<CameraState>().position = Vec2::new(10.0, 0.0) * TILE;
+    let batches = draw::backdrop(world);
+    assert!(
+        batches
+            .iter()
+            .any(|b| b.texture.0 == 800 && !b.instances.is_empty()),
+        "the clearing's sky quad is drawn"
+    );
 }

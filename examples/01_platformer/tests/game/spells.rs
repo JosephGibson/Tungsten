@@ -20,7 +20,24 @@ use tungsten::core::{
 use tungsten::kit::{LinearMotion, Stats};
 use tungsten::testing::UiHarness;
 
+use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::level::components::Glow;
+use example_01_platformer::features::player::components::Lantern;
+use example_01_platformer::features::player::{GUTTER_PUFF, STAFF_LIT};
+use tungsten::kit::Tags;
+
 use super::{aim_at, ball, body, centre, choose, floor, ground, mana, pin_camera, run, stand};
+
+/// Steps up to `frames` frames until `done`; whether it came.
+fn until(harness: &mut UiHarness, frames: u32, mut done: impl FnMut(&UiHarness) -> bool) -> bool {
+    for _ in 0..frames {
+        harness.step(1);
+        if done(harness) {
+            return true;
+        }
+    }
+    false
+}
 
 fn rings(harness: &UiHarness, kind: Ring) -> usize {
     harness
@@ -155,7 +172,7 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
-    assert_eq!(mana(&harness), 92.0, "a missile costs 8");
+    assert_eq!(mana(&harness), 96.0, "a missile costs 4");
     // The frame's flush landed it; the next frame takes it in first.
     adopt(harness.world_mut());
     let missiles: Vec<(Entity, Vec2, Vec2)> = harness
@@ -187,8 +204,66 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
 }
 
 #[test]
+fn the_staff_light_burns_mana_and_gutters_out() {
+    let (mut harness, player) = run();
+    harness.step(2);
+    let lantern = |h: &UiHarness| *h.world().get::<Lantern>(player).unwrap();
+    let tagged = |h: &UiHarness| {
+        h.world()
+            .get::<Tags>(player)
+            .is_some_and(|tags| tags.has(STAFF_LIT))
+    };
+    assert!(
+        lantern(&harness).lit() && tagged(&harness),
+        "lit at the start"
+    );
+    assert_eq!(
+        mana(&harness),
+        100.0,
+        "at full mana the regeneration feeds it"
+    );
+    // Under a cast's pause it burns 3 a second outright.
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("mana", 2.0);
+    super::combat::apply(&mut harness, player, "casting", None);
+    harness.step(20);
+    let burnt = 2.0 - mana(&harness);
+    assert!((burnt - 1.0).abs() < 0.06, "20 steps of 0.05: {burnt}");
+    // Out of mana it gutters out once, with a puff and a sound.
+    let (mut gutters, mut puffs) = (0, 0);
+    let out = until(&mut harness, 60, |h| {
+        gutters += h
+            .harness()
+            .events::<Sounded>()
+            .filter(|sounded| sounded.sound == Sound::StaffGuttered)
+            .count();
+        puffs = puffs.max(super::bursts(h, GUTTER_PUFF));
+        lantern(h).guttered
+    });
+    assert!(out, "it gutters out");
+    assert_eq!((gutters, puffs), (1, 1), "one puff and one sound");
+    harness.step(1);
+    assert!(harness.world().get::<Glow>(player).unwrap().hidden, "dark");
+    // It waits for 10 mana, then relights.
+    let mut waited = 0.0_f32;
+    let relit = until(&mut harness, 180, |h| {
+        if lantern(h).guttered {
+            waited = waited.max(mana(h));
+        }
+        !lantern(h).guttered
+    });
+    assert!(relit, "it relights");
+    assert!(waited >= 9.0, "dark through the lower mana: {waited}");
+    assert!(mana(&harness) >= 9.9, "relit at 10: {}", mana(&harness));
+    harness.step(1);
+    assert!(!harness.world().get::<Glow>(player).unwrap().hidden);
+}
+
+#[test]
 fn mana_regenerates_to_its_max_and_a_cast_pauses_it_for_about_a_second() {
     let (mut harness, player) = run();
+    // The staff light off, which would burn through the pause.
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
     let set = |harness: &mut UiHarness, value: f32| {
         let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
         stats.set_base("mana", value);
@@ -196,17 +271,22 @@ fn mana_regenerates_to_its_max_and_a_cast_pauses_it_for_about_a_second() {
     set(&mut harness, 40.0);
     harness.step(60);
     assert!(
-        (mana(&harness) - 55.0).abs() <= 1.5,
-        "15 a second: {}",
+        (mana(&harness) - 70.0).abs() <= 3.0,
+        "30 a second: {}",
         mana(&harness)
     );
-    // Force push, 25.
+    // Force push, 12.5; the step's regeneration may come before it.
     choose(&mut harness, 4);
+    let before = mana(&harness);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
     let cast = mana(&harness);
-    assert!(cast < 35.0, "the push spent its 25: {cast}");
+    let spent = before - cast;
+    assert!(
+        spent > 9.0 && spent <= 12.5,
+        "the push spent its 12.5: {spent}"
+    );
     harness.step(54);
     assert_eq!(mana(&harness), cast, "held while casting");
     harness.step(30);

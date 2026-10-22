@@ -1085,7 +1085,7 @@
       "level": "B",
       "title": "Fixes from the playtest",
       "summary": "The held spells' frame-time collapse fixed and the full pit's per-ball systems trimmed; the frost crawler that never attacks, the troll that never freezes, damage numbers that wait, lightning that stops at the cursor, the mana readout, stacking area titles and a faint bloom; halved spell costs and doubled regeneration; the lantern now a staff light that burns mana, which crawlers visibly fear; three seconds of play after death.",
-      "note": "From the owner's playtest notes of 2026-10-21 (example-01-feedback.md). No public API. Opus max by its own tier (D-195), as it draws the crawler's fear and synthesizes sounds.",
+      "note": "From the owner's playtest notes of 2026-10-21 (example-01-feedback.md). No public API. Opus max by its own tier (D-195), as it draws the crawler's fear and synthesizes sounds. The owner's prompt of 2026-10-22 widened it past the feedback plan's non-goals: core physics caches a tilemap's collision proxies (D-203), the GPU's share of the new level, the template's autosave over an older schema's slots (D-204) and P8; X6 taken on its measurement (D-206).",
       "src": ["docs/plans/1.0/example-01-feedback.md"],
       "slug": "example-01-fixes",
       "complexity": 2,

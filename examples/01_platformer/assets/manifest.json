@@ -60,6 +60,12 @@
     "ex10_crawler_lunge_left": {
       "path": "animations/crawler_lunge_left.json"
     },
+    "ex10_crawler_scared": {
+      "path": "animations/crawler_scared.json"
+    },
+    "ex10_crawler_scared_left": {
+      "path": "animations/crawler_scared_left.json"
+    },
     "ex10_crawler_walk": {
       "path": "animations/crawler_walk.json"
     },
@@ -420,6 +426,9 @@
       "small_balls": {
         "path": "data/abilities/small_balls.json"
       },
+      "staff_light": {
+        "path": "data/abilities/staff_light.json"
+      },
       "summon": {
         "path": "data/abilities/summon.json"
       }
@@ -471,6 +480,9 @@
       "shocked": {
         "path": "data/effects/shocked.json"
       },
+      "staff_lit": {
+        "path": "data/effects/staff_lit.json"
+      },
       "stunned": {
         "path": "data/effects/stunned.json"
       },
@@ -489,6 +501,11 @@
       },
       "troll_drops": {
         "path": "data/loot_tables/troll_drops.json"
+      }
+    },
+    "opaque_tiles": {
+      "level": {
+        "path": "data/opaque_tiles/level.json"
       }
     },
     "stats": {
@@ -717,6 +734,9 @@
     "ex10_frost_blast": {
       "path": "particles/frost_blast.json"
     },
+    "ex10_frost_breath": {
+      "path": "particles/frost_breath.json"
+    },
     "ex10_frozen_glints": {
       "path": "particles/frozen_glints.json"
     },
@@ -758,6 +778,9 @@
     },
     "ex10_spell_trail": {
       "path": "particles/spell_trail.json"
+    },
+    "ex10_staff_gutter": {
+      "path": "particles/staff_gutter.json"
     },
     "ex10_steam_burst": {
       "path": "particles/steam_burst.json"
@@ -1867,6 +1890,11 @@
       "path": "sounds/crawler_lunge.wav",
       "volume": 0.5
     },
+    "ex10_crawler_scared_sfx": {
+      "looping": false,
+      "path": "sounds/crawler_scared.wav",
+      "volume": 0.45
+    },
     "ex10_dummy_hit_sfx": {
       "looping": false,
       "path": "sounds/dummy_hit.wav",
@@ -1981,6 +2009,11 @@
       "looping": false,
       "path": "sounds/splinter.wav",
       "volume": 0.55
+    },
+    "ex10_staff_gutter_sfx": {
+      "looping": false,
+      "path": "sounds/staff_gutter.wav",
+      "volume": 0.5
     },
     "ex10_steam_burst_sfx": {
       "looping": false,
@@ -3379,6 +3412,38 @@
     "ex10_crawler_lunge_3_left": {
       "filter": "nearest",
       "path": "sprites/crawler_lunge_3_left.png"
+    },
+    "ex10_crawler_scared_0": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_0.png"
+    },
+    "ex10_crawler_scared_0_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_0_left.png"
+    },
+    "ex10_crawler_scared_1": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_1.png"
+    },
+    "ex10_crawler_scared_1_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_1_left.png"
+    },
+    "ex10_crawler_scared_2": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_2.png"
+    },
+    "ex10_crawler_scared_2_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_2_left.png"
+    },
+    "ex10_crawler_scared_3": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_3.png"
+    },
+    "ex10_crawler_scared_3_left": {
+      "filter": "nearest",
+      "path": "sprites/crawler_scared_3_left.png"
     },
     "ex10_crawler_walk_0": {
       "filter": "nearest",

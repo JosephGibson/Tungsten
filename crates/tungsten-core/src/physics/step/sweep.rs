@@ -1,10 +1,13 @@
 //! Safety-net slab sweep against statics (D-064) and the statics-only grid
 //! that answers it once a frame's queries outnumber the statics (D-080).
 
+use super::pairs::PairGrid;
 use super::{Proxy, ProxyLayers};
 use crate::physics::PhysicsConfig;
-use crate::physics::broadphase::{ProxyId, SpatialGrid};
-use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb};
+use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
+use crate::physics::collision::{
+    Aabb, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
+};
 use crate::physics::components::Shape;
 use crate::physics::events::CollisionEvent;
 use glam::Vec2;
@@ -17,7 +20,9 @@ use glam::Vec2;
 /// the sweep rents the pair grid until the frame's sweep queries reach the
 /// static count and then stages this grid for the rest of the frame. A tile
 /// map with a few fast bodies never stages it; thousands of fast bodies
-/// between a few walls stage it after a handful of queries.
+/// between a few walls stage it after a handful of queries. It stages the
+/// entity statics; the tiles come from the pair grid's tile grid, which
+/// holds them with the same inflation, walked as one grid.
 #[derive(Debug, Default)]
 pub(super) struct SweepGrid {
     pub(super) grid: SpatialGrid,
@@ -37,29 +42,29 @@ impl SweepGrid {
 
     /// True when this grid answers the next sweep query, staging it first if
     /// the pair grid has answered as many queries as there are statics.
-    fn answers_query(&mut self, config: &PhysicsConfig, proxies: &[Proxy]) -> bool {
+    fn answers_query(&mut self, config: &PhysicsConfig, bodies: &[Proxy]) -> bool {
         if !self.staged {
             if self.pair_queries < self.statics {
                 self.pair_queries += 1;
                 return false;
             }
-            self.stage(config, proxies);
+            self.stage(config, bodies);
         }
         true
     }
 
-    /// Stage every static proxy with the `2·linear_slop` inflation a pair
-    /// build gives it, in proxy order. Statics never move within a frame, so
-    /// one staging serves every substep; kinematic proxies move, so they are
-    /// not statics here.
-    pub(super) fn stage(&mut self, config: &PhysicsConfig, proxies: &[Proxy]) {
+    /// Stage every static entity proxy of `bodies` with the `2·linear_slop`
+    /// inflation a pair build gives it, in proxy order. Statics never move
+    /// within a frame, so one staging serves every substep; kinematic
+    /// proxies move, so they are not statics here.
+    pub(super) fn stage(&mut self, config: &PhysicsConfig, bodies: &[Proxy]) {
         let grid = &mut self.grid;
         if (grid.cell_size() - config.broadphase_cell_size).abs() > f32::EPSILON {
             grid.set_cell_size(config.broadphase_cell_size);
         }
         grid.clear();
         let inflation = Vec2::splat(2.0 * config.linear_slop);
-        for (id, proxy) in proxies.iter().enumerate() {
+        for (id, proxy) in bodies.iter().enumerate() {
             if proxy.is_dynamic || proxy.kinematic {
                 continue;
             }
@@ -68,6 +73,20 @@ impl SweepGrid {
             grid.insert(id as ProxyId, &aabb);
         }
         self.staged = true;
+    }
+
+    /// The statics overlapping `query`, the tiles' from `pairs`' tile grid,
+    /// in the pair grid's order.
+    fn query(&mut self, pairs: &mut PairGrid, query: &Aabb, out: &mut Vec<ProxyId>) {
+        out.clear();
+        for_each_in_both(
+            &mut self.grid,
+            &mut pairs.tiles,
+            pairs.tile_base,
+            query,
+            None,
+            |id| out.push(id),
+        );
     }
 }
 
@@ -81,18 +100,21 @@ impl SweepGrid {
 /// layers meet the body's. The pair grid answers the query until the
 /// statics-only grid is worth staging (D-080); both return the same statics
 /// in the same order, so the first hit is the same.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn speculative_pass(
     config: &PhysicsConfig,
     proxies: &mut [Proxy],
+    bodies: usize,
     layers: &ProxyLayers,
-    grid: &mut SpatialGrid,
+    grid: &mut PairGrid,
     static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
     events: &mut Vec<CollisionEvent>,
 ) {
     const BACKOFF: f32 = 1.0e-3;
 
-    for a_idx in 0..proxies.len() {
+    // Tile proxies are never dynamic: only the entity proxies sweep.
+    for a_idx in 0..bodies {
         let proxy = &proxies[a_idx];
         if !proxy.is_dynamic {
             continue;
@@ -109,8 +131,8 @@ pub(super) fn speculative_pass(
         }
 
         let swept = proxy.swept_aabb();
-        if static_grid.answers_query(config, proxies) {
-            static_grid.grid.query(&swept, None, candidates);
+        if static_grid.answers_query(config, &proxies[..bodies]) {
+            static_grid.query(grid, &swept, candidates);
         } else {
             grid.query(&swept, Some(a_idx as ProxyId), candidates);
         }

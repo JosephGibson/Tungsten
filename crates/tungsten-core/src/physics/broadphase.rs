@@ -334,6 +334,117 @@ impl SpatialGrid {
     }
 }
 
+/// Visit each unique proxy overlapping `query` in `first` and in `second`,
+/// whose ids are offset by `base`, in the order one grid that staged
+/// `first`'s entries and then `second`'s returns them: both visit cells row
+/// by row and a cell's entries in staging order, so each cell's `first`
+/// entries come before its `second` ones. Each grid dedupes its own ids,
+/// which the two never share. The two must share a cell size.
+#[inline(always)]
+pub(crate) fn for_each_in_both(
+    first: &mut SpatialGrid,
+    second: &mut SpatialGrid,
+    base: ProxyId,
+    query: &Aabb,
+    exclude: Option<ProxyId>,
+    mut visit: impl FnMut(ProxyId),
+) {
+    debug_assert!(
+        (first.cell_size - second.cell_size).abs() <= f32::EPSILON,
+        "both grids need one cell size"
+    );
+    if second.dirty {
+        second.build();
+    }
+    if second.entry_ids.is_empty() {
+        first.for_each_in(query, exclude, visit);
+        return;
+    }
+    if first.dirty {
+        first.build();
+    }
+    if first.entry_ids.is_empty() {
+        let exclude = exclude.and_then(|id| id.checked_sub(base));
+        second.for_each_in(query, exclude, |id| visit(id + base));
+        return;
+    }
+    let first_generation = if first.single_cell_ids {
+        None
+    } else {
+        Some(first.begin_query())
+    };
+    let second_generation = if second.single_cell_ids {
+        None
+    } else {
+        Some(second.begin_query())
+    };
+    let (min_cell, max_cell) = first.cell_range(query);
+    // Cells outside both grids' staged bounds hold nothing.
+    let lo = min_cell.max(first.bounds_min.min(second.bounds_min));
+    let hi = max_cell.min(first.bounds_max.max(second.bounds_max));
+    for y in lo.y..=hi.y {
+        for x in lo.x..=hi.x {
+            let cell = IVec2::new(x, y);
+            first.visit_cell(cell, 0, exclude, first_generation, &mut visit);
+            second.visit_cell(cell, base, exclude, second_generation, &mut visit);
+        }
+    }
+}
+
+impl SpatialGrid {
+    /// Visit `cell`'s entries in staging order, each id offset by `base`:
+    /// skip the excluded id and, with a generation, the ids this query
+    /// already visited, as [`visit_entry`] does.
+    #[inline(always)]
+    fn visit_cell(
+        &mut self,
+        cell: IVec2,
+        base: ProxyId,
+        exclude: Option<ProxyId>,
+        generation: Option<u32>,
+        visit: &mut impl FnMut(ProxyId),
+    ) {
+        let (start, end) = match self.layout {
+            Layout::Direct { min, max, width } => {
+                if cell.x < min.x || cell.y < min.y || cell.x > max.x || cell.y > max.y {
+                    return;
+                }
+                let slot = cells_between(min.y, cell.y) * width + cells_between(min.x, cell.x);
+                (
+                    self.slot_starts[slot] as usize,
+                    self.slot_starts[slot + 1] as usize,
+                )
+            }
+            Layout::Hashed { slot_mask } => {
+                let slot = (hash_cell(cell) & slot_mask) as usize;
+                (
+                    self.slot_starts[slot] as usize,
+                    self.slot_starts[slot + 1] as usize,
+                )
+            }
+        };
+        let hashed = matches!(self.layout, Layout::Hashed { .. });
+        for at in start..end {
+            // Exact-cell compare filters hash-aliased bucket entries.
+            if hashed && self.entry_cells[at] != cell {
+                continue;
+            }
+            let id = self.entry_ids[at];
+            if Some(id + base) == exclude {
+                continue;
+            }
+            if let Some(generation) = generation {
+                let mark = mark_slot(&mut self.query_marks, id);
+                if *mark == generation {
+                    continue;
+                }
+                *mark = generation;
+            }
+            visit(id + base);
+        }
+    }
+}
+
 /// `x.floor() as i32` for every `f32`, without the `floorf` call a generic
 /// x86-64 build makes (D-080): truncate toward zero, saturating as `as` does
 /// (NaN gives 0), then step down for a negative non-integer.

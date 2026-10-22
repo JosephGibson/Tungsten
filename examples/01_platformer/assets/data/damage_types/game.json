@@ -124,12 +124,12 @@
       },
       {
         "effect": {
-          "duration": 1.5,
+          "duration": 3,
           "grant": [
             "status.frozen"
           ]
         },
-        "needs": 4,
+        "needs": 1,
         "window": 3,
         "requires": [
           "troll",
@@ -175,7 +175,7 @@
       },
       {
         "effect": "stunned",
-        "needs": 4,
+        "needs": 3,
         "window": 3,
         "requires": [
           "troll",

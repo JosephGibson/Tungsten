@@ -98,3 +98,24 @@ fn cycling_the_summon_type_names_the_slots_icon() {
         assert_eq!(harness.tree().image_sprite(icon), Some(shown), "{action}");
     }
 }
+
+#[test]
+fn full_mana_reads_100_of_100_on_one_line() {
+    // The readouts never wrap, a full 100 / 100 included, and read whole
+    // numbers: health rounded up while alive, mana down.
+    use tungsten::core::text::TextWrap;
+    let (mut harness, player) = run();
+    let hud = *harness.world().resource::<Hud>();
+    for meter in [hud.health, hud.mana] {
+        let text = harness.tree().overrides(meter.text).unwrap().text.clone();
+        assert_eq!(text.wrap, Some(TextWrap::None));
+        let room = harness.tree().layout_style(meter.text).unwrap().min_width;
+        assert!(room.is_some_and(|room| room >= 96.0), "{room:?}");
+    }
+    harness.step(1);
+    assert_eq!(text_of(harness.tree(), hud.mana.text), "100 / 100");
+    assert_eq!(text_of(harness.tree(), hud.health.text), "100 / 100");
+    damage(harness.world_mut(), player, 12.5);
+    harness.step(1);
+    assert_eq!(text_of(harness.tree(), hud.health.text), "88 / 100");
+}

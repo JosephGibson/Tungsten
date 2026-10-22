@@ -1,8 +1,10 @@
 //! A run: the gameplay state, which spawns the level and the player fresh or
 //! from a save, plays the run's music, holds the game clock while a screen
-//! covers it, toasts and autosaves as the player enters each area, and
-//! opens the shell's game over when the player dies.
+//! covers it, names each area the player enters on its banner and
+//! autosaves, and opens the shell's game over three game seconds after the
+//! player dies.
 
+pub mod banner;
 pub mod components;
 pub mod systems;
 
@@ -23,7 +25,8 @@ use crate::save;
 use crate::shared::SaveIds;
 use crate::shell::{self, RunStart};
 
-/// The run as a plugin: `run_areas` in the react phase.
+/// The run as a plugin: `run_areas` in the react phase, the banner's fade
+/// each frame.
 pub struct RunPlugin;
 
 impl Plugin for RunPlugin {
@@ -34,18 +37,28 @@ impl Plugin for RunPlugin {
             systems::areas(world, &mut cursor);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(areas));
+        schedule.add(Stage::Update, system("run_banner", banner::tick));
     }
 }
+
+/// Game seconds a dead player falls, as its controller drops it, before
+/// the shell's game over opens (F13).
+pub const DEATH_SECS: f32 = 3.0;
 
 /// Gameplay: the run's entities spawn with it and leave with it.
 pub struct GameplayState {
     start: Option<RunStart>,
+    /// Game seconds since the player died.
+    dead_for: f32,
 }
 
 impl GameplayState {
     #[must_use]
     pub fn new(start: RunStart) -> Self {
-        Self { start: Some(start) }
+        Self {
+            start: Some(start),
+            dead_for: 0.0,
+        }
     }
 }
 
@@ -57,6 +70,7 @@ impl GameState for GameplayState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
+        self.dead_for = 0.0;
         world.insert_resource(SaveIds::default());
         world.insert_resource(Cascades::default());
         world.insert_resource(Hints::default());
@@ -87,10 +101,12 @@ impl GameState for GameplayState {
         }
         audio::start(world);
         spells::start(world);
+        banner::start(world);
     }
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.remove_resource::<Run>();
+        ctx.world.remove_resource::<banner::Banner>();
         ctx.world
             .remove_resource::<dummy::components::PlacedDummies>();
         ctx.world
@@ -117,7 +133,11 @@ impl GameState for GameplayState {
             .get_resource::<Run>()
             .and_then(|run| world.get::<Health>(run.player))
             .is_some_and(Health::is_dead);
-        if dead {
+        if !dead {
+            return;
+        }
+        self.dead_for += world.resource::<Time>().delta();
+        if self.dead_for >= DEATH_SECS {
             shell::game_over(world);
         }
     }

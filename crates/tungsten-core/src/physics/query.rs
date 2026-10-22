@@ -207,27 +207,38 @@ impl SpatialIndex {
     }
 
     /// The step's sensor pass: builds the index of `buffers` and calls
-    /// `visit` with each sensor, in gather order, and each body or tile in a
-    /// layer the sensor's mask holds that it overlaps with penetration above
-    /// 0, in index order. Sensors do not detect sensors. The step's queries
-    /// reuse the index.
+    /// `visit` with each sensor, in gather order, and each body in a layer
+    /// the sensor's mask holds that it overlaps with penetration above 0, in
+    /// index order, then, unless `tiles_known(index, sensor)` says this
+    /// sensor's tiles are the last step's, each such tile, in index order,
+    /// through `visit_tile`. Sensors do not detect sensors. The step's
+    /// queries reuse the index.
     pub(super) fn sensor_overlaps(
         world: &World,
         buffers: &PhysicsBuffers,
+        mut tiles_known: impl FnMut(usize, &IndexEntry) -> bool,
         mut visit: impl FnMut(&IndexEntry, &IndexEntry),
+        mut visit_tile: impl FnMut(usize, &IndexEntry, &IndexEntry),
     ) {
         with_index_of(world, buffers, |state| {
-            let first = state.entries.partition_point(|entry| !entry.sensor);
-            for index in first..state.entries.len() {
-                let sensor = state.entries[index];
-                state.gather(&sensor.aabb());
+            let sensors = state.tile_base..state.bodies.len();
+            for (index, at) in sensors.enumerate() {
+                let sensor = state.bodies[at];
+                let known = tiles_known(index, &sensor);
+                state.gather_parts(&sensor.aabb(), !known);
                 state.candidates.sort_unstable();
+                let tiles = state.tiles.entries.len();
                 for &id in &state.candidates {
-                    let other = &state.entries[id as usize];
-                    if !other.sensor
-                        && sensor.mask & other.layers != 0
-                        && shapes_overlap(sensor.shape, sensor.center, other.shape, other.center)
+                    let other = state.entry(id);
+                    if other.sensor
+                        || sensor.mask & other.layers == 0
+                        || !shapes_overlap(sensor.shape, sensor.center, other.shape, other.center)
                     {
+                        continue;
+                    }
+                    if (state.tile_base..state.tile_base + tiles).contains(&(id as usize)) {
+                        visit_tile(index, &sensor, other);
+                    } else {
                         visit(&sensor, other);
                     }
                 }
@@ -240,34 +251,90 @@ impl SpatialIndex {
 struct IndexState {
     /// Built from the last step's proxies; every step clears it.
     fresh: bool,
-    entries: Vec<IndexEntry>,
-    /// The entries' exact boxes, by entry index.
+    /// The entity proxies, then the sensors: every entry but the tiles. An
+    /// entity proxy's id is its place; a sensor's comes after the tiles'.
+    bodies: Vec<IndexEntry>,
+    /// The entity proxy count: the first tile's id.
+    tile_base: usize,
+    /// The entity proxies' exact boxes, by id. Sensors are tested against a
+    /// query's box directly: a few, often large.
     grid: SpatialGrid,
-    /// Union of the entries' boxes; queries are clamped to it.
-    bounds: Option<Aabb>,
+    /// The tiles' entries and grid, kept while the step's tiles are.
+    tiles: TileIndex,
+    /// The exact corners of the entries' union; queries are clamped to it.
+    bounds: Option<(Vec2, Vec2)>,
     candidates: Vec<ProxyId>,
     #[cfg(test)]
     builds: usize,
 }
 
+/// The index's tile entries, in tile order, their exact boxes' grid by
+/// tile order and their union's corners, rebuilt when the step's tile cache
+/// or the cell size changes.
+#[derive(Debug, Default)]
+struct TileIndex {
+    /// The cache version and cell size bits it was built for.
+    staged: Option<(u64, u32)>,
+    entries: Vec<IndexEntry>,
+    grid: SpatialGrid,
+    bounds: Option<(Vec2, Vec2)>,
+}
+
+/// `bounds` grown to hold `aabb`, its corners compared exactly.
+fn grow(bounds: Option<(Vec2, Vec2)>, aabb: &Aabb) -> (Vec2, Vec2) {
+    let (min, max) = (aabb.min(), aabb.max());
+    bounds.map_or((min, max), |(lo, hi)| (lo.min(min), hi.max(max)))
+}
+
 impl IndexState {
-    /// Rebuild from the last step's proxies unless already built.
+    /// The entry `id` names.
+    fn entry(&self, id: ProxyId) -> &IndexEntry {
+        let id = id as usize;
+        let tiles = self.tiles.entries.len();
+        if id < self.tile_base {
+            &self.bodies[id]
+        } else if id < self.tile_base + tiles {
+            &self.tiles.entries[id - self.tile_base]
+        } else {
+            &self.bodies[id - tiles]
+        }
+    }
+
+    /// Rebuild from the last step's proxies unless already built; the tile
+    /// part only when the step's tiles or the cell size changed.
     fn refresh(&mut self, buffers: &PhysicsBuffers, cell_size: f32) {
         if self.fresh {
             return;
         }
-        self.entries.clear();
-        buffers.index_entries(&mut self.entries);
+        self.bodies.clear();
+        self.tile_base = buffers.index_bodies(&mut self.bodies);
+        let key = (buffers.tiles_version(), cell_size.to_bits());
+        if self.tiles.staged != Some(key) {
+            let tiles = &mut self.tiles;
+            tiles.entries.clear();
+            buffers.index_tiles(&mut tiles.entries);
+            tiles.grid.set_cell_size(cell_size);
+            tiles.bounds = None;
+            for (ordinal, entry) in tiles.entries.iter().enumerate() {
+                let aabb = entry.aabb();
+                tiles.grid.insert(ordinal as ProxyId, &aabb);
+                tiles.bounds = Some(grow(tiles.bounds, &aabb));
+            }
+            tiles.staged = Some(key);
+        }
         if (self.grid.cell_size() - cell_size).abs() > f32::EPSILON {
             self.grid.set_cell_size(cell_size);
         }
         self.grid.clear();
-        self.bounds = None;
-        for (id, entry) in self.entries.iter().enumerate() {
+        let mut bounds = self.tiles.bounds;
+        for (id, entry) in self.bodies.iter().enumerate() {
             let aabb = entry.aabb();
-            self.grid.insert(id as ProxyId, &aabb);
-            self.bounds = Some(self.bounds.map_or(aabb, |bounds| bounds.union(&aabb)));
+            if id < self.tile_base {
+                self.grid.insert(id as ProxyId, &aabb);
+            }
+            bounds = Some(grow(bounds, &aabb));
         }
+        self.bounds = bounds;
         self.fresh = true;
         #[cfg(test)]
         {
@@ -276,25 +343,63 @@ impl IndexState {
     }
 
     /// Fill `candidates` with the entries whose boxes may meet `query`: from
-    /// the grid, or every entry when the box, clamped to the entries'
-    /// bounds, spans more cells than there are entries to test.
+    /// the grids and the sensors, or every entry when the box, clamped to
+    /// the entries' bounds, spans more cells than there are entries to
+    /// test.
     fn gather(&mut self, query: &Aabb) {
+        self.gather_parts(query, true);
+    }
+
+    /// [`Self::gather`], leaving the tiles out unless `tiles`. Each part,
+    /// the entity proxies, the tiles and the sensors, gives a superset of
+    /// its entries whose boxes meet the query box: every one of its ids
+    /// when the box spans more cells than four times its entries, else its
+    /// grid's, and the sensors by their boxes. The exact tests after it
+    /// decide every answer, whatever the order (ties go by id).
+    fn gather_parts(&mut self, query: &Aabb, tiles: bool) {
         self.candidates.clear();
-        let Some(bounds) = self.bounds else {
+        let Some((low, high)) = self.bounds else {
             return;
         };
         let pad = Vec2::splat(QUERY_PAD);
-        let min = (query.min() - pad).max(bounds.min());
-        let max = (query.max() + pad).min(bounds.max());
+        let min = (query.min() - pad).max(low);
+        let max = (query.max() + pad).min(high);
         if min.x > max.x || min.y > max.y {
             return;
         }
         let span = (max - min) / self.grid.cell_size() + Vec2::ONE;
-        if span.x * span.y > (4 * self.entries.len()).max(64) as f32 {
-            self.candidates.extend(0..self.entries.len() as ProxyId);
+        let cells = span.x * span.y;
+        let wide = |entries: usize| cells > (4 * entries).max(64) as f32;
+        let tile_count = self.tiles.entries.len();
+        let base = self.tile_base;
+        let clamped = Aabb::from_min_max(min, max);
+        let Self {
+            grid,
+            tiles: tile_index,
+            bodies,
+            candidates,
+            ..
+        } = self;
+        if wide(base) {
+            candidates.extend(0..base as ProxyId);
         } else {
-            let clamped = Aabb::from_min_max(min, max);
-            self.grid.query(&clamped, None, &mut self.candidates);
+            grid.for_each_in(&clamped, None, |id| candidates.push(id));
+        }
+        if tiles {
+            if wide(tile_count) {
+                candidates.extend(base as ProxyId..(base + tile_count) as ProxyId);
+            } else {
+                tile_index
+                    .grid
+                    .for_each_in(&clamped, None, |id| candidates.push(id + base as ProxyId));
+            }
+        }
+        // The sensors, against the clamped box, edges included.
+        for (at, sensor) in bodies.iter().enumerate().skip(base) {
+            let (lo, hi) = (sensor.aabb().min(), sensor.aabb().max());
+            if lo.cmple(clamped.max()).all() && clamped.min().cmple(hi).all() {
+                candidates.push((at + tile_count) as ProxyId);
+            }
         }
     }
 }
@@ -348,7 +453,7 @@ pub fn cast_ray(
         state.gather(&Aabb::from_min_max(origin.min(end), origin.max(end)));
         let mut best = None;
         for &id in &state.candidates {
-            let entry = &state.entries[id as usize];
+            let entry = state.entry(id);
             if !filter.admits(entry, world) {
                 continue;
             }
@@ -399,7 +504,7 @@ pub fn cast_shape(
         ));
         let mut best = None;
         for &id in &state.candidates {
-            let entry = &state.entries[id as usize];
+            let entry = state.entry(id);
             if !filter.admits(entry, world) {
                 continue;
             }
@@ -435,7 +540,7 @@ pub fn overlap(
         state.gather(&Aabb::new(center, half));
         state.candidates.sort_unstable();
         for &id in &state.candidates {
-            let entry = &state.entries[id as usize];
+            let entry = state.entry(id);
             if filter.admits(entry, world)
                 && shapes_overlap(shape, center, entry.shape, entry.center)
             {
@@ -464,7 +569,7 @@ pub fn nearest(
         state.gather(&Aabb::new(point, Vec2::splat(max_distance)));
         let mut best = None;
         for &id in &state.candidates {
-            let entry = &state.entries[id as usize];
+            let entry = state.entry(id);
             if filter.admits(entry, world) {
                 keep_closer(&mut best, surface_hit(point, entry), id, max_distance);
             }

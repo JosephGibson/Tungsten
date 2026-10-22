@@ -130,8 +130,8 @@ mod solver;
 mod sweep;
 
 use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
-use gather::{entity_key, gather_proxies};
-use pairs::{ImpulseMap, PairBudget, pair_key, refresh_pairs, sync_impulses};
+use gather::{TileCache, entity_key, gather_proxies};
+use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{apply_impulse, apply_restitution, narrow_phase, soft_params, solve_contacts};
 use sweep::{SweepGrid, speculative_pass};
@@ -309,6 +309,11 @@ struct ContactConstraint {
 #[cfg_attr(test, allow(clippy::struct_excessive_bools))]
 pub struct PhysicsBuffers {
     proxies: Vec<Proxy>,
+    /// The entity proxies at the front of `proxies`; the tile proxies, from
+    /// `tiles`, follow them.
+    bodies: usize,
+    /// The collision layers' tile proxies, kept until a map changes.
+    tiles: TileCache,
     /// Inflated AABBs and travel allowances for D-075 pair reuse, each set
     /// at the proxy's last pair build or repair.
     pair_aabbs: Vec<Aabb>,
@@ -358,9 +363,18 @@ pub struct PhysicsBuffers {
     sensor_pairs: Vec<u128>,
     /// Scratch for this step's sensor pairs.
     sensor_scratch: Vec<u128>,
+    /// Scratch: this step's sensor pairs with bodies, then all of them
+    /// merged into `sensor_scratch`.
+    sensor_body_pairs: Vec<u128>,
+    /// Each sensor's tile pairs, by gather index, kept while the sensor and
+    /// the tiles stay as they were; cleared by a step without sensors.
+    sensor_tiles: Vec<SensorTiles>,
+    /// Sensor passes run, which dates each `sensor_tiles` entry.
+    sensor_passes: u64,
     sensor_events: Vec<SensorEntered>,
     candidates: Vec<ProxyId>,
-    grid: SpatialGrid,
+    /// The pair grid: entity proxies staged per build, tiles per cache.
+    grid: PairGrid,
     static_grid: SweepGrid,
     contacts: Vec<ContactConstraint>,
     /// Last synchronized contacts, keyed across frames and pair rebuilds.
@@ -449,33 +463,27 @@ impl PhysicsBuffers {
         self.contacts.len()
     }
 
-    /// The last step's proxies at their final positions, in proxy order,
-    /// then its sensors: what the spatial index holds. A body's identity is
-    /// its key; a tile's names its map, layer and cell in a frame with
-    /// sensors and is 0 otherwise.
-    pub(super) fn index_entries(&self, out: &mut Vec<IndexEntry>) {
-        let first_tile = self.proxies.len() - self.tile_ids.len();
-        out.extend(self.proxies.iter().zip(&self.layers.of).enumerate().map(
-            |(index, (proxy, layers))| {
-                let identity = if proxy.entity.is_some() {
-                    proxy.key
-                } else {
-                    index
-                        .checked_sub(first_tile)
-                        .map_or(0, |tile| self.tile_ids[tile])
-                };
-                IndexEntry {
+    /// The last step's entity proxies at their final positions, in proxy
+    /// order, then its sensors: the spatial index's entries but the tiles,
+    /// which [`Self::index_tiles`] gives. A body's identity is its key.
+    /// Returns the entity proxy count, the first tile's index.
+    pub(super) fn index_bodies(&self, out: &mut Vec<IndexEntry>) -> usize {
+        let bodies = &self.proxies[..self.bodies];
+        out.extend(
+            bodies
+                .iter()
+                .zip(&self.layers.of)
+                .map(|(proxy, layers)| IndexEntry {
                     entity: proxy.entity,
                     center: proxy.center,
                     shape: proxy.shape,
                     face_mask: proxy.face_mask,
                     sensor: false,
-                    identity,
+                    identity: proxy.key,
                     layers: layers.layers,
                     mask: layers.mask,
-                }
-            },
-        ));
+                }),
+        );
         out.extend(self.sensors.iter().map(|sensor| IndexEntry {
             entity: Some(sensor.entity),
             center: sensor.center,
@@ -486,6 +494,34 @@ impl PhysicsBuffers {
             layers: sensor.layers.layers,
             mask: sensor.layers.mask,
         }));
+        self.bodies
+    }
+
+    /// The tile proxies as index entries, in tile order, each identity
+    /// naming its map, layer and cell; with the cache version they are of.
+    pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>) -> u64 {
+        out.extend(
+            self.tiles
+                .proxies
+                .iter()
+                .zip(&self.tiles.ids)
+                .map(|(proxy, &identity)| IndexEntry {
+                    entity: None,
+                    center: proxy.center,
+                    shape: proxy.shape,
+                    face_mask: proxy.face_mask,
+                    sensor: false,
+                    identity,
+                    layers: Layers::DEFAULT.layers,
+                    mask: Layers::DEFAULT.mask,
+                }),
+        );
+        self.tiles.version
+    }
+
+    /// The version of the tile cache the last step used.
+    pub(super) fn tiles_version(&self) -> u64 {
+        self.tiles.version
     }
 }
 
@@ -532,7 +568,9 @@ pub fn physics_step(world: &mut World) {
         &mut buffers.layers,
         &mut buffers.sensors,
         &mut buffers.tile_ids,
+        &mut buffers.tiles,
     );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     let substeps = substep_count(&config, dt, kinematics > 0);
     let sub_dt = dt / substeps as f32;
     buffers.pairs_invalidated = true;
@@ -569,6 +607,7 @@ pub fn physics_step(world: &mut World) {
     SpatialIndex::mark_stale(world);
     if buffers.sensors.is_empty() {
         buffers.sensor_pairs.clear();
+        buffers.sensor_tiles.clear();
     } else {
         sensor_pass(world, &mut buffers);
     }
@@ -707,6 +746,7 @@ fn substep(
     }
     let PhysicsBuffers {
         proxies,
+        bodies,
         pair_budgets,
         pair_flags,
         layers,
@@ -862,8 +902,14 @@ fn substep(
     // Integrate velocities (gravity), then warm start from stored impulses.
     // Each awake body's velocity is kept as the narrow phase saw it: the
     // arrival pass measures what the solve adds against it (D-092).
+    // Tile proxies follow the entity proxies and never move: the passes
+    // that skip them walk the entity proxies alone.
+    let bodies = *bodies;
     arrival.fit(proxies.len());
-    for (proxy, admitted) in proxies.iter_mut().zip(arrival.admitted.iter_mut()) {
+    for (proxy, admitted) in proxies[..bodies]
+        .iter_mut()
+        .zip(arrival.admitted.iter_mut())
+    {
         if proxy.is_dynamic && !proxy.sleeping {
             *admitted = proxy.velocity;
             if proxy.has_velocity {
@@ -896,7 +942,11 @@ fn substep(
     let arrival_threshold = ARRIVAL_SLOPS * config.linear_slop * inv_h;
     let arrival_threshold_sq = arrival_threshold * arrival_threshold;
     arrival.list.clear();
-    for (index, (proxy, admitted)) in proxies.iter_mut().zip(arrival.admitted.iter()).enumerate() {
+    for (index, (proxy, admitted)) in proxies[..bodies]
+        .iter_mut()
+        .zip(arrival.admitted.iter())
+        .enumerate()
+    {
         if !proxy.is_dynamic || proxy.sleeping {
             // A kinematic body moves by its velocity; no solve changed it,
             // so it is never listed.
@@ -956,6 +1006,7 @@ fn substep(
     speculative_pass(
         config,
         proxies,
+        bodies,
         layers,
         grid,
         static_grid,
@@ -965,9 +1016,45 @@ fn substep(
 
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.
-    for (proxy, budget) in proxies.iter().zip(pair_budgets) {
+    for (proxy, budget) in proxies[..bodies].iter().zip(pair_budgets) {
         if proxy.moves() {
             budget.travel += (proxy.center - proxy.prev_center).length();
+        }
+    }
+}
+
+/// One sensor's tile pairs, sorted, with what they were found for.
+#[derive(Debug, Default)]
+struct SensorTiles {
+    key: Option<SensorKey>,
+    /// The sensor pass that last found or kept them.
+    used: u64,
+    pairs: Vec<u128>,
+}
+
+/// What a sensor's tile overlaps depend on: the sensor, its box and mask,
+/// and the tiles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SensorKey {
+    identity: u64,
+    center: [u32; 2],
+    shape: [u32; 3],
+    mask: u32,
+    tiles: u64,
+}
+
+impl SensorKey {
+    fn of(sensor: &IndexEntry, tiles: u64) -> Self {
+        let shape = match sensor.shape {
+            Shape::Aabb { half_extents } => [0, half_extents.x.to_bits(), half_extents.y.to_bits()],
+            Shape::Circle { radius } => [1, radius.to_bits(), 0],
+        };
+        Self {
+            identity: sensor.identity,
+            center: [sensor.center.x.to_bits(), sensor.center.y.to_bits()],
+            shape,
+            mask: sensor.mask,
+            tiles,
         }
     }
 }
@@ -975,24 +1062,102 @@ fn substep(
 /// Sensor pass: each sensor, in gather order, against the bodies and tiles
 /// it overlaps at the step's final positions, in index order (the spatial
 /// index, built here). A pair the previous step lacked sends
-/// `SensorEntered`; the step's pairs, sorted, replace the previous ones.
+/// `SensorEntered`; the step's pairs, sorted, replace the previous ones. A
+/// sensor whose key matches the one the last pass kept has the same tile
+/// pairs, every one of them in the previous step's, so only its bodies are
+/// tested; the events and the pairs are those a test of every tile gives.
 fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
+    let mut body_pairs = std::mem::take(&mut buffers.sensor_body_pairs);
     let mut entered = std::mem::take(&mut buffers.sensor_events);
-    pairs.clear();
+    let mut kept = std::mem::take(&mut buffers.sensor_tiles);
+    buffers.sensor_passes += 1;
+    let pass = buffers.sensor_passes;
+    let version = buffers.tiles.version;
+    kept.resize_with(buffers.sensors.len(), SensorTiles::default);
+    let mut fresh = vec![false; buffers.sensors.len()];
+    body_pairs.clear();
     let previous = &buffers.sensor_pairs;
-    SpatialIndex::sensor_overlaps(world, buffers, |sensor, other| {
-        let pair = (u128::from(sensor.identity) << 64) | u128::from(other.identity);
-        pairs.push(pair);
-        if previous.binary_search(&pair).is_err()
-            && let Some(sensor) = sensor.entity
-        {
-            entered.push(SensorEntered::new(sensor, other.entity));
+    let pair_of = |sensor: &IndexEntry, other: &IndexEntry| {
+        (u128::from(sensor.identity) << 64) | u128::from(other.identity)
+    };
+    {
+        let kept = &mut kept;
+        let fresh = &mut fresh;
+        let entered = &mut entered;
+        let body_pairs = &mut body_pairs;
+        // Both closures below take the event list and the kept pairs, so
+        // they go through cells shared by the three callbacks.
+        let entered = std::cell::RefCell::new(entered);
+        let kept = std::cell::RefCell::new(kept);
+        SpatialIndex::sensor_overlaps(
+            world,
+            buffers,
+            |index, sensor| {
+                let key = SensorKey::of(sensor, version);
+                let mut kept = kept.borrow_mut();
+                let entry = &mut kept[index];
+                if entry.key == Some(key) && entry.used + 1 == pass {
+                    entry.used = pass;
+                    true
+                } else {
+                    entry.key = Some(key);
+                    entry.used = pass;
+                    entry.pairs.clear();
+                    fresh[index] = true;
+                    false
+                }
+            },
+            |sensor, other| {
+                let pair = pair_of(sensor, other);
+                body_pairs.push(pair);
+                if previous.binary_search(&pair).is_err()
+                    && let Some(entity) = sensor.entity
+                {
+                    entered
+                        .borrow_mut()
+                        .push(SensorEntered::new(entity, other.entity));
+                }
+            },
+            |index, sensor, tile| {
+                let pair = pair_of(sensor, tile);
+                kept.borrow_mut()[index].pairs.push(pair);
+                if previous.binary_search(&pair).is_err()
+                    && let Some(entity) = sensor.entity
+                {
+                    entered
+                        .borrow_mut()
+                        .push(SensorEntered::new(entity, tile.entity));
+                }
+            },
+        );
+    }
+    for (entry, &fresh) in kept.iter_mut().zip(&fresh) {
+        if fresh {
+            entry.pairs.sort_unstable();
         }
-    });
-    pairs.sort_unstable();
+    }
+    // Every pair, sorted: the body pairs merged with each sensor's sorted
+    // tile pairs, the sensors in key order, since a pair's high half is its
+    // sensor's identity.
+    body_pairs.sort_unstable();
+    let mut order: Vec<usize> = (0..kept.len()).collect();
+    order.sort_unstable_by_key(|&index| kept[index].key.map_or(0, |key| key.identity));
+    pairs.clear();
+    let mut bodies = body_pairs.iter().copied().peekable();
+    for &index in &order {
+        for &tile in &kept[index].pairs {
+            while let Some(body) = bodies.next_if(|&body| body < tile) {
+                pairs.push(body);
+            }
+            pairs.push(tile);
+        }
+    }
+    pairs.extend(bodies);
     buffers.sensor_scratch = std::mem::replace(&mut buffers.sensor_pairs, pairs);
+    buffers.sensor_body_pairs = body_pairs;
     buffers.sensor_events = entered;
+    buffers.sensor_tiles = kept;
 }
 
 /// A touching contact with a kinematic side; the other is an awake dynamic

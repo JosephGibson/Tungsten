@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_crawler_scared_0"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_crawler_scared_1"
+    },
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_crawler_scared_2"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_crawler_scared_3"
+    }
+  ],
+  "looping": true
+}

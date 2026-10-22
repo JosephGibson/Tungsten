@@ -13,8 +13,8 @@ pub mod systems;
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::{
-    AmbientLight, CameraBounds, CameraController, Entity, Light, ParticleBudget, PhysicsConfig,
-    Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
+    AmbientLight, CameraBounds, CameraController, DataRegistry, Entity, Light, ParticleBudget,
+    PhysicsConfig, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
 };
 use tungsten::kit::{Phase, ensure_phases};
 use tungsten::plugins::CAMERA_UPDATE;
@@ -26,6 +26,9 @@ use components::SceneTime;
 
 /// The level's tilemap, by its manifest ID.
 pub const MAP: &str = "ex10_level";
+/// The `opaque_tiles` entry that names the sprites every pixel of which is
+/// opaque.
+pub const OPAQUE: &str = "level";
 /// A tile's side, in world pixels.
 pub const TILE: f32 = 64.0;
 /// The map's size, in tiles: `tools/level.json`'s `cols` and `rows`.
@@ -85,6 +88,7 @@ impl Plugin for LevelPlugin {
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
         world.register_component::<components::Glow>("glow");
+        world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
         if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
             physics.gravity = Vec2::new(0.0, GRAVITY);
             physics.broadphase_cell_size = TILE;
@@ -155,6 +159,19 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     ));
     world.insert_resource(SceneTime::default());
     world.insert_resource(components::AreaLight::default());
+    // What the map's opaque tiles hide of the backdrop.
+    let cover = world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+        .zip(
+            world
+                .get_resource::<DataRegistry>()
+                .and_then(|data| data.get::<components::OpaqueTiles>(OPAQUE)),
+        )
+        .map(|(map, opaque)| components::Cover::of(map, Vec2::ZERO, opaque));
+    if let Some(cover) = cover {
+        world.insert_resource(cover);
+    }
     world.insert_resource(AmbientLight(AMBIENT));
     world.insert_resource(post_stack());
     let size = Vec2::new(MAP_COLS as f32, MAP_ROWS as f32) * TILE;
@@ -171,20 +188,22 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
 /// stack.
 pub fn despawn(world: &mut World) {
     world.remove_resource::<SceneTime>();
+    world.remove_resource::<components::Cover>();
     world.remove_resource::<components::AreaLight>();
     world.insert_resource(AmbientLight::default());
     world.insert_resource(PostStack::default());
 }
 
-/// Midnight's post stack, today's: highlights bloom softly and the corners
-/// darken a little, with no blur over the pixel art.
+/// Midnight's post stack, today's: highlights bloom enough that the Bloom
+/// option reads (B6) and the corners darken a little, with no blur over the
+/// pixel art.
 #[must_use]
 pub fn post_stack() -> PostStack {
     PostStack(vec![
         PostPass::Bloom(BloomParams {
             threshold: 0.72,
             knee: 0.16,
-            intensity: 0.22,
+            intensity: 0.6,
             radius: 0.65,
         }),
         PostPass::Vignette(VignetteParams {

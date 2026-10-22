@@ -2,7 +2,7 @@
   "period": 0.1,
   "restore": {
     "stat": "mana",
-    "amount": 1.5,
+    "amount": 3.0,
     "max": "max_mana"
   },
   "suppressed_by": [

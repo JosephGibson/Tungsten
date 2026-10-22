@@ -463,3 +463,68 @@ fn proxy_beyond_i32_cells_is_still_found() {
     grid.query(&aabb(0.0, 0.0, 4.0, 4.0), None, &mut out);
     assert_eq!(out, vec![0]);
 }
+
+#[test]
+fn a_two_grid_walk_returns_one_grids_order() {
+    // The pair grid keeps the tiles in a grid of their own: walking it with
+    // the entity grid must give the order one grid holding both returns,
+    // every cell's first-grid entries before its second-grid ones, with
+    // exclusion and dedupe, in either layout (`D-080`'s rule).
+    use crate::Pcg32;
+    for (seed, hashed) in [(1_u64, false), (2, true), (3, false), (4, true)] {
+        let mut rng = Pcg32::seeded(0x2C1D + seed);
+        let (firsts, seconds) = (40_usize, 120_usize);
+        let mut union = SpatialGrid::new(16.0);
+        let mut first = SpatialGrid::new(16.0);
+        let mut second = SpatialGrid::new(16.0);
+        for id in 0..firsts + seconds {
+            let half = if id % 3 == 0 {
+                Vec2::splat(rng.next_range(1.0, 30.0))
+            } else {
+                Vec2::splat(7.9)
+            };
+            let b = aabb(
+                rng.next_range(-200.0, 200.0),
+                rng.next_range(-120.0, 120.0),
+                half.x,
+                half.y,
+            );
+            union.insert(id as ProxyId, &b);
+            if id < firsts {
+                first.insert(id as ProxyId, &b);
+            } else {
+                second.insert((id - firsts) as ProxyId, &b);
+            }
+        }
+        if hashed {
+            let far = aabb(4.0e6, -4.0e6, 0.0, 0.0);
+            union.insert((firsts + seconds) as ProxyId, &far);
+            second.insert(seconds as ProxyId, &far);
+        }
+        let (mut want, mut got) = (Vec::new(), Vec::new());
+        let mut met = 0;
+        for at in 0..300 {
+            let query = aabb(
+                rng.next_range(-220.0, 220.0),
+                rng.next_range(-140.0, 140.0),
+                rng.next_range(0.0, 60.0),
+                rng.next_range(0.0, 60.0),
+            );
+            let exclude = (at % 4 == 0).then(|| rng.next_u32() % (firsts + seconds) as u32);
+            union.query(&query, exclude, &mut want);
+            got.clear();
+            for_each_in_both(
+                &mut first,
+                &mut second,
+                firsts as ProxyId,
+                &query,
+                exclude,
+                |id| got.push(id),
+            );
+            assert_eq!(got, want, "seed {seed}, query {at}: {query:?}");
+            met += want.len();
+        }
+        assert_eq!(is_direct(&union), !hashed, "seed {seed}'s layout");
+        assert!(met > 1_000, "the queries met too little: {met}");
+    }
+}

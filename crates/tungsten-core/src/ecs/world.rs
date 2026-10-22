@@ -338,13 +338,18 @@ impl World {
     pub fn query_slices_filtered<'w, Q: ReadOnlyQueryData<'w>, F: QueryFilter>(
         &'w self,
     ) -> impl Iterator<Item = (usize, Q::Slices)> {
-        self.archetypes.archetypes.iter().filter_map(|arch| {
-            if Q::matches(&arch.component_types) && F::matches(&arch.component_types) {
-                Some((arch.entities.len(), Q::slices(Columns::of(arch))))
-            } else {
-                None
-            }
-        })
+        // The matching archetypes' slices first, so the iterator a query
+        // returns is a vector's and its rows' loops stay as tight as before.
+        let matched = self.archetypes.matching(Q::matches, F::matches);
+        let parts: Vec<(usize, Q::Slices)> = self
+            .archetypes
+            .archetypes
+            .iter()
+            .enumerate()
+            .filter(|&(index, _)| matched[index / 64] >> (index % 64) & 1 == 1)
+            .map(|(_, arch)| (arch.entities.len(), Q::slices(Columns::of(arch))))
+            .collect();
+        parts.into_iter()
     }
 
     /// Rows matching the query data `Q`, which may write: `&mut A` or
@@ -388,14 +393,19 @@ impl World {
         &'w mut self,
     ) -> impl Iterator<Item = (usize, Q::Slices)> {
         Q::check_access();
-        self.archetypes.archetypes.iter_mut().filter_map(|arch| {
-            if Q::matches(&arch.component_types) && F::matches(&arch.component_types) {
+        let matched = self.archetypes.matching(Q::matches, F::matches);
+        let parts: Vec<(usize, Q::Slices)> = self
+            .archetypes
+            .archetypes
+            .iter_mut()
+            .enumerate()
+            .filter(|&(index, _)| matched[index / 64] >> (index % 64) & 1 == 1)
+            .map(|(_, arch)| {
                 let rows = arch.entities.len();
-                Some((rows, Q::slices_mut(ColumnsMut::of(arch))))
-            } else {
-                None
-            }
-        })
+                (rows, Q::slices_mut(ColumnsMut::of(arch)))
+            })
+            .collect();
+        parts.into_iter()
     }
 
     /// Collect entities with `T`; use before mixed mutable access.

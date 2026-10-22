@@ -75,16 +75,6 @@ fn centre(world: &World, entity: Entity) -> Option<Vec2> {
     )
 }
 
-/// A body's centre before this step.
-fn prev_centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<PrevPosition>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
-
 /// Lights `ball` when it is a small ball that never burned and is not
 /// frozen.
 pub fn ignite(world: &mut World, ball: Entity) {
@@ -137,21 +127,36 @@ pub fn spread_fire(world: &mut World) {
             }
         }
     }
+    // Only the unburnt balls within reach of the burning ones are bucketed:
+    // a ball farther from every source than a touch lights nothing (P5).
+    let lit: Vec<Vec2> = sources
+        .iter()
+        .filter_map(|&source| centre(world, source))
+        .collect();
+    let bounds = lit
+        .iter()
+        .map(|&p| (p, p))
+        .reduce(|(a, b), (c, d)| (a.min(c), b.max(d)));
     let mut cells: HashMap<(i32, i32), Vec<(Entity, Vec2)>> = HashMap::new();
-    for (entity, _, at, collider) in world.query::<(Entity, &SmallBall, &Position, &Collider)>() {
-        if world.has::<BallBurn>(entity) {
-            continue;
+    if let Some((min, max)) = bounds {
+        let (min, max) = (
+            min - Vec2::splat(CONTACT_DISTANCE),
+            max + Vec2::splat(CONTACT_DISTANCE),
+        );
+        for (entity, _, at, collider, burn) in
+            world.query::<(Entity, &SmallBall, &Position, &Collider, Option<&BallBurn>)>()
+        {
+            let p = at.0 + collider.offset;
+            if burn.is_some() || p.cmplt(min).any() || p.cmpgt(max).any() {
+                continue;
+            }
+            cells
+                .entry(cell(p, CONTACT_DISTANCE))
+                .or_default()
+                .push((entity, p));
         }
-        let p = at.0 + collider.offset;
-        cells
-            .entry(cell(p, CONTACT_DISTANCE))
-            .or_default()
-            .push((entity, p));
     }
-    for source in &sources {
-        let Some(p) = centre(world, *source) else {
-            continue;
-        };
+    for &p in &lit {
         let (x, y) = cell(p, CONTACT_DISTANCE);
         for dy in -1..=1 {
             for dx in -1..=1 {
@@ -413,15 +418,28 @@ pub fn fire_contacts(world: &mut World) {
     if fires.is_empty() {
         return;
     }
+    // The fires' swept boxes joined, grown by their half size and a pixel:
+    // a ball whose own swept box misses it meets no fire this step.
+    let (low, high) = fires.iter().fold(
+        (Vec2::splat(f32::INFINITY), Vec2::splat(f32::NEG_INFINITY)),
+        |(low, high), &(start, end)| (low.min(start.min(end)), high.max(start.max(end))),
+    );
+    let (low, high) = (low - FIRE_HALF - Vec2::ONE, high + FIRE_HALF + Vec2::ONE);
     let mut touched: Vec<(Option<SaveId>, Entity, Vec2)> = world
-        .query::<(Entity, &Ball, &Position, &Collider)>()
-        .filter_map(|(ball, _, at, collider)| {
+        .query::<(Entity, &Ball, &Position, Option<&PrevPosition>, &Collider)>()
+        .filter_map(|(ball, _, at, prev, collider)| {
             let radius = match collider.shape {
                 Shape::Circle { radius } => radius,
                 Shape::Aabb { half_extents } => half_extents.x,
             };
             let end = at.0 + collider.offset;
-            let start = prev_centre(world, ball).unwrap_or(end);
+            let start = prev.map_or(end, |prev| prev.0 + collider.offset);
+            let reach = Vec2::splat(radius);
+            if (start.max(end) + reach).cmplt(low).any()
+                || (start.min(end) - reach).cmpgt(high).any()
+            {
+                return None;
+            }
             let hit = fires
                 .iter()
                 .filter_map(|&(fire_start, fire_end)| {
@@ -511,8 +529,12 @@ pub fn impact_sparks(world: &mut World) {
     let newborn: Vec<(Entity, Vec2)> = world
         .query::<(Entity, &Particle)>()
         .filter_map(|(entity, particle)| {
+            // The newborn first, then their emitter (P6).
+            if particle.age != 0.0 {
+                return None;
+            }
             let emitter = world.get::<ParticleEmitter>(particle.emitter?)?;
-            (particle.age == 0.0 && emitter.config == config).then_some((entity, particle.velocity))
+            (emitter.config == config).then_some((entity, particle.velocity))
         })
         .collect();
     for (entity, velocity) in newborn {
@@ -626,11 +648,12 @@ pub fn crush(world: &mut World) {
                 .copied()
                 .or_else(|| impact(at, velocity, target, half))
         };
+        // The impact first, then whether an earlier block smashed it (P6).
         let mut struck: Vec<(Entity, f32, Option<SaveId>)> = world
             .query::<(Entity, &SmallBall, &Position, &Collider)>()
-            .filter(|(entity, ..)| !smashed.contains(entity))
             .filter_map(|(entity, _, p, c)| {
                 let speed = speed_into(entity, p.0 + c.offset, small_half)?;
+                (!smashed.contains(&entity)).then_some(())?;
                 Some((entity, speed, world.get::<SaveId>(entity).copied()))
             })
             .collect();
@@ -954,13 +977,23 @@ fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f3
     }
     let throws = world.get_resource::<Throws>();
     let mut hits = Vec::new();
-    for (body, at, collider) in world.query::<(Entity, &Position, &Collider)>() {
-        let throw = throws.and_then(|throws| throws.of(body));
-        if throw.is_none() && !is_body(world, body) {
+    for (body, at, collider, previous, velocity) in world.query::<(
+        Entity,
+        &Position,
+        &Collider,
+        Option<&PreviousVelocity>,
+        Option<&Velocity>,
+    )>() {
+        // `before_step` from the row: the cheap speed check comes first.
+        let before = previous
+            .map(|v| v.0)
+            .or_else(|| velocity.map(|v| v.0))
+            .unwrap_or(Vec2::ZERO);
+        if before.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED {
             continue;
         }
-        let before = before_step(world, body);
-        if before.length_squared() < BODY_HIT_SPEED * BODY_HIT_SPEED {
+        let throw = throws.and_then(|throws| throws.of(body));
+        if throw.is_none() && !is_body(world, body) {
             continue;
         }
         let centre = at.0 + collider.offset;
@@ -1011,6 +1044,10 @@ pub fn body_impacts(world: &mut World) {
         let va = before_step(world, event.a);
         let vb = event.b.map_or(Vec2::ZERO, |b| before_step(world, b));
         let closing = -(va - vb).dot(event.normal);
+        // Both a shatter and a landing need this speed.
+        if closing < SHATTER_SPEED {
+            continue;
+        }
         for (this, other) in [(Some(event.a), event.b), (event.b, Some(event.a))] {
             let Some(this) = this else { continue };
             let still = other.is_none_or(|other| !moves(world, other));

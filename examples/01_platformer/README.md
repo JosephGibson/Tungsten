@@ -1,6 +1,6 @@
 # Example 01: platformer
 
-A courier with a lantern crosses a ruin at night: six areas from the lantern clearing to the troll bridge, each flowing into the next, with lava, moving decks and lifts on the way and a ball pit dug into the clearing under a rope bridge. Ten spells cast physics toys and the elements: a fire missile, a flamethrower, an ice spray, lightning, a force push, a black hole, iron blocks, a bowling ball, a stream of small balls and a summoned training dummy; things burn, freeze, explode, shatter, burst into steam, conduct, crush and fall into the pit. A gun fires beside the spells, and a training dummy in the clearing takes every element and shows its damage. Five enemies hunt the courier: a fire wisp, a frost crawler, a rust beetle, a cave bat and a cave troll, which drop health and mana orbs.
+A courier with a lantern crosses a ruin at night: six areas from the lantern clearing to the troll bridge, each flowing into the next, with lava, moving decks and lifts on the way and a ball pit dug into the clearing under a rope bridge. Ten spells cast physics toys and the elements: a fire missile, a flamethrower, an ice spray, lightning, a force push, a black hole, iron blocks, a bowling ball, a stream of small balls and a summons, the training dummy or an enemy; things burn, freeze, explode, shatter, burst into steam, conduct, crush and fall into the pit. A gun fires beside the spells, and a training dummy in the clearing takes every element and shows its damage. Five enemies hunt the courier: a fire wisp, a frost crawler, a rust beetle, a cave bat and a cave troll, which drop health and mana orbs.
 
 It is a game on the [template](../../templates/basic/README.md): the template's shell (title, pause, game over, saves, settings, keybindings, toasts) and its theme copied byte for byte into `src/shell/` and `assets/ui/themes/shell.json`, the seam in `src/game.rs` and `src/save.rs`, and the game in `src/features/`, built on the engine kit (`tungsten::kit`) wherever the kit has the mechanic. Its night is a bloom and a vignette that each run builds whole (`features/level/`); the shell's Bloom option, on the Display tab, takes the bloom out and leaves the vignette.
 
@@ -29,7 +29,7 @@ Every action is in `input.json` and rebindable in Settings → Controls.
 | Next and previous spell | Wheel down, wheel up | RB, LB |
 | Select a spell slot | 1 … 9, 0 | |
 | Next and previous summon type | E, Q | D-pad right, left |
-| Lantern | L | North |
+| Staff light, on and off | L | North |
 | Zoom in and out | =, − | |
 | Pause | Esc | Start |
 
@@ -37,7 +37,7 @@ The cursor aims every spell and the gun.
 
 ## The level
 
-The map is 430 × 72 tiles of 64 px, generated from `tools/level.json` ([tools/README.md](tools/README.md)). Its six areas run west to east, each with its own ground, art, light, ambience loop, toast and autosave:
+The map is 430 × 72 tiles of 64 px, generated from `tools/level.json` ([tools/README.md](tools/README.md)). Its six areas run west to east, each with its own ground, art, light, ambience loop, banner and autosave:
 
 | Area | Columns | Built for |
 | --- | --- | --- |
@@ -54,20 +54,20 @@ Each area flows into the next through a border of mixed tiles, and its look cros
 
 | Slot | Spell | Use | Mana | Cooldown |
 | --- | --- | --- | --- | --- |
-| 1 | Fire missile: a projectile that banks once off the mine's iron, blasts what else it meets, lights small balls and shatters frozen iron | Press | 8 | 0.25 s |
-| 2 | Flamethrower: a short cone that lights small balls | Held | 20/s | |
-| 3 | Ice spray: a cone that chills balls and iron, freezing them in 1.5 s, and puts fire out with steam | Held | 18/s | |
-| 4 | Lightning from the sky onto the cursor, or onto the nearest conductive thing within 160 px of it; it stops at the first solid on its way down, and its shock jumps from conductor to conductor, six times at most | Press | 30 | 0.8 s |
-| 5 | Force push: every body within six tiles, by distance and mass | Press | 25 | 2 s |
-| 6 | Black hole at the cursor for 4 s: it pulls bodies and puts out fire | Press | 30 | 1 s |
-| 7 | Iron block at the cursor, at most 24 | Press | 15 | 0.4 s, 3 charges, one back every 2 s |
-| 8 | Bowling ball, tossed toward the aim | Press | 12 | 0.6 s |
-| 9 | Small balls at the cursor, up to 12,000 | Held | 15/s | |
-| 0 | Summon the selected type at the cursor, refused inside a wall: the training dummy, four at most, or a wisp, a crawler, a beetle, a bat or a troll, six enemies at most, the oldest going | Press | 40 | 1 s |
+| 1 | Fire missile: a projectile that banks once off the mine's iron, blasts what else it meets, lights small balls and shatters frozen iron | Press | 4 | 0.25 s |
+| 2 | Flamethrower: a short cone that lights small balls | Held | 10/s | |
+| 3 | Ice spray: a cone that chills balls and iron, freezing them in 1.5 s, and puts fire out with steam | Held | 9/s | |
+| 4 | Lightning from the sky straight down at the cursor, onto the first body or solid below it, and its shock jumps from conductor to conductor, six times at most | Press | 15 | 0.8 s |
+| 5 | Force push: every body within six tiles, by distance and mass | Press | 12.5 | 1 s |
+| 6 | Black hole at the cursor for 4 s: it pulls bodies and puts out burning small balls | Press | 15 | 0.5 s |
+| 7 | Iron block at the cursor, at most 24 | Press | 7.5 | 0.4 s, 3 charges, one back every 2 s |
+| 8 | Bowling ball, tossed toward the aim | Press | 6 | 0.3 s |
+| 9 | Small balls at the cursor, up to 12,000 | Held | 7.5/s | |
+| 0 | Summon the selected type at the cursor, refused inside a wall: the training dummy, four at most, or a wisp, a crawler, a beetle, a bat or a troll, six enemies at most, the oldest going | Press | 20 | 1 s |
 
 The gun fires twelve rounds 0.12 s apart, all back 1.2 s after the last: a shot deals 6 physical to what it hits, which can crit, kicks a ball and ends, shatters a frozen ball, and turns off iron twice, an iron block or the mine's iron faces, with sparks; it passes the mine's wooden scaffolds and the rope bridge in a burst of splinters and ends at stone in a puff of dust.
 
-Mana starts at 100 of 100 and comes back at 15 a second, paused for a second after each cast. The HUD shows the health and mana bars at the top left and the spell bar at the bottom: each slot's icon in its element's colour, its key, its cost, its cooldown's sweep and its charges, the selected slot outlined and a spell the mana cannot pay for greyed; slot 0 shows the summon's type. Beside it, the gun's magazine reads its rounds, a pip each, and "reloading" at none.
+Mana starts at 100 of 100 and comes back at 30 a second, paused for a second after each cast. The staff light, the courier's lantern for now, burns 3 mana a second while lit, which the regeneration covers at full mana; with none left it gutters out in a puff of smoke and relights at 10. The HUD shows the health and mana bars at the top left and the spell bar at the bottom: each slot's icon in its element's colour, its key, its cost, its cooldown's sweep and its charges, the selected slot outlined and a spell the mana cannot pay for greyed; slot 0 shows the summon's type. Beside it, the gun's magazine reads its rounds, a pip each, and "reloading" at none.
 
 ## The elements
 
@@ -82,7 +82,7 @@ Each patrols, sees the courier along a clear line, stops for its tell when it do
 | Enemy | How it fights | What hurts it |
 | --- | --- | --- |
 | Fire wisp | Flies within 160 px of home and burns by touch; lights the scene and hums; outside a chase it drifts to burning balls, which heal it | Fire not at all; cold freezes it, and frozen it falls |
-| Frost crawler | Walks its ledge, chills by touch and lunges after a hiss, but never into the lit lantern's light, so it lunges only at a courier whose lantern is out | Fire twice over, cold not at all; it bleeds |
+| Frost crawler | Walks its ledge, chills by touch and lunges after a hiss, but never into the staff light's glow: at its edge it shrinks back, plates raised, with a hiss and a puff of frost breath, so it lunges only at a courier whose light is out | Fire twice over, cold not at all; it bleeds |
 | Rust beetle | Paws the ground, then charges, hurting whatever it meets, enemies too | A quarter of physical on its front, which turns bullets as iron does, and all of it from behind; half of fire, twice shock, and shock jumps to it; frozen, a light blow shatters it, and fast iron crushes it |
 | Cave bat | Roosts under the ceiling above where it started, flashes white, dives at the courier and climbs back | It burns and bleeds; frozen, it falls and shatters when it lands |
 | Cave troll | Slams the ground after a long wind-up, hurting everything near, scattering the balls and shattering frozen things; lifts an iron block, a bowling ball, or a frozen enemy or dummy and throws it at the courier | It regenerates unless it burns; no knockback, and the black hole only slows it; it slows in two stages, freezes only past four times the others' needs and briefly, and stuns as late; its health shows over its head |
@@ -104,7 +104,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Moving platforms | `tungsten::kit::PathFollower` (`kit::motion::path`) | `ex10_platform_<n>.json` | |
 | Knockback and the hit flash | `kit::Knockback`, `kit::HitFlash` | `player.json`, `dummy.json` | The lit courier shows no flash; the dummy draws unlit, so it does (known issues) |
 | Facing and clips | `kit::Facing`, `kit::CharacterAnimator` | `player.json` | The one-shot clips, the toss, the aim frames and the lantern's cast (`features/player/`) |
-| Areas | `tungsten::kit::Zone` and `kit::ZoneEntered` | `ex10_area_<n>.json` | Each new area's toast and autosave (`features/run/`; [Saves](#saves)); its light, far strip, night sky (`features/level/`) and ambience (`features/audio/`) |
+| Areas | `tungsten::kit::Zone` and `kit::ZoneEntered` | `ex10_area_<n>.json` | Each new area's banner and autosave (`features/run/`; [Saves](#saves)); its light, far strip, night sky (`features/level/`) and ambience (`features/audio/`) |
 | The camera | `kit::CameraTarget` | `player.json`'s `camera_target` | The zoom (`features/player/`, `features/level/`) |
 | Art pieces, trails and drips as children | `kit::Children`, `spawn_children` | `iron_block.json`, `fire_missile.json` | |
 | Spells: cost, cooldown, charges, payloads | `tungsten::kit::Abilities` and `kit::use_ability` | `data/abilities/*.json`; `player.json`'s `abilities` | The choice, the cast and the toys (`features/spells/`) |
@@ -120,7 +120,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | The gun, its magazine and reload | `kit::Projectile` with `bounce_layers` and `pass_layers` and its wall events (`ProjectileBounced`, `ProjectilePassed`, `ProjectileExpired::wall`), a trigger `kit::Hitbox`, `kit::LinearMotion`, ability charges, the `spawn` payload | `bullet.json`, `data/abilities/gun.json`, the `splintered` rule in `data/cue_rules/sounds.json` | One decision a step for each bullet: the hit, balls and ricochets, and each wall's sparks, splinters or dust; the reload's timing (`features/gun/`) |
 | Damage numbers | `kit::float_label`, the types' styles, `DamagedPart::crit` | | The merge, the crit's style and the option (`features/combat/numbers.rs`) |
 | The training dummy | `kit::Health`, `kit::Hurtbox`, `kit::Resist`, `kit::Tags`, `kit::Effects`, `kit::AilmentThreshold`, `kit::HitFlash`, `kit::Knockback` | `dummy.json`; the map's `dummies` layer | Its friction, its end in one burst by its state (`features/dummy/`) |
-| The summon | ability cost and cooldown | `data/abilities/summon.json` | Placing at the cursor, the cap of four (`features/dummy/`, `features/spells/`) |
+| The summon | ability cost and cooldown | `data/abilities/summon.json` | Placing at the cursor, the caps of four dummies and six enemies (`features/dummy/`, `features/enemies/`, `features/spells/`) |
 | Lightning, conduction and the endings' chains | none | `data/abilities/lightning.json` | The strike and the saved cascade queue (`features/lightning/`, `features/elements/cascade.rs`) |
 | Hints | none | | Shell toasts with a saved set (`features/combat/`) |
 | The enemies' patrol, alert, chase, wind-up, attack, recovery, search and return | `kit::StateMachine` and `kit::StateMachinePlugin`, each machine held (`set_held`) while its enemy is dead, dormant, frozen or stunned | `enemy` in `wisp.json`, `crawler.json`, `beetle.json`, `bat.json`, `troll.json`; the map's `enemies` layer | Each kind's hooks and the hold (`features/enemies/`) |
@@ -138,8 +138,8 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 
 ## Saves
 
-`src/save.rs` holds the save (schema 7): the run's next save ID, the random stream, the last area, the selected spell, the lantern, the hints seen, the summon's type, the cascades waiting, the throws in flight, and every saved entity by its save ID: the player's body, controller, health, stats, effects with their sources, abilities, ailment buckets, tags and the gun's reload; the moving platforms and fire, and whether cold has put a fire out; the balls with their burn and ice, iron and scraps; the black hole; the dummies, the map's gone and the summoned; the enemies with their movers, machines, what they know and see, their health and effects, their attacks' targets and touches, and what a troll holds; the orbs; the missiles and bullets in flight. Loading spawns the map, takes off it the dummies and enemies that were gone, writes each saved state over the map object with its save ID, spawns the rest from their prefabs, and names each effect's source, each attack's targets and touches and each troll's hold again. A save from the old map, schemas 1 to 6, is refused, its slot reading "Damaged": every place and every map object's save ID moved with the new level. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music. Each area's entry asks for an autosave (`shell::request_autosave`), which the shell writes to one of its three autosaves, an empty one or else the oldest, while its Autosave option is on.
+`src/save.rs` holds the save (schema 8): the run's next save ID, the random stream, the last area, the selected spell, the lantern and whether the staff light guttered, the hints seen, the summon's type, the cascades waiting, the throws in flight, and every saved entity by its save ID: the player's body, controller, health, stats, effects with their sources, abilities, ailment buckets, tags and the gun's reload; the moving platforms and fire, and whether cold has put a fire out; the balls with their burn and ice, iron and scraps; the black hole; the dummies, the map's gone and the summoned; the enemies with their movers, machines, what they know and see, their health and effects, their attacks' targets and touches, and what a troll holds; the orbs; the missiles and bullets in flight. Loading spawns the map, takes off it the dummies and enemies that were gone, writes each saved state over the map object with its save ID, spawns the rest from their prefabs, and names each effect's source, each attack's targets and touches and each troll's hold again. A save from the old map, schemas 1 to 6, is refused, its slot reading "Saved by an older version": every place and every map object's save ID moved with the new level. A schema 7 save, 0.97's, migrates: the staff light joins the player's abilities. Presentation is not saved: particles, lights, glows, animation, flashes, shake, toasts, the HUD and the music. Each area's entry asks for an autosave (`shell::request_autosave`), which the shell writes to one of its three autosaves, an empty one, else one an older version wrote, else the oldest, else a damaged one, while its Autosave option is on.
 
 ## Tests
 
-`tests/game/`, one module a part: `seam`, `level` (every route's jumps on the controller, the slabs and the iron boxes), `player`, `camera`, `hazards` (the lava's touch, and a fire hazard's sweep), `fixed_step` (30, 60 and 144 Hz), `presentation`, `regime`, `areas` (each area's toast, autosave, ambience and light), `ball_pit`, `spawning`, `burning`, `brick`, `ice`, `spells`, `combat` (the hit builder, the ladders and the damage numbers), `cascades` (the endings and their chains), `lightning`, `gun` (a shot off the mine's iron, through the bridge's wood and into stone), `dummy` (and the summon), `enemies` (each enemy's rules, sight and alerts, the difficulty, the drops and the combat layer), `hud`, `saves` (a capture loads back to itself; a loaded run keeps with the run it came from, with enemies mid-attack and mid-search too; mid-chain, mid-conduction, in-flight, after-a-hit, pending, mid-touch and frozen-flyer saves; the hints; a full pit within 2 MiB; schemas 1 to 6 refused), `playthrough` (a New Game walks `main` through the six areas, its toasts and autosaves in order, to the bridge's east end) and `frame_time` (C1's frame-time capture with the pit full and six enemies awake, ignored: a release build runs it, `perf-runs/20261022-e01d-frame/`).
+`tests/game/`, one module a part: `seam`, `level` (every route's jumps on the controller, the slabs and the iron boxes), `player`, `camera`, `hazards` (the lava's touch, and a fire hazard's sweep), `fixed_step` (30, 60 and 144 Hz), `presentation`, `regime`, `areas` (each area's banner, autosave, ambience and light), `ball_pit`, `spawning`, `burning`, `brick`, `ice`, `spells`, `combat` (the hit builder, the ladders and the damage numbers), `cascades` (the endings and their chains), `lightning`, `gun` (a shot off the mine's iron, through the bridge's wood and into stone), `dummy` (and the summon), `enemies` (each enemy's rules, sight and alerts, the difficulty, the drops and the combat layer), `hud`, `saves` (a capture loads back to itself; a loaded run keeps with the run it came from, with enemies mid-attack and mid-search too; mid-chain, mid-conduction, in-flight, after-a-hit, pending, mid-touch and frozen-flyer saves; the hints; a full pit within 2 MiB; schemas 1 to 6 refused, 7 migrated), `playthrough` (a New Game walks `main` through the six areas, its banners and autosaves in order, to the bridge's east end) and `frame_time` (C1's frame-time capture with the pit full and six enemies awake, ignored: a release build runs it, `perf-runs/20261022-e01d-frame/`).

@@ -379,3 +379,15 @@ Fallback: (d) is content with no public API. If Phase 6 runs long, the feature g
   - the art follows the review's sixth draw, with a pour clip for the gargoyle and the broken span, the river's depths, a fourth border (the mine into the bridge's masonry) and front copies of the arcade for the bridge; the far wall's tint in the sheet stays out, two darker steps carrying its depth in palette pixels;
   - the save is schema 7, refusing schemas 4 to 6 (Q3); a full pit with the map's 13 enemies saves in 2,079,145 bytes, under 2 MiB (Q13);
   - C1's reading, headless on the harness in a release build: a full pit with six enemies awake around the player on the rope bridge, `total` p50 6.306 ms on the 48 × 20 pit, owed again on the 24 × 32 one (Q9; [W10](w10-closing-phases.md) follow-ups).
+
+## After (d): the feedback stops
+
+The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release.
+
+- **As built, 01 (e) (M77, `D-205`).** Where it changed this file's rules and its stops' rows:
+  - the player's lantern is the staff light's flame until (h)'s wizard: a kit ability burns 3 mana a second while it is lit, handed back at full mana, where the regeneration covers it; without mana it gutters out and relights at 10 (feedback Q15); 01 (c)'s crawler holds at the light's drawn edge, scared, with a clip, a hiss and a puff of frost breath, where it parked unexplained;
+  - an area names itself on a banner of 01's own in the theme's heading face, one at a time (feedback Q14), not the shell's toast, which stays for the hints;
+  - damage numbers float at once, burn and bleed ticks smaller; a dead player falls for three game seconds before game over; a hurt plays on a blow or the killing hit, never on a tick;
+  - spells cost half and mana comes back at 30 a second; creatures freeze 7.5 s and the troll 3 s; the bolt falls at the cursor's x to the first thing below;
+  - the save is schema 8, migrating schema 7 (the staff light's ability); the template's autosave writes over an older schema's slots (`D-204`);
+  - the engine work the owner added past the feedback plan's non-goals: core physics keeps a tilemap's collision proxies across steps (`D-203`), the World keeps each query shape's matching archetypes (`D-206`, the feedback's X6, taken on its measurement), and the dev profile builds 01, the kit and the umbrella at opt-level 1 (P8).

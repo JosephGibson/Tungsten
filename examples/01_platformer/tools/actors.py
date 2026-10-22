@@ -971,54 +971,68 @@ def wisp_flare_frames():
 CRAWLER_FRAMES = 6
 
 
-def crawler_canvas(phase=0.0, lunge=0.0):
+def crawler_canvas(phase=0.0, lunge=0.0, scared=0.0, shiver=0):
     """Five carapace plates, eight high-kneed jointed legs, a wedge head with
     a cluster of four glowing eyes, mandibles and swept feelers, faceted ice
     crystals growing from its back and a crystal sting; a faint cold glow
     between its plates. `phase` steps its legs in two alternating sets of
-    four; `lunge` (0 to 1) rears its front and lifts its front leg."""
+    four; `lunge` (0 to 1) rears its front and lifts its front leg; `scared`
+    (0 to 1) recoils it from the light: its body drawn back over its planted
+    feet and low at the front, its plates raised, its feelers swept back
+    flat, its jaws shut and its eyes squinting; `shiver` draws its body a
+    pixel further back, a tremble."""
     far_legs, near_legs, plates, head, crystals, feelers = (Part() for _ in range(6))
-    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not lunge else 0
+    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not (lunge or scared) else 0
+    back = round(3 * scared) + shiver  # the recoil, over planted feet
+    lifted = round(2 * scared)  # the plates raised
 
-    def tilt(x):  # the front rises in a lunge
-        return (x - 30) * 0.12 * lunge
+    def tilt(x):  # the front rises in a lunge and drops in a scare
+        return (x - 30) * (0.12 * lunge - 0.07 * scared)
 
     def stride(k):  # (forward offset, lift) of leg set k's foot
         angle = math.tau * (phase + 0.5 * k)
         return 3.0 * math.sin(angle), 2.5 * max(0.0, math.cos(angle))
 
-    centres = [(11, 51 - bob), (19, 49 - bob), (28, 48 - bob), (37, 48 - bob), (45, 49 - bob)]
+    still = lunge or scared
+    centres = [(11 - back, 51 - bob - lifted), (19 - back, 49 - bob - lifted),
+               (28 - back, 48 - bob - lifted), (37 - back, 48 - bob - lifted),
+               (45 - back, 49 - bob - lifted)]
     for i, x in enumerate((10, 20, 30, 40)):
-        ahead, lift = stride((i + 1) % 2) if not lunge else (0.0, 0.0)
+        ahead, lift = stride((i + 1) % 2) if not still else (0.0, 0.0)
         y0 = 50 - bob - tilt(x)
-        knee = ((x - 4 if i < 2 else x + 4) + ahead * 0.5, 39 - bob - tilt(x) - lift * 0.6)
+        hip = x - back
+        knee = ((hip - 4 if i < 2 else hip + 4) + ahead * 0.5, 39 - bob - tilt(x) - lift * 0.6)
         foot = ((x - 8 if i < 2 else x + 7) + ahead, SOLE - 1 - lift)
-        far_legs.limb([(x + 2, y0), (knee[0] + 2, knee[1]), (foot[0] + 2, foot[1])], 2)
+        far_legs.limb([(hip + 2, y0), (knee[0] + 2, knee[1]), (foot[0] + 2, foot[1])], 2)
     for i, x in enumerate((13, 23, 33, 43)):
-        ahead, lift = stride(i % 2) if not lunge else (0.0, 0.0)
+        ahead, lift = stride(i % 2) if not still else (0.0, 0.0)
         y0 = 52 - bob - tilt(x)
-        knee = ((x - 5 if i < 2 else x + 5) + ahead * 0.5, 40 - bob - tilt(x) - lift * 0.6)
+        hip = x - back
+        knee = ((hip - 5 if i < 2 else hip + 5) + ahead * 0.5, 40 - bob - tilt(x) - lift * 0.6)
         foot = ((x - 9 if i < 2 else x + 9) + ahead, SOLE - lift)
         if lunge >= 0.5 and i == 3:
             knee, foot = (x + 7, 32 - tilt(x)), (x + 14, 30 - tilt(x))
-        near_legs.limb([(x, y0), knee, foot], 2)
+        near_legs.limb([(hip, y0), knee, foot], 2)
     for cx, cy in centres:
-        plates.ellipse((cx, cy - tilt(cx)), 7, 6)
-    hx = 53 + round(3 * lunge)
-    hy = round(49 - bob - tilt(53) - 2 * lunge)
+        plates.ellipse((cx, cy - tilt(cx)), 7, 6 + round(scared))
+    hx = 53 + round(3 * lunge) - round(5 * scared) - shiver
+    hy = round(49 - bob - tilt(53) - 2 * lunge + scared)
     head.polygon([(hx - 6, hy - 5), (hx + 4, hy - 4), (hx + 9, hy), (hx + 4, hy + 4), (hx - 6, hy + 5)])
-    gape = 1 + round(2 * lunge)
+    gape = 1 + round(2 * lunge) - (1 if scared >= 0.5 else 0)
     for side in (-1, 1):  # mandibles
         head.limb([(hx + 7, hy + side * 2), (hx + 10, hy + side * (2 + gape)), (hx + 9, hy + side * (4 + gape))], 2)
-    sweep = round(2 * lunge)
-    feelers.limb([(hx - 1, hy - 4), (hx + 2 + sweep, hy - 12), (hx - 4 + 2 * sweep, hy - 19)], 1)
-    feelers.limb([(hx + 2, hy - 4), (hx + 7 + sweep, hy - 11), (hx + 6 + 2 * sweep, hy - 18)], 1)
+    sweep = round(2 * lunge) - round(5 * scared)
+    flat = round(3 * scared)  # the feelers laid back
+    feelers.limb([(hx - 1, hy - 4), (hx + 2 + sweep, hy - 12 + flat), (hx - 4 + 2 * sweep, hy - 19 + 2 * flat)], 1)
+    feelers.limb([(hx + 2, hy - 4), (hx + 7 + sweep, hy - 11 + flat), (hx + 6 + 2 * sweep, hy - 18 + 2 * flat)], 1)
     for i, (cx, cy) in enumerate(centres[1:4]):
         top = cy - tilt(cx) - 6
         h = 9 if i == 1 else 7
         crystals.polygon([(cx - 3, top + 2), (cx + 2, top + 2), (cx + 1, top - h)])
         crystals.polygon([(cx + 2, top + 2), (cx + 5, top + 1), (cx + 4, top - h + 4)])
-    crystals.polygon([(6, 50 - bob - tilt(6)), (2, 46 - bob - tilt(2)), (0, 41 - bob), (4, 47 - bob - tilt(4))])
+    sting = round(4 * scared)  # raised in a scare, inside the frame
+    crystals.polygon([(6 - back, 50 - bob - tilt(6)), (2 - back + sting // 2, 46 - bob - tilt(2) - sting),
+                      (max(0, sting - back), 41 - bob - sting), (4 - back + sting // 2, 47 - bob - tilt(4) - sting // 2)])
     canvas = compose([
         (shade(far_legs.pixels(), '{', shadow='|'), None),
         (shade(feelers.pixels(), '}', light='_'), None),
@@ -1035,8 +1049,12 @@ def crawler_canvas(phase=0.0, lunge=0.0):
     for (x, y) in sorted(crystals.pixels()):
         lit = (x + y) % 2 == 0 and unit('facet', x // 2, y // 3) < 0.6
         canvas[(x, y)] = 'Ψ' if lit and unit('glint', x, y) < 0.25 else ('ϱ' if lit else '`')
-    for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1)):  # four glowing eyes
-        canvas[(hx + dx, hy + dy)] = 'Ψ' if (dx, dy) == (4, -1) else '`'
+    if scared >= 0.5:  # the four eyes squinting to a dim slit
+        for dx in (1, 2, 3, 4):
+            canvas[(hx + dx, hy - 1)] = '`'
+    else:
+        for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1)):  # four glowing eyes
+            canvas[(hx + dx, hy + dy)] = 'Ψ' if (dx, dy) == (4, -1) else '`'
     speckle(canvas, plates.pixels(), 'pore', ['{'], 0.05)
     return outline(canvas)
 
@@ -1050,6 +1068,12 @@ def crawler_walk_frames():
 def crawler_lunge_frames():
     """The lunge's tell and leap: rearing, the front leg raised, jaws open."""
     return [to_image(crawler_canvas(lunge=t)) for t in (0.35, 0.7, 1.0, 1.0)], [70, 70, 100, 160]
+
+
+def crawler_scared_frames():
+    """Its scare at the light's edge: recoiled, plates raised, eyes
+    squinting, trembling a pixel."""
+    return [to_image(crawler_canvas(scared=1.0, shiver=s)) for s in (0, 1, 0, 1)], [90, 70, 90, 70]
 
 
 # The beetle: a rhinoceros beetle of riveted iron, rusting.
@@ -1635,6 +1659,7 @@ ENEMY_CLIPS = {
     'wisp_flare': (wisp_flare_frames, True),
     'crawler_walk': (crawler_walk_frames, True),
     'crawler_lunge': (crawler_lunge_frames, False),
+    'crawler_scared': (crawler_scared_frames, True),
     'beetle_walk': (beetle_walk_frames, True),
     'beetle_paw': (beetle_paw_frames, True),
     'beetle_charge': (beetle_charge_frames, True),

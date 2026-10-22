@@ -593,6 +593,49 @@ def crawler_lunge():
     return finish(samples, fade_in=0.001)
 
 
+def crawler_scared():
+    """The crawler shrinking from the light: a sharp, startled hiss whose
+    floor falls as it recoils, its mandibles clicking shut over a frosty
+    exhale."""
+    duration = 0.38
+    noise, clicks, low, mist = Noise(0xC4A4), Noise(0xC4A5), LowPass(), LowPass()
+    samples, click = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = n - low(n, glide(4200, 1800, p))
+        exhale = mist(n, 900) * math.exp(-max(0.0, t - .08) / .12) * min(1.0, t / .08)
+        if .03 < t < .16 and clicks() > .994:
+            click = .9
+        click *= .8
+        snap = click * math.sin(math.tau * 2600 * t)
+        envelope = min(1.0, t / 0.006) * math.exp(-t / .13)
+        samples.append((1.3 * hiss + .8 * exhale) * envelope + .5 * snap)
+    return finish(samples, fade_in=0.001)
+
+
+def staff_gutter():
+    """The staff light guttering out: a starved flame's breathy sputter,
+    fluttering slower as it dies, with a few last pops."""
+    duration = 0.42
+    noise, pops, low, high = Noise(0x57A1), Noise(0x57A2), LowPass(), LowPass()
+    samples, pop = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        flutter = .5 + .5 * math.sin(math.tau * glide(24, 9, p) * t)
+        breath = low(n, glide(1600, 500, p))
+        if t < 0.25 and pops() > .9975:
+            pop = .8
+        pop *= .86
+        crackle = pop * (n - high(n, 2500))
+        envelope = min(1.0, t / 0.01) * math.exp(-t / .16)
+        samples.append((1.6 * breath * flutter + crackle) * envelope)
+    return finish(samples)
+
+
 def beetle_paw():
     """The beetle's tell: an iron claw scraping stone, grit and a rasp."""
     duration = 0.42
@@ -1390,6 +1433,8 @@ def build_sounds():
         'wisp_flare.wav': wisp_flare(),
         'crawler_hiss.wav': crawler_hiss(),
         'crawler_lunge.wav': crawler_lunge(),
+        'crawler_scared.wav': crawler_scared(),
+        'staff_gutter.wav': staff_gutter(),
         'beetle_paw.wav': beetle_paw(),
         'beetle_charge.wav': beetle_charge(),
         'bat_screech.wav': bat_screech(),

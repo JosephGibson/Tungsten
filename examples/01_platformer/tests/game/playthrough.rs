@@ -7,10 +7,10 @@
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::player::{self, PLAYER_HALF};
+use example_01_platformer::features::run::banner;
 use example_01_platformer::game;
 use example_01_platformer::save::SaveGame;
 use example_01_platformer::shell::AUTOSAVES;
-use example_01_platformer::shell::toast::Toasts;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{Entity, SaveSlots, Transform, UserFolder};
@@ -94,11 +94,11 @@ struct Platform {
     row: f32,
 }
 
-/// What the run has shown and saved so far: the toasts in order, the area
+/// What the run has shown and saved so far: the banner's names in order, the area
 /// of each autosave written, and each autosave slot's last save time.
 #[derive(Default)]
 struct Watch {
-    toasts: Vec<String>,
+    names: Vec<String>,
     autosaves: Vec<Option<String>>,
     saved_at: [u64; 3],
 }
@@ -140,7 +140,7 @@ impl Walker {
         }
     }
 
-    /// Steps a frame and records what it toasted and autosaved.
+    /// Steps a frame and records the area it named and what it autosaved.
     fn step(&mut self) {
         self.harness.step(1);
         self.frames += 1;
@@ -151,11 +151,10 @@ impl Walker {
             self.health()
         );
         let world = self.harness.world();
-        let tree = self.harness.tree();
-        for text in world.resource::<Toasts>().texts(tree) {
-            if self.watch.toasts.last() != Some(&text) {
-                self.watch.toasts.push(text);
-            }
+        if let Some(name) = banner::shown(world)
+            && self.watch.names.last().map(String::as_str) != Some(name)
+        {
+            self.watch.names.push(name.to_owned());
         }
         // The autosave slot that changed, each area's taking the oldest.
         let slots = world.resource::<SaveSlots>();
@@ -341,7 +340,7 @@ fn a_new_game_walks_the_main_route_to_the_troll_bridges_end() {
         .expect("the player lives");
     assert!(!health.is_dead(), "the player is alive");
     assert_eq!(top(&walker.harness), Some(game::GAMEPLAY));
-    assert_eq!(walker.watch.toasts, AREAS, "each area's toast, in order");
+    assert_eq!(walker.watch.names, AREAS, "each area's name, in order");
     let areas: Vec<&str> = walker
         .watch
         .autosaves
@@ -350,10 +349,10 @@ fn a_new_game_walks_the_main_route_to_the_troll_bridges_end() {
         .collect();
     assert_eq!(areas, AREAS, "one autosave per area");
     println!(
-        "playthrough: {} frames, {} HP left, toasts {:?}",
+        "playthrough: {} frames, {} HP left, areas {:?}",
         walker.frames,
         health.current(),
-        walker.watch.toasts
+        walker.watch.names
     );
     let _ = std::fs::remove_dir_all(dir);
 }

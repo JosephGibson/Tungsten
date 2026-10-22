@@ -1,19 +1,21 @@
 //! The frost crawler: an alien, many-legged walker on the kit's platformer
 //! controller. It walks its ledge, turning at the ends and at walls,
 //! chills what it touches and, after a hissing tell, lunges. It never steps
-//! into the lit lantern's light: it holds at its edge, facing the player,
-//! and lunges only at a player whose lantern is out.
+//! into the staff light's drawn glow: it holds at its edge, facing the
+//! player, scared, and lunges only at a player whose light is out.
 
 use glam::Vec2;
-use tungsten::core::{BodyKind, Entity, Position, RigidBody, World};
+use tungsten::core::{BodyKind, Entity, Position, RigidBody, Time, World};
 use tungsten::kit::PlatformerController;
 use tungsten::physics::{SpatialFilter, cast_ray};
 
-use super::components::{Enemy, EnemyKind, EnemyState};
+use super::components::{Enemy, EnemyKind, EnemyState, Scared};
 use super::systems::{elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
+use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
+use crate::shared::spawn_burst;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.5;
@@ -27,10 +29,11 @@ pub const LUNGE_LIFT: f32 = 380.0;
 pub const LUNGE_LOCK: f32 = 0.6;
 /// The longest a lunge runs before the recovery, landed or not.
 pub const LUNGE_MOST: f32 = 1.0;
-/// The lit lantern's light: its centre from the player's point, the
-/// prefab's glow, and its reach, 1.4 times its 125 px halo (A29).
-pub const LANTERN_OFFSET: Vec2 = Vec2::new(43.5, 46.5);
-pub const LANTERN_REACH: f32 = 175.0;
+/// How long its scared look holds after the light last refused its walk,
+/// in game seconds: a refusal after that starts a new scare, with its hiss
+/// and its puff of frost breath (B4).
+pub const SCARED_HOLD: f32 = 0.4;
+pub const FROST_BREATH: &str = "ex10_frost_breath";
 
 /// Whether a cast from `from` along `direction` meets ground within
 /// `distance`: a solid tile or a static body, never a ball or the player.
@@ -58,36 +61,61 @@ fn blocked(world: &World, crawler: Entity, heading: f32) -> bool {
     wall || ledge
 }
 
-/// The lit lantern's centre, while the player lives and its lantern burns.
+/// The staff light's drawn glow, its centre and its reach, while the
+/// player lives and the light burns: the glow on the flame of the frame
+/// shown (I8).
 #[must_use]
-pub fn lantern(world: &World) -> Option<Vec2> {
+pub fn light(world: &World) -> Option<(Vec2, f32)> {
     let (player, _) = player(world)?;
-    let on = world
-        .get::<Lantern>(player)
-        .is_none_or(|lantern| lantern.on);
+    let lit = world.get::<Lantern>(player).is_none_or(Lantern::lit);
+    let glow = world.get::<Glow>(player)?;
     let at = world.get::<Position>(player)?.0;
-    on.then_some(at + LANTERN_OFFSET)
+    lit.then(|| (glow.centre(at), glow.reach()))
 }
 
-/// Whether a step along `heading` takes `crawler` into the lit lantern's
-/// light.
+/// Whether a step along `heading` takes `crawler` into the staff light.
 fn into_light(world: &World, crawler: Entity, heading: f32) -> bool {
-    let (Some(light), Some(at)) = (lantern(world), centre(world, crawler)) else {
+    let (Some((light, reach)), Some(at)) = (light(world), centre(world, crawler)) else {
         return false;
     };
     let next = at + Vec2::new(heading * 8.0, 0.0);
-    next.distance(light) <= LANTERN_REACH && next.distance(light) < at.distance(light)
+    next.distance(light) <= reach && next.distance(light) < at.distance(light)
+}
+
+/// Whether `crawler` shows its scare: the light refused its walk within
+/// [`SCARED_HOLD`].
+#[must_use]
+pub fn scared(world: &World, crawler: Entity) -> bool {
+    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
+    world
+        .get::<Scared>(crawler)
+        .is_some_and(|scared| now - scared.at <= f64::from(SCARED_HOLD))
+}
+
+/// The light refused `crawler`'s walk: a scare starts, with a hiss and a
+/// puff of frost breath at its mouth, unless one shows already.
+fn scare(world: &mut World, crawler: Entity) {
+    let fresh = !scared(world, crawler);
+    let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
+    world.insert(crawler, Scared { at: now });
+    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    if let (true, Some(at)) = (fresh, centre(world, crawler)) {
+        let mouth = at + Vec2::new(heading * 26.0, -2.0);
+        spawn_burst(world, FROST_BREATH, mouth);
+        audio::play(world, Sound::CrawlerScared, mouth);
+    }
 }
 
 /// Walks `crawler` along `heading` at `pace` of its run speed, unless that
 /// is blocked or steps into the light: then it stands, facing the player at
-/// the light's edge. Whether it walks.
+/// the light's edge, scared. Whether it walks.
 fn walk(world: &mut World, crawler: Entity, heading: f32, pace: f32) -> bool {
     if into_light(world, crawler, heading) {
         rest(world, crawler);
         if let Some((_, at)) = player(world) {
             face(world, crawler, at.x);
         }
+        scare(world, crawler);
         return false;
     }
     if blocked(world, crawler, heading) {
@@ -124,7 +152,7 @@ pub fn patrol(world: &mut World, crawler: Entity) {
 }
 
 /// The chase: toward the player while it sees it, winding up a lunge once
-/// within [`LUNGE_RANGE`] across, unless the lantern burns, whose light it
+/// within [`LUNGE_RANGE`] across, unless the staff light burns, which it
 /// keeps out of; it searches once it loses sight.
 pub fn chase(world: &mut World, crawler: Entity) {
     if !sees(world, crawler) {
@@ -138,7 +166,7 @@ pub fn chase(world: &mut World, crawler: Entity) {
         .get::<PlatformerController>(crawler)
         .is_some_and(PlatformerController::grounded);
     let across = target.x - at.x;
-    let lit = lantern(world).is_some();
+    let lit = light(world).is_some();
     if grounded
         && !lit
         && across.abs() <= LUNGE_RANGE
@@ -213,11 +241,13 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
 }
 
 /// Its clip for `state`: the lunge's through its tell and its leap, else
-/// its walk.
+/// its scare while it shows one, else its walk.
 #[must_use]
-pub fn clip(state: EnemyState) -> &'static str {
+pub fn clip(state: EnemyState, scared: bool) -> &'static str {
     if matches!(state, EnemyState::WindUp | EnemyState::Attack) {
         "crawler_lunge"
+    } else if scared {
+        "crawler_scared"
     } else {
         "crawler_walk"
     }

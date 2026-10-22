@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.98.0] - 2026-10-22
+
+Summary: M77, example 01's fifth stop, 01 (e) fixes (plan archived at `docs/plans/archive/1.0/phase6-milestone-77-example-01-fixes.md`; `D-205`), widened by the owner's prompt of 2026-10-22 to the engine and the template: the held spells' frame-time collapse and the full pit's per-ball scans are gone (from 0.97, release, the idle spawn 2.504 → 0.485 ms, an ice spray into air 13.740 → 0.569 ms, the frame-time harness 6.091 → 3.547 ms); core physics keeps a tilemap's collision proxies across steps (`D-203`) and queries keep their matching archetypes (`D-206`); the template's autosave writes over an older version's autosaves again (`D-204`); example 01 fixes its readouts, area titles, bloom, damage numbers, lightning, troll, crawler and death, halves its spell costs, turns its lantern into a staff light that burns mana and scares the crawlers, and saves at schema 8, migrating 0.97's.
+
+### Added
+
+- **Core physics keeps a tilemap's collision proxies** (`D-203`): the tile proxies, their pair grid, their spatial-index entries and each unchanged sensor's tile pairs come from a cache rescanned only when a map's collision layers, origin, tile size or the slop change; the tiles take a grid of their own while they outnumber a build's moving proxies, walked with the entity grid in one grid's order; the substep's passes walk the entity proxies alone. No result, order, event or digest changes; the `integrated` row's `physics_step` p50 5.38 → 4.71 ms, example 01's idle spawn 1.88 → 0.15 ms.
+- **Queries keep their matching archetypes** (`D-206`): each query shape tests an archetype once and keeps the answer as a bit, keyed by its `matches` functions' addresses, and collects the matching slices before it iterates; example 01 builds 146 queries a frame over about 270 archetypes, and its frame-time harness reads 3.947 → 3.547 ms.
+- **Example 01 (e)** (`D-205`): the staff light, a kit ability that burns 3 mana a second while lit, handed back at full mana, gutters out with a puff and a sound and relights at 10, labelled "Staff light"; the crawler's scared clip at the light's drawn edge, with a hiss and a puff of frost breath; an area banner of 01's own in the theme's heading face; a three-second fall before game over; a `player_hurt` cue event for a blow or the killing hit; a test of every constant that restates data; two sounds and two bursts from the generators.
+
+### Changed
+
+- **The template's autosave** (`D-204`): it writes to an empty autosave slot, then over one an older schema left that `migrate` refuses (`SlotState::Older`, "Saved by an older version"), then over the oldest, and over a damaged one only when nothing else can be written; never over a newer build's. An upgrader whose three autosaves came from an older schema autosaves again. Example 01 takes the shell by copy.
+- **Example 01's save** (`D-205`): schema 8; `migrate` gives a schema 7 save the staff light's ability, and `lantern_guttered` is saved.
+- **Example 01's tuning** (`D-205`): every spell costs half, mana comes back at 30 a second, the bowling ball every 0.3 s, the push every 1 s, the black hole every 0.5 s; creatures freeze 7.5 s, the troll 3 s at 1 × its threshold, its stun at 3 ×; bloom 0.22 → 0.6, its halos and the moon's glow following the Bloom option.
+- **The dev profile** (P8, `D-205`): `tungsten`, `tungsten-kit` and example 01 at opt-level 1, beside `tungsten-core`: example 01's dev frames about 2.5 times faster (the idle spawn 2.627 → 0.974 ms, ice beside a full pit 15.188 → 5.549 ms).
+- **Records**: `DESIGN.md` (the physics, queries and template paragraphs), example 01's README, the getting-started guide's autosave order, the template's README, the 01 design's "After (d)", the feedback plan's (e) landing, `docs/perf/benchmarks.md` (`D-203`'s and `D-206`'s results), `docs/known-issues.md` (the full-map scan out; `World::has`, the clip hash, the index's rebuild and the rotation's header reads in), two backlog rows (a cue filter for a tick, a draining effect) and the register.
+
+### Fixed
+
+- **Example 01's playtest bugs** (`D-205`): the held sprays' collapse (B1, P1–P6, each identical in outcome); the readouts on one line, health rounded up and mana down; area titles stacking; a troll that never froze and a stun out of reach; damage numbers that waited; a bolt that stopped at the cursor or snapped to a rod; a crawler parked at the light unexplained, reading a fixed light offset; the hurt sound on every burn tick; a held spray restarting each step the regeneration paid for; held small balls spending mana at the cap; a zoom that never came back to 1; the README's and the shatter hint's text.
+- **The GPU's share of 0.97's level** (`D-205`): its extra GPU time was the integrated GPU's clock ramp after a longer CPU frame, gone with `D-203` (slow scene frames 44 % → 1 %); example 01's backdrop drops the quads its opaque tiles cover, frame for frame the same.
+
 ## [0.97.0] - 2026-10-22
 
 Summary: M76, example 01's fourth stop, 01 (d) new level (plan archived at `docs/plans/archive/1.0/phase6-milestone-76-example-01-new-level.md`; `D-202`): a 430 × 72 map in six areas flowing into each other, a lantern clearing with the ball pit under a rope bridge, a broken aqueduct, a waterfall ravine, an ember hollow, an iron mine open to the sky and a troll bridge, each with its light, far strip and ambience loop; shots turn off the mine's iron and pass the bridges' wood, through a kit change: projectiles meet walls by their physics layers. Saves move to schema 7, refusing the old map's; the kit's hash holds.

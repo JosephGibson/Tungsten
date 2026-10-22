@@ -72,7 +72,7 @@ impl Reaction {
     pub const fn hint(self) -> &'static str {
         match self {
             Reaction::Freeze => "Frozen: fire makes it explode, a hard hit shatters it",
-            Reaction::Shatter => "Shattered",
+            Reaction::Shatter => "Shattered: a hard hit breaks what is frozen",
             Reaction::Steam => "Steam: cold on fire bursts and puts it out",
             Reaction::Shock => "Shocked: it takes half again from every hit for a while",
         }

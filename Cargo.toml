@@ -1,5 +1,5 @@
 [workspace.package]
-version = "0.97.0"
+version = "0.98.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "MIT"
@@ -85,15 +85,17 @@ rtrb = "0.3.5"
 # ---------------------------------------------------------------------------
 
 # Dev: project crates at opt-level 0 (fast incremental), except tungsten-core at
-# opt-level 1; all external deps at opt-level 2 so wgpu / winit / glam / cpal run
-# at acceptable speed in debug mode. Deps rarely change, so the one-time compile
-# cost does not hurt iteration speed. tungsten-core runs the physics and ECS of
-# every simulation test: opt-level 1 took `just check` from 90 s to 11 s for
-# about 2 s more per core rebuild; floats keep IEEE semantics and debug
-# assertions stay on (D-096). Debuginfo stays in .dwo files beside the objects:
-# linking it into every 378-455 MB test binary made a core-edit test build take
-# 18 s instead of 5 s, and backtraces still show file:line. Cargo omits the flag
-# on targets without unpacked support, such as x86_64-pc-windows-msvc (D-111).
+# opt-level 1, and the umbrella, the kit and example 01 at 1 as well, since
+# `cargo run` is how 01 is played (P8, D-205); all external deps at opt-level 2
+# so wgpu / winit / glam / cpal run at acceptable speed in debug mode. Deps
+# rarely change, so the one-time compile cost does not hurt iteration speed.
+# tungsten-core runs the physics and ECS of every simulation test: opt-level 1
+# took `just check` from 90 s to 11 s for about 2 s more per core rebuild;
+# floats keep IEEE semantics and debug assertions stay on (D-096). Debuginfo
+# stays in .dwo files beside the objects: linking it into every 378-455 MB test
+# binary made a core-edit test build take 18 s instead of 5 s, and backtraces
+# still show file:line. Cargo omits the flag on targets without unpacked
+# support, such as x86_64-pc-windows-msvc (D-111).
 [profile.dev]
 split-debuginfo = "unpacked"
 
@@ -101,6 +103,15 @@ split-debuginfo = "unpacked"
 opt-level = 2
 
 [profile.dev.package.tungsten-core]
+opt-level = 1
+
+[profile.dev.package.tungsten]
+opt-level = 1
+
+[profile.dev.package.tungsten-kit]
+opt-level = 1
+
+[profile.dev.package.example-01-platformer]
 opt-level = 1
 
 # Release: maximize binary performance.

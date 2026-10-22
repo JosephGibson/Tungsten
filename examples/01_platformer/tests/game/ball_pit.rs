@@ -15,7 +15,11 @@ use glam::Vec2;
 use tungsten::core::{AnimationState, Collider, Entity, Particle, Shape, Transform};
 use tungsten::testing::UiHarness;
 
-use super::{aim_at, ball, body, bursts, choose, contact, kick, pin_camera, run};
+use example_01_platformer::features::player::components::Lantern;
+
+use super::{
+    aim_at, ball, body, bursts, choose, contact, kick, mana, pin_camera, player_entity, run,
+};
 
 /// A run with slot 9, the small balls, selected, aimed at the empty sky.
 fn pitcher() -> UiHarness {
@@ -320,6 +324,9 @@ fn middle_mouse_has_five_times_the_rate_half_size_and_dedicated_animation() {
 #[test]
 fn spawning_stops_at_the_ball_cap() {
     let mut harness = pitcher();
+    // The staff light off, which would burn under the casts' pause.
+    let player = player_entity(&harness);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
     let live = toys::ball_count(harness.world());
     for _ in 0..BALL_CAP - live - 1 {
         harness.world_mut().spawn_with((Ball,));
@@ -332,4 +339,8 @@ fn spawning_stops_at_the_ball_cap() {
         harness.step(1);
         assert_eq!(harness.world().query::<&Ball>().count(), BALL_CAP);
     }
+    // At the cap the held spell spends nothing (I1).
+    let at_cap = mana(&harness);
+    harness.step(6);
+    assert!(mana(&harness) >= at_cap, "{} from {at_cap}", mana(&harness));
 }

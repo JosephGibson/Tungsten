@@ -100,6 +100,9 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::TrollSlam => occurrence::<30>,
         Sound::TrollThrow => occurrence::<31>,
         Sound::Splintered => occurrence::<32>,
+        Sound::PlayerHurt => occurrence::<33>,
+        Sound::StaffGuttered => occurrence::<34>,
+        Sound::CrawlerScared => occurrence::<35>,
     }
 }
 

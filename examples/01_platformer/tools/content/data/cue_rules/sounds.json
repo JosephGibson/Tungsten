@@ -532,5 +532,54 @@
         }
       }
     ]
+  },
+  {
+    "on": "player_hurt",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "shake": 0.5
+      },
+      {
+        "sound": {
+          "id": "ex10_player_hit_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "staff_guttered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_staff_gutter_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_scared",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_scared_sfx",
+          "min_interval": 0.4
+        }
+      }
+    ]
   }
 ]

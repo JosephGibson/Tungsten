@@ -14,7 +14,7 @@ use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::draw::view;
 use example_01_platformer::features::lightning::components::{Arc, Bolt, StrikeLight};
 use example_01_platformer::features::lightning::{
-    self, JUMP_KEEP, MAX_JUMPS, ROD_REACH, STRIKE_LIGHT, STRIKE_SHOCK, draw,
+    self, JUMP_KEEP, MAX_JUMPS, STRIKE_LIGHT, STRIKE_SHOCK, draw,
 };
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::toys::{self, IRON_HALF};
@@ -133,7 +133,7 @@ fn cast_lightning(harness: &mut UiHarness, at: Vec2) {
 #[test]
 fn a_strike_under_a_ceiling_hits_the_ceiling() {
     let (mut harness, player) = sky();
-    // A ceiling over a dummy: the dummy is the rod, but the bolt stops on
+    // A ceiling over a dummy: the bolt falls at the dummy's x and stops on
     // the ceiling's top, so it hurts nothing and starts no chain.
     floor(
         &mut harness,
@@ -154,7 +154,7 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
     harness.step(30);
     let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
     let aim = feet + Vec2::Y * 3.0 * TILE;
-    let landing = lightning::bolt_end(harness.world(), aim);
+    let landing = lightning::bolt_end(harness.world(), aim, Some(player));
     assert!(
         landing.y <= feet.y + 1.0 && (landing.x - aim.x).abs() < 1e-3,
         "{landing} over the feet at {feet}"
@@ -162,33 +162,35 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
 }
 
 #[test]
-fn a_strike_jumps_to_the_nearest_rod() {
+fn a_bolt_falls_to_the_first_body_under_the_cursor() {
     let (mut harness, player) = sky();
     let near = toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y));
     let far = toys::place_iron(harness.world_mut(), Vec2::new(1150.0, IRON_Y));
     harness.step(2);
-    let aim = Vec2::new(1000.0, IRON_Y - 40.0);
-    assert!(
-        body(&harness, far).distance(aim) <= ROD_REACH,
-        "both are rods"
-    );
+    // Aimed over the near block, the bolt keeps the cursor's x and falls
+    // past the cursor onto the block, the first body under it, and the
+    // chain starts there.
+    let aim = Vec2::new(body(&harness, near).x, IRON_Y - 300.0);
     cast_lightning(&mut harness, aim);
-    assert_eq!(mana(&harness), 70.0, "a strike costs 30");
+    assert_eq!(mana(&harness), 85.0, "a strike costs 15");
     let landing = bolt(&harness).landing;
     assert!(
-        landing.distance(body(&harness, near)) < 1.0,
-        "on the nearer rod: {landing}"
+        (landing.x - aim.x).abs() < 1e-3,
+        "the cursor's x: {landing}"
     );
-    // The chain starts at the rod, its first jump to the next conductor
-    // due the step after the strike's.
+    assert!(
+        landing.y > aim.y && landing.y < body(&harness, near).y,
+        "past the cursor, on the block: {landing}"
+    );
     let waiting = jumps(&harness);
     assert_eq!(receivers(&waiting), ids(&harness, &[far]));
     assert_eq!(waiting[0].chain, [id(&harness, near)]);
     let step = harness.world().resource::<Cascades>().step;
     assert_eq!(waiting[0].due, step + 1);
-    // With no conductor within reach, the bolt falls on the aim point.
+    // Aimed over open ground, it falls to the ground under the cursor.
     let open = Vec2::new(400.0, TOP - 200.0);
-    assert_eq!(lightning::strike(harness.world_mut(), player, open), open);
+    let landed = lightning::strike(harness.world_mut(), player, open);
+    assert_eq!(landed, Vec2::new(open.x, TOP), "the ground's top");
 }
 
 #[test]

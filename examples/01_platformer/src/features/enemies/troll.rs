@@ -75,7 +75,7 @@ pub const THRESHOLD: f32 = 40.0;
 /// The cold bucket's fill, in shares of its threshold, past which a
 /// chilled troll is slowed again, its second stage, and that slow's share
 /// of its speed and its source.
-pub const DEEP_CHILL: f32 = 2.0;
+pub const DEEP_CHILL: f32 = 0.5;
 pub const DEEP_SLOW: f32 = 0.35;
 pub const DEEP_SOURCE: &str = "deep_chill";
 
@@ -128,13 +128,14 @@ fn liftable(world: &World, entity: Entity) -> bool {
 #[must_use]
 pub fn nearest_liftable(world: &World, troll: Entity) -> Option<Entity> {
     let at = centre(world, troll)?;
+    // The reach first, then what may be lifted (P6).
     world
-        .query::<(Entity, &SaveId)>()
-        .filter(|&(entity, _)| entity != troll && liftable(world, entity))
-        .filter_map(|(entity, id)| {
-            let distance = body_centre(world, entity)?.distance(at);
-            (distance <= PICKUP_REACH).then_some((distance, id.0, entity))
+        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .filter_map(|(entity, id, position, collider)| {
+            let distance = (position.0 + collider.offset).distance(at);
+            (distance <= PICKUP_REACH && entity != troll).then_some((distance, id.0, entity))
         })
+        .filter(|&(.., entity)| liftable(world, entity))
         .min_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)))
         .map(|(.., entity)| entity)
 }
@@ -296,11 +297,10 @@ pub fn slam(world: &mut World, troll: Entity) {
         .unwrap_or(40.0);
     let away = |at: Vec2| (at - point).normalize_or(Vec2::NEG_Y);
     let mut near: Vec<(u64, Entity, Vec2)> = world
-        .query::<(Entity, &SaveId)>()
-        .filter(|&(entity, _)| entity != troll)
-        .filter_map(|(entity, id)| {
-            let at = body_centre(world, entity)?;
-            (at.distance(point) <= SLAM_REACH).then_some((id.0, entity, at))
+        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .filter_map(|(entity, id, position, collider)| {
+            let at = position.0 + collider.offset;
+            (at.distance(point) <= SLAM_REACH && entity != troll).then_some((id.0, entity, at))
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);

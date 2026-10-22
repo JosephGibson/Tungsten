@@ -188,26 +188,46 @@ struct Swept {
     shape: Shape,
 }
 
-/// The step's balls and iron blocks, each swept from its `PrevPosition` to
-/// its `Position`, and its live beetles' hurtboxes.
-fn bodies(world: &World) -> Vec<Swept> {
+/// A shape's half extents.
+fn half_of(shape: Shape) -> Vec2 {
+    match shape {
+        Shape::Circle { radius } => Vec2::splat(radius),
+        Shape::Aabb { half_extents } => half_extents,
+    }
+}
+
+/// The step's balls and iron blocks whose sweep, from `PrevPosition` to
+/// `Position`, meets the box `low` to `high` about every bullet's path, and
+/// its live beetles' hurtboxes: a body outside it meets no bullet (P6).
+fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
     let mut swept = Vec::new();
-    for (body, at, prev, collider, id) in
-        world.query::<(Entity, &Position, &PrevPosition, &Collider, &SaveId)>()
-    {
-        let what = if world.has::<IronBlock>(body) {
+    for (body, at, prev, collider, id, iron, ball) in world.query::<(
+        Entity,
+        &Position,
+        &PrevPosition,
+        &Collider,
+        &SaveId,
+        Option<&IronBlock>,
+        Option<&Ball>,
+    )>() {
+        let what = if iron.is_some() {
             What::Iron
-        } else if world.has::<Ball>(body) {
+        } else if ball.is_some() {
             What::Ball
         } else {
             continue;
         };
+        let (start, end) = (prev.0 + collider.offset, at.0 + collider.offset);
+        let half = half_of(collider.shape);
+        if (start.max(end) + half).cmplt(low).any() || (start.min(end) - half).cmpgt(high).any() {
+            continue;
+        }
         swept.push(Swept {
             body,
             id: id.0,
             what,
-            start: prev.0 + collider.offset,
-            end: at.0 + collider.offset,
+            start,
+            end,
             shape: collider.shape,
         });
     }
@@ -302,10 +322,7 @@ fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
     );
     let mut first: Option<Contact> = None;
     for body in swept {
-        let half = match body.shape {
-            Shape::Circle { radius } => Vec2::splat(radius),
-            Shape::Aabb { half_extents } => half_extents,
-        };
+        let half = half_of(body.shape);
         let (min, max) = (
             body.start.min(body.end) - half,
             body.start.max(body.end) + half,
@@ -418,7 +435,14 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
         return;
     }
     bullets.sort_by_key(|&(id, ..)| id);
-    let swept = bodies(world);
+    let (low, high) = bullets
+        .iter()
+        .map(|&(.., from, to)| (from.min(to), from.max(to)))
+        .fold((Vec2::INFINITY, Vec2::NEG_INFINITY), |(a, b), (c, d)| {
+            (a.min(c), b.max(d))
+        });
+    let reach = Vec2::splat(BULLET_RADIUS);
+    let swept = bodies(world, (low - reach, high + reach));
     for (_, bullet, from, to) in bullets {
         if let Some(state) = world.get_mut::<Bullet>(bullet) {
             state.segment = None;

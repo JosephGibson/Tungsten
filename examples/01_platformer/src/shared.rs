@@ -90,18 +90,29 @@ pub fn spawn_burst(world: &mut World, name: &str, at: Vec2) -> Option<Entity> {
 /// `burst_cleanup`: despawns each burst whose emitter has ticked, drained
 /// and reported it, and that owns no particle.
 pub fn burst_cleanup(world: &mut World) {
-    let finished: Vec<Entity> = world
+    let drained: Vec<Entity> = world
         .query::<(Entity, &Burst, &ParticleEmitterState)>()
-        .filter(|(entity, _, state)| {
+        .filter(|(_, _, state)| {
             state.first_tick_done
                 && state.drained
                 && state.drain_reported
                 && state.active_count == 0
-                && !world
-                    .query::<&Particle>()
-                    .any(|particle| particle.emitter == Some(*entity))
         })
         .map(|(entity, ..)| entity)
+        .collect();
+    if drained.is_empty() {
+        return;
+    }
+    // One pass over the particles for every drained burst, not one each
+    // (P6).
+    let owning: std::collections::HashSet<Entity> = world
+        .query::<&Particle>()
+        .filter_map(|particle| particle.emitter)
+        .filter(|emitter| drained.contains(emitter))
+        .collect();
+    let finished: Vec<Entity> = drained
+        .into_iter()
+        .filter(|entity| !owning.contains(entity))
         .collect();
     for entity in finished {
         world.despawn(entity);

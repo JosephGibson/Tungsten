@@ -12,7 +12,7 @@ use tungsten::core::{
     AudioCommand, Bundle, CameraController, Collider, Entity, Position, PrevPosition,
     RigidBodyBundle, SoundRegistry, Transform,
 };
-use tungsten::kit::{ContactDamage, Health, HitFlash, damage};
+use tungsten::kit::{ContactDamage, DamageRequest, Health, HitFlash, damage};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::elements::FIRE_CENTRE;
@@ -21,7 +21,7 @@ use example_01_platformer::features::toys::RING_CAP;
 use example_01_platformer::features::toys::components::{Ball, Ring, ShockRing};
 use example_01_platformer::shared::BURST_CAP;
 
-use super::{ball, bursts, centre, run, settle, teleport, top};
+use super::{ball, bursts, centre, fall_dead, run, teleport, top};
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -77,6 +77,39 @@ fn audio_controls_and_damage_flash_shake_remain_wired() {
 }
 
 #[test]
+fn a_burn_tick_plays_no_hurt_but_a_killing_one_does() {
+    let (mut harness, player) = run();
+    harness.step(10);
+    let tick = |harness: &mut UiHarness, amount: f32| {
+        DamageRequest::new(player, amount)
+            .with_periodic(true)
+            .queue(harness.world_mut());
+        harness.step(1);
+    };
+    tick(&mut harness, 5.0);
+    assert_eq!(health(&harness, player), 95.0);
+    assert_eq!(
+        plays(&harness, "ex10_player_hit_sfx"),
+        0,
+        "a tick plays no hurt"
+    );
+    let world = harness.world();
+    assert_eq!(
+        world.resource::<CameraController>().shake_trauma,
+        0.0,
+        "nor shakes"
+    );
+    tick(&mut harness, 200.0);
+    assert!(harness.world().get::<Health>(player).unwrap().is_dead());
+    assert_eq!(
+        plays(&harness, "ex10_player_hit_sfx"),
+        1,
+        "the killing tick hurts"
+    );
+    assert!(harness.world().resource::<CameraController>().shake_trauma > 0.0);
+}
+
+#[test]
 fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen() {
     let (mut harness, player) = run();
     harness.step(10);
@@ -110,7 +143,7 @@ fn hazards_damage_once_per_cooldown_and_the_last_heart_starts_the_death_screen()
     }
     harness.step(2);
     assert!(harness.world().get::<Health>(player).unwrap().is_dead());
-    settle(&mut harness);
+    fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
 }
 

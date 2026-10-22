@@ -108,8 +108,8 @@ fn a_frozen_dummy_slides_is_pulled_by_the_hole_and_thaws() {
         (body(&harness, thawed).x - a.x).abs() < 1.0,
         "a thawed dummy is left be"
     );
-    // Five seconds in all, then it thaws.
-    harness.step(300);
+    // Seven and a half seconds in all, then it thaws.
+    harness.step(410);
     assert!(!has(&harness, frozen, "frozen"));
     assert!(
         !harness
@@ -156,7 +156,7 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     assert_eq!(mine.len(), 1);
     let (_, first) = mine[0];
     assert!(body(&harness, first).distance(at) < 2.0, "at the cursor");
-    assert_eq!(mana(&harness), before - 40.0, "a summon costs 40");
+    assert_eq!(mana(&harness), before - 20.0, "a summon costs 20");
     // Five summons a second apart leave the four latest.
     for i in 1..=SUMMON_CAP {
         harness.step(61);

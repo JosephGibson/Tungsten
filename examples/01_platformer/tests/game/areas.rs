@@ -1,4 +1,4 @@
-//! The areas: walking across each one's start toasts its name and
+//! The areas: walking across each one's start names it on the banner and
 //! autosaves once, raises its ambience over the others and, past the
 //! light's ease, lights it as a cave or under the moon; and a Retry after a
 //! death starts in the last.
@@ -10,17 +10,18 @@ use example_01_platformer::features::level::components::Area;
 use example_01_platformer::features::level::{AMBIENT, AMBIENT_INDOOR, LIGHT_EASE, TILE};
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::run::Run;
+use example_01_platformer::features::run::banner::{self, BANNER_SECS};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shell::AUTOSAVES;
 use example_01_platformer::shell::game_over::GAME_OVER;
-use example_01_platformer::shell::toast::Toasts;
 use glam::Vec2;
 use tungsten::core::{AmbientLight, SoundRegistry, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
 
 use super::{
-    calm, centre, harness_with, player_entity, press, settle, start, teleport, top, user_folder,
+    calm, centre, fall_dead, harness_with, player_entity, press, settle, start, teleport, top,
+    user_folder,
 };
 
 /// Each area after the spawn's, its first column, and where the walk into
@@ -45,16 +46,43 @@ fn area(harness: &UiHarness) -> Option<String> {
     harness.world().resource::<Run>().area.clone()
 }
 
-/// Steps one frame and adds the toasts it showed to `seen`.
+/// Steps one frame and adds the name the banner began to show to `seen`.
 fn step(harness: &mut UiHarness, seen: &mut Vec<String>) {
-    let before = harness.world().resource::<Toasts>().texts(harness.tree());
+    let before = banner::shown(harness.world()).map(str::to_owned);
     harness.step(1);
-    let after = harness.world().resource::<Toasts>().texts(harness.tree());
-    seen.extend(after.into_iter().filter(|text| !before.contains(text)));
+    let after = banner::shown(harness.world()).map(str::to_owned);
+    if after.is_some() && after != before {
+        seen.extend(after);
+    }
 }
 
 #[test]
-fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_there() {
+fn a_new_area_replaces_the_banner() {
+    let mut harness = harness_with(UserFolder::Off);
+    start(&mut harness);
+    calm(&mut harness);
+    let player = player_entity(&harness);
+    harness.step(10);
+    assert_eq!(banner::shown(harness.world()), Some(FIRST));
+    // Into the aqueduct while the clearing's name still shows.
+    let (name, column, _, row, _) = CROSSINGS[0];
+    let inside = Vec2::new((column + 1.0) * TILE, row * TILE - PLAYER_HALF.y - 0.5);
+    teleport(&mut harness, player, inside);
+    let mut frames = 0;
+    while banner::shown(harness.world()) != Some(name) {
+        harness.step(1);
+        frames += 1;
+        assert!(frames < 30, "the aqueduct's name replaces the clearing's");
+    }
+    // Its own fade, from its start.
+    harness.step(((BANNER_SECS - 0.2) * 60.0) as u32);
+    assert_eq!(banner::shown(harness.world()), Some(name));
+    harness.step(30);
+    assert_eq!(banner::shown(harness.world()), None);
+}
+
+#[test]
+fn walking_across_each_area_start_autosaves_once_names_it_and_retry_starts_there() {
     let dir = user_folder("areas");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
@@ -62,8 +90,8 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
     let player = player_entity(&harness);
     // The run's first steps, as the curtain lifts, enter the spawn's area.
     harness.step(10);
-    let shown = harness.world().resource::<Toasts>().texts(harness.tree());
-    assert_eq!(shown, [FIRST], "the spawn's area names itself");
+    let shown = banner::shown(harness.world());
+    assert_eq!(shown, Some(FIRST), "the spawn's area names itself");
     assert_eq!(area(&harness).as_deref(), Some(FIRST));
     let mut seen = Vec::new();
     for (name, column, x, row, jump) in CROSSINGS {
@@ -100,7 +128,7 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
         }
         assert_eq!(area(&harness).as_deref(), Some(name));
         assert!(centre(&harness, player).x + PLAYER_HALF.x > column * TILE);
-        assert_eq!(seen, [name], "one toast crossing into {name}");
+        assert_eq!(seen, [name], "one name crossing into {name}");
         assert_eq!(writes, 1, "one autosave crossing into {name}");
         // Past the light's ease: the area's ambience up and every other
         // loop down, and its light, a cave's or the moon's.
@@ -134,8 +162,7 @@ fn walking_across_each_area_start_autosaves_once_toasts_it_and_retry_starts_ther
     // A death on the bridge: Retry loads the autosave taken on its start.
     let saved = centre(&harness, player);
     damage(harness.world_mut(), player, 1000.0);
-    harness.step(2);
-    settle(&mut harness);
+    fall_dead(&mut harness);
     assert_eq!(top(&harness), Some(GAME_OVER));
     press(&mut harness, "Retry");
     settle(&mut harness);

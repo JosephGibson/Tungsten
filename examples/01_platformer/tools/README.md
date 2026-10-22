@@ -350,7 +350,7 @@ tile collision. The runtime and route tests spawn the same shallow bodies;
 solid terrain retains native tile collision. Keep platform art and generated
 collision together when changing silhouettes.
 
-Press **L** to toggle the player's lantern halo and point light. Per-frame flame
+Press **L** to toggle the staff light, the player's lantern halo and point light, which burns mana while lit (01 (e)). Per-frame flame
 anchors are generated from the art, the cast twins' and the mirrored frames'
 too; both effects follow facing and animation. A fresh run lights the lantern.
 Fireball hazards, which the level's data may place (none today), have a brighter
@@ -571,7 +571,8 @@ The sprays' loops are voices of their own.
 | `ex10_fireball_cast_sfx` | `fireball_cast.wav` | A missile is cast |
 | `ex10_fireball_blast_sfx` | `fireball_blast.wav` | A missile explodes |
 | `ex10_extinguish_sfx` | `extinguish.wav` | A black hole puts out burning balls |
-| `ex10_player_hit_sfx` | `player_hit.wav` | The player takes damage |
+| `ex10_player_hit_sfx` | `player_hit.wav` | The player takes a blow or the killing hit, through the `player_hurt` rule (never a burn or bleed tick) |
+| `ex10_staff_gutter_sfx` | `staff_gutter.wav` | The staff light gutters out for want of mana: a starved flame's sputter, slowing, with a few last pops |
 | `ex10_iron_crush_sfx` | `iron_crush.wav` | Iron crushes small balls or hurts the player |
 | `ex10_ice_beam_sfx` | `ice_beam.wav` | The ice spray starts |
 | `ex10_ice_spray_sfx` | `ice_spray.wav` | Cold rushing wind loops while the ice spray is held |
@@ -729,7 +730,9 @@ near-white violet). Every new sprite is unlit, drawn over the lit world:
 Nine particle configs join, over today's sprites: `muzzle_flash` and `ricochet`
 (the gun), `steam_burst`, `burn_out`, `poof` and `frost_blast` (the endings and
 the dummy's), and `bleed_drips`, `chill_flakes` and `shock_sparks` (the statuses),
-each under the shared emitter and particle caps.
+each under the shared emitter and particle caps. 01 (e) adds `staff_gutter`, a curl
+of smoke off the staff light's last orange as it gutters out, and `frost_breath`,
+a crawler's puff of frost as it shrinks from the light.
 
 ## Iron blocks and crushing
 
@@ -775,7 +778,7 @@ and the beetle's lowest pixel on row 60, as the courier's is, the troll's on row
 | Enemy | Rig | Clips |
 | --- | --- | --- |
 | Wisp | A round flame with a face, self-lit like the fireball hazards; its tongues stream up and behind | `wisp_float` (8, flickering, a pixel's bob), `wisp_flare` (6, its alert: wider, eyes and mouth open) |
-| Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open) |
+| Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open), `crawler_scared` (4, looping: recoiled over its planted feet, front low, plates raised, feelers laid flat, jaws shut, eyes a slit, sting raised, a pixel's tremble) |
 | Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (4: a front foot scraping, dust), `beetle_charge` (4: head down, horn levelled, dust behind) |
 | Bat | A near-black furred body, dark purple wings with their finger bones showing, red eyes, fangs | `bat_roost` (4: hanging by its feet, swaying), `bat_fly` (6: the wings turned about their roots, folding a little on the downstroke), `bat_windup` (4: wings raised, the outline flashing white), `bat_dive` (2: wings swept back) |
 | Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
@@ -795,7 +798,7 @@ palette pixels only. The summon slot's icons (`icon_wisp` to `icon_troll`) are e
 enemy's frame at half size, the troll's at a quarter, on the dummy's ring.
 
 `sfx.py` adds each enemy's sounds, 16-bit mono at 44,100 Hz: `wisp_hum` (a 2-second
-crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `beetle_paw`,
+crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `crawler_scared` (a startled hiss as it shrinks from the light), `beetle_paw`,
 `beetle_charge`, `bat_screech`, `bat_dive`, `troll_step`, `troll_roar`, `troll_slam`,
 `troll_throw`, `enemy_hit`, `enemy_spotted` (the alert) and `orb_pickup`, registered
 as `ex10_<name>_sfx`. `music_combat` is a fifth music loop at 22,050 Hz, sixteen bars
