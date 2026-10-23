@@ -36,7 +36,9 @@ use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, BURNING, Kind, has_status};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
-use crate::shared::{SaveId, despawn_tree, spawn_burst};
+use crate::shared::{
+    SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst, surface_distance,
+};
 
 /// The cells a run bins its bodies and targets into, in world pixels.
 const CELL: f32 = 64.0;
@@ -218,7 +220,7 @@ pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
     let Some(target) = world.get::<SaveId>(jump.receiver).map(|id| id.0) else {
         return false;
     };
-    let at = centre(world, jump.receiver).unwrap_or(jump.from);
+    let at = body_centre(world, jump.receiver).unwrap_or(jump.from);
     let source = world
         .get_resource::<Run>()
         .and_then(|run| world.get::<SaveId>(run.player))
@@ -362,15 +364,6 @@ fn cell_of(at: Vec2) -> (i32, i32) {
     ((at.x / CELL).floor() as i32, (at.y / CELL).floor() as i32)
 }
 
-/// How far `at` lies from a body of `shape` about `centre`: 0 inside it.
-fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
-    let offset = at - centre;
-    match shape {
-        Shape::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
-        Shape::Circle { radius } => (offset.length() - radius).max(0.0),
-    }
-}
-
 impl Bin {
     /// The step's balls, iron, scraps and live targets, and the entities of
     /// the save IDs `wanted` (sorted), the due entries' targets (P6).
@@ -446,16 +439,6 @@ impl Bin {
     }
 }
 
-/// A body's centre now.
-fn centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
-
 /// The entity of the save ID `id` the run credits: the run's player.
 fn credited(world: &World, id: Option<u64>) -> Option<Entity> {
     let player = world.get_resource::<Run>()?.player;
@@ -469,7 +452,7 @@ fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
         .and_then(|id| bin.ids.get(&id).copied())
         .filter(|&entity| world.is_alive(entity));
     let at = target
-        .and_then(|entity| centre(world, entity))
+        .and_then(|entity| body_centre(world, entity))
         .unwrap_or_else(|| Vec2::from(entry.at));
     let origin = Vec2::from(entry.origin);
     let source = credited(world, entry.source);
@@ -509,7 +492,7 @@ fn shove(world: &mut World, entity: Entity, at: Vec2, reach: f32, speed: f32, di
     if body.kind != BodyKind::Dynamic {
         return;
     }
-    let Some(centre) = centre(world, entity) else {
+    let Some(centre) = body_centre(world, entity) else {
         return;
     };
     let away = (centre - at).try_normalize().unwrap_or(-Vec2::Y);
@@ -531,7 +514,7 @@ fn blast_hit(
     source: Option<Entity>,
 ) {
     let (speed, reach, distance) = push;
-    let away = centre(world, target)
+    let away = body_centre(world, target)
         .and_then(|centre| (centre - at).try_normalize())
         .unwrap_or(-Vec2::Y);
     let falloff = 1.0 - distance / reach.max(1.0);
@@ -602,7 +585,7 @@ fn shatter(world: &mut World, thing: Option<Entity>, at: Vec2) {
         end_frozen(world, thing, None);
     }
     if !iron {
-        spawn_burst(world, "ex10_ice_shatter", at);
+        spawn_key_burst(world, "ex10_ice_shatter", at);
         ice_pulse(world, at, 32.0, true);
     }
 }

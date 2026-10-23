@@ -276,6 +276,9 @@
           "id": "ex10_gun_shot_sfx",
           "min_interval": 0.05
         }
+      },
+      {
+        "shake": 0.1
       }
     ]
   },
@@ -644,6 +647,220 @@
         "sound": {
           "id": "ex10_lift_stop_sfx",
           "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "hole_collapsed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_black_hole_collapse_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "iron_landed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_iron_thud_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "fizzled",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_fizzle_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "snapped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_thunder_snap_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "thawed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ice_crack_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "ball_thudded",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ball_thud_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "dry_fired",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_gun_click_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "racked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_gun_rack_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "fire_ended",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_flame_end_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "air_jumped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_air_jump_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "no_mana",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_no_mana_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "switched",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_spell_switch_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "not_ready",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_not_ready_sfx",
+          "min_interval": 0.15
+        }
+      }
+    ]
+  },
+  {
+    "on": "orb_dropped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_orb_pop_sfx"
         }
       }
     ]

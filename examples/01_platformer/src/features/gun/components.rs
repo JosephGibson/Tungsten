@@ -23,8 +23,9 @@ pub struct Muzzle {
     pub age: f32,
 }
 
-/// The player's empty magazine coming back: the seconds left until every
-/// round does. Saved.
+/// The player's magazine coming back, from its last round or a `reload`
+/// press: the seconds left until every round does, while no round fires.
+/// Saved.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Reload {
     pub left: f32,

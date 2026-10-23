@@ -9,9 +9,14 @@
 //! the cold pulses draw unlit, bounded, and leave.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::combat::draw::overlays;
+use example_01_platformer::features::combat::systems::frozen_left;
+use example_01_platformer::features::combat::{CHILLED, FROZEN, Hit, Kind, has_status};
 use example_01_platformer::features::elements::components::{Chill, Frozen, IcePulse};
 use example_01_platformer::features::elements::draw::effects;
 use example_01_platformer::features::elements::{self, FREEZE_TIME, freeze_amount};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
@@ -21,15 +26,20 @@ use example_01_platformer::features::toys::{
     SCRAP_COUNT, SCRAP_HALF, SPRAY_RANGE,
 };
 use example_01_platformer::shared::BURST_CAP;
+use example_01_platformer::shared::SaveIds;
+use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::assets::{LayerKind, TilemapData};
 use tungsten::core::{
     AssetRegistry, AudioCommand, AudioCommands, CameraState, Collider, Entity, Particle,
     ParticleBudget, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
-    RigidBody, Shape, SoundRegistry, TilemapInstance, TilemapRegistry, Time, Transform, Velocity,
+    RigidBody, Shape, SoundRegistry, Sprite, TilemapInstance, TilemapRegistry, Time, Transform,
+    Velocity,
 };
 use tungsten::extract_sprites_default;
-use tungsten::kit::{Children, Stats, damage};
+use tungsten::kit::{
+    AilmentBuckets, AilmentThreshold, Children, Health, StateMachine, Stats, damage,
+};
 use tungsten::testing::UiHarness;
 
 use super::{
@@ -883,4 +893,176 @@ fn simultaneous_freezes_and_thermal_fractures_share_audio_but_keep_individual_cu
     release(&mut harness);
     harness.step(120);
     assert_eq!(harness.world().query::<&IcePulse>().count(), 0);
+}
+
+/// The sky's ground the cold tests stand creatures on.
+const GROUND: f32 = 1000.0;
+
+/// A run on the sky's ground, the map's enemies off, the courier at x 300,
+/// one step a frame.
+fn cold_arena() -> (UiHarness, Entity) {
+    let (mut harness, player) = run();
+    super::calm(&mut harness);
+    ground(&mut harness, GROUND);
+    stand(&mut harness, player, 300.0, GROUND);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.step(2);
+    (harness, player)
+}
+
+/// A creature of `kind` standing still on the ground at `x`: no mind.
+fn creature(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
+    let centre = Vec2::new(x, GROUND - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    enemies::scale(world, enemy, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(enemy);
+    harness.step(1);
+    enemy
+}
+
+/// `amount` of cold on `target`, from nobody, through a step's resolve.
+fn cold(harness: &mut UiHarness, target: Entity, amount: f32) {
+    assert!(Hit::new(target, [(Kind::Cold, amount)]).queue(harness.world_mut()));
+    harness.step(1);
+}
+
+fn move_speed(harness: &UiHarness, entity: Entity) -> f32 {
+    harness
+        .world()
+        .get::<Stats>(entity)
+        .and_then(|stats| stats.get("move_speed"))
+        .expect("a move speed")
+}
+
+/// `target`'s cold bucket as a share of its threshold.
+fn filled(harness: &UiHarness, target: Entity) -> f32 {
+    let world = harness.world();
+    let fill = world
+        .get::<AilmentBuckets>(target)
+        .map_or(0.0, |buckets| buckets.fill(Kind::Cold.tag()));
+    let threshold = world.get::<AilmentThreshold>(target).unwrap();
+    let max = world.get::<Health>(target).unwrap().max();
+    fill / (threshold.flat() + threshold.of_max_health() * max)
+}
+
+fn heard(harness: &UiHarness, sound: Sound) -> usize {
+    harness
+        .harness()
+        .events::<Sounded>()
+        .filter(|sounded| sounded.sound == sound)
+        .count()
+}
+
+#[test]
+fn a_chill_slows_and_frosts_more_as_its_bucket_fills() {
+    let (mut harness, player) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    cold(&mut harness, beetle, 10.0);
+    assert!(has_status(harness.world(), beetle, CHILLED), "chilled");
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        cold(&mut harness, beetle, 5.0);
+        // The grade at the next step's intent, the tint at its frame.
+        harness.step(1);
+        let tint = harness.world().get::<Sprite>(beetle).unwrap().color;
+        seen.push((
+            filled(&harness, beetle),
+            move_speed(&harness, beetle),
+            tint[0],
+        ));
+    }
+    assert!(!has_status(harness.world(), beetle, FROZEN), "{seen:?}");
+    // The chill emptied the bucket; it climbs on to the freeze.
+    assert!(
+        seen.iter().all(|&(share, ..)| share > 0.0 && share < 1.0),
+        "between the rungs: {seen:?}"
+    );
+    for pair in seen.windows(2) {
+        let ((_, slow, red), (_, slower, redder)) = (pair[0], pair[1]);
+        assert!(slower < slow, "slower as it fills: {seen:?}");
+        assert!(redder < red, "frostier as it fills: {seen:?}");
+    }
+    // The courier takes no freeze, so its chill keeps its own slow.
+    let base = move_speed(&harness, player);
+    cold(&mut harness, player, 20.0);
+    harness.step(1);
+    assert!(has_status(harness.world(), player, CHILLED));
+    assert!((move_speed(&harness, player) - base * 0.65).abs() < 0.01);
+    cold(&mut harness, player, 15.0);
+    harness.step(1);
+    assert!((move_speed(&harness, player) - base * 0.65).abs() < 0.01);
+}
+
+#[test]
+fn a_creature_that_freezes_plays_the_freeze_with_its_frost_burst() {
+    // A beetle on the frozen entry, the troll on its own freeze in place.
+    for (kind, amount) in [(EnemyKind::Beetle, 10.0), (EnemyKind::Troll, 15.0)] {
+        let (mut harness, _) = cold_arena();
+        let target = creature(&mut harness, kind, 1200.0);
+        let mut froze = false;
+        for _ in 0..6 {
+            cold(&mut harness, target, amount);
+            if has_status(harness.world(), target, FROZEN) {
+                assert_eq!(heard(&harness, Sound::Froze), 1, "{kind:?}");
+                assert!(super::bursts(&harness, "ex10_ice_frost") >= 1, "{kind:?}");
+                froze = true;
+                break;
+            }
+            assert_eq!(heard(&harness, Sound::Froze), 0, "{kind:?}");
+        }
+        assert!(froze, "{kind:?} froze");
+    }
+}
+
+#[test]
+fn a_thaw_cracks_the_cube_first_and_ends_in_glints_and_a_crack() {
+    let (mut harness, _) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    // The cube and its cracked twin, as the harness loads no sprite.
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    mock_sprite(assets, "ex10_status_ice_beetle", 601, false);
+    mock_sprite(assets, "ex10_status_ice_beetle_cracked", 602, false);
+    pin_camera(&mut harness, Vec2::new(800.0, 600.0));
+    for _ in 0..8 {
+        cold(&mut harness, beetle, 10.0);
+        if has_status(harness.world(), beetle, FROZEN) {
+            break;
+        }
+    }
+    assert!(has_status(harness.world(), beetle, FROZEN), "frozen");
+    let cubes = |h: &UiHarness| -> Vec<u32> {
+        overlays(h.world())
+            .iter()
+            .map(|batch| batch.texture.0)
+            .filter(|handle| [601, 602].contains(handle))
+            .collect()
+    };
+    let (mut early, mut late) = (Vec::new(), Vec::new());
+    let mut thawed = false;
+    for _ in 0..600 {
+        harness.step(1);
+        if !has_status(harness.world(), beetle, FROZEN) {
+            assert_eq!(heard(&harness, Sound::Thawed), 1, "its crack");
+            assert_eq!(super::bursts(&harness, "ex10_thaw_glints"), 1, "its glints");
+            thawed = true;
+            break;
+        }
+        let left = frozen_left(harness.world(), beetle).expect("a freeze with an end");
+        if left > 1.0 {
+            early.extend(cubes(&harness));
+        } else if left < 0.7 {
+            late.extend(cubes(&harness));
+        }
+    }
+    assert!(thawed, "it thawed");
+    assert!(
+        !early.is_empty() && early.iter().all(|&h| h == 601),
+        "whole: {early:?}"
+    );
+    assert!(
+        late.contains(&601) && late.contains(&602),
+        "flickering: {late:?}"
+    );
 }

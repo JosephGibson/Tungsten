@@ -1,7 +1,8 @@
 //! The gun: `shoot` held fires the player's `gun` ability at its cooldown,
-//! twelve rounds a magazine, all back [`RELOAD_SECS`] after the last; its
-//! spawn payload fires a `bullet`, the kit's projectile, which 01 adopts as
-//! it adopts the missile. The ability's charges count the rounds; 01 times
+//! [`MAGAZINE`] rounds a magazine, all back [`RELOAD_SECS`] after the last
+//! or after a `reload` press, while no round fires and the trigger clicks;
+//! its spawn payload fires a `bullet`, the kit's projectile, which 01 adopts
+//! as it adopts the missile. The ability's charges count the rounds; 01 times
 //! the reload and refills them, since the kit's tick starts an `all`
 //! refill at the first round rather than the last, so the data's refill is
 //! an hour, long past any reload. Each step, one decision a bullet: what its step met
@@ -13,7 +14,7 @@
 pub mod components;
 pub mod systems;
 
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 use tungsten::core::{
     CommandBuffer, DataRegistry, Position, PrevPosition, Schedule, Stage, Transform, Visibility,
     World, system,
@@ -28,8 +29,12 @@ use crate::game::GAMEPLAY;
 use crate::shared::SaveId;
 use components::Bullet;
 
-/// The action that fires, held to repeat at the cooldown.
+/// The action that fires, held to repeat at the cooldown, and the one that
+/// reloads a magazine short of its rounds.
 pub const SHOOT: &str = "shoot";
+pub const RELOAD: &str = "reload";
+/// The magazine's rounds, the `gun` ability's `charges.max`.
+pub const MAGAZINE: u32 = 9;
 /// The player's ability, and the prefab its payload fires.
 pub const GUN: &str = "gun";
 pub const BULLET_PREFAB: &str = "bullet";
@@ -45,13 +50,18 @@ pub const SHOT_PUSH: f32 = 120.0;
 pub const BALL_KICK: f32 = 900.0;
 /// The most times a bullet turns off iron.
 pub const MAX_RICOCHETS: u32 = 2;
-/// A muzzle flash's frames and the seconds each shows.
+/// A muzzle flash's frames and the seconds each shows, and the warm point
+/// light it carries over them, fading: its colour, reach and intensity.
 pub const MUZZLE_FRAMES: [&str; 3] = ["ex10_muzzle_0", "ex10_muzzle_1", "ex10_muzzle_2"];
 pub const MUZZLE_FRAME_SECS: f32 = 0.03;
+pub const MUZZLE_LIGHT_COLOR: Vec3 = Vec3::new(1.0, 0.72, 0.36);
+pub const MUZZLE_LIGHT_REACH: f32 = 140.0;
+pub const MUZZLE_LIGHT: f32 = 2.0;
 /// How far along the aim the shot leaves the courier's centre, as the
 /// ability's payload sets it.
 pub const MUZZLE_OFFSET: f32 = 24.0;
-/// The seconds after the last round until the magazine is whole again.
+/// The seconds a reload takes, from the last round or a `reload` press,
+/// until the magazine is whole again.
 pub const RELOAD_SECS: f32 = 1.2;
 
 /// The gun as a plugin. In the fixed step: in the intent phase after the

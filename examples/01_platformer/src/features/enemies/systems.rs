@@ -23,7 +23,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::elements;
 use crate::features::run::Run;
-use crate::shared::spawn_burst;
+use crate::shared::spawn_key_burst;
 
 /// The machine every enemy thinks on: each state's hooks run its kind's
 /// rules.
@@ -589,8 +589,9 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     }
 }
 
-/// An enemy's one burst: a shatter if frozen, a burn-out if burning, a
-/// poof otherwise; its sprite hidden.
+/// An enemy's one burst: a shatter if frozen, gore if an iron blow killed
+/// it this step, a burn-out if burning, a poof otherwise; its sprite
+/// hidden.
 fn end(world: &mut World, enemy: Entity) {
     let Some(at) = centre(world, enemy) else {
         return;
@@ -599,12 +600,14 @@ fn end(world: &mut World, enemy: Entity) {
         visibility.visible = false;
     }
     if has_status(world, enemy, FROZEN) {
-        spawn_burst(world, "ex10_ice_shatter", at);
+        spawn_key_burst(world, "ex10_ice_shatter", at);
         elements::ice_pulse(world, at, 64.0, true);
+    } else if elements::systems::iron_killed(world, enemy) {
+        spawn_key_burst(world, "ex10_gore_burst", at);
     } else if has_status(world, enemy, BURNING) {
-        spawn_burst(world, "ex10_burn_out", at);
+        spawn_key_burst(world, "ex10_burn_out", at);
     } else {
-        spawn_burst(world, "ex10_poof", at);
+        spawn_key_burst(world, "ex10_poof", at);
     }
 }
 

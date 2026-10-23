@@ -10,9 +10,12 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
-use tungsten::core::{DataRef, Entity, EventCursor, EventQueue, Position, With, Without, World};
+use tungsten::core::{
+    DataRef, Entity, EventCursor, EventQueue, Position, Visibility, With, Without, World,
+};
 use tungsten::kit::{EffectRequest, Lifetime, PickedUp, Pickup};
 
+use crate::features::audio::{self, components::Sound};
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, SaveIds, spawn_burst};
 
@@ -21,8 +24,11 @@ use crate::shared::{SaveId, SaveIds, spawn_burst};
 #[derive(Debug, Clone, Default)]
 pub struct PlacedOrbs(pub Vec<u64>);
 
-/// An orb's seconds before it fades.
+/// An orb's seconds before it fades, and the last of them it blinks over,
+/// this many times a second.
 pub const ORB_SECS: f32 = 20.0;
+pub const BLINK_SECS: f32 = 3.0;
+pub const BLINK_HZ: f32 = 5.0;
 /// An orb's centre from its point, its sprite's top-left: the 24 px orb's
 /// middle.
 pub const ORB_CENTRE: Vec2 = Vec2::new(12.0, 12.0);
@@ -109,7 +115,9 @@ pub fn gone(world: &World) -> Vec<u64> {
 }
 
 /// `orb_adopt`, in `PreUpdate` before the shell's save: each orb a roll
-/// landed at the last flush joins the run, its save ID its own.
+/// landed at the last flush joins the run, its save ID its own, and pops
+/// out with its sound and its kind's sparks. Placed and loaded orbs never
+/// pass here.
 pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
         .query_filtered::<Entity, (With<Orb>, Without<SaveId>)>()
@@ -117,6 +125,23 @@ pub fn adopt(world: &mut World) {
     for orb in fresh {
         let id = world.resource_mut::<SaveIds>().take();
         world.insert_bundle(orb, (id, SceneEntity { state_id: GAMEPLAY }));
+        let (Some(kind), Some(at)) = (
+            world.get::<Orb>(orb).map(|orb| orb.kind),
+            world.get::<Position>(orb).map(|at| at.0 + ORB_CENTRE),
+        ) else {
+            continue;
+        };
+        spawn_burst(world, kind.burst(), at);
+        audio::play(world, Sound::OrbDropped, at);
+    }
+}
+
+/// `orb_blink`, in the present phase: a dropped orb blinks over its last
+/// [`BLINK_SECS`], faster as it runs out; a placed one never fades.
+pub fn blink(world: &mut World) {
+    for (_, lifetime, visibility) in world.query_mut::<(&Orb, &Lifetime, &mut Visibility)>() {
+        let left = lifetime.timer().remaining();
+        visibility.visible = left > BLINK_SECS || (left * BLINK_HZ).fract() < 0.6;
     }
 }
 

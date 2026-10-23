@@ -10,7 +10,7 @@ use tungsten::core::{
     ParticleEmitter, ParticleEmitterState, Position, PrevPosition, RigidBody, Shape, Sprite, Time,
     Transform, Velocity, With, World,
 };
-use tungsten::kit::{Children, ContactDamage, Health, Hit};
+use tungsten::kit::{Children, ContactDamage, Health, Hit, Tags};
 use tungsten::physics::wake;
 
 use super::cascade::{self, CascadeKind};
@@ -24,7 +24,7 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::components::Reaction;
-use crate::features::combat::{self, FROZEN, Kind, has_status};
+use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
 use crate::features::enemies::beetle;
 use crate::features::enemies::components::{Enemy, Throws};
 use crate::features::level::components::{Doused, Glow, Hazard};
@@ -36,10 +36,11 @@ use crate::features::toys::components::{
 };
 use crate::features::toys::systems::holes;
 use crate::features::toys::{
-    self, BALL_RADIUS, HOLE_RADIUS, IRON_HALF, SCRAP_COUNT, SCRAP_HALF, SMALL_BALL_RADIUS,
+    self, BALL_RADIUS, HOLE_RADIUS, IRON_HALF, IRON_LAND_SPEED, IRON_PUSH_MOST, IRON_PUSH_SHARE,
+    SCRAP_COUNT, SCRAP_HALF, SMALL_BALL_RADIUS,
 };
 use crate::game::GAMEPLAY;
-use crate::shared::{BURST_CAP, SaveId, despawn_tree, spawn_burst};
+use crate::shared::{BURST_CAP, SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
 
 /// Two touching small balls' centres, with the solver's resting slack.
 const CONTACT_DISTANCE: f32 = 2.0 * SMALL_BALL_RADIUS + 0.5;
@@ -64,16 +65,6 @@ const SCRAP_BLAST_BIAS: f32 = 600.0;
 const SCRAP_EJECT_LIFT: f32 = 180.0;
 /// Speculative contacts stop iron at a body's surface, not inside it.
 const CONTACT_MARGIN: f32 = 3.0;
-
-/// A body's centre: its `Position` plus its collider's offset.
-fn centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
 
 /// Lights `ball` when it is a small ball that never burned and is not
 /// frozen.
@@ -131,7 +122,7 @@ pub fn spread_fire(world: &mut World) {
     // a ball farther from every source than a touch lights nothing (P5).
     let lit: Vec<Vec2> = sources
         .iter()
-        .filter_map(|&source| centre(world, source))
+        .filter_map(|&source| body_centre(world, source))
         .collect();
     let bounds = lit
         .iter()
@@ -186,7 +177,7 @@ pub fn flame_exposure(world: &mut World) {
     let burning: Vec<(Entity, Vec2)> = world
         .query::<(Entity, &BallBurn)>()
         .filter(|(_, burn)| burn.remaining > 0.0)
-        .filter_map(|(entity, _)| Some((entity, centre(world, entity)?)))
+        .filter_map(|(entity, _)| Some((entity, body_centre(world, entity)?)))
         .collect();
     let Some((min, max)) = burning
         .iter()
@@ -471,19 +462,26 @@ pub fn fire_contacts(world: &mut World) {
             despawn_tree(world, ball);
             spawn_burst(world, "ex10_ball_explosion", at);
             toys::ball_ring(world, at);
+            audio::play(world, Sound::Blasted, at);
         }
     }
 }
 
+/// A bowling ball's closing speed from which it lands with a thud.
+const BALL_THUD_SPEED: f32 = 700.0;
+
 /// `ball_impacts`, in the overlap phase: a small ball that met something
 /// faster than [`IMPACT_SPEED`] along the contact, its speed from before
 /// the solver stopped it, bursts its sparks, then waits out its cooldown;
-/// at most [`IMPACT_BURSTS_PER_STEP`] a step, the rest dropped.
+/// at most [`IMPACT_BURSTS_PER_STEP`] a step, the rest dropped. A bowling
+/// ball closing at [`BALL_THUD_SPEED`] or more raises dust where it met and
+/// thuds, one a step.
 pub fn ball_impacts(world: &mut World) {
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
     };
     let mut hits: Vec<Entity> = Vec::with_capacity(IMPACT_BURSTS_PER_STEP);
+    let mut thud: Option<(Option<SaveId>, Vec2)> = None;
     'events: for event in events.iter_current() {
         let va = world
             .get::<PreviousVelocity>(event.a)
@@ -492,7 +490,21 @@ pub fn ball_impacts(world: &mut World) {
             .b
             .and_then(|b| world.get::<PreviousVelocity>(b))
             .map_or(Vec2::ZERO, |v| v.0);
-        if -(va - vb).dot(event.normal) <= IMPACT_SPEED {
+        let closing = -(va - vb).dot(event.normal);
+        if closing >= BALL_THUD_SPEED {
+            for (this, pushed) in [(Some(event.a), event.normal), (event.b, -event.normal)] {
+                let Some(this) = this.filter(|&this| world.has::<BowlingBall>(this)) else {
+                    continue;
+                };
+                let id = world.get::<SaveId>(this).copied();
+                if thud.is_none_or(|(first, _)| id < first)
+                    && let Some(centre) = body_centre(world, this)
+                {
+                    thud = Some((id, centre - pushed * BALL_RADIUS));
+                }
+            }
+        }
+        if closing <= IMPACT_SPEED {
             continue;
         }
         for entity in [Some(event.a), event.b].into_iter().flatten() {
@@ -511,9 +523,13 @@ pub fn ball_impacts(world: &mut World) {
         if let Some(state) = world.get_mut::<SmallBall>(ball) {
             state.impact_cooldown = IMPACT_COOLDOWN;
         }
-        if let Some(at) = centre(world, ball) {
+        if let Some(at) = body_centre(world, ball) {
             spawn_burst(world, "ex10_small_ball_impact", at);
         }
+    }
+    if let Some((_, at)) = thud {
+        spawn_burst(world, "ex10_landing_dust", at);
+        audio::play(world, Sound::BallThudded, at);
     }
 }
 
@@ -752,11 +768,14 @@ pub fn crush(world: &mut World) {
         .collect();
     shattered.sort_by_key(|(id, _)| *id);
     for &(_, entity) in &shattered {
-        if let Some(at) = centre(world, entity) {
+        if let Some(at) = body_centre(world, entity) {
             cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
         }
     }
-    let positions: Vec<Vec2> = smashed.iter().filter_map(|&e| centre(world, e)).collect();
+    let positions: Vec<Vec2> = smashed
+        .iter()
+        .filter_map(|&e| body_centre(world, e))
+        .collect();
     if hurt || !smashed.is_empty() || !shattered.is_empty() {
         let at = blocks[0].2;
         audio::play(world, Sound::Crushed, at);
@@ -793,7 +812,7 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
     let total = freeze_amount(world, iron) + amount;
     if total >= 1.0 - 1e-5 {
         freeze_iron(world, iron);
-        let at = centre(world, iron).unwrap_or(contact);
+        let at = body_centre(world, iron).unwrap_or(contact);
         let size = if world.has::<IronBlock>(iron) {
             128.0
         } else if world.has::<SmallBall>(iron) {
@@ -1020,6 +1039,20 @@ fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f3
 /// speed.
 type Hurt = (Entity, Entity, f32);
 
+/// The targets an iron blow killed this step, which the enemies' and the
+/// dummy's ends burst in gore in place of a poof: the step's alone, written
+/// fresh by `body_impacts`, presentation, never saved.
+#[derive(Debug, Clone, Default)]
+pub struct IronKills(pub Vec<Entity>);
+
+/// Whether an iron blow killed `target` this step.
+#[must_use]
+pub fn iron_killed(world: &World, target: Entity) -> bool {
+    world
+        .get_resource::<IronKills>()
+        .is_some_and(|kills| kills.0.contains(&target))
+}
+
 /// `body_impacts`, in the overlap phase after the physics step: a frozen
 /// body meeting something that does not move, or a body of at least
 /// [`SHATTER_MASS`], at a closing speed of [`SHATTER_SPEED`] or more, from
@@ -1031,8 +1064,15 @@ type Hurt = (Entity, Entity, f32);
 /// thrower's damage factor, credited to its thrower while it lives, the
 /// throw ending at its first such hit; and a frozen target landing as hard
 /// takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`]. Each pair
-/// counts once a step, at its hardest. The throws count down.
+/// counts once a step, at its hardest. The throws count down. Iron's hits
+/// (a block's or a scrap's, thrown or not) push their target along the
+/// closing line by [`IRON_PUSH_SHARE`] of the closing speed, at most
+/// [`IRON_PUSH_MOST`], and apply at once, as the crush's do, so each knows
+/// whether it killed: a `flesh` target it killed is marked ([`IronKills`]).
+/// A block meeting a still body or a tile at [`IRON_LAND_SPEED`] or more
+/// lands hard, once a step (`toys::systems::iron_landed`).
 pub fn body_impacts(world: &mut World) {
+    world.insert_resource(IronKills::default());
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
         return;
     };
@@ -1040,6 +1080,7 @@ pub fn body_impacts(world: &mut World) {
     let mut shatters: Vec<Entity> = Vec::new();
     let mut hits: BTreeMap<(Option<SaveId>, Option<SaveId>), Hurt> = BTreeMap::new();
     let mut landings: BTreeMap<Option<SaveId>, (Entity, f32)> = BTreeMap::new();
+    let mut hard: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     for event in events.iter_current() {
         let va = before_step(world, event.a);
         let vb = event.b.map_or(Vec2::ZERO, |b| before_step(world, b));
@@ -1048,9 +1089,18 @@ pub fn body_impacts(world: &mut World) {
         if closing < SHATTER_SPEED {
             continue;
         }
-        for (this, other) in [(Some(event.a), event.b), (event.b, Some(event.a))] {
+        for (this, other, pushed) in [
+            (Some(event.a), event.b, event.normal),
+            (event.b, Some(event.a), -event.normal),
+        ] {
             let Some(this) = this else { continue };
             let still = other.is_none_or(|other| !moves(world, other));
+            if still && closing >= IRON_LAND_SPEED && world.has::<IronBlock>(this) {
+                let id = world.get::<SaveId>(this).copied();
+                if let (false, Some(centre)) = (hard.contains_key(&id), body_centre(world, this)) {
+                    hard.insert(id, centre - pushed * IRON_HALF.y);
+                }
+            }
             let heavy = other
                 .is_some_and(|other| moves(world, other) && mass(world, other) >= SHATTER_MASS);
             if closing >= SHATTER_SPEED
@@ -1089,11 +1139,12 @@ pub fn body_impacts(world: &mut World) {
         .collect();
     shatters.sort_by_key(|(id, _)| *id);
     for (_, entity) in shatters {
-        if let Some(at) = centre(world, entity) {
+        if let Some(at) = body_centre(world, entity) {
             cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
         }
     }
     let mut landed: Vec<Entity> = Vec::new();
+    let mut kills: Vec<Entity> = Vec::new();
     for (body, target, closing) in hits.into_values() {
         let throw = world
             .get_resource::<Throws>()
@@ -1104,7 +1155,7 @@ pub fn body_impacts(world: &mut World) {
             None => mass(world, body),
         };
         let amount = (BODY_HIT_K * heavy * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
-        let at = centre(world, target).unwrap_or_default();
+        let at = body_centre(world, target).unwrap_or_default();
         let hit = match throw {
             Some(throw) => {
                 landed.push(body);
@@ -1122,7 +1173,24 @@ pub fn body_impacts(world: &mut World) {
                 }
             }
         };
-        hit.at(at).queue(world);
+        if !is_iron(world, body) {
+            hit.at(at).queue(world);
+            continue;
+        }
+        let from = body_centre(world, body).unwrap_or(at);
+        let push =
+            (at - from).normalize_or_zero() * (IRON_PUSH_SHARE * closing).min(IRON_PUSH_MOST);
+        let outcome = hit.at(at).push(push).request(world).apply(world);
+        let flesh = world
+            .get::<Tags>(target)
+            .is_some_and(|tags| tags.has(FLESH));
+        if matches!(outcome, Hit::Killed) && flesh {
+            kills.push(target);
+        }
+    }
+    world.insert_resource(IronKills(kills));
+    for at in hard.into_values() {
+        toys::systems::iron_landed(world, at);
     }
     let dt = world.resource::<Time>().delta();
     let gone: Vec<Entity> = world
@@ -1245,7 +1313,7 @@ pub fn doused_look(world: &mut World) {
 /// grid, away from a blast, a scrap into chips, each with the ice's burst
 /// and cue.
 pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
-    let Some(at) = centre(world, iron) else {
+    let Some(at) = body_centre(world, iron) else {
         return;
     };
     let whole = world.has::<IronBlock>(iron);
@@ -1272,7 +1340,7 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
             toys::spawn_scrap(world, at + offset, velocity + kick, index + row, tumble);
         }
     }
-    spawn_burst(world, "ex10_ice_shatter", at);
+    spawn_key_burst(world, "ex10_ice_shatter", at);
     ice_pulse(world, at, if whole { 128.0 } else { 32.0 }, true);
 }
 

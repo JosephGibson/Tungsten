@@ -39,10 +39,11 @@ use tungsten::kit::{
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
+use crate::features::combat;
 use crate::features::level::LAVA_LAYER;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_burst};
+use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
     Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws,
@@ -94,7 +95,9 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
 /// A kind's table entry: its prefab, its frame's side, its body's half
 /// size and centre from its sprite's top-left (the entity's point), its
 /// eye from there facing right, its mass for impacts, its sight's reach,
-/// its alert's seconds, the black hole's hold on it, and its art.
+/// its alert's seconds, the black hole's hold on it, which the pushes take
+/// too, its knockback's resist as its prefab sets it (the kit's
+/// `Knockback` has no getter), and its art.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KindInfo {
     pub prefab: &'static str,
@@ -106,6 +109,7 @@ pub struct KindInfo {
     pub sight: f32,
     pub alert: f32,
     pub pull: f32,
+    pub resist: f32,
     pub icon: &'static str,
     pub ice: &'static str,
     pub flyer: bool,
@@ -126,6 +130,7 @@ impl EnemyKind {
                 sight: 480.0,
                 alert: 0.5,
                 pull: 0.6,
+                resist: 0.0,
                 icon: "ex10_icon_wisp",
                 ice: "ex10_status_ice_wisp",
                 flyer: true,
@@ -140,6 +145,7 @@ impl EnemyKind {
                 sight: 400.0,
                 alert: 0.4,
                 pull: 0.15,
+                resist: 0.0,
                 icon: "ex10_icon_crawler",
                 ice: "ex10_status_ice_crawler",
                 flyer: false,
@@ -154,6 +160,7 @@ impl EnemyKind {
                 sight: 520.0,
                 alert: 0.5,
                 pull: 0.05,
+                resist: 0.5,
                 icon: "ex10_icon_beetle",
                 ice: "ex10_status_ice_beetle",
                 flyer: false,
@@ -168,6 +175,7 @@ impl EnemyKind {
                 sight: 440.0,
                 alert: 0.4,
                 pull: 0.7,
+                resist: 0.0,
                 icon: "ex10_icon_bat",
                 ice: "ex10_status_ice_bat",
                 flyer: true,
@@ -182,6 +190,7 @@ impl EnemyKind {
                 sight: 640.0,
                 alert: 0.8,
                 pull: 0.01,
+                resist: 1.0,
                 icon: "ex10_icon_troll",
                 ice: "ex10_status_ice_troll",
                 flyer: false,
@@ -197,7 +206,8 @@ impl EnemyKind {
 /// the trolls' holds after the movers; in the overlap phase the orbs
 /// collected; in the react phase the deaths; in `PreUpdate` the orbs'
 /// adoption; in the present phase the clips after the kit's animation
-/// tick; and the trolls' bars drawn over the sprites.
+/// tick, the beetles' dust and the dropped orbs' blink; and the trolls'
+/// bars drawn over the sprites.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
@@ -224,7 +234,7 @@ impl Plugin for EnemiesPlugin {
         .before("enemy_hold");
         let hold = system("enemy_hold", systems::hold).before(ENEMY_STATES);
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
-        let chill = system("troll_chill", troll::chill).before(ENEMY_STATES);
+        let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
         for desc in [sight, alerts, hold, fire, chill] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
@@ -253,6 +263,10 @@ impl Plugin for EnemiesPlugin {
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("beetle_dust", beetle::dust)),
+        );
+        schedule.add(
+            Stage::PostUpdate,
+            Phase::Present.join(system("orb_blink", drops::blink)),
         );
     }
 }
@@ -343,7 +357,7 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
     let id = world.resource_mut::<SaveIds>().take();
     let enemy = spawn(world, kind, at - kind.info().centre, id)?;
     scale(world, enemy, difficulty);
-    spawn_burst(world, "ex10_poof", at);
+    spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)
         .into_iter()
         .filter(|&(id, _)| !placed(world, id))
@@ -353,7 +367,7 @@ pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
         .take(summoned.len().saturating_sub(SUMMON_CAP))
     {
         if let Some(centre) = centre(world, oldest) {
-            spawn_burst(world, "ex10_poof", centre);
+            spawn_key_burst(world, "ex10_poof", centre);
         }
         despawn_tree(world, oldest);
     }
@@ -432,6 +446,16 @@ pub fn gone(world: &World) -> Vec<u64> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Whether `entity` is an enemy whose kind resists knockback whole (the
+/// troll): 01 gives it no push, since the kit's `knock_back` would launch
+/// its controller at zero and lock its input.
+#[must_use]
+pub fn stands_firm(world: &World, entity: Entity) -> bool {
+    world
+        .get::<Enemy>(entity)
+        .is_some_and(|enemy| enemy.kind.info().resist >= 1.0)
 }
 
 /// An enemy's body centre.

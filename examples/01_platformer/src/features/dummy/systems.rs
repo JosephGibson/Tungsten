@@ -1,24 +1,13 @@
 //! The dummy's systems.
 
-use glam::Vec2;
-use tungsten::core::{Collider, Entity, EventCursor, EventQueue, Position, Visibility, World};
+use tungsten::core::{Entity, EventCursor, EventQueue, Visibility, World};
 use tungsten::kit::Damaged;
 
 use super::components::Dummy;
 use crate::features::combat::{BURNING, FROZEN, has_status};
 use crate::features::elements;
 use crate::features::elements::cascade::{CascadeKind, Cascades};
-use crate::shared::{SaveId, spawn_burst};
-
-/// A dummy's body centre.
-fn centre(world: &World, dummy: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(dummy)?.0;
-    Some(
-        at + world
-            .get::<Collider>(dummy)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
+use crate::shared::{SaveId, body_centre, spawn_key_burst};
 
 /// `dummy_deaths`, in the react phase after the step's reactions: each
 /// dummy a hit killed ends in one burst, and its sprite goes with it while
@@ -39,11 +28,11 @@ pub fn deaths(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 
 /// A dummy's one burst: the reaction its killing step's parts queued on it
 /// when they queued one, thermal shock's explosion or a steam burst, which
-/// runs from the next step; else, by its state, a shatter if frozen, a
-/// steam pop if a steam burst killed it, a burn-out if burning, a poof
-/// otherwise.
+/// runs from the next step; else, by its state, a shatter if frozen, gore
+/// if an iron blow killed it this step, a steam pop if a steam burst killed
+/// it, a burn-out if burning, a poof otherwise.
 pub fn end(world: &mut World, dummy: Entity) {
-    let Some(at) = centre(world, dummy) else {
+    let Some(at) = body_centre(world, dummy) else {
         return;
     };
     if let Some(visibility) = world.get_mut::<Visibility>(dummy) {
@@ -61,13 +50,15 @@ pub fn end(world: &mut World, dummy: Entity) {
     }
     let steamed = cascades.is_some_and(|cascades| cascades.steamed.contains(&dummy));
     if has_status(world, dummy, FROZEN) {
-        spawn_burst(world, "ex10_ice_shatter", at);
+        spawn_key_burst(world, "ex10_ice_shatter", at);
         elements::ice_pulse(world, at, 64.0, true);
+    } else if elements::systems::iron_killed(world, dummy) {
+        spawn_key_burst(world, "ex10_gore_burst", at);
     } else if steamed {
-        spawn_burst(world, "ex10_steam_burst", at);
+        spawn_key_burst(world, "ex10_steam_burst", at);
     } else if has_status(world, dummy, BURNING) {
-        spawn_burst(world, "ex10_burn_out", at);
+        spawn_key_burst(world, "ex10_burn_out", at);
     } else {
-        spawn_burst(world, "ex10_poof", at);
+        spawn_key_burst(world, "ex10_poof", at);
     }
 }

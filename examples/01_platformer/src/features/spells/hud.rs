@@ -88,7 +88,7 @@ pub const PIPS: usize = 3;
 const PIP: f32 = 4.0;
 /// The most rounds the magazine shows, the gun's icon, and the room its
 /// readout takes, so "reloading" never shifts the bar.
-pub const ROUNDS: usize = 12;
+pub const ROUNDS: usize = crate::features::gun::MAGAZINE as usize;
 const GUN_ICON: &str = "ex10_icon_gun";
 const MAGAZINE_READOUT: f32 = 72.0;
 /// The veil over the part of a cooldown still to run.

@@ -30,7 +30,7 @@ use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
-use crate::shared::SaveId;
+use crate::shared::{SaveId, body_centre, spawn_burst, surface_distance};
 use components::{Arc, Bolt, StrikeLight};
 
 /// A strike's shock and its reach from where it lands.
@@ -69,24 +69,10 @@ impl Plugin for LightningPlugin {
     }
 }
 
-/// A body's or a target's centre.
-fn centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
-
-/// How far `at` lies from a body's surface: 0 inside it.
-fn surface_distance(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
-    let centre = centre(world, entity)?;
-    let offset = at - centre;
-    Some(match world.get::<Collider>(entity)?.shape {
-        Shape::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
-        Shape::Circle { radius } => (offset.length() - radius).max(0.0),
-    })
+/// How far `at` lies from `entity`'s body's surface: 0 inside it.
+fn gap(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
+    let shape = world.get::<Collider>(entity)?.shape;
+    Some(surface_distance(at, body_centre(world, entity)?, shape))
 }
 
 /// Whether `entity` conducts: iron, its scraps, or a live target tagged
@@ -127,7 +113,7 @@ fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)>
         .filter(|&(entity, _, iron, scrap, health, tags)| {
             Some(entity) != spared && conducts(iron.is_some() || scrap.is_some(), health, tags)
         })
-        .filter_map(|(entity, id, ..)| Some((entity, centre(world, entity)?, id.0)))
+        .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.0)))
         .collect()
 }
 
@@ -195,9 +181,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .filter(|&(entity, _)| {
             world.get::<Health>(entity).is_some_and(|h| !h.is_dead()) || conductive(world, entity)
         })
-        .filter(|&(entity, _)| {
-            surface_distance(world, landing, entity).is_some_and(|gap| gap <= STRIKE_REACH)
-        })
+        .filter(|&(entity, _)| gap(world, landing, entity).is_some_and(|gap| gap <= STRIKE_REACH))
         .map(|(entity, _)| (world.get::<SaveId>(entity).copied(), entity))
         .collect();
     struck.sort_by_key(|(id, _)| *id);
@@ -222,7 +206,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     // landed.
     let start = conductors
         .iter()
-        .filter_map(|&(entity, id)| Some((entity, centre(world, entity)?, id)))
+        .filter_map(|&(entity, id)| Some((entity, body_centre(world, entity)?, id)))
         .min_by(|a, b| {
             a.1.distance(landing)
                 .total_cmp(&b.1.distance(landing))
@@ -231,7 +215,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .map(|(entity, ..)| entity);
     if let Some(start) = start.filter(|&start| !frozen(world, start)) {
         let members: Vec<u64> = conductors.iter().map(|&(_, id)| id).collect();
-        let from = centre(world, start).unwrap_or(landing);
+        let from = body_centre(world, start).unwrap_or(landing);
         if let Some((next, _)) = nearest_conductor(world, from, JUMP_REACH, &members, Some(caster))
         {
             cascade::queue_jump(
@@ -253,8 +237,8 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
 }
 
 /// A strike's look at `landing`: its bolt from the sky with its veil, its
-/// light, the shake and the thunder. The strike's number picks the bolt's
-/// five to eight pieces.
+/// light, the shake, the sparks where it lands and the snap under the
+/// thunder. The strike's number picks the bolt's five to eight pieces.
 fn show(world: &mut World, landing: Vec2, number: u64) {
     let count = 5 + (number % 4) as usize;
     let pieces: Vec<usize> = (0..count)
@@ -282,6 +266,8 @@ fn show(world: &mut World, landing: Vec2, number: u64) {
             trauma_add: STRIKE_SHAKE,
         });
     }
+    spawn_burst(world, "ex10_strike_sparks", landing);
+    audio::play(world, Sound::Snapped, landing);
     audio::play(world, Sound::Thundered, landing);
 }
 

@@ -21,7 +21,7 @@ use tungsten::{Plugin, SceneEntity};
 
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_burst};
+use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_key_burst};
 use components::{Dummy, PlacedDummies};
 
 /// The dummy's prefab, by its manifest ID.
@@ -98,7 +98,7 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
             SceneEntity { state_id: GAMEPLAY },
         ))
         .spawn(world);
-    spawn_burst(world, "ex10_poof", at);
+    spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)
         .into_iter()
         .filter(|&(id, _)| !placed(world, id))
@@ -111,7 +111,7 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
             .get::<tungsten::core::Position>(oldest)
             .map(|at| at.0 + DUMMY_CENTRE)
         {
-            spawn_burst(world, "ex10_poof", centre);
+            spawn_key_burst(world, "ex10_poof", centre);
         }
         despawn_tree(world, oldest);
     }

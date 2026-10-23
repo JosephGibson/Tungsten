@@ -54,7 +54,7 @@
   "drag_per_sec": 0,
   "emission": {
     "kind": "continuous",
-    "rate_hz": 150
+    "rate_hz": 50
   },
   "gravity": [
     0,
@@ -71,7 +71,7 @@
     "max": 2.2,
     "min": 1.6
   },
-  "max_alive": 300,
+  "max_alive": 100,
   "scale_over_life": [
     [
       0,

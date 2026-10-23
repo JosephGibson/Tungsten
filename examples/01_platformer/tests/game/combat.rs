@@ -2,20 +2,26 @@
 //! half again on every type; the ladders' statuses on the dummy and the
 //! player; the missile's blast on the dummy, sparing the player; the damage
 //! numbers in their types' colours, a crit's at once and larger in yellow,
-//! a type's ticks merged, all following the Damage numbers option.
+//! a type's ticks merged, all following the Damage numbers option; the
+//! blood a blow spills; and steam from cold a burning target is immune to.
 
 use example_01_platformer::features::combat::numbers::{
     CRIT_SIZE, FOLLOW_SECS, Numbers, TICK_SIZE,
 };
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
+use example_01_platformer::shared::{Burst, SaveIds};
+use example_01_platformer::shell::Difficulty;
 use example_01_platformer::shell::options::GameOptions;
 use glam::Vec2;
-use tungsten::core::{DataRef, Entity, EventQueue};
+use std::collections::BTreeSet;
+use tungsten::core::{DataRef, Entity, EventQueue, ParticleConfigRegistry, ParticleEmitter};
 use tungsten::kit::{
-    DamageRequest, Damaged, DamagedPart, EffectRequest, Effects, Health, KitRng, Resist, Stats,
-    Tags,
+    DamageRequest, Damaged, DamagedPart, EffectRequest, Effects, Health, KitRng, Resist,
+    StateMachine, Stats, Tags,
 };
 use tungsten::testing::UiHarness;
 
@@ -499,4 +505,71 @@ fn numbers_follow_the_damage_numbers_option() {
     );
     let back = floated(&mut harness, 3);
     assert_eq!(back.len(), 1, "on again: {back:?}");
+}
+
+/// Adds to `seen` the bursts of the particle config `name` now alive, by
+/// their order: every such burst a run of frames spawned.
+fn note_bursts(harness: &UiHarness, name: &str, seen: &mut BTreeSet<u64>) {
+    let world = harness.world();
+    let config = world.resource::<ParticleConfigRegistry>().id_for_name(name);
+    seen.extend(
+        world
+            .query::<(&Burst, &ParticleEmitter)>()
+            .filter(|(_, emitter)| Some(emitter.config) == config)
+            .map(|(burst, _)| burst.order),
+    );
+}
+
+#[test]
+fn a_blow_on_flesh_or_the_courier_spurts_blood_and_a_tick_does_not() {
+    let (mut harness, player, dummy) = with_dummy();
+    let mut blood = BTreeSet::new();
+    // A blow on the dummy, which is flesh, past its bleed's rung, and one
+    // on the courier.
+    hit(&mut harness, dummy, Kind::Physical, 20.0);
+    note_bursts(&harness, "ex10_blood_burst", &mut blood);
+    assert_eq!(blood.len(), 1, "the dummy bleeds");
+    hit(&mut harness, player, Kind::Physical, 5.0);
+    note_bursts(&harness, "ex10_blood_burst", &mut blood);
+    assert_eq!(blood.len(), 2, "the courier bleeds");
+    // The dummy's bleeding ticks spill none.
+    let mut ticks = 0;
+    for _ in 0..90 {
+        harness.step(1);
+        ticks += harness
+            .harness()
+            .events::<Damaged>()
+            .filter(|hit| hit.entity == dummy && hit.periodic)
+            .count();
+        note_bursts(&harness, "ex10_blood_burst", &mut blood);
+    }
+    assert!(ticks > 0, "it bled");
+    assert_eq!(blood.len(), 2, "no tick spurts");
+}
+
+#[test]
+fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
+    let (mut harness, _, _) = with_dummy();
+    let kind = EnemyKind::Crawler;
+    let centre = Vec2::new(1300.0, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let crawler = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    enemies::scale(world, crawler, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(crawler);
+    harness.step(1);
+    apply(&mut harness, crawler, "burning", None);
+    harness.step(1);
+    assert!(has(&harness, crawler, "burning"), "burning");
+    // It takes no cold, but the cold its immunity drops still steams.
+    let before = health(&harness, crawler);
+    hit(&mut harness, crawler, Kind::Cold, 10.0);
+    let mut steam = BTreeSet::new();
+    for _ in 0..3 {
+        harness.step(1);
+        note_bursts(&harness, "ex10_steam_burst", &mut steam);
+    }
+    assert_eq!(steam.len(), 1, "one steam burst");
+    assert!(!has(&harness, crawler, "burning"), "put out");
+    assert!(health(&harness, crawler) <= before);
 }

@@ -373,19 +373,24 @@ def set_down():
 
 
 def force_push():
-    """A wave of force: a deep whump and a rush of air sweeping outward."""
-    duration = 0.55
-    noise, low, high = Noise(0xF0CE), LowPass(), LowPass()
-    samples, phase = [], 0.0
+    """A gravity warp (01 (f)): space bending in a deep, phasing whump, a
+    low tone bowing down and back while its detuned twin slides apart from
+    it, under a rush of air thrown outward."""
+    duration = 0.65
+    noise, low, high, sub = Noise(0xF0CE), LowPass(), LowPass(), LowPass()
+    samples, phase, twin = [], 0.0, 0.0
     for i in range(int(duration * RATE)):
         t = i / RATE
         p = t / duration
         n = noise()
-        rush = (low(n, glide(2600, 500, p)) - high(n, 120)) * math.sin(math.pi * min(1.0, p * 1.4)) ** 2
-        phase += math.tau * glide(120, 38, min(1.0, p * 2.0)) / RATE
-        whump = math.sin(phase) * math.exp(-t / .11) * min(1.0, t / .006)
-        samples.append(whump * 1.3 + rush * 1.1)
-    return finish(samples, fade_in=.002, fade_out=.06)
+        bend = 1 - 0.55 * math.sin(math.pi * min(1.0, p * 1.6))
+        phase += math.tau * 62 * bend / RATE
+        twin += math.tau * 62 * bend * (1.0 + 0.06 * p) / RATE
+        warp = (math.sin(phase) + .8 * math.sin(twin)) * min(1.0, t / .01) * math.exp(-t / .2)
+        rush = (low(n, glide(3200, 420, p)) - high(n, 140)) * math.sin(math.pi * min(1.0, p * 1.3)) ** 2
+        whump = sub(n, 70) * 5.0 * math.exp(-t / .08)
+        samples.append(math.tanh(1.2 * warp + rush + whump))
+    return finish(samples, fade_in=.002, fade_out=.08)
 
 
 # 01 (b)'s weapons and elements: the gun, the bolt from the sky, the
@@ -393,20 +398,20 @@ def force_push():
 
 
 def gun_shot():
-    """A sharp report: a cracking noise burst over a short low punch, with a
-    metallic tick of the slide."""
-    noise, low, high = Noise(0x6005), LowPass(), LowPass()
+    """A heavy report (01 (f)): a cracking burst over a deep punch and a
+    booming body, the slide's tick after."""
+    noise, low, high, boom = Noise(0x6005), LowPass(), LowPass(), LowPass()
     samples, phase = [], 0.0
-    for i in range(int(0.3 * RATE)):
+    for i in range(int(0.42 * RATE)):
         t = i / RATE
         n = noise()
-        crack = (low(n, 7000) - high(n, 1100)) * math.exp(-t / 0.012)
-        body = low(n, 900) * math.exp(-t / 0.05)
-        phase += math.tau * glide(160, 60, min(1.0, t / 0.06)) / RATE
-        punch = math.sin(phase) * math.exp(-t / 0.035)
-        tick = math.sin(math.tau * 3100 * t) * 0.18 * math.exp(-max(0.0, t - 0.02) / 0.02) * (t > 0.02)
-        samples.append(math.tanh(2.2 * crack + 1.2 * body + punch) + tick)
-    return finish(samples, fade_in=0.0005)
+        crack = (low(n, 7500) - high(n, 1000)) * math.exp(-t / 0.014)
+        body = boom(n, 700) * 1.8 * math.exp(-t / 0.08)
+        phase += math.tau * glide(130, 42, min(1.0, t / 0.09)) / RATE
+        punch = 1.3 * math.sin(phase) * min(1.0, t / 0.001) * math.exp(-t / 0.06)
+        tick = math.sin(math.tau * 2900 * t) * 0.16 * math.exp(-max(0.0, t - 0.05) / 0.02) * (t > 0.05)
+        samples.append(math.tanh(2.4 * crack + body + punch) + tick)
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
 
 
 def gun_reload():
@@ -1500,6 +1505,351 @@ def splinter():
     return finish(samples, fade_in=0.0005)
 
 
+# 01 (f)'s feel: the holes' hum and collapse, iron's landing, a refusal's
+# fizzle and its two siblings, a strike's snap, a thaw's crack, a bowling
+# ball's thud, the gun's click and rack, the flamethrower's tail, an air
+# jump, a spell switch, an orb dropping, small balls pouring, and the
+# deaths' own sounds.
+
+
+def crossfaded(samples, count, overlap):
+    """`samples`, rendered `overlap` past `count`, as a loop of `count`: the
+    tail crossfaded into the head, so it repeats without a seam."""
+    loop = samples[overlap:count]
+    for i in range(overlap):
+        blend = i / (overlap - 1)
+        loop.append(samples[count + i] * (1 - blend) + samples[i] * blend)
+    return loop
+
+
+def black_hole_hum():
+    """An open hole's hum: a deep drone wavering about 46 Hz with a fifth
+    over it, a dark whirl of air and a slow, heavy pulse, every swing whole
+    over the 2 s loop."""
+    duration, overlap = 2.0, int(.12 * RATE)
+    noise, whirl, high = Noise(0xB1A0), LowPass(), LowPass()
+    count = int(duration * RATE)
+    samples, phase, fifth = [], 0.0, 0.0
+    for i in range(count + overlap):
+        t = i / RATE
+        phase += math.tau * (46 + 2.5 * math.sin(math.tau * 0.5 * t)) / RATE
+        fifth += math.tau * (69.3 + 3 * math.sin(math.tau * 1.5 * t + 1)) / RATE
+        drone = .55 * math.sin(phase) + .25 * math.sin(fifth) + .1 * math.sin(3 * phase)
+        n = noise()
+        air = (whirl(n, 380 + 220 * math.sin(math.tau * 0.5 * t) ** 2) - high(n, 60)) * 1.6
+        pulse = .75 + .25 * math.sin(math.tau * t) ** 2
+        samples.append((drone + air) * pulse)
+    return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
+
+
+def black_hole_collapse():
+    """A hole closing: an inward rush rising to a snap, then a deep
+    implosion falling away under a rumble."""
+    duration, snap = 0.9, 0.32
+    noise, low, high, sub = Noise(0xB1C0), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        pre = min(1.0, t / snap)
+        n = noise()
+        swell = pre ** 2.2 * (1.0 if t < snap else math.exp(-(t - snap) / 0.02))
+        rush = (low(n, glide(300, 5200, pre)) - high(n, glide(120, 900, pre))) * swell
+        u = t - snap
+        thump = rumble = 0.0
+        if u >= 0:
+            phase += math.tau * glide(95, 26, min(1.0, u / 0.45)) / RATE
+            thump = math.sin(phase) * min(1.0, u / 0.003) * math.exp(-u / 0.22)
+            rumble = sub(n, 90) * 4.0 * math.exp(-u / 0.35)
+        samples.append(math.tanh(1.4 * rush + 1.3 * thump + rumble))
+    return finish(samples, fade_in=0.01, fade_out=0.12)
+
+
+def iron_thud():
+    """A block of iron landing hard: a deep thud and knock, a dull clang
+    ringing out and grit settling."""
+    noise, grit, low, dust = Noise(0x1A0D), Noise(0x1A0E), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.7 * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(78, 40, min(1.0, t / 0.2)) / RATE
+        thud = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.12)
+        knock = low(noise(), 600) * 2.0 * math.exp(-t / 0.02)
+        clang = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d)
+                    for f, w, d in ((187, .35, .32), (431, .22, .2), (733, .14, .14), (1291, .08, .09)))
+        settle = dust(grit(), 2200) * .3 * math.exp(-max(0.0, t - .05) / .15) * (t > .05)
+        samples.append(math.tanh(1.5 * (thud + knock) + clang + settle))
+    return finish(samples, fade_in=0.0005, fade_out=0.08)
+
+
+def fizzle():
+    """A spell with no room to land: a sputtering hiss falling away, a few
+    pops and a dull, sinking tone."""
+    noise, pops, low, high = Noise(0xF122), Noise(0xF123), LowPass(), LowPass()
+    samples, pop, phase = [], 0.0, 0.0
+    for i in range(int(0.35 * RATE)):
+        t = i / RATE
+        p = t / 0.35
+        n = noise()
+        sputter = .55 + .45 * math.sin(math.tau * glide(38, 14, p) * t)
+        hiss = (low(n, glide(5200, 900, p)) - high(n, 600)) * sputter
+        if pops() > 1 - .003 * (1 - p):
+            pop = .7
+        pop *= .88
+        phase += math.tau * glide(220, 110, p) / RATE
+        dull = .5 * math.sin(phase) * math.exp(-t / .05)
+        envelope = min(1.0, t / 0.008) * math.exp(-t / .12)
+        samples.append((1.4 * hiss + pop * pops()) * envelope + dull)
+    return finish(samples, fade_in=0.001)
+
+
+def thunder_snap():
+    """A bolt landing: a bright electric snap, a zip falling in pitch and a
+    short buzzing sizzle."""
+    noise, buzz, high = Noise(0x5A9E), Noise(0x5A9F), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.3 * RATE)):
+        t = i / RATE
+        n = noise()
+        snap = (n - high(n, 2400)) * math.exp(-t / 0.006)
+        phase += math.tau * glide(1800, 240, min(1.0, t / 0.08)) / RATE
+        zip_ = .35 * math.copysign(1.0, math.sin(phase)) * math.exp(-t / 0.03)
+        sizzle = buzz() * .4 * math.exp(-t / 0.07) * (.5 + .5 * math.copysign(1.0, math.sin(math.tau * 90 * t)))
+        samples.append(math.tanh(2.0 * snap + zip_ + sizzle))
+    return finish(samples, fade_in=0.0003, fade_out=0.03)
+
+
+def drip(freq, seconds, level):
+    """A drop of meltwater: a short sine bloop falling in pitch."""
+    out, phase = [], 0.0
+    for i in range(int(seconds * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(freq, freq * 0.6, min(1.0, t / seconds)) / RATE
+        out.append(level * math.sin(phase) * min(1.0, t / 0.001) * math.exp(-t / 0.015))
+    return out
+
+
+def ice_crack():
+    """A thaw: the ice creaking under strain, a sharp crack splitting it
+    with a glassy ring, and meltwater dripping after."""
+    samples = [0.0] * int(0.6 * RATE)
+    for i in range(int(0.16 * RATE)):
+        t = i / RATE
+        squeal = math.sin(math.tau * glide(700, 1100, t / 0.16) * t)
+        samples[i] += .35 * squeal * math.sin(math.pi * t / 0.16) * (.6 + .4 * math.sin(math.tau * 60 * t))
+    noise, low = Noise(0x1C3A), LowPass()
+    start = int(0.14 * RATE)
+    for i in range(int(0.3 * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (n - low(n, 1500)) * math.exp(-t / 0.01)
+        ring = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d)
+                   for f, w, d in ((1630, .3, .09), (2890, .2, .06), (4470, .1, .04)))
+        samples[start + i] += 1.6 * crack + ring
+    for at, freq in ((0.32, 1900), (0.41, 1500), (0.52, 2100)):
+        place(samples, int(at * RATE), drip(freq, 0.06, 0.4))
+    return finish(samples, fade_in=0.001)
+
+
+def ball_thud():
+    """A bowling ball landing hard: a low thump under a hollow resin thock
+    and a short rattle."""
+    noise, low, high = Noise(0xBA11), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.45 * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(110, 62, min(1.0, t / 0.1)) / RATE
+        thump = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.07)
+        n = noise()
+        thock = (low(n, 1800) - high(n, 500)) * 1.6 * math.exp(-t / 0.012)
+        hollow = sum(math.sin(math.tau * f * t) * w * math.exp(-t / d) for f, w, d in ((330, .3, .06), (523, .15, .04)))
+        rattle = n * .12 * math.exp(-max(0.0, t - .04) / .08) * (t > .04) * (.5 + .5 * math.sin(math.tau * 31 * t))
+        samples.append(math.tanh(1.3 * thump + thock + hollow + rattle))
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
+
+
+def gun_click():
+    """A dry fire: the hammer's light metallic click on an empty chamber."""
+    noise, high = Noise(0xC11C), LowPass()
+    samples = []
+    for i in range(int(0.12 * RATE)):
+        t = i / RATE
+        n = noise()
+        click = (n - high(n, 3000)) * math.exp(-t / 0.0025)
+        ring = sum(math.sin(math.tau * f * t) * w for f, w in ((2900, .3), (4650, .15))) * math.exp(-t / 0.018)
+        samples.append(click + ring)
+    return finish(samples, fade_in=0.0002, fade_out=0.01)
+
+
+def gun_rack():
+    """A reload begun: the magazine let go and the slide racked back, two
+    hard clacks with a scrape between."""
+    noise, low = Noise(0x2AC4), LowPass()
+    samples = []
+    for i in range(int(0.4 * RATE)):
+        t = i / RATE
+        out = 0.0
+        for at, pitch, level in ((0.0, 1900, 1.0), (0.17, 1300, 1.2)):
+            u = t - at
+            if u >= 0:
+                click = noise() * math.exp(-u / 0.005) * level
+                ring = sum(math.sin(math.tau * pitch * ratio * u) * weight
+                           for ratio, weight in ((1, .28), (1.61, .14), (2.37, .07))) * math.exp(-u / 0.045)
+                out += click + ring
+        scrape = low(noise(), 2600) * .5 * math.sin(math.pi * min(1.0, max(0.0, t - .03) / .13)) * (.03 < t < .16)
+        samples.append(out + scrape)
+    return finish(samples, fade_in=0.0005)
+
+
+def flame_end():
+    """The flamethrower let go: its roar dropping away into a soft puff,
+    with a few last crackles."""
+    noise, crackles, low, high = Noise(0xF1E0), Noise(0xF1E1), LowPass(), LowPass()
+    samples, crack, phase = [], 0.0, 0.0
+    for i in range(int(0.45 * RATE)):
+        t = i / RATE
+        p = t / 0.45
+        n = noise()
+        rush = (low(n, glide(2400, 300, p)) - high(n, 120)) * math.exp(-t / 0.09)
+        phase += math.tau * glide(80, 45, p) / RATE
+        puff = .6 * math.sin(phase) * math.exp(-t / .07)
+        if crackles() > 1 - .0025 * (1 - p):
+            crack = .6
+        crack *= .9
+        samples.append(1.4 * rush + puff + crack * crackles())
+    return finish(samples, fade_in=0.003, fade_out=0.04)
+
+
+def air_jump():
+    """The courier's second jump: the cloak snapping open in a soft upward
+    whoosh, with a faint bright chime."""
+    noise, low, high = Noise(0xA1E0), LowPass(), LowPass()
+    samples = []
+    for i in range(int(0.32 * RATE)):
+        t = i / RATE
+        p = t / 0.32
+        n = noise()
+        whoosh = (low(n, glide(700, 3600, p)) - high(n, glide(250, 1100, p))) * math.sin(math.pi * min(1.0, p * 1.2)) ** 1.5
+        flap = .75 + .25 * (.5 + .5 * math.sin(math.tau * 26 * t))
+        samples.append(1.6 * whoosh * flap)
+    place(samples, int(0.02 * RATE), chime(note('A6'), 0.25, 0.18, decay=0.06))
+    return finish(samples, fade_in=0.003, fade_out=0.04)
+
+
+def no_mana():
+    """Out of mana: a hollow, empty knock and a tone sinking away, as from
+    a dry lantern."""
+    noise, low = Noise(0x0A1A), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.4 * RATE)):
+        t = i / RATE
+        p = t / 0.4
+        phase += math.tau * glide(330, 165, p ** .7) / RATE
+        tone = (math.sin(phase) + .3 * math.sin(2 * phase + .4)) * min(1.0, t / 0.01) * math.exp(-t / 0.13)
+        knock = low(noise(), 500) * 1.5 * math.exp(-t / 0.015)
+        samples.append(.8 * tone + knock)
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
+
+
+def spell_switch():
+    """A spell chosen: a soft click and a short glassy tick in its slot."""
+    noise, high = Noise(0x5E11), LowPass()
+    samples = [0.0] * int(0.14 * RATE)
+    for i in range(int(0.02 * RATE)):
+        t = i / RATE
+        n = noise()
+        samples[i] += (n - high(n, 2500)) * .6 * math.exp(-t / 0.003)
+    place(samples, int(0.008 * RATE), chime(note('E6'), 0.12, 0.35, decay=0.035))
+    return finish(samples, fade_in=0.0003, fade_out=0.02)
+
+
+def not_ready():
+    """A spell still cooling: two muted low ticks, the slot not ready."""
+    noise, low = Noise(0x40AD), LowPass()
+    samples = [0.0] * int(0.2 * RATE)
+    for at in (0.0, 0.085):
+        start = int(at * RATE)
+        for i in range(int(0.06 * RATE)):
+            t = i / RATE
+            tick = (math.sin(math.tau * 520 * t) + .4 * math.sin(math.tau * 1040 * t)) * math.exp(-t / 0.012)
+            samples[start + i] += tick + low(noise(), 800) * .8 * math.exp(-t / 0.004)
+    return finish(samples, fade_in=0.0003, fade_out=0.02)
+
+
+def orb_pop():
+    """A drop falling from a kill: a bubbly pop rising, and a little
+    sparkle of three bells."""
+    noise, low = Noise(0x0B0B), LowPass()
+    samples, phase = [0.0] * int(0.32 * RATE), 0.0
+    for i in range(int(0.06 * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(260, 720, t / 0.06) / RATE
+        pop = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.02)
+        samples[i] += pop + low(noise(), 3000) * .3 * math.exp(-t / 0.004)
+    for k, name in enumerate(('B5', 'E6', 'G#6')):
+        place(samples, int((0.05 + 0.04 * k) * RATE), chime(note(name), 0.18, 0.25, decay=0.05))
+    return finish(samples, fade_in=0.0005, fade_out=0.04)
+
+
+def small_balls():
+    """Small balls pouring: a dense patter of little glass clicks over a
+    soft hiss and the low roll of the pile, crossfaded as a 2 s loop."""
+    duration, overlap = 2.0, int(.1 * RATE)
+    noise, clicks, high, low = Noise(0x5BA1), Noise(0x5BA2), LowPass(), LowPass()
+    count = int(duration * RATE)
+    life = int(0.03 * RATE)
+    samples, voices = [], []
+    for i in range(count + overlap):
+        n = noise()
+        hiss = (n - high(n, 3500)) * .12
+        roll = low(n, 300) * .6
+        if clicks() > .9972:
+            voices.append((i, 2600 + 2400 * (clicks() * .5 + .5), .3 + .4 * (clicks() * .5 + .5)))
+        voices = [(s, f, v) for s, f, v in voices if i - s < life]
+        patter = sum(v * math.sin(math.tau * f * (i - s) / RATE) * math.exp(-(i - s) / RATE / 0.006)
+                     for s, f, v in voices)
+        samples.append(hiss + roll + patter)
+    return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
+
+
+def enemy_death():
+    """An enemy killed: a heavy last thwack and crunch, a falling groan of
+    its body, and the body's fall."""
+    noise, crunch, low, high = Noise(0xDEA0), Noise(0xDEA1), LowPass(), LowPass()
+    samples, phase, fall = [], 0.0, 0.0
+    for i in range(int(0.7 * RATE)):
+        t = i / RATE
+        n = noise()
+        thwack = low(n, 1300) * 2.4 * math.exp(-t / 0.035)
+        phase += math.tau * glide(150, 48, min(1.0, t / 0.18)) / RATE
+        body = math.sin(phase) * math.exp(-t / 0.1)
+        c = crunch()
+        bits = (c - high(c, 2200)) * .6 * math.exp(-t / 0.09)
+        u = t - 0.32
+        thud = 0.0
+        if u >= 0:
+            fall += math.tau * glide(80, 45, min(1.0, u / .15)) / RATE
+            thud = .8 * math.sin(fall) * min(1.0, u / .003) * math.exp(-u / .08)
+        samples.append(math.tanh(1.4 * (thwack + body) + bits + thud))
+    return finish(samples, fade_in=0.0005, fade_out=0.06)
+
+
+def dummy_thump():
+    """The dummy knocked out: a heavy sackcloth thump and its straw
+    bursting and settling."""
+    noise, rustle, low, high = Noise(0xD0D0), Noise(0xD0D1), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(0.6 * RATE)):
+        t = i / RATE
+        n = noise()
+        thump = low(n, 340) * 3.0 * math.exp(-t / 0.05)
+        phase += math.tau * glide(95, 52, min(1.0, t / 0.12)) / RATE
+        body = .9 * math.sin(phase) * math.exp(-t / 0.08)
+        r = rustle()
+        straw = (r - high(r, 3200)) * .55 * math.exp(-t / 0.2) * (.6 + .4 * math.sin(math.tau * 23 * t))
+        samples.append(math.tanh(1.2 * (thump + body)) + straw)
+    return finish(samples, fade_in=0.001, fade_out=0.06)
+
+
 AMBIENCE = {
     'ambience_clearing.wav': ambience_clearing,
     'ambience_aqueduct.wav': ambience_aqueduct,
@@ -1518,6 +1868,9 @@ LOOPS = {
     'music_pause.wav': 5 * 4 * (MUSIC_RATE * 60 // 80),
     'music_over.wav': 4 * 4 * (MUSIC_RATE * 60 // 66),
     'music_combat.wav': 16 * 4 * (MUSIC_RATE * 60 // 128),
+    # 01 (f)'s two voices 01's code holds: 2 s each at 44,100 Hz.
+    'black_hole_hum.wav': 2 * RATE,
+    'small_balls.wav': 2 * RATE,
 }
 
 
@@ -1597,5 +1950,23 @@ def build_sounds():
         'enemy_spotted.wav': enemy_spotted(),
         'orb_pickup.wav': orb_pickup(),
         'splinter.wav': splinter(),
+        'black_hole_hum.wav': black_hole_hum(),
+        'black_hole_collapse.wav': black_hole_collapse(),
+        'iron_thud.wav': iron_thud(),
+        'fizzle.wav': fizzle(),
+        'thunder_snap.wav': thunder_snap(),
+        'ice_crack.wav': ice_crack(),
+        'ball_thud.wav': ball_thud(),
+        'gun_click.wav': gun_click(),
+        'gun_rack.wav': gun_rack(),
+        'flame_end.wav': flame_end(),
+        'air_jump.wav': air_jump(),
+        'no_mana.wav': no_mana(),
+        'spell_switch.wav': spell_switch(),
+        'not_ready.wav': not_ready(),
+        'orb_pop.wav': orb_pop(),
+        'small_balls.wav': small_balls(),
+        'enemy_death.wav': enemy_death(),
+        'dummy_thump.wav': dummy_thump(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

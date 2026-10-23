@@ -77,8 +77,9 @@ Each stop draws the assets its own features need.
 | Shock | Electric violet |
 | Bleed | Dark maroon |
 | Mana | Indigo |
+| Gravity (the force push and the black hole, from (f)) | Deep purple, from magenta toward indigo, apart from shock's violet |
 
-Saturated yellow is reserved for crits. The palette gains violet, maroon and indigo shades.
+Saturated yellow is reserved for crits. The palette gains violet, maroon and indigo shades, and in (f) a gravity ramp.
 
 **Readability.** The sky stays dark (mean luminance below 25), so enemies get:
 
@@ -90,12 +91,13 @@ Saturated yellow is reserved for crits. The palette gains violet, maroon and ind
 
 | Status | Shown as |
 | --- | --- |
-| Frozen | An ice-block overlay and a cold tint over the target's held frame |
-| Burning | The existing `fire_*` flames, attached |
+| Frozen | An ice-block overlay and a cold tint over the target's held frame; from (f) the cube flickers to a cracked one over its last 0.75 s, and the thaw ends in glints and a crack |
+| Burning | The existing `fire_*` flames, attached; from (f) larger, on three spots over a warm glow, with embers and a flickering ember tint |
 | Shocked | A violet crackle overlay and a flickering tint |
-| Chilled | A frost tint and the existing snowflakes (`ice_crystal`) |
-| Bleeding | Drip particles |
+| Chilled | A frost tint and the existing snowflakes (`ice_crystal`); from (f) the frost and a second slow deepen as the cold bucket fills toward the freeze |
+| Bleeding | Drip particles; from (f) a spurt as it starts, and denser, larger, brighter drips |
 | Stunned | A spark halo |
+| Hurt, the courier (from (f)) | A red tint for 0.12 s after a blow, since its lit sprite shows no hit flash |
 
 Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatter, a burn-out, a steam pop or a plain poof), so no enemy needs hurt or death frames. The courier has one death clip since the quick fixes (`D-207`).
 
@@ -406,3 +408,12 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - the hollow's mouth is drawn as its own rock where the ravine's far wall showed, the ravine's pool ending against fallen stones, with no rising steam or heat at the mouth;
   - the New Game picker shows a card for each difficulty, in the template and 01;
   - the save is schema 10: only what a save names takes a save ID, so the map's art never moves one again, with each basin's crust and the elevator saved.
+- **As built, 01 (f) (M80, `D-209`).** Where it changed this file's rules and (b)'s, (c)'s and (d)'s rows:
+  - the force push and a missile's blast throw enemies by distance through the kit's `knock_back` at each kind's black-hole pull, and iron's blows push along their line; a kind whose prefab resists knockback whole, the troll, takes no push from 01, though the kit's own hitboxes and touches still stop it for 0.2 s ([known issues](../../known-issues.md)); an enemy past the level's edge is gone and stays gone;
+  - up to three black holes stay open 6 s each, a fourth collapsing the oldest; each shrinks over its last 0.5 s and closes with a sound and a small ring, draws under the actors and props, hums on one voice by the nearest and sweeps up small balls from its core, twelve a hole a step;
+  - iron weighs 400 and falls harder; its killing blow on flesh bursts in gore and its others knock back; a hard landing thuds; a block is refused before the spend where it would meet a tile, a body that is not dynamic or another block;
+  - a jump under small balls shoves them off, and a jump they blocked launches again the next step without spending the air jump, since the kit's controller never pushes bodies (feedback K7);
+  - the statuses look as the table above says; the troll's two chill stages become every freezable creature's graded slow of up to 35 % more; deaths, gore, summons, shatters and refusals take a cosmetic burst's slot at the cap; the sprays' particles draw over the enemies (feedback K2);
+  - the gun holds nine rounds 0.2 s apart and reloads on R or pad West; an empty trigger clicks;
+  - a refused cast says why (no mana, not ready, or no room with a fizzle) and spends nothing; the air jump, a spell switch, a kill, the dummy's death, a dropped orb, which blinks over its last 3 s, and the sprays' ends sound; small balls pour on a loop;
+  - the save is schema 11: `black_holes` in a list, migrating schema 10's one hole and holding its magazine to nine.

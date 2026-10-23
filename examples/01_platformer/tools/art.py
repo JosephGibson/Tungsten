@@ -24,13 +24,14 @@ ELEMENT_SIZES = {
     **{f'bolt_{i}': (24, 64) for i in range(8)},
     **{f'status_{look}_{name}{frame}': (size, size)
        for name, size in STATUS_CLASSES.items() if size != 64
-       for look, frames in (('ice', ('',)), ('halo', ('',)), ('crackle', ('_0', '_1')))
+       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1')))
        for frame in frames},
     **{f'muzzle_{i}': (16, 16) for i in range(3)},
     'tracer': (32, 3),
     # 01 (c): the troll's fitted ice cube on its 128 frame, the frozen
-    # look's glint and the drops' orbs.
+    # look's glint and the drops' orbs; 01 (f): the cube's cracked twin.
     'status_ice_troll': (128, 128),
+    'status_ice_troll_cracked': (128, 128),
     'ice_glint': (16, 16),
     'health_orb': (24, 24),
     'mana_orb': (24, 24),

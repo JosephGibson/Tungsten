@@ -19,7 +19,7 @@ use tungsten::testing::UiHarness;
 
 use example_01_platformer::game::GAMEPLAY;
 
-use super::{centre, fall_dead, run, settle, teleport, top};
+use super::{ball, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
 
 /// The kit's step at the harness's 60 Hz.
 const DT: f32 = 1.0 / 60.0;
@@ -334,4 +334,149 @@ fn a_fall_is_fatal_during_immunity_and_the_screen_advances_while_game_time_is_pa
     harness.step(60);
     assert_eq!(top(&harness), Some(GAME_OVER));
     assert!(health(&harness, player).is_dead());
+}
+
+/// The courier on a test floor at y 1000, at rest, one step a frame, with
+/// small balls in two layers over its head (`over`) or stacked beside it.
+fn buried(over: bool) -> (UiHarness, Entity) {
+    const FLOOR: f32 = 1000.0;
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, FLOOR);
+    stand(&mut harness, player, 600.0, FLOOR);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    let at = centre(&harness, player);
+    if over {
+        for layer in 0..2 {
+            for i in 0..5 {
+                let x = at.x - 30.0 + 15.0 * i as f32;
+                let y = at.y - PLAYER_HALF.y - 8.0 - 15.0 * layer as f32;
+                ball(&mut harness, Vec2::new(x, y), true);
+            }
+        }
+    } else {
+        for side in [-1.0, 1.0] {
+            for row in 0..3 {
+                let x = at.x + side * (PLAYER_HALF.x + 8.0);
+                ball(
+                    &mut harness,
+                    Vec2::new(x, FLOOR - 8.0 - 15.0 * row as f32),
+                    true,
+                );
+            }
+        }
+    }
+    harness.step(1);
+    (harness, player)
+}
+
+#[test]
+fn a_jump_under_small_balls_shoves_them_off_and_rises_clear() {
+    let feet = |h: &UiHarness, player: Entity| centre(h, player).y + PLAYER_HALF.y;
+    let (mut harness, player) = buried(true);
+    let floor = feet(&harness, player);
+    harness.harness_mut().press_action("jump");
+    let mut cleared = false;
+    for _ in 0..30 {
+        harness.step(1);
+        let controller = controller(&harness, player);
+        if !controller.grounded() {
+            assert_eq!(controller.air_jumps_left(), 1, "the air jump kept");
+        }
+        if floor - feet(&harness, player) >= 100.0 {
+            cleared = true;
+            break;
+        }
+    }
+    harness.harness_mut().release_action("jump");
+    assert!(cleared, "it rose clear of the balls");
+    // Beside it alone, one press jumps once, no launch follows, and the air
+    // jump is left.
+    let (mut harness, player) = buried(false);
+    harness.harness_mut().press_action("jump");
+    let mut jumps = 0;
+    let mut rise = Vec::new();
+    for _ in 0..20 {
+        harness.step(1);
+        let controller = controller(&harness, player);
+        jumps += usize::from(controller.jumped());
+        if !controller.grounded() {
+            assert_eq!(controller.air_jumps_left(), 1, "the air jump left");
+        }
+        rise.push(harness.world().get::<Velocity>(player).unwrap().0.y);
+    }
+    harness.harness_mut().release_action("jump");
+    assert_eq!(jumps, 1, "one jump");
+    let first = rise.iter().position(|&v| v < 0.0).expect("it rose");
+    assert!(
+        rise[first + 1] > rise[first],
+        "slowing, not launched: {rise:?}"
+    );
+}
+
+#[test]
+fn a_blow_tints_the_courier_red_for_a_moment() {
+    use example_01_platformer::features::combat::{Hit, Kind};
+    use tungsten::core::Sprite;
+    let (mut harness, player) = run();
+    harness.harness_mut().set_dt(DT);
+    harness.step(2);
+    let tint = |h: &UiHarness| h.world().get::<Sprite>(player).unwrap().color;
+    assert_eq!(tint(&harness), [255; 4]);
+    assert!(Hit::new(player, [(Kind::Physical, 5.0)]).queue(harness.world_mut()));
+    harness.step(1);
+    let red = tint(&harness);
+    assert!(
+        red[0] == 255 && red[1] < 160 && red[2] < 160,
+        "red: {red:?}"
+    );
+    // Gone after 0.12 s, a frame's slack.
+    harness.step(9);
+    assert_eq!(tint(&harness), [255; 4]);
+}
+
+#[test]
+fn an_air_jump_and_a_spell_switch_each_sound_once() {
+    use example_01_platformer::features::audio::components::{Sound, Sounded};
+    let (mut harness, player) = buried(false);
+    // Clear of the balls beside it.
+    for ball in harness
+        .world()
+        .query::<(
+            Entity,
+            &example_01_platformer::features::toys::components::SmallBall,
+        )>()
+        .map(|(entity, _)| entity)
+        .collect::<Vec<_>>()
+    {
+        harness.world_mut().despawn(ball);
+    }
+    harness.step(2);
+    let heard = |h: &UiHarness, sound: Sound| {
+        h.harness()
+            .events::<Sounded>()
+            .filter(|sounded| sounded.sound == sound)
+            .count()
+    };
+    let jump = |h: &mut UiHarness, frames: u32| -> usize {
+        h.harness_mut().press_action("jump");
+        let mut sounds = 0;
+        for _ in 0..frames {
+            h.step(1);
+            sounds += heard(h, Sound::AirJumped);
+        }
+        h.harness_mut().release_action("jump");
+        h.step(1);
+        sounds + heard(h, Sound::AirJumped)
+    };
+    assert_eq!(jump(&mut harness, 3), 0, "a ground jump is silent");
+    harness.step(4);
+    assert!(!controller(&harness, player).grounded());
+    assert_eq!(jump(&mut harness, 3), 1, "the air jump sounds once");
+    // A switch clicks once; choosing the chosen slot again, nothing.
+    super::choose(&mut harness, 3);
+    assert_eq!(heard(&harness, Sound::Switched), 1);
+    super::choose(&mut harness, 3);
+    assert_eq!(heard(&harness, Sound::Switched), 0);
 }

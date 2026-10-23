@@ -537,12 +537,14 @@ def fitted_box(kind):
             min(side - 1, x1 + ICE_MARGIN), min(side - 1, y1 + ICE_MARGIN))
 
 
-def ice_cube(size, box, keys):
+def ice_cube(size, box, keys, cracked=False):
     """A frosty cube of ice in three-quarter view over `box` of a frame of
     `size`, which the body shows through, a clearer window in its middle: a
     snow cap on the top, a side in shade, white frost thick at the edges and
     corners, a drift along the foot, frost ferns from the corners, bubbles,
-    cracks rising from the foot, a chipped corner and sparkles."""
+    cracks rising from the foot, a chipped corner and sparkles. `cracked` is
+    the same cube about to thaw: split from a blow across its front, its cap
+    melting and running (`crack_ice`), on the same box."""
     x0, y0, x1, y1 = box
     w, h = x1 - x0, y1 - y0
     d = max(2, min(6, round(min(w, h) * 0.14)))
@@ -635,13 +637,79 @@ def ice_cube(size, box, keys):
                 for ddx, ddy in NEIGHBOURS:
                     if (gx + ddx * t, gy + ddy * t) in px:
                         px[(gx + ddx * t, gy + ddy * t)] = 'Ψ' if t < arm else 'x'
+    if cracked:
+        crack_ice(px, box, d, keys)
     return to_image(px, (size, size))
 
 
-def status_ice(size):
+def crack_ice(px, box, d, keys):
+    """A cube about to thaw, drawn over its whole self in `px`: fractures
+    from a blow on its front, each a dark line with a lit lip and twigs off
+    it, crushed white ice at the blow, the cap's snow gone glassy and
+    running down the front in streaks, and chips out of the cap's lip. It
+    keeps every outer row and column, so the cracked cube fits as the whole
+    one does."""
+    x0, y0, x1, y1 = box
+    xf, yt = x1 - d, y0 + d
+    fw, fh = xf - x0, y1 - yt
+    inner = lambda x, y: x0 < x < xf and yt < y < y1  # noqa: E731
+    cx = x0 + fw * (0.36 + 0.28 * unit(keys, 'blow'))
+    cy = yt + fh * (0.3 + 0.25 * unit(keys, 'blow-y'))
+    arms = 5 + min(fw, fh) // 28
+    step = 1.0
+    for arm in range(arms):  # the fractures, out from the blow
+        angle = (arm + 0.35 * unit(keys, 'arm', arm)) * math.tau / arms
+        x, y = cx, cy
+        reach = max(fw, fh) * (0.45 + 0.35 * unit(keys, 'reach', arm))
+        for t in range(int(reach)):
+            angle += (unit(keys, 'bend', arm, t) - 0.5) * 0.5
+            x += step * math.cos(angle)
+            y += step * math.sin(angle)
+            p = (round(x), round(y))
+            if not inner(*p):
+                break
+            px[p] = 'ς'
+            lip = (p[0] + 1, p[1]) if abs(math.sin(angle)) > 0.7 else (p[0], p[1] + 1)
+            if inner(*lip) and px.get(lip) != 'ς':
+                px[lip] = 'Ψ' if t % 3 else 'x'
+            if t > 3 and t % 5 == 2 and unit(keys, 'twig', arm, t) < 0.55:
+                side = 1 if unit(keys, 'twig-side', arm, t) < 0.5 else -1
+                ta, tx, ty = angle + side * 0.9, x, y
+                for _ in range(2 + min(fw, fh) // 24):
+                    tx += math.cos(ta)
+                    ty += math.sin(ta)
+                    q = (round(tx), round(ty))
+                    if not inner(*q):
+                        break
+                    px[q] = 'ς'
+    r = 1 if min(fw, fh) < 40 else 2
+    for dx in range(-r, r + 1):  # crushed ice where the blow landed
+        for dy in range(-r, r + 1):
+            q = (round(cx) + dx, round(cy) + dy)
+            if inner(*q) and abs(dx) + abs(dy) <= r:
+                px[q] = 'Ψ' if (dx + dy) % 2 == 0 else 'φ'
+    for x in range(x0 + 1, x1):  # the cap's snow melting to clear ice
+        for y in range(y0 + 1, yt + 1):
+            if px.get((x, y)) == 'Ψ' and BAYER[y % 4][x % 4] % 3 == 0:
+                px[(x, y)] = 'ϱ'
+    for i in range(2 + fw // 14):  # meltwater running down the front
+        x = x0 + 2 + int(unit(keys, 'melt', i) * max(1, fw - 4))
+        length = 2 + int(unit(keys, 'melt-len', i) * fh * 0.3)
+        for t in range(length):
+            q = (x, yt + 1 + t)
+            if inner(*q):
+                px[q] = 'ϱ' if t < length - 1 else 'Ψ'
+    for i in range(1 + fw // 24):  # chips out of the cap's lip
+        x = x0 + 2 + int(unit(keys, 'chip', i) * max(1, fw - 6))
+        for q in ((x, yt), (x + 1, yt), (x, yt - 1)):
+            if x0 < q[0] < x1 and y0 < q[1] < y1:
+                px.pop(q, None)
+
+
+def status_ice(size, cracked=False):
     """Frozen, for a body with no fitted cube: the cube over the frame's
     status box."""
-    return ice_cube(size, status_box(size), ('class', size))
+    return ice_cube(size, status_box(size), ('class', size), cracked)
 
 
 def ice_glint():
@@ -755,18 +823,22 @@ def tracer():
 
 def build_element_art(images):
     """The elements' and the gun's art: the bolt's segments, the status
-    overlays in their three size classes, the fitted ice cubes, the ball's
-    cube, the glint, the muzzle flash, the tracer and the drops' orbs. All
-    unlit: overlays and flashes draw over the lit world."""
+    overlays in their three size classes, the fitted ice cubes and their
+    cracked twins, which a thaw flickers to, the ball's cube, the glint,
+    the muzzle flash, the tracer and the drops' orbs. All unlit: overlays
+    and flashes draw over the lit world."""
     for i in range(len(BOLT_EXITS)):
         images[f'bolt_{i}'] = bolt_segment(i)
     for name, size in STATUS_CLASSES.items():
         images[f'status_ice_{name}'] = status_ice(size)
+        images[f'status_ice_{name}_cracked'] = status_ice(size, cracked=True)
         images[f'status_halo_{name}'] = status_halo(size)
         for frame in range(2):
             images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
     for kind in HURTBOXES:
-        images[f'status_ice_{kind}'] = ice_cube(ice_frame(kind), fitted_box(kind), (kind,))
+        for suffix, cracked in (('', False), ('_cracked', True)):
+            images[f'status_ice_{kind}{suffix}'] = ice_cube(
+                ice_frame(kind), fitted_box(kind), (kind,), cracked)
     images['ice_shell'] = ice_shell()
     images['ice_glint'] = ice_glint()
     images['health_orb'] = orb('z', 'F', 'M', 'Ψ', 'X')

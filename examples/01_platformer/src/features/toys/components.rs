@@ -100,7 +100,8 @@ pub struct BlackHole {
 pub struct FireMissile;
 
 /// A blast's shock ring growing to `size` pixels across over its life: a
-/// fireball's, hot, a burst ball's, or a force push's, cool.
+/// fireball's, hot, a burst ball's, a force push's in the gravity purple,
+/// or a black hole's collapse, a small pale one that pushes nothing.
 #[derive(Debug, Clone, Copy)]
 pub struct ShockRing {
     pub age: f32,
@@ -114,6 +115,7 @@ pub enum Ring {
     Fireball,
     Ball,
     Push,
+    Collapse,
 }
 
 /// A light left where a missile ended, fading out over `secs`: a blast's
@@ -132,14 +134,16 @@ pub struct Flare {
 pub struct PreviousVelocity(pub Vec2);
 
 /// The small balls' placement: the part of a ball the last steps owed, the
-/// next ball's place on the golden-angle ring, and the balls queued this
-/// frame, which count against the cap before they are live.
+/// next ball's place on the golden-angle ring, the balls queued this frame,
+/// which count against the cap before they are live, and their loop's
+/// voice while they pour.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct BallSpawner {
     pub owed: f32,
     pub phase: u32,
     pub queued: u32,
     pub queued_frame: u64,
+    pub voice: Option<tungsten::core::Voice>,
 }
 
 /// A spray's element: fire ignites small balls, cold frosts iron, and each

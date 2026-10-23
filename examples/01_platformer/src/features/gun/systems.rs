@@ -4,8 +4,8 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, Collider, Entity, EventCursor, EventQueue, Position, PrevPosition, RigidBody,
-    Shape, Sprite, Time, Transform, Velocity, Visibility, With, Without, World,
+    AssetRegistry, Collider, Entity, EventCursor, EventQueue, Light, Position, PrevPosition,
+    RigidBody, Shape, Sprite, Time, Transform, Velocity, Visibility, With, Without, World,
 };
 use tungsten::kit::{
     Abilities, Aim, Health, Hurtbox, LinearMotion, Projectile, ProjectileBounced,
@@ -16,7 +16,8 @@ use tungsten::physics::wake;
 use super::components::{Bullet, Muzzle, Reload};
 use super::{
     BALL_KICK, BULLET_CENTRE, BULLET_RADIUS, GUN, MAX_RICOCHETS, MUZZLE_FRAME_SECS, MUZZLE_FRAMES,
-    MUZZLE_OFFSET, RELOAD_SECS, SHOOT, SHOT_DAMAGE, SHOT_PUSH, heading, rounds,
+    MUZZLE_LIGHT, MUZZLE_LIGHT_COLOR, MUZZLE_LIGHT_REACH, MUZZLE_OFFSET, RELOAD, RELOAD_SECS,
+    SHOOT, SHOT_DAMAGE, SHOT_PUSH, heading, rounds,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, has_status};
@@ -28,13 +29,16 @@ use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock};
 use crate::features::toys::systems::shift;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, pressed, spawn_burst};
+use crate::shared::{SaveId, SaveIds, despawn_tree, just_pressed, pressed, spawn_burst};
 
 /// `gun_shoot`, in the intent phase after the kit's ability tick: a
 /// reload running counts down, and at its end every round comes back with
-/// its sound; then `shoot` held fires the gun when its cooldown and a round
-/// allow, with its sound and its muzzle flash, and the magazine's last
-/// round starts the reload. The run's player alone fires, while it lives.
+/// its sound; `reload` pressed with the magazine short and none running
+/// starts one, racked; `shoot` pressed with no round or during a reload
+/// clicks, once a press; and `shoot` held fires the gun when no reload runs
+/// and its cooldown and a round allow, with its sound, its muzzle flash and
+/// its light, the magazine's last round starting the reload. The run's
+/// player alone fires, while it lives.
 pub fn shoot(world: &mut World) {
     let Some(player) = world.get_resource::<Run>().map(|run| run.player) else {
         return;
@@ -55,7 +59,18 @@ pub fn shoot(world: &mut World) {
             audio::play(world, Sound::Reloaded, centre);
         }
     }
-    if pressed(world, SHOOT) && use_ability(world, player, GUN) == Used::Used {
+    let magazine = rounds(world, player);
+    let short = magazine.is_some_and(|(left, most)| left < most);
+    if just_pressed(world, RELOAD) && short && !world.has::<Reload>(player) {
+        world.insert(player, Reload { left: RELOAD_SECS });
+        audio::play(world, Sound::Racked, centre);
+    }
+    let reloading = world.has::<Reload>(player);
+    let empty = magazine.is_some_and(|(left, _)| left == 0);
+    if just_pressed(world, SHOOT) && (reloading || empty) {
+        audio::play(world, Sound::DryFired, centre);
+    }
+    if !reloading && pressed(world, SHOOT) && use_ability(world, player, GUN) == Used::Used {
         let aim = world
             .get::<Aim>(player)
             .and_then(Aim::direction)
@@ -70,7 +85,7 @@ pub fn shoot(world: &mut World) {
     }
 }
 
-/// A muzzle flash at `at`, turned along `aim`.
+/// A muzzle flash at `at`, turned along `aim`, with its warm light.
 fn flash(world: &mut World, at: Vec2, aim: Vec2) {
     let Some(asset) = world
         .get_resource_mut::<AssetRegistry>()
@@ -80,7 +95,10 @@ fn flash(world: &mut World, at: Vec2, aim: Vec2) {
     };
     let mut sprite = Sprite::new(asset);
     sprite.z_order = 15;
+    let mut light = Light::point(MUZZLE_LIGHT_COLOR, MUZZLE_LIGHT_REACH);
+    light.intensity = MUZZLE_LIGHT;
     world.spawn_with((
+        light,
         Transform {
             position: at - Vec2::splat(8.0),
             rotation: heading(aim),
@@ -94,7 +112,7 @@ fn flash(world: &mut World, at: Vec2, aim: Vec2) {
 }
 
 /// `muzzle_flashes`, in the present phase: each flash shows its frames in
-/// turn, then goes.
+/// turn, its light fading over them, then goes.
 pub fn muzzles(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let Some(frames) = world.get_resource_mut::<AssetRegistry>().map(|assets| {
@@ -106,11 +124,17 @@ pub fn muzzles(world: &mut World) {
         return;
     };
     let mut done = Vec::new();
-    for (entity, muzzle, sprite) in world.query_mut::<(Entity, &mut Muzzle, &mut Sprite)>() {
+    let span = MUZZLE_FRAME_SECS * frames.len() as f32;
+    for (entity, muzzle, sprite, light) in
+        world.query_mut::<(Entity, &mut Muzzle, &mut Sprite, Option<&mut Light>)>()
+    {
         muzzle.age += dt;
         match frames.get((muzzle.age / MUZZLE_FRAME_SECS) as usize) {
             Some(&frame) => sprite.asset_id = frame,
             None => done.push(entity),
+        }
+        if let Some(light) = light {
+            light.intensity = MUZZLE_LIGHT * (1.0 - muzzle.age / span).max(0.0);
         }
     }
     for entity in done {
@@ -503,7 +527,9 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                 } else if let Some((_, at, normal)) =
                     end.filter(|&(.., normal)| normal != Vec2::ZERO)
                 {
-                    spawn_burst(world, "ex10_landing_dust", at + normal * BULLET_RADIUS);
+                    let at = at + normal * BULLET_RADIUS;
+                    spawn_burst(world, "ex10_landing_dust", at);
+                    spawn_burst(world, "ex10_ricochet", at);
                 }
             }
         }

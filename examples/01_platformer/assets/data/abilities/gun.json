@@ -1,7 +1,7 @@
 {
-  "cooldown": 0.12,
+  "cooldown": 0.2,
   "charges": {
-    "max": 12,
+    "max": 9,
     "refill": 3600,
     "all": true
   },

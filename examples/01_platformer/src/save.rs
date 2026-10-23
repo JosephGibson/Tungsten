@@ -7,7 +7,8 @@
 //! schema 8 gives the player the staff light, which [`SaveData::migrate`]
 //! adds to a schema 7 save. Schema 10 gives save IDs only to the map
 //! objects a save names, so an art change never moves one, and keeps the
-//! basins' crusts and the mine's elevator.
+//! basins' crusts and the mine's elevator. Schema 11 keeps up to three open
+//! black holes, a list where schema 10 kept one.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -80,7 +81,9 @@ pub struct SaveGame {
     pub hazards: Vec<HazardSave>,
     pub balls: Vec<BallSave>,
     pub blocks: Vec<BlockSave>,
-    pub black_hole: Option<HoleSave>,
+    /// The open black holes; schema 10 kept at most one, which its
+    /// migration moves into the list.
+    pub black_holes: Vec<HoleSave>,
     pub missiles: Vec<MissileSave>,
     pub bullets: Vec<BulletSave>,
     pub dummies: Vec<DummySave>,
@@ -157,8 +160,9 @@ impl SaveData for SaveGame {
     /// to the player's abilities. Schema 9 places new map objects before
     /// the player, which take the save IDs from schema 8's player's on.
     /// Schema 10 gives save IDs only to what a save names, keeps the
-    /// basins' crusts and the elevator, and widens the basins.
-    const SCHEMA: u32 = 10;
+    /// basins' crusts and the elevator, and widens the basins. Schema 11
+    /// keeps the open black holes as a list (`to_11`).
+    const SCHEMA: u32 = 11;
 
     fn migrate(
         from: u32,
@@ -177,15 +181,22 @@ impl SaveData for SaveGame {
                 entries.push(entry.parse()?);
                 shift_ids(&mut data)?;
                 to_10(&mut data)?;
+                to_11(&mut data)?;
                 Ok(data)
             }
             8 => {
                 shift_ids(&mut data)?;
                 to_10(&mut data)?;
+                to_11(&mut data)?;
                 Ok(data)
             }
             9 => {
                 to_10(&mut data)?;
+                to_11(&mut data)?;
+                Ok(data)
+            }
+            10 => {
+                to_11(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -286,6 +297,31 @@ fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     Ok(())
 }
 
+/// Schema 10 to 11: the one black hole a save kept becomes the list's
+/// only one, none an empty list, and the old key goes, since [`SaveGame`]
+/// denies unknown fields; a schema 9 save's hole took its new save ID in
+/// [`to_10`] first. The gun's magazine holds [`gun::MAGAZINE`] rounds now,
+/// so the player's `gun` keeps at most that many of a save's twelve, a
+/// reload left running running on.
+fn to_11(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let save = data
+        .as_object_mut()
+        .ok_or("schema 10: the save is no object")?;
+    let holes = match save.remove("black_hole") {
+        None | Some(Value::Null) => Vec::new(),
+        Some(hole) => vec![hole],
+    };
+    save.insert("black_holes".into(), Value::Array(holes));
+    for entry in each(data, "/player/abilities/entries") {
+        if entry.get("name").and_then(Value::as_str) == Some(gun::GUN)
+            && let Some(charges) = entry.get("charges").and_then(Value::as_u64)
+        {
+            entry["charges"] = Value::from(charges.min(u64::from(gun::MAGAZINE)));
+        }
+    }
+    Ok(())
+}
+
 /// Every save ID field of `data` through `to`; a field it lacks stays
 /// lacking.
 fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
@@ -369,8 +405,7 @@ pub struct PlayerSave {
     pub abilities: Abilities,
     pub buckets: AilmentBuckets,
     pub tags: Tags,
-    /// The seconds the gun's reload has left; none while the magazine holds
-    /// a round.
+    /// The seconds the gun's reload has left; none while no reload runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload: Option<f32>,
 }
@@ -606,7 +641,7 @@ pub struct BlockSave {
     pub frozen: Option<f32>,
 }
 
-/// The black hole: where it is open and for how long yet.
+/// An open black hole: where it is open and for how long yet.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HoleSave {
@@ -731,14 +766,15 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     blocks.sort_by_key(|block| block.id);
-    let black_hole = world
+    let mut black_holes: Vec<HoleSave> = world
         .query::<(&SaveId, &Transform, &BlackHole)>()
         .map(|(id, at, hole)| HoleSave {
             id: id.0,
             position: at.position.to_array(),
             left: hole.left,
         })
-        .min_by_key(|hole| hole.id);
+        .collect();
+    black_holes.sort_by_key(|hole| hole.id);
     let mut missiles: Vec<MissileSave> = world
         .query::<(
             &SaveId,
@@ -837,7 +873,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         hazards,
         balls,
         blocks,
-        black_hole,
+        black_holes,
         missiles,
         bullets,
         dummies,
@@ -1167,7 +1203,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             orb.left,
         );
     }
-    if let Some(hole) = &save.black_hole {
+    for hole in &save.black_holes {
         let entity = toys::restore_hole(world, Vec2::from(hole.position));
         world.insert_bundle(entity, (SaveId(hole.id), BlackHole { left: hole.left }));
     }

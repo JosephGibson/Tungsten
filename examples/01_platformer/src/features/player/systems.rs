@@ -1,25 +1,27 @@
 //! The player's systems and queries: the lantern and zoom actions, the
-//! kill row, the hurt a blow plays, the bursts and one-shot clips its moves
-//! start, and the lantern's glow.
+//! jump's shove, the kill row, the hurt a blow plays, the bursts and
+//! one-shot clips its moves start, and the lantern's glow.
 
 use glam::Vec2;
 use tungsten::core::{
-    AnimationRegistry, AnimationState, AssetRegistry, Collider, DataRegistry, Entity, EventCursor,
-    EventQueue, Position, PrevPosition, Shape, Sprite, Time, Velocity, With, World,
+    AnimationRegistry, AnimationState, AssetRegistry, BodyKind, Collider, DataRegistry, Entity,
+    EventCursor, EventQueue, Position, PrevPosition, RigidBody, Shape, Sprite, Time, Velocity,
+    With, World,
 };
 use tungsten::kit::{
-    DamageRequest, Damaged, Facing, Health, PlatformerController, Stats, Used, use_ability,
+    DamageRequest, Damaged, Facing, Health, Intent, PlatformerController, Stats, Used, use_ability,
 };
+use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown};
 use super::{
-    BODY_OFFSET, GUTTER_PUFF, LAND_SECS, PLAYER_HALF, RELIGHT_MANA, STAFF_LIGHT, ZOOM_MAX,
-    ZOOM_MIN, ZOOM_STEP,
+    BODY_OFFSET, GUTTER_PUFF, JUMP_SPEED, LAND_SECS, PLAYER_HALF, RELIGHT_MANA, SHOVE_BESIDE,
+    SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
 use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
-use crate::shared::{just_pressed, spawn_burst};
+use crate::shared::{body_centre, just_pressed, spawn_burst};
 
 /// The one-shot clips, each with a left-facing twin named `<clip>_left`.
 pub const LAND_CLIP: &str = "ex10_player_land";
@@ -37,16 +39,8 @@ pub const AIR_JUMP_BURST: &str = "ex10_double_jump";
 pub const LANDING_DUST: &str = "ex10_landing_dust";
 /// The lantern's anchors, by their data entry.
 pub const ANCHORS: &str = "player";
-
-/// The centre of `player`'s body: its `Position` plus its collider's offset.
-#[must_use]
-pub fn centre(world: &World, player: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(player)?.0;
-    let offset = world
-        .get::<Collider>(player)
-        .map_or(Vec2::ZERO, |c| c.offset);
-    Some(at + offset)
-}
+/// Game seconds the courier shows red after a blow, fading.
+pub const HURT_SECS: f32 = 0.12;
 
 /// The player.
 fn player(world: &World) -> Option<Entity> {
@@ -76,6 +70,120 @@ pub fn actions(world: &mut World) {
         let snapped = ((zoom.0 + step) / ZOOM_STEP).round() * ZOOM_STEP;
         zoom.0 = snapped.clamp(ZOOM_MIN, ZOOM_MAX);
     }
+}
+
+/// A jump's press that shoved what buried the courier: where its body's
+/// centre stood, kept for the next step's retry. A one-step resource, never
+/// saved: a save between the two steps loses that jump.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Shove(pub Option<Vec2>);
+
+/// `player_unstick`, in the intent phase after the action input and before
+/// the controller: on a jump press the controller can take, every dynamic
+/// body overlapping the box over the courier's head and shoulders
+/// ([`SHOVE_HEAD`] tall, its width and [`SHOVE_SIDE`] each side) takes
+/// [`SHOVE_OVER`] over its mass, so a pile's column goes up whole, and
+/// every one beside it ([`SHOVE_SIDE`] each side, its height)
+/// [`SHOVE_BESIDE`], out from the courier's centre and up, each woken. A jump they blocked ends its step
+/// ungrounded with coyote time spent, so a press would spend the air jump;
+/// when the last step's press kicked anything and its jump left the
+/// courier within [`STUCK_BY`] of where it pressed, the controller is
+/// launched at [`JUMP_SPEED`] instead, after its ground probe has given the
+/// air jump back. One retry a press; a jump that rose is left alone.
+pub fn unstick(world: &mut World) {
+    let Some(player) = player(world) else {
+        return;
+    };
+    if world.get::<Health>(player).is_some_and(Health::is_dead) {
+        world.insert_resource(Shove(None));
+        return;
+    }
+    let (Some(centre), Some(collider)) = (
+        body_centre(world, player),
+        world.get::<Collider>(player).copied(),
+    ) else {
+        return;
+    };
+    let last = world.get_resource::<Shove>().and_then(|shove| shove.0);
+    world.insert_resource(Shove(None));
+    if let Some(from) = last {
+        let jumped = world
+            .get::<PlatformerController>(player)
+            .is_some_and(PlatformerController::jumped);
+        if jumped && centre.distance(from) <= STUCK_BY {
+            let run = world.get::<Velocity>(player).map_or(0.0, |v| v.0.x);
+            if let Some(controller) = world.get_mut::<PlatformerController>(player) {
+                controller.launch(Vec2::new(run, -JUMP_SPEED));
+            }
+        }
+        return;
+    }
+    let pressed = world
+        .get::<Intent>(player)
+        .is_some_and(|intent| intent.pressed("jump"));
+    let able = world
+        .get::<PlatformerController>(player)
+        .is_some_and(PlatformerController::can_jump);
+    if !(pressed && able) {
+        return;
+    }
+    let half = match collider.shape {
+        Shape::Aabb { half_extents } => half_extents,
+        Shape::Circle { radius } => Vec2::splat(radius),
+    };
+    let head = Vec2::new(centre.x, centre.y - half.y - SHOVE_HEAD * 0.5);
+    let boxes = [
+        (
+            head,
+            Vec2::new(half.x + SHOVE_SIDE, SHOVE_HEAD * 0.5),
+            SHOVE_OVER,
+        ),
+        (
+            centre - Vec2::new(half.x + SHOVE_SIDE * 0.5, 0.0),
+            Vec2::new(SHOVE_SIDE * 0.5, half.y),
+            SHOVE_BESIDE,
+        ),
+        (
+            centre + Vec2::new(half.x + SHOVE_SIDE * 0.5, 0.0),
+            Vec2::new(SHOVE_SIDE * 0.5, half.y),
+            SHOVE_BESIDE,
+        ),
+    ];
+    let mut kicks: Vec<(Entity, Vec2)> = Vec::new();
+    let mut met = Vec::new();
+    for (at, half_extents, speed) in boxes {
+        overlap(
+            world,
+            Shape::Aabb { half_extents },
+            at,
+            &SpatialFilter::new(),
+            &mut met,
+        );
+        for entity in met.iter().flatten().copied() {
+            let Some(body) = world
+                .get::<RigidBody>(entity)
+                .filter(|body| body.kind == BodyKind::Dynamic)
+            else {
+                continue;
+            };
+            if kicks.iter().any(|(kicked, _)| *kicked == entity) {
+                continue;
+            }
+            let out = body_centre(world, entity).map_or(Vec2::ZERO, |at| at - centre);
+            let direction = (out.normalize_or_zero() - Vec2::Y).normalize_or(-Vec2::Y);
+            kicks.push((entity, direction * speed * body.inv_mass));
+        }
+    }
+    if kicks.is_empty() {
+        return;
+    }
+    for (entity, kick) in kicks {
+        if let Some(velocity) = world.get_mut::<Velocity>(entity) {
+            velocity.0 += kick;
+        }
+        wake(world, entity);
+    }
+    world.insert_resource(Shove(Some(centre)));
 }
 
 /// Whether a body at `at` with `collider` lies wholly outside the box the
@@ -111,7 +219,7 @@ pub fn bounds(world: &mut World) {
     }
     let amount = health.current();
     let collider = world.get::<Collider>(player);
-    let below = centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
+    let below = body_centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
     if below || escaped(at, collider) {
         DamageRequest::new(player, amount)
             .with_periodic(true)
@@ -191,20 +299,24 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
         hurt |= !hit.periodic;
         killed |= hit.killed;
     }
+    if hurt && let Some(moves) = world.get_mut::<Moves>(player) {
+        moves.hurt = HURT_SECS;
+    }
     let sound = if killed {
         Sound::PlayerDied
     } else {
         Sound::PlayerHurt
     };
     if (hurt || killed)
-        && let Some(at) = centre(world, player)
+        && let Some(at) = body_centre(world, player)
     {
         audio::play(world, sound, at);
     }
 }
 
 /// `player_moves`, in the react phase: a jump puffs at the feet it left
-/// from and an air jump bursts there and tucks; a landing after the first
+/// from and an air jump bursts there with its whoosh and tucks; a landing
+/// after the first
 /// raises dust and holds the land clip. A dead player's body drops where it
 /// died and falls as its controller falls, its input locked for good
 /// (F13), and its clips and bursts end.
@@ -276,6 +388,9 @@ pub fn moves(world: &mut World) {
     if jumped {
         let burst = if air { AIR_JUMP_BURST } else { JUMP_PUFF };
         spawn_burst(world, burst, from + feet);
+        if air {
+            audio::play(world, Sound::AirJumped, from + feet);
+        }
     }
     if landed {
         spawn_burst(world, LANDING_DUST, at + feet);
@@ -309,6 +424,7 @@ pub fn clips(world: &mut World) {
         &mut moves.toss,
         &mut moves.pose,
         &mut moves.glow,
+        &mut moves.hurt,
     ] {
         *timer = (*timer - dt).max(0.0);
     }

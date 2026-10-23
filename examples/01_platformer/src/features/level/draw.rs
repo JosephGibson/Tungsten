@@ -2,7 +2,8 @@
 //! moon and the parallax strips behind the map, each area's far strip and
 //! the black night sky crossfaded by where the view stands, which a
 //! replaced sprite base draws before the engine's default tilemaps and
-//! sprites, and the cursor, drawn after them.
+//! sprites, the black holes between the two, and the cursor, drawn after
+//! them.
 
 use glam::Vec2;
 use tungsten::core::{
@@ -65,8 +66,9 @@ pub const CURSOR: &str = "ex10_cursor";
 const CURSOR_PIXELS: f32 = 32.0;
 
 /// The sprite channel's base: the backdrop while a run is live, then the
-/// engine's default, the tilemaps at the far plane and the `Sprite`
-/// entities.
+/// engine's default, the tilemaps at the far plane, the black holes there
+/// too (`toys::draw::vortices`), so actors, balls, iron, particles and
+/// props draw over them, and the `Sprite` entities.
 #[must_use]
 pub fn base(world: &World) -> Vec<SpriteBatch> {
     let mut batches = backdrop(world);
@@ -75,6 +77,7 @@ pub fn base(world: &World) -> Vec<SpriteBatch> {
         tile.z_norm = 1.0;
     }
     batches.extend(tiles);
+    batches.extend(crate::features::toys::draw::vortices(world));
     batches.extend(extract_sprites_default(world));
     batches
 }

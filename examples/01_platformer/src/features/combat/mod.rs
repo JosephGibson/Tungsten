@@ -31,7 +31,7 @@ use tungsten::kit::{
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
-use crate::features::enemies::beetle;
+use crate::features::enemies::{self, beetle};
 use crate::features::run::Run;
 use components::{Hints, Reaction};
 
@@ -57,6 +57,9 @@ pub const FROZEN: &str = "status.frozen";
 pub const SHOCKED: &str = "status.shocked";
 pub const STUNNED: &str = "status.stunned";
 pub const DOUSED: &str = "status.doused";
+/// The kinds' tags 01 reads: what bleeds, and what freezes.
+pub const FLESH: &str = "flesh";
+pub const FREEZABLE: &str = "freezable";
 
 /// One of 01's damage types, by its tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,7 +91,8 @@ impl Kind {
 /// [`KitRng`] draw under [`CRIT_CHANCE`], doubling every part; a blast's or
 /// a steam burst's on the player takes [`PLAYER_BLAST_SHARE`]; one landing
 /// on a beetle's rear half, or one made whole, takes physical penetration
-/// 1, so its shell's physical resistance takes nothing.
+/// 1, so its shell's physical resistance takes nothing; and one on a kind
+/// that resists knockback whole carries no push (`enemies::stands_firm`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     target: Entity,
@@ -154,7 +158,8 @@ impl Hit {
 
     /// The kit's request: the base amounts, doubled on a crit (one draw,
     /// for a hit from the run's player), halved on the player for a blast,
-    /// with physical penetration 1 when whole or on a beetle's rear half.
+    /// with physical penetration 1 when whole or on a beetle's rear half,
+    /// and its push unless the target stands firm.
     pub fn request(&self, world: &mut World) -> DamageRequest {
         let player = world.get_resource::<Run>().map(|run| run.player);
         let crit = self.source.is_some() && self.source == player && roll_crit(world);
@@ -172,7 +177,9 @@ impl Hit {
         if let Some(at) = self.at {
             request = request.with_position(at);
         }
-        if let Some(push) = self.push {
+        if let Some(push) = self.push
+            && !enemies::stands_firm(world, self.target)
+        {
             request = request.with_knockback(push);
         }
         let rear = self
@@ -233,9 +240,10 @@ pub fn has_status(world: &World, entity: Entity, tag: &str) -> bool {
 
 /// Combat as a plugin: in the fixed step, the states the resolve begins
 /// with, recorded before the kit's damage resolve, and in the react phase
-/// the reactions to the step's landed parts, the damage numbers and the
-/// hints; in the present phase the statuses' tints, before the frame's
-/// particles their emitters, and their overlays drawn after the sprites.
+/// the reactions to the step's landed parts, the thaws, the damage numbers
+/// and the hints; in the present phase the statuses' tints, before the
+/// frame's particles their emitters, and their overlays drawn after the
+/// sprites. The chill's grades run in the enemies' intent phase.
 pub struct CombatPlugin;
 
 impl Plugin for CombatPlugin {
@@ -251,6 +259,11 @@ impl Plugin for CombatPlugin {
             systems::reactions(world, &mut parts, &mut immune, &mut applied);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(reactions));
+        let mut expired = EventCursor::new();
+        let thaws = system("combat_thaws", move |world: &mut World| {
+            systems::thaws(world, &mut expired);
+        });
+        schedule.add(Stage::FixedUpdate, Phase::React.join(thaws));
         let mut parts = EventCursor::new();
         let numbers = system("damage_numbers", move |world: &mut World| {
             numbers::numbers(world, &mut parts);

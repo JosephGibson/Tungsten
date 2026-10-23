@@ -132,9 +132,38 @@ pub struct Summon {
     pub selected: usize,
 }
 
-/// A held spell its ability refused for mana since the cast was pressed: a
-/// World resource a run's start inserts. It stays off until the cast is
-/// released, so a spray at empty mana does not restart each step the
-/// regeneration pays for (I2).
+/// A held spell's refusals since the cast was pressed: a World resource a
+/// run's start inserts, both cleared at the release. `mana`: its ability
+/// refused it for mana, and it stays off, so a spray at empty mana does not
+/// restart each step the regeneration pays for (I2). `said`: a refusal was
+/// said, so a held spell says one a press.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Refused(pub bool);
+pub struct Refused {
+    pub mana: bool,
+    pub said: bool,
+}
+
+/// Why a cast was refused, which `spells::systems::refuse_cast` says: too
+/// little mana (`Used::NoCost`), a cooldown or no charge (`Used::NotReady`
+/// or `NoCharge`), or no room for its toy (at its cap, a summon or a block
+/// that does not fit, no cursor).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    NoMana,
+    NotReady,
+    NoRoom,
+}
+
+impl Refusal {
+    /// The refusal a use's outcome says, none for a use or no ability.
+    #[must_use]
+    pub fn of(used: tungsten::kit::Used) -> Option<Self> {
+        use tungsten::kit::Used;
+        match used {
+            Used::NoCost => Some(Refusal::NoMana),
+            Used::NotReady | Used::NoCharge => Some(Refusal::NotReady),
+            Used::NoTarget => Some(Refusal::NoRoom),
+            _ => None,
+        }
+    }
+}

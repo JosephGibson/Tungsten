@@ -245,6 +245,16 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
     for (i, name) in names.iter().enumerate() {
         mock_sprite(assets, name, 501 + i as u32, false);
     }
+    // A black hole's layers, but its halo, which the moon's glow shares.
+    for name in [
+        "ex10_accretion_disk",
+        "ex10_vortex",
+        "ex10_infall_streak",
+        "ex10_photon_ring",
+        "ex10_vortex_core",
+    ] {
+        mock_sprite(assets, name, 510, false);
+    }
     // A one-tile map of four drawn layers and a collision layer, far from
     // the level, where the view now looks.
     let layers = [
@@ -278,6 +288,7 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
         TilemapInstance::new("test", far),
         SceneEntity { state_id: GAMEPLAY },
     ));
+    toys::place_black_hole(world, far + Vec2::splat(100.0));
     for (name, z_order) in [("t_prop_world", -10), ("t_actor", 10), ("t_prop_back", -20)] {
         let asset_id = world.resource::<AssetRegistry>().sprite_id(name).unwrap();
         let sprite = Sprite {
@@ -300,13 +311,24 @@ fn extraction_keeps_tile_stages_props_actors_foreground_and_cursor_in_order() {
     let world = harness.world();
     let mut batches = draw::base(world);
     batches.extend(draw::cursor(world));
-    let handles: Vec<u32> = batches
+    let mut handles: Vec<u32> = batches
         .iter()
         .map(|batch| batch.texture.0)
-        .filter(|handle| (501..=509).contains(handle))
+        .filter(|handle| (501..=510).contains(handle))
         .collect();
-    // The sky, the tiles by layer, the sprites by depth, the cursor last.
-    assert_eq!(handles, [501, 502, 503, 504, 505, 506, 507, 508, 509]);
+    handles.dedup();
+    // The sky, the tiles by layer, the hole at their far plane, the sprites
+    // by depth, the cursor last.
+    assert_eq!(handles, [501, 502, 503, 504, 505, 510, 506, 507, 508, 509]);
+    let hole: Vec<f32> = batches
+        .iter()
+        .filter(|batch| batch.texture.0 == 510)
+        .flat_map(|batch| batch.instances.iter().map(|quad| quad.z_norm))
+        .collect();
+    assert!(
+        !hole.is_empty() && hole.iter().all(|&z| z == 1.0),
+        "{hole:?}"
+    );
     // A view elsewhere culls every tile layer of that map.
     harness.world_mut().resource_mut::<CameraState>().position = Vec2::splat(30_000.0);
     let layers = [
@@ -701,10 +723,10 @@ fn cloud_parallax_and_vortex_instances_animate_without_world_mutation() {
     world.get_mut::<BlackHole>(hole).unwrap().left = 2.0;
     world.insert_resource(SceneTime(0.0));
     let first = draw::backdrop(world);
-    let still = toys::draw::effects(world);
+    let still = toys::draw::vortices(world);
     world.insert_resource(SceneTime(0.25));
     let second = draw::backdrop(world);
-    let turned = toys::draw::effects(world);
+    let turned = toys::draw::vortices(world);
     assert_ne!(
         first[0].instances[0].position, second[0].instances[0].position,
         "the clouds drift"
@@ -789,4 +811,89 @@ fn the_backdrop_skips_quads_opaque_tiles_cover() {
             .any(|b| b.texture.0 == 800 && !b.instances.is_empty()),
         "the clearing's sky quad is drawn"
     );
+}
+
+#[test]
+fn spray_particles_draw_over_the_enemies() {
+    use example_01_platformer::features::toys::components::Spray;
+    use example_01_platformer::features::toys::systems::SPRAY_Z;
+    for (slot, name) in [(1, "the flamethrower"), (2, "the ice spray")] {
+        let (mut harness, player) = run();
+        super::calm(&mut harness);
+        super::ground(&mut harness, 1000.0);
+        super::stand(&mut harness, player, 600.0, 1000.0);
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        // Iron in reach, so the contact's emitter emits as well.
+        let iron = Vec2::new(810.0, 940.0);
+        toys::place_iron(harness.world_mut(), iron);
+        harness.step(5);
+        super::pin_camera(&mut harness, Vec2::new(200.0, 500.0));
+        super::aim_at(&mut harness, iron);
+        super::choose(&mut harness, slot);
+        harness.harness_mut().press_action("cast");
+        let mut met = [false; 3];
+        for _ in 0..30 {
+            harness.step(1);
+            let world = harness.world();
+            let Some(spray) = world.query::<&Spray>().next().copied() else {
+                continue;
+            };
+            for (particle, sprite) in world.query::<(&Particle, &Sprite)>() {
+                let from = spray
+                    .emitters
+                    .iter()
+                    .position(|emitter| emitter.is_some() && *emitter == particle.emitter);
+                if let (Some(index), true) = (from, particle.age > 0.0) {
+                    assert_eq!(sprite.z_order, SPRAY_Z, "{name}, emitter {index}");
+                    met[index] = true;
+                }
+            }
+        }
+        harness.harness_mut().release_action("cast");
+        assert_eq!(met, [true; 3], "{name}: every emitter's particles met");
+    }
+}
+
+#[test]
+fn a_death_at_the_burst_cap_takes_a_cosmetic_bursts_slot() {
+    use example_01_platformer::features::dummy;
+    let (mut harness, _) = run();
+    super::calm(&mut harness);
+    let target = dummy::spawn(harness.world_mut(), Vec2::new(868.0, 600.0));
+    harness.step(2);
+    let world = harness.world_mut();
+    let counted = |world: &tungsten::core::World| {
+        world
+            .query::<&Burst>()
+            .filter(|burst| burst.counted)
+            .count()
+    };
+    while counted(world) < BURST_CAP {
+        spawn_burst(world, "ex10_landing_dust", Vec2::new(500.0, 500.0)).expect("a slot");
+    }
+    assert!(spawn_burst(world, "ex10_landing_dust", Vec2::new(500.0, 500.0)).is_none());
+    let oldest = world
+        .query::<(Entity, &Burst)>()
+        .filter(|(_, burst)| !burst.key)
+        .min_by_key(|(_, burst)| burst.order)
+        .map(|(entity, _)| entity)
+        .unwrap();
+    damage(world, target, 10_000.0);
+    harness.step(1);
+    let world = harness.world();
+    let poof = world
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name("ex10_poof");
+    assert!(
+        world
+            .query::<(&Burst, &ParticleEmitter)>()
+            .any(|(burst, emitter)| burst.key && Some(emitter.config) == poof),
+        "its death's poof"
+    );
+    assert_eq!(counted(world), BURST_CAP);
+    assert!(
+        !world.get::<Burst>(oldest).unwrap().counted,
+        "gave its slot"
+    );
+    assert!(world.get::<ParticleEmitterState>(oldest).unwrap().drained);
 }

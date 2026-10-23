@@ -5,8 +5,9 @@ use tungsten::core::{Entity, Voice};
 
 /// The music playing: the exploration loop, which plays on at 0 under
 /// pause and game over, and pause's loop while pause is on top; the wisps'
-/// shared hum, whose volume follows the nearest wisp; and the combat layer
-/// over the exploration while an enemy sees the player.
+/// shared hum, whose volume follows the nearest wisp, and the black holes',
+/// the nearest open hole; and the combat layer over the exploration while
+/// an enemy sees the player.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,
@@ -14,6 +15,9 @@ pub struct Music {
     pub hum: Option<Voice>,
     /// The hum's volume last set.
     pub hum_level: f32,
+    pub holes: Option<Voice>,
+    /// The holes' hum's volume last set.
+    pub holes_level: f32,
     pub combat: Option<Voice>,
     /// The combat layer's volume last set.
     pub combat_level: f32,
@@ -118,11 +122,40 @@ pub enum Sound {
     /// The mine's elevator setting off, and arriving.
     LiftStarted,
     LiftStopped,
+    /// A black hole closing, by its time or the cap.
+    HoleCollapsed,
+    /// An iron block landing hard.
+    IronLanded,
+    /// A cast with no room: a toy at its cap, a body that does not fit or
+    /// no cursor.
+    Fizzled,
+    /// A strike's snap under its thunder.
+    Snapped,
+    /// A frozen target thawing.
+    Thawed,
+    /// A bowling ball landing hard.
+    BallThudded,
+    /// The trigger pulled on an empty magazine or during a reload.
+    DryFired,
+    /// A reload begun.
+    Racked,
+    /// The flamethrower let go.
+    FireEnded,
+    /// The courier's air jump.
+    AirJumped,
+    /// A cast refused for want of mana.
+    NoMana,
+    /// A spell or a summon's type chosen.
+    Switched,
+    /// A cast refused while its spell cools or has no charge.
+    NotReady,
+    /// An orb dropped by a kill.
+    OrbDropped,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 40] = [
+    pub const ALL: [Sound; 54] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -163,6 +196,20 @@ impl Sound {
         Sound::LavaSet,
         Sound::LiftStarted,
         Sound::LiftStopped,
+        Sound::HoleCollapsed,
+        Sound::IronLanded,
+        Sound::Fizzled,
+        Sound::Snapped,
+        Sound::Thawed,
+        Sound::BallThudded,
+        Sound::DryFired,
+        Sound::Racked,
+        Sound::FireEnded,
+        Sound::AirJumped,
+        Sound::NoMana,
+        Sound::Switched,
+        Sound::NotReady,
+        Sound::OrbDropped,
     ];
 
     /// Its cue event's name.
@@ -209,6 +256,20 @@ impl Sound {
             Sound::LavaSet => "lava_set",
             Sound::LiftStarted => "lift_started",
             Sound::LiftStopped => "lift_stopped",
+            Sound::HoleCollapsed => "hole_collapsed",
+            Sound::IronLanded => "iron_landed",
+            Sound::Fizzled => "fizzled",
+            Sound::Snapped => "snapped",
+            Sound::Thawed => "thawed",
+            Sound::BallThudded => "ball_thudded",
+            Sound::DryFired => "dry_fired",
+            Sound::Racked => "racked",
+            Sound::FireEnded => "fire_ended",
+            Sound::AirJumped => "air_jumped",
+            Sound::NoMana => "no_mana",
+            Sound::Switched => "switched",
+            Sound::NotReady => "not_ready",
+            Sound::OrbDropped => "orb_dropped",
         }
     }
 }

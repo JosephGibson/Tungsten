@@ -2,20 +2,28 @@
 //! mana regenerates to its max and a cast pauses it; a missile's contact
 //! blasts and lights small balls, the black hole leaves what burns in its
 //! reach spent, a blast pushes bodies by distance and mass, and a blast's
-//! layered bursts drain within the shared budget.
+//! layered bursts drain within the shared budget; three black holes open
+//! at once, a fourth collapsing the oldest, each sweeping small balls from
+//! its core, all humming on one voice.
 
+use example_01_platformer::features::audio::HOLE_HUM;
+use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::elements::components::BallBurn;
 use example_01_platformer::features::elements::systems::douse;
 use example_01_platformer::features::elements::{self};
 use example_01_platformer::features::spells::systems::adopt;
-use example_01_platformer::features::toys::components::{FireMissile, Ring, ShockRing};
+use example_01_platformer::features::toys::components::{
+    BlackHole, FireMissile, Ring, ShockRing, SmallBall,
+};
 use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, HOLE_RADIUS, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS, PUSH_SPEED, RING_CAP,
+    self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS, PUSH_SPEED,
+    RING_CAP,
 };
 use example_01_platformer::shared::{BURST_CAP, Burst};
 use glam::Vec2;
 use tungsten::core::{
-    Collider, Entity, Particle, ParticleBudget, Position, RigidBody, RigidBodyBundle, Velocity,
+    AudioCommand, Collider, Entity, Particle, ParticleBudget, Position, RigidBody, RigidBodyBundle,
+    SoundRegistry, Velocity,
 };
 use tungsten::kit::{LinearMotion, Stats};
 use tungsten::testing::UiHarness;
@@ -300,4 +308,199 @@ fn mana_regenerates_to_its_max_and_a_cast_pauses_it_for_about_a_second() {
     assert!(mana(&harness) > cast + 3.0, "it resumed");
     harness.step(360);
     assert_eq!(mana(&harness), 100.0, "capped at max_mana");
+}
+
+/// The open holes.
+fn holes(harness: &UiHarness) -> usize {
+    harness.world().query::<&BlackHole>().count()
+}
+
+#[test]
+fn three_black_holes_stay_open_and_a_fourth_collapses_the_oldest() {
+    let (mut harness, _) = run();
+    let world = harness.world_mut();
+    let opened: Vec<Entity> = (0..3)
+        .map(|i| toys::place_black_hole(world, Vec2::new(900.0 + 400.0 * i as f32, 500.0)))
+        .collect();
+    harness.step(1);
+    assert_eq!(holes(&harness), 3, "three stay open");
+    let fourth = toys::place_black_hole(harness.world_mut(), Vec2::new(2100.0, 500.0));
+    harness.step(1);
+    let collapsed = harness
+        .harness()
+        .events::<Sounded>()
+        .filter(|sounded| sounded.sound == Sound::HoleCollapsed)
+        .count();
+    assert_eq!(collapsed, 1, "the fourth's opening collapses one");
+    let world = harness.world();
+    assert!(!world.is_alive(opened[0]), "the oldest gone");
+    assert!(opened[1..].iter().all(|&hole| world.is_alive(hole)));
+    assert!(world.is_alive(fourth));
+    assert_eq!(holes(&harness), 3);
+    assert_eq!(rings(&harness, Ring::Collapse), 1, "its ring");
+}
+
+#[test]
+fn an_open_hole_sweeps_small_balls_from_its_core_a_few_a_step() {
+    let (mut harness, _) = run();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let centre = Vec2::new(1200.0, 500.0);
+    toys::place_black_hole(harness.world_mut(), centre);
+    // A disc of small balls about the hole, within 190 px, where its pull
+    // beats their fall.
+    for i in 0..400 {
+        let angle = i as f32 * 2.399_963_2;
+        let at = centre + Vec2::from_angle(angle) * (30.0 + 8.0 * (i as f32).sqrt());
+        ball(&mut harness, at, true);
+    }
+    let count = |h: &UiHarness| h.world().query::<&SmallBall>().count();
+    // Those still in its reach: a ball the crowd flings past it falls away.
+    let held = |h: &UiHarness| {
+        h.world()
+            .query::<(&SmallBall, &Position, &Collider)>()
+            .filter(|(_, at, collider)| (at.0 + collider.offset).distance(centre) < HOLE_RADIUS)
+            .count()
+    };
+    let mut seconds = Vec::new();
+    for _ in 0..5 {
+        let start = held(&harness);
+        if start == 0 {
+            break;
+        }
+        for _ in 0..60 {
+            let before = count(&harness);
+            harness.step(1);
+            let gone = before - count(&harness);
+            assert!(gone <= BROOM_MOST, "{gone} gone in one step");
+        }
+        seconds.push((start, held(&harness)));
+    }
+    assert!(seconds[0].1 < seconds[0].0, "it sweeps: {seconds:?}");
+    assert!(
+        seconds.iter().all(|&(start, end)| end < start),
+        "fewer left each second: {seconds:?}"
+    );
+}
+
+#[test]
+fn the_holes_hum_on_one_voice_that_falls_silent_when_the_last_closes() {
+    let (mut harness, player) = run();
+    let voice = harness
+        .world()
+        .resource::<Music>()
+        .holes
+        .expect("the holes' hum starts with the run");
+    let hum = harness
+        .world()
+        .resource::<SoundRegistry>()
+        .get_by_id(HOLE_HUM);
+    let mut heard: Vec<f32> = Vec::new();
+    let mut plays = 0;
+    let mut listen = |h: &mut UiHarness, frames: u32, heard: &mut Vec<f32>| {
+        for _ in 0..frames {
+            h.step(1);
+            for command in h.harness().audio() {
+                match command {
+                    AudioCommand::SetVoiceVolume {
+                        voice: own, volume, ..
+                    } if *own == voice => heard.push(*volume),
+                    AudioCommand::Play { handle, .. } if Some(*handle) == hum => plays += 1,
+                    _ => {}
+                }
+            }
+        }
+    };
+    let at = centre(&harness, player);
+    let world = harness.world_mut();
+    let near = [
+        toys::place_black_hole(world, at + Vec2::new(200.0, -100.0)),
+        toys::place_black_hole(world, at + Vec2::new(-250.0, -60.0)),
+    ];
+    listen(&mut harness, 10, &mut heard);
+    assert!(
+        heard.last().is_some_and(|&volume| volume > 0.0),
+        "{heard:?}"
+    );
+    for hole in near {
+        harness.world_mut().get_mut::<BlackHole>(hole).unwrap().left = 0.01;
+    }
+    heard.clear();
+    listen(&mut harness, 10, &mut heard);
+    assert_eq!(holes(&harness), 0, "both closed");
+    assert_eq!(heard.last(), Some(&0.0), "silent: {heard:?}");
+    assert_eq!(plays, 0, "the run's one voice, never another");
+}
+
+/// Presses `cast` until a fixed step has read it, then lets it go: the
+/// sounds those frames made.
+fn cast_once(harness: &mut UiHarness) -> Vec<Sound> {
+    let mut heard = Vec::new();
+    harness.harness_mut().press_action("cast");
+    for _ in 0..4 {
+        harness.step(1);
+        heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+        if super::steps_this_frame(harness) > 0 {
+            break;
+        }
+    }
+    harness.harness_mut().release_action("cast");
+    harness.step(1);
+    heard.extend(harness.harness().events::<Sounded>().map(|s| s.sound));
+    heard
+}
+
+#[test]
+fn a_refused_cast_says_why_and_spends_nothing() {
+    use example_01_platformer::features::spells::components::Spell;
+    use tungsten::kit::Abilities;
+    let (mut harness, player) = run();
+    ground(&mut harness, 1000.0);
+    stand(&mut harness, player, 600.0, 1000.0);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let slab = Vec2::new(900.0, 700.0);
+    floor(&mut harness, slab, Vec2::new(100.0, 20.0));
+    harness.step(2);
+    pin_camera(&mut harness, Vec2::new(200.0, 400.0));
+    let set_mana = |h: &mut UiHarness, amount: f32| {
+        let stats = h.world_mut().get_mut::<Stats>(player).unwrap();
+        // At its most, so the regeneration adds none.
+        stats.set_base("max_mana", amount);
+        stats.set_base("mana", amount);
+    };
+    let spent = |h: &UiHarness, spell: Spell| {
+        let abilities = h.world().get::<Abilities>(player).unwrap();
+        (mana(h), abilities.charges(spell.ability()))
+    };
+    let count = |heard: &[Sound], sound: Sound| heard.iter().filter(|&&s| s == sound).count();
+    // No mana: a missile at none says so, once.
+    aim_at(&mut harness, Vec2::new(900.0, 500.0));
+    choose(&mut harness, 0);
+    set_mana(&mut harness, 0.0);
+    let before = spent(&harness, Spell::FireMissile);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::NoMana), 1, "{heard:?}");
+    assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
+    // A cooldown: a second missile at once is not ready, once.
+    set_mana(&mut harness, 100.0);
+    cast_once(&mut harness);
+    let before = spent(&harness, Spell::FireMissile);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::NotReady), 1, "{heard:?}");
+    assert_eq!(count(&heard, Sound::Cast), 0, "{heard:?}");
+    assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
+    // Iron in a wall fizzles at the cursor, once.
+    aim_at(&mut harness, slab);
+    choose(&mut harness, 6);
+    let before = spent(&harness, Spell::IronBlock);
+    let fizzles = bursts(&harness);
+    let heard = cast_once(&mut harness);
+    assert_eq!(count(&heard, Sound::Fizzled), 1, "{heard:?}");
+    assert_eq!(spent(&harness, Spell::IronBlock), before, "nothing spent");
+    assert_eq!(bursts(&harness), fizzles + 1, "its fizzle");
+}
+
+/// The fizzles alive.
+fn bursts(harness: &UiHarness) -> usize {
+    super::bursts(harness, "ex10_fizzle")
 }

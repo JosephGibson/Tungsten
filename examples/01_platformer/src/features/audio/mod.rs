@@ -1,10 +1,10 @@
 //! The audio: the exploration loop a run plays, quieted under pause's loop
 //! and game over's music, as the template's sample does; the combat layer
 //! over it while an enemy sees the player; the wisps' hum on one shared
-//! voice, louder as the nearest wisp comes near; each area's ambience loop,
-//! raised in its area; and the game's one-shot sounds as cue events about
-//! the player, which the `cue_rules/sounds.json` data plays through the
-//! kit.
+//! voice, louder as the nearest wisp comes near, and the black holes' on
+//! another, by the nearest open hole; each area's ambience loop, raised in
+//! its area; and the game's one-shot sounds as cue events about the player,
+//! which the `cue_rules/sounds.json` data plays through the kit.
 
 pub mod components;
 pub mod systems;
@@ -35,13 +35,18 @@ pub const COMBAT_OUT: f32 = 3.0;
 pub const WISP_HUM: &str = "ex10_wisp_hum_sfx";
 pub const HUM_REACH: f32 = 600.0;
 pub const HUM_FADE: f32 = 0.15;
+/// The black holes' hum and its reach from the nearest open hole; its
+/// volume moves over [`HUM_FADE`] as the wisps' does.
+pub const HOLE_HUM: &str = "ex10_black_hole_hum_sfx";
+pub const HOLE_HUM_REACH: f32 = 900.0;
 /// The seconds an area's ambience rises over as the player enters it, and
 /// the others fall over.
 pub const AMBIENCE_FADE: f32 = 1.5;
 
 /// The audio as a plugin: each [`Sound`] a cue event the kit's cues read,
 /// before the manifest's `cue_rules` load and name them, and in `Update`
-/// `audio_duck`, then `audio_hum`, `audio_combat` and `audio_ambience`.
+/// `audio_duck`, then `audio_hum`, `audio_holes`, `audio_combat` and
+/// `audio_ambience`.
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
@@ -52,6 +57,8 @@ impl Plugin for AudioPlugin {
         schedule.add(Stage::Update, system("audio_duck", systems::duck));
         let hum = system("audio_hum", systems::hum).after("audio_duck");
         schedule.add(Stage::Update, hum);
+        let holes = system("audio_holes", systems::holes).after("audio_duck");
+        schedule.add(Stage::Update, holes);
         let combat = system("audio_combat", systems::combat).after("audio_duck");
         schedule.add(Stage::Update, combat);
         let ambience = system("audio_ambience", systems::ambience).after("audio_duck");
@@ -107,6 +114,20 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::LavaSet => occurrence::<37>,
         Sound::LiftStarted => occurrence::<38>,
         Sound::LiftStopped => occurrence::<39>,
+        Sound::HoleCollapsed => occurrence::<40>,
+        Sound::IronLanded => occurrence::<41>,
+        Sound::Fizzled => occurrence::<42>,
+        Sound::Snapped => occurrence::<43>,
+        Sound::Thawed => occurrence::<44>,
+        Sound::BallThudded => occurrence::<45>,
+        Sound::DryFired => occurrence::<46>,
+        Sound::Racked => occurrence::<47>,
+        Sound::FireEnded => occurrence::<48>,
+        Sound::AirJumped => occurrence::<49>,
+        Sound::NoMana => occurrence::<50>,
+        Sound::Switched => occurrence::<51>,
+        Sound::NotReady => occurrence::<52>,
+        Sound::OrbDropped => occurrence::<53>,
     }
 }
 
@@ -122,7 +143,8 @@ pub fn play(world: &mut World, sound: Sound, at: Vec2) {
 }
 
 /// Starts a run's music: the exploration loop fades in, and the wisps' hum,
-/// the combat layer and each area's ambience loop start silent.
+/// the holes' hum, the combat layer and each area's ambience loop start
+/// silent.
 pub fn start(world: &mut World) {
     let explore = shell::play(world, MUSIC_EXPLORE, MUSIC_FADE);
     let silent = |world: &mut World, id: &str| {
@@ -134,10 +156,12 @@ pub fn start(world: &mut World) {
         )
     };
     let hum = silent(world, WISP_HUM);
+    let holes = silent(world, HOLE_HUM);
     let combat = silent(world, MUSIC_COMBAT);
     world.insert_resource(Music {
         explore,
         hum,
+        holes,
         combat,
         ..Music::default()
     });
@@ -154,17 +178,23 @@ pub fn start(world: &mut World) {
     world.insert_resource(Ambience { loops });
 }
 
-/// Stops a run's music, pause's loop, the hum, the combat layer and the
+/// Stops a run's music, pause's loop, the hums, the combat layer and the
 /// ambience too: a Quit to Title from pause leaves the stack in one pass,
 /// with gameplay never on top.
 pub fn stop(world: &mut World) {
     let music = world.remove_resource::<Music>().unwrap_or_default();
     let ambience = world.remove_resource::<Ambience>().unwrap_or_default();
     let audio = world.resource_mut::<AudioCommands>();
-    for voice in [music.explore, music.pause, music.hum, music.combat]
-        .into_iter()
-        .flatten()
-        .chain(ambience.loops.iter().map(|(_, voice, _)| *voice))
+    for voice in [
+        music.explore,
+        music.pause,
+        music.hum,
+        music.holes,
+        music.combat,
+    ]
+    .into_iter()
+    .flatten()
+    .chain(ambience.loops.iter().map(|(_, voice, _)| *voice))
     {
         audio.stop_voice(voice, MUSIC_FADE);
     }

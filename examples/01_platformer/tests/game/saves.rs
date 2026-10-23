@@ -36,7 +36,7 @@ use example_01_platformer::features::toys::components::{
 };
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
-use example_01_platformer::save::{self, MAP_ENEMIES, SaveGame};
+use example_01_platformer::save::{self, HoleSave, MAP_ENEMIES, SaveGame};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
@@ -202,7 +202,7 @@ fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
         moved(&platforms, &platforms_now),
         "a platform is off its spawn"
     );
-    assert!(!saved.missiles.is_empty() && saved.black_hole.is_some());
+    assert!(!saved.missiles.is_empty() && !saved.black_holes.is_empty());
     assert!(!saved.bullets.is_empty(), "a bullet in flight");
     assert!(saved.blocks.iter().any(|b| b.scrap.is_some()));
     assert!(
@@ -1736,7 +1736,8 @@ fn schema_7_autosaves_migrate_and_rotate() {
             envelope["schema"].as_u64().unwrap()
         })
         .collect();
-    assert_eq!(schemas, [7, 10, 7], "autosave_2, the oldest, rotated");
+    let now = u64::from(SaveGame::SCHEMA);
+    assert_eq!(schemas, [7, now, 7], "autosave_2, the oldest, rotated");
     // A migrated save loads with its light, which relights at once.
     let migrated = slots.load::<SaveGame>("autosave_1").unwrap();
     let mut fresh = super::harness();
@@ -1847,6 +1848,29 @@ fn without_old_lift(old: &mut Value) {
     let before = platforms.len();
     platforms.retain(|platform| platform["id"].as_u64() != Some(845));
     assert_eq!(platforms.len() + 1, before, "the elevator's old deck saved");
+}
+
+/// What schema 11 makes of an older save: its one black hole the list's
+/// only one, or an empty list, and the gun's rounds kept to its nine.
+fn as_schema_11(old: &mut Value) {
+    let hole = old
+        .as_object_mut()
+        .unwrap()
+        .remove("black_hole")
+        .unwrap_or(Value::Null);
+    old["black_holes"] = Value::Array(if hole.is_null() {
+        Vec::new()
+    } else {
+        vec![hole]
+    });
+    let entries = old["player"]["abilities"]["entries"]
+        .as_array_mut()
+        .unwrap();
+    for entry in entries.iter_mut().filter(|entry| entry["name"] == "gun") {
+        if let Some(charges) = entry["charges"].as_u64() {
+            entry["charges"] = Value::from(charges.min(u64::from(gun::MAGAZINE)));
+        }
+    }
 }
 
 /// Sets aside what a capture of a migrated save adds: the map's new enemies
@@ -1962,6 +1986,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     // Every ID field moved, by schema 9's shift and then schema 10's remap,
     // the elevator's old deck dropped, and nothing else.
     without_old_lift(&mut old);
+    as_schema_11(&mut old);
     let to = |id: u64| schema_10_id(if id >= from { id + save::SHIFT_9 } else { id });
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
@@ -1986,7 +2011,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
         "/bullets/*/id",
         "/bullets/*/source",
         "/orbs/*/id",
-        "/black_hole/id",
+        "/black_holes/*/id",
         "/blocks/*/id",
         "/balls/*/0",
         "/cascades/entries/*/target",
@@ -2139,6 +2164,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     // Every ID field moved by the remap, the elevator's old deck dropped,
     // and nothing else.
     without_old_lift(&mut old);
+    as_schema_11(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &schema_10_id, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
@@ -2357,4 +2383,114 @@ fn pit_full_saves_within_two_mib() {
     );
     assert!(size <= 2 * 1024 * 1024, "{size} bytes");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn three_open_black_holes_load_back_to_themselves() {
+    let (mut harness, _) = grounded();
+    let world = harness.world_mut();
+    for (i, x) in [700.0, 1000.0, 1300.0].into_iter().enumerate() {
+        let hole = toys::place_black_hole(world, Vec2::new(x, TOP - 300.0));
+        world.get_mut::<BlackHole>(hole).unwrap().left = 2.0 + i as f32;
+    }
+    let saved = capture(&harness);
+    assert_eq!(saved.black_holes.len(), 3, "every hole saved");
+    // Through JSON, as Continue reads a slot.
+    let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("it loads");
+    let mut fresh = super::harness();
+    load(&mut fresh, loaded);
+    assert_eq!(fresh.world().query::<&BlackHole>().count(), 3);
+    assert_eq!(capture(&fresh).black_holes, saved.black_holes);
+}
+
+#[test]
+fn schema_10_saves_migrate_their_black_hole_into_the_list() {
+    // 0.100's save (step 1's fixture): one hole open, a missile in flight.
+    const FIXTURE: &str = include_str!("fixtures/schema10.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    assert_eq!(envelope["schema"].as_u64(), Some(10));
+    let hole: HoleSave = serde_json::from_value(envelope["data"]["black_hole"].clone()).unwrap();
+    let (migrated, dir) = migrate("schema-10", FIXTURE);
+    assert_eq!(migrated.black_holes, [hole], "its ID, place and time left");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_10_trolls_deep_chill_goes_at_its_first_step() {
+    // 0.100's save (step 1's fixture), its placed troll past the old second
+    // stage: a `deep_chill` slow on its speed, and no chill.
+    const FIXTURE: &str = include_str!("fixtures/schema10.json");
+    let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    let troll = envelope["data"]["enemies"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|enemy| enemy["kind"] == "troll")
+        .expect("a placed troll");
+    let id = troll["id"].as_u64().unwrap();
+    let effects = troll["effects"]["instances"].as_array().unwrap();
+    assert!(
+        effects.iter().all(|effect| effect["effect"] != "chilled"),
+        "no chill"
+    );
+    troll["stats"]["move_speed"]["modifiers"] =
+        serde_json::json!([["deep_chill", { "pct": -0.35 }]]);
+    let (migrated, dir) = migrate("schema-10-deep-chill", &envelope.to_string());
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
+    let troll = fresh
+        .world()
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .find(|(_, _, own)| own.0 == id)
+        .map(|(entity, ..)| entity)
+        .expect("the troll loaded");
+    let speed = |h: &UiHarness| h.world().get::<Stats>(troll).unwrap().get("move_speed");
+    assert_eq!(speed(&fresh), Some(70.0 * 0.65), "its saved slow");
+    fresh.harness_mut().set_dt(1.0 / 60.0);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    fresh.step(1);
+    assert_eq!(speed(&fresh), Some(70.0), "whole after its first step");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn schema_10_saves_keep_at_most_nine_rounds() {
+    // 0.100's save (step 1's fixture), its gun's magazine set to 12, to 10
+    // and to 0 with a reload running.
+    const FIXTURE: &str = include_str!("fixtures/schema10.json");
+    for (charges, reload, kept) in [(12, None, 9), (10, None, 9), (0, Some(1.0), 0)] {
+        let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+        let player = &mut envelope["data"]["player"];
+        let gun = player["abilities"]["entries"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|entry| entry["name"] == "gun")
+            .expect("the gun");
+        gun["charges"] = charges.into();
+        if let Some(left) = reload {
+            player["reload"] = Value::from(left);
+        }
+        let (migrated, dir) = migrate(&format!("schema-10-gun-{charges}"), &envelope.to_string());
+        assert_eq!(
+            migrated.player.abilities.charges("gun"),
+            Some(kept),
+            "{charges}"
+        );
+        assert_eq!(migrated.player.reload, reload, "{charges}: its reload kept");
+        if reload.is_some() {
+            // Loaded, the reload runs on to a whole magazine.
+            let mut fresh = super::harness();
+            load(&mut fresh, migrated);
+            fresh.world_mut().resource_mut::<Time>().resume();
+            fresh.step(90);
+            let player = player_entity(&fresh);
+            assert_eq!(
+                gun::rounds(fresh.world(), player),
+                Some((9, 9)),
+                "nine at its end"
+            );
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
