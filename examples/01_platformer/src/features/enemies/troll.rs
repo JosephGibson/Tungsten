@@ -502,7 +502,7 @@ pub fn chase(world: &mut World, troll: Entity) {
     {
         return tell(world, troll, target.x, Strike::Throw);
     }
-    stride(world, troll, across.signum(), 1.0);
+    stride(world, troll, (target.x - at.x).signum(), 1.0);
 }
 
 /// The strike `troll`'s tell chose: its brain's, else, for an older save's

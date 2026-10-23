@@ -2606,6 +2606,35 @@ fn troll_blow(
 }
 
 #[test]
+fn the_troll_walks_at_a_courier_on_either_side_and_slams_it() {
+    for (from, courier) in [(1000.0, 600.0), (600.0, 1000.0)] {
+        let (mut harness, player) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        stand(&mut harness, player, courier, TOP);
+        let troll = troll_at(&mut harness, from, Difficulty::Normal);
+        harness.step(1);
+        let start = at(&harness, troll).x;
+        let mut slammed = false;
+        for _ in 0..600 {
+            stand(&mut harness, player, courier, TOP);
+            tungsten::kit::heal(harness.world_mut(), player, 100.0);
+            harness.step(1);
+            slammed |= !took(&harness, player, Some(troll)).is_empty();
+            if slammed {
+                break;
+            }
+        }
+        // It closes to its slam's range, then the slam lands.
+        let moved = at(&harness, troll).x - start;
+        assert!(
+            moved.signum() == (courier - from).signum() && moved.abs() > 200.0,
+            "from {from}: walked {moved} px, not at the courier"
+        );
+        assert!(slammed, "from {from}: no blow");
+    }
+}
+
+#[test]
 fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     // The courier 60 px ahead: the swipe, after its 0.3 s tell.
     let (mut harness, player) = arena();
