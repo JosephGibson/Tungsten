@@ -406,31 +406,45 @@ fn descendants(tree: &UiTree, id: WidgetId) -> Vec<WidgetId> {
 }
 
 #[test]
-fn the_picker_notes_what_each_difficulty_changes() {
+fn the_picker_shows_a_card_for_each_difficulty() {
     let mut harness = harness();
     press(&mut harness, "New Game");
-    for (difficulty, note) in [
-        ("Easy", "8 health"),
-        ("Normal", "5 health"),
-        ("Hard", "3 health"),
-    ] {
-        let tree = harness.tree();
-        let button = find(&harness, difficulty).unwrap();
-        let row = tree.parent(button).unwrap();
-        let beside: Vec<String> = tree.children(row)[1..]
+    let tree = harness.tree();
+    assert_eq!(
+        tree.focused(),
+        find(&harness, "Normal"),
+        "Normal has the focus"
+    );
+    let accent = tree.theme().tokens.colors.accent;
+    for (rank, (difficulty, note)) in [
+        (Difficulty::Easy, "8 health"),
+        (Difficulty::Normal, "5 health"),
+        (Difficulty::Hard, "3 health"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        assert_eq!(game::difficulty_note(difficulty), note);
+        // The card is the difficulty's button: its name, its rank and the
+        // note's facts, a line each.
+        let card = find(&harness, difficulty.label()).unwrap();
+        let [name, pips, facts] = tree.children(card) else {
+            panic!("{difficulty:?}: a name, a rank and the facts");
+        };
+        assert_eq!(widgets::text_of(tree, *name), difficulty.label());
+        let filled = tree
+            .children(*pips)
+            .iter()
+            .filter(|pip| tree.overrides(**pip).and_then(|o| o.background) == Some(accent))
+            .count();
+        let squares = tree.children(*pips).len();
+        assert_eq!((squares, filled), (3, rank + 1), "{difficulty:?}'s rank");
+        let lines: Vec<String> = tree
+            .children(*facts)
             .iter()
             .map(|id| widgets::text_of(tree, *id))
             .collect();
-        assert_eq!(beside, [note], "{difficulty}");
-        assert_eq!(
-            game::difficulty_note(
-                Difficulty::ALL
-                    .into_iter()
-                    .find(|d| d.label() == difficulty)
-                    .unwrap()
-            ),
-            note
-        );
+        assert_eq!(lines, [note], "{difficulty:?}");
     }
 }
 

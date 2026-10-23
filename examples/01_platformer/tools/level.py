@@ -20,11 +20,24 @@ HAZARD_KNOCKBACK = 560
 # top-left: the spikes' teeth sit low in their tile, the fireball fills it.
 SPIKES_HALF, SPIKES_CENTRE = [27, 14], [32, 48]
 FIRE_HALF, FIRE_CENTRE = [18, 24], [32, 32]
-# A lava basin's touch box: its surface row from the skin down, per tile.
-LAVA_TOP, LAVA_DEPTH = 6, 58
+# A lava basin's skin, this far into its surface row; the frost child's
+# and the player's touch run from `LAVA_REACH` above it to the bed, so what
+# stands on the surface overlaps them and the throw, away from the box's
+# centre, is up and out (M79).
+LAVA_TOP, LAVA_REACH = 6, 4
+# Lava's bite: typed fire that starts the burn, a throw on every touch,
+# its window's too (the kit's `push_always`), touched again soon after.
+LAVA_DAMAGE, LAVA_KNOCKBACK, LAVA_INTERVAL = 16, 1500, 0.1
+# The surface the player stands on, never sinking in: a box this deep from
+# the skin, in its own physics layer, which only the player's controller
+# meets; its mask meets nothing, so balls, blocks and enemies fall in.
+LAVA_SURFACE, LAVA_LAYER = 16, 4
 # The physics layers of the walls a shot meets (`D-202`): stone slabs in 1,
 # the mine's iron in 2, wooden decks in 3; tiles and every other body in 0.
 SLAB_LAYER, IRON_LAYER, WOOD_LAYER = 1, 2, 3
+# The elevator's sheave in its gantry's art, in tiles from the gantry's
+# top-left: the wheel's centre over the shaft, its rim's bottom.
+LIFT_SHEAVE = (0.5, 0.6)
 WOOD = ('bridge_rope', 'bridge_weathered')
 # A ground platform's style and the family its tiles come from.
 FAMILIES = {'ground': 'masonry', 'pit': 'masonry', 'wet': 'wet', 'basalt': 'basalt', 'mine': 'mine',
@@ -182,18 +195,25 @@ def build_objects(source, images, lit):
                 period=h['period']), phase=phase)
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_fireball_0', z_order=Z_FIRE), components=components)
         hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1]))
-    # The lava basins after the fires: a touch over each one's surface row, as
-    # the fires' touch, and the lake's light. A child of each touches what is
+    # The lava basins after the fires: a surface the player stands on, a
+    # touch from just over it to the bed that burns and throws, a sizzle at
+    # each touch, and the lake's light. A child of each touches what is
     # frozen with fire, which blows it apart whether it takes fire or not (a
-    # frozen wisp); the player, which cannot freeze, keeps the untyped touch.
+    # frozen wisp).
     for i, basin in enumerate(source.get('lava', [])):
         width = (basin['right'] - basin['left']) * tile
-        box = dict(shape=dict(aabb=[width / 2, LAVA_DEPTH / 2]),
-                   offset=[width / 2, LAVA_TOP + LAVA_DEPTH / 2])
+        depth = (lava_bed(source, basin) - basin['row']) * tile - LAVA_TOP + LAVA_REACH
+        box = dict(shape=dict(aabb=[width / 2, depth / 2]),
+                   offset=[width / 2, LAVA_TOP - LAVA_REACH + depth / 2])
         frost = f'ex10_lava_frost_{i}'
         prefabs[frost] = dict(components=dict(contact_damage=dict(
             box, damage={'damage.fire': HAZARD_DAMAGE}, filter=dict(all=['status.frozen']))))
-        components = dict(hazard=dict(fire=False, lava=True), contact_damage=dict(touch, **box),
+        bite = dict(box, damage={'damage.fire': LAVA_DAMAGE}, filter=dict(all=['team.player']),
+                    knockback=LAVA_KNOCKBACK, interval=LAVA_INTERVAL, push_always=True)
+        surface = dict(kind='static', shape=dict(kind='aabb', half_extents=[width / 2, LAVA_SURFACE / 2]),
+                       offset=[width / 2, LAVA_TOP + LAVA_SURFACE / 2], layers=[LAVA_LAYER], mask=[])
+        components = dict(hazard=dict(fire=False, lava=True), contact_damage=bite, rigid_body=surface,
+                          cues=dict(hit=[dict(sound=dict(id='ex10_lava_sizzle_sfx', min_interval=0.3))]),
                           spawn_children=[dict(prefab=frost, offset=[0, 0])])
         if basin.get('light'):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
@@ -205,6 +225,21 @@ def build_objects(source, images, lit):
     platforms = []
     deck = images['lift_deck']
     for i, m in enumerate(source['moving_platforms']):
+        if 'elevator' in m:
+            # The mine's elevator (M79): a cage whose floor's top rests at
+            # `position`'s row in the shaft's collar, which 01 sends up `rise`
+            # rows when stood on; its sprite stands over its floor's body.
+            lift = m['elevator']
+            cage = images['lift_deck_elevator']
+            half = [m['half_width'] * tile, source['deck_depth'] / 2]
+            floor = cage.height - source['deck_depth']
+            cls = f'ex10_platform_{i}'
+            prefabs[cls] = dict(sprite=dict(asset_id='ex10_lift_deck_elevator', z_order=Z_DECK), components=dict(
+                rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half),
+                                offset=[half[0], floor + half[1]]),
+                elevator=dict(rise=lift['rise'] * tile, speed=lift['speed'])))
+            platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor))
+            continue
         half = [m['half_width'] * tile, source['deck_depth'] / 2]
         # Three deck tiles across its width, as today's deck draws.
         width = round(2 * half[0])
@@ -249,8 +284,13 @@ def build_objects(source, images, lit):
     # Markers the game reads by name: the player's feet at a fresh run's start,
     # and where a fresh run sets each loose iron block down, its centre.
     spawn = source['spawn']
+    # The elevator's sheave, where its cable hangs from: the gantry's first
+    # piece, set down on its support, plus the wheel's place in its art.
+    sheaves = [obj('', (p['x'] + LIFT_SHEAVE[0]) * tile, (p['y'] + LIFT_SHEAVE[1]) * tile, name='lift_sheave')
+               for p in source['props'] if p['sprite'] == 'ex10_lift_gantry_big_0_0']
     layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')]
-          + [obj('', block['x'] * tile, block['y'] * tile, name='iron') for block in source.get('iron', [])])
+          + [obj('', block['x'] * tile, block['y'] * tile, name='iron') for block in source.get('iron', [])]
+          + sheaves)
     # The training dummies; each placement's tags set the `dummy` prefab's, one
     # by one.
     layer('dummies', [obj('dummy', d['x'] * tile, d['y'] * tile, name=d['name'], properties=[
@@ -446,6 +486,14 @@ def background_tiles(source, cells, props, rng):
     return out
 
 
+def lava_bed(source, basin):
+    """The row of the bed under `basin`: the highest platform row below its
+    surface across its first column."""
+    x = basin['left']
+    return min(p['row'] for p in source['platforms']
+               if p['left'] <= x < p['right'] and p['row'] > basin['row'])
+
+
 def water_props(source, cells):
     """The lava in each basin and the river's surface, as props with their
     clips: lava from a basin's `row` down to the terrain."""
@@ -544,7 +592,21 @@ def validate_level(source,tiled,sprite_ids):
         for name in route:
             p=platforms[name]
             if not any(safe(x,p['row']) for x in range(p['left'],p['right'])):raise ValueError('route lacks headroom')
-    for p in source.get('hazards',[])+source.get('moving_platforms',[]):
+    for p in source.get('moving_platforms',[]):
+        if 'elevator' in p:
+            # The elevator's shaft: inside the map, and no tile, slab or iron
+            # across the cage's width from its rest to its top and the head
+            # room over it there (M79).
+            lift=p['elevator'];x,row=p['position'];half=p['half_width']
+            if row-lift['rise']-2<0 or row>=rows or x-half<0 or x+half>cols:raise ValueError('elevator outside map')
+            columns=range(math.floor(x-half),math.ceil(x+half))
+            for y in range(row-lift['rise']-1,row):
+                for c in columns:
+                    if terrain[y*cols+c] or (c,y) in iron:raise ValueError(f'elevator shaft blocked at {c},{y}')
+            for slab in source['slab_colliders']:
+                sx,sy=slab[0]/source['tile'],slab[1]/source['tile']
+                if x-half<sx+1 and sx<x+half and row-lift['rise']-1<=sy<row:raise ValueError(f'elevator shaft blocked by a slab at {sx},{sy}')
+    for p in source.get('hazards',[])+[m for m in source.get('moving_platforms',[]) if 'elevator' not in m]:
         values=p['position']+p['travel']+[p['period'],p['phase']]
         if not all(math.isfinite(v) for v in values) or p['period']<=0:raise ValueError('invalid motion')
         for center,travel,limit in zip(p['position'],p['travel'],(cols,rows)):

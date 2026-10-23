@@ -5,9 +5,12 @@
 //! version's, never as a newer one's. Schema 7 marks 01 (d)'s map, whose
 //! objects take every save ID anew, so nothing older migrates (`D-202`);
 //! schema 8 gives the player the staff light, which [`SaveData::migrate`]
-//! adds to a schema 7 save.
+//! adds to a schema 7 save. Schema 10 gives save IDs only to the map
+//! objects a save names, so an art change never moves one, and keeps the
+//! basins' crusts and the mine's elevator.
 //!
-//! Every saved entity carries a [`SaveId`]: the map's objects take theirs
+//! Every saved entity carries a [`SaveId`]: the map's objects a save names
+//! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
 //! in the order the map spawns them, which a load repeats, and whatever
 //! spawns later takes the run's next, which the save keeps. A save names
 //! another entity by its save ID, never by its entity: an effect's source
@@ -40,6 +43,8 @@ use crate::features::enemies::{self, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
+use crate::features::level::elevator::{Elevator, Stop};
+use crate::features::level::lava::{self, Lava};
 use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::run::Run;
@@ -93,19 +98,56 @@ pub struct SaveGame {
     pub hints: Vec<Reaction>,
     /// The summon slot's type, by its place in `SUMMONS`.
     pub summon: usize,
+    /// Each lava basin's chill and crust; none before schema 10.
+    #[serde(default)]
+    pub basins: Vec<BasinSave>,
+    /// The mine's elevator; none before schema 10, which leaves it at rest.
+    #[serde(default)]
+    pub elevators: Vec<ElevatorSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
 pub const MAP_DUMMIES: u64 = 1;
 /// The enemies the map's `enemies` layer places, and the health orbs its
 /// `pickups` layer places after them, its last.
-pub const MAP_ENEMIES: u64 = 18;
+pub const MAP_ENEMIES: u64 = 19;
 pub const MAP_PICKUPS: u64 = 8;
-/// Schema 8's map's enemies, before 01's quick fixes placed five more.
-const SCHEMA_8_ENEMIES: u64 = 13;
 /// How far schema 9 moves every save ID at or above schema 8's player's:
-/// the map objects it added, which take theirs before the player's.
-pub const SHIFT_9: u64 = MAP_ENEMIES - SCHEMA_8_ENEMIES + MAP_PICKUPS;
+/// the thirteen map objects it added (five enemies and eight orbs), which
+/// take theirs before the player's.
+pub const SHIFT_9: u64 = 13;
+/// Schema 9's save IDs of the map objects a save names, every map object
+/// taking one then, its props first: the lake's and the shelf's lava, which
+/// an effect names as its source, the decks (the elevator's the last), the
+/// dummy, the enemies and the placed orbs, then the player's.
+const S9_LAKE: u64 = 839;
+const S9_SHELF: u64 = 840;
+const S9_DECKS: u64 = 841;
+const S9_ELEVATOR: u64 = 845;
+const S9_DUMMY: u64 = 859;
+const S9_ENEMIES: u64 = 860;
+const S9_PICKUPS: u64 = 878;
+const S9_PLAYER: u64 = 886;
+/// Schema 10's: only the map objects a save names take save IDs, in layer
+/// order, the three basins first. Frozen here, as schema 9's are, for the
+/// migration; `tests/game/saves.rs` holds them to the map. The lake's lava
+/// is now two pools, its west one first, and the shelf's the third.
+pub const S10_LAKE: u64 = 0;
+pub const S10_SHELF: u64 = 2;
+pub const S10_DECKS: u64 = 3;
+pub const S10_DUMMY: u64 = 8;
+pub const S10_ENEMIES: u64 = 9;
+pub const S10_PICKUPS: u64 = 28;
+pub const S10_PLAYER: u64 = 36;
+/// Schema 10's lava, where schema 9's player may stand in it or under it:
+/// on an old bed, in the lake's moved stone or on the old ground of a
+/// widened pool. Each lake's columns, its banks' row, and the columns where
+/// a player moved out of it stands on its banks and its stone, in tiles.
+type Lake = (f32, f32, f32, &'static [f32]);
+const S10_LAKES: [Lake; 2] = [
+    (230.0, 240.0, 63.0, &[229.5, 235.0, 240.5]),
+    (260.0, 263.0, 57.0, &[259.5, 263.5]),
+];
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
@@ -114,7 +156,9 @@ impl SaveData for SaveGame {
     /// reads as an older version's (`D-204`). Schema 8 adds the staff light
     /// to the player's abilities. Schema 9 places new map objects before
     /// the player, which take the save IDs from schema 8's player's on.
-    const SCHEMA: u32 = 9;
+    /// Schema 10 gives save IDs only to what a save names, keeps the
+    /// basins' crusts and the elevator, and widens the basins.
+    const SCHEMA: u32 = 10;
 
     fn migrate(
         from: u32,
@@ -132,10 +176,16 @@ impl SaveData for SaveGame {
                 );
                 entries.push(entry.parse()?);
                 shift_ids(&mut data)?;
+                to_10(&mut data)?;
                 Ok(data)
             }
             8 => {
                 shift_ids(&mut data)?;
+                to_10(&mut data)?;
+                Ok(data)
+            }
+            9 => {
+                to_10(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -143,12 +193,12 @@ impl SaveData for SaveGame {
     }
 }
 
-/// Moves `id` up by [`SHIFT_9`] when it is a save ID at or above `from`.
-fn shift_id(id: Option<&mut Value>, from: u64) {
+/// Maps `id` through `to`, when it is a save ID.
+fn map_id(id: Option<&mut Value>, to: &impl Fn(u64) -> u64) {
     if let Some(id) = id
-        && let Some(value) = id.as_u64().filter(|&value| value >= from)
+        && let Some(value) = id.as_u64()
     {
-        *id = Value::from(value + SHIFT_9);
+        *id = Value::from(to(value));
     }
 }
 
@@ -162,65 +212,141 @@ fn each<'a>(data: &'a mut Value, pointer: &str) -> impl Iterator<Item = &'a mut 
 }
 
 /// Schema 8 to 9: every save ID at or above schema 8's player's, which the
-/// new map objects now take, moves up by [`SHIFT_9`], in every field that
-/// names one; a field it lacks stays lacking.
+/// new map objects now take, moves up by [`SHIFT_9`].
 fn shift_ids(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let from = data
         .pointer("/player/id")
         .and_then(Value::as_u64)
         .ok_or("schema 8: the player has no save ID")?;
-    shift_id(data.get_mut("next_id"), from);
-    shift_id(data.pointer_mut("/player/id"), from);
-    shift_id(data.pointer_mut("/black_hole/id"), from);
-    for source in each(data, "/player/sources") {
-        shift_id(source.get_mut(1), from);
+    map_ids(data, &|id| if id >= from { id + SHIFT_9 } else { id });
+    Ok(())
+}
+
+/// A schema 9 save ID as schema 10 numbers it: the lava, the decks, the
+/// dummy, the enemies and the placed orbs at their new places, each later
+/// ID down by the props and statics that no longer take one; any other
+/// names nothing a save holds.
+fn remap_9(id: u64) -> u64 {
+    if id == S9_LAKE {
+        S10_LAKE
+    } else if id == S9_SHELF {
+        S10_SHELF
+    } else if id >= S9_PLAYER {
+        id - S9_PLAYER + S10_PLAYER
+    } else if id >= S9_PICKUPS {
+        id - S9_PICKUPS + S10_PICKUPS
+    } else if id >= S9_ENEMIES {
+        id - S9_ENEMIES + S10_ENEMIES
+    } else if id == S9_DUMMY {
+        S10_DUMMY
+    } else if (S9_DECKS..S9_DUMMY).contains(&id) {
+        id - S9_DECKS + S10_DECKS
+    } else {
+        id
     }
-    for list in ["/platforms", "/hazards", "/blocks", "/orbs"] {
+}
+
+/// Schema 9 to 10: the elevator's old ping-pong deck dropped, so it starts
+/// at rest; every save ID through [`remap_9`]; and a player over a lake no
+/// higher than its banks, in its lava or under it, set at rest on the
+/// nearest of its banks and its stone.
+fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(platforms) = data.pointer_mut("/platforms").and_then(Value::as_array_mut) {
+        platforms
+            .retain(|platform| platform.get("id").and_then(Value::as_u64) != Some(S9_ELEVATOR));
+    }
+    map_ids(data, &remap_9);
+    let Some(at) = data
+        .pointer("/player/position")
+        .and_then(Value::as_array)
+        .and_then(|xy| Some([xy.first()?.as_f64()? as f32, xy.get(1)?.as_f64()? as f32]))
+    else {
+        return Err("schema 9: the player has no position".into());
+    };
+    let centre = Vec2::from(at) + crate::features::player::BODY_OFFSET;
+    let half = crate::features::player::PLAYER_HALF;
+    let tile = crate::features::level::TILE;
+    for (left, right, bank, places) in S10_LAKES {
+        let over = centre.x + half.x > left * tile && centre.x - half.x < right * tile;
+        if !over || centre.y + half.y <= bank * tile - 1.0 {
+            continue;
+        }
+        let to = |column: f32| (column * tile - centre.x).abs();
+        let nearest = places
+            .iter()
+            .copied()
+            .min_by(|a, b| to(*a).total_cmp(&to(*b)));
+        if let Some(column) = nearest {
+            let middle = Vec2::new(column * tile, bank * tile - half.y - 0.5);
+            let corner = middle - crate::features::player::BODY_OFFSET;
+            data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
+            data["player"]["velocity"] = Value::from(vec![0.0_f32, 0.0]);
+        }
+    }
+    Ok(())
+}
+
+/// Every save ID field of `data` through `to`; a field it lacks stays
+/// lacking.
+fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
+    map_id(data.get_mut("next_id"), to);
+    map_id(data.pointer_mut("/player/id"), to);
+    map_id(data.pointer_mut("/black_hole/id"), to);
+    for source in each(data, "/player/sources") {
+        map_id(source.get_mut(1), to);
+    }
+    for list in [
+        "/platforms",
+        "/hazards",
+        "/blocks",
+        "/orbs",
+        "/basins",
+        "/elevators",
+    ] {
         for entry in each(data, list) {
-            shift_id(entry.get_mut("id"), from);
+            map_id(entry.get_mut("id"), to);
         }
     }
     for list in ["/missiles", "/bullets"] {
         for entry in each(data, list) {
-            shift_id(entry.get_mut("id"), from);
-            shift_id(entry.get_mut("source"), from);
+            map_id(entry.get_mut("id"), to);
+            map_id(entry.get_mut("source"), to);
         }
     }
     for list in ["/dummies", "/enemies"] {
         for entry in each(data, list) {
-            shift_id(entry.get_mut("id"), from);
+            map_id(entry.get_mut("id"), to);
             for source in each(entry, "/sources") {
-                shift_id(source.get_mut(1), from);
+                map_id(source.get_mut(1), to);
             }
         }
     }
     for enemy in each(data, "/enemies") {
         for target in each(enemy, "/hit") {
-            shift_id(Some(target), from);
+            map_id(Some(target), to);
         }
         for touch in each(enemy, "/touches") {
-            shift_id(touch.get_mut(0), from);
+            map_id(touch.get_mut(0), to);
         }
-        shift_id(enemy.get_mut("held"), from);
+        map_id(enemy.get_mut("held"), to);
     }
     for throw in each(data, "/throws") {
-        shift_id(throw.get_mut("body"), from);
-        shift_id(throw.get_mut("thrower"), from);
+        map_id(throw.get_mut("body"), to);
+        map_id(throw.get_mut("thrower"), to);
     }
     for ball in each(data, "/balls") {
-        shift_id(ball.get_mut(0), from);
+        map_id(ball.get_mut(0), to);
     }
     for id in each(data, "/gone") {
-        shift_id(Some(id), from);
+        map_id(Some(id), to);
     }
     for entry in each(data, "/cascades/entries") {
-        shift_id(entry.get_mut("target"), from);
-        shift_id(entry.get_mut("source"), from);
+        map_id(entry.get_mut("target"), to);
+        map_id(entry.get_mut("source"), to);
         for member in each(entry, "/chain") {
-            shift_id(Some(member), from);
+            map_id(Some(member), to);
         }
     }
-    Ok(())
 }
 
 /// The player: its body's point and velocity, its controller, health,
@@ -336,6 +462,32 @@ pub struct PlatformSave {
     pub id: u64,
     pub position: [f32; 2],
     pub follower: PathFollower,
+}
+
+/// A lava basin: the cold spray's seconds on it and its crust's seconds
+/// left, while set.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BasinSave {
+    pub id: u64,
+    pub cold: f32,
+    pub crust: Option<f32>,
+}
+
+/// The mine's elevator: its deck's point, its stop, a boarding's seconds
+/// left, its seconds unridden at the top, its rider last step, a held trip
+/// and the trip's follower, while one runs.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ElevatorSave {
+    pub id: u64,
+    pub position: [f32; 2],
+    pub stop: Stop,
+    pub board: Option<f32>,
+    pub idle: f32,
+    pub ridden: bool,
+    pub held: bool,
+    pub follower: Option<PathFollower>,
 }
 
 /// A fire hazard on its oscillator: where it is and its clock, since the
@@ -495,7 +647,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     let player = capture_player(world, run.player)?;
     let id_of = |entity: Entity| world.get::<SaveId>(entity).map(|id| id.0);
     let mut platforms: Vec<PlatformSave> = world
-        .query::<(&SaveId, &Position, &PathFollower)>()
+        .query_filtered::<(&SaveId, &Position, &PathFollower), tungsten::core::Without<Elevator>>()
         .map(|(id, at, follower)| PlatformSave {
             id: id.0,
             position: at.0.to_array(),
@@ -503,6 +655,29 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     platforms.sort_by_key(|platform| platform.id);
+    let mut basins: Vec<BasinSave> = world
+        .query::<(&SaveId, &Lava)>()
+        .map(|(id, lava)| BasinSave {
+            id: id.0,
+            cold: lava.cold,
+            crust: lava.crust.as_ref().map(|crust| crust.left),
+        })
+        .collect();
+    basins.sort_by_key(|basin| basin.id);
+    let mut elevators: Vec<ElevatorSave> = world
+        .query::<(&SaveId, &Position, &Elevator, Option<&PathFollower>)>()
+        .map(|(id, at, lift, follower)| ElevatorSave {
+            id: id.0,
+            position: at.0.to_array(),
+            stop: lift.stop,
+            board: lift.board,
+            idle: lift.idle,
+            ridden: lift.ridden,
+            held: lift.held,
+            follower: follower.cloned(),
+        })
+        .collect();
+    elevators.sort_by_key(|lift| lift.id);
     let mut hazards: Vec<HazardSave> = world
         .query::<(&SaveId, &Position, &Oscillator, Option<&Doused>)>()
         .map(|(id, at, oscillator, doused)| HazardSave {
@@ -681,6 +856,8 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         summon: world
             .get_resource::<Summon>()
             .map_or(0, |summon| summon.selected),
+        basins,
+        elevators,
     })
 }
 
@@ -866,6 +1043,32 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         if let Some(&entity) = by_id.get(&platform.id) {
             place(world, entity, platform.position);
             world.insert(entity, platform.follower.clone());
+        }
+    }
+    for basin in &save.basins {
+        if let Some(&entity) = by_id.get(&basin.id) {
+            if let Some(left) = basin.crust {
+                lava::harden(world, entity, left);
+            }
+            if let Some(lava) = world.get_mut::<Lava>(entity) {
+                lava.cold = basin.cold;
+            }
+        }
+    }
+    for saved in &save.elevators {
+        let Some(&entity) = by_id.get(&saved.id) else {
+            continue;
+        };
+        place(world, entity, saved.position);
+        if let Some(lift) = world.get_mut::<Elevator>(entity) {
+            (lift.stop, lift.board, lift.idle) = (saved.stop, saved.board, saved.idle);
+            (lift.ridden, lift.held) = (saved.ridden, saved.held);
+        }
+        match &saved.follower {
+            Some(follower) => world.insert(entity, follower.clone()),
+            None => {
+                world.remove_component::<PathFollower>(entity);
+            }
         }
     }
     for hazard in &save.hazards {
@@ -1066,7 +1269,10 @@ fn restore_enemy(world: &mut World, entity: Entity, saved: &EnemySave) {
         ),
     );
     match &saved.controller {
-        Some(controller) => world.insert(entity, controller.clone()),
+        Some(controller) => {
+            world.insert(entity, controller.clone());
+            enemies::walk_on_rock(world, entity);
+        }
         None => {
             world.remove_component::<PlatformerController>(entity);
         }

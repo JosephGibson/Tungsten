@@ -162,6 +162,26 @@
     "path": "sounds/steam_burst.wav",
     "volume": 0.5
   },
+  "ex10_lava_sizzle_sfx": {
+    "looping": false,
+    "path": "sounds/lava_sizzle.wav",
+    "volume": 0.55
+  },
+  "ex10_lava_hiss_sfx": {
+    "looping": false,
+    "path": "sounds/lava_hiss.wav",
+    "volume": 0.5
+  },
+  "ex10_lift_start_sfx": {
+    "looping": false,
+    "path": "sounds/lift_start.wav",
+    "volume": 0.5
+  },
+  "ex10_lift_stop_sfx": {
+    "looping": false,
+    "path": "sounds/lift_stop.wav",
+    "volume": 0.55
+  },
   "ex10_frost_blast_sfx": {
     "looping": false,
     "path": "sounds/frost_blast.wav",

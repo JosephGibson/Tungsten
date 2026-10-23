@@ -5,14 +5,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use example_01_platformer::features::level::components::Hazard;
-use example_01_platformer::features::level::{MAP, TILE};
+use example_01_platformer::features::level::elevator::{Elevator, Stop};
+use example_01_platformer::features::level::{LAVA_LAYER, MAP, TILE};
 use example_01_platformer::features::player::{self, PLAYER_HALF};
 use example_01_platformer::features::run::Run;
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{
-    Collider, Entity, LayerKind, PhysicsConfig, RigidBody, Shape, Sprite, TilemapRegistry,
+    Collider, Entity, LayerKind, PhysicsConfig, Position, RigidBody, Shape, Sprite, TilemapRegistry,
 };
 use tungsten::kit::{PathFollower, PlatformerController};
 use tungsten::physics::BodyKind;
@@ -62,8 +63,18 @@ struct SourceHazard {
 #[derive(Deserialize)]
 struct Moving {
     position: [f32; 2],
+    #[serde(default)]
     travel: [f32; 2],
     half_width: f32,
+    /// The mine's elevator: rows it rises from `position`, the row its
+    /// floor's top rests at.
+    #[serde(default)]
+    elevator: Option<Lift>,
+}
+
+#[derive(Deserialize)]
+struct Lift {
+    rise: f32,
 }
 
 fn source() -> Source {
@@ -95,15 +106,16 @@ const LAUNCHES: &[(&str, &str, f32, f32, bool)] = &[
     ("ravine_step_4", "pool_bed", 176.85, 177.75, true),
     ("pool_bed", "cleft", 205.85, 206.75, true),
     ("cleft", "hollow_floor_1", 215.85, 216.75, true),
-    ("hollow_floor_1", "stepping_stone", 231.85, 235.75, true),
-    ("stepping_stone", "hollow_floor_2", 236.85, 240.75, true),
+    ("hollow_floor_1", "stepping_stone", 229.85, 234.75, true),
+    ("stepping_stone", "hollow_floor_2", 235.85, 240.75, true),
     ("hollow_floor_2", "hollow_step", 249.85, 250.75, true),
     ("hollow_step", "hollow_shelf_a", 253.85, 254.75, true),
-    ("hollow_shelf_a", "hollow_shelf_b", 259.85, 262.75, true),
+    ("hollow_shelf_a", "hollow_shelf_b", 259.85, 263.75, true),
     ("hollow_shelf_b", "gallery", 267.85, 268.75, true),
     ("gallery", "cut_floor_1", 282.85, 283.75, true),
     ("cut_floor_1", "cut_floor_2", 305.35, 306.75, true),
-    ("cut_floor_2", "cut_floor_3", 323.35, 324.75, true),
+    ("cut_floor_2", "cut_floor_2b", 314.85, 318.75, true),
+    ("cut_floor_2b", "cut_floor_3", 323.35, 324.75, true),
     ("cut_floor_3", "cut_step_1", 341.35, 342.75, true),
     ("cut_step_1", "cut_step_2", 344.35, 345.75, true),
     ("cut_step_2", "cut_step_3", 347.35, 348.75, true),
@@ -403,7 +415,11 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
         .iter()
         .find(|layer| layer.kind == LayerKind::Collision)
         .expect("a collision layer");
-    for placement in &level.moving_platforms {
+    for placement in level
+        .moving_platforms
+        .iter()
+        .filter(|m| m.elevator.is_none())
+    {
         let centre = Vec2::from(placement.position) * TILE;
         let travel = Vec2::from(placement.travel) * TILE;
         // The path's two points and the sine-eased leg between them.
@@ -423,6 +439,227 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
             }
         }
     }
+}
+
+/// Every static body's box but the lava's surfaces, as min and max.
+fn static_boxes(world: &tungsten::core::World) -> Vec<(Vec2, Vec2)> {
+    world
+        .query::<(&RigidBody, &Collider, &Position)>()
+        .filter(|(body, ..)| body.kind == BodyKind::Static && body.layers & LAVA_LAYER == 0)
+        .filter_map(|(_, collider, at)| {
+            let Shape::Aabb { half_extents } = collider.shape else {
+                return None;
+            };
+            let centre = at.0 + collider.offset;
+            Some((centre - half_extents, centre + half_extents))
+        })
+        .collect()
+}
+
+#[test]
+fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
+    let level = source();
+    let lift = level
+        .moving_platforms
+        .iter()
+        .find(|m| m.elevator.is_some())
+        .expect("the mine's elevator");
+    let rise = lift.elevator.as_ref().unwrap().rise * TILE;
+    let mut harness = harness();
+    start(&mut harness);
+    let world = harness.world();
+    let map = world.resource::<TilemapRegistry>().get(MAP).unwrap();
+    let collision = map
+        .layers
+        .iter()
+        .find(|layer| layer.kind == LayerKind::Collision)
+        .unwrap();
+    let boxes = static_boxes(world);
+    let half = lift.half_width * TILE;
+    let x = lift.position[0] * TILE;
+    let rest = lift.position[1] * TILE;
+    for step in 0..=400 {
+        let top = rest - rise * step as f32 / 400.0;
+        // The cage's floor and a rider's head room over it.
+        let min = Vec2::new(x - half, top - PLAYER_HALF.y * 2.0);
+        let max = Vec2::new(x + half, top + DECK_DEPTH);
+        for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
+            for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
+                assert!(
+                    collision.tiles[(row * map.width + col) as usize] < 0,
+                    "the elevator at {top} meets tile {col},{row}"
+                );
+            }
+        }
+        for (low, high) in &boxes {
+            let inside =
+                low.x < max.x - 0.01 && high.x > min.x + 0.01 && low.y < max.y && high.y > min.y;
+            assert!(
+                !inside,
+                "the elevator at {top} meets a static box {low}..{high}"
+            );
+        }
+    }
+}
+
+/// The farthest across, in px, the player can still be at or above `dy` px
+/// over its take-off, if anywhere: its run times the latest time a jump
+/// stays that high, over every air jump's time and a coyote take-off.
+fn reach(dy: f32) -> Option<f32> {
+    const JUMP: f32 = 1280.0;
+    const GRAVITY: f32 = 3600.0;
+    const RUN: f32 = 560.0;
+    const COYOTE: f32 = 0.1;
+    let mut best: Option<f32> = None;
+    for coyote in [0.0, COYOTE] {
+        // Off an edge for `coyote` seconds first, falling.
+        let need = dy + 0.5 * GRAVITY * coyote * coyote;
+        for millis in 0..=2000 {
+            let a = millis as f32 / 1000.0;
+            let at_air_jump = JUMP * a - 0.5 * GRAVITY * a * a;
+            let disc = JUMP * JUMP - 2.0 * GRAVITY * (need - at_air_jump);
+            if disc >= 0.0 {
+                let t = coyote + a + (JUMP + disc.sqrt()) / GRAVITY;
+                best = Some(best.map_or(RUN * t, |b: f32| b.max(RUN * t)));
+            }
+        }
+    }
+    best
+}
+
+#[test]
+fn the_mines_upper_level_is_reached_only_by_its_elevator() {
+    let level = source();
+    let upper = level.platform("mine_upper").clone();
+    let (left, right, top) = (upper.left * TILE, upper.right * TILE, upper.row * TILE);
+    let mut harness = harness();
+    start(&mut harness);
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    // Out of every jump: no tile top or static box top in the mine's reach.
+    let world = harness.world();
+    let map = world.resource::<TilemapRegistry>().get(MAP).unwrap();
+    let collision = map
+        .layers
+        .iter()
+        .find(|layer| layer.kind == LayerKind::Collision)
+        .unwrap();
+    let solid = |col: u32, row: u32| collision.tiles[(row * map.width + col) as usize] >= 0;
+    let mut surfaces: Vec<(f32, f32, f32)> = Vec::new();
+    for col in 270..map.width.min(380) {
+        for row in 1..map.height {
+            if solid(col, row) && !solid(col, row - 1) {
+                surfaces.push((
+                    col as f32 * TILE,
+                    (col + 1) as f32 * TILE,
+                    row as f32 * TILE,
+                ));
+            }
+        }
+    }
+    for (low, high) in static_boxes(world) {
+        let own = low.y.round() == top && low.x >= left - 0.5 && high.x <= right + 0.5;
+        if !own && high.x > 270.0 * TILE && low.x < 380.0 * TILE {
+            surfaces.push((low.x, high.x, low.y));
+        }
+    }
+    let body = PLAYER_HALF.x * 2.0;
+    let mut nearest = f32::MAX;
+    for (x0, x1, y) in surfaces {
+        let dy = y - top;
+        let gap = (left - x1).max(x0 - right).max(0.0) - body;
+        if let Some(across) = reach(dy) {
+            nearest = nearest.min(gap - across);
+            assert!(
+                across < gap,
+                "the surface {x0}..{x1} at {y} reaches the upper level: {across} across a gap of {gap}"
+            );
+        }
+    }
+    println!("the nearest surface falls {nearest} px short");
+    // The elevator carries the player up.
+    let world = harness.world();
+    let (deck, lift) = world
+        .query::<(Entity, &Elevator)>()
+        .map(|(entity, lift)| (entity, *lift))
+        .next()
+        .expect("the elevator");
+    assert_eq!(lift.stop, Stop::Bottom);
+    let deck_top = |harness: &UiHarness| {
+        let world = harness.world();
+        let at = world.get::<Position>(deck).unwrap().0;
+        let collider = world.get::<Collider>(deck).unwrap();
+        let Shape::Aabb { half_extents } = collider.shape else {
+            unreachable!()
+        };
+        at.y + collider.offset.y - half_extents.y
+    };
+    let stop = |harness: &UiHarness| harness.world().get::<Elevator>(deck).unwrap().stop;
+    let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
+    let feet = deck_top(&harness);
+    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    for _ in 0..600 {
+        harness.step(1);
+        if stop(&harness) == Stop::Top {
+            break;
+        }
+    }
+    assert_eq!(stop(&harness), Stop::Top, "carried to the top");
+    assert!(
+        (deck_top(&harness) - top).abs() < 1.0,
+        "flush with the upper level"
+    );
+    harness.harness_mut().press_action("move_right");
+    harness.step(50);
+    harness.harness_mut().release_action("move_right");
+    harness.step(30);
+    let at = centre(&harness, player);
+    assert!(
+        at.x > left + PLAYER_HALF.x && grounded(&harness, player),
+        "on the upper level: {at}"
+    );
+    assert!(
+        (at.y + PLAYER_HALF.y - top).abs() < 2.0,
+        "standing on its deck: {at}"
+    );
+    // Left behind, it goes back down after four seconds.
+    harness.step(250);
+    for _ in 0..600 {
+        if stop(&harness) == Stop::Bottom {
+            break;
+        }
+        harness.step(1);
+    }
+    assert_eq!(stop(&harness), Stop::Bottom, "back at the bench");
+    // Ridden up again, a rider running for the right edge just under the
+    // upper level holds it before any overlap, and it goes on once the
+    // rider is off.
+    let feet = deck_top(&harness);
+    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    let mut held = false;
+    let mut running = false;
+    for _ in 0..900 {
+        harness.step(1);
+        if !running && stop(&harness) == Stop::Rising && deck_top(&harness) < top + 120.0 {
+            harness.harness_mut().press_action("move_right");
+            running = true;
+        }
+        held |= harness.world().get::<Elevator>(deck).unwrap().held;
+        let at = centre(&harness, player);
+        let (low, high) = (at - PLAYER_HALF, at + PLAYER_HALF);
+        let inside =
+            low.x < right && high.x > left && low.y < top + DECK_DEPTH - 0.5 && high.y > top + 0.5;
+        assert!(
+            !inside,
+            "the rider at {at} is inside the upper level's deck"
+        );
+        if stop(&harness) == Stop::Top {
+            break;
+        }
+    }
+    harness.harness_mut().release_action("move_right");
+    assert!(running && held, "the overhanging rider held it");
+    assert_eq!(stop(&harness), Stop::Top, "it went on to the top");
 }
 
 #[test]
@@ -496,7 +733,13 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
             );
         }
     }
-    // Every static body is a slab's or an iron box's, its box the object's.
+    // Every static body is a slab's or an iron box's, its box the object's,
+    // or a lava basin's surface, in its own layer.
+    let surfaces = world
+        .query::<&RigidBody>()
+        .filter(|body| body.kind == BodyKind::Static && body.layers & LAVA_LAYER != 0)
+        .count();
+    assert_eq!(surfaces, 3, "a surface over each pool");
     let mut boxes: Vec<[f32; 4]> = world
         .query::<(
             &RigidBody,
@@ -504,7 +747,7 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
             &tungsten::core::Position,
             Option<&Sprite>,
         )>()
-        .filter(|(body, ..)| body.kind == BodyKind::Static)
+        .filter(|(body, ..)| body.kind == BodyKind::Static && body.layers & LAVA_LAYER == 0)
         .map(|(_, collider, at, sprite)| {
             assert!(sprite.is_none(), "a slab draws nothing: its tiles do");
             let Shape::Aabb { half_extents } = collider.shape else {

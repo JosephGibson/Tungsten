@@ -599,5 +599,53 @@
         }
       }
     ]
+  },
+  {
+    "on": "lava_set",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lava_hiss_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "lift_started",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lift_start_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "lift_stopped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lift_stop_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
   }
 ]

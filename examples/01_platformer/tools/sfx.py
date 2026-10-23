@@ -498,6 +498,81 @@ def steam_burst():
     return finish(samples, fade_in=0.002)
 
 
+def lava_sizzle():
+    """Lava's bite as it throws the player: a fat sizzle over a low fiery
+    whoomph, with spitting pops."""
+    duration = 0.55
+    noise, pops, low, high = Noise(0x1A7A), Noise(0x5177), LowPass(), LowPass()
+    samples, pop, phase = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        sizzle = (low(n, glide(5200, 2400, p)) - high(n, 900)) * (0.65 + 0.35 * math.sin(math.tau * 37 * t))
+        phase += math.tau * glide(150, 55, min(1.0, p * 2)) / RATE
+        whoomph = 0.9 * math.sin(phase) * min(1.0, t / 0.01) * math.exp(-t / 0.12)
+        if pops() > 1 - 0.006 * (1 - p):
+            pop = 0.7
+        pop *= 0.94
+        envelope = min(1.0, t / 0.008) * math.exp(-t / 0.22)
+        samples.append(1.2 * sizzle * envelope + whoomph + pop * pops())
+    return finish(samples, fade_in=0.001)
+
+
+def lava_hiss():
+    """Lava crusting under the ice spray: a long hiss of steam that dies
+    away, a deep crackle as the skin stiffens and a last few pops."""
+    duration = 1.4
+    noise, pops, low, high, rumble = Noise(0x1A55), Noise(0xC7A5), LowPass(), LowPass(), LowPass()
+    samples, pop = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = (low(n, glide(7500, 2200, p)) - high(n, 700)) * min(1.0, t / 0.05) * math.exp(-t / 0.55)
+        crackle = (rumble(n, 260) * 2.2) * (0.5 + 0.5 * math.sin(math.tau * 9 * t)) * math.exp(-t / 0.4)
+        if pops() > 1 - 0.004 * (1 - p):
+            pop = 0.5
+        pop *= 0.95
+        samples.append(1.3 * hiss + crackle + pop * pops())
+    return finish(samples, fade_in=0.003)
+
+
+def lift_start():
+    """The mine's elevator setting off: the brake's iron clank, then the
+    winch's ratcheting whir as the cable takes the cage's weight."""
+    duration = 0.9
+    noise, low, high = Noise(0x11F7), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        clank = sum(math.sin(math.tau * f * t) * w for f, w in ((420, 0.5), (1130, 0.3), (2310, 0.15))) * math.exp(-t / 0.05)
+        phase += math.tau * glide(18, 34, min(1.0, t / 0.5)) / RATE
+        ratchet = (high(n, 2600) - low(n, 400)) * (0.5 + 0.5 * math.copysign(1, math.sin(phase))) * min(1.0, t / 0.08)
+        hum = 0.25 * math.sin(math.tau * glide(70, 110, min(1.0, t / 0.6)) * t) * min(1.0, t / 0.1)
+        samples.append(0.9 * clank + 0.5 * ratchet * math.exp(-max(0.0, t - 0.5) / 0.2) + hum * math.exp(-max(0.0, t - 0.6) / 0.15))
+    return finish(samples, fade_in=0.001)
+
+
+def lift_stop():
+    """The elevator arriving: a heavy wooden thud as the cage seats, with a
+    rattle of slack chain."""
+    duration = 0.6
+    noise, rattles, low = Noise(0x5707), Noise(0xA77E), LowPass()
+    samples, rattle, phase = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(95, 45, min(1.0, t / 0.2)) / RATE
+        thud = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.09)
+        knock = low(noise(), 900) * 2.5 * math.exp(-t / 0.03)
+        if rattles() > 1 - 0.02 * math.exp(-t / 0.15):
+            rattle = 0.4
+        rattle *= 0.9
+        samples.append(thud + knock + rattle * rattles())
+    return finish(samples, fade_in=0.0005)
+
+
 def frost_blast():
     """Ice bursting: a hard crunch of fracturing ice, a cold boom and a spray
     of falling shards."""
@@ -1497,6 +1572,10 @@ def build_sounds():
         'thunder.wav': thunder(),
         'crackle.wav': crackle(),
         'steam_burst.wav': steam_burst(),
+        'lava_sizzle.wav': lava_sizzle(),
+        'lava_hiss.wav': lava_hiss(),
+        'lift_start.wav': lift_start(),
+        'lift_stop.wav': lift_stop(),
         'frost_blast.wav': frost_blast(),
         'dummy_hit.wav': dummy_hit(),
         'summon.wav': summon(),

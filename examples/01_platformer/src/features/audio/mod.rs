@@ -104,6 +104,9 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::StaffGuttered => occurrence::<34>,
         Sound::CrawlerScared => occurrence::<35>,
         Sound::PlayerDied => occurrence::<36>,
+        Sound::LavaSet => occurrence::<37>,
+        Sound::LiftStarted => occurrence::<38>,
+        Sound::LiftStopped => occurrence::<39>,
     }
 }
 

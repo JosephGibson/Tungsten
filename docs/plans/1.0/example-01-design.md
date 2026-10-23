@@ -399,3 +399,10 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - the map places eighteen enemies and eight health orbs that never fade; orbs glow without a light;
   - fire on a frozen fire-proof wisp blows it apart through the kit's `ImmunePart`, and lava blows apart what is frozen;
   - the save is schema 9, shifting the thirteen new map objects' save IDs.
+- **As built, the level and title pass (M79, `D-208`).** Where it changed this file's rules and (d)'s:
+  - lava is a surface the player stands on and never sinks below, in physics layer 4 that enemies' controllers leave out; its touch bites 16 fire, burns and throws up and toward the nearer bank, through the kit's `ContactDamage::with_push_always`; the hollow's lake is two pools round its stone and the shelf pool a column wider;
+  - the ice spray sets a basin's crust after 0.5 s for 6 s, solid for every body, its touch held, cracking over its last 1.5 s before it melts and throws;
+  - the mine's deck 4 is an elevator, the only way to an upper level with the map's nineteenth enemy, a fourth beetle; it starts when stood on through the kit's `PlatformerController::ground` and holds for a rider past its margin; a beetle's paw and charge are drawn;
+  - the hollow's mouth is drawn as its own rock where the ravine's far wall showed, the ravine's pool ending against fallen stones, with no rising steam or heat at the mouth;
+  - the New Game picker shows a card for each difficulty, in the template and 01;
+  - the save is schema 10: only what a save names takes a save ID, so the map's art never moves one again, with each basin's crust and the elevator saved.

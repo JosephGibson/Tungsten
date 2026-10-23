@@ -208,6 +208,8 @@ The rest of the owner's notes of 2026-10-22: the larger items, each with art, an
 4. **The title's difficulty picker** (`templates/basic/src/shell/title.rs`, the "Difficulty" page): a proper look, in the template first and copied to 01 byte for byte, within `D-199`'s caps, with a decision amending `D-181`. The one template change in these stops (§4).
 5. **Records and release 0.100.**
 
+**Landed (M79, 0.100, `D-208`).** Every item landed. Lava is a surface in physics layer 4 that only the player's controller meets, its touch biting 16 fire and throwing up and toward the nearer bank with a push that passes the window (K16, fixed with `ContactDamage::with_push_always`); the lake is two pools round its stone and the shelf pool a column wider; 0.5 s of ice spray sets a basin's crust for 6 s, its cracks glowing over the last 1.5 s. The mine's deck 4 is an elevator, the only way to an upper level with a fourth beetle, starting when stood on (K17, fixed with `PlatformerController::ground`) and holding for a rider past its margin; a beetle's paw and charge show a glint, streaks and dust. The hollow's mouth is drawn; the owner's notes on the captures ended the ravine's pool against fallen stones, added scenery and took out the cleft's steam and the hollow's heat columns. The picker shows a card for each difficulty in the template and 01. Save schema 10 gives IDs only to what a save names, migrating schema 9, tested on a schema 9 save from the 0.99 code ([plan](../archive/1.0/phase6-milestone-79-example-01-level-title.md)).
+
 ### 3.2 01 (f): feel — 0.101, level B, XL
 
 1. **Pushes.** I17's `body_centre` and `radial_push`; F6 and F9 on it; X3's level bounds for enemies.
@@ -292,6 +294,8 @@ The shell stays the template's, byte for byte. Only §3.1b's difficulty picker c
 | K13 | `animation_tick` hashes the clip name twice per sprite: 0.90 ms for 12,000 balls on one clip | `crates/tungsten-kit/src/present/animation.rs:130-136`; `crates/tungsten-core/src/assets/animation.rs:88`, `:152`, `:163` | Kit and engine; C2 | — |
 | K14 | The spatial index rebuilds from every body, the sleeping pit included, on the first query after each step; the controllers' probes and the enemies' sight casts trigger it every step | `crates/tungsten-core/src/physics/query.rs:255-276` | A C1/C2 row to watch | — |
 | K15 | A part a target's immunity drops sends no event, so nothing can react to the type that struck: fire on a frozen fire-proof wisp never queues thermal shock (§3.1a item 10) | `crates/tungsten-kit/src/damage/defense.rs:258-262`, `crates/tungsten-kit/src/damage/pipeline.rs:662-677`, `:785-788` at `be16369` | Fixed in M78 (`D-207`): the kit's `ImmunePart` | 01's reactions read it for fire on the frozen; cold on a burning cold-immune target, which sends no steam, is (f)'s |
+| K16 | A contact's push stops with its damage inside the target's window: a request the window ignores has no side effect, so lava's next touches never throw a fallen player (§3.1b item 1) | `crates/tungsten-kit/src/damage/pipeline.rs:122`, `:635-641` at `ba47fef` | Fixed in M79 (`D-208`): `ContactDamage::with_push_always` | 01's lava throws on it |
+| K17 | The platformer controller keeps the body it stands on for its carry but reports only `grounded`, so a lift cannot start when stood on (§3.1b item 2) | `crates/tungsten-kit/src/motion/platformer.rs:426`, `:568-571` at `ba47fef` | Fixed in M79 (`D-208`): `PlatformerController::ground` | 01's elevator boards and holds on it |
 
 ## 7. Overlap with M76
 

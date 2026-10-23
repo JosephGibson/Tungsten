@@ -546,7 +546,8 @@ fn swap_driver(world: &mut World, enemy: Entity, frozen: bool) {
         if let Some(mover) = world.get::<TopDownMover>(enemy).cloned() {
             world.remove_component::<TopDownMover>(enemy);
             world.insert(enemy, Displaced(mover));
-            world.insert(enemy, PlatformerController::new(1.0, 1.0));
+            let borrowed = PlatformerController::new(1.0, 1.0).with_filter(super::walk_filter());
+            world.insert(enemy, borrowed);
         }
     } else if let Some(Displaced(mover)) = world.get::<Displaced>(enemy).cloned() {
         world.remove_component::<Displaced>(enemy);

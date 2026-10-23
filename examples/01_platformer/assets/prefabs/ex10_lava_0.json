@@ -1,41 +1,59 @@
 {
   "components": {
     "contact_damage": {
-      "damage": 34,
+      "damage": {
+        "damage.fire": 16
+      },
       "filter": {
         "all": [
           "team.player"
         ]
       },
-      "knockback": 560,
+      "interval": 0.1,
+      "knockback": 1500,
       "offset": [
-        256.0,
-        35.0
+        128.0,
+        97.0
       ],
+      "push_always": true,
       "shape": {
         "aabb": [
-          256.0,
-          29.0
+          128.0,
+          95.0
         ]
       }
     },
-    "glow": {
-      "color": [
-        255,
-        120,
-        40,
-        230
-      ],
-      "light": 1.3,
-      "offset": [
-        256.0,
-        6
-      ],
-      "radius": 220
+    "cues": {
+      "hit": [
+        {
+          "sound": {
+            "id": "ex10_lava_sizzle_sfx",
+            "min_interval": 0.3
+          }
+        }
+      ]
     },
     "hazard": {
       "fire": false,
       "lava": true
+    },
+    "rigid_body": {
+      "kind": "static",
+      "layers": [
+        4
+      ],
+      "mask": [],
+      "offset": [
+        128.0,
+        14.0
+      ],
+      "shape": {
+        "half_extents": [
+          128.0,
+          8.0
+        ],
+        "kind": "aabb"
+      }
     },
     "spawn_children": [
       {

@@ -14,9 +14,12 @@ use tungsten::kit::ContactDamage;
 pub struct AmbientEmitter;
 
 /// A hazard the map places: spikes, a fireball on its oscillator, or a
-/// lava basin's surface, whose touch the kit's contact damage deals. Its
-/// prefab names it `hazard`. Cold douses a fire; lava, never. A basin's
-/// child touches what is frozen with fire, which blows it apart.
+/// lava basin, whose touch the kit's contact damage deals. Its prefab names
+/// it `hazard`. Cold douses a fire and crusts a basin over for a while
+/// (`lava`). A basin holds the player on its surface and its touch burns and
+/// throws it up and out of the pool, in its invulnerability window too
+/// (`push_always`); its child touches what is frozen with fire, which blows
+/// it apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
@@ -83,7 +86,8 @@ impl Default for Zoom {
 /// entity's point, its sprite's top-left: a lantern's, a crystal's, a
 /// fireball's, the player's lantern. Its prefab names it `glow`. The halo
 /// and the light pulse by the level's clock, phased by the entity's save
-/// ID; a hidden glow draws nothing and its light goes dark.
+/// ID, or its column when a save names it not; a hidden glow draws nothing
+/// and its light goes dark.
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Glow {
@@ -132,7 +136,7 @@ pub struct GlowParts {
     pub halo: Option<Entity>,
     pub core: Option<Entity>,
     pub light: Option<Entity>,
-    /// The pulse's phase, from the owner's save ID.
+    /// The pulse's phase, from the owner's save ID or its column.
     pub phase: f32,
 }
 

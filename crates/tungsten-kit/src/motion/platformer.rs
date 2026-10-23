@@ -207,6 +207,9 @@ pub struct PlatformerController {
     /// Its first step has run. Not saved: a loaded controller takes its
     /// still first step.
     started: bool,
+    /// The body its last step ended standing on. Not saved: a loaded
+    /// controller reports none until a step after its still first one.
+    ground: Option<Entity>,
 }
 
 impl PlatformerController {
@@ -252,6 +255,7 @@ impl PlatformerController {
             cut_armed: false,
             air_jumps_left: 0,
             started: false,
+            ground: None,
         }
     }
 
@@ -427,6 +431,16 @@ impl PlatformerController {
         self.grounded
     }
 
+    /// The body it ended its last step standing on, a moving deck, a slab
+    /// or another body, as its ground probe or its landing met it; `None`
+    /// on tiles, in the air, and after a load until a step past its still
+    /// first one. A game reads it after the step, as it reads
+    /// [`grounded`](Self::grounded): a lift that starts when stood on.
+    #[must_use]
+    pub fn ground(&self) -> Option<Entity> {
+        self.ground
+    }
+
     /// Its own velocity, which its next step starts from: what a speed
     /// limit caps and a clamp stops on an axis.
     pub(crate) fn velocity_mut(&mut self) -> &mut Vec2 {
@@ -586,6 +600,7 @@ impl PlatformerController {
         }
 
         // The timers, last, so the getters read the step's end.
+        self.ground = if self.grounded { ground } else { None };
         self.lock_left = count_down(self.lock_left, dt);
         self.buffer_left = count_down(self.buffer_left, dt);
         self.coyote_left = if self.grounded {
@@ -844,6 +859,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             cut_armed: save.cut_armed,
             air_jumps_left: save.air_jumps_left,
             started: false,
+            ground: None,
         })
     }
 }

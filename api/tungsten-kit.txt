@@ -726,6 +726,7 @@ pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
+pub fn tungsten_kit::ContactDamage::push_always(&self) -> bool
 pub fn tungsten_kit::ContactDamage::set_touches(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::ContactTouch>)
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
@@ -736,6 +737,7 @@ pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_knockback(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::ContactDamage::with_penetration(self, tungsten_kit::Penetration) -> Self
+pub fn tungsten_kit::ContactDamage::with_push_always(self, bool) -> Self
 pub fn tungsten_kit::ContactDamage::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::ContactDamage::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::ContactDamage
@@ -2583,6 +2585,7 @@ impl tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)
@@ -4447,6 +4450,7 @@ pub fn tungsten_kit::ContactDamage::new(f32) -> Self
 pub fn tungsten_kit::ContactDamage::offset(&self) -> glam::f32::vec2::Vec2
 pub fn tungsten_kit::ContactDamage::parts(&self) -> &[tungsten_kit::DamagePart]
 pub fn tungsten_kit::ContactDamage::penetration(&self) -> core::option::Option<&tungsten_kit::Penetration>
+pub fn tungsten_kit::ContactDamage::push_always(&self) -> bool
 pub fn tungsten_kit::ContactDamage::set_touches(&mut self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::ContactTouch>)
 pub fn tungsten_kit::ContactDamage::shape(&self) -> core::option::Option<tungsten_kit::HitShape>
 pub fn tungsten_kit::ContactDamage::tags(&self) -> &tungsten_kit::Tags
@@ -4457,6 +4461,7 @@ pub fn tungsten_kit::ContactDamage::with_interval(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_knockback(self, f32) -> Self
 pub fn tungsten_kit::ContactDamage::with_parts(self, impl core::iter::traits::collect::IntoIterator<Item = tungsten_kit::DamagePart>) -> Self
 pub fn tungsten_kit::ContactDamage::with_penetration(self, tungsten_kit::Penetration) -> Self
+pub fn tungsten_kit::ContactDamage::with_push_always(self, bool) -> Self
 pub fn tungsten_kit::ContactDamage::with_shape(self, tungsten_kit::HitShape, glam::f32::vec2::Vec2) -> Self
 pub fn tungsten_kit::ContactDamage::with_tags(self, tungsten_kit::Tags) -> Self
 impl core::clone::Clone for tungsten_kit::ContactDamage
@@ -6367,6 +6372,7 @@ impl tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
+pub fn tungsten_kit::PlatformerController::ground(&self) -> core::option::Option<tungsten_core::ecs::entity::Entity>
 pub fn tungsten_kit::PlatformerController::grounded(&self) -> bool
 pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)

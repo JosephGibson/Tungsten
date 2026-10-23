@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_shore_big_0_1_0"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_shore_big_0_1_1"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_shore_big_0_1_2"
+    },
+    {
+      "duration_ms": 160,
+      "sprite": "ex10_pool_shore_big_0_1_3"
+    }
+  ],
+  "looping": true
+}

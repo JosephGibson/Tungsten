@@ -6,6 +6,30 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.100.0] - 2026-10-23
+
+Summary: M79, example 01's level and title pass from the owner's notes of 2026-10-22 (plan archived at `docs/plans/archive/1.0/phase6-milestone-79-example-01-level-title.md`; `D-208`): the kit's contact damage can push a target inside its window, and its platformer controller reports the body it stands on; example 01's lava is a surface the courier never sinks below, biting, burning and throwing toward the nearer bank, with a crust under the ice spray; an elevator is the only way to the mine's upper level and its fourth beetle; a beetle's paw and charge are drawn; the hollow's cave mouth is drawn, the ravine's pool ending against fallen stones; the difficulty picker shows a card for each difficulty in the template and 01; and 01 saves at schema 10, migrating 0.99's.
+
+### Added
+
+- **The kit's `ContactDamage::with_push_always` and `PlatformerController::ground`** (`D-208`): a touch whose request the resolution ignores for the target's invulnerability window still pushes it by its knockback, once a step, with no damage, flash or `Damaged` (scene `push_always`); the body a controller's last step ended standing on, not saved, none after a load until the step after its still first one. Additions in the break ledger; the `contact_damage` and `damage_resolve` rows within ±3 % of the code before them.
+- **Example 01's level and title pass** (`D-208`): lava's crust under 0.5 s of ice spray, held 6 s, its cracks glowing in three stages, set with steam and a hiss; the mine's elevator, the only way up to an upper level on timber supports with a fourth beetle, starting when stood on and holding for an unsafe rider, with start and stop sounds and its cable from the gantry; a beetle's glint, dust and streaks as it paws and charges; the hollow's cave mouth drawn as its own rock, the ravine's pool running out against fallen stones, with vines, glowcaps, crystals and a stalagmite; a sizzle at lava's bite.
+
+### Changed
+
+- **The template's difficulty picker** (`D-208`): a card for each difficulty, Normal focused, each with its name, its rank's three squares and `game::difficulty_note`'s facts a line each; example 01's shell copy the same; `docs/getting-started.md` gives the note's form.
+- **Example 01's lava** (`D-208`): a surface in physics layer 4 that only the courier's controller meets, its touch 16 fire every 0.1 s pushing up and toward the nearer bank past the window, where it bit 34; the lake two pools round its stone and the shelf pool a column wider; enemies' controllers leave layer 4 out.
+- **Example 01's save** (`D-208`): schema 10; only what a save names takes a save ID, so an art change moves none; each basin's chill and crust and the elevator's trip are saved; `migrate` maps schema 9's IDs to their places, drops the old ping-pong deck and sets a courier saved in or under a lake on its nearest bank, taking schemas 7 and 8 through 9.
+- **Records**: the feedback plan's §3.1b landing and K16 and K17, the 01 design's notes for the pass, the break ledger, example 01's READMEs, the template's README and the register.
+
+### Removed
+
+- **Example 01**: the steam and heat columns at the hollow's mouth (`steam_big`, `steam_small`, `heat`) and the pool's wall-edge tile at its east end.
+
+### Fixed
+
+- **Example 01** (`D-208`): a courier fallen into lava sank under its surface while the window ignored the next touches (feedback K16); the cave mouth's opening showed the ravine's far wall; the ravine's pool stopped in mid-air at the mouth.
+
 ## [0.99.0] - 2026-10-22
 
 Summary: M78, example 01's quick fixes from the owner's notes of 2026-10-22 (plan archived at `docs/plans/archive/1.0/phase6-milestone-78-example-01-quick-fixes.md`; `D-207`): the kit sends `ImmunePart` for each part of a hit that an immunity drops, so example 01's fire and lava blow a frozen wisp apart; example 01's crawler lunge lands, its orbs glow and sound like potions with eight placed around the level, its death takes two seconds with a clip and a sound, its ambience is half as loud, its area titles are bold over no box, its staff light starts off, four more bats and a leashed crawler join the map, its cave ceilings close, and it saves at schema 9, migrating 0.98's.

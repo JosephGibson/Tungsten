@@ -61,8 +61,8 @@ pixel) for any hand-authored sprite. The modules:
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
 | `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy and the five enemies (wisp, crawler, beetle, bat, troll) |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
-| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, and its mist plumes |
-| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
+| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust stages, the elevator's gantry, cage and cable, and the falls' plume |
+| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
@@ -173,11 +173,11 @@ tiles for the decorations layer, over the far walls and under the terrain. The
 lava's heat haze (`haze`, `haze_small`) is the plume in the palette's warm
 translucents (`э` to `Д`), and the river darkens below its first rows
 (`river_dark_1`, `river_dark_2`). The rising mist is animated
-(`scenery.RISING`): the falls' `plume`, and at the hollow's mouth the `steam`
-and `steam_small` columns (`steam_column`: wisps from a narrow foot that sway
-and widen as they climb) and the warm `heat`, each drawn at six phases of one
-loop, 150 ms a frame, each tile of its cut its own clip
-(`<name>_big_<row>_<col>`, frames `_0` to `_5`).
+(`scenery.RISING`): the falls' `plume`, drawn at six phases of one loop,
+150 ms a frame, each tile of its cut its own clip (`<name>_big_<row>_<col>`,
+frames `_0` to `_5`). The ravine's pool runs out against fallen stones at its
+east end, `pool_shore`: four frames of 3 × 2 tiles, each tile with art a clip
+(`pool_shore_big_<row>_<col>`).
 
 Cosmetic RNG streams use the first eight bytes of SHA-256 of the asset name,
 not Python's process-randomized hash. Changing one asset does not perturb others.
@@ -210,7 +210,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | Field | What it places |
 | --- | --- |
 | `pit` | The ball pit's interior, `left` to `right` and `rim` to `floor`, lined by the pit's tiles |
-| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain, a `ContactDamage` hazard over its surface, a child `ex10_lava_frost_<i>` whose fire touches only what is frozen and, with `light`, its glow and light |
+| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain: lava props, a static surface body at its skin in physics layer 4 (`LAVA_LAYER`) that only the player's controller meets, a `ContactDamage` touch from 4 px over the skin to the bed (`lava_bed`: 16 fire, a 1,500 push that passes the window, every 0.1 s), a child `ex10_lava_frost_<i>` on the same box whose fire touches only what is frozen and, with `light`, its glow and light |
 | `river` | The bridge's river: its surface row, its `rapids` and `rocks` columns, and its depths in the background layer |
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
@@ -247,8 +247,8 @@ when a run starts, each object taking the run's next save ID:
 | `props` | Every prop, at its tile position | `ex10_prop_<sprite>_<depth>`: its sprite, behind (`back`) or among (`world`) the world's sprites, and its animation |
 | `slabs` | One box per thin platform: slab runs that share a row, a depth and a material and touch end to end merge, so a body sunk into a deck meets no join | `ex10_slab_<width>x<height>`: a static body in physics layer 1 (stone); `ex10_wood_<width>x<height>` for the rope bridge's and the scaffolds' wooden decks, in layer 3 |
 | `iron` | The mine's iron cladding, merged into the fewest boxes a greedy pass finds (`level.boxes`) | `ex10_iron_<width>x<height>`: a static body in physics layer 2 |
-| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's touch over its surface row, `hazard.lava` set so cold never douses it, the lake with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage` (34 a touch, pushing 560 px/s away) |
-| `platforms` | The moving platforms | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width |
+| `hazards` | The lava basins, and the spikes and fireballs `level.json`'s `hazards` places (none today) | `ex10_lava_<n>`, each basin's surface body and its touch to the bed, `hazard.lava` set so cold never douses it, the lake's east pool with its glow; `ex10_spikes`; `ex10_fire_<n>`, each fireball's own: its sine motion on the kit's `oscillator`, starting where the sine stands at time 0. All hurt through the kit's `contact_damage`, the spikes and fireballs 34 a touch, pushing 560 px/s away |
+| `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator (`elevator { rise, speed }`), a cage drawn by `lift_deck_elevator` that the game moves, with the gantry's `lift_sheave` marker for its cable |
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, and an `iron` marker at each loose block's centre | None: the game reads them by name |
