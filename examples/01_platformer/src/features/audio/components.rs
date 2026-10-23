@@ -5,9 +5,10 @@ use tungsten::core::{Entity, Voice};
 
 /// The music playing: the exploration loop, which plays on at 0 under
 /// pause and game over, and pause's loop while pause is on top; the wisps'
-/// shared hum, whose volume follows the nearest wisp, and the black holes',
-/// the nearest open hole; and the combat layer over the exploration while
-/// an enemy sees the player.
+/// shared hum, whose volume follows the nearest wisp, the black holes', the
+/// nearest open hole, and the burning crates' crackle, the nearest burning
+/// crate; and the combat layer over the exploration while an enemy sees
+/// the player.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,
@@ -18,6 +19,9 @@ pub struct Music {
     pub holes: Option<Voice>,
     /// The holes' hum's volume last set.
     pub holes_level: f32,
+    pub crackle: Option<Voice>,
+    /// The fires' crackle's volume last set.
+    pub crackle_level: f32,
     pub combat: Option<Voice>,
     /// The combat layer's volume last set.
     pub combat_level: f32,
@@ -151,11 +155,33 @@ pub enum Sound {
     NotReady,
     /// An orb dropped by a kill.
     OrbDropped,
+    /// A crate catching fire.
+    CrateIgnited,
+    /// A burnt crate falling in.
+    CrateCollapsed,
+    /// A keg's or a bomb's fuse lit.
+    FuseLit,
+    /// A keg's or a bomb's detonation.
+    KegBlasted,
+    /// A goblin's throw, a rock or a bomb.
+    RockThrown,
+    /// A goblin's rock clacking on a hard landing, or crumbling.
+    RockHit,
+    /// A goblin's cackle on its alert.
+    GoblinCackled,
+    /// A troll's swipe.
+    TrollSwiped,
+    /// A troll's grunt as it winds up its slam.
+    TrollGrunted,
+    /// An enemy's alert from its patrol or its way home: the sting.
+    Alerted,
+    /// A goblin's stab with its knife.
+    GoblinStabbed,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 54] = [
+    pub const ALL: [Sound; 65] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -210,6 +236,17 @@ impl Sound {
         Sound::Switched,
         Sound::NotReady,
         Sound::OrbDropped,
+        Sound::CrateIgnited,
+        Sound::CrateCollapsed,
+        Sound::FuseLit,
+        Sound::KegBlasted,
+        Sound::RockThrown,
+        Sound::RockHit,
+        Sound::GoblinCackled,
+        Sound::TrollSwiped,
+        Sound::TrollGrunted,
+        Sound::Alerted,
+        Sound::GoblinStabbed,
     ];
 
     /// Its cue event's name.
@@ -270,6 +307,17 @@ impl Sound {
             Sound::Switched => "switched",
             Sound::NotReady => "not_ready",
             Sound::OrbDropped => "orb_dropped",
+            Sound::CrateIgnited => "crate_ignited",
+            Sound::CrateCollapsed => "crate_collapsed",
+            Sound::FuseLit => "fuse_lit",
+            Sound::KegBlasted => "keg_blasted",
+            Sound::RockThrown => "rock_thrown",
+            Sound::RockHit => "rock_hit",
+            Sound::GoblinCackled => "goblin_cackled",
+            Sound::TrollSwiped => "troll_swiped",
+            Sound::TrollGrunted => "troll_grunted",
+            Sound::Alerted => "alerted",
+            Sound::GoblinStabbed => "goblin_stabbed",
         }
     }
 }

@@ -25,6 +25,10 @@ use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::enemies::beetle;
 use crate::features::player::{self, BODY_OFFSET};
+use crate::features::props::{
+    self,
+    components::{Crate, Keg},
+};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock};
 use crate::features::toys::systems::shift;
@@ -177,18 +181,21 @@ pub fn paths(world: &mut World) {
 }
 
 /// What a bullet's step can meet beside the kit's hurtboxes: a ball, an
-/// iron block, or a live beetle's hurtbox, which the bullets' filter skips.
+/// iron block, a crate, a keg, or a live beetle's hurtbox, which the
+/// bullets' filter skips.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum What {
     Ball,
     Iron,
+    Crate,
+    Keg,
     Beetle,
 }
 
 /// A body a bullet's step met: when, as a fraction of the step, the body,
 /// its save ID and what it is, the bullet's centre there, the face's
-/// outward normal, and how far the body moves on from there to the step's
-/// end.
+/// outward normal, how far the body moves on from there to the step's end,
+/// and whether the bullet began the step inside it.
 #[derive(Debug, Clone, Copy)]
 struct Contact {
     t: f32,
@@ -198,10 +205,12 @@ struct Contact {
     point: Vec2,
     normal: Vec2,
     moved: Vec2,
+    inside: bool,
 }
 
 /// One body over the step: its centre at the step's start and end, its
-/// shape, its save ID and what it is.
+/// shape, its save ID, what it is, and whether it stops a shot: all but a
+/// crate that is not frozen, which a shot passes as it passes wood.
 #[derive(Debug, Clone, Copy)]
 struct Swept {
     body: Entity,
@@ -210,6 +219,7 @@ struct Swept {
     start: Vec2,
     end: Vec2,
     shape: Shape,
+    stops: bool,
 }
 
 /// A shape's half extents.
@@ -220,9 +230,11 @@ fn half_of(shape: Shape) -> Vec2 {
     }
 }
 
-/// The step's balls and iron blocks whose sweep, from `PrevPosition` to
-/// `Position`, meets the box `low` to `high` about every bullet's path, and
-/// its live beetles' hurtboxes: a body outside it meets no bullet (P6).
+/// The step's balls, iron blocks, crates and kegs whose sweep, from
+/// `PrevPosition` to `Position`, meets the box `low` to `high` about every
+/// bullet's path, and its live beetles' hurtboxes: a body outside it meets
+/// no bullet (P6). The balls and iron come from the query's columns; the
+/// few other rows are looked up.
 fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
     let mut swept = Vec::new();
     for (body, at, prev, collider, id, iron, ball) in world.query::<(
@@ -238,6 +250,10 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
             What::Iron
         } else if ball.is_some() {
             What::Ball
+        } else if world.has::<Crate>(body) {
+            What::Crate
+        } else if world.has::<Keg>(body) {
+            What::Keg
         } else {
             continue;
         };
@@ -253,6 +269,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
             start,
             end,
             shape: collider.shape,
+            stops: what != What::Crate || world.has::<Frozen>(body),
         });
     }
     for (body, at, prev, hurtbox, health, id) in world.query::<(
@@ -274,6 +291,7 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
             start: start + hurtbox.offset(),
             end: at.0 + hurtbox.offset(),
             shape: hurtbox.shape().shape(),
+            stops: true,
         });
     }
     swept
@@ -336,16 +354,33 @@ fn box_contact(start: Vec2, motion: Vec2, half: Vec2) -> Option<(f32, Vec2)> {
     (enter <= exit && (0.0..=1.0).contains(&enter)).then_some((enter, normal))
 }
 
-/// The first body the bullet's path `from` to `to` meets, each swept with
-/// its own step's motion: the earliest, then the lower save ID.
+/// The first body that stops a shot the bullet's path `from` to `to` meets,
+/// each swept with its own step's motion: the earliest, then the lower
+/// save ID.
 fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
+    contacts(swept, from, to, true).into_iter().next()
+}
+
+/// The crates the path `from` to `to` enters, each once: those it starts
+/// inside it entered on an earlier step. Earliest first.
+fn passed_crates(swept: &[Swept], from: Vec2, to: Vec2) -> Vec<Contact> {
+    contacts(swept, from, to, false)
+        .into_iter()
+        .filter(|contact| !contact.inside)
+        .collect()
+}
+
+/// The bodies the path `from` to `to` meets that stop a shot, or else the
+/// ones that do not, each swept with its own step's motion: earliest
+/// first, then the lower save ID.
+fn contacts(swept: &[Swept], from: Vec2, to: Vec2, stopping: bool) -> Vec<Contact> {
     let path = to - from;
     let (low, high) = (
         from.min(to) - Vec2::splat(BULLET_RADIUS),
         from.max(to) + Vec2::splat(BULLET_RADIUS),
     );
-    let mut first: Option<Contact> = None;
-    for body in swept {
+    let mut met: Vec<Contact> = Vec::new();
+    for body in swept.iter().filter(|body| body.stops == stopping) {
         let half = half_of(body.shape);
         let (min, max) = (
             body.start.min(body.end) - half,
@@ -356,29 +391,35 @@ fn first_body(swept: &[Swept], from: Vec2, to: Vec2) -> Option<Contact> {
         }
         let start = from - body.start;
         let motion = path - (body.end - body.start);
-        let met = match body.shape {
-            Shape::Circle { radius } => circle_contact(start, motion, radius + BULLET_RADIUS),
+        let (hit, inside) = match body.shape {
+            Shape::Circle { radius } => (
+                circle_contact(start, motion, radius + BULLET_RADIUS),
+                start.length() <= radius + BULLET_RADIUS,
+            ),
             Shape::Aabb { half_extents } => {
-                box_contact(start, motion, half_extents + Vec2::splat(BULLET_RADIUS))
+                let half = half_extents + Vec2::splat(BULLET_RADIUS);
+                (
+                    box_contact(start, motion, half),
+                    start.abs().cmple(half).all(),
+                )
             }
         };
-        let Some((t, normal)) = met else {
+        let Some((t, normal)) = hit else {
             continue;
         };
-        let earlier = first.is_none_or(|best| t < best.t || (t == best.t && body.id < best.id));
-        if earlier {
-            first = Some(Contact {
-                t,
-                body: body.body,
-                id: body.id,
-                what: body.what,
-                point: from + path * t,
-                normal,
-                moved: (body.end - body.start) * (1.0 - t),
-            });
-        }
+        met.push(Contact {
+            t,
+            body: body.body,
+            id: body.id,
+            what: body.what,
+            point: from + path * t,
+            normal,
+            moved: (body.end - body.start) * (1.0 - t),
+            inside,
+        });
     }
-    first
+    met.sort_by(|a, b| a.t.total_cmp(&b.t).then(a.id.cmp(&b.id)));
+    met
 }
 
 /// [`hits`]' readers of the kit's projectile events.
@@ -505,6 +546,13 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
                 audio::play(world, Sound::Splintered, at);
             }
         }
+        let crates = passed_crates(&swept, from, to);
+        for contact in crates
+            .into_iter()
+            .filter(|contact| contact.t <= reach && stop.is_none_or(|t| contact.t < t))
+        {
+            splinter(world, contact, path / length);
+        }
         let spent = world
             .get::<Projectile>(bullet)
             .is_some_and(Projectile::is_spent);
@@ -515,6 +563,9 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
             }
             Some(contact) if contact.what == What::Beetle => {
                 shell(world, bullet, contact, along_shot, spent);
+            }
+            Some(contact) if contact.what == What::Keg => {
+                keg(world, bullet, contact, spent);
             }
             Some(contact) => kick(world, bullet, contact, along_shot, spent),
             None => {
@@ -601,8 +652,39 @@ fn end_at(world: &mut World, bullet: Entity, point: Vec2, spent: bool) {
     }
 }
 
-/// A shot's ball: a frozen one shatters, another takes the kick along the
-/// shot over its mass; the shot ends.
+/// A crate the shot passes, as it passes wood: it takes the kick along the
+/// shot over its mass, with splinters and their sound where the shot went
+/// in.
+fn splinter(world: &mut World, contact: Contact, along: Vec2) {
+    let inverse = world
+        .get::<RigidBody>(contact.body)
+        .map_or(0.0, |body| body.inv_mass);
+    if let Some(velocity) = world.get_mut::<Velocity>(contact.body) {
+        velocity.0 += along * BALL_KICK * inverse;
+    }
+    wake(world, contact.body);
+    spawn_burst(world, "ex10_poof", contact.point);
+    audio::play(world, Sound::Splintered, contact.point);
+}
+
+/// A shot's keg: a frozen one shatters, another goes off, credited to the
+/// shooter; the shot ends.
+fn keg(world: &mut World, bullet: Entity, contact: Contact, spent: bool) {
+    if world.has::<Frozen>(contact.body) {
+        let at = contact.point - contact.normal * BULLET_RADIUS;
+        cascade::queue(world, CascadeKind::Shatter, Some(contact.body), at, at, 0.0);
+    } else {
+        let shooter = world
+            .get::<Source>(bullet)
+            .and_then(|source| world.get::<SaveId>(source.entity()))
+            .map(|id| id.0);
+        props::set_off(world, contact.body, None, shooter);
+    }
+    end_at(world, bullet, contact.point, spent);
+}
+
+/// A shot's ball, or a frozen crate: a frozen one shatters, another takes
+/// the kick along the shot over its mass; the shot ends.
 fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
     if world.has::<Frozen>(contact.body) {
         let at = contact.point - contact.normal * BULLET_RADIUS;

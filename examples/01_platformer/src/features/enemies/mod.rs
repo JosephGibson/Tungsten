@@ -1,6 +1,6 @@
-//! The enemies (01 (c)): a fire wisp, a frost crawler, a rust beetle, a
-//! cave bat and a cave troll, from their prefabs, which the map's `enemies`
-//! layer places and the summon slot summons. Each thinks on the kit's state machine (`D-158`): it patrols,
+//! The enemies (01 (c), (g)): a fire wisp, a frost crawler, a rust beetle,
+//! a cave bat, a cave troll and a goblin sapper, from their prefabs, which
+//! the map's `enemies` layer places and the summon slot summons. Each thinks on the kit's state machine (`D-158`): it patrols,
 //! spots the player by line of sight, alerts its neighbours, chases,
 //! attacks after a tell, searches where it last saw the player and returns
 //! home. Their prefabs hold their kit items: a kinematic body on a mover
@@ -14,7 +14,8 @@
 //! saw, the hold that stops a dead, dormant, frozen or stunned enemy's
 //! machine and sets a frozen one's touch aside, the difficulty's factor on
 //! health and damage, a frozen flyer's
-//! fall, a bat's roost, a troll's hold and throws, the deaths' bursts, their
+//! fall, a bat's roost, a troll's hold and throws, a goblin's throws, its
+//! stab, its hops, its fidgets and its flight, the deaths' bursts, their
 //! clips and the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
 //! places more, [`SUMMON_CAP`] at most, the oldest going.
@@ -25,6 +26,7 @@ pub mod components;
 pub mod crawler;
 pub mod draw;
 pub mod drops;
+pub mod goblin;
 pub mod systems;
 pub mod troll;
 pub mod wisp;
@@ -32,9 +34,8 @@ pub mod wisp;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
 use tungsten::kit::{
-    ANIMATION_TICK, CueEvent, CuesOnEvent, Health, KNOCKBACK, Modifier, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER,
-    ensure_phases,
+    ANIMATION_TICK, Health, KNOCKBACK, Modifier, PICKUP_TICK, PLATFORMER_CONTROLLER, Phase,
+    PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER, ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -59,8 +60,13 @@ pub const ALERT_REACH: f32 = 320.0;
 pub const DORMANT_PAST: f32 = 1200.0;
 /// The seconds an enemy searches where it last saw the player.
 pub const SEARCH_SECS: f32 = 3.0;
-/// The seconds an attack's recovery takes.
+/// The seconds an attack's recovery takes, but the troll's and the
+/// goblin's own ([`KindInfo::recover`]).
 pub const RECOVER_SECS: f32 = 0.5;
+/// The seconds a fresh alert's "!" shows over an enemy, and how long a
+/// search lasts before its "?" shows.
+pub const ALERT_MARK_SECS: f32 = 0.8;
+pub const SEARCH_MARK_AFTER: f32 = 0.4;
 /// The most summoned enemies live at once (Q12), beside the dummies' four.
 pub const SUMMON_CAP: usize = 6;
 /// The source of the difficulty's modifiers on an enemy's stats.
@@ -97,7 +103,8 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
 /// eye from there facing right, its mass for impacts, its sight's reach,
 /// its alert's seconds, the black hole's hold on it, which the pushes take
 /// too, its knockback's resist as its prefab sets it (the kit's
-/// `Knockback` has no getter), and its art.
+/// `Knockback` has no getter), its art, and its recovery's seconds after
+/// an attack.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KindInfo {
     pub prefab: &'static str,
@@ -113,6 +120,7 @@ pub struct KindInfo {
     pub icon: &'static str,
     pub ice: &'static str,
     pub flyer: bool,
+    pub recover: f32,
 }
 
 impl EnemyKind {
@@ -133,6 +141,7 @@ impl EnemyKind {
                 resist: 0.0,
                 icon: "ex10_icon_wisp",
                 ice: "ex10_status_ice_wisp",
+                recover: RECOVER_SECS,
                 flyer: true,
             },
             EnemyKind::Crawler => KindInfo {
@@ -148,6 +157,7 @@ impl EnemyKind {
                 resist: 0.0,
                 icon: "ex10_icon_crawler",
                 ice: "ex10_status_ice_crawler",
+                recover: RECOVER_SECS,
                 flyer: false,
             },
             EnemyKind::Beetle => KindInfo {
@@ -163,6 +173,7 @@ impl EnemyKind {
                 resist: 0.5,
                 icon: "ex10_icon_beetle",
                 ice: "ex10_status_ice_beetle",
+                recover: RECOVER_SECS,
                 flyer: false,
             },
             EnemyKind::Bat => KindInfo {
@@ -178,6 +189,7 @@ impl EnemyKind {
                 resist: 0.0,
                 icon: "ex10_icon_bat",
                 ice: "ex10_status_ice_bat",
+                recover: RECOVER_SECS,
                 flyer: true,
             },
             EnemyKind::Troll => KindInfo {
@@ -193,6 +205,23 @@ impl EnemyKind {
                 resist: 1.0,
                 icon: "ex10_icon_troll",
                 ice: "ex10_status_ice_troll",
+                recover: troll::RECOVER,
+                flyer: false,
+            },
+            EnemyKind::Goblin => KindInfo {
+                prefab: "goblin",
+                frame: 64.0,
+                half: Vec2::new(9.0, 20.0),
+                centre: Vec2::new(34.0, 41.0),
+                eye: Vec2::new(41.0, 24.0),
+                mass: 50.0,
+                sight: 520.0,
+                alert: 0.4,
+                pull: 0.12,
+                resist: 0.0,
+                icon: "ex10_icon_goblin",
+                ice: "ex10_status_ice_goblin",
+                recover: goblin::RECOVER,
                 flyer: false,
             },
         }
@@ -200,14 +229,14 @@ impl EnemyKind {
 }
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
-/// name; the `spotted` cue the alert sting plays from; the throws in
-/// flight; in the intent phase the sight, the alerts and the hold before
-/// the state machine, whose hooks run each kind's rules; in the move phase
-/// the trolls' holds after the movers; in the overlap phase the orbs
-/// collected; in the react phase the deaths; in `PreUpdate` the orbs'
-/// adoption; in the present phase the clips after the kit's animation
-/// tick, the beetles' dust and the dropped orbs' blink; and the trolls'
-/// bars drawn over the sprites.
+/// name; the throws in flight; in the intent phase the sight, the alerts,
+/// the marks' clocks and the hold before the state machine, whose hooks
+/// run each kind's rules; in the move phase the trolls' holds after the
+/// movers; in the overlap phase the orbs collected; in the react phase the
+/// deaths; in `PreUpdate` the orbs' adoption; in the present phase the
+/// clips after the kit's animation tick, the beetles' dust and the dropped
+/// orbs' blink; and the trolls' bars and slam rings and the enemies' marks
+/// drawn over the sprites.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
@@ -219,11 +248,9 @@ impl Plugin for EnemiesPlugin {
         world.insert_resource(Throws::default());
         world.resource_mut::<Extracts>().add_sprites(draw::bars);
         world.resource_mut::<Extracts>().add_sprites(draw::charges);
+        world.resource_mut::<Extracts>().add_sprites(draw::rings);
+        world.resource_mut::<Extracts>().add_sprites(draw::marks);
         world.insert_resource(beetle::Dust::default());
-        CuesOnEvent::<Spotted>::new("spotted", |spotted: &Spotted| {
-            Some(CueEvent::new(spotted.player, spotted.at).with_other(spotted.spotter))
-        })
-        .build(schedule, world);
         ensure_phases(schedule);
         systems::machine().build(schedule, world);
         let sight = system("enemy_sight", systems::sight).before("enemy_alerts");
@@ -235,7 +262,8 @@ impl Plugin for EnemiesPlugin {
         let hold = system("enemy_hold", systems::hold).before(ENEMY_STATES);
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
-        for desc in [sight, alerts, hold, fire, chill] {
+        let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
+        for desc in [sight, alerts, hold, fire, chill, marks] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
         let holds = system("troll_holds", troll::holds)

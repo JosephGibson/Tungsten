@@ -68,7 +68,9 @@ pub fn states(world: &mut World) {
 /// which takes no fire, or a burning frost crawler, which takes no cold);
 /// `shattered` applied queues its shatter, and `frozen` and `shocked`
 /// applied send their reactions for the hints. Each queued entry runs from
-/// the next step. A blow, a physical part that is not a tick, on a `flesh`
+/// the next step, an explosion or a steam burst crediting its part's
+/// source's save ID: none when the source has gone, the player's when the
+/// part named none. A blow, a physical part that is not a tick, on a `flesh`
 /// target or the courier spurts blood where it landed, once a target a
 /// step, and `bleeding` applied spurts again; a target frozen this step
 /// (frozen now, not as the resolve began), in place too, sounds its freeze
@@ -84,7 +86,13 @@ pub fn reactions(
         .cloned()
         .unwrap_or_default();
     let player = world.get_resource::<Run>().map(|run| run.player);
-    let mut queued: Vec<(CascadeKind, Entity, f32)> = Vec::new();
+    let mine = cascade::player_credit(world);
+    let credit = |world: &World, source: Option<Entity>| match source {
+        Some(source) if world.is_alive(source) => world.get::<SaveId>(source).map(|id| id.0),
+        Some(_) => None,
+        None => mine,
+    };
+    let mut queued: Vec<(CascadeKind, Entity, f32, Option<u64>)> = Vec::new();
     let mut blows: Vec<(Entity, Option<Vec2>)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<DamagedPart>>() {
         for part in parts.read(events) {
@@ -93,11 +101,12 @@ pub fn reactions(
             }
             let fire = part.kinds.has(world, Kind::Fire.tag());
             let cold = part.kinds.has(world, Kind::Cold.tag());
+            let source = credit(world, part.source);
             if fire && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST));
+                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
             }
             if cold && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH));
+                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
             }
             let bleeds = Some(part.entity) == player || has_status(world, part.entity, FLESH);
             if bleeds
@@ -113,11 +122,12 @@ pub fn reactions(
             if part.periodic {
                 continue;
             }
+            let source = credit(world, part.source);
             if part.kinds.has(world, Kind::Fire.tag()) && states.frozen.contains(&part.entity) {
-                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST));
+                queued.push((CascadeKind::Explosion, part.entity, TARGET_BLAST, source));
             }
             if part.kinds.has(world, Kind::Cold.tag()) && states.burning.contains(&part.entity) {
-                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH));
+                queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
             }
         }
     }
@@ -126,7 +136,7 @@ pub fn reactions(
     if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
         for effect in applied.read(events) {
             match effect.id.as_deref() {
-                Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0)),
+                Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
                 Some("frozen") => seen.push(Reaction::Freeze),
                 Some("shocked") => seen.push(Reaction::Shock),
                 Some("bleeding") => spurts.push(effect.entity),
@@ -161,11 +171,11 @@ pub fn reactions(
             audio::play(world, Sound::Froze, at);
         }
     }
-    for (kind, target, strength) in queued {
+    for (kind, target, strength, source) in queued {
         let Some(at) = body_centre(world, target) else {
             continue;
         };
-        cascade::queue(world, kind, Some(target), at, at, strength);
+        cascade::queue_from(world, kind, Some(target), at, at, strength, source);
     }
 }
 

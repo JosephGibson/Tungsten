@@ -11,6 +11,7 @@ pub mod gun;
 pub mod level;
 pub mod lightning;
 pub mod player;
+pub mod props;
 pub mod run;
 pub mod spells;
 pub mod toys;

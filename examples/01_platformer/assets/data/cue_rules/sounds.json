@@ -505,22 +505,6 @@
     ]
   },
   {
-    "on": "spotted",
-    "filter": {
-      "all": [
-        "team.player"
-      ]
-    },
-    "do": [
-      {
-        "sound": {
-          "id": "ex10_enemy_spotted_sfx",
-          "min_interval": 0.5
-        }
-      }
-    ]
-  },
-  {
     "on": "splintered",
     "filter": {
       "all": [
@@ -861,6 +845,182 @@
       {
         "sound": {
           "id": "ex10_orb_pop_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "crate_ignited",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crate_ignite_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "crate_collapsed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crate_collapse_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "fuse_lit",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_fuse_hiss_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "keg_blasted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_keg_boom_sfx",
+          "min_interval": 0.06
+        }
+      }
+    ]
+  },
+  {
+    "on": "rock_thrown",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_rock_throw_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "rock_hit",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_rock_hit_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_cackled",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_cackle_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_stabbed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_stab_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_swiped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_swipe_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "troll_grunted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_troll_grunt_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "alerted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_enemy_spotted_sfx",
+          "min_interval": 0.5
         }
       }
     ]

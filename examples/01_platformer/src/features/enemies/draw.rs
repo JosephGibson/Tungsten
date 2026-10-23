@@ -1,17 +1,24 @@
 //! What the enemies draw over the sprites: each live troll's health bar
-//! over its head, its fill the share of health left, and a beetle's tell
-//! and charge: a glint swelling at its horn while it paws, three streaks
-//! behind it while it charges. Each is flat colour: one white texel of a
-//! particle sprite, tinted.
+//! over its head, its fill the share of health left; a beetle's tell and
+//! charge: a glint swelling at its horn while it paws, three streaks behind
+//! it while it charges; a troll's slam's dust ring growing on the ground
+//! over its tell; each flat colour, one white texel of a particle sprite,
+//! tinted. And each enemy's mark over its frame: "!" after a fresh alert,
+//! "?" through a search.
+
+use std::f32::consts::TAU;
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, SpriteAsset, Transform, World};
+use tungsten::core::{AssetRegistry, Entity, SpriteAsset, Transform, World};
 use tungsten::kit::{Health, StateMachine};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use super::beetle::PAW_SECS;
-use super::components::{Enemy, EnemyKind, EnemyState};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
+use super::troll::{self, FIST, SLAM_REACH, SLAM_TELL};
+use super::{KindInfo, SEARCH_MARK_AFTER};
 use crate::features::level::draw::{instance, push_quad, view};
+use crate::features::level::systems::drawn_time;
 
 /// The bar's size, its gap over the troll's frame, and its back's and its
 /// fill's colours.
@@ -22,6 +29,16 @@ pub const BAR_FILL: [u8; 4] = [196, 48, 40, 255];
 /// The sprite whose white texel the bar samples, and that texel's centre.
 pub const FLAT: &str = "ex10_mote";
 const FLAT_TEXEL: Vec2 = Vec2::new(31.5, 31.5);
+
+/// The x of `enemy`'s body in its frame as it is drawn: a left frame is its
+/// right one mirrored, drawn shifted ([`super::systems::clips`]).
+fn body_x(info: KindInfo, heading: f32) -> f32 {
+    if heading < 0.0 {
+        info.frame - info.centre.x
+    } else {
+        info.centre.x
+    }
+}
 
 /// A quad of `asset`'s white texel over the box at `origin` of `size`:
 /// flat `color`.
@@ -49,13 +66,7 @@ pub fn bars(world: &World) -> Vec<SpriteBatch> {
         if enemy.kind != EnemyKind::Troll || health.is_dead() {
             continue;
         }
-        let info = enemy.kind.info();
-        // A left frame is its right one mirrored, drawn shifted ([`super::systems::clips`]).
-        let body = if enemy.heading < 0.0 {
-            info.frame - info.centre.x
-        } else {
-            info.centre.x
-        };
+        let body = body_x(enemy.kind.info(), enemy.heading);
         let origin = at.position + Vec2::new(body - BAR_SIZE.x / 2.0, -BAR_RISE - BAR_SIZE.y);
         if (origin + BAR_SIZE).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
@@ -145,6 +156,130 @@ pub fn charges(world: &World) -> Vec<SpriteBatch> {
             }
             _ => {}
         }
+    }
+    batches
+}
+
+/// A slam's ring: its colour, how flat it lies (its height over its
+/// width), its dots' size and the pixels between them along it.
+pub const RING: [u8; 4] = [190, 168, 132, 200];
+pub const RING_FLAT: f32 = 0.12;
+const RING_DOT: Vec2 = Vec2::new(3.0, 2.0);
+const RING_GAP: f32 = 5.0;
+
+/// Each troll winding up its slam in view: a ring of dust on the ground
+/// about its fist's point, where the slam is measured, growing from nothing
+/// to [`SLAM_REACH`] over its tell, flat as ground seen from the side, and
+/// firming as it grows.
+#[must_use]
+pub fn rings(world: &World) -> Vec<SpriteBatch> {
+    let Some(asset) = world
+        .get_resource::<AssetRegistry>()
+        .and_then(|assets| assets.get_sprite(FLAT))
+    else {
+        return Vec::new();
+    };
+    let (min, max) = view(world);
+    let mut batches = Vec::new();
+    for (entity, enemy, machine, at) in
+        world.query::<(Entity, &Enemy, &StateMachine<EnemyState>, &Transform)>()
+    {
+        let slamming = enemy.kind == EnemyKind::Troll
+            && machine.state() == EnemyState::WindUp
+            && troll::strike(world, entity) == Strike::Slam;
+        if !slamming {
+            continue;
+        }
+        let grown = (machine.elapsed() / SLAM_TELL).clamp(0.0, 1.0);
+        let reach = SLAM_REACH * grown;
+        if reach < 2.0 {
+            continue;
+        }
+        let info = enemy.kind.info();
+        let centre = at.position + Vec2::new(body_x(info, enemy.heading), info.centre.y);
+        let fist = centre + Vec2::new(FIST.x * enemy.heading, FIST.y);
+        let span = Vec2::new(reach, reach * RING_FLAT) + RING_DOT;
+        if (fist + span).cmplt(min).any() || (fist - span).cmpgt(max).any() {
+            continue;
+        }
+        let mut color = RING;
+        color[3] = (f32::from(RING[3]) * (0.4 + 0.6 * grown)) as u8;
+        let dots = ((TAU * reach / RING_GAP) as usize).max(8);
+        for i in 0..dots {
+            let turn = TAU * i as f32 / dots as f32;
+            let point = fist + Vec2::new(reach * turn.cos(), reach * RING_FLAT * turn.sin());
+            let quad = flat(asset, point - RING_DOT / 2.0, RING_DOT, color);
+            push_quad(&mut batches, asset, quad, None);
+        }
+    }
+    batches
+}
+
+/// The marks' sprites, their side, their rise over the frame and the
+/// alert's bob.
+pub const MARK_ALERT: &str = "ex10_mark_alert";
+pub const MARK_SEARCH: &str = "ex10_mark_search";
+pub const MARK_SIDE: f32 = 16.0;
+pub const MARK_RISE: f32 = 6.0;
+const MARK_BOB: f32 = 2.0;
+
+/// The mark `enemy` shows: "!" while a fresh alert's
+/// [`super::ALERT_MARK_SECS`] run, past its alert into the chase; else "?" through a search past its
+/// first [`SEARCH_MARK_AFTER`], so a chase that misses one sight check
+/// blinks nothing; none for a dead one.
+#[must_use]
+pub fn mark(world: &World, enemy: Entity) -> Option<&'static str> {
+    if world.get::<Health>(enemy).is_none_or(Health::is_dead) {
+        return None;
+    }
+    if world
+        .get::<Brain>(enemy)
+        .is_some_and(|brain| brain.alerted > 0.0)
+    {
+        return Some(MARK_ALERT);
+    }
+    let machine = world.get::<StateMachine<EnemyState>>(enemy)?;
+    let searching =
+        machine.state() == EnemyState::Search && machine.elapsed() >= SEARCH_MARK_AFTER - 1e-4;
+    searching.then_some(MARK_SEARCH)
+}
+
+/// Each enemy's mark in view, [`MARK_RISE`] over its frame and centred on
+/// its body as it is drawn, over a troll's bar; an alert's bobbing
+/// [`MARK_BOB`].
+#[must_use]
+pub fn marks(world: &World) -> Vec<SpriteBatch> {
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
+        return Vec::new();
+    };
+    let (min, max) = view(world);
+    let time = drawn_time(world);
+    let mut batches = Vec::new();
+    for (entity, enemy, at) in world.query::<(Entity, &Enemy, &Transform)>() {
+        let Some(name) = mark(world, entity) else {
+            continue;
+        };
+        let Some(asset) = assets.get_sprite(name) else {
+            continue;
+        };
+        let bar = if enemy.kind == EnemyKind::Troll {
+            BAR_RISE + BAR_SIZE.y
+        } else {
+            0.0
+        };
+        let bob = if name == MARK_ALERT {
+            MARK_BOB * (time * TAU).sin().abs()
+        } else {
+            0.0
+        };
+        let body = body_x(enemy.kind.info(), enemy.heading);
+        let rise = MARK_RISE + bar + MARK_SIDE + bob;
+        let origin = at.position + Vec2::new(body - MARK_SIDE / 2.0, -rise);
+        if (origin + Vec2::splat(MARK_SIDE)).cmplt(min).any() || origin.cmpgt(max).any() {
+            continue;
+        }
+        let quad = instance(asset, origin, Vec2::splat(MARK_SIDE), [255; 4]);
+        push_quad(&mut batches, asset, quad, None);
     }
     batches
 }

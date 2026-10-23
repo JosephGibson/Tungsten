@@ -1,0 +1,25 @@
+{
+  "sprite": {
+    "asset_id": "ex10_pine_crate_0",
+    "z_order": 12
+  },
+  "components": {
+    "crate": {},
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          28,
+          28
+        ]
+      },
+      "offset": [
+        32,
+        32
+      ],
+      "mass": 12,
+      "restitution": 0.1
+    }
+  }
+}

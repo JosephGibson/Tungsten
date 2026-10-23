@@ -11,6 +11,10 @@ use example_01_platformer::features::enemies::drops::ORB_SECS;
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
+use example_01_platformer::features::props::{
+    BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, ROCK_CENTRE,
+    ROCK_RADIUS,
+};
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
     BALL_RADIUS, HOLE_SECS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS,
@@ -122,6 +126,11 @@ fn every_restated_constant_matches_its_data() {
     // A black hole's life.
     let hole = json("prefabs/black_hole.json");
     assert_eq!(number(&hole, "/components/black_hole/left"), HOLE_SECS);
+    // The props' bodies and a goblin's rock and bomb.
+    assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
+    assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));
+    assert_eq!(body("goblin_bomb"), (Vec2::splat(BOMB_RADIUS), BOMB_CENTRE));
+    assert_eq!(body("goblin_rock"), (Vec2::splat(ROCK_RADIUS), ROCK_CENTRE));
 }
 
 #[test]

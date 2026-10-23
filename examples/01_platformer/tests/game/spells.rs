@@ -11,13 +11,17 @@ use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::elements::components::BallBurn;
 use example_01_platformer::features::elements::systems::douse;
 use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::systems::adopt;
+use example_01_platformer::features::spells::{
+    SUMMON_NEXT, SUMMON_PREV, SUMMONS, Summoned, summon_type,
+};
 use example_01_platformer::features::toys::components::{
     BlackHole, FireMissile, Ring, ShockRing, SmallBall,
 };
 use example_01_platformer::features::toys::{
-    self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS, PUSH_SPEED,
-    RING_CAP,
+    self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
+    PUSH_SPEED, RING_CAP,
 };
 use example_01_platformer::shared::{BURST_CAP, Burst};
 use glam::Vec2;
@@ -503,4 +507,122 @@ fn a_refused_cast_says_why_and_spends_nothing() {
 /// The fizzles alive.
 fn bursts(harness: &UiHarness) -> usize {
     super::bursts(harness, "ex10_fizzle")
+}
+
+/// The live props of `kind`, in save-ID order.
+fn props_of(harness: &UiHarness, kind: PropKind) -> Vec<Entity> {
+    let world = harness.world();
+    let mut live: Vec<(u64, Entity)> = world
+        .query::<(
+            Entity,
+            &tungsten::core::Position,
+            &example_01_platformer::shared::SaveId,
+        )>()
+        .filter(|&(entity, ..)| props::kind(world, entity) == Some(kind))
+        .map(|(entity, _, id)| (id.0, entity))
+        .collect();
+    live.sort_unstable_by_key(|&(id, _)| id);
+    live.into_iter().map(|(_, entity)| entity).collect()
+}
+
+/// Turns the summon's type by `action` once, pressed until a step read it.
+fn turn(harness: &mut UiHarness, action: &str) {
+    harness.harness_mut().press_action(action);
+    harness.step(1);
+    harness.harness_mut().release_action(action);
+    harness.step(1);
+}
+
+/// One press of `cast` at `at`, then a second for the summon's cooldown.
+fn summon_at(harness: &mut UiHarness, at: Vec2) {
+    aim_at(harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    harness.step(61);
+}
+
+#[test]
+fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
+    let (mut harness, player) = run();
+    // The map's crates and kegs taken off, so the slot's count from none.
+    for prop in props::all(harness.world()) {
+        harness.world_mut().despawn(prop);
+    }
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    ground(&mut harness, 1000.0);
+    stand(&mut harness, player, 300.0, 1000.0);
+    harness.step(1);
+    pin_camera(&mut harness, Vec2::new(0.0, 400.0));
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 10_000.0);
+    stats.set_base("mana", 10_000.0);
+    choose(&mut harness, 9);
+    // Past the dummy and the enemies, the crate, then the keg.
+    let crate_at = SUMMONS
+        .iter()
+        .position(|summon| summon.summoned == Summoned::Crate)
+        .expect("a crate to summon");
+    for _ in 0..crate_at {
+        turn(&mut harness, SUMMON_NEXT);
+    }
+    assert_eq!(summon_type(harness.world()).summoned, Summoned::Crate);
+    let at = Vec2::new(800.0, 900.0);
+    aim_at(&mut harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    let crates = props_of(&harness, PropKind::Crate);
+    assert_eq!(crates.len(), 1, "a crate");
+    assert!(
+        body(&harness, crates[0]).distance(at) < 2.0,
+        "at the cursor"
+    );
+    harness.step(61);
+    turn(&mut harness, SUMMON_NEXT);
+    assert_eq!(summon_type(harness.world()).summoned, Summoned::Keg);
+    // Near the ground: a keg landing at 600 px/s or more goes off.
+    let at = Vec2::new(1000.0, 965.0);
+    aim_at(&mut harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    let kegs = props_of(&harness, PropKind::Keg);
+    assert_eq!(kegs.len(), 1, "a keg");
+    assert!(body(&harness, kegs[0]).distance(at) < 2.0, "at the cursor");
+    harness.step(61);
+    // In a wall, and on iron, it fizzles and spends nothing.
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(1400.0, 1000.0 - IRON_HALF.y));
+    harness.step(2);
+    for at in [Vec2::new(1150.0, 1040.0), super::body(&harness, iron)] {
+        let before = mana(&harness);
+        let fizzles = bursts(&harness);
+        aim_at(&mut harness, at);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        assert_eq!(mana(&harness), before, "nothing spent at {at}");
+        assert_eq!(bursts(&harness), fizzles + 1, "its fizzle at {at}");
+        assert_eq!(
+            props_of(&harness, PropKind::Keg).len(),
+            1,
+            "refused at {at}"
+        );
+        harness.step(61);
+    }
+    // Past its cap, the oldest crate goes in a poof.
+    turn(&mut harness, SUMMON_PREV);
+    let first = props_of(&harness, PropKind::Crate)[0];
+    for i in 1..props::CRATE_CAP {
+        summon_at(&mut harness, Vec2::new(1440.0 + 60.0 * i as f32, 960.0));
+    }
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+    assert!(harness.world().is_alive(first), "the cap holds it");
+    aim_at(&mut harness, Vec2::new(1700.0, 600.0));
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    assert!(!harness.world().is_alive(first), "the oldest went");
+    assert!(super::bursts(&harness, "ex10_poof") > 0, "in a poof");
+    assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
 }

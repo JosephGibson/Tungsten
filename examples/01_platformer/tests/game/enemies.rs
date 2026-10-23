@@ -15,8 +15,10 @@
 //! the drops, an orb's heal or mana, the enemies it passes and its fading;
 //! the combat layer; a kill between a machine's `go` and its next visit; a
 //! map enemy killed for good; the summon slot's enemies; the frozen cube
-//! fitted to each body; and the pushes that throw them by their pull, the
-//! troll standing, and the level's edge that takes them for good.
+//! fitted to each body; the pushes that throw them by their pull, the
+//! troll standing, and the level's edge that takes them for good; and the
+//! goblin's rocks and bombs on their arcs, its distance, and a rock that
+//! outlives its thrower.
 
 use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
@@ -31,16 +33,21 @@ use example_01_platformer::features::elements::{
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Shown, Sight,
+    Brain, Enemy, EnemyKind, EnemyState, Shown, Sight, Strike,
 };
 use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind, PlacedOrbs};
+use example_01_platformer::features::enemies::goblin::{
+    BOMB_CHANCE, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
+};
 use example_01_platformer::features::enemies::{self, ARRIVED, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
-use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS};
+use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
+use example_01_platformer::features::props::{self, CRATE_HALF};
+use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
 use example_01_platformer::features::toys::components::PreviousVelocity;
 use example_01_platformer::features::{player as courier, toys};
@@ -1352,7 +1359,7 @@ fn the_trolls_healing_stops_while_it_burns() {
 }
 
 #[test]
-fn the_troll_slams_after_a_long_wind_up_hurting_scattering_and_shattering() {
+fn the_troll_slams_after_its_wind_up_hurting_kicking_and_shattering() {
     let (mut harness, player) = arena();
     stand(&mut harness, player, 250.0, TOP);
     let dummy = dummy_at(&mut harness, 330.0);
@@ -1366,6 +1373,7 @@ fn the_troll_slams_after_a_long_wind_up_hurting_scattering_and_shattering() {
     apply(&mut harness, dummy, "frozen", None);
     let (mut step, mut windup, mut attack) = (0, None, None);
     let (mut hurt, mut dummy_hurt) = (Vec::new(), Vec::new());
+    let rest = body(&harness, ball);
     while step < 400 && attack.is_none() {
         harness.step(1);
         step += 1;
@@ -1381,7 +1389,22 @@ fn the_troll_slams_after_a_long_wind_up_hurting_scattering_and_shattering() {
     let tell = (attack - windup) as f32 / 60.0;
     assert!(
         (tell - troll::SLAM_TELL).abs() <= 1.5 / 60.0,
-        "a 1.2 s wind-up: {tell}"
+        "its wind-up: {tell}"
+    );
+    // The bowling ball kicked by its mass at the slam, away from the fist
+    // and up, then the step's gravity.
+    let fist = troll::fist(harness.world(), troll).unwrap();
+    let kick = (troll::KICK / 8.0).min(troll::KICK_MOST);
+    let gravity = harness
+        .world()
+        .resource::<tungsten::core::PhysicsConfig>()
+        .gravity;
+    let away = (rest - fist).normalize();
+    let expected = away * kick + Vec2::new(0.0, -troll::KICK_RISE * kick) + gravity / 60.0;
+    let kicked = speed(&harness, ball);
+    assert!(
+        kicked.distance(expected) < 2.0,
+        "the ball kicked by its mass: {kicked} against {expected}"
     );
     for _ in 0..4 {
         harness.step(1);
@@ -1393,11 +1416,6 @@ fn the_troll_slams_after_a_long_wind_up_hurting_scattering_and_shattering() {
     assert!(
         !tagged(&harness, dummy, "status.frozen"),
         "the frozen dummy shattered"
-    );
-    let kicked = speed(&harness, ball);
-    assert!(
-        kicked.x > 100.0 && kicked.y < 0.0,
-        "the ball scattered: {kicked}"
     );
 }
 
@@ -2056,9 +2074,15 @@ fn slot_zero_summons_each_enemy_after_the_dummy_capped() {
         h.step(61);
     };
     // Past the dummy, each enemy as it landed.
-    let kinds: Vec<EnemyKind> = SUMMONS.iter().filter_map(|summon| summon.enemy).collect();
+    let kinds: Vec<EnemyKind> = SUMMONS
+        .iter()
+        .filter_map(|summon| match summon.summoned {
+            Summoned::Enemy(kind) => Some(kind),
+            _ => None,
+        })
+        .collect();
     assert_eq!(kinds[..2], [EnemyKind::Wisp, EnemyKind::Crawler]);
-    assert!(SUMMONS[0].enemy.is_none(), "the dummy first");
+    assert_eq!(SUMMONS[0].summoned, Summoned::Dummy, "the dummy first");
     for (i, kind) in kinds.iter().enumerate() {
         turn(&mut harness, SUMMON_NEXT);
         let point = Vec2::new(950.0 + 120.0 * i as f32, 700.0);
@@ -2285,5 +2309,387 @@ fn a_kill_plays_the_death_sound_not_the_hit() {
         plays(&mut harness, 2),
         (1, 1),
         "the blow's hit and the death"
+    );
+}
+
+/// The goblins' rocks and bombs alive: their save IDs, entities and
+/// whether each is a bomb.
+fn thrown(harness: &UiHarness) -> Vec<(u64, Entity, bool)> {
+    let world = harness.world();
+    let mut thrown: Vec<(u64, Entity, bool)> = world
+        .query::<(Entity, &Rock, &SaveId)>()
+        .map(|(entity, _, id)| (id.0, entity, false))
+        .chain(
+            world
+                .query::<(Entity, &Bomb, &SaveId)>()
+                .map(|(entity, _, id)| (id.0, entity, true)),
+        )
+        .collect();
+    thrown.sort_unstable_by_key(|&(id, ..)| id);
+    thrown
+}
+
+/// A seed whose stream's first draw is a rock's and whose next `bombs`
+/// draws hold a bomb's, when `bombs` is more than 0.
+fn goblin_seed(bombs: usize) -> u64 {
+    (0..10_000)
+        .find(|&seed| {
+            let mut rng = KitRng::seeded(seed);
+            let draws: Vec<bool> = (0..=bombs).map(|_| rng.unit() < BOMB_CHANCE).collect();
+            !draws[0] && (bombs == 0 || draws[1..].contains(&true))
+        })
+        .expect("a seed")
+}
+
+/// A thrown thing's arc check: what it is, its entity, where it was first
+/// seen, its velocity then, the gravity it falls by, and the steps since.
+struct Arc {
+    what: &'static str,
+    entity: Entity,
+    from: Vec2,
+    launch: Vec2,
+    gravity: Vec2,
+    steps: u32,
+}
+
+impl Arc {
+    /// Its place now against the arc: within 2 px, for its first twelve
+    /// steps.
+    fn check(&mut self, harness: &UiHarness) {
+        let what = self.what;
+        if self.steps >= 12 || !harness.world().is_alive(self.entity) {
+            return;
+        }
+        self.steps += 1;
+        let t = self.steps as f32 / 60.0;
+        let arc = self.from + self.launch * t + 0.5 * self.gravity * t * t;
+        let at = body(harness, self.entity);
+        assert!(
+            at.distance(arc) < 2.0,
+            "{what} step {}: {at} off the arc {arc}",
+            self.steps
+        );
+    }
+}
+
+#[test]
+fn a_goblin_lobs_rocks_on_their_arc_and_one_throw_in_five_is_a_bomb() {
+    let seed = goblin_seed(5);
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().insert_resource(KitRng::seeded(seed));
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 620.0, TOP);
+    harness.step(1);
+    let gravity = harness
+        .world()
+        .resource::<tungsten::core::PhysicsConfig>()
+        .gravity;
+    let mut throws: Vec<(u64, bool)> = Vec::new();
+    let (mut rock_arc, mut bomb_arc): (Option<Arc>, Option<Arc>) = (None, None);
+    let (mut rock_hit, mut blast) = (false, false);
+    for _ in 0..3200 {
+        stand(&mut harness, player, 300.0, TOP);
+        tungsten::kit::heal(harness.world_mut(), player, 100.0);
+        harness.step(1);
+        for arc in [&mut rock_arc, &mut bomb_arc].into_iter().flatten() {
+            arc.check(&harness);
+        }
+        for (id, entity, bomb) in thrown(&harness) {
+            if throws.iter().any(|&(seen, _)| seen == id) {
+                continue;
+            }
+            throws.push((id, bomb));
+            let world = harness.world();
+            let slot = if bomb { &mut bomb_arc } else { &mut rock_arc };
+            if slot.is_none() {
+                *slot = Some(Arc {
+                    what: if bomb { "a bomb" } else { "a rock" },
+                    entity,
+                    from: body(&harness, entity),
+                    launch: world.get::<Velocity>(entity).unwrap().0,
+                    gravity,
+                    steps: 0,
+                });
+            }
+        }
+        let world = harness.world();
+        for part in harness.harness().events::<tungsten::kit::DamagedPart>() {
+            if part.periodic || part.source != Some(goblin) {
+                continue;
+            }
+            let physical = part.kinds.has(world, "damage.physical");
+            rock_hit |=
+                part.entity == player && physical && (part.amount - ROCK_DAMAGE).abs() < 1e-3;
+            blast |= part.entity == player && part.kinds.has(world, "damage.fire");
+        }
+        if throws.len() >= 25 && blast {
+            break;
+        }
+    }
+    assert!(throws.len() >= 25, "25 throws: {}", throws.len());
+    let checked = |arc: &Option<Arc>| arc.as_ref().map_or(0, |arc| arc.steps);
+    assert_eq!(checked(&rock_arc), 12, "a rock on its arc");
+    assert_eq!(checked(&bomb_arc), 12, "a bomb on its arc");
+    assert!(rock_hit, "8 physical on the courier, from the goblin");
+    assert!(blast, "a bomb's detonation credited to the goblin");
+    let mut rng = KitRng::seeded(seed);
+    let drawn: Vec<bool> = (0..25).map(|_| rng.unit() < BOMB_CHANCE).collect();
+    let bombs: Vec<bool> = throws.iter().take(25).map(|&(_, bomb)| bomb).collect();
+    assert_eq!(bombs, drawn, "the bombs are the stream's draws under 0.2");
+}
+
+#[test]
+fn a_goblins_stab_hurts_a_courier_too_close_and_it_leaps_back() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 620.0, TOP);
+    harness.step(1);
+    // The courier held 40 px off, within its reach: its stab's tell, its
+    // stab.
+    let mut stabbed = None;
+    let mut told = false;
+    for frame in 0..240 {
+        let x = at(&harness, goblin).x - 40.0;
+        stand(&mut harness, player, x, TOP);
+        harness.step(1);
+        told |= state(&harness, goblin) == EnemyState::WindUp
+            && harness.world().get::<Brain>(goblin).unwrap().strike == Some(Strike::Stab);
+        let hit = took(&harness, player, Some(goblin))
+            .into_iter()
+            .any(|amount| (amount - STAB_DAMAGE).abs() < 1e-3);
+        if hit {
+            stabbed = Some(frame);
+            break;
+        }
+    }
+    assert!(told, "its stab's tell");
+    assert!(stabbed.is_some(), "a stab of {STAB_DAMAGE} from the goblin");
+    // Then it leaps back, away from the courier, off the ground: about
+    // 75 px at its leap's speed.
+    let from = at(&harness, goblin).x;
+    let mut airborne = false;
+    for _ in 0..40 {
+        harness.step(1);
+        airborne |= !harness
+            .world()
+            .get::<tungsten::kit::PlatformerController>(goblin)
+            .unwrap()
+            .grounded();
+    }
+    let back = at(&harness, goblin).x - from;
+    assert!(airborne, "it leapt");
+    assert!(
+        back > 0.1 * LEAP_BACK.x,
+        "back {back} px, away from the courier"
+    );
+}
+
+#[test]
+fn a_goblin_hops_a_crate_in_its_way() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1000.0, TOP);
+    // A crate just ahead of it, the way it patrols.
+    let crate_at = Vec2::new(1000.0 + 9.0 + 3.0 + CRATE_HALF.x, TOP - CRATE_HALF.y - 0.5);
+    props::spawn(harness.world_mut(), PropKind::Crate, crate_at);
+    harness.step(2);
+    let past = crate_at.x + CRATE_HALF.x + 9.0;
+    let mut airborne = false;
+    let over = until(&mut harness, 240, |h| {
+        airborne |= !h
+            .world()
+            .get::<tungsten::kit::PlatformerController>(goblin)
+            .unwrap()
+            .grounded();
+        at(h, goblin).x > past
+    });
+    assert!(
+        over && airborne,
+        "over the crate by a hop: {}",
+        at(&harness, goblin).x
+    );
+}
+
+#[test]
+fn a_goblin_keeps_its_distance() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    ground(&mut harness, TOP);
+    stand(&mut harness, player, 900.0, TOP);
+    harness.step(1);
+    pin_camera(&mut harness, Vec2::new(500.0, 400.0));
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 1000.0, TOP);
+    harness.step(1);
+    let across =
+        |h: &UiHarness| (at(h, goblin).x - courier::centre(h.world(), player).unwrap().x).abs();
+    assert!(across(&harness) < 110.0);
+    // The courier 100 px off: it backs away to its throw's distance.
+    let backed = until(&mut harness, 120, |h| across(h) >= KEEP_OFF);
+    assert!(backed, "backed off to {} within 2 s", across(&harness));
+    // The courier 600 px off: it closes in.
+    let x = at(&harness, goblin).x - 600.0;
+    stand(&mut harness, player, x, TOP);
+    let far = across(&harness);
+    let closed = until(&mut harness, 180, |h| across(h) < far - 50.0);
+    assert!(closed, "closed from {far} to {}", across(&harness));
+}
+
+#[test]
+fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .insert_resource(KitRng::seeded(goblin_seed(0)));
+    let kind = EnemyKind::Goblin;
+    let centre = Vec2::new(620.0, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let goblin = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    enemies::scale(world, goblin, Difficulty::Hard);
+    harness.step(1);
+    let threw = until(&mut harness, 300, |h| !thrown(h).is_empty());
+    assert!(threw, "it throws");
+    assert!(!thrown(&harness)[0].2, "a rock");
+    land(&mut harness, goblin, Kind::Physical, 10_000.0);
+    assert!(health(&harness, goblin) <= 0.0, "dead in flight");
+    let hits = hits_over(&mut harness, player, 90);
+    let rock: Vec<&(f32, Option<Entity>, u32)> = hits.iter().filter(|hit| hit.0 > 2.5).collect();
+    assert_eq!(rock.len(), 1, "{hits:?}");
+    assert!(
+        (rock[0].0 - ROCK_DAMAGE * enemies::factor(Difficulty::Hard)).abs() < 1e-3,
+        "at its factor: {}",
+        rock[0].0
+    );
+    assert_eq!(rock[0].1, None, "from nobody");
+}
+
+/// Steps until `troll` enters its attack, at most `frames`: the steps from
+/// its tell's start to it, and the hits `target` takes from it meanwhile
+/// and over the attack's first two steps. The courier is held on its spot
+/// and healed, so the blows land again.
+fn troll_blow(
+    harness: &mut UiHarness,
+    troll: Entity,
+    target: Entity,
+    x: f32,
+    frames: u32,
+) -> (Option<u32>, Vec<f32>) {
+    let (mut tell, mut hits) = (None::<u32>, Vec::new());
+    let mut steps = 0;
+    for _ in 0..frames {
+        stand(harness, target, x, TOP);
+        tungsten::kit::heal(harness.world_mut(), target, 100.0);
+        harness.step(1);
+        hits.extend(took(harness, target, Some(troll)));
+        match state(harness, troll) {
+            EnemyState::WindUp if tell.is_none() => tell = Some(0),
+            EnemyState::WindUp => {}
+            EnemyState::Attack if tell.is_some() => {
+                steps = tell.unwrap_or(0);
+                for _ in 0..2 {
+                    harness.step(1);
+                    hits.extend(took(harness, target, Some(troll)));
+                }
+                return (Some(steps), hits);
+            }
+            _ => tell = None,
+        }
+        if let Some(count) = tell.as_mut()
+            && state(harness, troll) == EnemyState::WindUp
+        {
+            *count += 1;
+        }
+    }
+    (tell.map(|_| steps), hits)
+}
+
+#[test]
+fn the_troll_walks_at_a_courier_on_either_side_and_slams_it() {
+    for (from, courier) in [(1000.0, 600.0), (600.0, 1000.0)] {
+        let (mut harness, player) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        stand(&mut harness, player, courier, TOP);
+        let troll = troll_at(&mut harness, from, Difficulty::Normal);
+        harness.step(1);
+        let start = at(&harness, troll).x;
+        let mut slammed = false;
+        for _ in 0..600 {
+            stand(&mut harness, player, courier, TOP);
+            tungsten::kit::heal(harness.world_mut(), player, 100.0);
+            harness.step(1);
+            slammed |= !took(&harness, player, Some(troll)).is_empty();
+            if slammed {
+                break;
+            }
+        }
+        // It closes to its slam's range, then the slam lands.
+        let moved = at(&harness, troll).x - start;
+        assert!(
+            moved.signum() == (courier - from).signum() && moved.abs() > 200.0,
+            "from {from}: walked {moved} px, not at the courier"
+        );
+        assert!(slammed, "from {from}: no blow");
+    }
+}
+
+#[test]
+fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
+    // The courier 60 px ahead: the swipe, after its 0.3 s tell.
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 360.0, Difficulty::Normal);
+    harness.step(1);
+    let (tell, hits) = troll_blow(&mut harness, troll, player, 300.0, 300);
+    let tell = tell.expect("its swipe") as f32 / 60.0;
+    assert!(
+        (tell - troll::SWIPE_TELL).abs() <= 1.5 / 60.0,
+        "a 0.3 s tell: {tell}"
+    );
+    assert_eq!(hits, [troll::SWIPE_DAMAGE], "the swipe's 18");
+    // One 120 px ahead: the slam, after its 0.8 s tell, slam to slam in 97
+    // steps.
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 420.0, Difficulty::Normal);
+    harness.step(1);
+    let (tell, hits) = troll_blow(&mut harness, troll, player, 300.0, 300);
+    let tell = tell.expect("its slam") as f32 / 60.0;
+    assert!(
+        (tell - troll::SLAM_TELL).abs() <= 1.5 / 60.0,
+        "a 0.8 s tell: {tell}"
+    );
+    assert_eq!(hits, [40.0], "the slam's 40");
+    let (mut gap, mut was) = (None, state(&harness, troll));
+    for step in 1..=200 {
+        stand(&mut harness, player, 300.0, TOP);
+        tungsten::kit::heal(harness.world_mut(), player, 100.0);
+        harness.step(1);
+        let now = state(&harness, troll);
+        if now == EnemyState::Attack && was != EnemyState::Attack {
+            gap = Some(step + 2);
+            break;
+        }
+        was = now;
+    }
+    assert_eq!(gap, Some(97), "slam to slam");
+    // A crate in the swipe's box, kicked by its mass away from the troll.
+    let (mut harness, _) = arena();
+    let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    let heading = harness.world().get::<Enemy>(troll).unwrap().heading;
+    let crate_at = Vec2::new(900.0 + 70.0 * heading, TOP - CRATE_HALF.y);
+    let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, crate_at);
+    harness.step(2);
+    let before = speed(&harness, crate_);
+    let away = (body(&harness, crate_) - at(&harness, troll)).normalize();
+    troll::swipe(harness.world_mut(), troll);
+    let kick = (troll::KICK / 12.0).min(troll::KICK_MOST);
+    let expected = before + away * kick + Vec2::new(0.0, -troll::KICK_RISE * kick);
+    let kicked = speed(&harness, crate_);
+    assert!(
+        kicked.distance(expected) < 1e-3,
+        "by its mass: {kicked} against {expected}"
     );
 }

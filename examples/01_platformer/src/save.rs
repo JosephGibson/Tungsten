@@ -8,12 +8,15 @@
 //! adds to a schema 7 save. Schema 10 gives save IDs only to the map
 //! objects a save names, so an art change never moves one, and keeps the
 //! basins' crusts and the mine's elevator. Schema 11 keeps up to three open
-//! black holes, a list where schema 10 kept one.
+//! black holes, a list where schema 10 kept one. Schema 12 places the map's
+//! seven goblins before its placed orbs, which moves every later save ID,
+//! and keeps the crates, kegs, bombs and rocks.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
 //! in the order the map spawns them, which a load repeats, and whatever
-//! spawns later takes the run's next, which the save keeps. A save names
+//! spawns later takes the run's next, which the save keeps: a fresh run's
+//! iron, crates and kegs, set at the map's markers, the first. A save names
 //! another entity by its save ID, never by its entity: an effect's source
 //! too, which a load names again once every entity is back. Presentation
 //! is not saved: particles, lights, glows, flames, overlays and tints,
@@ -48,6 +51,10 @@ use crate::features::level::elevator::{Elevator, Stop};
 use crate::features::level::lava::{self, Lava};
 use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
+use crate::features::props::{
+    self,
+    components::{Bomb, Crate, Fuel, Keg, PropKind, Rock},
+};
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
 use crate::features::toys::components::{
@@ -107,13 +114,17 @@ pub struct SaveGame {
     /// The mine's elevator; none before schema 10, which leaves it at rest.
     #[serde(default)]
     pub elevators: Vec<ElevatorSave>,
+    /// The crates, kegs, bombs and rocks; none before schema 12, whose map
+    /// adds none to an older save's run.
+    #[serde(default)]
+    pub props: Vec<PropSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
 pub const MAP_DUMMIES: u64 = 1;
 /// The enemies the map's `enemies` layer places, and the health orbs its
 /// `pickups` layer places after them, its last.
-pub const MAP_ENEMIES: u64 = 19;
+pub const MAP_ENEMIES: u64 = 26;
 pub const MAP_PICKUPS: u64 = 8;
 /// How far schema 9 moves every save ID at or above schema 8's player's:
 /// the thirteen map objects it added (five enemies and eight orbs), which
@@ -151,6 +162,13 @@ const S10_LAKES: [Lake; 2] = [
     (230.0, 240.0, 63.0, &[229.5, 235.0, 240.5]),
     (260.0, 263.0, 57.0, &[259.5, 263.5]),
 ];
+/// How far schema 12 moves every save ID at or above schema 11's first
+/// placed orb's: the map's seven goblins, which take theirs after its other
+/// enemies, before the orbs.
+pub const SHIFT_12: u64 = 7;
+/// Schema 11's first placed orb's save ID, schema 10's layout kept; frozen
+/// for the migration, as schema 10's are.
+pub const S11_PICKUPS: u64 = 28;
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
@@ -161,8 +179,10 @@ impl SaveData for SaveGame {
     /// the player, which take the save IDs from schema 8's player's on.
     /// Schema 10 gives save IDs only to what a save names, keeps the
     /// basins' crusts and the elevator, and widens the basins. Schema 11
-    /// keeps the open black holes as a list (`to_11`).
-    const SCHEMA: u32 = 11;
+    /// keeps the open black holes as a list (`to_11`). Schema 12 places the
+    /// map's goblins before its orbs and keeps the props
+    /// (`to_12`).
+    const SCHEMA: u32 = 12;
 
     fn migrate(
         from: u32,
@@ -182,21 +202,29 @@ impl SaveData for SaveGame {
                 shift_ids(&mut data)?;
                 to_10(&mut data)?;
                 to_11(&mut data)?;
+                to_12(&mut data);
                 Ok(data)
             }
             8 => {
                 shift_ids(&mut data)?;
                 to_10(&mut data)?;
                 to_11(&mut data)?;
+                to_12(&mut data);
                 Ok(data)
             }
             9 => {
                 to_10(&mut data)?;
                 to_11(&mut data)?;
+                to_12(&mut data);
                 Ok(data)
             }
             10 => {
                 to_11(&mut data)?;
+                to_12(&mut data);
+                Ok(data)
+            }
+            11 => {
+                to_12(&mut data);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -322,6 +350,17 @@ fn to_11(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     Ok(())
 }
 
+/// Schema 11 to 12: the map's seven goblins take the save IDs from schema
+/// 11's first placed orb's on, so every save ID at or above it moves up by
+/// [`SHIFT_12`]. A schema 11 save names no goblin, in its lists or in
+/// `gone`, so the map's stand at their homes after the load, and it has no
+/// props, so its run has none of the map's crates and kegs.
+fn to_12(data: &mut Value) {
+    map_ids(data, &|id| {
+        if id >= S11_PICKUPS { id + SHIFT_12 } else { id }
+    });
+}
+
 /// Every save ID field of `data` through `to`; a field it lacks stays
 /// lacking.
 fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
@@ -335,6 +374,7 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
         "/platforms",
         "/hazards",
         "/blocks",
+        "/black_holes",
         "/orbs",
         "/basins",
         "/elevators",
@@ -342,6 +382,11 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
         for entry in each(data, list) {
             map_id(entry.get_mut("id"), to);
         }
+    }
+    for prop in each(data, "/props") {
+        map_id(prop.get_mut("id"), to);
+        map_id(prop.get_mut("lighter"), to);
+        map_id(prop.pointer_mut("/fuel/lighter"), to);
     }
     for list in ["/missiles", "/bullets"] {
         for entry in each(data, list) {
@@ -540,10 +585,11 @@ pub struct HazardSave {
 /// A small ball or a bowling ball, its hue, its fire and its ice. A full
 /// pit holds 12,000, so each is one flat array in the save: `[id, small, x,
 /// y, vx, vy, hue, hue speed, burn left, ice]`, the last four `null` when
-/// it has none. Its ice is a chill in `(0, 1)`, or 1 plus the seconds a
-/// freeze has left.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(from = "BallRecord", into = "BallRecord")]
+/// it has none. Since schema 12 the array leaves its trailing `null`s off,
+/// so a hued ball with no fire or ice writes eight values; a load reads six
+/// to ten. Its ice is a chill in `(0, 1)`, or 1 plus the seconds a freeze
+/// has left.
+#[derive(Debug, Clone, PartialEq)]
 pub struct BallSave {
     pub id: u64,
     pub small: bool,
@@ -602,6 +648,71 @@ impl From<BallSave> for BallRecord {
             ball.burn.map(|burn| burn.remaining),
             ball.ice,
         )
+    }
+}
+
+impl Serialize for BallSave {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeSeq;
+        let (id, small, x, y, vx, vy, hue, speed, burn, ice) = BallRecord::from(self.clone());
+        let tail = [hue, speed, burn, ice];
+        let kept = tail
+            .iter()
+            .rposition(Option::is_some)
+            .map_or(0, |last| last + 1);
+        let mut seq = serializer.serialize_seq(Some(6 + kept))?;
+        seq.serialize_element(&id)?;
+        seq.serialize_element(&small)?;
+        for value in [x, y, vx, vy] {
+            seq.serialize_element(&value)?;
+        }
+        for value in &tail[..kept] {
+            seq.serialize_element(value)?;
+        }
+        seq.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for BallSave {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_seq(BallVisitor)
+    }
+}
+
+/// Reads a [`BallSave`]'s array: its six leading values, then as many of its
+/// last four as it keeps, an older save's ten whole.
+struct BallVisitor;
+
+impl<'de> serde::de::Visitor<'de> for BallVisitor {
+    type Value = BallSave;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a ball's array of six to ten values")
+    }
+
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<BallSave, A::Error> {
+        let short = |read: usize| serde::de::Error::invalid_length(read, &self);
+        let id = seq.next_element()?.ok_or_else(|| short(0))?;
+        let small = seq.next_element()?.ok_or_else(|| short(1))?;
+        let mut body = [0.0_f32; 4];
+        for (i, value) in body.iter_mut().enumerate() {
+            *value = seq.next_element()?.ok_or_else(|| short(2 + i))?;
+        }
+        let mut tail = [None; 4];
+        for value in &mut tail {
+            match seq.next_element::<Option<f32>>()? {
+                Some(read) => *value = read,
+                None => break,
+            }
+        }
+        if seq.next_element::<serde::de::IgnoredAny>()?.is_some() {
+            return Err(serde::de::Error::invalid_length(11, &self));
+        }
+        let [x, y, vx, vy] = body;
+        let [hue, speed, burn, ice] = tail;
+        Ok(BallSave::from((
+            id, small, x, y, vx, vy, hue, speed, burn, ice,
+        )))
     }
 }
 
@@ -672,6 +783,27 @@ pub struct BulletSave {
     pub motion: LinearMotion,
     pub ricochets: u32,
     pub source: Option<u64>,
+}
+
+/// A crate, a keg, or a goblin's bomb or rock: its kind, a crate's or a
+/// rock's art, its body, its frost and the seconds its freeze has left, a
+/// crate's fire, a keg's or a bomb's lit fuse and the save ID its fire or
+/// blast credits, and the seconds a douse keeps a keg from lighting. A
+/// thrown rock's credit is its throw's (`throws`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropSave {
+    pub id: u64,
+    pub kind: PropKind,
+    pub variant: usize,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub chill: Option<f32>,
+    pub frozen: Option<f32>,
+    pub fuel: Option<Fuel>,
+    pub fuse: Option<f32>,
+    pub lighter: Option<u64>,
+    pub doused: f32,
 }
 
 /// The live run as a save; `None` with no run or a dead player.
@@ -813,6 +945,11 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     bullets.sort_by_key(|bullet| bullet.id);
+    let mut props: Vec<PropSave> = props::all(world)
+        .into_iter()
+        .filter_map(|entity| capture_prop(world, entity))
+        .collect();
+    props.sort_by_key(|prop| prop.id);
     let dummies = dummy::live(world)
         .into_iter()
         .filter_map(|(id, entity)| capture_dummy(world, id, entity))
@@ -894,6 +1031,34 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             .map_or(0, |summon| summon.selected),
         basins,
         elevators,
+        props,
+    })
+}
+
+/// A crate's, a keg's, a bomb's or a rock's part.
+fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
+    let keg = world.get::<Keg>(entity);
+    let bomb = world.get::<Bomb>(entity);
+    let variant = world
+        .get::<Crate>(entity)
+        .map(|own| own.variant)
+        .or_else(|| world.get::<Rock>(entity).map(|own| own.variant));
+    Some(PropSave {
+        id: world.get::<SaveId>(entity)?.0,
+        kind: props::kind(world, entity)?,
+        variant: variant.unwrap_or(0),
+        position: world.get::<Position>(entity)?.0.to_array(),
+        velocity: world.get::<Velocity>(entity)?.0.to_array(),
+        chill: world.get::<Chill>(entity).map(|chill| chill.amount),
+        frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
+        fuel: world.get::<Fuel>(entity).copied(),
+        fuse: keg
+            .and_then(|keg| keg.fuse)
+            .or_else(|| bomb.and_then(|bomb| bomb.fuse)),
+        lighter: keg
+            .and_then(|keg| keg.lighter)
+            .or_else(|| bomb.and_then(|bomb| bomb.lighter)),
+        doused: keg.map_or(0.0, |keg| keg.doused),
     })
 }
 
@@ -1194,6 +1359,9 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             world.insert(entity, Frozen { left });
         }
     }
+    for prop in &save.props {
+        restore_prop(world, prop);
+    }
     for orb in &save.orbs {
         drops::spawn(
             world,
@@ -1280,6 +1448,48 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     });
     world.insert_resource(save.rng.clone());
     world.insert_resource(SaveIds::starting_at(save.next_id));
+}
+
+/// A saved crate, keg, bomb or rock, spawned at once at its saved point
+/// with its state over its prefab's: before the load names its held and
+/// thrown bodies by save ID.
+fn restore_prop(world: &mut World, saved: &PropSave) {
+    let at = Vec2::from(saved.position);
+    let entity = props::restore(world, saved.kind, at, SaveId(saved.id), saved.variant);
+    world.insert(entity, Velocity(Vec2::from(saved.velocity)));
+    if let Some(amount) = saved.chill {
+        world.insert(
+            entity,
+            Chill {
+                amount,
+                held: false,
+            },
+        );
+    }
+    if let Some(left) = saved.frozen {
+        world.insert(entity, Frozen { left });
+    }
+    if let Some(fuel) = saved.fuel {
+        world.insert(entity, fuel);
+    }
+    match saved.kind {
+        PropKind::Crate | PropKind::Rock => {}
+        PropKind::Keg => world.insert(
+            entity,
+            Keg {
+                fuse: saved.fuse,
+                lighter: saved.lighter,
+                doused: saved.doused,
+            },
+        ),
+        PropKind::Bomb => world.insert(
+            entity,
+            Bomb {
+                fuse: saved.fuse,
+                lighter: saved.lighter,
+            },
+        ),
+    }
 }
 
 /// Puts a saved enemy's state over `entity`: its point, its driver or

@@ -6,6 +6,24 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.102.0] - 2026-10-23
+
+Summary: M81, example 01's props and foes from the owner's notes of 2026-10-21 (plan archived at `docs/plans/archive/1.0/phase6-milestone-81-example-01-props-foes.md`; `D-210`), with no kit, engine, template or shell change: pine crates that burn and fall in and powder kegs on a fuse that blow and set each other off, credited to whoever lit them; a goblin sapper that throws rocks that stay and one rolling bomb in five, stabs a courier too close and hops what it can; the troll's quicker slam with a dust ring, a grunt and a shake, a fast swipe and a kick by mass; "!" and "?" over the enemies and one sting an alert; crates, kegs and seven goblins on the map and in the summon slot; save schema 12.
+
+### Added
+
+- **Example 01's crates and kegs** (`D-210`, `src/features/props/`): pine crates that burn 8 s, light the crates and kegs beside them after 2 s and the small balls touching them at once, go out under cold, steam and a hole with their fire kept, and fall in; powder kegs on a 1.5 s fuse, set off at once by a hard impact, a bullet, lightning or a blast, and never lit while frozen; both in every place iron's rules name iron and the troll's lift for crates; a keg's or a bomb's blast as `CascadeKind::Detonation` in the saved cascade queue, its lighter credited through every ending it sets off (`queue_from`, `thermal_shock_from`); nine crates and five kegs that a fresh run sets down at the map's markers (`tools/level.json`'s `crates` and `kegs`); a crate and a keg among the summon slot's types (`Summoned`), 16 and 8 at most.
+- **The goblin** (`D-210`): a sixth enemy that keeps 140–420 px from the courier, winds up for 0.45 s and lobs a rock, a stone body whose first blow lands 8 physical at its damage factor and which then bounces, rolls and stays, 24 at most, or, one throw in five by `KitRng`, a lit bomb that rolls with its fuse turning on it; a 0.2 s tell and a 6-point stab for a courier too close, then a leap back; hops over crates, rocks and low steps, short drops stepped down, a patrol's look back or skip, and flight when badly hurt; seven on the map: the clearing's meadow, the aqueduct, the mine's upper level, the cut's two floors and the troll bridge's two.
+- **The troll's swipe and the marks** (`D-210`): under 90 px the troll swipes, a 0.3 s tell and a box hit ahead of it for 18 physical; a fresh alert shows "!" for 0.8 s and a search past its first 0.4 s shows "?".
+- **Art and sound**: `tools/props.py` (the crates, the keg, the char overlays and their particle sprites), the goblin's rig, clips, knife, rock and bomb, the troll's swipe clips, the marks, icons and fitted cubes; eleven sounds and a crackle loop that follows the nearest burning crate.
+
+### Changed
+
+- **The troll** (`D-210`): its slam tells for 0.8 s, from 1.2, with a dust ring about its fist, a grunt and a shake by the courier's distance, and it recovers in 0.35 s, each kind with its own recovery (`KindInfo::recover`); the slam and the swipe kick each body by its mass, where every body took a small ball's kick.
+- **The alert's sting** (`D-210`): it sounds once for a fresh alert and those it passes to, through `Sound::Alerted`, where the `spotted` cue played it on every regained sight (I10).
+- **Example 01's save** (`D-210`): schema 12; `props` with the goblins' rocks, a thrown rock's credit in `throws`; `migrate` moves every save ID from schema 11's first placed orb's up by seven, past the map's goblins (`SHIFT_12`), taking schemas 7 to 10 through 11; a ball's array leaves its trailing nulls off, so a full pit with the map's 26 enemies and 14 props saves in 1,787,829 bytes, under 2 MiB.
+- **Records**: the feedback plan's §3.3 landing and K3, K10 and K11, the 01 design's notes for (g), backlog rows for K3 and K10, known issues for the bat's "!", older saves without the new props, short keg falls and the indicative frame readings, example 01's READMEs and the register.
+
 ## [0.101.0] - 2026-10-23
 
 Summary: M80, example 01's feel from the owner's notes of 2026-10-21 (plan archived at `docs/plans/archive/1.0/phase6-milestone-80-example-01-feel.md`; `D-209`), with no kit, engine, template or shell change: pushes, blasts and iron knock enemies back and the level's edge takes them; up to three longer black holes hum, collapse and sweep up small balls; iron is heavier, splats what it kills and refuses a spot it won't fit; a jump shoves off what buries the courier; blood, burning, a building chill and warned thaws; the sprays draw over the enemies; the gun holds nine rounds and reloads on R; every refusal and the missing actions sound; and 01 saves at schema 11, migrating 0.100's.

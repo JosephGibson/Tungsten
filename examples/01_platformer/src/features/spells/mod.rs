@@ -3,8 +3,9 @@
 //! its charges and the `casting` effect that pauses the mana's
 //! regeneration, over the toys' rules. The slot actions and the wheel
 //! choose one; the fire missile flies from the kit's spawn payload; slot 0
-//! summons the type `summon_next` and `summon_prev` pick. The HUD shows the
-//! health, the mana, the bar and the gun's magazine.
+//! summons the type `summon_next` and `summon_prev` pick, a dummy, an enemy,
+//! a crate or a keg. The HUD shows the health, the mana, the bar and the
+//! gun's magazine.
 
 pub mod components;
 pub mod hud;
@@ -17,6 +18,7 @@ use tungsten::kit::{ABILITY_TICK, Ability, Phase, Stats, ensure_phases};
 use components::{Spell, Spellbook};
 
 use crate::features::enemies::components::EnemyKind;
+use crate::features::props::components::PropKind;
 
 /// The spell bar's slots, keys 1 to 9 then 0.
 pub const SLOTS: [Option<Spell>; 10] = [
@@ -47,14 +49,36 @@ pub const PREV: &str = "spell_prev";
 pub const SUMMON_NEXT: &str = "summon_next";
 pub const SUMMON_PREV: &str = "summon_prev";
 
-/// A type the summon slot places: its name, its prefab, its icon and, for
-/// an enemy, its kind.
+/// What the summon slot places: the training dummy, an enemy of a kind, a
+/// crate or a keg.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Summoned {
+    Dummy,
+    Enemy(EnemyKind),
+    Crate,
+    Keg,
+}
+
+impl Summoned {
+    /// The prop it places, a crate or a keg; none for a dummy or an enemy.
+    #[must_use]
+    pub const fn prop(self) -> Option<PropKind> {
+        match self {
+            Summoned::Crate => Some(PropKind::Crate),
+            Summoned::Keg => Some(PropKind::Keg),
+            Summoned::Dummy | Summoned::Enemy(_) => None,
+        }
+    }
+}
+
+/// A type the summon slot places: its name, its prefab, its icon and what
+/// it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SummonType {
     pub name: &'static str,
     pub prefab: &'static str,
     pub icon: &'static str,
-    pub enemy: Option<EnemyKind>,
+    pub summoned: Summoned,
 }
 
 /// An enemy's summon type.
@@ -64,24 +88,37 @@ const fn enemy(kind: EnemyKind) -> SummonType {
         name: kind.name(),
         prefab: info.prefab,
         icon: info.icon,
-        enemy: Some(kind),
+        summoned: Summoned::Enemy(kind),
     }
 }
 
-/// The types slot 0 summons: the training dummy, then each enemy as its
-/// kind lands.
-pub const SUMMONS: [SummonType; 6] = [
+/// The types slot 0 summons: the training dummy, each enemy as its kind
+/// lands, then the crate and the keg.
+pub const SUMMONS: [SummonType; 9] = [
     SummonType {
         name: "dummy",
         prefab: crate::features::dummy::DUMMY_PREFAB,
         icon: "ex10_icon_dummy",
-        enemy: None,
+        summoned: Summoned::Dummy,
     },
     enemy(EnemyKind::Wisp),
     enemy(EnemyKind::Crawler),
     enemy(EnemyKind::Beetle),
     enemy(EnemyKind::Bat),
     enemy(EnemyKind::Troll),
+    enemy(EnemyKind::Goblin),
+    SummonType {
+        name: "crate",
+        prefab: crate::features::props::CRATE_PREFAB,
+        icon: "ex10_icon_crate",
+        summoned: Summoned::Crate,
+    },
+    SummonType {
+        name: "keg",
+        prefab: crate::features::props::KEG_PREFAB,
+        icon: "ex10_icon_keg",
+        summoned: Summoned::Keg,
+    },
 ];
 
 /// The type the summon slot places now.

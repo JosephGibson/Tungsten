@@ -16,8 +16,8 @@ use super::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted,
 };
 use super::{
-    ALERT_REACH, DORMANT_PAST, ENEMY_STATES, RECOVER_SECS, SEARCH_SECS, SIGHT_EVERY, WALL_LAYERS,
-    bat, beetle, centre, crawler, troll, wisp,
+    ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY,
+    WALL_LAYERS, bat, beetle, centre, crawler, goblin, troll, wisp,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
@@ -111,7 +111,7 @@ pub fn rest(world: &mut World, enemy: Entity) {
 /// Whether a cast from `from` along `direction` meets ground within
 /// `distance`: a solid tile or a static body, never a ball, an enemy or the
 /// player.
-fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, me: Entity) -> bool {
+pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, me: Entity) -> bool {
     let filter = SpatialFilter::new().excluding(me);
     cast_ray(world, from, direction, distance, &filter).is_some_and(|hit| {
         hit.entity.is_none_or(|entity| {
@@ -175,12 +175,16 @@ fn patrol(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::patrol(world, enemy),
         Some(EnemyKind::Bat) => bat::patrol(world, enemy),
         Some(EnemyKind::Troll) => troll::patrol(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::patrol(world, enemy),
         None => rest(world, enemy),
     }
 }
 
 /// Its tell on spotting the player: it stops and faces where the alert
-/// came from; a wisp flares, a troll roars.
+/// came from; a wisp flares, a troll roars, a goblin cackles. A fresh
+/// alert, from its patrol or its way home, never from a search, shows its
+/// "!" for [`ALERT_MARK_SECS`] and stings: the cue's interval makes the
+/// spotter's and its neighbours' one sting.
 fn enter_alert(world: &mut World, enemy: Entity) {
     rest(world, enemy);
     let point = world
@@ -189,9 +193,26 @@ fn enter_alert(world: &mut World, enemy: Entity) {
     if let Some(point) = point {
         face(world, enemy, point[0]);
     }
+    // No state before: its first visit, out of its first patrol.
+    let fresh = world
+        .get::<StateMachine<EnemyState>>(enemy)
+        .is_some_and(|machine| {
+            machine
+                .previous()
+                .is_none_or(|before| matches!(before, EnemyState::Patrol | EnemyState::Return))
+        });
+    if fresh {
+        if let Some(brain) = world.get_mut::<Brain>(enemy) {
+            brain.alerted = ALERT_MARK_SECS;
+        }
+        if let Some(at) = centre(world, enemy) {
+            audio::play(world, Sound::Alerted, at);
+        }
+    }
     match kind(world, enemy) {
         Some(EnemyKind::Wisp) => wisp::flare(world, enemy),
         Some(EnemyKind::Troll) => troll::roar(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::cackle(world, enemy),
         _ => {}
     }
 }
@@ -221,6 +242,7 @@ fn chase(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::chase(world, enemy),
         Some(EnemyKind::Bat) => bat::chase(world, enemy),
         Some(EnemyKind::Troll) => troll::chase(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::chase(world, enemy),
         None => go(world, enemy, EnemyState::Search),
     }
 }
@@ -231,7 +253,9 @@ fn enter_windup(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Crawler) => crawler::enter_windup(world, enemy),
         Some(EnemyKind::Beetle) => beetle::enter_windup(world, enemy),
         Some(EnemyKind::Bat) => bat::enter_windup(world, enemy),
-        Some(EnemyKind::Wisp | EnemyKind::Troll) | None => {}
+        Some(EnemyKind::Goblin) => goblin::enter_windup(world, enemy),
+        Some(EnemyKind::Troll) => troll::enter_windup(world, enemy),
+        Some(EnemyKind::Wisp) | None => {}
     }
 }
 
@@ -241,6 +265,7 @@ fn windup(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::windup(world, enemy),
         Some(EnemyKind::Bat) => bat::windup(world, enemy),
         Some(EnemyKind::Troll) => troll::windup(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::windup(world, enemy),
         Some(EnemyKind::Wisp) | None => go(world, enemy, EnemyState::Chase),
     }
 }
@@ -251,6 +276,7 @@ fn enter_attack(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::enter_attack(world, enemy),
         Some(EnemyKind::Bat) => bat::enter_attack(world, enemy),
         Some(EnemyKind::Troll) => troll::enter_attack(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::enter_attack(world, enemy),
         Some(EnemyKind::Wisp) | None => {}
     }
 }
@@ -261,19 +287,24 @@ fn attack(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::attack(world, enemy),
         Some(EnemyKind::Bat) => bat::attack(world, enemy),
         Some(EnemyKind::Troll) => troll::attack(world, enemy),
+        Some(EnemyKind::Goblin) => goblin::attack(world, enemy),
         Some(EnemyKind::Wisp) | None => go(world, enemy, EnemyState::Recover),
     }
 }
 
-/// After an attack it stands for [`RECOVER_SECS`], then chases on sight or
-/// searches; a bat climbs back to its roost first.
+/// After an attack it stands for its kind's recovery, the step's slack
+/// below it, then chases on sight or searches; a bat climbs back to its
+/// roost first.
 fn recover(world: &mut World, enemy: Entity) {
-    if let Some(EnemyKind::Bat) = kind(world, enemy) {
+    let Some(kind) = kind(world, enemy) else {
+        return;
+    };
+    if kind == EnemyKind::Bat {
         bat::recover(world, enemy);
         return;
     }
     rest(world, enemy);
-    if elapsed(world, enemy) >= RECOVER_SECS {
+    if elapsed(world, enemy) >= kind.info().recover - 1e-4 {
         let next = if sees(world, enemy) {
             EnemyState::Chase
         } else {
@@ -317,6 +348,9 @@ fn search(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Troll) => {
             troll::seek(world, enemy, point);
         }
+        Some(EnemyKind::Goblin) => {
+            goblin::seek(world, enemy, point);
+        }
         None => rest(world, enemy),
     }
 }
@@ -332,6 +366,7 @@ fn home(world: &mut World, enemy: Entity) {
         Some(EnemyKind::Beetle) => beetle::seek(world, enemy, Some(home)),
         Some(EnemyKind::Bat) => bat::seek(world, enemy, Some(home)),
         Some(EnemyKind::Troll) => troll::seek(world, enemy, Some(home)),
+        Some(EnemyKind::Goblin) => goblin::seek(world, enemy, Some(home)),
         None => true,
     };
     if arrived {
@@ -501,6 +536,20 @@ pub fn alerts(world: &mut World, cursor: &mut EventCursor<Spotted>) {
     }
 }
 
+/// `enemy_marks`, in the intent phase before the machine: each fresh
+/// alert's "!" runs down by the step.
+pub fn marks(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    if dt <= 0.0 {
+        return;
+    }
+    for brain in world.query_mut::<&mut Brain>() {
+        if brain.alerted > 0.0 {
+            brain.alerted = (brain.alerted - dt).max(0.0);
+        }
+    }
+}
+
 /// `enemy_hold`, in the intent phase before the machine: each enemy that
 /// thinks nothing this step is held (dead, dormant, frozen or stunned) and
 /// its mover put at rest, the others let go. A stun replaces a wind-up's
@@ -625,6 +674,7 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
             let shown = world.get::<Shown>(enemy).map_or("", |shown| &shown.clip);
             troll::clip(world, enemy, state, shown)
         }
+        EnemyKind::Goblin => goblin::clip(world, enemy, state),
     };
     let side = if mine.heading < 0.0 { "_left" } else { "" };
     Some(format!("ex10_{clip}{side}"))

@@ -85,7 +85,7 @@ Saturated yellow is reserved for crits. The palette gains violet, maroon and ind
 
 - a moonlit rim on their right side, like the cliffs;
 - glowing detail in their emissive maps;
-- distinct silhouettes: a round flame (wisp), low and wide (crawler), a dome (beetle), spiky wings (bat), tall and hunched (troll).
+- distinct silhouettes: a round flame (wisp), low and wide (crawler), a dome (beetle), spiky wings (bat), tall and hunched (troll), small, big-eared and pot-bellied (goblin, from (g)).
 
 **Status effects** are generic overlays and tints, never art drawn for each enemy. They come in three size classes: small (wisp, bat), medium (crawler, beetle, player, dummy) and large (troll).
 
@@ -109,7 +109,8 @@ Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatte
 | Crawler | 64 | Walk, lunge |
 | Beetle | 64 | Walk, paw, charge |
 | Bat | 64 | Roost, fly, dive wind-up, dive |
-| Troll | 128 | Idle, walk, slam wind-up, slam, pick up, throw; the held object is its own sprite on the kit's hierarchy |
+| Troll | 128 | Idle, walk, slam wind-up, slam, pick up, throw; from (g) a swipe's wind-up and swipe; the held object is its own sprite on the kit's hierarchy |
+| Goblin, from (g) | 64 | Idle, walk, wind-up with a rock or a lit bomb, throw, the stab's wind-up and stab, hop |
 | Player, in (a) | 64 | A toss clip; an arm and gun drawn at 8 aim directions instead of rotated; the lantern brightens on a cast through its emissive map |
 
 Today the player draws unlit through `damage_flash` and never reads its maps, since the fixtures stop removed the lighting fixture (`src/extract.rs`), so the lantern's brightening puts the player on the lit path in (a).
@@ -417,3 +418,10 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - the gun holds nine rounds 0.2 s apart and reloads on R or pad West; an empty trigger clicks;
   - a refused cast says why (no mana, not ready, or no room with a fizzle) and spends nothing; the air jump, a spell switch, a kill, the dummy's death, a dropped orb, which blinks over its last 3 s, and the sprays' ends sound; small balls pour on a loop;
   - the save is schema 11: `black_holes` in a list, migrating schema 10's one hole and holding its magazine to nine.
+- **As built, 01 (g) (M81, `D-210`).** Where it changed this file's rules and (b)'s, (c)'s and (d)'s rows:
+  - pine crates and powder kegs are bodies like iron, set down at the map's markers by a fresh run and placed by the summon slot, whose types are an enum: the dummy, the six kinds, the crate and the keg; a crate's fire is 01's body state, as the balls' is, and a keg's fuse 01's saved field, since the kit's timers have no expiry event and no saved form (feedback K11);
+  - an ending credits whoever began its chain, not only the player, and a keg's or a goblin's bomb's blast is a fourth ending, `Detonation`, since the kit has no radial blast payload (feedback K10);
+  - the goblin is the sixth enemy, a skittish walker that keeps its distance, hops what it can and stabs a courier too close, throwing rocks that stay as rolling bodies and, one throw in five by `KitRng`, a lit bomb that rolls with its fuse; seven stand on the map, which places twenty-six;
+  - the troll's slam tells for 0.8 s with a dust ring about its fist, a grunt and a shake, it recovers in 0.35 s, and under 90 px a quicker swipe, 01's box hit, takes the slam's place, since a kit hitbox cannot follow its owner's facing (feedback K3); the slam and the swipe kick each body by its mass; a troll lifts crates, never kegs;
+  - a fresh alert shows "!" and sounds the sting once for the enemies it alerts, from 01's code rather than (c)'s `spotted` cue, and a search shows "?";
+  - the save is schema 12 (`props`, the rocks among them), moving every save ID from schema 11's first placed orb's up by seven, past the map's goblins; a ball's array leaves its trailing nulls off, so a full pit with the map's 26 enemies and 14 props saves in 1,787,829 bytes.

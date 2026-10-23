@@ -288,3 +288,7 @@ pub fn markers(world: &World, name: &str) -> Vec<Vec2> {
 /// The map's markers where a fresh run sets a loose iron block down: each
 /// a block's centre, on the mine's cut, a lightning rod.
 pub const IRON_MARKER: &str = "iron";
+/// The map's markers where a fresh run sets a pine crate and a powder keg
+/// down: each a box's centre.
+pub const CRATE_MARKER: &str = "crate";
+pub const KEG_MARKER: &str = "keg";

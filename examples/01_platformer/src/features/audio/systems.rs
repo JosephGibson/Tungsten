@@ -5,14 +5,16 @@ use tungsten::kit::{Health, StateMachine};
 
 use super::components::{Ambience, Music};
 use super::{
-    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, HOLE_HUM, HOLE_HUM_REACH, HUM_FADE, HUM_REACH,
-    MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
+    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, CRACKLE_REACH, FIRE_CRACKLE, HOLE_HUM, HOLE_HUM_REACH,
+    HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
+use crate::features::props::components::Fuel;
 use crate::features::toys;
 use crate::game::GAMEPLAY;
+use crate::shared::body_centre;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::pause::PAUSE;
 use crate::shell::{self};
@@ -21,7 +23,7 @@ use crate::shell::{self};
 /// and pause's loop fades in; when gameplay is back on top, pause's loop
 /// stops and the exploration comes back. A screen over pause keeps the
 /// loop. Game over silences the exploration too, under the music the shell
-/// plays, and both hums fall silent until gameplay is back.
+/// plays, and the hums and the crackle fall silent until gameplay is back.
 pub fn duck(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -58,10 +60,16 @@ pub fn duck(world: &mut World) {
         audio.set_voice_volume(holes, 0.0, PAUSE_FADE);
         holes_level = 0.0;
     }
+    let mut crackle_level = music.crackle_level;
+    if let (Some(crackle), true) = (music.crackle, on) {
+        audio.set_voice_volume(crackle, 0.0, PAUSE_FADE);
+        crackle_level = 0.0;
+    }
     world.insert_resource(Music {
         pause,
         hum_level,
         holes_level,
+        crackle_level,
         ducked: on,
         ..music
     });
@@ -144,6 +152,45 @@ pub fn holes(world: &mut World) {
         .set_voice_volume(voice, volume, HUM_FADE);
     world.insert_resource(Music {
         holes_level: volume,
+        ..music
+    });
+}
+
+/// `audio_crackle`, after the duck: while gameplay is on top, the fires'
+/// crackle sounds at its level by the nearest burning crate, falling to 0
+/// at [`CRACKLE_REACH`] from the player and when the last fire falls in or
+/// goes out.
+pub fn crackle(world: &mut World) {
+    let Some(music) = world.get_resource::<Music>().copied() else {
+        return;
+    };
+    let Some(voice) = music.crackle.filter(|_| !music.ducked) else {
+        return;
+    };
+    let player = enemies::systems::player(world).map(|(_, at)| at);
+    let nearest = player.and_then(|player| {
+        world
+            .query::<(tungsten::core::Entity, &Fuel)>()
+            .filter(|(_, fuel)| fuel.lit)
+            .filter_map(|(entity, _)| body_centre(world, entity))
+            .map(|at| at.distance(player))
+            .min_by(f32::total_cmp)
+    });
+    let registry = world.resource::<SoundRegistry>();
+    let level = registry
+        .get_by_id(FIRE_CRACKLE)
+        .map_or(0.0, |handle| registry.get_volume(handle));
+    let volume = nearest.map_or(0.0, |distance| {
+        level * (1.0 - distance / CRACKLE_REACH).clamp(0.0, 1.0)
+    });
+    if (volume - music.crackle_level).abs() < 0.01 && (volume > 0.0 || music.crackle_level == 0.0) {
+        return;
+    }
+    world
+        .resource_mut::<AudioCommands>()
+        .set_voice_volume(voice, volume, HUM_FADE);
+    world.insert_resource(Music {
+        crackle_level: volume,
         ..music
     });
 }

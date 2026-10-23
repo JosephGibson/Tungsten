@@ -418,5 +418,60 @@
     "looping": false,
     "path": "sounds/dummy_thump.wav",
     "volume": 0.5
+  },
+  "ex10_crate_ignite_sfx": {
+    "looping": false,
+    "path": "sounds/crate_ignite.wav",
+    "volume": 0.5
+  },
+  "ex10_fire_crackle_sfx": {
+    "looping": true,
+    "path": "sounds/fire_crackle.wav",
+    "volume": 0.35
+  },
+  "ex10_crate_collapse_sfx": {
+    "looping": false,
+    "path": "sounds/crate_collapse.wav",
+    "volume": 0.55
+  },
+  "ex10_fuse_hiss_sfx": {
+    "looping": false,
+    "path": "sounds/fuse_hiss.wav",
+    "volume": 0.45
+  },
+  "ex10_keg_boom_sfx": {
+    "looping": false,
+    "path": "sounds/keg_boom.wav",
+    "volume": 0.75
+  },
+  "ex10_rock_throw_sfx": {
+    "looping": false,
+    "path": "sounds/rock_throw.wav",
+    "volume": 0.4
+  },
+  "ex10_rock_hit_sfx": {
+    "looping": false,
+    "path": "sounds/rock_hit.wav",
+    "volume": 0.5
+  },
+  "ex10_goblin_cackle_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_cackle.wav",
+    "volume": 0.45
+  },
+  "ex10_goblin_stab_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_stab.wav",
+    "volume": 0.45
+  },
+  "ex10_troll_swipe_sfx": {
+    "looping": false,
+    "path": "sounds/troll_swipe.wav",
+    "volume": 0.55
+  },
+  "ex10_troll_grunt_sfx": {
+    "looping": false,
+    "path": "sounds/troll_grunt.wav",
+    "volume": 0.55
   }
 }

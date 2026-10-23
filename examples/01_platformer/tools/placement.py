@@ -1,6 +1,7 @@
 """Resolve explicit scenery supports and pixel-tight platform collision bounds."""
+import json
 from PIL import Image
-from art import PALETTE
+from art import PALETTE, TOOLS
 
 # How far a prop hung under a platform (`anchor` `under`) tucks its top
 # opaque row up into the underside's ragged lip, in pixels.
@@ -69,6 +70,32 @@ def prepare(source, images):
             p['support'] = support['name']
         half = images['health_orb'].width / 2 / tile
         p['left'], p['top'] = p['x'] - half, support['row'] - p['float'] - half
+    # The placed crates and kegs: each box's centre `y`, its bottom half a
+    # pixel over its support's surface, refused with any of its box off its
+    # support; a solid stair over the support takes its place. A `tier`
+    # stacks a box that many boxes up, each bottom corner over a box of its
+    # kind on the tier under it.
+    for kind in ('crate', 'keg'):
+        prefab = json.loads((TOOLS / 'content' / 'prefabs' / f'{kind}.json').read_text())
+        hx, hy = (v / tile for v in prefab['components']['rigid_body']['shape']['half_extents'])
+        lift = 0.5 / tile
+        placed = source.get(kind + 's', [])
+        for p in placed:
+            support = platforms[p['support']]
+            covers = [q for q in source['platforms'] if q['style'] in FAMILIES and q['left'] <= p['x'] < q['right']
+                      and q['row'] < support['row'] <= q['bottom']]
+            if covers:
+                support = min(covers, key=lambda q: q['row'])
+                p['support'] = support['name']
+            if not support['left'] <= p['x'] - hx <= p['x'] + hx <= support['right']:
+                raise ValueError(f"{kind} outside support: {p['x']} on {support['name']}")
+            tier = p.get('tier', 0)
+            p['y'] = support['row'] - (2 * tier + 1) * hy - (tier + 1) * lift
+        for p in placed:
+            under = [q for q in placed if q['support'] == p['support'] and q.get('tier', 0) == p.get('tier', 0) - 1]
+            for corner in (p['x'] - hx, p['x'] + hx):
+                if p.get('tier', 0) and not any(abs(corner - q['x']) <= hx for q in under):
+                    raise ValueError(f"{kind} stacked over nothing: {p['x']} on {p['support']}")
     for group in source['groups']:
         name=group['sprite'];x=group['x'];y=group['y'];w=group['width'];h=group['height'];support=platforms[group['support']]
         composite=Image.new('RGBA',(w*tile,h*tile))

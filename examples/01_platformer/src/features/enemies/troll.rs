@@ -1,11 +1,17 @@
 //! The cave troll: a lanky, long-armed walker on the kit's platformer
 //! controller, on a 128 px frame. It walks its ground and roars on sight.
-//! Within [`SLAM_RANGE`] of the player it raises its fist for [`SLAM_TELL`]
-//! and slams the ground, hurting every target within [`SLAM_REACH`] of its
-//! fist, scattering the balls and shattering frozen things. Farther off,
-//! with an iron block, a bowling ball, or a frozen enemy or dummy within
-//! [`PICKUP_REACH`], it lifts it over its head and throws it at the player
-//! on a ballistic arc; [`Throws`] credits it with the body's impacts.
+//! Within [`SWIPE_RANGE`] of the player it draws its arm back for
+//! [`SWIPE_TELL`] and rakes the box in front of it; within [`SLAM_RANGE`]
+//! it raises its fists for [`SLAM_TELL`] with a grunt, a dust ring growing
+//! to the slam's reach about its fist's point, and slams the ground,
+//! hurting every target within [`SLAM_REACH`] of its fist, shaking the
+//! camera, kicking the bodies by their mass and shattering frozen things.
+//! Its brain keeps the attack its tell chose. Farther off,
+//! with an iron block, a bowling ball, a crate (burning ones too), or a
+//! frozen enemy or dummy within [`PICKUP_REACH`], it lifts it over its head
+//! and throws it at the player on a ballistic arc; [`Throws`] credits it
+//! with the body's impacts. A crate that falls in while held leaves its
+//! hands empty.
 //!
 //! A held object keeps its entity and save ID: its body turns a sensor,
 //! which [`holds`] puts at the troll's hands before each step at the
@@ -22,13 +28,13 @@
 
 use glam::Vec2;
 use tungsten::core::{
-    BodyKind, Collider, Entity, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Velocity,
-    World,
+    BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
+    ShakeEvent, Shape, Velocity, World,
 };
 use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
 
-use super::components::{Enemy, EnemyKind, EnemyState, Held, Throw, Throws};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Held, Strike, Throw, Throws};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
@@ -37,7 +43,9 @@ use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::player::PLAYER_HALF;
-use crate::features::toys::components::{Ball, BowlingBall, IronBlock};
+use crate::features::props::components::Crate;
+use crate::features::toys::components::{BowlingBall, IronBlock};
+use crate::features::toys::systems::falloff;
 use crate::shared::{SaveId, body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
@@ -46,12 +54,33 @@ pub const SEARCH_PACE: f32 = 0.8;
 /// How near the player, across and up or down, its chase raises its fist.
 pub const SLAM_RANGE: f32 = 140.0;
 pub const SLAM_RISE: f32 = 120.0;
-/// The slam's tell, its reach about the fist's point, its push on what it
-/// hurts and its kick on the balls.
-pub const SLAM_TELL: f32 = 1.2;
+/// The slam's tell, its reach about the fist's point and its push on what
+/// it hurts; its shake by the courier's distance, whole within the first
+/// and none past the second.
+pub const SLAM_TELL: f32 = 0.8;
 pub const SLAM_REACH: f32 = 160.0;
 pub const SLAM_PUSH: f32 = 420.0;
-pub const SLAM_SCATTER: f32 = 650.0;
+pub const SLAM_SHAKE: f32 = 0.5;
+pub const SHAKE_NEAR: f32 = 120.0;
+pub const SHAKE_FAR: f32 = 640.0;
+/// How near the player, across and up or down, its chase swipes instead;
+/// the swipe's tell, its box's half size and its centre from the body's
+/// facing right, its physical damage at a factor of 1 and its push, out and
+/// up.
+pub const SWIPE_RANGE: f32 = 90.0;
+pub const SWIPE_RISE: f32 = 80.0;
+pub const SWIPE_TELL: f32 = 0.3;
+pub const SWIPE_HALF: Vec2 = Vec2::new(40.0, 36.0);
+pub const SWIPE_AT: Vec2 = Vec2::new(52.0, -10.0);
+pub const SWIPE_DAMAGE: f32 = 18.0;
+pub const SWIPE_PUSH: Vec2 = Vec2::new(560.0, -200.0);
+/// The kick the slam and the swipe give a body, px/s: this over its mass,
+/// at most [`KICK_MOST`], away and [`KICK_RISE`] of it up.
+pub const KICK: f32 = 2400.0;
+pub const KICK_MOST: f32 = 650.0;
+pub const KICK_RISE: f32 = 0.6;
+/// Its recovery after an attack, its own.
+pub const RECOVER: f32 = 0.35;
 /// Where its fist meets the ground, from its body's centre facing right.
 pub const FIST: Vec2 = Vec2::new(56.0, 50.0);
 /// How far from its centre it reaches for something to throw, the throw's
@@ -89,8 +118,9 @@ pub fn held(world: &World, troll: Entity) -> Option<Entity> {
         .map(|(entity, _)| entity)
 }
 
-/// Whether a troll may lift `entity`: an iron block, a bowling ball, or a
-/// live frozen enemy or dummy, not a troll, held or in flight.
+/// Whether a troll may lift `entity`: an iron block, a bowling ball, a
+/// crate, burning or not, or a live frozen enemy or dummy, not a troll,
+/// held or in flight; never a keg.
 fn liftable(world: &World, entity: Entity) -> bool {
     let target = world.has::<Dummy>(entity)
         || world
@@ -101,7 +131,9 @@ fn liftable(world: &World, entity: Entity) -> bool {
         && world
             .get::<Health>(entity)
             .is_some_and(|health| !health.is_dead());
-    let thing = world.has::<IronBlock>(entity) || world.has::<BowlingBall>(entity);
+    let thing = world.has::<IronBlock>(entity)
+        || world.has::<BowlingBall>(entity)
+        || world.has::<Crate>(entity);
     (thing || frozen_target)
         && !world.has::<Held>(entity)
         && world
@@ -200,7 +232,7 @@ pub fn drop_held(world: &mut World, object: Entity) {
 }
 
 /// `troll`'s damage factor: its `damage` stat over its base.
-fn factor(world: &World, troll: Entity) -> f32 {
+pub(crate) fn factor(world: &World, troll: Entity) -> f32 {
     world.get::<Stats>(troll).map_or(1.0, |stats| {
         match (stats.get(Stats::DAMAGE), stats.base(Stats::DAMAGE)) {
             (Some(damage), Some(base)) if base > 0.0 => damage / base,
@@ -270,9 +302,54 @@ pub fn fist(world: &World, troll: Entity) -> Option<Vec2> {
     Some(at + Vec2::new(FIST.x * heading, FIST.y))
 }
 
+/// What a blow of the troll's does to each saved thing in `near`, in
+/// save-ID order, each with its body's centre: a live target takes
+/// `damage` physical from `troll` with `push(at)`; a frozen thing shatters;
+/// any other dynamic body is kicked away from `from` by its mass,
+/// [`KICK`] over it at most [`KICK_MOST`], and [`KICK_RISE`] of that up.
+fn blow(
+    world: &mut World,
+    troll: Entity,
+    near: &[(u64, Entity, Vec2)],
+    damage: f32,
+    from: Vec2,
+    push: impl Fn(Vec2) -> Vec2,
+) {
+    for &(_, entity, at) in near {
+        let live = world
+            .get::<Health>(entity)
+            .is_some_and(|health| !health.is_dead());
+        if live {
+            Hit::new(entity, [(Kind::Physical, damage)])
+                .at(at)
+                .push(push(at))
+                .from(troll)
+                .queue(world);
+        }
+        let frozen = world.has::<Frozen>(entity) || (live && has_status(world, entity, FROZEN));
+        if frozen {
+            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
+            continue;
+        }
+        let Some(body) = world.get::<RigidBody>(entity).copied() else {
+            continue;
+        };
+        if live || body.kind != BodyKind::Dynamic {
+            continue;
+        }
+        let kick = (KICK * body.inv_mass).min(KICK_MOST);
+        let away = (at - from).normalize_or(Vec2::NEG_Y);
+        if let Some(velocity) = world.get_mut::<Velocity>(entity) {
+            velocity.0 += away * kick + Vec2::new(0.0, -KICK_RISE * kick);
+        }
+        wake(world, entity);
+    }
+}
+
 /// The slam: every live target but the troll within [`SLAM_REACH`] of its
-/// fist takes its `damage` as physical, pushed away; every ball in reach
-/// is kicked away and up; every frozen thing in reach shatters.
+/// fist takes its `damage` as physical, pushed away; every other body in
+/// reach is kicked away by its mass; every frozen thing in reach shatters;
+/// the camera shakes by the courier's distance.
 pub fn slam(world: &mut World, troll: Entity) {
     let Some(point) = fist(world, troll) else {
         return;
@@ -281,7 +358,6 @@ pub fn slam(world: &mut World, troll: Entity) {
         .get::<Stats>(troll)
         .and_then(|stats| stats.get(Stats::DAMAGE))
         .unwrap_or(40.0);
-    let away = |at: Vec2| (at - point).normalize_or(Vec2::NEG_Y);
     let mut near: Vec<(u64, Entity, Vec2)> = world
         .query::<(Entity, &SaveId, &Position, &Collider)>()
         .filter_map(|(entity, id, position, collider)| {
@@ -290,30 +366,58 @@ pub fn slam(world: &mut World, troll: Entity) {
         })
         .collect();
     near.sort_unstable_by_key(|&(id, ..)| id);
-    for &(_, entity, at) in &near {
-        let live = world
-            .get::<Health>(entity)
-            .is_some_and(|health| !health.is_dead());
-        if live {
-            Hit::new(entity, [(Kind::Physical, damage)])
-                .at(at)
-                .push(away(at) * SLAM_PUSH)
-                .from(troll)
-                .queue(world);
-        }
-        let frozen = world.has::<Frozen>(entity) || (live && has_status(world, entity, FROZEN));
-        if frozen {
-            cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
-        } else if world.has::<Ball>(entity) {
-            let kick = away(at) * SLAM_SCATTER + Vec2::new(0.0, -0.6 * SLAM_SCATTER);
-            if let Some(velocity) = world.get_mut::<Velocity>(entity) {
-                velocity.0 += kick;
-            }
-            wake(world, entity);
+    let push = |at: Vec2| (at - point).normalize_or(Vec2::NEG_Y) * SLAM_PUSH;
+    blow(world, troll, &near, damage, point, push);
+    if let Some((_, courier)) = player(world) {
+        let trauma = SLAM_SHAKE * falloff(courier.distance(point), SHAKE_NEAR, SHAKE_FAR);
+        if trauma > 0.0
+            && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
+        {
+            queue.send(ShakeEvent { trauma_add: trauma });
         }
     }
     spawn_burst(world, "ex10_blast_dust", point);
     audio::play(world, Sound::TrollSlam, point);
+}
+
+/// Whether a body of `shape` about `centre` meets the box of `half` about
+/// `at`.
+pub(crate) fn meets(centre: Vec2, shape: Shape, at: Vec2, half: Vec2) -> bool {
+    ((centre - at).abs() - (half + self::half(shape))).max_element() < 0.0
+}
+
+/// The swipe's box: [`SWIPE_HALF`] about [`SWIPE_AT`] from its body's
+/// centre, mirrored as it faces.
+#[must_use]
+pub fn swipe_box(world: &World, troll: Entity) -> Option<Vec2> {
+    let at = centre(world, troll)?;
+    let heading = world.get::<Enemy>(troll)?.heading;
+    Some(at + Vec2::new(SWIPE_AT.x * heading, SWIPE_AT.y))
+}
+
+/// The swipe: every live target but the troll whose body meets the box in
+/// front of it takes [`SWIPE_DAMAGE`] physical at its damage factor, pushed
+/// out and up, dropped on one that stands firm; every frozen thing there
+/// shatters; every other body there is kicked away from the troll by its
+/// mass. Its sound.
+pub fn swipe(world: &mut World, troll: Entity) {
+    let (Some(box_at), Some(from)) = (swipe_box(world, troll), centre(world, troll)) else {
+        return;
+    };
+    let heading = world.get::<Enemy>(troll).map_or(1.0, |mine| mine.heading);
+    let mut near: Vec<(u64, Entity, Vec2)> = world
+        .query::<(Entity, &SaveId, &Position, &Collider)>()
+        .filter_map(|(entity, id, position, collider)| {
+            let at = position.0 + collider.offset;
+            (entity != troll && meets(at, collider.shape, box_at, SWIPE_HALF))
+                .then_some((id.0, entity, at))
+        })
+        .collect();
+    near.sort_unstable_by_key(|&(id, ..)| id);
+    let damage = SWIPE_DAMAGE * factor(world, troll);
+    let push = |_: Vec2| Vec2::new(SWIPE_PUSH.x * heading, SWIPE_PUSH.y);
+    blow(world, troll, &near, damage, from, push);
+    audio::play(world, Sound::TrollSwiped, box_at);
 }
 
 /// `troll_holds`, in the move phase after the movers: each held object
@@ -356,17 +460,21 @@ pub fn roar(world: &mut World, troll: Entity) {
     }
 }
 
-/// Ends the chase's step in its tell, facing `x`.
-fn tell(world: &mut World, troll: Entity, x: f32) {
+/// Ends the chase's step in the tell of `strike`, facing `x`, its brain
+/// keeping the strike.
+fn tell(world: &mut World, troll: Entity, x: f32, strike: Strike) {
     face(world, troll, x);
+    if let Some(brain) = world.get_mut::<Brain>(troll) {
+        brain.strike = Some(strike);
+    }
     go(world, troll, EnemyState::WindUp);
     rest(world, troll);
 }
 
-/// The chase: holding something, it throws; within [`SLAM_RANGE`] it
-/// slams; else with something to lift within [`PICKUP_REACH`] it lifts it
-/// and throws; else it walks at the player. It searches once it loses
-/// sight.
+/// The chase: holding something, it throws; within [`SWIPE_RANGE`] it
+/// swipes and within [`SLAM_RANGE`] it slams; else with something to lift
+/// within [`PICKUP_REACH`] it lifts it and throws; else it walks at the
+/// player. It searches once it loses sight.
 pub fn chase(world: &mut World, troll: Entity) {
     if !sees(world, troll) {
         go(world, troll, EnemyState::Search);
@@ -376,49 +484,82 @@ pub fn chase(world: &mut World, troll: Entity) {
         return;
     };
     if held(world, troll).is_some() {
-        return tell(world, troll, target.x);
+        return tell(world, troll, target.x, Strike::Throw);
     }
     let grounded = world
         .get::<PlatformerController>(troll)
         .is_some_and(PlatformerController::grounded);
-    let across = target.x - at.x;
-    if grounded && across.abs() <= SLAM_RANGE && (target.y - at.y).abs() <= SLAM_RISE {
-        return tell(world, troll, target.x);
+    let (across, rise) = ((target.x - at.x).abs(), (target.y - at.y).abs());
+    if grounded && across <= SWIPE_RANGE && rise <= SWIPE_RISE {
+        return tell(world, troll, target.x, Strike::Swipe);
+    }
+    if grounded && across <= SLAM_RANGE && rise <= SLAM_RISE {
+        return tell(world, troll, target.x, Strike::Slam);
     }
     if grounded
         && let Some(object) = nearest_liftable(world, troll)
         && pick_up(world, troll, object)
     {
-        return tell(world, troll, target.x);
+        return tell(world, troll, target.x, Strike::Throw);
     }
-    stride(world, troll, across.signum(), 1.0);
+    stride(world, troll, (target.x - at.x).signum(), 1.0);
 }
 
-/// Its tell, [`THROW_TELL`] with something over its head, else the slam's
-/// [`SLAM_TELL`]; then the attack.
+/// The strike `troll`'s tell chose: its brain's, else, for an older save's
+/// brain, the throw with something over its head and the slam without.
+#[must_use]
+pub fn strike(world: &World, troll: Entity) -> Strike {
+    match world.get::<Brain>(troll).and_then(|brain| brain.strike) {
+        Some(strike) => strike,
+        None if held(world, troll).is_some() => Strike::Throw,
+        None => Strike::Slam,
+    }
+}
+
+/// Its tell's start: the slam's grunt.
+pub fn enter_windup(world: &mut World, troll: Entity) {
+    if strike(world, troll) == Strike::Slam
+        && let Some(at) = centre(world, troll)
+    {
+        audio::play(world, Sound::TrollGrunted, at);
+    }
+}
+
+/// Its tell, [`THROW_TELL`] for a throw, [`SWIPE_TELL`] for a swipe and
+/// [`SLAM_TELL`] for a slam; then the attack.
 pub fn windup(world: &mut World, troll: Entity) {
     rest(world, troll);
-    let tell = if held(world, troll).is_some() {
-        THROW_TELL
-    } else {
-        SLAM_TELL
+    let tell = match strike(world, troll) {
+        Strike::Throw => THROW_TELL,
+        Strike::Swipe => SWIPE_TELL,
+        _ => SLAM_TELL,
     };
     if elapsed(world, troll) >= tell - 1e-4 {
         go(world, troll, EnemyState::Attack);
     }
 }
 
-/// The attack: the throw of what it holds, else the slam.
+/// The attack: its swipe, or the throw of what it holds, else its slam,
+/// which its brain keeps as the strike it made.
 pub fn enter_attack(world: &mut World, troll: Entity) {
-    if throw(world, troll).is_none() {
+    if strike(world, troll) == Strike::Swipe {
+        swipe(world, troll);
+    } else if throw(world, troll).is_none() {
+        if let Some(brain) = world.get_mut::<Brain>(troll) {
+            brain.strike = Some(Strike::Slam);
+        }
         slam(world, troll);
     }
 }
 
-/// The attack's clip runs [`ATTACK_SECS`], then the recovery.
+/// The attack's clip runs [`ATTACK_SECS`], then the recovery, its strike
+/// spent.
 pub fn attack(world: &mut World, troll: Entity) {
     rest(world, troll);
     if elapsed(world, troll) >= ATTACK_SECS - 1e-4 {
+        if let Some(brain) = world.get_mut::<Brain>(troll) {
+            brain.strike = None;
+        }
         go(world, troll, EnemyState::Recover);
     }
 }
@@ -438,17 +579,25 @@ pub fn seek(world: &mut World, troll: Entity, point: Option<Vec2>) -> bool {
     !stride(world, troll, across.signum(), SEARCH_PACE)
 }
 
-/// Its clip for `state`: over its head what it holds; the throw or the
-/// slam through its attack, the throw after a lift (`shown`, its last
-/// clip); the wind-up through the slam's tell; standing while it recovers,
-/// roars or stands still; else its walk.
+/// Its clip for `state`: over its head what it holds; the throw, the swipe
+/// or the slam through its attack, by the strike its tell chose, the throw
+/// too after a lift (`shown`, its last clip); the swipe's or the slam's
+/// wind-up through its tell; standing while it recovers, roars or stands
+/// still; else its walk.
 #[must_use]
 pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'static str {
     let lifting = shown.contains("troll_pickup") || shown.contains("troll_throw");
+    let strike = world.get::<Brain>(troll).and_then(|brain| brain.strike);
     match state {
-        EnemyState::Attack if lifting => "troll_throw",
-        EnemyState::Attack => "troll_slam",
+        EnemyState::Attack => match strike {
+            Some(Strike::Swipe) => "troll_swipe",
+            Some(Strike::Throw) => "troll_throw",
+            Some(_) => "troll_slam",
+            None if lifting => "troll_throw",
+            None => "troll_slam",
+        },
         _ if held(world, troll).is_some() => "troll_pickup",
+        EnemyState::WindUp if strike == Some(Strike::Swipe) => "troll_swipe_windup",
         EnemyState::WindUp => "troll_windup",
         EnemyState::Alert | EnemyState::Recover => "troll_idle",
         _ => {

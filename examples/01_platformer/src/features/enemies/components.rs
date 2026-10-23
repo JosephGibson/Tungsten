@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use tungsten::core::{Entity, RigidBody};
 use tungsten::kit::{ContactDamage, TopDownMover};
 
-/// One of the five enemies, which its prefab names.
+/// One of the six enemies, which its prefab names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EnemyKind {
@@ -14,16 +14,18 @@ pub enum EnemyKind {
     Beetle,
     Bat,
     Troll,
+    Goblin,
 }
 
 impl EnemyKind {
     /// Every kind, in the order the summon slot takes them.
-    pub const ALL: [EnemyKind; 5] = [
+    pub const ALL: [EnemyKind; 6] = [
         EnemyKind::Wisp,
         EnemyKind::Crawler,
         EnemyKind::Beetle,
         EnemyKind::Bat,
         EnemyKind::Troll,
+        EnemyKind::Goblin,
     ];
 
     /// Its name, its prefab's and its clips' stem.
@@ -35,6 +37,7 @@ impl EnemyKind {
             EnemyKind::Beetle => "beetle",
             EnemyKind::Bat => "bat",
             EnemyKind::Troll => "troll",
+            EnemyKind::Goblin => "goblin",
         }
     }
 }
@@ -70,13 +73,38 @@ impl Enemy {
 }
 
 /// What an enemy knows: where it last saw the player, the point it
-/// searches and the point a neighbour's alert passed it. Saved.
+/// searches, the point a neighbour's alert passed it, the attack its tell
+/// chose, so a load swings the same one and its clip comes from saved
+/// state, and the seconds a fresh alert's "!" has left, which no state of
+/// its machine can hold (Alert ends sooner). Saved; an older save's brains
+/// chose none and show none.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Brain {
     pub last_seen: Option<[f32; 2]>,
     pub search: Option<[f32; 2]>,
     pub alert: Option<[f32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strike: Option<Strike>,
+    #[serde(default, skip_serializing_if = "is_none_left")]
+    pub alerted: f32,
+}
+
+fn is_none_left(left: &f32) -> bool {
+    *left <= 0.0
+}
+
+/// The attack an enemy's tell chose: a goblin's rock, bomb or stab, a
+/// troll's slam, swipe or throw.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Strike {
+    Rock,
+    Bomb,
+    Slam,
+    Swipe,
+    Throw,
+    Stab,
 }
 
 /// An enemy's sight: the seconds to its next check and whether its last
@@ -161,8 +189,8 @@ impl Throws {
 pub struct PlacedEnemies(pub Vec<u64>);
 
 /// An enemy's sight of the player turning on: the spotter and the point it
-/// saw from, which alerts its neighbours and, as the cue `spotted` about the
-/// player, plays the alert sting.
+/// saw from, which alerts its neighbours; each that comes freshly alert
+/// stings (`Sound::Alerted`).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Spotted {
     pub spotter: Entity,

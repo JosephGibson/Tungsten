@@ -10038,6 +10038,67 @@
       "y": 43.0546875
     }
   ],
+  "crates": [
+    {
+      "support": "clearing",
+      "x": 0.5
+    },
+    {
+      "support": "clearing",
+      "x": 1.40625
+    },
+    {
+      "support": "clearing",
+      "x": 0.953125,
+      "tier": 1
+    },
+    {
+      "support": "channel_west",
+      "x": 91.5
+    },
+    {
+      "support": "channel_west",
+      "x": 92.40625
+    },
+    {
+      "support": "mine_upper",
+      "x": 327.5
+    },
+    {
+      "support": "mine_upper",
+      "x": 331.5
+    },
+    {
+      "support": "east_bank",
+      "x": 425.953125
+    },
+    {
+      "support": "east_bank",
+      "x": 426.859375
+    }
+  ],
+  "kegs": [
+    {
+      "support": "clearing",
+      "x": 3.078125
+    },
+    {
+      "support": "channel_west",
+      "x": 93.171875
+    },
+    {
+      "support": "mine_upper",
+      "x": 328.265625
+    },
+    {
+      "support": "mine_upper",
+      "x": 330.734375
+    },
+    {
+      "support": "east_bank",
+      "x": 427.625
+    }
+  ],
   "dummies": [
     {
       "name": "training dummy",
@@ -10165,6 +10226,54 @@
       "name": "upper beetle",
       "x": 326.0,
       "y": 36.046875
+    },
+    {
+      "kind": "goblin",
+      "name": "aqueduct goblin",
+      "x": 103.46875,
+      "y": 27.046875,
+      "leash": 3
+    },
+    {
+      "kind": "goblin",
+      "name": "upper goblin",
+      "x": 328.96875,
+      "y": 36.046875
+    },
+    {
+      "kind": "goblin",
+      "name": "cut goblin",
+      "x": 328.46875,
+      "y": 49.046875,
+      "leash": 3
+    },
+    {
+      "kind": "goblin",
+      "name": "meadow goblin",
+      "x": 33.46875,
+      "y": 35.046875,
+      "leash": 4
+    },
+    {
+      "kind": "goblin",
+      "name": "cut floor goblin",
+      "x": 289.46875,
+      "y": 55.046875,
+      "leash": 3
+    },
+    {
+      "kind": "goblin",
+      "name": "bridge goblin a",
+      "x": 379.46875,
+      "y": 35.046875,
+      "leash": 4
+    },
+    {
+      "kind": "goblin",
+      "name": "bridge goblin b",
+      "x": 412.46875,
+      "y": 35.046875,
+      "leash": 4
     }
   ],
   "pickups": [

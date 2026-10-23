@@ -18,8 +18,9 @@ pub use components::Run;
 use crate::features::combat::components::Hints;
 use crate::features::combat::numbers::Numbers;
 use crate::features::elements::cascade::Cascades;
+use crate::features::props::components::PropKind;
 use crate::features::spells::components::Summon;
-use crate::features::{audio, dummy, enemies, level, player, spells, toys};
+use crate::features::{audio, dummy, enemies, level, player, props, spells, toys};
 use crate::game::GAMEPLAY;
 use crate::save;
 use crate::shared::SaveIds;
@@ -86,12 +87,21 @@ impl GameState for GameplayState {
             Vec2::from(save.player.position) + player::BODY_OFFSET
         });
         let player = player::spawn(world, centre, start.difficulty);
-        // A fresh run sets the mine's loose iron down, the blocks taking the
-        // save IDs after the player's, before the run sounds; a load restores
-        // the blocks it saved.
+        // A fresh run sets the mine's loose iron down, then the map's crates
+        // and kegs, quietly, each taking the save IDs after the player's,
+        // before the run sounds; a load restores the blocks and props it
+        // saved.
         if start.save.is_none() {
             for at in level::markers(world, level::IRON_MARKER) {
                 toys::place_iron(world, at);
+            }
+            for (marker, kind) in [
+                (level::CRATE_MARKER, PropKind::Crate),
+                (level::KEG_MARKER, PropKind::Keg),
+            ] {
+                for at in level::markers(world, marker) {
+                    props::spawn(world, kind, at);
+                }
             }
         }
         // The area a save names is the run's already: no toast, no autosave.
