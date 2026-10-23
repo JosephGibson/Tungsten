@@ -4,9 +4,9 @@
 //! entry deals takes the step's resolve. An explosion is thermal shock,
 //! fire on a frozen thing; a shatter, a hard hit on one; a steam burst,
 //! cold on a burning thing; a jump, a strike's conduction from one
-//! conductive thing to the next. Each waits for its run: one queued while a
-//! run executes is due on the next, so a chain rolls one ring a step
-//! whatever the frame rate.
+//! conductive thing to the next; a detonation, a powder keg blowing. Each
+//! waits for its run: one queued while a run executes is due on the next,
+//! so a chain rolls one ring a step whatever the frame rate.
 //!
 //! A run takes at most [`CASCADE_CAP`] due entries, by their due run, then
 //! their distance from their chain's origin, then their target's save ID.
@@ -14,13 +14,20 @@
 //! holds at most one entry a kind per live saved entity and six jumps a
 //! strike; past [`CASCADE_BOUND`] an add is dropped, counted and warned of
 //! once a step.
+//!
+//! Each entry credits a save ID: the run's player's for the spells, the
+//! gun and what nobody lit, or whoever lit a keg. A run resolves it to the
+//! player or a live target, and every ending an entry sets off credits
+//! the same ID, so a goblin's bomb that shocks a frozen body still credits
+//! the goblin; a gone lighter credits none.
 
 use std::collections::{HashMap, HashSet};
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::core::{
-    BodyKind, Collider, DataRef, Entity, Position, RigidBody, Shape, Velocity, World,
+    BodyKind, Collider, DataRef, Entity, EventQueue, Position, RigidBody, ShakeEvent, Shape,
+    Velocity, World,
 };
 use tungsten::kit::{EffectRequest, Health, end_effect};
 use tungsten::physics::wake;
@@ -34,8 +41,11 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, BURNING, Kind, has_status};
+use crate::features::props::components::{Bomb, Crate, Keg, Rock};
+use crate::features::props::{self, PROP_BLAST};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
+use crate::features::toys::systems::{blast_trauma, flare};
 use crate::shared::{
     SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst, surface_distance,
 };
@@ -64,6 +74,11 @@ pub enum CascadeKind {
     /// the next jump queued to the nearest conductive thing not yet in the
     /// chain.
     Jump,
+    /// A powder keg blowing: it goes, a frozen one shattering instead; its
+    /// fire and physical parts to the targets in reach, its small balls and
+    /// crates lit, its kegs set off, its frozen bodies queued to explode and
+    /// its bodies pushed. It runs once a keg a run, and never on one gone.
+    Detonation,
 }
 
 /// One waiting cascade: its kind, the thing it happens to by save ID (a
@@ -108,6 +123,9 @@ pub struct Cascades {
     /// the step's, never saved.
     #[serde(skip)]
     pub steamed: Vec<Entity>,
+    /// The kegs this step's run has blown, in turn: the run's, never saved.
+    #[serde(skip)]
+    pub detonated: Vec<Entity>,
     /// The kinds waiting on each target, kept beside the entries.
     #[serde(skip)]
     keys: HashSet<(CascadeKind, u64)>,
@@ -143,6 +161,16 @@ impl Cascades {
     }
 }
 
+/// The run's player's save ID, which the spells, the gun and a fire nobody
+/// lit credit.
+#[must_use]
+pub fn player_credit(world: &World) -> Option<u64> {
+    world
+        .get_resource::<Run>()
+        .and_then(|run| world.get::<SaveId>(run.player))
+        .map(|id| id.0)
+}
+
 /// Queues a cascade of `kind` at `at`, on `target`, from the chain begun at
 /// `origin`, its reach `strength`, crediting the run's player; due on the
 /// next run. False when `kind` waits on the target already, or past
@@ -155,12 +183,23 @@ pub fn queue(
     origin: Vec2,
     strength: f32,
 ) -> bool {
+    let source = player_credit(world);
+    queue_from(world, kind, target, at, origin, strength, source)
+}
+
+/// [`queue`], crediting the save ID `source`: a keg's lighter, or the
+/// entry whose run sets it off.
+pub fn queue_from(
+    world: &mut World,
+    kind: CascadeKind,
+    target: Option<Entity>,
+    at: Vec2,
+    origin: Vec2,
+    strength: f32,
+    source: Option<u64>,
+) -> bool {
     let target = target
         .and_then(|entity| world.get::<SaveId>(entity))
-        .map(|id| id.0);
-    let source = world
-        .get_resource::<Run>()
-        .and_then(|run| world.get::<SaveId>(run.player))
         .map(|id| id.0);
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return false;
@@ -221,10 +260,7 @@ pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
         return false;
     };
     let at = body_centre(world, jump.receiver).unwrap_or(jump.from);
-    let source = world
-        .get_resource::<Run>()
-        .and_then(|run| world.get::<SaveId>(run.player))
-        .map(|id| id.0);
+    let source = player_credit(world);
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return false;
     };
@@ -256,7 +292,8 @@ pub fn queue_jump(world: &mut World, jump: Jump, runs: u64) -> bool {
     true
 }
 
-/// A frozen body's explosion's reach: an ice ball's, iron's or a scrap's.
+/// A frozen body's explosion's reach: an ice ball's, iron's, a scrap's or a
+/// prop's.
 #[must_use]
 pub fn blast_reach(world: &World, body: Entity) -> f32 {
     if world.has::<IronBlock>(body) {
@@ -265,22 +302,37 @@ pub fn blast_reach(world: &World, body: Entity) -> f32 {
         SCRAP_BLAST
     } else if world.has::<Ball>(body) {
         BALL_BLAST
+    } else if props::is_prop(world, body) {
+        PROP_BLAST
     } else {
         TARGET_BLAST
     }
 }
 
 /// Queues thermal shock on the frozen `thing` at `at`, its chain begun at
-/// `origin`.
+/// `origin`, crediting the run's player.
 pub fn thermal_shock(world: &mut World, thing: Entity, at: Vec2, origin: Vec2) -> bool {
+    let source = player_credit(world);
+    thermal_shock_from(world, thing, at, origin, source)
+}
+
+/// [`thermal_shock`], crediting the save ID `source`: an ending's own.
+pub fn thermal_shock_from(
+    world: &mut World,
+    thing: Entity,
+    at: Vec2,
+    origin: Vec2,
+    source: Option<u64>,
+) -> bool {
     let reach = blast_reach(world, thing);
-    queue(
+    queue_from(
         world,
         CascadeKind::Explosion,
         Some(thing),
         at,
         origin,
         reach,
+        source,
     )
 }
 
@@ -299,13 +351,15 @@ fn order(a: &Entry, b: &Entry) -> std::cmp::Ordering {
 }
 
 /// `cascade_run`: counts the run, then runs at most [`CASCADE_CAP`] of the
-/// due entries in order; with none due it returns after the count.
+/// due entries in order, its bin holding their targets and the targets
+/// they credit; with none due it returns after the count.
 pub fn run(world: &mut World) {
     let Some(cascades) = world.get_resource_mut::<Cascades>() else {
         return;
     };
     cascades.step += 1;
     cascades.steamed.clear();
+    cascades.detonated.clear();
     let step = cascades.step;
     if !cascades.entries.iter().any(|entry| entry.due <= step) {
         return;
@@ -323,8 +377,13 @@ pub fn run(world: &mut World) {
             cascades.keys.remove(&(entry.kind, target));
         }
     }
-    let mut wanted: Vec<u64> = due.iter().filter_map(|entry| entry.target).collect();
+    let mut wanted: Vec<u64> = due
+        .iter()
+        .flat_map(|entry| [entry.target, entry.source])
+        .flatten()
+        .collect();
     wanted.sort_unstable();
+    wanted.dedup();
     let bin = Bin::build(world, &wanted);
     for entry in &due {
         execute(world, &bin, entry);
@@ -338,6 +397,10 @@ enum What {
     BowlingBall,
     Iron,
     Scrap,
+    Crate,
+    Keg,
+    Bomb,
+    Rock,
     Target,
 }
 
@@ -365,8 +428,10 @@ fn cell_of(at: Vec2) -> (i32, i32) {
 }
 
 impl Bin {
-    /// The step's balls, iron, scraps and live targets, and the entities of
-    /// the save IDs `wanted` (sorted), the due entries' targets (P6).
+    /// The step's balls, iron, scraps, crates, kegs and live targets, and
+    /// the entities of the save IDs `wanted` (sorted), the due entries'
+    /// targets and sources (P6). The balls and iron come from the query's
+    /// columns; the few other rows are looked up.
     fn build(world: &World, wanted: &[u64]) -> Self {
         let mut items = Vec::new();
         for (entity, at, collider, id, small, ball, iron, scrap) in world.query::<(
@@ -387,6 +452,14 @@ impl Bin {
                 What::Iron
             } else if scrap.is_some() {
                 What::Scrap
+            } else if world.has::<Crate>(entity) {
+                What::Crate
+            } else if world.has::<Keg>(entity) {
+                What::Keg
+            } else if world.has::<Bomb>(entity) {
+                What::Bomb
+            } else if world.has::<Rock>(entity) {
+                What::Rock
             } else if world
                 .get::<Health>(entity)
                 .is_some_and(|health| !health.is_dead())
@@ -439,10 +512,29 @@ impl Bin {
     }
 }
 
-/// The entity of the save ID `id` the run credits: the run's player.
-fn credited(world: &World, id: Option<u64>) -> Option<Entity> {
-    let player = world.get_resource::<Run>()?.player;
-    (world.get::<SaveId>(player).map(|own| own.0) == id).then_some(player)
+/// The entity of the save ID `id` the run credits: the run's player, or a
+/// live target the bin holds.
+fn credited(world: &World, bin: &Bin, id: Option<u64>) -> Option<Entity> {
+    let id = id?;
+    if let Some(player) = world.get_resource::<Run>().map(|run| run.player)
+        && world.get::<SaveId>(player).map(|own| own.0) == Some(id)
+    {
+        return Some(player);
+    }
+    bin.ids.get(&id).copied().filter(|&entity| {
+        world.is_alive(entity)
+            && world
+                .get::<Health>(entity)
+                .is_some_and(|health| !health.is_dead())
+    })
+}
+
+/// What an entry credits: the entity its hits come from, and the save ID
+/// the endings it sets off credit in turn.
+#[derive(Debug, Clone, Copy)]
+struct Credit {
+    source: Option<Entity>,
+    id: Option<u64>,
 }
 
 /// Runs one entry.
@@ -455,14 +547,18 @@ fn execute(world: &mut World, bin: &Bin, entry: &Entry) {
         .and_then(|entity| body_centre(world, entity))
         .unwrap_or_else(|| Vec2::from(entry.at));
     let origin = Vec2::from(entry.origin);
-    let source = credited(world, entry.source);
+    let credit = Credit {
+        source: credited(world, bin, entry.source),
+        id: entry.source,
+    };
     match entry.kind {
-        CascadeKind::Explosion => explode(world, bin, target, at, origin, source, entry.strength),
+        CascadeKind::Explosion => explode(world, bin, target, at, origin, credit, entry.strength),
         CascadeKind::Shatter => shatter(world, target, at),
-        CascadeKind::Steam => steam(world, bin, target, at, origin, source, entry.strength),
+        CascadeKind::Steam => steam(world, bin, target, at, origin, credit, entry.strength),
         CascadeKind::Jump => {
-            crate::features::lightning::conduct(world, target, at, origin, source, entry);
+            crate::features::lightning::conduct(world, target, at, origin, credit.source, entry);
         }
+        CascadeKind::Detonation => detonate(world, bin, target, at, origin, credit, entry.strength),
     }
 }
 
@@ -528,52 +624,126 @@ fn blast_hit(
     hit.queue(world);
 }
 
-/// Thermal shock at `at`, of `reach`: the frozen thing ends; the targets in
-/// reach take fire and physical parts of an eighth of the reach each with
-/// its push; small balls in reach light; frozen bodies in reach queue their
-/// own explosions; the bodies are pushed.
+/// A blast at `at` of `reach`, an explosion's or a detonation's, in the
+/// chain begun at `origin`: the targets in reach take fire and physical
+/// parts of an eighth of the reach each with its push, from the credit's
+/// source; its small balls and crates light and its kegs go off, crediting
+/// its ID, as its frozen bodies' own explosions do; its bodies are pushed.
+fn blast(world: &mut World, bin: &Bin, at: Vec2, origin: Vec2, credit: Credit, reach: f32) {
+    let parts = reach / 8.0;
+    for (item, distance) in bin.near(world, at, reach) {
+        if !world.is_alive(item.entity) {
+            continue;
+        }
+        if item.what == What::Target {
+            blast_hit(
+                world,
+                item.entity,
+                at,
+                parts,
+                (BLAST_PUSH, reach, distance),
+                credit.source,
+            );
+            continue;
+        }
+        if world.has::<Frozen>(item.entity) {
+            thermal_shock_from(world, item.entity, item.centre, origin, credit.id);
+        } else {
+            match item.what {
+                What::SmallBall => super::systems::ignite(world, item.entity),
+                What::Crate => {
+                    props::light(world, item.entity, credit.id);
+                }
+                What::Keg | What::Bomb => {
+                    props::set_off(world, item.entity, Some(origin), credit.id);
+                }
+                _ => {}
+            }
+        }
+        shove(world, item.entity, at, reach, BLAST_PUSH, distance);
+    }
+}
+
+/// Thermal shock at `at`, of `reach`: the frozen thing ends, then its
+/// [`blast`].
 fn explode(
     world: &mut World,
     bin: &Bin,
     thing: Option<Entity>,
     at: Vec2,
     origin: Vec2,
-    source: Option<Entity>,
+    credit: Credit,
     reach: f32,
 ) {
     if let Some(thing) = thing {
         let from = (origin.distance(at) > 1e-3).then_some(origin);
         end_frozen(world, thing, from);
     }
-    let parts = reach / 8.0;
-    for (item, distance) in bin.near(world, at, reach) {
-        if !world.is_alive(item.entity) {
-            continue;
-        }
-        match item.what {
-            What::Target => {
-                blast_hit(
-                    world,
-                    item.entity,
-                    at,
-                    parts,
-                    (BLAST_PUSH, reach, distance),
-                    source,
-                );
-            }
-            _ => {
-                if world.has::<Frozen>(item.entity) {
-                    thermal_shock(world, item.entity, item.centre, origin);
-                } else if item.what == What::SmallBall {
-                    super::systems::ignite(world, item.entity);
-                }
-                shove(world, item.entity, at, reach, BLAST_PUSH, distance);
-            }
-        }
-    }
+    blast(world, bin, at, origin, credit, reach);
     spawn_burst(world, "ex10_frost_blast", at);
     spawn_burst(world, "ex10_fireball_blast", at);
     audio::play(world, Sound::FrostBlasted, at);
+}
+
+/// The bursts of a keg's detonation: the missile's four and its staves.
+const DETONATION_BURSTS: [&str; 5] = [
+    "ex10_fireball_blast",
+    "ex10_blast_embers",
+    "ex10_blast_dust",
+    "ex10_blast_smoke",
+    "ex10_keg_staves",
+];
+
+/// A keg's or a bomb's detonation at `at`, of `reach`: once a keg a run,
+/// and never on one gone. A frozen keg shatters instead; else it goes and
+/// its [`blast`] runs, its bursts key ones for the run's first detonation,
+/// the missile's flare for the run's first two, the camera's shake by the
+/// view's distance and its boom.
+fn detonate(
+    world: &mut World,
+    bin: &Bin,
+    keg: Option<Entity>,
+    at: Vec2,
+    origin: Vec2,
+    credit: Credit,
+    reach: f32,
+) {
+    let Some(keg) =
+        keg.filter(|&keg| world.is_alive(keg) && (world.has::<Keg>(keg) || world.has::<Bomb>(keg)))
+    else {
+        return;
+    };
+    let Some(cascades) = world.get_resource_mut::<Cascades>() else {
+        return;
+    };
+    if cascades.detonated.contains(&keg) {
+        return;
+    }
+    cascades.detonated.push(keg);
+    let count = cascades.detonated.len();
+    if world.has::<Frozen>(keg) {
+        shatter(world, Some(keg), at);
+        return;
+    }
+    despawn_tree(world, keg);
+    blast(world, bin, at, origin, credit, reach);
+    for burst in DETONATION_BURSTS {
+        if count == 1 {
+            spawn_key_burst(world, burst, at);
+        } else {
+            spawn_burst(world, burst, at);
+        }
+    }
+    if count <= 2 {
+        flare(world, at, true);
+    }
+    let trauma = blast_trauma(world, at);
+    if trauma > 0.0
+        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
+    {
+        queue.send(ShakeEvent { trauma_add: trauma });
+    }
+    audio::play(world, Sound::KegBlasted, at);
 }
 
 /// A hard hit's shards at `at`: the frozen thing ends; frozen iron's
@@ -593,7 +763,8 @@ fn shatter(world: &mut World, thing: Option<Entity>, at: Vec2) {
 /// A steam burst at `at`, of `reach`: a small ball that bursts is gone; the
 /// targets in reach are put out and doused at once, so its own fire cannot
 /// light them again; the burning small balls in reach queue their own
-/// bursts; then the targets take its fire and physical parts with its
+/// bursts, crediting its ID; the crates and kegs in reach are put out and
+/// doused; then the targets take its fire and physical parts with its
 /// push, and the bodies are pushed.
 fn steam(
     world: &mut World,
@@ -601,7 +772,7 @@ fn steam(
     thing: Option<Entity>,
     at: Vec2,
     origin: Vec2,
-    source: Option<Entity>,
+    credit: Credit,
     reach: f32,
 ) {
     if let Some(thing) = thing.filter(|&thing| world.has::<SmallBall>(thing)) {
@@ -632,7 +803,7 @@ fn steam(
                     at,
                     STEAM_PART,
                     (STEAM_PUSH, reach, distance),
-                    source,
+                    credit.source,
                 );
             }
             What::SmallBall => {
@@ -640,16 +811,23 @@ fn steam(
                     .get::<BallBurn>(item.entity)
                     .is_some_and(|burn| burn.remaining > 0.0);
                 if burning {
-                    queue(
+                    queue_from(
                         world,
                         CascadeKind::Steam,
                         Some(item.entity),
                         item.centre,
                         origin,
                         SMALL_STEAM_REACH,
+                        credit.id,
                     );
                 }
                 shove(world, item.entity, at, reach, STEAM_PUSH, distance);
+            }
+            What::Crate | What::Keg | What::Bomb => {
+                props::put_out(world, item.entity);
+                if world.is_alive(item.entity) {
+                    shove(world, item.entity, at, reach, STEAM_PUSH, distance);
+                }
             }
             _ => shove(world, item.entity, at, reach, STEAM_PUSH, distance),
         }

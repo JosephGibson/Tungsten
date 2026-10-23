@@ -25,11 +25,15 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
-use crate::features::enemies::beetle;
 use crate::features::enemies::components::{Enemy, Throws};
+use crate::features::enemies::{beetle, goblin};
 use crate::features::level::components::{Doused, Glow, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
+use crate::features::props::{
+    self, BURNING_IMPACT,
+    components::{Fuel, Keg, Rock},
+};
 use crate::features::run::Run;
 use crate::features::toys::components::{
     Ball, BowlingBall, IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
@@ -303,10 +307,26 @@ pub fn flame_look(id: SaveId, burn: BallBurn, time: f32) -> Option<FlameLook> {
 }
 
 /// `fire_particles`, in the present phase: a bounded pool of emitters over
-/// the burning surface. Each pair, a flame plume and sparks, stays on one
-/// exposed ball for [`EMITTER_DWELL`]; the pairs hop in turn, so the pool
-/// drifts along the crest. A pile with no exposed ball feeds it from all.
+/// the burning surface. The burning crates take theirs first, a pair each
+/// at its box's top; each other pair, a flame plume and sparks, stays on
+/// one exposed ball for [`EMITTER_DWELL`], and those pairs hop in turn, so
+/// the pool drifts along the crest. A pile with no exposed ball feeds it
+/// from all.
 pub fn fire_particles(world: &mut World) {
+    let mut crates: Vec<(Option<SaveId>, Vec2)> = world
+        .query::<(&Fuel, &Transform, &Collider, Option<&SaveId>)>()
+        .filter(|(fuel, ..)| fuel.lit)
+        .map(|(_, at, collider, id)| {
+            let rise = match collider.shape {
+                Shape::Aabb { half_extents } => half_extents.y,
+                Shape::Circle { radius } => radius,
+            };
+            // A pair sits 6 px over its source: here, the box's top.
+            let top = at.position + collider.offset - Vec2::new(0.0, rise - 6.0);
+            (id.copied(), top)
+        })
+        .collect();
+    crates.sort_by_key(|(id, _)| *id);
     let burning: Vec<(Vec2, bool)> = world
         .query::<(Entity, &BallBurn, &Transform, &Collider)>()
         .filter(|(_, burn, ..)| burn.remaining > 0.0)
@@ -317,8 +337,9 @@ pub fn fire_particles(world: &mut World) {
     } else {
         burning.iter().map(|b| b.0).collect()
     };
-    let pairs = sources.len().min(FIRE_EMITTER_CAP / 2);
-    let count = pairs * 2;
+    let fixed = crates.len().min(FIRE_EMITTER_CAP / 2);
+    let pairs = sources.len().min(FIRE_EMITTER_CAP / 2 - fixed);
+    let count = (fixed + pairs) * 2;
     let mut emitters: Vec<Entity> = world
         .query_filtered::<Entity, With<FireEmitter>>()
         .collect();
@@ -353,8 +374,13 @@ pub fn fire_particles(world: &mut World) {
     let time = drawn_time(world);
     for (i, entity) in emitters.into_iter().enumerate() {
         let slot = i / 2;
-        let hop = (time / EMITTER_DWELL + slot as f32 / pairs as f32).floor() as usize;
-        let source = sources[(slot * sources.len() / pairs + hop * 7919) % sources.len()];
+        let source = if slot < fixed {
+            crates[slot].1
+        } else {
+            let slot = slot - fixed;
+            let hop = (time / EMITTER_DWELL + slot as f32 / pairs as f32).floor() as usize;
+            sources[(slot * sources.len() / pairs + hop * 7919) % sources.len()]
+        };
         if let Some(at) = world.get_mut::<Transform>(entity) {
             at.position = source - Vec2::new(0.0, 6.0);
         }
@@ -398,8 +424,9 @@ fn fire_centres(world: &World, fire: Entity) -> Option<(Vec2, Vec2)> {
 /// `fire_contacts`, in the overlap phase: a burning fireball hazard that
 /// meets a ball over the step, either moving fast, lights a small ball and
 /// bursts a bowling ball where they met, one burst per ball however many
-/// fires overlap; a frozen ball it meets explodes instead. The player's
-/// touch is the kit's contact damage.
+/// fires overlap; a frozen ball it meets explodes instead. One that meets a
+/// crate or a keg lights it, a fire nobody lit, or explodes it when
+/// frozen. The player's touch is the kit's contact damage.
 pub fn fire_contacts(world: &mut World) {
     let fires: Vec<(Vec2, Vec2)> = world
         .query::<(Entity, &Hazard)>()
@@ -448,7 +475,43 @@ pub fn fire_contacts(world: &mut World) {
             ))
         })
         .collect();
+    // The props, each a box, after the balls.
+    let props: Vec<(Option<SaveId>, Entity, Vec2)> = props::all(world)
+        .into_iter()
+        .filter_map(|prop| {
+            let at = world.get::<Position>(prop)?;
+            let prev = world.get::<PrevPosition>(prop);
+            let collider = world.get::<Collider>(prop)?;
+            let half = match collider.shape {
+                Shape::Aabb { half_extents } => half_extents,
+                Shape::Circle { radius } => Vec2::splat(radius),
+            };
+            let end = at.0 + collider.offset;
+            let start = prev.map_or(end, |prev| prev.0 + collider.offset);
+            let hit = fires
+                .iter()
+                .filter_map(|&(fire_start, fire_end)| {
+                    swept_box(start - fire_start, end - fire_end, FIRE_HALF + half)
+                })
+                .min_by(f32::total_cmp)?;
+            Some((
+                world.get::<SaveId>(prop).copied(),
+                prop,
+                start.lerp(end, hit),
+            ))
+        })
+        .collect();
+    let mut props = props;
+    props.sort_by_key(|(id, ..)| *id);
     touched.sort_by_key(|(id, ..)| *id);
+    let player = cascade::player_credit(world);
+    for (_, prop, at) in props {
+        if world.has::<Frozen>(prop) {
+            cascade::thermal_shock(world, prop, at, at);
+        } else {
+            props::light(world, prop, player);
+        }
+    }
     for (_, ball, at) in touched {
         if world.has::<Frozen>(ball) {
             cascade::thermal_shock(world, ball, at, at);
@@ -794,19 +857,25 @@ pub fn crush(world: &mut World) {
 }
 
 /// Whether `entity` is one of 01's bodies with element states: iron, a
-/// scrap or a ball.
+/// scrap, a ball, a crate or a keg.
 fn is_body(world: &World, entity: Entity) -> bool {
-    is_iron(world, entity) || world.has::<Ball>(entity)
+    is_iron(world, entity) || world.has::<Ball>(entity) || props::is_prop(world, entity)
 }
 
-/// Chills a body, iron or a ball, by `amount` this step, frozen at a full
-/// coating with its frost burst at `contact` and its cue; a burning ball
-/// takes no frost.
+/// Whether a body burns: a small ball on fire, a crate on fire or a keg's
+/// lit fuse, which take no frost.
+fn burns(world: &World, entity: Entity) -> bool {
+    world
+        .get::<BallBurn>(entity)
+        .is_some_and(|burn| burn.remaining > 0.0)
+        || props::burning(world, entity)
+}
+
+/// Chills a body, iron, a ball, a crate or a keg, by `amount` this step,
+/// frozen at a full coating with its frost burst at `contact` and its cue;
+/// a burning one takes no frost.
 pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
-    let burning = world
-        .get::<BallBurn>(iron)
-        .is_some_and(|burn| burn.remaining > 0.0);
-    if !is_body(world, iron) || world.has::<Frozen>(iron) || burning {
+    if !is_body(world, iron) || world.has::<Frozen>(iron) || burns(world, iron) {
         return;
     }
     let total = freeze_amount(world, iron) + amount;
@@ -815,6 +884,8 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
         let at = body_centre(world, iron).unwrap_or(contact);
         let size = if world.has::<IronBlock>(iron) {
             128.0
+        } else if props::is_prop(world, iron) {
+            64.0
         } else if world.has::<SmallBall>(iron) {
             16.0
         } else {
@@ -836,12 +907,9 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
 
 /// Freezes a body through: its chill gives way to [`Frozen`] for
 /// [`FROZEN_SECS`], it wakes, and its reaction goes to the hints. A burning
-/// ball does not freeze.
+/// body does not freeze.
 pub fn freeze_iron(world: &mut World, iron: Entity) {
-    let burning = world
-        .get::<BallBurn>(iron)
-        .is_some_and(|burn| burn.remaining > 0.0);
-    if is_body(world, iron) && !world.has::<Frozen>(iron) && !burning {
+    if is_body(world, iron) && !world.has::<Frozen>(iron) && !burns(world, iron) {
         world.insert(iron, Frozen { left: FROZEN_SECS });
         world.remove_component::<Chill>(iron);
         wake(world, iron);
@@ -1062,7 +1130,9 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// [`BODY_HIT_K`] × its mass × the speed past that, at most
 /// [`BODY_HIT_MOST`], credited to the player, or for a thrown body by its
 /// thrower's damage factor, credited to its thrower while it lives, the
-/// throw ending at its first such hit; and a frozen target landing as hard
+/// throw ending at its first such hit, a goblin's thrown rock landing
+/// `goblin::ROCK_DAMAGE` with `goblin::ROCK_PUSH` along its flight in place
+/// of the speed's; and a frozen target landing as hard
 /// takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`]. Each pair
 /// counts once a step, at its hardest. The throws count down. Iron's hits
 /// (a block's or a scrap's, thrown or not) push their target along the
@@ -1070,7 +1140,12 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// [`IRON_PUSH_MOST`], and apply at once, as the crush's do, so each knows
 /// whether it killed: a `flesh` target it killed is marked ([`IronKills`]).
 /// A block meeting a still body or a tile at [`IRON_LAND_SPEED`] or more
-/// lands hard, once a step (`toys::systems::iron_landed`).
+/// lands hard, once a step (`toys::systems::iron_landed`). A keg that is
+/// not frozen meeting anything at [`SHATTER_SPEED`] or more goes off,
+/// credited to the thrower of what met it, else the player; a burning
+/// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
+/// meeting anything at [`SHATTER_SPEED`] or more clacks, at most
+/// [`IMPACT_BURSTS_PER_STEP`] a step.
 pub fn body_impacts(world: &mut World) {
     world.insert_resource(IronKills::default());
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
@@ -1081,6 +1156,9 @@ pub fn body_impacts(world: &mut World) {
     let mut hits: BTreeMap<(Option<SaveId>, Option<SaveId>), Hurt> = BTreeMap::new();
     let mut landings: BTreeMap<Option<SaveId>, (Entity, f32)> = BTreeMap::new();
     let mut hard: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
+    let mut blown: BTreeMap<Option<SaveId>, (Entity, Option<u64>)> = BTreeMap::new();
+    let mut clacks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
+    let throws = world.get_resource::<Throws>();
     for event in events.iter_current() {
         let va = before_step(world, event.a);
         let vb = event.b.map_or(Vec2::ZERO, |b| before_step(world, b));
@@ -1110,6 +1188,21 @@ pub fn body_impacts(world: &mut World) {
                 && !shatters.contains(&this)
             {
                 shatters.push(this);
+            }
+            if world.has::<Rock>(this)
+                && let Some(centre) = body_centre(world, this)
+            {
+                clacks
+                    .entry(world.get::<SaveId>(this).copied())
+                    .or_insert(centre);
+            }
+            if world.has::<Keg>(this) && !world.has::<Frozen>(this) {
+                let thrower = other
+                    .and_then(|other| throws.and_then(|throws| throws.of(other)))
+                    .map(|throw| throw.thrower);
+                let credit = thrower.or_else(|| cascade::player_credit(world));
+                let id = world.get::<SaveId>(this).copied();
+                blown.entry(id).or_insert((this, credit));
             }
             let target = Some(this) != player
                 && world
@@ -1143,6 +1236,9 @@ pub fn body_impacts(world: &mut World) {
             cascade::queue(world, CascadeKind::Shatter, Some(entity), at, at, 0.0);
         }
     }
+    for (keg, credit) in blown.into_values() {
+        props::set_off(world, keg, None, credit);
+    }
     let mut landed: Vec<Entity> = Vec::new();
     let mut kills: Vec<Entity> = Vec::new();
     for (body, target, closing) in hits.into_values() {
@@ -1154,19 +1250,37 @@ pub fn body_impacts(world: &mut World) {
             Some(_) => thrown_mass(world, body),
             None => mass(world, body),
         };
-        let amount = (BODY_HIT_K * heavy * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
+        // A goblin's thrown rock lands its own blow, pushed along its flight.
+        let rock = throw.is_some() && world.has::<Rock>(body);
+        let amount = if rock {
+            goblin::ROCK_DAMAGE
+        } else {
+            (BODY_HIT_K * heavy * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST)
+        };
         let at = body_centre(world, target).unwrap_or_default();
+        let fire = world
+            .get::<Fuel>(body)
+            .is_some_and(|fuel| fuel.lit)
+            .then_some((Kind::Fire, BURNING_IMPACT));
         let hit = match throw {
             Some(throw) => {
                 landed.push(body);
-                let hit = combat::Hit::new(target, [(Kind::Physical, amount * throw.factor)]);
+                let parts = [(Kind::Physical, amount * throw.factor)]
+                    .into_iter()
+                    .chain(fire);
+                let mut hit = combat::Hit::new(target, parts);
+                if rock {
+                    let along = before_step(world, body).normalize_or_zero();
+                    hit = hit.push(along * goblin::ROCK_PUSH);
+                }
                 match live_by_id(world, throw.thrower) {
                     Some(thrower) => hit.from(thrower),
                     None => hit,
                 }
             }
             None => {
-                let hit = combat::Hit::new(target, [(Kind::Physical, amount)]);
+                let parts = [(Kind::Physical, amount)].into_iter().chain(fire);
+                let hit = combat::Hit::new(target, parts);
                 match player {
                     Some(player) => hit.from(player),
                     None => hit,
@@ -1191,6 +1305,10 @@ pub fn body_impacts(world: &mut World) {
     world.insert_resource(IronKills(kills));
     for at in hard.into_values() {
         toys::systems::iron_landed(world, at);
+    }
+    // A rock meeting anything that hard clacks, a few a step.
+    for at in clacks.into_values().take(IMPACT_BURSTS_PER_STEP) {
+        audio::play(world, Sound::RockHit, at);
     }
     let dt = world.resource::<Time>().delta();
     let gone: Vec<Entity> = world
@@ -1391,24 +1509,39 @@ pub fn age_pulses(world: &mut World) {
 }
 
 /// `hole_douse`: the open holes put out every burning small ball in their
-/// reach at once; the balls stay spent, as after a burnout, and a few of
-/// them, spread over the set, puff steam.
+/// reach at once; the balls stay spent, as after a burnout. They put out
+/// every crate and keg in their reach too, each kept from lighting while it
+/// stays there, its fuel kept. A few of what burned, spread over the set,
+/// puff steam.
 pub fn douse(world: &mut World) {
     let holes = holes(world);
     if holes.is_empty() {
         return;
     }
+    let inside = |p: Vec2| {
+        holes
+            .iter()
+            .any(|h| h.distance_squared(p) < HOLE_RADIUS * HOLE_RADIUS)
+    };
     let mut doused: Vec<(Option<SaveId>, Entity, Vec2)> = world
         .query::<(Entity, &BallBurn, &Position, &Collider)>()
         .filter(|(_, burn, ..)| burn.remaining > 0.0)
         .map(|(entity, _, p, c)| (entity, p.0 + c.offset))
-        .filter(|(_, p)| {
-            holes
-                .iter()
-                .any(|h| h.distance_squared(*p) < HOLE_RADIUS * HOLE_RADIUS)
-        })
+        .filter(|(_, p)| inside(*p))
         .map(|(entity, p)| (world.get::<SaveId>(entity).copied(), entity, p))
         .collect();
+    let mut wet: Vec<(Option<SaveId>, Entity, Vec2)> = props::all(world)
+        .into_iter()
+        .filter_map(|entity| Some((entity, body_centre(world, entity)?)))
+        .filter(|(_, p)| inside(*p))
+        .map(|(entity, p)| (world.get::<SaveId>(entity).copied(), entity, p))
+        .collect();
+    wet.sort_by_key(|(id, ..)| *id);
+    for (id, prop, p) in wet {
+        if props::put_out(world, prop) {
+            doused.push((id, prop, p));
+        }
+    }
     if doused.is_empty() {
         return;
     }

@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_troll_swipe_windup_0_left"
+    },
+    {
+      "duration_ms": 180,
+      "sprite": "ex10_troll_swipe_windup_1_left"
+    }
+  ],
+  "looping": false
+}

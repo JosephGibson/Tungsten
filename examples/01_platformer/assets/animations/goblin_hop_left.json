@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_goblin_hop_0_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_goblin_hop_1_left"
+    }
+  ],
+  "looping": true
+}

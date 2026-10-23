@@ -14,6 +14,7 @@ use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
 use crate::features::lightning::LightningPlugin;
 use crate::features::player::{PlayerPlugin, max_health};
+use crate::features::props::PropsPlugin;
 use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
 use crate::features::toys::ToysPlugin;
@@ -86,6 +87,7 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugin(AudioPlugin);
     app.add_plugin(ToysPlugin);
     app.add_plugin(ElementsPlugin);
+    app.add_plugin(PropsPlugin);
     app.add_plugin(DummyPlugin);
     app.add_plugin(EnemiesPlugin);
     app.add_plugin(CombatPlugin);

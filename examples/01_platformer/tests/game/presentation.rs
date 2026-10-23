@@ -1,7 +1,8 @@
 //! What draws: the courier's clips and bursts, the ambient emitters and
 //! the particle caps, the drawing order, the lit frames' feet, the props'
 //! animations in step, the lantern's glow and light, midnight's post stack
-//! and moon, and the glows' material batches.
+//! and moon, the glows' material batches, and an enemy's alert and search
+//! marks with the alert's one sting.
 
 use std::path::PathBuf;
 
@@ -27,8 +28,17 @@ use tungsten::kit::{Facing, PlatformerController, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
+use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::draw::{MARK_ALERT, MARK_SEARCH, mark};
+use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::toys::{self, components::BlackHole};
+use example_01_platformer::save::{self, SaveGame};
+use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
+use tungsten::core::{AudioCommand, SoundRegistry, Time};
+use tungsten::kit::StateMachine;
 
 use super::{centre, fall_dead, mock_sprite, press, run, teleport};
 
@@ -896,4 +906,166 @@ fn a_death_at_the_burst_cap_takes_a_cosmetic_bursts_slot() {
         "gave its slot"
     );
     assert!(world.get::<ParticleEmitterState>(oldest).unwrap().drained);
+}
+
+/// A crawler on the sky's ground with its centre at `x`, at Normal.
+fn crawler(harness: &mut UiHarness, x: f32) -> Entity {
+    let kind = EnemyKind::Crawler;
+    let centre = Vec2::new(x, SKY_TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let crawler = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    enemies::scale(world, crawler, Difficulty::Normal);
+    crawler
+}
+
+/// The sting's plays in the last frame.
+fn stings(harness: &UiHarness) -> usize {
+    let sting = harness
+        .world()
+        .resource::<SoundRegistry>()
+        .get_by_id("ex10_enemy_spotted_sfx");
+    harness
+        .harness()
+        .audio()
+        .iter()
+        .filter(|command| matches!(command, AudioCommand::Play { handle, .. } if Some(*handle) == sting))
+        .count()
+}
+
+/// Holds the courier on its spot at `x`, whole, and steps a frame.
+fn hold_step(harness: &mut UiHarness, player: Entity, x: f32) {
+    super::stand(harness, player, x, SKY_TOP);
+    tungsten::kit::heal(harness.world_mut(), player, 100.0);
+    harness.step(1);
+}
+
+fn machine_state(harness: &UiHarness, enemy: Entity) -> EnemyState {
+    harness
+        .world()
+        .get::<StateMachine<EnemyState>>(enemy)
+        .expect("a machine")
+        .state()
+}
+
+/// The sky's ground the enemies' tests stand on.
+const SKY_TOP: f32 = 1000.0;
+
+#[test]
+fn an_alert_shows_its_mark_and_stings_once() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    super::pin_camera(&mut harness, Vec2::new(0.0, 400.0));
+    let spotter = crawler(&mut harness, 600.0);
+    let neighbour = crawler(&mut harness, 640.0);
+    // Both come alert in one step: one sting for the two.
+    let (mut heard, mut sounded) = (0, 0);
+    let mut alerted = false;
+    for _ in 0..60 {
+        hold_step(&mut harness, player, 300.0);
+        heard += stings(&harness);
+        sounded += harness
+            .harness()
+            .events::<Sounded>()
+            .filter(|s| s.sound == Sound::Alerted)
+            .count();
+        if mark(harness.world(), spotter) == Some(MARK_ALERT) {
+            alerted = true;
+            break;
+        }
+    }
+    assert!(alerted, "a fresh alert shows its !");
+    assert_eq!(
+        mark(harness.world(), neighbour),
+        Some(MARK_ALERT),
+        "its neighbour's too"
+    );
+    assert_eq!((sounded, heard), (2, 1), "two alerts, one sting");
+    // The ! shows past the alert into the chase; a save 0.5 s in, loaded
+    // through JSON, shows it 0.3 s more.
+    for _ in 0..30 {
+        hold_step(&mut harness, player, 300.0);
+        heard += stings(&harness);
+        assert_eq!(mark(harness.world(), spotter), Some(MARK_ALERT));
+    }
+    assert_ne!(
+        machine_state(&harness, spotter),
+        EnemyState::Alert,
+        "past its alert"
+    );
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    let loaded: SaveGame =
+        serde_json::from_value(serde_json::to_value(&saved).unwrap()).expect("it loads");
+    let mut fresh = super::harness();
+    fresh.world_mut().resource_mut::<Time>().pause();
+    game_shell::start_run(fresh.world_mut(), RunStart::from(loaded), None);
+    super::settle(&mut fresh);
+    fresh.step(1);
+    fresh.harness_mut().set_dt(1.0 / 60.0);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let restored = fresh
+        .world()
+        .query::<(Entity, &SaveId)>()
+        .find(|(_, id)| Some(**id) == harness.world().get::<SaveId>(spotter).copied())
+        .map(|(entity, _)| entity)
+        .expect("the spotter loaded");
+    let mut more: u32 = 0;
+    for _ in 0..40 {
+        if mark(fresh.world(), restored) != Some(MARK_ALERT) {
+            break;
+        }
+        fresh.step(1);
+        more += super::steps_this_frame(&fresh);
+    }
+    assert!(more.abs_diff(18) <= 1, "0.3 s more: {more} steps");
+    // The ! runs out; then out of sight it searches: a ? past its search's
+    // first 0.4 s.
+    for _ in 0..20 {
+        hold_step(&mut harness, player, 300.0);
+        heard += stings(&harness);
+    }
+    assert_ne!(
+        mark(harness.world(), spotter),
+        Some(MARK_ALERT),
+        "its ! ran out"
+    );
+    let mut searching = false;
+    for _ in 0..240 {
+        hold_step(&mut harness, player, 1600.0);
+        if machine_state(&harness, spotter) == EnemyState::Search {
+            searching = true;
+            break;
+        }
+    }
+    assert!(searching, "it searches");
+    assert_eq!(mark(harness.world(), spotter), None, "no ? at once");
+    let mut asked = false;
+    for _ in 0..40 {
+        hold_step(&mut harness, player, 1600.0);
+        asked |= mark(harness.world(), spotter) == Some(MARK_SEARCH);
+    }
+    assert!(asked, "a ? past 0.4 s");
+    // Seen again from the search: no sting and no !.
+    let x = enemies::centre(harness.world(), spotter).unwrap().x - 200.0;
+    let mut again = false;
+    for _ in 0..60 {
+        hold_step(&mut harness, player, x);
+        heard += stings(&harness);
+        assert_ne!(
+            mark(harness.world(), spotter),
+            Some(MARK_ALERT),
+            "no ! from a search"
+        );
+        if machine_state(&harness, spotter) == EnemyState::Alert {
+            again = true;
+            break;
+        }
+    }
+    assert!(again, "alert again");
+    assert_eq!(heard, 1, "no sting from a search");
 }

@@ -32,13 +32,19 @@ use crate::features::combat::{self, BLAST_FIRE, FROZEN, Kind, SPRAY_DPS, SPRAY_P
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::{BallBurn, Frozen};
-use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, freeze_amount};
+use crate::features::elements::{
+    self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, STEAM_REACH, freeze_amount,
+};
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::{Doused, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
+use crate::features::props::{
+    self,
+    components::{Crate, Keg},
+};
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, surface_distance};
@@ -238,13 +244,17 @@ pub fn hole_pull(holes: &[Vec2], at: Vec2) -> Vec2 {
 }
 
 /// How much of a hole's pull `entity` takes: iron a fifth of a ball's,
-/// scraps as balls, a frozen dummy as iron and a thawed one none, the rest
-/// by their mass.
+/// scraps as balls, a crate a half and a keg two fifths, a frozen dummy as
+/// iron and a thawed one none, the rest by their mass.
 fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
     if world.has::<IronBlock>(entity) {
         IRON_PULL
     } else if world.has::<IronScrap>(entity) {
         SCRAP_PULL
+    } else if world.has::<Crate>(entity) {
+        props::CRATE_PULL
+    } else if world.has::<Keg>(entity) {
+        props::KEG_PULL
     } else if world.has::<Dummy>(entity) {
         if has_status(world, entity, FROZEN) {
             IRON_PULL
@@ -501,8 +511,9 @@ pub fn missile_ends(world: &mut World, cursor: &mut EventCursor<ProjectileExpire
     }
 }
 
-/// A missile's light left at `at`, fading; a blast's flares.
-fn flare(world: &mut World, at: Vec2, blast: bool) {
+/// A missile's light left at `at`, fading; a blast's flares, as a keg's
+/// detonation does.
+pub(crate) fn flare(world: &mut World, at: Vec2, blast: bool) {
     let mut light = Light::point(FLARE_COLOR, FLARE_RADIUS * if blast { 2.0 } else { 1.0 });
     light.intensity = FLARE_INTENSITY;
     let secs = if blast { BLAST_FLARE_SECS } else { FLARE_SECS };
@@ -545,7 +556,9 @@ pub fn flares(world: &mut World) {
 
 /// A fireball's blast at `at`: its fire on each live target in its heat but
 /// the player who cast it, [`BLAST_FIRE`] at its centre falling to half at
-/// the heat's edge, from the player.
+/// the heat's edge, from the player; the small balls in its heat lit by
+/// their centres, and the crates in it lit and its kegs set off by their
+/// boxes, credited to the player.
 pub fn explode(world: &mut World, at: Vec2) {
     burn_targets(world, at);
     for burst in [
@@ -574,7 +587,39 @@ pub fn explode(world: &mut World, at: Vec2) {
     for (_, ball) in lit {
         elements::ignite(world, ball);
     }
+    heat_props(world, at);
     audio::play(world, Sound::Blasted, at);
+}
+
+/// A fireball's heat on the props whose bodies lie within [`BLAST_RADIUS`]
+/// of `at`, in save-ID order: a crate catches and a keg or a bomb goes off,
+/// credited to the player; a frozen one's thermal shock is the blast's
+/// `thermal_shatter`.
+fn heat_props(world: &mut World, at: Vec2) {
+    let mut near: Vec<(Option<SaveId>, Entity)> = props::all(world)
+        .into_iter()
+        .filter(|&prop| {
+            let (Some(centre), Some(collider)) =
+                (body_centre(world, prop), world.get::<Collider>(prop))
+            else {
+                return false;
+            };
+            surface_distance(at, centre, collider.shape) <= BLAST_RADIUS
+        })
+        .map(|prop| (world.get::<SaveId>(prop).copied(), prop))
+        .collect();
+    near.sort_by_key(|(id, _)| *id);
+    let player = cascade::player_credit(world);
+    for (_, prop) in near {
+        if world.has::<Frozen>(prop) {
+            continue;
+        }
+        if world.has::<Crate>(prop) {
+            props::light(world, prop, player);
+        } else {
+            props::set_off(world, prop, None, player);
+        }
+    }
 }
 
 /// Queues the blast's fire on each live target with a body within
@@ -661,8 +706,8 @@ pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
 
 /// [`BLAST_TRAUMA`] near the view's centre, falling linearly to none a view
 /// width and a half away, so a blast far off screen leaves the camera
-/// still.
-fn blast_trauma(world: &World, at: Vec2) -> f32 {
+/// still: a missile's and a keg's.
+pub(crate) fn blast_trauma(world: &World, at: Vec2) -> f32 {
     let Some(camera) = world.get_resource::<CameraState>() else {
         return 0.0;
     };
@@ -675,14 +720,21 @@ fn blast_trauma(world: &World, at: Vec2) -> f32 {
         });
     let (min, max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
     let width = (max.x - min.x).max(1.0);
-    let beyond = at.distance((min + max) * 0.5) - 0.25 * width;
-    BLAST_TRAUMA * (1.0 - beyond / (1.25 * width)).clamp(0.0, 1.0)
+    BLAST_TRAUMA * falloff(at.distance((min + max) * 0.5), 0.25 * width, 1.5 * width)
 }
 
-/// `toys_bounds`, in the overlap phase: a ball, block, scrap, dummy or
-/// enemy that has left the level's box goes, as the player's escape ends a
-/// run: a placed enemy is gone from the next save, and what a troll held
-/// drops at the next `troll_holds`.
+/// A shake's share at `distance`: whole within `near`, falling linearly to
+/// none at `far`. A blast's by the view's centre, a troll's slam by the
+/// courier.
+#[must_use]
+pub fn falloff(distance: f32, near: f32, far: f32) -> f32 {
+    (1.0 - (distance - near) / (far - near).max(1.0)).clamp(0.0, 1.0)
+}
+
+/// `toys_bounds`, in the overlap phase: a ball, block, scrap, crate, keg,
+/// dummy or enemy that has left the level's box goes, as the player's
+/// escape ends a run: a placed enemy is gone from the next save, and what a
+/// troll held drops at the next `troll_holds`.
 pub fn bounds(world: &mut World) {
     let escaped: Vec<Entity> = world
         .query::<(Entity, &Position, Option<&Collider>)>()
@@ -691,6 +743,7 @@ pub fn bounds(world: &mut World) {
             world.has::<Ball>(*entity)
                 || world.has::<IronBlock>(*entity)
                 || world.has::<IronScrap>(*entity)
+                || props::is_prop(world, *entity)
                 || world.has::<Dummy>(*entity)
                 || world.has::<Enemy>(*entity)
         })
@@ -702,9 +755,9 @@ pub fn bounds(world: &mut World) {
 }
 
 /// `iron_friction`, in the overlap phase after the physics step: the solver
-/// has no friction, so iron or a dummy resting on something loses
-/// horizontal speed, frozen iron or a frozen dummy less, a scrap a
-/// sixteenth.
+/// has no friction, so iron, a prop (a crate or a keg as wood, a bomb or a
+/// rock rolling) or a dummy resting on something loses horizontal speed, a
+/// frozen one less, a scrap a sixteenth.
 pub fn friction(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let Some(events) = world.get_resource::<EventQueue<tungsten::core::CollisionEvent>>() else {
@@ -722,7 +775,8 @@ pub fn friction(world: &mut World) {
                 .query::<(Entity, &IronScrap)>()
                 .map(|(entity, _)| entity),
         )
-        .chain(world.query::<(Entity, &Dummy)>().map(|(entity, _)| entity));
+        .chain(world.query::<(Entity, &Dummy)>().map(|(entity, _)| entity))
+        .chain(props::all(world));
     for entity in marked {
         let slot = entity.id() as usize;
         if slots.len() <= slot / 64 {
@@ -750,12 +804,21 @@ pub fn friction(world: &mut World) {
         })
         .filter(|&e| {
             marked(e)
-                && (world.has::<IronBlock>(e) || world.has::<IronScrap>(e) || world.has::<Dummy>(e))
+                && (world.has::<IronBlock>(e)
+                    || world.has::<IronScrap>(e)
+                    || world.has::<Dummy>(e)
+                    || props::is_prop(world, e))
         })
         .collect();
     for iron in supported {
         let base = if world.has::<Frozen>(iron) || has_status(world, iron, FROZEN) {
             FROZEN_FRICTION
+        } else if let Some(kind) = props::kind(world, iron) {
+            if props::rolls(kind) {
+                props::ROLL_FRICTION
+            } else {
+                props::WOOD_FRICTION
+            }
         } else {
             IRON_FRICTION
         };
@@ -949,11 +1012,13 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
         .collect()
 }
 
-/// Holds `caster`'s spray of `element` for this step. In a cold cone, iron
-/// and balls chill, a burning small ball bursts into steam and a fire
-/// hazard goes out for a while; in a fire cone small balls light and a
-/// frozen body explodes. Every pulse of [`SPRAY_PULSE`] the live targets
-/// its rays meet take the element's damage from the caster.
+/// Holds `caster`'s spray of `element` for this step. In a cold cone, iron,
+/// balls, crates and kegs chill, a burning small ball bursts into steam, a
+/// burning crate or a lit keg steams and goes out, and a fire hazard goes
+/// out for a while; in a fire cone small balls, crates and kegs light,
+/// credited to the caster, and a frozen body explodes. Every pulse of
+/// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
+/// from the caster.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let Some((centre, aim)) = hold_spray(world, caster, aim, element) else {
         return;
@@ -1042,21 +1107,29 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
                         at,
                         SMALL_STEAM_REACH,
                     );
+                } else if props::burning(world, hit) {
+                    let at = body_centre(world, hit).unwrap_or(contact);
+                    props::put_out(world, hit);
+                    cascade::queue(world, CascadeKind::Steam, Some(hit), at, at, STEAM_REACH);
                 } else if world.has::<IronBlock>(hit)
                     || world.has::<IronScrap>(hit)
                     || world.has::<Ball>(hit)
+                    || props::is_prop(world, hit)
                 {
                     elements::chill(world, hit, dt / FREEZE_TIME, contact);
                 }
             }
         }
         Element::Fire => {
+            let lighter = world.get::<SaveId>(caster).map(|id| id.0);
             for (hit, contact) in met {
                 if world.has::<Frozen>(hit) {
                     let at = body_centre(world, hit).unwrap_or(contact);
                     cascade::thermal_shock(world, hit, at, at);
                 } else if world.has::<SmallBall>(hit) {
                     elements::ignite(world, hit);
+                } else if props::is_prop(world, hit) {
+                    props::light(world, hit, lighter);
                 }
             }
         }

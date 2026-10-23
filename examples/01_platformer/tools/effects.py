@@ -443,6 +443,37 @@ def icon_troll():
     return icon_of(troll_canvas(TrollPose()), 4, 2)
 
 
+def icon_goblin():
+    from actors import goblin_canvas
+    return icon_of(goblin_canvas(), 2, 2)
+
+
+def icon_prop(canvas, scale, lift=3):
+    """A prop's summon icon: its frame's canvas at 1/`scale`, its foot
+    `lift` pixels over the summoning ring's centre."""
+    from actors import SOLE
+    ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
+    ring.ellipse((16, 28), 13, 3)
+    inner.ellipse((16, 28), 10, 2)
+    pixels = {p: 'Ξ' if p[1] <= 27 else 'Π' for p in ring.pixels() - inner.pixels()}
+    for y in range(ICON):
+        for x in range(ICON):
+            symbol = canvas.get((round(32 + (x - 15.5) * scale), round(SOLE - (28 - lift - y) * scale)))
+            if symbol and symbol != 'o':
+                pixels[(x, y)] = symbol
+    return pixels
+
+
+def icon_crate():
+    from props import crate_slatted
+    return icon_prop(crate_slatted(), 2.6)
+
+
+def icon_keg():
+    from props import keg_canvas
+    return icon_prop(keg_canvas(), 2.4)
+
+
 ICON_ART = {
     'icon_fire_missile': icon_fire_missile,
     'icon_flamethrower': icon_flamethrower,
@@ -460,6 +491,9 @@ ICON_ART = {
     'icon_beetle': icon_beetle,
     'icon_bat': icon_bat,
     'icon_troll': icon_troll,
+    'icon_goblin': icon_goblin,
+    'icon_crate': icon_crate,
+    'icon_keg': icon_keg,
 }
 
 
@@ -519,6 +553,14 @@ HURTBOXES = {
     'bat': (22, 19, 42, 37),  # aabb 10 x 9 about (32, 28)
     'troll': (44, 12, 104, 123),  # aabb 30 x 55.5 about (74, 67.5), on its 128 frame
     'dummy': (18, 5, 46, 61),  # aabb 14 x 28 about (32, 33)
+    'goblin': (25, 21, 43, 59),  # aabb 9 x 19 about (34, 40)
+}
+# 01 (g)'s props, which have no hurtbox: the box each one's cube covers,
+# its art out to its outline (the crate's body a box of half 28, the keg's
+# of half (19, 25) inside its bulging staves).
+PROP_BOXES = {
+    'crate': (3, 3, 60, 60),
+    'keg': (12, 10, 52, 60),
 }
 # The pixels a cube reaches past its hurtbox on each side.
 ICE_MARGIN = 2
@@ -821,12 +863,35 @@ def tracer():
     return to_image(pixels, ELEMENT_SIZES['tracer'])
 
 
+def mark(kind):
+    """An enemy's mark (01 (g)): '!' in the fire yellows while it is alert,
+    '?' in bone while it searches; 16 px, a dark outline."""
+    size = ELEMENT_SIZES['mark_alert']
+    c = {}
+    if kind == 'alert':
+        for y in range(1, 10):
+            w = 2 if y < 7 else 1
+            for x in range(8 - w, 8 + w):
+                c[(x, y)] = 'Y' if x == 8 - w else ('J' if x < 7 + w else 'K')
+        for x, y in ((6, 12), (7, 12), (8, 12), (6, 13), (7, 13), (8, 13), (7, 14)):
+            c[(x, y)] = 'Y' if (x, y) == (6, 12) else ('K' if y == 14 or x == 8 else 'J')
+    else:
+        glyph = ['.####.', '##..##', '##..##', '....##', '...##.', '..##..', '..##..', '......', '..##..',
+                 '..##..']
+        for j, row in enumerate(glyph):
+            for i, ch in enumerate(row):
+                if ch == '#':
+                    c[(5 + i, 2 + j)] = 'w' if (i < 3 or j < 1) else 'σ'
+    return to_image(outline(c, 'o', size), size)
+
+
 def build_element_art(images):
     """The elements' and the gun's art: the bolt's segments, the status
     overlays in their three size classes, the fitted ice cubes and their
-    cracked twins, which a thaw flickers to, the ball's cube, the glint,
-    the muzzle flash, the tracer and the drops' orbs. All unlit: overlays
-    and flashes draw over the lit world."""
+    cracked twins, which a thaw flickers to, the props' cubes, the ball's
+    cube, the glint, the muzzle flash, the tracer, the drops' orbs and the
+    enemies' marks. All unlit: overlays and flashes draw over the lit
+    world."""
     for i in range(len(BOLT_EXITS)):
         images[f'bolt_{i}'] = bolt_segment(i)
     for name, size in STATUS_CLASSES.items():
@@ -839,6 +904,8 @@ def build_element_art(images):
         for suffix, cracked in (('', False), ('_cracked', True)):
             images[f'status_ice_{kind}{suffix}'] = ice_cube(
                 ice_frame(kind), fitted_box(kind), (kind,), cracked)
+    for kind, box in PROP_BOXES.items():
+        images[f'status_ice_{kind}'] = ice_cube(64, box, (kind,))
     images['ice_shell'] = ice_shell()
     images['ice_glint'] = ice_glint()
     images['health_orb'] = orb('z', 'F', 'M', 'Ψ', 'X')
@@ -846,6 +913,8 @@ def build_element_art(images):
     for frame in range(3):
         images[f'muzzle_{frame}'] = muzzle(frame)
     images['tracer'] = tracer()
+    for kind in ('alert', 'search'):
+        images[f'mark_{kind}'] = mark(kind)
 
 
 def build_effects(images):

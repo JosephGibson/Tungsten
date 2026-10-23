@@ -14,7 +14,7 @@ EFFECT_SIZES = {name: (96, 96) for name in (
 # The spell, gun and summon icons, which the HUD shows at whole-number scale.
 ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
          'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy',
-         'wisp', 'crawler', 'beetle', 'bat', 'troll')
+         'wisp', 'crawler', 'beetle', 'bat', 'troll', 'goblin', 'crate', 'keg')
 ICON_SIZES = {'icon_' + name: (32, 32) for name in ICONS}
 # The elements' and weapons' art off the 64 px grid: the bolt's segments, the
 # status overlays' small and large classes (the medium class is 64), the
@@ -35,13 +35,19 @@ ELEMENT_SIZES = {
     'ice_glint': (16, 16),
     'health_orb': (24, 24),
     'mana_orb': (24, 24),
+    # 01 (g): the goblin's rock and bomb, and the marks over an enemy.
+    **{f'goblin_{thing}_{i}': (16, 16) for thing in ('rock', 'bomb') for i in range(2)},
+    'mark_alert': (16, 16),
+    'mark_search': (16, 16),
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile.
 SIZE_PREFIXES = {'troll_': (128, 128)}
 # A walker's frames keep their lowest pixel on its feet's row: the outline's
-# row under its soles (`actors.SOLE` and `BIG_SOLE`), as the courier's 61 is.
-WALKER_FEET = {'crawler_': 61, 'beetle_': 61, 'troll_': 125}
+# row under its soles (`actors.SOLE` and `BIG_SOLE`), as the courier's 61 is;
+# the goblin's by its clips, apart from its rock and bomb.
+WALKER_FEET = {'crawler_': 61, 'beetle_': 61, 'troll_': 125,
+               **{f'goblin_{clip}_': 61 for clip in ('idle', 'walk', 'windup', 'throw')}}
 
 
 def expected_size(name):
@@ -146,6 +152,7 @@ def build_art():
     from actors import build_balls, build_dummy, build_enemies, build_fireball, build_player
     from backdrops import build_backdrops
     from effects import build_effects
+    from props import build_props
     from scenery import build_scenery
     from terrain import build_terrain
     images={}; lit=set(); animations={}
@@ -155,6 +162,7 @@ def build_art():
     build_dummy(images)
     build_enemies(images, animations)
     build_scenery(images, lit, animations)
+    build_props(images, lit)
     build_terrain(images, lit)
     build_backdrops(images, lit)
     build_effects(images)

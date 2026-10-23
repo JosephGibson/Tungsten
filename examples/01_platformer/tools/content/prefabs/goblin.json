@@ -1,0 +1,98 @@
+{
+  "sprite": {
+    "asset_id": "ex10_goblin_idle_0",
+    "z_order": 8
+  },
+  "components": {
+    "enemy": {
+      "kind": "goblin"
+    },
+    "tags": [
+      "team.enemy",
+      "flesh",
+      "freezable"
+    ],
+    "rigid_body": {
+      "kind": "kinematic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          9,
+          20
+        ]
+      },
+      "offset": [
+        34,
+        41
+      ]
+    },
+    "platformer_controller": {
+      "run_speed": 110,
+      "jump_speed": 600
+    },
+    "health": {
+      "max": 40,
+      "invulnerability": 0,
+      "despawn_on_death": 0
+    },
+    "stats": {
+      "max_health": 40,
+      "damage": 8,
+      "move_speed": 110
+    },
+    "hurtbox": {
+      "shape": {
+        "aabb": [
+          9,
+          19
+        ]
+      },
+      "offset": [
+        34,
+        40
+      ]
+    },
+    "resist": {},
+    "ailment_threshold": {
+      "flat": 15
+    },
+    "knockback": {
+      "seconds": 0.2
+    },
+    "hit_flash": {
+      "color": [
+        1.0,
+        0.95,
+        0.85,
+        1.0
+      ],
+      "seconds": 0.12
+    },
+    "animation": {
+      "id": "ex10_goblin_idle"
+    },
+    "cues": {
+      "damaged": [
+        {
+          "sound": {
+            "id": "ex10_enemy_hit_sfx",
+            "min_interval": 0.1
+          }
+        }
+      ],
+      "killed": [
+        {
+          "sound": {
+            "id": "ex10_enemy_death_sfx"
+          }
+        },
+        {
+          "shake": 0.15
+        },
+        {
+          "roll": "enemy_drops"
+        }
+      ]
+    }
+  }
+}

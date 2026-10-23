@@ -1,0 +1,22 @@
+{
+  "sprite": {
+    "asset_id": "ex10_goblin_bomb_0",
+    "z_order": 12
+  },
+  "components": {
+    "goblin_bomb": {},
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 6
+      },
+      "offset": [
+        8,
+        8
+      ],
+      "mass": 3,
+      "restitution": 0.15
+    }
+  }
+}

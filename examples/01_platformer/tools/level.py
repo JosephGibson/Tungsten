@@ -282,7 +282,8 @@ def build_objects(source, images, lit):
         dict(name='particle_emitter.config', type='string', value=p['config']),
         dict(name='particle_emitter.seed', type='int', value=p['seed'])]) for p in source['emitters']])
     # Markers the game reads by name: the player's feet at a fresh run's start,
-    # and where a fresh run sets each loose iron block down, its centre.
+    # and where a fresh run sets each loose iron block, crate and keg down,
+    # its box's centre.
     spawn = source['spawn']
     # The elevator's sheave, where its cable hangs from: the gantry's first
     # piece, set down on its support, plus the wheel's place in its art.
@@ -290,6 +291,8 @@ def build_objects(source, images, lit):
                for p in source['props'] if p['sprite'] == 'ex10_lift_gantry_big_0_0']
     layer('markers', [obj('', spawn['col'] * tile, spawn['surface_row'] * tile, name='spawn')]
           + [obj('', block['x'] * tile, block['y'] * tile, name='iron') for block in source.get('iron', [])]
+          + [obj('', box['x'] * tile, box['y'] * tile, name=kind) for kind in ('crate', 'keg')
+             for box in source.get(kind + 's', [])]
           + sheaves)
     # The training dummies; each placement's tags set the `dummy` prefab's, one
     # by one.

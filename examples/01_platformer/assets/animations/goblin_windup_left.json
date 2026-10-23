@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_goblin_windup_0_left"
+    },
+    {
+      "duration_ms": 140,
+      "sprite": "ex10_goblin_windup_1_left"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_goblin_windup_2_left"
+    }
+  ],
+  "looping": false
+}

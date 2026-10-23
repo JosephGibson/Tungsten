@@ -6,8 +6,9 @@
 //! time through the saved cascade queue: from the rod, or from the struck
 //! conductive thing nearest the strike, to the nearest conductive thing not
 //! yet in the chain, each jump weaker, at most six, and none past a frozen
-//! receiver. Conductive things are iron, its scraps and the targets tagged
-//! `conductive`.
+//! receiver. Conductive things are iron, its scraps, a keg's hoops and the
+//! targets tagged `conductive`; a strike or a jump that reaches a keg sets
+//! it off.
 
 pub mod components;
 pub mod draw;
@@ -27,6 +28,7 @@ use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
 use crate::features::elements::components::Frozen;
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
+use crate::features::props::{self, components::Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
@@ -75,18 +77,20 @@ fn gap(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
     Some(surface_distance(at, body_centre(world, entity)?, shape))
 }
 
-/// Whether `entity` conducts: iron, its scraps, or a live target tagged
-/// `conductive`.
+/// Whether `entity` conducts: iron, its scraps, a keg's hoops, or a live
+/// target tagged `conductive`.
 #[must_use]
 pub fn conductive(world: &World, entity: Entity) -> bool {
     conducts(
-        world.has::<IronBlock>(entity) || world.has::<IronScrap>(entity),
+        world.has::<IronBlock>(entity)
+            || world.has::<IronScrap>(entity)
+            || world.has::<Keg>(entity),
         world.get::<Health>(entity),
         world.get::<Tags>(entity),
     )
 }
 
-/// Whether a thing conducts: iron, or a live thing tagged `conductive`.
+/// Whether a thing conducts: metal, or a live thing tagged `conductive`.
 fn conducts(iron: bool, health: Option<&Health>, tags: Option<&Tags>) -> bool {
     iron || (health.is_some_and(|health| !health.is_dead())
         && tags.is_some_and(|tags| tags.has("conductive")))
@@ -107,11 +111,13 @@ fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)>
             &SaveId,
             Option<&IronBlock>,
             Option<&IronScrap>,
+            Option<&Keg>,
             Option<&Health>,
             Option<&Tags>,
         )>()
-        .filter(|&(entity, _, iron, scrap, health, tags)| {
-            Some(entity) != spared && conducts(iron.is_some() || scrap.is_some(), health, tags)
+        .filter(|&(entity, _, iron, scrap, keg, health, tags)| {
+            let metal = iron.is_some() || scrap.is_some() || keg.is_some();
+            Some(entity) != spared && conducts(metal, health, tags)
         })
         .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.0)))
         .collect()
@@ -170,9 +176,9 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
 
 /// Strikes from `caster` at the aim point `aim`: the bolt falls at the
 /// aim's x from the sky until it meets a tile or a body; its shock hurts
-/// the targets within [`STRIKE_REACH`] of where it lands, `caster` spared;
-/// and one chain of conduction starts, its first jump due the step after.
-/// Where it landed.
+/// the targets within [`STRIKE_REACH`] of where it lands, `caster` spared,
+/// and sets off the kegs there, credited to `caster`; and one chain of
+/// conduction starts, its first jump due the step after. Where it landed.
 pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
     let landing = bolt_end(world, aim, Some(caster));
     let mut struck: Vec<(Option<SaveId>, Entity)> = world
@@ -185,12 +191,16 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
         .map(|(entity, _)| (world.get::<SaveId>(entity).copied(), entity))
         .collect();
     struck.sort_by_key(|(id, _)| *id);
+    let credit = world.get::<SaveId>(caster).map(|id| id.0);
     for &(_, target) in &struck {
         if world.get::<Health>(target).is_some_and(|h| !h.is_dead()) {
             Hit::new(target, [(Kind::Shock, STRIKE_SHOCK)])
                 .from(caster)
                 .at(landing)
                 .queue(world);
+        }
+        if world.has::<Keg>(target) {
+            props::set_off(world, target, None, credit);
         }
     }
     let number = world.get_resource_mut::<Cascades>().map_or(0, |cascades| {
@@ -272,9 +282,10 @@ fn show(world: &mut World, landing: Vec2, number: u64) {
 }
 
 /// A jump's run, from its cascade entry: its arc from `from` to `at` and a
-/// crackle; its strength in shock to its receiver when it lives; then,
-/// unless the receiver is frozen on arrival, conducts no more or the chain
-/// has made [`MAX_JUMPS`], the next jump queued from it, due the next step.
+/// crackle; its strength in shock to its receiver when it lives, and a keg
+/// set off, credited as the entry is; then, unless the receiver is frozen
+/// on arrival, conducts no more or the chain has made [`MAX_JUMPS`], the
+/// next jump queued from it, due the next step.
 pub fn conduct(
     world: &mut World,
     receiver: Option<Entity>,
@@ -304,6 +315,9 @@ pub fn conduct(
             hit = hit.from(source);
         }
         hit.queue(world);
+    }
+    if world.has::<Keg>(receiver) {
+        props::set_off(world, receiver, None, entry.source);
     }
     if frozen(world, receiver) || !conductive(world, receiver) || entry.jumps >= MAX_JUMPS {
         return;

@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_goblin_stab_0_left"
+    },
+    {
+      "duration_ms": 140,
+      "sprite": "ex10_goblin_stab_1_left"
+    }
+  ],
+  "looping": false
+}

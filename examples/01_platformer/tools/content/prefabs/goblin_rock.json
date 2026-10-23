@@ -1,0 +1,22 @@
+{
+  "sprite": {
+    "asset_id": "ex10_goblin_rock_0",
+    "z_order": 14
+  },
+  "components": {
+    "rock": {},
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "circle",
+        "radius": 5
+      },
+      "offset": [
+        8,
+        8
+      ],
+      "mass": 6,
+      "restitution": 0.3
+    }
+  }
+}

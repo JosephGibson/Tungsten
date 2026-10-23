@@ -1,15 +1,15 @@
 {
   "frames": [
     {
-      "duration_ms": 200,
+      "duration_ms": 133,
       "sprite": "ex10_troll_windup_0_left"
     },
     {
-      "duration_ms": 300,
+      "duration_ms": 200,
       "sprite": "ex10_troll_windup_1_left"
     },
     {
-      "duration_ms": 700,
+      "duration_ms": 467,
       "sprite": "ex10_troll_windup_2_left"
     }
   ],

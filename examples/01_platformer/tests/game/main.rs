@@ -8,8 +8,8 @@
 //! `spells` the toys, their element rules and the spells that cast them;
 //! `combat` the damage model, `data` the constants that restate the data,
 //! `cascades` the endings and their chains, `lightning` the strike and its
-//! conduction, `gun` the gun and its shots, `dummy` the training dummy and
-//! `enemies` the bestiary; `hud` the bars. The shell's own tests run in the
+//! conduction, `gun` the gun and its shots, `dummy` the training dummy,
+//! `enemies` the bestiary and `props` the crates and kegs; `hud` the bars. The shell's own tests run in the
 //! template, on the same bytes, which `just repo-check` holds.
 
 mod areas;
@@ -33,6 +33,7 @@ mod lightning;
 mod player;
 mod playthrough;
 mod presentation;
+mod props;
 mod regime;
 mod saves;
 mod seam;

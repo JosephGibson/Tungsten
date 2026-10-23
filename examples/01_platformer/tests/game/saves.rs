@@ -8,8 +8,9 @@
 //! lands; each reaction's hint toasts once a save; the template sample's
 //! schemas and 01's older ones are refused; an enemy's hit, pending transition, touch and frozen
 //! flight load as they were, and a loaded run with enemies mid-attack and
-//! mid-search keeps with the uninterrupted one; and a full pit saves
-//! within 2 MiB with the map's enemies alive.
+//! mid-search keeps with the uninterrupted one; a keg chain saved mid-chain
+//! finishes the same; a schema 11 save's IDs move past the map's goblins;
+//! and a full pit saves within 2 MiB with the map's enemies alive.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,7 +22,9 @@ use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
-use example_01_platformer::features::enemies::components::{Enemy, EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::components::{
+    Enemy, EnemyKind, EnemyState, Throw, Throws,
+};
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::gun::components::{Bullet, Reload};
@@ -31,6 +34,8 @@ use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Player;
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
+use example_01_platformer::features::props::components::{Bomb, Crate, Keg, PropKind, Rock};
+use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
 };
@@ -42,7 +47,9 @@ use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
 use tungsten::core::save::Value;
-use tungsten::core::{Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, World};
+use tungsten::core::{
+    Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, Velocity, World,
+};
 use tungsten::kit::{
     Abilities, Damaged, Effects, Health, Hitbox, Oscillator, PathFollower, StateMachine, Stats,
     Tags,
@@ -132,8 +139,9 @@ fn rich(harness: &mut UiHarness) {
 /// Every kind a save holds, by every spell and the gun: two iron blocks,
 /// one frozen and shattered by a missile, the other chilled; a pit of 500
 /// small balls, its crest burning; a bowling ball, a push, a hole, and a
-/// missile and a bullet in flight; and a mana orb, beside the map's
-/// enemies of every kind.
+/// missile and a bullet in flight; a mana orb; and a crate alight, a keg on
+/// its fuse and a goblin's bomb and rock in flight, beside the map's
+/// enemies of every kind and its crates and kegs.
 fn busy(harness: &mut UiHarness) {
     rich(harness);
     let iron = TOP - IRON_HALF.y - 10.0;
@@ -176,6 +184,33 @@ fn busy(harness: &mut UiHarness) {
         id,
         ORB_SECS,
     );
+    // A crate alight and a keg on its fuse, both the player's, and a
+    // goblin's bomb and rock in flight, east of the hole's reach, which
+    // puts a fire out, over the sky's ground.
+    let player = player_entity(harness);
+    let me = harness.world().get::<SaveId>(player).map(|id| id.0);
+    let world = harness.world_mut();
+    let crate_ = props::spawn(
+        world,
+        PropKind::Crate,
+        Vec2::new(2150.0, TOP - CRATE_HALF.y - 0.5),
+    );
+    assert!(props::light(world, crate_, me), "the crate catches");
+    let keg = props::spawn(
+        world,
+        PropKind::Keg,
+        Vec2::new(2250.0, TOP - KEG_HALF.y - 0.5),
+    );
+    assert!(props::light(world, keg, me), "the keg's fuse lights");
+    let bomb = props::spawn_bomb(world, Vec2::new(2200.0, 600.0), Some(0));
+    world.get_mut::<Velocity>(bomb).unwrap().0 = Vec2::new(-100.0, -300.0);
+    let rock = props::lob_rock(world, Vec2::new(2300.0, 500.0), Vec2::new(-200.0, -100.0));
+    world.resource_mut::<Throws>().0.push(Throw {
+        body: rock,
+        thrower: 0,
+        factor: 1.0,
+        left: 2.0,
+    });
     harness.step(1);
 }
 
@@ -212,6 +247,26 @@ fn a_capture_round_trips_through_a_load_with_a_platform_displaced() {
             .any(|b| b.scrap.is_none() && b.chill.is_some())
     );
     assert!(saved.balls.iter().any(|b| b.burn.is_some()));
+    let lit = |kind: PropKind| {
+        saved.props.iter().any(|prop| {
+            prop.kind == kind && (prop.fuse.is_some() || prop.fuel.is_some_and(|fuel| fuel.lit))
+        })
+    };
+    assert!(lit(PropKind::Crate), "a crate alight");
+    assert!(
+        lit(PropKind::Keg) && lit(PropKind::Bomb),
+        "a keg's and a bomb's fuse"
+    );
+    let rocks: Vec<u64> = saved
+        .props
+        .iter()
+        .filter(|prop| prop.kind == PropKind::Rock)
+        .map(|prop| prop.id)
+        .collect();
+    assert!(
+        saved.throws.iter().any(|throw| rocks.contains(&throw.body)),
+        "a rock in flight, its throw saved"
+    );
     let mut fresh = super::harness();
     load(&mut fresh, saved.clone());
     assert_eq!(json(&capture(&fresh)), json(&saved));
@@ -479,7 +534,35 @@ fn lists(kind: &str) -> Lists {
             rebuilt: names([name::<SceneEntity>(), name::<Hitbox>()]),
             presentation: drawn.to_vec(),
         },
-        "wisp" | "crawler" | "beetle" | "bat" | "troll" => {
+        // The crates, kegs, bombs and rocks: a crate's or a rock's art, a
+        // crate's fire, a keg's or a bomb's fuse, each saved whole; a
+        // rock's throw is the throws'.
+        "crate" | "keg" | "bomb" | "rock" => {
+            use example_01_platformer::features::props::components::Fuel;
+            Lists {
+                saved: [
+                    &at[..],
+                    &[
+                        name::<Velocity>(),
+                        name::<Crate>(),
+                        name::<Fuel>(),
+                        name::<Keg>(),
+                        name::<Bomb>(),
+                        name::<Rock>(),
+                        name::<Chill>(),
+                        name::<Frozen>(),
+                    ],
+                ]
+                .concat(),
+                rebuilt: [
+                    &body[..],
+                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                ]
+                .concat(),
+                presentation: drawn.to_vec(),
+            }
+        }
+        "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
             use example_01_platformer::features::enemies::components::{
                 Brain, Displaced, EnemyState, HeldTouch, Scared, Shown, Sight,
             };
@@ -606,6 +689,14 @@ fn kind(world: &World, entity: Entity) -> &'static str {
         "dummy"
     } else if world.has::<Orb>(entity) {
         "orb"
+    } else if world.has::<Crate>(entity) {
+        "crate"
+    } else if world.has::<Keg>(entity) {
+        "keg"
+    } else if world.has::<Bomb>(entity) {
+        "bomb"
+    } else if world.has::<Rock>(entity) {
+        "rock"
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
         match enemy.kind {
             EnemyKind::Wisp => "wisp",
@@ -613,6 +704,7 @@ fn kind(world: &World, entity: Entity) -> &'static str {
             EnemyKind::Beetle => "beetle",
             EnemyKind::Bat => "bat",
             EnemyKind::Troll => "troll",
+            EnemyKind::Goblin => "goblin",
         }
     } else {
         "unknown"
@@ -655,14 +747,19 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "beetle",
             "black hole",
             "block",
+            "bomb",
             "bullet",
+            "crate",
             "crawler",
             "dummy",
             "elevator",
+            "goblin",
+            "keg",
             "missile",
             "orb",
             "platform",
             "player",
+            "rock",
             "scrap",
             "troll",
             "wisp"
@@ -1577,6 +1674,63 @@ fn a_save_mid_chain_resumes_the_same_queue_in_save_id_order() {
     assert!(live(&harness).len() < pile.len() && live(&fresh).len() < pile.len());
 }
 
+/// The live kegs, by save ID.
+fn kegs(harness: &UiHarness) -> BTreeSet<u64> {
+    harness
+        .world()
+        .query::<(&Keg, &SaveId)>()
+        .map(|(_, id)| id.0)
+        .collect()
+}
+
+#[test]
+fn a_keg_chain_saved_mid_chain_finishes_the_same_after_a_load() {
+    let (mut harness, player) = grounded();
+    let world = harness.world_mut();
+    let row: Vec<Entity> = (0..6)
+        .map(|i| {
+            let at = Vec2::new(900.0 + 150.0 * i as f32, TOP - KEG_HALF.y - 0.5);
+            props::spawn(world, PropKind::Keg, at)
+        })
+        .collect();
+    harness.step(2);
+    let ids: BTreeSet<u64> = row.iter().map(|&keg| id_of(&harness, keg)).collect();
+    let me = id_of(&harness, player);
+    assert!(props::set_off(harness.world_mut(), row[0], None, Some(me)));
+    // Saved after the second wave: two gone, the third's detonation waiting.
+    let blown = |harness: &UiHarness| ids.difference(&kegs(harness)).count();
+    for _ in 0..10 {
+        if blown(&harness) >= 2 {
+            break;
+        }
+        harness.step(1);
+    }
+    assert_eq!(blown(&harness), 2, "two waves");
+    let saved = capture(&harness);
+    let waiting = |harness: &UiHarness| harness.world().resource::<Cascades>().entries.clone();
+    assert!(
+        waiting(&harness)
+            .iter()
+            .any(|entry| entry.kind == CascadeKind::Detonation),
+        "mid-chain"
+    );
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
+    let mut fresh = super::harness();
+    load(&mut fresh, read);
+    assert_eq!(waiting(&fresh), waiting(&harness), "the queue's entries");
+    scaffold(&mut fresh);
+    pin_camera(&mut fresh, CORNER);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    harness.step(30);
+    fresh.step(30);
+    assert_eq!(kegs(&harness), kegs(&fresh), "the same kegs gone");
+    assert!(ids.is_disjoint(&kegs(&harness)), "the chain ran to its end");
+    assert!(
+        queue(&harness).is_empty() && queue(&fresh).is_empty(),
+        "both queues empty"
+    );
+}
+
 #[test]
 fn schemas_one_to_six_are_refused() {
     // The template sample's 1 to 3, and 01 (a) to (c)'s 4 to 6, whose map
@@ -1807,6 +1961,16 @@ fn schema_10_id(id: u64) -> u64 {
     }
 }
 
+/// A schema 11 save ID as schema 12 numbers it: from the first placed
+/// orb's on, past the map's seven goblins.
+fn schema_12_id(id: u64) -> u64 {
+    if id >= save::S11_PICKUPS {
+        id + save::SHIFT_12
+    } else {
+        id
+    }
+}
+
 /// `path` with every index starred: a tuple's place too, where only an ID
 /// can have moved.
 fn starred(path: &str) -> String {
@@ -1869,6 +2033,17 @@ fn as_schema_11(old: &mut Value) {
     for entry in entries.iter_mut().filter(|entry| entry["name"] == "gun") {
         if let Some(charges) = entry["charges"].as_u64() {
             entry["charges"] = Value::from(charges.min(u64::from(gun::MAGAZINE)));
+        }
+    }
+}
+
+/// What schema 12 writes of an older save's balls: each array's trailing
+/// `null`s left off.
+fn as_schema_12(old: &mut Value) {
+    for ball in old["balls"].as_array_mut().unwrap() {
+        let record = ball.as_array_mut().unwrap();
+        while record.len() > 6 && record.last().is_some_and(Value::is_null) {
+            record.pop();
         }
     }
 }
@@ -1983,11 +2158,18 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     let from = old["player"]["id"].as_u64().unwrap();
     assert_eq!((envelope["schema"].as_u64(), from), (Some(8), 873));
     let (migrated, dir) = migrate("schema-8", FIXTURE);
-    // Every ID field moved, by schema 9's shift and then schema 10's remap,
-    // the elevator's old deck dropped, and nothing else.
+    // Every ID field moved, by schema 9's shift, schema 10's remap and
+    // schema 12's shift, the elevator's old deck dropped, and nothing else.
     without_old_lift(&mut old);
     as_schema_11(&mut old);
-    let to = |id: u64| schema_10_id(if id >= from { id + save::SHIFT_9 } else { id });
+    as_schema_12(&mut old);
+    let to = |id: u64| {
+        schema_12_id(schema_10_id(if id >= from {
+            id + save::SHIFT_9
+        } else {
+            id
+        }))
+    };
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
@@ -2020,16 +2202,19 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     ];
     assert_eq!(fields, expected.into_iter().map(starred).collect());
     // Loaded: the player under its moved ID, the gone bat gone, the map
-    // enemies since added alive, five in schema 9 and the beetle in 10, and
-    // every other saved thing as it was saved.
+    // enemies since added alive, five in schema 9, the beetle in 10 and the
+    // goblins in 12, and every other saved thing as it was saved.
     let mut run = super::harness();
     load(&mut run, migrated.clone());
     let player = player_entity(&run);
     let world = run.world();
-    assert_eq!(world.get::<SaveId>(player).unwrap().0, save::S10_PLAYER);
+    assert_eq!(
+        world.get::<SaveId>(player).unwrap().0,
+        schema_12_id(save::S10_PLAYER)
+    );
     let live: BTreeSet<u64> = enemies::live(world).into_iter().map(|(id, _)| id).collect();
     let added = save::S10_ENEMIES + 13..save::S10_ENEMIES + MAP_ENEMIES;
-    assert_eq!(added.clone().count(), 6);
+    assert_eq!(added.clone().count(), 13);
     assert!(added.clone().all(|id| live.contains(&id)), "{live:?}");
     assert!(!live.contains(&to(863)), "the gone bat");
     assert_eq!(
@@ -2126,7 +2311,8 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     let mut old = envelope["data"].clone();
     let from = old["player"]["id"].as_u64().unwrap();
     assert_eq!((envelope["schema"].as_u64(), from), (Some(9), 886));
-    // A new run numbers the map as the migration's frozen layout has it.
+    // A new run numbers the map as the migrations' frozen layouts have it:
+    // schema 10's, its orbs and its player past schema 12's goblins.
     let (fresh, player) = run();
     let span = |start: u64, count: u64| (start..start + count).collect::<Vec<u64>>();
     assert_eq!(
@@ -2136,10 +2322,10 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
             span(save::S10_DECKS, 5),
             vec![save::S10_DUMMY],
             span(save::S10_ENEMIES, MAP_ENEMIES),
-            span(save::S10_PICKUPS, save::MAP_PICKUPS),
+            span(schema_12_id(save::S10_PICKUPS), save::MAP_PICKUPS),
         ]
     );
-    assert_eq!(id_of(&fresh, player), save::S10_PLAYER);
+    assert_eq!(id_of(&fresh, player), schema_12_id(save::S10_PLAYER));
     let (lift, _) = elevator(&fresh);
     assert_eq!(
         id_of(&fresh, lift),
@@ -2161,12 +2347,14 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     );
     drop(fresh);
     let (migrated, dir) = migrate("schema-9", FIXTURE);
-    // Every ID field moved by the remap, the elevator's old deck dropped,
-    // and nothing else.
+    // Every ID field moved by the remap and schema 12's shift, the
+    // elevator's old deck dropped, and nothing else.
     without_old_lift(&mut old);
     as_schema_11(&mut old);
+    as_schema_12(&mut old);
+    let to = |id: u64| schema_12_id(schema_10_id(id));
     let mut moved = Vec::new();
-    moved_ids(&old, &json(&migrated), "", &schema_10_id, &mut moved);
+    moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
         "/next_id",
@@ -2182,7 +2370,8 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     assert_eq!(fields, expected.into_iter().map(starred).collect());
     assert!(migrated.elevators.is_empty() && migrated.basins.is_empty());
     // Loaded: the elevator at rest at the bottom, the gone wisp and the
-    // taken orb gone, the new beetle alive, and the rest as it was saved.
+    // taken orb gone, the new beetle and goblins alive, and the rest as it
+    // was saved.
     let mut run = super::harness();
     load(&mut run, migrated.clone());
     let (deck, lift) = elevator(&run);
@@ -2195,7 +2384,8 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
         .collect();
     let wisp = schema_10_id(866);
     assert!(!live.contains(&wisp), "the gone wisp");
-    let beetle = save::S10_ENEMIES + MAP_ENEMIES - 1;
+    // Schema 10's last enemy; the goblins follow it.
+    let beetle = save::S11_PICKUPS - 1;
     let world = run.world();
     assert_eq!(
         world.get::<Enemy>(by_id(&run, beetle)).unwrap().kind,
@@ -2203,9 +2393,12 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
         "the new beetle"
     );
     let orbs: Vec<u64> = placed_orbs(&run).into_iter().map(|(id, _)| id).collect();
-    assert_eq!(orbs, span(save::S10_PICKUPS + 1, save::MAP_PICKUPS - 1));
+    assert_eq!(
+        orbs,
+        span(schema_12_id(save::S10_PICKUPS) + 1, save::MAP_PICKUPS - 1)
+    );
     let mut again = json(&capture(&run));
-    without_new(&mut again, &(beetle..beetle + 1));
+    without_new(&mut again, &(beetle..save::S10_ENEMIES + MAP_ENEMIES));
     let migrated = json(&migrated);
     again["meta"]["game_version"] = migrated["meta"]["game_version"].clone();
     let mut differ = Vec::new();
@@ -2409,9 +2602,73 @@ fn schema_10_saves_migrate_their_black_hole_into_the_list() {
     const FIXTURE: &str = include_str!("fixtures/schema10.json");
     let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
     assert_eq!(envelope["schema"].as_u64(), Some(10));
-    let hole: HoleSave = serde_json::from_value(envelope["data"]["black_hole"].clone()).unwrap();
+    let mut hole: HoleSave =
+        serde_json::from_value(envelope["data"]["black_hole"].clone()).unwrap();
     let (migrated, dir) = migrate("schema-10", FIXTURE);
-    assert_eq!(migrated.black_holes, [hole], "its ID, place and time left");
+    hole.id = schema_12_id(hole.id);
+    assert_eq!(
+        migrated.black_holes,
+        [hole],
+        "its place and time left, its ID past the goblins"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn schema_11_saves_move_their_ids_past_the_map_goblins() {
+    // 0.101's save (step 1's fixture): a busy run on the sky's ground, two
+    // holes open and an explosion waiting, credited to the player.
+    const FIXTURE: &str = include_str!("fixtures/schema11.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    let mut old = envelope["data"].clone();
+    assert_eq!(envelope["schema"].as_u64(), Some(11));
+    as_schema_12(&mut old);
+    let (migrated, dir) = migrate("schema-11", FIXTURE);
+    // Every ID from the first placed orb's on moved past the goblins, every
+    // one under it kept, and nothing else.
+    let mut moved = Vec::new();
+    moved_ids(&old, &json(&migrated), "", &schema_12_id, &mut moved);
+    let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
+    let expected = [
+        "/next_id",
+        "/player/id",
+        "/player/sources/*/1",
+        "/orbs/*/id",
+        "/blocks/*/id",
+        "/black_holes/*/id",
+        "/missiles/*/id",
+        "/missiles/*/source",
+        "/bullets/*/id",
+        "/bullets/*/source",
+        "/balls/*/0",
+        "/cascades/entries/*/target",
+        "/cascades/entries/*/source",
+    ];
+    assert_eq!(fields, expected.into_iter().map(starred).collect());
+    assert_eq!(migrated.black_holes.len(), 2, "both holes");
+    let goblins = save::S11_PICKUPS..save::S11_PICKUPS + save::SHIFT_12;
+    assert!(
+        !migrated.gone.iter().any(|id| goblins.contains(id)),
+        "{:?}",
+        migrated.gone
+    );
+    assert!(
+        migrated
+            .enemies
+            .iter()
+            .all(|enemy| !goblins.contains(&enemy.id))
+    );
+    assert!(migrated.props.is_empty());
+    // Loaded, the map's goblins stand at their homes.
+    let mut run = super::harness();
+    load(&mut run, migrated);
+    for id in goblins {
+        let goblin = by_id(&run, id);
+        let enemy = *run.world().get::<Enemy>(goblin).unwrap();
+        assert_eq!(enemy.kind, EnemyKind::Goblin, "{id}");
+        let at = super::body(&run, goblin);
+        assert!(at.distance(enemy.home()) < 1.0, "{id} at {at}");
+    }
     let _ = std::fs::remove_dir_all(dir);
 }
 

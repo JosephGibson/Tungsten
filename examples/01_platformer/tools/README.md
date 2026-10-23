@@ -59,11 +59,12 @@ pixel) for any hand-authored sprite. The modules:
 | Module | Draws |
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
-| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy and the five enemies (wisp, crawler, beetle, bat, troll) |
+| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
+| `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust stages, the elevator's gantry, cage and cable, and the falls' plume |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the nine summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
@@ -219,6 +220,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
 | `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
+| `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
 | `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
 
 `routes` names platform waypoints: `main` runs from the spawn through all six
@@ -243,7 +245,9 @@ alone do not prove clearance beneath the solid platforms.
 zero for empty, no flip bits) and the map's object layers, with the prefabs their
 classes name. Edit their source instead of the generated output. The object layers
 sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
-when a run starts, each object taking the run's next save ID:
+when a run starts; only the objects a save names take the run's next save ID, in
+that order (the lava basins, the decks, the dummy, the enemies and the placed
+orbs, `D-208`), so a prop or a slab moves none:
 
 | Layer | Objects | Prefab class |
 | --- | --- | --- |
@@ -254,9 +258,9 @@ when a run starts, each object taking the run's next save ID:
 | `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator (`elevator { rise, speed }`), a cage drawn by `lift_deck_elevator` that the game moves, with the gantry's `lift_sheave` marker for its cable |
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
-| `markers` | `spawn`, where a fresh run's player stands, and an `iron` marker at each loose block's centre | None: the game reads them by name |
+| `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 18 enemies, after every other object layer but `pickups`, so every earlier object keeps its save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `enemies` | The 26 enemies, after every other object layer but `pickups`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
 | `pickups` | The eight placed health orbs, the map's last object layer | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
@@ -655,6 +659,17 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ex10_small_balls_sfx` | `small_balls.wav` | A 2-second loop while small balls pour: a dense patter of glass clicks over a hiss and the pile's roll |
 | `ex10_enemy_death_sfx` | `enemy_death.wav` | An enemy killed, through its prefab's `killed` cue with a light shake: a last thwack and crunch, a falling groan, the body's fall |
 | `ex10_dummy_thump_sfx` | `dummy_thump.wav` | The dummy knocked out, through its `killed` cue: a heavy sackcloth thump, straw bursting and settling |
+| `ex10_crate_ignite_sfx` | `crate_ignite.wav` | A crate catching: a dry whoomph drawing up over a soft thump, the wood's first crackles |
+| `ex10_fire_crackle_sfx` | `fire_crackle.wav` | A 2-second loop while a crate burns, one voice by the nearest, silent past 600 pixels: a low roar under a wood fire's crackle and the pops of its sap |
+| `ex10_crate_collapse_sfx` | `crate_collapse.wav` | A burnt crate falling in: a creak, a splintering crunch, boards knocking, a gust of sparks |
+| `ex10_fuse_hiss_sfx` | `fuse_hiss.wav` | A keg's or a bomb's fuse lit, as long as its 1.5 seconds: a sputtering hiss rising in pitch |
+| `ex10_keg_boom_sfx` | `keg_boom.wav` | A keg or a bomb blowing, at most every 0.06 seconds: a sharp crack over a deep boom, a rolling rumble, splinters and grit raining down |
+| `ex10_rock_throw_sfx` | `rock_throw.wav` | A goblin's throw: a short, sharp whoosh |
+| `ex10_rock_hit_sfx` | `rock_hit.wav` | A goblin's rock landing hard, or crumbling past the cap: a stony clack over a hollow knock, grit skittering away |
+| `ex10_goblin_cackle_sfx` | `goblin_cackle.wav` | A goblin's alert: a high, nasal, quick cackle of five syllables falling in pitch |
+| `ex10_goblin_stab_sfx` | `goblin_stab.wav` | A goblin's stab: a quick, thin swish of its knife and a bright tick of steel |
+| `ex10_troll_swipe_sfx` | `troll_swipe.wav` | A troll's swipe: a heavy whoosh of air as its arm rakes through |
+| `ex10_troll_grunt_sfx` | `troll_grunt.wav` | A troll winding up its slam: a deep, short, effortful grunt with a rasp |
 | `ambience_clearing` | `ambience_clearing.wav` | The clearing at night: crickets, a breeze in the oaks, an owl |
 | `ambience_aqueduct` | `ambience_aqueduct.wav` | Water trickling along the channel and dripping from its leaks |
 | `ambience_ravine` | `ambience_ravine.wav` | The falls' roar with slow surges and a hiss of mist |
@@ -859,26 +874,27 @@ and the beetle's lowest pixel on row 60, as the courier's is, the troll's on row
 | Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open), `crawler_scared` (4, looping: recoiled over its planted feet, front low, plates raised, feelers laid flat, jaws shut, eyes a slit, sting raised, a pixel's tremble) |
 | Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (4: a front foot scraping, dust), `beetle_charge` (4: head down, horn levelled, dust behind) |
 | Bat | A near-black furred body, dark purple wings with their finger bones showing, red eyes, fangs | `bat_roost` (4: hanging by its feet, swaying), `bat_fly` (6: the wings turned about their roots, folding a little on the downstroke), `bat_windup` (4: wings raised, the outline flashing white), `bat_dive` (2: wings swept back) |
-| Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
+| Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3, 133 200 467 ms, 0.8 seconds in all: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_swipe_windup` (2, 120 180 ms: the arm drawn back), `troll_swipe` (3, 60 70 200 ms: the arm raked under and up in front of it, streaks along the hand's arc), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
+| Goblin | A sapper on a joint skeleton (01 (g)): a skull with a hooked nose, a slit-pupilled yellow eye and fangs, notched leaf ears with a ring, a goggled leather cap, a laced jerkin over a pot belly, a pouch of rocks and a bomb at the belt, clawed feet; its outline's lowest row on 60, its collider's foot | `goblin_idle` (4, 240 200 160 120 ms, looping), `goblin_walk` (6 × 85 ms), `goblin_windup` and `goblin_windup_bomb` (3, 110 140 200 ms: a rock or a lit bomb drawn back), `goblin_throw` (3, 60 70 170 ms), `goblin_stab_windup` (1, 200 ms: its knife drawn back low at its hip), `goblin_stab` (2, 80 140 ms: the knife thrust ahead off a lunging foot, then drawn halfway back), `goblin_hop` (2 × 110 ms, looping: knees tucked, arms flung up). Its rock (`goblin_rock_0`, `_1`) and bomb (`goblin_bomb_0`, `_1`) are 16 pixels, each centred on its frame, which it rolls about |
 
 The frozen look (`effects.py`) is a frosty cube of ice in three-quarter view: a snow
 cap, a side in shade, frost thick at the edges, a drift at the foot, frost ferns,
 bubbles, cracks, a chipped corner and sparkles, the body showing through a clearer
 window. `status_ice_<kind>` fits each kind's hurtbox plus 2 pixels on a full frame
-(`HURTBOXES`: the wisp, the crawler, the beetle, the bat, the troll and the dummy),
+(`HURTBOXES`: the wisp, the crawler, the beetle, the bat, the troll, the goblin and the dummy; `PROP_BOXES`: the crate and the keg),
 so what lies outside the hurtbox shows outside the ice; `generate.check_ice_fits`
 holds each box to its prefab's hurtbox wherever that prefab exists. The size
 classes' `status_ice_<class>` and the ball's `ice_shell` are cubes too. A frozen
 target with health shows `frozen_glints` over the 16-pixel `ice_glint`; frozen balls
 and iron show none. The wisp's embers are `wisp_embers` over the spark. The drops are
 24-pixel orbs, `health_orb` (red) and `mana_orb` (indigo), in a dithered halo,
-palette pixels only. The summon slot's icons (`icon_wisp` to `icon_troll`) are each
-enemy's frame at half size, the troll's at a quarter, on the dummy's ring.
+palette pixels only. The summon slot's icons (`icon_wisp` to `icon_goblin`, `icon_crate`, `icon_keg`) are each
+enemy's or prop's frame at half size, the troll's at a quarter, on the dummy's ring.
 
 `sfx.py` adds each enemy's sounds, 16-bit mono at 44,100 Hz: `wisp_hum` (a 2-second
 crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `crawler_scared` (a startled hiss as it shrinks from the light), `beetle_paw`,
 `beetle_charge`, `bat_screech`, `bat_dive`, `troll_step`, `troll_roar`, `troll_slam`,
-`troll_throw`, `enemy_hit`, `enemy_spotted` (the alert) and `orb_pickup`, registered
+`troll_throw`, `enemy_hit`, `enemy_spotted` (the alert's sting, which each fresh alert sounds through the `alerted` rule since 01 (g)) and `orb_pickup`, registered
 as `ex10_<name>_sfx`. `music_combat` is a fifth music loop at 22,050 Hz, sixteen bars
 at 128 BPM in step with `music_explore`'s bars and chords, which it plays over while
 an enemy sees the courier: toms on every beat, an eighth-note low pulse, string stabs

@@ -207,8 +207,8 @@ pub(crate) fn next_id(world: &mut World) -> SaveId {
 }
 
 /// A toy's prefab at `at`, owned by gameplay, with the run's next save ID
-/// and its art at `scale`, spawned at once.
-fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
+/// and its art at `scale`, spawned at once: a toy's or a prop's.
+pub(crate) fn spawn_toy(world: &mut World, prefab: &str, at: Vec2, scale: f32) -> Entity {
     let id = next_id(world);
     let transform = Transform {
         position: at,

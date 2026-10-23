@@ -399,6 +399,42 @@ def particle_configs():
         angular_velocity=dict(min=-8, max=8), start_scale=dict(min=.07, max=.16),
         alpha_over_life=[[0, .9], [.3, 1], [.5, .3], [.7, .9], [1, 0]],
         color_over_life=[[0, [.92, .86, 1, 1]], [.4, [.6, .55, .7, 1]], [1, [.3, .28, .34, 0]]])
+    # 01 (g): a lit fuse's sparks and smoke, a crate catching fire and
+    # falling in, a keg's staves flung out over the missile's four bursts,
+    # and a rock breaking where it lands.
+    def full(sprite, cap, emission, life, velocity, gravity, drag, scale, size, alpha, color, spin=(0, 0)):
+        return dict(sprite='ex10_' + sprite, max_alive=cap, seed=48657, blend='alpha', emission=emission,
+                    lifetime=dict(min=life[0], max=life[1]), initial_velocity=velocity, gravity=list(gravity),
+                    drag_per_sec=drag, start_scale=dict(min=scale[0], max=scale[1]), scale_over_life=size,
+                    alpha_over_life=alpha, color_over_life=color, angular_velocity=dict(min=spin[0], max=spin[1]))
+    def burst(count):
+        return dict(kind='burst', count=count, once=True)
+    def cone(direction, spread, low, high):
+        return dict(kind='cone', direction=list(direction), spread_deg=spread, speed=dict(min=low, max=high))
+    configs['fuse_sparks'] = full(
+        'spark', 18, dict(kind='continuous', rate_hz=48), (.16, .4), cone((0, -1), 200, 50, 170), (0, 420), .6,
+        (.05, .12), [[0, 1], [1, .3]], [[0, 1], [.7, .9], [1, 0]],
+        [[0, [1, 1, .86, 1]], [.3, [1, .86, .32, 1]], [.7, [1, .42, .1, 1]], [1, [.5, .1, .05, 0]]])
+    configs['fuse_smoke'] = full(
+        'dust', 8, dict(kind='continuous', rate_hz=7), (.6, 1.0), cone((0, -1), 35, 15, 40), (0, -30), 1.2,
+        (.08, .14), [[0, .6], [1, 1.6]], [[0, 0], [.2, .35], [1, 0]],
+        [[0, [.62, .6, .58, 1]], [1, [.34, .33, .34, 1]]], (-1, 1))
+    configs['crate_ignite'] = full(
+        'flame_glow', 14, burst(14), (.25, .55), cone((0, -1), 140, 60, 210), (0, -220), 1.4, (.22, .48),
+        [[0, .5], [.2, 1], [1, .1]], [[0, 0], [.08, 1], [.6, .7], [1, 0]], ember_ramp, (-3, 3))
+    configs['crate_collapse'] = full(
+        'char_splinter', 20, burst(20), (.55, 1.05), cone((0, -1), 220, 140, 420), (0, 620), .7, (.26, .42),
+        [[0, 1], [1, .85]], [[0, 1], [.75, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.55, .5, .48, 1]]], (-12, 12))
+    configs['collapse_embers'] = full(
+        'spark', 26, burst(26), (.5, 1.2), cone((0, -1), 150, 60, 280), (0, -60), 1.1, (.06, .16),
+        [[0, 1], [1, .3]], [[0, 1], [.7, .85], [1, 0]], ember_ramp, (-6, 6))
+    configs['keg_staves'] = full(
+        'keg_stave', 10, burst(10), (.5, 1.0), dict(kind='radial', speed=dict(min=260, max=720)), (0, 700), .9,
+        (.2, .32), [[0, 1], [1, .9]], [[0, 1], [.8, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.6, .55, .52, 1]]],
+        (-14, 14))
+    configs['rock_chips'] = full(
+        'rock_chip', 8, burst(8), (.3, .6), cone((0, -1), 160, 90, 260), (0, 650), .5, (.14, .24),
+        [[0, 1], [1, .8]], [[0, 1], [.7, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.7, .7, .7, 1]]], (-10, 10))
     return configs
 
 

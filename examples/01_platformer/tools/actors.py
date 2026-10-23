@@ -1686,14 +1686,14 @@ OVERHEAD = dict(lean=-3, lift=4, near_elbow=(92, 20), near_wrist=(81, 7), far_el
 
 
 def troll_windup_frames():
-    """The slam's wind-up: its arms rising before it to lock overhead,
-    leaning back."""
+    """The slam's wind-up, 0.8 s since 01 (g): its arms rising before it to
+    lock overhead, leaning back."""
     poses = [TrollPose(lean=-1, lift=1, near_elbow=(96, 62), near_wrist=(110, 50), far_elbow=(80, 62),
                        far_wrist=(98, 52), hands='fists'),
              TrollPose(lean=-2, lift=3, near_elbow=(100, 34), near_wrist=(98, 14), far_elbow=(86, 32),
                        far_wrist=(88, 12), hands='fists'),
              TrollPose(**OVERHEAD)]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [200, 300, 700]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [133, 200, 467]
 
 
 def troll_slam_frames():
@@ -1728,6 +1728,453 @@ def troll_throw_frames():
     return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [140, 80, 260]
 
 
+def troll_swipe_windup_frames():
+    """The swipe's tell: the near arm drawn back low behind the hip, coiled."""
+    poses = [TrollPose(lean=-1, crouch=2, near_elbow=(80, 62), near_wrist=(68, 78), far_elbow=(60, 64),
+                       far_wrist=(70, 86)),
+             TrollPose(lean=-3, crouch=4, near_elbow=(72, 58), near_wrist=(54, 70), far_elbow=(62, 62),
+                       far_wrist=(76, 80), sway=1)]
+    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [120, 180]
+
+
+def troll_swipe_frames():
+    """The swipe: the near arm raked under and up in front of it, claws
+    open, pale streaks along the hand's arc, then following through high."""
+    poses = [TrollPose(lean=4, crouch=5, near_elbow=(94, 70), near_wrist=(102, 92), far_elbow=(54, 66),
+                       far_wrist=(48, 84), sway=-2),
+             TrollPose(lean=7, crouch=3, near_elbow=(101, 78), near_wrist=(112, 64), far_elbow=(52, 64),
+                       far_wrist=(44, 80), sway=-2),
+             TrollPose(lean=4, crouch=1, lift=1, near_elbow=(98, 42), near_wrist=(104, 26), far_elbow=(54, 66),
+                       far_wrist=(50, 86), sway=-1)]
+    frames = [troll_canvas(p) for p in poses]
+    centre = (88, 60)
+    for f, (start_deg, end_deg) in ((frames[0], (150, 78)), (frames[1], (128, -8))):
+        for radius, symbol in ((38, 'τ'), (43, 'σ'), (48, 'w'), (53, 'σ')):
+            steps = 70
+            for s in range(steps):
+                a = math.radians(start_deg + (end_deg - start_deg) * s / steps)
+                x = round(centre[0] + math.cos(a) * radius)
+                y = round(centre[1] + math.sin(a) * radius)
+                if 0 <= x < BIG and 0 <= y < BIG - 4 and (x, y) not in f and (s + radius) % 5 != 0:
+                    f[(x, y)] = symbol
+    return [to_image(f, (BIG, BIG)) for f in frames], [60, 70, 200]
+
+
+# The goblin (01 (g)): a sapper on a skeleton like the troll's, small and
+# quick, on a 64 frame with its feet on row 60, about 41 px from its cap's
+# crown to its soles.
+
+GOB_SKIN = dict(base='G', light='m', shadow='g', rim='W', back='T')
+GOB_SKIN_FAR = dict(base='g', light='G', shadow='T', rim='G', back='N')
+GOB_LEATHER = dict(base='(', light='a', shadow='[', rim="'")
+GOB_CAP = dict(base='"', light="'", shadow='ω', rim="'")
+GOB_CLOTH = dict(base='~', light=':', shadow='=', rim=':')
+GOB_CLOTH_FAR = dict(base='=', light='~', shadow='-')
+GOB_ROCK = dict(light='ψ', shadow='Φ', back='B', rim='χ')
+GOB_BOMB = dict(light='Ω', shadow='θ', rim='Φ')
+G_THIGH, G_SHIN = 6.0, 6.0
+G_FOOT_NEAR = [(-2, -1), (2, -1), (6, 0.5), (8, 2.2), (8, 3), (-2.5, 3)]
+G_FOOT_FAR = [(-2, -1), (1.5, -1), (5, 0.5), (7, 2.2), (7, 3), (-2.5, 3)]
+G_PALM = [(-1.5, 0), (1.5, 0), (2, 2.5), (-2, 2.5)]
+G_FINGERS = [[(-1.5, 2), (-2, 4.5)], [(0, 2.5), (0, 5)], [(1.6, 2), (2.2, 4.4)]]
+G_FIST = [(-2, -0.5), (2, -0.5), (2.5, 2), (0, 3.2), (-2.5, 2)]
+G_THINGS = 16  # the rock's and the bomb's frame
+
+
+def lerp(a, b, u):
+    return tuple(x + (y - x) * u for x, y in zip(a, b))
+
+
+@dataclass
+class GoblinPose:
+    """One frame of the goblin sapper, facing right. Positions are frame
+    pixels."""
+    crouch: float = 0.0  # hips and all above them drop this far
+    lean: float = 0.0  # chest and head ahead of the hips
+    breath: float = 0.0
+    near_ankle: tuple = (35.0, 57.0)
+    far_ankle: tuple = (28.0, 57.0)
+    near_toe: float = 0.0
+    far_toe: float = 0.0
+    near_elbow: tuple = (38.5, 42.0)
+    near_wrist: tuple = (39.5, 48.0)
+    far_elbow: tuple = (28.0, 41.5)
+    far_wrist: tuple = (27.5, 47.5)
+    near_hand: str = 'open'  # open, fist, rock, bomb or knife
+    far_hand: str = 'open'
+    ears: float = 0.0  # the tips rise (alert) or droop
+    mouth: str = 'grin'  # grin or open
+    blink: bool = False
+    spark: int = 0  # a held bomb's fuse frame
+
+
+def goblin_hand(part, wrist, elbow, kind):
+    if kind in ('fist', 'rock', 'bomb', 'knife'):
+        part.polygon(in_hand(wrist, elbow, G_FIST))
+    else:
+        part.polygon(in_hand(wrist, elbow, G_PALM))
+        for bones in G_FINGERS:
+            part.limb(in_hand(wrist, elbow, bones), 2)
+
+
+def goblin_canvas(pose=None):
+    """A goblin sapper on a skeleton: a big round skull thrust forward under
+    a leather cap with brass goggles pushed up; a long hooked nose with a
+    wart; a round yellow eye with a slit pupil under a heavy brow; a grin of
+    fangs over an underbite; long leaf-shaped ears swept back, their insides
+    dark, a notch bitten from one and a brass ring under its lobe; skinny
+    arms with knobby elbows and long clawed fingers; an open leather jerkin
+    over a pot belly, laced and stitched; a rope belt with a pouch of rocks
+    at the front and a bomb hanging at the back; ragged shorts, bowed thin
+    shins and long clawed feet; warts."""
+    pose = pose or GoblinPose()
+    c, lean, e = pose.crouch, pose.lean, pose.ears
+    names = ('far_leg', 'far_shin', 'far_foot', 'far_arm', 'far_hand', 'far_ear', 'bomb', 'torso', 'belly',
+             'neck', 'near_leg', 'near_shin', 'near_foot', 'belt', 'pouch', 'near_ear', 'head', 'jaw', 'cap',
+             'nose', 'near_arm', 'near_hand', 'held')
+    P = {n: Part() for n in names}
+
+    def chest(x, y):
+        share = max(0.0, min(1.0, (46 - y) / 12))
+        return (x + lean * share, y + c - pose.breath * share)
+
+    ankles = {}
+    for side, hip, ankle, toe, foot, thigh, shin in (
+            ('far', (29.5, 45 + c), pose.far_ankle, pose.far_toe, G_FOOT_FAR, [5, 4.5, 3.6], [2.2, 2.6, 2]),
+            ('near', (32.5, 46 + c), pose.near_ankle, pose.near_toe, G_FOOT_NEAR, [5.5, 5, 4], [2.6, 3, 2.2])):
+        knee, end = two_bone(hip, ankle, G_THIGH, G_SHIN, 1)
+        P[side + '_leg'].polygon(strand([hip, lerp(hip, knee, 0.55), lerp(hip, knee, 0.9)], thigh))
+        P[side + '_shin'].ellipse(knee, 1.5, 1.5)
+        P[side + '_shin'].polygon(strand([knee, lerp(knee, end, 0.5), end], shin))
+        P[side + '_foot'].polygon(turned([(end[0] + x, end[1] + y) for x, y in foot], end, toe))
+        ankles[side] = (end, knee)
+    P['torso'].polygon([chest(27, 46), chest(25.5, 41), chest(26, 37), chest(29, 34), chest(34.5, 33),
+                        chest(38, 35), chest(40, 39.5), chest(39.5, 44.5), chest(35, 47)])
+    P['belly'].polygon([chest(35.5, 37), chest(38, 36), chest(40.5, 40), chest(40, 44.5), chest(36, 46.5),
+                        chest(34.5, 41.5)])
+    hx, hy = 37.5 + lean, 25.5 + c - pose.breath * 0.6
+    P['neck'].polygon([chest(31, 34.5), (hx - 4, hy + 3), (hx + 1, hy + 5.5), chest(36, 34.5)])
+    P['head'].ellipse((hx, hy), 7.5, 7)
+    P['jaw'].polygon([(hx - 1, hy + 3), (hx + 7.5, hy + 2.5), (hx + 8.5, hy + 5.5), (hx + 5, hy + 8),
+                      (hx - 2, hy + 7)])
+    P['nose'].polygon([(hx + 6, hy - 2), (hx + 10.5, hy + 0.5), (hx + 14, hy + 3.8), (hx + 13.5, hy + 5.4),
+                       (hx + 11, hy + 4.4), (hx + 7, hy + 2.8)])
+    P['cap'].polygon([(hx - 8, hy - 1), (hx - 7.5, hy - 5), (hx - 4.5, hy - 8.6), (hx + 0.5, hy - 9.8),
+                      (hx + 5, hy - 8.4), (hx + 7.8, hy - 5.4), (hx + 10.5, hy - 4.6), (hx + 7, hy - 3.8),
+                      (hx - 6.5, hy - 2.4)])
+    P['near_ear'].polygon([(hx - 4, hy - 3), (hx - 10, hy - 5.5 - e * 0.4), (hx - 16, hy - 8 - e * 0.8),
+                           (hx - 22, hy - 10.5 - e * 1.3), (hx - 18, hy - 5.5 - e * 0.7),
+                           (hx - 11, hy - 0.5), (hx - 5, hy + 3)])
+    P['far_ear'].polygon([(hx - 3, hy - 6.5), (hx - 8, hy - 11 - e * 0.5), (hx - 13.5, hy - 15.5 - e * 1.2),
+                          (hx - 10.5, hy - 9.5 - e * 0.6), (hx - 5, hy - 3.5)])
+    P['belt'].polygon(strand([chest(25.5, 43.5), chest(33, 45), chest(40.5, 43.5)], [2, 2.5, 2]))
+    P['pouch'].ellipse(chest(37.5, 47.2), 3.2, 2.8)
+    P['bomb'].ellipse(chest(25, 47.5), 2.8, 2.8)
+    hands = {}
+    for side, shoulder, elbow, wrist, kind in (
+            ('far', chest(28.5, 36), pose.far_elbow, pose.far_wrist, pose.far_hand),
+            ('near', chest(35.5, 36.5), pose.near_elbow, pose.near_wrist, pose.near_hand)):
+        arm = P[side + '_arm']
+        arm.polygon(strand([shoulder, lerp(shoulder, elbow, 0.5), elbow], [3.4, 2.8, 2.4]))
+        arm.ellipse(elbow, 1.4, 1.4)
+        arm.polygon(strand([elbow, lerp(elbow, wrist, 0.5), wrist], [2.2, 2.6, 2.4]))
+        goblin_hand(P[side + '_hand'], wrist, elbow, kind)
+        hands[side] = (wrist, elbow, kind)
+    wrist, elbow, kind = hands['near']
+    if kind in ('rock', 'bomb'):  # held in the fingers' curl, ahead of the palm
+        hold = in_hand(wrist, elbow, [(0, 3.6)])[0]
+        if kind == 'rock':
+            P['held'].polygon([(hold[0] + x, hold[1] + y) for x, y in
+                               ((-3, -1), (-1, -3.5), (2.5, -3), (3.5, 0), (1.5, 3), (-2.5, 2.5))])
+        else:
+            P['held'].ellipse(hold, 3.4, 3.4)
+    elif kind == 'knife':  # a short blade out of the fist, along the forearm
+        P['held'].polygon(in_hand(wrist, elbow, [(-1.1, 3), (1.1, 3), (0.8, 8.5), (0, 10.5), (-0.8, 8.5)]))
+    canvas = compose([
+        (shade(P['far_arm'].pixels(), **GOB_SKIN_FAR), None),
+        (shade(P['far_hand'].pixels(), **GOB_SKIN_FAR), None),
+        (shade(P['far_ear'].pixels(), **GOB_SKIN_FAR), None),
+        (shade(P['far_leg'].pixels(), **GOB_CLOTH_FAR), None),
+        (shade(P['far_shin'].pixels(), **GOB_SKIN_FAR), None),
+        (shade(P['far_foot'].pixels(), **GOB_SKIN_FAR), None),
+        (shade(P['bomb'].pixels(), 'b', **GOB_BOMB), 'o'),
+        (shade(P['torso'].pixels(), **GOB_LEATHER), 'o'),
+        (shade(P['belly'].pixels(), **GOB_SKIN), None),
+        (shade(P['neck'].pixels(), **GOB_SKIN), None),
+        (shade(P['near_leg'].pixels(), **GOB_CLOTH), 'o'),
+        (shade(P['near_shin'].pixels(), **GOB_SKIN), None),
+        (shade(P['near_foot'].pixels(), **GOB_SKIN), 'o'),
+        (shade(P['belt'].pixels(), 'τ', light='σ', shadow='s'), None),
+        (shade(P['pouch'].pixels(), '"', light="'", shadow='ω', rim="'"), 'o'),
+        (shade(P['near_ear'].pixels(), **GOB_SKIN), 'o'),
+        (shade(P['head'].pixels(), **GOB_SKIN), 'o'),
+        (shade(P['jaw'].pixels(), **GOB_SKIN), None),
+        (shade(P['cap'].pixels(), **GOB_CAP), 'o'),
+        (shade(P['nose'].pixels(), 'G', light='m', shadow='g', rim='W'), 'o'),
+        (shade(P['near_arm'].pixels(), **GOB_SKIN), 'o'),
+        (shade(P['near_hand'].pixels(), **GOB_SKIN), 'o'),
+        (shade(P['held'].pixels(), 'Ω', **GOB_ROCK) if kind == 'rock'
+         else shade(P['held'].pixels(), 'S', light='σ', shadow=';', rim='σ') if kind == 'knife'
+         else shade(P['held'].pixels(), 'b', **GOB_BOMB), 'o'),
+    ])
+    skin = set().union(*(P[n].pixels() for n in ('belly', 'head', 'near_shin', 'near_arm', 'neck')))
+    speckle(canvas, skin, 'gob-wart', ['g'], 0.035, only=('G',))
+    hx, hy = round(hx), round(hy)
+    # The brow: a heavy ridge slanting down to the nose, a mean look; a
+    # round yellow eye under it, its pupil a slit, a glint; shut in a blink.
+    for x, y in ((hx, hy - 3), (hx + 1, hy - 3), (hx + 2, hy - 3), (hx + 3, hy - 3), (hx + 4, hy - 3),
+                 (hx + 5, hy - 2)):
+        canvas[(x, y)] = 'T'
+    eye = {(hx + 2, hy - 2): 'y', (hx + 3, hy - 2): 'Ψ', (hx + 4, hy - 2): 'y',
+           (hx + 2, hy - 1): 'Y', (hx + 3, hy - 1): 'o', (hx + 4, hy - 1): 'y',
+           (hx + 2, hy): 'J', (hx + 3, hy): 'o', (hx + 4, hy): 'J'}
+    if pose.blink:
+        for x in (hx + 1, hx + 2, hx + 3, hx + 4, hx + 5):
+            canvas[(x, hy - 1)] = 'T'
+    else:
+        canvas.update(eye)
+        for q in ((hx + 1, hy - 2), (hx + 1, hy - 1), (hx + 1, hy), (hx + 5, hy - 1), (hx + 5, hy),
+                  (hx + 2, hy + 1), (hx + 3, hy + 1), (hx + 4, hy + 1)):
+            canvas[q] = 'N' if q[1] <= hy else 'g'
+    # The nose's wart and nostril.
+    canvas[(hx + 11, hy + 2)] = 'g'
+    canvas[(hx + 9, hy + 1)] = 'T'
+    canvas[(hx + 10, hy + 4)] = 'N'
+    # The grin: a dark line turned up at its back corner, fangs, an underbite.
+    for p in ((hx - 1, hy + 3), (hx, hy + 4), (hx + 1, hy + 4), (hx + 2, hy + 4), (hx + 3, hy + 4),
+              (hx + 4, hy + 4), (hx + 5, hy + 4), (hx + 6, hy + 4), (hx + 7, hy + 3)):
+        canvas[p] = 'N'
+    if pose.mouth == 'open':
+        for x in range(hx + 1, hx + 7):
+            canvas[(x, hy + 5)] = 'M'
+        for x in range(hx + 2, hx + 6):
+            canvas[(x, hy + 6)] = 'N'
+        canvas[(hx + 3, hy + 6)] = 'E'
+        canvas[(hx + 4, hy + 6)] = 'E'
+        for x in (hx + 1, hx + 6):
+            canvas[(x, hy + 6)] = 'w'
+    for x in (hx + 1, hx + 3, hx + 5):
+        canvas[(x, hy + 5)] = 'w'  # fangs from the upper jaw
+    canvas[(hx + 7, hy + 2)] = 'w'  # a tusk of the underbite
+    # The ears: dark insides along the middle, a notch, a brass ring.
+    for ear, key in (('near_ear', 'G'), ('far_ear', 'g')):
+        inside = P[ear].pixels()
+        for (x, y) in sorted(inside):
+            if canvas.get((x, y)) == key and all((x + dx, y + dy) in inside for dx, dy in ((0, -1), (0, 1))) \
+                    and (x, y - 2) in inside and (x, y + 2) in inside:
+                canvas[(x, y)] = 'g' if ear == 'near_ear' else 'T'
+    notch = (hx - 13, round(hy - 7 - e * 0.7))
+    for dx, dy in ((0, 0), (1, 0), (0, -1)):
+        canvas.pop((notch[0] + dx, notch[1] + dy), None)
+    for dx, dy in ((0, 0), (1, 1), (0, 2), (-1, 1)):  # the ring under the lobe
+        canvas[(hx - 9 + dx, hy + 2 + dy)] = 'A'
+    # The goggles pushed up on the cap: a brass rim, a pale lens, a glint;
+    # the strap round the cap; a stitched seam.
+    gx, gy = hx + 2, hy - 7
+    for dx in range(-2, 3):
+        for dy in range(-2, 3):
+            if dx * dx + dy * dy <= 5:
+                canvas[(gx + dx, gy + dy)] = 'A' if dx * dx + dy * dy >= 3 else ('`' if dx + dy < 0 else '_')
+    canvas[(gx - 1, gy - 1)] = 'Ψ'
+    canvas[(gx + 2, gy + 2)] = 'a'
+    for x in range(hx - 7, gx - 2):
+        if canvas.get((x, gy + 1)) in ('"', "'", 'ω'):
+            canvas[(x, gy + 1)] = 'ω'
+    for x in range(hx - 5, hx + 1, 2):
+        if canvas.get((x, hy - 9)) in ('"', "'"):
+            canvas[(x, hy - 9)] = "'"
+    # The jerkin: its front edge laced, a shoulder seam stitched.
+    for t in range(5):
+        p = point(chest(35 + t * 0.25, 37 + t * 2))
+        if canvas.get(p) in ('(', 'a', '['):
+            canvas[p] = 'σ' if t % 2 == 0 else '['
+    for t in range(4):
+        p = point(chest(28 + t * 1.6, 34.5 + t * 0.3))
+        if canvas.get(p) in ('(', 'a', '['):
+            canvas[p] = 'a'
+    # The pouch's flap and its rocks; the hanging bomb's glint and fuse.
+    px_, py_ = point(chest(37.5, 47.2))
+    for dx in (-2, -1, 0, 1, 2):
+        if canvas.get((px_ + dx, py_ - 1)) not in (None, 'o'):
+            canvas[(px_ + dx, py_ - 1)] = 'ω'
+    for dx, s in ((-1, 'ψ'), (0, 'Ω'), (1, 'ψ')):
+        canvas[(px_ + dx, py_ - 3)] = s
+    bx, by = point(chest(25, 47.5))
+    canvas[(bx - 1, by - 1)] = 'χ'
+    canvas[(bx, by - 3)] = 'a'
+    canvas[(bx - 1, by - 4)] = 'σ'
+    for side in ('near', 'far'):
+        w, el, kind_ = hands[side]
+        if kind_ == 'open':
+            for bones in G_FINGERS:
+                tip = point(in_hand(w, el, [(bones[-1][0], bones[-1][1] + 0.8)])[0])
+                if side == 'near' or tip not in canvas:
+                    canvas[tip] = 'w'
+        end, knee = ankles[side]
+        toe = pose.near_toe if side == 'near' else pose.far_toe
+        for dx, dy in ((8.5, 2), (7, 3)):
+            q = point(turned([(end[0] + dx, end[1] + dy)], end, toe)[0])
+            canvas[q] = 'w'
+        kp = point(knee)
+        if side == 'near' and canvas.get(kp) in ('G', 'g', 'W'):
+            canvas[kp] = 'm'
+    for side in ('near', 'far'):  # the shorts' ragged hem
+        end, knee = ankles[side]
+        hip = (32.5, 46 + c) if side == 'near' else (29.5, 45 + c)
+        for dx, dy in ((-1, 1), (1, 2), (2, 1)):
+            q = point(lerp(hip, knee, 0.9))
+            q = (q[0] + dx, q[1] + dy)
+            if canvas.get(q) in ('G', 'g', 'W', 'm', 'T'):
+                canvas[q] = '=' if side == 'near' else '-'
+    if kind == 'bomb':  # the held bomb's glint and fuse, lit
+        hold = point(in_hand(wrist, elbow, [(0, 3.6)])[0])
+        tip = (hold[0] + 1, hold[1] - 5)
+        canvas[(hold[0], hold[1] - 3)] = 'a'
+        canvas[(hold[0] + 1, hold[1] - 4)] = 'σ'
+        canvas[(hold[0] - 1, hold[1] - 1)] = 'χ'
+        canvas[tip] = 'Ψ'
+        for dx, dy in (((1, 0), (-1, 0), (0, -1)) if pose.spark % 2 == 0 else ((1, -1), (-1, -1))):
+            canvas[(tip[0] + dx, tip[1] + dy)] = 'Y'
+    elif kind == 'rock':
+        hold = point(in_hand(wrist, elbow, [(0, 3.6)])[0])
+        canvas[(hold[0] - 1, hold[1])] = 'Φ'
+        canvas[(hold[0] + 1, hold[1] + 1)] = 'Φ'
+    elif kind == 'knife':  # the brass guard at the fist and the point's glint
+        for guard in in_hand(wrist, elbow, [(-1.8, 3), (1.8, 3)]):
+            canvas[point(guard)] = 'A'
+        canvas[point(in_hand(wrist, elbow, [(0, 9.8)])[0])] = 'w'
+    # Its soles are drawn on row 60; raised a row, its outline's lowest row
+    # is 60, the walkers' feet row, where its collider ends.
+    return outline({(x, y - 1): symbol for (x, y), symbol in canvas.items()})
+
+
+def goblin_idle_frames():
+    """Breathing, its ears twitching up, a blink."""
+    poses = [GoblinPose(breath=b, ears=ears, blink=blink,
+                        near_elbow=(38.5, 42 - b), near_wrist=(39.5, 48 - b),
+                        far_elbow=(28, 41.5 - b), far_wrist=(27.5, 47.5 - b))
+             for b, ears, blink in ((0, 0, False), (1, 0, False), (1, 1.2, False), (0, 0, True))]
+    return [to_image(goblin_canvas(p)) for p in poses], [240, 200, 160, 120]
+
+
+def goblin_walk_frames():
+    """A quick scuttle, leaning in, the arms swinging against the legs."""
+    poses = []
+    for i in range(6):
+        a = i * math.tau / 6
+        near_x, near_lift = 34 + 5 * math.sin(a), 3 * max(0.0, math.cos(a))
+        far_x, far_lift = 29 - 5 * math.sin(a), 3 * max(0.0, -math.cos(a))
+        swing = 3.5 * math.sin(a)
+        bob = round(abs(math.cos(a)))
+        poses.append(GoblinPose(
+            crouch=1 - bob, lean=2.5, ears=-0.5 * bob,
+            near_ankle=(near_x, 57 - near_lift), near_toe=0.12 * near_lift,
+            far_ankle=(far_x, 57 - far_lift), far_toe=0.12 * far_lift,
+            near_elbow=(39 - swing * 0.4, 42.5), near_wrist=(41 - swing, 48 - abs(swing) * 0.3),
+            far_elbow=(29 + swing * 0.4, 42), far_wrist=(29 + swing, 47.5 - abs(swing) * 0.3)))
+    return [to_image(goblin_canvas(p)) for p in poses], [85] * 6
+
+
+def goblin_windup_frames(held='rock'):
+    """The throw's tell: crouched, leaning back, the throwing arm drawn back
+    and up behind its head with a rock or a lit bomb, the other pointing at
+    the target."""
+    base = dict(near_hand=held, ears=1.5, mouth='open')
+    poses = [GoblinPose(crouch=1, lean=-1, near_elbow=(33, 39), near_wrist=(28, 36), far_elbow=(34, 40),
+                        far_wrist=(40, 41), spark=0, **base),
+             GoblinPose(crouch=2, lean=-2.5, near_elbow=(30, 35), near_wrist=(24, 31), far_elbow=(35, 38),
+                        far_wrist=(42, 38), far_ankle=(26, 57), spark=1, **base),
+             GoblinPose(crouch=2, lean=-3, near_elbow=(29, 33), near_wrist=(22, 28), far_elbow=(36, 37),
+                        far_wrist=(43, 36), far_ankle=(25, 57), spark=2, **base)]
+    return [to_image(goblin_canvas(p)) for p in poses], [110, 140, 200]
+
+
+def goblin_throw_frames():
+    """The release: the arm whipping over and forward, the hand opening,
+    the follow-through with a foot lifting."""
+    poses = [GoblinPose(crouch=1, lean=1, near_elbow=(34, 30), near_wrist=(39, 25), near_hand='fist',
+                        far_elbow=(31, 41), far_wrist=(30, 46), ears=1, mouth='open'),
+             GoblinPose(crouch=0, lean=3.5, near_elbow=(41, 34), near_wrist=(47, 32), far_elbow=(30, 41),
+                        far_wrist=(27, 45), ears=0.5, mouth='open'),
+             GoblinPose(crouch=2, lean=4.5, near_elbow=(42, 41), near_wrist=(46, 47), far_elbow=(29, 40),
+                        far_wrist=(25, 44), far_ankle=(26, 55), far_toe=0.4, ears=0)]
+    return [to_image(goblin_canvas(p)) for p in poses], [60, 70, 170]
+
+
+def goblin_stab_windup_frames():
+    """The stab's tell: crouched and drawn back, the knife low at its hip
+    pointing behind, the free hand out ahead, ears up, snarling."""
+    poses = [GoblinPose(crouch=2, lean=-1.5, near_elbow=(33, 42), near_wrist=(29.5, 46.5), near_hand='knife',
+                        far_elbow=(36, 39.5), far_wrist=(41.5, 41), far_ankle=(26, 57), ears=1.5, mouth='open')]
+    return [to_image(goblin_canvas(p)) for p in poses], [200]
+
+
+def goblin_stab_frames():
+    """The stab: the knife thrust out ahead at chest height off a lunging
+    front foot, then drawn halfway back."""
+    poses = [GoblinPose(crouch=1, lean=4, near_elbow=(43, 39), near_wrist=(49.5, 39), near_hand='knife',
+                        far_elbow=(30.5, 41), far_wrist=(27.5, 45.5), near_ankle=(39, 57), far_ankle=(27, 57),
+                        far_toe=0.3, ears=0.5, mouth='open'),
+             GoblinPose(crouch=1, lean=2, near_elbow=(41, 40.5), near_wrist=(45.5, 43.5), near_hand='knife',
+                        far_elbow=(29.5, 41), far_wrist=(27.5, 46), near_ankle=(37, 57), ears=0.5)]
+    return [to_image(goblin_canvas(p)) for p in poses], [80, 140]
+
+
+def goblin_hop_frames():
+    """A hop: its knees tucked under it and its arms flung up, an ear
+    flapping, then the arms coming down for the landing."""
+    poses = [GoblinPose(crouch=-1, lean=1, near_ankle=(36, 53), far_ankle=(29.5, 53.5), near_toe=0.35,
+                        far_toe=0.35, near_elbow=(40.5, 37), near_wrist=(44.5, 32.5), far_elbow=(27, 37),
+                        far_wrist=(23.5, 32.5), ears=1.5, mouth='open'),
+             GoblinPose(crouch=0, lean=1.5, near_ankle=(36, 55), far_ankle=(29.5, 55.5), near_toe=0.2,
+                        far_toe=0.2, near_elbow=(40.5, 39.5), near_wrist=(45, 37.5), far_elbow=(27, 39),
+                        far_wrist=(23, 37), ears=0.5, mouth='open')]
+    return [to_image(goblin_canvas(p)) for p in poses], [110, 110]
+
+
+def goblin_rock(i):
+    """The thrown rock, two turns of it: a faceted stone, pale where the
+    moon catches it."""
+    shapes = [[(4, 7), (7, 3.5), (11.5, 4.5), (13, 8.5), (10.5, 12.5), (5.5, 12), (3, 9.5)],
+              [(3.5, 8), (6, 4), (10, 3.5), (12.5, 6), (12.5, 10.5), (8.5, 13), (4.5, 11.5)]]
+    size = (G_THINGS, G_THINGS)
+    part = Part(size)
+    part.polygon(shapes[i])
+    c = shade(part.pixels(), 'Ω', **GOB_ROCK)
+    for (x, y) in sorted(c):
+        if c[(x, y)] == 'Ω' and unit('rock', i, x, y) < 0.2:
+            c[(x, y)] = 'Φ' if unit('rock-t', i, x, y) < 0.5 else 'ψ'
+    c[(7 + i, 7)] = 'B'
+    c[(8 + i, 8)] = 'B'
+    return to_image(outline(c, 'o', size), size)
+
+
+def goblin_bomb(frame):
+    """The thrown bomb, its fuse's two sparks: a black iron ball with a brass
+    collar, centred on its frame, which it rolls about."""
+    size = (G_THINGS, G_THINGS)
+    part = Part(size)
+    part.ellipse((8, 8), 4.6, 4.6)
+    c = {}
+    for (x, y) in part.pixels():
+        lit = max(0.0, -((x + 0.5 - 8) * -0.55 + (y + 0.5 - 8) * -0.65) / 4.6 * 0.8 + 0.35)
+        c[(x, y)] = 'θbBΩχ'[min(4, int(lit * 5))]
+    c[(6, 6)] = 'φ'
+    for x in (7, 8, 9):
+        c[(x, 3)] = 'a'
+    c[(8, 2)] = 'A'
+    c[(9, 1)] = 'σ'
+    c = outline(c, 'o', size)
+    c[(10, 0)] = 'Ψ'
+    if frame == 0:
+        c[(11, 0)] = 'Y'
+        c[(11, 1)] = 'J'
+    else:
+        c[(9, 0)] = 'J'
+        c[(11, 1)] = 'Y'
+    return to_image(c, size)
+
+
 # The enemies' clips: (frames and their durations, looping). Each clip's
 # frames are `<clip>_<i>`, and `generate.mirror_facing` gives every clip a
 # left-facing twin.
@@ -1752,9 +2199,20 @@ ENEMY_CLIPS = {
     'troll_slam': (troll_slam_frames, False),
     'troll_pickup': (troll_pickup_frames, False),
     'troll_throw': (troll_throw_frames, False),
+    'troll_swipe_windup': (troll_swipe_windup_frames, False),
+    'troll_swipe': (troll_swipe_frames, False),
+    'goblin_idle': (goblin_idle_frames, True),
+    'goblin_walk': (goblin_walk_frames, True),
+    'goblin_windup': (lambda: goblin_windup_frames('rock'), False),
+    'goblin_windup_bomb': (lambda: goblin_windup_frames('bomb'), False),
+    'goblin_throw': (goblin_throw_frames, False),
+    'goblin_stab_windup': (goblin_stab_windup_frames, False),
+    'goblin_stab': (goblin_stab_frames, False),
+    'goblin_hop': (goblin_hop_frames, True),
 }
 def build_enemies(images, animations):
-    """The five enemies' clips, unlit: no normal or emissive map."""
+    """The six enemies' clips, and the goblin's rock and bomb, unlit: no
+    normal or emissive map."""
     for clip, (frames_for, looping) in ENEMY_CLIPS.items():
         rendered, durations = frames_for()
         frames = []
@@ -1763,3 +2221,6 @@ def build_enemies(images, animations):
             images[name] = im
             frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
         animations[clip] = {'looping': looping, 'frames': frames}
+    for i in range(2):
+        images[f'goblin_rock_{i}'] = goblin_rock(i)
+        images[f'goblin_bomb_{i}'] = goblin_bomb(i)
