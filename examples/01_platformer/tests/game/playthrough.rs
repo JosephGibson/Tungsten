@@ -56,14 +56,15 @@ const MAIN: &[(&str, f32, f32)] = &[
     ("pool_bed", 186.85, 177.75),
     ("cleft", 205.85, 206.75),
     ("hollow_floor_1", 215.85, 216.75),
-    ("stepping_stone", 231.85, 235.75),
-    ("hollow_floor_2", 236.85, 240.75),
+    ("stepping_stone", 229.85, 234.75),
+    ("hollow_floor_2", 235.85, 240.75),
     ("hollow_step", 249.85, 250.75),
     ("hollow_shelf_a", 253.85, 254.75),
-    ("hollow_shelf_b", 259.85, 262.75),
+    ("hollow_shelf_b", 259.85, 263.75),
     ("gallery", 267.85, 268.75),
     ("cut_floor_1", 282.85, 283.75),
     ("cut_floor_2", 305.35, 306.75),
+    ("cut_floor_2b", 314.85, 318.75),
     ("cut_floor_3", 323.35, 324.75),
     ("cut_step_1", 341.35, 342.75),
     ("cut_step_2", 344.35, 345.75),
@@ -77,7 +78,7 @@ const MAIN: &[(&str, f32, f32)] = &[
 /// Frames each launch waits at its start, standing, and the last before the
 /// walk to the bridge's end: found once by replaying the route at dt 1/60,
 /// a wait at a time, until no hazard touched the courier.
-const WAITS: [u32; 40] = [0; 40];
+const WAITS: [u32; 41] = [0; 41];
 
 /// `tools/level.json`, as far as the playthrough reads it.
 #[derive(Deserialize)]

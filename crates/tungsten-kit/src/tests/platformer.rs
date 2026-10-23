@@ -658,3 +658,44 @@ fn a_save_with_a_bad_value_is_refused() {
     missing.as_object_mut().unwrap().remove("air_jumps");
     assert!(serde_json::from_value::<PlatformerController>(missing).is_err());
 }
+
+#[test]
+fn the_controller_reports_the_kinematic_body_it_stands_on() {
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 64);
+    // A deck 2 px over the tiles at x 600, the hero over it and one on the
+    // tiles at x 200.
+    let deck = world.spawn_with(RigidBodyBundle::kinematic(
+        Position(Vec2::new(600.0, -40.0)),
+        Collider::aabb(Vec2::new(40.0, 8.0)),
+    ));
+    let rider = hero(
+        &mut world,
+        Vec2::new(600.0, -48.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    let walker = hero(
+        &mut world,
+        Vec2::new(200.0, 0.0),
+        PlatformerController::new(RUN, JUMP),
+    );
+    assert_eq!(state(&world, rider).ground(), None, "none before a step");
+    steps(&mut world, &mut schedule, 3);
+    assert_eq!(state(&world, rider).ground(), Some(deck));
+    assert!(state(&world, walker).grounded());
+    assert_eq!(state(&world, walker).ground(), None, "none on tiles");
+    controller(&mut world, rider).launch(Vec2::new(0.0, -600.0));
+    step(&mut world, &mut schedule);
+    assert_eq!(state(&world, rider).ground(), None, "none in the air");
+    steps(&mut world, &mut schedule, 40);
+    assert_eq!(state(&world, rider).ground(), Some(deck), "landed again");
+    // Saved and loaded: none through the still first step, then the deck.
+    let saved = serde_json::to_value(state(&world, rider)).unwrap();
+    let loaded: PlatformerController = serde_json::from_value(saved).unwrap();
+    assert_eq!(loaded.ground(), None);
+    world.insert(rider, loaded);
+    step(&mut world, &mut schedule);
+    assert_eq!(state(&world, rider).ground(), None, "the still first step");
+    step(&mut world, &mut schedule);
+    assert_eq!(state(&world, rider).ground(), Some(deck));
+}

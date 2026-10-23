@@ -33,11 +33,13 @@ use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
 use tungsten::kit::{
     ANIMATION_TICK, CueEvent, CuesOnEvent, Health, KNOCKBACK, Modifier, PICKUP_TICK,
-    PLATFORMER_CONTROLLER, Phase, PickedUp, Stats, TOP_DOWN_MOVER, ensure_phases,
+    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER,
+    ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
+use crate::features::level::LAVA_LAYER;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_burst};
@@ -72,6 +74,22 @@ pub const WOOD_LAYER: u32 = 1 << 3;
 pub const WALL_LAYERS: u32 = SLAB_LAYER | IRON_LAYER | WOOD_LAYER;
 /// How close a mover counts as at its point.
 pub const ARRIVED: f32 = 10.0;
+
+/// What an enemy's controller meets: everything but lava's surface, which
+/// holds the player alone, so a walker or a frozen flyer falls in.
+#[must_use]
+pub fn walk_filter() -> SpatialFilter {
+    SpatialFilter::new().with_mask(!LAVA_LAYER)
+}
+
+/// Gives `enemy`'s controller, when it has one, [`walk_filter`]: at a
+/// spawn, at a run's start for the map's, and after a load, whose saved
+/// controller leaves its filter out.
+pub fn walk_on_rock(world: &mut World, enemy: Entity) {
+    if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
+        *controller = controller.clone().with_filter(walk_filter());
+    }
+}
 
 /// A kind's table entry: its prefab, its frame's side, its body's half
 /// size and centre from its sprite's top-left (the entity's point), its
@@ -190,6 +208,8 @@ impl Plugin for EnemiesPlugin {
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
         world.resource_mut::<Extracts>().add_sprites(draw::bars);
+        world.resource_mut::<Extracts>().add_sprites(draw::charges);
+        world.insert_resource(beetle::Dust::default());
         CuesOnEvent::<Spotted>::new("spotted", |spotted: &Spotted| {
             Some(CueEvent::new(spotted.player, spotted.at).with_other(spotted.spotter))
         })
@@ -230,6 +250,10 @@ impl Plugin for EnemiesPlugin {
         schedule.add(Stage::FixedUpdate, Phase::React.join(deaths));
         let clips = system("enemy_clips", systems::clips).after(ANIMATION_TICK);
         schedule.add(Stage::PostUpdate, Phase::Present.join(clips));
+        schedule.add(
+            Stage::PostUpdate,
+            Phase::Present.join(system("beetle_dust", beetle::dust)),
+        );
     }
 }
 
@@ -273,6 +297,7 @@ pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Op
             SceneEntity { state_id: GAMEPLAY },
         ))
         .spawn(world);
+    walk_on_rock(world, enemy);
     let home = home(world, kind, corner + kind.info().centre);
     if let Some(mine) = world.get_mut::<Enemy>(enemy) {
         mine.home = home.to_array();
@@ -362,6 +387,7 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
             ),
         );
         scale(world, entity, difficulty);
+        walk_on_rock(world, entity);
     }
     let mut placed: Vec<u64> = placed.into_iter().map(|(_, id)| id).collect();
     placed.sort_unstable();

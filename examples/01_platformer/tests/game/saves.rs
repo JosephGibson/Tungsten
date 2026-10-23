@@ -26,8 +26,11 @@ use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKi
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::gun::{self};
+use example_01_platformer::features::level::elevator::{Elevator, Stop};
+use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Player;
+use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
 };
@@ -47,8 +50,8 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::{
-    aim_at, centre, choose, floor, ground, harness, harness_with, mana, pin_camera, player_entity,
-    run, settle, stand, start, teleport, top, user_folder,
+    aim_at, calm, centre, choose, floor, ground, harness, harness_with, mana, pin_camera,
+    player_entity, run, settle, stand, start, steps_this_frame, teleport, top, user_folder,
 };
 
 /// The sky's ground and the camera's corner over it.
@@ -229,9 +232,9 @@ struct Lists {
 
 fn lists(kind: &str) -> Lists {
     use example_01_platformer::features::elements::components::Chill;
-    use example_01_platformer::features::level::components::{
-        AmbientEmitter, Area, Glow, GlowParts, Hazard,
-    };
+    use example_01_platformer::features::level::components::{Glow, GlowParts, Hazard};
+    use example_01_platformer::features::level::elevator::{CableLook, ElevatorDef};
+    use example_01_platformer::features::level::lava::CrustLook;
     use example_01_platformer::features::player::components::{Lantern, Moves};
     use example_01_platformer::features::spells::components::Spellbook;
     use example_01_platformer::features::toys::components::{
@@ -245,7 +248,7 @@ fn lists(kind: &str) -> Lists {
     use tungsten::kit::{
         ActionInput, Aim, CharacterAnimator, Children, ContactDamage, Cues, Effects, Facing,
         HitFlash, Hitbox, Hurtbox, Intent, Knockback, LinearMotion, PlatformerController,
-        Projectile, Source, Stats, Zone,
+        Projectile, Source, Stats,
     };
     use tungsten::kit::{AilmentBuckets, AilmentThreshold, Resist};
     // The payload's emitter, which a load spawns from the saved source again.
@@ -305,6 +308,19 @@ fn lists(kind: &str) -> Lists {
             saved: [&at[..], &[name::<PathFollower>()]].concat(),
             rebuilt: [&body[..], &[name::<SceneEntity>(), name::<Velocity>()]].concat(),
             presentation: drawn.to_vec(),
+        },
+        "elevator" => Lists {
+            saved: [&at[..], &[name::<Elevator>(), name::<PathFollower>()]].concat(),
+            rebuilt: [
+                &body[..],
+                &[
+                    name::<SceneEntity>(),
+                    name::<Velocity>(),
+                    name::<ElevatorDef>(),
+                ],
+            ]
+            .concat(),
+            presentation: [&drawn[..], &[name::<CableLook>()]].concat(),
         },
         "hazard" => Lists {
             saved: [&at[..], &[name::<Oscillator>()]].concat(),
@@ -533,39 +549,32 @@ fn lists(kind: &str) -> Lists {
                 presentation: [&drawn[..], &[name::<GlowParts>()]].concat(),
             }
         }
-        // The map's still objects: props, slabs, spikes, the lava with its
-        // frost touch, areas, emitters and the spawn's marker, which the map
-        // spawns again whole.
-        _ => Lists {
-            saved: names([name::<SaveId>()]),
+        // The lava basins, which the map spawns again whole but their chill
+        // and crust, a crust's sprites drawn again.
+        "basin" => Lists {
+            saved: names([name::<SaveId>(), name::<Lava>()]),
             rebuilt: [
                 &body[..],
                 &[
                     name::<SceneEntity>(),
                     name::<Position>(),
                     name::<PrevPosition>(),
-                    name::<Velocity>(),
                     name::<Hazard>(),
                     name::<ContactDamage>(),
-                    name::<Zone>(),
-                    name::<Area>(),
-                    name::<AmbientEmitter>(),
-                    name::<ParticleEmitter>(),
+                    name::<Cues>(),
                     name::<Glow>(),
                     name::<Children>(),
                 ],
             ]
             .concat(),
-            presentation: [
-                &drawn[..],
-                &[
-                    name::<AnimationState>(),
-                    name::<ParticleEmitterState>(),
-                    name::<GlowParts>(),
-                ],
-            ]
-            .concat(),
+            presentation: names([
+                name::<Transform>(),
+                name::<Visibility>(),
+                name::<GlowParts>(),
+                name::<CrustLook>(),
+            ]),
         },
+        other => panic!("{other}: a saved entity of no known kind"),
     }
 }
 
@@ -573,8 +582,12 @@ fn lists(kind: &str) -> Lists {
 fn kind(world: &World, entity: Entity) -> &'static str {
     if world.has::<Player>(entity) {
         "player"
+    } else if world.has::<Elevator>(entity) {
+        "elevator"
     } else if world.has::<PathFollower>(entity) {
         "platform"
+    } else if world.has::<Lava>(entity) {
+        "basin"
     } else if world.has::<Oscillator>(entity) {
         "hazard"
     } else if world.has::<Ball>(entity) {
@@ -602,7 +615,7 @@ fn kind(world: &World, entity: Entity) -> &'static str {
             EnemyKind::Troll => "troll",
         }
     } else {
-        "scenery"
+        "unknown"
     }
 }
 
@@ -637,6 +650,7 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
         kinds,
         [
             "ball",
+            "basin",
             "bat",
             "beetle",
             "black hole",
@@ -644,11 +658,11 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "bullet",
             "crawler",
             "dummy",
+            "elevator",
             "missile",
             "orb",
             "platform",
             "player",
-            "scenery",
             "scrap",
             "troll",
             "wisp"
@@ -1722,7 +1736,7 @@ fn schema_7_autosaves_migrate_and_rotate() {
             envelope["schema"].as_u64().unwrap()
         })
         .collect();
-    assert_eq!(schemas, [7, 9, 7], "autosave_2, the oldest, rotated");
+    assert_eq!(schemas, [7, 10, 7], "autosave_2, the oldest, rotated");
     // A migrated save loads with its light, which relights at once.
     let migrated = slots.load::<SaveGame>("autosave_1").unwrap();
     let mut fresh = super::harness();
@@ -1740,21 +1754,26 @@ fn schema_7_autosaves_migrate_and_rotate() {
 }
 
 /// Walks `old` and `new` together, pushing the path of each number that
-/// differs, which must be a save ID at or above `from` moved by
-/// [`save::SHIFT_9`]; anything else must be equal. Members `new` adds are
-/// skipped.
-fn moved_ids(old: &Value, new: &Value, path: &str, from: u64, moved: &mut Vec<String>) {
+/// differs, which must be a save ID that `to` moves where `new` has it;
+/// anything else must be equal. Members `new` adds are skipped.
+fn moved_ids(
+    old: &Value,
+    new: &Value,
+    path: &str,
+    to: &dyn Fn(u64) -> u64,
+    moved: &mut Vec<String>,
+) {
     match (old, new) {
         (Value::Object(old), Value::Object(new)) => {
             for (key, value) in old {
                 let next = new.get(key).unwrap_or_else(|| panic!("{path}/{key} kept"));
-                moved_ids(value, next, &format!("{path}/{key}"), from, moved);
+                moved_ids(value, next, &format!("{path}/{key}"), to, moved);
             }
         }
         (Value::Array(old), Value::Array(new)) => {
             assert_eq!(old.len(), new.len(), "{path}: as many");
             for (i, (value, next)) in old.iter().zip(new).enumerate() {
-                moved_ids(value, next, &format!("{path}/{i}"), from, moved);
+                moved_ids(value, next, &format!("{path}/{i}"), to, moved);
             }
         }
         _ if old == new => {}
@@ -1765,11 +1784,87 @@ fn moved_ids(old: &Value, new: &Value, path: &str, from: u64, moved: &mut Vec<St
             let id = old
                 .as_u64()
                 .unwrap_or_else(|| panic!("{path}: {old} became {new}"));
-            assert!(id >= from, "{path}: {id} is under schema 8's player's");
-            assert_eq!(new.as_u64(), Some(id + save::SHIFT_9), "{path}");
+            assert_eq!(new.as_u64(), Some(to(id)), "{path}: {id}");
             moved.push(path.to_owned());
         }
     }
+}
+
+/// A schema 9 save ID as schema 10 numbers it, written out: the lake's lava
+/// as its west pool's and the shelf's, the decks, the dummy, the enemies,
+/// and the placed orbs, the player's and every later one past the new
+/// beetle.
+fn schema_10_id(id: u64) -> u64 {
+    match id {
+        839 => 0,
+        840 => 2,
+        841..=845 => id - 838,
+        859 => 8,
+        860..=877 => id - 851,
+        878.. => id - 850,
+        _ => panic!("{id}: no schema 9 save names it"),
+    }
+}
+
+/// `path` with every index starred: a tuple's place too, where only an ID
+/// can have moved.
+fn starred(path: &str) -> String {
+    path.split('/')
+        .map(|part| {
+            if part.parse::<usize>().is_ok() {
+                "*"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+/// `fixture`'s envelope written to slot 1 of a user folder of its own, and
+/// read back through the migration.
+fn migrate(tag: &str, fixture: &str) -> (SaveGame, std::path::PathBuf) {
+    let dir = user_folder(tag);
+    let harness = harness_with(UserFolder::At(dir.clone()));
+    let saves = harness
+        .world()
+        .resource::<SaveSlots>()
+        .dir()
+        .expect("a user folder")
+        .to_path_buf();
+    std::fs::create_dir_all(&saves).unwrap();
+    std::fs::write(saves.join("slot_1.json"), fixture).unwrap();
+    let migrated = SaveSlots::new(Some(saves))
+        .load::<SaveGame>("slot_1")
+        .expect("the fixture migrates");
+    (migrated, dir)
+}
+
+/// Drops schema 9's ping-pong deck, the elevator's, from `old`'s platforms:
+/// the migration drops it.
+fn without_old_lift(old: &mut Value) {
+    let platforms = old["platforms"].as_array_mut().unwrap();
+    let before = platforms.len();
+    platforms.retain(|platform| platform["id"].as_u64() != Some(845));
+    assert_eq!(platforms.len() + 1, before, "the elevator's old deck saved");
+}
+
+/// Sets aside what a capture of a migrated save adds: the map's new enemies
+/// (`added`), the elevator at rest and the basins at rest, which a save
+/// from before schema 10 has none of.
+fn without_new(save: &mut Value, added: &std::ops::Range<u64>) {
+    let enemies = save["enemies"].as_array_mut().unwrap();
+    enemies.retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
+    let lifts = save["elevators"].as_array().unwrap();
+    assert_eq!(lifts.len(), 1, "the elevator");
+    assert_eq!(lifts[0]["stop"], "bottom", "at rest");
+    assert!(lifts[0]["follower"].is_null(), "at rest");
+    save["elevators"] = Value::Array(Vec::new());
+    for basin in save["basins"].as_array().unwrap() {
+        assert_eq!(basin["cold"].as_f64(), Some(0.0), "unchilled");
+        assert!(basin["crust"].is_null(), "uncrusted");
+    }
+    save["basins"] = Value::Array(Vec::new());
 }
 
 /// The paths where `a` and `b` differ, at most 20; fractions within a
@@ -1860,43 +1955,22 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     // bat's hit, touches, sources, a waiting explosion and jump.
     const FIXTURE: &str = include_str!("fixtures/schema8.json");
     let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-    let old = &envelope["data"];
+    let mut old = envelope["data"].clone();
     let from = old["player"]["id"].as_u64().unwrap();
     assert_eq!((envelope["schema"].as_u64(), from), (Some(8), 873));
-    let dir = user_folder("schema-8");
-    let harness = harness_with(UserFolder::At(dir.clone()));
-    let saves = harness
-        .world()
-        .resource::<SaveSlots>()
-        .dir()
-        .expect("a user folder")
-        .to_path_buf();
-    std::fs::create_dir_all(&saves).unwrap();
-    std::fs::write(saves.join("slot_1.json"), FIXTURE).unwrap();
-    let migrated = SaveSlots::new(Some(saves))
-        .load::<SaveGame>("slot_1")
-        .expect("schema 8 migrates");
-    // Every ID field moved, and nothing else.
+    let (migrated, dir) = migrate("schema-8", FIXTURE);
+    // Every ID field moved, by schema 9's shift and then schema 10's remap,
+    // the elevator's old deck dropped, and nothing else.
+    without_old_lift(&mut old);
+    let to = |id: u64| schema_10_id(if id >= from { id + save::SHIFT_9 } else { id });
     let mut moved = Vec::new();
-    moved_ids(old, &json(&migrated), "", from, &mut moved);
-    // Paths with every index starred: a tuple's place too, where only an ID
-    // at or above the player's can have moved.
-    let starred = |path: &str| -> String {
-        path.split('/')
-            .map(|part| {
-                if part.parse::<usize>().is_ok() {
-                    "*"
-                } else {
-                    part
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("/")
-    };
+    moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
         "/next_id",
         "/player/id",
+        "/platforms/*/id",
+        "/gone/*",
         "/player/sources/*/1",
         "/dummies/*/id",
         "/dummies/*/sources/*/1",
@@ -1920,25 +1994,26 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
         "/cascades/entries/*/chain/*",
     ];
     assert_eq!(fields, expected.into_iter().map(starred).collect());
-    // Loaded: the player under its moved ID, the gone bat gone, the new map
-    // enemies alive, and every other saved thing as it was saved.
+    // Loaded: the player under its moved ID, the gone bat gone, the map
+    // enemies since added alive, five in schema 9 and the beetle in 10, and
+    // every other saved thing as it was saved.
     let mut run = super::harness();
     load(&mut run, migrated.clone());
     let player = player_entity(&run);
     let world = run.world();
-    assert_eq!(world.get::<SaveId>(player).unwrap().0, from + save::SHIFT_9);
+    assert_eq!(world.get::<SaveId>(player).unwrap().0, save::S10_PLAYER);
     let live: BTreeSet<u64> = enemies::live(world).into_iter().map(|(id, _)| id).collect();
-    let added = from..from + (MAP_ENEMIES - 13);
+    let added = save::S10_ENEMIES + 13..save::S10_ENEMIES + MAP_ENEMIES;
+    assert_eq!(added.clone().count(), 6);
     assert!(added.clone().all(|id| live.contains(&id)), "{live:?}");
-    assert!(!live.contains(&863), "the gone bat");
+    assert!(!live.contains(&to(863)), "the gone bat");
     assert_eq!(
         placed_orbs(&run).len() as u64,
         save::MAP_PICKUPS,
         "every orb there"
     );
     let mut again = json(&capture(&run));
-    let enemies = again["enemies"].as_array_mut().unwrap();
-    enemies.retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
+    without_new(&mut again, &added);
     // A recapture names the build that took it, the fixture 0.98's.
     let migrated = json(&migrated);
     assert_eq!(
@@ -1953,6 +2028,304 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
         "the migrated save, reloaded whole: {differ:?}"
     );
     let _ = std::fs::remove_dir_all(dir);
+}
+
+/// The map's objects a save names, by save ID: the basins, the decks with
+/// the elevator's, the dummy, the enemies and the placed orbs.
+fn map_ids(harness: &UiHarness) -> [Vec<u64>; 5] {
+    let world = harness.world();
+    let ids = |mut ids: Vec<u64>| {
+        ids.sort_unstable();
+        ids
+    };
+    let placed = &world.resource::<drops::PlacedOrbs>().0;
+    [
+        ids(world
+            .query::<(&Lava, &SaveId)>()
+            .map(|(_, id)| id.0)
+            .collect()),
+        ids(world
+            .query::<(Entity, &SaveId)>()
+            .filter(|(entity, _)| {
+                world.has::<PathFollower>(*entity) || world.has::<Elevator>(*entity)
+            })
+            .map(|(_, id)| id.0)
+            .collect()),
+        ids(world
+            .query::<(&Dummy, &SaveId)>()
+            .map(|(_, id)| id.0)
+            .collect()),
+        ids(enemies::live(world).into_iter().map(|(id, _)| id).collect()),
+        ids(placed.clone()),
+    ]
+}
+
+/// The elevator's deck and its state.
+fn elevator(harness: &UiHarness) -> (Entity, Elevator) {
+    harness
+        .world()
+        .query::<(Entity, &Elevator)>()
+        .map(|(entity, lift)| (entity, *lift))
+        .next()
+        .expect("the mine's elevator")
+}
+
+/// `deck`'s top, in world pixels.
+fn deck_top(harness: &UiHarness, deck: Entity) -> f32 {
+    let world = harness.world();
+    let at = world.get::<Position>(deck).unwrap().0;
+    let collider = world.get::<tungsten::core::Collider>(deck).unwrap();
+    let tungsten::core::Shape::Aabb { half_extents } = collider.shape else {
+        unreachable!("a deck is a box")
+    };
+    at.y + collider.offset.y - half_extents.y
+}
+
+/// The basin with save ID `id`.
+fn basin(harness: &UiHarness, id: u64) -> Entity {
+    harness
+        .world()
+        .query::<(Entity, &Lava, &SaveId)>()
+        .find(|(_, _, own)| own.0 == id)
+        .map(|(entity, ..)| entity)
+        .expect("the basin")
+}
+
+#[test]
+fn schema_9_saves_migrate_to_the_new_save_ids() {
+    // 0.99's save (step 1's fixture): the first map wisp killed, the first
+    // placed orb taken, the decks mid-path, a summoned beetle and dummy,
+    // iron blocks, balls and a missile in flight.
+    const FIXTURE: &str = include_str!("fixtures/schema9.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    let mut old = envelope["data"].clone();
+    let from = old["player"]["id"].as_u64().unwrap();
+    assert_eq!((envelope["schema"].as_u64(), from), (Some(9), 886));
+    // A new run numbers the map as the migration's frozen layout has it.
+    let (fresh, player) = run();
+    let span = |start: u64, count: u64| (start..start + count).collect::<Vec<u64>>();
+    assert_eq!(
+        map_ids(&fresh),
+        [
+            vec![save::S10_LAKE, 1, save::S10_SHELF],
+            span(save::S10_DECKS, 5),
+            vec![save::S10_DUMMY],
+            span(save::S10_ENEMIES, MAP_ENEMIES),
+            span(save::S10_PICKUPS, save::MAP_PICKUPS),
+        ]
+    );
+    assert_eq!(id_of(&fresh, player), save::S10_PLAYER);
+    let (lift, _) = elevator(&fresh);
+    assert_eq!(
+        id_of(&fresh, lift),
+        schema_10_id(845),
+        "the elevator's deck"
+    );
+    let x = |id: u64| {
+        fresh
+            .world()
+            .get::<Position>(basin(&fresh, id))
+            .unwrap()
+            .0
+            .x
+    };
+    assert_eq!(
+        [x(save::S10_LAKE), x(save::S10_SHELF)],
+        [230.0 * 64.0, 260.0 * 64.0],
+        "the lake's west pool and the shelf's"
+    );
+    drop(fresh);
+    let (migrated, dir) = migrate("schema-9", FIXTURE);
+    // Every ID field moved by the remap, the elevator's old deck dropped,
+    // and nothing else.
+    without_old_lift(&mut old);
+    let mut moved = Vec::new();
+    moved_ids(&old, &json(&migrated), "", &schema_10_id, &mut moved);
+    let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
+    let expected = [
+        "/next_id",
+        "/player/id",
+        "/platforms/*/id",
+        "/dummies/*/id",
+        "/enemies/*/id",
+        "/missiles/*/id",
+        "/blocks/*/id",
+        "/balls/*/0",
+        "/gone/*",
+    ];
+    assert_eq!(fields, expected.into_iter().map(starred).collect());
+    assert!(migrated.elevators.is_empty() && migrated.basins.is_empty());
+    // Loaded: the elevator at rest at the bottom, the gone wisp and the
+    // taken orb gone, the new beetle alive, and the rest as it was saved.
+    let mut run = super::harness();
+    load(&mut run, migrated.clone());
+    let (deck, lift) = elevator(&run);
+    assert_eq!(lift.stop, Stop::Bottom);
+    assert!(run.world().get::<PathFollower>(deck).is_none(), "at rest");
+    assert_eq!(run.world().get::<Position>(deck).unwrap().0, lift.bottom);
+    let live: BTreeSet<u64> = enemies::live(run.world())
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
+    let wisp = schema_10_id(866);
+    assert!(!live.contains(&wisp), "the gone wisp");
+    let beetle = save::S10_ENEMIES + MAP_ENEMIES - 1;
+    let world = run.world();
+    assert_eq!(
+        world.get::<Enemy>(by_id(&run, beetle)).unwrap().kind,
+        EnemyKind::Beetle,
+        "the new beetle"
+    );
+    let orbs: Vec<u64> = placed_orbs(&run).into_iter().map(|(id, _)| id).collect();
+    assert_eq!(orbs, span(save::S10_PICKUPS + 1, save::MAP_PICKUPS - 1));
+    let mut again = json(&capture(&run));
+    without_new(&mut again, &(beetle..beetle + 1));
+    let migrated = json(&migrated);
+    again["meta"]["game_version"] = migrated["meta"]["game_version"].clone();
+    let mut differ = Vec::new();
+    differences(&again, &migrated, "", &mut differ);
+    assert!(
+        differ.is_empty(),
+        "the migrated save, reloaded whole: {differ:?}"
+    );
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let lake = basin(&harness, save::S10_LAKE);
+    lava::harden(harness.world_mut(), lake, 4.0);
+    // The player boards the elevator; the save is taken halfway up.
+    let (deck, lift) = elevator(&harness);
+    let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
+    let bottom = deck_top(&harness, deck);
+    stand(&mut harness, player, middle, bottom);
+    let halfway = bottom - (lift.bottom.y - lift.top.y) * 0.5;
+    for _ in 0..600 {
+        harness.step(1);
+        if deck_top(&harness, deck) < halfway {
+            break;
+        }
+    }
+    assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
+    let shelf = basin(&harness, save::S10_SHELF);
+    harness.world_mut().get_mut::<Lava>(shelf).unwrap().cold = 0.2;
+    let saved = capture(&harness);
+    let crust = |id: u64| saved.basins.iter().find(|b| b.id == id).unwrap();
+    assert!(
+        crust(save::S10_LAKE)
+            .crust
+            .is_some_and(|left| left > 1.0 && left < 4.0)
+    );
+    assert_eq!(crust(save::S10_SHELF).cold, 0.2);
+    assert_eq!(saved.elevators.len(), 1);
+    assert!(saved.elevators[0].follower.is_some() && saved.elevators[0].ridden);
+    // Loaded from its file, as Continue loads it, it captures back to
+    // itself: the crust's touch held, its surface solid, the deck mid-path.
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("a save reads");
+    let mut fresh = super::harness();
+    fresh.harness_mut().set_dt(1.0 / 60.0);
+    load(&mut fresh, read);
+    assert_eq!(json(&capture(&fresh)), json(&saved));
+    let lake = basin(&fresh, save::S10_LAKE);
+    let world = fresh.world();
+    assert!(
+        world.get::<tungsten::kit::ContactDamage>(lake).is_none(),
+        "held"
+    );
+    assert_eq!(
+        world.get::<tungsten::core::RigidBody>(lake).unwrap().layers,
+        1
+    );
+    // With the clock running, the deck holds through the rider's first
+    // step, which finds no ground after a load, then carries the rider on
+    // to the top, its feet on the deck all the way.
+    calm(&mut fresh);
+    fresh.world_mut().resource_mut::<Time>().resume();
+    let (deck, _) = elevator(&fresh);
+    let rider = player_entity(&fresh);
+    let at = deck_top(&fresh, deck);
+    fresh.step(1);
+    assert_eq!(steps_this_frame(&fresh), 1);
+    assert_eq!(deck_top(&fresh, deck), at, "held through the first step");
+    let mut steps = 0;
+    while steps < 240 {
+        fresh.step(1);
+        steps += steps_this_frame(&fresh);
+        let feet = centre(&fresh, rider).y + PLAYER_HALF.y;
+        let top = deck_top(&fresh, deck);
+        assert!(
+            (feet - top).abs() <= 1.0,
+            "step {steps}: feet at {feet}, the deck's top at {top}"
+        );
+    }
+    let (_, lift) = elevator(&fresh);
+    assert_eq!(lift.stop, Stop::Top, "carried to the top");
+    // The crust melted on the way: its touch is back.
+    let world = fresh.world();
+    assert!(world.get::<Lava>(lake).unwrap().crust.is_none(), "melted");
+    assert!(
+        world.get::<tungsten::kit::ContactDamage>(lake).is_some(),
+        "its touch back"
+    );
+}
+
+#[test]
+fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
+    const FIXTURE: &str = include_str!("fixtures/schema9.json");
+    let tile = 64.0;
+    // Schema 9's player, by its body's middle column and its feet: on the
+    // lake's old beds, its west pool now the stone's and its east pool the
+    // east bank's; on the old bed where the stone now stands; on the old
+    // ground of the lake's widened west columns; on the shelf's old bed; and
+    // on the old ground of its widened east column. Each moves to the
+    // middle column of its nearest bank or the stone, on its top.
+    let cases = [
+        (233.0, 67.0, 235.0, 63.0),
+        (239.0, 67.0, 240.5, 63.0),
+        (234.5, 67.0, 235.0, 63.0),
+        (230.6, 63.0, 229.5, 63.0),
+        (261.0, 58.0, 259.5, 57.0),
+        (262.6, 57.0, 263.5, 57.0),
+    ];
+    for (i, (column, feet, bank, row)) in cases.into_iter().enumerate() {
+        let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+        let middle = Vec2::new(column * tile, feet * tile - PLAYER_HALF.y - 0.5);
+        let corner = middle - BODY_OFFSET;
+        envelope["data"]["player"]["position"] = serde_json::json!([corner.x, corner.y]);
+        let fixture = serde_json::to_string(&envelope).unwrap();
+        let (migrated, dir) = migrate(&format!("under-lava-{i}"), &fixture);
+        let spot = Vec2::new(bank * tile, row * tile - PLAYER_HALF.y - 0.5);
+        let at = Vec2::from(migrated.player.position) + BODY_OFFSET;
+        assert!(at.distance(spot) < 0.01, "{column},{feet}: moved to {at}");
+        // Loaded with the clock running, the player stands there a second,
+        // unhurt.
+        let mut harness = super::harness();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        load(&mut harness, migrated);
+        calm(&mut harness);
+        harness.world_mut().resource_mut::<Time>().resume();
+        let player = player_entity(&harness);
+        let health = harness.world().get::<Health>(player).unwrap().current();
+        harness.step(60);
+        let now = centre(&harness, player);
+        assert!(
+            now.distance(spot) < 1.0,
+            "{column},{feet}: standing at {now}, not {spot}"
+        );
+        let world = harness.world();
+        assert!(
+            world
+                .get::<tungsten::kit::PlatformerController>(player)
+                .unwrap()
+                .grounded()
+        );
+        assert_eq!(world.get::<Health>(player).unwrap().current(), health);
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
 
 #[test]

@@ -38,6 +38,8 @@ def particle_configs():
         'landing_dust':config('dust',12,12,.5,180,.4,spread=155,burst=True),
         'double_jump':config('spark',18,18,.45,240,.24,spread=360,burst=True),
         'jump_puff':config('dust',8,8,.35,120,.3,spread=155,burst=True),
+        # A beetle's charge (M79): a few low brown puffs at its feet.
+        'charge_dust':config('dust',6,5,.45,90,.34,direction=(0,-1),spread=150,burst=True),
         'fire_trail':config('spark',40,36,1.0,115,.23,spread=95),
         'torch_embers':config('spark',24,8,2.5,60,.12),
         'waterfall_spray':config('droplet',64,32,1.5,170,.18,spread=110),
@@ -52,6 +54,7 @@ def particle_configs():
         scale_over_life=[[0,.45],[.15,1],[.75,.6],[1,.05]],
         alpha_over_life=[[0,0],[.08,.9],[.8,.85],[1,0]],
         color_over_life=[[0,[.55,.8,1,1]],[.25,[.62,.35,1,1]],[.5,[1,.3,.8,1]],[.72,[1,.55,.18,1]],[.9,[1,.95,.8,1]],[1,[.4,.1,.5,1]]])
+    configs['charge_dust'].update(gravity=[0,40],drag_per_sec=1.6,color_over_life=[[0,[.66,.54,.4,1]],[1,[.42,.34,.26,0]]])
     configs['ball_explosion'].update(initial_velocity=dict(kind='radial',speed=dict(min=90,max=310)),gravity=[0,180],color_over_life=[[0,[1,.9,.4,1]],[.4,[1,.42,.08,1]],[1,[.35,.1,.06,0]]])
     # Warm flame bodies and finer, longer-lived torch embers; both rise.
     fire_ramp=[[0,[1,1,.8,1]],[.18,[1,.85,.25,1]],[.45,[1,.38,.035,1]],

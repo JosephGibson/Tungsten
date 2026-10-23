@@ -859,6 +859,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     // Each surface counts once, however many rays meet it.
     let mut met: Vec<(Entity, Vec2)> = Vec::new();
     let mut fires: Vec<Entity> = Vec::new();
+    let mut basins: Vec<Entity> = Vec::new();
     let bodies = traced_near(world, caster, centre, reach(element));
     let tiles = SolidTiles::of(world);
     for direction in rays(aim) {
@@ -869,6 +870,13 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
                     fires.push(fire);
                 }
             }
+            // A cold ray that stops on lava's surface chills its basin.
+            if let Some(hit) = hit
+                && world.get::<Hazard>(hit).is_some_and(|hazard| hazard.lava)
+                && !basins.contains(&hit)
+            {
+                basins.push(hit);
+            }
         }
         if let Some(hit) = hit
             && !met.iter().any(|&(e, _)| e == hit)
@@ -878,6 +886,9 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     }
     for fire in fires {
         elements::douse_hazard(world, fire);
+    }
+    for basin in basins {
+        crate::features::level::lava::chill(world, basin);
     }
     let pulses = world
         .query_mut::<&mut Spray>()

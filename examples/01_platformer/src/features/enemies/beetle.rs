@@ -8,14 +8,17 @@
 //! takes every hit 01 builds whole (`combat::Hit`). Iron that drives into
 //! it at the crush speed kills it.
 
+use std::collections::HashMap;
+
 use glam::Vec2;
-use tungsten::core::{Entity, World};
-use tungsten::kit::{PlatformerController, use_ability};
+use tungsten::core::{Entity, Time, World};
+use tungsten::kit::{PlatformerController, StateMachine, use_ability};
 
 use super::components::{Enemy, EnemyKind, EnemyState};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
+use crate::shared::spawn_burst;
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -31,6 +34,16 @@ pub const CHARGE_SPEED: f32 = 600.0;
 pub const CHARGE_SECS: f32 = 0.8;
 /// Its charge's ability, which arms its hitbox.
 pub const CHARGE: &str = "beetle_charge";
+/// The charge's dust: its particle config, and the seconds between two
+/// puffs at the pawing foot and two in the charge's trail.
+pub const DUST: &str = "ex10_charge_dust";
+pub const PAW_DUST_SECS: f32 = 0.15;
+pub const TRAIL_DUST_SECS: f32 = 0.06;
+
+/// Each beetle's seconds to its next puff of dust while it paws or
+/// charges: presentation, not saved, so a load starts each over.
+#[derive(Debug, Default)]
+pub struct Dust(HashMap<Entity, f32>);
 
 /// Whether `entity` is a beetle.
 #[must_use]
@@ -150,5 +163,49 @@ pub fn clip(state: EnemyState) -> &'static str {
         EnemyState::WindUp => "beetle_paw",
         EnemyState::Attack => "beetle_charge",
         _ => "beetle_walk",
+    }
+}
+
+/// `beetle_dust`, before the frame's particles: a beetle pawing kicks up a
+/// puff at its front foot every [`PAW_DUST_SECS`]; one charging leaves a
+/// trail at its rear feet every [`TRAIL_DUST_SECS`]. Drawn from the state
+/// each frame, so a load shows it at once.
+pub fn dust(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    if dt <= 0.0 {
+        return;
+    }
+    let beetles: Vec<(Entity, EnemyState, f32)> = world
+        .query::<(Entity, &Enemy, &StateMachine<EnemyState>)>()
+        .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Beetle)
+        .map(|(entity, enemy, machine)| (entity, machine.state(), enemy.heading))
+        .collect();
+    let mut puffs = Vec::new();
+    let mut timers = std::mem::take(&mut world.resource_mut::<Dust>().0);
+    timers.retain(|entity, _| {
+        beetles.iter().any(|(e, state, _)| {
+            e == entity && matches!(state, EnemyState::WindUp | EnemyState::Attack)
+        })
+    });
+    for (beetle, state, heading) in beetles {
+        let (every, side) = match state {
+            EnemyState::WindUp => (PAW_DUST_SECS, 0.6),
+            EnemyState::Attack => (TRAIL_DUST_SECS, -0.5),
+            _ => continue,
+        };
+        let next = timers.entry(beetle).or_insert(0.0);
+        *next -= dt;
+        if *next > 0.0 {
+            continue;
+        }
+        *next += every;
+        if let Some(at) = centre(world, beetle) {
+            let half = EnemyKind::Beetle.info().half;
+            puffs.push(at + Vec2::new(heading * side * half.x, half.y - 4.0));
+        }
+    }
+    world.resource_mut::<Dust>().0 = timers;
+    for at in puffs {
+        spawn_burst(world, DUST, at);
     }
 }

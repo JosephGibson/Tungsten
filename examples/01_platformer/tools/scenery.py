@@ -12,7 +12,7 @@ from PIL import Image
 
 from art import rng_for
 from pixels import Part, compose, despeckle, dither, outline, shade, to_image, unit
-from terrain import FROND, LEAF, TILE, darker, ellipse, from_image, line, rect, tinted
+from terrain import DECK, FROND, LEAF, TILE, darker, ellipse, from_image, line, rect, tinted
 
 STONE = dict(base='~', light=':', shadow='-', back='=')
 PALE_STONE = dict(base=':', light=';', shadow='=', back='~')
@@ -1819,6 +1819,88 @@ def headframe(i):
 
 
 
+def lift_gantry(i):
+    """The mine's elevator gantry (M79), 3 x 3 tiles: a timber post on the
+    upper level's deck, braced, carrying a jib out over the shaft with the
+    sheave at its end and the rope back to a winch drum at the post's
+    foot. Only the post and its brace reach the deck, so the gantry stands
+    on its support while the jib overhangs the shaft."""
+    size = (3 * TILE, 3 * TILE)
+    post, brace, jib, wheel, rope, drum, bolts = (Part(size) for _ in range(7))
+    post.limb([(146, 191), (146, 10)], 9)
+    brace.limb([(182, 191), (152, 128)], 5)
+    brace.limb([(146, 62), (84, 14)], 5)
+    jib.limb([(16, 12), (156, 12)], 8)
+    jib.limb([(150, 4), (150, 20)], 3)
+    wheel.ellipse((32, 24), 14, 14)
+    rope.limb([(44, 20), (168, 150)], 2)
+    drum.ellipse((172, 162), 15, 10)
+    bolts.limb([(140, 12), (152, 12)], 3)
+    drum_px = drum.pixels()
+    c = compose([
+        (shaded(brace, BARK, light="'", rim='"'), None),
+        (shaded(post, BARK, light="'", rim='"'), 'o'),
+        (shaded(jib, BARK, light="'", rim='"'), 'o'),
+        (shade(rope.pixels(), '"', light="'", shadow='ω'), None),
+        (shade(drum_px, BARK['base'], light="'", shadow=BARK['shadow'], back=BARK['back']), 'o'),
+        (shaded(bolts, IRON, rim='S'), None),
+    ])
+    for (x, y) in drum_px:
+        if (x + 3) % 4 < 2 and c.get((x, y)) == BARK['base']:
+            c[(x, y)] = '"'
+    for (x, y) in wheel.pixels():
+        r = math.hypot(x - 32, y - 24)
+        spoke = any(abs((x - 32) * math.sin(a) - (y - 24) * math.cos(a)) < 1.2 for a in (0, math.pi / 3, 2 * math.pi / 3))
+        if r > 11 or r < 3 or spoke:
+            c[(x, y)] = 'ψ' if (y < 24 and x > 32) else 'Ω' if r > 11 else 'Φ'
+    return finish(c, size)
+
+
+def elevator_cage():
+    """The elevator's cage (M79), 3 tiles across and a tile tall, a wide
+    deck's size: an iron-shod plank floor its bottom `DECK` rows, iron
+    corner posts and a crossbar, a ring at the bar's middle where the cable
+    takes it, and a rail between the posts. The game stands its floor's
+    body under it."""
+    width, height = 3 * TILE, TILE
+    floor = height - DECK
+    size = (width, height)
+    planks, posts, bar, rail, ring = (Part(size) for _ in range(5))
+    planks.rectangle((2, floor, width - 3, height - 6))
+    for x in (4, width - 5):
+        posts.limb([(x, floor + 2), (x, 8)], 5)
+    bar.limb([(4, 8), (width - 5, 8)], 5)
+    rail.limb([(6, floor - 18), (width - 7, floor - 18)], 2)
+    ring.ellipse((width // 2, 4), 4, 4)
+    c = compose([
+        (shaded(rail, IRON, rim='S'), None),
+        (shade(planks.pixels(), BARK['base'], light="'", shadow=BARK['shadow'], back=BARK['back']), 'o'),
+        (shaded(posts, IRON, rim='S'), 'o'),
+        (shaded(bar, IRON, rim='S'), 'o'),
+        (shaded(ring, BRASS), None),
+    ])
+    for (x, y) in planks.pixels():
+        if x % 24 == 0:
+            c[(x, y)] = '/'
+        if y == floor:
+            c[(x, y)] = 'A'
+    for x in range(2, width - 3):
+        for y in range(height - 6, height - 1):
+            c[(x, y)] = 'B' if y == height - 6 else 's' if (x // 3) % 2 else 'S'
+    return finish(c, size)
+
+
+def lift_cable():
+    """A stretch of the elevator's cable down a tile's middle columns: a dark
+    rope with a lit strand, which the game stretches from the sheave to the
+    cage."""
+    c = {}
+    for y in range(TILE):
+        c[(31, y)] = "'" if (y // 3) % 2 else '"'
+        c[(32, y)] = 'ω'
+    return to_image(c)
+
+
 def water_frame(frame):
     """The channel's water riding over its coping, frame `frame` of 8: the
     surface wave and its glints move 8 px a frame."""
@@ -1870,7 +1952,8 @@ def river_frame(frame, kind='calm', deep=False):
 def pool_frame(frame, kind='calm'):
     """The ravine's pool, frame `frame` of 4: a lit skin, ripples catching the
     moon near the top, blue going deep, stones and weed on its bed; foam
-    drifting where the falls churn it, a foam line where it meets a wall."""
+    drifting where the falls churn it, a foam line where it meets the west
+    wall."""
     phase = math.tau * frame / 4
     c = {}
     for y in range(TILE):
@@ -1901,12 +1984,109 @@ def pool_frame(frame, kind='calm'):
                 c[((fx + d) % TILE, fy)] = '_' if d % 3 else '`'
                 if d % 2 == 0:
                     c[((fx + d) % TILE, fy + 1)] = '}'
-    elif kind in ('edge_left', 'edge_right'):
-        for x in (range(0, 5) if kind == 'edge_left' else range(59, TILE)):
+    elif kind == 'edge_left':
+        for x in range(0, 5):
             for y in range(3):
                 if dither(x + frame, y, 0.8 - y * 0.2):
                     c[(x, y)] = '_' if (x + y + frame) % 3 else '`'
     return to_image(c)
+
+
+# The stones damming the pool's east end, back to front: middle, width and
+# height, each standing on the cave floor at the foot of the shore's canvas
+# (3 x 2 tiles, the water's surface on its second row's top).
+SHORE_STONES = ((158, 46, 50), (182, 28, 18), (122, 66, 82), (95, 32, 20))
+# The falls' wet stone, dark to light.
+WET_RAMP = ('n', 'd', 'η', ':', ';')
+
+
+def wet_stone(size, middle, width, height, seed):
+    """A rounded stone of the falls' wet rock standing on the foot of a
+    canvas of `size`, lit from the moon at the upper left, cracked, mossed
+    along its top."""
+    w, h = size
+    pts = []
+    for k in range(13):
+        a = math.pi * k / 12
+        r = 0.8 + 0.2 * unit('shore-stone', seed, k)
+        pts.append((middle + math.cos(a) * width / 2 * r, h - 1 - math.sin(a) * height * r))
+    body = Part(size)
+    body.polygon(pts)
+    inside = body.pixels()
+    crown = min(y for _, y in inside)
+    c = {}
+    for x, y in inside:
+        u = (x - middle) / (width / 2)
+        v = (y - crown) / max(1, h - crown)
+        light = 0.62 - 0.42 * u - 0.75 * v + 0.12 * (unit('shore-grain', seed, x // 2, y // 2) - 0.5)
+        level = max(0.0, min(len(WET_RAMP) - 1.001, light * (len(WET_RAMP) - 1)))
+        k = int(level) + (1 if dither(x, y, level - int(level)) else 0)
+        c[(x, y)] = WET_RAMP[min(k, len(WET_RAMP) - 1)]
+        if (x, y - 1) not in inside:
+            c[(x, y)] = ';' if u < 0.45 else ':'
+    for k in range(2 if width > 40 else 1):
+        x, y = int(middle + (unit('shore-crack', seed, k) - 0.5) * width * 0.5), crown + 6 + 4 * k
+        for d in range(int(height * 0.45)):
+            x += 1 if unit('shore-cx', seed, k, d) > 0.6 else -1 if unit('shore-cx', seed, k, d) < 0.3 else 0
+            if (x, y + d) in c:
+                c[(x, y + d)] = 'o'
+    for x, y in inside:
+        rise = next((d for d in range(1, 6) if (x, y - d) not in inside), 9)
+        if rise <= 3 and unit('shore-moss', seed, x // 4) < 0.7 and unit('shore-moss-y', seed, x, y) < 1.05 - 0.25 * rise:
+            c[(x, y)] = 'G' if rise == 1 and unit('shore-moss-l', seed, x) < 0.2 else 'g' if rise == 1 else 'Q' if rise < 3 else 'T'
+    return c
+
+
+def pool_shore(frame):
+    """The ravine's pool running out against fallen stones at its east end
+    (M79), frame `frame` of 4, 3 x 2 tiles: the calm water over a bed
+    shelving up to them, foam lapping them at the waterline, and the stones
+    standing out of it in the falls' wet rock, mossed, with rubble at their
+    far foot down to the cave floor."""
+    w, h, top = 3 * TILE, 2 * TILE, TILE
+    calm = from_image(pool_frame(frame, 'calm'))
+
+    def bed(x):
+        t = min(1.0, max(0.0, (x - 16) / 80))
+        return h - 26 * t * t * (3 - 2 * t)
+
+    c = {}
+    for x in range(112):
+        for y in range(top, h):
+            if y < bed(x):
+                s = calm.get((x % TILE, y - top))
+                if s:
+                    c[(x, y)] = s
+            else:
+                c[(x, y)] = '|' if dither(x, y, 0.45) or unit('shore-bed', x // 3, y // 2) < 0.25 else 'O'
+    for k in range(10):
+        cx = 22 + int(unit('shore-pebble', k) * 76)
+        cy = round(bed(cx))
+        for dx in range(-3, 4):
+            for dy in range(-1, 2):
+                if abs(dx) + abs(dy) < 4 and (cx + dx, cy + dy) in c:
+                    c[(cx + dx, cy + dy)] = '{' if dy < 0 else '|'
+    stones = compose([(wet_stone((w, h), m, sw, sh, k), 'o') for k, (m, sw, sh) in enumerate(SHORE_STONES)])
+    for k in range(16):
+        cx = 134 + int(unit('shore-rubble', k) * 54)
+        cy = h - 2 - int(unit('shore-rubble-y', k) * 3)
+        rx = 2 + int(unit('shore-rubble-r', k) * 3)
+        for dx in range(-rx, rx + 1):
+            for dy in (-1, 0, 1):
+                p = (cx + dx, cy + dy)
+                if 0 <= p[0] < w and p[1] < h and p not in stones:
+                    c[p] = ';' if dy == -1 and abs(dx) < rx else ':' if dy == 0 else '~'
+    c.update(stones)
+    # The water's mark on the stones, and the foam lapping them.
+    for (x, y), s in stones.items():
+        if top - 1 <= y <= top + 2 and x < 130 and s != 'o':
+            c[(x, y)] = 'd' if (x + y + frame) % 4 else ','
+    edge = min(x for (x, y) in stones if top <= y <= top + 2)
+    for x in range(edge - 24, edge + 2):
+        for y in range(top, top + 4):
+            if (x, y) not in stones and dither(x + frame * 2, y, (0.95 - (y - top) * 0.24) * max(0.0, 1 - (edge - x) / 24)):
+                c[(x, y)] = '_' if unit('shore-lap', x, y, frame) < 0.6 else '`'
+    return to_image(c, (w, h))
 
 
 def lava_frame(frame, part='surface', i=0):
@@ -1946,6 +2126,77 @@ def lava_frame(frame, part='surface', i=0):
                     c[(x % TILE, y)] = 'K' if edge else ('J' if unit('raft-seam', i, k, (x - cx) // 4) < 0.12 else 'M' if (x + y) % 4 else 'Θ')
         bx, by, r = 8 + int(unit('bubble', i) * 48), top + 8 + int(unit('bubble-y', i) * 8), 1 + frame % 3
         ellipse(c, bx, by, r, r, lambda dx, dy, r=r: 'Y' if dx * dx + dy * dy >= (r - 1) ** 2 else 'K')
+    return to_image(c)
+
+
+def lava_crust(stage, part='top', i=0):
+    """The ice spray's crust over lava (M79), stage `stage` of 4: cooled
+    basalt plates split by jagged seams under a lit rim, over cooled rock
+    that hides the melt (`top`, the surface row), or that rock alone
+    (`deep`). Stage 0 has just set, its seams dark; stages 1 to 3 warm the
+    seams and open cracks to a glow, the last before it melts. The yellows
+    emit, as the lava's do."""
+    c = {}
+    seam_sym, seam_hot = ('θ', 'M', 'L', 'K')[stage], (None, 'L', 'J', 'y')[stage]
+    vein_sym = ('M', 'M', 'L', 'K')[stage]
+    top = 3 if part == 'top' else -1
+    lip = {}
+    for x in range(TILE):
+        lip[x] = 24 + round(2.0 * math.sin(math.tau * x / TILE * 2 + i * 1.7) + 1.2 * math.sin(x * 0.61 + i))
+        rise = top + round(0.7 * math.sin(x * 0.37 + i) + 0.6 * math.sin(x * 0.11 + 2 * i)) if part == 'top' else 0
+        for y in range(max(0, rise), TILE):
+            n = unit('crust', part, i, x // 2, y // 2)
+            if part == 'top' and y == rise:
+                sym = 'α' if n < 0.75 else 'ξ'
+            elif part == 'top' and y == rise + 1:
+                sym = 'ξ' if n < 0.6 else 'β'
+            elif part == 'top' and y < lip[x]:
+                v = (y - rise) / max(1, lip[x] - rise)
+                sym = ('β' if n < 0.55 else 'γ') if v < 0.55 else ('γ' if n < 0.5 else 'ν')
+            elif part == 'top' and y == lip[x]:
+                sym = 'θ'
+            else:
+                # The cooled melt under the plates: dark rock, a dull red where
+                # it is warmest.
+                sym = 'ν' if n < 0.55 else 'ζ' if n < 0.85 else 'ε'
+                if dither(x, y, 0.06 + 0.04 * stage) and unit('warm', part, i, x // 3, y // 3) < 0.35:
+                    sym = 'M'
+            c[(x, y)] = sym
+    if part == 'top':
+        x = int(unit('seam0', i) * 8) + 4
+        seams = []
+        while x < TILE:
+            seams.append(x)
+            x += 14 + int(unit('seamw', i, x) * 9)
+        for s0 in seams:
+            x = s0
+            for y in range(3, 28):
+                r = unit('seam', i, s0, y)
+                x += -1 if r < 0.28 else 1 if r > 0.72 else 0
+                xx = x % TILE
+                if (xx, y) in c and y < lip[xx]:
+                    hot = seam_hot and unit('seamh', i, s0, y) < 0.18 + 0.15 * stage
+                    c[(xx, y)] = seam_hot if hot else seam_sym
+        for k in range(stage * 3):
+            x, y = int(unit('ckx', i, k) * 60) + 2, 6 + int(unit('cky', i, k) * 10)
+            for d in range(4 + stage * 3):
+                r = unit('ckd', i, k, d)
+                x += 1 if r > 0.2 else 0
+                y += -1 if r < 0.25 else 1 if r > 0.8 else 0
+                xx = x % TILE
+                if (xx, y) in c and 5 <= y < lip[xx] - 1:
+                    c[(xx, y)] = seam_hot if unit('ckh', i, k, d) < 0.3 + 0.15 * stage else seam_sym
+    # Veins of the melt through the cooled rock, warming with the stage.
+    start = 30 if part == 'top' else 0
+    for k in range(2 + stage):
+        x0, y0 = int(unit('vein', part, i, k) * 56) + 4, start + int(unit('veiny', part, i, k) * 20)
+        for d in range(12 + 6 * stage):
+            r = unit('vd', part, i, k, d)
+            x0 += -1 if r < 0.3 else 1 if r > 0.7 else 0
+            y0 += 1
+            if 0 <= y0 < TILE:
+                hot = seam_hot and unit('vh', part, i, k, d) < 0.1 + 0.12 * stage
+                c[(x0 % TILE, y0)] = seam_hot if hot else vein_sym
     return to_image(c)
 
 
@@ -2044,6 +2295,7 @@ LEVEL_PROPS = (
     ('banner_0', lambda: banner(0)), ('banner_1', lambda: banner(1)), ('skull_pike', lambda: skull_pike(0)),
     ('toll_boom', lambda: toll_boom(0)), ('toll_sign', lambda: toll_sign(0)), ('lean_to', lambda: lean_to(0)),
     ('spoil_heap', lambda: spoil_heap(0)), ('cart_tipped', broken_cart),
+    ('lift_gantry', lambda: lift_gantry(0)),
 )
 HUNG_PROPS = (
     *((f'vine_{i}', lambda i=i, n=n: vine(n, 2 + i, i != 1)) for i, n in enumerate((110, 150, 84))),
@@ -2060,39 +2312,6 @@ HUNG_PROPS = (
 HAZE = {'j': 'э', '^': 'ю', '&': 'я', '*': 'Б', 'p': 'Г', 'q': 'Д'}
 
 
-def steam_column(width, height, seed, strength=1.0, phase=0.0):
-    """Steam rising from a crack: three wisps from a narrow foot, each
-    swaying as it climbs, widening and thinning toward the top, in the
-    translucent whites. `phase` (0 to 1) lifts the wisps through one loop of
-    the column, so frames at even phases loop."""
-    c = {}
-    turn = math.tau * phase
-    for y in range(height):
-        up = 1 - y / height
-        fade = min(1.0, up / 0.25) * (1 - up) ** 0.7
-        spread = width * (0.07 + 0.2 * up)
-        density = []
-        for x in range(width):
-            v = 0.0
-            for k in range(3):
-                sway = width * 0.18 * up * math.sin(math.tau * (1.5 * up + 1 * phase) + seed + k * 2.1)
-                centre = width / 2 + (k - 1) * width * 0.12 * up + sway
-                ribbon = 0.6 + 0.4 * math.sin(math.tau * (3 * up + 1 * phase) * (1 + k % 2) + seed * (k + 1) + x / 9)
-                v += math.exp(-((x - centre) / spread) ** 2) * ribbon
-            density.append(v / 1.6)
-        for x, d in enumerate(density):
-            v = d * fade * strength * len(WHITE_MIST)
-            level = int(v) + (1 if dither(x, y, v - int(v)) else 0)
-            if level > 0:
-                c[(x, y)] = WHITE_MIST[min(level, len(WHITE_MIST)) - 1]
-    return to_image(c, (width, height))
-
-
-def warm(im):
-    """`im`'s translucent whites warmed, as the haze is."""
-    return to_image({p: HAZE.get(s, s) for p, s in from_image(im).items()}, im.size)
-
-
 def haze(width, height, seed, strength):
     """A plume of heat rising off the lava, in the warm translucents."""
     return to_image({p: HAZE.get(s, s) for p, s in from_image(plume(width, height, seed, strength)).items()},
@@ -2102,15 +2321,11 @@ def haze(width, height, seed, strength):
 # Unlit: mist and steam, which the night shows through, the lava's haze, and
 # the campfire's flames, which carry their own light.
 MISTS = (('haze', lambda: haze(330, 150, 4.2, 0.9)), ('haze_small', lambda: haze(150, 90, 5.1, 0.8)))
-# The rising mist, unlit and animated: the falls' plume, the steam where the
-# pool drains into the cleft and the hollow's heat breathing out of its
-# mouth, each drawn at a phase, `MIST_FRAMES` frames through one cycle, each
-# tile of its cut a clip of its own.
+# The rising mist, unlit and animated: the falls' plume, drawn at a phase,
+# `MIST_FRAMES` frames through one cycle, each tile of its cut a clip of its
+# own.
 RISING = (
     ('plume', lambda t: plume(300, 170, 1.3, 1.5, t)),
-    ('steam', lambda t: steam_column(170, 260, 3.0, 1.1, t)),
-    ('steam_small', lambda t: steam_column(110, 180, 3.6, 1.0, t)),
-    ('heat', lambda t: warm(steam_column(130, 200, 4.4, 1.2, t))),
 )
 MIST_FRAMES, MIST_MS = 6, 150
 
@@ -2170,8 +2385,15 @@ def build_level_scenery(images, lit, animations):
     for k in (1, 2):
         images[f'river_dark_{k}'] = to_image(darker(from_image(images['river_deep_0']), k * 2))
         lit.add(f'river_dark_{k}')
-    for kind, name in (('calm', 'pool'), ('foam', 'pool_foam'), ('edge_left', 'pool_edge_left'), ('edge_right', 'pool_edge_right')):
+    for kind, name in (('calm', 'pool'), ('foam', 'pool_foam'), ('edge_left', 'pool_edge_left')):
         lit.update(clip(images, animations, name, [pool_frame(f, kind) for f in range(4)], 160))
+    # The pool's east shore, each tile with any of its art a clip.
+    shore = [pool_shore(f) for f in range(4)]
+    for row in range(2):
+        for col in range(3):
+            tiles = [im.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE)) for im in shore]
+            if any(tile.getbbox() for tile in tiles):
+                lit.update(clip(images, animations, f'pool_shore_big_{row}_{col}', tiles, 160))
     falls = [dict(falls_tiles(f)) for f in range(4)]
     for name in falls[0]:
         lit.update(clip(images, animations, name, [frames[name] for frames in falls], 80))
@@ -2179,3 +2401,14 @@ def build_level_scenery(images, lit, animations):
     lit.update(clip(images, animations, 'lava_surface', [lava_frame(f) for f in range(4)], 220))
     lit.update(clip(images, animations, 'lava_deep', [lava_frame(f, 'deep') for f in range(4)], 220))
     lit.update(clip(images, animations, 'lavafall', [lavafall_frame(f) for f in range(4)], 100))
+    # The elevator's cage and cable, which the game draws (M79).
+    images['lift_deck_elevator'] = elevator_cage()
+    images['lift_cable'] = lift_cable()
+    lit.update({'lift_deck_elevator', 'lift_cable'})
+    # The ice spray's crust, drawn by the game over a set basin's lava (M79).
+    for stage in range(4):
+        for part in ('top', 'deep'):
+            for i in range(2):
+                name = f'lava_crust_{part}_{stage}_{i}'
+                images[name] = lava_crust(stage, part, i)
+                lit.add(name)

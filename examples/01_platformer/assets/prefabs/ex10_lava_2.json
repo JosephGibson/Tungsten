@@ -1,0 +1,68 @@
+{
+  "components": {
+    "contact_damage": {
+      "damage": {
+        "damage.fire": 16
+      },
+      "filter": {
+        "all": [
+          "team.player"
+        ]
+      },
+      "interval": 0.1,
+      "knockback": 1500,
+      "offset": [
+        96.0,
+        33.0
+      ],
+      "push_always": true,
+      "shape": {
+        "aabb": [
+          96.0,
+          31.0
+        ]
+      }
+    },
+    "cues": {
+      "hit": [
+        {
+          "sound": {
+            "id": "ex10_lava_sizzle_sfx",
+            "min_interval": 0.3
+          }
+        }
+      ]
+    },
+    "hazard": {
+      "fire": false,
+      "lava": true
+    },
+    "rigid_body": {
+      "kind": "static",
+      "layers": [
+        4
+      ],
+      "mask": [],
+      "offset": [
+        96.0,
+        14.0
+      ],
+      "shape": {
+        "half_extents": [
+          96.0,
+          8.0
+        ],
+        "kind": "aabb"
+      }
+    },
+    "spawn_children": [
+      {
+        "offset": [
+          0,
+          0
+        ],
+        "prefab": "ex10_lava_frost_2"
+      }
+    ]
+  }
+}

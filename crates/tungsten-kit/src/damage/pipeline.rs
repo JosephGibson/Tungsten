@@ -217,6 +217,9 @@ pub struct DamageRequest {
     knockback: Option<Vec2>,
     crit: bool,
     periodic: bool,
+    /// Its knockback lands where the hit is ignored for the target's
+    /// window too: contact damage's `push_always`.
+    push_always: bool,
     penetration: Option<Penetration>,
     conversion: Option<Conversion>,
 }
@@ -263,9 +266,17 @@ impl DamageRequest {
             knockback: None,
             crit: false,
             periodic: false,
+            push_always: false,
             penetration: None,
             conversion: None,
         }
+    }
+
+    /// The request, its knockback landing on a target it is ignored for:
+    /// contact damage's `push_always`.
+    pub(crate) fn pushing_always(mut self) -> Self {
+        self.push_always = true;
+        self
     }
 
     /// The request, from `source`: who gets the credit, whose
@@ -630,6 +641,19 @@ impl Resolver {
     }
 }
 
+/// An ignored request that pushes always ([`DamageRequest::pushing_always`])
+/// still lands its knockback on a target alive and not being despawned by
+/// the kit; `knock_back` spares the dead.
+fn push_ignored(world: &mut World, request: &DamageRequest) {
+    if request.push_always
+        && let Some(velocity) = request.knockback
+        && world.is_alive(request.target)
+        && !world.has::<Despawning>(request.target)
+    {
+        knock_back(world, request.target, velocity);
+    }
+}
+
 /// Whether `target` takes a request: alive, not being despawned by the kit,
 /// with [`Health`] that is neither dead nor, unless the request is
 /// `periodic`, inside its window.
@@ -849,6 +873,7 @@ fn resolve(
     if request.parts().iter().all(|part| part.amount == 0.0)
         || !takes_hits(world, target, request.periodic)
     {
+        push_ignored(world, request);
         return Hit::Ignored;
     }
     land_parts(world, request, landed, immune);
@@ -856,6 +881,7 @@ fn resolve(
         send_immune(world, request, immune);
     }
     if landed.is_empty() {
+        push_ignored(world, request);
         return Hit::Ignored;
     }
     let amount = clamped(landed.iter().map(|part| f64::from(part.amount)).sum());

@@ -456,3 +456,89 @@ fn a_contact_touch_refuses_negative_or_non_finite_seconds() {
         .collect();
     assert_eq!(back, [(target, 0.2), (other, 0.1)]);
 }
+
+#[test]
+fn contact_damage_with_push_always_throws_a_target_inside_its_window() {
+    // A target over a pool whose touch sits 10 px under it: pushed up.
+    let push = Vec2::new(0.0, -100.0);
+    let pool = |always: bool| {
+        ContactDamage::new(5.0)
+            .with_shape(HitShape::circle(4.0), Vec2::new(0.0, 10.0))
+            .with_knockback(100.0)
+            .with_push_always(always)
+    };
+    let pushed =
+        |world: &World, target: Entity| world.get::<crate::Knockback>(target).unwrap().push();
+    let fresh =
+        |world: &mut World, target: Entity| world.insert(target, crate::Knockback::new(1.0));
+    let (mut world, mut schedule) = contact_rig(&["fire"]);
+    let target = target(&mut world);
+    world.insert(target, crate::Health::new(1000.0).with_invulnerability(1.0));
+    fresh(&mut world, target);
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        pool(true),
+    ));
+    // A landed hit pushes once, through the pipeline.
+    fixed_step(&mut world, &mut schedule);
+    let health = |world: &World| world.get::<crate::Health>(target).unwrap().current();
+    assert_eq!((health(&world), pushed(&world, target)), (995.0, push));
+    // Due again inside the window: no damage, the push all the same.
+    fresh(&mut world, target);
+    for _ in 0..30 {
+        fixed_step(&mut world, &mut schedule);
+    }
+    let health_now = health(&world);
+    assert!(
+        world
+            .get::<crate::Health>(target)
+            .unwrap()
+            .is_invulnerable()
+    );
+    assert_eq!((health_now, pushed(&world, target)), (995.0, push));
+    // Today's contact pushes nothing inside the window.
+    let (mut world, mut schedule) = contact_rig(&["fire"]);
+    let other = super::tests::target(&mut world);
+    world.insert(other, crate::Health::new(1000.0).with_invulnerability(1.0));
+    fresh(&mut world, other);
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        pool(false),
+    ));
+    fixed_step(&mut world, &mut schedule);
+    fresh(&mut world, other);
+    for _ in 0..30 {
+        fixed_step(&mut world, &mut schedule);
+    }
+    assert_eq!(pushed(&world, other), Vec2::ZERO, "a default contact");
+    // Two hits in one step on a target outside its window, another first:
+    // the other opens the window, the pool's push lands all the same, once.
+    let (mut world, mut schedule) = contact_rig(&["fire"]);
+    let both = super::tests::target(&mut world);
+    world.insert(both, crate::Health::new(1000.0).with_invulnerability(1.0));
+    fresh(&mut world, both);
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        pool(true),
+    ));
+    crate::DamageRequest::new(both, 1.0).queue(&mut world);
+    fixed_step(&mut world, &mut schedule);
+    let left = world.get::<crate::Health>(both).unwrap().current();
+    assert_eq!(
+        (left, pushed(&world, both)),
+        (999.0, push),
+        "the first hit alone hurts"
+    );
+    // A target the first hit kills takes no push.
+    let (mut world, mut schedule) = contact_rig(&["fire"]);
+    let dead = super::tests::target(&mut world);
+    world.insert(dead, crate::Health::new(1.0).with_invulnerability(1.0));
+    fresh(&mut world, dead);
+    world.spawn_with((
+        tungsten_core::Transform::from_position(Vec2::ZERO),
+        pool(true),
+    ));
+    crate::DamageRequest::new(dead, 1.0).queue(&mut world);
+    fixed_step(&mut world, &mut schedule);
+    assert_eq!(pushed(&world, dead), Vec2::ZERO, "the dead");
+}

@@ -8,6 +8,8 @@
 
 pub mod components;
 pub mod draw;
+pub mod elevator;
+pub mod lava;
 pub mod systems;
 
 use glam::{Vec2, Vec3};
@@ -16,10 +18,13 @@ use tungsten::core::{
     AmbientLight, CameraBounds, CameraController, DataRegistry, Entity, Light, ParticleBudget,
     PhysicsConfig, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
 };
-use tungsten::kit::{Phase, ensure_phases};
+use tungsten::kit::{PathFollower, Phase, ensure_phases};
 use tungsten::plugins::CAMERA_UPDATE;
 use tungsten::{Extracts, Plugin, SceneEntity};
 
+use crate::features::dummy::components::Dummy;
+use crate::features::enemies::components::Enemy;
+use crate::features::enemies::drops::Orb;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveIds, burst_cleanup};
 use components::SceneTime;
@@ -34,6 +39,11 @@ pub const TILE: f32 = 64.0;
 /// The map's size, in tiles: `tools/level.json`'s `cols` and `rows`.
 pub const MAP_COLS: u32 = 430;
 pub const MAP_ROWS: u32 = 72;
+/// The physics layer of lava's surface, as a mask bit (`tools/level.py`'s
+/// `LAVA_LAYER`, 4): a static box at each basin's skin that the player's
+/// controller stands on and that meets no body, so balls, blocks and the
+/// enemies, whose filters leave it out, fall in.
+pub const LAVA_LAYER: u32 = 1 << 4;
 /// The world's gravity, px/s² with y down, which the player and the bodies
 /// fall by.
 pub const GRAVITY: f32 = 3600.0;
@@ -88,6 +98,7 @@ impl Plugin for LevelPlugin {
         world.register_component::<components::Hazard>("hazard");
         world.register_component::<components::Area>("area");
         world.register_component::<components::Glow>("glow");
+        world.register_component::<elevator::ElevatorDef>("elevator");
         world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
         if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
             physics.gravity = Vec2::new(0.0, GRAVITY);
@@ -110,6 +121,22 @@ impl Plugin for LevelPlugin {
         schedule.add(
             Stage::FixedUpdate,
             Phase::Tick.join(system("level_clock", systems::clock)),
+        );
+        schedule.add(
+            Stage::FixedUpdate,
+            Phase::Tick.join(system("lava_tick", lava::tick)),
+        );
+        schedule.add(
+            Stage::FixedUpdate,
+            Phase::Intent.join(system("elevator_tick", elevator::tick)),
+        );
+        schedule.add(
+            Stage::PostUpdate,
+            Phase::Present.join(system("elevator_look", elevator::look)),
+        );
+        schedule.add(
+            Stage::PostUpdate,
+            Phase::Present.join(system("crust_look", lava::look)),
         );
         let zoom = system("level_zoom", systems::zoom).before(CAMERA_UPDATE);
         schedule.add(Stage::PostUpdate, zoom);
@@ -136,10 +163,11 @@ impl Plugin for CursorPlugin {
 }
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
-/// each taking the next of the run's [`SaveIds`] in layer and file order,
-/// the moon's light, the level's clock, the midnight ambient and the post
-/// stack, and bounds the camera to the map. Returns the objects in that
-/// order.
+/// each one a save names ([`saved`]) taking the next of the run's
+/// [`SaveIds`] in layer and file order, the basins' chill and crust ([`lava::start`]), the elevator at rest
+/// ([`elevator::start`]), the moon's light, the
+/// level's clock, the midnight ambient and the post stack, and bounds the
+/// camera to the map. Returns the objects in that order.
 pub fn spawn(world: &mut World) -> Vec<Entity> {
     let map = TilemapInstance::new(MAP, Vec2::ZERO);
     world.spawn_with((map, SceneEntity { state_id: GAMEPLAY }));
@@ -147,9 +175,14 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         .spawn_map_objects(MAP, Vec2::ZERO)
         .expect("the level's objects load with the manifest");
     for &entity in &objects {
-        let id = world.resource_mut::<SaveIds>().take();
-        world.insert_bundle(entity, (id, SceneEntity { state_id: GAMEPLAY }));
+        if saved(world, entity) {
+            let id = world.resource_mut::<SaveIds>().take();
+            world.insert(entity, id);
+        }
+        world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }
+    lava::start(world);
+    elevator::start(world);
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
     moon.intensity = MOONLIGHT_INTENSITY;
     world.spawn_with((
@@ -181,6 +214,19 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     };
     world.resource_mut::<CameraController>().bounds = Some(bounds);
     objects
+}
+
+/// Whether a save names the map object `entity`, which then takes a save
+/// ID: a lava basin, a deck, a dummy, an enemy or a placed orb. Props,
+/// slabs, iron, areas, emitters and markers take none, so an art change
+/// moves no save (schema 10).
+fn saved(world: &World, entity: Entity) -> bool {
+    world.has::<components::Hazard>(entity)
+        || world.has::<PathFollower>(entity)
+        || world.has::<elevator::ElevatorDef>(entity)
+        || world.has::<Dummy>(entity)
+        || world.has::<Enemy>(entity)
+        || world.has::<Orb>(entity)
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with

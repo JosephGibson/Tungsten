@@ -1,14 +1,17 @@
 //! The title: the game's name, large in the heading family, well above
-//! Continue, New Game (through the difficulty picker, each difficulty beside
-//! the game's note on it), Load, Settings and Quit, smaller and spaced wider
+//! Continue, New Game (through the difficulty picker, a card for each
+//! difficulty with its rank and the game's note on it), Load, Settings and
+//! Quit, smaller and spaced wider
 //! than a menu's, with the version and "Saving is off" small at the bottom
 //! left, and its song playing until a run starts. Continue loads the newest
 //! readable slot, named with its age under it, asking first when an older
 //! version wrote it, and is focused when there is one, disabled otherwise.
 //! Quit asks first.
 
-use tungsten::core::text::TextWrap;
-use tungsten::core::ui::{Align, Anchor, Edges, Justify, LayoutStyle, Sizing, UiTree, WidgetId};
+use tungsten::core::text::{TextAlign, TextWrap};
+use tungsten::core::ui::{
+    Align, Anchor, Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiTree, WidgetId,
+};
 use tungsten::core::{AudioCommands, Voice, World};
 use tungsten::{GameState, StateContext, StateId};
 
@@ -35,6 +38,54 @@ type Ui = (WidgetId, [WidgetId; 2], [WidgetId; 5], [WidgetId; 4]);
 /// ulp short of its text and wrap its last word out of sight (known issues).
 fn one_line(tree: &mut UiTree, label: WidgetId) {
     widgets::restyle(tree, label, |text| text.wrap = Some(TextWrap::None));
+}
+
+/// The picker's card for `Difficulty::ALL[at]` under `row`: a button holding
+/// its name in the heading family, its rank as filled squares of three, and
+/// the game's note on it a fact a line (the note split at " · "), each
+/// label as wide as the card, centred.
+fn difficulty_card(tree: &mut UiTree, row: WidgetId, at: usize) -> WidgetId {
+    let difficulty = Difficulty::ALL[at];
+    let card = widgets::button(tree, row, difficulty.label());
+    let mut style = tree.layout_style(card).cloned().unwrap_or_default();
+    (style.width, style.gap) = (Sizing::Fill, theme::GAP);
+    style.padding = Edges::all(theme::CARD_PADDING);
+    tree.set_layout_style(card, style);
+    let family = tree.theme().tokens.fonts.heading.clone();
+    let name = tree.children(card)[0];
+    widgets::restyle(tree, name, |text| {
+        text.family = Some(family);
+        [text.size, text.line_height] = [theme::HEADING_SIZE, theme::HEADING_LINE].map(Some);
+    });
+    let pips = widgets::row(tree, card);
+    let mut style = tree.layout_style(pips).cloned().unwrap_or_default();
+    style.justify_content = Justify::Center;
+    tree.set_layout_style(pips, style);
+    let (accent, border) = {
+        let colors = &tree.theme().tokens.colors;
+        (colors.accent, colors.border)
+    };
+    for each in 0..Difficulty::ALL.len() {
+        let side = Sizing::Px(theme::PIP);
+        let pip = tree.panel(pips, LayoutStyle::default().with_size(side, side));
+        let filled = usize::from(each <= at);
+        let style = StyleOverrides {
+            background: Some([[0; 4], accent][filled]),
+            border: Some([border, accent][filled]),
+            border_width: Some(1.0),
+            ..StyleOverrides::default()
+        };
+        tree.set_overrides(pip, style);
+    }
+    let facts = widgets::column(tree, card);
+    let mut style = tree.layout_style(facts).cloned().unwrap_or_default();
+    style.gap = 0.0;
+    tree.set_layout_style(facts, style);
+    for fact in difficulty_note(difficulty).split(" · ") {
+        let note = widgets::note(tree, facts, fact);
+        widgets::restyle(tree, note, |text| text.align = Some(TextAlign::Center));
+    }
+    card
 }
 
 /// The title screen.
@@ -108,17 +159,18 @@ impl GameState for TitleState {
         // can commit an ulp short and wrap its last word out of sight.
         let title = widgets::display(tree, card, &info.title, theme::TITLE);
         widgets::set_width(tree, title, Sizing::Percent(100.0));
-        // A menu's width, for the picker's notes; the buttons' page within it
-        // narrower, centred.
+        // The pages, centred under the name, the column as wide as the one
+        // shown: the buttons' narrow, the picker's three cards a wide
+        // screen's width.
         let column = widgets::column(tree, card);
         let mut style = tree.layout_style(column).cloned().unwrap_or_default();
-        (style.width, style.margin.top) = (Sizing::Px(theme::MENU_WIDTH), theme::TITLE_SPACE);
+        style.margin.top = theme::TITLE_SPACE;
         style.align_items = Align::Center;
         tree.set_layout_style(column, style);
         let pages = [(); 2].map(|()| widgets::column(tree, column));
         for (page, width) in pages
             .into_iter()
-            .zip([theme::TITLE_MENU_WIDTH, theme::MENU_WIDTH])
+            .zip([theme::TITLE_MENU_WIDTH, theme::WIDE_WIDTH])
         {
             let mut style = tree.layout_style(page).cloned().unwrap_or_default();
             (style.gap, style.width) = (theme::TITLE_GAP, Sizing::Px(width));
@@ -149,17 +201,17 @@ impl GameState for TitleState {
             }
         }
         widgets::heading(tree, pages[1], "Difficulty", true);
-        let picks = ["Easy", "Normal", "Hard", "Back"].map(|caption| {
-            let Some(at) = Difficulty::ALL.iter().position(|d| d.label() == caption) else {
-                return widgets::button(tree, pages[1], caption);
-            };
-            let row = widgets::row(tree, pages[1]);
-            let pick = widgets::button(tree, row, caption);
-            widgets::set_width(tree, pick, Sizing::Fill);
-            let note = widgets::note(tree, row, &difficulty_note(Difficulty::ALL[at]));
-            one_line(tree, note);
-            pick
-        });
+        let cards = widgets::row(tree, pages[1]);
+        let mut style = tree.layout_style(cards).cloned().unwrap_or_default();
+        style.align_items = Align::Stretch;
+        tree.set_layout_style(cards, style);
+        let [easy, normal, hard] = [0, 1, 2].map(|at| difficulty_card(tree, cards, at));
+        let back = widgets::button(tree, pages[1], "Back");
+        let mut style = tree.layout_style(back).cloned().unwrap_or_default();
+        (style.width, style.align_self) =
+            (Sizing::Px(theme::TITLE_MENU_WIDTH), Some(Align::Center));
+        tree.set_layout_style(back, style);
+        let picks = [easy, normal, hard, back];
         tree.set_enabled(buttons[0], self.newest.is_some());
         tree.set_enabled(buttons[2], saving);
         let corner = [theme::MARGIN; 2].into();

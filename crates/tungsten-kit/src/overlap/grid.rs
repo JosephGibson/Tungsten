@@ -12,6 +12,7 @@ use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::Despawning;
+use crate::motion::knockback::knock_back;
 use crate::overlap::hit::{HitPayload, Hurtbox, Struck};
 use crate::transform::hierarchy::Parent;
 
@@ -438,6 +439,13 @@ pub(crate) struct Blow<'a> {
 /// untyped parts of the item's tags, with the item's penetration and
 /// conversion.
 pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
+    strike_with(world, blow, false);
+}
+
+/// [`strike`], its push landing inside the target's window too when
+/// `push_always`, as contact damage's does: its request carries the flag,
+/// and with no damage it pushes at once.
+pub(crate) fn strike_with(world: &mut World, blow: &Blow<'_>, push_always: bool) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<Struck>>() {
         queue.send(Struck::new(
             blow.hitter,
@@ -452,6 +460,12 @@ pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
         amount: Some(blow.damage),
     });
     if blow.damage <= 0.0 {
+        if push_always
+            && let Some(push) = push_of(blow)
+            && !world.has::<Despawning>(blow.target)
+        {
+            knock_back(world, blow.target, push);
+        }
         return;
     }
     let source = world
@@ -465,18 +479,28 @@ pub(crate) fn strike(world: &mut World, blow: &Blow<'_>) {
         .with_source(source)
         .with_tags(blow.tags.clone())
         .with_position(blow.target_at);
-    if blow.knockback > 0.0 {
-        let away = (blow.target_at - blow.hitter_at).normalize_or_zero();
-        let direction = if away == Vec2::ZERO {
-            blow.relative.normalize_or_zero()
-        } else {
-            away
-        };
-        if direction != Vec2::ZERO {
-            request = request.with_knockback(direction * blow.knockback);
-        }
+    if let Some(push) = push_of(blow) {
+        request = request.with_knockback(push);
+    }
+    if push_always {
+        request = request.pushing_always();
     }
     request.queue(world);
+}
+
+/// `blow`'s push: away from the hitter, else along the relative motion, at
+/// its knockback's speed; none without a knockback or a direction.
+fn push_of(blow: &Blow<'_>) -> Option<Vec2> {
+    if blow.knockback <= 0.0 {
+        return None;
+    }
+    let away = (blow.target_at - blow.hitter_at).normalize_or_zero();
+    let direction = if away == Vec2::ZERO {
+        blow.relative.normalize_or_zero()
+    } else {
+        away
+    };
+    (direction != Vec2::ZERO).then(|| direction * blow.knockback)
 }
 
 #[cfg(test)]

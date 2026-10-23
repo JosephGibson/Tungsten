@@ -605,6 +605,52 @@ def cave_tunnel(kind):
     return to_image(c, (128, 128))
 
 
+def cave_mouth(columns=8, rows=7):
+    """The Ember hollow's mouth (M79): the tunnel's back under the ravine's
+    east wall, `columns` x `rows` tiles of the hollow's own cave rock, in
+    shadow at the opening and lit by embers toward the hollow; a row of
+    stalactites under the lintel, ember veins growing deeper in and a floor
+    of glowing grit at its far end. Opaque, so no backdrop shows through,
+    and lit, so it dims with the hollow's backs beside it."""
+    canvas = Image.new('RGBA', (columns * TILE, rows * TILE))
+    for r in range(rows):
+        for c in range(columns):
+            depth = c / max(1, columns - 1)
+            if r == 0:
+                kind = 'stalactites'
+            elif unit('mouth-kind', r, c) < 0.15 + 0.5 * depth ** 1.5:
+                kind = 'ember'
+            else:
+                kind = 'rock'
+            tile = from_image(cave_back(kind, 80 + r * columns + c))
+            shadow = 2 if c < 2 else 1 if c < 4 else 0
+            if shadow:
+                tile = darker(tile, shadow)
+            canvas.alpha_composite(to_image(tile), (c * TILE, r * TILE))
+    c = from_image(canvas)
+    w, h = columns * TILE, rows * TILE
+    # The opening's lip: the ravine's far wall, as its wet back draws it,
+    # reaching a jagged way in at the mouth's first column, its edge lit by
+    # the night outside.
+    for r in range(rows):
+        wet = from_image(to_image(tinted(from_image(wet_rock(500 + r, (False, False, False, False), None, back=2)))))
+        for y in range(TILE):
+            edge = 10 + round(6 * math.sin((r * TILE + y) * 0.09) + 5 * math.sin((r * TILE + y) * 0.23 + 1.3)
+                              + 4 * unit('lip', (r * TILE + y) // 5))
+            for x in range(edge):
+                if (x, y) in wet:
+                    c[(x, r * TILE + y)] = wet[(x, y)]
+            c[(edge, r * TILE + y)] = 'α'
+            c[(edge + 1, r * TILE + y)] = 'ν'
+    # Glowing grit along the floor and in the joints near the hollow.
+    for x in range(w):
+        heat = (x / w) ** 2
+        for y in range(h - 6, h):
+            if dither(x, y, heat * (0.35 + (y - (h - 6)) / 10)):
+                c[(x, y)] = 'K' if unit('grit', x // 2, y) < 0.3 else 'L'
+    return to_image(c, (w, h))
+
+
 def strip_canvas(layers, edge='α'):
     """Ridge layers like `distant_ridges`: each a symbol and a height, the
     slopes toward the moon lit `edge`."""
@@ -862,6 +908,7 @@ def build_level_backs(images, lit):
         for i in range(count):
             images[f'cave_back_{kind}_{i}'] = cave_back(kind, i)
     images['cave_back_ladder'] = cave_back('ladder', 2)
+    cut_tiles(images, 'cave_mouth', cave_mouth())
     cut_tiles(images, 'cave_tunnel_ember', cave_tunnel('ember'))
     cut_tiles(images, 'cave_tunnel_mine', cave_tunnel('timber'))
     lit.update(set(images) - first - far)

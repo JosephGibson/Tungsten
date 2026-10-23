@@ -36,10 +36,10 @@ pub fn gameplay(start: RunStart) -> impl GameState {
     GameplayState::new(start)
 }
 
-/// What `difficulty` changes, the muted note beside it in the New Game
-/// picker: a few words, as short as the sample's `8 health`, since it
-/// shares a menu-wide row with its button on one line, which
-/// `tests/game/fit.rs` checks at text 200 %.
+/// What `difficulty` changes, on its card in the New Game picker: short
+/// facts joined by " · ", each a line of its own under the difficulty's
+/// name and rank, as short as the sample's `8 health`, since three cards
+/// share a row, which `tests/game/fit.rs` checks at text 200 %.
 #[must_use]
 pub fn difficulty_note(difficulty: Difficulty) -> String {
     format!("{} health", max_health(difficulty))

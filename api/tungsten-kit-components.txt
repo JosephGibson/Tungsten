@@ -45,6 +45,7 @@ component contact_damage: Hurts the hurtboxes its shape touches, at once and aga
   field convert: list of shape conversion_rule = [] — the hit's own conversion rules, before its source's `conversion`
   field filter: tag filter = {} — the hurtboxes it hits, by their entity's tags; the load checks its tags
   field knockback: f32 (>= 0) = 0.0 — world pixels per second, pushing a target it hurts away from it
+  field push_always: bool = false — its push lands on a target inside its invulnerability window too, which it does not hurt there
   events: Struck
   genres: top_down, platformer, grid
   sample: { "damage": 1 }

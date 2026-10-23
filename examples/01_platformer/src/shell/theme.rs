@@ -92,6 +92,10 @@ pub const TITLE_GAP: f32 = 14.0;
 pub const TITLE_SPACE: f32 = 40.0;
 pub const TITLE_MENU_WIDTH: f32 = 220.0;
 pub const TITLE_BUTTON_PADDING: [f32; 2] = [14.0, 3.0];
+/// The difficulty picker's cards: their padding all round, and the side of
+/// each square of a difficulty's rank.
+pub const CARD_PADDING: f32 = 12.0;
+pub const PIP: f32 = 10.0;
 /// Game over's "YOU DIED": its size and line height, in the heading family,
 /// and the most its size grows to, which keeps it to one line at the floor.
 pub const DIED: [f32; 2] = [64.0, 72.0];

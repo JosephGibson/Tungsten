@@ -1,0 +1,24 @@
+{
+  "components": {
+    "contact_damage": {
+      "damage": {
+        "damage.fire": 34
+      },
+      "filter": {
+        "all": [
+          "status.frozen"
+        ]
+      },
+      "offset": [
+        96.0,
+        33.0
+      ],
+      "shape": {
+        "aabb": [
+          96.0,
+          31.0
+        ]
+      }
+    }
+  }
+}

@@ -113,11 +113,16 @@ pub enum Sound {
     CrawlerScared,
     /// The player killed, by a blow or a tick.
     PlayerDied,
+    /// Lava crusting over under the ice spray.
+    LavaSet,
+    /// The mine's elevator setting off, and arriving.
+    LiftStarted,
+    LiftStopped,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 37] = [
+    pub const ALL: [Sound; 40] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -155,6 +160,9 @@ impl Sound {
         Sound::StaffGuttered,
         Sound::CrawlerScared,
         Sound::PlayerDied,
+        Sound::LavaSet,
+        Sound::LiftStarted,
+        Sound::LiftStopped,
     ];
 
     /// Its cue event's name.
@@ -198,6 +206,9 @@ impl Sound {
             Sound::StaffGuttered => "staff_guttered",
             Sound::CrawlerScared => "crawler_scared",
             Sound::PlayerDied => "player_died",
+            Sound::LavaSet => "lava_set",
+            Sound::LiftStarted => "lift_started",
+            Sound::LiftStopped => "lift_stopped",
         }
     }
 }

@@ -62,9 +62,9 @@ pub fn gameplay(start: RunStart) -> impl GameState {
     GameplayState::new(start)
 }
 
-/// What `difficulty` changes, the note beside it in the New Game picker:
-/// the player's health and the enemies' factor on their health and damage
-/// (Q11).
+/// What `difficulty` changes, on its card in the New Game picker, a fact a
+/// line: the player's health and the enemies' factor on their health and
+/// damage (Q11).
 #[must_use]
 pub fn difficulty_note(difficulty: Difficulty) -> String {
     format!(

@@ -23,7 +23,7 @@ use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::{non_negative, optional_vec2, positive};
 use crate::lifecycle::ended::Despawning;
 use crate::overlap::grid::{
-    Blow, HitGrid, ensure_emitter, first_contact, spares, strike, sweep_of,
+    Blow, HitGrid, ensure_emitter, first_contact, spares, strike_with, sweep_of,
 };
 use crate::overlap::hit::{
     DamageDef, HitPayload, HitShape, Hurtbox, SavedPart, Struck, TagNames, after_grid, check_names,
@@ -59,8 +59,8 @@ const DEFAULT_INTERVAL: f32 = 0.5;
 ///
 /// Scene name `contact_damage`:
 /// `{ "damage": 1, "interval": 0.5, "filter": { "all": ["team.player"] }, "knockback": 420, "shape": { "circle": 28 } }`,
-/// `interval` 0.5, `tags` none, `filter` everything and `knockback` 0 by
-/// default; without `shape` it takes the hurtbox's shape and offset, and
+/// `interval` 0.5, `tags` none, `filter` everything, `knockback` 0 and
+/// `push_always` false by default; without `shape` it takes the hurtbox's shape and offset, and
 /// an `offset` comes only with a `shape`. `damage`, `pen` and `convert`
 /// take a hitbox's forms. It is data, without the times it keeps per
 /// target, which name entities: a loaded one starts over unless the game
@@ -93,6 +93,8 @@ pub struct ContactDamage {
     tags: Tags,
     filter: TagFilter,
     knockback: f32,
+    /// Its push lands on a target inside its invulnerability window too.
+    push_always: bool,
     /// Typed contact damage's parts, penetration and conversion.
     typed: Option<Box<HitPayload>>,
     /// Game seconds the item has stepped: its targets' clock.
@@ -200,6 +202,8 @@ struct ContactDamageFields {
     filter: TagFilter,
     #[serde(default)]
     knockback: f32,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    push_always: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     parts: Vec<SavedPart>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -246,6 +250,7 @@ impl TryFrom<ContactDamageFields> for ContactDamage {
             tags: fields.tags,
             filter: fields.filter,
             knockback: fields.knockback,
+            push_always: fields.push_always,
             typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             clock: 0.0,
             timed: Vec::new(),
@@ -264,6 +269,7 @@ impl From<ContactDamage> for ContactDamageFields {
             tags: contact.tags,
             filter: contact.filter,
             knockback: contact.knockback,
+            push_always: contact.push_always,
             parts,
             pen,
             convert,
@@ -293,6 +299,7 @@ impl ContactDamage {
             tags: Tags::default(),
             filter: TagFilter::new(),
             knockback: 0.0,
+            push_always: false,
             typed: None,
             clock: 0.0,
             timed: Vec::new(),
@@ -423,6 +430,28 @@ impl ContactDamage {
         self
     }
 
+    /// The contact damage, its push landing on a target inside its
+    /// invulnerability window too, which takes no damage, flash or event
+    /// from it there: a lava pool that throws whatever falls in and hurts
+    /// only outside the window. The push lands where the hit resolves, so
+    /// a target another hit puts in its window in the same step is pushed
+    /// all the same; a dead or despawning target takes none. With no
+    /// damage it pushes at the touch.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use tungsten_kit::ContactDamage;
+    ///
+    /// let lava = ContactDamage::new(16.0).with_knockback(1500.0).with_push_always(true);
+    /// assert!(lava.push_always() && !ContactDamage::new(1.0).push_always());
+    /// ```
+    #[must_use]
+    pub fn with_push_always(mut self, on: bool) -> Self {
+        self.push_always = on;
+        self
+    }
+
     /// Each hit's damage, which a `damage` stat writes: one number, or typed
     /// contact damage's total.
     #[must_use]
@@ -465,6 +494,13 @@ impl ContactDamage {
     #[must_use]
     pub fn knockback(&self) -> f32 {
         self.knockback
+    }
+
+    /// Whether its push lands on a target inside its invulnerability window
+    /// too ([`with_push_always`](Self::with_push_always)).
+    #[must_use]
+    pub fn push_always(&self) -> bool {
+        self.push_always
     }
 
     /// The targets it touches, in entity order, each with its seconds since
@@ -536,6 +572,8 @@ struct ContactDamageScene {
     filter: TagFilterDef,
     #[serde(default, deserialize_with = "non_negative")]
     knockback: f32,
+    #[serde(default)]
+    push_always: bool,
 }
 
 /// `components.contact_damage`, checked.
@@ -553,6 +591,7 @@ struct ContactDamageDef {
     convert: ConversionDef,
     filter: TagFilterDef,
     knockback: f32,
+    push_always: bool,
 }
 
 impl TryFrom<ContactDamageScene> for ContactDamageDef {
@@ -571,6 +610,7 @@ impl TryFrom<ContactDamageScene> for ContactDamageDef {
             convert: scene.convert,
             filter: scene.filter,
             knockback: scene.knockback,
+            push_always: scene.push_always,
         })
     }
 }
@@ -581,7 +621,8 @@ impl From<ContactDamageDef> for ContactDamage {
             .with_interval(def.interval)
             .with_tags(Tags::new(def.tags.0))
             .with_filter(def.filter.into())
-            .with_knockback(def.knockback);
+            .with_knockback(def.knockback)
+            .with_push_always(def.push_always);
         if let Some(shape) = def.shape {
             contact = contact.with_shape(shape, def.offset.unwrap_or(Vec2::ZERO));
         }
@@ -658,6 +699,14 @@ impl Plugin for ContactDamagePlugin {
                     )
                     .default("null"),
                 ),
+            )
+            .field(
+                FieldDescription::new(
+                    "push_always",
+                    FieldType::Bool,
+                    "its push lands on a target inside its invulnerability window too, which it does not hurt there",
+                )
+                .default("false"),
             )
             .event("Struck")
             .genre(TOP_DOWN)
@@ -761,10 +810,11 @@ impl ContactRunner {
         }
         self.met
             .sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-        let (damage, tags, knockback, typed) = (
+        let (damage, tags, knockback, push_always, typed) = (
             contact.damage,
             contact.tags.clone(),
             contact.knockback,
+            contact.push_always,
             contact.typed.clone(),
         );
         for &(t, index) in &self.met {
@@ -773,7 +823,7 @@ impl ContactRunner {
             if !contact.due(entry.entity) {
                 continue;
             }
-            strike(
+            strike_with(
                 world,
                 &Blow {
                     hitter,
@@ -786,6 +836,7 @@ impl ContactRunner {
                     typed: typed.as_deref(),
                     knockback,
                 },
+                push_always,
             );
         }
         world.get_mut::<ContactDamage>(hitter).unwrap().forget();
