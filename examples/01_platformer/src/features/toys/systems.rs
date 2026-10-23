@@ -22,9 +22,10 @@ use super::components::{
     PreviousVelocity, Ring, ScrapTumble, ShockRing, SmallBall, Spray, SprayEmitter,
 };
 use super::{
-    BLAST_RADIUS, BLAST_TRAUMA, FIRE_SPRAY_RANGE, FROZEN_FRICTION, HOLE_FORCE, HOLE_RADIUS,
-    IRON_FRICTION, IRON_PULL, MISSILE_RADIUS, MISSILE_SIZE, PUSH_RADIUS, PUSH_SPEED, RING_SECS,
-    SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
+    BLAST_RADIUS, BLAST_TRAUMA, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE,
+    FROZEN_FRICTION, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION, IRON_LAND_SHAKE,
+    IRON_PULL, IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, PUSH_RADIUS, PUSH_SPEED,
+    RING_SECS, SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, BLAST_FIRE, FROZEN, Kind, SPRAY_DPS, SPRAY_PULSE, has_status};
@@ -32,14 +33,15 @@ use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::{BallBurn, Frozen};
 use crate::features::elements::{self, FIRE_CENTRE, FIRE_HALF, SMALL_STEAM_REACH, freeze_amount};
-use crate::features::enemies::components::{Enemy, EnemyKind};
+use crate::features::enemies;
+use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::{Doused, Hazard};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, despawn_tree, spawn_burst};
+use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, surface_distance};
 
 /// The light a missile leaves where it ends, and its fades.
 const FLARE_COLOR: Vec3 = Vec3::new(1.0, 0.56, 0.22);
@@ -62,29 +64,20 @@ const FIRE_EMITTERS: [&str; 3] = ["ex10_flame_spray", "ex10_flame_mist", "ex10_b
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
 
-/// A body's centre: its `Position` plus its collider's offset.
-fn body_centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
-
-/// `toys_tick`, in the tick phase: the holes' lives, the small balls'
-/// impact cooldowns, the hues' turn and the shock rings' growth, each by
-/// the step.
+/// `toys_tick`, in the tick phase: the holes' lives, each collapsing at
+/// its end, the small balls' impact cooldowns, the hues' turn and the
+/// shock rings' growth, each by the step.
 pub fn tick(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
     let mut closed = Vec::new();
-    for (entity, hole) in world.query_mut::<(Entity, &mut BlackHole)>() {
+    let mut collapsed: Vec<(Option<SaveId>, Entity)> = Vec::new();
+    for (entity, hole, id) in world.query_mut::<(Entity, &mut BlackHole, Option<&SaveId>)>() {
         hole.left -= dt;
         if hole.left <= 0.0 {
-            closed.push(entity);
+            collapsed.push((id.copied(), entity));
         }
     }
     for ball in world.query_mut::<&mut SmallBall>() {
@@ -102,6 +95,72 @@ pub fn tick(world: &mut World) {
     for entity in closed {
         despawn_tree(world, entity);
     }
+    collapsed.sort_by_key(|(id, _)| *id);
+    for (_, hole) in collapsed {
+        collapse(world, hole);
+    }
+}
+
+/// Closes `hole`, by its time or the cap: its collapse sounds where it
+/// stood and leaves a small pale ring there, which pushes nothing, and it
+/// goes with its emitters.
+pub fn collapse(world: &mut World, hole: Entity) {
+    if let Some(at) = world.get::<Transform>(hole).map(|at| at.position) {
+        ring(world, at, COLLAPSE_RING, Ring::Collapse);
+        audio::play(world, Sound::HoleCollapsed, at);
+    }
+    despawn_tree(world, hole);
+}
+
+/// `hole_broom`, in the overlap phase: each open hole, in save-ID order,
+/// takes the small balls whose centre lies within [`BROOM_REACH`] of its
+/// own, nearest first and then by save ID, at most [`BROOM_MOST`] a step;
+/// every eighth it takes puffs.
+pub fn broom(world: &mut World) {
+    let mut holes: Vec<(SaveId, Vec2)> = world
+        .query::<(&BlackHole, &Transform, &SaveId)>()
+        .map(|(_, at, id)| (*id, at.position))
+        .collect();
+    if holes.is_empty() {
+        return;
+    }
+    holes.sort_by_key(|(id, _)| *id);
+    let reach = BROOM_REACH * BROOM_REACH;
+    let near: Vec<(SaveId, Entity, Vec2)> = world
+        .query::<(Entity, &SmallBall, &Position, &Collider, &SaveId)>()
+        .filter_map(|(entity, _, p, collider, id)| {
+            let centre = p.0 + collider.offset;
+            holes
+                .iter()
+                .any(|(_, hole)| hole.distance_squared(centre) <= reach)
+                .then_some((*id, entity, centre))
+        })
+        .collect();
+    let mut taken: Vec<(Entity, Vec2)> = Vec::new();
+    let mut puffs = Vec::new();
+    for (_, hole) in &holes {
+        let mut here: Vec<(f32, SaveId, Entity, Vec2)> = near
+            .iter()
+            .filter(|(_, entity, _)| !taken.iter().any(|(ball, _)| ball == entity))
+            .filter_map(|&(id, entity, centre)| {
+                let distance = hole.distance_squared(centre);
+                (distance <= reach).then_some((distance, id, entity, centre))
+            })
+            .collect();
+        here.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        for (i, &(_, _, ball, centre)) in here.iter().take(BROOM_MOST).enumerate() {
+            taken.push((ball, centre));
+            if i % 8 == 0 {
+                puffs.push(centre);
+            }
+        }
+    }
+    for (ball, _) in taken {
+        despawn_tree(world, ball);
+    }
+    for at in puffs {
+        spawn_burst(world, "ex10_poof", at);
+    }
 }
 
 /// `toys_velocities`, in the move phase before the physics step: each
@@ -110,6 +169,46 @@ pub fn remember_velocities(world: &mut World) {
     for (velocity, previous) in world.query_mut::<(&Velocity, &mut PreviousVelocity)>() {
         previous.0 = velocity.0;
     }
+}
+
+/// `iron_weight`, in the move phase after `toys_velocities` and before the
+/// physics step: a block falling faster than [`IRON_FALL_FROM`] falls
+/// harder by [`IRON_WEIGHT`], since a `RigidBody` has no gravity scale;
+/// never while a troll holds or throws it, whose throw aims by the world's
+/// gravity alone.
+pub fn weight(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    if dt <= 0.0 {
+        return;
+    }
+    let throws = world.get_resource::<Throws>();
+    let falling: Vec<Entity> = world
+        .query::<(Entity, &IronBlock, &Velocity)>()
+        .filter(|(block, _, velocity)| {
+            velocity.0.y > IRON_FALL_FROM
+                && !world.has::<Held>(*block)
+                && throws.is_none_or(|throws| throws.of(*block).is_none())
+        })
+        .map(|(block, ..)| block)
+        .collect();
+    for block in falling {
+        if let Some(velocity) = world.get_mut::<Velocity>(block) {
+            velocity.0.y += IRON_WEIGHT * dt;
+        }
+    }
+}
+
+/// A block landing hard at `at`, its contact: dust there, the camera's
+/// shake by its distance ([`IRON_LAND_SHAKE`] of a blast's) and its thud.
+pub fn iron_landed(world: &mut World, at: Vec2) {
+    spawn_burst(world, "ex10_iron_dust", at);
+    let trauma = blast_trauma(world, at) * IRON_LAND_SHAKE;
+    if trauma > 0.0
+        && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
+    {
+        queue.send(ShakeEvent { trauma_add: trauma });
+    }
+    audio::play(world, Sound::IronLanded, at);
 }
 
 /// The open holes' centres.
@@ -459,7 +558,7 @@ pub fn explode(world: &mut World, at: Vec2) {
     }
     ring(world, at, 2.0 * PUSH_RADIUS, Ring::Fireball);
     elements::thermal_shatter(world, at, BLAST_RADIUS);
-    push_bodies(world, at, PUSH_RADIUS);
+    radial_push(world, at, PUSH_RADIUS, PUSH_SPEED);
     let trauma = blast_trauma(world, at);
     if trauma > 0.0
         && let Some(queue) = world.get_resource_mut::<EventQueue<ShakeEvent>>()
@@ -502,15 +601,6 @@ fn burn_targets(world: &mut World, at: Vec2) {
     }
 }
 
-/// How far `at` lies from a body of `shape` about `centre`: 0 inside it.
-fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
-    let offset = at - centre;
-    match shape {
-        Shape::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
-        Shape::Circle { radius } => (offset.length() - radius).max(0.0),
-    }
-}
-
 /// A shock ring at `at`, growing to `size`, unless [`RING_CAP`] live.
 pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
     if rings_full(world) {
@@ -527,20 +617,26 @@ pub fn ring(world: &mut World, at: Vec2, size: f32, kind: Ring) {
     ));
 }
 
-/// Pushes every dynamic body within `radius` of `at` away from it.
-pub fn push_bodies(world: &mut World, at: Vec2, radius: f32) {
+/// Pushes what stands within `radius` of `at` straight away from it, up at
+/// the centre, by `speed` there falling linearly to nothing at the reach,
+/// measured from each body's centre: each dynamic body over its mass, and
+/// each live enemy through the kit's `knock_back` by its kind's pull, the
+/// hole's own response, so both gravity spells move each kind alike, the
+/// kit taking the knockback's resist. A kind that stands firm (the troll)
+/// takes nothing (`enemies::stands_firm`). The holes' own pull stays its
+/// own (`toys_pull`): a knockback each step would lock a walker's input.
+pub fn radial_push(world: &mut World, at: Vec2, radius: f32, speed: f32) {
+    let away = |centre: Vec2| -> Option<Vec2> {
+        let offset = centre - at;
+        let distance = offset.length();
+        (distance < radius)
+            .then(|| offset.try_normalize().unwrap_or(-Vec2::Y) * speed * (1.0 - distance / radius))
+    };
     let pushed: Vec<(Entity, Vec2)> = world
         .query::<(Entity, &RigidBody, &Position, &Collider)>()
         .filter(|(_, body, ..)| body.kind == BodyKind::Dynamic)
         .filter_map(|(entity, body, p, collider)| {
-            let offset = p.0 + collider.offset - at;
-            let distance = offset.length();
-            if distance >= radius {
-                return None;
-            }
-            let falloff = 1.0 - distance / radius;
-            let direction = offset.try_normalize().unwrap_or(-Vec2::Y);
-            Some((entity, direction * PUSH_SPEED * falloff * body.inv_mass))
+            Some((entity, away(p.0 + collider.offset)? * body.inv_mass))
         })
         .collect();
     for (entity, kick) in pushed {
@@ -548,6 +644,18 @@ pub fn push_bodies(world: &mut World, at: Vec2, radius: f32) {
             velocity.0 += kick;
         }
         wake(world, entity);
+    }
+    let mut thrown: Vec<(Option<SaveId>, Entity, Vec2)> = world
+        .query::<(Entity, &Enemy, &Health)>()
+        .filter(|(entity, _, health)| !health.is_dead() && !enemies::stands_firm(world, *entity))
+        .filter_map(|(entity, enemy, _)| {
+            let push = away(body_centre(world, entity)?)? * enemy.kind.info().pull;
+            Some((world.get::<SaveId>(entity).copied(), entity, push))
+        })
+        .collect();
+    thrown.sort_by_key(|(id, ..)| *id);
+    for (_, enemy, push) in thrown {
+        knock_back(world, enemy, push);
     }
 }
 
@@ -571,8 +679,10 @@ fn blast_trauma(world: &World, at: Vec2) -> f32 {
     BLAST_TRAUMA * (1.0 - beyond / (1.25 * width)).clamp(0.0, 1.0)
 }
 
-/// `toys_bounds`, in the overlap phase: a ball, block, scrap or dummy that
-/// has left the level's box goes, as the player's escape ends a run.
+/// `toys_bounds`, in the overlap phase: a ball, block, scrap, dummy or
+/// enemy that has left the level's box goes, as the player's escape ends a
+/// run: a placed enemy is gone from the next save, and what a troll held
+/// drops at the next `troll_holds`.
 pub fn bounds(world: &mut World) {
     let escaped: Vec<Entity> = world
         .query::<(Entity, &Position, Option<&Collider>)>()
@@ -582,6 +692,7 @@ pub fn bounds(world: &mut World) {
                 || world.has::<IronBlock>(*entity)
                 || world.has::<IronScrap>(*entity)
                 || world.has::<Dummy>(*entity)
+                || world.has::<Enemy>(*entity)
         })
         .map(|(entity, ..)| entity)
         .collect();
@@ -799,11 +910,6 @@ fn rays(aim: Vec2) -> impl Iterator<Item = Vec2> {
     (-3..=3).map(move |ray| Vec2::from_angle(ray as f32 / 3.0 * SPRAY_HALF_ANGLE).rotate(aim))
 }
 
-/// The body centre of `caster`, the spray's root.
-fn caster_centre(world: &World, caster: Entity) -> Option<Vec2> {
-    body_centre(world, caster)
-}
-
 /// Holds `caster`'s spray of `element` along `aim`, started when none
 /// runs: kept for this step, at this aim. Its caster's centre and the aim,
 /// unit length, when the caster has a body.
@@ -813,7 +919,7 @@ pub fn hold_spray(
     aim: Vec2,
     element: Element,
 ) -> Option<(Vec2, Vec2)> {
-    let centre = caster_centre(world, caster)?;
+    let centre = body_centre(world, caster)?;
     let aim = aim.try_normalize().unwrap_or(Vec2::X);
     let held = world
         .query::<(Entity, &Spray)>()
@@ -1016,8 +1122,8 @@ fn start_spray(
 }
 
 /// Starts the manifest loop `id` at its volume: a spray's voice, which its
-/// end stops.
-fn loop_voice(world: &mut World, id: &str) -> Option<tungsten::core::Voice> {
+/// end stops, or the small balls'.
+pub(crate) fn loop_voice(world: &mut World, id: &str) -> Option<tungsten::core::Voice> {
     let registry = world.get_resource::<SoundRegistry>()?;
     let handle = registry.get_by_id(id)?;
     let volume = registry.get_volume(handle);
@@ -1028,8 +1134,9 @@ fn loop_voice(world: &mut World, id: &str) -> Option<tungsten::core::Voice> {
     )
 }
 
-/// Ends the spray `entity`: its particles go, its loop stops, and a cold
-/// spray's caster still alive hears its end.
+/// Ends the spray `entity`: its particles go, its loop fades out over
+/// [`LOOP_FADE`], and a caster still alive hears its end, the cold spray's
+/// pressure release or the flamethrower's dying roar.
 pub fn end_spray(world: &mut World, entity: Entity) {
     let Some(spray) = world.get::<Spray>(entity).copied() else {
         return;
@@ -1038,13 +1145,19 @@ pub fn end_spray(world: &mut World, entity: Entity) {
         world.despawn(emitter);
     }
     if let Some(voice) = spray.voice {
-        world.resource_mut::<AudioCommands>().stop_voice(voice, 0.0);
+        world
+            .resource_mut::<AudioCommands>()
+            .stop_voice(voice, LOOP_FADE);
     }
     let alive = world
         .get::<tungsten::kit::Health>(spray.caster)
         .is_some_and(|health| !health.is_dead());
-    if alive && spray.element == Element::Cold {
-        audio::play(world, Sound::ColdEnded, spray.start);
+    if alive {
+        let ended = match spray.element {
+            Element::Cold => Sound::ColdEnded,
+            Element::Fire => Sound::FireEnded,
+        };
+        audio::play(world, ended, spray.start);
     }
     world.despawn(entity);
 }
@@ -1159,9 +1272,25 @@ fn contact_point(
     iron.or(surface)
 }
 
-/// Turns each newborn spray particle to its emitter's aim and shortens its
-/// life so it dies before the surface it would pass through.
+/// The draw depth a spray's particles take once `spray_look` meets them:
+/// over the enemies (8), the dummy (9) and the courier (10), under the
+/// balls (12) and iron. A frame's newborns draw once at the particles' 0
+/// first, as they draw once unturned, since a particle config has no depth
+/// (K2).
+pub const SPRAY_Z: i32 = 11;
+
+/// Lifts each newborn of a spray's three emitters to [`SPRAY_Z`], and turns
+/// each of its two aimed emitters' to the aim and shortens its life so it
+/// dies before the surface it would pass through; the contact's splash is
+/// not aimed.
 fn orient_newborns(world: &mut World) {
+    let emitters: Vec<Entity> = world
+        .query::<&Spray>()
+        .flat_map(|spray| spray.emitters.into_iter().flatten())
+        .collect();
+    if emitters.is_empty() {
+        return;
+    }
     let tiles = SolidTiles::of(world);
     let near: Vec<(Entity, Vec<Traced>)> = world
         .query::<&Spray>()
@@ -1174,14 +1303,19 @@ fn orient_newborns(world: &mut World) {
             )
         })
         .collect();
-    let newborns: Vec<(Entity, Vec2, f32)> = world
+    let newborns: Vec<(Entity, Option<(Vec2, f32)>)> = world
         .query::<(Entity, &Particle, &Transform)>()
         .filter_map(|(entity, particle, at)| {
             if world.has::<Oriented>(entity) || particle.age > 0.0 {
                 return None;
             }
-            let aim = world.get::<SprayEmitter>(particle.emitter?)?.direction;
-            let velocity = aim.rotate(particle.velocity);
+            let emitter = particle
+                .emitter
+                .filter(|emitter| emitters.contains(emitter))?;
+            let Some(aimed) = world.get::<SprayEmitter>(emitter) else {
+                return Some((entity, None));
+            };
+            let velocity = aimed.direction.rotate(particle.velocity);
             let speed = velocity.length();
             let direction = velocity.try_normalize()?;
             let caster = world
@@ -1204,13 +1338,18 @@ fn orient_newborns(world: &mut World) {
                 SPRAY_RANGE - SPRAY_MUZZLE,
             );
             let lifetime = (at.position.distance(end) - BEAM_HALF_WIDTH).max(0.0) / speed;
-            Some((entity, velocity, lifetime))
+            Some((entity, Some((velocity, lifetime))))
         })
         .collect();
-    for (entity, velocity, lifetime) in newborns {
-        if let Some(particle) = world.get_mut::<Particle>(entity) {
+    for (entity, turned) in newborns {
+        if let Some((velocity, lifetime)) = turned
+            && let Some(particle) = world.get_mut::<Particle>(entity)
+        {
             particle.velocity = velocity;
             particle.lifetime = particle.lifetime.min(lifetime);
+        }
+        if let Some(sprite) = world.get_mut::<Sprite>(entity) {
+            sprite.z_order = SPRAY_Z;
         }
         world.insert(entity, Oriented);
     }

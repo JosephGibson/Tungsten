@@ -71,6 +71,13 @@
             "min_interval": 0.12
           }
         }
+      ],
+      "killed": [
+        {
+          "sound": {
+            "id": "ex10_dummy_thump_sfx"
+          }
+        }
       ]
     }
   }

@@ -639,6 +639,15 @@
     "ex10_bleed_drips": {
       "path": "particles/bleed_drips.json"
     },
+    "ex10_blood_burst": {
+      "path": "particles/blood_burst.json"
+    },
+    "ex10_blood_spurt": {
+      "path": "particles/blood_spurt.json"
+    },
+    "ex10_burn_embers": {
+      "path": "particles/burn_embers.json"
+    },
     "ex10_burn_out": {
       "path": "particles/burn_out.json"
     },
@@ -663,6 +672,9 @@
     "ex10_fireball_drips": {
       "path": "particles/fireball_drips.json"
     },
+    "ex10_fizzle": {
+      "path": "particles/fizzle.json"
+    },
     "ex10_flame_mist": {
       "path": "particles/flame_mist.json"
     },
@@ -678,6 +690,9 @@
     "ex10_frozen_glints": {
       "path": "particles/frozen_glints.json"
     },
+    "ex10_gore_burst": {
+      "path": "particles/gore_burst.json"
+    },
     "ex10_ice_beam": {
       "path": "particles/ice_beam.json"
     },
@@ -692,6 +707,9 @@
     },
     "ex10_ice_shatter": {
       "path": "particles/ice_shatter.json"
+    },
+    "ex10_iron_dust": {
+      "path": "particles/iron_dust.json"
     },
     "ex10_jump_puff": {
       "path": "particles/jump_puff.json"
@@ -729,8 +747,17 @@
     "ex10_steam_burst": {
       "path": "particles/steam_burst.json"
     },
+    "ex10_strike_sparks": {
+      "path": "particles/strike_sparks.json"
+    },
+    "ex10_thaw_glints": {
+      "path": "particles/thaw_glints.json"
+    },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"
+    },
+    "ex10_warp_burst": {
+      "path": "particles/warp_burst.json"
     },
     "ex10_waterfall_spray": {
       "path": "particles/waterfall_spray.json"
@@ -1749,6 +1776,16 @@
       "path": "sounds/ambience_ravine.wav",
       "volume": 0.2
     },
+    "ex10_air_jump_sfx": {
+      "looping": false,
+      "path": "sounds/air_jump.wav",
+      "volume": 0.35
+    },
+    "ex10_ball_thud_sfx": {
+      "looping": false,
+      "path": "sounds/ball_thud.wav",
+      "volume": 0.4
+    },
     "ex10_bat_dive_sfx": {
       "looping": false,
       "path": "sounds/bat_dive.wav",
@@ -1768,6 +1805,16 @@
       "looping": false,
       "path": "sounds/beetle_paw.wav",
       "volume": 0.45
+    },
+    "ex10_black_hole_collapse_sfx": {
+      "looping": false,
+      "path": "sounds/black_hole_collapse.wav",
+      "volume": 0.55
+    },
+    "ex10_black_hole_hum_sfx": {
+      "looping": true,
+      "path": "sounds/black_hole_hum.wav",
+      "volume": 0.4
     },
     "ex10_black_hole_sfx": {
       "looping": false,
@@ -1799,6 +1846,16 @@
       "path": "sounds/dummy_hit.wav",
       "volume": 0.45
     },
+    "ex10_dummy_thump_sfx": {
+      "looping": false,
+      "path": "sounds/dummy_thump.wav",
+      "volume": 0.5
+    },
+    "ex10_enemy_death_sfx": {
+      "looping": false,
+      "path": "sounds/enemy_death.wav",
+      "volume": 0.5
+    },
     "ex10_enemy_hit_sfx": {
       "looping": false,
       "path": "sounds/enemy_hit.wav",
@@ -1824,6 +1881,16 @@
       "path": "sounds/fireball_cast.wav",
       "volume": 0.45
     },
+    "ex10_fizzle_sfx": {
+      "looping": false,
+      "path": "sounds/fizzle.wav",
+      "volume": 0.4
+    },
+    "ex10_flame_end_sfx": {
+      "looping": false,
+      "path": "sounds/flame_end.wav",
+      "volume": 0.35
+    },
     "ex10_flame_spray_sfx": {
       "looping": true,
       "path": "sounds/flame_spray.wav",
@@ -1844,6 +1911,16 @@
       "path": "sounds/frost_blast.wav",
       "volume": 0.55
     },
+    "ex10_gun_click_sfx": {
+      "looping": false,
+      "path": "sounds/gun_click.wav",
+      "volume": 0.4
+    },
+    "ex10_gun_rack_sfx": {
+      "looping": false,
+      "path": "sounds/gun_rack.wav",
+      "volume": 0.45
+    },
     "ex10_gun_reload_sfx": {
       "looping": false,
       "path": "sounds/gun_reload.wav",
@@ -1858,6 +1935,11 @@
       "looping": false,
       "path": "sounds/ice_beam.wav",
       "volume": 0.42
+    },
+    "ex10_ice_crack_sfx": {
+      "looping": false,
+      "path": "sounds/ice_crack.wav",
+      "volume": 0.45
     },
     "ex10_ice_end_sfx": {
       "looping": false,
@@ -1884,6 +1966,11 @@
       "path": "sounds/iron_crush.wav",
       "volume": 0.65
     },
+    "ex10_iron_thud_sfx": {
+      "looping": false,
+      "path": "sounds/iron_thud.wav",
+      "volume": 0.5
+    },
     "ex10_lava_hiss_sfx": {
       "looping": false,
       "path": "sounds/lava_hiss.wav",
@@ -1904,10 +1991,25 @@
       "path": "sounds/lift_stop.wav",
       "volume": 0.55
     },
+    "ex10_no_mana_sfx": {
+      "looping": false,
+      "path": "sounds/no_mana.wav",
+      "volume": 0.4
+    },
+    "ex10_not_ready_sfx": {
+      "looping": false,
+      "path": "sounds/not_ready.wav",
+      "volume": 0.35
+    },
     "ex10_orb_pickup_sfx": {
       "looping": false,
       "path": "sounds/orb_pickup.wav",
       "volume": 0.5
+    },
+    "ex10_orb_pop_sfx": {
+      "looping": false,
+      "path": "sounds/orb_pop.wav",
+      "volume": 0.35
     },
     "ex10_place_sfx": {
       "looping": false,
@@ -1928,6 +2030,16 @@
       "looping": false,
       "path": "sounds/ricochet.wav",
       "volume": 0.35
+    },
+    "ex10_small_balls_sfx": {
+      "looping": true,
+      "path": "sounds/small_balls.wav",
+      "volume": 0.3
+    },
+    "ex10_spell_switch_sfx": {
+      "looping": false,
+      "path": "sounds/spell_switch.wav",
+      "volume": 0.3
     },
     "ex10_splinter_sfx": {
       "looping": false,
@@ -1953,6 +2065,11 @@
       "looping": false,
       "path": "sounds/thunder.wav",
       "volume": 0.75
+    },
+    "ex10_thunder_snap_sfx": {
+      "looping": false,
+      "path": "sounds/thunder_snap.wav",
+      "volume": 0.45
     },
     "ex10_toss_sfx": {
       "looping": false,
@@ -9263,37 +9380,73 @@
       "filter": "nearest",
       "path": "sprites/status_ice_bat.png"
     },
+    "ex10_status_ice_bat_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_bat_cracked.png"
+    },
     "ex10_status_ice_beetle": {
       "filter": "nearest",
       "path": "sprites/status_ice_beetle.png"
+    },
+    "ex10_status_ice_beetle_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_beetle_cracked.png"
     },
     "ex10_status_ice_crawler": {
       "filter": "nearest",
       "path": "sprites/status_ice_crawler.png"
     },
+    "ex10_status_ice_crawler_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_crawler_cracked.png"
+    },
     "ex10_status_ice_dummy": {
       "filter": "nearest",
       "path": "sprites/status_ice_dummy.png"
+    },
+    "ex10_status_ice_dummy_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_dummy_cracked.png"
     },
     "ex10_status_ice_large": {
       "filter": "nearest",
       "path": "sprites/status_ice_large.png"
     },
+    "ex10_status_ice_large_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_large_cracked.png"
+    },
     "ex10_status_ice_medium": {
       "filter": "nearest",
       "path": "sprites/status_ice_medium.png"
+    },
+    "ex10_status_ice_medium_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_medium_cracked.png"
     },
     "ex10_status_ice_small": {
       "filter": "nearest",
       "path": "sprites/status_ice_small.png"
     },
+    "ex10_status_ice_small_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_small_cracked.png"
+    },
     "ex10_status_ice_troll": {
       "filter": "nearest",
       "path": "sprites/status_ice_troll.png"
     },
+    "ex10_status_ice_troll_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_troll_cracked.png"
+    },
     "ex10_status_ice_wisp": {
       "filter": "nearest",
       "path": "sprites/status_ice_wisp.png"
+    },
+    "ex10_status_ice_wisp_cracked": {
+      "filter": "nearest",
+      "path": "sprites/status_ice_wisp_cracked.png"
     },
     "ex10_stone_platform": {
       "emissive_mask": "sprites/stone_platform_e.png",

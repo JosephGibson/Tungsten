@@ -1,13 +1,15 @@
-//! What the toys draw over the sprites: the shock rings, each black hole's
-//! vortex with its infalling streaks, and the sprays' wisps. Quads no
-//! entity holds, which the frame's extract builds from the toys' state.
+//! What the toys draw: the shock rings and the sprays' wisps over the
+//! sprites, and each black hole's vortex with its infalling streaks under
+//! them, at the tiles' far plane (`level::draw::base`), so actors, balls,
+//! iron, particles and props draw over it. Quads no entity holds, which the
+//! frame's extract builds from the toys' state.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
 use super::components::{BlackHole, Element, Ring, ShockRing, Spray};
-use super::{HOLE_DIAMETER, RING_SECS};
+use super::{HOLE_DIAMETER, HOLE_SHRINK_SECS, RING_SECS};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, drawn_time};
 
@@ -15,20 +17,19 @@ use crate::features::level::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, 
 const SHOCK_RING: &str = "ex10_shock_ring";
 const STREAK: &str = "ex10_infall_streak";
 
-/// The rings, the vortices, then the sprays.
+/// The rings, then the sprays.
 #[must_use]
 pub fn effects(world: &World) -> Vec<SpriteBatch> {
     let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
     };
     let mut batches = rings(world, assets);
-    batches.extend(vortices(world, assets));
     batches.extend(sprays(world, assets));
     batches
 }
 
 /// Each shock ring, growing and fading: a fireball's eases out with a hot
-/// front and a flash, a push's is cool.
+/// front and a flash, a push's is the gravity purple (palette `Ш`).
 fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let mut batches = Vec::new();
     let Some(asset) = assets.get_sprite(SHOCK_RING) else {
@@ -47,7 +48,8 @@ fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         let size = 32.0 + spread * (ring.size - 32.0);
         let fade = ((1.0 - progress) * 220.0) as u8;
         let color = match ring.kind {
-            Ring::Push => [170, 150, 255, fade],
+            Ring::Push => [196, 74, 222, fade],
+            Ring::Collapse => [244, 166, 250, fade],
             _ => [255, 210, 140, fade],
         };
         push_quad(
@@ -91,11 +93,18 @@ fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     batches
 }
 
-/// Each black hole: its halo, disk and two vortices turning, the streaks
-/// falling in, then its photon ring and core, fading in its last quarter
-/// second.
-fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
+/// Each black hole, for the sprite base to draw between the tiles and the
+/// sprites: its halo, disk and two vortices turning in the gravity purple
+/// (palette `Ц`, `Щ`, `Ш`, `Щ`), the streaks falling in, then its photon
+/// ring and core, shrinking to nothing over its last
+/// [`HOLE_SHRINK_SECS`]. Every quad sits at the tiles' far plane, so the
+/// order holds under a depth sort too.
+#[must_use]
+pub fn vortices(world: &World) -> Vec<SpriteBatch> {
     const D: f32 = HOLE_DIAMETER;
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
+        return Vec::new();
+    };
     let time = drawn_time(world);
     let mut batches = Vec::new();
     let materials = |id: &str| match id {
@@ -104,15 +113,15 @@ fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         _ => None,
     };
     let under: [(&str, f32, f32, [u8; 4]); 4] = [
-        (HALO, D * 2.6, 0.0, [110, 80, 255, 150]),
+        (HALO, D * 2.6, 0.0, [140, 36, 172, 150]),
         (
             "ex10_accretion_disk",
             D * 1.6,
             time * 0.9,
-            [255, 125, 150, 150],
+            [244, 166, 250, 150],
         ),
-        ("ex10_vortex", D * 1.8, -time * 2.8, [95, 125, 255, 200]),
-        ("ex10_vortex", D * 1.2, time * 4.5, [190, 170, 255, 225]),
+        ("ex10_vortex", D * 1.8, -time * 2.8, [196, 74, 222, 200]),
+        ("ex10_vortex", D * 1.2, time * 4.5, [244, 166, 250, 225]),
     ];
     let over: [(&str, f32, f32, [u8; 4]); 2] = [
         (
@@ -125,14 +134,14 @@ fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     ];
     for (hole, at) in world.query::<(&BlackHole, &Transform)>() {
         let at = at.position;
-        let fade = (hole.left * 4.0).min(1.0);
+        let shrink = (hole.left / HOLE_SHRINK_SECS).clamp(0.0, 1.0);
         let layer =
             |batches: &mut Vec<SpriteBatch>,
              (id, diameter, rotation, color): (&str, f32, f32, [u8; 4])| {
                 let Some(asset) = assets.get_sprite(id) else {
                     return;
                 };
-                let size = diameter * (1.0 + 0.045 * (time * 7.0).sin());
+                let size = diameter * shrink * (1.0 + 0.045 * (time * 7.0).sin());
                 let mut quad = instance(
                     asset,
                     at - Vec2::splat(size / 2.0),
@@ -140,7 +149,6 @@ fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
                     color,
                 );
                 quad.rotation = rotation;
-                quad.color[3] = (f32::from(quad.color[3]) * fade) as u8;
                 push_quad(batches, asset, quad, materials(id));
             };
         for spec in under {
@@ -149,18 +157,18 @@ fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         if let Some(asset) = assets.get_sprite(STREAK) {
             for i in 0..48 {
                 let progress = (i as f32 / 48.0 + time * 0.45).fract();
-                let radius = (1.0 - progress) * D * 1.05;
+                let radius = (1.0 - progress) * D * 1.05 * shrink;
                 let angle = i as f32 * 2.399_963_2 + time * 3.5 + progress * 5.0;
                 let (sin, cos) = angle.sin_cos();
                 // Along the spiral: orbiting at 5.75 rad/s while it falls in.
                 let heading = Vec2::new(-sin, cos) * radius * 5.75 - Vec2::new(cos, sin) * D * 0.47;
-                let size = Vec2::splat(22.0 + progress * 18.0);
+                let size = Vec2::splat((22.0 + progress * 18.0) * shrink);
                 let warm = progress * progress;
                 let color = [
                     (150.0 + 105.0 * warm) as u8,
                     (200.0 - 10.0 * warm) as u8,
                     (255.0 - 145.0 * warm) as u8,
-                    (230.0 * fade * (std::f32::consts::PI * progress).sin()) as u8,
+                    (230.0 * (std::f32::consts::PI * progress).sin()) as u8,
                 ];
                 let mut quad = instance(
                     asset,
@@ -175,6 +183,9 @@ fn vortices(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         for spec in over {
             layer(&mut batches, spec);
         }
+    }
+    for quad in batches.iter_mut().flat_map(|batch| &mut batch.instances) {
+        quad.z_norm = 1.0;
     }
     batches
 }

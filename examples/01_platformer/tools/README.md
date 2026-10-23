@@ -63,7 +63,7 @@ pixel) for any hand-authored sprite. The modules:
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust stages, the elevator's gantry, cage and cable, and the falls' plume |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the six summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins, the ball's cube, the ice glint, the muzzle flash, the tracer and the drops' orbs |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
@@ -195,7 +195,10 @@ are independent and cannot collide. Props specify registry IDs, optional
 animation and `back`/`world` depth; all pieces of a waterfall start at phase zero.
 Emitters specify point positions and distinct deterministic seeds. Their summed
 maximum live count is 248, with a global runtime budget of 2048 and at most 16
-transient jump/landing/explosion emitters. Black holes retain their own 1200-particle cap.
+transient bursts (jumps, landings, explosions) counted at once; at the cap a key
+burst (a death, gore, a summon, a shatter or a refusal) takes the oldest
+cosmetic burst's slot, whose particles fade uncounted. Each open black hole caps
+its particles at 400, so the three that can be open take 1,200.
 
 The map is 430 × 72 tiles with its kill row at 71. `landmarks` are its six
 areas, which must tile its columns from 0 to the last; each names its
@@ -315,7 +318,8 @@ or moving fire the level's data places, hurt through the kit's `contact_damage`:
 away, so the third touch takes Normal's 100 health (Easy has 150, Hard 68). Each
 hit plays the hit sound and kicks the camera through the player's `damaged` cues,
 knocks it back for 0.18 seconds and opens the kit's 1.1-second window in which
-further hits are ignored; the lit courier shows no hit flash. Falling below the
+further hits are ignored; the lit courier shows no hit flash, but a blow reddens
+it for 0.12 seconds and spills blood. Falling below the
 kill row or wholly out of the world box deals all the health left, window or not.
 Game over is the shell's, and its Retry loads the run's last good save. A fireball
 bursts a bowling ball with a short particle burst and an expanding ring; both
@@ -373,8 +377,14 @@ the fire missile borrows the drips. All emitters remain subject to the global
 The kit's controller allows one air jump after takeoff (or walking off an edge):
 release and press Space again to use it; holding Space cannot spend it. It plays the
 tuck-and-burst clip until the ascent ends, then the fall clip, and emits a short
-18-spark amber burst at the feet. Landing gives it back. The routes still pass with
-single jumps.
+18-spark amber burst at the feet with a whoosh (`ex10_air_jump_sfx`). Landing
+gives it back. The routes still pass with single jumps.
+
+The controller never pushes dynamic bodies, so a jump press shoves them itself
+(`player_unstick`, 01 (f)): bodies over the courier's head and shoulders fly up
+and away at 1,600 pixels/second over their mass, those beside it at 600, and a
+jump they blocked launches again the next step at the jump's own speed,
+spending no air jump.
 
 The entry clearing is 16 tiles wide. Its first steps, optional overhead platforms,
 and lift sit farther from spawn, with fewer foreground props in the launch area.
@@ -457,7 +467,7 @@ bound the effect. Finished transient emitters use the existing cleanup.
 
 Black-hole sparks start in a 135–175-pixel annulus, spiral inward with increasing
 tangential speed, warm from blue/violet to amber, and disappear at the core.
-The existing 1,200-particle cap remains. Fire trails use soft flame bodies with
+Each hole's emitters hold 400: 300 sparks and 100 dust. Fire trails use soft flame bodies with
 a cream/yellow/orange/red ramp, while torch sparks use the same warm ramp with
 smaller sizes and longer lifetimes. Both accelerate upward with varied speeds,
 sizes, lifetimes and rotation. The fire-destruction explosion remains a separate
@@ -507,7 +517,16 @@ its element's border colour: ember orange for fire, ice cyan for cold, violet fo
 shock (lightning), indigo for mana and the summon, and bone white for the physical
 toys and the gun's magazine. Slot 0 shows the summon's selected type, the dummy's
 icon. The palette's indigo shades (`Γ Π Ξ`) are the mana's, and its violet ones
-(`Δ Λ Σ`) the black hole's icon and the lightning's.
+(`Δ Λ Σ`) the black hole's icon and the lightning's. Its gravity ramp
+(`Ж Ф Ц Ш Щ`, 01 (f)), deep magenta toward indigo, is the force push's ring and
+warp burst and the black hole's collapse ring and under-layers, apart from
+shock's violet and mana's indigo.
+
+A refused cast spends nothing and says why, once a press: `ex10_no_mana_sfx`
+for want of mana, `ex10_not_ready_sfx` for a cooldown or no charge left, and a
+`fizzle` burst with `ex10_fizzle_sfx` at the cursor where nothing fits (a toy at
+its cap, a summon or an iron block that does not fit, no cursor). Choosing
+another slot or summon type ticks (`ex10_spell_switch_sfx`).
 
 ## Fire missile, extinguishing and sound effects
 
@@ -527,8 +546,12 @@ caps. A white-hot flash fades over 0.18 seconds while two shock fronts expand
 rapidly toward the blast's push radius. It pushes every dynamic body within
 288 pixels straight away from it: 2,500 pixels/second for a
 unit-mass body (a ball) at the centre, falling linearly to nothing at the edge and
-divided by mass, so an iron block barely moves. The courier, a kinematic body,
-stays put. The blast ignites every small ball within 72 pixels through
+divided by mass, so an iron block barely moves. Every live enemy within it is
+knocked back through the kit's `knock_back`, at the same falloff times its
+kind's black-hole pull (`toys::radial_push`); the troll, whose knockback resists
+the push whole, stands. The courier, a kinematic body, stays put. The force push,
+slot 5, is the same push over six tiles, drawn as a gravity-purple ring with a
+`warp_burst`. The blast ignites every small ball within 72 pixels through
 `elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
 not hurt the player.
 The camera shakes with trauma 0.68 for a blast within a quarter view width of
@@ -541,7 +564,13 @@ where the missile burns out, or flares and fades over 0.5 seconds where it
 explodes, flaring to four times its flight intensity with twice the light radius.
 Point lights warm the lit terrain, props and iron around the explosion.
 
-A black hole, slot 6, opens at the cursor for 4 seconds, one at a time. It puts out
+A black hole, slot 6, opens at the cursor for 6 seconds; at most three stay open,
+and a fourth collapses the oldest. Over its last 0.5 seconds a hole shrinks to
+nothing and closes with a small gravity ring and `ex10_black_hole_collapse_sfx`.
+While any is open the holes hum on one shared voice, `ex10_black_hole_hum_sfx`,
+louder as the nearest comes near, silent past 900 pixels and under pause. A hole
+sweeps up the small balls whose centre comes within 24 pixels of its own,
+nearest first, at most 12 a hole a step, every eighth in a `poof`. It puts out
 every burning small ball inside its 384-pixel pull radius in the same fixed step,
 leaving it spent exactly as after a normal burnout. At most four sampled balls a
 step puff an ember-to-steam `extinguish` burst, and the sizzle plays at most every
@@ -549,12 +578,14 @@ step puff an ember-to-steam `extinguish` burst, and the sizzle plays at most eve
 
 The black hole draws its soft halo, a hot accretion disk and two counter-rotating
 vortex layers, then 48 infalling streaks turned along their spiral, the photon
-ring and the horizon, all after the engine's sprites and particles. Its five sprites (`vortex`,
+ring and the horizon, in 01's sprite base between the tiles and the sprites at
+the tiles' far plane (`z_norm` 1.0), so actors, props, toys and particles draw
+over it; the halo, the disk and the vortex layers take the gravity ramp. Its five sprites (`vortex`,
 `vortex_core`, `accretion_disk`, `photon_ring`, `infall_streak`) are white alpha
 fields on 96-pixel canvases, an exception to the 64 × 64 rule as the troll's
 128-pixel frames are. They are
 tinted at extraction, fade to transparent before their edges, and use `linear`
-filtering. Its 1,200-particle budget splits into 900 sparks and 300 dark-gas
+filtering. Its 400-particle budget splits into 300 sparks and 100 dark-gas
 `black_hole_dust` particles; the dust emitter is anchored to the hole, and both
 follow the same accretion spiral.
 
@@ -570,32 +601,33 @@ its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 `HAND_AUTHORED_SOUNDS` (currently only `black_hole.ogg`). The one-shot sounds play
 through the kit's cues: 01 sends a `Sounded` game event, and
 `content/data/cue_rules/sounds.json` plays its sound, throttled by `min_interval`.
-The sprays' loops are voices of their own.
+The sprays' loops, the small balls' pour and the holes' hum are voices 01 holds;
+a spray's loop and the pour stop over 0.08 seconds.
 
 | ID | File | Event |
 | --- | --- | --- |
 | `ex10_fireball_cast_sfx` | `fireball_cast.wav` | A missile is cast |
-| `ex10_fireball_blast_sfx` | `fireball_blast.wav` | A missile explodes |
+| `ex10_fireball_blast_sfx` | `fireball_blast.wav` | A missile explodes, or a bowling ball bursts in fire |
 | `ex10_extinguish_sfx` | `extinguish.wav` | A black hole puts out burning balls |
 | `ex10_player_hit_sfx` | `player_hit.wav` | The player takes a blow or the killing hit, through the `player_hurt` rule (never a burn or bleed tick) |
 | `ex10_staff_gutter_sfx` | `staff_gutter.wav` | The staff light gutters out for want of mana: a starved flame's sputter, slowing, with a few last pops |
 | `ex10_iron_crush_sfx` | `iron_crush.wav` | Iron crushes small balls or hurts the player |
 | `ex10_ice_beam_sfx` | `ice_beam.wav` | The ice spray starts |
 | `ex10_ice_spray_sfx` | `ice_spray.wav` | Cold rushing wind loops while the ice spray is held |
-| `ex10_ice_freeze_sfx` | `ice_freeze.wav` | Iron finishes freezing, with crackles and glassy chimes |
+| `ex10_ice_freeze_sfx` | `ice_freeze.wav` | Iron or a creature finishes freezing, with crackles and glassy chimes |
 | `ex10_ice_end_sfx` | `ice_end.wav` | A soft pressure release when the ice spray is let go |
 | `ex10_ice_shatter_sfx` | `ice_shatter.wav` | Brittle iron fractures under heat or a fast iron impact |
 | `ex10_flame_start_sfx` | `flame_start.wav` | The flamethrower catches: a low whoomph opening into a hiss |
 | `ex10_flame_spray_sfx` | `flame_spray.wav` | Its roar loops while it is held |
-| `ex10_force_push_sfx` | `force_push.wav` | A force push: a deep whump and a rush of air |
+| `ex10_force_push_sfx` | `force_push.wav` | A force push, a gravity warp: a low tone bowing down and back against its detuned twin, and a rush of air |
 | `ex10_toss_sfx` | `toss.wav` | A bowling ball leaves the hand |
-| `ex10_place_sfx` | `place.wav` | An iron block or small balls set down |
+| `ex10_place_sfx` | `place.wav` | An iron block set down |
 | `ex10_black_hole_sfx` | `black_hole.ogg` | A black hole opens (hand-authored) |
 | `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs it plays: a plucked tick, two bells rising, two falling |
 | `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
 | `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
 | `music_explore`, `music_pause` | `music_*.wav` | A run's exploration loop, and pause's over the quieted run |
-| `ex10_gun_shot_sfx` | `gun_shot.wav` | A shot: a cracking burst over a low punch and a slide's tick |
+| `ex10_gun_shot_sfx` | `gun_shot.wav` | A shot: a crack over a deep punch and a booming body, the slide's tick |
 | `ex10_gun_reload_sfx` | `gun_reload.wav` | The magazine whole again: a slide, two clicks and an iron ring |
 | `ex10_ricochet_sfx` | `ricochet.wav` | A bullet turns off iron: a ping that whines away |
 | `ex10_thunder_sfx` | `thunder.wav` | A lightning strike: a splitting crack and a rolling rumble |
@@ -605,6 +637,24 @@ The sprays' loops are voices of their own.
 | `ex10_dummy_hit_sfx` | `dummy_hit.wav` | The dummy takes damage, through its `damaged` cue: a sackcloth thump |
 | `ex10_summon_sfx` | `summon.wav` | A dummy summoned: rising bells over a soft swell |
 | `ex10_splinter_sfx` | `splinter.wav` | A bullet through a wooden deck, through the `splintered` rule: a sharp crack, a hollow knock and splinters rattling away |
+| `ex10_black_hole_hum_sfx` | `black_hole_hum.wav` | A 2-second loop while a hole is open: a deep drone wavering about 46 Hz with a fifth over it, a dark whirl of air and a slow pulse |
+| `ex10_black_hole_collapse_sfx` | `black_hole_collapse.wav` | A hole closing: an inward rush rising to a snap, then an implosion under a rumble |
+| `ex10_iron_thud_sfx` | `iron_thud.wav` | A block landing hard: a deep thud and knock, a dull clang ringing out, grit settling |
+| `ex10_fizzle_sfx` | `fizzle.wav` | A cast with no room: a sputtering hiss falling away, pops, a dull sinking tone |
+| `ex10_thunder_snap_sfx` | `thunder_snap.wav` | A bolt landing, under the thunder: a bright snap, a zip falling in pitch, a buzzing sizzle |
+| `ex10_ice_crack_sfx` | `ice_crack.wav` | A thaw: a creak under strain, a sharp crack with a glassy ring, meltwater drips |
+| `ex10_ball_thud_sfx` | `ball_thud.wav` | A bowling ball landing hard: a low thump under a hollow resin thock and a rattle |
+| `ex10_gun_click_sfx` | `gun_click.wav` | The trigger with no round or during a reload: the hammer's light click |
+| `ex10_gun_rack_sfx` | `gun_rack.wav` | A reload begun on R: the magazine let go and the slide racked, two clacks and a scrape |
+| `ex10_flame_end_sfx` | `flame_end.wav` | The flamethrower let go: the roar dropping into a soft puff, last crackles |
+| `ex10_air_jump_sfx` | `air_jump.wav` | The air jump: the cloak snapping open in an upward whoosh, a faint chime |
+| `ex10_no_mana_sfx` | `no_mana.wav` | A cast refused for mana: a hollow knock and a tone sinking away |
+| `ex10_spell_switch_sfx` | `spell_switch.wav` | Another slot or summon type: a soft click and a short glassy tick |
+| `ex10_not_ready_sfx` | `not_ready.wav` | A cast refused on a cooldown or with no charge: two muted low ticks |
+| `ex10_orb_pop_sfx` | `orb_pop.wav` | An orb a kill drops: a bubbly rising pop and three small bells |
+| `ex10_small_balls_sfx` | `small_balls.wav` | A 2-second loop while small balls pour: a dense patter of glass clicks over a hiss and the pile's roll |
+| `ex10_enemy_death_sfx` | `enemy_death.wav` | An enemy killed, through its prefab's `killed` cue with a light shake: a last thwack and crunch, a falling groan, the body's fall |
+| `ex10_dummy_thump_sfx` | `dummy_thump.wav` | The dummy knocked out, through its `killed` cue: a heavy sackcloth thump, straw bursting and settling |
 | `ambience_clearing` | `ambience_clearing.wav` | The clearing at night: crickets, a breeze in the oaks, an owl |
 | `ambience_aqueduct` | `ambience_aqueduct.wav` | Water trickling along the channel and dripping from its leaks |
 | `ambience_ravine` | `ambience_ravine.wav` | The falls' roar with slow surges and a hiss of mist |
@@ -635,8 +685,10 @@ Its visuals and sound start on press even before the next fixed physics step;
 freezing exposure still uses only simulation time.
 Snowflake crystals, expanding blue-white mist, soft fluttering wisps and contact
 splashes replace the straight beam. Newborn spray particles rotate into their
-birth aim and expire before blocking surfaces. One channel owns three continuous
-emitters, capped at 292 particles combined under the global 2,048 budget;
+birth aim, draw at z 11, over the enemies, the dummy and the courier, from their
+second frame, and expire before blocking surfaces. One channel owns three
+continuous emitters, the ice spray's capped at 292 particles combined under the
+global 2,048 budget and the flamethrower's stream at 180, 330 a second;
 completion and shatter bursts share the existing 16-transient-emitter cap.
 Each channel varies its seeded particles. Contact splashes prefer the closest
 exposed iron surface across the cone, including contact away from the centerline.
@@ -653,10 +705,10 @@ spinning outward, a faster expanding cold ring, and a distinct glass-fracture so
 Completion and fracture cues have separate shared 0.1-second sound intervals;
 at most 16 cold pulses live at once, lasting 0.24 seconds for freeze completion
 and 0.32 seconds for fracture.
-Release, death or loss of the caster immediately stops the loop and removes its
-emitters, including on frames with no fixed step; existing particles finish fading.
-Normal release adds a quiet 0.18-second pressure tail; death and caster loss stop
-quietly.
+Release, death or loss of the caster stops the loop over 0.08 seconds and removes
+its emitters, including on frames with no fixed step; existing particles finish
+fading. Normal release adds a quiet 0.18-second pressure tail, the flamethrower's
+a dying puff (`ex10_flame_end_sfx`); death and caster loss stop quietly.
 
 Iron under the spray gradually gains a pale ice shell, white frost rims, crystalline facets,
 branching cracks and hanging icicles. Four unlit `iron_frost_big_*` overlays keep
@@ -666,7 +718,7 @@ iron loses horizontal speed at 120 pixels/second², independently of normal fric
 A fireball's thermal blast shatters every frozen iron surface within 72 pixels,
 including contact at a block's edge. Each full block becomes exactly 16 physical
 30-pixel scrap blocks in a 4×4 grid. Each scrap has 1/16 of a full block's mass
-(12.5) and sliding friction (93.75 pixels/second²), reduced to 7.5 pixels/second²
+(25) and sliding friction (93.75 pixels/second²), reduced to 7.5 pixels/second²
 when frozen, so the sixteen pieces preserve the block's total mass.
 They inherit the block's velocity and launch outward at varied speeds of
 800–1,200 pixels/second, with a small upward lift. Surface explosions also throw
@@ -720,7 +772,11 @@ near-white violet). Every new sprite is unlit, drawn over the lit world:
   block over the frame's box, `status_crackle_<class>_<0|1>` a two-frame violet
   crackle, and `status_halo_<class>` the stun's ring above the head. Chilled shows
   a frost tint and `chill_flakes`, bleeding `bleed_drips`, burning today's `fire_*`
-  flames.
+  flames. 01 (f) takes the frost toward frozen's tint as the cold bucket fills,
+  sets the flames at 0.55 of the side on three spots over a warm halo with
+  `burn_embers` and a flickering ember tint, and gives each cube a cracked twin,
+  `status_ice_<name>_cracked`, drawn by the cube's own code and held to its box
+  by `check_ice_fits`, which a freeze's last 0.75 seconds flickers to at 8 Hz.
 - **The lightning bolt**: eight 24 × 64 segments, `bolt_0` to `bolt_7`, each entering
   at its top centre and leaving `BOLT_EXITS` pixels aside at its bottom, so a strike
   stacks five to eight of them from the sky down, each starting where the last left;
@@ -738,20 +794,36 @@ Nine particle configs join, over today's sprites: `muzzle_flash` and `ricochet`
 the dummy's), and `bleed_drips`, `chill_flakes` and `shock_sparks` (the statuses),
 each under the shared emitter and particle caps. 01 (e) adds `staff_gutter`, a curl
 of smoke off the staff light's last orange as it gutters out, and `frost_breath`,
-a crawler's puff of frost as it shrinks from the light.
+a crawler's puff of frost as it shrinks from the light. 01 (f) adds `blood_burst`
+and `blood_spurt` (a blow on flesh or the courier, and bleeding's start),
+`gore_burst` (iron's kill), `burn_embers`, `warp_burst` (the force push, on
+`flame_glow`'s soft glow in the gravity ramp), `strike_sparks` (a bolt's
+landing), `thaw_glints`, `iron_dust` (a hard landing) and `fizzle` (a refusal),
+and makes `bleed_drips` denser (24 at 14 a second), larger and a brighter maroon.
 
 ## Iron blocks and crushing
 
-Slot 7 sets an iron block down at the cursor, for 15 mana: three charges, one back
-every 2 seconds; at most 24, the oldest going. It is a
+Slot 7 sets an iron block down at the cursor, for 7.5 mana: three charges, one back
+every 2 seconds; at most 24, the oldest going in a poof. A spot where the block
+would meet a solid tile, a body that is not dynamic (a deck, a slab, lava's
+surface, the elevator, the courier or an enemy) or another block is refused
+before the cast spends anything, with a fizzle; balls in the way are shoved
+aside. It is a
 120-pixel square collider, four large-ball diameters on a side, drawn from four
 64-pixel lit quarters (`iron_brick_big_*`: riveted plates cut along their seams),
-so it keeps the terrain's pixel scale. It weighs 200 balls. Iron receives 20%
+so it keeps the terrain's pixel scale. It weighs 400 balls and falls harder:
+past 30 pixels/second downward it gains 1,800 pixels/second² more, half the
+world's gravity, unless a troll holds or has thrown it. Iron receives 20%
 of a ball's black-hole acceleration at the same distance, enough for a nearby
 hole to drag it along the floor. Loose scraps receive a ball's full acceleration;
 other bodies' pull is divided by mass.
 The solver has no friction, so a supported block loses horizontal
-speed at 1,500 pixels/second². Lifts carry it like the player and balls.
+speed at 1,500 pixels/second². Lifts carry it like the player and balls. A block
+meeting a still body or a tile at 900 pixels/second or more raises `iron_dust`,
+a shake a fifth of a blast's and `ex10_iron_thud_sfx`, once a block a step. A
+body iron hits takes a push along the closing line, 0.6 times the closing speed
+and at most 900 pixels/second, through the hit; a hit that kills a flesh target
+bursts it in `gore_burst` in place of its poof.
 
 A block moving at 360 pixels/second or more into a body, taken from its velocity
 before the physics step, hurts the player it drives into (34, and 34 more per

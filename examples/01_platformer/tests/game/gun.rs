@@ -8,7 +8,9 @@
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::gun::components::Bullet;
-use example_01_platformer::features::gun::{self, BALL_KICK, MAX_RICOCHETS, SHOOT, SHOT_DAMAGE};
+use example_01_platformer::features::gun::{
+    self, BALL_KICK, MAX_RICOCHETS, RELOAD, SHOOT, SHOT_DAMAGE,
+};
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::shared::SaveId;
@@ -98,9 +100,9 @@ fn parts(harness: &UiHarness, target: Entity) -> Vec<(f32, bool)> {
 fn the_magazine_empties_and_comes_back_whole_after_the_reload() {
     let (mut harness, _) = sky();
     aim_at(&mut harness, Vec2::new(700.0, 500.0));
-    assert_eq!(rounds(&harness), (12, 12));
+    assert_eq!(rounds(&harness), (9, 9));
     harness.harness_mut().press_action(SHOOT);
-    let mut seen = vec![12];
+    let mut seen = vec![9];
     let mut shots = 0;
     for _ in 0..200 {
         harness.step(1);
@@ -114,8 +116,8 @@ fn the_magazine_empties_and_comes_back_whole_after_the_reload() {
         }
     }
     harness.harness_mut().release_action(SHOOT);
-    assert_eq!(seen, (0..=12).rev().collect::<Vec<u32>>(), "a round a shot");
-    assert_eq!(shots, 12);
+    assert_eq!(seen, (0..=9).rev().collect::<Vec<u32>>(), "a round a shot");
+    assert_eq!(shots, 9);
     // Held through the empty magazine, it fires nothing; then every round
     // comes back at once, 1.2 s after the last.
     let mut waited = 0;
@@ -124,9 +126,9 @@ fn the_magazine_empties_and_comes_back_whole_after_the_reload() {
         harness.step(1);
         waited += steps_this_frame(&harness);
         reloads += sounds(&harness, Sound::Reloaded);
-        assert!(matches!(rounds(&harness).0, 0 | 12), "all at once");
+        assert!(matches!(rounds(&harness).0, 0 | 9), "all at once");
     }
-    assert_eq!(rounds(&harness), (12, 12));
+    assert_eq!(rounds(&harness), (9, 9));
     assert!((70..=74).contains(&waited), "1.2 s: {waited} steps");
     assert_eq!(reloads, 1, "the reload's sound");
 }
@@ -266,7 +268,12 @@ fn a_ball_or_iron_behind_a_nearer_dummy_or_wall_is_untouched() {
     let id = shot(&mut harness, Vec2::new(1480.0, IRON_Y), Vec2::X * SPEED);
     harness.step(1);
     assert!(bullet(&harness, id).is_none(), "the wall ends it");
-    assert_eq!(bursts(&harness, "ex10_ricochet"), 0, "no turn off the iron");
+    // Its end puffs dust and sparks; a turn would ring.
+    assert_eq!(
+        sounds(&harness, Sound::Ricocheted),
+        0,
+        "no turn off the iron"
+    );
     assert!(velocity(&harness, iron).length() < 1.0);
 }
 
@@ -356,19 +363,19 @@ fn the_magazine_shows_its_rounds_and_reloading() {
             })
             .count()
     };
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "12 / 12");
-    assert_eq!(lit(&harness), 12);
-    hold_until(&mut harness, 9);
-    harness.step(1);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 12");
+    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
     assert_eq!(lit(&harness), 9);
+    hold_until(&mut harness, 6);
+    harness.step(1);
+    assert_eq!(text_of(harness.tree(), hud.magazine.text), "6 / 9");
+    assert_eq!(lit(&harness), 6);
     hold_until(&mut harness, 0);
     harness.step(1);
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "reloading");
     assert_eq!(lit(&harness), 0);
     harness.step(80);
-    assert_eq!(text_of(harness.tree(), hud.magazine.text), "12 / 12");
-    assert_eq!(lit(&harness), 12);
+    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
+    assert_eq!(lit(&harness), 9);
 }
 
 /// What a shot met on the map over up to a second: its wall meetings in
@@ -447,4 +454,64 @@ fn a_shot_turns_off_the_mines_iron_and_passes_the_bridges_wood_to_end_at_stone()
         ],
         "it passed the wood and ended at the stone"
     );
+}
+
+/// Presses `action` until a fixed step has read it, then lets it go: the
+/// sounds of `sound` those frames made.
+fn tap_for(harness: &mut UiHarness, action: &str, sound: Sound) -> usize {
+    harness.harness_mut().press_action(action);
+    let mut heard = 0;
+    for _ in 0..4 {
+        harness.step(1);
+        heard += sounds(harness, sound);
+        if steps_this_frame(harness) > 0 {
+            break;
+        }
+    }
+    harness.harness_mut().release_action(action);
+    harness.step(1);
+    heard + sounds(harness, sound)
+}
+
+#[test]
+fn r_tops_up_a_part_empty_magazine_and_an_empty_trigger_clicks() {
+    let (mut harness, _) = sky();
+    aim_at(&mut harness, Vec2::new(700.0, 500.0));
+    // Four shots, then R: racked, and no shot while it reloads, though the
+    // trigger is held through it, its press clicking once.
+    hold_until(&mut harness, 5);
+    harness.step(15);
+    assert_eq!(tap_for(&mut harness, RELOAD, Sound::Racked), 1, "racked");
+    harness.harness_mut().press_action(SHOOT);
+    let (mut shots, mut clicks) = (0, 0);
+    for _ in 0..30 {
+        harness.step(1);
+        shots += sounds(&harness, Sound::Shot);
+        clicks += sounds(&harness, Sound::DryFired);
+    }
+    harness.harness_mut().release_action(SHOOT);
+    assert_eq!((shots, clicks), (0, 1), "blocked, one click");
+    for _ in 0..60 {
+        if rounds(&harness).0 == 9 {
+            break;
+        }
+        harness.step(1);
+    }
+    assert_eq!(rounds(&harness), (9, 9), "nine after it");
+    // A whole magazine takes no reload.
+    assert_eq!(
+        tap_for(&mut harness, RELOAD, Sound::Racked),
+        0,
+        "nothing to top up"
+    );
+    // Emptied, each press of the trigger clicks once and fires nothing.
+    hold_until(&mut harness, 0);
+    for _ in 0..2 {
+        assert_eq!(
+            tap_for(&mut harness, SHOOT, Sound::DryFired),
+            1,
+            "a click a press"
+        );
+    }
+    assert_eq!(rounds(&harness).0, 0);
 }

@@ -59,6 +59,9 @@ pub struct Moves {
     pub pose: f32,
     /// Game seconds the lantern still burns hot from a cast.
     pub glow: f32,
+    /// Game seconds a blow's red tint still shows, fading
+    /// (`systems::HURT_SECS`).
+    pub hurt: f32,
     /// The last cast's aim, which its pose and toss face.
     pub aim: Vec2,
     /// The one-shot clip shown over the animator's.

@@ -46,7 +46,8 @@ def particle_configs():
         'wind_motes':config('mote',16,4,3,45,.1,direction=(1,-.2),spread=25),
         'ball_explosion':config('spark',24,24,.55,310,.24,spread=360,burst=True),
         'small_ball_impact':config('spark',18,18,.5,230,.17,spread=360,burst=True),
-        'black_hole':config('spark',900,540,1.4,260,.18,spread=360)}
+        # A third of 01 (a)'s sparks a hole, so three open holes fit the budget.
+        'black_hole':config('spark',300,180,1.4,260,.18,spread=360)}
     configs['double_jump'].update(initial_velocity=dict(kind='radial',speed=dict(min=130,max=240)),gravity=[0,80],color_over_life=[[0,[1,.95,.6,1]],[1,[1,.6,.15,0]]])
     configs['black_hole'].update(initial_velocity=dict(kind='radial',speed=dict(min=100,max=260)),
         lifetime=dict(min=1.5,max=1.9),gravity=[0,0],drag_per_sec=0,
@@ -112,10 +113,11 @@ def particle_configs():
         gravity=[0, -4], drag_per_sec=0.4, start_scale=dict(min=.06, max=.11),
         alpha_over_life=[[0, 0], [.12, 1], [.3, .2], [.48, 1], [.66, .15], [.84, .9], [1, 0]],
         color_over_life=[[0, [.82, 1, .46, 1]], [1, [.66, .9, .36, 1]]])
-    # Dark gas shares the black hole's 1,200-particle budget and its spiral steering.
+    # Dark gas shares a black hole's 400-particle budget and its spiral
+    # steering: three open holes take 1,200 of the 2,048.
     configs['black_hole_dust'] = dict(
-        configs['black_hole'], sprite='ex10_dust', max_alive=300,
-        emission=dict(kind='continuous', rate_hz=150), lifetime=dict(min=1.6, max=2.2),
+        configs['black_hole'], sprite='ex10_dust', max_alive=100,
+        emission=dict(kind='continuous', rate_hz=50), lifetime=dict(min=1.6, max=2.2),
         initial_velocity=dict(kind='radial', speed=dict(min=60, max=200)),
         start_scale=dict(min=.16, max=.36), angular_velocity=dict(min=-1.5, max=1.5),
         scale_over_life=[[0, .5], [.3, 1], [1, .3]],
@@ -198,16 +200,18 @@ def particle_configs():
         color_over_life=[[0, [.9, 1, 1, 1]], [.4, [.4, .8, 1, 1]], [1, [.2, .55, 1, 0]]],
         alpha_over_life=[[0, 0], [.12, .65], [.6, .4], [1, 0]])
     # The fire spray: sparks streaming along the aim through a hot haze, a
-    # shorter reach than the cold spray's.
-    fire_ramp = [[0, [1, .95, .6, 1]], [.45, [1, .5, .12, 1]], [1, [.45, .12, .05, 0]]]
+    # shorter reach than the cold spray's; 01 (f) thickens the stream and
+    # runs it hotter, white at the nozzle through yellow to orange.
+    fire_ramp = [[0, [1, 1, .88, 1]], [.22, [1, .86, .38, 1]], [.5, [1, .52, .12, 1]],
+                 [1, [.5, .13, .05, 0]]]
     configs['flame_spray'] = dict(
-        config('spark', 120, 220, .4, 620, .22, direction=(1, 0), spread=28),
+        config('spark', 180, 330, .4, 620, .27, direction=(1, 0), spread=28),
         initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
                               speed=dict(min=420, max=620)),
         lifetime=dict(min=.25, max=.4), gravity=[0, -60], drag_per_sec=.3,
-        angular_velocity=dict(min=-6, max=6), start_scale=dict(min=.1, max=.24),
+        angular_velocity=dict(min=-6, max=6), start_scale=dict(min=.12, max=.27),
         scale_over_life=[[0, .6], [.2, 1], [1, .2]],
-        color_over_life=fire_ramp, alpha_over_life=[[0, .6], [.1, 1], [.7, .8], [1, 0]])
+        color_over_life=fire_ramp, alpha_over_life=[[0, .7], [.1, 1], [.7, .85], [1, 0]])
     configs['flame_mist'] = dict(
         configs['ice_mist'],
         color_over_life=[[0, [1, .9, .5, 1]], [.4, [1, .45, .1, 1]], [1, [.3, .1, .05, 0]]],
@@ -252,12 +256,13 @@ def particle_configs():
         scale_over_life=[[0, .5], [.3, 1.1], [1, 1.6]],
         alpha_over_life=[[0, 0], [.08, .8], [.6, .45], [1, 0]],
         color_over_life=[[0, [1, 1, 1, 1]], [1, [.75, .8, .88, 1]]])
+    # 01 (f): bleeding drips denser, larger and a brighter maroon.
     configs['bleed_drips'] = dict(
-        config('droplet', 10, 6, .8, 40, .08, direction=(0, 1), spread=40),
-        gravity=[0, 420], drag_per_sec=.2, lifetime=dict(min=.45, max=.8),
-        start_scale=dict(min=.05, max=.09), scale_over_life=[[0, 1], [1, .8]],
+        config('droplet', 24, 14, .8, 50, .17, direction=(0, 1), spread=50),
+        gravity=[0, 480], drag_per_sec=.2, lifetime=dict(min=.45, max=.8),
+        start_scale=dict(min=.1, max=.17), scale_over_life=[[0, 1], [1, .8]],
         alpha_over_life=[[0, 0], [.08, 1], [.8, .9], [1, 0]],
-        color_over_life=[[0, [.52, .12, .18, 1]], [1, [.33, .07, .12, 0]]])
+        color_over_life=[[0, [.8, .1, .16, 1]], [.6, [.62, .06, .12, 1]], [1, [.42, .04, .09, 0]]])
     configs['chill_flakes'] = dict(
         config('ice_crystal', 10, 6, 1.4, 30, .12, spread=180),
         gravity=[0, 40], drag_per_sec=.8, angular_velocity=dict(min=-3, max=3),
@@ -330,6 +335,70 @@ def particle_configs():
             lifetime=dict(min=.45, max=.75), gravity=[0, -60], drag_per_sec=2.2,
             start_scale=dict(min=.14, max=.3), scale_over_life=[[0, .6], [.2, 1], [1, .1]],
             alpha_over_life=[[0, 0], [.08, 1], [.6, .7], [1, 0]], color_over_life=ramp)
+    # 01 (f): a blow's blood and a bleed's first spurt, the splat of what
+    # iron kills, a burning target's embers, the push's warp in the gravity
+    # purple (palette `Ж`–`Щ`), a strike's sparks, a thaw's glints, iron's
+    # hard landing and a refused spell's fizzle.
+    blood = [[0, [.96, .2, .22, 1]], [.3, [.78, .08, .13, 1]], [1, [.42, .03, .08, 0]]]
+    configs['blood_burst'] = dict(
+        config('droplet', 18, 18, .6, 420, .24, spread=150, burst=True),
+        lifetime=dict(min=.32, max=.6), gravity=[0, 1100], drag_per_sec=1.1,
+        start_scale=dict(min=.12, max=.24), scale_over_life=[[0, 1], [.7, .85], [1, .5]],
+        alpha_over_life=[[0, 1], [.7, .95], [1, 0]], color_over_life=blood)
+    configs['blood_spurt'] = dict(
+        config('droplet', 12, 12, .7, 380, .2, spread=40, burst=True),
+        lifetime=dict(min=.4, max=.7), gravity=[0, 1000], drag_per_sec=.8,
+        start_scale=dict(min=.1, max=.2), scale_over_life=[[0, 1], [.7, .85], [1, .5]],
+        alpha_over_life=[[0, 1], [.7, .95], [1, 0]], color_over_life=blood)
+    configs['gore_burst'] = dict(
+        config('droplet', 56, 56, .9, 760, .4, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=180, max=760)),
+        lifetime=dict(min=.45, max=.9), gravity=[0, 1300], drag_per_sec=1.4,
+        start_scale=dict(min=.16, max=.4), scale_over_life=[[0, .8], [.15, 1], [1, .6]],
+        alpha_over_life=[[0, 1], [.75, .95], [1, 0]],
+        color_over_life=[[0, [.9, .14, .18, 1]], [.25, [.64, .05, .1, 1]], [1, [.26, .02, .05, 0]]])
+    configs['burn_embers'] = dict(
+        configs['torch_embers'], max_alive=24, emission=dict(kind='continuous', rate_hz=24),
+        initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=70,
+                              speed=dict(min=30, max=110)),
+        gravity=[0, -120], lifetime=dict(min=.35, max=1.0), start_scale=dict(min=.06, max=.2))
+    configs['warp_burst'] = dict(
+        config('flame_glow', 48, 48, .6, 1150, .6, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=700, max=1150)),
+        lifetime=dict(min=.35, max=.6), gravity=[0, 0], drag_per_sec=3.2,
+        angular_velocity=dict(min=-2, max=2), start_scale=dict(min=.3, max=.6),
+        scale_over_life=[[0, .4], [.2, 1], [1, 1.4]],
+        alpha_over_life=[[0, 0], [.06, .9], [.5, .6], [1, 0]],
+        color_over_life=[[0, [1, .86, 1, 1]], [.2, [.87, .38, .95, 1]],
+                         [.55, [.55, .14, .72, 1]], [1, [.25, .06, .42, 0]]])
+    configs['strike_sparks'] = dict(
+        config('spark', 32, 32, .5, 650, .2, spread=150, burst=True),
+        lifetime=dict(min=.18, max=.5), gravity=[0, 1200], drag_per_sec=1.0,
+        angular_velocity=dict(min=-12, max=12), start_scale=dict(min=.08, max=.2),
+        alpha_over_life=[[0, 1], [.6, .9], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.25, [.85, .75, 1, 1]], [.6, [.62, .42, 1, 1]],
+                         [1, [.36, .2, .75, 0]]])
+    configs['thaw_glints'] = dict(
+        config('ice_glint', 16, 16, .9, 160, .9, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=40, max=160)),
+        lifetime=dict(min=.45, max=.9), gravity=[0, 260], drag_per_sec=1.6,
+        angular_velocity=dict(min=-3, max=3), start_scale=dict(min=.45, max=.9),
+        scale_over_life=[[0, 1], [.5, .7], [1, 0]], alpha_over_life=[[0, 1], [.6, .8], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.5, [.75, .93, 1, 1]], [1, [.45, .75, 1, 1]]])
+    configs['iron_dust'] = dict(
+        config('dust', 22, 22, .9, 420, .62, spread=170, burst=True),
+        lifetime=dict(min=.5, max=.9), gravity=[0, 60], drag_per_sec=3.0,
+        angular_velocity=dict(min=-1.5, max=1.5), start_scale=dict(min=.3, max=.62),
+        scale_over_life=[[0, .45], [.3, 1], [1, 1.45]],
+        alpha_over_life=[[0, 0], [.06, .8], [.55, .45], [1, 0]],
+        color_over_life=[[0, [.78, .7, .6, 1]], [.4, [.55, .5, .46, 1]], [1, [.32, .3, .3, 1]]])
+    configs['fizzle'] = dict(
+        config('spark', 16, 16, .45, 140, .16, spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=30, max=140)),
+        lifetime=dict(min=.25, max=.45), gravity=[0, 220], drag_per_sec=3.2,
+        angular_velocity=dict(min=-8, max=8), start_scale=dict(min=.07, max=.16),
+        alpha_over_life=[[0, .9], [.3, 1], [.5, .3], [.7, .9], [1, 0]],
+        color_over_life=[[0, [.92, .86, 1, 1]], [.4, [.6, .55, .7, 1]], [1, [.3, .28, .34, 0]]])
     return configs
 
 
@@ -366,10 +435,12 @@ def cast_twins(images,lit):
         if name+'_left' in images:images[name+'_cast_left']=ImageOps.mirror(twin);lit.add(name+'_cast_left')
 
 
-def check_ice_fits():
+def check_ice_fits(images):
     """Each kind's fitted ice cube sits on the box its prefab's hurtbox makes,
     wherever that prefab exists: the dummy's, and each enemy's once its prefab
-    lands, so a hurtbox the run tunes cannot leave its ice behind."""
+    lands, so a hurtbox the run tunes cannot leave its ice behind. Each cube's
+    cracked twin, which a thaw flickers to, covers what the whole one does."""
+    from art import STATUS_CLASSES
     from effects import HURTBOXES
     for kind,box in HURTBOXES.items():
         path=CONTENT/'prefabs'/f'{kind}.json'
@@ -379,6 +450,10 @@ def check_ice_fits():
         hx,hy=(shape['circle'],)*2 if 'circle' in shape else shape['aabb']
         made=(ox-hx,oy-hy,ox+hx,oy+hy)
         if made!=box:raise ValueError(f'status_ice_{kind}: its cube fits {box}; its prefab hurtbox makes {made}')
+    for name in [*HURTBOXES,*STATUS_CLASSES]:
+        whole,cracked=images[f'status_ice_{name}'],images[f'status_ice_{name}_cracked']
+        if cracked.size!=whole.size or cracked.getbbox()!=whole.getbbox():
+            raise ValueError(f'status_ice_{name}_cracked: covers {cracked.getbbox()}, not its cube\'s {whole.getbbox()}')
 
 
 def write_json(path,data):
@@ -389,7 +464,7 @@ def write_json(path,data):
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
     images,lit,animations=build_art();mirror_facing(images,lit,animations);cast_twins(images,lit)
-    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits()
+    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())

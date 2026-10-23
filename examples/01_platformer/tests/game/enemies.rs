@@ -14,8 +14,9 @@
 //! impacts that barely move it, its high cold and shock rungs and its bar;
 //! the drops, an orb's heal or mana, the enemies it passes and its fading;
 //! the combat layer; a kill between a machine's `go` and its next visit; a
-//! map enemy killed for good; the summon slot's enemies; and the frozen
-//! cube fitted to each body.
+//! map enemy killed for good; the summon slot's enemies; the frozen cube
+//! fitted to each body; and the pushes that throw them by their pull, the
+//! troll standing, and the level's edge that takes them for good.
 
 use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
@@ -54,8 +55,8 @@ use tungsten::core::{
     Position, RigidBodyBundle, Time, Velocity,
 };
 use tungsten::kit::{
-    AilmentThreshold, ContactDamage, Damaged, Health, Hitbox, KitRng, PlatformerController,
-    StateMachine, TopDownMover,
+    AilmentBuckets, AilmentThreshold, ContactDamage, Damaged, Health, Hitbox, KitRng, Knockback,
+    PlatformerController, StateMachine, TopDownMover,
 };
 use tungsten::testing::UiHarness;
 
@@ -1673,19 +1674,36 @@ fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
         harness.step(2);
     };
     assert_eq!(move_speed(&harness, troll), 70.0);
+    // The chill's 35 %, and the grade's up to 35 % more as the bucket, which
+    // the chill empties, fills on to the freeze.
+    let graded = |harness: &UiHarness| -> f32 {
+        let world = harness.world();
+        let fill = world
+            .get::<AilmentBuckets>(troll)
+            .map_or(0.0, |buckets| buckets.fill("damage.cold"));
+        let threshold = world.get::<AilmentThreshold>(troll).unwrap();
+        let max = world.get::<Health>(troll).unwrap().max();
+        let mult = world
+            .get::<tungsten::kit::Stats>(troll)
+            .and_then(|stats| stats.get("ailment_threshold_mult"))
+            .unwrap_or(1.0);
+        let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
+        let grade = (fill / at).clamp(0.0, 1.0);
+        70.0 * (1.0 - 0.35 - 0.35 * grade)
+    };
     cold(&mut harness, 15.0);
     assert!(tagged(&harness, troll, "status.chilled"), "chilled");
     let first = move_speed(&harness, troll);
     assert!(
-        (first - 70.0 * 0.65).abs() < 0.01,
-        "the first stage: {first}"
+        (first - graded(&harness)).abs() < 0.01,
+        "the first fill: {first}"
     );
-    // Past half its threshold, the second stage, not frozen yet.
+    // Past half its threshold, slower again, not frozen yet.
     cold(&mut harness, 30.0);
     let second = move_speed(&harness, troll);
     assert!(
-        (second - 70.0 * (1.0 - 2.0 * troll::DEEP_SLOW)).abs() < 0.01,
-        "the second stage: {second}"
+        (second - graded(&harness)).abs() < 0.01 && second < first - 5.0,
+        "deeper in: {second} after {first}"
     );
     assert!(!tagged(&harness, troll, "status.frozen"));
     // Past its threshold within the chill, a three-second freeze.
@@ -2106,4 +2124,166 @@ fn a_frozen_body_draws_the_cube_fitted_to_its_hurtbox() {
             "{name} over its body at {corner}: {drawn:?}"
         );
     }
+}
+
+/// `entity`'s knockback.
+fn knockback(harness: &UiHarness, entity: Entity) -> Knockback {
+    harness
+        .world()
+        .get::<Knockback>(entity)
+        .expect("a knockback")
+        .clone()
+}
+
+/// Whether `walker`'s controller could jump: grounded, its input unlocked.
+fn free(harness: &UiHarness, walker: Entity) -> bool {
+    harness
+        .world()
+        .get::<PlatformerController>(walker)
+        .is_some_and(PlatformerController::can_jump)
+}
+
+#[test]
+fn a_force_push_throws_enemies_by_distance_and_the_troll_stands() {
+    let (mut harness, _) = arena();
+    let near = walker(&mut harness, EnemyKind::Crawler, 1100.0, TOP);
+    let far = walker(&mut harness, EnemyKind::Crawler, 1340.0, TOP);
+    let troll = troll_at(&mut harness, 820.0, Difficulty::Normal);
+    for enemy in [near, far, troll] {
+        still(&mut harness, enemy);
+    }
+    harness.step(10);
+    assert!(free(&harness, troll), "the troll stands on the ground");
+    let starts = [at(&harness, near), at(&harness, far)];
+    let troll_speed = speed(&harness, troll);
+    toys::force_push(harness.world_mut(), Vec2::new(1000.0, TOP - 30.0));
+    let (near_push, far_push) = (
+        knockback(&harness, near).push(),
+        knockback(&harness, far).push(),
+    );
+    assert!(
+        near_push.x > far_push.x && far_push.x > 0.0,
+        "both thrown away, the near one faster: {near_push} {far_push}"
+    );
+    assert!(
+        !knockback(&harness, troll).is_active(),
+        "the troll takes no push"
+    );
+    harness.step(1);
+    assert!(free(&harness, troll), "its input is not locked");
+    assert_eq!(speed(&harness, troll), troll_speed, "its velocity kept");
+    harness.step(10);
+    let moved = [
+        at(&harness, near).x - starts[0].x,
+        at(&harness, far).x - starts[1].x,
+    ];
+    assert!(moved[0] > moved[1] && moved[1] > 0.0, "{moved:?}");
+}
+
+#[test]
+fn a_missile_blast_knocks_a_crawler_away() {
+    let (mut harness, _) = arena();
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1100.0, TOP);
+    still(&mut harness, crawler);
+    harness.step(10);
+    let start = at(&harness, crawler);
+    let whole = health(&harness, crawler);
+    // Past the blast's heat, inside its push.
+    toys::explode(harness.world_mut(), start - Vec2::new(150.0, 0.0));
+    assert!(knockback(&harness, crawler).push().x > 0.0, "pushed away");
+    harness.step(10);
+    assert!(
+        at(&harness, crawler).x > start.x + 5.0,
+        "{}",
+        at(&harness, crawler)
+    );
+    assert_eq!(health(&harness, crawler), whole, "out of the blast's heat");
+}
+
+#[test]
+fn a_pushed_hit_leaves_the_troll_standing() {
+    let (mut harness, _) = arena();
+    let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0, TOP);
+    still(&mut harness, troll);
+    still(&mut harness, crawler);
+    harness.step(10);
+    let before = speed(&harness, troll);
+    for target in [troll, crawler] {
+        let world = harness.world_mut();
+        Hit::new(target, [(Kind::Physical, 5.0)])
+            .push(Vec2::new(600.0, -200.0))
+            .request(world)
+            .apply(world);
+    }
+    assert!(
+        !knockback(&harness, troll).is_active(),
+        "the troll's is idle"
+    );
+    assert!(
+        knockback(&harness, crawler).is_active(),
+        "the crawler's runs"
+    );
+    harness.step(1);
+    assert_eq!(speed(&harness, troll), before, "its velocity unchanged");
+    assert!(free(&harness, troll), "its input is not locked");
+}
+
+#[test]
+fn an_enemy_thrown_out_of_the_level_is_gone_and_stays_gone_through_a_load() {
+    let (mut harness, _) = run();
+    let world = harness.world();
+    let (enemy, id) = world
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .map(|(entity, _, id)| (entity, id.0))
+        .min_by_key(|&(_, id)| id)
+        .expect("a placed enemy");
+    let out = example_01_platformer::features::level::WORLD_MAX + Vec2::new(400.0, 400.0);
+    harness.world_mut().get_mut::<Position>(enemy).unwrap().0 = out;
+    harness.step(2);
+    assert!(!harness.world().is_alive(enemy), "the level's edge took it");
+    let saved = save::capture(harness.world()).expect("a live run captures");
+    assert!(saved.gone.contains(&id), "gone in the save");
+    let text = serde_json::to_value(&saved).expect("a save serializes");
+    let loaded: save::SaveGame = serde_json::from_value(text).expect("it loads");
+    let fresh = reload(loaded);
+    assert!(by_id(&fresh, id).is_none(), "and stays gone");
+}
+
+#[test]
+fn a_kill_plays_the_death_sound_not_the_hit() {
+    let (mut harness, _) = arena();
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1100.0, TOP);
+    still(&mut harness, crawler);
+    harness.step(2);
+    let registry = harness.world().resource::<tungsten::core::SoundRegistry>();
+    let (hit, death) = (
+        registry.get_by_id("ex10_enemy_hit_sfx"),
+        registry.get_by_id("ex10_enemy_death_sfx"),
+    );
+    let plays = |h: &mut UiHarness, frames: u32| -> (usize, usize) {
+        let mut counts = (0, 0);
+        for _ in 0..frames {
+            h.step(1);
+            for command in h.harness().audio() {
+                if let AudioCommand::Play { handle, .. } = command {
+                    counts.0 += usize::from(Some(*handle) == hit);
+                    counts.1 += usize::from(Some(*handle) == death);
+                }
+            }
+        }
+        counts
+    };
+    // A blow that hurts: the hit alone.
+    land(&mut harness, crawler, Kind::Physical, 10.0);
+    assert_eq!(plays(&mut harness, 2), (1, 0), "the hit");
+    harness.step(12);
+    // The killing blow: its own hit, then the death, not the hit again.
+    land(&mut harness, crawler, Kind::Physical, 500.0);
+    assert!(harness.world().get::<Health>(crawler).unwrap().is_dead());
+    assert_eq!(
+        plays(&mut harness, 2),
+        (1, 1),
+        "the blow's hit and the death"
+    );
 }

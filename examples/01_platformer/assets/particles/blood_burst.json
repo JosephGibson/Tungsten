@@ -1,0 +1,93 @@
+{
+  "alpha_over_life": [
+    [
+      0,
+      1
+    ],
+    [
+      0.7,
+      0.95
+    ],
+    [
+      1,
+      0
+    ]
+  ],
+  "blend": "alpha",
+  "color_over_life": [
+    [
+      0,
+      [
+        0.96,
+        0.2,
+        0.22,
+        1
+      ]
+    ],
+    [
+      0.3,
+      [
+        0.78,
+        0.08,
+        0.13,
+        1
+      ]
+    ],
+    [
+      1,
+      [
+        0.42,
+        0.03,
+        0.08,
+        0
+      ]
+    ]
+  ],
+  "drag_per_sec": 1.1,
+  "emission": {
+    "count": 18,
+    "kind": "burst",
+    "once": true
+  },
+  "gravity": [
+    0,
+    1100
+  ],
+  "initial_velocity": {
+    "direction": [
+      0,
+      -1
+    ],
+    "kind": "cone",
+    "speed": {
+      "max": 420,
+      "min": 168.0
+    },
+    "spread_deg": 150
+  },
+  "lifetime": {
+    "max": 0.6,
+    "min": 0.32
+  },
+  "max_alive": 18,
+  "scale_over_life": [
+    [
+      0,
+      1
+    ],
+    [
+      0.7,
+      0.85
+    ],
+    [
+      1,
+      0.5
+    ]
+  ],
+  "seed": 48657,
+  "sprite": "ex10_droplet",
+  "start_scale": {
+    "max": 0.24,
+    "min": 0.12
+  }
+}

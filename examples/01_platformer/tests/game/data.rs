@@ -1,7 +1,9 @@
 //! The data's restated copies: every Rust constant that repeats a prefab's
 //! or an ability's value matches the file the game loads, so a change to
-//! the data cannot leave its copy behind (I16).
+//! the data cannot leave its copy behind (I16); and every sound event the
+//! game sends has a cue rule that plays a registered sound.
 
+use example_01_platformer::features::audio::components::Sound;
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::EnemyKind;
@@ -9,8 +11,10 @@ use example_01_platformer::features::enemies::drops::ORB_SECS;
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
+use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
-    BALL_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SMALL_BALL_RADIUS,
+    BALL_RADIUS, HOLE_SECS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS,
+    SMALL_BALL_RADIUS,
 };
 use example_01_platformer::features::{dummy, player};
 use glam::Vec2;
@@ -60,11 +64,27 @@ fn every_restated_constant_matches_its_data() {
     for kind in EnemyKind::ALL {
         let info = kind.info();
         assert_eq!(body(info.prefab), (info.half, info.centre), "{kind:?}");
+        // Its knockback's resist, which the pushes read (the kit's has no
+        // getter): 0 unless the prefab sets one.
+        let prefab = json(&format!("prefabs/{}.json", info.prefab));
+        let resist = prefab
+            .pointer("/components/knockback/resist")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0) as f32;
+        assert_eq!(resist, info.resist, "{kind:?}");
     }
-    // The toys' sizes and the iron's mass.
+    // The toys' sizes and the iron's and its scraps' masses.
     assert_eq!(body("iron_block").0, IRON_HALF);
     let iron = json("prefabs/iron_block.json");
     assert_eq!(number(&iron, "/components/rigid_body/mass"), IRON_MASS);
+    let scrap = json("prefabs/iron_scrap.json");
+    assert_eq!(number(&scrap, "/components/rigid_body/mass"), SCRAP_MASS);
+    // The courier's jump, which its shove's retry restates.
+    let courier = json("prefabs/player.json");
+    assert_eq!(
+        number(&courier, "/components/platformer_controller/jump_speed"),
+        player::JUMP_SPEED
+    );
     assert_eq!(body("iron_scrap").0, SCRAP_HALF);
     assert_eq!(body("bowling_ball").0, Vec2::splat(BALL_RADIUS));
     assert_eq!(body("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
@@ -97,4 +117,34 @@ fn every_restated_constant_matches_its_data() {
     );
     let gun = json("data/abilities/gun.json");
     assert_eq!(number(&gun, "/payload/0/spawn/offset"), MUZZLE_OFFSET);
+    // The magazine the HUD shows, the gun's charges.
+    assert_eq!(number(&gun, "/charges/max"), ROUNDS as f32);
+    // A black hole's life.
+    let hole = json("prefabs/black_hole.json");
+    assert_eq!(number(&hole, "/components/black_hole/left"), HOLE_SECS);
+}
+
+#[test]
+fn every_sound_event_has_a_rule_and_its_sound_is_in_the_manifest() {
+    let rules = json("data/cue_rules/sounds.json");
+    let rules = rules.as_array().expect("a list of rules");
+    let manifest = json("manifest.json");
+    for sound in Sound::ALL {
+        assert!(
+            rules.iter().any(|rule| rule["on"] == sound.event()),
+            "{sound:?}: no rule on `{}`",
+            sound.event()
+        );
+    }
+    for rule in rules {
+        for action in rule["do"].as_array().expect("its actions") {
+            if let Some(id) = action.pointer("/sound/id").and_then(Value::as_str) {
+                assert!(
+                    manifest["sounds"].get(id).is_some(),
+                    "{}: `{id}` is not in the manifest",
+                    rule["on"]
+                );
+            }
+        }
+    }
 }

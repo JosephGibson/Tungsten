@@ -14,9 +14,10 @@
 //!
 //! Its prefab holds the rest: regeneration that burning holds, no
 //! knockback, and its own rungs on the cold and shock ladders, a short
-//! freeze and a stun past four times the others' needs; [`chill`] slows a
-//! chilled troll a second time past [`DEEP_CHILL`]. The black hole slows
-//! it ([`crate::features::toys`]) and its bar shows over its head
+//! freeze and a stun past four times the others' needs; the chill's grade
+//! slows a chilled troll more as its bucket fills, as it does every
+//! freezable creature (`combat::systems::chill_grades`). The black hole
+//! slows it ([`crate::features::toys`]) and its bar shows over its head
 //! ([`super::draw`]).
 
 use glam::Vec2;
@@ -24,20 +25,20 @@ use tungsten::core::{
     BodyKind, Collider, Entity, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Velocity,
     World,
 };
-use tungsten::kit::{AilmentBuckets, Health, Modifier, PlatformerController, Stats};
+use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
 
 use super::components::{Enemy, EnemyKind, EnemyState, Held, Throw, Throws};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
 use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{CHILLED, FROZEN, Hit, Kind, STUNNED, has_status};
+use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::player::PLAYER_HALF;
 use crate::features::toys::components::{Ball, BowlingBall, IronBlock};
-use crate::shared::{SaveId, spawn_burst};
+use crate::shared::{SaveId, body_centre, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -70,21 +71,6 @@ pub const ATTACK_SECS: f32 = 0.4;
 /// Where it holds what it lifts, from its sprite's top-left: the object's
 /// bottom at its hands, over its head.
 pub const HANDS: Vec2 = Vec2::new(74.0, 2.0);
-/// Its ailment threshold, its prefab's `ailment_threshold`.
-pub const THRESHOLD: f32 = 40.0;
-/// The cold bucket's fill, in shares of its threshold, past which a
-/// chilled troll is slowed again, its second stage, and that slow's share
-/// of its speed and its source.
-pub const DEEP_CHILL: f32 = 0.5;
-pub const DEEP_SLOW: f32 = 0.35;
-pub const DEEP_SOURCE: &str = "deep_chill";
-
-/// `entity`'s body centre: its point and its collider's offset.
-#[must_use]
-pub fn body_centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(at + world.get::<Collider>(entity)?.offset)
-}
 
 /// A shape's half extents.
 fn half(shape: Shape) -> Vec2 {
@@ -354,33 +340,6 @@ pub fn holds(world: &mut World) {
             place(world, troll, object);
         } else {
             drop_held(world, object);
-        }
-    }
-}
-
-/// `troll_chill`, in the intent phase: a chilled troll whose cold bucket is
-/// past [`DEEP_CHILL`] of its threshold is slowed again by [`DEEP_SLOW`],
-/// its second stage; below it, or no longer chilled, it is not. The bucket
-/// keeps filling past it, since no rung empties it there, to the freeze.
-pub fn chill(world: &mut World) {
-    let trolls: Vec<(Entity, bool)> = world
-        .query::<(Entity, &Enemy)>()
-        .filter(|(_, enemy)| enemy.kind == EnemyKind::Troll)
-        .map(|(entity, _)| {
-            let fill = world
-                .get::<AilmentBuckets>(entity)
-                .map_or(0.0, |buckets| buckets.fill(Kind::Cold.tag()));
-            let deep = has_status(world, entity, CHILLED) && fill >= DEEP_CHILL * THRESHOLD;
-            (entity, deep)
-        })
-        .collect();
-    for (troll, deep) in trolls {
-        if let Some(stats) = world.get_mut::<Stats>(troll) {
-            stats.remove_modifiers(DEEP_SOURCE);
-            if deep {
-                let slow = Modifier::Pct(-DEEP_SLOW);
-                stats.add_modifier(Stats::MOVE_SPEED, DEEP_SOURCE, slow);
-            }
         }
     }
 }

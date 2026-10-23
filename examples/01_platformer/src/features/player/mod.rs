@@ -4,14 +4,15 @@
 //! hurtbox, knockback, hit flash, the hit's cues, facing, the character
 //! animator and the camera target. 01 adds the lantern, whose staff light
 //! burns mana, the zoom, the kill row, the bursts its moves raise, the land
-//! and air-jump one-shots, and a cast's toss, pose and hot lantern.
+//! and air-jump one-shots, a cast's toss, pose and hot lantern, and the
+//! jump's shove that throws off what buries it.
 
 pub mod components;
 pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
-use tungsten::kit::{CHARACTER_ANIMATOR, CUES, Phase, Stats, ensure_phases};
+use tungsten::kit::{ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, Stats, ensure_phases};
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::level::GLOWS;
@@ -43,6 +44,19 @@ pub const GUTTER_PUFF: &str = "ex10_staff_gutter";
 pub const ZOOM_MIN: f32 = 0.35;
 pub const ZOOM_MAX: f32 = 3.0;
 pub const ZOOM_STEP: f32 = 0.25;
+/// The controller's jump speed, as the prefab sets it.
+pub const JUMP_SPEED: f32 = 1280.0;
+/// The jump's shove: the bodies over the head and shoulders, in a box this
+/// tall and as wide as the courier and [`SHOVE_SIDE`] each side, take
+/// [`SHOVE_OVER`] over their mass, faster than the courier's rise, and
+/// those beside it, this wide each side, [`SHOVE_BESIDE`]; a jump they
+/// blocked, the courier within [`STUCK_BY`] of its press, is launched again
+/// at [`JUMP_SPEED`] the next step.
+pub const SHOVE_HEAD: f32 = 48.0;
+pub const SHOVE_SIDE: f32 = 16.0;
+pub const SHOVE_OVER: f32 = 1600.0;
+pub const SHOVE_BESIDE: f32 = 600.0;
+pub const STUCK_BY: f32 = 2.0;
 
 /// The player's full health at `difficulty`: its `max_health` stat's base.
 /// A hazard's touch takes 34, so Normal falls on the third.
@@ -57,7 +71,8 @@ pub const fn max_health(difficulty: Difficulty) -> f32 {
 
 /// The player as a plugin: the `player` marker its prefab names, the
 /// lantern's anchors, its actions and its staff light in the intent phase
-/// before the spells, the kill row in the
+/// before the spells, the jump's shove there before the controller, the
+/// kill row in the
 /// overlap phase, its hurt and its moves' bursts in the react phase, and in
 /// the present
 /// phase its one-shot clips after the animator and its lantern's glow
@@ -80,9 +95,11 @@ impl Plugin for PlayerPlugin {
         let staff = system("player_staff_light", systems::staff_light)
             .after("player_actions")
             .before("spells_cast");
+        let unstick = system("player_unstick", systems::unstick).after(ACTION_INPUT);
         let fixed = [
             (Phase::Intent, system("player_actions", systems::actions)),
             (Phase::Intent, staff),
+            (Phase::Intent, unstick),
             (Phase::Overlap, system("player_bounds", systems::bounds)),
             (Phase::React, hurt),
             (Phase::React, system("player_moves", systems::moves)),
@@ -143,5 +160,5 @@ pub fn cast(world: &mut World, player: Entity, aim: Vec2, toss: bool) {
 /// Where the player's body is: its centre.
 #[must_use]
 pub fn centre(world: &World, player: Entity) -> Option<Vec2> {
-    systems::centre(world, player)
+    crate::shared::body_centre(world, player)
 }

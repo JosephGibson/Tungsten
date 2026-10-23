@@ -215,3 +215,93 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     assert_eq!(plays.len(), 1, "the press plays the hole's sound once");
     assert!((plays[0].0 - 0.65).abs() < 1e-6 && !plays[0].1);
 }
+
+#[test]
+fn sprays_and_small_balls_fade_out_at_the_release() {
+    use example_01_platformer::features::audio::components::{Sound, Sounded};
+    use example_01_platformer::features::toys::components::BallSpawner;
+    use example_01_platformer::features::toys::{LOOP_FADE, SMALL_BALLS_LOOP};
+    use tungsten::core::Voice;
+    let (mut harness, _) = run();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    pin_camera(&mut harness, Vec2::new(200.0, 400.0));
+    aim_at(&mut harness, Vec2::new(700.0, 500.0));
+    let registry = harness.world().resource::<SoundRegistry>();
+    let loops: Vec<_> = [
+        "ex10_flame_spray_sfx",
+        "ex10_ice_spray_sfx",
+        SMALL_BALLS_LOOP,
+    ]
+    .map(|id| registry.get_by_id(id).expect(id))
+    .to_vec();
+    // Each loop's voice with its stop's fade, and the frames' sounds.
+    type Voices = Vec<(Voice, Option<f32>)>;
+    let frames = |h: &mut UiHarness, n: u32, voices: &mut Voices, heard: &mut Vec<Sound>| {
+        for _ in 0..n {
+            h.step(1);
+            heard.extend(h.harness().events::<Sounded>().map(|s| s.sound));
+            for command in h.harness().audio() {
+                match command {
+                    AudioCommand::Play {
+                        handle,
+                        voice,
+                        looping: true,
+                        ..
+                    } if loops.contains(handle) => voices.push((*voice, None)),
+                    AudioCommand::StopVoice { voice, fade, .. } => {
+                        for (own, stop) in voices.iter_mut() {
+                            if own == voice {
+                                *stop = Some(*fade);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    };
+    let faded = |voices: &Voices| voices.iter().all(|&(_, stop)| stop == Some(LOOP_FADE));
+    let (mut voices, mut heard): (Voices, Vec<Sound>) = (Vec::new(), Vec::new());
+    // Each spray's loop fades out at the release; the flamethrower's tail
+    // plays, as the cold spray's does.
+    for (slot, end) in [(1, Sound::FireEnded), (2, Sound::ColdEnded)] {
+        choose(&mut harness, slot);
+        voices.clear();
+        heard.clear();
+        harness.harness_mut().press_action("cast");
+        frames(&mut harness, 10, &mut voices, &mut heard);
+        harness.harness_mut().release_action("cast");
+        frames(&mut harness, 3, &mut voices, &mut heard);
+        assert_eq!(voices.len(), 1, "one loop: {voices:?}");
+        assert!(faded(&voices), "{voices:?}");
+        assert_eq!(heard.iter().filter(|&&s| s == end).count(), 1, "its tail");
+    }
+    // Small balls pour on their loop, with no `placed`, and it fades too.
+    choose(&mut harness, 8);
+    voices.clear();
+    heard.clear();
+    harness.harness_mut().press_action("cast");
+    frames(&mut harness, 10, &mut voices, &mut heard);
+    assert!(!heard.contains(&Sound::Placed), "no placed: {heard:?}");
+    harness.harness_mut().release_action("cast");
+    frames(&mut harness, 3, &mut voices, &mut heard);
+    assert_eq!(voices.len(), 1, "one loop: {voices:?}");
+    assert!(faded(&voices), "{voices:?}");
+    // Pouring under a pause stops the loop, and a quit to the title leaves
+    // no loop playing.
+    voices.clear();
+    harness.harness_mut().press_action("cast");
+    frames(&mut harness, 5, &mut voices, &mut heard);
+    harness.harness_mut().press_action("state_pause");
+    frames(&mut harness, 2, &mut voices, &mut heard);
+    harness.harness_mut().release_action("state_pause");
+    frames(&mut harness, 10, &mut voices, &mut heard);
+    assert_eq!(voices.len(), 1, "{voices:?}");
+    assert!(faded(&voices), "stopped under the pause: {voices:?}");
+    super::press(&mut harness, "Quit to Title");
+    super::press(&mut harness, "Quit");
+    frames(&mut harness, 5, &mut voices, &mut heard);
+    harness.harness_mut().release_action("cast");
+    assert!(harness.world().resource::<BallSpawner>().voice.is_none());
+    assert!(faded(&voices), "none playing: {voices:?}");
+}

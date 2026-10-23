@@ -328,5 +328,95 @@
     "looping": false,
     "path": "sounds/splinter.wav",
     "volume": 0.55
+  },
+  "ex10_black_hole_hum_sfx": {
+    "looping": true,
+    "path": "sounds/black_hole_hum.wav",
+    "volume": 0.4
+  },
+  "ex10_black_hole_collapse_sfx": {
+    "looping": false,
+    "path": "sounds/black_hole_collapse.wav",
+    "volume": 0.55
+  },
+  "ex10_iron_thud_sfx": {
+    "looping": false,
+    "path": "sounds/iron_thud.wav",
+    "volume": 0.5
+  },
+  "ex10_fizzle_sfx": {
+    "looping": false,
+    "path": "sounds/fizzle.wav",
+    "volume": 0.4
+  },
+  "ex10_thunder_snap_sfx": {
+    "looping": false,
+    "path": "sounds/thunder_snap.wav",
+    "volume": 0.45
+  },
+  "ex10_ice_crack_sfx": {
+    "looping": false,
+    "path": "sounds/ice_crack.wav",
+    "volume": 0.45
+  },
+  "ex10_ball_thud_sfx": {
+    "looping": false,
+    "path": "sounds/ball_thud.wav",
+    "volume": 0.4
+  },
+  "ex10_gun_click_sfx": {
+    "looping": false,
+    "path": "sounds/gun_click.wav",
+    "volume": 0.4
+  },
+  "ex10_gun_rack_sfx": {
+    "looping": false,
+    "path": "sounds/gun_rack.wav",
+    "volume": 0.45
+  },
+  "ex10_flame_end_sfx": {
+    "looping": false,
+    "path": "sounds/flame_end.wav",
+    "volume": 0.35
+  },
+  "ex10_air_jump_sfx": {
+    "looping": false,
+    "path": "sounds/air_jump.wav",
+    "volume": 0.35
+  },
+  "ex10_no_mana_sfx": {
+    "looping": false,
+    "path": "sounds/no_mana.wav",
+    "volume": 0.4
+  },
+  "ex10_spell_switch_sfx": {
+    "looping": false,
+    "path": "sounds/spell_switch.wav",
+    "volume": 0.3
+  },
+  "ex10_not_ready_sfx": {
+    "looping": false,
+    "path": "sounds/not_ready.wav",
+    "volume": 0.35
+  },
+  "ex10_orb_pop_sfx": {
+    "looping": false,
+    "path": "sounds/orb_pop.wav",
+    "volume": 0.35
+  },
+  "ex10_small_balls_sfx": {
+    "looping": true,
+    "path": "sounds/small_balls.wav",
+    "volume": 0.3
+  },
+  "ex10_enemy_death_sfx": {
+    "looping": false,
+    "path": "sounds/enemy_death.wav",
+    "volume": 0.5
+  },
+  "ex10_dummy_thump_sfx": {
+    "looping": false,
+    "path": "sounds/dummy_thump.wav",
+    "volume": 0.5
   }
 }

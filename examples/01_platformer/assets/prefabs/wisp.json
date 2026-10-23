@@ -116,8 +116,11 @@
       "killed": [
         {
           "sound": {
-            "id": "ex10_enemy_hit_sfx"
+            "id": "ex10_enemy_death_sfx"
           }
+        },
+        {
+          "shake": 0.15
         },
         {
           "roll": "enemy_drops"

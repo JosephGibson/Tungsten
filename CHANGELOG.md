@@ -6,6 +6,24 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.101.0] - 2026-10-23
+
+Summary: M80, example 01's feel from the owner's notes of 2026-10-21 (plan archived at `docs/plans/archive/1.0/phase6-milestone-80-example-01-feel.md`; `D-209`), with no kit, engine, template or shell change: pushes, blasts and iron knock enemies back and the level's edge takes them; up to three longer black holes hum, collapse and sweep up small balls; iron is heavier, splats what it kills and refuses a spot it won't fit; a jump shoves off what buries the courier; blood, burning, a building chill and warned thaws; the sprays draw over the enemies; the gun holds nine rounds and reloads on R; every refusal and the missing actions sound; and 01 saves at schema 11, migrating 0.100's.
+
+### Added
+
+- **Example 01's feel** (`D-209`): the force push, a missile's blast and iron's blows knock enemies back through the kit's `knock_back` at each kind's pull (`toys::radial_push`), the troll standing; holes that hum on one shared voice, shrink over their last 0.5 s, collapse with a sound and a ring, and sweep up the small balls at their core, 12 a hole a step; iron's extra fall, its gore on a killing blow, its thud on a hard landing and its fit check before the spend; the jump's shove off bodies over and beside the courier, with a launch for a blocked jump that spends no air jump; blood on a blow to flesh or the courier, a spurt as bleeding starts, burning's embers, ember tint and glow, a chill whose slow and frost grow with its bucket, a cube that cracks before its thaw, the courier red for 0.12 s after a blow; key bursts that take a cosmetic burst's slot at the cap; the gun's `reload` on R and pad West, its click and rack, a warm muzzle light; refusals that say why (no mana, not ready, no room with a fizzle); sounds for the air jump, a spell switch, kills, the dummy, a dropped orb that pops and blinks, a strike's snap, a thaw, hard landings and the flamethrower's end; the small balls' pouring loop; a gravity-purple ramp for the push and the holes; nine particle configs and the cracked cubes.
+
+### Changed
+
+- **Example 01's tuning** (`D-209`): a black hole lasts 6 s, from 4, with three open at once and a third of the particles each; iron weighs 400, from 200, its scraps 25; the gun fires nine rounds 0.2 s apart, from twelve at 0.12 s, with a 0.1 shake; the troll's two chill stages become every freezable creature's graded slow; the hole draws under the actors and props; drips are denser and the flamethrower hotter; the force push and the shot are synthesized again; an enemy's kill plays a death sound with a shake and the dummy's a thump; the sprays' loops fade over 0.08 s, and small balls no longer play the place sound.
+- **Example 01's save** (`D-209`): schema 11; `black_holes` holds every open hole; `migrate` moves schema 10's hole into the list and keeps the gun to nine rounds, taking schemas 7 to 9 through 10.
+- **Records**: the feedback plan's §3.2 landing and K2, K4 and K7, the 01 design's notes for (f), backlog rows for K2, K4, K7 and the killing blow's cue, known issues for the kit's `knock_back` on a whole resist and P2's tint table, example 01's READMEs and the register.
+
+### Fixed
+
+- **Example 01** (`D-209`): an enemy thrown out of the level fell forever (X3); two open holes could overflow the particle cap (X4); a death's burst was lost at the burst cap (I5); a shot's push launched the troll at zero and locked its input for 0.2 s; a spray's loop stopped with a click (I12).
+
 ## [0.100.0] - 2026-10-23
 
 Summary: M79, example 01's level and title pass from the owner's notes of 2026-10-22 (plan archived at `docs/plans/archive/1.0/phase6-milestone-79-example-01-level-title.md`; `D-208`): the kit's contact damage can push a target inside its window, and its platformer controller reports the body it stands on; example 01's lava is a surface the courier never sinks below, biting, burning and throwing toward the nearer bank, with a crust under the ice spray; an elevator is the only way to the mine's upper level and its fourth beetle; a beetle's paw and charge are drawn; the hollow's cave mouth is drawn, the ravine's pool ending against fallen stones; the difficulty picker shows a card for each difficulty in the template and 01; and 01 saves at schema 10, migrating 0.99's.

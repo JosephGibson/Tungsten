@@ -6,7 +6,7 @@ use glam::Vec2;
 use tungsten::core::{Entity, Time, With, Without, World};
 use tungsten::kit::{Aim, Health, Used, cursor_to_world, use_ability};
 
-use super::components::{Refused, Spell, Spellbook, Summon};
+use super::components::{Refusal, Refused, Spell, Spellbook, Summon};
 use super::{
     CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, cost, mana, select,
     selected, summon_type,
@@ -18,7 +18,9 @@ use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
 use crate::features::toys::{self, BALL_CAP, MISSILE_CAP};
 use crate::features::{dummy, enemies};
-use crate::shared::{SaveId, just_pressed, pressed};
+use crate::game::GAMEPLAY;
+use crate::shared::{SaveId, just_pressed, pressed, spawn_key_burst};
+use crate::shell;
 
 /// The run's player while it lives.
 fn caster(world: &World) -> Option<Entity> {
@@ -39,9 +41,10 @@ fn aim(world: &World, player: Entity) -> Vec2 {
 /// slot actions and the wheel choose a spell, then `cast` uses it, once a
 /// press or each step it is held, as its ability allows. A held spell let
 /// go, or one its ability refuses, stops: a spray no step keeps ends in the
-/// react phase, and the small balls forget what they owed, spending nothing
-/// at the balls' cap. One refused for mana stays off until the cast is
-/// released (I2).
+/// react phase, and the small balls forget what they owed and stop their
+/// loop, spending nothing at the balls' cap. One refused for mana stays off
+/// until the cast is released (I2). A held spell's refusal is said on the
+/// step it is first refused, once a press ([`refuse_cast`]).
 pub fn cast(world: &mut World) {
     let Some(player) = caster(world) else {
         toys::stop_small_balls(world);
@@ -50,19 +53,27 @@ pub fn cast(world: &mut World) {
     choose(world, player);
     let held = pressed(world, CAST);
     if !held {
-        refuse(world, false);
+        released(world);
     }
     let mut placing = false;
     match selected(world, player) {
         Some(spell) if spell.held() => {
             // The small balls' cap refuses before the spend (I1).
             let capped = spell == Spell::SmallBalls && toys::ball_count(world) >= BALL_CAP;
-            if held && !refused(world) && !capped {
-                let used = hold(world, player, spell);
-                if used == Used::NoCost {
-                    refuse(world, true);
+            if held && !refused(world) {
+                let refusal = if capped {
+                    Some(Refusal::NoRoom)
+                } else {
+                    let used = hold(world, player, spell);
+                    if used == Used::NoCost {
+                        refuse(world);
+                    }
+                    placing = used == Used::Used && spell == Spell::SmallBalls;
+                    Refusal::of(used)
+                };
+                if let Some(refusal) = refusal {
+                    say(world, player, refusal);
                 }
-                placing = used == Used::Used && spell == Spell::SmallBalls;
             }
         }
         Some(spell) if just_pressed(world, CAST) => press(world, player, spell),
@@ -73,10 +84,58 @@ pub fn cast(world: &mut World) {
     }
 }
 
+/// Says why a cast was refused at `at`, the cursor's point or else the
+/// courier's: no mana and not ready each play their sound, and no room
+/// fizzles there with its own, a key burst.
+pub fn refuse_cast(world: &mut World, refusal: Refusal, at: Vec2) {
+    match refusal {
+        Refusal::NoMana => audio::play(world, Sound::NoMana, at),
+        Refusal::NotReady => audio::play(world, Sound::NotReady, at),
+        Refusal::NoRoom => {
+            spawn_key_burst(world, "ex10_fizzle", at);
+            audio::play(world, Sound::Fizzled, at);
+        }
+    }
+}
+
+/// Says a held spell's refusal, at the cursor or else the courier, unless
+/// one was said since the press.
+fn say(world: &mut World, player: Entity, refusal: Refusal) {
+    let said = world.get_resource::<Refused>().is_some_and(|r| r.said);
+    if said {
+        return;
+    }
+    if let Some(refused) = world.get_resource_mut::<Refused>() {
+        refused.said = true;
+    }
+    let at = cursor_to_world(world).or_else(|| player::centre(world, player));
+    refuse_cast(world, refusal, at.unwrap_or_default());
+}
+
 /// `summon_next` and `summon_prev` turn the summon's type, wrapping; the
 /// slot actions select their slot; `spell_next` and `spell_prev` step to
-/// the next or the previous spell, wrapping past the empty slots.
+/// the next or the previous spell, wrapping past the empty slots. A change
+/// of the slot or the summon's type clicks.
 fn choose(world: &mut World, player: Entity) {
+    let before = choice(world, player);
+    pick(world, player);
+    if choice(world, player) != before
+        && let Some(at) = player::centre(world, player)
+    {
+        audio::play(world, Sound::Switched, at);
+    }
+}
+
+/// The selected slot and the summon's type.
+fn choice(world: &World, player: Entity) -> (Option<usize>, Option<usize>) {
+    (
+        world.get::<Spellbook>(player).map(|book| book.slot),
+        world.get_resource::<Summon>().map(|summon| summon.selected),
+    )
+}
+
+/// The choice's actions, as [`choose`] reads them.
+fn pick(world: &mut World, player: Entity) {
     let turn = match (
         just_pressed(world, SUMMON_NEXT),
         just_pressed(world, SUMMON_PREV),
@@ -114,13 +173,20 @@ fn choose(world: &mut World, player: Entity) {
 fn refused(world: &World) -> bool {
     world
         .get_resource::<Refused>()
-        .is_some_and(|refused| refused.0)
+        .is_some_and(|refused| refused.mana)
 }
 
-/// Sets whether the held spell was refused for mana.
-fn refuse(world: &mut World, refused: bool) {
+/// Notes that the held spell was refused for mana.
+fn refuse(world: &mut World) {
     if let Some(flag) = world.get_resource_mut::<Refused>() {
-        flag.0 = refused;
+        flag.mana = true;
+    }
+}
+
+/// Forgets the held spell's refusals: the cast is released.
+fn released(world: &mut World) {
+    if let Some(flag) = world.get_resource_mut::<Refused>() {
+        *flag = Refused::default();
     }
 }
 
@@ -143,8 +209,10 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
 }
 
 /// A press of `spell`: refused before its ability spends anything while
-/// its toy is at its cap, it needs the cursor and has none, or a summon's
-/// box would overlap a solid tile there; then its use, then its toy.
+/// its toy is at its cap, it needs the cursor and has none, a summon's box
+/// would overlap a solid tile there, or an iron block would not fit there
+/// (`toys::iron_fits`); then its use, then its toy. A refusal says why,
+/// once ([`refuse_cast`]).
 fn press(world: &mut World, player: Entity, spell: Spell) {
     let Some(centre) = player::centre(world, player) else {
         return;
@@ -153,7 +221,8 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
     let refused = match spell {
         Spell::FireMissile => toys::missile_count(world) >= MISSILE_CAP,
         Spell::BowlingBall => toys::ball_count(world) >= BALL_CAP,
-        Spell::BlackHole | Spell::IronBlock | Spell::Lightning => at.is_none(),
+        Spell::BlackHole | Spell::Lightning => at.is_none(),
+        Spell::IronBlock => at.is_none_or(|at| !toys::iron_fits(world, at)),
         Spell::Summon => at.is_none_or(|at| {
             let fits = match summon_type(world).enemy {
                 Some(kind) => enemies::fits(world, kind, at),
@@ -163,7 +232,20 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }),
         _ => false,
     };
-    if refused || use_ability(world, player, spell.ability()) != Used::Used {
+    let used = if refused {
+        None
+    } else {
+        Some(use_ability(world, player, spell.ability()))
+    };
+    let refusal = match used {
+        None => Some(Refusal::NoRoom),
+        Some(used) if used != Used::Used => Refusal::of(used),
+        Some(_) => None,
+    };
+    if refused || used != Some(Used::Used) {
+        if let Some(refusal) = refusal {
+            refuse_cast(world, refusal, at.unwrap_or(centre));
+        }
         return;
     }
     let aim = aim(world, player);
@@ -207,12 +289,21 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
 /// `spells_held`, in `Update`: a spray shows from the frame its cast
 /// begins and stops in the frame it ends, between two steps too. `cast`
 /// held on a spray the player can pay a step of starts it when none runs
-/// and none was refused for mana since the press; a release, another
-/// spell, a death or the player's loss ends it at once. Its cost and its
-/// exposure wait for the step.
+/// and none was refused for mana since the press, and one it cannot pay
+/// says so, once a press; a release, another spell, a death or the
+/// player's loss ends it at once. Its cost and its exposure wait for the
+/// step. The small balls' loop stops in the frame the cast lets go of them
+/// or gameplay leaves the top, under pause or game over, which no fixed
+/// step sees.
 pub fn held(world: &mut World) {
     if !pressed(world, CAST) {
-        refuse(world, false);
+        released(world);
+    }
+    let pouring = caster(world).is_some_and(|player| {
+        pressed(world, CAST) && selected(world, player) == Some(Spell::SmallBalls)
+    });
+    if !pouring || shell::top(world) != Some(GAMEPLAY) {
+        toys::stop_small_balls_loop(world);
     }
     let wanted = caster(world).and_then(|player| {
         let spell = selected(world, player)?;
@@ -235,6 +326,9 @@ pub fn held(world: &mut World) {
         return;
     };
     let payable = cost(world, spell).is_some_and(|cost| mana(world, player) >= cost);
+    if !payable && toys::spraying(world, player).is_none() {
+        say(world, player, Refusal::NoMana);
+    }
     if payable && !refused(world) && toys::spraying(world, player).is_none() {
         let aim = aim(world, player);
         toys::start_spray(world, player, aim, element);

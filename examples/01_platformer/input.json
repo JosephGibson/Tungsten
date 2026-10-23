@@ -5,6 +5,7 @@
     "jump": [{ "kind": "key", "code": "Space" }, { "kind": "gamepad_button", "button": "South" }],
     "cast": [{ "kind": "mouse", "button": "right" }, { "kind": "gamepad_button", "button": "LeftTrigger" }],
     "shoot": [{ "kind": "mouse", "button": "left" }, { "kind": "gamepad_button", "button": "RightTrigger" }],
+    "reload": [{ "kind": "key", "code": "KeyR" }, { "kind": "gamepad_button", "button": "West" }],
     "spell_next": [{ "kind": "scroll", "direction": "down" }, { "kind": "gamepad_button", "button": "RightShoulder" }],
     "spell_prev": [{ "kind": "scroll", "direction": "up" }, { "kind": "gamepad_button", "button": "LeftShoulder" }],
     "summon_next": [{ "kind": "key", "code": "KeyE" }, { "kind": "gamepad_button", "button": "DPadRight" }],

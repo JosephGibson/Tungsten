@@ -5,12 +5,13 @@ use tungsten::kit::{Health, StateMachine};
 
 use super::components::{Ambience, Music};
 use super::{
-    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE,
-    MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
+    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, HOLE_HUM, HOLE_HUM_REACH, HUM_FADE, HUM_REACH,
+    MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
 };
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
+use crate::features::toys;
 use crate::game::GAMEPLAY;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::pause::PAUSE;
@@ -20,7 +21,7 @@ use crate::shell::{self};
 /// and pause's loop fades in; when gameplay is back on top, pause's loop
 /// stops and the exploration comes back. A screen over pause keeps the
 /// loop. Game over silences the exploration too, under the music the shell
-/// plays.
+/// plays, and both hums fall silent until gameplay is back.
 pub fn duck(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -52,9 +53,15 @@ pub fn duck(world: &mut World) {
         audio.set_voice_volume(hum, 0.0, PAUSE_FADE);
         hum_level = 0.0;
     }
+    let mut holes_level = music.holes_level;
+    if let (Some(holes), true) = (music.holes, on) {
+        audio.set_voice_volume(holes, 0.0, PAUSE_FADE);
+        holes_level = 0.0;
+    }
     world.insert_resource(Music {
         pause,
         hum_level,
+        holes_level,
         ducked: on,
         ..music
     });
@@ -101,6 +108,42 @@ pub fn hum(world: &mut World) {
         .set_voice_volume(voice, volume, HUM_FADE);
     world.insert_resource(Music {
         hum_level: volume,
+        ..music
+    });
+}
+
+/// `audio_holes`, after the duck: while gameplay is on top, the holes' hum
+/// sounds at its level by the nearest open hole, falling to 0 at
+/// [`HOLE_HUM_REACH`] from the player and when the last hole closes.
+pub fn holes(world: &mut World) {
+    let Some(music) = world.get_resource::<Music>().copied() else {
+        return;
+    };
+    let Some(voice) = music.holes.filter(|_| !music.ducked) else {
+        return;
+    };
+    let player = enemies::systems::player(world).map(|(_, at)| at);
+    let nearest = player.and_then(|player| {
+        toys::systems::holes(world)
+            .into_iter()
+            .map(|at| at.distance(player))
+            .min_by(f32::total_cmp)
+    });
+    let registry = world.resource::<SoundRegistry>();
+    let level = registry
+        .get_by_id(HOLE_HUM)
+        .map_or(0.0, |handle| registry.get_volume(handle));
+    let volume = nearest.map_or(0.0, |distance| {
+        level * (1.0 - distance / HOLE_HUM_REACH).clamp(0.0, 1.0)
+    });
+    if (volume - music.holes_level).abs() < 0.01 && (volume > 0.0 || music.holes_level == 0.0) {
+        return;
+    }
+    world
+        .resource_mut::<AudioCommands>()
+        .set_voice_volume(voice, volume, HUM_FADE);
+    world.insert_resource(Music {
+        holes_level: volume,
         ..music
     });
 }

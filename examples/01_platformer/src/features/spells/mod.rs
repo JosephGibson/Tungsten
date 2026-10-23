@@ -164,8 +164,10 @@ pub fn start(world: &mut World) {
 }
 
 /// Forgets the run's HUD, whose roots leave with gameplay, and its held
-/// spell's refusal.
+/// spell's refusal, and stops the small balls' loop: a Quit to Title from
+/// pause leaves no fixed step to stop it.
 pub fn stop(world: &mut World) {
     world.remove_resource::<hud::Hud>();
     world.remove_resource::<components::Refused>();
+    crate::features::toys::stop_small_balls(world);
 }

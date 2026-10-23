@@ -35,6 +35,7 @@ pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
     ("jump", "Jump"),
     ("cast", "Cast"),
     ("shoot", "Shoot"),
+    ("reload", "Reload"),
     ("spell_next", "Next spell"),
     ("spell_prev", "Previous spell"),
     ("summon_next", "Next summon"),

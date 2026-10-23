@@ -14,7 +14,7 @@
         64,
         64
       ],
-      "mass": 200,
+      "mass": 400,
       "restitution": 0.05
     },
     "spawn_children": [

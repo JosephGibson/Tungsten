@@ -10,9 +10,10 @@
 //! presentation, never saved.
 
 use glam::Vec2;
-use tungsten::core::{Collider, Entity, EventCursor, EventQueue, Position, Time, World};
+use tungsten::core::{Entity, EventCursor, EventQueue, Time, World};
 use tungsten::kit::{DamageKinds, DamagedPart, float_label};
 
+use crate::shared::body_centre;
 use crate::shell::options::GameOptions;
 
 /// How long after a sum's first part its follow-ups keep merging.
@@ -63,16 +64,6 @@ fn tick(world: &World, part: &DamagedPart) -> bool {
         && (part.kinds.has(world, "damage.fire") || part.kinds.has(world, "damage.physical.bleed"))
 }
 
-/// A target's body centre.
-fn centre(world: &World, entity: Entity) -> Option<Vec2> {
-    let at = world.get::<Position>(entity)?.0;
-    Some(
-        at + world
-            .get::<Collider>(entity)
-            .map_or(Vec2::ZERO, |c| c.offset),
-    )
-}
-
 /// `damage_numbers`, in the react phase: the step's parts floated or merged,
 /// its crits floated at once, and the follow-up sums whose window closed
 /// floated. With the option off it floats nothing and keeps nothing open.
@@ -99,7 +90,7 @@ pub fn numbers(world: &mut World, cursor: &mut EventCursor<DamagedPart>) {
         if !part.amount.is_finite() || part.amount <= 0.0 {
             continue;
         }
-        let Some(at) = part.position.or_else(|| centre(world, part.entity)) else {
+        let Some(at) = part.position.or_else(|| body_centre(world, part.entity)) else {
             continue;
         };
         if part.crit {

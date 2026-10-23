@@ -1,7 +1,7 @@
 {
   "components": {
     "black_hole": {
-      "left": 4.0
+      "left": 6.0
     },
     "particle_emitter": {
       "config": "ex10_black_hole"

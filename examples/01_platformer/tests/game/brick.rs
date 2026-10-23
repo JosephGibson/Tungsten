@@ -3,12 +3,20 @@
 //! breaks only under a fast head-on iron impact, once per contact set, when
 //! its queued shatter runs; a falling block shatters a frozen one; fast iron hurts the player and
 //! crushes small balls, more the faster, keeping its momentum and sharing
-//! its sound; holes pull iron slowly and scraps as balls; and a fast drop
-//! plows through a pile.
+//! its sound; holes pull iron slowly and scraps as balls; a fast drop
+//! plows through a pile; iron is set only where it fits, at no cost where it
+//! does not; a falling block knocks back what it does not kill and bursts
+//! in gore what it does; and a thrown block falls on the troll's arc.
 
+use example_01_platformer::features::combat::{self, Kind};
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{self, CRUSH_SPEED, SHATTER_SPEED, SMASH_KEEP};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::{self, troll};
+use example_01_platformer::features::level::GRAVITY;
 use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::player::components::Lantern;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{
     IronBlock, IronScrap, PreviousVelocity, ScrapTumble, SmallBall,
 };
@@ -17,14 +25,61 @@ use example_01_platformer::features::toys::{
     self, BALL_RADIUS, IRON_HALF, IRON_MASS, IRON_PULL, SCRAP_HALF, SCRAP_MASS, SCRAP_PULL,
     SMALL_BALL_RADIUS,
 };
+use example_01_platformer::shared::SaveIds;
+use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
     AudioCommand, Collider, Entity, Position, RigidBody, RigidBodyBundle, SoundRegistry, Velocity,
 };
-use tungsten::kit::Health;
+use tungsten::kit::{Abilities, Health, Knockback, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
-use super::{ball, body, bursts, cascades, contact, floor, kick, run, teleport};
+use super::{
+    aim_at, ball, body, bursts, calm, cascades, choose, contact, floor, ground, kick, mana,
+    pin_camera, player_entity, run, teleport,
+};
+
+/// The sky's ground the iron tests stand things on.
+const TOP: f32 = 1000.0;
+
+/// An enemy of `kind` standing still on the sky's ground, its centre at
+/// `x`: no mind, so it stays.
+fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
+    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    enemies::scale(world, enemy, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(enemy);
+    enemy
+}
+
+/// Gives `entity` `health` to the full: a target no blow kills.
+fn tough(harness: &mut UiHarness, entity: Entity, health: f32) {
+    let world = harness.world_mut();
+    world
+        .get_mut::<Stats>(entity)
+        .unwrap()
+        .set_base(Stats::MAX_HEALTH, health);
+    harness.step(1);
+    let world = harness.world_mut();
+    world.get_mut::<Health>(entity).unwrap().heal(health);
+}
+
+/// The arena: the map's enemies off, the sky's ground, the camera held and
+/// the lantern out, so mana only moves by a cast; one step a frame.
+fn iron_arena() -> UiHarness {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, TOP);
+    pin_camera(&mut harness, Vec2::new(0.0, 400.0));
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    if let Some(lantern) = harness.world_mut().get_mut::<Lantern>(player) {
+        lantern.on = false;
+    }
+    harness.step(2);
+    harness
+}
 
 /// A block about `at`.
 fn block(harness: &mut UiHarness, at: Vec2) -> Entity {
@@ -404,4 +459,148 @@ fn a_fast_drop_plows_through_a_real_physics_pile() {
     let smashed = before - harness.world().query::<&SmallBall>().count();
     assert!(smashed >= 21, "the drop crushed {smashed} of {before}");
     assert!(body(&harness, iron).y > 400.0);
+}
+
+#[test]
+fn iron_is_not_set_inside_a_wall_or_a_body_and_costs_nothing() {
+    let mut harness = iron_arena();
+    let slab = Vec2::new(900.0, 700.0);
+    floor(&mut harness, slab, Vec2::new(100.0, 20.0));
+    let crawler = standing(&mut harness, EnemyKind::Crawler, 1300.0);
+    harness.step(2);
+    let player = player_entity(&harness);
+    let iron = Spell::IronBlock.ability();
+    let state = |h: &UiHarness| {
+        let abilities = h.world().get::<Abilities>(player).unwrap();
+        (
+            mana(h),
+            abilities.cooldown_left(iron),
+            abilities.charges(iron),
+        )
+    };
+    let blocks = |h: &UiHarness| h.world().query::<&IronBlock>().count();
+    let cast = |h: &mut UiHarness, at: Vec2| {
+        aim_at(h, at);
+        choose(h, 6);
+        h.harness_mut().press_action("cast");
+        h.step(1);
+        h.harness_mut().release_action("cast");
+        h.step(1);
+    };
+    let before = state(&harness);
+    // The map's own blocks, in the mine.
+    let placed = blocks(&harness);
+    let into_crawler = body(&harness, crawler);
+    for at in [slab, into_crawler] {
+        cast(&mut harness, at);
+        assert_eq!(blocks(&harness), placed, "no block at {at}");
+        assert_eq!(state(&harness), before, "nothing spent at {at}");
+    }
+    // In the open, the same cast sets one and spends.
+    cast(&mut harness, Vec2::new(1700.0, 600.0));
+    assert_eq!(blocks(&harness), placed + 1);
+    assert_ne!(state(&harness), before);
+}
+
+#[test]
+fn a_falling_block_knocks_back_the_crawler_it_does_not_kill() {
+    let mut harness = iron_arena();
+    let crawler = standing(&mut harness, EnemyKind::Crawler, 1300.0);
+    tough(&mut harness, crawler, 1000.0);
+    let start = body(&harness, crawler);
+    // Over its left half, so the closing line leans right.
+    block(
+        &mut harness,
+        Vec2::new(1230.0, TOP - 20.0 - IRON_HALF.y - 100.0),
+    );
+    let mut pushed = Vec2::ZERO;
+    for _ in 0..60 {
+        harness.step(1);
+        let knockback = harness.world().get::<Knockback>(crawler).unwrap();
+        if knockback.is_active() {
+            pushed = knockback.push();
+            break;
+        }
+    }
+    assert!(pushed.x > 0.0, "knocked away from the block: {pushed}");
+    assert!(!harness.world().get::<Health>(crawler).unwrap().is_dead());
+    harness.step(10);
+    assert!(
+        body(&harness, crawler).x > start.x + 2.0,
+        "{}",
+        body(&harness, crawler)
+    );
+}
+
+#[test]
+fn gore_follows_only_the_blow_that_kills() {
+    // A block that kills a crawler bursts it in gore, no poof.
+    let mut harness = iron_arena();
+    let crawler = standing(&mut harness, EnemyKind::Crawler, 1300.0);
+    harness.step(1);
+    tungsten::kit::damage(harness.world_mut(), crawler, 55.0);
+    block(
+        &mut harness,
+        Vec2::new(1300.0, TOP - 20.0 - IRON_HALF.y - 100.0),
+    );
+    let mut died = false;
+    for _ in 0..60 {
+        harness.step(1);
+        if harness.world().get::<Health>(crawler).unwrap().is_dead() {
+            died = true;
+            break;
+        }
+    }
+    assert!(died, "the block killed it");
+    assert_eq!(bursts(&harness, "ex10_gore_burst"), 1, "gore");
+    assert_eq!(bursts(&harness, "ex10_poof"), 0, "no poof");
+    // A block that only hurts one, a shot then killing it in the same step,
+    // leaves a poof.
+    let mut harness = iron_arena();
+    let crawler = standing(&mut harness, EnemyKind::Crawler, 1300.0);
+    harness.step(1);
+    let top = body(&harness, crawler).y - 10.0;
+    let iron = block(&mut harness, Vec2::new(1300.0, top - IRON_HALF.y - 0.5));
+    kick(&mut harness, iron, Vec2::new(0.0, 430.0));
+    combat::Hit::new(crawler, [(Kind::Physical, 100.0)]).queue(harness.world_mut());
+    harness.step(1);
+    let health = harness.world().get::<Health>(crawler).unwrap();
+    assert!(health.is_dead(), "the shot killed it");
+    assert_eq!(bursts(&harness, "ex10_gore_burst"), 0, "no gore");
+    assert_eq!(bursts(&harness, "ex10_poof"), 1, "its poof");
+}
+
+#[test]
+fn a_thrown_block_falls_on_the_trolls_arc() {
+    let mut harness = iron_arena();
+    let step_fall = GRAVITY / 60.0;
+    // Falling free, a block falls harder than the world's gravity.
+    let free = block(&mut harness, Vec2::new(1700.0, 300.0));
+    kick(&mut harness, free, Vec2::new(0.0, 100.0));
+    let fall = |h: &mut UiHarness, iron: Entity| {
+        let before = h.world().get::<Velocity>(iron).unwrap().0.y;
+        h.step(1);
+        h.world().get::<Velocity>(iron).unwrap().0.y - before
+    };
+    assert!(fall(&mut harness, free) > step_fall + 1.0, "its own weight");
+    // Thrown, it falls by the world's gravity alone, as the troll aimed it.
+    let thrower = standing(&mut harness, EnemyKind::Troll, 900.0);
+    let thrown = block(&mut harness, Vec2::new(1000.0, TOP - IRON_HALF.y - 1.0));
+    harness.step(1);
+    let world = harness.world_mut();
+    assert!(troll::pick_up(world, thrower, thrown), "it lifts it");
+    assert_eq!(troll::throw(world, thrower), Some(thrown));
+    let mut checked = 0;
+    for _ in 0..90 {
+        let falling = harness.world().get::<Velocity>(thrown).unwrap().0.y > 60.0;
+        let gained = fall(&mut harness, thrown);
+        if falling && gained > 0.0 {
+            assert!((gained - step_fall).abs() < 1.0, "{gained} a step");
+            checked += 1;
+        }
+        if checked >= 5 {
+            break;
+        }
+    }
+    assert!(checked >= 5, "it fell on its arc");
 }

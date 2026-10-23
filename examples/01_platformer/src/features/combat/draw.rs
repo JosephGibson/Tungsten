@@ -1,6 +1,7 @@
 //! What combat draws over the sprites: each target's status overlays in
-//! its sprite's size class, flames while burning, an ice cube while frozen
-//! (fitted to the body's hurtbox where its kind has one), a crackle while
+//! its sprite's size class, flames in a warm glow while burning, an ice
+//! cube while frozen (fitted to the body's hurtbox where its kind has one),
+//! flickering to its cracked twin as the freeze runs out, a crackle while
 //! shocked and a halo of stars while stunned.
 
 use glam::Vec2;
@@ -8,18 +9,27 @@ use tungsten::core::{AssetRegistry, Entity, Sprite, Transform, World};
 use tungsten::kit::{Health, Tags};
 use tungsten::render::SpriteBatch;
 
-use super::systems::flicker;
+use super::systems::{THAW_FLICKER_HZ, THAW_WARN, flicker, frozen_left};
 use super::{BURNING, FROZEN, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::enemies::components::Enemy;
-use crate::features::level::draw::{instance, push_quad, view};
-use crate::features::level::systems::drawn_time;
+use crate::features::level::draw::{instance, material, push_quad, view};
+use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
 
-/// A burning target's flames: frames a second, and where each sits on the
-/// target's box, from its top-left, in shares of its side.
+/// A burning target's flames: frames a second, their side as a share of
+/// the target's, and where each sits on the target's box, from its
+/// top-left, in shares of its side; and the warm glow under them, its side
+/// as a share of the target's and its colour.
 const FLAME_FPS: f32 = 12.0;
-const FLAME_SPOTS: [Vec2; 2] = [Vec2::new(0.22, 0.18), Vec2::new(0.58, 0.36)];
+const FLAME_SIDE: f32 = 0.55;
+const FLAME_SPOTS: [Vec2; 3] = [
+    Vec2::new(0.16, 0.12),
+    Vec2::new(0.46, 0.28),
+    Vec2::new(0.28, 0.44),
+];
+const BURN_GLOW: f32 = 2.2;
+const BURN_GLOW_COLOR: [u8; 4] = [255, 140, 60, 200];
 
 /// The overlays' size class for a sprite `side` pixels across: small 32,
 /// medium 64, large 128.
@@ -35,15 +45,23 @@ pub fn class(side: f32) -> &'static str {
 }
 
 /// The ice cube a frozen `entity` shows: its kind's own, fitted to its
-/// hurtbox on a frame of its sprite's size, else its size class's.
-fn ice(world: &World, entity: Entity, class: &str) -> String {
-    if world.has::<Dummy>(entity) {
-        return "ex10_status_ice_dummy".to_string();
+/// hurtbox on a frame of its sprite's size, else its size class's; over
+/// its freeze's last [`THAW_WARN`] seconds, its cracked twin every other
+/// [`THAW_FLICKER_HZ`] tick.
+fn ice(world: &World, entity: Entity, class: &str, time: f32) -> String {
+    let cube = if world.has::<Dummy>(entity) {
+        "ex10_status_ice_dummy".to_string()
+    } else if let Some(enemy) = world.get::<Enemy>(entity) {
+        enemy.kind.info().ice.to_string()
+    } else {
+        format!("ex10_status_ice_{class}")
+    };
+    let thawing = frozen_left(world, entity).is_some_and(|left| left < THAW_WARN);
+    if thawing && (time * THAW_FLICKER_HZ) as usize % 2 == 1 {
+        format!("{cube}_cracked")
+    } else {
+        cube
     }
-    if let Some(enemy) = world.get::<Enemy>(entity) {
-        return enemy.kind.info().ice.to_string();
-    }
-    format!("ex10_status_ice_{class}")
 }
 
 /// Pushes the sprite `name` over the box at `origin` of `size`, when it is
@@ -91,7 +109,22 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
         }
         let class = class(side);
         if tags.has(BURNING) {
-            let flame = Vec2::splat((side * 0.4).max(12.0));
+            if let Some(halo) = assets.get_sprite(HALO) {
+                let glow = side * BURN_GLOW;
+                let centre = origin + size * 0.5;
+                push_quad(
+                    &mut batches,
+                    halo,
+                    instance(
+                        halo,
+                        centre - Vec2::splat(glow * 0.5),
+                        Vec2::splat(glow),
+                        BURN_GLOW_COLOR,
+                    ),
+                    material(world, HALO_MATERIAL),
+                );
+            }
+            let flame = Vec2::splat((side * FLAME_SIDE).max(12.0));
             for (i, spot) in FLAME_SPOTS.into_iter().enumerate() {
                 let frame = ((time * FLAME_FPS) as usize + 3 * i) % FLAME_FRAMES.len();
                 quad(
@@ -107,7 +140,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             quad(
                 &mut batches,
                 assets,
-                &ice(world, entity, class),
+                &ice(world, entity, class, time),
                 origin,
                 size,
             );
