@@ -235,13 +235,13 @@ fn fire_burns_and_burning_holds_the_dummys_regeneration() {
 #[test]
 fn cold_chills_then_freezes_the_freezable_and_the_player_only_chills() {
     let (mut harness, player, dummy) = with_dummy();
-    // A little past 0.3 of the threshold of 40, its f32 product.
-    hit(&mut harness, dummy, Kind::Cold, 13.0);
+    // A little past 0.15 of the threshold of 40, its f32 product.
+    hit(&mut harness, dummy, Kind::Cold, 6.5);
     assert!(has(&harness, dummy, "chilled") && !has(&harness, dummy, "frozen"));
-    hit(&mut harness, dummy, Kind::Cold, 41.0);
+    hit(&mut harness, dummy, Kind::Cold, 20.5);
     assert!(
         has(&harness, dummy, "frozen"),
-        "the whole threshold, chilled"
+        "half the threshold, chilled"
     );
     // The player's threshold is 30 plus a fifth of 100.
     let speed = |harness: &UiHarness| {
@@ -253,7 +253,7 @@ fn cold_chills_then_freezes_the_freezable_and_the_player_only_chills() {
             .unwrap()
     };
     assert_eq!(speed(&harness), 560.0);
-    hit(&mut harness, player, Kind::Cold, 16.0);
+    hit(&mut harness, player, Kind::Cold, 8.0);
     harness.step(1);
     assert!(has(&harness, player, "chilled"));
     assert!(
@@ -261,9 +261,9 @@ fn cold_chills_then_freezes_the_freezable_and_the_player_only_chills() {
         "{}",
         speed(&harness)
     );
-    // Past the window, a whole threshold more: never frozen.
+    // Past the window, the freeze's whole rung more: never frozen.
     harness.step(70);
-    hit(&mut harness, player, Kind::Cold, 50.0);
+    hit(&mut harness, player, Kind::Cold, 25.0);
     assert!(has(&harness, player, "chilled") && !has(&harness, player, "frozen"));
 }
 

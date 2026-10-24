@@ -1024,5 +1024,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "lava_took",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lava_sizzle_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
   }
 ]

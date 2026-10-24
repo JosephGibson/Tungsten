@@ -24,23 +24,23 @@ use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::audio::{COMBAT_IN, COMBAT_OUT, MUSIC_COMBAT};
 use example_01_platformer::features::combat::draw::overlays;
-use example_01_platformer::features::combat::{Hit, Kind};
+use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind};
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
-use example_01_platformer::features::elements::{
-    BODY_HIT_K, BODY_HIT_MOST, BODY_HIT_SPEED, CRUSH_SPEED,
-};
+use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Shown, Sight, Strike,
 };
 use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
-use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind, PlacedOrbs};
+use example_01_platformer::features::enemies::drops::{
+    self, ORB_CENTRE, ORB_HALF, ORB_SECS, Orb, OrbKind, PlacedOrbs,
+};
 use example_01_platformer::features::enemies::goblin::{
     BOMB_CHANCE, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
-use example_01_platformer::features::enemies::{self, ARRIVED, SUMMON_CAP, troll};
+use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::lightning;
@@ -59,7 +59,7 @@ use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
     AnimationState, AssetRegistry, AudioCommand, Bundle, CameraState, Collider, Entity, EventQueue,
-    Position, RigidBodyBundle, Time, Velocity,
+    Position, PrevPosition, RigidBodyBundle, Time, Velocity,
 };
 use tungsten::kit::{
     AilmentBuckets, AilmentThreshold, ContactDamage, Damaged, Health, Hitbox, KitRng, Knockback,
@@ -321,7 +321,7 @@ fn first_impact(
                 .map_or_else(|| speed(harness, body), |velocity| velocity.0);
             let towards = (body_of(harness, target) - body_of(harness, body)).normalize_or_zero();
             let closing = (before - target_before).dot(towards);
-            let rule = (BODY_HIT_K * mass * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
+            let rule = body_hit(mass, closing);
             return Some((hit, rule));
         }
     }
@@ -482,10 +482,11 @@ fn each_difficulty_scales_enemy_health_and_damage_alone() {
             "its threshold unscaled"
         );
         let player = player_entity(&harness);
+        let health = world.get::<Health>(player).unwrap();
         assert_eq!(
-            world.get::<Health>(player).unwrap().max(),
-            courier::max_health(difficulty),
-            "the player's own"
+            (health.current(), health.max()),
+            (courier::MAX_HEALTH, courier::MAX_HEALTH),
+            "the player's own, the same at each"
         );
         let dummy = world
             .query::<(
@@ -514,10 +515,7 @@ fn each_difficulty_scales_enemy_health_and_damage_alone() {
         );
         assert_eq!(
             game::difficulty_note(difficulty),
-            format!(
-                "{} health · enemies ×{factor}",
-                courier::max_health(difficulty)
-            )
+            format!("enemy health ×{factor} · enemy damage ×{factor}")
         );
     }
 }
@@ -867,7 +865,7 @@ fn the_crawler_chills_on_touch_and_lunges_after_its_tell() {
                 .map(|hit| hit.amount),
         );
     }
-    assert_eq!(chilled, [12.0], "its touch, 12 cold");
+    assert_eq!(chilled, [15.0], "its touch, 15 cold");
     let (mut harness, _, crawler) = stalker();
     let mut step = 0;
     let (mut windup, mut attack) = (None, None);
@@ -916,7 +914,7 @@ fn a_crawler_lunge_at_a_still_player_lands_its_touch() {
     // Both bodies block each other, so the leap stops flush against the
     // player; the touch reaches past its body and lands.
     let hits = crawler_hits(&mut harness, player, crawler, 45);
-    assert_eq!(hits, [12.0], "one touch, 12 cold");
+    assert_eq!(hits, [15.0], "one touch, 15 cold");
 }
 
 #[test]
@@ -952,9 +950,45 @@ fn a_crawler_lunge_landing_on_the_players_head_lands_its_touch() {
     let hits = crawler_hits(&mut harness, player, crawler, 60);
     assert_eq!(
         hits.first(),
-        Some(&12.0),
+        Some(&15.0),
         "its touch reaches the head it stands on"
     );
+}
+
+#[test]
+fn the_crawlers_lunge_leaps_about_220_px_and_53_up() {
+    let (mut harness, _) = arena();
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0, TOP);
+    still(&mut harness, crawler);
+    harness.step(2);
+    let start = at(&harness, crawler);
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = 1.0;
+    crawler::enter_attack(harness.world_mut(), crawler);
+    let grounded = |h: &UiHarness| {
+        h.world()
+            .get::<PlatformerController>(crawler)
+            .is_some_and(PlatformerController::grounded)
+    };
+    let (mut top, mut landed, mut aloft) = (start.y, None, false);
+    for _ in 0..90 {
+        harness.step(1);
+        top = top.min(at(&harness, crawler).y);
+        aloft |= !grounded(&harness);
+        if aloft && grounded(&harness) && landed.is_none() {
+            landed = Some(at(&harness, crawler).x - start.x);
+        }
+    }
+    let rise = start.y - top;
+    assert!((rise - 53.0).abs() <= 3.0, "its apex: {rise}");
+    let landed = landed.expect("it lands");
+    assert!((landed - 220.0).abs() <= 8.0, "its landing: {landed}");
+    assert!(speed(&harness, crawler).x.abs() < 1.0, "it stops");
+    let skid = at(&harness, crawler).x - start.x - landed;
+    assert!((0.0..=90.0).contains(&skid), "its skid: {skid}");
 }
 
 #[test]
@@ -1200,6 +1234,34 @@ fn a_fast_iron_block_crushes_the_beetle() {
     assert_eq!(health(&harness, beetle), 0.0, "crushed, its shell or not");
     harness.step(3);
     assert!(!harness.world().is_alive(beetle));
+}
+
+#[test]
+fn the_maps_bats_hang_at_their_roosts_from_the_start() {
+    // Placed flush under their roofs, each hangs at its roost on its first
+    // frame, a dormant one far off too.
+    let (mut harness, player) = run();
+    harness.step(1);
+    let eye = super::centre(&harness, player);
+    let world = harness.world();
+    let bats: Vec<(Entity, Vec2)> = world
+        .query::<(Entity, &Enemy)>()
+        .filter(|(_, enemy)| enemy.kind == EnemyKind::Bat)
+        .map(|(entity, enemy)| (entity, enemy.home()))
+        .collect();
+    assert_eq!(bats.len(), 7, "the map's bats");
+    let mut farthest: f32 = 0.0;
+    for (bat, home) in bats {
+        let hangs = at(&harness, bat);
+        assert!(hangs.distance(home) < 1.0, "{hangs} off its roost {home}");
+        let shown = world.get::<Shown>(bat).unwrap().clip.clone();
+        assert!(
+            ["ex10_bat_roost", "ex10_bat_roost_left"].contains(&shown.as_str()),
+            "{shown} at {hangs}"
+        );
+        farthest = farthest.max(hangs.distance(eye));
+    }
+    assert!(farthest > DORMANT_PAST, "a dormant one: {farthest}");
 }
 
 #[test]
@@ -1470,6 +1532,44 @@ fn a_thrown_bowling_ball_hurts_by_its_speed_and_mass() {
 }
 
 #[test]
+fn a_light_body_needs_more_speed_to_hurt() {
+    // A still crawler (physical resist 1) and a ball on the ground just off
+    // its side, flung flat at it, its bounce taken off so it ends its step
+    // at the crawler's side, where a hit is read; the dice set so the
+    // player's hit does not crit.
+    let fling = |small: bool, pace: f32| {
+        let (mut harness, _) = arena();
+        let crawler = walker(&mut harness, EnemyKind::Crawler, 1200.0, TOP);
+        still(&mut harness, crawler);
+        harness.step(2);
+        let radius = if small {
+            toys::SMALL_BALL_RADIUS
+        } else {
+            toys::BALL_RADIUS
+        };
+        let x = at(&harness, crawler).x - EnemyKind::Crawler.info().half.x - radius - 8.0;
+        let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(x, TOP - radius - 0.5), small);
+        kick_at(&mut harness, ball, Vec2::new(pace, 0.0));
+        let world = harness.world_mut();
+        world.insert_resource(KitRng::seeded(PLAIN_SEED));
+        let body = world.get_mut::<tungsten::core::RigidBody>(ball).unwrap();
+        body.restitution = 0.0;
+        let mass = 1.0 / body.inv_mass;
+        first_impact(&mut harness, ball, crawler, mass, 30)
+    };
+    let hit = fling(true, 1500.0);
+    assert!(hit.is_none(), "a small ball at 1,500 px/s: {hit:?}");
+    for (small, pace) in [(true, 3000.0), (false, 600.0)] {
+        let ((amount, _), rule) = fling(small, pace).expect("it hurts");
+        assert!(rule > 0.0, "{pace}: {rule}");
+        assert!(
+            (amount - rule).abs() < 0.05,
+            "at {pace}: {amount} against {rule}"
+        );
+    }
+}
+
+#[test]
 fn a_thrown_frozen_enemy_flies_the_throws_arc_and_hurts_at_its_kinds_mass() {
     let (mut harness, player) = arena();
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
@@ -1657,7 +1757,11 @@ fn knockback_the_black_hole_balls_and_iron_barely_move_the_troll() {
     assert!(at(&harness, troll).distance(start) < 1.0, "no knockback");
     let hole = toys::place_black_hole(harness.world_mut(), start + Vec2::new(160.0, -40.0));
     harness.step(2);
-    assert_eq!(move_speed(&harness, troll), 35.0, "the hole slows it");
+    assert_eq!(
+        move_speed(&harness, troll),
+        troll::MOVE_SPEED / 2.0,
+        "the hole slows it"
+    );
     harness.step(58);
     // A crawler's hold would take it past 200 px in this second.
     assert!(
@@ -1667,7 +1771,11 @@ fn knockback_the_black_hole_balls_and_iron_barely_move_the_troll() {
     );
     harness.world_mut().despawn(hole);
     harness.step(2);
-    assert_eq!(move_speed(&harness, troll), 70.0, "its speed back");
+    assert_eq!(
+        move_speed(&harness, troll),
+        troll::MOVE_SPEED,
+        "its speed back"
+    );
     let start = at(&harness, troll);
     let ball = toys::spawn_ball(harness.world_mut(), start + Vec2::new(-120.0, 20.0), false);
     kick_at(&mut harness, ball, Vec2::new(900.0, 0.0));
@@ -1691,9 +1799,9 @@ fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
         assert!(Hit::new(troll, [(Kind::Cold, amount)]).queue(harness.world_mut()));
         harness.step(2);
     };
-    assert_eq!(move_speed(&harness, troll), 70.0);
+    assert_eq!(move_speed(&harness, troll), troll::MOVE_SPEED);
     // The chill's 35 %, and the grade's up to 35 % more as the bucket, which
-    // the chill empties, fills on to the freeze.
+    // the chill empties, fills on to the freeze's rung.
     let graded = |harness: &UiHarness| -> f32 {
         let world = harness.world();
         let fill = world
@@ -1706,26 +1814,26 @@ fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
             .and_then(|stats| stats.get("ailment_threshold_mult"))
             .unwrap_or(1.0);
         let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
-        let grade = (fill / at).clamp(0.0, 1.0);
-        70.0 * (1.0 - 0.35 - 0.35 * grade)
+        let grade = (fill / (FREEZE_NEEDS * at)).clamp(0.0, 1.0);
+        troll::MOVE_SPEED * (1.0 - 0.35 - 0.35 * grade)
     };
-    cold(&mut harness, 15.0);
+    cold(&mut harness, 7.5);
     assert!(tagged(&harness, troll, "status.chilled"), "chilled");
     let first = move_speed(&harness, troll);
     assert!(
         (first - graded(&harness)).abs() < 0.01,
         "the first fill: {first}"
     );
-    // Past half its threshold, slower again, not frozen yet.
-    cold(&mut harness, 30.0);
+    // Past half the freeze's rung, slower again, not frozen yet.
+    cold(&mut harness, 15.0);
     let second = move_speed(&harness, troll);
     assert!(
         (second - graded(&harness)).abs() < 0.01 && second < first - 5.0,
         "deeper in: {second} after {first}"
     );
     assert!(!tagged(&harness, troll, "status.frozen"));
-    // Past its threshold within the chill, a three-second freeze.
-    cold(&mut harness, 15.0);
+    // Past the freeze's rung within the chill, a three-second freeze.
+    cold(&mut harness, 7.5);
     assert!(tagged(&harness, troll, "status.frozen"), "frozen");
     let mut frames = 0;
     assert!(until(&mut harness, 300, |h| {
@@ -1737,6 +1845,44 @@ fn the_troll_slows_in_stages_and_freezes_past_its_threshold() {
         (2.9..=3.1).contains(&held),
         "a three-second freeze: {held} s"
     );
+}
+
+#[test]
+fn the_trolls_slam_waits_out_its_cooldown() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    harness.step(2);
+    let home = harness.world().get::<Position>(troll).unwrap().0;
+    // The courier in its slam's range and out of its swipe's, both held.
+    let spot = at(&harness, troll).x - 120.0;
+    let mut landed = Vec::new();
+    let mut was = None;
+    for frame in 0..480 {
+        stand(&mut harness, player, spot, TOP);
+        tungsten::kit::heal(harness.world_mut(), player, 1000.0);
+        let world = harness.world_mut();
+        world.get_mut::<Position>(troll).unwrap().0 = home;
+        world.get_mut::<PrevPosition>(troll).unwrap().0 = home;
+        harness.step(1);
+        let strike = harness
+            .world()
+            .get::<Brain>(troll)
+            .and_then(|brain| brain.strike);
+        let now = (state(&harness, troll), strike);
+        if now == (EnemyState::Attack, Some(Strike::Slam)) && was != Some(now) {
+            landed.push(frame);
+        }
+        was = Some(now);
+    }
+    assert!(landed.len() >= 2, "it slams again: {landed:?}");
+    for pair in landed.windows(2) {
+        let gap = (pair[1] - pair[0]) as f32 / 60.0;
+        assert!(
+            gap >= troll::SLAM_COOLDOWN - 1.0 / 60.0,
+            "{gap} s between slams: {landed:?}"
+        );
+    }
 }
 
 #[test]
@@ -1901,6 +2047,75 @@ fn a_killed_enemy_rolls_its_drops_and_an_orb_heals_or_restores_mana() {
             }
         }
     }
+}
+
+/// The orb a roll dropped of `kind` once adopted, its save ID its own, at
+/// most `frames` frames on.
+fn adopted(harness: &mut UiHarness, kind: OrbKind, frames: u32) -> Option<Entity> {
+    let mut found = None;
+    until(harness, frames, |h| {
+        found = orbs(h, kind)
+            .into_iter()
+            .find(|&orb| h.world().get::<SaveId>(orb).is_some());
+        found.is_some()
+    });
+    found
+}
+
+fn orb_centre(harness: &UiHarness, orb: Entity) -> Vec2 {
+    harness.world().get::<Position>(orb).unwrap().0 + ORB_CENTRE
+}
+
+#[test]
+fn a_drop_lands_clear_of_rock_falls_and_is_drawn_in() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    // Stone over the ground, which an orb lands on as on the map's walls.
+    slab(
+        &mut harness,
+        Vec2::new(1000.0, TOP + 12.0),
+        Vec2::new(500.0, 12.0),
+    );
+    harness.step(1);
+    // A bat killed in mid-air: its orb centred on its body, then falling.
+    let bat = enemy(&mut harness, EnemyKind::Bat, Vec2::new(900.0, TOP - 200.0));
+    still(&mut harness, bat);
+    harness.step(2);
+    let seed = seed_for(&harness, "enemy_drops", Some(OrbKind::Health.prefab()));
+    harness.world_mut().insert_resource(KitRng::seeded(seed));
+    let died = at(&harness, bat);
+    land(&mut harness, bat, Kind::Physical, 1000.0);
+    let orb = adopted(&mut harness, OrbKind::Health, 5).expect("the bat's roll dropped one");
+    let first = orb_centre(&harness, orb);
+    let below = first.y - died.y;
+    assert!(
+        first.x == died.x && (0.0..=2.001).contains(&below),
+        "centred on its body, a step's fall below: {first} at {died}"
+    );
+    harness.step(30);
+    let fell = orb_centre(&harness, orb).y - first.y;
+    assert!((fell - 60.0).abs() <= 2.0, "it falls 120 px/s: {fell}");
+    harness.step(120);
+    let bottom = orb_centre(&harness, orb).y + ORB_HALF.y;
+    assert!(
+        (bottom - TOP).abs() <= 1.0,
+        "it rests on the stone: {bottom}"
+    );
+    // A crawler killed on the stone: its orb lands clear of it.
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 1300.0, TOP);
+    still(&mut harness, crawler);
+    harness.step(2);
+    let seed = seed_for(&harness, "enemy_drops", Some(OrbKind::Mana.prefab()));
+    harness.world_mut().insert_resource(KitRng::seeded(seed));
+    land(&mut harness, crawler, Kind::Physical, 1000.0);
+    let orb = adopted(&mut harness, OrbKind::Mana, 5).expect("the crawler's roll dropped one");
+    let bottom = orb_centre(&harness, orb).y + ORB_HALF.y;
+    assert!(bottom <= TOP + 1e-3, "clear of the stone: {bottom}");
+    // The player stood 180 px off draws it in.
+    let x = orb_centre(&harness, orb).x;
+    stand(&mut harness, player, x - 180.0, TOP);
+    let drawn = until(&mut harness, 60, |h| !h.world().is_alive(orb));
+    assert!(drawn, "drawn in from 180 px");
 }
 
 #[test]
@@ -2648,8 +2863,7 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
         "a 0.3 s tell: {tell}"
     );
     assert_eq!(hits, [troll::SWIPE_DAMAGE], "the swipe's 18");
-    // One 120 px ahead: the slam, after its 0.8 s tell, slam to slam in 97
-    // steps.
+    // One 120 px ahead: the slam, after its 0.8 s tell.
     let (mut harness, player) = arena();
     harness.harness_mut().set_dt(1.0 / 60.0);
     let troll = troll_at(&mut harness, 420.0, Difficulty::Normal);
@@ -2661,19 +2875,23 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
         "a 0.8 s tell: {tell}"
     );
     assert_eq!(hits, [40.0], "the slam's 40");
-    let (mut gap, mut was) = (None, state(&harness, troll));
-    for step in 1..=200 {
+    // Its slam's cooldown running, it closes in and swipes.
+    let (mut next, mut was) = (None, state(&harness, troll));
+    for _ in 1..=200 {
         stand(&mut harness, player, 300.0, TOP);
         tungsten::kit::heal(harness.world_mut(), player, 100.0);
         harness.step(1);
         let now = state(&harness, troll);
         if now == EnemyState::Attack && was != EnemyState::Attack {
-            gap = Some(step + 2);
+            next = harness
+                .world()
+                .get::<Brain>(troll)
+                .and_then(|brain| brain.strike);
             break;
         }
         was = now;
     }
-    assert_eq!(gap, Some(97), "slam to slam");
+    assert_eq!(next, Some(Strike::Swipe), "a swipe, not a slam");
     // A crate in the swipe's box, kicked by its mass away from the troll.
     let (mut harness, _) = arena();
     let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);

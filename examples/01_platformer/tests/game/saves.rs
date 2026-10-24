@@ -5,20 +5,21 @@
 //! loaded run keeps with the run it was saved from, in a fresh harness and
 //! in a churned world; statused dummies load with their effects' sources;
 //! a save mid-conduction resumes its chain; a bullet in flight loads and
-//! lands; each reaction's hint toasts once a save; the template sample's
+//! lands; a reaction toasts nothing; the template sample's
 //! schemas and 01's older ones are refused; an enemy's hit, pending transition, touch and frozen
 //! flight load as they were, and a loaded run with enemies mid-attack and
 //! mid-search keeps with the uninterrupted one; a keg chain saved mid-chain
 //! finishes the same; a schema 11 save's IDs move past the map's goblins;
 //! a schema 12 player keeps his body where it stood on the wizard's frame;
-//! and a full pit saves within 2 MiB with the map's enemies alive.
+//! a schema 13 save drops its hints and takes 01 (i)'s tuning, its
+//! player's health keeping its share; and a full pit saves within 2 MiB
+//! with the map's enemies alive.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Instant;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
-use example_01_platformer::features::combat::components::Reaction;
 use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
@@ -27,14 +28,16 @@ use example_01_platformer::features::enemies::components::{
     Enemy, EnemyKind, EnemyState, Throw, Throws,
 };
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
-use example_01_platformer::features::enemies::{self};
+use example_01_platformer::features::enemies::{self, crawler, troll};
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::gun::{self};
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::{Player, StaffGlow};
-use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
+use example_01_platformer::features::player::{
+    BODY_OFFSET, MAX_HEALTH, PICKUP_RADIUS, PLAYER_HALF,
+};
 use example_01_platformer::features::props::components::{Bomb, Crate, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF};
 use example_01_platformer::features::toys::components::{
@@ -52,8 +55,8 @@ use tungsten::core::{
     Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, Velocity, World,
 };
 use tungsten::kit::{
-    Abilities, Damaged, Effects, Health, Hitbox, Oscillator, PathFollower, StateMachine, Stats,
-    Tags,
+    Abilities, ContactDamage, Damaged, Effects, Health, Hitbox, Oscillator, PathFollower,
+    StateMachine, Stats, Tags,
 };
 use tungsten::testing::UiHarness;
 
@@ -1503,33 +1506,23 @@ fn a_save_mid_conduction_resumes_the_chain() {
     assert!(conduction(&fresh).is_empty(), "the line's end");
 }
 
-/// How many of the toasts on screen read `text`.
-fn toasted(harness: &UiHarness, text: &str) -> usize {
-    harness
-        .world()
-        .resource::<Toasts>()
-        .texts(harness.tree())
-        .iter()
-        .filter(|shown| shown.as_str() == text)
-        .count()
+/// The toasts on screen.
+fn toasts(harness: &UiHarness) -> Vec<String> {
+    harness.world().resource::<Toasts>().texts(harness.tree())
 }
 
 #[test]
-fn each_hint_toasts_once_per_save() {
+fn a_reaction_toasts_nothing() {
     let (mut harness, _) = grounded();
     let dummy = super::combat::dummy_at(&mut harness, 1400.0);
-    let balls: Vec<Entity> = [900.0, 1000.0, 1100.0]
+    let balls: Vec<Entity> = [900.0, 1100.0]
         .into_iter()
         .map(|x| toys::spawn_ball(harness.world_mut(), Vec2::new(x, TOP - 8.0), true))
         .collect();
     harness.step(2);
-    // Two freezes, one toast.
-    for &ball in &balls[..2] {
-        elements::freeze_iron(harness.world_mut(), ball);
-        harness.step(2);
-        assert_eq!(toasted(&harness, Reaction::Freeze.hint()), 1);
-    }
-    // A shatter, a steam burst and a shock, each once.
+    // A freeze, a shatter, a steam burst and a shock.
+    elements::freeze_iron(harness.world_mut(), balls[0]);
+    harness.step(2);
     let at = super::body(&harness, balls[0]);
     cascade::queue(
         harness.world_mut(),
@@ -1540,12 +1533,12 @@ fn each_hint_toasts_once_per_save() {
         0.0,
     );
     harness.step(2);
-    elements::ignite(harness.world_mut(), balls[2]);
-    let at = super::body(&harness, balls[2]);
+    elements::ignite(harness.world_mut(), balls[1]);
+    let at = super::body(&harness, balls[1]);
     cascade::queue(
         harness.world_mut(),
         CascadeKind::Steam,
-        Some(balls[2]),
+        Some(balls[1]),
         at,
         at,
         elements::SMALL_STEAM_REACH,
@@ -1553,36 +1546,7 @@ fn each_hint_toasts_once_per_save() {
     harness.step(2);
     super::combat::apply(&mut harness, dummy, "shocked", None);
     harness.step(2);
-    for reaction in [Reaction::Shatter, Reaction::Steam, Reaction::Shock] {
-        assert_eq!(toasted(&harness, reaction.hint()), 1, "{reaction:?}");
-    }
-    let saved = capture(&harness);
-    assert_eq!(
-        saved.hints,
-        [
-            Reaction::Freeze,
-            Reaction::Shatter,
-            Reaction::Steam,
-            Reaction::Shock
-        ]
-    );
-    // The save keeps them seen: a loaded run's freeze toasts nothing.
-    let mut fresh = super::harness();
-    load(&mut fresh, saved);
-    scaffold(&mut fresh);
-    fresh.world_mut().resource_mut::<Time>().resume();
-    let ball = toys::spawn_ball(fresh.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
-    fresh.step(2);
-    elements::freeze_iron(fresh.world_mut(), ball);
-    fresh.step(2);
-    assert_eq!(toasted(&fresh, Reaction::Freeze.hint()), 0);
-    // A new run has seen none.
-    let (mut new, _) = grounded();
-    let ball = toys::spawn_ball(new.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
-    new.step(2);
-    elements::freeze_iron(new.world_mut(), ball);
-    new.step(2);
-    assert_eq!(toasted(&new, Reaction::Freeze.hint()), 1);
+    assert!(toasts(&harness).is_empty(), "{:?}", toasts(&harness));
 }
 
 #[test]
@@ -2062,6 +2026,41 @@ fn as_schema_13(old: &mut Value) {
     *at = Value::from(vec![corner.x, corner.y]);
 }
 
+/// What schema 14 makes of an older save: its hints gone; the player's
+/// maximum the same at every difficulty, its health keeping its share; its
+/// reach, each crawler's damage and each troll's walk at their new bases,
+/// their modifiers kept; and each saved cold build-up halved with the cold
+/// ladder's gates.
+fn as_schema_14(old: &mut Value) {
+    old.as_object_mut().unwrap().remove("hints");
+    let full = f64::from(MAX_HEALTH);
+    let player = &mut old["player"];
+    let current = player["health"]["current"].as_f64().unwrap();
+    let max = player["health"]["max"].as_f64().unwrap();
+    player["health"]["current"] = Value::from((current / max * full).clamp(0.0, full));
+    player["health"]["max"] = Value::from(full);
+    player["stats"]["max_health"]["base"] = Value::from(full);
+    player["stats"]["pickup_radius"]["base"] = Value::from(f64::from(PICKUP_RADIUS));
+    let halve = |buckets: &mut Value| {
+        if let Some(fill) = buckets.get_mut("damage.cold") {
+            *fill = Value::from(fill.as_f64().unwrap() * 0.5);
+        }
+    };
+    halve(&mut player["buckets"]);
+    for dummy in old["dummies"].as_array_mut().unwrap() {
+        halve(&mut dummy["buckets"]);
+    }
+    for enemy in old["enemies"].as_array_mut().unwrap() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["damage"]["base"] = Value::from(f64::from(crawler::DAMAGE));
+        }
+        if enemy["kind"] == "troll" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(troll::MOVE_SPEED));
+        }
+        halve(&mut enemy["buckets"]);
+    }
+}
+
 /// Sets aside what a capture of a migrated save adds: the map's new enemies
 /// (`added`), the elevator at rest and the basins at rest, which a save
 /// from before schema 10 has none of.
@@ -2178,6 +2177,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_11(&mut old);
     as_schema_12(&mut old);
     as_schema_13(&mut old);
+    as_schema_14(&mut old);
     let to = |id: u64| {
         schema_12_id(schema_10_id(if id >= from {
             id + save::SHIFT_9
@@ -2368,6 +2368,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_11(&mut old);
     as_schema_12(&mut old);
     as_schema_13(&mut old);
+    as_schema_14(&mut old);
     let to = |id: u64| schema_12_id(schema_10_id(id));
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
@@ -2537,15 +2538,21 @@ fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
         let at = Vec2::from(migrated.player.position) + BODY_OFFSET;
         assert!(at.distance(spot) < 0.01, "{column},{feet}: moved to {at}");
         // Loaded with the clock running, the player stands there a second,
-        // unhurt.
+        // unhurt (an orb its reach draws in may heal it).
         let mut harness = super::harness();
         harness.harness_mut().set_dt(1.0 / 60.0);
         load(&mut harness, migrated);
         calm(&mut harness);
         harness.world_mut().resource_mut::<Time>().resume();
         let player = player_entity(&harness);
-        let health = harness.world().get::<Health>(player).unwrap().current();
-        harness.step(60);
+        let mut hurt = false;
+        for _ in 0..60 {
+            harness.step(1);
+            hurt |= harness
+                .harness()
+                .events::<Damaged>()
+                .any(|hit| hit.entity == player);
+        }
         let now = centre(&harness, player);
         assert!(
             now.distance(spot) < 1.0,
@@ -2558,7 +2565,7 @@ fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
                 .unwrap()
                 .grounded()
         );
-        assert_eq!(world.get::<Health>(player).unwrap().current(), health);
+        assert!(!hurt, "{column},{feet}: unhurt");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
@@ -2640,6 +2647,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     assert_eq!(envelope["schema"].as_u64(), Some(11));
     as_schema_12(&mut old);
     as_schema_13(&mut old);
+    as_schema_14(&mut old);
     let (migrated, dir) = migrate("schema-11", FIXTURE);
     // Every ID from the first placed orb's on moved past the goblins, every
     // one under it kept, and nothing else.
@@ -2710,6 +2718,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
         "{corner} became {moved_to}"
     );
     as_schema_13(&mut old);
+    as_schema_14(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -2720,6 +2729,89 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     let body = centre(&run, player);
     let stood = corner + Vec2::new(32.0, 33.0);
     assert!(body.distance(stood) < 0.01, "{body} against {stood}");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
+    // 0.103's save (step 1's fixture): an Easy run, its player hurt to 120
+    // of 150, a freeze's hint seen and the map's dummy part chilled.
+    const FIXTURE: &str = include_str!("fixtures/schema13.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    assert_eq!(envelope["schema"].as_u64(), Some(13));
+    let mut old = envelope["data"].clone();
+    let (migrated, dir) = migrate("schema-13", FIXTURE);
+    let new = json(&migrated);
+    assert!(new.get("hints").is_none(), "its hints gone");
+    let player = &new["player"];
+    let health = (
+        player["health"]["current"].as_f64(),
+        player["health"]["max"].as_f64(),
+    );
+    assert_eq!(health, (Some(80.0), Some(100.0)), "its share of 100");
+    assert_eq!(player["stats"]["max_health"]["base"].as_f64(), Some(100.0));
+    assert_eq!(
+        player["stats"]["pickup_radius"]["base"].as_f64(),
+        Some(192.0)
+    );
+    let crawlers: Vec<&Value> = new["enemies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|enemy| enemy["kind"] == "crawler")
+        .collect();
+    assert!(!crawlers.is_empty());
+    for enemy in crawlers {
+        let damage = &enemy["stats"]["damage"];
+        assert_eq!(damage["base"].as_f64(), Some(15.0));
+        assert_eq!(
+            damage["modifiers"],
+            serde_json::json!([["difficulty", { "mul": 0.75 }]]),
+            "Easy's kept"
+        );
+    }
+    let cold = |save: &Value| {
+        save["dummies"][0]["buckets"]["damage.cold"]
+            .as_f64()
+            .unwrap()
+    };
+    assert!(
+        (cold(&new) - cold(&old) * 0.5).abs() < 1e-5,
+        "the dummy's build-up halved: {} of {}",
+        cold(&new),
+        cold(&old)
+    );
+    // And nothing else.
+    as_schema_14(&mut old);
+    let mut moved = Vec::new();
+    moved_ids(&old, &new, "", &|id| id, &mut moved);
+    assert!(moved.is_empty(), "{moved:?}");
+    // Loaded, it plays on with the new values.
+    let mut run = super::harness();
+    load(&mut run, migrated);
+    run.harness_mut().set_dt(1.0 / 60.0);
+    run.world_mut().resource_mut::<Time>().resume();
+    run.step(2);
+    let world = run.world();
+    let player = player_entity(&run);
+    let health = world.get::<Health>(player).unwrap();
+    assert_eq!((health.current(), health.max()), (80.0, 100.0));
+    let reach = world.get::<Stats>(player).unwrap().get("pickup_radius");
+    assert_eq!(reach, Some(192.0));
+    let of_kind = |kind: EnemyKind| {
+        world
+            .query::<(Entity, &Enemy)>()
+            .find(|(_, enemy)| enemy.kind == kind)
+            .map(|(entity, _)| entity)
+            .unwrap_or_else(|| panic!("a placed {kind:?}"))
+    };
+    let touch = world
+        .get::<ContactDamage>(of_kind(EnemyKind::Crawler))
+        .unwrap()
+        .damage();
+    assert_eq!(touch, 15.0 * 0.75, "a crawler's touch at Easy");
+    let wisp = world.get::<Health>(of_kind(EnemyKind::Wisp)).unwrap().max();
+    assert_eq!(wisp, 40.0 * 0.75, "a wisp's health at Easy");
     let _ = std::fs::remove_dir_all(dir);
 }
 
@@ -2753,11 +2845,19 @@ fn a_schema_10_trolls_deep_chill_goes_at_its_first_step() {
         .map(|(entity, ..)| entity)
         .expect("the troll loaded");
     let speed = |h: &UiHarness| h.world().get::<Stats>(troll).unwrap().get("move_speed");
-    assert_eq!(speed(&fresh), Some(70.0 * 0.65), "its saved slow");
+    let slowed = speed(&fresh).unwrap();
+    assert!(
+        (slowed - troll::MOVE_SPEED * 0.65).abs() < 1e-3,
+        "its saved slow: {slowed}"
+    );
     fresh.harness_mut().set_dt(1.0 / 60.0);
     fresh.world_mut().resource_mut::<Time>().resume();
     fresh.step(1);
-    assert_eq!(speed(&fresh), Some(70.0), "whole after its first step");
+    assert_eq!(
+        speed(&fresh),
+        Some(troll::MOVE_SPEED),
+        "whole after its first step"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

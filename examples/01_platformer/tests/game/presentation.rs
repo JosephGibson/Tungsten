@@ -3,8 +3,9 @@
 //! animations in step, the staff light's glow and light, the wizard's
 //! overlays on his body, midnight's post stack and moon, the glows'
 //! material batches, an enemy's alert and search marks with the alert's
-//! one sting, the theme's own colours' contrast, and the title's starry
-//! night, whose stars leave with it.
+//! one sting, F1's hit boxes beside the colliders while they land, the
+//! theme's own colours' contrast, and the title's starry night, whose stars
+//! leave with it.
 
 use std::path::PathBuf;
 
@@ -32,16 +33,22 @@ use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
-use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::draw::{MARK_ALERT, MARK_SEARCH, mark};
+use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
+use example_01_platformer::features::enemies::draw::{
+    HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
+};
+use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
+use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::toys::{self, components::BlackHole};
 use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
+use tungsten::PhysicsDebugOverlay;
+use tungsten::core::Shape;
 use tungsten::core::{AudioCommand, SoundRegistry, Time};
-use tungsten::kit::StateMachine;
+use tungsten::kit::{Hitbox, KitDebug, StateMachine};
 
 use super::{centre, fall_dead, mock_sprite, press, run, teleport};
 
@@ -977,6 +984,115 @@ fn machine_state(harness: &UiHarness, enemy: Entity) -> EnemyState {
 /// The sky's ground the enemies' tests stand on.
 const SKY_TOP: f32 = 1000.0;
 
+/// An enemy of `kind` on the sky's ground at `x`, at Normal, its mind
+/// taken, so it stands.
+fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
+    let centre = Vec2::new(x, SKY_TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    enemies::scale(world, enemy, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(enemy);
+    enemy
+}
+
+/// Puts `enemy` in its attack with `strike` as the blow it lands.
+fn landing(harness: &mut UiHarness, enemy: Entity, strike: Strike) {
+    let world = harness.world_mut();
+    world.get_mut::<Brain>(enemy).unwrap().strike = Some(strike);
+    world.insert(enemy, StateMachine::new(EnemyState::Attack));
+}
+
+#[test]
+fn f1_draws_the_hit_boxes_with_the_colliders_while_they_land() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    let goblin = standing(&mut harness, EnemyKind::Goblin, 900.0);
+    let swiper = standing(&mut harness, EnemyKind::Troll, 1300.0);
+    let bat = standing(&mut harness, EnemyKind::Bat, 1700.0);
+    let slammer = standing(&mut harness, EnemyKind::Troll, 2150.0);
+    harness.step(1);
+    let hit_shapes = |harness: &UiHarness| {
+        let draw = harness.harness().draw().expect("a frame drew");
+        let quads = draw
+            .debug_quads
+            .iter()
+            .filter(|q| q.color == HIT_COLOR)
+            .count();
+        let lines = draw
+            .debug_lines
+            .iter()
+            .filter(|l| l.color == HIT_COLOR)
+            .count();
+        quads + lines
+    };
+    harness
+        .world_mut()
+        .resource_mut::<PhysicsDebugOverlay>()
+        .enabled = true;
+    harness.step(2);
+    assert!(
+        harness.world().resource::<KitDebug>().enabled(),
+        "F1 turns the kit's on"
+    );
+    assert_eq!(
+        hit_shapes(&harness),
+        0,
+        "no blow lands, the bat's window shut"
+    );
+    // A stab, a swipe and a slam landing, and the bat's dive window open.
+    landing(&mut harness, goblin, Strike::Stab);
+    landing(&mut harness, swiper, Strike::Swipe);
+    landing(&mut harness, slammer, Strike::Slam);
+    harness.world_mut().get_mut::<Hitbox>(bat).unwrap().arm();
+    harness.step(2);
+    let world = harness.world();
+    let draw = harness.harness().draw().expect("a frame drew");
+    let quad_at = |corner: Vec2| {
+        draw.debug_quads
+            .iter()
+            .find(|quad| Vec2::from(quad.position).distance(corner) < 0.01)
+            .map(|quad| (quad.color, quad.size[1]))
+    };
+    let hit = Some((HIT_COLOR, HIT_THICKNESS));
+    let hitbox = world.get::<Hitbox>(bat).unwrap();
+    let Shape::Aabb { half_extents } = hitbox.shape().shape() else {
+        unreachable!("the bat's hitbox is a box")
+    };
+    let at = world.get::<Position>(bat).unwrap().0 + hitbox.offset();
+    assert_eq!(quad_at(at - half_extents), hit, "the kit's armed hitbox");
+    let stab = goblin::stab_box(world, goblin).unwrap();
+    assert_eq!(quad_at(stab - STAB_HALF), hit, "the stab's box");
+    let swipe = troll::swipe_box(world, swiper).unwrap();
+    assert_eq!(quad_at(swipe - SWIPE_HALF), hit, "the swipe's box");
+    let fist = troll::fist(world, slammer).unwrap();
+    let slam = draw.debug_lines.iter().any(|line| {
+        line.color == HIT_COLOR
+            && line.thickness == HIT_THICKNESS
+            && (Vec2::from(line.a).distance(fist) - SLAM_REACH).abs() < 0.5
+    });
+    assert!(slam, "the slam's reach about its fist");
+    let swipe_fist = troll::fist(world, swiper).unwrap();
+    let swiper_slams = draw.debug_lines.iter().any(|line| {
+        line.color == HIT_COLOR
+            && (Vec2::from(line.a).distance(swipe_fist) - SLAM_REACH).abs() < 0.5
+    });
+    assert!(!swiper_slams, "a swipe shows no slam");
+    // F1 off: the kit's off and nothing draws in the hit colour.
+    harness
+        .world_mut()
+        .resource_mut::<PhysicsDebugOverlay>()
+        .enabled = false;
+    harness.step(2);
+    assert!(!harness.world().resource::<KitDebug>().enabled());
+    assert_eq!(hit_shapes(&harness), 0, "no hit shape");
+}
+
 #[test]
 fn an_alert_shows_its_mark_and_stings_once() {
     let mut harness = super::harness();
@@ -1049,8 +1165,8 @@ fn an_alert_shows_its_mark_and_stings_once() {
         more += super::steps_this_frame(&fresh);
     }
     assert!(more.abs_diff(18) <= 1, "0.3 s more: {more} steps");
-    // The ! runs out; then out of sight it searches: a ? past its search's
-    // first 0.4 s.
+    // The ! runs out; then out of sight, short of dormancy from where its
+    // lunge left it, it searches: a ? past its search's first 0.4 s.
     for _ in 0..20 {
         hold_step(&mut harness, player, 300.0);
         heard += stings(&harness);
@@ -1062,7 +1178,7 @@ fn an_alert_shows_its_mark_and_stings_once() {
     );
     let mut searching = false;
     for _ in 0..240 {
-        hold_step(&mut harness, player, 1600.0);
+        hold_step(&mut harness, player, 1400.0);
         if machine_state(&harness, spotter) == EnemyState::Search {
             searching = true;
             break;
@@ -1072,7 +1188,7 @@ fn an_alert_shows_its_mark_and_stings_once() {
     assert_eq!(mark(harness.world(), spotter), None, "no ? at once");
     let mut asked = false;
     for _ in 0..40 {
-        hold_step(&mut harness, player, 1600.0);
+        hold_step(&mut harness, player, 1400.0);
         asked |= mark(harness.world(), spotter) == Some(MARK_SEARCH);
     }
     assert!(asked, "a ? past 0.4 s");
@@ -1153,7 +1269,7 @@ fn the_theme_reads_in_its_own_colours() {
 
 #[test]
 fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
-    use example_01_platformer::features::level::title::{TITLE_STAR, TWINKLE, TWINKLES};
+    use example_01_platformer::features::level::title::{TITLE_STAR, TWINKLE_SIZES, TWINKLES};
     use example_01_platformer::shell::title::TITLE;
     let mut harness = super::harness();
     // The backdrop's sprites, as the harness loads none: the midnight sky,
@@ -1181,14 +1297,15 @@ fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
         !title.contains(&962) && !title.contains(&963),
         "no clouds: {title:?}"
     );
-    let twinkle = harness
-        .world()
-        .resource::<ParticleConfigRegistry>()
-        .id_for_name(TWINKLE);
+    let configs = harness.world().resource::<ParticleConfigRegistry>();
+    let sizes: Vec<_> = TWINKLE_SIZES
+        .iter()
+        .map(|(name, _)| configs.id_for_name(name).expect("its config"))
+        .collect();
     let twinkles = |h: &UiHarness| -> Vec<Option<SceneEntity>> {
         h.world()
             .query::<(&ParticleEmitter, Option<&SceneEntity>)>()
-            .filter(|(emitter, _)| Some(emitter.config) == twinkle)
+            .filter(|(emitter, _)| sizes.contains(&emitter.config))
             .map(|(_, owner)| owner.copied())
             .collect()
     };

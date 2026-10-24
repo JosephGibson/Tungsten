@@ -19,7 +19,7 @@
       "fall": { "left": "ex10_player_fall_left", "right": "ex10_player_fall" },
       "min_speed": 1
     },
-    "stats": { "max_health": 100, "mana": 100, "max_mana": 100, "move_speed": 560, "pickup_radius": 96 },
+    "stats": { "max_health": 100, "mana": 100, "max_mana": 100, "move_speed": 560, "pickup_radius": 192 },
     "ailment_threshold": { "flat": 30, "of_max_health": 0.2 },
     "effects": ["mana_regen"],
     "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls", "lightning", "gun", "summon", "staff_light"],

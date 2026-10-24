@@ -28,7 +28,7 @@
       ]
     },
     "platformer_controller": {
-      "run_speed": 70,
+      "run_speed": 91,
       "jump_speed": 600
     },
     "health": {
@@ -39,7 +39,7 @@
     "stats": {
       "max_health": 600,
       "damage": 40,
-      "move_speed": 70
+      "move_speed": 91
     },
     "hurtbox": {
       "shape": {

@@ -102,8 +102,8 @@
     "ailments": [
       {
         "effect": "chilled",
-        "needs": 0.3,
-        "window": 3,
+        "needs": 0.15,
+        "window": 6,
         "blocked_by": [
           "status.chilled",
           "status.burning"
@@ -111,8 +111,8 @@
       },
       {
         "effect": "frozen",
-        "needs": 1,
-        "window": 3,
+        "needs": 0.5,
+        "window": 6,
         "requires": [
           "freezable",
           "status.chilled"
@@ -129,8 +129,8 @@
             "status.frozen"
           ]
         },
-        "needs": 1,
-        "window": 3,
+        "needs": 0.5,
+        "window": 6,
         "requires": [
           "troll",
           "freezable",

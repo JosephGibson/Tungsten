@@ -177,11 +177,13 @@ pub enum Sound {
     Alerted,
     /// A goblin's stab with its knife.
     GoblinStabbed,
+    /// Lava taking what fell in: its sizzle.
+    LavaTook,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 65] = [
+    pub const ALL: [Sound; 66] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -247,6 +249,7 @@ impl Sound {
         Sound::TrollGrunted,
         Sound::Alerted,
         Sound::GoblinStabbed,
+        Sound::LavaTook,
     ];
 
     /// Its cue event's name.
@@ -318,6 +321,7 @@ impl Sound {
             Sound::TrollGrunted => "troll_grunted",
             Sound::Alerted => "alerted",
             Sound::GoblinStabbed => "goblin_stabbed",
+            Sound::LavaTook => "lava_took",
         }
     }
 }

@@ -34,8 +34,9 @@ pub mod wisp;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Position, Schedule, Shape, Stage, World, system};
 use tungsten::kit::{
-    ANIMATION_TICK, Health, KNOCKBACK, Modifier, PICKUP_TICK, PLATFORMER_CONTROLLER, Phase,
-    PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER, ensure_phases,
+    ANIMATION_TICK, Health, KIT_DEBUG_DRAW, KNOCKBACK, Modifier, PICKUP_MAGNET, PICKUP_TICK,
+    PLATFORMER_CONTROLLER, Phase, PickedUp, PlatformerController, Stats, TOP_DOWN_MOVER,
+    ensure_phases,
 };
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -230,13 +231,15 @@ impl EnemyKind {
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
 /// name; the throws in flight; in the intent phase the sight, the alerts,
-/// the marks' clocks and the hold before the state machine, whose hooks
-/// run each kind's rules; in the move phase the trolls' holds after the
-/// movers; in the overlap phase the orbs collected; in the react phase the
-/// deaths; in `PreUpdate` the orbs' adoption; in the present phase the
-/// clips after the kit's animation tick, the beetles' dust and the dropped
-/// orbs' blink; and the trolls' bars and slam rings and the enemies' marks
-/// drawn over the sprites.
+/// the marks' and the trolls' slam clocks and the hold before the state
+/// machine, whose hooks run each kind's rules; in the move phase the
+/// trolls' holds after the movers and the dropped orbs' fall after the
+/// kit's magnet; in the overlap phase the orbs collected; in the react
+/// phase the deaths and where the dead fell; in `PreUpdate` the orbs'
+/// adoption; in the present phase the clips after the kit's animation tick,
+/// the beetles' dust, the dropped orbs' blink and, under F1, their hit
+/// tests before the kit's debug draw; and the trolls' bars and slam rings
+/// and the enemies' marks drawn over the sprites.
 pub struct EnemiesPlugin;
 
 impl Plugin for EnemiesPlugin {
@@ -263,7 +266,8 @@ impl Plugin for EnemiesPlugin {
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
         let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
-        for desc in [sight, alerts, hold, fire, chill, marks] {
+        let cooldowns = system("troll_cooldowns", troll::cooldowns).before(ENEMY_STATES);
+        for desc in [sight, alerts, hold, fire, chill, marks, cooldowns] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
         let holds = system("troll_holds", troll::holds)
@@ -271,6 +275,8 @@ impl Plugin for EnemiesPlugin {
             .after(TOP_DOWN_MOVER)
             .after(KNOCKBACK);
         schedule.add(Stage::FixedUpdate, Phase::Move.join(holds));
+        let fall = system("orb_fall", drops::fall).after(PICKUP_MAGNET);
+        schedule.add(Stage::FixedUpdate, Phase::Move.join(fall));
         let mut picked = EventCursor::<PickedUp>::new();
         let collect = system("orb_collect", move |world: &mut World| {
             drops::collect(world, &mut picked);
@@ -286,6 +292,12 @@ impl Plugin for EnemiesPlugin {
         })
         .after("combat_reactions");
         schedule.add(Stage::FixedUpdate, Phase::React.join(deaths));
+        let mut cursor = EventCursor::new();
+        let fallen = system("orb_fallen", move |world: &mut World| {
+            drops::fallen(world, &mut cursor);
+        })
+        .after("enemy_deaths");
+        schedule.add(Stage::FixedUpdate, Phase::React.join(fallen));
         let clips = system("enemy_clips", systems::clips).after(ANIMATION_TICK);
         schedule.add(Stage::PostUpdate, Phase::Present.join(clips));
         schedule.add(
@@ -296,6 +308,8 @@ impl Plugin for EnemiesPlugin {
             Stage::PostUpdate,
             Phase::Present.join(system("orb_blink", drops::blink)),
         );
+        let boxes = system("enemy_debug_boxes", draw::debug_boxes).before(KIT_DEBUG_DRAW);
+        schedule.add(Stage::PostUpdate, Phase::Present.join(boxes));
     }
 }
 

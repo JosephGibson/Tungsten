@@ -1,13 +1,13 @@
 {
   "tokens": {
     "colors": {
-      "background": "#030408",
-      "surface": "#090b18",
+      "background": "#020306",
+      "surface": "#060812",
       "border": "#5c6594",
       "text": "#e8eaf6",
       "text_muted": "#a3aac8",
       "accent": "#a46cff",
-      "accent_text": "#030408",
+      "accent_text": "#020306",
       "focus": "#cbb0ff",
       "disabled_text": "#666d92",
       "danger": "#ff6b78"
@@ -21,20 +21,20 @@
       "normal": { "border_width": 1, "corner_radius": 0 }
     },
     "button": {
-      "normal": { "background": "#090b18", "border_width": 1, "corner_radius": 0, "text": { "color": "#e8eaf6", "weight": 400, "align": "center" } },
+      "normal": { "background": "#060812", "border_width": 1, "corner_radius": 0, "text": { "color": "#e8eaf6", "weight": 400, "align": "center" } },
       "focused": { "background": "#11142a", "border": "#cbb0ff", "border_width": 2 },
       "hovered": { "background": "#11142a" },
-      "pressed": { "background": "#a46cff", "text": { "color": "#030408" } },
-      "disabled": { "background": "#090b18", "text": { "color": "#666d92" } }
+      "pressed": { "background": "#a46cff", "text": { "color": "#020306" } },
+      "disabled": { "background": "#060812", "text": { "color": "#666d92" } }
     },
     "toggle": {
-      "normal": { "background": "#090b18", "border_width": 1, "corner_radius": 0, "text": { "color": "#a46cff" } },
+      "normal": { "background": "#060812", "border_width": 1, "corner_radius": 0, "text": { "color": "#a46cff" } },
       "focused": { "background": "#11142a", "border": "#cbb0ff", "border_width": 2 },
       "hovered": { "background": "#11142a" },
-      "pressed": { "background": "#030408" }
+      "pressed": { "background": "#020306" }
     },
     "slider": {
-      "normal": { "background": "#5c6594", "border": "#030408", "border_width": 1, "corner_radius": 0, "text": { "color": "#a46cff" } },
+      "normal": { "background": "#5c6594", "border": "#020306", "border_width": 1, "corner_radius": 0, "text": { "color": "#a46cff" } },
       "focused": { "border": "#cbb0ff", "border_width": 2 },
       "hovered": { "text": { "color": "#cbb0ff" } }
     }

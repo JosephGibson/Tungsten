@@ -16,14 +16,13 @@ use tungsten::physics::wake;
 use super::cascade::{self, CascadeKind};
 use super::components::{BallBurn, Chill, FireEmitter, Frozen, IcePulse};
 use super::{
-    BASE_SMASH, BODY_HIT_K, BODY_HIT_MOST, BODY_HIT_SPEED, BURN_SECS, CRUSH_HIT, CRUSH_SPEED,
-    DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF,
-    FROZEN_SECS, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE,
-    SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE,
+    BASE_SMASH, BODY_HIT_SPEED, BURN_SECS, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP,
+    DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS,
+    IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE, SHATTER_MASS,
+    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE, body_hit,
     freeze_amount,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
 use crate::features::enemies::components::{Enemy, Throws};
 use crate::features::enemies::{beetle, goblin};
@@ -906,14 +905,12 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
 }
 
 /// Freezes a body through: its chill gives way to [`Frozen`] for
-/// [`FROZEN_SECS`], it wakes, and its reaction goes to the hints. A burning
-/// body does not freeze.
+/// [`FROZEN_SECS`] and it wakes. A burning body does not freeze.
 pub fn freeze_iron(world: &mut World, iron: Entity) {
     if is_body(world, iron) && !world.has::<Frozen>(iron) && !burns(world, iron) {
         world.insert(iron, Frozen { left: FROZEN_SECS });
         world.remove_component::<Chill>(iron);
         wake(world, iron);
-        combat::react(world, Reaction::Freeze);
     }
 }
 
@@ -1127,10 +1124,11 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// the step's contacts and the bodies' speeds before it, queues its
 /// shatter; a moving body that ends the step touching a live target
 /// ([`target_hits`]), closing at [`BODY_HIT_SPEED`] or more, hurts it by
-/// [`BODY_HIT_K`] × its mass × the speed past that, at most
-/// [`BODY_HIT_MOST`], credited to the player, or for a thrown body by its
-/// thrower's damage factor, credited to its thrower while it lives, the
-/// throw ending at its first such hit, a goblin's thrown rock landing
+/// [`body_hit`] of its mass and that speed, nothing under its floor
+/// (`BODY_HIT_FLOOR`, read before a thrower's factor: no part, no fire, no
+/// push, and a throw flies on), credited to the player, or for a thrown
+/// body by its thrower's damage factor, credited to its thrower while it
+/// lives, the throw ending at its first such hit, a goblin's thrown rock landing
 /// `goblin::ROCK_DAMAGE` with `goblin::ROCK_PUSH` along its flight in place
 /// of the speed's; and a frozen target landing as hard
 /// takes [`LANDING_SHARE`] of the speed past [`SHATTER_SPEED`]. Each pair
@@ -1255,8 +1253,12 @@ pub fn body_impacts(world: &mut World) {
         let amount = if rock {
             goblin::ROCK_DAMAGE
         } else {
-            (BODY_HIT_K * heavy * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST)
+            body_hit(heavy, closing)
         };
+        // Under the floor it lands nothing, and a throw flies on.
+        if amount <= 0.0 {
+            continue;
+        }
         let at = body_centre(world, target).unwrap_or_default();
         let fire = world
             .get::<Fuel>(body)
@@ -1359,7 +1361,6 @@ pub fn douse_hazard(world: &mut World, hazard: Entity) {
         spawn_burst(world, "ex10_steam_burst", at);
         audio::play(world, Sound::Steamed, at);
     }
-    combat::react(world, Reaction::Steam);
 }
 
 /// `douse_tick`, in the tick phase: each doused hazard's time runs down by
@@ -1463,12 +1464,8 @@ pub fn shatter_iron(world: &mut World, iron: Entity, blast: Option<Vec2>) {
 }
 
 /// A cold pulse at `at`, unless [`BURST_CAP`] show, with its sound: a group
-/// of shattering or freezing iron shares one through the cue's interval. A
-/// shatter's goes to the hints, past the cap too.
+/// of shattering or freezing iron shares one through the cue's interval.
 pub fn ice_pulse(world: &mut World, at: Vec2, size: f32, shatter: bool) {
-    if shatter {
-        combat::react(world, Reaction::Shatter);
-    }
     if world.query::<&IcePulse>().count() >= BURST_CAP {
         return;
     }

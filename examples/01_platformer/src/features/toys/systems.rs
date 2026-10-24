@@ -28,7 +28,9 @@ use super::{
     RING_SECS, SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{self, BLAST_FIRE, FROZEN, Kind, SPRAY_DPS, SPRAY_PULSE, has_status};
+use crate::features::combat::{
+    self, BLAST_FIRE, COLD_SPRAY_DPS, FIRE_SPRAY_DPS, FROZEN, Kind, SPRAY_PULSE, has_status,
+};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::{BallBurn, Frozen};
@@ -1021,7 +1023,8 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
 /// out for a while; in a fire cone small balls, crates and kegs light,
 /// credited to the caster, and a frozen body explodes. Every pulse of
 /// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
-/// from the caster, and every second pulse, from the first, each bursts at
+/// ([`COLD_SPRAY_DPS`] or [`FIRE_SPRAY_DPS`] a second) from the caster,
+/// and every second pulse, from the first, each bursts at
 /// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), a
 /// cosmetic burst the cap may drop.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
@@ -1080,9 +1083,9 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             }
             (pulses, bursts)
         });
-    let (kind, hit) = match element {
-        Element::Cold => (Kind::Cold, FROST_HIT),
-        Element::Fire => (Kind::Fire, FLAME_HIT),
+    let (kind, hit, dps) = match element {
+        Element::Cold => (Kind::Cold, FROST_HIT, COLD_SPRAY_DPS),
+        Element::Fire => (Kind::Fire, FLAME_HIT, FIRE_SPRAY_DPS),
     };
     for &(target, contact) in &met {
         let live = world
@@ -1092,7 +1095,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             continue;
         }
         for _ in 0..pulses {
-            combat::Hit::new(target, [(kind, SPRAY_DPS * SPRAY_PULSE)])
+            combat::Hit::new(target, [(kind, dps * SPRAY_PULSE)])
                 .from(caster)
                 .at(contact)
                 .queue(world);

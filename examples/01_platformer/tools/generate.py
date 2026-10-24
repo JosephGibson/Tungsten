@@ -19,14 +19,15 @@ ROOT=TOOLS.parent
 TEMPLATE=ROOT.parent.parent/'templates'/'basic'
 SHELL_ASSETS=('fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
     'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt','shaders/damage_flash.wgsl')
-# 01's theme (01 (h)): the template's text, every colour of the template's
-# mapped to 01's, darker backgrounds and a vivid purple, so new template keys
-# still arrive and `just repo-check` holds its structure to the template's.
-# A template colour the map lacks stops the generator, named.
+# 01's theme (01 (h); its background and surface darker in 01 (i)): the
+# template's text, every colour of the template's mapped to 01's, darker
+# backgrounds and a vivid purple, so new template keys still arrive and
+# `just repo-check` holds its structure to the template's. A template
+# colour the map lacks stops the generator, named.
 THEME='ui/themes/shell.json'
 THEME_COLORS={
-    '#0b0c10':'#030408',  # the background and accent text, a pressed button's text and toggle, the slider's border
-    '#15171d':'#090b18',  # the surface
+    '#0b0c10':'#020306',  # the background and accent text, a pressed button's text and toggle, the slider's border
+    '#15171d':'#060812',  # the surface
     '#1e2129':'#11142a',  # a hovered or focused fill
     '#646b7a':'#5c6594',  # the border and the slider
     '#e9ebf1':'#e8eaf6',  # text
@@ -480,12 +481,18 @@ def particle_configs():
         'keg_stave', 10, burst(10), (.5, 1.0), dict(kind='radial', speed=dict(min=260, max=720)), (0, 700), .9,
         (.2, .32), [[0, 1], [1, .9]], [[0, 1], [.8, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.6, .55, .52, 1]]],
         (-14, 14))
-    # 01 (h): the title's stars, twinkling over its night sky (three at most
-    # each), and a shooting star's streak.
-    configs['title_twinkle'] = full(
-        'title_star', 3, dict(kind='continuous', rate_hz=.7), (.9, 1.6), cone((0, -1), 360, 0, 1), (0, 0), 1.0,
-        (2.2, 3.6), [[0, .3], [.45, 1], [1, .3]], [[0, 0], [.3, 1], [.7, 1], [1, 0]],
-        [[0, [1, 1, 1, 1]], [1, [.86, .82, 1, 1]]])
+    # 01 (h): the title's stars, twinkling over its night sky, and a shooting
+    # star's streak. 01 (i): three sizes, the small ones cool and the large
+    # ones warm; each star alone at its point, one twinkle at a time over a
+    # slow lifetime of its own, so no two keep time.
+    for size, scale, life, color in (
+        ('small', (.45, .75), (5.6, 10.8), [[0, [.84, .9, 1, 1]], [1, [.72, .8, 1, 1]]]),
+        ('medium', (.9, 1.35), (6.4, 12.0), [[0, [1, 1, 1, 1]], [1, [.86, .82, 1, 1]]]),
+        ('large', (1.7, 2.3), (8.0, 14.0), [[0, [1, .96, .88, 1]], [1, [.92, .88, 1, 1]]]),
+    ):
+        configs[f'title_twinkle_{size}'] = full(
+            'title_star', 1, dict(kind='continuous', rate_hz=1.5), life, cone((0, -1), 360, 0, 1), (0, 0), 1.0,
+            scale, [[0, .55], [.5, 1], [1, .55]], [[0, 0], [.4, 1], [.6, 1], [1, 0]], color)
     configs['title_meteor'] = full(
         'title_star', 140, dict(kind='continuous', rate_hz=220), (.25, .5), cone((0, -1), 360, 0, 18), (0, 0), 1.0,
         (.7, 1.3), [[0, 1], [1, .15]], [[0, 1], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.7, .78, 1, 1]]])

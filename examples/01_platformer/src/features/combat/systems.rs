@@ -15,8 +15,8 @@ use tungsten::kit::{
     ImmunePart, Modifier, Stats, Tags,
 };
 
-use super::components::{Reaction, StatusEmitter, StatusLook};
-use super::{BURNING, CHILLED, FLESH, FREEZABLE, FROZEN, Kind, SHOCKED, has_status};
+use super::components::{StatusEmitter, StatusLook};
+use super::{BURNING, CHILLED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED, has_status};
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
@@ -66,8 +66,7 @@ pub fn states(world: &mut World) {
 /// one that was burning a steam burst, dead or alive, each landed or
 /// dropped by the target's immunity (the kit's `ImmunePart`: a frozen wisp,
 /// which takes no fire, or a burning frost crawler, which takes no cold);
-/// `shattered` applied queues its shatter, and `frozen` and `shocked`
-/// applied send their reactions for the hints. Each queued entry runs from
+/// `shattered` applied queues its shatter. Each queued entry runs from
 /// the next step, an explosion or a steam burst crediting its part's
 /// source's save ID: none when the source has gone, the player's when the
 /// part named none. A blow, a physical part that is not a tick, on a `flesh`
@@ -131,21 +130,15 @@ pub fn reactions(
             }
         }
     }
-    let mut seen = Vec::new();
     let mut spurts = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
         for effect in applied.read(events) {
             match effect.id.as_deref() {
                 Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
-                Some("frozen") => seen.push(Reaction::Freeze),
-                Some("shocked") => seen.push(Reaction::Shock),
                 Some("bleeding") => spurts.push(effect.entity),
                 _ => {}
             }
         }
-    }
-    for reaction in seen {
-        super::react(world, reaction);
     }
     for (target, at) in blows {
         if let Some(at) = at.or_else(|| body_centre(world, target)) {
@@ -258,9 +251,10 @@ fn grade(world: &World, entity: Entity, tags: &Tags) -> f32 {
 
 /// Where `entity`'s cold bucket stands on its climb from the chill's rung
 /// to the freeze's, 0 to 1. The chill empties the bucket as it applies and
-/// the freeze needs it full, so the grade is its fill over its threshold,
-/// `(flat + of_max_health × Health::max) × ailment_threshold_mult` as the
-/// kit's ladder reads it. None without buckets or a threshold.
+/// the freeze needs [`FREEZE_NEEDS`] of the threshold, so the grade is its
+/// fill over that share of its threshold, `(flat + of_max_health ×
+/// Health::max) × ailment_threshold_mult` as the kit's ladder reads it.
+/// None without buckets or a threshold.
 #[must_use]
 pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
     let threshold = world.get::<AilmentThreshold>(entity)?;
@@ -274,7 +268,7 @@ pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
     if at <= 0.0 {
         return None;
     }
-    Some((buckets.fill(Kind::Cold.tag()) / at).clamp(0.0, 1.0))
+    Some((buckets.fill(Kind::Cold.tag()) / (FREEZE_NEEDS * at)).clamp(0.0, 1.0))
 }
 
 /// `chill_grades`, in the intent phase before the enemies' states: every

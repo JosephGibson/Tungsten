@@ -12,7 +12,10 @@
 //! seven goblins before its placed orbs, which moves every later save ID,
 //! and keeps the crates, kegs, bombs and rocks. Schema 13 draws the player
 //! as the wizard on a 96 px frame, which moves the body's centre from the
-//! sprite's corner, the point a save keeps.
+//! sprite's corner, the point a save keeps. Schema 14 drops the hints and
+//! carries 01 (i)'s tuning into an older run: the player's one maximum
+//! health and its wider reach, a crawler's harder touch, a troll's faster
+//! walk and the cold ladder's halved gates.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -37,7 +40,6 @@ use tungsten::kit::{
     Projectile, Resist, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
-use crate::features::combat::components::{Hints, Reaction};
 use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::{BallBurn, Chill, Frozen};
@@ -45,7 +47,7 @@ use crate::features::enemies::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Throw, Throws,
 };
 use crate::features::enemies::drops::{self, Orb, OrbKind};
-use crate::features::enemies::{self, troll};
+use crate::features::enemies::{self, crawler, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
@@ -106,8 +108,6 @@ pub struct SaveGame {
     pub gone: Vec<u64>,
     /// The element endings waiting, whole.
     pub cascades: Cascades,
-    /// The reactions whose hints the save has shown, in order.
-    pub hints: Vec<Reaction>,
     /// The summon slot's type, by its place in `SUMMONS`.
     pub summon: usize,
     /// Each lava basin's chill and crust; none before schema 10.
@@ -189,8 +189,9 @@ impl SaveData for SaveGame {
     /// keeps the open black holes as a list (`to_11`). Schema 12 places the
     /// map's goblins before its orbs and keeps the props
     /// (`to_12`). Schema 13 moves the player's point for the wizard's frame
-    /// (`to_13`).
-    const SCHEMA: u32 = 13;
+    /// (`to_13`). Schema 14 drops the hints and moves the values 01 (i)
+    /// tuned that a save keeps (`to_14`).
+    const SCHEMA: u32 = 14;
 
     fn migrate(
         from: u32,
@@ -212,6 +213,7 @@ impl SaveData for SaveGame {
                 to_11(&mut data)?;
                 to_12(&mut data);
                 to_13(&mut data)?;
+                to_14(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -220,6 +222,7 @@ impl SaveData for SaveGame {
                 to_11(&mut data)?;
                 to_12(&mut data);
                 to_13(&mut data)?;
+                to_14(&mut data)?;
                 Ok(data)
             }
             9 => {
@@ -227,21 +230,29 @@ impl SaveData for SaveGame {
                 to_11(&mut data)?;
                 to_12(&mut data);
                 to_13(&mut data)?;
+                to_14(&mut data)?;
                 Ok(data)
             }
             10 => {
                 to_11(&mut data)?;
                 to_12(&mut data);
                 to_13(&mut data)?;
+                to_14(&mut data)?;
                 Ok(data)
             }
             11 => {
                 to_12(&mut data);
                 to_13(&mut data)?;
+                to_14(&mut data)?;
                 Ok(data)
             }
             12 => {
                 to_13(&mut data)?;
+                to_14(&mut data)?;
+                Ok(data)
+            }
+            13 => {
+                to_14(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -394,6 +405,58 @@ fn to_13(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     let corner = Vec2::from(at) + S12_BODY_OFFSET - crate::features::player::BODY_OFFSET;
     data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
     Ok(())
+}
+
+/// Schema 13 to 14 (01 (i)): the hints go; the player's maximum health is
+/// [`MAX_HEALTH`](crate::features::player::MAX_HEALTH) at every difficulty,
+/// its health keeping its share of the old maximum, as the kit's
+/// `Health::set_max` keeps it; its `pickup_radius` base, each crawler's
+/// `damage` base and each troll's `move_speed` base move to this stop's
+/// values, their modifiers kept; and every saved cold build-up, the
+/// player's, a dummy's or an enemy's, halves with the cold ladder's gates,
+/// keeping its share of them.
+fn to_14(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(save) = data.as_object_mut() {
+        save.remove("hints");
+    }
+    let health = |key: &str| {
+        data.pointer(&format!("/player/health/{key}"))
+            .and_then(Value::as_f64)
+    };
+    let (Some(current), Some(max)) = (health("current"), health("max")) else {
+        return Err("schema 13: the player has no health".into());
+    };
+    let full = f64::from(crate::features::player::MAX_HEALTH);
+    let player = &mut data["player"];
+    let share = if max > 0.0 { current / max } else { 1.0 };
+    player["health"]["current"] = Value::from((share * full).clamp(0.0, full));
+    player["health"]["max"] = Value::from(full);
+    player["stats"]["max_health"]["base"] = Value::from(full);
+    let reach = f64::from(crate::features::player::PICKUP_RADIUS);
+    player["stats"]["pickup_radius"]["base"] = Value::from(reach);
+    halve_cold(&mut player["buckets"]);
+    for dummy in data["dummies"].as_array_mut().into_iter().flatten() {
+        halve_cold(&mut dummy["buckets"]);
+    }
+    for enemy in data["enemies"].as_array_mut().into_iter().flatten() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["damage"]["base"] = Value::from(f64::from(crawler::DAMAGE));
+        }
+        if enemy["kind"] == "troll" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(troll::MOVE_SPEED));
+        }
+        halve_cold(&mut enemy["buckets"]);
+    }
+    Ok(())
+}
+
+/// Halves the `damage.cold` fill in a saved `{damage type: fill}` map.
+fn halve_cold(buckets: &mut Value) {
+    if let Some(fill) = buckets.get_mut("damage.cold")
+        && let Some(value) = fill.as_f64()
+    {
+        *fill = Value::from(value * 0.5);
+    }
 }
 
 /// Every save ID field of `data` through `to`; a field it lacks stays
@@ -1057,10 +1120,6 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             .get_resource::<Cascades>()
             .cloned()
             .unwrap_or_default(),
-        hints: world
-            .get_resource::<Hints>()
-            .map(|hints| hints.seen.clone())
-            .unwrap_or_default(),
         summon: world
             .get_resource::<Summon>()
             .map_or(0, |summon| summon.selected),
@@ -1475,9 +1534,6 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
         .collect();
     world.insert_resource(Throws(throws));
     world.insert_resource(save.cascades.clone());
-    world.insert_resource(Hints {
-        seen: save.hints.clone(),
-    });
     world.insert_resource(Summon {
         selected: save.summon,
     });

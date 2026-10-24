@@ -21,18 +21,24 @@ use crate::shared::spawn_burst;
 pub const PATROL_PACE: f32 = 0.5;
 pub const SEARCH_PACE: f32 = 0.7;
 /// How near the player, across, its chase winds up a lunge.
-pub const LUNGE_RANGE: f32 = 220.0;
+pub const LUNGE_RANGE: f32 = 300.0;
 /// How far above its centre the player's may be for a lunge: the leap
-/// rises about 20 px, so at a player higher up it would only hop into the
+/// rises about 53 px, so at a player higher up it would only hop into the
 /// step below them.
 pub const LUNGE_RISE: f32 = 64.0;
-/// The lunge's tell, its launch and how long its input stays locked.
+/// The lunge's tell, its launch and how long its input stays locked. At
+/// the level's gravity the leap flies 0.34 s, 53 px up and 220 px across;
+/// the lock holds its speed 0.1 s past the landing, about 70 px more, so
+/// the lunge carries about 290 px, within its range.
 pub const TELL_SECS: f32 = 0.4;
-pub const LUNGE_SPEED: f32 = 520.0;
-pub const LUNGE_LIFT: f32 = 380.0;
-pub const LUNGE_LOCK: f32 = 0.6;
+pub const LUNGE_SPEED: f32 = 640.0;
+pub const LUNGE_LIFT: f32 = 620.0;
+pub const LUNGE_LOCK: f32 = 0.45;
 /// The longest a lunge runs before the recovery, landed or not.
 pub const LUNGE_MOST: f32 = 1.0;
+/// The cold its touch deals, its prefab's `damage` stat and contact
+/// damage: restated so a save can move an older crawler's base to it.
+pub const DAMAGE: f32 = 15.0;
 /// How long its scared look holds after the light last refused its walk,
 /// in game seconds: a refusal after that starts a new scare, with its hiss
 /// and its puff of frost breath (B4).
