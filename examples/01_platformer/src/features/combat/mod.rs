@@ -8,10 +8,7 @@
 //! shocked, stunned and bleeding on whatever has health; 01 reads their
 //! `status.*` tags for its looks and its physics.
 //!
-//! Combat also floats the damage numbers ([`numbers`]) and toasts each
-//! reaction's hint the first time a save sees it: a freeze, a shatter, a
-//! steam burst and a shock, which the element rules and the reactions send
-//! as [`Reaction`] events.
+//! Combat also floats the damage numbers ([`numbers`]).
 //!
 //! The frame rule: every request is built and queued in the intent, move or
 //! overlap phase, so the step's resolve takes it. The kit's queues are not
@@ -24,7 +21,7 @@ pub mod numbers;
 pub mod systems;
 
 use glam::Vec2;
-use tungsten::core::{Entity, EventCursor, EventQueue, Schedule, Stage, World, system};
+use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
     DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Penetration, Phase, Tags, ensure_phases,
 };
@@ -33,7 +30,6 @@ use tungsten::{Extracts, Plugin};
 
 use crate::features::enemies::{self, beetle};
 use crate::features::run::Run;
-use components::{Hints, Reaction};
 
 /// The share of the player's hits that crit, and a crit's factor on every
 /// part (Q8).
@@ -42,9 +38,15 @@ pub const CRIT_FACTOR: f32 = 2.0;
 /// The share of a blast or a steam burst the player takes (Q12).
 pub const PLAYER_BLAST_SHARE: f32 = 0.5;
 /// What the sprays deal a second to a target in their cone, in pulses this
-/// far apart.
-pub const SPRAY_DPS: f32 = 30.0;
+/// far apart: the frost half the flame's, its ladder's gates half the
+/// others' (`damage.cold` in `data/damage_types/game.json`), so it chills
+/// and freezes as fast.
+pub const COLD_SPRAY_DPS: f32 = 15.0;
+pub const FIRE_SPRAY_DPS: f32 = 30.0;
 pub const SPRAY_PULSE: f32 = 0.1;
+/// The cold ladder's freeze rung, its share of a target's threshold: the
+/// chill's grade climbs to it ([`systems::chill_grade`]).
+pub const FREEZE_NEEDS: f32 = 0.5;
 /// The fire missile's blast: its fire at its centre, half of it at the
 /// heat's reach.
 pub const BLAST_FIRE: f32 = 20.0;
@@ -206,32 +208,6 @@ fn roll_crit(world: &mut World) -> bool {
         .is_some_and(|rng| rng.unit() < CRIT_CHANCE)
 }
 
-/// Sends `reaction`, whose hint the run toasts the first time.
-pub fn react(world: &mut World, reaction: Reaction) {
-    if let Some(queue) = world.get_resource_mut::<EventQueue<Reaction>>() {
-        queue.send(reaction);
-    }
-}
-
-/// `combat_hints`, in the react phase after the reactions and the dummies'
-/// ends: each reaction's first in the save toasts its hint, once.
-pub fn hints(world: &mut World, cursor: &mut EventCursor<Reaction>) {
-    let fresh: Vec<Reaction> = world
-        .get_resource::<EventQueue<Reaction>>()
-        .map(|events| cursor.read(events).copied().collect())
-        .unwrap_or_default();
-    for reaction in fresh {
-        let Some(hints) = world.get_resource_mut::<Hints>() else {
-            return;
-        };
-        if hints.seen.contains(&reaction) {
-            continue;
-        }
-        hints.seen.push(reaction);
-        crate::shell::toast::toast(world, reaction.hint());
-    }
-}
-
 /// Whether `entity` carries the status `tag`.
 #[must_use]
 pub fn has_status(world: &World, entity: Entity, tag: &str) -> bool {
@@ -240,8 +216,8 @@ pub fn has_status(world: &World, entity: Entity, tag: &str) -> bool {
 
 /// Combat as a plugin: in the fixed step, the states the resolve begins
 /// with, recorded before the kit's damage resolve, and in the react phase
-/// the reactions to the step's landed parts, the thaws, the damage numbers
-/// and the hints; in the present phase the statuses' tints, before the
+/// the reactions to the step's landed parts, the thaws and the damage
+/// numbers; in the present phase the statuses' tints, before the
 /// frame's particles their emitters, and their overlays drawn after the
 /// sprites. The chill's grades run in the enemies' intent phase.
 pub struct CombatPlugin;
@@ -249,7 +225,6 @@ pub struct CombatPlugin;
 impl Plugin for CombatPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.resource_mut::<Extracts>().add_sprites(draw::overlays);
-        world.register_event::<Reaction>();
         ensure_phases(schedule);
         let states = system("combat_states", systems::states).before(DAMAGE_RESOLVE);
         schedule.add(Stage::FixedUpdate, Phase::Resolve.join(states));
@@ -269,13 +244,6 @@ impl Plugin for CombatPlugin {
             numbers::numbers(world, &mut parts);
         });
         schedule.add(Stage::FixedUpdate, Phase::React.join(numbers));
-        let mut seen = EventCursor::new();
-        let hints = system("combat_hints", move |world: &mut World| {
-            hints(world, &mut seen);
-        })
-        .after("combat_reactions")
-        .after("dummy_deaths");
-        schedule.add(Stage::FixedUpdate, Phase::React.join(hints));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("status_tints", systems::tints)),

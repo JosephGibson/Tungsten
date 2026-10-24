@@ -75,9 +75,10 @@ impl Enemy {
 /// What an enemy knows: where it last saw the player, the point it
 /// searches, the point a neighbour's alert passed it, the attack its tell
 /// chose, so a load swings the same one and its clip comes from saved
-/// state, and the seconds a fresh alert's "!" has left, which no state of
-/// its machine can hold (Alert ends sooner). Saved; an older save's brains
-/// chose none and show none.
+/// state, the seconds a fresh alert's "!" has left, which no state of its
+/// machine can hold (Alert ends sooner), and the seconds before a troll may
+/// slam again. Saved; an older save's brains chose none, show none and wait
+/// for nothing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Brain {
@@ -88,6 +89,8 @@ pub struct Brain {
     pub strike: Option<Strike>,
     #[serde(default, skip_serializing_if = "is_none_left")]
     pub alerted: f32,
+    #[serde(default, skip_serializing_if = "is_none_left")]
+    pub slam_cooldown: f32,
 }
 
 fn is_none_left(left: &f32) -> bool {

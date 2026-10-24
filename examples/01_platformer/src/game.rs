@@ -13,7 +13,7 @@ use crate::features::enemies::{self, EnemiesPlugin};
 use crate::features::gun::GunPlugin;
 use crate::features::level::{CursorPlugin, LevelPlugin};
 use crate::features::lightning::LightningPlugin;
-use crate::features::player::{PlayerPlugin, max_health};
+use crate::features::player::PlayerPlugin;
 use crate::features::props::PropsPlugin;
 use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
@@ -65,15 +65,12 @@ pub fn gameplay(start: RunStart) -> impl GameState {
 }
 
 /// What `difficulty` changes, on its card in the New Game picker, a fact a
-/// line: the player's health and the enemies' factor on their health and
-/// damage (Q11).
+/// line: the enemies' factor on their health and on their damage (Q11);
+/// the player's health is the same at each.
 #[must_use]
 pub fn difficulty_note(difficulty: Difficulty) -> String {
-    format!(
-        "{} health · enemies ×{}",
-        max_health(difficulty),
-        enemies::factor(difficulty)
-    )
+    let factor = enemies::factor(difficulty);
+    format!("enemy health ×{factor} · enemy damage ×{factor}")
 }
 
 /// Registers the game with `app`: the kit's plugins, the shell, then the

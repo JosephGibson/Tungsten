@@ -29,7 +29,7 @@
 use glam::Vec2;
 use tungsten::core::{
     BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
-    ShakeEvent, Shape, Velocity, World,
+    ShakeEvent, Shape, Time, Velocity, World,
 };
 use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
@@ -81,6 +81,12 @@ pub const KICK_MOST: f32 = 650.0;
 pub const KICK_RISE: f32 = 0.6;
 /// Its recovery after an attack, its own.
 pub const RECOVER: f32 = 0.35;
+/// The seconds from a slam's landing before it may slam again; it chases
+/// and swipes meanwhile.
+pub const SLAM_COOLDOWN: f32 = 2.0;
+/// Its walk, its prefab's `move_speed` stat and run speed: restated so a
+/// save can move an older troll's base to it.
+pub const MOVE_SPEED: f32 = 91.0;
 /// Where its fist meets the ground, from its body's centre facing right.
 pub const FIST: Vec2 = Vec2::new(56.0, 50.0);
 /// How far from its centre it reaches for something to throw, the throw's
@@ -349,11 +355,15 @@ fn blow(
 /// The slam: every live target but the troll within [`SLAM_REACH`] of its
 /// fist takes its `damage` as physical, pushed away; every other body in
 /// reach is kicked away by its mass; every frozen thing in reach shatters;
-/// the camera shakes by the courier's distance.
+/// the camera shakes by the courier's distance; its [`SLAM_COOLDOWN`]
+/// starts.
 pub fn slam(world: &mut World, troll: Entity) {
     let Some(point) = fist(world, troll) else {
         return;
     };
+    if let Some(brain) = world.get_mut::<Brain>(troll) {
+        brain.slam_cooldown = SLAM_COOLDOWN;
+    }
     let damage = world
         .get::<Stats>(troll)
         .and_then(|stats| stats.get(Stats::DAMAGE))
@@ -472,9 +482,10 @@ fn tell(world: &mut World, troll: Entity, x: f32, strike: Strike) {
 }
 
 /// The chase: holding something, it throws; within [`SWIPE_RANGE`] it
-/// swipes and within [`SLAM_RANGE`] it slams; else with something to lift
-/// within [`PICKUP_REACH`] it lifts it and throws; else it walks at the
-/// player. It searches once it loses sight.
+/// swipes and within [`SLAM_RANGE`] it slams, once its [`SLAM_COOLDOWN`]
+/// has run; else with something to lift within [`PICKUP_REACH`] it lifts
+/// it and throws; else it walks at the player. It searches once it loses
+/// sight.
 pub fn chase(world: &mut World, troll: Entity) {
     if !sees(world, troll) {
         go(world, troll, EnemyState::Search);
@@ -493,7 +504,10 @@ pub fn chase(world: &mut World, troll: Entity) {
     if grounded && across <= SWIPE_RANGE && rise <= SWIPE_RISE {
         return tell(world, troll, target.x, Strike::Swipe);
     }
-    if grounded && across <= SLAM_RANGE && rise <= SLAM_RISE {
+    let rested = world
+        .get::<Brain>(troll)
+        .is_none_or(|brain| brain.slam_cooldown <= 0.0);
+    if grounded && rested && across <= SLAM_RANGE && rise <= SLAM_RISE {
         return tell(world, troll, target.x, Strike::Slam);
     }
     if grounded
@@ -605,6 +619,17 @@ pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'s
                 .get::<Velocity>(troll)
                 .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
             if moving { "troll_walk" } else { "troll_idle" }
+        }
+    }
+}
+
+/// `troll_cooldowns`, in the intent phase before the enemies' states: each
+/// troll's slam cooldown runs down by the step.
+pub fn cooldowns(world: &mut World) {
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    for (enemy, brain) in world.query_mut::<(&Enemy, &mut Brain)>() {
+        if enemy.kind == EnemyKind::Troll && brain.slam_cooldown > 0.0 {
+            brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
         }
     }
 }

@@ -51,8 +51,6 @@ PIT_KINDS = (('plain', 10), ('mossy', 3), ('cracked', 2), ('ring', 1), ('niche',
 # any such window may hold, so the player's lantern, a strike and three fire
 # missiles stay under the renderer's 16.
 LIGHT_WINDOW, LIGHT_BUDGET = (92, 52), 10
-# A bat roosts on terrain within this many pixels above its spawn.
-ROOST_REACH = 480
 # The tests' sky: columns and rows of the map that hold nothing.
 TEST_SKY = (38, 20)
 # Draw order among the level's sprites, every tile layer under them: props
@@ -624,9 +622,10 @@ def validate_level(source,tiled,sprite_ids):
 
 def validate_layout(source, tiled, iron, shallow):
     """M76's checks: the areas tile the map's columns, the tests' sky stays
-    empty, no view holds past the light budget, bats find a roof, fires
-    sweep clear, the pit holds the balls inside its shell, no iron lies under
-    open air, lava stays in its basin and `backs` stay outdoors."""
+    empty, no view holds past the light budget, each bat hangs flush under a
+    roof, fires sweep clear, the pit holds the balls inside its shell, no
+    iron lies under open air, lava stays in its basin and `backs` stay
+    outdoors."""
     cols, rows, tile = source['cols'], source['rows'], source['tile']
     columns = [area['columns'] for area in source['landmarks']]
     if columns[0][0] != 0 or columns[-1][1] != cols - 1 or any(b[0] != a[1] + 1 for a, b in zip(columns, columns[1:])):
@@ -661,9 +660,10 @@ def validate_layout(source, tiled, iron, shallow):
     for e in source['enemies']:
         if e['kind'] != 'bat':
             continue
-        col, top = int(e['x'] + 0.5), e['y'] + 0.5
-        if not any((col, r) in walls for r in range(int(top - ROOST_REACH / tile), int(top) + 1)):
-            raise ValueError(f"bat {e['name']}: no roof within {ROOST_REACH} px")
+        # Its sprite's top, where its feet grip, on a whole row under a wall.
+        col, top = int(e['x'] + 0.5), e['y']
+        if top != int(top) or (col, int(top) - 1) not in walls:
+            raise ValueError(f"bat {e['name']}: not flush under a roof")
     for i, h in enumerate(source['hazards']):
         if not h['fire']:
             continue

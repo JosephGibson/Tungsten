@@ -1,7 +1,7 @@
 //! The title's night (01 (h)): while no run is live, the title draws 01's
 //! sky in OLED black (`draw::backdrop`) over a view low under the start's,
-//! looking up, with stars twinkling over its upper half and a shooting
-//! star every few seconds. The stars' emitters belong to the title's state,
+//! looking up, with stars of three sizes twinkling slowly over its upper
+//! half, each on its own time, and a shooting star every few seconds. The stars' emitters belong to the title's state,
 //! so they leave when a run replaces it and stay under a screen pushed over
 //! it; their particles, which no state owns, go the first frame a run is
 //! live, under the curtain.
@@ -28,12 +28,20 @@ pub struct TitleSky {
     pub meteor: Option<(Entity, Vec2, f32)>,
 }
 
-/// The title's stars: the twinkles' and the shooting star's configs, the
-/// star both draw, and how many twinkles it sends.
-pub const TWINKLE: &str = "ex10_title_twinkle";
+/// The title's stars: the twinkles' configs by size, small, medium and
+/// large, with the share of the stars each takes; the shooting star's
+/// config; the star they all draw; and how many twinkles the sky sends.
+pub const TWINKLE_SIZES: [(&str, f32); 3] = [
+    ("ex10_title_twinkle_small", 0.6),
+    ("ex10_title_twinkle_medium", 0.3),
+    ("ex10_title_twinkle_large", 0.1),
+];
 pub const METEOR: &str = "ex10_title_meteor";
 pub const TITLE_STAR: &str = "ex10_title_star";
-pub const TWINKLES: u32 = 40;
+pub const TWINKLES: u32 = 56;
+/// A twinkle's first one waits up to this many of its emitter's
+/// emissions, by its point's hash, so the stars come out apart.
+const TWINKLE_PHASE: f32 = 7.0;
 /// How many tile rows above the start's view the title's view stands, so
 /// the backdrop's lift sets the treeline on its foot and the sky fills the
 /// rest: the view low, looking up.
@@ -72,36 +80,67 @@ fn unit(a: u32, b: u32) -> f32 {
     (h % 10_000) as f32 / 10_000.0
 }
 
-/// An emitter of the config `name` at `at`, seeded, owned by the title.
-fn emitter(world: &mut World, name: &str, at: Vec2, seed: u64) -> Option<Entity> {
+/// An emitter of the config `name` at `at`, seeded, owned by the title,
+/// its continuous emission starting `phase` emissions along: below 0, so
+/// many later.
+fn emitter(world: &mut World, name: &str, at: Vec2, seed: u64, phase: f32) -> Option<Entity> {
     let config = world
         .get_resource::<ParticleConfigRegistry>()?
         .id_for_name(name)?;
+    let state = ParticleEmitterState {
+        continuous_accum: phase,
+        ..ParticleEmitterState::default()
+    };
     Some(world.spawn_with((
         Transform::from_position(at),
         ParticleEmitter::with_seed(config, seed),
-        ParticleEmitterState::default(),
+        state,
         SceneEntity { state_id: TITLE },
     )))
 }
 
-/// The emitters of the config `name`.
-fn emitters(world: &World, name: &str) -> Vec<Entity> {
-    let config = world
+/// The emitters of the configs `names`.
+fn emitters(world: &World, names: &[&str]) -> Vec<Entity> {
+    let configs: Vec<_> = world
         .get_resource::<ParticleConfigRegistry>()
-        .and_then(|configs| configs.id_for_name(name));
+        .map(|configs| {
+            names
+                .iter()
+                .filter_map(|name| configs.id_for_name(name))
+                .collect()
+        })
+        .unwrap_or_default();
     world
         .query::<(Entity, &ParticleEmitter)>()
-        .filter(|(_, emitter)| Some(emitter.config) == config)
+        .filter(|(_, emitter)| configs.contains(&emitter.config))
         .map(|(entity, _)| entity)
         .collect()
 }
 
+/// The twinkles' configs.
+fn twinkle_configs() -> [&'static str; 3] {
+    TWINKLE_SIZES.map(|(name, _)| name)
+}
+
+/// The size of the twinkle `i`: the config whose share its hash falls in.
+fn twinkle_size(i: u32) -> &'static str {
+    let roll = unit(i, 4);
+    let mut below = 0.0;
+    for (name, share) in TWINKLE_SIZES {
+        below += share;
+        if roll < below {
+            return name;
+        }
+    }
+    TWINKLE_SIZES[TWINKLE_SIZES.len() - 1].0
+}
+
 /// `title_sky`, in `Update`: while no run is live the title's sky runs its
 /// clock; the first frame the title is on top with no twinkles it sends
-/// [`TWINKLES`] at hashed points over its view's upper half, and while it
-/// is on top a shooting star every [`METEOR_EVERY`] seconds, which crosses
-/// down and right and goes. The first frame a run is live the sky goes,
+/// [`TWINKLES`] at hashed points over its view's upper half, thinning
+/// toward the treeline, each of a hashed size ([`TWINKLE_SIZES`]) and
+/// starting at a hashed phase, and while it is on top a shooting star every
+/// [`METEOR_EVERY`] seconds, which crosses down and right and goes. The first frame a run is live the sky goes,
 /// and with it the stars' emitters and every particle they left.
 pub fn sky(world: &mut World) {
     if world.has_resource::<SceneTime>() {
@@ -115,14 +154,15 @@ pub fn sky(world: &mut World) {
     sky.clock += dt;
     let on_top = shell::top(world) == Some(TITLE);
     let (corner, size) = sky_view(world);
-    if on_top && emitters(world, TWINKLE).is_empty() {
+    if on_top && emitters(world, &twinkle_configs()).is_empty() {
         for i in 0..TWINKLES {
             let at = corner
                 + Vec2::new(
-                    (i as f32 + unit(i, 1)) / TWINKLES as f32 * size.x,
-                    (0.04 + 0.5 * unit(i, 2)) * size.y,
+                    unit(i, 1) * size.x,
+                    (0.03 + 0.55 * unit(i, 2).powf(1.5)) * size.y,
                 );
-            emitter(world, TWINKLE, at, 0x7100 + u64::from(i));
+            let phase = 1.0 - TWINKLE_PHASE * unit(i, 3);
+            emitter(world, twinkle_size(i), at, 0x7100 + u64::from(i), phase);
         }
     }
     if let Some((meteor, start, born)) = sky.meteor {
@@ -140,7 +180,7 @@ pub fn sky(world: &mut World) {
         let k = sky.meteors;
         let start = corner + Vec2::new((0.15 + 0.5 * unit(k, 7)) * size.x, 0.06 * size.y);
         sky.meteors += 1;
-        sky.meteor = emitter(world, METEOR, start, 0x7200 + u64::from(k))
+        sky.meteor = emitter(world, METEOR, start, 0x7200 + u64::from(k), 0.0)
             .map(|meteor| (meteor, start, sky.clock));
     }
     world.insert_resource(sky);
@@ -149,8 +189,8 @@ pub fn sky(world: &mut World) {
 /// The title's stars gone: their emitters, should any be left, and every
 /// particle that draws [`TITLE_STAR`].
 fn clear(world: &mut World) {
-    let mut gone = emitters(world, TWINKLE);
-    gone.extend(emitters(world, METEOR));
+    let mut gone = emitters(world, &twinkle_configs());
+    gone.extend(emitters(world, &[METEOR]));
     gone.extend(
         world
             .query::<(Entity, &Particle)>()

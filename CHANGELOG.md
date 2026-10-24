@@ -6,6 +6,37 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.104.0] - 2026-10-24
+
+Summary: M83, example 01's fixes and tuning from the owner's playtest of 2026-10-24 and their review of the run's frames (plan archived at `docs/plans/archive/1.0/phase6-milestone-83-example-01-tuning.md`; `D-212`), with two kit fixes and no engine, template or shell change: frost crawlers that leap twice as far and touch for 15; a floor on body hits; an ice beam at half damage that freezes as fast; difficulty on the enemies alone; bats flush on their roosts; an elevator that turns back over the courier, who idles riding it; drops that land where their enemy fell, fall and are drawn in from 192 px; lava that takes what falls in; F1's hit boxes while a blow lands; a double jump that sounds like a jump; no hint toasts; a faster troll whose slam cools down; a darker theme and a slower, scattered starry title; save schema 14
+
+### Added
+
+- **Lava takes what falls in** (`D-212`, `level/lava.rs`): a dynamic body with no health in an open basin's burn goes in steam and embers, one sizzle a basin a step (`Sound::LavaTook`); a keg or a bomb goes off, and a frozen prop is left to the heat's thermal shock.
+- **F1's hit boxes** (`D-212`, `enemies/draw.rs`): the colliders' overlay turns the kit's debug shapes on with it, and the troll's swipe and slam and the goblin's stab draw in the kit's hitbox red at 1.5 px only while that blow's attack runs.
+- **Falling drops** (`D-212`, `enemies/drops.rs`): a drop lands at its enemy's body centre, which the kill records (`orb_fallen`), clear of the rock, and falls at 120 px/s to the first tile, wall or lava surface unless the courier's 192 px reach draws it in at 480 px/s.
+- **The troll's slam cooldown** (`D-212`): 2 s from a slam to the next, kept in its saved brain (`troll::SLAM_COOLDOWN`); the swipe stays free.
+
+### Changed
+
+- **The crawler** (`D-212`): it lunges at a courier within 300 px, 53 px up and 224 px out, about 290 px with its skid, and touches for 15, from 12.
+- **Body hits** (`D-212`, `elements::body_hit`): a hit under 2 lands nothing, its throw flying on, and a body lighter than 4 counts half its mass.
+- **The ice beam** (`D-212`): 15 a second, half the flamethrower's 30, on a cold ladder whose gates halve (0.15, 0.5, 0.5) and whose windows double (6 s), so it chills and freezes at the old times; a crawler's touch now chills the courier at once.
+- **Difficulty** (`D-212`): the courier has 100 health at every difficulty, and the New Game card reads "enemy health ×f · enemy damage ×f".
+- **The bats** (`D-212`): each hangs flush under its roof from the start, which `level.py` checks.
+- **The elevator** (`D-212`, `level/elevator.rs`): a courier caught in its deck is set out above or below, and a falling deck whose swept box meets one turns back to the top.
+- **The kit's `CharacterAnimator`** (`D-212`, amending `D-174`): a grounded platformer's kinematic floor's velocity comes off its own before the clip is picked, so a still rider idles; the recipes hash holds.
+- **The kit's debug hitboxes** (`D-212`, amending `D-175`): `kit_debug_draw` draws a hitbox only while it is armed, in a deep red at 1.5 px.
+- **The troll** (`D-212`): it walks at 91 px/s, 30 % faster.
+- **The double jump's sound** (`D-212`, `tools/sfx.py`): 0.25 s, a breathy puff over a soft thump into a rising whoosh, the chime and the flutter gone.
+- **Example 01's theme and title** (`D-212`): the theme's background `#020306` and surface `#060812`; the title's forty twinkles became 56 stars in three sizes, each slow, out of step and scattered, thinning toward the treeline.
+- **Example 01's save** (`D-212`): schema 14; `migrate` drops the hints, keeps the courier's health share of the new maximum, moves its reach, each crawler's damage and each troll's walk to their new bases with their modifiers kept and halves each saved cold build-up with the gates, taking schemas 7 to 13 through it.
+- **Records**: the feedback plan's §3.5 landing and K19, K22, K23 and K24, the 01 design's notes for (i), backlog rows for K19 and K22, known issue K23, example 01's READMEs and the register.
+
+### Removed
+
+- **Hint toasts** (`D-212`): `Reaction`, `react`, `Hints` and `combat_hints`, and the save's `hints`.
+
 ## [0.103.0] - 2026-10-24
 
 Summary: M82, example 01's look from the owner's notes of 2026-10-21 and their three reviews of the plan's art-review sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-82-example-01-look.md`; `D-211`), with no kit, engine, template or shell change: a wizard with a big hat whose staff's orb is the staff light, who casts each spell with a gesture, reels when hurt and falls on his back when he dies; one icon family; liquid bars in their own colours and an action bar with each slot's live key, flashes and the gun set apart with its cartridges; the fire missile as a rocket; the sprays 30 % longer, drawn as animated sprites with a light and bursting on what they hit; 01's own theme colours; a starry title in OLED black; save schema 13

@@ -133,6 +133,10 @@ impl Plugin for LevelPlugin {
             Stage::FixedUpdate,
             Phase::Intent.join(system("elevator_tick", elevator::tick)),
         );
+        let take = system("lava_take", lava::take)
+            .after("props_heat")
+            .before("cascade_run");
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(take));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system("elevator_look", elevator::look)),

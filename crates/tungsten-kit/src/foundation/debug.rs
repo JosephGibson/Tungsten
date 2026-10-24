@@ -27,8 +27,10 @@ use crate::react::cues::CUES;
 /// [`KitDebugPlugin`]'s system, in the present phase.
 pub const KIT_DEBUG_DRAW: &str = "kit_debug_draw";
 
-/// The lines' thickness, in world pixels.
+/// The lines' thickness, in world pixels, and an armed hitbox's, wider so
+/// a blow's shape holds at a zoomed-out view.
 const THICKNESS: f32 = 1.0;
+const HIT_THICKNESS: f32 = 1.5;
 /// A mark's half size, in world pixels.
 const MARK: f32 = 4.0;
 
@@ -42,7 +44,7 @@ const ORBIT_COLOR: [f32; 4] = [0.7, 0.5, 1.0, 1.0];
 const FOLLOW_COLOR: [f32; 4] = [0.4, 1.0, 1.0, 1.0];
 const AIM_COLOR: [f32; 4] = [1.0, 0.3, 0.3, 1.0];
 const HURTBOX_COLOR: [f32; 4] = [0.3, 0.9, 0.3, 1.0];
-const HITBOX_COLOR: [f32; 4] = [1.0, 0.15, 0.15, 1.0];
+const HITBOX_COLOR: [f32; 4] = [0.8, 0.02, 0.06, 1.0];
 const CONTACT_COLOR: [f32; 4] = [1.0, 0.55, 0.0, 1.0];
 const PICKUP_COLOR: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 
@@ -101,8 +103,9 @@ impl KitDebug {
 /// `DespawnOutside` region, a zone's collider, a spawner's mark, a camera
 /// target's cross, an orbit's circle and centre, a follower's goal, a
 /// `Wrap`'s and a `StayInView`'s region, an aim's ray (32 px, or to its
-/// target), and each hurtbox's, hitbox's, contact damage's own and
-/// pickup's shape at its entity's point, once a frame before the camera.
+/// target), and each hurtbox's, armed hitbox's (only while it can hit, in a
+/// deep red and a wider line), contact damage's own and pickup's shape at
+/// its entity's point, once a frame before the camera.
 /// While the
 /// resource is on it also logs each new [`KitTrace`] entry once, at `info`
 /// under target `tungsten_kit::trace`, which the log console shows.
@@ -277,17 +280,23 @@ fn kit_debug_draw(world: &mut World) {
     world.insert_resource(draw);
 }
 
-/// `shape` centred at `at`.
-fn draw_shape(draw: &mut DebugDraw, shape: Shape, at: Vec2, color: [f32; 4]) {
+/// `shape` centred at `at`, its lines `thickness` wide.
+fn draw_shape_at(draw: &mut DebugDraw, shape: Shape, at: Vec2, color: [f32; 4], thickness: f32) {
     match shape {
         Shape::Aabb { half_extents } => {
-            draw.draw_aabb(at - half_extents, at + half_extents, color, THICKNESS);
+            draw.draw_aabb(at - half_extents, at + half_extents, color, thickness);
         }
-        Shape::Circle { radius } => draw.draw_circle(at, radius, color, THICKNESS),
+        Shape::Circle { radius } => draw.draw_circle(at, radius, color, thickness),
     }
 }
 
-/// Each hit item's shape at its entity's point plus its offset.
+/// `shape` centred at `at`.
+fn draw_shape(draw: &mut DebugDraw, shape: Shape, at: Vec2, color: [f32; 4]) {
+    draw_shape_at(draw, shape, at, color, THICKNESS);
+}
+
+/// Each hit item's shape at its entity's point plus its offset: a hitbox's
+/// only while it is armed.
 fn draw_hit_shapes(world: &World, draw: &mut DebugDraw) {
     for (entity, hurtbox) in world.query::<(Entity, &Hurtbox)>() {
         if let Some(at) = point_of(world, entity) {
@@ -300,12 +309,16 @@ fn draw_hit_shapes(world: &World, draw: &mut DebugDraw) {
         }
     }
     for (entity, hitbox) in world.query::<(Entity, &Hitbox)>() {
+        if !hitbox.is_armed() {
+            continue;
+        }
         if let Some(at) = point_of(world, entity) {
-            draw_shape(
+            draw_shape_at(
                 draw,
                 hitbox.shape().shape(),
                 at + hitbox.offset(),
                 HITBOX_COLOR,
+                HIT_THICKNESS,
             );
         }
     }
