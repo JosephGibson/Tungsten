@@ -1,13 +1,20 @@
 """Player and enemy art rendered from posed skeletons into palette pixels.
 
-The courier is rebuilt for every frame from one small rig: hips, neck, feet,
-hands, lantern swing, cloak hem, scarf chain and hood tip. Each part is filled
-flat, shaded from its own silhouette, rimmed where it overlaps the parts behind
-it and outlined once, so every clip shares one model and no raster is rotated.
-The fireball is an analytic ball of flame whose tongues stream up and behind.
+The wizard is rebuilt for every frame from one rig on a 96 px frame: hips,
+neck, feet, hands, the staff's lean and grip, the robe's hem, the hat's tip
+and the beard's swing. Each part (legs and soft boots, bell sleeves, the
+robe with its mantle, rope belt, pouch, trim and sewn stars, the head with
+its nose, brow and beard, the felt hat, the gnarled staff and its amber
+orb) is filled flat, shaded from its own silhouette, rimmed where it
+overlaps the parts behind it and outlined once, so every clip shares one
+model; the death's lying frames turn the upright rig a quarter in whole
+pixels, and no other raster is rotated. The fireball is an analytic ball of
+flame whose tongues stream up and behind; the fire missile a rocket of fire.
 """
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+from PIL import Image
 
 from art import PALETTE
 from pixels import (
@@ -16,44 +23,22 @@ from pixels import (
 )
 
 SIZE = 64
-SOLE = 59  # lowest drawn row; the outline adds row 60, so boxes end at 61
-ANKLE = SOLE - 2  # a flat boot's ankle when planted
-LANTERN_REGION = (40, 30, 63, 60)  # placement.py searches this box for the flame
+SOLE = 59  # a 64 px frame's lowest drawn row; the outline adds row 60, so boxes end at 61
+# The wizard's frame: his body as the courier's was (half 20 x 28), its
+# centre at (48, 65), so his feet stand on row 93 (the lowest drawn row 91,
+# the outline's 92), with room above for the hat and about for the staff.
+WIZARD = 96
+WIZARD_SOLE = 91
+WIZARD_FEET = WIZARD_SOLE + 2  # the bounding box's bottom edge
+FRAME = (WIZARD, WIZARD)
+ANKLE = WIZARD_SOLE - 2  # a flat boot's ankle when planted
 THIGH = SHIN = 8.5
 UPPER_ARM = FOREARM = 6.5
-REST_HIP = (30.0, 42.0)
+REST_HIP = (46.0, 74.0)
+STAFF = 54.0  # the staff's length, foot to top
+STAND_HAND = (61.0, 66.0)
+STAND_TILT = 0.13
 FIREBALL_FRAMES = 10
-
-
-@dataclass
-class Pose:
-    """One frame of the courier, facing right. Positions are sprite pixels."""
-    hip: tuple = REST_HIP
-    lean: float = 1.0  # neck x offset from the hip
-    head: tuple = (0.0, 0.0)  # extra head offset, e.g. for a tuck
-    near_foot: tuple = (34.0, ANKLE)
-    far_foot: tuple = (26.0, ANKLE)
-    near_toe: float = 0.0  # radians; positive points the toe down
-    far_toe: float = 0.0
-    near_planted: bool = True  # a planted boot keeps its lowest point on the sole row
-    far_planted: bool = True
-    near_hand: tuple = (42.0, 37.0)
-    far_hand: tuple = (24.0, 40.0)
-    lantern: float = 0.0  # radians; positive swings the lantern forward
-    hem_flare: float = 0.0  # back hem trails this far behind the hip
-    hem_lift: float = 0.0  # back hem rises; negative drops it
-    hem_front: float = 0.0  # front hem pushed forward
-    hem_wave: float = 0.0  # ripple phase
-    hem_amp: float = 0.6
-    hem_rise: float = 0.0  # whole hem rises, showing more leg
-    scarf_angle: float = 110.0  # degrees in y-down space: 90 hangs, 180 trails back
-    scarf_amp: float = 8.0
-    scarf_curl: float = 0.0  # root angle minus tip angle; bends the tail
-    scarf_phase: float = 0.0
-    hood_tip: tuple = (0.0, 0.0)
-    satchel: tuple = (0.0, 0.0)
-    eyes: str = 'open'  # open, closed or squint
-    flame: float = 1.0  # the lantern's flame: 1 whole, 0 an ember
 
 
 def two_bone(root, target, upper, lower, bend):
@@ -70,355 +55,521 @@ def two_bone(root, target, upper, lower, bend):
     return joint, end
 
 
+def stand_grip(hand_y=STAND_HAND[1], tilt=STAND_TILT):
+    """The grip that stands the staff's foot on the ground."""
+    return (WIZARD_SOLE - 1 - hand_y) / (math.cos(tilt) * STAFF)
+
+
+# The wizard's colours, indigo with brass trim (the plan's Q1): the robe and
+# hat's ramp, the far sleeve's, the deep folds, the trim, the sewn stars,
+# the hat's patch and the lining a flared hem shows.
+WAY = dict(robe=dict(base='Π', light='Ξ', shadow='Γ', back='Γ', rim='Ξ'),
+           far=dict(base='Γ', light='Π', shadow='ν', back='ν'),
+           fold='Γ', deep='ν', trim='A', trim_dark='a', star='ϕ', patch='Δ', lining='Ф')
+
+
+SKIN = dict(base='R', light='w', shadow='r')
+BEARD = dict(base='σ', light='w', shadow='τ', back='τ', rim='w')
+WOOD = dict(base='"', light="'", shadow='ω', back='ω', rim="'")
+BOOT = dict(base='ω', light='"', shadow='/')
+BOOT_FAR = dict(base='/', light='ω', shadow='>')
+LEG = dict(base='[', shadow='o')
+
+
+@dataclass
+class WizardPose:
+    """One frame of the wizard, facing right; sprite pixels."""
+    hip: tuple = REST_HIP
+    lean: float = 1.0
+    head: tuple = (0.0, 0.0)
+    near_foot: tuple = (50.0, ANKLE)
+    far_foot: tuple = (42.0, ANKLE)
+    near_toe: float = 0.0
+    far_toe: float = 0.0
+    near_planted: bool = True
+    far_planted: bool = True
+    near_hand: tuple = STAND_HAND
+    far_hand: tuple = (40.0, 72.0)
+    # The staff: its angle from upright (radians, + leans its top forward)
+    # and how far up it the near hand holds it (0 its foot, 1 its top);
+    # `staff_at` places it outright (foot, top) when not in the hand.
+    staff: float = STAND_TILT
+    grip: float = 0.47
+    staff_at: tuple = None
+    both_hands: bool = False
+    hem_flare: float = 0.0
+    hem_lift: float = 0.0
+    hem_front: float = 0.0
+    hem_wave: float = 0.0
+    hem_amp: float = 0.6
+    hem_rise: float = 0.0
+    hat_tip: tuple = (0.0, 0.0)
+    hat_tilt: float = 0.0
+    beard: float = 0.0  # radians the beard's tail swings back
+    beard_wave: float = 0.0
+    eyes: str = 'open'
+    flare: bool = False
+    far_item: str = None  # 'pistol', 'ball' or None
+    staff_behind: bool = False  # in the far hand, behind the body
+    near_palm: bool = False  # the near hand open, pushing
+    aim: float = 0.0  # the pistol's aim, radians up from forward
+    palm: bool = False  # the far hand open, pushing
+    bare: bool = False  # the hat knocked off: no brim shadow, a fringe round the crown
+    parts: tuple = ('body', 'hat', 'staff')  # what the frame draws
+
+
 def boot(ankle, toe_angle, planted):
-    """Boot around the ankle; planted boots sit on the sole row, others stay above it."""
-    local = [(-2, -1), (-2, 2), (5, 2), (5, 0), (2, -1)]
+    """A wizard's soft boot with a curled toe; planted ones sit on the sole row."""
+    local = [(-2.5, -1.5), (-2.5, 2), (4, 2), (6, 1), (7, -0.5), (5.5, 0), (2, -1.5)]
     cos, sin = math.cos(toe_angle), math.sin(toe_angle)
     points = [(ankle[0] + x * cos - y * sin, ankle[1] + x * sin + y * cos) for x, y in local]
     lowest = max(p[1] for p in points)
-    if planted or lowest > SOLE:
-        points = [(x, y + SOLE - lowest) for x, y in points]
+    if planted or lowest > WIZARD_SOLE:
+        points = [(x, y + WIZARD_SOLE - lowest) for x, y in points]
     return points
 
 
-def leg(hip, foot, toe, planted, trousers, boots):
-    # Out of reach, the ankle stops short; a planted boot then rises onto its toe.
+def leg(hip, foot, toe, planted, boots):
     knee, ankle = two_bone(hip, foot, THIGH, SHIN, 1)
     if planted and ankle[1] < foot[1] - 0.5:
         toe = max(toe, 0.5 + (foot[1] - ankle[1]) * 0.25)
-    shape = Part()
+    shape = Part(FRAME)
     shape.limb([hip, knee, ankle], 4)
-    shoe = Part()
+    shoe = Part(FRAME)
     shoe.polygon(boot(ankle, toe, planted))
-    return shade(shape.pixels(), **trousers), shade(shoe.pixels(), **boots)
+    return shade(shape.pixels(), **LEG), shade(shoe.pixels(), **boots)
 
 
-def arm(shoulder, hand, sleeve, glove, cuff=None):
-    # Elbows bend down and back.
+def sleeve(shoulder, hand, ramp, cuff=True):
+    """A bell sleeve from the shoulder, widening to its cuff, with the hand
+    out of it; returns the sleeve, the hand and the wrist."""
     elbow, wrist = two_bone(shoulder, hand, UPPER_ARM, FOREARM, -1)
-    shape = Part()
-    shape.limb([shoulder, elbow], 5)
-    shape.limb([elbow, wrist], 4)
+    shape = Part(FRAME)
+    shape.polygon(strand([shoulder, elbow, wrist], [5.0, 5.5, 7.5]))
     inside = shape.pixels()
-    colors = shade(inside, **sleeve)
+    colors = shade(inside, **ramp)
     if cuff:
         for x, y in inside:
-            if math.hypot(x - wrist[0], y - wrist[1]) < 2.2:
-                colors[(x, y)] = cuff
-    fist = Part()
-    fist.ellipse(wrist, 1.5, 1.5)
-    return colors, shade(fist.pixels(), **glove), wrist
+            if math.hypot(x + 0.5 - wrist[0], y + 0.5 - wrist[1]) < 2.4:
+                colors[(x, y)] = WAY['trim']
+    fist = Part(FRAME)
+    out = (wrist[0] + (wrist[0] - elbow[0]) * 0.28, wrist[1] + (wrist[1] - elbow[1]) * 0.28)
+    fist.ellipse(out, 1.7, 1.7)
+    return colors, shade(fist.pixels(), **SKIN), out, elbow
 
 
-NEAR_SLEEVE = dict(base='Q', light='U', shadow='P')
-FAR_SLEEVE = dict(base='P', light='Q', shadow='O')
-NEAR_GLOVE = dict(base='(', light='a', shadow='[')
-FAR_GLOVE = dict(base='(', shadow='[')
-NEAR_TROUSERS = dict(base=']', shadow='[')
-FAR_TROUSERS = dict(base='[', shadow='o')
-NEAR_BOOT = dict(base='(', light='a', shadow='[')
-FAR_BOOT = dict(base='[', light='(', shadow='o')
-
-
-def cloak(neck, hip, pose):
-    """Belted cloak from shoulders to a rippling hem that flares behind."""
-    hem_y = hip[1] + 8.5 - pose.hem_rise
-    back_shoulder = (neck[0] - 5, neck[1] + 1)
-    front_shoulder = (neck[0] + 4, neck[1] + 1)
+def robe(neck, hip, pose):
+    """The robe from the shoulders to the ankles: a mantle, a belted waist,
+    a hem that ripples and flares behind, folds that follow the hem, a
+    brass trim down the front and along the hem, and a few sewn stars."""
+    hem_y = ANKLE - 1.5 - pose.hem_rise
+    back_shoulder = (neck[0] - 6, neck[1] + 1.5)
+    front_shoulder = (neck[0] + 5, neck[1] + 1.5)
+    chest = (neck[0] + 6.5, neck[1] + 7)
     front_waist = (hip[0] + 5 + pose.hem_front * 0.3, hip[1] - 1)
-    front_hem = (hip[0] + 7 + pose.hem_front, min(hem_y - pose.hem_lift * 0.3, SOLE))
-    back_waist = (hip[0] - 7 - pose.hem_flare * 0.35, hip[1] - 2 - pose.hem_lift * 0.3)
-    back_hem = (hip[0] - 8 - pose.hem_flare, min(hem_y - pose.hem_lift, SOLE))
+    front_hem = (hip[0] + 9 + pose.hem_front, min(hem_y - pose.hem_lift * 0.25, WIZARD_SOLE - 2))
+    back_hem = (hip[0] - 10 - pose.hem_flare, min(hem_y - pose.hem_lift, WIZARD_SOLE - 2))
+    back_waist = (hip[0] - 7 - pose.hem_flare * 0.3, hip[1] - 2 - pose.hem_lift * 0.3)
+    back = (neck[0] - 7, neck[1] + 7)
     hem = []
-    steps = 7
+    steps = 9
     for k in range(steps + 1):
-        f = k / steps  # 0 at the front, 1 at the back
+        f = k / steps
         x = front_hem[0] + (back_hem[0] - front_hem[0]) * f
         y = front_hem[1] + (back_hem[1] - front_hem[1]) * f
-        y += pose.hem_amp * (0.4 + f) * math.sin(pose.hem_wave + k * 1.25)
-        hem.append((x, min(y, SOLE)))
-    shape = Part()
-    shape.polygon([back_shoulder, front_shoulder, front_waist] + hem + [back_waist])
+        y += pose.hem_amp * (0.5 + f) * math.sin(pose.hem_wave + k * 1.1)
+        hem.append((x, min(y, WIZARD_SOLE - 1)))
+    shape = Part(FRAME)
+    shape.polygon([back_shoulder, front_shoulder, chest, front_waist] + hem + [back_waist, back])
     inside = shape.pixels()
-    colors = shade(inside, 'Q', light='U', shadow='P', back='P', trim='W', rim='U',
-                   trim_from=round(hip[1] + 3))
-    # Folds rise from the hem and follow its ripple.
-    for k, offset in enumerate((-5.0, -1.0, 3.0)):
-        x = round(hip[0] + offset - pose.hem_flare * 0.25 * (k == 0))
+    colors = shade(inside, **WAY['robe'])
+    # Folds rise from the hem along the ripple.
+    for k, offset in enumerate((-7.0, -3.0, 1.0, 5.0)):
+        x = round(hip[0] + offset - pose.hem_flare * 0.3 * (k == 0))
         bottom = max((y for (px, y) in inside if px == x), default=None)
         if bottom is None:
             continue
-        length = 4 + (k + round(pose.hem_wave)) % 3
+        length = 6 + (k * 3 + round(pose.hem_wave * 2)) % 5
         for y in range(bottom - length, bottom):
             if (x, y) in inside:
-                colors[(x, y)] = 'P'
-    # Leather belt and brass buckle.
+                colors[(x, y)] = WAY['fold']
+            if (x + 1, y) in inside and y > bottom - length // 2:
+                colors[(x + 1, y)] = WAY['deep'] if k % 2 else WAY['fold']
+    # Each fold's lit edge beside it.
+    for (x, y), c in list(colors.items()):
+        if c == WAY['fold'] and colors.get((x - 1, y)) == WAY['robe']['base'] and (x - 1, y) in inside:
+            colors[(x - 1, y)] = WAY['robe']['light'] if (x + y) % 3 == 0 else colors[(x - 1, y)]
+    # The lining shows where the hem flares out behind.
+    if pose.hem_flare > 2.5:
+        for x, y in inside:
+            if x < back_hem[0] + 3 + pose.hem_flare * 0.3 and y > hip[1] + 6:
+                colors[(x, y)] = WAY['lining']
+    # The trim: along the hem and down the front opening.
+    for x, y in inside:
+        if (x, y + 1) not in inside or (x, y + 2) not in inside and (x, y + 1) in inside:
+            colors[(x, y)] = WAY['trim'] if (x, y + 1) not in inside else WAY['trim_dark']
+    front_x = lambda y: front_waist[0] + (front_hem[0] - front_waist[0]) * max(0.0, (y - front_waist[1])) / max(1.0, front_hem[1] - front_waist[1]) - 1.5
+    for y in range(round(front_waist[1]) + 1, round(front_hem[1])):
+        x = round(front_x(y))
+        if (x, y) in inside:
+            colors[(x, y)] = WAY['trim']
+    # A rope belt with a knot and a hanging tassel, and a pouch.
     for y in (round(hip[1]) - 3, round(hip[1]) - 2):
-        for x in range(round(hip[0]) - 7, round(hip[0]) + 8):
+        for x in range(round(hip[0]) - 8, round(hip[0]) + 8):
             if (x, y) in inside:
-                colors[(x, y)] = 'A' if round(hip[0]) + 2 <= x <= round(hip[0]) + 3 else '('
+                colors[(x, y)] = 'a' if (x + y) % 3 else '('
+    knot = (round(hip[0]) + 3, round(hip[1]) - 2)
+    for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1)):
+        colors[(knot[0] + dx, knot[1] + dy)] = 'A'
+    for dy in range(2, 7):
+        colors[(knot[0] + (dy > 4), knot[1] + dy)] = 'a' if dy % 2 else 'A'
+    # Stars sewn above the hem.
+    for f in (0.2, 0.5, 0.8):
+        x = front_hem[0] + (back_hem[0] - front_hem[0]) * f
+        y = front_hem[1] + (back_hem[1] - front_hem[1]) * f - 4
+        if point((x, y)) in inside:
+            plus(colors, (x, y), WAY['star'], inside)
+    # The mantle: a short cape over the shoulders, its edge trimmed.
+    mantle = Part(FRAME)
+    mantle.polygon([(neck[0] - 7, neck[1] + 1), (neck[0] + 6, neck[1] + 1), (neck[0] + 7.5, neck[1] + 6),
+                    (neck[0] + 2, neck[1] + 8.5), (neck[0] - 4, neck[1] + 8), (neck[0] - 8.5, neck[1] + 5)])
+    cape = mantle.pixels()
+    for x, y in cape:
+        colors[(x, y)] = WAY['fold'] if (x, y + 1) in cape else WAY['trim']
+        if (x, y - 1) not in cape:
+            colors[(x, y)] = WAY['robe']['base']
     return colors
 
 
-def hood(neck, pose):
-    center = (neck[0] + 2.5 + pose.head[0], neck[1] - 9 + pose.head[1])
-    shape = Part()
-    shape.ellipse(center, 8, 8.5)
-    # A soft liripipe tail droops from the back of the crown.
-    tip = (center[0] - 11 + pose.hood_tip[0], center[1] + 1 + pose.hood_tip[1])
-    shape.polygon([(center[0] - 4, center[1] - 7.5), (center[0] - 7.5, center[1] - 2), tip])
-    shape.limb([(center[0] - 6, center[1] - 4), tip], 2)
-    # The mantle drapes onto both shoulders.
-    shape.polygon([(center[0] - 7.5, center[1] + 1), (neck[0] - 6, neck[1] + 3),
-                   (neck[0] + 5, neck[1] + 3), (center[0] + 7, center[1] + 3)])
-    inside = shape.pixels()
-    colors = shade(inside, 'Q', light='W', shadow='P', back='O')
-    # A second, softer highlight row across the front of the crown.
-    for x, y in inside:
-        if (x, y + 1) in inside and (x, y - 1) not in inside and x > center[0] - 4:
-            colors[(x, y + 1)] = 'U'
-    face = Part()
-    face_center = (center[0] + 3.5, center[1] + 1.5)
-    face.ellipse(face_center, 4, 4.5)
-    void = face.pixels() & inside
-    for x, y in inside:
-        near_void = any((x + dx, y + dy) in void for dx, dy in NEIGHBOURS)
-        if near_void and (x, y) not in void and x >= face_center[0] - 1:
-            colors[(x, y)] = 'U'  # the hood lining catches the lantern
-    for p in void:
-        colors[p] = 'o'
-    ex, ey = point((face_center[0] + 1, face_center[1] - 0.5))
-    if pose.eyes == 'closed':
-        eyes = {(x, ey + 1): 'a' for x in (ex - 3, ex - 2, ex, ex + 1)}
-    elif pose.eyes == 'squint':
-        eyes = {(x, ey + 1): 'y' for x in (ex - 3, ex - 2, ex, ex + 1)}
+def pouch(hip, pose):
+    corner = (hip[0] - 9 - pose.hem_flare * 0.2, hip[1] - 1)
+    bag = Part(FRAME)
+    bag.polygon([corner, (corner[0] + 5, corner[1]), (corner[0] + 5, corner[1] + 6),
+                 (corner[0] + 1, corner[1] + 7)])
+    colors = shade(bag.pixels(), '(', light='a', shadow='/', back='/')
+    colors[point((corner[0] + 2.5, corner[1] + 2))] = 'A'
+    return colors
+
+
+def plus(colors, at, symbol, inside=None):
+    """A sewn four-point star, three pixels across."""
+    x, y = point(at)
+    for p in ((x, y), (x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
+        if inside is None or p in inside:
+            colors[p] = symbol
+
+
+def head_and_hat(neck, pose):
+    """The head in profile under the brim: a big bulbous nose, a bushy brow
+    jutting over a bright eye in the brim's shadow, long grey hair behind;
+    the beard from cheek and chin to the belt with a drooping moustache; the
+    hat's wide tilted brim, its tall cone of worn felt, dithered on its
+    shaded side, with a patch, a brass band and buckle, a crescent and
+    stars, and its top bent back and flopping down."""
+    cx, cy = neck[0] + 2.5 + pose.head[0], neck[1] - 8 + pose.head[1]
+    skull = Part(FRAME)
+    skull.ellipse((cx, cy), 5.5, 6)
+    nose = Part(FRAME)
+    nose.polygon([(cx + 3.5, cy - 1.5), (cx + 7.0, cy + 0.5), (cx + 8.6, cy + 2.4),
+                  (cx + 7.6, cy + 3.9), (cx + 5.5, cy + 3.6), (cx + 4, cy + 2.6)])
+    face = skull.pixels() | nose.pixels()
+    colors = shade(face, **SKIN)
+    if pose.bare:
+        # Hatless: a bald crown, lit, ringed behind by a fringe of grey hair
+        # with a few stray wisps standing up.
+        for x, y in skull.pixels():
+            if x + 0.5 < cx - 1.5 and y + 0.5 < cy + 1 and (x + 0.5 - cx) * 0.8 + (y + 0.5 - cy) < -2.5:
+                colors[(x, y)] = 'τ' if (x + y) % 3 else 'S'
+                if (x, y - 1) not in skull.pixels() or (x - 1, y) not in skull.pixels():
+                    colors[(x, y)] = 'σ'
+        for dx, dy in ((-4.5, -6.6), (-2.5, -7.4), (-6.2, -5.0), (-1.0, -7.0)):
+            colors[point((cx + dx, cy + dy))] = 'σ'
     else:
-        eyes = {(ex - 3, ey): 'y', (ex - 3, ey + 1): 'y', (ex, ey): 'Y', (ex + 1, ey): 'y',
-                (ex, ey + 1): 'y', (ex + 1, ey + 1): 'y'}
-    colors.update({p: s for p, s in eyes.items() if p in void})
-    return colors
+        # The brim's shadow over the brow.
+        for x, y in face:
+            if y <= cy - 2:
+                colors[(x, y)] = 'r'
+    for x, y in nose.pixels():
+        if (x, y - 1) not in face or y <= cy + 0.5:
+            colors[(x, y)] = 'w' if y > cy - 1 else 'R'
+        elif (x, y + 1) not in face:
+            colors[(x, y)] = 'r'
+    # Long grey hair at the back of the head, below the brim, to the nape.
+    hair = Part(FRAME)
+    hair.polygon([(cx - 5.8, cy - 3), (cx - 2.2, cy - 3.2), (cx - 2.6, cy + 2), (cx - 3.6, cy + 6.5),
+                  (cx - 6.6, cy + 7.5), (cx - 7, cy + 2)])
+    for x, y in hair.pixels():
+        colors[(x, y)] = 'τ' if (x * 2 + y) % 4 else 'S'
+        if (x + 1, y) not in hair.pixels() or (x, y - 1) not in hair.pixels():
+            colors[(x, y)] = 'σ'
+    # A bushy white brow jutting over the eye, the eye bright in shadow.
+    for i, dy in enumerate((1, 0, 0, -1, 0, 1)):
+        colors[(round(cx + 1 + i), round(cy - 1.6) + dy)] = 'w' if i % 2 else 'σ'
+    eye = (round(cx + 3), round(cy - 0.0))
+    colors[eye] = 'w'
+    colors[(eye[0] + 1, eye[1])] = 'o'
+    colors[(eye[0], eye[1] + 1)] = 'r'
+    colors[(eye[0] + 1, eye[1] + 1)] = 'r'
+    if pose.eyes == 'closed':
+        colors[eye] = 'r'
+        colors[(eye[0] + 1, eye[1])] = 'X'
+    elif pose.eyes == 'squint':
+        colors[eye] = 'X'
+        colors[(eye[0] + 1, eye[1])] = 'X'
+    # The beard: from cheek and chin down the chest to the belt, its tail
+    # curling back with the move; wavy darker strands; a drooping moustache.
+    chin = (cx + 3.2, cy + 4.0)
+    swing = pose.beard
+    pts = [chin]
+    for i in range(1, 8):
+        a = math.pi / 2 + 0.08 + swing * (i / 7) ** 1.4 + 0.07 * math.sin(pose.beard_wave + i * 1.3)
+        pts.append(add(pts[-1], (math.cos(a), math.sin(a)), 2.5))
+    beard = Part(FRAME)
+    beard.polygon(strand(pts, [6.8, 7.0, 6.4, 5.6, 4.6, 3.4, 2.2, 1.0]))
+    beard.polygon([(cx - 0.5, cy + 2.5), (cx + 1.5, cy + 2.2), (cx + 3.5, cy + 3.8), (cx + 0.5, cy + 6)])
+    stache = Part(FRAME)
+    stache.polygon([(cx + 3.6, cy + 3.2), (cx + 7.6, cy + 3.6), (cx + 8.2, cy + 6.2), (cx + 6.6, cy + 5.2),
+                    (cx + 4.2, cy + 5.4)])
+    hair_px = beard.pixels()
+    bcolors = shade(hair_px, **BEARD)
+    for x, y in hair_px:
+        wave = math.sin(y * 0.9 + x * 0.35 + pose.beard_wave)
+        if wave > 0.72 and (x, y - 1) in hair_px:
+            bcolors[(x, y)] = 'τ'
+        elif wave < -0.85 and (x - 1, y) in hair_px:
+            bcolors[(x, y)] = 'w'
+    tip = point(pts[-1])
+    bcolors[tip] = 'S'
+    bcolors.update(shade(stache.pixels(), 'w', shadow='σ'))
+    # The hat: a wide tilted brim, a tall felt cone bending back near its
+    # top, the top flopping down behind.
+    brim_c = (cx + 0.5 + pose.hat_tilt, cy - 4.6)
+    base_y = brim_c[1] - 1
+    t = pose.hat_tip
+    spine = [(brim_c[0], base_y + 1), (brim_c[0] - 0.5, base_y - 8),
+             (brim_c[0] - 2 + t[0] * 0.25, base_y - 15 + t[1] * 0.25),
+             (brim_c[0] - 5 + t[0] * 0.5, base_y - 21 + t[1] * 0.5),
+             (brim_c[0] - 9.5 + t[0] * 0.8, base_y - 24.5 + t[1] * 0.8),
+             (brim_c[0] - 13 + t[0], base_y - 22 + t[1])]
+    cone = Part(FRAME)
+    cone.polygon(strand(spine, [14.0, 11.5, 8.5, 5.6, 3.2, 1.2]))
+    cone_px = cone.pixels()
+    hat = shade(cone_px, **WAY['robe'])
+    centre_x = {}
+    for x, y in cone_px:
+        centre_x.setdefault(y, []).append(x)
+    for x, y in cone_px:
+        xs = centre_x[y]
+        mid = (min(xs) + max(xs)) / 2
+        if hat[(x, y)] == WAY['robe']['base'] and x < mid - 0.5 and (x + y) % 2 == 0:
+            hat[(x, y)] = WAY['fold']  # the felt's shaded side, dithered
+        if x == max(xs) - 1 and hat[(x, y)] == WAY['robe']['base']:
+            hat[(x, y)] = WAY['robe']['light']
+    # The crumple where it bends, and a patch stitched on the cone.
+    bend = spine[2]
+    for x, y in cone_px:
+        if abs(y - bend[1]) < 0.8 and x < bend[0] + 2:
+            hat[(x, y)] = WAY['deep']
+    patch = (round(brim_c[0] - 4), round(base_y - 11))
+    for dx in range(3):
+        for dy in range(3):
+            q = (patch[0] + dx, patch[1] + dy)
+            if q in cone_px:
+                hat[q] = WAY['patch'] if (dx, dy) != (1, 1) else WAY['fold']
+    for dx, dy in ((-1, 0), (3, 2), (1, -1)):
+        q = (patch[0] + dx, patch[1] + dy)
+        if q in cone_px:
+            hat[q] = WAY['trim_dark']
+    # Band and buckle.
+    for x, y in cone_px:
+        if base_y - 3 <= y <= base_y - 1:
+            hat[(x, y)] = WAY['trim'] if y == base_y - 3 else WAY['trim_dark']
+    for dx, dy in ((2, -3), (3, -3), (4, -3), (2, -2), (4, -2), (2, -1), (3, -1), (4, -1)):
+        hat[(round(brim_c[0]) + dx, round(base_y) + dy)] = 'σ' if (dx, dy) == (2, -3) else 'Φ'
+    # A crescent and a star sewn on the cone.
+    moon = Part(FRAME)
+    mc = (brim_c[0] + 0.5, base_y - 7.5)
+    moon.ellipse(mc, 2.4, 2.6)
+    bite = Part(FRAME)
+    bite.ellipse((mc[0] + 1.4, mc[1] - 0.7), 2.0, 2.1)
+    for p in moon.pixels() - bite.pixels():
+        if p in cone_px:
+            hat[p] = WAY['star']
+    plus(hat, (brim_c[0] - 3.5, base_y - 17), WAY['star'], cone_px)
+    brim = Part(FRAME)
+    brim.polygon([(brim_c[0] - 13, brim_c[1] - 0.8), (brim_c[0] - 4, brim_c[1] - 2.4),
+                  (brim_c[0] + 6, brim_c[1] - 2.0), (brim_c[0] + 13.5, brim_c[1] + 0.6),
+                  (brim_c[0] + 11, brim_c[1] + 2.2), (brim_c[0], brim_c[1] + 1.8),
+                  (brim_c[0] - 11.5, brim_c[1] + 1.0)])
+    brim_px = brim.pixels()
+    bri = shade(brim_px, WAY['robe']['base'], light=WAY['robe']['light'], shadow=WAY['deep'])
+    return colors, bcolors, hat, bri, (cx, cy)
 
 
-def scarf(neck, pose):
-    style = dict(base='z', light='+', shadow='X')
-    wrap = Part()
-    wrap.polygon([(neck[0] - 5, neck[1] - 2), (neck[0] + 5, neck[1] - 1),
-                  (neck[0] + 5, neck[1] + 2), (neck[0] - 5, neck[1] + 2)])
-    wrap.ellipse((neck[0] + 5, neck[1] + 1), 1.5, 1.5)  # the knot
-    tail = Part()
-    points = [(neck[0] - 4, neck[1])]
-    for i in range(6):
-        bend = pose.scarf_curl * (1 - i / 5)
-        wave = pose.scarf_amp * math.sin(pose.scarf_phase - i * 1.05)
-        angle = math.radians(pose.scarf_angle + bend + wave)
-        points.append(add(points[-1], (math.cos(angle), math.sin(angle)), 3.3))
-    tail.limb(points[:3], 4)
-    tail.limb(points[2:5], 3)
-    tail.limb(points[4:], 2)
-    return shade(wrap.pixels(), **style), shade(tail.pixels(), **style)
+def staff_points(pose):
+    """The staff's foot and top."""
+    if pose.staff_at:
+        foot, top = pose.staff_at
+    else:
+        d = (math.sin(pose.staff), -math.cos(pose.staff))
+        hand = pose.near_hand
+        foot = add(hand, d, -STAFF * pose.grip)
+        top = add(hand, d, STAFF * (1 - pose.grip))
+    for a, b in ((foot, top), (top, foot)):
+        if a[1] > WIZARD_SOLE - 1 and b[1] < a[1]:
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            t = (a[1] - (WIZARD_SOLE - 1)) / -dy
+            foot, top = add(foot, (dx, dy), t), add(top, (dx, dy), t)
+            break
+    return foot, top
 
 
-def satchel(hip, pose):
-    corner = add((hip[0] - 11, hip[1] - 8), pose.satchel)
-    bag = Part()
-    bag.polygon([corner, (corner[0] + 5, corner[1]), (corner[0] + 5, corner[1] + 7),
-                 (corner[0], corner[1] + 7)])
-    colors = shade(bag.pixels(), 'a', light='A', shadow='(', back='(')
-    flap_y = round(corner[1]) + 2
-    for x in range(round(corner[0]), round(corner[0]) + 6):
-        if (x, flap_y) in colors:
-            colors[(x, flap_y)] = '('
-    return colors, (corner[0] + 5, corner[1] + 1)
+def staff(pose):
+    """The gnarled staff, knotted, and its crook round the orb; the wood,
+    the orb's glass and the glass's centre, the staff light's anchor."""
+    foot, top = staff_points(pose)
+    dx, dy = top[0] - foot[0], top[1] - foot[1]
+    length = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / length, dy / length
+    nx, ny = -uy, ux
+    pts, widths = [], []
+    for i in range(9):
+        f = i / 8
+        wob = 0.6 * math.sin(f * 11.0 + 0.7)
+        pts.append((foot[0] + dx * f * 0.93 + nx * wob, foot[1] + dy * f * 0.93 + ny * wob))
+        widths.append(2.6 + 0.9 * (unit('knot', i) > 0.62))
+    shaft = Part(FRAME)
+    shaft.polygon(strand(pts, widths))
+    wood = shade(shaft.pixels(), **WOOD)
+    # The crook: two prongs curling round the orb.
+    orb_c = (top[0] - nx * 0.5, top[1] - ny * 0.5)
+    crook = Part(FRAME)
+    for side in (1, -1):
+        arc = []
+        for k in range(6):
+            a = math.atan2(-uy, -ux) + side * (0.55 + k * 0.42)
+            arc.append((orb_c[0] + math.cos(a) * 4.4, orb_c[1] + math.sin(a) * 4.4))
+        crook.limb([pts[-1]] + arc, 2)
+    wood.update(shade(crook.pixels(), 'ω', light="'", shadow='/'))
+    # A leather grip wound where the hand holds it, and a sprig of leaves.
+    if not pose.staff_at:
+        for k in range(-3, 4):
+            q = point((pose.near_hand[0] + ux * k * 0.9, pose.near_hand[1] + uy * k * 0.9))
+            for e in (q, (q[0] + 1, q[1])):
+                if e in wood:
+                    wood[e] = '(' if k % 2 else 'a'
+    stem = add(top, (ux, uy), -6.5)
+    for side, length in ((1, 3.2), (-1, 2.6)):
+        leaf = Part(FRAME)
+        tip = (stem[0] + nx * side * length - ux * 1.5, stem[1] + ny * side * length - uy * 1.5)
+        leaf.limb([stem, tip], 2)
+        wood.update(shade(leaf.pixels(), 'G', light='m', shadow='g'))
+    radius = 3.6 if pose.flare else 2.6
+    glass = Part(FRAME)
+    glass.ellipse(orb_c, radius, radius)
+    # Plain amber glass, not emissive: dull while the light is off, and
+    # shining under the glow's hot core while it burns (`player_lantern`).
+    orb = {}
+    inside = glass.pixels()
+    for x, y in inside:
+        dx, dy = x + 0.5 - orb_c[0], y + 0.5 - orb_c[1]
+        r = math.hypot(dx, dy)
+        orb[(x, y)] = 'J' if r < radius * 0.55 else ('K' if dx + dy < radius * 1.05 else 'L')
+    glint = point((orb_c[0] - radius * 0.35, orb_c[1] - radius * 0.4))
+    orb[glint] = 'Z'
+    # The anchor: the drawn glass's centre, whatever covers it.
+    anchor = tuple(round(sum(p[a] + 0.5 for p in inside) / len(inside), 3) for a in (0, 1))
+    return wood, orb, anchor
 
 
-def strap(neck, anchor):
-    band = Part()
-    band.limb([(neck[0] + 4, neck[1] + 2), anchor], 1)
-    return {p: '(' for p in band.pixels()}
-
-
-def lantern(hand, angle, flame=1.0):
-    """Upright lantern hanging from the hand by its bail; only the bail swings.
-    A flame below 1 dies down the glass from the top, to an ember at 0."""
-    pivot = (hand[0] + 2, hand[1] + 1)
-    top = add(pivot, (math.sin(angle), math.cos(angle)), 4.5)
-    cx, ty = point(top)
-    colors = {}
-    bail = Part()
-    bail.limb([pivot, (cx, ty)], 1)
-    for p in bail.pixels():
-        colors[p] = 's'
-    for x in range(cx - 2, cx + 3):
-        colors[(x, ty)] = 'a'
-        colors[(x, ty + 8)] = 'a'
-    for x in range(cx - 3, cx + 4):
-        colors[(x, ty + 1)] = 'A'
-        colors[(x, ty + 7)] = '('
-    for y in range(ty + 2, ty + 7):
-        colors[(cx - 3, y)] = 'o'
-        colors[(cx + 3, y)] = 'o'
-        for x in range(cx - 2, cx + 3):
-            colors[(x, y)] = 'Y' if abs(x - cx) <= 1 and ty + 3 <= y <= ty + 5 else 'y'
-    if flame < 1.0:
-        # The glass darkens from the top down; below half, the hot core goes
-        # and the ember keeps the bottom row's middle.
-        lit = ty + 6 - round(4 * flame)
-        for y in range(ty + 2, ty + 7):
-            for x in range(cx - 2, cx + 3):
-                if y < lit or (y == ty + 6 and abs(x - cx) > 1 and flame < 0.5):
-                    colors[(x, y)] = 'o'
-                elif flame < 0.5:
-                    colors[(x, y)] = 'y'
-    return colors
-
-
-def render(pose):
-    hip = pose.hip
-    neck = (hip[0] + pose.lean, hip[1] - 17)
-    near_shoulder = (neck[0] + 2, neck[1] + 3)
-    far_shoulder = (neck[0] - 3, neck[1] + 3)
-    wrap, tail = scarf(neck, pose)
-    far_sleeve, far_glove, _ = arm(far_shoulder, pose.far_hand, FAR_SLEEVE, FAR_GLOVE)
-    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe,
-                            pose.far_planted, FAR_TROUSERS, FAR_BOOT)
-    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe,
-                              pose.near_planted, NEAR_TROUSERS, NEAR_BOOT)
-    bag, bag_anchor = satchel(hip, pose)
-    near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
-                                         NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern, pose.flame)
-    canvas = compose([
-        (tail, None),
-        (far_sleeve, 'o'), (far_glove, None),
-        (far_leg, 'o'), (far_boot, 'o'),
-        (near_leg, 'o'), (near_boot, 'o'),
-        (bag, 'o'),
-        (cloak(neck, hip, pose), 'o'),
-        (strap(neck, bag_anchor), None),
-        (hood(neck, pose), 'o'),
-        (wrap, 'o'),
-        (lamp, 'o'),
-        (near_sleeve, 'o'), (near_glove, 'o'),
-    ])
-    # Drop isolated specks so the outline stays one clean line.
-    for p in [p for p in canvas if not any((p[0] + dx, p[1] + dy) in canvas for dx, dy in NEIGHBOURS)]:
-        del canvas[p]
-    glass = {p for p, s in lamp.items() if s in 'yY' and canvas.get(p) == s}
-    return to_image(outline(canvas)), glass
-
-
-def finish(canvas, lamp):
-    """The frame's image and its lantern glass, the specks dropped first."""
-    for p in [p for p in canvas if not any((p[0] + dx, p[1] + dy) in canvas for dx, dy in NEIGHBOURS)]:
-        del canvas[p]
-    glass = {p for p, s in lamp.items() if s in 'yY' and canvas.get(p) == s}
-    return to_image(outline(canvas)), glass
-
-
-def render_toss(pose, front, ball):
-    """A toss frame: the free (far) hand swings a bowling ball from behind
-    the cloak on the wind-up and over it after, the lantern hand braced."""
-    hip = pose.hip
-    neck = (hip[0] + pose.lean, hip[1] - 17)
-    near_shoulder = (neck[0] + 2, neck[1] + 3)
-    far_shoulder = (neck[0] - 3, neck[1] + 3)
-    wrap, tail = scarf(neck, pose)
-    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe,
-                            pose.far_planted, FAR_TROUSERS, FAR_BOOT)
-    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe,
-                              pose.near_planted, NEAR_TROUSERS, NEAR_BOOT)
-    bag, bag_anchor = satchel(hip, pose)
-    near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
-                                         NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern, pose.flame)
-    sleeve, glove = (NEAR_SLEEVE, NEAR_GLOVE) if front else (FAR_SLEEVE, FAR_GLOVE)
-    throw_sleeve, throw_glove, throw_wrist = arm(far_shoulder, pose.far_hand, sleeve, glove)
-    held = {}
-    if ball:
-        orb = Part()
-        orb.ellipse((throw_wrist[0] + 1, throw_wrist[1] - 1), 3, 3)
-        held = shade(orb.pixels(), 'β', light='δ', shadow='γ')
-    throw = [(throw_sleeve, 'o'), (throw_glove, 'o'), (held, 'o')]
-    body = [(far_leg, 'o'), (far_boot, 'o'), (near_leg, 'o'), (near_boot, 'o'), (bag, 'o'),
-            (cloak(neck, hip, pose), 'o'), (strap(neck, bag_anchor), None),
-            (hood(neck, pose), 'o'), (wrap, 'o')]
-    behind, over = ([], throw) if front else (throw, [])
-    canvas = compose([(tail, None), *behind, *body, *over,
-                      (lamp, 'o'), (near_sleeve, 'o'), (near_glove, 'o')])
-    return finish(canvas, lamp)
-
-
-def gun(wrist, aim):
-    """A short pistol at the wrist along `aim` (radians, up positive), drawn
-    as a polygon at that angle: no raster is rotated."""
+def pistol(wrist, aim):
     ax, ay = math.cos(aim), -math.sin(aim)
     px, py = -ay, ax
+
     def at(u, v):
         return (wrist[0] + ax * u + px * v, wrist[1] + ay * u + py * v)
-    barrel = Part()
+    barrel = Part(FRAME)
     barrel.polygon([at(-1, -1.6), at(8, -1.6), at(8, 0.6), at(-1, 0.6)])
-    grip = Part()
+    grip = Part(FRAME)
     grip.polygon([at(-1, 0.0), at(1.5, 0.0), at(0.5, 3.5), at(-2, 3.5)])
-    colors = shade(grip.pixels(), '[', shadow='o')
+    colors = shade(grip.pixels(), '"', shadow='ω')
     colors.update(shade(barrel.pixels(), 'Ω', light='χ', shadow='Φ'))
     return colors
 
 
-# The aim frames' directions, degrees up from forward: the five the courier
-# draws facing the aim; the three behind it are these mirrored.
-AIMS = (90, 45, 0, -45, -90)
-
-
-def render_aim(degrees):
-    """Standing, the free arm and its gun along the aim, drawn over the
-    cloak so a downward aim stays visible."""
-    aim = math.radians(degrees)
-    pose = Pose(lantern=0.1, scarf_angle=132, scarf_curl=-22, scarf_amp=8)
+def render(pose):
+    """The frame and its staff light's anchor, the orb's centre."""
     hip = pose.hip
     neck = (hip[0] + pose.lean, hip[1] - 17)
     near_shoulder = (neck[0] + 2, neck[1] + 3)
-    far_shoulder = (neck[0] - 1, neck[1] + 4)
-    hand = (far_shoulder[0] + math.cos(aim) * 12.0, far_shoulder[1] - math.sin(aim) * 12.0)
-    wrap, tail = scarf(neck, pose)
-    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe, True,
-                            FAR_TROUSERS, FAR_BOOT)
-    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe, True,
-                              NEAR_TROUSERS, NEAR_BOOT)
-    bag, bag_anchor = satchel(hip, pose)
-    near_sleeve, near_glove, wrist = arm(near_shoulder, pose.near_hand, NEAR_SLEEVE,
-                                         NEAR_GLOVE, cuff='W')
-    lamp = lantern(wrist, pose.lantern, pose.flame)
-    gun_sleeve, gun_glove, gun_wrist = arm(far_shoulder, hand, FAR_SLEEVE, FAR_GLOVE)
-    canvas = compose([
-        (tail, None),
-        (far_leg, 'o'), (far_boot, 'o'), (near_leg, 'o'), (near_boot, 'o'),
-        (bag, 'o'), (cloak(neck, hip, pose), 'o'), (strap(neck, bag_anchor), None),
-        (hood(neck, pose), 'o'), (wrap, 'o'),
-        (gun_sleeve, 'o'), (gun_glove, 'o'), (gun(gun_wrist, aim), 'o'),
-        (lamp, 'o'), (near_sleeve, 'o'), (near_glove, 'o'),
-    ])
-    return finish(canvas, lamp)
+    far_shoulder = (neck[0] - 3, neck[1] + 3)
+    face, beard, hat, brim, _ = head_and_hat(neck, pose)
+    far_hand = pose.far_hand
+    far_sleeve, far_fist, far_wrist, _ = sleeve(far_shoulder, far_hand, WAY['far'])
+    if pose.both_hands:
+        far_sleeve, far_fist, far_wrist, _ = sleeve(far_shoulder, pose.far_hand, WAY['robe'])
+    far_leg, far_boot = leg((hip[0] - 2, hip[1]), pose.far_foot, pose.far_toe, pose.far_planted, BOOT_FAR)
+    near_leg, near_boot = leg((hip[0] + 1, hip[1]), pose.near_foot, pose.near_toe, pose.near_planted, BOOT)
+    near_sleeve, near_fist, near_wrist, _ = sleeve(near_shoulder, pose.near_hand, WAY['robe'])
+    if pose.near_palm:
+        palm = Part(FRAME)
+        palm.ellipse((near_wrist[0] + 1.0, near_wrist[1]), 1.7, 2.6)
+        near_fist = shade(palm.pixels(), **SKIN)
+        for dy in (-2, 0, 2):  # spread fingers
+            near_fist[point((near_wrist[0] + 3.0, near_wrist[1] + dy))] = 'R'
+    wood, orb, anchor = staff(pose)
+    held = {}
+    if pose.far_item == 'pistol':
+        held = pistol(far_wrist, pose.aim)
+    elif pose.far_item == 'ball':
+        ball = Part(FRAME)
+        ball.ellipse((far_wrist[0] + 1, far_wrist[1] - 1), 3, 3)
+        held = shade(ball.pixels(), 'β', light='δ', shadow='γ')
+    if pose.palm:
+        palm = Part(FRAME)
+        palm.ellipse((far_wrist[0] + 0.8, far_wrist[1]), 1.6, 2.4)
+        far_fist = shade(palm.pixels(), **SKIN)
+    front_far = pose.far_item in ('pistol',) or pose.palm or pose.both_hands
+    layers = [(far_leg, 'o'), (far_boot, 'o'), (near_leg, 'o'), (near_boot, 'o')]
+    if pose.staff_behind:
+        layers = [(wood, 'o'), (orb, 'o')] + layers
+    if not front_far:
+        layers = [(far_sleeve, 'o'), (far_fist, 'o'), (held, 'o')] + layers
+    layers += [(robe(neck, hip, pose), 'o'), (pouch(hip, pose), 'o'), (face, 'o'), (beard, 'o'),
+               (hat, 'o'), (brim, 'o')]
+    if pose.staff_behind:
+        layers += [(near_sleeve, 'o'), (near_fist, 'o')]
+    elif pose.staff_at:
+        # On the ground, drawn after the body as it lies in front.
+        layers += [(wood, 'o'), (orb, 'o')]
+        layers += [(near_sleeve, 'o'), (near_fist, 'o')]
+    else:
+        layers += [(wood, 'o'), (orb, 'o'), (near_sleeve, 'o'), (near_fist, 'o')]
+    if front_far:
+        layers += [(far_sleeve, 'o'), (far_fist, 'o'), (held, 'o')]
+    # The parts the frame draws: the body (all but the hat and the staff),
+    # the hat, the staff.
+    groups = {'hat': (hat, brim), 'staff': (wood, orb)}
+
+    def wanted(part):
+        for name, members in groups.items():
+            if any(part is m for m in members):
+                return name in pose.parts
+        return 'body' in pose.parts
+    layers = [(part, sep) for part, sep in layers if wanted(part)]
+    canvas = compose(layers)
+    # The orb stays whole over what crosses it, unless the staff is behind.
+    if not pose.staff_behind and 'staff' in pose.parts:
+        canvas.update(orb)
+    for p in [p for p in canvas if not any((p[0] + dx, p[1] + dy) in canvas for dx, dy in NEIGHBOURS)]:
+        del canvas[p]
+    return to_image(outline(canvas, 'o', FRAME), FRAME), anchor
 
 
-def cast_frame(im):
-    """A frame's cast twin: its lantern's glass all at the hot core and the
-    frame round it lit, so its emissive mask widens."""
-    out = im.copy()
-    px = out.load()
-    x0, y0, x1, y1 = LANTERN_REGION
-    hot = (PALETTE['y'], PALETTE['Y'])
-    glass = {(x, y) for y in range(y0, y1) for x in range(x0, x1) if px[x, y] in hot}
-    for p in glass:
-        px[p] = PALETTE['Y']
-    ring = {(x + dx, y + dy) for x, y in glass for dx in (-1, 0, 1) for dy in (-1, 0, 1)} - glass
-    for p in ring:
-        if px[p][3]:
-            px[p] = PALETTE['y']
-    return out
+# --- poses: the courier's, moved into the bigger frame, with the staff ----
 
 
 def run_foot(hip_x, phase):
-    """Foot target, planted flag and toe angle for a 50% stance run cycle."""
     if phase < 0.5:
         s = phase / 0.5
         return (hip_x + 6 - 14 * s, ANKLE), True, 0.0
@@ -433,18 +584,16 @@ def idle_poses():
     for i in range(8):
         p = i / 8
         breath = -round(0.5 - 0.5 * math.cos(math.tau * p) + 0.01)
-        poses.append(Pose(
-            hip=(REST_HIP[0], REST_HIP[1] + breath),
-            near_hand=(42, 37 + breath), far_hand=(24, 40 + breath),
-            lantern=0.2 * math.sin(math.tau * p - 0.9),
-            hem_wave=math.tau * p, hem_amp=0.7,
-            scarf_angle=132, scarf_curl=-22, scarf_amp=8, scarf_phase=math.tau * p,
-            hood_tip=(0.6 * math.sin(math.tau * p - 0.6), 0.8 * math.sin(math.tau * p)),
-            eyes='closed' if i == 6 else 'open'))
+        poses.append(WizardPose(
+                 hip=(REST_HIP[0], REST_HIP[1] + breath), near_hand=(61, 66 + breath),
+                 far_hand=(40, 72 + breath), grip=stand_grip(66 + breath),
+                 hem_wave=math.tau * p, hem_amp=0.7, hat_tip=(0.6 * math.sin(math.tau * p - 0.6), 0.5 * math.sin(math.tau * p)),
+                 beard=0.05 * math.sin(math.tau * p), beard_wave=math.tau * p,
+                 eyes='closed' if i == 6 else 'open'))
     return poses, [300, 240, 240, 300, 240, 240, 100, 240]
 
 
-def run_poses():
+def walk_poses():
     poses = []
     for i in range(12):
         p = i / 12
@@ -453,46 +602,34 @@ def run_poses():
         hip = (REST_HIP[0] - 1, REST_HIP[1] + bob)
         near, near_planted, near_toe = run_foot(hip[0] + 1, p)
         far, far_planted, far_toe = run_foot(hip[0] - 2, (p + 0.5) % 1)
-        neck = (hip[0] + 3.5, hip[1] - 17)
         swing = math.cos(math.tau * p)
-        # The free arm pumps against the near leg; the lantern arm stays braced.
-        far_hand = add((neck[0] - 3, neck[1] + 3), (1 + 7 * swing, 8 - 2 * abs(swing)))
-        near_hand = (43 + 2.0 * math.sin(math.tau * p + 0.5), neck[1] + 12 - 1.5 * swing)
-        poses.append(Pose(
-            hip=hip, lean=3.5, near_foot=near, far_foot=far, near_toe=near_toe,
-            far_toe=far_toe, near_planted=near_planted, far_planted=far_planted,
-            near_hand=near_hand, far_hand=far_hand,
-            lantern=0.1 - 0.35 * math.cos(math.tau * p - 1.3),
-            hem_flare=5 + 1.5 * math.sin(math.tau * 2 * p), hem_lift=3, hem_front=-1,
-            hem_wave=math.tau * 2 * p, hem_amp=1.4, hem_rise=2,
-            scarf_angle=192, scarf_curl=-42, scarf_amp=20, scarf_phase=math.tau * 2 * p,
-            hood_tip=(-2, -3 + 0.8 * math.sin(math.tau * 2 * p - 1)),
-            satchel=(0, -0.8 * math.sin(math.tau * 2 * p - 1))))
+        neck = (hip[0] + 3, hip[1] - 17)
+        far_hand = add((neck[0] - 3, neck[1] + 3), (1 + 6 * swing, 8 - 2 * abs(swing)))
+        poses.append(WizardPose(
+                 hip=hip, lean=3.0, near_foot=near, far_foot=far, near_toe=near_toe, far_toe=far_toe,
+                 near_planted=near_planted, far_planted=far_planted,
+                 near_hand=(60 + 1.5 * math.sin(math.tau * p + 0.5), neck[1] + 9 - 1.2 * swing), far_hand=far_hand,
+                 staff=0.22 + 0.12 * math.sin(math.tau * p + 0.4), grip=0.42,
+                 hem_flare=4 + 1.5 * math.sin(math.tau * 2 * p), hem_lift=2, hem_front=-1,
+                 hem_wave=math.tau * 2 * p, hem_amp=1.3, hem_rise=1,
+                 hat_tip=(-3, 2 + 0.8 * math.sin(math.tau * 2 * p - 1)), beard=0.45, beard_wave=math.tau * 2 * p))
     return poses, [45] * 12
 
 
 def jump_poses():
     hip = (REST_HIP[0], REST_HIP[1] - 2)
-    takeoff = Pose(
-        hip=hip, lean=1.5, near_foot=(hip[0] + 1.5, ANKLE), near_toe=0.9,
-        far_foot=(hip[0] - 6, 50), far_toe=0.6, far_planted=False,
-        near_hand=(43, 29), far_hand=(21, 14), lantern=-0.3,
-        hem_flare=2, hem_lift=-2, hem_amp=0.5, scarf_angle=112, scarf_amp=6, hood_tip=(1, 4))
-    rise = Pose(
-        hip=(hip[0], hip[1] + 1), lean=1.5, near_foot=(hip[0] + 5, 51), near_toe=0.2,
-        near_planted=False, far_foot=(hip[0] - 3.5, ANKLE), far_toe=1.0,
-        near_hand=(43, 30), far_hand=(23, 15), lantern=-0.25,
-        hem_flare=3, hem_lift=-3, hem_wave=1.2, hem_amp=1.0, scarf_angle=140, scarf_curl=-24,
-        scarf_amp=10,
-        scarf_phase=1.0, hood_tip=(0, 3))
-    apex = Pose(
-        hip=(hip[0], hip[1] + 1), lean=1.0, near_foot=(hip[0] + 4, 53), near_toe=0.3,
-        near_planted=False, far_foot=(hip[0] - 2.5, ANKLE), far_toe=0.9,
-        near_hand=(44, 33), far_hand=(19, 29), lantern=0.2,
-        hem_flare=4, hem_lift=3, hem_wave=2.4, hem_amp=1.2, scarf_angle=178, scarf_curl=-40,
-        scarf_amp=14,
-        scarf_phase=2.0, hood_tip=(-1, -2))
-    # The rise clip must finish inside ~13 frames; the apex pose then holds.
+    takeoff = WizardPose(hip=hip, lean=1.5, near_foot=(hip[0] + 1.5, ANKLE), near_toe=0.9,
+                         far_foot=(hip[0] - 6, 82), far_toe=0.6, far_planted=False,
+                         near_hand=(60, 60), far_hand=(37, 50), staff=0.35, grip=0.45,
+                         hem_flare=2, hem_lift=-2, hem_amp=0.5, hat_tip=(1, 3), beard=-0.2)
+    rise = WizardPose(hip=(hip[0], hip[1] + 1), lean=1.5, near_foot=(hip[0] + 5, 83), near_toe=0.2,
+                      near_planted=False, far_foot=(hip[0] - 3.5, ANKLE), far_toe=1.0,
+                      near_hand=(60, 61), far_hand=(38, 50), staff=0.45, grip=0.45,
+                      hem_flare=3, hem_lift=-3, hem_wave=1.2, hem_amp=1.2, hat_tip=(0, 4), beard=-0.35)
+    apex = WizardPose(hip=(hip[0], hip[1] + 1), lean=1.0, near_foot=(hip[0] + 4, 85), near_toe=0.3,
+                      near_planted=False, far_foot=(hip[0] - 2.5, ANKLE), far_toe=0.9,
+                      near_hand=(60, 64), far_hand=(35, 62), staff=0.25, grip=0.45,
+                      hem_flare=4, hem_lift=3, hem_wave=2.4, hem_amp=1.6, hat_tip=(-1, -1), beard=0.2)
     return [takeoff, rise, apex], [60, 70, 70]
 
 
@@ -500,148 +637,333 @@ def fall_poses():
     poses = []
     for i in range(4):
         p = i / 4
-        flutter = math.sin(math.tau * p)
+        fl = math.sin(math.tau * p)
         hip = (REST_HIP[0], REST_HIP[1] - 1)
-        poses.append(Pose(
-            hip=hip, lean=0.5,
-            near_foot=(hip[0] + 3, 55 + flutter), near_toe=0.5, near_planted=False,
-            far_foot=(hip[0] - 3, ANKLE), far_toe=0.8,
-            near_hand=(44, 31 + flutter), far_hand=(20, 21 - flutter),
-            lantern=0.25 * math.sin(math.tau * p + 1.0),
-            hem_flare=3, hem_lift=6 + flutter, hem_wave=math.tau * p, hem_amp=2.0,
-            scarf_angle=238, scarf_curl=-62, scarf_amp=22, scarf_phase=math.tau * p,
-            hood_tip=(2, -7 + flutter)))
+        poses.append(WizardPose(
+                 hip=hip, lean=0.5, near_foot=(hip[0] + 3, 87 + fl), near_toe=0.5, near_planted=False,
+                 far_foot=(hip[0] - 3, ANKLE), far_toe=0.8, near_hand=(61, 60 + fl), far_hand=(35, 54 - fl),
+                 staff=0.55, grip=0.45, hem_flare=3, hem_lift=6 + fl, hem_wave=math.tau * p, hem_amp=2.2,
+                 hat_tip=(2, -5 + fl), beard=-0.6, beard_wave=math.tau * p))
     return poses, [80] * 4
 
 
 def land_poses():
-    impact = Pose(
-        hip=(REST_HIP[0], REST_HIP[1] + 2), near_foot=(37, ANKLE), far_foot=(24, ANKLE),
-        near_hand=(43, 39), far_hand=(20, 42), lantern=0.45,
-        hem_flare=3, hem_front=2, hem_amp=0.4, scarf_angle=112, scarf_curl=-10, scarf_amp=4, hood_tip=(0, 3),
-        satchel=(0, 1), eyes='squint')
-    recover = Pose(
-        hip=(REST_HIP[0], REST_HIP[1] + 1), near_foot=(36, ANKLE), far_foot=(25, ANKLE),
-        near_hand=(42, 38), far_hand=(22, 41), lantern=-0.2,
-        hem_flare=1.5, hem_front=1, hem_wave=1.5, hem_amp=0.6, scarf_angle=124, scarf_curl=-18,
-        scarf_amp=6,
-        scarf_phase=1.5, hood_tip=(0, 1))
-    settle = Pose(lantern=0.1, hem_flare=0.5, hem_wave=3.0, scarf_angle=132, scarf_curl=-22,
-                  scarf_phase=3.0)
+    impact = WizardPose(hip=(REST_HIP[0], REST_HIP[1] + 2), near_foot=(53, ANKLE), far_foot=(40, ANKLE),
+                        near_hand=(60, 69), far_hand=(36, 74), staff=0.15, grip=0.4, hem_flare=3, hem_front=2,
+                        hem_amp=0.4, hat_tip=(0, 4), beard=0.15, eyes='squint')
+    recover = WizardPose(hip=(REST_HIP[0], REST_HIP[1] + 1), near_foot=(52, ANKLE), far_foot=(41, ANKLE),
+                         near_hand=(59, 67), far_hand=(38, 73), staff=0.06, grip=0.45, hem_flare=1.5, hem_front=1,
+                         hem_wave=1.5, hem_amp=0.6, hat_tip=(0, 2))
+    settle = WizardPose(grip=stand_grip(), hem_flare=0.5, hem_wave=3.0)
     return [impact, recover, settle], [60, 60, 60]
 
 
 def double_jump_poses():
-    """Tuck, then the cloak bursts open like a bell and the courier springs up."""
     hip = (REST_HIP[0], REST_HIP[1] - 1)
-    # Knees to chest: the whole ball drops to the collider's feet before springing.
-    tuck = Pose(
-        hip=(hip[0], hip[1] + 5), lean=3.0, head=(1, 1), near_foot=(hip[0] + 6, ANKLE),
-        far_foot=(hip[0] + 1, ANKLE), near_hand=(43, 40), far_hand=(37, 39), lantern=0.4,
-        hem_flare=2, hem_lift=-1, hem_front=2, hem_amp=0.8, scarf_angle=110,
-        scarf_curl=-30, scarf_amp=10, hood_tip=(3, 4))
-    burst = Pose(
-        hip=(hip[0], hip[1] - 1), lean=1.0, near_foot=(hip[0] + 3, ANKLE), near_toe=1.0,
-        far_foot=(hip[0] - 6, 53), far_toe=0.6, far_planted=False,
-        near_hand=(44, 30), far_hand=(19, 15), lantern=-0.35,
-        hem_flare=9, hem_front=5, hem_lift=5, hem_wave=1.0, hem_amp=2.0,
-        scarf_angle=222, scarf_curl=-50, scarf_amp=22, scarf_phase=1.0, hood_tip=(-2, -6))
-    spread = Pose(
-        hip=(hip[0], hip[1] - 1), lean=1.0, near_foot=(hip[0] + 3, 54), near_toe=0.5,
-        near_planted=False, far_foot=(hip[0] - 3, ANKLE), far_toe=1.0,
-        near_hand=(44, 31), far_hand=(20, 19), lantern=-0.1,
-        hem_flare=6, hem_front=3, hem_lift=4, hem_wave=2.2, hem_amp=1.8,
-        scarf_angle=204, scarf_curl=-46, scarf_amp=18, scarf_phase=2.2, hood_tip=(-2, -4))
-    rise = Pose(
-        hip=(hip[0], hip[1] - 1), lean=1.5, near_foot=(hip[0] + 4, 52), near_toe=0.3,
-        near_planted=False, far_foot=(hip[0] - 3, ANKLE), far_toe=1.0,
-        near_hand=(43, 31), far_hand=(23, 18), lantern=0.15,
-        hem_flare=4, hem_front=1, hem_lift=1, hem_wave=3.4, hem_amp=1.2,
-        scarf_angle=180, scarf_curl=-40, scarf_amp=14, scarf_phase=3.4, hood_tip=(-1, -2))
+    tuck = WizardPose(hip=(hip[0], hip[1] + 5), lean=3.0, head=(1, 1), near_foot=(hip[0] + 6, ANKLE),
+                      far_foot=(hip[0] + 1, ANKLE), near_hand=(59, 70), far_hand=(53, 71), staff=0.5, grip=0.5,
+                      hem_flare=2, hem_lift=-1, hem_front=2, hem_amp=0.8, hat_tip=(3, 4), beard=0.1)
+    burst = WizardPose(hip=(hip[0], hip[1] - 1), lean=1.0, near_foot=(hip[0] + 3, ANKLE), near_toe=1.0,
+                       far_foot=(hip[0] - 6, 85), far_toe=0.6, far_planted=False, near_hand=(61, 58),
+                       far_hand=(35, 48), staff=-0.15, grip=0.4, hem_flare=9, hem_front=5, hem_lift=5,
+                       hem_wave=1.0, hem_amp=2.2, hat_tip=(-2, -4), beard=-0.7, flare=True)
+    spread = WizardPose(hip=(hip[0], hip[1] - 1), lean=1.0, near_foot=(hip[0] + 3, 86), near_toe=0.5,
+                        near_planted=False, far_foot=(hip[0] - 3, ANKLE), far_toe=1.0, near_hand=(61, 60),
+                        far_hand=(36, 54), staff=0.1, grip=0.42, hem_flare=6, hem_front=3, hem_lift=4,
+                        hem_wave=2.2, hem_amp=2.0, hat_tip=(-2, -3), beard=-0.5)
+    rise = WizardPose(hip=(hip[0], hip[1] - 1), lean=1.5, near_foot=(hip[0] + 4, 84), near_toe=0.3,
+                      near_planted=False, far_foot=(hip[0] - 3, ANKLE), far_toe=1.0, near_hand=(60, 62),
+                      far_hand=(39, 56), staff=0.3, grip=0.45, hem_flare=4, hem_front=1, hem_lift=1,
+                      hem_wave=3.4, hem_amp=1.2, hat_tip=(-1, -1), beard=-0.3)
     return [tuck, burst, spread, rise], [50, 60, 70, 120]
 
 
-def death_poses():
-    """The courier's death: it staggers back from the blow, its knees
-    buckle, it kneels and slumps forward over the lantern it sets down, and
-    the flame dies to an ember; the last frame holds."""
+def hurt_poses():
+    """F1's hurt clip: knocked back, the head snapping back, the staff
+    jolted; then half-way back."""
     h = REST_HIP
-    stagger = Pose(hip=(h[0] - 2, h[1] + 1), lean=-2.0, head=(-1.0, 0.5),
-                   near_foot=(34, ANKLE), far_foot=(23, ANKLE), far_toe=0.15,
-                   near_hand=(46, 35), far_hand=(16, 37), lantern=-0.15,
-                   hem_flare=3, hem_front=-1, hem_wave=1.0, hem_amp=0.8,
-                   scarf_angle=165, scarf_curl=-14, scarf_amp=6, scarf_phase=1.0,
-                   hood_tip=(-1, -2), eyes='squint')
-    buckle = Pose(hip=(h[0] - 1, h[1] + 4), lean=2.0, head=(0.5, 2.0),
-                  near_foot=(36, ANKLE), far_foot=(24, ANKLE),
-                  near_hand=(43, 41), far_hand=(22, 46), lantern=0.35,
-                  hem_flare=1.5, hem_wave=2.0, hem_amp=0.6, hem_rise=-1,
-                  scarf_angle=140, scarf_curl=-10, scarf_amp=4, scarf_phase=2.0,
-                  hood_tip=(0, 1), eyes='closed')
-    # The far knee meets the ground, its boot behind it; the near foot stays
-    # planted ahead, the lantern resting on the ground in the near hand.
-    kneel = Pose(hip=(h[0], h[1] + 7), lean=4.5, head=(1.5, 4.0),
-                 near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
-                 near_hand=(42, 45), far_hand=(31, 53), lantern=0.1,
-                 hem_flare=0.5, hem_wave=3.0, hem_amp=0.4, hem_rise=-2,
-                 scarf_angle=110, scarf_curl=-4, scarf_amp=3, scarf_phase=3.0,
-                 hood_tip=(1, 2), eyes='closed', flame=0.6)
-    slump = Pose(hip=(h[0], h[1] + 8), lean=6.0, head=(3.0, 6.0),
-                 near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
-                 near_hand=(42, 45), far_hand=(36, 55), lantern=0.0,
-                 hem_wave=3.6, hem_amp=0.2, hem_rise=-2.5,
-                 scarf_angle=96, scarf_curl=0, scarf_amp=2, scarf_phase=3.6,
-                 hood_tip=(2, 3), eyes='closed', flame=0.3)
-    rest = Pose(hip=(h[0], h[1] + 8), lean=6.5, head=(3.5, 6.5),
-                near_foot=(37, ANKLE), far_foot=(21, ANKLE + 1), far_toe=1.2, far_planted=False,
-                near_hand=(42, 45), far_hand=(36, 55), lantern=0.0,
-                hem_wave=3.6, hem_amp=0.1, hem_rise=-2.5,
-                scarf_angle=92, scarf_curl=0, scarf_amp=1, scarf_phase=3.6,
-                hood_tip=(2.5, 3.5), eyes='closed', flame=0.0)
-    return [stagger, buckle, kneel, slump, rest], [90, 110, 140, 160, 260]
+    hit = WizardPose(hip=(h[0] - 2, h[1] + 1), lean=-3.0, head=(-1.5, 0.5), near_foot=(51, ANKLE),
+                     far_foot=(39, ANKLE), far_toe=0.2, near_hand=(60, 63), far_hand=(33, 66),
+                     staff=0.42, grip=0.45, hem_flare=1, hem_front=3, hem_wave=0.5, hem_amp=1.0,
+                     hat_tip=(4, 3), hat_tilt=-1.0, beard=0.5, eyes='squint')
+    back = WizardPose(hip=(h[0] - 1, h[1] + 1), lean=-1.0, head=(-0.5, 0.5), near_foot=(51, ANKLE),
+                      far_foot=(40, ANKLE), near_hand=(60, 65), far_hand=(36, 70), staff=0.28, grip=0.45,
+                      hem_flare=1.5, hem_front=1.5, hem_wave=1.3, hem_amp=0.8, hat_tip=(2, 2), beard=0.25,
+                      eyes='squint')
+    return [hit, back], [90, 110]
 
 
-PLAYER_CLIPS = {
+# The death: struck, he reels back, sits down hard and falls flat on his back;
+# the hat flies off behind him and lands upright, the staff is flung ahead.
+# Frames 1-4 draw the upright rig; 5-7 turn it a quarter anticlockwise (whole
+# pixels, so nothing jags): the head to the left, the face up, the toes up.
+DEATH_GROUND = WIZARD_FEET - 1  # the outline's row under the soles
+
+
+def drawn(pose, *parts):
+    """The pose's chosen parts, cropped; where the crop sits; the staff
+    light's anchor, in the frame."""
+    im, orb = render(replace(pose, parts=parts))
+    box = im.getbbox()
+    return im.crop(box), (box[0], box[1]), orb
+
+
+def grounded(crop, left=None, right=None, lift=0):
+    """`crop` placed with its lowest row on the ground, `lift` above it."""
+    x = left if left is not None else right - crop.width + 1
+    return crop, (round(x), DEATH_GROUND - (crop.height - 1) - lift)
+
+
+def moved(anchor, drawn_at, placed_at):
+    """`anchor`, drawn with its crop at `drawn_at`, as the crop is placed."""
+    return (anchor[0] + placed_at[0] - drawn_at[0], anchor[1] + placed_at[1] - drawn_at[1])
+
+
+def stacked(layers):
+    out = Image.new('RGBA', FRAME, (0, 0, 0, 0))
+    for im, at in layers:
+        out.alpha_composite(im, at)
+    return out
+
+
+def hat_off(pose, dx, dy, tip):
+    """The hat as the pose wears it, lifted `dx`, `dy` off his head."""
+    crop, at, _ = drawn(replace(pose, hat_tip=tip), 'hat')
+    return crop, (at[0] + dx, at[1] + dy)
+
+
+def hat_landed(left, tip):
+    crop, _, _ = drawn(WizardPose(hat_tip=tip), 'hat')
+    return grounded(crop, left=left)
+
+
+def staff_down(foot_x, top_x, rise=0.0):
+    """The staff lying on the ground, its top `rise` up off it, placed, and
+    its anchor."""
+    crop, at, orb = drawn(WizardPose(staff_at=((foot_x, 88.0), (top_x, 88.0 - rise))), 'staff')
+    placed = grounded(crop, right=top_x + 6)
+    return placed, moved(orb, at, placed[1])
+
+
+def dust(canvas, xs, seed, spread=2.2):
+    """Puffs of grey dust along the ground at `xs`."""
+    px = canvas.load()
+    for i, x0 in enumerate(xs):
+        for k in range(6):
+            x = round(x0 + (k - 2.5) * spread + unit(seed, i, k) * 2)
+            y = DEATH_GROUND - 1 - round(unit(seed + '-y', i, k) * 4)
+            if 0 < x < WIZARD - 1 and px[x, y][3] == 0:
+                px[x, y] = PALETTE['σ' if k % 2 else 'τ']
+                if k % 3 == 0 and px[x, y - 1][3] == 0:
+                    px[x, y - 1] = PALETTE['S']
+
+
+def supine(near_hand, far_hand, beard=0.0):
+    """Lying on his back: the upright rig, the robe straight over his legs,
+    turned a quarter anticlockwise."""
+    pose = WizardPose(lean=0.0, near_hand=near_hand, far_hand=far_hand, near_foot=(48, ANKLE), far_foot=(45, ANKLE),
+                      hem_front=-3, hem_flare=-2, hem_amp=0.2, hem_wave=0.0, beard=beard, eyes='closed', bare=True)
+    body, _, _ = drawn(pose, 'body')
+    return body.transpose(Image.Transpose.ROTATE_90)
+
+
+def death_frames():
+    """The death's seven frames, each with its anchor, and their
+    durations: the blow, the stagger, the sit, the topple, the impact on his
+    back with dust, the rebound and the rest."""
+    h = REST_HIP
+    frames = []
+    # The blow: the head snaps back, the arms fly forward, the hat lifts.
+    pose = WizardPose(hip=(h[0] - 2, h[1] + 1), lean=-4.0, head=(-2.0, 0.5), near_foot=(51, ANKLE - 2),
+                      near_toe=-0.3, near_planted=False, far_foot=(38, ANKLE), far_toe=0.2, near_hand=(63, 60),
+                      far_hand=(55, 64), palm=True, staff=0.55, grip=0.45, hem_flare=2.5, hem_front=-2,
+                      hem_wave=1.0, hem_amp=1.0, beard=0.7, eyes='squint', bare=True)
+    body, at, orb = drawn(pose, 'body', 'staff')
+    frames.append((stacked([(body, at), hat_off(pose, -1, -5, (6.0, 1.0))]), orb))
+    # Reeling back on the far foot, the near foot kicking up; the staff flung
+    # from his hand; the hat sailing off behind.
+    pose = WizardPose(hip=(h[0] - 5, h[1] + 3), lean=-7.0, head=(-1.5, 1.0), near_foot=(53, ANKLE - 4),
+                      near_toe=-0.6, near_planted=False, far_foot=(35, ANKLE), far_toe=0.3, near_hand=(60, 63),
+                      near_palm=True, far_hand=(30, 68), hem_flare=3.5, hem_front=-1, hem_wave=2.0, hem_amp=1.2,
+                      beard=0.9, eyes='squint', bare=True, staff_at=((60.0, 74.0), (84.0, 50.0)))
+    body, at, _ = drawn(pose, 'body')
+    stick, sat, orb = drawn(pose, 'staff')
+    frames.append((stacked([(stick, sat), (body, at), hat_off(pose, -13, -13, (8.0, 3.0))]), orb))
+    # He sits down hard, legs shooting forward, a hand behind him; the staff
+    # strikes the ground ahead, the hat falls behind.
+    pose = WizardPose(hip=(h[0] - 4, 86.0), lean=-6.0, head=(1.0, 2.0), near_foot=(58, ANKLE), near_toe=-0.9,
+                      far_foot=(55, ANKLE), far_toe=-0.8, near_hand=(54, 74), far_hand=(29, 87), hem_front=9,
+                      hem_wave=1.5, hem_amp=0.5, hem_rise=-1, beard=0.2, eyes='closed', bare=True)
+    body, at, _ = drawn(pose, 'body')
+    stick, sat, orb = drawn(WizardPose(staff_at=((62.0, 88.0), (90.0, 70.0))), 'staff')
+    struck = grounded(stick, right=93)
+    frames.append((stacked([struck, grounded(body, left=at[0]), hat_off(pose, -24, -8, (6.0, 6.0))]),
+                   moved(orb, sat, struck[1])))
+    # Rocking back: the torso falls, the legs come up; the hat lands behind.
+    pose = WizardPose(hip=(h[0] - 2, 87.0), lean=-13.0, head=(-1.0, 3.0), near_foot=(61, ANKLE - 5), near_toe=-0.5,
+                      near_planted=False, far_foot=(58, ANKLE - 3), far_toe=-0.4, far_planted=False,
+                      near_hand=(56, 62), far_hand=(26, 86), hem_front=10, hem_wave=2.5, hem_amp=0.6, hem_rise=-1,
+                      beard=-0.2, eyes='closed', bare=True)
+    body, at, _ = drawn(pose, 'body')
+    stick, orb = staff_down(46.0, 84.0, rise=2.0)
+    frames.append((stacked([stick, grounded(body, left=at[0]), hat_landed(2, (5.0, 7.0))]), orb))
+    # Flat on his back: the arms thrown up, the beard flipped, dust.
+    stick, orb = staff_down(40.0, 86.0)
+    out = stacked([stick, grounded(supine((63, 58), (59, 63), beard=-0.8), left=26),
+                   hat_landed(2, (5.0, 6.0))])
+    dust(out, (30, 50, 70), 'death-impact')
+    frames.append((out, orb))
+    # The rebound: the body lifts a pixel, the arms fall.
+    out = stacked([stick, grounded(supine((59, 66), (44, 71), beard=-0.3), left=26, lift=1),
+                   hat_landed(2, (4.0, 5.0))])
+    dust(out, (26, 76), 'death-bounce', spread=1.6)
+    frames.append((out, orb))
+    # At rest: a hand on his belly, the beard over his chest, the toes up;
+    # the hat upright behind his head, the staff along the ground.
+    frames.append((stacked([stick, grounded(supine((54, 75), (40, 74), beard=0.1), left=26),
+                            hat_landed(2, (4.0, 4.0))]), orb))
+    frames = [(im, (round(o[0], 3), round(o[1], 3))) for im, o in frames]
+    return frames, [100, 110, 110, 90, 80, 120, 300]
+
+
+def toss_poses():
+    hip = REST_HIP
+    base = dict(staff=STAND_TILT, hem_amp=0.7)
+    wind = WizardPose(hip=(hip[0] - 1, hip[1] + 1), lean=-0.5, near_hand=(60, 66), far_hand=(31, 76),
+                      far_foot=(40, ANKLE), near_foot=(52, ANKLE), hem_flare=1.5, far_item='ball',
+                      grip=stand_grip(66), **base)
+    swing = WizardPose(hip=hip, lean=1.5, near_hand=(61, 66), far_hand=(47, 77), hem_front=1,
+                       far_foot=(41, ANKLE), near_foot=(53, ANKLE), far_item='ball', grip=stand_grip(66), **base)
+    release = WizardPose(hip=(hip[0] + 1, hip[1]), lean=3.0, near_hand=(61, 65), far_hand=(61, 63),
+                         hem_front=2, far_foot=(41, ANKLE), near_foot=(54, ANKLE), near_toe=0.2, palm=True,
+                         grip=stand_grip(65), **base)
+    follow = WizardPose(hip=(hip[0] + 1, hip[1]), lean=2.5, near_hand=(61, 65), far_hand=(63, 57),
+                        hem_front=1.5, far_foot=(41, ANKLE), near_foot=(53, ANKLE), near_toe=0.1,
+                        grip=stand_grip(65), **base)
+    return [wind, swing, release, follow], [70, 50, 60, 120]
+
+
+AIMS = (90, 45, 0, -45, -90)
+
+
+def staff_aim(degrees):
+    """Standing, the staff levelled along the aim in both hands, the orb
+    leading: the sprays' pose, held while they pour."""
+    a = math.radians(degrees)
+    neck = (REST_HIP[0] + 1.0, REST_HIP[1] - 17)
+    shoulder = (neck[0] + 2, neck[1] + 3)
+    ahead = 5.0 * max(0.0, math.sin(a))  # held clear of the face when raised
+    hand = (shoulder[0] + ahead + math.cos(a) * 11.5, shoulder[1] - math.sin(a) * 11.5)
+    back_hand = (shoulder[0] + ahead + math.cos(a) * 3.0 - 2, shoulder[1] - math.sin(a) * 3.0 + 3)
+    d = (math.cos(a), -math.sin(a))
+    top = add(hand, d, 21 if degrees > -60 else 14)
+    foot = add(hand, d, -30 if degrees > -60 else -37)
+    return WizardPose(near_hand=hand, far_hand=back_hand, staff_at=(foot, top), both_hands=True,
+                      hem_amp=0.7, beard=0.1, hat_tip=(-1, 1), flare=True)
+
+
+def gun_aim(degrees):
+    """Standing, the staff upright in the near hand and the pistol in the far
+    hand along the aim: the gun's pose."""
+    a = math.radians(degrees)
+    neck = (REST_HIP[0] + 1.0, REST_HIP[1] - 17)
+    far_shoulder = (neck[0] - 1, neck[1] + 4)
+    hand = (far_shoulder[0] + math.cos(a) * 12.0, far_shoulder[1] - math.sin(a) * 12.0)
+    return WizardPose(far_hand=hand, far_item='pistol', aim=a, grip=stand_grip(),
+                      hem_amp=0.7)
+
+
+def cast_bolt():
+    """A missile or a bolt: the staff drawn back over the shoulder, thrust
+    at the aim with the orb flaring, then recovered."""
+    hip = REST_HIP
+    draw = WizardPose(hip=(hip[0] - 1, hip[1]), lean=-1.0, near_hand=(52, 60), far_hand=(40, 66),
+                      staff_at=((60.0, 74.0), (33.0, 44.0)), near_foot=(52, ANKLE), far_foot=(39, ANKLE),
+                      hem_flare=1.5, beard=0.2, hat_tip=(2, 1))
+    thrust = WizardPose(hip=(hip[0] + 2, hip[1] + 1), lean=4.0, near_hand=(65, 62), far_hand=(55, 64),
+                        staff_at=((44.0, 66.0), (88.0, 56.0)), near_foot=(56, ANKLE), far_foot=(38, ANKLE),
+                        far_toe=0.3, hem_flare=4, hem_front=2, hem_wave=1.0, hem_amp=1.2, beard=-0.3,
+                        hat_tip=(-3, 2), flare=True, both_hands=True)
+    recover = WizardPose(hip=(hip[0] + 1, hip[1]), lean=2.0, near_hand=(62, 64), far_hand=(45, 70),
+                         staff=0.55, grip=0.45, near_foot=(54, ANKLE), far_foot=(40, ANKLE),
+                         hem_flare=2, hem_front=1, hem_wave=2.0, beard=-0.1, hat_tip=(-1, 1))
+    return [draw, thrust, recover], [80, 120, 100]
+
+
+def cast_push():
+    """The force push or the black hole: the free hand gathers at the chest,
+    then shoves out palm first, the staff raised behind in the other."""
+    hip = REST_HIP
+    gather = WizardPose(hip=(hip[0] - 1, hip[1]), lean=-0.5, near_hand=(54, 64), far_hand=(42, 62),
+                        near_palm=True, staff_behind=True, staff_at=((36.0, 88.0), (31.0, 36.0)),
+                        near_foot=(52, ANKLE), far_foot=(39, ANKLE), hem_flare=1.0, beard=0.15)
+    shove = WizardPose(hip=(hip[0] + 2, hip[1]), lean=3.5, near_hand=(64, 61), far_hand=(42, 60),
+                       near_palm=True, staff_behind=True, staff_at=((40.0, 86.0), (30.0, 33.0)),
+                       near_foot=(55, ANKLE), far_foot=(38, ANKLE), far_toe=0.3, hem_flare=3.5,
+                       hem_front=1.5, hem_wave=1.2, hem_amp=1.2, beard=-0.35, hat_tip=(-3, 2), flare=True)
+    hold = replace(shove, near_hand=(63, 62), lean=3.0, hem_wave=2.0, beard=-0.2, flare=False)
+    return [gather, shove, hold], [80, 120, 100]
+
+
+def cast_conjure():
+    """Iron, the balls or a summon: the staff raised high in both hands, the
+    orb flaring, then struck down on the ground."""
+    hip = REST_HIP
+    raise_ = WizardPose(hip=(hip[0], hip[1] - 1), lean=0.5, near_hand=(54, 51), far_hand=(48, 54),
+                        staff=0.05, grip=0.35, both_hands=True, near_foot=(51, ANKLE), far_foot=(41, ANKLE),
+                        hem_amp=0.8, beard=0.1, hat_tip=(-1, 1), flare=True)
+    strike = WizardPose(hip=(hip[0] + 1, hip[1] + 2), lean=3.0, near_hand=(60, 67), far_hand=(55, 69),
+                        staff=0.12, grip=(WIZARD_SOLE - 67) / STAFF, both_hands=True, near_foot=(53, ANKLE),
+                        far_foot=(40, ANKLE), hem_flare=1.5, hem_front=2, hem_wave=1.0, hem_amp=1.4,
+                        beard=0.35, hat_tip=(1, 3), flare=True)
+    settle = WizardPose(grip=stand_grip(), hem_wave=2.0, beard=0.1)
+    return [raise_, strike, settle], [100, 90, 110]
+
+
+def staff_poses():
+    """The sprays' pose at each of [`AIMS`], from straight up to straight
+    down; 01 shows the one nearest the aim, so the clip only holds them."""
+    return [staff_aim(degrees) for degrees in AIMS], [100] * len(AIMS)
+
+
+def aim_poses():
+    """The gun's pose at each of [`AIMS`]; 01 shows the one nearest the aim."""
+    return [gun_aim(degrees) for degrees in AIMS], [100] * len(AIMS)
+
+
+POSED_CLIPS = {
     # clip: (pose and duration source, looping)
     'player_idle': (idle_poses, True),
-    'player_walk': (run_poses, True),
+    'player_walk': (walk_poses, True),
     'player_jump': (jump_poses, False),
     'player_fall': (fall_poses, True),
     'player_land': (land_poses, False),
     'player_double_jump': (double_jump_poses, False),
-    'player_death': (death_poses, False),
+    'player_hurt': (hurt_poses, False),
+    'player_toss': (toss_poses, False),
+    'player_bolt': (cast_bolt, False),
+    'player_push': (cast_push, False),
+    'player_conjure': (cast_conjure, False),
+    'player_staff': (staff_poses, False),
+    'player_aim': (aim_poses, False),
 }
-
-
-def toss_frames():
-    """The toss: wind-up, swing, release and follow-through; the ball
-    leaves the hand at the release."""
-    hip = REST_HIP
-    base = dict(lantern=0.15, scarf_angle=132, scarf_curl=-22, scarf_amp=8, hem_amp=0.7)
-    wind = Pose(hip=(hip[0] - 1, hip[1] + 1), lean=-0.5, near_hand=(41, 38), far_hand=(15, 44),
-                far_foot=(24, ANKLE), near_foot=(36, ANKLE), hem_flare=1.5, **base)
-    swing = Pose(hip=hip, lean=1.5, near_hand=(42, 38), far_hand=(31, 45), hem_front=1,
-                 far_foot=(25, ANKLE), near_foot=(37, ANKLE), **base)
-    release = Pose(hip=(hip[0] + 1, hip[1]), lean=3.0, near_hand=(42, 37), far_hand=(45, 31),
-                   hem_front=2, far_foot=(25, ANKLE), near_foot=(38, ANKLE), near_toe=0.2, **base)
-    follow = Pose(hip=(hip[0] + 1, hip[1]), lean=2.5, near_hand=(42, 37), far_hand=(47, 25),
-                  hem_front=1.5, far_foot=(25, ANKLE), near_foot=(37, ANKLE), near_toe=0.1, **base)
-    poses = [wind, swing, release, follow]
-    frames = [render_toss(pose, front=i > 0, ball=i < 2) for i, pose in enumerate(poses)]
-    return frames, [70, 50, 60, 120]
-
-
-def aim_frames():
-    """The arm and gun at each of [`AIMS`], from straight up to straight
-    down; 01 shows the frame itself, so the clip only holds them."""
-    return [render_aim(degrees) for degrees in AIMS], [100] * len(AIMS)
-
-
-# Clips drawn frame by frame, not posed through `render`.
+# Clips drawn frame by frame, not posed through `render` alone.
 DRAWN_CLIPS = {
-    'player_toss': (toss_frames, False),
-    'player_aim': (aim_frames, False),
+    'player_death': (death_frames, False),
 }
+ORB = {PALETTE[c] for c in 'JKLZ'}  # the orb's glass and its glint
+
+
+def check_frame(name, im, anchor):
+    """Feet on the baseline, the lying frames' too; the staff light's anchor
+    inside the frame, on the orb's glass."""
+    if im.getbbox()[3] != WIZARD_FEET:
+        raise ValueError(f'{name}: lowest pixel must sit on row {WIZARD_FEET - 1}')
+    x, y = anchor
+    if not (0 <= x < WIZARD and 0 <= y < WIZARD):
+        raise ValueError(f'{name}: the staff light\'s anchor {anchor} lies outside the frame')
+    if im.getpixel((int(x), int(y))) not in ORB:
+        raise ValueError(f'{name}: the staff light\'s anchor {anchor} is off the orb')
 
 
 def frame_name(clip, index):
@@ -650,34 +972,28 @@ def frame_name(clip, index):
 
 
 def posed(poses_for):
-    """A posed clip's frames rendered, with their durations."""
+    """A posed clip's frames rendered, each with its anchor, and their durations."""
     poses, durations = poses_for()
     return [render(pose) for pose in poses], durations
 
 
-def check_frame(name, im, glass):
-    """Feet on the baseline; the flame window sees all of the glass and nothing else."""
-    if im.getbbox()[3] != SOLE + 2:
-        raise ValueError(f'{name}: lowest pixel must sit on row {SOLE + 1}')
-    x0, y0, x1, y1 = LANTERN_REGION
-    glow = (PALETTE['y'], PALETTE['Y'])
-    window = {(x, y) for y in range(y0, y1) for x in range(x0, x1) if im.getpixel((x, y)) in glow}
-    if not glass or window != glass:
-        raise ValueError(f'{name}: lantern glass must sit wholly inside the flame window')
-
-
 def build_player(images, lit, animations):
-    clips = [(clip, posed(poses_for), looping) for clip, (poses_for, looping) in PLAYER_CLIPS.items()]
+    """The wizard's clips, every frame lit; returns each right-facing
+    frame's staff light anchor, the orb's centre, by sprite name."""
+    clips = [(clip, posed(poses_for), looping) for clip, (poses_for, looping) in POSED_CLIPS.items()]
     clips += [(clip, frames_for(), looping) for clip, (frames_for, looping) in DRAWN_CLIPS.items()]
+    anchors = {}
     for clip, (rendered, durations), looping in clips:
         frames = []
-        for i, ((im, glass), duration) in enumerate(zip(rendered, durations, strict=True)):
+        for i, ((im, anchor), duration) in enumerate(zip(rendered, durations, strict=True)):
             name = frame_name(clip, i)
-            check_frame(name, im, glass)
+            check_frame(name, im, anchor)
             images[name] = im
             lit.add(name)
+            anchors[name] = list(anchor)
             frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
         animations[clip] = {'looping': looping, 'frames': frames}
+    return anchors
 
 
 def fireball_frame(index):
@@ -731,6 +1047,106 @@ def build_fireball(images, animations):
         images[name] = fireball_frame(i)
         frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
     animations['fireball'] = {'looping': True, 'frames': frames}
+
+
+# The fire missile (01 (h)): a rocket of fire facing +x, its own clip apart
+# from the fire hazards' fireball. Its nose sits on the fireball's centre row
+# and 25 px ahead of it, so the prefab's offsets and glow stay and the hit
+# point, `MISSILE_RADIUS` ahead of the quad's centre, lies inside the body;
+# scaled to fill the 40 px quad `toys::MISSILE_SIZE` draws it at.
+MISSILE_FRAMES = 10
+MISSILE_TIP = (57.0, 35.0)
+MISSILE_SCALE = 1.45
+
+
+def missile_shape(u, v, t, k=1.0):
+    """The palette symbol at `u` pixels behind the tip and `v` across the
+    axis (down positive), at phase `t` of the flicker, or the plume's heat
+    as `('heat', h)`; None outside. `k` scales the whole missile: a white-hot
+    nose cone, a body lit along its top and shaded beneath with a glowing
+    band, two swept fins, a dark nozzle, and behind it a flame plume that
+    licks and cools."""
+    u, v = u / k, v / k
+    if u < -0.4:
+        return None
+    a = abs(v)
+    body = 3.4
+    if u < 6:
+        half = body * (max(u, 0.0) / 6) ** 0.7 + 0.3
+        if a <= half:
+            return 'Z' if a < half * 0.5 or u < 1.5 else 'Y'
+    elif u < 21:
+        if a <= body:
+            if 10.5 <= u <= 12:
+                return 'Y'  # the glowing band
+            if v < -2.2:
+                return 'J'
+            if v < -0.8:
+                return 'K'
+            if v < 1.6:
+                return 'L'
+            return 'M'
+        # Swept fins: the leading edge from the body at u 14 out to 4 px
+        # more at u 20.5, the trailing edge square.
+        if 14 <= u <= 20.5 and a <= body + (u - 14) * 0.62:
+            return 'L' if v < 0 else 'M'
+    elif u < 22.5:
+        if a <= body - 0.6:
+            return 'M'  # the nozzle
+    # The plume: hot at the nozzle, widening, cooling and licking behind.
+    if 21 <= u <= 46:
+        s = (u - 21) / 25
+        lick = 1.4 * math.sin(u * 0.55 - t * math.tau * 3) + 0.8 * math.sin(u * 1.3 + t * math.tau * 5 + 1.1)
+        half = 2.6 + 3.2 * s + lick * (0.25 + s * 0.8)
+        if a <= half:
+            heat = 1.0 - 0.95 * s + 0.25 * (1 - a / max(half, 0.6)) - 0.1
+            return ('heat', heat)
+    return None
+
+
+def missile_symbol(heat, x, y):
+    """A shape's symbol, the plume's heat dithered onto the fire ramp."""
+    if heat is None:
+        return None
+    if isinstance(heat, str):
+        return heat
+    heat = heat[1] + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.12
+    if heat < 0.06:
+        return None
+    for limit, s in ((0.18, 'M'), (0.34, 'L'), (0.52, 'K'), (0.7, 'J'), (0.86, 'Y')):
+        if heat < limit:
+            return s
+    return 'Z'
+
+
+def missile_frame(index):
+    """One 64 px frame of the missile in flight, facing +x, with embers shed
+    from its plume cooling as they fall back."""
+    t = index / MISSILE_FRAMES
+    canvas = {}
+    for y in range(SIZE):
+        for x in range(SIZE):
+            s = missile_symbol(missile_shape(MISSILE_TIP[0] - (x + 0.5), y + 0.5 - MISSILE_TIP[1], t,
+                                             k=MISSILE_SCALE), x, y)
+            if s:
+                canvas[(x, y)] = s
+    for k in range(6):
+        age = (t + k * 0.17) % 1
+        ex = round(MISSILE_TIP[0] - 34 - age * 18 - unit('ember', k) * 4)
+        ey = round(MISSILE_TIP[1] + (unit('ember-y', k) - 0.5) * 10 + age * 3)
+        if 0 <= ex < SIZE and 0 <= ey < SIZE and (ex, ey) not in canvas:
+            canvas[(ex, ey)] = 'J' if age < 0.4 else 'K' if age < 0.75 else 'L'
+    return to_image(canvas)
+
+
+def build_fire_missile(images, animations):
+    # Self-lit, as the fireball is: no normal or emissive maps.
+    frames = []
+    for i in range(MISSILE_FRAMES):
+        name = f'fire_missile_{i}'
+        images[name] = missile_frame(i)
+        frames.append({'sprite': 'ex10_' + name, 'duration_ms': 60})
+    animations['fire_missile'] = {'looping': True, 'frames': frames}
 
 
 BALL_FRAMES = 6

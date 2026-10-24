@@ -10,6 +10,7 @@
 //! flight load as they were, and a loaded run with enemies mid-attack and
 //! mid-search keeps with the uninterrupted one; a keg chain saved mid-chain
 //! finishes the same; a schema 11 save's IDs move past the map's goblins;
+//! a schema 12 player keeps his body where it stood on the wizard's frame;
 //! and a full pit saves within 2 MiB with the map's enemies alive.
 
 use std::any::type_name as name;
@@ -32,7 +33,7 @@ use example_01_platformer::features::gun::{self};
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::lava::{self, Lava};
 use example_01_platformer::features::lightning;
-use example_01_platformer::features::player::components::Player;
+use example_01_platformer::features::player::components::{Player, StaffGlow};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::features::props::components::{Bomb, Crate, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF};
@@ -342,6 +343,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Hurtbox>(),
                     name::<Cues>(),
                     name::<Glow>(),
+                    name::<StaffGlow>(),
                     name::<AilmentThreshold>(),
                 ],
             ]
@@ -2048,6 +2050,18 @@ fn as_schema_12(old: &mut Value) {
     }
 }
 
+/// What schema 13 makes of an older save's player: its point, the sprite's
+/// corner, moved to the wizard's frame, so the body stays where it stood.
+fn as_schema_13(old: &mut Value) {
+    let at = &mut old["player"]["position"];
+    let corner = Vec2::new(
+        at[0].as_f64().unwrap() as f32,
+        at[1].as_f64().unwrap() as f32,
+    ) + save::S12_BODY_OFFSET
+        - BODY_OFFSET;
+    *at = Value::from(vec![corner.x, corner.y]);
+}
+
 /// Sets aside what a capture of a migrated save adds: the map's new enemies
 /// (`added`), the elevator at rest and the basins at rest, which a save
 /// from before schema 10 has none of.
@@ -2163,6 +2177,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     without_old_lift(&mut old);
     as_schema_11(&mut old);
     as_schema_12(&mut old);
+    as_schema_13(&mut old);
     let to = |id: u64| {
         schema_12_id(schema_10_id(if id >= from {
             id + save::SHIFT_9
@@ -2352,6 +2367,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     without_old_lift(&mut old);
     as_schema_11(&mut old);
     as_schema_12(&mut old);
+    as_schema_13(&mut old);
     let to = |id: u64| schema_12_id(schema_10_id(id));
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
@@ -2513,7 +2529,7 @@ fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
     for (i, (column, feet, bank, row)) in cases.into_iter().enumerate() {
         let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
         let middle = Vec2::new(column * tile, feet * tile - PLAYER_HALF.y - 0.5);
-        let corner = middle - BODY_OFFSET;
+        let corner = middle - save::S12_BODY_OFFSET;
         envelope["data"]["player"]["position"] = serde_json::json!([corner.x, corner.y]);
         let fixture = serde_json::to_string(&envelope).unwrap();
         let (migrated, dir) = migrate(&format!("under-lava-{i}"), &fixture);
@@ -2623,6 +2639,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     let mut old = envelope["data"].clone();
     assert_eq!(envelope["schema"].as_u64(), Some(11));
     as_schema_12(&mut old);
+    as_schema_13(&mut old);
     let (migrated, dir) = migrate("schema-11", FIXTURE);
     // Every ID from the first placed orb's on moved past the goblins, every
     // one under it kept, and nothing else.
@@ -2669,6 +2686,40 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
         let at = super::body(&run, goblin);
         assert!(at.distance(enemy.home()) < 1.0, "{id} at {at}");
     }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_12_player_keeps_its_body_where_it_stood() {
+    // 0.102's save (step 1's fixture): the busy run on the sky's ground,
+    // its player's point the corner of the courier's 64 px frame.
+    const FIXTURE: &str = include_str!("fixtures/schema12.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    assert_eq!(envelope["schema"].as_u64(), Some(12));
+    let mut old = envelope["data"].clone();
+    let at = &old["player"]["position"];
+    let corner = Vec2::new(
+        at[0].as_f64().unwrap() as f32,
+        at[1].as_f64().unwrap() as f32,
+    );
+    let (migrated, dir) = migrate("schema-12", FIXTURE);
+    // Its point moved to the wizard's frame, and nothing else.
+    let moved_to = Vec2::from(migrated.player.position);
+    assert!(
+        moved_to.distance(corner + Vec2::new(-16.0, -32.0)) < 1e-3,
+        "{corner} became {moved_to}"
+    );
+    as_schema_13(&mut old);
+    let mut moved = Vec::new();
+    moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
+    assert!(moved.is_empty(), "{moved:?}");
+    // Loaded, the body stands where the courier's stood.
+    let mut run = super::harness();
+    load(&mut run, migrated);
+    let player = player_entity(&run);
+    let body = centre(&run, player);
+    let stood = corner + Vec2::new(32.0, 33.0);
+    assert!(body.distance(stood) < 0.01, "{body} against {stood}");
     let _ = std::fs::remove_dir_all(dir);
 }
 

@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_0"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_1"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_2"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_3"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_4"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_flame_splash_5"
+    }
+  ],
+  "looping": true
+}

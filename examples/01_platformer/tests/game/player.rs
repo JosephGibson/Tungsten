@@ -1,10 +1,13 @@
-//! The courier on the kit's controller: a press's step, the air jump's
-//! fresh press, its burst, tuck and refill, and the falls and escapes that
-//! end a run, inside the invulnerability window too.
+//! The wizard on the kit's controller: a press's step, the air jump's
+//! fresh press, its burst, tuck and refill, the falls and escapes that end
+//! a run, inside the invulnerability window too, a blow's tint and hurt
+//! clip, and each cast's gesture with the staff's flare.
 
 use example_01_platformer::features::level::{self, KILL_Y, MAP, TILE, WORLD_MAX, WORLD_MIN};
 use example_01_platformer::features::player::components::Moves;
-use example_01_platformer::features::player::systems::{AIR_JUMP_BURST, DEATH_CLIP, escaped};
+use example_01_platformer::features::player::systems::{
+    AIR_JUMP_BURST, DEATH_CLIP, HURT_CLIP, escaped,
+};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::shared::Burst;
@@ -431,9 +434,96 @@ fn a_blow_tints_the_courier_red_for_a_moment() {
         red[0] == 255 && red[1] < 160 && red[2] < 160,
         "red: {red:?}"
     );
+    // The hurt clip's frame shows the step after the blow.
+    let shown = |h: &UiHarness| {
+        let world = h.world();
+        let id = world.get::<Sprite>(player).unwrap().asset_id;
+        let assets = world.resource::<tungsten::core::AssetRegistry>();
+        assets.sprite_name(id).unwrap().to_owned()
+    };
+    assert_eq!(clip(&harness, player).trim_end_matches("_left"), HURT_CLIP);
+    assert!(
+        shown(&harness).starts_with(HURT_CLIP),
+        "{}",
+        shown(&harness)
+    );
     // Gone after 0.12 s, a frame's slack.
     harness.step(9);
     assert_eq!(tint(&harness), [255; 4]);
+    // The clip after its 0.2 s.
+    harness.step(4);
+    assert!(!clip(&harness, player).starts_with(HURT_CLIP));
+}
+
+#[test]
+fn each_gesture_shows_its_clip_and_the_staff_flares() {
+    use example_01_platformer::features::gun;
+    use example_01_platformer::features::level::components::Glow;
+    use example_01_platformer::features::player::components::StaffGlow;
+    use tungsten::core::{AssetRegistry, Sprite};
+    use tungsten::kit::Stats;
+    const TOP: f32 = 1000.0;
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, TOP);
+    stand(&mut harness, player, 600.0, TOP);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    super::pin_camera(&mut harness, Vec2::new(0.0, 500.0));
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    let base = harness.world().get::<StaffGlow>(player).unwrap().0;
+    assert_eq!(base.reach(), 175.0, "the prefab's reach");
+    let glow = |h: &UiHarness| *h.world().get::<Glow>(player).unwrap();
+    let shown = |h: &UiHarness| {
+        let world = h.world();
+        let id = world.get::<Sprite>(player).unwrap().asset_id;
+        let assets = world.resource::<AssetRegistry>();
+        assets.sprite_name(id).unwrap().to_owned()
+    };
+    let ahead = centre(&harness, player) + Vec2::new(240.0, -120.0);
+    // Each pressed spell's one-shot the frame after its press, the staff
+    // flaring over it, its reach the prefab's, and 0.3 s on its flare done.
+    for (slot, wanted) in [
+        (0, "ex10_player_bolt"),
+        (4, "ex10_player_push"),
+        (6, "ex10_player_conjure"),
+        (7, "ex10_player_toss"),
+    ] {
+        super::choose(&mut harness, slot);
+        super::aim_at(&mut harness, ahead);
+        harness.harness_mut().press_action("cast");
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        assert_eq!(clip(&harness, player), wanted, "slot {slot}");
+        assert!(glow(&harness).radius > base.radius, "slot {slot}: a flare");
+        assert_eq!(glow(&harness).reach(), base.reach(), "slot {slot}");
+        harness.step(20);
+        assert_eq!(glow(&harness).radius, base.radius, "slot {slot}: done");
+        assert_eq!(glow(&harness).reach(), base.reach(), "slot {slot}");
+    }
+    // Standing still, the held flamethrower levels the staff along the aim
+    // and a shot raises the pistol, each over the idle clip.
+    super::choose(&mut harness, 1);
+    super::aim_at(&mut harness, ahead);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    assert!(
+        shown(&harness).starts_with("ex10_player_staff_"),
+        "{}",
+        shown(&harness)
+    );
+    harness.harness_mut().release_action("cast");
+    harness.step(20);
+    harness.harness_mut().press_action(gun::SHOOT);
+    harness.step(1);
+    harness.harness_mut().release_action(gun::SHOOT);
+    assert!(
+        shown(&harness).starts_with("ex10_player_aim_"),
+        "{}",
+        shown(&harness)
+    );
 }
 
 #[test]

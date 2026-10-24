@@ -349,33 +349,38 @@ fn the_magazine_shows_its_rounds_and_reloading() {
     aim_at(&mut harness, Vec2::new(700.0, 500.0));
     harness.step(1);
     let hud = *harness.world().resource::<Hud>();
-    let colors = harness.tree().theme().tokens.colors;
-    let lit = |harness: &UiHarness| {
+    // The live cartridges: a round each.
+    let live = |harness: &UiHarness| {
         hud.magazine
-            .pips
+            .rounds
             .iter()
-            .filter(|&&pip| {
-                harness
-                    .tree()
-                    .overrides(pip)
-                    .and_then(|style| style.background)
-                    == Some(colors.text)
-            })
+            .filter(|&&round| harness.tree().image_sprite(round) == Some(hud.art.live))
             .count()
     };
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
-    assert_eq!(lit(&harness), 9);
+    assert_eq!(live(&harness), 9);
     hold_until(&mut harness, 6);
     harness.step(1);
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "6 / 9");
-    assert_eq!(lit(&harness), 6);
+    assert_eq!(live(&harness), 6);
+    // An R reload with six left reads "reloading", every cartridge spent,
+    // until the magazine is whole.
+    harness.harness_mut().press_action(RELOAD);
+    harness.step(1);
+    harness.harness_mut().release_action(RELOAD);
+    harness.step(1);
+    assert_eq!(text_of(harness.tree(), hud.magazine.text), "reloading");
+    assert_eq!(live(&harness), 0);
+    harness.step(80);
+    assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
+    assert_eq!(live(&harness), 9);
     hold_until(&mut harness, 0);
     harness.step(1);
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "reloading");
-    assert_eq!(lit(&harness), 0);
+    assert_eq!(live(&harness), 0);
     harness.step(80);
     assert_eq!(text_of(harness.tree(), hud.magazine.text), "9 / 9");
-    assert_eq!(lit(&harness), 9);
+    assert_eq!(live(&harness), 9);
 }
 
 /// What a shot met on the map over up to a second: its wall meetings in

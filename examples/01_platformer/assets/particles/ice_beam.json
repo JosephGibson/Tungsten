@@ -54,7 +54,7 @@
   "drag_per_sec": 0.15,
   "emission": {
     "kind": "continuous",
-    "rate_hz": 260
+    "rate_hz": 170
   },
   "gravity": [
     0,
@@ -67,16 +67,16 @@
     ],
     "kind": "cone",
     "speed": {
-      "max": 1050,
-      "min": 750
+      "max": 1365,
+      "min": 975
     },
-    "spread_deg": 28
+    "spread_deg": 26
   },
   "lifetime": {
     "max": 0.65,
     "min": 0.4
   },
-  "max_alive": 144,
+  "max_alive": 110,
   "scale_over_life": [
     [
       0,
@@ -98,7 +98,7 @@
   "seed": 48657,
   "sprite": "ex10_ice_crystal",
   "start_scale": {
-    "max": 0.2,
-    "min": 0.08
+    "max": 0.24,
+    "min": 0.1
   }
 }

@@ -1,0 +1,45 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_0_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_1_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_2_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_3_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_4_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_5_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_6_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_7_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_8_left"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_fire_missile_9_left"
+    }
+  ],
+  "looping": true
+}

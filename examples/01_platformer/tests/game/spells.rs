@@ -4,7 +4,8 @@
 //! reach spent, a blast pushes bodies by distance and mass, and a blast's
 //! layered bursts drain within the shared budget; three black holes open
 //! at once, a fourth collapsing the oldest, each sweeping small balls from
-//! its core, all humming on one voice.
+//! its core, all humming on one voice; the sprays reach 30 % further and
+//! burst on what they hit, and draw their sprites while they run.
 
 use example_01_platformer::features::audio::HOLE_HUM;
 use example_01_platformer::features::audio::components::Music;
@@ -17,7 +18,7 @@ use example_01_platformer::features::spells::{
     SUMMON_NEXT, SUMMON_PREV, SUMMONS, Summoned, summon_type,
 };
 use example_01_platformer::features::toys::components::{
-    BlackHole, FireMissile, Ring, ShockRing, SmallBall,
+    BlackHole, FireMissile, Ring, ShockRing, SmallBall, Spray, SprayLook, SprayPuff,
 };
 use example_01_platformer::features::toys::{
     self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
@@ -38,7 +39,9 @@ use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::player::{GUTTER_PUFF, STAFF_LIT};
 use tungsten::kit::Tags;
 
-use super::{aim_at, ball, body, centre, choose, floor, ground, mana, pin_camera, run, stand};
+use super::{
+    aim_at, ball, body, calm, centre, choose, floor, ground, mana, pin_camera, run, stand,
+};
 
 /// Steps up to `frames` frames until `done`; whether it came.
 fn until(harness: &mut UiHarness, frames: u32, mut done: impl FnMut(&UiHarness) -> bool) -> bool {
@@ -625,4 +628,164 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     assert!(!harness.world().is_alive(first), "the oldest went");
     assert!(super::bursts(&harness, "ex10_poof") > 0, "in a poof");
     assert_eq!(props_of(&harness, PropKind::Crate).len(), props::CRATE_CAP);
+}
+
+/// The sky's ground for the spray tests, and the flamethrower's and the ice
+/// spray's slots.
+const SKY: f32 = 1000.0;
+const FLAMETHROWER: usize = 1;
+const ICE_SPRAY: usize = 2;
+
+/// A run with the player on the sky's ground at x 300, the map's enemies
+/// gone, the camera held over it, and a dummy whose near face stands
+/// `tiles` from the player's centre, if any.
+fn spray_range(tiles: Option<f32>) -> (UiHarness, Entity, Option<Entity>) {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, SKY);
+    stand(&mut harness, player, 300.0, SKY);
+    harness.step(1);
+    pin_camera(&mut harness, Vec2::new(0.0, SKY - 500.0));
+    let me = centre(&harness, player);
+    let dummy = tiles.map(|tiles| {
+        let face = me.x + tiles * example_01_platformer::features::level::TILE;
+        super::combat::dummy_at(&mut harness, face + 14.0)
+    });
+    harness.step(2);
+    (harness, player, dummy)
+}
+
+/// The bursts of `name` within `reach` of `at`.
+fn bursts_near(harness: &UiHarness, name: &str, at: Vec2, reach: f32) -> usize {
+    let world = harness.world();
+    let config = world
+        .resource::<tungsten::core::ParticleConfigRegistry>()
+        .id_for_name(name);
+    world
+        .query::<(
+            &Burst,
+            &tungsten::core::ParticleEmitter,
+            &tungsten::core::Transform,
+        )>()
+        .filter(|(_, emitter, at_)| {
+            Some(emitter.config) == config && at_.position.distance(at) <= reach
+        })
+        .count()
+}
+
+#[test]
+fn the_sprays_reach_further_and_burst_on_what_they_hit() {
+    // Past 01 (f)'s reach (3.5 and 7 tiles), inside 01 (h)'s.
+    for (slot, tiles, hit) in [
+        (FLAMETHROWER, 4.3, "ex10_flame_hit"),
+        (ICE_SPRAY, 8.8, "ex10_frost_hit"),
+    ] {
+        let (mut harness, player, dummy) = spray_range(Some(tiles));
+        let dummy = dummy.unwrap();
+        let face = body(&harness, dummy) - Vec2::new(14.0, 0.0);
+        let full = harness
+            .world()
+            .get::<tungsten::kit::Health>(dummy)
+            .unwrap()
+            .current();
+        choose(&mut harness, slot);
+        let at = body(&harness, dummy);
+        aim_at(&mut harness, at);
+        harness.harness_mut().press_action("cast");
+        let burst = until(&mut harness, 18, |h| bursts_near(h, hit, face, 24.0) > 0);
+        harness.harness_mut().release_action("cast");
+        assert!(burst, "{hit} at the dummy within 0.3 s");
+        let left = harness
+            .world()
+            .get::<tungsten::kit::Health>(dummy)
+            .unwrap()
+            .current();
+        assert!(left < full, "{hit}: the dummy took the spray's damage");
+        let _ = player;
+    }
+    // On a bare wall, neither: a splash, but no burst.
+    for slot in [FLAMETHROWER, ICE_SPRAY] {
+        let (mut harness, player, _) = spray_range(None);
+        let me = centre(&harness, player);
+        floor(
+            &mut harness,
+            me + Vec2::new(150.0, -100.0),
+            Vec2::new(10.0, 100.0),
+        );
+        harness.step(1);
+        choose(&mut harness, slot);
+        aim_at(&mut harness, me + Vec2::new(400.0, 0.0));
+        harness.harness_mut().press_action("cast");
+        harness.step(18);
+        assert!(
+            harness.world().query::<&Spray>().count() == 1,
+            "slot {slot}: it sprays"
+        );
+        harness.harness_mut().release_action("cast");
+        let none =
+            super::bursts(&harness, "ex10_flame_hit") + super::bursts(&harness, "ex10_frost_hit");
+        assert_eq!(none, 0, "slot {slot}: a wall bursts nothing");
+    }
+}
+
+#[test]
+fn a_spray_draws_its_sprites_and_clears_them() {
+    let (mut harness, _, dummy) = spray_range(Some(4.0));
+    let dummy = dummy.unwrap();
+    choose(&mut harness, FLAMETHROWER);
+    let at = body(&harness, dummy);
+    aim_at(&mut harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(6);
+    let look = |h: &UiHarness| h.world().query::<&SprayLook>().next().cloned();
+    let shown = |h: &UiHarness, e: Option<Entity>| {
+        e.is_some_and(|e| {
+            h.world()
+                .get::<tungsten::core::Visibility>(e)
+                .is_some_and(|v| v.visible)
+        })
+    };
+    let fire = look(&harness).expect("the flamethrower's look");
+    assert!(shown(&harness, fire.muzzle), "its muzzle");
+    assert!(
+        fire.light
+            .is_some_and(|light| harness.world().has::<tungsten::core::Light>(light)),
+        "its light"
+    );
+    assert!(shown(&harness, fire.impact), "its impact on the dummy");
+    assert!(
+        harness.world().query::<&SprayPuff>().count() > 0,
+        "its puffs"
+    );
+    // The ice spray lays its core from its start to its end.
+    harness.harness_mut().release_action("cast");
+    harness.step(2);
+    choose(&mut harness, ICE_SPRAY);
+    let at = body(&harness, dummy);
+    aim_at(&mut harness, at);
+    harness.harness_mut().press_action("cast");
+    harness.step(6);
+    let ice = look(&harness).expect("the ice spray's look");
+    let spray = *harness.world().query::<&Spray>().next().unwrap();
+    let length = spray.start.distance(spray.end);
+    assert_eq!(
+        ice.core.len(),
+        ((length - 4.0) / 32.0).ceil() as usize,
+        "{length}"
+    );
+    assert!(ice.core.iter().all(|&tile| shown(&harness, Some(tile))));
+    // A release takes the look at once; its puffs play out within 0.4 s.
+    harness.harness_mut().release_action("cast");
+    harness.step(1);
+    let parts: Vec<Entity> = ice
+        .muzzle
+        .into_iter()
+        .chain(ice.light)
+        .chain(ice.impact)
+        .chain(ice.core.iter().copied())
+        .collect();
+    assert!(parts.iter().all(|&part| !harness.world().is_alive(part)));
+    assert!(until(&mut harness, 24, |h| {
+        h.world().query::<&SprayPuff>().count() == 0
+    }));
 }

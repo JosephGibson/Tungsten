@@ -1,6 +1,7 @@
-//! The player's systems and queries: the lantern and zoom actions, the
-//! jump's shove, the kill row, the hurt a blow plays, the bursts and
-//! one-shot clips its moves start, and the lantern's glow.
+//! The player's systems and queries: the staff light and zoom actions,
+//! the jump's shove, the kill row, the hurt a blow plays, the bursts and
+//! one-shot clips its moves start, a cast's gesture, and the staff light's
+//! glow with its flare.
 
 use glam::Vec2;
 use tungsten::core::{
@@ -13,25 +14,35 @@ use tungsten::kit::{
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
-use super::components::{Lantern, LanternAnchors, Moves, Player, Shown};
+use super::components::{Lantern, LanternAnchors, Moves, Player, Shown, StaffGlow};
 use super::{
-    BODY_OFFSET, GUTTER_PUFF, JUMP_SPEED, LAND_SECS, PLAYER_HALF, RELIGHT_MANA, SHOVE_BESIDE,
-    SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
+    BODY_OFFSET, FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, Gesture, JUMP_SPEED,
+    LAND_SECS, PLAYER_HALF, RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE,
+    STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
 use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
-/// The one-shot clips, each with a left-facing twin named `<clip>_left`.
+/// The one-shot clips, each with a left-facing twin named `<clip>_left`:
+/// the land, the air jump's tuck, a blow's hurt, the death and the
+/// gestures'.
 pub const LAND_CLIP: &str = "ex10_player_land";
 pub const AIR_JUMP_CLIP: &str = "ex10_player_double_jump";
-pub const TOSS_CLIP: &str = "ex10_player_toss";
+pub const HURT_CLIP: &str = "ex10_player_hurt";
 pub const DEATH_CLIP: &str = "ex10_player_death";
-/// The idle clip, which a cast's pose replaces with an aim frame.
+pub const TOSS_CLIP: &str = "ex10_player_toss";
+pub const BOLT_CLIP: &str = "ex10_player_bolt";
+pub const PUSH_CLIP: &str = "ex10_player_push";
+pub const CONJURE_CLIP: &str = "ex10_player_conjure";
+/// The idle clip, which a cast's pose replaces with a pose frame.
 pub const IDLE_CLIP: &str = "ex10_player_idle";
-/// The aim frames, facing right from straight up (0) to straight down (4)
-/// by eighths of a turn, each with a left-facing twin.
+/// The pose frames, facing right from straight up (0) to straight down (4)
+/// by eighths of a turn, each with a left-facing twin: the staff levelled
+/// along the aim, the sprays' and the small balls', and the pistol, the
+/// gun's.
+pub const STAFF_FRAME: &str = "ex10_player_staff";
 pub const AIM_FRAME: &str = "ex10_player_aim";
 /// The bursts a jump, an air jump and a landing play.
 pub const JUMP_PUFF: &str = "ex10_jump_puff";
@@ -39,8 +50,10 @@ pub const AIR_JUMP_BURST: &str = "ex10_double_jump";
 pub const LANDING_DUST: &str = "ex10_landing_dust";
 /// The lantern's anchors, by their data entry.
 pub const ANCHORS: &str = "player";
-/// Game seconds the courier shows red after a blow, fading.
+/// Game seconds the wizard shows red after a blow, fading, and holds the
+/// hurt clip.
 pub const HURT_SECS: f32 = 0.12;
+pub const HURT_CLIP_SECS: f32 = 0.2;
 
 /// The player.
 fn player(world: &World) -> Option<Entity> {
@@ -284,9 +297,10 @@ pub fn staff_light(world: &mut World) {
 }
 
 /// `player_hurt`, in the react phase: a blow on the player plays its hurt
-/// sound and shake, and the hit that kills it, a blow or a tick, its death
-/// sound and a harder shake in their place; a tick of burning or bleeding
-/// shows in the flash alone (X1). `cursor` reads each hit once.
+/// sound, shake, tint and clip, and the hit that kills it, a blow or a
+/// tick, its death sound and a harder shake in their place; a tick of
+/// burning or bleeding shows in the flash alone (X1). `cursor` reads each
+/// hit once.
 pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(player) = player(world) else {
         return;
@@ -301,6 +315,7 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     }
     if hurt && let Some(moves) = world.get_mut::<Moves>(player) {
         moves.hurt = HURT_SECS;
+        moves.hurt_clip = HURT_CLIP_SECS;
     }
     let sound = if killed {
         Sound::PlayerDied
@@ -334,9 +349,9 @@ pub fn moves(world: &mut World) {
             moves.tuck = false;
             let first = !std::mem::replace(&mut moves.dead, true);
             if first {
-                // The death clip takes over from any toss, pose or hot
-                // lantern, facing as the courier faced.
-                (moves.toss, moves.pose, moves.glow) = (0.0, 0.0, 0.0);
+                // The death clip takes over from any gesture, flare or
+                // hurt, facing as the wizard faced.
+                (moves.cast, moves.glow, moves.hurt_clip) = (0.0, 0.0, 0.0);
                 moves.dead_left = left;
             }
             first
@@ -398,12 +413,12 @@ pub fn moves(world: &mut World) {
 }
 
 /// `player_clips`, in the present phase after the character animator: the
-/// death clip once the courier dies, held on its last frame, facing as it
-/// died; else a cast's toss facing its aim, the land clip while it holds on
-/// the ground,
-/// and the air jump's tuck while it rises, facing as the player does,
-/// shown over the animator's clip and then handed back to it; then a
-/// cast's dress over the frame shown.
+/// death clip once the wizard dies, held on its last frame, facing as he
+/// died; else the hurt clip after a blow, facing as he does; a cast's
+/// gesture facing its aim; the air jump's tuck while he rises and the land
+/// clip while it holds on the ground, facing as he does: shown over the
+/// animator's clip and then handed back to it. Then, standing, a cast's
+/// pose over the idle clip's frame.
 pub fn clips(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -421,18 +436,21 @@ pub fn clips(world: &mut World) {
     };
     for timer in [
         &mut moves.landing,
-        &mut moves.toss,
-        &mut moves.pose,
+        &mut moves.cast,
         &mut moves.glow,
         &mut moves.hurt,
+        &mut moves.hurt_clip,
     ] {
         *timer = (*timer - dt).max(0.0);
     }
-    let (pose, glow, aim) = (moves.pose > 0.0, moves.glow > 0.0, moves.aim);
+    let aim = moves.aim;
+    let gesture = moves.gesture.filter(|_| moves.cast > 0.0);
     let clip = if moves.dead {
         Some((DEATH_CLIP, moves.dead_left))
-    } else if moves.toss > 0.0 {
-        Some((TOSS_CLIP, aim.x < 0.0))
+    } else if moves.hurt_clip > 0.0 {
+        Some((HURT_CLIP, left))
+    } else if let Some(clip) = gesture.and_then(one_shot) {
+        Some((clip, aim.x < 0.0))
     } else if !grounded && rising && moves.tuck {
         Some((AIR_JUMP_CLIP, left))
     } else if grounded && moves.landing > 0.0 {
@@ -488,24 +506,44 @@ pub fn clips(world: &mut World) {
         }
         (None, None) => None,
     };
-    let posed = pose && grounded && next.is_none();
+    let pose = gesture
+        .and_then(pose_frames)
+        .filter(|_| grounded && next.is_none());
     if let Some(moves) = world.get_mut::<Moves>(player) {
         moves.shown = next;
     }
-    dress(world, player, &registry, posed, glow, aim);
+    dress(world, player, &registry, pose, aim);
     world.insert_resource(registry);
 }
 
-/// Dresses the frame `player` shows for a cast: with `pose`, standing in
-/// its idle clip, the aim frame nearest `aim`, facing it; with `glow`, the
-/// frame's cast twin, its lantern hot. A dress no longer wanted gives the
-/// clip's frame back.
+/// A gesture's one-shot clip, none for a pose.
+fn one_shot(gesture: Gesture) -> Option<&'static str> {
+    match gesture {
+        Gesture::Toss => Some(TOSS_CLIP),
+        Gesture::Bolt => Some(BOLT_CLIP),
+        Gesture::Push => Some(PUSH_CLIP),
+        Gesture::Conjure => Some(CONJURE_CLIP),
+        Gesture::Pour | Gesture::Shoot => None,
+    }
+}
+
+/// A pose's frames, none for a one-shot gesture.
+fn pose_frames(gesture: Gesture) -> Option<&'static str> {
+    match gesture {
+        Gesture::Pour => Some(STAFF_FRAME),
+        Gesture::Shoot => Some(AIM_FRAME),
+        _ => None,
+    }
+}
+
+/// Dresses the frame `player` shows for a cast's pose: standing in its idle
+/// clip, the frame of `pose`'s set nearest `aim`, facing it. A pose no
+/// longer wanted gives the clip's frame back.
 fn dress(
     world: &mut World,
     player: Entity,
     registry: &AnimationRegistry,
-    pose: bool,
-    glow: bool,
+    pose: Option<&str>,
     aim: Vec2,
 ) {
     let (Some(state), Some(assets)) = (
@@ -517,52 +555,33 @@ fn dress(
     let shown = world.get::<Sprite>(player).map(|sprite| sprite.asset_id);
     let dressed = shown
         .and_then(|id| assets.sprite_name(id))
-        .is_some_and(|name| name.starts_with(AIM_FRAME) || name.contains("_cast"));
+        .is_some_and(|name| name.starts_with(STAFF_FRAME) || name.starts_with(AIM_FRAME));
     let Some(frame) = state.current_sprite(registry) else {
         return;
     };
-    if !pose && !glow && !dressed {
-        return;
-    }
-    let mut name = if pose && state.animation_id.starts_with(IDLE_CLIP) {
-        aim_frame(aim)
-    } else {
-        match assets.sprite_name(frame) {
+    let name = match pose {
+        Some(frames) if state.animation_id.starts_with(IDLE_CLIP) => pose_frame(frames, aim),
+        _ if dressed => match assets.sprite_name(frame) {
             Some(name) => name.to_string(),
             None => return,
-        }
+        },
+        _ => return,
     };
-    if glow {
-        let twin = cast_twin(&name);
-        if assets.sprite_id(&twin).is_some() {
-            name = twin;
-        }
-    }
     let id = assets.sprite_id(&name).unwrap_or(frame);
     if let Some(sprite) = world.get_mut::<Sprite>(player) {
         sprite.asset_id = id;
     }
 }
 
-/// The aim frame nearest `aim`, facing it.
+/// The frame of the pose set `frames` nearest `aim`, facing it.
 #[must_use]
-pub fn aim_frame(aim: Vec2) -> String {
+pub fn pose_frame(frames: &str, aim: Vec2) -> String {
     let up = (-aim.y).atan2(aim.x.abs()).to_degrees();
     let index = ((90.0 - up) / 45.0).round().clamp(0.0, 4.0) as usize;
     if aim.x < 0.0 {
-        format!("{AIM_FRAME}_{index}_left")
+        format!("{frames}_{index}_left")
     } else {
-        format!("{AIM_FRAME}_{index}")
-    }
-}
-
-/// The cast twin of the courier frame `name`, its lantern hot: `_cast`
-/// before a left-facing frame's `_left`.
-#[must_use]
-pub fn cast_twin(name: &str) -> String {
-    match name.strip_suffix("_left") {
-        Some(base) => format!("{base}_cast_left"),
-        None => format!("{name}_cast"),
+        format!("{frames}_{index}")
     }
 }
 
@@ -576,8 +595,11 @@ fn show(world: &mut World, player: Entity, state: AnimationState, registry: &Ani
 }
 
 /// `player_lantern`, in the present phase before the level's glows: the
-/// lantern's glow sits on the flame of the frame shown, and goes dark while
-/// the lantern is off or guttered out, or the player is dead.
+/// staff light's glow sits on the orb of the frame shown, and goes dark
+/// while the light is off or guttered out, or the player is dead; while a
+/// spell's flare runs its halo, core and light swell from the prefab's
+/// glow ([`FLARE_RADIUS`], [`FLARE_CORE`], [`FLARE_LIGHT`]), its reach the
+/// prefab's throughout, and after it they are the prefab's again.
 pub fn lantern(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -593,10 +615,25 @@ pub fn lantern(world: &mut World) {
             .get::<LanternAnchors>(ANCHORS)?;
         anchors.0.get(name).copied()
     });
+    let flaring = world
+        .get::<Moves>(player)
+        .is_some_and(|moves| moves.glow > 0.0);
+    let base = world.get::<StaffGlow>(player).map(|staff| staff.0);
     if let Some(glow) = world.get_mut::<Glow>(player) {
         glow.hidden = !on || dead;
         if let Some(anchor) = anchor {
             glow.offset = anchor;
+        }
+        if let Some(base) = base {
+            let (radius, core, light) = if flaring {
+                (FLARE_RADIUS, FLARE_CORE, FLARE_LIGHT)
+            } else {
+                (1.0, 1.0, 1.0)
+            };
+            glow.radius = base.radius * radius;
+            glow.core = base.core * core;
+            glow.light = base.light * light;
+            glow.reach = Some(base.reach());
         }
     }
 }

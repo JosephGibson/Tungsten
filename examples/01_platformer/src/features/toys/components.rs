@@ -155,21 +155,25 @@ pub enum Element {
 }
 
 /// A held spray, while its spell holds: its caster, its element, where it
-/// starts and stops this frame, its age, its particle emitters, its loop's
-/// voice, whether this step's spell kept it, and the game seconds toward
-/// its next pulse of damage on the targets in its cone.
+/// starts and stops this frame and where its cone meets something, its
+/// age, its particle emitters, its loop's voice, whether this step's spell
+/// kept it, the game seconds toward its next pulse of damage on the targets
+/// in its cone, and the pulses it has dealt, every second of which bursts
+/// on what it hits.
 #[derive(Debug, Clone, Copy)]
 pub struct Spray {
     pub caster: Entity,
     pub element: Element,
     pub start: Vec2,
     pub end: Vec2,
+    pub contact: Option<Vec2>,
     pub aim: Vec2,
     pub age: f32,
     pub emitters: [Option<Entity>; 3],
     pub voice: Option<Voice>,
     pub kept: bool,
     pub pulse: f32,
+    pub pulses: u32,
 }
 
 /// A spray emitter's aim, which its newborn particles turn to: the
@@ -182,3 +186,32 @@ pub struct SprayEmitter {
 /// A particle already turned to its spray's aim.
 #[derive(Debug, Clone, Copy)]
 pub struct Oriented;
+
+/// A spray's drawn look (01 (h), `toys::spray_look`): its muzzle flare and
+/// its light at the staff, its impact where the cone meets something, the
+/// ice beam's core tiles, and the game seconds and count its stream's puffs
+/// are spawned by. Its parts go with the spray; its puffs play out.
+#[derive(Debug, Clone, Default)]
+pub struct SprayLook {
+    pub muzzle: Option<Entity>,
+    pub light: Option<Entity>,
+    pub impact: Option<Entity>,
+    pub core: Vec<Entity>,
+    pub due: f32,
+    pub puffs: u32,
+}
+
+/// One puff of a spray's stream: it flies from `origin` along `direction`
+/// at `speed` until `stop`, grows from `grow.0` to `grow.1` times its art,
+/// streaking along its line while young, and goes when its clip has played
+/// out, `life` game seconds.
+#[derive(Debug, Clone, Copy)]
+pub struct SprayPuff {
+    pub origin: Vec2,
+    pub direction: Vec2,
+    pub speed: f32,
+    pub stop: f32,
+    pub age: f32,
+    pub life: f32,
+    pub grow: (f32, f32),
+}

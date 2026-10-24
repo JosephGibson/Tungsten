@@ -13,7 +13,7 @@ from placement import UNDER_TUCK, underside
 class AuthoringTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.images,cls.lit,cls.animations=build_art()
+        cls.images,cls.lit,cls.animations,_=build_art()
         cls.tiled,cls.source,_=build_level(cls.images,cls.lit)
         cls.ids={'ex10_'+n for n in cls.images}
 
@@ -28,7 +28,7 @@ class AuthoringTests(unittest.TestCase):
 
     def test_frame_palette_anchor_and_seams(self):
         validate_art(self.images,self.lit)
-        bad=dict(self.images);bad['player']=bad['player'].copy();bad['player'].putpixel((0,0),bad['player'].getpixel((32,32)))
+        bad=dict(self.images);bad['player']=bad['player'].copy();bad['player'].putpixel((0,0),bad['player'].getpixel((48,65)))
         with self.assertRaisesRegex(ValueError,'clipped'):validate_art(bad,self.lit)
 
     def test_waterfall_segments_tile_and_animation_wraps(self):
@@ -65,7 +65,7 @@ class AuthoringTests(unittest.TestCase):
         pixels=[self.images[f['sprite'].removeprefix('ex10_')].tobytes() for f in frames]
         self.assertEqual(len(set(pixels)),12)
         for frame in frames:
-            self.assertEqual(self.images[frame['sprite'].removeprefix('ex10_')].getbbox()[3],61)
+            self.assertEqual(self.images[frame['sprite'].removeprefix('ex10_')].getbbox()[3],93)
 
     def test_grounded_props_and_hanging_vegetation_meet_their_support(self):
         platforms={p['name']:p for p in self.source['platforms']}

@@ -63,7 +63,7 @@
   "drag_per_sec": 0.3,
   "emission": {
     "kind": "continuous",
-    "rate_hz": 330
+    "rate_hz": 200
   },
   "gravity": [
     0,
@@ -76,16 +76,16 @@
     ],
     "kind": "cone",
     "speed": {
-      "max": 620,
-      "min": 420
+      "max": 806,
+      "min": 546
     },
-    "spread_deg": 28
+    "spread_deg": 24
   },
   "lifetime": {
-    "max": 0.4,
-    "min": 0.25
+    "max": 0.45,
+    "min": 0.28
   },
-  "max_alive": 180,
+  "max_alive": 120,
   "scale_over_life": [
     [
       0,
@@ -103,7 +103,7 @@
   "seed": 48657,
   "sprite": "ex10_spark",
   "start_scale": {
-    "max": 0.27,
-    "min": 0.12
+    "max": 0.22,
+    "min": 0.1
   }
 }

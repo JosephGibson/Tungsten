@@ -38,11 +38,15 @@ It never sweeps unrelated files from the assets directory. `sounds.json` is the
 sound registration; synthesized WAVs are owned outputs, and `black_hole.ogg` stays
 hand-authored (see "Fireball spell, extinguishing and sound effects").
 
-The shell's assets come with its code: the `shell` theme, Inter and Source
-Serif 4 with their licence files, and the `damage_flash` shader and material are
-copied byte for byte from `templates/basic/assets/`, with their manifest entries,
-so `--check` also catches drift from the template; `just repo-check` holds the
-theme to the template's as it holds `src/shell/`. 01 adds one face of its own:
+The shell's assets come with its code: Inter and Source Serif 4 with their
+licence files, and the `damage_flash` shader and material are copied byte for
+byte from `templates/basic/assets/`, with their manifest entries, so `--check`
+also catches drift from the template. The `shell` theme is the template's text in
+01's colours (01 (h), `generate.THEME_COLORS`): each of the template's colours
+maps to 01's, darker backgrounds and a vivid purple, so a key the template adds
+still arrives, and a template colour the map lacks stops the generator, named;
+`just repo-check` holds the theme to the template's structure, its colours
+masked, as it holds `src/shell/` byte for byte. 01 adds one face of its own:
 Source Serif 4 Bold, copied from the repository's `assets/fonts/` beside the
 Regular and under its licence, as `serif_bold` in the `serif` family, which
 the area titles draw at weight 700. `content/` holds the prefab
@@ -59,45 +63,58 @@ pixel) for any hand-authored sprite. The modules:
 | Module | Draws |
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
-| `actors.py` | Courier (with its toss and aim frames and the lantern's cast twins), fireball, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
+| `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust stages, the elevator's gantry, cage and cable, and the falls' plume |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the 32-pixel icons of the nine spells, the gun and the nine summon types, the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
-`actors.py` draws the courier and the fireball. The courier is one rig posed per
-frame: hips, neck, feet, hands, lantern swing, cloak hem, scarf chain and hood
-tip. Each part (legs, boots, satchel, belted cloak, hood with glowing eyes, scarf,
-lantern, sleeves) is filled from palette symbols, shaded from its own silhouette,
-rimmed where it overlaps the parts behind it and outlined once. No raster is
-rotated. Edit a clip by changing its `Pose` list and durations. Generation
-rejects a frame unless its lowest pixel sits on row 60 (bounding-box edge 61,
-which the extractor anchors to the collider's feet). It also rejects a frame
-whose lantern glass is not entirely inside the flame window (x 40–62, y 30–59),
-or whose window contains any other `y`/`Y` pixel. Clips:
+`actors.py` draws the wizard, the fireball and the fire missile. The wizard is one rig posed per
+frame on a 96 px frame: hips, neck, feet, hands, the staff's lean and grip, the
+robe's hem, the hat's tip and the beard's swing. Each part (legs and soft boots,
+bell sleeves, the robe with its mantle, rope belt, pouch, brass trim and sewn
+stars, the head with its nose, brow and beard, the felt hat, the gnarled staff
+and its orb) is filled from palette symbols, shaded from its own silhouette,
+rimmed where it overlaps the parts behind it and outlined once. The death's
+three lying frames turn the upright rig a quarter anticlockwise in whole pixels;
+no other raster is rotated. Edit a clip by changing its `WizardPose` list and
+durations. Generation rejects a frame unless its lowest pixel sits on row 92
+(bounding-box edge 93, which the extractor anchors to the collider's feet, the
+body's centre at (48, 65) of the frame), the lying frames' too, or unless its
+staff light's anchor lies on the orb. The orb is plain amber glass (`J K L` and
+a `Z` glint), never emissive: the staff light's glow, which follows the anchor,
+lights it. `build_player` returns each frame's anchor, the drawn glass's centre,
+which `generate.py` writes as the `lantern_anchors` entry `player`. Clips:
 
 | Clip | Frames | Motion |
 | --- | --- | --- |
-| idle | 8, 100–300 ms | breathing, lagging lantern sway, scarf and hood-tip drift, one blink |
-| walk | 12, 45 ms | leaning run: 2 px bob, toe-off heel lift, trailing cloak and curling scarf |
+| idle | 8, 100–300 ms | breathing, the staff planted, the hat's tip and the beard drifting, one blink |
+| walk | 12, 45 ms | leaning stride: 2 px bob, toe-off heel lift, the staff swinging, the hem flaring and the beard swept back |
 | jump | 3, 200 ms total | takeoff stretch, rise, apex (held); must finish within 13 frames |
-| fall | 4, 80 ms | loop: cloak, hood tip and scarf streaming upward |
-| land | 3, 60 ms | impact squint and bent knees (at most 2 px), recover, settle; runtime squash owns scale |
-| double jump | 4, 300 ms total | crouched tuck, then the cloak bursts open and the courier springs up |
-| toss | 4, 300 ms total | wind-up, swing, release, follow-through: the free hand throws a bowling ball toward the aim, the lantern hand braced |
-| aim | 5 | the free arm and its gun from straight up to straight down by eighths of a turn, drawn over the cloak so a downward aim shows; 01 shows the one nearest a cast's aim, standing |
+| fall | 4, 80 ms | loop: the robe, the hat's tip and the beard streaming upward |
+| land | 3, 60 ms | impact squint and bent knees, recover, settle; runtime squash owns scale |
+| double jump | 4, 300 ms total | crouched tuck, then the robe bursts open, the orb flares and the wizard springs up |
+| hurt | 2, 200 ms total | knocked back, the head snapping back and the staff jolted, then half-way back |
+| death | 7, 910 ms total | struck, he reels back on one foot as the hat lifts off and the staff is flung ahead; sits down hard; topples back; lands flat on his back with a puff of dust; rebounds a pixel; and rests face up, the hat upright behind his head and the staff along the ground |
+| toss | 4, 300 ms total | wind-up, swing, release, follow-through: the free hand throws a bowling ball toward the aim, the staff planted |
+| bolt | 3, 300 ms total | the staff drawn back over the shoulder, then thrust at the aim, the orb flaring (the fire missile, lightning) |
+| push | 3, 300 ms total | the free hand gathers, then shoves out palm first, the staff raised behind (the force push, the black hole) |
+| conjure | 3, 300 ms total | the staff raised high in both hands, the orb flaring, then struck down (iron, the summons) |
+| staff | 5 | the staff levelled along the aim in both hands, from straight up to straight down by eighths of a turn: the sprays' and the small balls' pose; 01 shows the one nearest the aim, standing |
+| aim | 5 | the pistol in the far hand along the aim, the staff upright: the gun's pose, shown the same way |
 
-`generate.py` mirrors every courier and fireball frame into a `_left` twin, since
-nothing flips a sprite in place, and gives every courier frame a `_cast` twin
-(`actors.cast_frame`): all its lantern glass at the hot core and the frame round it
-lit, so its emissive mask widens. 01 shows the twins for 0.3 seconds after a cast.
+`generate.py` mirrors every wizard, fireball and fire missile frame into a `_left`
+twin, since nothing flips a sprite in place, and each anchor about the frame's
+middle, x 48.
 
-Palette symbols `O P Q U W` (cloak), `X z +` (scarf), `[ ] (` (trousers and leather)
-belong to the courier. `M L K J Z` are the fireball's ember-to-white-hot ramp.
+Palette symbols `Π Ξ Γ ν` (robe and hat), `Ф` (its lining), `Δ` (the hat's
+patch), `ϕ` (sewn stars), `σ τ S w` (beard and hair), `R r X` (skin) and
+`" ' ω /` (the staff's wood and the boots) dress the wizard. `M L K J Z` are the
+fireball's ember-to-white-hot ramp, whose `J K L Z` also draw the orb.
 
 The fireball is an analytic ball of flame. Tongues stream up and behind a
 right-moving hazard, plasma bands swirl through the core, and embers peel off.
@@ -145,10 +162,11 @@ basalt, basalt into mine rock and mine rock into masonry. `validate_terrain`
 holds every variant to its family's shared edges on both sides.
 
 Art is 64 × 64 unless `art.py`'s size tables say otherwise: the backdrops, the
-black hole's 96-pixel layers, the 32-pixel icons, the elements' sizes (the bolt's
-segments, the status overlays' small and large classes, the muzzle flash, the
-tracer, the glint and the orbs) and the troll, whose frames and fitted ice cube
-are 128 pixels, the one enemy larger than a tile (`SIZE_PREFIXES`). Backdrop
+black hole's 96-pixel layers, the 36-pixel icon tiles, the elements' sizes (the
+bolt's segments, the status overlays' small and large classes, the muzzle flash,
+the tracer, the glint, the orbs, the bars' liquids and the cartridges), the
+wizard, whose frames are 96 pixels, and the troll, whose frames and fitted ice
+cube are 128 pixels, the one enemy larger than a tile (`SIZE_PREFIXES`). Backdrop
 strips are 1024 pixels wide and
 wrap seamlessly: profiles are whole-period sine sums, and shapes are drawn at x
 and x ± 1024. The ridges' and woodland's last row stays opaque, because the
@@ -322,8 +340,8 @@ or moving fire the level's data places, hurt through the kit's `contact_damage`:
 away, so the third touch takes Normal's 100 health (Easy has 150, Hard 68). Each
 hit plays the hit sound and kicks the camera through the player's `damaged` cues,
 knocks it back for 0.18 seconds and opens the kit's 1.1-second window in which
-further hits are ignored; the lit courier shows no hit flash, but a blow reddens
-it for 0.12 seconds and spills blood. Falling below the
+further hits are ignored; the lit wizard shows no hit flash, but a blow reddens
+him for 0.12 seconds and spills blood. Falling below the
 kill row or wholly out of the world box deals all the health left, window or not.
 Game over is the shell's, and its Retry loads the run's last good save. A fireball
 bursts a bowling ball with a short particle burst and an expanding ring; both
@@ -341,7 +359,7 @@ support without slipping through the deck.
 Scene lights illuminate the normal-mapped terrain and the lit props: lamp posts,
 ivy, waystones, gate, oaks, arch, roots, undergrowth, hanging moss and spikes.
 Crystals, glowing mushrooms, the waterfall and the fireball stay unlit so they
-keep their own glow. The courier draws lit, with its normal and emissive maps.
+keep their own glow. The wizard draws lit, with his normal and emissive maps.
 Counter-rotating vortex
 layers and inward orbiting sparks animate independently of the existing ball
 attraction. Camera zoom spans 35–300%.
@@ -363,17 +381,16 @@ tile collision. The runtime and route tests spawn the same shallow bodies;
 solid terrain retains native tile collision. Keep platform art and generated
 collision together when changing silhouettes.
 
-Press **L** to toggle the staff light, the player's lantern halo and point light, which burns mana while lit (01 (e)). Per-frame flame
-anchors are generated from the art, the cast twins' and the mirrored frames'
-too; both effects follow facing and animation. A fresh run starts with the
+Press **L** to toggle the staff light, the halo and point light at the staff's orb, which burns mana while lit (01 (e)). Per-frame
+anchors on the orb come from the wizard's rig, the mirrored frames' too; both
+effects follow facing and animation. A fresh run starts with the
 staff light off; L or the pad's North lights it, and a loaded run keeps its save's.
 Fireball hazards, which the level's data may place (none today), have a brighter
 inner halo and a stronger native light. They face their horizontal travel
 (vertical-only movers face the player). Each leaks rising flame wisps from its
 seeded `fire_trail` emitter (32 live) and molten drips from a `fireball_drips`
-emitter anchored 12 pixels below its center (16 live), 48 particles a fireball;
-the fire missile borrows the drips. All emitters remain subject to the global
-2048-particle budget.
+emitter anchored 12 pixels below its center (16 live), 48 particles a fireball.
+All emitters remain subject to the global 2048-particle budget.
 
 
 ## Midnight presentation and double jump
@@ -385,7 +402,7 @@ tuck-and-burst clip until the ascent ends, then the fall clip, and emits a short
 gives it back. The routes still pass with single jumps.
 
 The controller never pushes dynamic bodies, so a jump press shoves them itself
-(`player_unstick`, 01 (f)): bodies over the courier's head and shoulders fly up
+(`player_unstick`, 01 (f)): bodies over the wizard's head and shoulders fly up
 and away at 1,600 pixels/second over their mass, those beside it at 600, and a
 jump they blocked launches again the next step at the jump's own speed,
 spending no air jump.
@@ -394,7 +411,7 @@ The entry clearing is 16 tiles wide. Its first steps, optional overhead platform
 and lift sit farther from spawn, with fewer foreground props in the launch area.
 Support anchors move with the revised layout.
 
-Glows (lamp, fireball, crystal, player-lantern and moon halos, plus the black
+Glows (lamp, fireball, crystal, staff light and moon halos, plus the black
 hole's halo) draw through the example's `soft_glow.wgsl` material rather than a
 stepped texture. It computes an analytic radial falloff over the quad and
 dithers alpha by at most one 8-bit step, so large glows have no rings or banding.
@@ -415,8 +432,8 @@ Stock `Fog` fades toward the top of the screen in screen space, which is not
 ground mist. The engine packs at most 16 lights total, keeping directionals first and then
 the point lights nearest the camera view; every light inside the view ties, and ties keep
 query order. The map holds 10 lights in any window at the widest zoom (`LIGHT_BUDGET`), so
-the courier's lantern stays; past that, with more missiles, flares or summoned wisps, the
-lantern can drop out ([known issues](../../../docs/known-issues.md)). That selection lives
+the wizard's staff light stays; past that, with more missiles, flares or summoned wisps, the
+staff light can drop out ([known issues](../../../docs/known-issues.md)). That selection lives
 in the engine.
 
 Wind motes are fireflies: a soft dot that blinks yellow-green as it wanders.
@@ -515,16 +532,23 @@ cost a second over 60. The mana stats are `content/data/stats/game.json`; the
 `casting` tag is in `content/data/tags/game.json`. The values, the slots and the
 controls are in [the example's README](../README.md).
 
-The HUD draws the icons (`effects.py`, 32 pixels, nearest filtering) at the
-largest whole number of screen pixels per art pixel the UI's scale allows, each in
-its element's border colour: ember orange for fire, ice cyan for cold, violet for
-shock (lightning), indigo for mana and the summon, and bone white for the physical
-toys and the gun's magazine. Slot 0 shows the summon's selected type, the dummy's
-icon. The palette's indigo shades (`Γ Π Ξ`) are the mana's, and its violet ones
-(`Δ Λ Σ`) the black hole's icon and the lightning's. Its gravity ramp
-(`Ж Ф Ц Ш Щ`, 01 (f)), deep magenta toward indigo, is the force push's ring and
-warp burst and the black hole's collapse ring and under-layers, apart from
-shock's violet and mana's indigo.
+The HUD draws the icon tiles (`effects.py`, 36 pixels, nearest filtering) at the
+largest whole number of screen pixels per art pixel the UI's scale allows. They
+are one family (01 (h), `icon_tile`): each 32-pixel subject lit from the top
+left with a rim of its element's light on its far edges, over a dark backing
+tinted by the element with a glow behind the subject, in a two-pixel bevelled
+frame in the element's colour (`ICON_ELEMENTS`): fire for the missile and the
+flamethrower, cold for the ice spray, gravity's purple for the push and the hole,
+shock's violet for lightning, bone for the physical toys and the gun, and mana's
+blue for each summon type, standing on its ring recoloured from indigo. Slot 0
+shows the summon's selected type, the dummy's tile first. The palette's mana
+blues (`И Й З Ю`, 01 (h)) draw the summons' frames and ring, the mana orb and the
+mana bar's liquid; its violet ones (`Δ Λ Σ`) the black hole's subject and the
+lightning's; its gravity ramp (`Ж Ф Ц Ш Щ`, 01 (f)), deep magenta toward indigo,
+the force push's ring and warp burst and the black hole's collapse ring and
+under-layers. The bars fill with `hud_liquid_health` and `hud_liquid_mana`, 128 × 10
+strips tileable across that the HUD scrolls by the game clock, and the gun's rounds
+are `hud_bullet` cartridges, an empty `hud_bullet_spent` case for each one fired.
 
 A refused cast spends nothing and says why, once a press: `ex10_no_mana_sfx`
 for want of mana, `ex10_not_ready_sfx` for a cooldown or no charge left, and a
@@ -536,7 +560,7 @@ another slot or summon type ticks (`ex10_spell_switch_sfx`).
 
 Slot 1 casts a fire missile toward the cursor through the kit's `spawn` payload: one
 a press, at most six alive, 0.25 seconds apart, for 8 mana. It leaves 24 pixels out
-from the courier's centre at 900 pixels/second on the kit's `linear_motion`, falls
+from the wizard's centre at 900 pixels/second on the kit's `linear_motion`, falls
 at 360 pixels/second² (a tenth of world gravity), is pulled by black holes like a
 unit-mass body, and fizzles at the kit's projectile range of 1,890 pixels (2.1
 seconds). It is not a physics body; only its blast pushes.
@@ -553,7 +577,7 @@ unit-mass body (a ball) at the centre, falling linearly to nothing at the edge a
 divided by mass, so an iron block barely moves. Every live enemy within it is
 knocked back through the kit's `knock_back`, at the same falloff times its
 kind's black-hole pull (`toys::radial_push`); the troll, whose knockback resists
-the push whole, stands. The courier, a kinematic body, stays put. The force push,
+the push whole, stands. The wizard, a kinematic body, stays put. The force push,
 slot 5, is the same push over six tiles, drawn as a gravity-purple ring with a
 `warp_burst`. The blast ignites every small ball within 72 pixels through
 `elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
@@ -561,8 +585,11 @@ not hurt the player.
 The camera shakes with trauma 0.68 for a blast within a quarter view width of
 the view's centre, less with distance, and
 not at all a view width and a half away.
-In flight it draws the fireball frames at 40 pixels, turned along its velocity,
-with a soft flame glow, a dense comet tail and molten drips as its children, and it
+In flight it draws its own clip, `fire_missile` (01 (h), `actors.missile_frame`),
+at 40 pixels, turned along its velocity and mirrored flying left: a rocket of fire
+with a white-hot nose cone, a body lit along its top with a glowing band, two swept
+fins, a dark nozzle and a licking plume shedding embers, ten self-lit 64-pixel
+frames of 60 ms. It has a soft flame glow and a dense comet tail as its child, and
 carries one warm point light (192-pixel radius). The light fades over 0.3 seconds
 where the missile burns out, or flares and fades over 0.5 seconds where it
 explodes, flaring to four times its flight intensity with twice the light radius.
@@ -693,18 +720,32 @@ and game over.
 
 Hold `cast` on slot 3 to channel the ice spray toward the cursor, for 18 mana a
 second; slot 2's flamethrower is the same spray in fire, half the reach, lighting
-the small balls it meets. The 28-degree cone reaches 448 pixels; seven rays
-stop on colliders and solid tiles, so exposed iron at the sides freezes too.
+the small balls it meets. The 28-degree cone reaches 582 pixels, 9.1 tiles, and
+the flamethrower's 291, 4.55 tiles (01 (h): 30 % further than 01 (f)'s); seven
+rays stop on colliders and solid tiles, so exposed iron at the sides freezes too.
 The nozzle follows the interpolated caster and current aim every drawn frame.
 Its visuals and sound start on press even before the next fixed physics step;
 freezing exposure still uses only simulation time.
-Snowflake crystals, expanding blue-white mist, soft fluttering wisps and contact
-splashes replace the straight beam. Newborn spray particles rotate into their
-birth aim, draw at z 11, over the enemies, the dummy and the courier, from their
-second frame, and expire before blocking surfaces. One channel owns three
-continuous emitters, the ice spray's capped at 292 particles combined under the
-global 2,048 budget and the flamethrower's stream at 180, 330 a second;
-completion and shatter bursts share the existing 16-transient-emitter cap.
+Each spray draws as animated, self-lit sprites at z 11 (01 (h), `toys/spray_look.rs`,
+`effects.SPRAY_CLIPS`): a muzzle flare where the stream leaves the staff
+(`flame_muzzle`, `frost_muzzle`) with a point light at the flame, a stream of puffs
+(`flame_puff`, `frost_puff`), the fire's every 12 ms at 900 pixels/second, the ice's
+every 18 ms at 1,600, each along a line within the cone that stops where it meets
+something, growing and streaking as it flies; a looping splash where the cone
+meets something (`flame_splash`, `frost_splash`); and for the ice a bright core
+beam tiled down the cone (`frost_core`, seamless across, drawn 1.5 times tall). A
+release takes the flare, the light, the splash and the core at once, and the
+puffs in flight play out. The particles are accents: crystals and a light mist,
+or embers and smoke rising off the flame's tip, and the contact's splashes.
+Newborn spray particles rotate into their birth aim, draw at z 11, over the
+enemies, the dummy and the wizard, from their second frame, and expire before
+blocking surfaces within their own spray's reach. One channel owns three
+continuous emitters, the ice spray's capped at 228 particles combined under the
+global 2,048 budget and the flamethrower's at 202. Every second damage pulse, from
+the first, each live target the cone damages bursts at its contact, `frost_hit`
+(12 crystals) or `flame_hit` (14 embers), a cosmetic burst the burst cap may drop;
+a surface keeps the splash alone. Completion and shatter bursts share the existing
+16-transient-emitter cap.
 Each channel varies its seeded particles. Contact splashes prefer the closest
 exposed iron surface across the cone, including contact away from the centerline.
 Mist remains translucent enough to read the target's frost buildup.
@@ -801,7 +842,7 @@ near-white violet). Every new sprite is unlit, drawn over the lit world:
   32 × 3 tracer along +x, a dim tail to a white-hot head, whose head the lightning's
   arcs and veil also take their white from.
 - **The training dummy** (`actors.py`, `dummy`): a straw target on a post, 64 × 64,
-  its lowest pixel on row 60 as the courier's is, drawn unlit with no normal or
+  its lowest pixel on row 60 as a 64 px walker's is, drawn unlit with no normal or
   emissive map, so the kit's hit flash shows through `damage_flash`.
 
 Nine particle configs join, over today's sprites: `muzzle_flash` and `ricochet`
@@ -810,7 +851,7 @@ the dummy's), and `bleed_drips`, `chill_flakes` and `shock_sparks` (the statuses
 each under the shared emitter and particle caps. 01 (e) adds `staff_gutter`, a curl
 of smoke off the staff light's last orange as it gutters out, and `frost_breath`,
 a crawler's puff of frost as it shrinks from the light. 01 (f) adds `blood_burst`
-and `blood_spurt` (a blow on flesh or the courier, and bleeding's start),
+and `blood_spurt` (a blow on flesh or the wizard, and bleeding's start),
 `gore_burst` (iron's kill), `burn_embers`, `warp_burst` (the force push, on
 `flame_glow`'s soft glow in the gravity ramp), `strike_sparks` (a bolt's
 landing), `thaw_glints`, `iron_dust` (a hard landing) and `fizzle` (a refusal),
@@ -821,7 +862,7 @@ and makes `bleed_drips` denser (24 at 14 a second), larger and a brighter maroon
 Slot 7 sets an iron block down at the cursor, for 7.5 mana: three charges, one back
 every 2 seconds; at most 24, the oldest going in a poof. A spot where the block
 would meet a solid tile, a body that is not dynamic (a deck, a slab, lava's
-surface, the elevator, the courier or an enemy) or another block is refused
+surface, the elevator, the wizard or an enemy) or another block is refused
 before the cast spends anything, with a fizzle; balls in the way are shoved
 aside. It is a
 120-pixel square collider, four large-ball diameters on a side, drawn from four
@@ -864,9 +905,9 @@ reviewed on 2026-10-21. Each is one rig posed per frame, drawn unlit with no nor
 emissive map, so the kit's hit flash shows through `damage_flash`; the moonlit top
 and right edges and the glowing eyes are painted into their colours. Every clip's
 frames are `<clip>_<i>`, and `generate.py` mirrors each into a `_left` twin, as it
-does the courier's. `art.py` holds the walkers to their feet's row: the crawler's
-and the beetle's lowest pixel on row 60, as the courier's is, the troll's on row
-124 of its 128 frame (`WALKER_FEET`).
+does the wizard's. `art.py` holds the walkers to their feet's row: the crawler's
+and the beetle's lowest pixel on row 60, the troll's on row 124 of its 128 frame
+(`WALKER_FEET`), as it holds the wizard's on row 92 of his 96 (`PLAYER_FEET`).
 
 | Enemy | Rig | Clips |
 | --- | --- | --- |
@@ -887,9 +928,9 @@ holds each box to its prefab's hurtbox wherever that prefab exists. The size
 classes' `status_ice_<class>` and the ball's `ice_shell` are cubes too. A frozen
 target with health shows `frozen_glints` over the 16-pixel `ice_glint`; frozen balls
 and iron show none. The wisp's embers are `wisp_embers` over the spark. The drops are
-24-pixel orbs, `health_orb` (red) and `mana_orb` (indigo), in a dithered halo,
+24-pixel orbs, `health_orb` (red) and `mana_orb` (mana's blue), in a dithered halo,
 palette pixels only. The summon slot's icons (`icon_wisp` to `icon_goblin`, `icon_crate`, `icon_keg`) are each
-enemy's or prop's frame at half size, the troll's at a quarter, on the dummy's ring.
+enemy's or prop's frame at half size, the troll's at a quarter, on the dummy's ring, which their tiles recolour to mana's blue.
 
 `sfx.py` adds each enemy's sounds, 16-bit mono at 44,100 Hz: `wisp_hum` (a 2-second
 crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `crawler_scared` (a startled hiss as it shrinks from the light), `beetle_paw`,
@@ -897,6 +938,6 @@ crossfaded loop), `wisp_flare`, `crawler_hiss`, `crawler_lunge`, `crawler_scared
 `troll_throw`, `enemy_hit`, `enemy_spotted` (the alert's sting, which each fresh alert sounds through the `alerted` rule since 01 (g)) and `orb_pickup`, registered
 as `ex10_<name>_sfx`. `music_combat` is a fifth music loop at 22,050 Hz, sixteen bars
 at 128 BPM in step with `music_explore`'s bars and chords, which it plays over while
-an enemy sees the courier: toms on every beat, an eighth-note low pulse, string stabs
+an enemy sees the wizard: toms on every beat, an eighth-note low pulse, string stabs
 on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
 seam.

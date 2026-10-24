@@ -1,0 +1,13 @@
+{
+  "frames": [
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_player_hurt_0_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_player_hurt_1_left"
+    }
+  ],
+  "looping": false
+}

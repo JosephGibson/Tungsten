@@ -6,6 +6,25 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.103.0] - 2026-10-24
+
+Summary: M82, example 01's look from the owner's notes of 2026-10-21 and their three reviews of the plan's art-review sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-82-example-01-look.md`; `D-211`), with no kit, engine, template or shell change: a wizard with a big hat whose staff's orb is the staff light, who casts each spell with a gesture, reels when hurt and falls on his back when he dies; one icon family; liquid bars in their own colours and an action bar with each slot's live key, flashes and the gun set apart with its cartridges; the fire missile as a rocket; the sprays 30 % longer, drawn as animated sprites with a light and bursting on what they hit; 01's own theme colours; a starry title in OLED black; save schema 13
+
+### Added
+
+- **The wizard** (`D-211`, `tools/actors.py`): example 01's player on a 96 px frame, a robed wizard with a big felt hat, a white beard and a gnarled staff whose amber orb is the staff light, plain glass that the glow lights, its anchors the drawn glass's centre from the rig; new clips for a hurt, the bolt, push and conjure gestures and the staff's pose, the aim clip now his pistol, and a death that falls back onto the ground; each spell casts with its gesture (`player::Gesture`, `Spell::gesture`), a spell flares the staff light and a blow plays the hurt clip.
+- **The sprays' look** (`D-211`, `toys/spray_look.rs`): a muzzle flare and a light at the flame, a stream of animated puffs that stop where their lines meet something, a splash at the contact and the ice's core beam, the particles kept as accents; every second damage pulse each live target bursts in ice crystals or embers.
+- **The starry title** (`D-211`, `level/title.rs`): while no run is live the title draws the night in OLED black, the view low under the treeline, with forty twinkles and a shooting star every 4 s owned by the title, their particles gone the first frame a run is live.
+- **Art**: the wizard's 66 frames, the icon family's 36 px tiles with a new pistol, mana's blues `И Й З Ю`, the bars' liquids, the cartridges, the fire missile's rocket and its icon, the sprays' seven clips and the title's star, each from the plan's sheet.
+
+### Changed
+
+- **Example 01's HUD** (`D-211`): bars of 168 × 10 texels filled with a scrolling liquid in their own colours, health pulsing at a third or less; each slot's icon tile with its live key on a corner plate, no cost or slot number, the ring in the theme's focus, a white flash as a cooldown of 0.5 s or more ends and a red one on a press refused as not ready, and the summon's name over slot 0 after a turn; the gun set apart with its rounds as cartridges, reading "reloading" through any reload.
+- **The fire missile and the sprays** (`D-211`): the missile flies its own clip, a rocket of fire, its drips gone; the ice spray reaches 9.1 tiles and the flamethrower 4.55, 30 % further, each newborn particle trimmed by its own spray's reach.
+- **Example 01's theme** (`D-211`): the generator writes it from the template's text through a colour map, darker backgrounds and a vivid purple accent, and `check_shell_copies` holds it to the template's structure with its colours masked, amending `D-199`; 01 checks its own contrast.
+- **Example 01's save** (`D-211`): schema 13; `migrate` moves a save's player corner by (−16, −32) onto the wizard's frame, so the body stands where it stood, taking schemas 7 to 12 through it.
+- **Records**: the feedback plan's §3.4 landing, the 01 design's notes for (h), known issue P3's light count, example 01's READMEs and the register.
+
 ## [0.102.0] - 2026-10-23
 
 Summary: M81, example 01's props and foes from the owner's notes of 2026-10-21 (plan archived at `docs/plans/archive/1.0/phase6-milestone-81-example-01-props-foes.md`; `D-210`), with no kit, engine, template or shell change: pine crates that burn and fall in and powder kegs on a fuse that blow and set each other off, credited to whoever lit them; a goblin sapper that throws rocks that stay and one rolling bomb in five, stabs a courier too close and hops what it can; the troll's quicker slam with a dust ring, a grunt and a shake, a fast swipe and a kick by mass; "!" and "?" over the enemies and one sting an alert; crates, kegs and seven goblins on the map and in the summon slot; save schema 12.
