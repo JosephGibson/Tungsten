@@ -1,19 +1,23 @@
 //! The hazards: lava's surface, which holds the player, its touch, which
 //! burns and throws on every touch, hurting once a window, and a dying touch
-//! starting the death screen; a hit's flash, shake and sound; and the fire
-//! hazards the level's data may place, which burst fast balls they sweep.
+//! starting the death screen; what falls into lava, taken or set off; a
+//! hit's flash, shake and sound; and the fire hazards the level's data may
+//! place, which burst fast balls they sweep.
 
+use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::BURNING;
 use example_01_platformer::features::enemies::{self, components::EnemyKind};
 use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::props::{self, components::PropKind};
+use example_01_platformer::features::toys;
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
     AudioCommand, Bundle, CameraController, Collider, Entity, Position, PrevPosition,
-    RigidBodyBundle, SoundRegistry, Transform,
+    RigidBodyBundle, SoundRegistry, Transform, World,
 };
 use tungsten::kit::{ContactDamage, DamageRequest, Damaged, Health, HitFlash, Tags, damage, heal};
 use tungsten::testing::UiHarness;
@@ -355,8 +359,83 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
         centre(&harness, player).y + PLAYER_HALF.y < surface - 20.0,
         "thrown up"
     );
-    harness.step(60);
-    assert!(body(&harness, rock).y > surface + 32.0, "the ball fell in");
+    // 14 frames past the melt: the lava takes the ball within 60.
+    harness.step(46);
+    assert!(!harness.world().is_alive(rock), "the ball fell in and went");
+}
+
+/// A body dropped into the world with its centre at a point.
+type Drop = fn(&mut World, Vec2) -> Entity;
+
+/// The sounds of `sound` in the last frame.
+fn sounded(harness: &UiHarness, sound: Sound) -> usize {
+    harness
+        .harness()
+        .events::<Sounded>()
+        .filter(|sounded| sounded.sound == sound)
+        .count()
+}
+
+#[test]
+fn lava_takes_what_falls_in_and_sets_off_a_keg() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    let mut basins = lava(&harness);
+    let corner = |harness: &UiHarness, basin: Entity| {
+        harness.world().get::<Transform>(basin).unwrap().position
+    };
+    basins.sort_by(|a, b| corner(&harness, *a).x.total_cmp(&corner(&harness, *b).x));
+    // The lake, the second basin from the west, and a point over its middle.
+    let lake = basins[1];
+    let over = Vec2::new(
+        corner(&harness, lake).x + 128.0,
+        skin(&harness, lake) - 96.0,
+    );
+    let drops: [(&str, Drop); 4] = [
+        ("a small ball", |world, at| {
+            toys::spawn_ball(world, at, true)
+        }),
+        ("a bowling ball", |world, at| {
+            toys::spawn_ball(world, at, false)
+        }),
+        ("a crate", |world, at| {
+            props::spawn(world, PropKind::Crate, at)
+        }),
+        ("an iron block", toys::place_iron),
+    ];
+    for (name, drop) in drops {
+        let body = drop(harness.world_mut(), over);
+        let (mut gone, mut heard) = (false, 0);
+        for _ in 0..60 {
+            harness.step(1);
+            let sizzles = sounded(&harness, Sound::LavaTook);
+            assert!(sizzles <= 1, "one sizzle a step");
+            heard += sizzles;
+            if !harness.world().is_alive(body) {
+                gone = true;
+                break;
+            }
+        }
+        assert!(
+            gone && heard == 1,
+            "{name}: taken within a second, with a sizzle"
+        );
+    }
+    // A keg is set off, its blast heard as it goes.
+    let keg = props::spawn(harness.world_mut(), PropKind::Keg, over);
+    let mut blasted = false;
+    for _ in 0..60 {
+        harness.step(1);
+        assert!(sounded(&harness, Sound::LavaTook) <= 1, "one sizzle a step");
+        blasted |= sounded(&harness, Sound::KegBlasted) > 0;
+        if !harness.world().is_alive(keg) {
+            break;
+        }
+    }
+    assert!(blasted, "the keg went off");
+    assert!(!harness.world().is_alive(keg), "and is gone");
 }
 
 #[test]

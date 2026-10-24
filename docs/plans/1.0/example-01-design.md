@@ -386,7 +386,7 @@ Fallback: (d) is content with no public API. If Phase 6 runs long, the feature g
 
 ## After (d): the feedback stops
 
-The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release; their notes of 2026-10-22 added two between (e) and (f), the quick fixes and a level and title pass.
+The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release; their notes of 2026-10-22 added two between (e) and (f), the quick fixes and a level and title pass, and their notes of 2026-10-24 three after (h): (i) fixes and tuning, (j) pushes and spells and (k) scenery, the aqueduct and the start.
 
 - **As built, 01 (e) (M77, `D-205`).** Where it changed this file's rules and its stops' rows:
   - the player's lantern is the staff light's flame until (h)'s wizard: a kit ability burns 3 mana a second while it is lit, handed back at full mana, where the regeneration covers it; without mana it gutters out and relights at 10 (feedback Q15); 01 (c)'s crawler holds at the light's drawn edge, scared, with a clip, a hiss and a puff of frost breath, where it parked unexplained;
@@ -431,3 +431,11 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - the icons are one family on 36 px tiles; the HUD's bars fill with a scrolling liquid in their own colours, each slot shows its live key with no cost or number, the gun stands apart with its rounds as cartridges, and no HUD widget takes the theme's accent;
   - the fire missile has its own clip, a rocket; the sprays reach 9.1 and 4.55 tiles, draw as animated sprites with a light, their particles accents, and burst on each live target every second damage pulse;
   - 01's theme is the template's structure in its own colours, which `just repo-check` holds by its masked text, amending `D-199`'s copy check; the title draws the night in OLED black with its own stars.
+- **As built, 01 (i) (M83, `D-212`).** Where it changed this file's rules and (b)'s, (c)'s, (d)'s and (h)'s rows:
+  - the crawler leaps at a courier within 300 px, 53 px up and 224 px out, about 290 px with its skid, and its touch chills for 15; a moving body under 4 hits by half its mass, and a hit under 2 lands nothing;
+  - the ice spray deals 15 cold a second, half the flame's fire, on a cold ladder whose gates halve (chill at 0.15 and freeze at 0.5 of a threshold) and whose drain halves, so it freezes as fast as before;
+  - the difficulty scales the enemies alone; the player has 100 health at each;
+  - the bats hang flush under their roofs from the start; the elevator sets a player caught in its deck out of it and turns back over a player under it; a still rider idles on it through the kit's `CharacterAnimator`, which now takes a moving floor's velocity off (feedback K24);
+  - a drop lands where its enemy fell, clear of the rock, and falls at 120 px/s unless the player, reaching 192 px, draws it in at 480 px/s; lava takes what falls into it and sets off kegs and bombs; F1 draws each blow's box while it lands, 1.5 px in a deep red, as the kit now draws an armed hitbox; the air jump sounds like a jump; no reaction shows a hint;
+  - at the owner's review of its frames: the theme's background and surface a step darker, the title's stars in three sizes on their own slow time, and the troll walking at 91 with a 2 s slam cooldown;
+  - the save is schema 14, carrying an older save's player maximum (keeping its share), reach, crawler damage, troll walk and cold build-ups to this stop's values and dropping its hints.

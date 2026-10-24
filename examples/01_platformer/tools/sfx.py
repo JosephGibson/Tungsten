@@ -1720,19 +1720,24 @@ def flame_end():
 
 
 def air_jump():
-    """The courier's second jump: the cloak snapping open in a soft upward
-    whoosh, with a faint bright chime."""
-    noise, low, high = Noise(0xA1E0), LowPass(), LowPass()
+    """The courier's second jump, a jump's push-off made in the air: a short
+    breathy puff of low noise over a soft thump, rising into a quick upward
+    whoosh, about a quarter of a second."""
+    duration = 0.25
+    noise, breath, soft, low, high = Noise(0xA1E0), LowPass(), LowPass(), LowPass(), LowPass()
     samples = []
-    for i in range(int(0.32 * RATE)):
+    for i in range(int(duration * RATE)):
         t = i / RATE
-        p = t / 0.32
         n = noise()
-        whoosh = (low(n, glide(700, 3600, p)) - high(n, glide(250, 1100, p))) * math.sin(math.pi * min(1.0, p * 1.2)) ** 1.5
-        flap = .75 + .25 * (.5 + .5 * math.sin(math.tau * 26 * t))
-        samples.append(1.6 * whoosh * flap)
-    place(samples, int(0.02 * RATE), chime(note('A6'), 0.25, 0.18, decay=0.06))
-    return finish(samples, fade_in=0.003, fade_out=0.04)
+        # The push-off: low, breathy noise through two poles, in at once and
+        # gone by 80 ms.
+        puff = soft(breath(n, 700), 700) * (1 - math.exp(-t / 0.003)) * math.exp(-t / 0.03)
+        # The rise: a band of noise sweeping up, swelling as the puff fades.
+        p = max(0.0, (t - 0.015) / (duration - 0.015))
+        rise = (low(n, glide(500, 3000, p)) - high(n, glide(180, 800, p))) * math.sin(math.pi * p) ** 2
+        samples.append(3.0 * puff + 1.2 * rise)
+    place(samples, 0, thud(140, 0.08, 0.3, 0xA1E1))
+    return finish(samples, fade_in=0.002, fade_out=0.03)
 
 
 def no_mana():

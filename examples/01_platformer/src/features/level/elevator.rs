@@ -10,17 +10,28 @@
 //! moves a rider uncast after its own move, so a rider past an edge would
 //! be lifted into the upper level's deck, and a loaded rider's still first
 //! step finds no ground. Such a trip holds until its riders are safe again.
+//!
+//! Core leaves a kinematic body's pairs unsolved, so it keeps the player out
+//! of its deck itself, each step before anything else: a player inside the
+//! deck by more than [`ON_TOP`] is set out above it, or below it when its
+//! centre is under the deck's, the other side when a tile or a wall fills
+//! that one; and a falling deck whose box, swept down by its eased path's
+//! fastest step, meets a player under it turns back to the top, from where
+//! it comes down again [`RETURN_SECS`] later, so a player who stays under
+//! it keeps it up.
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, Collider, Entity, Position, Shape, Sprite, Time, Transform, Velocity,
-    Visibility, World,
+    AssetRegistry, Collider, Entity, Position, PrevPosition, Shape, Sprite, Time, Transform,
+    Velocity, Visibility, World,
 };
 use tungsten::kit::{PathFollower, PlatformerController};
+use tungsten::physics::{SpatialFilter, overlap};
 
 use crate::features::audio::{self, components::Sound};
+use crate::features::enemies::WALL_LAYERS;
 use crate::features::run::Run;
 use crate::game::GAMEPLAY;
 
@@ -31,8 +42,9 @@ pub const RETURN_SECS: f32 = 4.0;
 /// How far inside its edges every rider's body must stand: one step's run
 /// at the player's speed and some.
 pub const MARGIN: f32 = 12.0;
-/// How near its top a body's feet stand on it.
-const ON_TOP: f32 = 2.0;
+/// How near its top a body's feet stand on it, and how deep inside it a
+/// player may be before it is set out.
+pub const ON_TOP: f32 = 2.0;
 /// The map's marker where the cable leaves the gantry's sheave.
 pub const SHEAVE_MARKER: &str = "lift_sheave";
 /// The cable's sprite, a rope down its middle, and its depth: behind the
@@ -144,6 +156,84 @@ fn riders(world: &World, deck: Entity, (min, max): (Vec2, Vec2)) -> (bool, bool)
     (player_on, unsafe_)
 }
 
+/// Whether a tile or a wall fills `collider`'s box at `at`, a pixel in from
+/// each side: the tiles alone, then the walls' layers, two queries, since a
+/// mask filters the tiles too.
+fn filled(world: &World, at: Vec2, collider: &Collider) -> bool {
+    let Shape::Aabb { half_extents } = collider.shape else {
+        return false;
+    };
+    let shape = Shape::Aabb {
+        half_extents: (half_extents - Vec2::ONE).max(Vec2::ZERO),
+    };
+    let centre = at + collider.offset;
+    let mut met = Vec::new();
+    [
+        SpatialFilter::new().with_bodies(false),
+        SpatialFilter::new().with_mask(WALL_LAYERS),
+    ]
+    .iter()
+    .any(|filter| {
+        overlap(world, shape, centre, filter, &mut met);
+        !met.is_empty()
+    })
+}
+
+/// Sets `player` out of the deck whose box is `(min, max)` when its body is
+/// inside it by more than [`ON_TOP`]: above when its centre is above the
+/// deck's, else below, the other side when a tile or a wall fills the
+/// first; its point and its last point moved alike, its velocity stopped.
+fn set_out(world: &mut World, player: Entity, (min, max): (Vec2, Vec2)) {
+    let (Some(at), Some(collider)) = (
+        world.get::<Position>(player).map(|at| at.0),
+        world.get::<Collider>(player).copied(),
+    ) else {
+        return;
+    };
+    let Some((low, high)) = bounds(at, &collider) else {
+        return;
+    };
+    let across = high.x.min(max.x) - low.x.max(min.x);
+    let deep = high.y.min(max.y) - low.y.max(min.y);
+    if across <= 0.0 || deep <= ON_TOP {
+        return;
+    }
+    let up = Vec2::new(0.0, min.y - high.y);
+    let down = Vec2::new(0.0, max.y - low.y);
+    let (first, other) = if low.y + high.y < min.y + max.y {
+        (up, down)
+    } else {
+        (down, up)
+    };
+    let to = if filled(world, at + first, &collider) {
+        at + other
+    } else {
+        at + first
+    };
+    if let Some(position) = world.get_mut::<Position>(player) {
+        position.0 = to;
+    }
+    if let Some(previous) = world.get_mut::<PrevPosition>(player) {
+        previous.0 = to;
+    }
+    if let Some(velocity) = world.get_mut::<Velocity>(player) {
+        velocity.0 = Vec2::ZERO;
+    }
+}
+
+/// Whether `player`'s body is under the deck whose box is `(min, max)`,
+/// within `reach` of its underside: past its top by more than [`ON_TOP`],
+/// so not a rider on it.
+fn under(world: &World, player: Entity, (min, max): (Vec2, Vec2), reach: f32) -> bool {
+    let (Some(at), Some(collider)) = (world.get::<Position>(player), world.get::<Collider>(player))
+    else {
+        return false;
+    };
+    bounds(at.0, collider).is_some_and(|(low, high)| {
+        low.x < max.x && high.x > min.x && low.y < max.y + reach && high.y > min.y + ON_TOP
+    })
+}
+
 /// Sends `deck` from where it stands toward `to`, a fresh follower.
 fn go(world: &mut World, deck: Entity, to: Vec2, speed: f32) {
     let Some(from) = world.get::<Position>(deck).map(|at| at.0) else {
@@ -165,13 +255,15 @@ fn halt(world: &mut World, deck: Entity) {
     }
 }
 
-/// `elevator_tick`, in the intent phase before the path follower: boards,
-/// returns, holds and arrivals.
+/// `elevator_tick`, in the intent phase before the path follower: the
+/// player set out of a deck it is inside, a falling deck turned back over
+/// the player, then boards, returns, holds and arrivals.
 pub fn tick(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
         return;
     }
+    let player = world.get_resource::<Run>().map(|run| run.player);
     let lifts: Vec<(Entity, Elevator)> = world
         .query::<(Entity, &Elevator)>()
         .map(|(entity, lift)| (entity, *lift))
@@ -186,6 +278,20 @@ pub fn tick(world: &mut World) {
         let Some(deck_box) = bounds(at, &collider) else {
             continue;
         };
+        if let Some(player) = player {
+            set_out(world, player, deck_box);
+            // The eased path's fastest step, at π/2 of its mean speed.
+            let reach = lift.speed * std::f32::consts::FRAC_PI_2 * dt + ON_TOP;
+            if lift.stop == Stop::Falling && under(world, player, deck_box, reach) {
+                halt(world, deck);
+                go(world, deck, lift.top, lift.speed);
+                lift.stop = Stop::Rising;
+                lift.held = false;
+                lift.board = None;
+                lift.idle = 0.0;
+                audio::play(world, Sound::LiftStarted, at);
+            }
+        }
         let (player_on, unsafe_) = riders(world, deck, deck_box);
         match lift.stop {
             Stop::Bottom | Stop::Top => {

@@ -96,6 +96,23 @@ fn the_hit_items_draw_their_shapes_at_their_points() {
     world.spawn_with((at(40.0), crate::Pickup::new(shape)));
     // A contact damage without its own shape draws through its hurtbox.
     assert_eq!(frame(&mut world, &mut schedule), 4);
+    // A windowed hitbox draws only while its window is open, in the deep
+    // red and the wider line.
+    let blow = world.spawn_with((at(50.0), crate::Hitbox::new(shape, 1.0).with_window(0.5)));
+    assert_eq!(frame(&mut world, &mut schedule), 4, "closed: nothing");
+    world.get_mut::<crate::Hitbox>(blow).unwrap().arm();
+    assert_eq!(frame(&mut world, &mut schedule), 5, "open: its circle");
+    let hits: Vec<f32> = world
+        .resource::<DebugDraw>()
+        .commands()
+        .iter()
+        .filter(|drawn| drawn.color == HITBOX_COLOR)
+        .map(|drawn| drawn.thickness)
+        .collect();
+    assert_eq!(
+        hits, [HIT_THICKNESS; 2],
+        "both hitboxes, deep red and wider"
+    );
 }
 
 #[test]

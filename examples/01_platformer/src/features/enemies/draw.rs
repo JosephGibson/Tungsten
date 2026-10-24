@@ -4,18 +4,22 @@
 //! it while it charges; a troll's slam's dust ring growing on the ground
 //! over its tell; each flat colour, one white texel of a particle sprite,
 //! tinted. And each enemy's mark over its frame: "!" after a fresh alert,
-//! "?" through a search.
+//! "?" through a search. Under F1, the colliders' overlay, the kit's debug
+//! shapes draw too, with 01's own blows beside its armed hitboxes while
+//! they land ([`debug_boxes`]).
 
 use std::f32::consts::TAU;
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Entity, SpriteAsset, Transform, World};
-use tungsten::kit::{Health, StateMachine};
+use tungsten::PhysicsDebugOverlay;
+use tungsten::core::{AssetRegistry, DebugDraw, Entity, SpriteAsset, Transform, World};
+use tungsten::kit::{Health, KitDebug, StateMachine};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use super::beetle::PAW_SECS;
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
-use super::troll::{self, FIST, SLAM_REACH, SLAM_TELL};
+use super::goblin::{self, STAB_HALF};
+use super::troll::{self, FIST, SLAM_REACH, SLAM_TELL, SWIPE_HALF};
 use super::{KindInfo, SEARCH_MARK_AFTER};
 use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
@@ -282,4 +286,68 @@ pub fn marks(world: &World) -> Vec<SpriteBatch> {
         push_quad(&mut batches, asset, quad, None);
     }
     batches
+}
+
+/// The kit's armed hitbox under its debug drawing, its deep red and its
+/// line's width, which 01's own blows draw in.
+pub const HIT_COLOR: [f32; 4] = [0.8, 0.02, 0.06, 1.0];
+pub const HIT_THICKNESS: f32 = 1.5;
+
+/// The blow `enemy` is landing: its strike while it is in its attack, the
+/// window its blow's test opens; none at any other time.
+fn blow(world: &World, enemy: Entity) -> Option<Strike> {
+    let attacking = world
+        .get::<StateMachine<EnemyState>>(enemy)
+        .is_some_and(|machine| machine.state() == EnemyState::Attack);
+    attacking
+        .then(|| world.get::<Brain>(enemy).and_then(|brain| brain.strike))
+        .flatten()
+}
+
+/// `enemy_debug_boxes`, in the present phase before the kit's debug draw:
+/// the kit's debug shapes follow the colliders' overlay (F1), and while it
+/// is on each live goblin's stab box and each live troll's swipe box or its
+/// slam's reach about its fist draw in [`HIT_COLOR`], as the kit draws an
+/// armed hitbox, while that blow's attack runs: 01's blows are box tests of
+/// its own, not kit hitboxes.
+pub fn debug_boxes(world: &mut World) {
+    let on = world
+        .get_resource::<PhysicsDebugOverlay>()
+        .is_some_and(|overlay| overlay.enabled);
+    if let Some(debug) = world.get_resource_mut::<KitDebug>() {
+        debug.set_enabled(on);
+    }
+    if !on {
+        return;
+    }
+    let Some(mut draw) = world.remove_resource::<DebugDraw>() else {
+        return;
+    };
+    for (enemy, _, health) in world.query::<(Entity, &Enemy, &Health)>() {
+        if health.is_dead() {
+            continue;
+        }
+        let mut outline = |at: Vec2, half: Vec2| {
+            draw.draw_aabb(at - half, at + half, HIT_COLOR, HIT_THICKNESS);
+        };
+        match blow(world, enemy) {
+            Some(Strike::Stab) => {
+                if let Some(at) = goblin::stab_box(world, enemy) {
+                    outline(at, STAB_HALF);
+                }
+            }
+            Some(Strike::Swipe) => {
+                if let Some(at) = troll::swipe_box(world, enemy) {
+                    outline(at, SWIPE_HALF);
+                }
+            }
+            Some(Strike::Slam) => {
+                if let Some(fist) = troll::fist(world, enemy) {
+                    draw.draw_circle(fist, SLAM_REACH, HIT_COLOR, HIT_THICKNESS);
+                }
+            }
+            _ => {}
+        }
+    }
+    world.insert_resource(draw);
 }

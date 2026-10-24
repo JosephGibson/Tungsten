@@ -39,7 +39,6 @@ use super::{
     STEAM_PART, STEAM_PUSH, TARGET_BLAST,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::components::Reaction;
 use crate::features::combat::{self, BURNING, Kind, has_status};
 use crate::features::props::components::{Bomb, Crate, Keg, Rock};
 use crate::features::props::{self, PROP_BLAST};
@@ -834,5 +833,4 @@ fn steam(
     }
     spawn_burst(world, "ex10_steam_burst", at);
     audio::play(world, Sound::Steamed, at);
-    combat::react(world, Reaction::Steam);
 }

@@ -295,8 +295,8 @@ layout as the generator writes it: the areas tile the columns; the tests' sky
 (columns 0–37, rows 0–19) holds no tile or object but the areas' zones; no
 92 × 52 window, the 16:9 view at the minimum zoom, holds more than 10 of the
 map's lights (`LIGHT_WINDOW`, `LIGHT_BUDGET`), which leaves the player's
-lantern, a strike and three missiles under the renderer's 16; each bat has a
-roof within 480 px above it; each fire's sweep stays clear of the terrain; the
+lantern, a strike and three missiles under the renderer's 16; each bat hangs
+flush under a roof; each fire's sweep stays clear of the terrain; the
 pit's shell holds the balls; no iron lies under open air; lava stays in its
 basin; and `backs` stay outdoors.
 

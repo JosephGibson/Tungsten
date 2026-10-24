@@ -1,6 +1,8 @@
 //! The level from its generator, on the kit's controller and path follower:
 //! every route's jumps, a ride through a platform's cycle, the platforms'
-//! sweeps, a thin deck's underside, and one collider per slab and iron box.
+//! sweeps, the elevator turning back over a player and setting one out of
+//! its deck, a still rider idling on it, a thin deck's underside, and one
+//! collider per slab and iron box.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,13 +11,13 @@ use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::{LAVA_LAYER, MAP, TILE};
 use example_01_platformer::features::player::{self, PLAYER_HALF};
 use example_01_platformer::features::run::Run;
-use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{
-    Collider, Entity, LayerKind, PhysicsConfig, Position, RigidBody, Shape, Sprite, TilemapRegistry,
+    Collider, Entity, LayerKind, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Sprite,
+    TilemapRegistry,
 };
-use tungsten::kit::{PathFollower, PlatformerController};
+use tungsten::kit::{CharacterAnimator, PathFollower, PlatformerController};
 use tungsten::physics::BodyKind;
 use tungsten::testing::UiHarness;
 
@@ -193,7 +195,7 @@ fn fresh_player(harness: &mut UiHarness, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let old = world.resource::<Run>().player;
     world.despawn(old);
-    let player = player::spawn(world, centre, Difficulty::Normal);
+    let player = player::spawn(world, centre);
     world.resource_mut::<Run>().player = player;
     player
 }
@@ -660,6 +662,171 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     harness.harness_mut().release_action("move_right");
     assert!(running && held, "the overhanging rider held it");
     assert_eq!(stop(&harness), Stop::Top, "it went on to the top");
+}
+
+/// The run's elevator, its deck and its state.
+fn elevator(harness: &UiHarness) -> (Entity, Elevator) {
+    harness
+        .world()
+        .query::<(Entity, &Elevator)>()
+        .map(|(entity, lift)| (entity, *lift))
+        .next()
+        .expect("the elevator")
+}
+
+/// The deck's box: its min and max corners.
+fn deck_box(harness: &UiHarness, deck: Entity) -> (Vec2, Vec2) {
+    let world = harness.world();
+    let at = world.get::<Position>(deck).unwrap().0;
+    let collider = world.get::<Collider>(deck).unwrap();
+    let Shape::Aabb { half_extents } = collider.shape else {
+        unreachable!()
+    };
+    let centre = at + collider.offset;
+    (centre - half_extents, centre + half_extents)
+}
+
+/// Whether the player's body is inside the deck by more than half a pixel.
+fn inside_deck(harness: &UiHarness, deck: Entity, player: Entity) -> bool {
+    let (min, max) = deck_box(harness, deck);
+    let at = centre(harness, player);
+    let (low, high) = (at - PLAYER_HALF, at + PLAYER_HALF);
+    high.x.min(max.x) - low.x.max(min.x) > 0.5 && high.y.min(max.y) - low.y.max(min.y) > 0.5
+}
+
+/// The run on the map at a fixed step a frame, its enemies off, with the
+/// elevator at its top stop, left there unridden.
+fn lift_at_top() -> (UiHarness, Entity, Elevator) {
+    let mut harness = harness();
+    start(&mut harness);
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let (deck, lift) = elevator(&harness);
+    let world = harness.world_mut();
+    world.get_mut::<Position>(deck).unwrap().0 = lift.top;
+    world.get_mut::<PrevPosition>(deck).unwrap().0 = lift.top;
+    world.get_mut::<Elevator>(deck).unwrap().stop = Stop::Top;
+    harness.step(1);
+    (harness, deck, lift)
+}
+
+/// Steps until the elevator, left at its top, has come down on `player`,
+/// turned back and stood at its top again, at most 900 frames; the stops it
+/// passed through, the player never inside its deck.
+fn turned_back(harness: &mut UiHarness, deck: Entity, player: Entity) -> Vec<Stop> {
+    let mut stops = vec![Stop::Top];
+    for frame in 0..900 {
+        harness.step(1);
+        assert!(
+            !inside_deck(harness, deck, player),
+            "frame {frame}: the deck {:?} over the player at {}",
+            deck_box(harness, deck),
+            centre(harness, player)
+        );
+        let stop = elevator(harness).1.stop;
+        if stops.last() != Some(&stop) {
+            stops.push(stop);
+        }
+        if stops.len() == 4 {
+            break;
+        }
+    }
+    stops
+}
+
+#[test]
+fn the_elevator_turns_back_over_a_player_and_sets_one_inside_out() {
+    let level = source();
+    let bed = level.platform("shaft_bed").row * TILE;
+    // A player standing on the shaft's bed under the bottom stop.
+    let (mut harness, deck, _) = lift_at_top();
+    let middle = deck_box(&harness, deck).0.x + 96.0;
+    let player = fresh_player(&mut harness, Vec2::new(middle, bed - PLAYER_HALF.y - 0.5));
+    let stops = turned_back(&mut harness, deck, player);
+    assert_eq!(
+        stops,
+        [Stop::Top, Stop::Falling, Stop::Rising, Stop::Top],
+        "it turned back over the player on the bed"
+    );
+    // A player standing on a slab halfway down, which the deck meets at its
+    // eased path's top speed.
+    let (mut harness, deck, lift) = lift_at_top();
+    let half_way = (lift.top.y + lift.bottom.y) * 0.5;
+    let (min, max) = deck_box(&harness, deck);
+    let head = half_way + (max.y - min.y) + (min.y - lift.top.y) + 4.0;
+    let feet = head + PLAYER_HALF.y * 2.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(middle, feet + 10.0),
+        Vec2::new(96.0, 10.0),
+    );
+    harness.step(1);
+    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    let stops = turned_back(&mut harness, deck, player);
+    assert_eq!(
+        stops,
+        [Stop::Top, Stop::Falling, Stop::Rising, Stop::Top],
+        "it turned back over the player on the slab"
+    );
+    // At rest, a player inside its deck's top and one inside its bottom:
+    // each set out, the first standing on it.
+    for (inset, stands) in [(6.0, true), (-6.0, false)] {
+        let mut rest = super::harness();
+        start(&mut rest);
+        calm(&mut rest);
+        rest.harness_mut().set_dt(DT);
+        let (deck, lift) = elevator(&rest);
+        assert_eq!(lift.stop, Stop::Bottom);
+        let (min, max) = deck_box(&rest, deck);
+        let y = if inset > 0.0 {
+            min.y + inset
+        } else {
+            max.y + inset
+        };
+        let player = fresh_player(&mut rest, Vec2::new(middle, y));
+        rest.step(2);
+        assert!(!inside_deck(&rest, deck, player), "set out from {y}");
+        if stands {
+            let ground = rest
+                .world()
+                .get::<PlatformerController>(player)
+                .unwrap()
+                .ground();
+            assert_eq!(ground, Some(deck), "standing on it");
+        }
+    }
+}
+
+#[test]
+fn a_still_rider_idles_on_the_rising_elevator() {
+    let mut harness = harness();
+    start(&mut harness);
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let (deck, _) = elevator(&harness);
+    let (min, _) = deck_box(&harness, deck);
+    let middle = min.x + 96.0;
+    let player = fresh_player(&mut harness, Vec2::new(middle, min.y - PLAYER_HALF.y - 0.5));
+    let state = |harness: &UiHarness| {
+        harness
+            .world()
+            .get::<CharacterAnimator>(player)
+            .unwrap()
+            .state()
+    };
+    let mut rising = 0;
+    for _ in 0..600 {
+        harness.step(1);
+        match elevator(&harness).1.stop {
+            Stop::Rising => {
+                rising += 1;
+                assert_eq!(state(&harness), "idle", "a still rider, {rising} frames up");
+            }
+            Stop::Top => break,
+            _ => {}
+        }
+    }
+    assert!(rising > 60, "it rose with the rider: {rising} frames");
 }
 
 #[test]

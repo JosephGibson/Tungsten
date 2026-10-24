@@ -10134,19 +10134,19 @@
       "kind": "bat",
       "name": "ravine bat a",
       "x": 163.5,
-      "y": 35.3
+      "y": 34
     },
     {
       "kind": "bat",
       "name": "ravine bat b",
       "x": 171.5,
-      "y": 35.3
+      "y": 34
     },
     {
       "kind": "bat",
       "name": "ravine bat c",
       "x": 209.5,
-      "y": 58.2
+      "y": 57
     },
     {
       "kind": "wisp",
@@ -10194,25 +10194,25 @@
       "kind": "bat",
       "name": "aqueduct bat a",
       "x": 98.0,
-      "y": 30.3
+      "y": 29
     },
     {
       "kind": "bat",
       "name": "aqueduct bat b",
       "x": 141.0,
-      "y": 30.3
+      "y": 29
     },
     {
       "kind": "bat",
       "name": "ravine bat d",
       "x": 189.0,
-      "y": 47.3
+      "y": 46
     },
     {
       "kind": "bat",
       "name": "ravine bat e",
       "x": 198.0,
-      "y": 59.3
+      "y": 58
     },
     {
       "kind": "crawler",

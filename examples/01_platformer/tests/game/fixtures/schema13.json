@@ -1,0 +1,4665 @@
+{
+  "envelope": 1,
+  "slot": "slot_1",
+  "schema": 13,
+  "engine_version": "0.103.0",
+  "saved_at_ms": 1792859943065,
+  "data": {
+    "meta": {
+      "game_version": "0.103.0",
+      "difficulty": "easy",
+      "playtime_secs": 0.2166666779667139
+    },
+    "next_id": 63,
+    "rng": {
+      "seed": 7739845387903461153,
+      "draws": 0,
+      "rng": {
+        "state": 4293549164649142860,
+        "inc": 17142672548756564293
+      }
+    },
+    "area": "Lantern clearing",
+    "spell": 0,
+    "lantern": false,
+    "lantern_guttered": false,
+    "player": {
+      "id": 43,
+      "position": [
+        368.0,
+        2210.9902
+      ],
+      "velocity": [
+        0.0,
+        0.0
+      ],
+      "controller": {
+        "run_speed": 560.0,
+        "jump_speed": 1280.0,
+        "gravity": null,
+        "coyote_time": 0.1,
+        "jump_buffer": 0.1,
+        "jump_cut": 0.5,
+        "air_jumps": 1,
+        "run": 0.0,
+        "jump_held": false,
+        "pressed": false,
+        "launch": null,
+        "push": [
+          0.0,
+          0.0
+        ],
+        "buffer_left": 0.0,
+        "coyote_left": 0.1,
+        "lock_left": 0.0,
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "grounded": true,
+        "jumped": false,
+        "air_jumped": false,
+        "cut_armed": false,
+        "air_jumps_left": 1
+      },
+      "health": {
+        "current": 120.0,
+        "max": 150.0,
+        "invulnerability": 1.1,
+        "window_left": 1.0333334
+      },
+      "stats": {
+        "mana": {
+          "base": 100.0,
+          "min": 0.0,
+          "max": null
+        },
+        "max_health": {
+          "base": 150.0,
+          "min": 1.0,
+          "max": null
+        },
+        "max_mana": {
+          "base": 100.0,
+          "min": 0.0,
+          "max": null
+        },
+        "move_speed": {
+          "base": 560.0,
+          "min": 0.0,
+          "max": null
+        },
+        "pickup_radius": {
+          "base": 96.0,
+          "min": 0.0,
+          "max": null
+        }
+      },
+      "effects": {
+        "pending": [],
+        "instances": [
+          {
+            "effect": "mana_regen",
+            "stacks": 1,
+            "left": null,
+            "period_left": 0.10000001,
+            "factor": 1.0,
+            "serial": 0,
+            "granted": []
+          }
+        ],
+        "next_serial": 1,
+        "granted": []
+      },
+      "sources": [],
+      "abilities": {
+        "entries": [
+          {
+            "name": "fire_missile",
+            "ability": "fire_missile",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "flamethrower",
+            "ability": "flamethrower",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "ice_spray",
+            "ability": "ice_spray",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "force_push",
+            "ability": "force_push",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "black_hole",
+            "ability": "black_hole",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "iron_block",
+            "ability": "iron_block",
+            "cooldown_left": 0.0,
+            "charges": 3,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "bowling_ball",
+            "ability": "bowling_ball",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "small_balls",
+            "ability": "small_balls",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "lightning",
+            "ability": "lightning",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "gun",
+            "ability": "gun",
+            "cooldown_left": 0.0,
+            "charges": 9,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "summon",
+            "ability": "summon",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          },
+          {
+            "name": "staff_light",
+            "ability": "staff_light",
+            "cooldown_left": 0.0,
+            "charges": null,
+            "refill_left": 0.0,
+            "interval_left": 0.0
+          }
+        ]
+      },
+      "buckets": {},
+      "tags": [
+        "team.player"
+      ]
+    },
+    "platforms": [
+      {
+        "id": 3,
+        "position": [
+          556.8,
+          2128.0503
+        ],
+        "follower": {
+          "points": [
+            [
+              556.8,
+              2126.1
+            ],
+            [
+              556.8,
+              2254.1
+            ]
+          ],
+          "speed": 46.545456,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.21666667
+        }
+      },
+      {
+        "id": 4,
+        "position": [
+          8490.018,
+          2260.5
+        ],
+        "follower": {
+          "points": [
+            [
+              8486.4,
+              2260.5
+            ],
+            [
+              8870.4,
+              2260.5
+            ]
+          ],
+          "speed": 109.71429,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.21666667
+        }
+      },
+      {
+        "id": 5,
+        "position": [
+          9324.8,
+          1850.5322
+        ],
+        "follower": {
+          "points": [
+            [
+              9324.8,
+              1844.5
+            ],
+            [
+              9324.8,
+              2484.5
+            ]
+          ],
+          "speed": 182.85715,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.21666667
+        }
+      },
+      {
+        "id": 6,
+        "position": [
+          12364.8,
+          3225.7568
+        ],
+        "follower": {
+          "points": [
+            [
+              12364.8,
+              3220.5
+            ],
+            [
+              12364.8,
+              3860.5
+            ]
+          ],
+          "speed": 170.66667,
+          "mode": "ping_pong",
+          "easing": "sine_in_out",
+          "time": 0.21666667
+        }
+      }
+    ],
+    "hazards": [],
+    "balls": [
+      [
+        62,
+        true,
+        472.0,
+        2276.4902,
+        0.0,
+        240.00002,
+        0.05016744,
+        0.25777763,
+        null,
+        5.966666
+      ]
+    ],
+    "blocks": [
+      {
+        "id": 44,
+        "scrap": null,
+        "position": [
+          17984.0,
+          2692.2603
+        ],
+        "velocity": [
+          0.0,
+          1.3411045e-7
+        ],
+        "chill": null,
+        "frozen": null
+      },
+      {
+        "id": 45,
+        "scrap": null,
+        "position": [
+          18112.0,
+          2692.2603
+        ],
+        "velocity": [
+          0.0,
+          1.3411045e-7
+        ],
+        "chill": null,
+        "frozen": null
+      },
+      {
+        "id": 46,
+        "scrap": null,
+        "position": [
+          18240.0,
+          2692.2603
+        ],
+        "velocity": [
+          0.0,
+          1.3411045e-7
+        ],
+        "chill": null,
+        "frozen": null
+      },
+      {
+        "id": 47,
+        "scrap": null,
+        "position": [
+          18368.0,
+          2692.2603
+        ],
+        "velocity": [
+          0.0,
+          1.3411045e-7
+        ],
+        "chill": null,
+        "frozen": null
+      }
+    ],
+    "black_holes": [],
+    "missiles": [],
+    "bullets": [],
+    "dummies": [
+      {
+        "id": 8,
+        "map": true,
+        "position": [
+          128.0,
+          2243.2737
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "health": {
+          "current": 390.0,
+          "max": 400.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.4
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [
+            {
+              "effect": "dummy_regen",
+              "stacks": 1,
+              "left": null,
+              "period_left": 0.050000012,
+              "factor": 1.0,
+              "serial": 0,
+              "granted": []
+            }
+          ],
+          "next_serial": 1,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {
+          "damage.cold": 9.777778
+        },
+        "tags": [
+          "conductive",
+          "flesh",
+          "freezable"
+        ]
+      }
+    ],
+    "enemies": [
+      {
+        "id": 9,
+        "kind": "crawler",
+        "map": true,
+        "position": [
+          6688.0,
+          2499.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 160.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "crawler",
+          "home": [
+            6720.0,
+            2550.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 45.0,
+          "max": 45.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 12.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 60.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 160.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.cold": 0.0,
+          "damage.fire": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 10,
+        "kind": "crawler",
+        "map": true,
+        "position": [
+          7648.0,
+          1731.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 160.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "crawler",
+          "home": [
+            7680.0,
+            1782.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 45.0,
+          "max": 45.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 12.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 60.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 160.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.cold": 0.0,
+          "damage.fire": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 11,
+        "kind": "crawler",
+        "map": true,
+        "position": [
+          8800.0,
+          2499.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 160.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "crawler",
+          "home": [
+            8832.0,
+            2550.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 45.0,
+          "max": 45.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 12.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 60.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 160.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.cold": 0.0,
+          "damage.fire": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 12,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          10464.0,
+          2259.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            10496.0,
+            2287.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 13,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          10976.0,
+          2259.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            11008.0,
+            2287.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 14,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          13408.0,
+          3724.8
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            13440.0,
+            3752.8
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 15,
+        "kind": "wisp",
+        "map": true,
+        "position": [
+          14368.0,
+          3744.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 140.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "wisp",
+          "home": [
+            14400.0,
+            3778.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 10.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 140.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 16,
+        "kind": "wisp",
+        "map": true,
+        "position": [
+          15200.0,
+          3680.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 140.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "wisp",
+          "home": [
+            15232.0,
+            3714.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 10.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 140.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 17,
+        "kind": "wisp",
+        "map": true,
+        "position": [
+          15712.0,
+          3712.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 140.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "wisp",
+          "home": [
+            15744.0,
+            3746.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 10.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 140.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 18,
+        "kind": "beetle",
+        "map": true,
+        "position": [
+          19072.0,
+          3523.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 90.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "beetle",
+          "home": [
+            19104.0,
+            3571.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 90.0,
+          "max": 90.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 30.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 120.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 90.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.5,
+          "damage.physical": 0.25,
+          "damage.shock": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "beetle",
+          "brittle",
+          "conductive",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "beetle_charge",
+              "ability": "beetle_charge",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.5,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              30.0,
+              14.0
+            ]
+          },
+          "offset": [
+            32.0,
+            47.0
+          ],
+          "damage": 22.5,
+          "tags": [],
+          "filter": {},
+          "knockback": 520.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 30.0
+            }
+          ],
+          "window": 0.8
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 19,
+        "kind": "beetle",
+        "map": true,
+        "position": [
+          19840.0,
+          3331.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 90.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "beetle",
+          "home": [
+            19872.0,
+            3379.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 90.0,
+          "max": 90.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 30.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 120.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 90.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.5,
+          "damage.physical": 0.25,
+          "damage.shock": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "beetle",
+          "brittle",
+          "conductive",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "beetle_charge",
+              "ability": "beetle_charge",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.5,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              30.0,
+              14.0
+            ]
+          },
+          "offset": [
+            32.0,
+            47.0
+          ],
+          "damage": 22.5,
+          "tags": [],
+          "filter": {},
+          "knockback": 520.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 30.0
+            }
+          ],
+          "window": 0.8
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 20,
+        "kind": "beetle",
+        "map": true,
+        "position": [
+          21504.0,
+          3139.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 90.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "beetle",
+          "home": [
+            21536.0,
+            3187.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 90.0,
+          "max": 90.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 30.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 120.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 90.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.5,
+          "damage.physical": 0.25,
+          "damage.shock": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "beetle",
+          "brittle",
+          "conductive",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "beetle_charge",
+              "ability": "beetle_charge",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.5,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              30.0,
+              14.0
+            ]
+          },
+          "offset": [
+            32.0,
+            47.0
+          ],
+          "damage": 22.5,
+          "tags": [],
+          "filter": {},
+          "knockback": 520.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 30.0
+            }
+          ],
+          "window": 0.8
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 21,
+        "kind": "troll",
+        "map": true,
+        "position": [
+          25472.0,
+          2179.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 70.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "troll",
+          "home": [
+            25546.0,
+            2249.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 450.0,
+          "max": 450.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 40.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 600.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 70.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [
+            {
+              "effect": "troll_regen",
+              "stacks": 1,
+              "left": null,
+              "period_left": 0.050000012,
+              "factor": 1.0,
+              "serial": 0,
+              "granted": []
+            }
+          ],
+          "next_serial": 1,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy",
+          "troll"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 1.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 22,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          6272.0,
+          1939.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            6304.0,
+            1967.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 23,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          9024.0,
+          1939.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            9056.0,
+            1967.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 24,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          12096.0,
+          3027.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            12128.0,
+            3055.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 25,
+        "kind": "bat",
+        "map": true,
+        "position": [
+          12672.0,
+          3795.2
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": null,
+        "mover": {
+          "speed": 260.0,
+          "direction": [
+            0.0,
+            0.0
+          ],
+          "acceleration": null,
+          "deceleration": null,
+          "velocity": [
+            0.0,
+            0.0
+          ]
+        },
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "bat",
+          "home": [
+            12704.0,
+            3823.2
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 22.5,
+          "max": 22.5,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 14.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 30.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 260.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "bat_dive",
+              "ability": "bat_dive",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              14.0,
+              12.0
+            ]
+          },
+          "offset": [
+            32.0,
+            30.0
+          ],
+          "damage": 10.5,
+          "tags": [],
+          "filter": {
+            "all": [
+              "team.player"
+            ]
+          },
+          "knockback": 320.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 14.0
+            }
+          ],
+          "window": 0.6
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 26,
+        "kind": "crawler",
+        "map": true,
+        "position": [
+          11584.0,
+          3971.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 160.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "crawler",
+          "home": [
+            11616.0,
+            4022.0
+          ],
+          "heading": 1.0,
+          "leash": 320.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 45.0,
+          "max": 45.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 12.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 60.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 160.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.cold": 0.0,
+          "damage.fire": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 27,
+        "kind": "beetle",
+        "map": true,
+        "position": [
+          20864.0,
+          2307.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 90.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "beetle",
+          "home": [
+            20896.0,
+            2355.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 90.0,
+          "max": 90.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 30.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 120.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 90.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {
+          "damage.fire": 0.5,
+          "damage.physical": 0.25,
+          "damage.shock": 2.0
+        },
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "beetle",
+          "brittle",
+          "conductive",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": {
+          "entries": [
+            {
+              "name": "beetle_charge",
+              "ability": "beetle_charge",
+              "cooldown_left": 0.0,
+              "charges": null,
+              "refill_left": 0.0,
+              "interval_left": 0.0
+            }
+          ]
+        },
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.5,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": {
+          "shape": {
+            "aabb": [
+              30.0,
+              14.0
+            ]
+          },
+          "offset": [
+            32.0,
+            47.0
+          ],
+          "damage": 22.5,
+          "tags": [],
+          "filter": {},
+          "knockback": 520.0,
+          "parts": [
+            {
+              "tags": [
+                "damage.physical"
+              ],
+              "amount": 30.0
+            }
+          ],
+          "window": 0.8
+        },
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 28,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          6622.0,
+          1731.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            6656.0,
+            1772.0
+          ],
+          "heading": 1.0,
+          "leash": 192.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 29,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          21054.0,
+          2307.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            21088.0,
+            2348.0
+          ],
+          "heading": 1.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 30,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          21022.0,
+          3139.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            21056.0,
+            3180.0
+          ],
+          "heading": 1.0,
+          "leash": 192.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 31,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          2142.0,
+          2243.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            2176.0,
+            2284.0
+          ],
+          "heading": 1.0,
+          "leash": 256.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 32,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          18526.0,
+          3523.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            18560.0,
+            3564.0
+          ],
+          "heading": 1.0,
+          "leash": 192.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 33,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          24286.0,
+          2243.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            24320.0,
+            2284.0
+          ],
+          "heading": 1.0,
+          "leash": 256.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      },
+      {
+        "id": 34,
+        "kind": "goblin",
+        "map": true,
+        "position": [
+          26398.0,
+          2243.0
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "controller": {
+          "run_speed": 110.0,
+          "jump_speed": 600.0,
+          "gravity": null,
+          "coyote_time": 0.1,
+          "jump_buffer": 0.1,
+          "jump_cut": 0.5,
+          "air_jumps": 0,
+          "run": 0.0,
+          "jump_held": false,
+          "pressed": false,
+          "launch": null,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "buffer_left": 0.0,
+          "coyote_left": 0.1,
+          "lock_left": 0.0,
+          "velocity": [
+            0.0,
+            0.0
+          ],
+          "grounded": true,
+          "jumped": false,
+          "air_jumped": false,
+          "cut_armed": false,
+          "air_jumps_left": 0
+        },
+        "mover": null,
+        "displaced": null,
+        "machine": {
+          "state": "patrol",
+          "previous": null,
+          "elapsed": 0.0,
+          "next": null,
+          "entered": false,
+          "held": true
+        },
+        "enemy": {
+          "kind": "goblin",
+          "home": [
+            26432.0,
+            2284.0
+          ],
+          "heading": 1.0,
+          "leash": 256.0
+        },
+        "brain": {
+          "last_seen": null,
+          "search": null,
+          "alert": null
+        },
+        "sight": {
+          "next": 0.0,
+          "sees": false
+        },
+        "health": {
+          "current": 30.0,
+          "max": 30.0,
+          "invulnerability": 0.0,
+          "window_left": 0.0,
+          "despawn_on_death": 0.0
+        },
+        "stats": {
+          "damage": {
+            "base": 8.0,
+            "min": 0.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "max_health": {
+            "base": 40.0,
+            "min": 1.0,
+            "max": null,
+            "modifiers": [
+              [
+                "difficulty",
+                {
+                  "mul": 0.75
+                }
+              ]
+            ]
+          },
+          "move_speed": {
+            "base": 110.0,
+            "min": 0.0,
+            "max": null
+          }
+        },
+        "resist": {},
+        "effects": {
+          "pending": [],
+          "instances": [],
+          "next_serial": 0,
+          "granted": []
+        },
+        "sources": [],
+        "buckets": {},
+        "tags": [
+          "flesh",
+          "freezable",
+          "team.enemy"
+        ],
+        "abilities": null,
+        "knockback": {
+          "seconds": 0.2,
+          "resist": 0.0,
+          "push": [
+            0.0,
+            0.0
+          ],
+          "left": 0.0
+        },
+        "hitbox": null,
+        "hit": [],
+        "touches": [],
+        "held": null
+      }
+    ],
+    "throws": [],
+    "orbs": [],
+    "gone": [],
+    "cascades": {
+      "step": 13,
+      "strike": 0,
+      "entries": []
+    },
+    "hints": [
+      "freeze"
+    ],
+    "summon": 0,
+    "basins": [
+      {
+        "id": 0,
+        "cold": 0.0,
+        "crust": null
+      },
+      {
+        "id": 1,
+        "cold": 0.0,
+        "crust": null
+      },
+      {
+        "id": 2,
+        "cold": 0.0,
+        "crust": null
+      }
+    ],
+    "elevators": [
+      {
+        "id": 7,
+        "position": [
+          20160.0,
+          3351.0
+        ],
+        "stop": "bottom",
+        "board": null,
+        "idle": 0.0,
+        "ridden": false,
+        "held": false,
+        "follower": null
+      }
+    ],
+    "props": [
+      {
+        "id": 48,
+        "kind": "crate",
+        "variant": 0,
+        "position": [
+          0.0,
+          2244.2854
+        ],
+        "velocity": [
+          0.0,
+          0.0000012740493
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 49,
+        "kind": "crate",
+        "variant": 1,
+        "position": [
+          58.0,
+          2244.2651
+        ],
+        "velocity": [
+          0.0,
+          7.450581e-9
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 50,
+        "kind": "crate",
+        "variant": 0,
+        "position": [
+          29.0,
+          2188.5981
+        ],
+        "velocity": [
+          0.0,
+          0.08543078
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 51,
+        "kind": "crate",
+        "variant": 1,
+        "position": [
+          5824.0,
+          1732.2745
+        ],
+        "velocity": [
+          0.0,
+          -3.1851232e-7
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 52,
+        "kind": "crate",
+        "variant": 0,
+        "position": [
+          5882.0,
+          1732.26
+        ],
+        "velocity": [
+          0.0,
+          -3.1664968e-7
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 53,
+        "kind": "crate",
+        "variant": 1,
+        "position": [
+          20928.0,
+          2308.2737
+        ],
+        "velocity": [
+          0.0,
+          -3.1851232e-7
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 54,
+        "kind": "crate",
+        "variant": 0,
+        "position": [
+          21184.0,
+          2308.2737
+        ],
+        "velocity": [
+          0.0,
+          -3.1851232e-7
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 55,
+        "kind": "crate",
+        "variant": 1,
+        "position": [
+          27229.0,
+          2244.2603
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 56,
+        "kind": "crate",
+        "variant": 0,
+        "position": [
+          27287.0,
+          2244.2603
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": {
+          "left": 8.0,
+          "lit": false,
+          "lighter": null,
+          "doused": 0.0
+        },
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 57,
+        "kind": "keg",
+        "variant": 0,
+        "position": [
+          165.0,
+          2244.2603
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": null,
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 58,
+        "kind": "keg",
+        "variant": 0,
+        "position": [
+          5931.0,
+          1732.26
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": null,
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 59,
+        "kind": "keg",
+        "variant": 0,
+        "position": [
+          20977.0,
+          2308.2737
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": null,
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 60,
+        "kind": "keg",
+        "variant": 0,
+        "position": [
+          21135.0,
+          2308.2737
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": null,
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      },
+      {
+        "id": 61,
+        "kind": "keg",
+        "variant": 0,
+        "position": [
+          27336.0,
+          2244.2737
+        ],
+        "velocity": [
+          0.0,
+          0.0
+        ],
+        "chill": null,
+        "frozen": null,
+        "fuel": null,
+        "fuse": null,
+        "lighter": null,
+        "doused": 0.0
+      }
+    ]
+  }
+}

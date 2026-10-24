@@ -13,14 +13,13 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
-use tungsten::kit::{ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, Stats, ensure_phases};
+use tungsten::kit::{ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, ensure_phases};
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
 use crate::shared::{Bursts, SaveIds};
-use crate::shell::Difficulty;
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
@@ -69,16 +68,15 @@ pub const SHOVE_OVER: f32 = 1600.0;
 pub const SHOVE_BESIDE: f32 = 600.0;
 pub const STUCK_BY: f32 = 2.0;
 
-/// The player's full health at `difficulty`: its `max_health` stat's base.
-/// A hazard's touch takes 34, so Normal falls on the third.
-#[must_use]
-pub const fn max_health(difficulty: Difficulty) -> f32 {
-    match difficulty {
-        Difficulty::Easy => 150.0,
-        Difficulty::Normal => 100.0,
-        Difficulty::Hard => 68.0,
-    }
-}
+/// How far the player draws a pickup in, its prefab's `pickup_radius`
+/// stat: restated so a save can move an older player's reach to it.
+pub const PICKUP_RADIUS: f32 = 192.0;
+
+/// The player's full health at every difficulty, its prefab's
+/// `max_health` stat and `health.max`: a hazard's touch takes 34, so it
+/// falls on the third. Restated so a save can move an older player's
+/// maximum to it.
+pub const MAX_HEALTH: f32 = 100.0;
 
 /// The player as a plugin: the `player` marker its prefab names, the
 /// lantern's anchors, its actions and its staff light in the intent phase
@@ -148,9 +146,9 @@ pub enum Gesture {
 }
 
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
-/// at `difficulty`'s health, with the run's next save ID, its staff light
+/// at its prefab's health, with the run's next save ID, its staff light
 /// off, and its prefab's glow kept for the staff's flare.
-pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity {
+pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     let at = centre - BODY_OFFSET;
     let id = world.resource_mut::<SaveIds>().take();
     let player = world
@@ -163,10 +161,6 @@ pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity 
             Moves::default(),
         ))
         .spawn(world);
-    // Before any step, so the first one already runs at this max.
-    if let Some(stats) = world.get_mut::<Stats>(player) {
-        stats.set_base(Stats::MAX_HEALTH, max_health(difficulty));
-    }
     if let Some(glow) = world.get::<Glow>(player).copied() {
         world.insert(player, StaffGlow(glow));
     }

@@ -900,8 +900,14 @@
     "ex10_title_meteor": {
       "path": "particles/title_meteor.json"
     },
-    "ex10_title_twinkle": {
-      "path": "particles/title_twinkle.json"
+    "ex10_title_twinkle_large": {
+      "path": "particles/title_twinkle_large.json"
+    },
+    "ex10_title_twinkle_medium": {
+      "path": "particles/title_twinkle_medium.json"
+    },
+    "ex10_title_twinkle_small": {
+      "path": "particles/title_twinkle_small.json"
     },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"

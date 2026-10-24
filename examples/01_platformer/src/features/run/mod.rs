@@ -15,7 +15,6 @@ use tungsten::{GameState, Plugin, StateContext, StateId};
 
 pub use components::Run;
 
-use crate::features::combat::components::Hints;
 use crate::features::combat::numbers::Numbers;
 use crate::features::elements::cascade::Cascades;
 use crate::features::props::components::PropKind;
@@ -74,7 +73,6 @@ impl GameState for GameplayState {
         self.dead_for = 0.0;
         world.insert_resource(SaveIds::default());
         world.insert_resource(Cascades::default());
-        world.insert_resource(Hints::default());
         world.insert_resource(Summon::default());
         level::spawn(world);
         dummy::start(world);
@@ -86,7 +84,7 @@ impl GameState for GameplayState {
         let centre = start.save.as_ref().map_or(spawn, |save| {
             Vec2::from(save.player.position) + player::BODY_OFFSET
         });
-        let player = player::spawn(world, centre, start.difficulty);
+        let player = player::spawn(world, centre);
         // A fresh run sets the mine's loose iron down, then the map's crates
         // and kegs, quietly, each taking the save IDs after the player's,
         // before the run sounds; a load restores the blocks and props it
@@ -124,7 +122,6 @@ impl GameState for GameplayState {
             .remove_resource::<enemies::components::PlacedEnemies>();
         ctx.world.remove_resource::<enemies::drops::PlacedOrbs>();
         ctx.world.remove_resource::<Cascades>();
-        ctx.world.remove_resource::<Hints>();
         ctx.world.remove_resource::<Summon>();
         ctx.world.remove_resource::<Numbers>();
         level::despawn(ctx.world);

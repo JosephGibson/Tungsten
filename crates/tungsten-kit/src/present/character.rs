@@ -6,7 +6,7 @@ use std::fmt;
 use glam::Vec2;
 use serde::de::{self, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
-use tungsten_core::physics::{Position, PrevPosition, Velocity};
+use tungsten_core::physics::{BodyKind, Position, PrevPosition, RigidBody, Velocity};
 use tungsten_core::{
     AnimationRegistry, AnimationState, Entity, Inspectable, MissingAsset, Plugin, Schedule,
     SpawnContext, Sprite, Time, World, system,
@@ -251,12 +251,15 @@ impl State {
 /// doing: `rise` or `fall` while a
 /// [`PlatformerController`](crate::PlatformerController) is off the ground,
 /// by its velocity's sign; `move` at its minimum speed or faster; else
-/// `idle`. A state's clip is one animation, or a set ([`Clips`]) whose
-/// entry is picked by the entity's [`Facing`](crate::Facing) by its
-/// dominant axis, else by its velocity's side. `move`, `rise` and `fall`
-/// fall back to `idle` when not given. Landing, hurt and attack clips need
-/// events, so they are a game's, through a
-/// [`StateMachine`](crate::StateMachine) or Rust.
+/// `idle`. A platformer standing on a kinematic body with a `Velocity`, its
+/// controller's [`ground`](crate::PlatformerController::ground), counts its
+/// own velocity, the body's taken off, for its state and its side: a rider
+/// standing still on a moving deck idles. A state's clip is one animation,
+/// or a set ([`Clips`]) whose entry is picked by the entity's
+/// [`Facing`](crate::Facing) by its dominant axis, else by its velocity's
+/// side. `move`, `rise` and `fall` fall back to `idle` when not given.
+/// Landing, hurt and attack clips need events, so they are a game's,
+/// through a [`StateMachine`](crate::StateMachine) or Rust.
 ///
 /// [`CharacterAnimatorPlugin`]'s system runs after the animation tick: on a
 /// change of clip it replaces the entity's `AnimationState` and writes the
@@ -607,10 +610,13 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
             .map(|(entity, _)| entity),
     );
     for &entity in entities.iter() {
-        let velocity = velocity_of(world, entity, step);
-        let airborne = world
-            .get::<PlatformerController>(entity)
-            .is_some_and(|controller| !controller.grounded());
+        let controller = world.get::<PlatformerController>(entity);
+        let airborne = controller.is_some_and(|controller| !controller.grounded());
+        let floor = controller
+            .filter(|controller| controller.grounded())
+            .and_then(PlatformerController::ground);
+        let velocity = velocity_of(world, entity, step)
+            - floor.map_or(Vec2::ZERO, |floor| carry(world, floor));
         let direction = world
             .get::<Facing>(entity)
             .map_or(velocity, Facing::direction);
@@ -645,6 +651,18 @@ fn character_animator(world: &mut World, entities: &mut Vec<Entity>) {
         }
     }
     world.insert_resource(registry);
+}
+
+/// The velocity `floor` carries what stands on it at: a kinematic body's
+/// `Velocity`, else nothing.
+fn carry(world: &World, floor: Entity) -> Vec2 {
+    let kinematic = world
+        .get::<RigidBody>(floor)
+        .is_some_and(|body| body.kind == BodyKind::Kinematic);
+    match world.get::<Velocity>(floor) {
+        Some(velocity) if kinematic => velocity.0,
+        _ => Vec2::ZERO,
+    }
 }
 
 /// An entity's velocity: its `Velocity`, else its last step's move over the

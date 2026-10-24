@@ -4,10 +4,12 @@
 //! game sends has a cue rule that plays a registered sound.
 
 use example_01_platformer::features::audio::components::Sound;
+use example_01_platformer::features::combat::FREEZE_NEEDS;
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::enemies::drops::ORB_SECS;
+use example_01_platformer::features::enemies::{crawler, troll};
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
@@ -83,12 +85,39 @@ fn every_restated_constant_matches_its_data() {
     assert_eq!(number(&iron, "/components/rigid_body/mass"), IRON_MASS);
     let scrap = json("prefabs/iron_scrap.json");
     assert_eq!(number(&scrap, "/components/rigid_body/mass"), SCRAP_MASS);
-    // The courier's jump, which its shove's retry restates.
+    // The courier's jump, which its shove's retry restates, and its health,
+    // the same at every difficulty, which a save's migration restates.
     let courier = json("prefabs/player.json");
+    for pointer in ["/components/stats/max_health", "/components/health/max"] {
+        assert_eq!(number(&courier, pointer), player::MAX_HEALTH, "{pointer}");
+    }
+    // Its reach, which a save's migration restates.
+    assert_eq!(
+        number(&courier, "/components/stats/pickup_radius"),
+        player::PICKUP_RADIUS
+    );
     assert_eq!(
         number(&courier, "/components/platformer_controller/jump_speed"),
         player::JUMP_SPEED
     );
+    // The troll's walk, its `move_speed` stat and its run speed, which a
+    // save's migration restates.
+    let walker = json("prefabs/troll.json");
+    for pointer in [
+        "/components/stats/move_speed",
+        "/components/platformer_controller/run_speed",
+    ] {
+        assert_eq!(number(&walker, pointer), troll::MOVE_SPEED, "{pointer}");
+    }
+    // The crawler's touch: its `damage` stat and its cold, which a save's
+    // migration restates.
+    let frost = json("prefabs/crawler.json");
+    for pointer in [
+        "/components/stats/damage",
+        "/components/contact_damage/damage/damage.cold",
+    ] {
+        assert_eq!(number(&frost, pointer), crawler::DAMAGE, "{pointer}");
+    }
     assert_eq!(body("iron_scrap").0, SCRAP_HALF);
     assert_eq!(body("bowling_ball").0, Vec2::splat(BALL_RADIUS));
     assert_eq!(body("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
@@ -126,6 +155,24 @@ fn every_restated_constant_matches_its_data() {
     // A black hole's life.
     let hole = json("prefabs/black_hole.json");
     assert_eq!(number(&hole, "/components/black_hole/left"), HOLE_SECS);
+    // The cold ladder's freeze rungs, the freezable's and the troll's, which
+    // the chill's grade climbs to.
+    let types = json("data/damage_types/game.json");
+    let rungs = types["damage.cold"]["ailments"]
+        .as_array()
+        .expect("cold's ladder");
+    let freezes: Vec<&Value> = rungs
+        .iter()
+        .filter(|rung| {
+            rung["requires"]
+                .as_array()
+                .is_some_and(|tags| tags.iter().any(|tag| tag == "freezable"))
+        })
+        .collect();
+    assert_eq!(freezes.len(), 2, "two freeze rungs");
+    for rung in freezes {
+        assert_eq!(number(rung, "/needs"), FREEZE_NEEDS);
+    }
     // The props' bodies and a goblin's rock and bomb.
     assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));

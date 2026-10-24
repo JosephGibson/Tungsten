@@ -163,6 +163,53 @@ fn a_platformer_rises_and_falls_off_the_ground() {
 }
 
 #[test]
+fn a_rider_on_a_moving_floor_idles_until_it_runs() {
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(tungsten_core::PhysicsConfig {
+        gravity: Vec2::new(0.0, 2000.0),
+        ..tungsten_core::PhysicsConfig::default()
+    });
+    let floor = world.spawn_with(RigidBodyBundle::kinematic(
+        Position(Vec2::new(0.0, 100.0)),
+        Collider::aabb(Vec2::new(400.0, 10.0)),
+    ));
+    world.get_mut::<Velocity>(floor).unwrap().0 = Vec2::new(120.0, 0.0);
+    let rider = world.spawn_with(
+        RigidBodyBundle::kinematic(
+            Position(Vec2::new(0.0, 69.5)),
+            Collider::aabb(Vec2::new(10.0, 20.0)),
+        )
+        .with((
+            PlatformerController::new(200.0, 600.0),
+            walker(),
+            Sprite::new(SpriteAssetId::new(99)),
+            Transform::default(),
+        )),
+    );
+    for _ in 0..10 {
+        frame(&mut world, &mut schedule, 1.0 / 60.0);
+    }
+    let controller = world.get::<PlatformerController>(rider).unwrap();
+    assert_eq!(controller.ground(), Some(floor), "it stands on the floor");
+    let carried = world.get::<Velocity>(rider).unwrap().0;
+    assert!((carried.x - 120.0).abs() < 1e-3, "carried: {carried}");
+    assert_eq!(shown(&world, rider).0, "idle", "standing still on it");
+    // Running against the floor slower than it moves: its own side.
+    world
+        .get_mut::<PlatformerController>(rider)
+        .unwrap()
+        .set_run(-0.5);
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    frame(&mut world, &mut schedule, 1.0 / 60.0);
+    let velocity = world.get::<Velocity>(rider).unwrap().0;
+    assert!(velocity.x > 0.0, "still carried right: {velocity}");
+    assert_eq!(
+        shown(&world, rider),
+        ("move", "walk_left".into(), SpriteAssetId::new(10))
+    );
+}
+
+#[test]
 fn a_new_clip_shows_its_first_frame_even_shorter_than_the_frame() {
     let (mut world, mut schedule) = rig();
     world

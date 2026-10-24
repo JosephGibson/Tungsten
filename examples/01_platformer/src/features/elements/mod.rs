@@ -59,6 +59,13 @@ pub const BODY_HIT_SPEED: f32 = 400.0;
 pub const BODY_HIT_K: f32 = 0.002;
 pub const BODY_HIT_MOST: f32 = 120.0;
 pub const LANDING_SHARE: f32 = 0.1;
+/// A body lighter than this counts this share of its mass in its hit, and
+/// a hit worth less than the floor lands nothing ([`body_hit`]): a small
+/// ball hurts from 2,400 px/s, a goblin's bomb from 1,067, a bowling ball
+/// from 525 and a crate from 483.
+pub const LIGHT_MASS: f32 = 4.0;
+pub const LIGHT_SHARE: f32 = 0.5;
+pub const BODY_HIT_FLOOR: f32 = 2.0;
 /// The least mass that shatters a frozen body it meets hard: a bowling
 /// ball's, so small balls flying in a pile break no ice.
 pub const SHATTER_MASS: f32 = 8.0;
@@ -174,6 +181,21 @@ pub fn chill(world: &mut World, body: Entity, amount: f32, contact: Vec2) {
 /// Freezes a body, iron or a ball, through at once, for [`FROZEN_SECS`].
 pub fn freeze_iron(world: &mut World, body: Entity) {
     systems::freeze_iron(world, body);
+}
+
+/// What a body of `mass` closing on a target at `closing` px/s hurts it by:
+/// [`BODY_HIT_K`] × its mass, [`LIGHT_SHARE`] of it under [`LIGHT_MASS`], ×
+/// the speed past [`BODY_HIT_SPEED`], at most [`BODY_HIT_MOST`]; 0 where
+/// that comes under [`BODY_HIT_FLOOR`].
+#[must_use]
+pub fn body_hit(mass: f32, closing: f32) -> f32 {
+    let mass = if mass < LIGHT_MASS {
+        mass * LIGHT_SHARE
+    } else {
+        mass
+    };
+    let amount = (BODY_HIT_K * mass * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
+    if amount < BODY_HIT_FLOOR { 0.0 } else { amount }
 }
 
 /// How frozen a body is, 0 to 1.

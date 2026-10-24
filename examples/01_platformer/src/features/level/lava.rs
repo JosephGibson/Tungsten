@@ -5,19 +5,32 @@
 //! along it. It melts after [`CRUST_SECS`], its cracks glowing over the
 //! last [`CRACK_SECS`]: its touches come back, so a player still on it is
 //! thrown out as by any touch, and what stood on it falls in.
+//!
+//! An uncrusted basin takes the bodies that fall into its burn ([`take`]):
+//! a keg or a goblin's bomb goes off, a frozen prop is left to the heat's
+//! thermal shock, and every other ball, block, scrap, crate or rock goes in
+//! steam and embers, with one sizzle a basin a step.
 
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AssetRegistry, Collider, Entity, RigidBody, Shape, Sprite, Time, Transform, Visibility, World,
+    AssetRegistry, BodyKind, Collider, Entity, RigidBody, Shape, Sprite, Time, Transform,
+    Visibility, World,
 };
-use tungsten::kit::{Children, ContactDamage};
+use tungsten::kit::{Children, ContactDamage, Health};
+use tungsten::physics::{SpatialFilter, overlap};
 
 use super::components::{Glow, Hazard};
 use super::{LAVA_LAYER, TILE};
 use crate::features::audio::{self, components::Sound};
+use crate::features::elements::cascade;
+use crate::features::elements::components::Frozen;
+use crate::features::props::{
+    self,
+    components::{Bomb, Keg},
+};
 use crate::game::GAMEPLAY;
-use crate::shared::spawn_burst;
+use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst};
 
 /// Seconds of cold spray that set a basin's crust; unsprayed, its chill
 /// drains as fast.
@@ -169,6 +182,77 @@ fn melt(world: &mut World, basin: Entity) {
     }
     if let Some(glow) = world.get_mut::<Glow>(basin) {
         glow.hidden = false;
+    }
+}
+
+/// `lava_take`, in the overlap phase after `props_heat` and before the
+/// cascades' run: each basin with its touch, no crust, takes the dynamic
+/// bodies with no health its burn box overlaps, in save-ID order. A keg or
+/// a bomb not frozen goes off, credited to its lighter, else the player; a
+/// frozen prop is left to the heat's thermal shock; every other body goes,
+/// in steam and embers at its centre. A basin that took anything sizzles
+/// once, at its surface's middle.
+pub fn take(world: &mut World) {
+    let basins: Vec<(Entity, Vec2, Vec2)> = world
+        .query::<(Entity, &Lava, &Transform, &ContactDamage)>()
+        .filter(|(_, lava, ..)| lava.crust.is_none())
+        .filter_map(|(basin, _, at, touch)| match touch.shape()?.shape() {
+            Shape::Aabb { half_extents } => {
+                Some((basin, at.position + touch.offset(), half_extents))
+            }
+            Shape::Circle { .. } => None,
+        })
+        .collect();
+    let mut met = Vec::new();
+    for (basin, centre, half) in basins {
+        let shape = Shape::Aabb { half_extents: half };
+        overlap(world, shape, centre, &SpatialFilter::new(), &mut met);
+        let mut bodies: Vec<(Option<SaveId>, Entity)> = met
+            .iter()
+            .flatten()
+            .copied()
+            .filter(|&body| {
+                world
+                    .get::<RigidBody>(body)
+                    .is_some_and(|rigid| rigid.kind == BodyKind::Dynamic)
+                    && !world.has::<Health>(body)
+            })
+            .map(|body| (world.get::<SaveId>(body).copied(), body))
+            .collect();
+        bodies.sort_unstable_by_key(|&(id, body)| (id, body.id()));
+        bodies.dedup();
+        let mut took = false;
+        for (_, body) in bodies {
+            let frozen = world.has::<Frozen>(body);
+            let lighter = world
+                .get::<Keg>(body)
+                .map(|keg| keg.lighter)
+                .or_else(|| world.get::<Bomb>(body).map(|bomb| bomb.lighter));
+            if let Some(lighter) = lighter {
+                if !frozen {
+                    let credit = lighter.or_else(|| cascade::player_credit(world));
+                    took |= props::set_off(world, body, None, credit);
+                }
+                continue;
+            }
+            if frozen && props::is_prop(world, body) {
+                continue;
+            }
+            let Some(at) = body_centre(world, body) else {
+                continue;
+            };
+            despawn_tree(world, body);
+            spawn_burst(world, "ex10_steam_burst", at);
+            spawn_burst(world, "ex10_blast_embers", at);
+            took = true;
+        }
+        if let (true, Some((left, right, skin))) = (took, surface(world, basin)) {
+            audio::play(
+                world,
+                Sound::LavaTook,
+                Vec2::new((left + right) * 0.5, skin),
+            );
+        }
     }
 }
 

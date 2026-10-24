@@ -11,7 +11,9 @@
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::combat::systems::frozen_left;
-use example_01_platformer::features::combat::{CHILLED, FROZEN, Hit, Kind, has_status};
+use example_01_platformer::features::combat::{
+    CHILLED, FREEZE_NEEDS, FROZEN, Hit, Kind, has_status,
+};
 use example_01_platformer::features::elements::components::{Chill, Frozen, IcePulse};
 use example_01_platformer::features::elements::draw::effects;
 use example_01_platformer::features::elements::{self, FREEZE_TIME, freeze_amount};
@@ -38,7 +40,8 @@ use tungsten::core::{
 };
 use tungsten::extract_sprites_default;
 use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, Children, Health, StateMachine, Stats, damage,
+    AilmentBuckets, AilmentThreshold, Children, Damaged, Health, KitRng, StateMachine, Stats,
+    damage,
 };
 use tungsten::testing::UiHarness;
 
@@ -937,7 +940,7 @@ fn move_speed(harness: &UiHarness, entity: Entity) -> f32 {
         .expect("a move speed")
 }
 
-/// `target`'s cold bucket as a share of its threshold.
+/// `target`'s cold bucket as a share of its freeze's rung.
 fn filled(harness: &UiHarness, target: Entity) -> f32 {
     let world = harness.world();
     let fill = world
@@ -945,7 +948,7 @@ fn filled(harness: &UiHarness, target: Entity) -> f32 {
         .map_or(0.0, |buckets| buckets.fill(Kind::Cold.tag()));
     let threshold = world.get::<AilmentThreshold>(target).unwrap();
     let max = world.get::<Health>(target).unwrap().max();
-    fill / (threshold.flat() + threshold.of_max_health() * max)
+    fill / (FREEZE_NEEDS * (threshold.flat() + threshold.of_max_health() * max))
 }
 
 fn heard(harness: &UiHarness, sound: Sound) -> usize {
@@ -960,11 +963,11 @@ fn heard(harness: &UiHarness, sound: Sound) -> usize {
 fn a_chill_slows_and_frosts_more_as_its_bucket_fills() {
     let (mut harness, player) = cold_arena();
     let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
-    cold(&mut harness, beetle, 10.0);
+    cold(&mut harness, beetle, 5.0);
     assert!(has_status(harness.world(), beetle, CHILLED), "chilled");
     let mut seen = Vec::new();
     for _ in 0..3 {
-        cold(&mut harness, beetle, 5.0);
+        cold(&mut harness, beetle, 2.5);
         // The grade at the next step's intent, the tint at its frame.
         harness.step(1);
         let tint = harness.world().get::<Sprite>(beetle).unwrap().color;
@@ -987,13 +990,47 @@ fn a_chill_slows_and_frosts_more_as_its_bucket_fills() {
     }
     // The courier takes no freeze, so its chill keeps its own slow.
     let base = move_speed(&harness, player);
-    cold(&mut harness, player, 20.0);
+    cold(&mut harness, player, 10.0);
     harness.step(1);
     assert!(has_status(harness.world(), player, CHILLED));
     assert!((move_speed(&harness, player) - base * 0.65).abs() < 0.01);
-    cold(&mut harness, player, 15.0);
+    cold(&mut harness, player, 7.5);
     harness.step(1);
     assert!((move_speed(&harness, player) - base * 0.65).abs() < 0.01);
+}
+
+#[test]
+fn the_cold_spray_lands_half_the_flames_damage() {
+    // A still dummy in each spray's cone: the first pulse it takes from the
+    // caster, on a seed that does not crit and on one that does.
+    let first = |slot: usize, seed: u64| -> (f32, bool) {
+        let (mut harness, player) = sprayer(300.0);
+        choose(&mut harness, slot);
+        let dummy = super::combat::dummy_at(&mut harness, 500.0);
+        harness.step(2);
+        harness.world_mut().insert_resource(KitRng::seeded(seed));
+        let at = body(&harness, dummy);
+        spray_at(&mut harness, at);
+        let mut hit = None;
+        for _ in 0..30 {
+            harness.step(1);
+            hit = harness
+                .harness()
+                .events::<Damaged>()
+                .find(|hit| hit.entity == dummy && hit.source == Some(player))
+                .map(|hit| (hit.amount, hit.crit));
+            if hit.is_some() {
+                break;
+            }
+        }
+        release(&mut harness);
+        hit.expect("a pulse lands")
+    };
+    let (plain, crit) = (super::combat::PLAIN_SEED, super::combat::CRIT_SEED);
+    assert_eq!(first(2, plain), (1.5, false), "the frost's pulse");
+    assert_eq!(first(2, crit), (3.0, true), "a crit, twice that");
+    assert_eq!(first(1, plain), (3.0, false), "the flame's pulse");
+    assert_eq!(first(1, crit), (6.0, true), "a crit, twice that");
 }
 
 #[test]
