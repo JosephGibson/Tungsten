@@ -1,9 +1,9 @@
 //! What the level draws besides its sprites and tiles: the sky with the
 //! moon and the parallax strips behind the map, each area's far strip and
-//! the black night sky crossfaded by where the view stands, which a
-//! replaced sprite base draws before the engine's default tilemaps and
-//! sprites, the black holes between the two, and the cursor, drawn after
-//! them.
+//! the black night sky crossfaded by where the view stands, and the
+//! title's night in OLED black while no run is live, which a replaced
+//! sprite base draws before the engine's default tilemaps and sprites, the
+//! black holes between the two, and the cursor, drawn after them.
 
 use glam::Vec2;
 use tungsten::core::{
@@ -17,6 +17,7 @@ use tungsten::{WindowSize, extract_sprites_default, extract_tilemaps};
 use super::TILE;
 use super::components::{Area, AssetsReload, Cover, OpaqueTiles, SceneTime};
 use super::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, area_shares, bloom_on, drawn_time};
+use super::title::TitleSky;
 use crate::game::GAMEPLAY;
 use crate::shell;
 
@@ -33,7 +34,7 @@ const RIDGES: &str = "ex10_distant_ridges";
 const WOODLAND: &str = "ex10_near_woodland";
 /// The row the start's view is centred on, where the strips stand as
 /// authored, and how much of their vertical parallax they keep away from it.
-const START_VIEW: f32 = 35.5;
+pub(super) const START_VIEW: f32 = 35.5;
 const VERTICAL: f32 = 0.3;
 /// An outdoor area's far strip, between the ridges and the woodland: its
 /// top in world pixels, its scroll factor and its scale.
@@ -42,6 +43,13 @@ const FAR_STRIP: (f32, f32, Vec2) = (14.0 * TILE, 0.45, Vec2::splat(2.0));
 /// sprite, its top and its scroll factor.
 const MIST_STRIP: &str = "ex10_far_cliffs";
 const MISTS: [(&str, f32, f32); 1] = [("ex10_mist_0", 17.0 * TILE, 0.5)];
+/// The title's night in OLED black (01 (h)): the clearing's far strip,
+/// and each strip's colour times these, the ridges, the far strip and the
+/// woodland, under the black night sky at full share with no clouds.
+const TITLE_STRIP: &str = "ex10_far_tower";
+const TITLE_RIDGES: f32 = 0.45;
+const TITLE_FAR: f32 = 0.40;
+const TITLE_WOODLAND: f32 = 0.35;
 /// The black night sky, over the midnight one where an area's `night` is
 /// set, and how bright the clouds draw under it at full night.
 pub const SKY_BLACK: &str = "ex10_sky_black";
@@ -155,12 +163,15 @@ pub fn instance(asset: &SpriteAsset, position: Vec2, size: Vec2, color: [u8; 4])
 /// clock runs: a run is live. The areas the view stands in set the night
 /// sky's share over the midnight one, the clouds' darkening under it, and
 /// each far strip's share, drawn after the ridges, with the ravine's mist.
+/// While no run is live and the title's sky runs, the title's night in
+/// OLED black: the black night sky whole, the moon, no clouds, and the
+/// ridges, the clearing's far strip and the woodland darkened
+/// ([`TITLE_RIDGES`], [`TITLE_FAR`], [`TITLE_WOODLAND`]).
 #[must_use]
 pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
-    let (Some(assets), true) = (
-        world.get_resource::<AssetRegistry>(),
-        world.has_resource::<SceneTime>(),
-    ) else {
+    let live = world.has_resource::<SceneTime>();
+    let title = !live && world.has_resource::<TitleSky>();
+    let (Some(assets), true) = (world.get_resource::<AssetRegistry>(), live || title) else {
         return Vec::new();
     };
     let camera = world
@@ -170,12 +181,20 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
     let (min, max) = view(world);
     let overhang = Vec2::splat(OVERHANG);
     let time = drawn_time(world);
-    let shares = area_shares(world, (min.x + max.x) * 0.5);
-    let night: f32 = shares
-        .iter()
-        .filter(|(area, _)| area.night)
-        .map(|(_, share)| share)
-        .sum();
+    let shares = if title {
+        Vec::new()
+    } else {
+        area_shares(world, (min.x + max.x) * 0.5)
+    };
+    let night: f32 = if title {
+        1.0
+    } else {
+        shares
+            .iter()
+            .filter(|(area, _)| area.night)
+            .map(|(_, share)| share)
+            .sum()
+    };
     let shared = |pick: fn(&Area) -> bool| -> f32 {
         shares
             .iter()
@@ -183,7 +202,15 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             .map(|(_, share)| share)
             .sum()
     };
-    let (ridges, woodland) = (shared(|area| area.ridges), shared(|area| area.woodland));
+    let (ridges, woodland) = if title {
+        (1.0, 1.0)
+    } else {
+        (shared(|area| area.ridges), shared(|area| area.woodland))
+    };
+    let darkened = |factor: f32| {
+        let shade = (255.0 * factor).round() as u8;
+        [shade, shade, shade, 255]
+    };
     // The strips follow the view down and up but for [`VERTICAL`] of their
     // parallax, so a deep view keeps them as the start's view shows them;
     // an area's horizon then lowers them by its rows, each times its scroll.
@@ -235,8 +262,13 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
             moon(world, assets, (min, max), &mut batches);
             continue;
         }
+        if title && id.starts_with("ex10_clouds") {
+            continue;
+        }
         let shade = (255.0 * (1.0 - (1.0 - NIGHT_CLOUDS) * night.clamp(0.0, 1.0))).round() as u8;
         let color = match id {
+            RIDGES if title => darkened(TITLE_RIDGES),
+            WOODLAND if title => darkened(TITLE_WOODLAND),
             RIDGES => [255, 255, 255, alpha(ridges)],
             WOODLAND => [255, 255, 255, alpha(woodland)],
             _ if id.starts_with("ex10_clouds") => [shade, shade, shade, 255],
@@ -249,6 +281,11 @@ pub fn backdrop(world: &World) -> Vec<SpriteBatch> {
         }
         if id != RIDGES {
             continue;
+        }
+        if title && let Some(asset) = assets.get_sprite(TITLE_STRIP) {
+            let (top, scroll, scale) = FAR_STRIP;
+            let at = (top + lift * scroll, scroll, scale);
+            batches.push(strip(asset, TITLE_STRIP, at, darkened(TITLE_FAR), view));
         }
         for (area, share) in &shares {
             let Some(far) = area.backdrop.as_deref() else {

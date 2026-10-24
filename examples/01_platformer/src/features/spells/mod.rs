@@ -33,12 +33,12 @@ pub const SLOTS: [Option<Spell>; 10] = [
     Some(Spell::SmallBalls),
     Some(Spell::Summon),
 ];
-/// The action that selects each slot, and the key the bar labels it with.
+/// The action that selects each slot, whose first key or mouse binding the
+/// bar shows over the slot.
 pub const SLOT_ACTIONS: [&str; 10] = [
     "spell_1", "spell_2", "spell_3", "spell_4", "spell_5", "spell_6", "spell_7", "spell_8",
     "spell_9", "spell_0",
 ];
-pub const SLOT_KEYS: [&str; 10] = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 /// Casts the selected spell: once a press, or each fixed step it is held.
 pub const CAST: &str = "cast";
 /// Select the next or the previous spell, wrapping past the empty slots.
@@ -129,10 +129,6 @@ pub fn summon_type(world: &World) -> SummonType {
         .map_or(0, |summon| summon.selected);
     SUMMONS[selected % SUMMONS.len()]
 }
-/// The fixed steps in a second, which a held spell's cost assumes: its
-/// data's cost is one step's, its cost per second over this.
-pub const STEPS_PER_SECOND: f32 = 60.0;
-
 /// The spells as a plugin: the `spellbook` its prefab names; in the intent
 /// phase after the kit's ability tick, the choice and the cast; in
 /// `PreUpdate` before the shell's save, the missiles the last flush landed

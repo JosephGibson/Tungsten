@@ -166,12 +166,19 @@ def check_shell_copies(root, errors, notes):
     """Each example's `src/shell/` is the template's byte for byte: the same
     files with the same bytes, so a game on the template keeps its shell
     whole and a later shell can replace it (D-194). The shell's theme,
-    `assets/ui/themes/shell.json`, is held the same way."""
+    `assets/ui/themes/shell.json`, keeps the template's structure: its text
+    with every `#rrggbb` or `#rrggbbaa` masked is the template's, the same
+    keys, values, order and layout, so a game wears its own colours
+    (D-211)."""
     template, examples = root / "templates" / "basic" / "src" / "shell", root / "examples"
     if not template.is_dir() or not examples.is_dir():
         return
     theme = "assets/ui/themes/shell.json"
     template_theme = root / "templates" / "basic" / theme
+    colour = re.compile(r"#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b")
+
+    def masked(path):
+        return colour.sub("#", path.read_text())
 
     def files(folder):
         return {p.relative_to(folder).as_posix(): p for p in folder.rglob("*") if p.is_file()}
@@ -191,8 +198,8 @@ def check_shell_copies(root, errors, notes):
             copy, name = game / theme, f"{game.relative_to(root).as_posix()}/{theme}"
             if not copy.is_file():
                 errors.append(f"{name}: missing; templates/basic has it")
-            elif copy.read_bytes() != template_theme.read_bytes():
-                errors.append(f"{name}: differs from templates/basic/{theme}")
+            elif masked(copy) != masked(template_theme):
+                errors.append(f"{name}: differs from templates/basic/{theme} beyond its colours")
 
 
 def plan_fields(text):

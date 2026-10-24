@@ -3,14 +3,16 @@
 //! areas and the ambient emitters from generated prefabs, under the world's
 //! gravity, with the camera's bounds and its zoom by the window's height.
 //! Its presentation: the sky, the moon and the parallax strips with each
-//! area's far strip and night sky, the glows with their lights, the cursor,
-//! each area's light and today's post stack.
+//! area's far strip and night sky, the title's starry night while no run
+//! is live (`title`), the glows with their lights, the cursor, each area's
+//! light and today's post stack.
 
 pub mod components;
 pub mod draw;
 pub mod elevator;
 pub mod lava;
 pub mod systems;
+pub mod title;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
@@ -87,8 +89,9 @@ pub const PARTICLE_CAP: u32 = 2048;
 /// pair candidates, the particle budget, the camera's follow and shake, the
 /// level's clock on the
 /// step, `level_zoom` before the camera's update, the glows in the present
-/// phase, the bursts' cleanup in `Update`, and the backdrop under the
-/// engine's default drawing.
+/// phase, the bursts' cleanup and the title's sky in `Update`, the title's
+/// view before the camera's update, and the backdrop under the engine's
+/// default drawing.
 pub struct LevelPlugin;
 
 impl Plugin for LevelPlugin {
@@ -140,6 +143,11 @@ impl Plugin for LevelPlugin {
         );
         let zoom = system("level_zoom", systems::zoom).before(CAMERA_UPDATE);
         schedule.add(Stage::PostUpdate, zoom);
+        let title_view = system("title_view", title::view)
+            .after("level_zoom")
+            .before(CAMERA_UPDATE);
+        schedule.add(Stage::PostUpdate, title_view);
+        schedule.add(Stage::Update, system("title_sky", title::sky));
         schedule.add(
             Stage::PostUpdate,
             Phase::Present.join(system(GLOWS, systems::glows)),

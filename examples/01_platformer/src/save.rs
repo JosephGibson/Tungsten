@@ -10,7 +10,9 @@
 //! basins' crusts and the mine's elevator. Schema 11 keeps up to three open
 //! black holes, a list where schema 10 kept one. Schema 12 places the map's
 //! seven goblins before its placed orbs, which moves every later save ID,
-//! and keeps the crates, kegs, bombs and rocks.
+//! and keeps the crates, kegs, bombs and rocks. Schema 13 draws the player
+//! as the wizard on a 96 px frame, which moves the body's centre from the
+//! sprite's corner, the point a save keeps.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -169,6 +171,11 @@ pub const SHIFT_12: u64 = 7;
 /// Schema 11's first placed orb's save ID, schema 10's layout kept; frozen
 /// for the migration, as schema 10's are.
 pub const S11_PICKUPS: u64 = 28;
+/// Where schema 12's player's body centre sat from its sprite's corner, the
+/// point a save keeps: the courier's 64 px frame's. Frozen for the
+/// migrations, which place a player by its body before schema 13 moves the
+/// point.
+pub const S12_BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
@@ -181,8 +188,9 @@ impl SaveData for SaveGame {
     /// basins' crusts and the elevator, and widens the basins. Schema 11
     /// keeps the open black holes as a list (`to_11`). Schema 12 places the
     /// map's goblins before its orbs and keeps the props
-    /// (`to_12`).
-    const SCHEMA: u32 = 12;
+    /// (`to_12`). Schema 13 moves the player's point for the wizard's frame
+    /// (`to_13`).
+    const SCHEMA: u32 = 13;
 
     fn migrate(
         from: u32,
@@ -203,6 +211,7 @@ impl SaveData for SaveGame {
                 to_10(&mut data)?;
                 to_11(&mut data)?;
                 to_12(&mut data);
+                to_13(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -210,21 +219,29 @@ impl SaveData for SaveGame {
                 to_10(&mut data)?;
                 to_11(&mut data)?;
                 to_12(&mut data);
+                to_13(&mut data)?;
                 Ok(data)
             }
             9 => {
                 to_10(&mut data)?;
                 to_11(&mut data)?;
                 to_12(&mut data);
+                to_13(&mut data)?;
                 Ok(data)
             }
             10 => {
                 to_11(&mut data)?;
                 to_12(&mut data);
+                to_13(&mut data)?;
                 Ok(data)
             }
             11 => {
                 to_12(&mut data);
+                to_13(&mut data)?;
+                Ok(data)
+            }
+            12 => {
+                to_13(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -302,7 +319,7 @@ fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     else {
         return Err("schema 9: the player has no position".into());
     };
-    let centre = Vec2::from(at) + crate::features::player::BODY_OFFSET;
+    let centre = Vec2::from(at) + S12_BODY_OFFSET;
     let half = crate::features::player::PLAYER_HALF;
     let tile = crate::features::level::TILE;
     for (left, right, bank, places) in S10_LAKES {
@@ -317,7 +334,7 @@ fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
             .min_by(|a, b| to(*a).total_cmp(&to(*b)));
         if let Some(column) = nearest {
             let middle = Vec2::new(column * tile, bank * tile - half.y - 0.5);
-            let corner = middle - crate::features::player::BODY_OFFSET;
+            let corner = middle - S12_BODY_OFFSET;
             data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
             data["player"]["velocity"] = Value::from(vec![0.0_f32, 0.0]);
         }
@@ -359,6 +376,24 @@ fn to_12(data: &mut Value) {
     map_ids(data, &|id| {
         if id >= S11_PICKUPS { id + SHIFT_12 } else { id }
     });
+}
+
+/// Schema 12 to 13: the player is drawn on the wizard's 96 px frame, whose
+/// body centre sits at [`BODY_OFFSET`](crate::features::player::BODY_OFFSET)
+/// from its corner, so the saved corner moves by the two offsets'
+/// difference and the body stays where it stood. Nothing else saved names
+/// the frame.
+fn to_13(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let Some(at) = data
+        .pointer("/player/position")
+        .and_then(Value::as_array)
+        .and_then(|xy| Some([xy.first()?.as_f64()? as f32, xy.get(1)?.as_f64()? as f32]))
+    else {
+        return Err("schema 12: the player has no position".into());
+    };
+    let corner = Vec2::from(at) + S12_BODY_OFFSET - crate::features::player::BODY_OFFSET;
+    data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
+    Ok(())
 }
 
 /// Every save ID field of `data` through `to`; a field it lacks stays

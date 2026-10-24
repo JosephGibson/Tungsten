@@ -24,7 +24,7 @@ use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::enemies::beetle;
-use crate::features::player::{self, BODY_OFFSET};
+use crate::features::player::{self, BODY_OFFSET, Gesture};
 use crate::features::props::{
     self,
     components::{Crate, Keg},
@@ -40,9 +40,9 @@ use crate::shared::{SaveId, SaveIds, despawn_tree, just_pressed, pressed, spawn_
 /// its sound; `reload` pressed with the magazine short and none running
 /// starts one, racked; `shoot` pressed with no round or during a reload
 /// clicks, once a press; and `shoot` held fires the gun when no reload runs
-/// and its cooldown and a round allow, with its sound, its muzzle flash and
-/// its light, the magazine's last round starting the reload. The run's
-/// player alone fires, while it lives.
+/// and its cooldown and a round allow, with its sound, its muzzle flash,
+/// its light and the wizard's pistol pose, the magazine's last round
+/// starting the reload. The run's player alone fires, while it lives.
 pub fn shoot(world: &mut World) {
     let Some(player) = world.get_resource::<Run>().map(|run| run.player) else {
         return;
@@ -83,6 +83,7 @@ pub fn shoot(world: &mut World) {
         flash(world, muzzle, aim);
         spawn_burst(world, "ex10_muzzle_flash", muzzle);
         audio::play(world, Sound::Shot, muzzle);
+        player::cast(world, player, aim, Gesture::Shoot);
         if rounds(world, player).is_some_and(|(left, _)| left == 0) {
             world.insert(player, Reload { left: RELOAD_SECS });
         }

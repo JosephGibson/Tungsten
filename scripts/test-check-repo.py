@@ -119,7 +119,7 @@ class RepoChecks(unittest.TestCase):
             f"templates/basic/AGENTS.md: names no `hit`, which {snapshot} lists",
             f"templates/basic/AGENTS.md: names no `tags`, which {snapshot} lists"])
 
-    def test_example_shells_copy_the_templates_byte_for_byte(self):
+    def test_example_shells_copy_the_templates_shell_and_its_themes_structure(self):
         def copies():
             errors = []
             qa.check_shell_copies(self.root, errors, [])
@@ -139,11 +139,16 @@ class RepoChecks(unittest.TestCase):
         self.assertEqual(copies(), ["examples/01_game/src/shell/extra.rs: not in templates/basic/src/shell/"])
         (self.root / "examples/01_game/src/shell/extra.rs").unlink()
         theme = "assets/ui/themes/shell.json"
-        self.write(f"templates/basic/{theme}", '{"tokens": {}}\n')
-        self.write(f"examples/01_game/{theme}", '{"tokens": {}}\n')
+        base = '{"tokens": {"colors": {"text": "#e9ebf1", "accent": "#f0a830cc"}, "size": 16}}\n'
+        self.write(f"templates/basic/{theme}", base)
+        self.write(f"examples/01_game/{theme}", base)
         self.assertEqual(copies(), [], "an equal theme")
-        self.write(f"examples/01_game/{theme}", '{"tokens": {"text": {}}}\n')
-        self.assertEqual(copies(), [f"examples/01_game/{theme}: differs from templates/basic/{theme}"])
+        self.write(f"examples/01_game/{theme}", base.replace("#e9ebf1", "#e8eaf6").replace("#f0a830cc", "#a46cff"))
+        self.assertEqual(copies(), [], "a theme in its own colours")
+        differs = f"examples/01_game/{theme}: differs from templates/basic/{theme} beyond its colours"
+        for changed in (base.replace('"text"', '"body"'), base.replace("16", "15")):
+            self.write(f"examples/01_game/{theme}", changed)
+            self.assertEqual(copies(), [differs], "a changed key or number")
         (self.root / f"examples/01_game/{theme}").unlink()
         self.assertEqual(copies(), [f"examples/01_game/{theme}: missing; templates/basic has it"])
 

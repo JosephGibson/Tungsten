@@ -1,11 +1,12 @@
-//! The player: a courier on the kit's platformer controller, from the
+//! The player: a wizard on the kit's platformer controller, from the
 //! `player` prefab, which the camera follows. The prefab holds its kit
 //! items: input, the controller with one air jump, the aim, health,
 //! hurtbox, knockback, hit flash, the hit's cues, facing, the character
-//! animator and the camera target. 01 adds the lantern, whose staff light
-//! burns mana, the zoom, the kill row, the bursts its moves raise, the land
-//! and air-jump one-shots, a cast's toss, pose and hot lantern, and the
-//! jump's shove that throws off what buries it.
+//! animator and the camera target. 01 adds the staff light, which the code
+//! names the lantern and which burns mana, the zoom, the kill row, the
+//! bursts its moves raise, the land, air-jump and hurt one-shots, a cast's
+//! gesture and the staff's flare, and the jump's shove that throws off
+//! what buries it.
 
 pub mod components;
 pub mod systems;
@@ -16,23 +17,33 @@ use tungsten::kit::{ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, Stats, ensure
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::level::GLOWS;
+use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
 use crate::shared::{Bursts, SaveIds};
 use crate::shell::Difficulty;
-use components::{Lantern, LanternAnchors, Moves};
+use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
 pub const PLAYER_PREFAB: &str = "player";
 /// The body's half size and where its centre sits from the sprite's
-/// top-left corner, the entity's point: the art's feet stand on its row 61.
+/// top-left corner, the entity's point: the wizard's 96 px art stands its
+/// feet on its row 93.
 pub const PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
-pub const BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
+pub const BODY_OFFSET: Vec2 = Vec2::new(48.0, 65.0);
+/// The side of the square the player's status overlays draw in, centred on
+/// his body: the courier's 64 px frame, which they were drawn for.
+pub const OVERLAY_SIDE: f32 = 64.0;
 /// Game seconds a landing holds the land clip.
 pub const LAND_SECS: f32 = 0.18;
-/// Game seconds the toss clip plays, and a cast holds its pose and the
-/// lantern's glow.
-pub const TOSS_SECS: f32 = 0.3;
+/// Game seconds a cast's gesture holds, its one-shot clip or its pose, and
+/// the staff flares.
 pub const CAST_SECS: f32 = 0.3;
+/// The staff's flare over a cast: the staff light's halo radius, its hot
+/// core and its light, each times the prefab's; its reach stays the
+/// prefab's, which the crawlers' edge reads.
+pub const FLARE_RADIUS: f32 = 1.35;
+pub const FLARE_CORE: f32 = 1.6;
+pub const FLARE_LIGHT: f32 = 1.5;
 /// The staff light: its ability, which burns mana each step it is lit, the
 /// tag its effect grants while it burns, the mana it relights at after
 /// guttering out, and the puff it gutters with (L5's first half, Q15).
@@ -117,9 +128,28 @@ impl Plugin for PlayerPlugin {
     }
 }
 
+/// What a cast shows the wizard doing, by its spell or the gun: a one-shot
+/// clip facing its aim, or, standing, a pose along it, for [`CAST_SECS`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gesture {
+    /// The bowling ball: the free hand throws it.
+    Toss,
+    /// The fire missile and lightning: the staff thrust at the aim.
+    Bolt,
+    /// The force push and the black hole: the free hand shoves out.
+    Push,
+    /// Iron and the summons: the staff raised high and struck down.
+    Conjure,
+    /// The held sprays and the small balls: the staff levelled along the
+    /// aim, a pose.
+    Pour,
+    /// A shot: the pistol along the aim, a pose.
+    Shoot,
+}
+
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
 /// at `difficulty`'s health, with the run's next save ID, its staff light
-/// off.
+/// off, and its prefab's glow kept for the staff's flare.
 pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity {
     let at = centre - BODY_OFFSET;
     let id = world.resource_mut::<SaveIds>().take();
@@ -137,23 +167,23 @@ pub fn spawn(world: &mut World, centre: Vec2, difficulty: Difficulty) -> Entity 
     if let Some(stats) = world.get_mut::<Stats>(player) {
         stats.set_base(Stats::MAX_HEALTH, max_health(difficulty));
     }
+    if let Some(glow) = world.get::<Glow>(player).copied() {
+        world.insert(player, StaffGlow(glow));
+    }
     world.insert_resource(Bursts::default());
     player
 }
 
-/// Shows a cast by `player` along `aim`: its lantern burns hot, and it
-/// tosses toward the aim or, standing, faces it with its arm and gun along
-/// it, for [`CAST_SECS`].
-pub fn cast(world: &mut World, player: Entity, aim: Vec2, toss: bool) {
+/// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:
+/// a spell's flares the staff; a shot, the gun's, leaves it be.
+pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
     if let Some(moves) = world.get_mut::<Moves>(player) {
-        moves.glow = CAST_SECS;
-        moves.aim = aim;
-        if toss {
-            moves.toss = TOSS_SECS;
-            moves.pose = 0.0;
-        } else {
-            moves.pose = CAST_SECS;
+        if gesture != Gesture::Shoot {
+            moves.glow = CAST_SECS;
         }
+        moves.aim = aim;
+        moves.gesture = Some(gesture);
+        moves.cast = CAST_SECS;
     }
 }
 

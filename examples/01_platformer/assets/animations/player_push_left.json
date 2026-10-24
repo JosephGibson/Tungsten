@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_player_push_0_left"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_player_push_1_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_push_2_left"
+    }
+  ],
+  "looping": false
+}

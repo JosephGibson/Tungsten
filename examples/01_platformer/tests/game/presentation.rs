@@ -1,14 +1,17 @@
-//! What draws: the courier's clips and bursts, the ambient emitters and
+//! What draws: the wizard's clips and bursts, the ambient emitters and
 //! the particle caps, the drawing order, the lit frames' feet, the props'
-//! animations in step, the lantern's glow and light, midnight's post stack
-//! and moon, the glows' material batches, and an enemy's alert and search
-//! marks with the alert's one sting.
+//! animations in step, the staff light's glow and light, the wizard's
+//! overlays on his body, midnight's post stack and moon, the glows'
+//! material batches, an enemy's alert and search marks with the alert's
+//! one sting, the theme's own colours' contrast, and the title's starry
+//! night, whose stars leave with it.
 
 use std::path::PathBuf;
 
+use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::level::components::{AmbientEmitter, Glow, GlowParts};
 use example_01_platformer::features::level::draw;
-use example_01_platformer::features::level::systems::HALO_MATERIAL;
+use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
@@ -406,8 +409,9 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
             sprite.uv_size[0] > 0.0,
             "mirrored art, never a flipped quad"
         );
-        // The art's feet, its row 61, stand on the body's bottom.
-        assert!((sprite.position[1] + 61.0 - feet.y).abs() < 1e-3, "{name}");
+        // The art's feet, its row 93, stand on the body's bottom.
+        let row = BODY_OFFSET.y + PLAYER_HALF.y;
+        assert!((sprite.position[1] + row - feet.y).abs() < 1e-3, "{name}");
     }
 }
 
@@ -471,8 +475,8 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
         .get::<LanternAnchors>("player")
         .unwrap()
         .clone();
-    // A left-facing frame's flame mirrors its right-facing twin's about the
-    // body's centre line, x 32 of the frame.
+    // A left-facing frame's orb mirrors its right-facing twin's about the
+    // body's centre line, x 48 of the frame.
     for (name, [x, y]) in &anchors.0 {
         if let Some([left, left_y]) = anchors.0.get(&format!("{name}_left")) {
             assert!(
@@ -565,6 +569,28 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     let world = harness.world();
     assert!(!world.get::<Glow>(player).unwrap().hidden);
     assert!(world.query::<&Light>().all(|light| light.intensity > 0.0));
+}
+
+#[test]
+fn the_wizards_overlays_sit_on_his_body() {
+    let (mut harness, player) = run();
+    harness.step(10);
+    super::combat::apply(&mut harness, player, "burning", None);
+    harness.step(1);
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    mock_sprite(assets, HALO, 950, false);
+    // The burning glow's halo, by its quad's centre.
+    let halos: Vec<Vec2> = overlays(harness.world())
+        .into_iter()
+        .filter(|batch| batch.texture.0 == 950)
+        .flat_map(|batch| batch.instances)
+        .map(|quad| Vec2::from(quad.position) + Vec2::from(quad.size) * 0.5)
+        .collect();
+    let body = centre(&harness, player);
+    assert!(
+        halos.iter().any(|halo| halo.distance(body) < 0.5),
+        "{halos:?} against his body at {body}"
+    );
 }
 
 #[test]
@@ -1068,4 +1094,132 @@ fn an_alert_shows_its_mark_and_stings_once() {
     }
     assert!(again, "alert again");
     assert_eq!(heard, 1, "no sting from a search");
+}
+
+/// WCAG's contrast ratio of two opaque sRGB colours, as the template's
+/// shell test computes it.
+fn contrast(a: [u8; 4], b: [u8; 4]) -> f32 {
+    let luminance = |c: [u8; 4]| {
+        let channel = |v: u8| {
+            let v = f32::from(v) / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * channel(c[0]) + 0.7152 * channel(c[1]) + 0.0722 * channel(c[2])
+    };
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+#[test]
+fn the_theme_reads_in_its_own_colours() {
+    // 01's theme, the template's structure in 01's colours, holds its own
+    // floors over the template's ten pairs, each under its reading.
+    let theme = tungsten::core::ui::ThemeFile::load("assets/ui/themes/shell.json")
+        .expect("the theme parses")
+        .into_theme();
+    let colors = theme.tokens.colors;
+    let surface = colors.surface;
+    for (name, color, against, least) in [
+        ("text", colors.text, surface, 16.0),
+        ("text_muted", colors.text_muted, surface, 8.3),
+        ("accent", colors.accent, surface, 5.5),
+        ("accent_text", colors.accent_text, colors.accent, 5.8),
+        ("focus", colors.focus, surface, 10.2),
+        ("border", colors.border, surface, 3.4),
+        ("disabled_text", colors.disabled_text, surface, 3.8),
+        ("danger", colors.danger, surface, 6.9),
+        (
+            "danger on the background",
+            colors.danger,
+            colors.background,
+            7.2,
+        ),
+        (
+            "danger on a hovered fill",
+            colors.danger,
+            [0x11, 0x14, 0x2a, 255],
+            6.4,
+        ),
+    ] {
+        let ratio = contrast(color, against);
+        assert!(ratio >= least - 0.01, "{name}: {ratio:.2} < {least}");
+        assert_eq!(color[3], 255, "{name} is opaque");
+    }
+}
+
+#[test]
+fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
+    use example_01_platformer::features::level::title::{TITLE_STAR, TWINKLE, TWINKLES};
+    use example_01_platformer::shell::title::TITLE;
+    let mut harness = super::harness();
+    // The backdrop's sprites, as the harness loads none: the midnight sky,
+    // the black night sky and the clouds.
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    let sprites = [
+        "ex10_sky",
+        "ex10_sky_black",
+        "ex10_clouds_far",
+        "ex10_clouds_near",
+    ];
+    for (i, name) in sprites.into_iter().enumerate() {
+        mock_sprite(assets, name, 960 + i as u32, false);
+    }
+    harness.step(2);
+    let drawn = |h: &UiHarness| -> Vec<u32> {
+        draw::backdrop(h.world())
+            .iter()
+            .map(|batch| batch.texture.0)
+            .collect()
+    };
+    let title = drawn(&harness);
+    assert!(title.contains(&961), "the black night sky: {title:?}");
+    assert!(
+        !title.contains(&962) && !title.contains(&963),
+        "no clouds: {title:?}"
+    );
+    let twinkle = harness
+        .world()
+        .resource::<ParticleConfigRegistry>()
+        .id_for_name(TWINKLE);
+    let twinkles = |h: &UiHarness| -> Vec<Option<SceneEntity>> {
+        h.world()
+            .query::<(&ParticleEmitter, Option<&SceneEntity>)>()
+            .filter(|(emitter, _)| Some(emitter.config) == twinkle)
+            .map(|(_, owner)| owner.copied())
+            .collect()
+    };
+    let owners = twinkles(&harness);
+    assert_eq!(owners.len(), TWINKLES as usize);
+    assert!(
+        owners
+            .iter()
+            .all(|owner| owner.is_some_and(|owner| owner.state_id == TITLE)),
+        "the title's"
+    );
+    let stars = |h: &UiHarness| {
+        h.world()
+            .query::<&Particle>()
+            .filter(|particle| particle.config.sprite == TITLE_STAR)
+            .count()
+    };
+    let mut twinkling = false;
+    for _ in 0..240 {
+        harness.step(1);
+        if stars(&harness) > 0 {
+            twinkling = true;
+            break;
+        }
+    }
+    assert!(twinkling, "the stars twinkle");
+    // A New Game through the curtain: no star stays, and a run's sky draws.
+    super::start(&mut harness);
+    harness.step(1);
+    assert!(twinkles(&harness).is_empty(), "the twinkles left");
+    assert_eq!(stars(&harness), 0, "no star lingers");
+    let run = drawn(&harness);
+    assert!(run.contains(&960), "the run's sky: {run:?}");
 }

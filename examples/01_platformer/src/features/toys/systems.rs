@@ -60,12 +60,15 @@ const SAMPLE_STEP: f32 = 6.0;
 /// A spray's beam half width, its start from the caster's centre, and how
 /// fast iron frosts and thaws under it.
 const BEAM_HALF_WIDTH: f32 = 4.0;
-const SPRAY_MUZZLE: f32 = 24.0;
+pub(super) const SPRAY_MUZZLE: f32 = 24.0;
 const FREEZE_TIME: f32 = elements::FREEZE_TIME;
 /// The particle configs of a cold spray and of a fire spray: the stream,
 /// the mist and the contact.
 const COLD_EMITTERS: [&str; 3] = ["ex10_ice_beam", "ex10_ice_mist", "ex10_ice_contact"];
 const FIRE_EMITTERS: [&str; 3] = ["ex10_flame_spray", "ex10_flame_mist", "ex10_ball_burn"];
+/// The bursts on a target a spray damages, every second pulse (01 (h)).
+const FROST_HIT: &str = "ex10_frost_hit";
+const FLAME_HIT: &str = "ex10_flame_hit";
 /// A spray's loop, by its element.
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
@@ -961,7 +964,7 @@ pub fn trace_among(
 }
 
 /// A spray's reach by its element.
-fn reach(element: Element) -> f32 {
+pub(super) fn reach(element: Element) -> f32 {
     match element {
         Element::Cold => SPRAY_RANGE,
         Element::Fire => FIRE_SPRAY_RANGE,
@@ -1018,7 +1021,9 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
 /// out for a while; in a fire cone small balls, crates and kegs light,
 /// credited to the caster, and a frozen body explodes. Every pulse of
 /// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
-/// from the caster.
+/// from the caster, and every second pulse, from the first, each bursts at
+/// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), a
+/// cosmetic burst the cap may drop.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let Some((centre, aim)) = hold_spray(world, caster, aim, element) else {
         return;
@@ -1061,21 +1066,23 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     for basin in basins {
         crate::features::level::lava::chill(world, basin);
     }
-    let pulses = world
+    let (pulses, bursts) = world
         .query_mut::<&mut Spray>()
         .find(|spray| spray.caster == caster && spray.element == element)
-        .map_or(0, |spray| {
+        .map_or((0, 0), |spray| {
             spray.pulse += dt;
-            let mut pulses = 0;
+            let (mut pulses, mut bursts) = (0, 0);
             while spray.pulse >= SPRAY_PULSE - 1e-4 {
                 spray.pulse -= SPRAY_PULSE;
+                bursts += u32::from(spray.pulses % 2 == 0);
+                spray.pulses = spray.pulses.wrapping_add(1);
                 pulses += 1;
             }
-            pulses
+            (pulses, bursts)
         });
-    let kind = match element {
-        Element::Cold => Kind::Cold,
-        Element::Fire => Kind::Fire,
+    let (kind, hit) = match element {
+        Element::Cold => (Kind::Cold, FROST_HIT),
+        Element::Fire => (Kind::Fire, FLAME_HIT),
     };
     for &(target, contact) in &met {
         let live = world
@@ -1089,6 +1096,9 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
                 .from(caster)
                 .at(contact)
                 .queue(world);
+        }
+        for _ in 0..bursts {
+            spawn_burst(world, hit, contact);
         }
     }
     match element {
@@ -1136,7 +1146,8 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     }
 }
 
-/// Starts a spray: its particles, its start sound and its loop.
+/// Starts a spray: its particles, its look (`spray_look`), its start sound
+/// and its loop.
 fn start_spray(
     world: &mut World,
     caster: Entity,
@@ -1177,21 +1188,25 @@ fn start_spray(
             Element::Fire => FIRE_LOOP,
         },
     );
-    world.spawn_with((
+    let spray = world.spawn_with((
         Spray {
             caster,
             element,
             start,
             end,
+            contact: None,
             aim,
             age: 0.0,
             emitters,
             voice,
             kept: true,
             pulse: SPRAY_PULSE,
+            pulses: 0,
         },
         SceneEntity { state_id: GAMEPLAY },
-    ))
+    ));
+    super::spray_look::start(world, spray, element);
+    spray
 }
 
 /// Starts the manifest loop `id` at its volume: a spray's voice, which its
@@ -1207,9 +1222,10 @@ pub(crate) fn loop_voice(world: &mut World, id: &str) -> Option<tungsten::core::
     )
 }
 
-/// Ends the spray `entity`: its particles go, its loop fades out over
-/// [`LOOP_FADE`], and a caster still alive hears its end, the cold spray's
-/// pressure release or the flamethrower's dying roar.
+/// Ends the spray `entity`: its particles and its look go, its puffs left
+/// to play out, its loop fades out over [`LOOP_FADE`], and a caster still
+/// alive hears its end, the cold spray's pressure release or the
+/// flamethrower's dying roar.
 pub fn end_spray(world: &mut World, entity: Entity) {
     let Some(spray) = world.get::<Spray>(entity).copied() else {
         return;
@@ -1217,6 +1233,7 @@ pub fn end_spray(world: &mut World, entity: Entity) {
     for emitter in spray.emitters.into_iter().flatten() {
         world.despawn(emitter);
     }
+    super::spray_look::end(world, entity);
     if let Some(voice) = spray.voice {
         world
             .resource_mut::<AudioCommands>()
@@ -1265,8 +1282,9 @@ pub fn sprays_end(world: &mut World) {
 
 /// `spray_look`, in the present phase: each spray follows its caster's
 /// drawn point and its aim, its stream and mist from the muzzle and its
-/// contact where the cone meets a surface, iron first; newborn particles
-/// turn to the aim they were born at and die before a surface.
+/// contact where the cone meets a surface, iron first, which its sprites
+/// read (`spray_look::sprites`); newborn particles turn to the aim they
+/// were born at and die before a surface.
 pub fn spray_look(world: &mut World) {
     orient_newborns(world);
     let dt = world.resource::<Time>().delta();
@@ -1292,6 +1310,7 @@ pub fn spray_look(world: &mut World) {
         };
         spray.start = centre + spray.aim * SPRAY_MUZZLE.min(centre.distance(end));
         spray.end = end;
+        spray.contact = contact;
         spray.age += dt;
         for (index, emitter) in spray.emitters.into_iter().enumerate() {
             let Some(emitter) = emitter else { continue };
@@ -1345,17 +1364,17 @@ fn contact_point(
     iron.or(surface)
 }
 
-/// The draw depth a spray's particles take once `spray_look` meets them:
-/// over the enemies (8), the dummy (9) and the courier (10), under the
-/// balls (12) and iron. A frame's newborns draw once at the particles' 0
+/// The draw depth a spray's particles and sprites take once `spray_look`
+/// meets them: over the enemies (8), the dummy (9) and the wizard (10),
+/// under the balls (12) and iron. A frame's newborns draw once at the particles' 0
 /// first, as they draw once unturned, since a particle config has no depth
 /// (K2).
 pub const SPRAY_Z: i32 = 11;
 
 /// Lifts each newborn of a spray's three emitters to [`SPRAY_Z`], and turns
 /// each of its two aimed emitters' to the aim and shortens its life so it
-/// dies before the surface it would pass through; the contact's splash is
-/// not aimed.
+/// dies before the surface it would pass through within its own spray's
+/// reach; the contact's splash is not aimed.
 fn orient_newborns(world: &mut World) {
     let emitters: Vec<Entity> = world
         .query::<&Spray>()
@@ -1391,10 +1410,12 @@ fn orient_newborns(world: &mut World) {
             let velocity = aimed.direction.rotate(particle.velocity);
             let speed = velocity.length();
             let direction = velocity.try_normalize()?;
-            let caster = world
+            let (caster, element) = world
                 .query::<&Spray>()
                 .find(|spray| spray.emitters.contains(&particle.emitter))
-                .map_or(entity, |spray| spray.caster);
+                .map_or((entity, Element::Cold), |spray| {
+                    (spray.caster, spray.element)
+                });
             let fallback;
             let bodies = match near.iter().find(|(c, _)| *c == caster) {
                 Some((_, bodies)) => bodies.as_slice(),
@@ -1408,7 +1429,7 @@ fn orient_newborns(world: &mut World) {
                 &tiles,
                 at.position,
                 direction,
-                SPRAY_RANGE - SPRAY_MUZZLE,
+                reach(element) - SPRAY_MUZZLE,
             );
             let lifetime = (at.position.distance(end) - BEAM_HALF_WIDTH).max(0.0) / speed;
             Some((entity, Some((velocity, lifetime))))
@@ -1590,8 +1611,8 @@ fn tint(world: &mut World, piece: Entity, amount: f32, frost: bool) {
     }
 }
 
-/// `missile_look`, in the present phase: a missile's art faces along its
-/// flight, mirrored when it flies left so its drips stay underneath.
+/// `missile_look`, in the present phase: a missile's rocket faces along its
+/// flight, mirrored when it flies left so its lit side stays up.
 pub fn missile_look(world: &mut World) {
     let Some(registry) = world.remove_resource::<AnimationRegistry>() else {
         return;
@@ -1603,9 +1624,9 @@ pub fn missile_look(world: &mut World) {
     for (missile, v, clip) in missiles {
         let left = v.x < 0.0;
         let wanted = if left {
-            "ex10_fireball_left"
+            "ex10_fire_missile_left"
         } else {
-            "ex10_fireball"
+            "ex10_fire_missile"
         };
         if clip != wanted {
             let mut state = AnimationState::new(wanted);

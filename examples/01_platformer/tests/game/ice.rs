@@ -302,8 +302,9 @@ fn cold_pulses_draw_without_scene_lighting_stay_bounded_and_expire() {
 
 /// The top of the spray tests' ground, in the level's empty sky.
 const TOP: f32 = 1000.0;
-/// The cold spray's three particle emitters' most alive, together.
-const SPRAY_PARTICLES: usize = 144 + 48 + 100;
+/// The cold spray's three particle emitters' most alive, together: its
+/// crystals, its contact's frost and its mist, accents to its sprites.
+const SPRAY_PARTICLES: usize = 110 + 48 + 70;
 
 /// A run with the player on the sky's ground at `x`, the camera held over
 /// it and slot 3, the ice spray, selected.

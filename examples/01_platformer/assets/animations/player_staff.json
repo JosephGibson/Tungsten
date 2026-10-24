@@ -1,0 +1,25 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_staff_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_staff_1"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_staff_2"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_staff_3"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_player_staff_4"
+    }
+  ],
+  "looping": false
+}

@@ -9,7 +9,7 @@ tinted at extraction; each fades to transparent before its canvas edge.
 import math
 
 from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
-from pixels import BAYER, NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
+from pixels import BAYER, NEIGHBOURS, Part, dither, outline, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -184,14 +184,95 @@ def build_black_hole(images):
     images['infall_streak'] = infall_streak()
 
 
-# The spell icons: 32 px palette art in the courier's style, outlined once,
-# shown by the HUD at whole-number scale with their element's border.
+# The spell, gun and summon icons, one family (01 (h)): each 32 px subject
+# in the house style, lit from the top left with a rim of its element's
+# light on its far edges, over a dark backing tinted by the element with a
+# glow behind the subject, in a two-pixel bevelled frame in the element's
+# colour, on a 36 px tile the HUD shows at whole-number scale.
 ICON = 32
+ICON_TILE = ICON_SIZES['icon_gun'][0]
+ICON_INSET = (ICON_TILE - ICON) // 2
+# Each element's frame (light, mid, dark), its backing's ramp from the
+# corners in, and the rim light on its subjects' far edges: gravity's
+# purple apart from shock's violet, and mana's blue for the summons.
+ICON_ELEMENTS = {
+    'fire': dict(frame=('J', 'K', 'L'), back=('θ', 'Θ', 'M', 'ϑ', 'L', 'K'), rim='J'),
+    'cold': dict(frame=('`', ',', ')'), back=('θ', 'х', '|', '{', ')', '}'), rim='`'),
+    'gravity': dict(frame=('Щ', 'Ш', 'Ц'), back=('θ', 'Ж', 'Ф', 'Ц', 'Ш', 'Щ'), rim='Щ'),
+    'mana': dict(frame=('Ю', 'З', 'Й'), back=('θ', 'г', 'И', 'Й', 'З', 'Ю'), rim='Ю'),
+    'physical': dict(frame=('I', 'σ', 'τ'), back=('θ', 'ν', 'α', 'δ', 'ъ', 'ψ'), rim='φ'),
+    'shock': dict(frame=('ϕ', 'Σ', 'Λ'), back=('θ', 'Δ', 'Δ', 'Λ', 'Σ', 'ϕ'), rim='ϕ'),
+}
+ICON_ELEMENT = {
+    'icon_fire_missile': 'fire', 'icon_flamethrower': 'fire', 'icon_ice_spray': 'cold',
+    'icon_force_push': 'gravity', 'icon_black_hole': 'gravity', 'icon_iron_block': 'physical',
+    'icon_bowling_ball': 'physical', 'icon_small_balls': 'physical', 'icon_lightning': 'shock',
+    'icon_gun': 'physical', 'icon_dummy': 'mana', 'icon_wisp': 'mana', 'icon_crawler': 'mana',
+    'icon_beetle': 'mana', 'icon_bat': 'mana', 'icon_troll': 'mana', 'icon_goblin': 'mana',
+    'icon_crate': 'mana', 'icon_keg': 'mana',
+}
+# The summons' ring, drawn in indigo, recoloured to mana's blue.
+SUMMON_RING = {'Ξ': 'З', 'Π': 'Й'}
 
 
-def icon_image(pixels):
-    size = (ICON, ICON)
-    return to_image(outline(pixels, 'o', size), size)
+def icon_tile(name, subject):
+    """`name`'s 36 px tile from its 32 px `subject` pixels."""
+    element = ICON_ELEMENTS[ICON_ELEMENT[name]]
+    light, mid, dark = element['frame']
+    back = element['back']
+    summon = ICON_ELEMENT[name] == 'mana'
+    sub = {}
+    for (x, y), s in subject.items():
+        if summon and s in SUMMON_RING and y >= 24:
+            s = SUMMON_RING[s]
+        sub[(x + ICON_INSET, y + ICON_INSET)] = s
+    inside = set(sub)
+    # The subject lit from the top left: its far edges take the element's
+    # rim light, its near edges stay as drawn.
+    lit = dict(sub)
+    for (x, y), s in sub.items():
+        far = (x + 1, y) not in inside or (x, y + 1) not in inside
+        near = (x - 1, y) not in inside or (x, y - 1) not in inside
+        if far and not near and s not in ('o', 'θ', 'ε'):
+            lit[(x, y)] = element['rim']
+    canvas = {}
+    c = (ICON_TILE - 1) / 2
+    # The backing: a dark tile, a soft glow of the element round the subject.
+    near_subject = {}
+    for x, y in inside:
+        for dx in range(-4, 5):
+            for dy in range(-4, 5):
+                d = math.hypot(dx, dy)
+                if d <= 4:
+                    q = (x + dx, y + dy)
+                    near_subject[q] = max(near_subject.get(q, 0.0), 1 - d / 4.5)
+    for y in range(2, ICON_TILE - 2):
+        for x in range(2, ICON_TILE - 2):
+            r = math.hypot(x - c, y - c) / (ICON_TILE / 2)
+            v = 0.1 + 0.3 * max(0.0, 1 - r) + 0.58 * near_subject.get((x, y), 0.0) ** 1.5
+            v += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.28
+            canvas[(x, y)] = back[min(len(back) - 1, max(0, int(v * len(back))))]
+    # The subject, outlined where it meets the glow.
+    for p, s in outline(dict(lit), 'o', (ICON_TILE, ICON_TILE)).items():
+        canvas[p] = s
+    # The frame: an outer dark line, a bevel lit along the top and left.
+    end = ICON_TILE - 1
+    for y in range(ICON_TILE):
+        for x in range(ICON_TILE):
+            edge = min(x, y, end - x, end - y)
+            corner = min(x, end - x) + min(y, end - y)
+            if corner < 2:
+                canvas.pop((x, y), None)
+                continue
+            if edge == 0:
+                canvas[(x, y)] = 'o'
+            elif edge == 1:
+                canvas[(x, y)] = light if (x <= y and x + y < ICON_TILE) or y == 1 and x < end - 1 else dark
+                if x == end - 1 or y == end - 1:
+                    canvas[(x, y)] = dark
+                if (x == 1 or y == 1) and not (x == end - 1 or y == end - 1):
+                    canvas[(x, y)] = light if x + y < ICON_TILE else mid
+    return to_image(canvas, (ICON_TILE, ICON_TILE))
 
 
 def icon_disc(center, radius, symbols, light=(-0.55, -0.65)):
@@ -233,14 +314,22 @@ def icon_nozzle():
 
 
 def icon_fire_missile():
-    tail = Part((ICON, ICON))
-    tail.polygon([(18, 9), (23, 14), (6, 28), (4, 26)])
-    pixels = shade(tail.pixels(), 'L', light='K', shadow='M')
-    for x, y in list(pixels):  # streaks along the trail
-        if (x + 2 * y) % 5 == 0:
-            pixels[(x, y)] = 'K'
-    pixels.update(icon_disc((21, 11), 7, 'LKJY'))
-    pixels.update({(20, 9): 'Z', (19, 9): 'Z', (20, 8): 'Z'})
+    """The fire missile's rocket (`actors.missile_shape`) turned 40 degrees
+    up and to the right, its nose at the top right, its plume trailing to
+    the bottom left."""
+    from actors import missile_shape, missile_symbol
+    angle = math.radians(40)
+    ax, ay = math.cos(angle), -math.sin(angle)
+    tip = (27.0, 6.5)
+    pixels = {}
+    for y in range(ICON):
+        for x in range(ICON):
+            dx, dy = x + 0.5 - tip[0], y + 0.5 - tip[1]
+            u = -(dx * ax + dy * ay)
+            v = -dx * ay + dy * ax
+            s = missile_symbol(missile_shape(u, v, 0.3, k=0.78), x, y)
+            if s:
+                pixels[(x, y)] = s
     return pixels
 
 
@@ -365,28 +454,62 @@ def icon_lightning():
 
 
 def icon_gun():
-    """A short pistol side on: an iron slide and barrel, a wooden grip."""
+    """A semi-automatic pistol, three-quarter lit, tilted 14 degrees up at
+    the muzzle: a steel slide with its serrations, ejection port, sights
+    and a muzzle bore, a frame with its trigger guard and trigger, a
+    checkered walnut grip with a brass screw, the magazine's base plate."""
+    from actors import turned
+    pivot, angle = (16.0, 17.0), math.radians(-14)
+    def t(points):
+        return turned(points, pivot, angle)
     slide = Part((ICON, ICON))
-    slide.polygon([(5, 10), (27, 10), (27, 16), (5, 16)])
-    slide.rectangle((27, 11, 29, 14))
+    slide.polygon(t([(5, 9), (28, 9), (29, 10), (29, 14), (5, 14)]))
+    frame = Part((ICON, ICON))
+    frame.polygon(t([(9, 14), (26, 14), (26, 16), (15, 16), (14, 17), (10, 17)]))
     grip = Part((ICON, ICON))
-    grip.polygon([(7, 16), (14, 16), (12, 27), (5, 27)])
+    grip.polygon(t([(6, 14), (13, 14), (12.5, 17), (11, 27), (4, 27), (5, 20)]))
     guard = Part((ICON, ICON))
-    guard.limb([(14, 16), (15, 20), (19, 20), (19, 16)], 1)
-    pixels = compose([
-        (shade(grip.pixels(), "'", light='a', shadow='('), 'o'),
-        (shade(guard.pixels(), 'Φ'), None),
-        (shade(slide.pixels(), 'Ω', light='χ', shadow='Φ'), 'o'),
-    ])
-    for x in range(8, 25, 3):  # the slide's grip ridges
-        pixels[(x, 13)] = 'Φ'
-    pixels[(26, 10)] = 'φ'  # the front sight catching the moon
+    guard.limb(t([(14, 16), (14.5, 20), (19, 20.5), (20, 16)]), 1)
+    trigger = Part((ICON, ICON))
+    trigger.limb(t([(16.5, 16), (16, 18.5)]), 1)
+    plate = Part((ICON, ICON))
+    plate.polygon(t([(3.5, 26.5), (11.5, 26.5), (11.5, 28.5), (3.5, 28.5)]))
+    pixels = {}
+    pixels.update(shade(grip.pixels(), '"', light="'", shadow='ω', back='ω', rim="'"))
+    # The grip's checkering: a diamond lattice of shadow.
+    for x, y in grip.pixels():
+        if (x + y) % 3 == 0 and (x - y) % 3 == 0:
+            pixels[(x, y)] = 'ω'
+    sx, sy = map(round, t([(8.5, 21.5)])[0])
+    pixels[(sx, sy)] = 'A'
+    pixels.update(shade(plate.pixels(), 'Φ', light='Ω', shadow='θ'))
+    pixels.update(shade(frame.pixels(), 'Φ', light='Ω', shadow='ν'))
+    pixels.update({p: 'Φ' for p in guard.pixels()})
+    pixels.update({p: 'Ω' for p in trigger.pixels()})
+    pixels.update(shade(slide.pixels(), 'Ω', light='χ', shadow='Φ', back='Φ', rim='ψ'))
+    # A highlight raking along the slide's top, the serrations at its rear,
+    # the ejection port, the sights and the bore.
+    for x in range(8, 28):
+        p = tuple(map(round, t([(x, 10)])[0]))
+        if p in slide.pixels():
+            pixels[p] = 'φ' if 11 <= x <= 22 else 'χ'
+    for x in (7, 9, 11):
+        for y in (11, 12, 13):
+            p = tuple(map(round, t([(x, y)])[0]))
+            if p in slide.pixels():
+                pixels[p] = 'Φ'
+    for x in range(16, 21):
+        p = tuple(map(round, t([(x, 11.5)])[0]))
+        pixels[p] = 'ν'
+    for x, y in ((27.5, 8.4), (6.5, 8.4)):
+        pixels[tuple(map(round, t([(x, y)])[0]))] = 'χ'
+    pixels[tuple(map(round, t([(29.2, 12)])[0]))] = 'θ'
     return pixels
 
 
 def icon_dummy():
-    """The training dummy, the summon slot's first type, at half size on an
-    indigo summoning ring."""
+    """The training dummy, the summon slot's first type, at half size on a
+    summoning ring (recoloured to mana's blue on its tile)."""
     from actors import dummy_canvas
     ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
     ring.ellipse((16, 28), 13, 3)
@@ -403,7 +526,7 @@ def icon_dummy():
 
 def icon_of(canvas, step, lift):
     """A summon type's icon: its frame's canvas at 1/`step` size, raised
-    `lift` pixels, standing on an indigo summoning ring."""
+    `lift` pixels, standing on a summoning ring (mana's blue on its tile)."""
     ring, inner = Part((ICON, ICON)), Part((ICON, ICON))
     ring.ellipse((16, 28), 13, 3)
     inner.ellipse((16, 28), 10, 2)
@@ -498,10 +621,10 @@ ICON_ART = {
 
 
 def build_icons(images):
-    if set(ICON_ART) != set(ICON_SIZES):
-        raise ValueError('every spell icon needs its art')
+    if set(ICON_ART) != set(ICON_SIZES) or set(ICON_ELEMENT) != set(ICON_SIZES):
+        raise ValueError('every spell icon needs its art and its element')
     for name, draw in ICON_ART.items():
-        images[name] = icon_image(draw())
+        images[name] = icon_tile(name, draw())
 
 
 # Lightning: eight segments, each entering at its top centre and leaving
@@ -909,12 +1032,440 @@ def build_element_art(images):
     images['ice_shell'] = ice_shell()
     images['ice_glint'] = ice_glint()
     images['health_orb'] = orb('z', 'F', 'M', 'Ψ', 'X')
-    images['mana_orb'] = orb('Π', 'Ξ', 'Γ', 'ϕ', 'Δ')
+    images['mana_orb'] = orb('Й', 'З', 'И', 'Ю', 'И')
     for frame in range(3):
         images[f'muzzle_{frame}'] = muzzle(frame)
     images['tracer'] = tracer()
     for kind in ('alert', 'search'):
         images[f'mark_{kind}'] = mark(kind)
+
+
+# The sprays' sprites (01 (h)): each spray is a muzzle flare at the staff,
+# a stream of animated puffs that grow as they fly, a splash where the cone
+# meets something and, for the ice, a bright core beam tiled down its axis;
+# its particles stay as accents. Each clip is drawn along +x for `toys` to
+# turn to the aim, in palette pixels: the fire ramp `M L K J Y Z`, smoke
+# greys, the cold symbols and the white alpha steps. A clip: its frame
+# size, its frames, the milliseconds a frame and whether it loops.
+SPRAY_CLIPS = {
+    'flame_muzzle': ((40, 32), 6, 50, True),
+    'flame_puff': ((48, 48), 8, 40, False),
+    'flame_splash': ((48, 48), 6, 60, True),
+    'frost_muzzle': ((32, 32), 6, 50, True),
+    'frost_puff': ((48, 48), 8, 45, False),
+    'frost_core': ((32, 14), 8, 40, True),
+    'frost_splash': ((48, 48), 6, 60, True),
+}
+SMOKE = ('/', 'b', 'Φ', 'B')
+
+
+def ordered(x, y):
+    """The ordered dither's offset at a pixel, in [-0.5, 0.5)."""
+    return BAYER[y % 4][x % 4] / 16 - 0.5
+
+
+def fire_symbol(heat, x, y, spread=0.08):
+    h = heat + ordered(x, y) * spread
+    if h < 0.1:
+        return None
+    for limit, s in ((0.24, 'M'), (0.40, 'L'), (0.56, 'K'), (0.72, 'J'), (0.86, 'Y')):
+        if h < limit:
+            return s
+    return 'Z'
+
+
+def wobble(seed, theta, f, terms=((3, 0.20, 1.7), (5, 0.13, -2.3), (8, 0.07, 3.1))):
+    """A ragged edge: a sum of lobes round `theta`, turning with frame `f`."""
+    return sum(a * math.sin(k * theta + unit(seed, k) * math.tau + w * f) for k, a, w in terms)
+
+
+def flame_puff(f, n):
+    """One puff of the flamethrower's stream, moving along +x: a white-hot
+    tongue billowing into a rounded front with a licking tail, cooling
+    through yellow and orange to red, trailing smoke as it dies."""
+    w, h = SPRAY_CLIPS['flame_puff'][0]
+    t = f / (n - 1)
+    cx, cy = 28.0 - 2 * t, 25.0
+    r = 4.5 + 11.0 * t ** 0.7
+    tail = r * (1.45 + 0.1 * t)
+    squash = 0.72 + 0.22 * t
+    peak = 1.32 - 0.82 * t
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            theta = math.atan2(dy, dx)
+            c = math.cos(theta)
+            base = r if c >= 0 else r + (tail - r) * (-c) ** 1.5
+            edge = base * (1 + wobble('puff', theta, f, ((5, 0.09, 1.9), (9, 0.06, -2.6), (13, 0.045, 3.3))))
+            d = math.hypot(dx, dy / squash)
+            q = d / max(edge, 0.5)
+            s = None
+            if q <= 1.0:
+                heat = max(0.0, 1 - q) ** 0.7 * peak + max(0.0, 0.4 - q) * (1 - t) * 0.8
+                s = fire_symbol(heat, x, y)
+            # A billow of smoke rising behind the cooling flame, growing with age.
+            if t > 0.4 and s in (None, 'M'):
+                sr = r * 0.62 * (t - 0.4) / 0.6 + 2.0
+                sx, sy = cx - r * 0.55, cy - r * 0.5
+                sa = math.atan2(y + 0.5 - sy, x + 0.5 - sx)
+                sd = math.hypot(x + 0.5 - sx, (y + 0.5 - sy) * 1.15) / (
+                    sr * (1 + wobble('smoke', sa, f, ((5, 0.12, 1.3), (9, 0.07, -2.1)))))
+                if sd < 1 and unit('smoke-px', x, y, f) > 0.12 + max(0.0, sd - 0.7):
+                    s = SMOKE[min(3, int(sd * 2.4) + (t > 0.8))]
+            if s:
+                px[(x, y)] = s
+    # A few embers flung off the rim.
+    if 1 <= f <= 5:
+        for k in range(3):
+            a = unit('puff-ember', f, k) * math.tau
+            rr = r * (1.2 + 0.4 * unit('puff-ember-r', f, k))
+            ex, ey = round(cx + math.cos(a) * rr), round(cy + math.sin(a) * rr * squash)
+            if 0 < ex < w - 1 and 0 < ey < h - 1 and (ex, ey) not in px:
+                px[(ex, ey)] = 'J' if k % 2 else 'Y'
+    return to_image(px, (w, h))
+
+
+def flame_muzzle(f, n):
+    """The flame bursting from the staff's orb: a white-hot root, at (3, 16),
+    opening into a cone of licking tongues, flickering in a loop."""
+    w, h = SPRAY_CLIPS['flame_muzzle'][0]
+    ox, oy = 3.0, 16.0
+    phase = f / n * math.tau
+    length = 32 + 3 * math.sin(phase)
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            u = x + 0.5 - ox
+            if u < 0 or u > length + 4:
+                continue
+            v = y + 0.5 - oy
+            half = 1.8 + u * 0.42 + 1.4 * math.sin(u * 0.55 - phase * 2 + 0.6) * min(1.0, u / 10)
+            half += 0.8 * math.sin(u * 1.3 + phase * 3) * min(1.0, u / 14)
+            if abs(v) > half:
+                continue
+            across = abs(v) / max(half, 0.5)
+            along = u / length
+            heat = max(0.0, 1 - along) ** 0.9 * max(0.0, 1 - across ** 1.6) * 1.25 + max(0.0, 0.3 - along) * 0.9
+            s = fire_symbol(heat, x, y)
+            if s:
+                px[(x, y)] = s
+    return to_image(px, (w, h))
+
+
+def flame_splash(f, n):
+    """Where the flames meet something, at (36, 25): tongues splashing back
+    toward the caster and climbing its face, rounded where they wrap the
+    point, embers thrown off."""
+    w, h = SPRAY_CLIPS['flame_splash'][0]
+    hx, hy = 36.0, 25.0
+    phase = f / n * math.tau
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            dx, dy = x + 0.5 - hx, y + 0.5 - hy
+            theta = math.atan2(dy, dx)
+            back = max(0.0, -math.cos(theta))
+            up = max(0.0, -math.sin(theta))
+            reach = 6 + 11 * back ** 0.6 + 8 * up ** 2 * (1 - back)
+            reach *= 1 + wobble('splash', theta, phase, ((4, 0.18, 2.0), (7, 0.1, -3.0), (11, 0.05, 4.0)))
+            d = math.hypot(dx, dy * 0.9)
+            if d > reach:
+                continue
+            q = d / reach
+            heat = max(0.0, 1 - q) ** 0.75 * 1.25 + max(0.0, 0.25 - q) * 0.8
+            s = fire_symbol(heat, x, y)
+            if s:
+                px[(x, y)] = s
+    for k in range(5):
+        a = math.pi * (0.55 + 0.9 * unit('splash-ember', f, k))
+        rr = 14 + 9 * unit('splash-ember-r', f, k)
+        ex, ey = round(hx + math.cos(a) * rr), round(hy + math.sin(a) * rr)
+        if 0 < ex < w - 1 and 0 < ey < h - 1 and (ex, ey) not in px:
+            px[(ex, ey)] = 'Y' if k % 2 else 'J'
+    return to_image(px, (w, h))
+
+
+def flake(px, x, y, big, bright):
+    """A tiny snowflake: a plus, or a plus with diagonal tips."""
+    c = 'Ψ' if bright else '`'
+    px[(x, y)] = c
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        px.setdefault((x + dx, y + dy), 'φ' if bright else ',')
+    if big:
+        for dx, dy in ((2, 0), (-2, 0), (0, 2), (0, -2)):
+            px.setdefault((x + dx, y + dy), '`')
+        for dx, dy in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
+            px.setdefault((x + dx, y + dy), 'ϱ')
+
+
+def frost_puff(f, n):
+    """One puff of the ice beam's stream: a hard bright knot of crystals
+    blooming into a cold swirl of frost, flakes riding out on it, then
+    thinning away; translucent at its edge."""
+    w, h = SPRAY_CLIPS['frost_puff'][0]
+    t = f / (n - 1)
+    cx, cy = 25.0 - 3 * t, 24.0
+    r0 = 4.0 + 14.0 * t ** 0.7
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            theta = math.atan2(dy, dx)
+            edge = r0 * (1 + wobble('frost', theta, f, ((4, 0.1, 1.1), (7, 0.07, -1.7), (11, 0.04, 2.3))))
+            d = math.hypot(dx / (1.25 - 0.15 * t), dy / (0.82 + 0.14 * t))
+            q = d / max(edge, 0.5)
+            if q > 1:
+                continue
+            v = (1 - q) * (1.2 - 0.72 * t) + ordered(x, y) * 0.1
+            if math.sin(theta * 2 + q * 5 - f * 0.9) > 0.6 and q > 0.25:
+                v += 0.12
+            # It thins away from its edge inward as it dies.
+            if t > 0.5 and unit('frost-thin', x, y, f) < (t - 0.5) * 1.9 - (1 - q) * 0.35:
+                continue
+            for limit, s in ((0.95, 'Ψ'), (0.8, 'φ'), (0.64, '`'), (0.5, 'ϱ'), (0.36, ','), (0.22, 'ϰ'), (0.08, 'ς')):
+                if v > limit:
+                    px[(x, y)] = s
+                    break
+    for k in range(6):
+        a = unit('frost-flake', k) * math.tau + t * 0.8
+        rr = r0 * (0.35 + 0.75 * unit('frost-flake-r', k)) * (0.6 + 0.6 * t)
+        fx, fy = round(cx + math.cos(a) * rr), round(cy + math.sin(a) * rr * 0.9)
+        if 2 < fx < w - 3 and 2 < fy < h - 3 and t < 0.95:
+            flake(px, fx, fy, big=k % 3 == 0 and t < 0.8, bright=t < 0.6 or k % 2 == 0)
+    return to_image(px, (w, h))
+
+
+def frost_core(f, n):
+    """A tile of the ice beam's core, seamless across its width: a white line
+    in a cyan sheath, a frost helix twisting along it and faceted crystals
+    flowing outward, four pixels a frame."""
+    w, h = SPRAY_CLIPS['frost_core'][0]
+    mid = 6.5
+    px = {}
+    shift = f * (w / n)
+    for x in range(w):
+        phase = (x - shift) / w * math.tau
+        helix = mid + 3.6 * math.sin(phase * 2)
+        helix2 = mid - 3.6 * math.sin(phase * 2)
+        for y in range(h):
+            v = abs(y + 0.5 - (mid + 0.5))
+            if v < 1.0:
+                s = 'Ψ'
+            elif v < 2.0:
+                s = 'φ' if (x + f) % 5 else 'Ψ'
+            elif v < 3.0:
+                s = '`'
+            elif v < 4.0:
+                s = 'ϱ' if ordered(x, y) < 0.25 else ','
+            elif v < 5.2:
+                s = 'ϰ' if ordered(x, y) < 0.1 else 'q'
+            elif v < 6.4:
+                s = 'p' if ordered(x, y) < -0.1 else None
+            else:
+                s = None
+            for hy in (helix, helix2):
+                if abs(y + 0.5 - (hy + 0.5)) < 0.6 and v >= 2.0:
+                    s = '`' if v < 4.5 else 'ϱ'
+            if s:
+                px[(x, y)] = s
+    # Crystal facets flowing along it.
+    for k in range(4):
+        fx = round((k * 8 + 3 + shift) % w)
+        side = -1 if k % 2 else 1
+        for dy, half in ((3, 1), (4, 2), (5, 1)):
+            y = round(mid + side * dy)
+            for dx in range(-half, half + 1):
+                if 0 <= y < h:
+                    px[((fx + dx) % w, y)] = 'φ' if dx == 0 else '`'
+    return to_image(px, (w, h))
+
+
+def frost_muzzle(f, n):
+    """The ice beam leaving the orb: a bright knot, at (8, 16), in a cold
+    halo, ringed by diamond-section ice shards that flare forward and
+    flicker."""
+    w, h = SPRAY_CLIPS['frost_muzzle'][0]
+    ox, oy = 8.0, 16.0
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            d = math.hypot(x + 0.5 - ox, y + 0.5 - oy)
+            if d < 2.6:
+                px[(x, y)] = 'Ψ'
+            elif d < 4.0:
+                px[(x, y)] = 'φ'
+            elif d < 6.0:
+                px[(x, y)] = '`' if ordered(x, y) < -0.2 else 'ϱ'
+            elif d < 8.0 and ordered(x, y) < 0.1:
+                px[(x, y)] = 'ϰ'
+    for k in range(5):
+        a = (k - 2) * 0.55 + 0.07 * math.sin(f + k)
+        length = 10 + 5 * unit('frost-spike', k) + 2.5 * math.sin(f / n * math.tau + k * 1.7)
+        for i in range(int(length)):
+            frac = i / length
+            sx, sy = ox + math.cos(a) * (3 + i), oy + math.sin(a) * (3 + i)
+            width = 2.2 * (frac / 0.3 if frac < 0.3 else (1 - frac) / 0.7)
+            for o in (-2, -1, 0, 1, 2):
+                if abs(o) <= width:
+                    q = (round(sx - math.sin(a) * o), round(sy + math.cos(a) * o))
+                    if 0 <= q[0] < w and 0 <= q[1] < h:
+                        px[q] = 'Ψ' if o == 0 and frac < 0.6 else ('`' if o <= 0 else ',')
+    return to_image(px, (w, h))
+
+
+def frost_splash(f, n):
+    """Where the ice beam meets something, at (36, 24): diamond ice shards
+    growing back toward the caster from a frost burst at the point, rounded
+    where it wraps the point, sparkles round it."""
+    w, h = SPRAY_CLIPS['frost_splash'][0]
+    hx, hy = 36.0, 24.0
+    px = {}
+    ring = 7 + 2 * math.sin(f / n * math.tau)
+    for y in range(h):
+        for x in range(w):
+            dx, dy = x + 0.5 - hx, (y + 0.5 - hy) * 0.85
+            d = math.hypot(dx * (1.6 if dx > 0 else 1.0), dy)
+            if d < 3:
+                px[(x, y)] = 'Ψ'
+            elif d < 5:
+                px[(x, y)] = 'φ'
+            elif d < ring:
+                px[(x, y)] = '`' if ordered(x, y) < -0.25 else 'ϱ'
+            elif d < ring + 3 and ordered(x, y) < 0.0:
+                px[(x, y)] = 'ϰ'
+    for k in range(7):
+        a = math.pi + (k - 3) * 0.4 + 0.08 * math.sin(f * 1.3 + k)
+        grow = 0.75 + 0.25 * math.sin(f / n * math.tau + k * 2.1)
+        length = (10 + 8 * unit('frost-splash', k)) * grow
+        for i in range(int(length)):
+            frac = i / length
+            sx, sy = hx + math.cos(a) * (3 + i), hy + math.sin(a) * (3 + i)
+            width = 2.4 * (frac / 0.3 if frac < 0.3 else (1 - frac) / 0.7)
+            for o in (-2, -1, 0, 1, 2):
+                if abs(o) <= width:
+                    q = (round(sx - math.sin(a) * o), round(sy + math.cos(a) * o))
+                    if 0 <= q[0] < w and 0 <= q[1] < h:
+                        px[q] = 'Ψ' if o == 0 and frac < 0.5 else ('`' if o <= 0 else ',')
+    for k in range(4):
+        a = math.pi * (0.5 + unit('frost-spark', f, k))
+        rr = 13 + 9 * unit('frost-spark-r', f, k)
+        sx, sy = round(hx + math.cos(a) * rr), round(hy + math.sin(a) * rr)
+        if 1 < sx < w - 2 and 1 < sy < h - 2:
+            flake(px, sx, sy, big=False, bright=True)
+    return to_image(px, (w, h))
+
+
+SPRAY_DRAW = {
+    'flame_muzzle': flame_muzzle,
+    'flame_puff': flame_puff,
+    'flame_splash': flame_splash,
+    'frost_muzzle': frost_muzzle,
+    'frost_puff': frost_puff,
+    'frost_core': frost_core,
+    'frost_splash': frost_splash,
+}
+
+
+def build_spray_art(images):
+    """Every frame of the sprays' clips, unlit: `<clip>_<n>`."""
+    for clip, (_, frames, _, _) in SPRAY_CLIPS.items():
+        for f in range(frames):
+            images[f'{clip}_{f}'] = SPRAY_DRAW[clip](f, frames)
+
+
+# The HUD's art (01 (h)): the bars' liquids, palette strips tileable
+# across their width, which the HUD scrolls inside each fill, deep to lit
+# with a glint; and the gun's rounds as cartridges, live and spent.
+LIQUID_RAMPS = {
+    'health': ('Θ', 'M', 'ϑ', 'z', 'F', '+'),
+    'mana': ('в', 'И', 'Й', 'З', 'Ю', 'Ю'),
+}
+LIQUID_GLINT = 'φ'
+
+
+def hud_liquid(kind):
+    """A strip of liquid, tileable across: lit at its surface, deep at its
+    bottom, crossed by three slow currents, with bubbles wrapping across
+    the seam."""
+    w, h = ELEMENT_SIZES[f'hud_liquid_{kind}']
+    ramp = LIQUID_RAMPS[kind]
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            v = y / (h - 1)
+            depth = 0.86 - 0.62 * v
+            flow = (0.10 * math.sin(math.tau * (x / w * 2 + 0.25 * v))
+                    + 0.07 * math.sin(math.tau * (x / w * 5 - 0.6 * v) + 1.7)
+                    + 0.05 * math.sin(math.tau * (x / w * 9 + 0.9 * v) + 0.4))
+            value = depth + flow
+            if y == 1:
+                value += 0.12  # the surface's sheen
+            value += (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.16
+            px[(x, y)] = ramp[min(len(ramp) - 1, max(0, int(value * len(ramp))))]
+    for i in range(7):
+        bx = int(unit('bubble', kind, i) * w)
+        by = 2 + int(unit('bubble-y', kind, i) * (h - 5))
+        r = 1 if i % 3 else 2
+        for dx in range(-r, r + 1):
+            for dy in range(-r, r + 1):
+                d = math.hypot(dx, dy)
+                if r - 0.6 <= d <= r + 0.4:
+                    px[((bx + dx) % w, by + dy)] = ramp[-2]
+        px[((bx - (r > 1)) % w, by - r + 1)] = LIQUID_GLINT
+    return to_image(px, (w, h))
+
+
+def hud_bullet(spent=False):
+    """A cartridge, upright: a copper round over a brass case with its rim;
+    a spent one an empty case's dark outline."""
+    w, h = ELEMENT_SIZES['hud_bullet']
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            cx = x - (w - 1) / 2
+            if y < 4:  # the round, an ogive
+                half = 0.6 + y * 0.55
+                if abs(cx) <= half:
+                    px[(x, y)] = ('a' if cx < -0.5 else '"' if cx > 0.5 else "'") if y > 0 else "'"
+            elif y < h - 1:  # the case
+                if abs(cx) <= 2:
+                    px[(x, y)] = 'J' if cx < -0.5 else 'A' if cx < 1 else '('
+                    if y == 4:
+                        px[(x, y)] = '('  # the crimp
+            else:  # the rim
+                px[(x, y)] = '('
+    if spent:
+        px = {p: ('Φ' if s in "a\"'" else 'ν') for p, s in px.items() if p[1] >= 4}
+        for p in [p for p in px if 0 < p[0] < w - 1 and 4 < p[1] < h - 1]:
+            del px[p]
+    return to_image(px, (w, h))
+
+
+def title_star():
+    """The title's twinkle (01 (h)): a four-point star in the palette's white
+    steps, its core `Ψ` and its arms stepping down `x u q p l k`, unlit."""
+    w, h = ELEMENT_SIZES['title_star']
+    c = w // 2
+    px = {}
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            px[(c + dx, c + dy)] = 'Ψ' if dx == 0 or dy == 0 else 'x'
+    for d, s in zip(range(2, 8), 'xuqplk'):
+        for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            px[(c + sx * d, c + sy * d)] = s
+    for d, s in zip(range(2, 4), 'pk'):
+        for sx, sy in ((1, 1), (-1, 1), (1, -1), (-1, -1)):
+            px[(c + sx * d, c + sy * d)] = s
+    return to_image(px, (w, h))
+
+
+def build_hud_art(images):
+    for kind in LIQUID_RAMPS:
+        images[f'hud_liquid_{kind}'] = hud_liquid(kind)
+    images['hud_bullet'] = hud_bullet()
+    images['hud_bullet_spent'] = hud_bullet(spent=True)
+    images['title_star'] = title_star()
 
 
 def build_effects(images):
@@ -927,3 +1478,5 @@ def build_effects(images):
     build_black_hole(images)
     build_icons(images)
     build_element_art(images)
+    build_hud_art(images)
+    build_spray_art(images)

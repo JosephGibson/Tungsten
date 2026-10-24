@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 import tempfile
 
 from PIL import __version__ as pillow_version
@@ -12,11 +13,39 @@ from level import build_level
 from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
 
 ROOT=TOOLS.parent
-# The template whose shell 01 copies: its theme, fonts and damage-flash
-# material come with it, copied byte for byte so `--check` catches drift.
+# The template whose shell 01 copies: its fonts and damage-flash material
+# come with it, copied byte for byte so `--check` catches drift, and its
+# theme in 01's own colours.
 TEMPLATE=ROOT.parent.parent/'templates'/'basic'
-SHELL_ASSETS=('ui/themes/shell.json','fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
+SHELL_ASSETS=('fonts/Inter/Inter-Regular.ttf','fonts/Inter/LICENSE.txt',
     'fonts/SourceSerif4/SourceSerif4-Regular.ttf','fonts/SourceSerif4/LICENSE.txt','shaders/damage_flash.wgsl')
+# 01's theme (01 (h)): the template's text, every colour of the template's
+# mapped to 01's, darker backgrounds and a vivid purple, so new template keys
+# still arrive and `just repo-check` holds its structure to the template's.
+# A template colour the map lacks stops the generator, named.
+THEME='ui/themes/shell.json'
+THEME_COLORS={
+    '#0b0c10':'#030408',  # the background and accent text, a pressed button's text and toggle, the slider's border
+    '#15171d':'#090b18',  # the surface
+    '#1e2129':'#11142a',  # a hovered or focused fill
+    '#646b7a':'#5c6594',  # the border and the slider
+    '#e9ebf1':'#e8eaf6',  # text
+    '#a3a9b6':'#a3aac8',  # muted text
+    '#f0a830':'#a46cff',  # the accent
+    '#ffd36b':'#cbb0ff',  # focus
+    '#6c7280':'#666d92',  # disabled text
+    '#ff6b6b':'#ff6b78',  # danger
+}
+
+
+def themed(text):
+    """The template's theme `text` in 01's colours: each `#rrggbb`, an
+    `#rrggbbaa`'s alpha kept, through `THEME_COLORS`."""
+    def mapped(match):
+        rgb,alpha=match.group(1).lower(),match.group(2) or ''
+        if rgb not in THEME_COLORS:raise ValueError(f'{THEME}: template colour {rgb} has no colour of 01\'s (THEME_COLORS)')
+        return THEME_COLORS[rgb]+alpha
+    return re.sub(r'(#[0-9a-fA-F]{6})([0-9a-fA-F]{2})?\b',mapped,text)
 SHELL_SECTIONS=('fonts','font_families','font_fallback','ui_themes')
 # 01's own face beside the template's: Source Serif 4 Bold, under the same
 # licence as its Regular, for the area titles, from the repository's fonts.
@@ -180,43 +209,62 @@ def particle_configs():
         gravity=[0, 720], drag_per_sec=.8, angular_velocity=dict(min=-9, max=9),
         alpha_over_life=[[0, 0], [.05, 1], [.6, .85], [1, 0]],
         color_over_life=[[0, [1, 1, 1, 1]], [.5, [.8, .86, .92, 1]], [1, [.5, .55, .62, 0]]])
-    # A held cold jet: snow crystals, expanding mist and surface frost splashes.
+    # The held sprays (01 (h)): drawn as animated sprites (`effects`'
+    # `SPRAY_CLIPS`, `toys::spray_look`), their particles accents along the
+    # aim, each reaching 30 % further than 01 (f)'s. The cold spray: a
+    # scatter of crystals along the cone and a light mist, its contact's
+    # frost splashes; the fire spray: embers thrown along the cone and smoke
+    # rising off its tip. A target the cone damages bursts every second
+    # pulse: shards and glints, or embers, thrown off its face and falling.
+    def aimed(sprite, cap, rate, life, speed, scale, spread=26, burst=False):
+        return dict(sprite='ex10_' + sprite, max_alive=cap, seed=48657, blend='alpha',
+                    emission=dict(kind='burst', count=rate, once=True) if burst
+                    else dict(kind='continuous', rate_hz=rate),
+                    lifetime=dict(min=life[0], max=life[1]),
+                    initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=spread,
+                                          speed=dict(min=speed[0], max=speed[1])),
+                    gravity=[0, 0], drag_per_sec=.15, start_scale=dict(min=scale[0], max=scale[1]),
+                    scale_over_life=[[0, .7], [.25, 1], [1, .2]],
+                    alpha_over_life=[[0, 0], [.1, .8], [.65, .6], [1, 0]],
+                    color_over_life=[[0, [1, 1, 1, 1]], [1, [.6, .75, .85, 1]]])
     ice_ramp = [[0, [.75, .95, 1, 1]], [.5, [.25, .65, 1, 1]], [1, [.1, .35, .8, 0]]]
+    fire_ramp = [[0, [1, 1, .88, 1]], [.22, [1, .86, .38, 1]], [.5, [1, .52, .12, 1]],
+                 [1, [.5, .13, .05, 0]]]
     configs['ice_beam'] = dict(
-        config('ice_crystal', 144, 260, .65, 1050, .2, direction=(1, 0), spread=28),
-        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
-                              speed=dict(min=750, max=1050)),
-        lifetime=dict(min=.4, max=.65), gravity=[0, 0], drag_per_sec=.15,
-        angular_velocity=dict(min=-8, max=8), start_scale=dict(min=.08, max=.2),
+        aimed('ice_crystal', 110, 170, (.4, .65), (975, 1365), (.1, .24)),
+        angular_velocity=dict(min=-8, max=8),
         scale_over_life=[[0, .5], [.18, 1], [.75, .85], [1, .15]],
         color_over_life=ice_ramp, alpha_over_life=[[0, .6], [.08, 1], [.7, .9], [1, 0]])
     configs['ice_mist'] = dict(
-        config('flame_glow', 100, 120, .8, 850, 1.2, direction=(1, 0), spread=28),
-        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
-                              speed=dict(min=600, max=850)),
-        lifetime=dict(min=.5, max=.8), gravity=[0, 0], drag_per_sec=.2,
-        start_scale=dict(min=.4, max=1.2), angular_velocity=dict(min=-2, max=2),
-        scale_over_life=[[0, .3], [.3, 1.2], [.8, 2], [1, 2.5]],
+        aimed('flame_glow', 70, 80, (.5, .8), (780, 1100), (.45, 1.1)),
+        drag_per_sec=.2, angular_velocity=dict(min=-2, max=2),
+        scale_over_life=[[0, .3], [.3, 1.1], [.8, 1.8], [1, 2.2]],
         color_over_life=[[0, [.9, 1, 1, 1]], [.4, [.4, .8, 1, 1]], [1, [.2, .55, 1, 0]]],
-        alpha_over_life=[[0, 0], [.12, .65], [.6, .4], [1, 0]])
-    # The fire spray: sparks streaming along the aim through a hot haze, a
-    # shorter reach than the cold spray's; 01 (f) thickens the stream and
-    # runs it hotter, white at the nozzle through yellow to orange.
-    fire_ramp = [[0, [1, 1, .88, 1]], [.22, [1, .86, .38, 1]], [.5, [1, .52, .12, 1]],
-                 [1, [.5, .13, .05, 0]]]
+        alpha_over_life=[[0, 0], [.12, .45], [.6, .3], [1, 0]])
+    configs['frost_hit'] = dict(
+        aimed('ice_crystal', 16, 12, (.22, .45), (140, 440), (.2, .4), spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=140, max=440)),
+        gravity=[0, 420], drag_per_sec=1.6, angular_velocity=dict(min=-10, max=10),
+        scale_over_life=[[0, 1], [1, .3]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.5, [.7, .92, 1, 1]], [1, [.4, .7, 1, 0]]],
+        alpha_over_life=[[0, 1], [.7, .9], [1, 0]])
     configs['flame_spray'] = dict(
-        config('spark', 180, 330, .4, 620, .27, direction=(1, 0), spread=28),
-        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
-                              speed=dict(min=420, max=620)),
-        lifetime=dict(min=.25, max=.4), gravity=[0, -60], drag_per_sec=.3,
-        angular_velocity=dict(min=-6, max=6), start_scale=dict(min=.12, max=.27),
+        aimed('spark', 120, 200, (.28, .45), (546, 806), (.1, .22), spread=24),
+        gravity=[0, -60], drag_per_sec=.3, angular_velocity=dict(min=-6, max=6),
         scale_over_life=[[0, .6], [.2, 1], [1, .2]],
         color_over_life=fire_ramp, alpha_over_life=[[0, .7], [.1, 1], [.7, .85], [1, 0]])
     configs['flame_mist'] = dict(
-        configs['ice_mist'],
-        color_over_life=[[0, [1, .9, .5, 1]], [.4, [1, .45, .1, 1]], [1, [.3, .1, .05, 0]]],
-        initial_velocity=dict(kind='cone', direction=[1, 0], spread_deg=28,
-                              speed=dict(min=380, max=520)))
+        aimed('dust', 70, 70, (.6, 1.0), (420, 600), (.45, 1.0), spread=28),
+        gravity=[0, -260], drag_per_sec=1.1, angular_velocity=dict(min=-2, max=2),
+        scale_over_life=[[0, .4], [.4, 1.1], [1, 1.9]],
+        color_over_life=[[0, [1, .8, .45, 1]], [.3, [.55, .3, .18, 1]], [1, [.16, .12, .12, 0]]],
+        alpha_over_life=[[0, 0], [.15, .5], [.7, .3], [1, 0]])
+    configs['flame_hit'] = dict(
+        aimed('spark', 18, 14, (.2, .45), (160, 520), (.14, .3), spread=360, burst=True),
+        initial_velocity=dict(kind='radial', speed=dict(min=160, max=520)),
+        gravity=[0, 520], drag_per_sec=1.2, angular_velocity=dict(min=-8, max=8),
+        scale_over_life=[[0, 1], [1, .25]],
+        color_over_life=fire_ramp, alpha_over_life=[[0, 1], [.7, .9], [1, 0]])
     configs['ice_contact'] = dict(
         config('ice_crystal', 48, 100, .55, 190, .2, spread=360),
         initial_velocity=dict(kind='radial', speed=dict(min=55, max=190)),
@@ -432,6 +480,15 @@ def particle_configs():
         'keg_stave', 10, burst(10), (.5, 1.0), dict(kind='radial', speed=dict(min=260, max=720)), (0, 700), .9,
         (.2, .32), [[0, 1], [1, .9]], [[0, 1], [.8, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.6, .55, .52, 1]]],
         (-14, 14))
+    # 01 (h): the title's stars, twinkling over its night sky (three at most
+    # each), and a shooting star's streak.
+    configs['title_twinkle'] = full(
+        'title_star', 3, dict(kind='continuous', rate_hz=.7), (.9, 1.6), cone((0, -1), 360, 0, 1), (0, 0), 1.0,
+        (2.2, 3.6), [[0, .3], [.45, 1], [1, .3]], [[0, 0], [.3, 1], [.7, 1], [1, 0]],
+        [[0, [1, 1, 1, 1]], [1, [.86, .82, 1, 1]]])
+    configs['title_meteor'] = full(
+        'title_star', 140, dict(kind='continuous', rate_hz=220), (.25, .5), cone((0, -1), 360, 0, 18), (0, 0), 1.0,
+        (.7, 1.3), [[0, 1], [1, .15]], [[0, 1], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.7, .78, 1, 1]]])
     configs['rock_chips'] = full(
         'rock_chip', 8, burst(8), (.3, .6), cone((0, -1), 160, 90, 260), (0, 650), .5, (.14, .24),
         [[0, 1], [1, .8]], [[0, 1], [.7, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.7, .7, .7, 1]]], (-10, 10))
@@ -444,13 +501,14 @@ MATERIALS={'soft_halo':('soft_glow',[1.8,0.0,1.0,0.1]),'soft_flame':('soft_glow'
 
 
 def mirror_facing(images,lit,animations):
-    """Left-facing copies of the courier's frames and clips, the fireball's and
-    the enemies': nothing flips a sprite in place, so the kit's animator, and 01's
-    fireballs and enemies, show mirrored art by facing. Their maps derive from the
-    mirrored silhouettes."""
+    """Left-facing copies of the wizard's frames and clips, the fireball's, the
+    fire missile's and the enemies': nothing flips a sprite in place, so the kit's
+    animator, and 01's fireballs, missiles and enemies, show mirrored art by
+    facing. Their maps derive from the mirrored silhouettes."""
     from PIL import ImageOps
     from actors import ENEMY_CLIPS
-    for clip in sorted(c for c in animations if c.startswith('player') or c=='fireball' or c in ENEMY_CLIPS):
+    flying=('fireball','fire_missile')
+    for clip in sorted(c for c in animations if c.startswith('player') or c in flying or c in ENEMY_CLIPS):
         frames=[]
         for frame in animations[clip]['frames']:
             name=frame['sprite'].removeprefix('ex10_');left=name+'_left'
@@ -460,15 +518,20 @@ def mirror_facing(images,lit,animations):
         animations[clip+'_left']=dict(animations[clip],frames=frames)
 
 
-def cast_twins(images,lit):
-    """Each courier frame's twin on a cast, its lantern hot (`actors.cast_frame`):
-    01 shows it for a moment after each cast. A left-facing twin is the
-    right-facing one mirrored, as its frame is."""
-    from PIL import ImageOps
-    from actors import cast_frame
-    for name in sorted(n for n in images if n.startswith('player') and not n.endswith('_left')):
-        twin=cast_frame(images[name]);images[name+'_cast']=twin;lit.add(name+'_cast')
-        if name+'_left' in images:images[name+'_cast_left']=ImageOps.mirror(twin);lit.add(name+'_cast_left')
+def spray_clips(animations):
+    """The sprays' clips (`effects.SPRAY_CLIPS`), unmirrored: `toys` turns each
+    to its aim and flips it top to bottom when the aim faces left."""
+    from effects import SPRAY_CLIPS
+    for clip,(_,frames,ms,looping) in SPRAY_CLIPS.items():
+        animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
+
+
+def mirror_anchors(anchors,images):
+    """Each left-facing wizard frame's staff light anchor: its right-facing
+    twin's mirrored about the frame's middle, x 48, as its art is."""
+    from actors import WIZARD
+    for name,(x,y) in list(anchors.items()):
+        if name+'_left' in images:anchors[name+'_left']=[round(WIZARD-x,3),y]
 
 
 def check_ice_fits(images):
@@ -499,7 +562,8 @@ def write_json(path,data):
 
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
-    images,lit,animations=build_art();mirror_facing(images,lit,animations);cast_twins(images,lit)
+    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
+    spray_clips(animations)
     tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
@@ -536,6 +600,7 @@ def generate(dest):
     manifest['prefabs']['ex10_ambient_emitter']=dict(path='prefabs/ambient_emitter.json')
     for path in SHELL_ASSETS:
         output('assets/'+path).write_bytes((TEMPLATE/'assets'/path).read_bytes())
+    output('assets/'+THEME).write_text(themed((TEMPLATE/'assets'/THEME).read_text()))
     output('assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf').write_bytes(SERIF_BOLD.read_bytes())
     for item in sorted(CONTENT.rglob('*')):
         if not item.is_file():continue
@@ -572,9 +637,9 @@ def generate(dest):
         if image.mode!='RGBA' or image.getchannel('A').getextrema()==(255,255))
     write_json(output('assets/'+path),{'sprites':opaque})
     manifest.setdefault('data',{}).setdefault('opaque_tiles',{})['level']=dict(path=path)
-    # Where each courier frame's lantern flame sits, which the lantern's glow follows.
+    # Where each wizard frame's staff orb sits, which the staff light's glow follows.
     path='data/lantern_anchors/player.json'
-    write_json(output('assets/'+path),{'ex10_'+name:anchor for name,anchor in source['lantern_anchors']})
+    write_json(output('assets/'+path),{'ex10_'+name:anchor for name,anchor in sorted(anchors.items())})
     manifest.setdefault('data',{}).setdefault('lantern_anchors',{})['player']=dict(path=path)
     # The prefabs the map's object layers name, one per class.
     for name,prefab in sorted(level_prefabs.items()):

@@ -85,12 +85,16 @@ pub fn cast(world: &mut World) {
 }
 
 /// Says why a cast was refused at `at`, the cursor's point or else the
-/// courier's: no mana and not ready each play their sound, and no room
-/// fizzles there with its own, a key burst.
+/// wizard's: no mana and not ready each play their sound, not ready
+/// flashing the selected slot red, and no room fizzles there with its own,
+/// a key burst.
 pub fn refuse_cast(world: &mut World, refusal: Refusal, at: Vec2) {
     match refusal {
         Refusal::NoMana => audio::play(world, Sound::NoMana, at),
-        Refusal::NotReady => audio::play(world, Sound::NotReady, at),
+        Refusal::NotReady => {
+            audio::play(world, Sound::NotReady, at);
+            super::hud::refused(world);
+        }
         Refusal::NoRoom => {
             spawn_key_burst(world, "ex10_fizzle", at);
             audio::play(world, Sound::Fizzled, at);
@@ -98,7 +102,7 @@ pub fn refuse_cast(world: &mut World, refusal: Refusal, at: Vec2) {
     }
 }
 
-/// Says a held spell's refusal, at the cursor or else the courier, unless
+/// Says a held spell's refusal, at the cursor or else the wizard, unless
 /// one was said since the press.
 fn say(world: &mut World, player: Entity, refusal: Refusal) {
     let said = world.get_resource::<Refused>().is_some_and(|r| r.said);
@@ -112,14 +116,18 @@ fn say(world: &mut World, player: Entity, refusal: Refusal) {
     refuse_cast(world, refusal, at.unwrap_or_default());
 }
 
-/// `summon_next` and `summon_prev` turn the summon's type, wrapping; the
-/// slot actions select their slot; `spell_next` and `spell_prev` step to
-/// the next or the previous spell, wrapping past the empty slots. A change
-/// of the slot or the summon's type clicks.
+/// `summon_next` and `summon_prev` turn the summon's type, wrapping, and
+/// the HUD names it; the slot actions select their slot; `spell_next` and
+/// `spell_prev` step to the next or the previous spell, wrapping past the
+/// empty slots. A change of the slot or the summon's type clicks.
 fn choose(world: &mut World, player: Entity) {
     let before = choice(world, player);
     pick(world, player);
-    if choice(world, player) != before
+    let after = choice(world, player);
+    if after.1 != before.1 {
+        super::hud::summon_turned(world);
+    }
+    if after != before
         && let Some(at) = player::centre(world, player)
     {
         audio::play(world, Sound::Switched, at);
@@ -204,7 +212,7 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
         let dt = world.resource::<Time>().delta();
         toys::place_small_balls(world, at, dt);
     }
-    player::cast(world, player, aim, false);
+    player::cast(world, player, aim, spell.gesture());
     Used::Used
 }
 
@@ -288,7 +296,7 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => {}
     }
-    player::cast(world, player, aim, spell == Spell::BowlingBall);
+    player::cast(world, player, aim, spell.gesture());
 }
 
 /// `spells_held`, in `Update`: a spray shows from the frame its cast

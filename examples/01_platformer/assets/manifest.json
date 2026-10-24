@@ -105,11 +105,38 @@
     "ex10_falls_spread_right": {
       "path": "animations/falls_spread_right.json"
     },
+    "ex10_fire_missile": {
+      "path": "animations/fire_missile.json"
+    },
+    "ex10_fire_missile_left": {
+      "path": "animations/fire_missile_left.json"
+    },
     "ex10_fireball": {
       "path": "animations/fireball.json"
     },
     "ex10_fireball_left": {
       "path": "animations/fireball_left.json"
+    },
+    "ex10_flame_muzzle": {
+      "path": "animations/flame_muzzle.json"
+    },
+    "ex10_flame_puff": {
+      "path": "animations/flame_puff.json"
+    },
+    "ex10_flame_splash": {
+      "path": "animations/flame_splash.json"
+    },
+    "ex10_frost_core": {
+      "path": "animations/frost_core.json"
+    },
+    "ex10_frost_muzzle": {
+      "path": "animations/frost_muzzle.json"
+    },
+    "ex10_frost_puff": {
+      "path": "animations/frost_puff.json"
+    },
+    "ex10_frost_splash": {
+      "path": "animations/frost_splash.json"
     },
     "ex10_goblin_hop": {
       "path": "animations/goblin_hop.json"
@@ -174,6 +201,18 @@
     "ex10_player_aim_left": {
       "path": "animations/player_aim_left.json"
     },
+    "ex10_player_bolt": {
+      "path": "animations/player_bolt.json"
+    },
+    "ex10_player_bolt_left": {
+      "path": "animations/player_bolt_left.json"
+    },
+    "ex10_player_conjure": {
+      "path": "animations/player_conjure.json"
+    },
+    "ex10_player_conjure_left": {
+      "path": "animations/player_conjure_left.json"
+    },
     "ex10_player_death": {
       "path": "animations/player_death.json"
     },
@@ -192,6 +231,12 @@
     "ex10_player_fall_left": {
       "path": "animations/player_fall_left.json"
     },
+    "ex10_player_hurt": {
+      "path": "animations/player_hurt.json"
+    },
+    "ex10_player_hurt_left": {
+      "path": "animations/player_hurt_left.json"
+    },
     "ex10_player_idle": {
       "path": "animations/player_idle.json"
     },
@@ -209,6 +254,18 @@
     },
     "ex10_player_land_left": {
       "path": "animations/player_land_left.json"
+    },
+    "ex10_player_push": {
+      "path": "animations/player_push.json"
+    },
+    "ex10_player_push_left": {
+      "path": "animations/player_push_left.json"
+    },
+    "ex10_player_staff": {
+      "path": "animations/player_staff.json"
+    },
+    "ex10_player_staff_left": {
+      "path": "animations/player_staff_left.json"
     },
     "ex10_player_toss": {
       "path": "animations/player_toss.json"
@@ -744,6 +801,9 @@
     "ex10_fizzle": {
       "path": "particles/fizzle.json"
     },
+    "ex10_flame_hit": {
+      "path": "particles/flame_hit.json"
+    },
     "ex10_flame_mist": {
       "path": "particles/flame_mist.json"
     },
@@ -755,6 +815,9 @@
     },
     "ex10_frost_breath": {
       "path": "particles/frost_breath.json"
+    },
+    "ex10_frost_hit": {
+      "path": "particles/frost_hit.json"
     },
     "ex10_frozen_glints": {
       "path": "particles/frozen_glints.json"
@@ -833,6 +896,12 @@
     },
     "ex10_thaw_glints": {
       "path": "particles/thaw_glints.json"
+    },
+    "ex10_title_meteor": {
+      "path": "particles/title_meteor.json"
+    },
+    "ex10_title_twinkle": {
+      "path": "particles/title_twinkle.json"
     },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"
@@ -5343,6 +5412,86 @@
       "normal_map": "sprites/fire_crystal_hanging_1_n.png",
       "path": "sprites/fire_crystal_hanging_1.png"
     },
+    "ex10_fire_missile_0": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_0.png"
+    },
+    "ex10_fire_missile_0_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_0_left.png"
+    },
+    "ex10_fire_missile_1": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_1.png"
+    },
+    "ex10_fire_missile_1_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_1_left.png"
+    },
+    "ex10_fire_missile_2": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_2.png"
+    },
+    "ex10_fire_missile_2_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_2_left.png"
+    },
+    "ex10_fire_missile_3": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_3.png"
+    },
+    "ex10_fire_missile_3_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_3_left.png"
+    },
+    "ex10_fire_missile_4": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_4.png"
+    },
+    "ex10_fire_missile_4_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_4_left.png"
+    },
+    "ex10_fire_missile_5": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_5.png"
+    },
+    "ex10_fire_missile_5_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_5_left.png"
+    },
+    "ex10_fire_missile_6": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_6.png"
+    },
+    "ex10_fire_missile_6_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_6_left.png"
+    },
+    "ex10_fire_missile_7": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_7.png"
+    },
+    "ex10_fire_missile_7_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_7_left.png"
+    },
+    "ex10_fire_missile_8": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_8.png"
+    },
+    "ex10_fire_missile_8_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_8_left.png"
+    },
+    "ex10_fire_missile_9": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_9.png"
+    },
+    "ex10_fire_missile_9_left": {
+      "filter": "nearest",
+      "path": "sprites/fire_missile_9_left.png"
+    },
     "ex10_fireball_0": {
       "filter": "nearest",
       "path": "sprites/fireball_0.png"
@@ -5433,11 +5582,203 @@
       "filter": "linear",
       "path": "sprites/flame_glow.png"
     },
+    "ex10_flame_muzzle_0": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_0.png"
+    },
+    "ex10_flame_muzzle_1": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_1.png"
+    },
+    "ex10_flame_muzzle_2": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_2.png"
+    },
+    "ex10_flame_muzzle_3": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_3.png"
+    },
+    "ex10_flame_muzzle_4": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_4.png"
+    },
+    "ex10_flame_muzzle_5": {
+      "filter": "nearest",
+      "path": "sprites/flame_muzzle_5.png"
+    },
+    "ex10_flame_puff_0": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_0.png"
+    },
+    "ex10_flame_puff_1": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_1.png"
+    },
+    "ex10_flame_puff_2": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_2.png"
+    },
+    "ex10_flame_puff_3": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_3.png"
+    },
+    "ex10_flame_puff_4": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_4.png"
+    },
+    "ex10_flame_puff_5": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_5.png"
+    },
+    "ex10_flame_puff_6": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_6.png"
+    },
+    "ex10_flame_puff_7": {
+      "filter": "nearest",
+      "path": "sprites/flame_puff_7.png"
+    },
+    "ex10_flame_splash_0": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_0.png"
+    },
+    "ex10_flame_splash_1": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_1.png"
+    },
+    "ex10_flame_splash_2": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_2.png"
+    },
+    "ex10_flame_splash_3": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_3.png"
+    },
+    "ex10_flame_splash_4": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_4.png"
+    },
+    "ex10_flame_splash_5": {
+      "filter": "nearest",
+      "path": "sprites/flame_splash_5.png"
+    },
     "ex10_flowers": {
       "emissive_mask": "sprites/flowers_e.png",
       "filter": "nearest",
       "normal_map": "sprites/flowers_n.png",
       "path": "sprites/flowers.png"
+    },
+    "ex10_frost_core_0": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_0.png"
+    },
+    "ex10_frost_core_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_1.png"
+    },
+    "ex10_frost_core_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_2.png"
+    },
+    "ex10_frost_core_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_3.png"
+    },
+    "ex10_frost_core_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_4.png"
+    },
+    "ex10_frost_core_5": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_5.png"
+    },
+    "ex10_frost_core_6": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_6.png"
+    },
+    "ex10_frost_core_7": {
+      "filter": "nearest",
+      "path": "sprites/frost_core_7.png"
+    },
+    "ex10_frost_muzzle_0": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_0.png"
+    },
+    "ex10_frost_muzzle_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_1.png"
+    },
+    "ex10_frost_muzzle_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_2.png"
+    },
+    "ex10_frost_muzzle_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_3.png"
+    },
+    "ex10_frost_muzzle_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_4.png"
+    },
+    "ex10_frost_muzzle_5": {
+      "filter": "nearest",
+      "path": "sprites/frost_muzzle_5.png"
+    },
+    "ex10_frost_puff_0": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_0.png"
+    },
+    "ex10_frost_puff_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_1.png"
+    },
+    "ex10_frost_puff_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_2.png"
+    },
+    "ex10_frost_puff_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_3.png"
+    },
+    "ex10_frost_puff_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_4.png"
+    },
+    "ex10_frost_puff_5": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_5.png"
+    },
+    "ex10_frost_puff_6": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_6.png"
+    },
+    "ex10_frost_puff_7": {
+      "filter": "nearest",
+      "path": "sprites/frost_puff_7.png"
+    },
+    "ex10_frost_splash_0": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_0.png"
+    },
+    "ex10_frost_splash_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_1.png"
+    },
+    "ex10_frost_splash_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_2.png"
+    },
+    "ex10_frost_splash_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_3.png"
+    },
+    "ex10_frost_splash_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_4.png"
+    },
+    "ex10_frost_splash_5": {
+      "filter": "nearest",
+      "path": "sprites/frost_splash_5.png"
     },
     "ex10_gargoyle": {
       "emissive_mask": "sprites/gargoyle_e.png",
@@ -5950,6 +6291,22 @@
     "ex10_heart_full": {
       "filter": "nearest",
       "path": "sprites/heart_full.png"
+    },
+    "ex10_hud_bullet": {
+      "filter": "nearest",
+      "path": "sprites/hud_bullet.png"
+    },
+    "ex10_hud_bullet_spent": {
+      "filter": "nearest",
+      "path": "sprites/hud_bullet_spent.png"
+    },
+    "ex10_hud_liquid_health": {
+      "filter": "nearest",
+      "path": "sprites/hud_liquid_health.png"
+    },
+    "ex10_hud_liquid_mana": {
+      "filter": "nearest",
+      "path": "sprites/hud_liquid_mana.png"
     },
     "ex10_ice_chip": {
       "filter": "nearest",
@@ -7503,18 +7860,6 @@
       "normal_map": "sprites/player_aim_0_n.png",
       "path": "sprites/player_aim_0.png"
     },
-    "ex10_player_aim_0_cast": {
-      "emissive_mask": "sprites/player_aim_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_0_cast_n.png",
-      "path": "sprites/player_aim_0_cast.png"
-    },
-    "ex10_player_aim_0_cast_left": {
-      "emissive_mask": "sprites/player_aim_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_0_cast_left_n.png",
-      "path": "sprites/player_aim_0_cast_left.png"
-    },
     "ex10_player_aim_0_left": {
       "emissive_mask": "sprites/player_aim_0_left_e.png",
       "filter": "nearest",
@@ -7526,18 +7871,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_aim_1_n.png",
       "path": "sprites/player_aim_1.png"
-    },
-    "ex10_player_aim_1_cast": {
-      "emissive_mask": "sprites/player_aim_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_1_cast_n.png",
-      "path": "sprites/player_aim_1_cast.png"
-    },
-    "ex10_player_aim_1_cast_left": {
-      "emissive_mask": "sprites/player_aim_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_1_cast_left_n.png",
-      "path": "sprites/player_aim_1_cast_left.png"
     },
     "ex10_player_aim_1_left": {
       "emissive_mask": "sprites/player_aim_1_left_e.png",
@@ -7551,18 +7884,6 @@
       "normal_map": "sprites/player_aim_2_n.png",
       "path": "sprites/player_aim_2.png"
     },
-    "ex10_player_aim_2_cast": {
-      "emissive_mask": "sprites/player_aim_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_2_cast_n.png",
-      "path": "sprites/player_aim_2_cast.png"
-    },
-    "ex10_player_aim_2_cast_left": {
-      "emissive_mask": "sprites/player_aim_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_2_cast_left_n.png",
-      "path": "sprites/player_aim_2_cast_left.png"
-    },
     "ex10_player_aim_2_left": {
       "emissive_mask": "sprites/player_aim_2_left_e.png",
       "filter": "nearest",
@@ -7574,18 +7895,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_aim_3_n.png",
       "path": "sprites/player_aim_3.png"
-    },
-    "ex10_player_aim_3_cast": {
-      "emissive_mask": "sprites/player_aim_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_3_cast_n.png",
-      "path": "sprites/player_aim_3_cast.png"
-    },
-    "ex10_player_aim_3_cast_left": {
-      "emissive_mask": "sprites/player_aim_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_3_cast_left_n.png",
-      "path": "sprites/player_aim_3_cast_left.png"
     },
     "ex10_player_aim_3_left": {
       "emissive_mask": "sprites/player_aim_3_left_e.png",
@@ -7599,53 +7908,89 @@
       "normal_map": "sprites/player_aim_4_n.png",
       "path": "sprites/player_aim_4.png"
     },
-    "ex10_player_aim_4_cast": {
-      "emissive_mask": "sprites/player_aim_4_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_4_cast_n.png",
-      "path": "sprites/player_aim_4_cast.png"
-    },
-    "ex10_player_aim_4_cast_left": {
-      "emissive_mask": "sprites/player_aim_4_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_aim_4_cast_left_n.png",
-      "path": "sprites/player_aim_4_cast_left.png"
-    },
     "ex10_player_aim_4_left": {
       "emissive_mask": "sprites/player_aim_4_left_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_aim_4_left_n.png",
       "path": "sprites/player_aim_4_left.png"
     },
-    "ex10_player_cast": {
-      "emissive_mask": "sprites/player_cast_e.png",
+    "ex10_player_bolt_0": {
+      "emissive_mask": "sprites/player_bolt_0_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/player_cast_n.png",
-      "path": "sprites/player_cast.png"
+      "normal_map": "sprites/player_bolt_0_n.png",
+      "path": "sprites/player_bolt_0.png"
     },
-    "ex10_player_cast_left": {
-      "emissive_mask": "sprites/player_cast_left_e.png",
+    "ex10_player_bolt_0_left": {
+      "emissive_mask": "sprites/player_bolt_0_left_e.png",
       "filter": "nearest",
-      "normal_map": "sprites/player_cast_left_n.png",
-      "path": "sprites/player_cast_left.png"
+      "normal_map": "sprites/player_bolt_0_left_n.png",
+      "path": "sprites/player_bolt_0_left.png"
+    },
+    "ex10_player_bolt_1": {
+      "emissive_mask": "sprites/player_bolt_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_bolt_1_n.png",
+      "path": "sprites/player_bolt_1.png"
+    },
+    "ex10_player_bolt_1_left": {
+      "emissive_mask": "sprites/player_bolt_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_bolt_1_left_n.png",
+      "path": "sprites/player_bolt_1_left.png"
+    },
+    "ex10_player_bolt_2": {
+      "emissive_mask": "sprites/player_bolt_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_bolt_2_n.png",
+      "path": "sprites/player_bolt_2.png"
+    },
+    "ex10_player_bolt_2_left": {
+      "emissive_mask": "sprites/player_bolt_2_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_bolt_2_left_n.png",
+      "path": "sprites/player_bolt_2_left.png"
+    },
+    "ex10_player_conjure_0": {
+      "emissive_mask": "sprites/player_conjure_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_0_n.png",
+      "path": "sprites/player_conjure_0.png"
+    },
+    "ex10_player_conjure_0_left": {
+      "emissive_mask": "sprites/player_conjure_0_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_0_left_n.png",
+      "path": "sprites/player_conjure_0_left.png"
+    },
+    "ex10_player_conjure_1": {
+      "emissive_mask": "sprites/player_conjure_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_1_n.png",
+      "path": "sprites/player_conjure_1.png"
+    },
+    "ex10_player_conjure_1_left": {
+      "emissive_mask": "sprites/player_conjure_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_1_left_n.png",
+      "path": "sprites/player_conjure_1_left.png"
+    },
+    "ex10_player_conjure_2": {
+      "emissive_mask": "sprites/player_conjure_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_2_n.png",
+      "path": "sprites/player_conjure_2.png"
+    },
+    "ex10_player_conjure_2_left": {
+      "emissive_mask": "sprites/player_conjure_2_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_conjure_2_left_n.png",
+      "path": "sprites/player_conjure_2_left.png"
     },
     "ex10_player_death_0": {
       "emissive_mask": "sprites/player_death_0_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_death_0_n.png",
       "path": "sprites/player_death_0.png"
-    },
-    "ex10_player_death_0_cast": {
-      "emissive_mask": "sprites/player_death_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_0_cast_n.png",
-      "path": "sprites/player_death_0_cast.png"
-    },
-    "ex10_player_death_0_cast_left": {
-      "emissive_mask": "sprites/player_death_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_0_cast_left_n.png",
-      "path": "sprites/player_death_0_cast_left.png"
     },
     "ex10_player_death_0_left": {
       "emissive_mask": "sprites/player_death_0_left_e.png",
@@ -7659,18 +8004,6 @@
       "normal_map": "sprites/player_death_1_n.png",
       "path": "sprites/player_death_1.png"
     },
-    "ex10_player_death_1_cast": {
-      "emissive_mask": "sprites/player_death_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_1_cast_n.png",
-      "path": "sprites/player_death_1_cast.png"
-    },
-    "ex10_player_death_1_cast_left": {
-      "emissive_mask": "sprites/player_death_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_1_cast_left_n.png",
-      "path": "sprites/player_death_1_cast_left.png"
-    },
     "ex10_player_death_1_left": {
       "emissive_mask": "sprites/player_death_1_left_e.png",
       "filter": "nearest",
@@ -7682,18 +8015,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_death_2_n.png",
       "path": "sprites/player_death_2.png"
-    },
-    "ex10_player_death_2_cast": {
-      "emissive_mask": "sprites/player_death_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_2_cast_n.png",
-      "path": "sprites/player_death_2_cast.png"
-    },
-    "ex10_player_death_2_cast_left": {
-      "emissive_mask": "sprites/player_death_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_2_cast_left_n.png",
-      "path": "sprites/player_death_2_cast_left.png"
     },
     "ex10_player_death_2_left": {
       "emissive_mask": "sprites/player_death_2_left_e.png",
@@ -7707,18 +8028,6 @@
       "normal_map": "sprites/player_death_3_n.png",
       "path": "sprites/player_death_3.png"
     },
-    "ex10_player_death_3_cast": {
-      "emissive_mask": "sprites/player_death_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_3_cast_n.png",
-      "path": "sprites/player_death_3_cast.png"
-    },
-    "ex10_player_death_3_cast_left": {
-      "emissive_mask": "sprites/player_death_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_3_cast_left_n.png",
-      "path": "sprites/player_death_3_cast_left.png"
-    },
     "ex10_player_death_3_left": {
       "emissive_mask": "sprites/player_death_3_left_e.png",
       "filter": "nearest",
@@ -7731,41 +8040,41 @@
       "normal_map": "sprites/player_death_4_n.png",
       "path": "sprites/player_death_4.png"
     },
-    "ex10_player_death_4_cast": {
-      "emissive_mask": "sprites/player_death_4_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_4_cast_n.png",
-      "path": "sprites/player_death_4_cast.png"
-    },
-    "ex10_player_death_4_cast_left": {
-      "emissive_mask": "sprites/player_death_4_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_death_4_cast_left_n.png",
-      "path": "sprites/player_death_4_cast_left.png"
-    },
     "ex10_player_death_4_left": {
       "emissive_mask": "sprites/player_death_4_left_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_death_4_left_n.png",
       "path": "sprites/player_death_4_left.png"
     },
+    "ex10_player_death_5": {
+      "emissive_mask": "sprites/player_death_5_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_5_n.png",
+      "path": "sprites/player_death_5.png"
+    },
+    "ex10_player_death_5_left": {
+      "emissive_mask": "sprites/player_death_5_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_5_left_n.png",
+      "path": "sprites/player_death_5_left.png"
+    },
+    "ex10_player_death_6": {
+      "emissive_mask": "sprites/player_death_6_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_6_n.png",
+      "path": "sprites/player_death_6.png"
+    },
+    "ex10_player_death_6_left": {
+      "emissive_mask": "sprites/player_death_6_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_death_6_left_n.png",
+      "path": "sprites/player_death_6_left.png"
+    },
     "ex10_player_double_jump_0": {
       "emissive_mask": "sprites/player_double_jump_0_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_double_jump_0_n.png",
       "path": "sprites/player_double_jump_0.png"
-    },
-    "ex10_player_double_jump_0_cast": {
-      "emissive_mask": "sprites/player_double_jump_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_0_cast_n.png",
-      "path": "sprites/player_double_jump_0_cast.png"
-    },
-    "ex10_player_double_jump_0_cast_left": {
-      "emissive_mask": "sprites/player_double_jump_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_0_cast_left_n.png",
-      "path": "sprites/player_double_jump_0_cast_left.png"
     },
     "ex10_player_double_jump_0_left": {
       "emissive_mask": "sprites/player_double_jump_0_left_e.png",
@@ -7779,18 +8088,6 @@
       "normal_map": "sprites/player_double_jump_1_n.png",
       "path": "sprites/player_double_jump_1.png"
     },
-    "ex10_player_double_jump_1_cast": {
-      "emissive_mask": "sprites/player_double_jump_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_1_cast_n.png",
-      "path": "sprites/player_double_jump_1_cast.png"
-    },
-    "ex10_player_double_jump_1_cast_left": {
-      "emissive_mask": "sprites/player_double_jump_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_1_cast_left_n.png",
-      "path": "sprites/player_double_jump_1_cast_left.png"
-    },
     "ex10_player_double_jump_1_left": {
       "emissive_mask": "sprites/player_double_jump_1_left_e.png",
       "filter": "nearest",
@@ -7802,18 +8099,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_double_jump_2_n.png",
       "path": "sprites/player_double_jump_2.png"
-    },
-    "ex10_player_double_jump_2_cast": {
-      "emissive_mask": "sprites/player_double_jump_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_2_cast_n.png",
-      "path": "sprites/player_double_jump_2_cast.png"
-    },
-    "ex10_player_double_jump_2_cast_left": {
-      "emissive_mask": "sprites/player_double_jump_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_2_cast_left_n.png",
-      "path": "sprites/player_double_jump_2_cast_left.png"
     },
     "ex10_player_double_jump_2_left": {
       "emissive_mask": "sprites/player_double_jump_2_left_e.png",
@@ -7827,18 +8112,6 @@
       "normal_map": "sprites/player_double_jump_3_n.png",
       "path": "sprites/player_double_jump_3.png"
     },
-    "ex10_player_double_jump_3_cast": {
-      "emissive_mask": "sprites/player_double_jump_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_3_cast_n.png",
-      "path": "sprites/player_double_jump_3_cast.png"
-    },
-    "ex10_player_double_jump_3_cast_left": {
-      "emissive_mask": "sprites/player_double_jump_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_double_jump_3_cast_left_n.png",
-      "path": "sprites/player_double_jump_3_cast_left.png"
-    },
     "ex10_player_double_jump_3_left": {
       "emissive_mask": "sprites/player_double_jump_3_left_e.png",
       "filter": "nearest",
@@ -7850,18 +8123,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_fall_0_n.png",
       "path": "sprites/player_fall_0.png"
-    },
-    "ex10_player_fall_0_cast": {
-      "emissive_mask": "sprites/player_fall_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_0_cast_n.png",
-      "path": "sprites/player_fall_0_cast.png"
-    },
-    "ex10_player_fall_0_cast_left": {
-      "emissive_mask": "sprites/player_fall_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_0_cast_left_n.png",
-      "path": "sprites/player_fall_0_cast_left.png"
     },
     "ex10_player_fall_0_left": {
       "emissive_mask": "sprites/player_fall_0_left_e.png",
@@ -7875,18 +8136,6 @@
       "normal_map": "sprites/player_fall_1_n.png",
       "path": "sprites/player_fall_1.png"
     },
-    "ex10_player_fall_1_cast": {
-      "emissive_mask": "sprites/player_fall_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_1_cast_n.png",
-      "path": "sprites/player_fall_1_cast.png"
-    },
-    "ex10_player_fall_1_cast_left": {
-      "emissive_mask": "sprites/player_fall_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_1_cast_left_n.png",
-      "path": "sprites/player_fall_1_cast_left.png"
-    },
     "ex10_player_fall_1_left": {
       "emissive_mask": "sprites/player_fall_1_left_e.png",
       "filter": "nearest",
@@ -7898,18 +8147,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_fall_2_n.png",
       "path": "sprites/player_fall_2.png"
-    },
-    "ex10_player_fall_2_cast": {
-      "emissive_mask": "sprites/player_fall_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_2_cast_n.png",
-      "path": "sprites/player_fall_2_cast.png"
-    },
-    "ex10_player_fall_2_cast_left": {
-      "emissive_mask": "sprites/player_fall_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_2_cast_left_n.png",
-      "path": "sprites/player_fall_2_cast_left.png"
     },
     "ex10_player_fall_2_left": {
       "emissive_mask": "sprites/player_fall_2_left_e.png",
@@ -7923,41 +8160,41 @@
       "normal_map": "sprites/player_fall_3_n.png",
       "path": "sprites/player_fall_3.png"
     },
-    "ex10_player_fall_3_cast": {
-      "emissive_mask": "sprites/player_fall_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_3_cast_n.png",
-      "path": "sprites/player_fall_3_cast.png"
-    },
-    "ex10_player_fall_3_cast_left": {
-      "emissive_mask": "sprites/player_fall_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_fall_3_cast_left_n.png",
-      "path": "sprites/player_fall_3_cast_left.png"
-    },
     "ex10_player_fall_3_left": {
       "emissive_mask": "sprites/player_fall_3_left_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_fall_3_left_n.png",
       "path": "sprites/player_fall_3_left.png"
     },
+    "ex10_player_hurt_0": {
+      "emissive_mask": "sprites/player_hurt_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_hurt_0_n.png",
+      "path": "sprites/player_hurt_0.png"
+    },
+    "ex10_player_hurt_0_left": {
+      "emissive_mask": "sprites/player_hurt_0_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_hurt_0_left_n.png",
+      "path": "sprites/player_hurt_0_left.png"
+    },
+    "ex10_player_hurt_1": {
+      "emissive_mask": "sprites/player_hurt_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_hurt_1_n.png",
+      "path": "sprites/player_hurt_1.png"
+    },
+    "ex10_player_hurt_1_left": {
+      "emissive_mask": "sprites/player_hurt_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_hurt_1_left_n.png",
+      "path": "sprites/player_hurt_1_left.png"
+    },
     "ex10_player_idle_1": {
       "emissive_mask": "sprites/player_idle_1_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_idle_1_n.png",
       "path": "sprites/player_idle_1.png"
-    },
-    "ex10_player_idle_1_cast": {
-      "emissive_mask": "sprites/player_idle_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_1_cast_n.png",
-      "path": "sprites/player_idle_1_cast.png"
-    },
-    "ex10_player_idle_1_cast_left": {
-      "emissive_mask": "sprites/player_idle_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_1_cast_left_n.png",
-      "path": "sprites/player_idle_1_cast_left.png"
     },
     "ex10_player_idle_1_left": {
       "emissive_mask": "sprites/player_idle_1_left_e.png",
@@ -7971,18 +8208,6 @@
       "normal_map": "sprites/player_idle_2_n.png",
       "path": "sprites/player_idle_2.png"
     },
-    "ex10_player_idle_2_cast": {
-      "emissive_mask": "sprites/player_idle_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_2_cast_n.png",
-      "path": "sprites/player_idle_2_cast.png"
-    },
-    "ex10_player_idle_2_cast_left": {
-      "emissive_mask": "sprites/player_idle_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_2_cast_left_n.png",
-      "path": "sprites/player_idle_2_cast_left.png"
-    },
     "ex10_player_idle_2_left": {
       "emissive_mask": "sprites/player_idle_2_left_e.png",
       "filter": "nearest",
@@ -7994,18 +8219,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_idle_3_n.png",
       "path": "sprites/player_idle_3.png"
-    },
-    "ex10_player_idle_3_cast": {
-      "emissive_mask": "sprites/player_idle_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_3_cast_n.png",
-      "path": "sprites/player_idle_3_cast.png"
-    },
-    "ex10_player_idle_3_cast_left": {
-      "emissive_mask": "sprites/player_idle_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_3_cast_left_n.png",
-      "path": "sprites/player_idle_3_cast_left.png"
     },
     "ex10_player_idle_3_left": {
       "emissive_mask": "sprites/player_idle_3_left_e.png",
@@ -8019,18 +8232,6 @@
       "normal_map": "sprites/player_idle_4_n.png",
       "path": "sprites/player_idle_4.png"
     },
-    "ex10_player_idle_4_cast": {
-      "emissive_mask": "sprites/player_idle_4_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_4_cast_n.png",
-      "path": "sprites/player_idle_4_cast.png"
-    },
-    "ex10_player_idle_4_cast_left": {
-      "emissive_mask": "sprites/player_idle_4_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_4_cast_left_n.png",
-      "path": "sprites/player_idle_4_cast_left.png"
-    },
     "ex10_player_idle_4_left": {
       "emissive_mask": "sprites/player_idle_4_left_e.png",
       "filter": "nearest",
@@ -8042,18 +8243,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_idle_5_n.png",
       "path": "sprites/player_idle_5.png"
-    },
-    "ex10_player_idle_5_cast": {
-      "emissive_mask": "sprites/player_idle_5_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_5_cast_n.png",
-      "path": "sprites/player_idle_5_cast.png"
-    },
-    "ex10_player_idle_5_cast_left": {
-      "emissive_mask": "sprites/player_idle_5_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_5_cast_left_n.png",
-      "path": "sprites/player_idle_5_cast_left.png"
     },
     "ex10_player_idle_5_left": {
       "emissive_mask": "sprites/player_idle_5_left_e.png",
@@ -8067,18 +8256,6 @@
       "normal_map": "sprites/player_idle_6_n.png",
       "path": "sprites/player_idle_6.png"
     },
-    "ex10_player_idle_6_cast": {
-      "emissive_mask": "sprites/player_idle_6_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_6_cast_n.png",
-      "path": "sprites/player_idle_6_cast.png"
-    },
-    "ex10_player_idle_6_cast_left": {
-      "emissive_mask": "sprites/player_idle_6_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_6_cast_left_n.png",
-      "path": "sprites/player_idle_6_cast_left.png"
-    },
     "ex10_player_idle_6_left": {
       "emissive_mask": "sprites/player_idle_6_left_e.png",
       "filter": "nearest",
@@ -8090,18 +8267,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_idle_7_n.png",
       "path": "sprites/player_idle_7.png"
-    },
-    "ex10_player_idle_7_cast": {
-      "emissive_mask": "sprites/player_idle_7_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_7_cast_n.png",
-      "path": "sprites/player_idle_7_cast.png"
-    },
-    "ex10_player_idle_7_cast_left": {
-      "emissive_mask": "sprites/player_idle_7_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_idle_7_cast_left_n.png",
-      "path": "sprites/player_idle_7_cast_left.png"
     },
     "ex10_player_idle_7_left": {
       "emissive_mask": "sprites/player_idle_7_left_e.png",
@@ -8115,18 +8280,6 @@
       "normal_map": "sprites/player_jump_0_n.png",
       "path": "sprites/player_jump_0.png"
     },
-    "ex10_player_jump_0_cast": {
-      "emissive_mask": "sprites/player_jump_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_0_cast_n.png",
-      "path": "sprites/player_jump_0_cast.png"
-    },
-    "ex10_player_jump_0_cast_left": {
-      "emissive_mask": "sprites/player_jump_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_0_cast_left_n.png",
-      "path": "sprites/player_jump_0_cast_left.png"
-    },
     "ex10_player_jump_0_left": {
       "emissive_mask": "sprites/player_jump_0_left_e.png",
       "filter": "nearest",
@@ -8138,18 +8291,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_jump_1_n.png",
       "path": "sprites/player_jump_1.png"
-    },
-    "ex10_player_jump_1_cast": {
-      "emissive_mask": "sprites/player_jump_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_1_cast_n.png",
-      "path": "sprites/player_jump_1_cast.png"
-    },
-    "ex10_player_jump_1_cast_left": {
-      "emissive_mask": "sprites/player_jump_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_1_cast_left_n.png",
-      "path": "sprites/player_jump_1_cast_left.png"
     },
     "ex10_player_jump_1_left": {
       "emissive_mask": "sprites/player_jump_1_left_e.png",
@@ -8163,18 +8304,6 @@
       "normal_map": "sprites/player_jump_2_n.png",
       "path": "sprites/player_jump_2.png"
     },
-    "ex10_player_jump_2_cast": {
-      "emissive_mask": "sprites/player_jump_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_2_cast_n.png",
-      "path": "sprites/player_jump_2_cast.png"
-    },
-    "ex10_player_jump_2_cast_left": {
-      "emissive_mask": "sprites/player_jump_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_jump_2_cast_left_n.png",
-      "path": "sprites/player_jump_2_cast_left.png"
-    },
     "ex10_player_jump_2_left": {
       "emissive_mask": "sprites/player_jump_2_left_e.png",
       "filter": "nearest",
@@ -8186,18 +8315,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_land_0_n.png",
       "path": "sprites/player_land_0.png"
-    },
-    "ex10_player_land_0_cast": {
-      "emissive_mask": "sprites/player_land_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_0_cast_n.png",
-      "path": "sprites/player_land_0_cast.png"
-    },
-    "ex10_player_land_0_cast_left": {
-      "emissive_mask": "sprites/player_land_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_0_cast_left_n.png",
-      "path": "sprites/player_land_0_cast_left.png"
     },
     "ex10_player_land_0_left": {
       "emissive_mask": "sprites/player_land_0_left_e.png",
@@ -8211,18 +8328,6 @@
       "normal_map": "sprites/player_land_1_n.png",
       "path": "sprites/player_land_1.png"
     },
-    "ex10_player_land_1_cast": {
-      "emissive_mask": "sprites/player_land_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_1_cast_n.png",
-      "path": "sprites/player_land_1_cast.png"
-    },
-    "ex10_player_land_1_cast_left": {
-      "emissive_mask": "sprites/player_land_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_1_cast_left_n.png",
-      "path": "sprites/player_land_1_cast_left.png"
-    },
     "ex10_player_land_1_left": {
       "emissive_mask": "sprites/player_land_1_left_e.png",
       "filter": "nearest",
@@ -8234,18 +8339,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_land_2_n.png",
       "path": "sprites/player_land_2.png"
-    },
-    "ex10_player_land_2_cast": {
-      "emissive_mask": "sprites/player_land_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_2_cast_n.png",
-      "path": "sprites/player_land_2_cast.png"
-    },
-    "ex10_player_land_2_cast_left": {
-      "emissive_mask": "sprites/player_land_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_land_2_cast_left_n.png",
-      "path": "sprites/player_land_2_cast_left.png"
     },
     "ex10_player_land_2_left": {
       "emissive_mask": "sprites/player_land_2_left_e.png",
@@ -8259,23 +8352,107 @@
       "normal_map": "sprites/player_left_n.png",
       "path": "sprites/player_left.png"
     },
+    "ex10_player_push_0": {
+      "emissive_mask": "sprites/player_push_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_0_n.png",
+      "path": "sprites/player_push_0.png"
+    },
+    "ex10_player_push_0_left": {
+      "emissive_mask": "sprites/player_push_0_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_0_left_n.png",
+      "path": "sprites/player_push_0_left.png"
+    },
+    "ex10_player_push_1": {
+      "emissive_mask": "sprites/player_push_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_1_n.png",
+      "path": "sprites/player_push_1.png"
+    },
+    "ex10_player_push_1_left": {
+      "emissive_mask": "sprites/player_push_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_1_left_n.png",
+      "path": "sprites/player_push_1_left.png"
+    },
+    "ex10_player_push_2": {
+      "emissive_mask": "sprites/player_push_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_2_n.png",
+      "path": "sprites/player_push_2.png"
+    },
+    "ex10_player_push_2_left": {
+      "emissive_mask": "sprites/player_push_2_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_push_2_left_n.png",
+      "path": "sprites/player_push_2_left.png"
+    },
+    "ex10_player_staff_0": {
+      "emissive_mask": "sprites/player_staff_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_0_n.png",
+      "path": "sprites/player_staff_0.png"
+    },
+    "ex10_player_staff_0_left": {
+      "emissive_mask": "sprites/player_staff_0_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_0_left_n.png",
+      "path": "sprites/player_staff_0_left.png"
+    },
+    "ex10_player_staff_1": {
+      "emissive_mask": "sprites/player_staff_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_1_n.png",
+      "path": "sprites/player_staff_1.png"
+    },
+    "ex10_player_staff_1_left": {
+      "emissive_mask": "sprites/player_staff_1_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_1_left_n.png",
+      "path": "sprites/player_staff_1_left.png"
+    },
+    "ex10_player_staff_2": {
+      "emissive_mask": "sprites/player_staff_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_2_n.png",
+      "path": "sprites/player_staff_2.png"
+    },
+    "ex10_player_staff_2_left": {
+      "emissive_mask": "sprites/player_staff_2_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_2_left_n.png",
+      "path": "sprites/player_staff_2_left.png"
+    },
+    "ex10_player_staff_3": {
+      "emissive_mask": "sprites/player_staff_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_3_n.png",
+      "path": "sprites/player_staff_3.png"
+    },
+    "ex10_player_staff_3_left": {
+      "emissive_mask": "sprites/player_staff_3_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_3_left_n.png",
+      "path": "sprites/player_staff_3_left.png"
+    },
+    "ex10_player_staff_4": {
+      "emissive_mask": "sprites/player_staff_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_4_n.png",
+      "path": "sprites/player_staff_4.png"
+    },
+    "ex10_player_staff_4_left": {
+      "emissive_mask": "sprites/player_staff_4_left_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/player_staff_4_left_n.png",
+      "path": "sprites/player_staff_4_left.png"
+    },
     "ex10_player_toss_0": {
       "emissive_mask": "sprites/player_toss_0_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_toss_0_n.png",
       "path": "sprites/player_toss_0.png"
-    },
-    "ex10_player_toss_0_cast": {
-      "emissive_mask": "sprites/player_toss_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_0_cast_n.png",
-      "path": "sprites/player_toss_0_cast.png"
-    },
-    "ex10_player_toss_0_cast_left": {
-      "emissive_mask": "sprites/player_toss_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_0_cast_left_n.png",
-      "path": "sprites/player_toss_0_cast_left.png"
     },
     "ex10_player_toss_0_left": {
       "emissive_mask": "sprites/player_toss_0_left_e.png",
@@ -8289,18 +8466,6 @@
       "normal_map": "sprites/player_toss_1_n.png",
       "path": "sprites/player_toss_1.png"
     },
-    "ex10_player_toss_1_cast": {
-      "emissive_mask": "sprites/player_toss_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_1_cast_n.png",
-      "path": "sprites/player_toss_1_cast.png"
-    },
-    "ex10_player_toss_1_cast_left": {
-      "emissive_mask": "sprites/player_toss_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_1_cast_left_n.png",
-      "path": "sprites/player_toss_1_cast_left.png"
-    },
     "ex10_player_toss_1_left": {
       "emissive_mask": "sprites/player_toss_1_left_e.png",
       "filter": "nearest",
@@ -8312,18 +8477,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_toss_2_n.png",
       "path": "sprites/player_toss_2.png"
-    },
-    "ex10_player_toss_2_cast": {
-      "emissive_mask": "sprites/player_toss_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_2_cast_n.png",
-      "path": "sprites/player_toss_2_cast.png"
-    },
-    "ex10_player_toss_2_cast_left": {
-      "emissive_mask": "sprites/player_toss_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_2_cast_left_n.png",
-      "path": "sprites/player_toss_2_cast_left.png"
     },
     "ex10_player_toss_2_left": {
       "emissive_mask": "sprites/player_toss_2_left_e.png",
@@ -8337,18 +8490,6 @@
       "normal_map": "sprites/player_toss_3_n.png",
       "path": "sprites/player_toss_3.png"
     },
-    "ex10_player_toss_3_cast": {
-      "emissive_mask": "sprites/player_toss_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_3_cast_n.png",
-      "path": "sprites/player_toss_3_cast.png"
-    },
-    "ex10_player_toss_3_cast_left": {
-      "emissive_mask": "sprites/player_toss_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_toss_3_cast_left_n.png",
-      "path": "sprites/player_toss_3_cast_left.png"
-    },
     "ex10_player_toss_3_left": {
       "emissive_mask": "sprites/player_toss_3_left_e.png",
       "filter": "nearest",
@@ -8360,18 +8501,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_walk_0_n.png",
       "path": "sprites/player_walk_0.png"
-    },
-    "ex10_player_walk_0_cast": {
-      "emissive_mask": "sprites/player_walk_0_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_0_cast_n.png",
-      "path": "sprites/player_walk_0_cast.png"
-    },
-    "ex10_player_walk_0_cast_left": {
-      "emissive_mask": "sprites/player_walk_0_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_0_cast_left_n.png",
-      "path": "sprites/player_walk_0_cast_left.png"
     },
     "ex10_player_walk_0_left": {
       "emissive_mask": "sprites/player_walk_0_left_e.png",
@@ -8391,18 +8520,6 @@
       "normal_map": "sprites/player_walk_10_n.png",
       "path": "sprites/player_walk_10.png"
     },
-    "ex10_player_walk_10_cast": {
-      "emissive_mask": "sprites/player_walk_10_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_10_cast_n.png",
-      "path": "sprites/player_walk_10_cast.png"
-    },
-    "ex10_player_walk_10_cast_left": {
-      "emissive_mask": "sprites/player_walk_10_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_10_cast_left_n.png",
-      "path": "sprites/player_walk_10_cast_left.png"
-    },
     "ex10_player_walk_10_left": {
       "emissive_mask": "sprites/player_walk_10_left_e.png",
       "filter": "nearest",
@@ -8415,35 +8532,11 @@
       "normal_map": "sprites/player_walk_11_n.png",
       "path": "sprites/player_walk_11.png"
     },
-    "ex10_player_walk_11_cast": {
-      "emissive_mask": "sprites/player_walk_11_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_11_cast_n.png",
-      "path": "sprites/player_walk_11_cast.png"
-    },
-    "ex10_player_walk_11_cast_left": {
-      "emissive_mask": "sprites/player_walk_11_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_11_cast_left_n.png",
-      "path": "sprites/player_walk_11_cast_left.png"
-    },
     "ex10_player_walk_11_left": {
       "emissive_mask": "sprites/player_walk_11_left_e.png",
       "filter": "nearest",
       "normal_map": "sprites/player_walk_11_left_n.png",
       "path": "sprites/player_walk_11_left.png"
-    },
-    "ex10_player_walk_1_cast": {
-      "emissive_mask": "sprites/player_walk_1_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_1_cast_n.png",
-      "path": "sprites/player_walk_1_cast.png"
-    },
-    "ex10_player_walk_1_cast_left": {
-      "emissive_mask": "sprites/player_walk_1_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_1_cast_left_n.png",
-      "path": "sprites/player_walk_1_cast_left.png"
     },
     "ex10_player_walk_1_left": {
       "emissive_mask": "sprites/player_walk_1_left_e.png",
@@ -8457,18 +8550,6 @@
       "normal_map": "sprites/player_walk_2_n.png",
       "path": "sprites/player_walk_2.png"
     },
-    "ex10_player_walk_2_cast": {
-      "emissive_mask": "sprites/player_walk_2_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_2_cast_n.png",
-      "path": "sprites/player_walk_2_cast.png"
-    },
-    "ex10_player_walk_2_cast_left": {
-      "emissive_mask": "sprites/player_walk_2_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_2_cast_left_n.png",
-      "path": "sprites/player_walk_2_cast_left.png"
-    },
     "ex10_player_walk_2_left": {
       "emissive_mask": "sprites/player_walk_2_left_e.png",
       "filter": "nearest",
@@ -8480,18 +8561,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_walk_3_n.png",
       "path": "sprites/player_walk_3.png"
-    },
-    "ex10_player_walk_3_cast": {
-      "emissive_mask": "sprites/player_walk_3_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_3_cast_n.png",
-      "path": "sprites/player_walk_3_cast.png"
-    },
-    "ex10_player_walk_3_cast_left": {
-      "emissive_mask": "sprites/player_walk_3_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_3_cast_left_n.png",
-      "path": "sprites/player_walk_3_cast_left.png"
     },
     "ex10_player_walk_3_left": {
       "emissive_mask": "sprites/player_walk_3_left_e.png",
@@ -8505,18 +8574,6 @@
       "normal_map": "sprites/player_walk_4_n.png",
       "path": "sprites/player_walk_4.png"
     },
-    "ex10_player_walk_4_cast": {
-      "emissive_mask": "sprites/player_walk_4_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_4_cast_n.png",
-      "path": "sprites/player_walk_4_cast.png"
-    },
-    "ex10_player_walk_4_cast_left": {
-      "emissive_mask": "sprites/player_walk_4_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_4_cast_left_n.png",
-      "path": "sprites/player_walk_4_cast_left.png"
-    },
     "ex10_player_walk_4_left": {
       "emissive_mask": "sprites/player_walk_4_left_e.png",
       "filter": "nearest",
@@ -8528,18 +8585,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_walk_5_n.png",
       "path": "sprites/player_walk_5.png"
-    },
-    "ex10_player_walk_5_cast": {
-      "emissive_mask": "sprites/player_walk_5_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_5_cast_n.png",
-      "path": "sprites/player_walk_5_cast.png"
-    },
-    "ex10_player_walk_5_cast_left": {
-      "emissive_mask": "sprites/player_walk_5_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_5_cast_left_n.png",
-      "path": "sprites/player_walk_5_cast_left.png"
     },
     "ex10_player_walk_5_left": {
       "emissive_mask": "sprites/player_walk_5_left_e.png",
@@ -8553,18 +8598,6 @@
       "normal_map": "sprites/player_walk_6_n.png",
       "path": "sprites/player_walk_6.png"
     },
-    "ex10_player_walk_6_cast": {
-      "emissive_mask": "sprites/player_walk_6_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_6_cast_n.png",
-      "path": "sprites/player_walk_6_cast.png"
-    },
-    "ex10_player_walk_6_cast_left": {
-      "emissive_mask": "sprites/player_walk_6_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_6_cast_left_n.png",
-      "path": "sprites/player_walk_6_cast_left.png"
-    },
     "ex10_player_walk_6_left": {
       "emissive_mask": "sprites/player_walk_6_left_e.png",
       "filter": "nearest",
@@ -8576,18 +8609,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_walk_7_n.png",
       "path": "sprites/player_walk_7.png"
-    },
-    "ex10_player_walk_7_cast": {
-      "emissive_mask": "sprites/player_walk_7_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_7_cast_n.png",
-      "path": "sprites/player_walk_7_cast.png"
-    },
-    "ex10_player_walk_7_cast_left": {
-      "emissive_mask": "sprites/player_walk_7_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_7_cast_left_n.png",
-      "path": "sprites/player_walk_7_cast_left.png"
     },
     "ex10_player_walk_7_left": {
       "emissive_mask": "sprites/player_walk_7_left_e.png",
@@ -8601,18 +8622,6 @@
       "normal_map": "sprites/player_walk_8_n.png",
       "path": "sprites/player_walk_8.png"
     },
-    "ex10_player_walk_8_cast": {
-      "emissive_mask": "sprites/player_walk_8_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_8_cast_n.png",
-      "path": "sprites/player_walk_8_cast.png"
-    },
-    "ex10_player_walk_8_cast_left": {
-      "emissive_mask": "sprites/player_walk_8_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_8_cast_left_n.png",
-      "path": "sprites/player_walk_8_cast_left.png"
-    },
     "ex10_player_walk_8_left": {
       "emissive_mask": "sprites/player_walk_8_left_e.png",
       "filter": "nearest",
@@ -8624,18 +8633,6 @@
       "filter": "nearest",
       "normal_map": "sprites/player_walk_9_n.png",
       "path": "sprites/player_walk_9.png"
-    },
-    "ex10_player_walk_9_cast": {
-      "emissive_mask": "sprites/player_walk_9_cast_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_9_cast_n.png",
-      "path": "sprites/player_walk_9_cast.png"
-    },
-    "ex10_player_walk_9_cast_left": {
-      "emissive_mask": "sprites/player_walk_9_cast_left_e.png",
-      "filter": "nearest",
-      "normal_map": "sprites/player_walk_9_cast_left_n.png",
-      "path": "sprites/player_walk_9_cast_left.png"
     },
     "ex10_player_walk_9_left": {
       "emissive_mask": "sprites/player_walk_9_left_e.png",
@@ -9946,6 +9943,10 @@
       "filter": "nearest",
       "normal_map": "sprites/timber_support_n.png",
       "path": "sprites/timber_support.png"
+    },
+    "ex10_title_star": {
+      "filter": "nearest",
+      "path": "sprites/title_star.png"
     },
     "ex10_toll_boom_big_0_0": {
       "emissive_mask": "sprites/toll_boom_big_0_0_e.png",

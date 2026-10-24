@@ -76,8 +76,8 @@ Each stop draws the assets its own features need.
 | Cold | Ice cyan |
 | Shock | Electric violet |
 | Bleed | Dark maroon |
-| Mana | Indigo |
-| Gravity (the force push and the black hole, from (f)) | Deep purple, from magenta toward indigo, apart from shock's violet |
+| Mana | Indigo; from (h) a deep bright blue (`И Й З Ю`) for the summons' tiles, the mana orb and the mana bar's liquid |
+| Gravity (the force push and the black hole, from (f)) | Deep purple, from magenta toward indigo, apart from shock's violet; from (h) the push's and the hole's icon tiles |
 
 Saturated yellow is reserved for crits. The palette gains violet, maroon and indigo shades, and in (f) a gravity ramp.
 
@@ -112,12 +112,13 @@ Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatte
 | Troll | 128 | Idle, walk, slam wind-up, slam, pick up, throw; from (g) a swipe's wind-up and swipe; the held object is its own sprite on the kit's hierarchy |
 | Goblin, from (g) | 64 | Idle, walk, wind-up with a rock or a lit bomb, throw, the stab's wind-up and stab, hop |
 | Player, in (a) | 64 | A toss clip; an arm and gun drawn at 8 aim directions instead of rotated; the lantern brightens on a cast through its emissive map |
+| Player, from (h) | 96 | The wizard: idle, walk, jump, fall, land, air jump, hurt, a death that ends on the ground, the toss, bolt, push and conjure gestures, and the staff's and the pistol's poses at 5 aim directions; his staff's amber orb is the staff light, never emissive |
 
 Today the player draws unlit through `damage_flash` and never reads its maps, since the fixtures stop removed the lighting fixture (`src/extract.rs`), so the lantern's brightening puts the player on the lit path in (a).
 
 **Icons, items and effects:**
 
-- icons for the 10 spells and the gun, shown at whole-number scale in the shell's theme, with the element's colour as the border;
+- icons for the 10 spells and the gun, shown at whole-number scale in the shell's theme, with the element's colour as the border; from (h) one family on 36 px tiles, the element's colour their bevelled frame;
 - a bowling ball distinct from today's ball (darker, with finger holes and an iron sheen); health orbs (red) and mana orbs (indigo); the training dummy;
 - 6–8 lightning segment sprites, combined differently on each strike;
 - particles, mostly as new JSON settings over today's dust, spark, droplet and mote sprites: a muzzle flash and tracer, ricochet sparks, steam puffs, the force push (the shock ring re-tinted), the troll's slam, bleed drips and orb sparkle.
@@ -425,3 +426,8 @@ The owner's notes after 0.97 became four more stops, (e) to (h), planned in the 
   - the troll's slam tells for 0.8 s with a dust ring about its fist, a grunt and a shake, it recovers in 0.35 s, and under 90 px a quicker swipe, 01's box hit, takes the slam's place, since a kit hitbox cannot follow its owner's facing (feedback K3); the slam and the swipe kick each body by its mass; a troll lifts crates, never kegs;
   - a fresh alert shows "!" and sounds the sting once for the enemies it alerts, from 01's code rather than (c)'s `spotted` cue, and a search shows "?";
   - the save is schema 12 (`props`, the rocks among them), moving every save ID from schema 11's first placed orb's up by seven, past the map's goblins; a ball's array leaves its trailing nulls off, so a full pit with the map's 26 enemies and 14 props saves in 1,787,829 bytes.
+- **As built, 01 (h) (M82, `D-211`).** Where it changed this file's rules and (a)'s rows:
+  - the player is a wizard on a 96 px frame, the body as the courier's at (48, 65), so `BODY_OFFSET` moves and a save's player corner with it (schema 13); his staff's orb is the staff light, plain glass under the glow, its anchors from the rig; he casts each spell with a gesture, poses with the staff for the sprays and the small balls and with a pistol for the gun, plays a hurt clip on a blow and falls on his back when he dies; his status overlays draw in a 64-unit square on his body;
+  - the icons are one family on 36 px tiles; the HUD's bars fill with a scrolling liquid in their own colours, each slot shows its live key with no cost or number, the gun stands apart with its rounds as cartridges, and no HUD widget takes the theme's accent;
+  - the fire missile has its own clip, a rocket; the sprays reach 9.1 and 4.55 tiles, draw as animated sprites with a light, their particles accents, and burst on each live target every second damage pulse;
+  - 01's theme is the template's structure in its own colours, which `just repo-check` holds by its masked text, amending `D-199`'s copy check; the title draws the night in OLED black with its own stars.

@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::features::player::Gesture;
 use crate::features::toys::components::Element;
 
 /// The player's spellbook, which its prefab names `spellbook`: the slot
@@ -65,15 +66,17 @@ impl Spell {
         }
     }
 
-    /// The element its slot's border shows.
+    /// The gesture the wizard casts it with: a toss, a bolt of the staff,
+    /// a push of the hand, a conjuring strike, or, held, the staff levelled
+    /// along the aim.
     #[must_use]
-    pub const fn school(self) -> School {
+    pub const fn gesture(self) -> Gesture {
         match self {
-            Spell::FireMissile | Spell::Flamethrower => School::Fire,
-            Spell::IceSpray => School::Cold,
-            Spell::ForcePush | Spell::BlackHole | Spell::Summon => School::Mana,
-            Spell::IronBlock | Spell::BowlingBall | Spell::SmallBalls => School::Physical,
-            Spell::Lightning => School::Shock,
+            Spell::BowlingBall => Gesture::Toss,
+            Spell::FireMissile | Spell::Lightning => Gesture::Bolt,
+            Spell::ForcePush | Spell::BlackHole => Gesture::Push,
+            Spell::IronBlock | Spell::Summon => Gesture::Conjure,
+            Spell::Flamethrower | Spell::IceSpray | Spell::SmallBalls => Gesture::Pour,
         }
     }
 
@@ -98,7 +101,9 @@ impl Spell {
     }
 }
 
-/// A spell's element, as its slot's border shows it.
+/// An element and its colour, as the bar's borders showed them before the
+/// icon family drew each element into its tile (01 (h)); the damage
+/// numbers' tests read the colours.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum School {
     Fire,

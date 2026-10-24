@@ -7,6 +7,7 @@
 
 pub mod components;
 pub mod draw;
+pub mod spray_look;
 pub mod systems;
 
 use glam::Vec2;
@@ -115,10 +116,11 @@ pub const PUSH_SPEED: f32 = 2500.0;
 pub const BLAST_TRAUMA: f32 = 0.68;
 /// The force push's reach, wider than a blast's.
 pub const FORCE_PUSH_RADIUS: f32 = 6.0 * TILE;
-/// A spray's reach and half angle, and the rays it traces.
-pub const SPRAY_RANGE: f32 = 7.0 * TILE;
+/// A spray's reach and half angle, and the rays it traces: 01 (h)'s 30 %
+/// further than 01 (f)'s 7 and 3.5 tiles.
+pub const SPRAY_RANGE: f32 = 9.1 * TILE;
 pub const SPRAY_HALF_ANGLE: f32 = 14.0 * std::f32::consts::PI / 180.0;
-pub const FIRE_SPRAY_RANGE: f32 = 3.5 * TILE;
+pub const FIRE_SPRAY_RANGE: f32 = 4.55 * TILE;
 /// Most shock rings at once.
 pub const RING_CAP: usize = 16;
 /// The small balls' loop, which plays while they pour, and the seconds a
@@ -140,8 +142,9 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// after it, so a blast's hits take the step's resolve, the escaped
 /// bodies' cull, the holes' broom and the sprays' end; in the present
 /// phase the toys' looks, and before the frame's particles the sprays' and
-/// the holes' particles; and their effects drawn after the sprites, the
-/// holes under them (`level::draw::base`).
+/// the holes' particles, then the sprays' sprites and puffs; and their
+/// effects drawn after the sprites, the holes under them
+/// (`level::draw::base`).
 pub struct ToysPlugin;
 
 impl Plugin for ToysPlugin {
@@ -194,6 +197,8 @@ impl Plugin for ToysPlugin {
         for desc in [
             system("spray_look", systems::spray_look),
             system("hole_particles", systems::hole_particles),
+            system("spray_sprites", spray_look::sprites).after("spray_look"),
+            system("spray_puffs", spray_look::puffs).after("spray_look"),
         ] {
             let desc = desc.after(PHYSICS_SYNC).before(PARTICLE_COUNT_REFRESH);
             schedule.add(Stage::PostUpdate, desc);

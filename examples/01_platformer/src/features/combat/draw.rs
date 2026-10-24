@@ -1,11 +1,12 @@
 //! What combat draws over the sprites: each target's status overlays in
-//! its sprite's size class, flames in a warm glow while burning, an ice
-//! cube while frozen (fitted to the body's hurtbox where its kind has one),
-//! flickering to its cracked twin as the freeze runs out, a crackle while
-//! shocked and a halo of stars while stunned.
+//! its sprite's size class (the player's in a square on his body), flames
+//! in a warm glow while burning, an ice cube while frozen (fitted to the
+//! body's hurtbox where its kind has one), flickering to its cracked twin
+//! as the freeze runs out, a crackle while shocked and a halo of stars
+//! while stunned.
 
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, Entity, Sprite, Transform, World};
+use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
 use tungsten::kit::{Health, Tags};
 use tungsten::render::SpriteBatch;
 
@@ -16,6 +17,8 @@ use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::enemies::components::Enemy;
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
+use crate::features::player::components::Player;
+use crate::features::player::{BODY_OFFSET, OVERLAY_SIDE};
 
 /// A burning target's flames: frames a second, their side as a share of
 /// the target's, and where each sits on the target's box, from its
@@ -98,12 +101,21 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
         if health.is_dead() {
             continue;
         }
-        let width = assets
-            .sprite(sprite.asset_id)
-            .map_or(64.0, |asset| asset.width as f32);
-        let side = width * at.scale.x.abs();
+        // The player's square sits on his body; another target's is its
+        // sprite's.
+        let (side, origin) = if world.has::<Player>(entity) {
+            let body = world
+                .get::<Collider>(entity)
+                .map_or(BODY_OFFSET, |c| c.offset);
+            let centre = at.position + body;
+            (OVERLAY_SIDE, centre - Vec2::splat(OVERLAY_SIDE * 0.5))
+        } else {
+            let width = assets
+                .sprite(sprite.asset_id)
+                .map_or(64.0, |asset| asset.width as f32);
+            (width * at.scale.x.abs(), at.position)
+        };
         let size = Vec2::splat(side);
-        let origin = at.position;
         if (origin + size).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
         }

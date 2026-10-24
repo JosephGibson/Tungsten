@@ -6,11 +6,11 @@
     ],
     [
       0.12,
-      0.65
+      0.45
     ],
     [
       0.6,
-      0.4
+      0.3
     ],
     [
       1,
@@ -54,7 +54,7 @@
   "drag_per_sec": 0.2,
   "emission": {
     "kind": "continuous",
-    "rate_hz": 120
+    "rate_hz": 80
   },
   "gravity": [
     0,
@@ -67,16 +67,16 @@
     ],
     "kind": "cone",
     "speed": {
-      "max": 850,
-      "min": 600
+      "max": 1100,
+      "min": 780
     },
-    "spread_deg": 28
+    "spread_deg": 26
   },
   "lifetime": {
     "max": 0.8,
     "min": 0.5
   },
-  "max_alive": 100,
+  "max_alive": 70,
   "scale_over_life": [
     [
       0,
@@ -84,21 +84,21 @@
     ],
     [
       0.3,
-      1.2
+      1.1
     ],
     [
       0.8,
-      2
+      1.8
     ],
     [
       1,
-      2.5
+      2.2
     ]
   ],
   "seed": 48657,
   "sprite": "ex10_flame_glow",
   "start_scale": {
-    "max": 1.2,
-    "min": 0.4
+    "max": 1.1,
+    "min": 0.45
   }
 }

@@ -3,12 +3,12 @@
   "components": {
     "player": null,
     "tags": ["team.player"],
-    "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [20, 28] }, "offset": [32, 33] },
+    "rigid_body": { "kind": "kinematic", "shape": { "kind": "aabb", "half_extents": [20, 28] }, "offset": [48, 65] },
     "platformer_controller": { "run_speed": 560, "jump_speed": 1280, "air_jumps": 1 },
     "action_input": { "move": ["move_left", "move_right"], "slots": { "jump": "jump" } },
-    "aim": { "from": "cursor", "offset": [32, 33] },
+    "aim": { "from": "cursor", "offset": [48, 65] },
     "health": { "max": 100, "invulnerability": 1.1 },
-    "hurtbox": { "shape": { "aabb": [20, 28] }, "offset": [32, 33] },
+    "hurtbox": { "shape": { "aabb": [20, 28] }, "offset": [48, 65] },
     "knockback": { "seconds": 0.18 },
     "hit_flash": { "color": [1.0, 0.2, 0.1, 1.0], "seconds": 0.25 },
     "facing": { "from": "intent", "snap": "horizontal" },
@@ -25,6 +25,6 @@
     "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls", "lightning", "gun", "summon", "staff_light"],
     "spellbook": {},
     "camera_target": null,
-    "glow": { "offset": [43.5, 46.5], "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
+    "glow": { "offset": [65.0, 37.0], "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
   }
 }
