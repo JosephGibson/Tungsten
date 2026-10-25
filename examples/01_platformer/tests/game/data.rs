@@ -4,7 +4,7 @@
 //! game sends has a cue rule that plays a registered sound.
 
 use example_01_platformer::features::audio::components::Sound;
-use example_01_platformer::features::combat::FREEZE_NEEDS;
+use example_01_platformer::features::combat::{CHILL_NEEDS, FREEZE_NEEDS};
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::EnemyKind;
@@ -173,6 +173,13 @@ fn every_restated_constant_matches_its_data() {
     for rung in freezes {
         assert_eq!(number(rung, "/needs"), FREEZE_NEEDS);
     }
+    // Its chill rung, which the frost climbs to before the chill.
+    let chills: Vec<&Value> = rungs
+        .iter()
+        .filter(|rung| rung["effect"] == "chilled")
+        .collect();
+    assert_eq!(chills.len(), 1, "one chill rung");
+    assert_eq!(number(chills[0], "/needs"), CHILL_NEEDS);
     // The props' bodies and a goblin's rock and bomb.
     assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));

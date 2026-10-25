@@ -1,20 +1,22 @@
 //! What combat draws over the sprites: each target's status overlays in
 //! its sprite's size class (the player's in a square on his body), flames
-//! in a warm glow while burning, an ice cube while frozen (fitted to the
-//! body's hurtbox where its kind has one), flickering to its cracked twin
-//! as the freeze runs out, a crackle while shocked and a halo of stars
-//! while stunned.
+//! in a warm glow while burning, a freezable creature's frost in four
+//! stages from the first point of cold, an ice cube while frozen (both
+//! fitted to the body's hurtbox where its kind has one, a left-facing
+//! kind's taken back over its body), the cube flickering to its cracked
+//! twin as the freeze runs out, a crackle while shocked and a halo of
+//! stars while stunned.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
-use tungsten::kit::{Health, Tags};
+use tungsten::kit::{Health, StateMachine, Tags};
 use tungsten::render::SpriteBatch;
 
-use super::systems::{THAW_FLICKER_HZ, THAW_WARN, flicker, frozen_left};
+use super::systems::{THAW_FLICKER_HZ, THAW_WARN, flicker, frost_level, frost_stage, frozen_left};
 use super::{BURNING, FROZEN, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
-use crate::features::enemies::components::Enemy;
+use crate::features::enemies::components::{Enemy, EnemyState};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
 use crate::features::player::components::Player;
@@ -67,6 +69,19 @@ fn ice(world: &World, entity: Entity, class: &str, time: f32) -> String {
     }
 }
 
+/// The frost a freezable `entity` shows at `stage`: its kind's own, fitted
+/// to its hurtbox as its cube is, else its size class's.
+fn frost(world: &World, entity: Entity, class: &str, stage: u8) -> String {
+    if world.has::<Dummy>(entity) {
+        format!("ex10_frost_dummy_{stage}")
+    } else if let Some(enemy) = world.get::<Enemy>(entity) {
+        let kind = enemy.kind.info().ice.trim_start_matches("ex10_status_ice_");
+        format!("ex10_frost_{kind}_{stage}")
+    } else {
+        format!("ex10_frost_{class}_{stage}")
+    }
+}
+
 /// Pushes the sprite `name` over the box at `origin` of `size`, when it is
 /// loaded.
 fn quad(
@@ -102,7 +117,10 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             continue;
         }
         // The player's square sits on his body; another target's is its
-        // sprite's.
+        // sprite's. A left-facing enemy with a mind shows its mirrored clip
+        // shifted so its body sits over its box (`enemies::systems::clips`),
+        // so its overlays, fitted to the right-facing frame, take the shift
+        // back.
         let (side, origin) = if world.has::<Player>(entity) {
             let body = world
                 .get::<Collider>(entity)
@@ -113,7 +131,15 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             let width = assets
                 .sprite(sprite.asset_id)
                 .map_or(64.0, |asset| asset.width as f32);
-            (width * at.scale.x.abs(), at.position)
+            let mut origin = at.position;
+            if let Some(enemy) = world.get::<Enemy>(entity)
+                && enemy.heading < 0.0
+                && world.has::<StateMachine<EnemyState>>(entity)
+            {
+                let info = enemy.kind.info();
+                origin.x -= 2.0 * info.centre.x - info.frame;
+            }
+            (width * at.scale.x.abs(), origin)
         };
         let size = Vec2::splat(side);
         if (origin + size).cmplt(min).any() || origin.cmpgt(max).any() {
@@ -147,6 +173,10 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                     flame,
                 );
             }
+        }
+        if let Some(stage) = frost_stage(frost_level(world, entity, tags)) {
+            let name = frost(world, entity, class, stage);
+            quad(&mut batches, assets, &name, origin, size);
         }
         if tags.has(FROZEN) {
             quad(

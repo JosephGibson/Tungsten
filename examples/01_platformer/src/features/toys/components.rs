@@ -114,9 +114,20 @@ pub struct ShockRing {
 pub enum Ring {
     Fireball,
     Ball,
-    Push,
     Collapse,
+    Open,
 }
+
+/// The burst a hole opens with, whose sparks `hole_particles` sets on a
+/// ring about the hole and draws in.
+#[derive(Debug, Clone, Copy)]
+pub struct OpeningOf(pub Entity);
+
+/// The flyers `toys_hold` steered this step, with their own directions,
+/// which `toys_release` gives back once the movers have moved. One step's,
+/// never saved.
+#[derive(Debug, Default)]
+pub struct HoleHold(pub Vec<(Entity, Vec2)>);
 
 /// A light left where a missile ended, fading out over `secs`: a blast's
 /// flares and fades more slowly.
@@ -126,6 +137,21 @@ pub struct Flare {
     pub secs: f32,
     pub blast: bool,
     pub phase: f32,
+}
+
+/// A force push's wave in flight (01 (j)): where its front starts, along
+/// what aim, its age, what it has crossed, its crescent, and its dust: how
+/// far each sample of its front last raised a puff, and how many it has
+/// raised. Not saved: it lives [`WAVE_SECS`](super::wave::WAVE_SECS).
+#[derive(Debug, Clone)]
+pub struct Wave {
+    pub origin: Vec2,
+    pub aim: Vec2,
+    pub age: f32,
+    pub crossed: Vec<Entity>,
+    pub look: Option<Entity>,
+    pub dusted: [f32; super::wave::DUST_SAMPLES],
+    pub puffs: usize,
 }
 
 /// A body's velocity before this step's physics, which impacts read: by

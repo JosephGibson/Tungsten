@@ -22,7 +22,7 @@ use tungsten::testing::UiHarness;
 
 use example_01_platformer::game::GAMEPLAY;
 
-use super::{ball, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
+use super::{ball, body, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
 
 /// The kit's step at the harness's 60 Hz.
 const DT: f32 = 1.0 / 60.0;
@@ -569,4 +569,74 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
     assert_eq!(heard(&harness, Sound::Switched), 1);
     super::choose(&mut harness, 3);
     assert_eq!(heard(&harness, Sound::Switched), 0);
+}
+
+/// The wizard at x 600 on the sky's ground, walking right for `frames`
+/// frames into the body `place` sets down: his centre's x each frame, and
+/// the body's centre before and after.
+fn walk_into(
+    place: impl FnOnce(&mut UiHarness) -> Entity,
+    frames: usize,
+) -> (Vec<f32>, Vec2, Vec2) {
+    const FLOOR: f32 = 1000.0;
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, FLOOR);
+    stand(&mut harness, player, 600.0, FLOOR);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    let thing = place(&mut harness);
+    harness.step(1);
+    let start = body(&harness, thing);
+    harness.harness_mut().press_action("move_right");
+    let mut xs = Vec::new();
+    for _ in 0..frames {
+        harness.step(1);
+        xs.push(centre(&harness, player).x);
+    }
+    harness.harness_mut().release_action("move_right");
+    (xs, start, body(&harness, thing))
+}
+
+#[test]
+fn the_wizard_walks_small_bodies_aside() {
+    use example_01_platformer::features::props::{self, CRATE_HALF, components::PropKind};
+    use example_01_platformer::features::toys::{self, IRON_HALF};
+    const FLOOR: f32 = 1000.0;
+    // A small ball ahead rolls off before him.
+    let (xs, start, end) = walk_into(|h| ball(h, Vec2::new(680.0, FLOOR - 7.5), true), 30);
+    assert!(
+        end.x - start.x > 100.0,
+        "the ball went ahead: {start} {end}"
+    );
+    assert!(xs[29] > 700.0, "he walked on: {}", xs[29]);
+    // A crate ahead moves with him, at his run less its 12 of 60.
+    let crate_at = Vec2::new(700.0, FLOOR - CRATE_HALF.y - 0.5);
+    let (xs, start, end) = walk_into(
+        |h| props::spawn(h.world_mut(), PropKind::Crate, crate_at),
+        50,
+    );
+    let pace = (xs[45] - xs[15]) / (30.0 * DT);
+    assert!(
+        (pace - 448.0).abs() <= 44.8,
+        "his pace behind the crate: {pace} px/s"
+    );
+    assert!(
+        end.x - start.x > 200.0,
+        "the crate went with him: {start} {end}"
+    );
+    assert!(
+        xs[49] + PLAYER_HALF.x <= end.x - CRATE_HALF.x + 0.5,
+        "behind it: {} {end}",
+        xs[49]
+    );
+    // Iron, 400, stops him.
+    let iron_at = Vec2::new(700.0 + IRON_HALF.x, FLOOR - IRON_HALF.y);
+    let (xs, start, end) = walk_into(|h| toys::place_iron(h.world_mut(), iron_at), 40);
+    assert!(start.distance(end) < 1.0, "the iron held: {start} {end}");
+    assert!(
+        (xs[39] + PLAYER_HALF.x - 700.0).abs() < 0.5,
+        "he stands at it: {}",
+        xs[39]
+    );
 }

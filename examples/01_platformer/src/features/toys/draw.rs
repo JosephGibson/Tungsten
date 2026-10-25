@@ -9,13 +9,14 @@ use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
 use super::components::{BlackHole, Element, Ring, ShockRing, Spray};
-use super::{HOLE_DIAMETER, HOLE_SHRINK_SECS, RING_SECS};
+use super::{HOLE_DIAMETER, HOLE_OPEN_SECS, HOLE_SECS, HOLE_SHRINK_SECS, RING_SECS};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{CORE, CORE_MATERIAL, HALO, HALO_MATERIAL, drawn_time};
 
 /// The rings', the streaks' and the vortex's art.
 const SHOCK_RING: &str = "ex10_shock_ring";
 const STREAK: &str = "ex10_infall_streak";
+const PHOTON_RING: &str = "ex10_photon_ring";
 
 /// The rings, then the sprays.
 #[must_use]
@@ -29,7 +30,8 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
 }
 
 /// Each shock ring, growing and fading: a fireball's eases out with a hot
-/// front and a flash, a push's is the gravity purple (palette `Ш`).
+/// front and a flash, a hole's collapse is the gravity's pink, and a hole's
+/// opening is its own photon ring closing on it over [`HOLE_OPEN_SECS`].
 fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
     let mut batches = Vec::new();
     let Some(asset) = assets.get_sprite(SHOCK_RING) else {
@@ -45,22 +47,32 @@ fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
         } else {
             progress
         };
-        let size = 32.0 + spread * (ring.size - 32.0);
-        let fade = ((1.0 - progress) * 220.0) as u8;
+        let (size, fade) = if ring.kind == Ring::Open {
+            let open = (ring.age / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+            (
+                24.0 + (ring.size - 24.0) * (1.0 - open).powf(1.6),
+                ((open / 0.25).min(1.0) * (1.0 - open) * 255.0) as u8,
+            )
+        } else {
+            (
+                32.0 + spread * (ring.size - 32.0),
+                ((1.0 - progress) * 220.0) as u8,
+            )
+        };
         let color = match ring.kind {
-            Ring::Push => [196, 74, 222, fade],
             Ring::Collapse => [244, 166, 250, fade],
+            Ring::Open => [236, 180, 255, fade],
             _ => [255, 210, 140, fade],
+        };
+        let art = if ring.kind == Ring::Open {
+            assets.get_sprite(PHOTON_RING).unwrap_or(asset)
+        } else {
+            asset
         };
         push_quad(
             &mut batches,
-            asset,
-            instance(
-                asset,
-                at - Vec2::splat(size / 2.0),
-                Vec2::splat(size),
-                color,
-            ),
+            art,
+            instance(art, at - Vec2::splat(size / 2.0), Vec2::splat(size), color),
             None,
         );
         if fireball {
@@ -96,7 +108,8 @@ fn rings(world: &World, assets: &AssetRegistry) -> Vec<SpriteBatch> {
 /// Each black hole, for the sprite base to draw between the tiles and the
 /// sprites: its halo, disk and two vortices turning in the gravity purple
 /// (palette `Ц`, `Щ`, `Ш`, `Щ`), the streaks falling in, then its photon
-/// ring and core, shrinking to nothing over its last
+/// ring and core, growing in from 0.08 of their size over its first
+/// [`HOLE_OPEN_SECS`] and shrinking to nothing over its last
 /// [`HOLE_SHRINK_SECS`]. Every quad sits at the tiles' far plane, so the
 /// order holds under a depth sort too.
 #[must_use]
@@ -124,17 +137,14 @@ pub fn vortices(world: &World) -> Vec<SpriteBatch> {
         ("ex10_vortex", D * 1.2, time * 4.5, [244, 166, 250, 225]),
     ];
     let over: [(&str, f32, f32, [u8; 4]); 2] = [
-        (
-            "ex10_photon_ring",
-            D * 0.57,
-            time * 6.0,
-            [255, 235, 215, 255],
-        ),
+        (PHOTON_RING, D * 0.57, time * 6.0, [255, 235, 215, 255]),
         ("ex10_vortex_core", D * 0.47, -time * 1.3, [255; 4]),
     ];
     for (hole, at) in world.query::<(&BlackHole, &Transform)>() {
         let at = at.position;
-        let shrink = (hole.left / HOLE_SHRINK_SECS).clamp(0.0, 1.0);
+        let opened = ((HOLE_SECS - hole.left) / HOLE_OPEN_SECS).clamp(0.0, 1.0);
+        let shrink = (hole.left / HOLE_SHRINK_SECS).clamp(0.0, 1.0)
+            * (0.08 + 0.92 * (1.0 - (1.0 - opened).powi(3)));
         let layer =
             |batches: &mut Vec<SpriteBatch>,
              (id, diameter, rotation, color): (&str, f32, f32, [u8; 4])| {

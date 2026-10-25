@@ -16,7 +16,7 @@ use super::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted,
 };
 use super::{
-    ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY,
+    ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
     WALL_LAYERS, bat, beetle, centre, crawler, goblin, troll, wisp,
 };
 use crate::features::audio::{self, components::Sound};
@@ -108,22 +108,44 @@ pub fn rest(world: &mut World, enemy: Entity) {
     }
 }
 
+/// The most dynamic bodies [`solid`]'s ray looks past.
+const PAST_BODIES: usize = 4;
+
 /// Whether a cast from `from` along `direction` meets ground within
-/// `distance`: a solid tile or a static body, never a ball, an enemy or the
-/// player.
+/// `distance`: a solid tile or a static body, never an enemy or the player.
+/// It looks past a ball, a rock, a crate or any dynamic body, its ray
+/// going on from inside the body it met, which it then passes, so a body
+/// hides no wall or ground behind it.
 pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, me: Entity) -> bool {
     let filter = SpatialFilter::new().excluding(me);
-    cast_ray(world, from, direction, distance, &filter).is_some_and(|hit| {
-        hit.entity.is_none_or(|entity| {
-            world
-                .get::<RigidBody>(entity)
-                .is_some_and(|body| body.kind == BodyKind::Static)
-        })
-    })
+    let (mut from, mut left) = (from, distance);
+    for _ in 0..=PAST_BODIES {
+        let Some(hit) = cast_ray(world, from, direction, left, &filter) else {
+            return false;
+        };
+        let Some(entity) = hit.entity else {
+            return true;
+        };
+        match world.get::<RigidBody>(entity).map(|body| body.kind) {
+            Some(BodyKind::Static) => return true,
+            Some(BodyKind::Dynamic) => {
+                // A hair inside its edge, where the ray passes it.
+                let into = hit.distance + 0.01;
+                from += direction * into;
+                left -= into;
+                if left <= 0.0 {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// Whether walking `walker` along `heading` is blocked: a wall ahead, or no
-/// ground under its leading feet.
+/// ground under its leading feet within [`WALK_STEP`] past a step's depth,
+/// so a walker on a ball walks on, off it, while a tile's ledge turns it.
 #[must_use]
 pub fn blocked(world: &World, walker: Entity, heading: f32) -> bool {
     let (Some(at), Some(kind)) = (centre(world, walker), kind(world, walker)) else {
@@ -132,7 +154,7 @@ pub fn blocked(world: &World, walker: Entity, heading: f32) -> bool {
     let half = kind.info().half;
     let wall = solid(world, at, Vec2::new(heading, 0.0), half.x + 8.0, walker);
     let toes = Vec2::new(at.x + heading * (half.x + 6.0), at.y);
-    let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0, walker);
+    let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0 + WALK_STEP, walker);
     wall || ledge
 }
 

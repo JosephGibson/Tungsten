@@ -43,6 +43,7 @@ use example_01_platformer::features::enemies::goblin::{
 use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
+use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
@@ -2383,40 +2384,74 @@ fn free(harness: &UiHarness, walker: Entity) -> bool {
 }
 
 #[test]
-fn a_force_push_throws_enemies_by_distance_and_the_troll_stands() {
-    let (mut harness, _) = arena();
-    let near = walker(&mut harness, EnemyKind::Crawler, 1100.0, TOP);
-    let far = walker(&mut harness, EnemyKind::Crawler, 1340.0, TOP);
-    let troll = troll_at(&mut harness, 820.0, Difficulty::Normal);
-    for enemy in [near, far, troll] {
+fn the_wave_throws_each_kind_along_the_aim_the_troll_a_little() {
+    // Each kind alone, its mind taken away, 1.5 tiles along a level aim
+    // from the wave's caster: how far the wave throws it.
+    let thrown = |kind: EnemyKind| {
+        let (mut harness, _) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        let caster = Vec2::new(1000.0, TOP - 30.0);
+        let x = caster.x + 1.5 * TILE;
+        let enemy = if kind.info().flyer {
+            enemy(&mut harness, kind, Vec2::new(x, caster.y))
+        } else {
+            walker(&mut harness, kind, x, TOP)
+        };
         still(&mut harness, enemy);
+        harness.step(10);
+        let start = at(&harness, enemy).x;
+        toys::wave::cast(harness.world_mut(), caster, Vec2::X);
+        harness.step(60);
+        at(&harness, enemy).x - start
+    };
+    for (kind, low, high) in [
+        (EnemyKind::Crawler, 140.0, 175.0),
+        (EnemyKind::Goblin, 118.0, 150.0),
+        (EnemyKind::Beetle, 32.0, 50.0),
+        (EnemyKind::Bat, 100.0, f32::INFINITY),
+        (EnemyKind::Wisp, 100.0, f32::INFINITY),
+        // Pushed back a little, past its resist.
+        (EnemyKind::Troll, 12.0, 35.0),
+    ] {
+        let moved = thrown(kind);
+        assert!(
+            (low..=high).contains(&moved),
+            "{kind:?} thrown {moved} px, not {low} to {high}"
+        );
     }
+}
+
+#[test]
+fn the_wave_pushes_once_and_never_behind() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let caster = Vec2::new(1000.0, TOP - 30.0);
+    let ball = toys::spawn_ball(
+        harness.world_mut(),
+        Vec2::new(caster.x + 150.0, TOP - 15.0),
+        false,
+    );
+    let behind = walker(&mut harness, EnemyKind::Crawler, caster.x - 1.5 * TILE, TOP);
+    still(&mut harness, behind);
     harness.step(10);
-    assert!(free(&harness, troll), "the troll stands on the ground");
-    let starts = [at(&harness, near), at(&harness, far)];
-    let troll_speed = speed(&harness, troll);
-    toys::force_push(harness.world_mut(), Vec2::new(1000.0, TOP - 30.0));
-    let (near_push, far_push) = (
-        knockback(&harness, near).push(),
-        knockback(&harness, far).push(),
-    );
+    let start = at(&harness, behind);
+    toys::wave::cast(harness.world_mut(), caster, Vec2::X);
+    // The ball rolls with no friction: only a push changes its speed along.
+    let mut last = speed(&harness, ball).x;
+    let mut pushes = 0;
+    for _ in 0..30 {
+        harness.step(1);
+        let now = speed(&harness, ball).x;
+        pushes += usize::from((now - last).abs() > 1.0);
+        last = now;
+    }
+    assert_eq!(pushes, 1, "one push, now {last} px/s");
+    assert!(last > 100.0, "along the aim: {last}");
     assert!(
-        near_push.x > far_push.x && far_push.x > 0.0,
-        "both thrown away, the near one faster: {near_push} {far_push}"
+        !knockback(&harness, behind).is_active(),
+        "nothing behind the caster"
     );
-    assert!(
-        !knockback(&harness, troll).is_active(),
-        "the troll takes no push"
-    );
-    harness.step(1);
-    assert!(free(&harness, troll), "its input is not locked");
-    assert_eq!(speed(&harness, troll), troll_speed, "its velocity kept");
-    harness.step(10);
-    let moved = [
-        at(&harness, near).x - starts[0].x,
-        at(&harness, far).x - starts[1].x,
-    ];
-    assert!(moved[0] > moved[1] && moved[1] > 0.0, "{moved:?}");
+    assert!(at(&harness, behind).distance(start) < 0.5, "it stands");
 }
 
 #[test]
@@ -2909,5 +2944,142 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     assert!(
         kicked.distance(expected) < 1e-3,
         "by its mass: {kicked} against {expected}"
+    );
+}
+
+#[test]
+fn a_walker_steps_over_balls_on_its_way() {
+    // A beetle on patrol, the wizard 700 px off, past its sight: a crawler's
+    // lunge would leap the balls.
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1000.0, TOP);
+    toys::spawn_ball(harness.world_mut(), Vec2::new(1050.0, TOP - 7.5), true);
+    toys::spawn_ball(harness.world_mut(), Vec2::new(1140.0, TOP - 15.0), false);
+    let half = EnemyKind::Beetle.info().half;
+    let past = 1140.0 + 15.0 + half.x;
+    let mut rose = 0.0_f32;
+    let over = until(&mut harness, 300, |h| {
+        rose = rose.max(TOP - half.y - at(h, beetle).y);
+        at(h, beetle).x > past
+    });
+    assert!(
+        over,
+        "its centre passed both balls: {}",
+        at(&harness, beetle).x
+    );
+    assert!(rose > 20.0, "it went over them: {rose} px up");
+    let grounded = until(&mut harness, 30, |h| {
+        h.world()
+            .get::<PlatformerController>(beetle)
+            .is_some_and(PlatformerController::grounded)
+            && (at(h, beetle).y - (TOP - half.y)).abs() < 1.0
+    });
+    assert!(grounded, "on the ground again: {}", at(&harness, beetle));
+}
+
+#[test]
+fn a_walker_leaves_crates_and_kegs_where_they_stand() {
+    for (kind, half) in [
+        (PropKind::Crate, CRATE_HALF),
+        (PropKind::Keg, props::KEG_HALF),
+    ] {
+        let (mut harness, _) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        let beetle = walker(&mut harness, EnemyKind::Beetle, 1000.0, TOP);
+        let front = 1000.0 + EnemyKind::Beetle.info().half.x;
+        let centre = Vec2::new(front + 4.0 + half.x, TOP - half.y - 0.5);
+        let prop = props::spawn(harness.world_mut(), kind, centre);
+        harness.step(2);
+        let start = body(&harness, prop);
+        harness.step(240);
+        let end = body(&harness, prop);
+        assert!(
+            start.distance(end) <= 1.0,
+            "{kind:?} moved from {start} to {end}"
+        );
+        assert!(
+            at(&harness, beetle).x + EnemyKind::Beetle.info().half.x <= end.x - half.x + 0.5,
+            "the beetle stayed behind the {kind:?}: {}",
+            at(&harness, beetle)
+        );
+    }
+}
+
+#[test]
+fn a_hole_holds_a_bat_and_a_wisp_about_its_core() {
+    for kind in [EnemyKind::Bat, EnemyKind::Wisp] {
+        let (mut harness, _) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        let core = Vec2::new(1300.0, TOP - 300.0);
+        let flyer = enemy(&mut harness, kind, core + Vec2::new(250.0, 0.0));
+        harness.step(2);
+        toys::place_black_hole(harness.world_mut(), core);
+        let (mut caught, mut farthest) = (false, 0.0_f32);
+        for _ in 0..(toys::HOLE_SECS * 60.0) as u32 - 2 {
+            harness.step(1);
+            let distance = at(&harness, flyer).distance(core);
+            if caught {
+                farthest = farthest.max(distance);
+            }
+            caught |= distance <= 60.0;
+        }
+        assert!(caught, "{kind:?} came within 60 px of the core");
+        assert!(
+            farthest <= 100.0,
+            "{kind:?} held within 100 px, not flung: {farthest}"
+        );
+    }
+}
+
+#[test]
+fn a_bat_diving_through_a_hole_dives_on_its_own_way_after() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let wizard = courier::centre(harness.world(), player).expect("a body");
+    let bat = enemy(
+        &mut harness,
+        EnemyKind::Bat,
+        wizard + Vec2::new(240.0, -240.0),
+    );
+    harness.step(2);
+    // A hole by the dive's line, 21 px off it.
+    let hole = toys::place_black_hole(harness.world_mut(), wizard + Vec2::new(150.0, -120.0));
+    let start = at(&harness, bat);
+    let dive = (wizard - start).normalize();
+    harness
+        .world_mut()
+        .get_mut::<StateMachine<EnemyState>>(bat)
+        .expect("a machine")
+        .go(EnemyState::Attack);
+    let direction = |h: &UiHarness| {
+        h.world()
+            .get::<TopDownMover>(bat)
+            .expect("its mover")
+            .direction()
+    };
+    let mut bent = 0.0_f32;
+    for _ in 0..8 {
+        harness.step(1);
+        assert!(
+            direction(&harness).distance(dive) < 1e-4,
+            "its own way kept: {}",
+            direction(&harness)
+        );
+        bent = bent.max(
+            speed(&harness, bat)
+                .normalize_or_zero()
+                .angle_to(dive)
+                .abs(),
+        );
+    }
+    assert!(bent > 0.1, "the hole bent its dive: {bent} rad");
+    toys::systems::collapse(harness.world_mut(), hole);
+    harness.step(1);
+    assert_eq!(state(&harness, bat), EnemyState::Attack, "still diving");
+    let flight = speed(&harness, bat).normalize_or_zero();
+    assert!(
+        flight.distance(dive) < 1e-3,
+        "on its dive's own way: {flight} against {dive}"
     );
 }

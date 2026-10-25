@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_0"
+    },
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_1"
+    },
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_2"
+    },
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_3"
+    },
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_4"
+    },
+    {
+      "duration_ms": 40,
+      "sprite": "ex10_push_wave_5"
+    }
+  ],
+  "looping": true
+}

@@ -46,6 +46,14 @@ ELEMENT_SIZES = {
         ('flame_muzzle', ((40, 32), 6)), ('flame_puff', ((48, 48), 8)), ('flame_splash', ((48, 48), 6)),
         ('frost_muzzle', ((32, 32), 6)), ('frost_puff', ((48, 48), 8)), ('frost_core', ((32, 14), 8)),
         ('frost_splash', ((48, 48), 6))) for i in range(frames)},
+    # 01 (j): the troll's frost on its 128 frame and the frost's small and
+    # large classes (the medium class is 64).
+    **{f'frost_troll_{stage}': (128, 128) for stage in range(1, 5)},
+    **{f'frost_{name}_{stage}': (size, size)
+       for name, size in STATUS_CLASSES.items() if size != 64 for stage in range(1, 5)},
+    # 01 (j): the force push's wave and its dust.
+    **{f'{clip}_{i}': size for clip, (size, frames) in (
+        ('push_wave', ((72, 128), 6)), ('push_dust', ((48, 32), 7))) for i in range(frames)},
     'hud_liquid_health': (128, 10),
     'hud_liquid_mana': (128, 10),
     'hud_bullet': (5, 11),

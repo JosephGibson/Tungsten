@@ -209,6 +209,9 @@ component platformer_controller: A side-view character on a kinematic body: it r
   field jump_buffer: f32 (>= 0) = 0.1 — seconds a press before it can jump is kept
   field jump_cut: f32 (>= 0, <= 1) = 0.5 — the rising speed kept when the jump is released early
   field air_jumps: u32 = 0 — jumps a press starts in the air, past coyote time; being grounded refills them
+  field shove_mass: f32 (> 0) = null — the mass it shoves as: a dynamic body it walks into of up to shove_share of it takes its run less the body's share of it; none when left out
+  field shove_share: f32 (> 0, <= 1) = 0.5 — the share of shove_mass a body it shoves may weigh; read only with shove_mass
+  field step_height: f32 (>= 0) = 0.0 — world pixels of ledge or body it climbs on the ground, with room above; 0 climbs nothing
   genres: platformer, shmup
   sample: { "run_speed": 200, "jump_speed": 600 }
 component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces, bounces or passes the wall.

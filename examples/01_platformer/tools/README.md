@@ -35,8 +35,9 @@ All generated files must accompany their sources in a change. `outputs.json` is
 the exact ownership inventory. Normal generation removes only files explicitly
 listed by the previous inventory (or `legacy_outputs.json` on the first migration).
 It never sweeps unrelated files from the assets directory. `sounds.json` is the
-sound registration; synthesized WAVs are owned outputs, and `black_hole.ogg` stays
-hand-authored (see "Fireball spell, extinguishing and sound effects").
+sound registration; synthesized WAVs are owned outputs, every registered sound
+among them since 01 (j) made the black hole's opening (see "Fireball spell,
+extinguishing and sound effects").
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
 licence files, and the `damage_flash` shader and material are copied byte for
@@ -68,7 +69,7 @@ pixel) for any hand-authored sprite. The modules:
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust stages, the elevator's gantry, cage and cable, and the falls' plume |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
@@ -545,7 +546,7 @@ shows the summon's selected type, the dummy's tile first. The palette's mana
 blues (`И Й З Ю`, 01 (h)) draw the summons' frames and ring, the mana orb and the
 mana bar's liquid; its violet ones (`Δ Λ Σ`) the black hole's subject and the
 lightning's; its gravity ramp (`Ж Ф Ц Ш Щ`, 01 (f)), deep magenta toward indigo,
-the force push's ring and warp burst and the black hole's collapse ring and
+the force push's wave's fringe and the black hole's collapse ring and
 under-layers. The bars fill with `hud_liquid_health` and `hud_liquid_mana`, 128 × 10
 strips tileable across that the HUD scrolls by the game clock, and the gun's rounds
 are `hud_bullet` cartridges, an empty `hud_bullet_spent` case for each one fired.
@@ -578,8 +579,12 @@ divided by mass, so an iron block barely moves. Every live enemy within it is
 knocked back through the kit's `knock_back`, at the same falloff times its
 kind's black-hole pull (`toys::radial_push`); the troll, whose knockback resists
 the push whole, stands. The wizard, a kinematic body, stays put. The force push,
-slot 5, is the same push over six tiles, drawn as a gravity-purple ring with a
-`warp_burst`. The blast ignites every small ball within 72 pixels through
+slot 5, is a wave instead (01 (j), `toys::wave`): a front from the wizard's hand
+toward the cursor at 1,200 pixels/second for 0.3 s, its sector widening from 15°
+to 30°, that throws each body and enemy it meets once along the aim, half as hard
+at its 360-pixel reach. It draws as `push_wave`, a crescent of bent air turned to
+the aim and scaled across to the front's width (sampled linearly), and raises a
+`push_dust` puff and a `push_grit` burst where it scrapes a floor. The blast ignites every small ball within 72 pixels through
 `elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
 not hurt the player.
 The camera shakes with trauma 0.68 for a blast within a quarter view width of
@@ -596,7 +601,18 @@ explodes, flaring to four times its flight intensity with twice the light radius
 Point lights warm the lit terrain, props and iron around the explosion.
 
 A black hole, slot 6, opens at the cursor for 6 seconds; at most three stay open,
-and a fourth collapses the oldest. Over its last 0.5 seconds a hole shrinks to
+and a fourth collapses the oldest. It opens over 0.3 seconds (01 (j)), all
+presentation, so it pulls from its first step: its layers grow in from 0.08 of
+their size on a cubic ease-out, a ring of its own `photon_ring` art closes on it
+from 432 pixels to 24, and a `hole_open` burst of 72 sparks set on a ring 230
+pixels out rushes in at 700 pixels/second, with `ex10_black_hole_sfx` tearing it
+open. A bowling ball takes 0.625 of its pull, so it lifts within about 200
+pixels of the core, while iron, at 0.2, stays down. A flyer in its reach is held
+on its own mover rather than flung through: steered toward a ring 40 pixels about
+the core at the hole's pull, capped at its speed, eased within 48 pixels of the
+ring and circling there at 0.55 of its speed, blended with its own steering by
+the pull over its speed, and given its own direction back after the movers. Over
+its last 0.5 seconds a hole shrinks to
 nothing and closes with a small gravity ring and `ex10_black_hole_collapse_sfx`.
 While any is open the holes hum on one shared voice, `ex10_black_hole_hum_sfx`,
 louder as the nearest comes near, silent past 900 pixels and under pause. A hole
@@ -629,7 +645,7 @@ Regeneration is byte-identical, so `--check` covers the WAVs like any other
 output. To add a sound: write its function, add it to `build_sounds()`, register
 its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 `sounds.json` path that is neither synthesized nor listed in
-`HAND_AUTHORED_SOUNDS` (currently only `black_hole.ogg`). The one-shot sounds play
+`HAND_AUTHORED_SOUNDS` (none since 01 (j)). The one-shot sounds play
 through the kit's cues: 01 sends a `Sounded` game event, and
 `content/data/cue_rules/sounds.json` plays its sound, throttled by `min_interval`.
 The sprays' loops, the small balls' pour and the holes' hum are voices 01 holds;
@@ -650,10 +666,10 @@ a spray's loop and the pour stop over 0.08 seconds.
 | `ex10_ice_shatter_sfx` | `ice_shatter.wav` | Brittle iron fractures under heat or a fast iron impact |
 | `ex10_flame_start_sfx` | `flame_start.wav` | The flamethrower catches: a low whoomph opening into a hiss |
 | `ex10_flame_spray_sfx` | `flame_spray.wav` | Its roar loops while it is held |
-| `ex10_force_push_sfx` | `force_push.wav` | A force push, a gravity warp: a low tone bowing down and back against its detuned twin, and a rush of air |
+| `ex10_force_push_sfx` | `force_push.wav` | The force push's wave (01 (j)): a soft push-off and a whump of bent air, a rush flying away and falling in pitch, a low warped tone bowing under it and a scuff of grit |
 | `ex10_toss_sfx` | `toss.wav` | A bowling ball leaves the hand |
 | `ex10_place_sfx` | `place.wav` | An iron block set down |
-| `ex10_black_hole_sfx` | `black_hole.ogg` | A black hole opens (hand-authored) |
+| `ex10_black_hole_sfx` | `black_hole_open.wav` | A black hole tearing open (01 (j)): an inward suck rising over its 0.3 s opening, a deep whomp falling into its drone, a rumble and a faint glassy shimmer |
 | `ui_move`, `ui_select`, `ui_back` | `ui_*.wav` | The shell's menu sounds, by the IDs it plays: a plucked tick, two bells rising, two falling |
 | `game_over` | `game_over.wav` | Game over's sting: a falling bell line, then a low toll under a plucked D minor chord |
 | `music_title`, `music_over` | `music_*.wav` | The shell's title loop, a twelve-bar lullaby in D minor, and game over's, a four-bar dirge |
@@ -833,6 +849,17 @@ near-white violet). Every new sprite is unlit, drawn over the lit world:
   `burn_embers` and a flickering ember tint, and gives each cube a cracked twin,
   `status_ice_<name>_cracked`, drawn by the cube's own code and held to its box
   by `check_ice_fits`, which a freeze's last 0.75 seconds flickers to at 8 Hz.
+  01 (j) frosts a creature that freezes from its first point of cold in four
+  stages, `frost_<kind>_<stage>` fitted to the wisp's, beetle's, bat's,
+  troll's, goblin's and dummy's hurtboxes as their cubes are and
+  `frost_<class>_<stage>` over a class's status box, held within 6 pixels of
+  its box by `check_frost_fits`: white rime (`Ψ φ x ϱ`, a sparse `u`) from the
+  feet (1) up the legs at the chill (2) and the body (3) to a crust (4), its
+  sides fading toward its top. Its tint goes from white toward a whiter
+  `FROST_TINT` before the chill and on toward a pale `CHILL_DEEP` from it, and
+  its flakes are `chill_flakes_<stage>`, a pulse every 0.45 seconds of one,
+  one, two and three white crystals; the wizard's flat chill keeps
+  `chill_flakes`, on the same white ramp.
 - **The lightning bolt**: eight 24 × 64 segments, `bolt_0` to `bolt_7`, each entering
   at its top centre and leaving `BOLT_EXITS` pixels aside at its bottom, so a strike
   stacks five to eight of them from the sky down, each starting where the last left;

@@ -11,7 +11,8 @@ import wave
 RATE = 44100
 PEAK = 10 ** (-2 / 20)
 # Registered in sounds.json but not synthesized here; generate.py keeps them.
-HAND_AUTHORED_SOUNDS = ('sounds/black_hole.ogg',)
+# None since 01 (j) made the black hole's opening.
+HAND_AUTHORED_SOUNDS = ()
 
 
 class Noise:
@@ -373,24 +374,34 @@ def set_down():
 
 
 def force_push():
-    """A gravity warp (01 (f)): space bending in a deep, phasing whump, a
-    low tone bowing down and back while its detuned twin slides apart from
-    it, under a rush of air thrown outward."""
-    duration = 0.65
-    noise, low, high, sub = Noise(0xF0CE), LowPass(), LowPass(), LowPass()
-    samples, phase, twin = [], 0.0, 0.0
+    """The force push's wave (01 (j)): a soft push-off and a whump of bent
+    air, then a dense rush of air flying away from the wizard, falling in
+    pitch as it goes, a low warped tone bowing under it and a scuff of grit
+    where it scrapes the floor, about half a second."""
+    duration = 0.55
+    noise, grit_noise = Noise(0xF0CF), Noise(0xF0D0)
+    band_low, band_high, sub, grit_low = LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
     for i in range(int(duration * RATE)):
         t = i / RATE
         p = t / duration
         n = noise()
-        bend = 1 - 0.55 * math.sin(math.pi * min(1.0, p * 1.6))
-        phase += math.tau * 62 * bend / RATE
-        twin += math.tau * 62 * bend * (1.0 + 0.06 * p) / RATE
-        warp = (math.sin(phase) + .8 * math.sin(twin)) * min(1.0, t / .01) * math.exp(-t / .2)
-        rush = (low(n, glide(3200, 420, p)) - high(n, 140)) * math.sin(math.pi * min(1.0, p * 1.3)) ** 2
-        whump = sub(n, 70) * 5.0 * math.exp(-t / .08)
-        samples.append(math.tanh(1.2 * warp + rush + whump))
-    return finish(samples, fade_in=.002, fade_out=.08)
+        # The rush: a band of noise sweeping down as the front flies off.
+        swell = (1 - math.exp(-t / 0.018)) * math.exp(-max(0.0, t - 0.06) / 0.16)
+        rush = (band_low(n, glide(4200, 520, p ** 0.7)) - band_high(n, glide(900, 120, p))) * swell
+        # The warp: a low tone bending down and back, gone by 0.3 s.
+        bend = 1 - 0.4 * math.sin(math.pi * min(1.0, p * 2.2))
+        phase += math.tau * 74 * bend / RATE
+        warp = math.sin(phase) * min(1.0, t / 0.008) * math.exp(-t / 0.11)
+        # The whump of the push-off, in at once.
+        whump = sub(n, 80) * 4.0 * math.exp(-t / 0.05)
+        # Grit: sparse low crackle while the front scrapes along.
+        g = grit_noise()
+        grain = grit_low(g if abs(g) > 0.93 else 0.0, 1400) * 6.0
+        scrape = grain * math.sin(math.pi * min(1.0, max(0.0, (t - 0.05) / 0.3))) ** 2
+        samples.append(math.tanh(1.5 * rush + 0.9 * warp + whump + scrape))
+    place(samples, 0, thud(110, 0.07, 0.35, 0xF0D1))
+    return finish(samples, fade_in=0.002, fade_out=0.09)
 
 
 # 01 (b)'s weapons and elements: the gun, the bolt from the sky, the
@@ -1542,6 +1553,34 @@ def black_hole_hum():
     return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
+def black_hole_open():
+    """A black hole tearing open (01 (j)): an inward suck rising in pitch
+    over its 0.3 s opening, a deep whomp as it opens and falls into its
+    drone, a rumble under it and a faint glassy shimmer going out, about
+    0.9 s."""
+    duration, open_at = 0.9, 0.28
+    noise, low, high, sub = Noise(0xB10E), LowPass(), LowPass(), LowPass()
+    samples, phase, shimmer = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        pre = min(1.0, t / open_at)
+        # The suck: noise rising from low to high and swelling to the open.
+        suck = (low(n, glide(220, 3600, pre)) - high(n, glide(90, 700, pre))) * pre ** 1.8
+        if t > open_at:
+            suck *= math.exp(-(t - open_at) / 0.025)
+        u = t - open_at
+        whomp = rumble = glass = 0.0
+        if u >= 0:
+            phase += math.tau * glide(130, 38, min(1.0, u / 0.35)) / RATE
+            whomp = math.sin(phase) * min(1.0, u / 0.004) * math.exp(-u / 0.26)
+            rumble = sub(n, 70) * 3.5 * math.exp(-u / 0.4)
+            shimmer += math.tau * 1318.5 / RATE
+            glass = (math.sin(shimmer) + 0.6 * math.sin(shimmer * 1.498)) * 0.12 * math.exp(-u / 0.3)
+        samples.append(math.tanh(1.3 * suck + 1.4 * whomp + rumble + glass))
+    return finish(samples, fade_in=0.01, fade_out=0.15)
+
+
 def black_hole_collapse():
     """A hole closing: an inward rush rising to a snap, then a deep
     implosion falling away under a rumble."""
@@ -2193,6 +2232,7 @@ def build_sounds():
         'enemy_spotted.wav': enemy_spotted(),
         'orb_pickup.wav': orb_pickup(),
         'splinter.wav': splinter(),
+        'black_hole_open.wav': black_hole_open(),
         'black_hole_hum.wav': black_hole_hum(),
         'black_hole_collapse.wav': black_hole_collapse(),
         'iron_thud.wav': iron_thud(),

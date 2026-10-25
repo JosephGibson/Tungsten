@@ -16,7 +16,10 @@ use tungsten::kit::{
 };
 
 use super::components::{StatusEmitter, StatusLook};
-use super::{BURNING, CHILLED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED, has_status};
+use super::{
+    BURNING, CHILL_NEEDS, CHILLED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED,
+    has_status,
+};
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
@@ -173,12 +176,14 @@ pub fn reactions(
 }
 
 /// The tints a status gives its target's sprite, which multiply its
-/// colours: frozen's cold, chilled's frost, deeper toward the cold by the
-/// chill's grade, shocked's violet, which flickers, and burning's two
-/// embers, which flicker too; and the courier's red for a moment after a
-/// blow.
+/// colours: frozen's cold; chilled's frost, a freezable creature's turning
+/// toward it from the first point of cold and, chilled, deeper toward
+/// [`CHILL_DEEP`] by the chill's grade, white and gentle (01 (j)); shocked's
+/// violet, which flickers, and burning's two embers, which flicker too; and
+/// the courier's red for a moment after a blow.
 pub const COLD_TINT: [u8; 4] = [158, 219, 255, 255];
-pub const FROST_TINT: [u8; 4] = [204, 237, 255, 255];
+pub const FROST_TINT: [u8; 4] = [222, 241, 255, 255];
+pub const CHILL_DEEP: [u8; 4] = [194, 229, 255, 255];
 pub const SHOCK_TINT: [u8; 4] = [219, 199, 255, 255];
 pub const EMBER_TINTS: [[u8; 4]; 2] = [[255, 178, 128, 255], [255, 140, 92, 255]];
 pub const HURT_TINT: [u8; 4] = [255, 72, 72, 255];
@@ -200,10 +205,11 @@ fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
     })
 }
 
-/// The tint `tags` give a target at level time `time`, chilled to `grade`:
-/// frozen over shocked over burning over chilled, else none.
+/// The tint `tags` give a target at level time `time`, chilled to `grade`
+/// with its frost at `level` ([`frost_level`]): frozen over shocked over
+/// burning over chilled over the frost before the chill, else none.
 #[must_use]
-pub fn tint(tags: &Tags, time: f32, grade: f32) -> [u8; 4] {
+pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     if tags.has(FROZEN) {
         COLD_TINT
     } else if tags.has(SHOCKED) && flicker(time) == 0 {
@@ -211,7 +217,9 @@ pub fn tint(tags: &Tags, time: f32, grade: f32) -> [u8; 4] {
     } else if tags.has(BURNING) {
         EMBER_TINTS[flicker(time)]
     } else if tags.has(CHILLED) {
-        mix(FROST_TINT, COLD_TINT, grade)
+        mix(FROST_TINT, CHILL_DEEP, grade)
+    } else if level > 0.0 {
+        mix([255; 4], FROST_TINT, level / CHILL_SHARE)
     } else {
         [255; 4]
     }
@@ -225,7 +233,8 @@ pub fn tints(world: &mut World) {
     let looks: Vec<(Entity, [u8; 4])> = world
         .query::<(Entity, &Health, &Tags)>()
         .map(|(entity, _, tags)| {
-            let mut color = tint(tags, time, grade(world, entity, tags));
+            let level = frost_level(world, entity, tags);
+            let mut color = tint(tags, time, grade(world, entity, tags), level);
             if let Some(moves) = world.get::<Moves>(entity) {
                 color = mix(color, HURT_TINT, moves.hurt / HURT_SECS);
             }
@@ -249,26 +258,66 @@ fn grade(world: &World, entity: Entity, tags: &Tags) -> f32 {
     }
 }
 
-/// Where `entity`'s cold bucket stands on its climb from the chill's rung
-/// to the freeze's, 0 to 1. The chill empties the bucket as it applies and
-/// the freeze needs [`FREEZE_NEEDS`] of the threshold, so the grade is its
-/// fill over that share of its threshold, `(flat + of_max_health ×
-/// Health::max) × ailment_threshold_mult` as the kit's ladder reads it.
-/// None without buckets or a threshold.
-#[must_use]
-pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
+/// `entity`'s ailment threshold as the kit's ladder reads it: `(flat +
+/// of_max_health × Health::max) × ailment_threshold_mult`. None without one,
+/// or at 0.
+fn threshold_at(world: &World, entity: Entity) -> Option<f32> {
     let threshold = world.get::<AilmentThreshold>(entity)?;
-    let buckets = world.get::<AilmentBuckets>(entity)?;
     let max = world.get::<Health>(entity).map_or(0.0, Health::max);
     let mult = world
         .get::<Stats>(entity)
         .and_then(|stats| stats.get("ailment_threshold_mult"))
         .map_or(1.0, |mult| mult.max(0.0));
     let at = (threshold.flat() + threshold.of_max_health() * max) * mult;
-    if at <= 0.0 {
-        return None;
-    }
+    (at > 0.0).then_some(at)
+}
+
+/// Where `entity`'s cold bucket stands on its climb from the chill's rung
+/// to the freeze's, 0 to 1. The chill empties the bucket as it applies and
+/// the freeze needs [`FREEZE_NEEDS`] of the threshold, so the grade is its
+/// fill over that share of its threshold ([`threshold_at`]). None without
+/// buckets or a threshold.
+#[must_use]
+pub fn chill_grade(world: &World, entity: Entity) -> Option<f32> {
+    let at = threshold_at(world, entity)?;
+    let buckets = world.get::<AilmentBuckets>(entity)?;
     Some((buckets.fill(Kind::Cold.tag()) / (FREEZE_NEEDS * at)).clamp(0.0, 1.0))
+}
+
+/// The share of the frost's climb a creature has at the chill's rung.
+pub const CHILL_SHARE: f32 = 0.25;
+
+/// The frost a creature that freezes shows, `tags` its own, 0 to 1, from the
+/// first point of cold (01 (j)): its cold bucket's climb to the chill's
+/// rung ([`CHILL_NEEDS`]) over the first [`CHILL_SHARE`], then the chill's
+/// grade to the freeze's over the rest, the chill having emptied the
+/// bucket. 0 for what does not freeze, and once frozen, where the cube
+/// takes over.
+#[must_use]
+pub fn frost_level(world: &World, entity: Entity, tags: &Tags) -> f32 {
+    if !tags.has(FREEZABLE) || tags.has(FROZEN) {
+        return 0.0;
+    }
+    let (Some(at), Some(buckets)) = (
+        threshold_at(world, entity),
+        world.get::<AilmentBuckets>(entity),
+    ) else {
+        return 0.0;
+    };
+    let fill = buckets.fill(Kind::Cold.tag());
+    if tags.has(CHILLED) {
+        CHILL_SHARE + (1.0 - CHILL_SHARE) * (fill / (FREEZE_NEEDS * at)).clamp(0.0, 1.0)
+    } else {
+        CHILL_SHARE * (fill / (CHILL_NEEDS * at)).clamp(0.0, 1.0)
+    }
+}
+
+/// The frost's stage at `level`: 1 rime at the feet, before the chill; 2 the
+/// legs, from the chill; 3 the body, from 0.5; 4 a crust, from 0.75; none
+/// without frost.
+#[must_use]
+pub fn frost_stage(level: f32) -> Option<u8> {
+    (level > 0.0).then(|| 1 + ((level * 4.0) as u8).min(3))
 }
 
 /// `chill_grades`, in the intent phase before the enemies' states: every
@@ -356,10 +405,12 @@ pub fn thaws(world: &mut World, expired: &mut EventCursor<EffectExpired>) {
 }
 
 /// `status_particles`, before the frame's particles: a live target that
-/// carries chilled, bleeding or shocked has that status's emitter at its
-/// body's centre; one that lost it, died or left loses the emitter.
+/// carries a status has that status's emitter at its body's centre, and a
+/// freezable creature its frost's flakes by stage from the first point of
+/// cold (`ex10_chill_flakes_<stage>`), a stage's change spawning its own;
+/// one that lost it, died or left loses the emitter.
 pub fn particles(world: &mut World) {
-    let mut wanted: Vec<(Entity, StatusLook, Vec2)> = Vec::new();
+    let mut wanted: Vec<(Entity, StatusLook, Vec2, u8)> = Vec::new();
     for (entity, health, tags, at) in world.query::<(Entity, &Health, &Tags, &Transform)>() {
         if health.is_dead() {
             continue;
@@ -367,9 +418,14 @@ pub fn particles(world: &mut World) {
         let offset = world
             .get::<Collider>(entity)
             .map_or(Vec2::splat(32.0), |collider| collider.offset);
+        let centre = at.position + offset;
         for look in StatusLook::ALL {
-            if tags.has(look.tag()) {
-                wanted.push((entity, look, at.position + offset));
+            if look == StatusLook::Chilled && tags.has(FREEZABLE) {
+                if let Some(stage) = frost_stage(frost_level(world, entity, tags)) {
+                    wanted.push((entity, look, centre, stage));
+                }
+            } else if tags.has(look.tag()) {
+                wanted.push((entity, look, centre, 0));
             }
         }
     }
@@ -378,30 +434,37 @@ pub fn particles(world: &mut World) {
         .map(|(entity, emitter)| (entity, *emitter))
         .collect();
     for &(entity, emitter) in &live {
-        let kept = wanted
-            .iter()
-            .any(|&(owner, look, _)| owner == emitter.owner && look == emitter.look);
+        let kept = wanted.iter().any(|&(owner, look, _, stage)| {
+            owner == emitter.owner && look == emitter.look && stage == emitter.stage
+        });
         if !kept {
             world.despawn(entity);
         }
     }
-    for (owner, look, centre) in wanted {
+    for (owner, look, centre, stage) in wanted {
         let existing = live
             .iter()
-            .find(|(_, emitter)| emitter.owner == owner && emitter.look == look)
+            .find(|(_, emitter)| {
+                emitter.owner == owner && emitter.look == look && emitter.stage == stage
+            })
             .map(|&(entity, _)| entity);
         let emitter = match existing {
             Some(entity) => entity,
             None => {
+                let name = if stage > 0 {
+                    format!("{}_{stage}", look.config())
+                } else {
+                    look.config().to_string()
+                };
                 let Some(config) = world
                     .get_resource::<ParticleConfigRegistry>()
-                    .and_then(|registry| registry.id_for_name(look.config()))
+                    .and_then(|registry| registry.id_for_name(&name))
                 else {
                     continue;
                 };
                 let seed = 0x5a_0000 + u64::from(owner.id()) * 8 + look as u64;
                 world.spawn_with((
-                    StatusEmitter { owner, look },
+                    StatusEmitter { owner, look, stage },
                     ParticleEmitter::with_seed(config, seed),
                     ParticleEmitterState::default(),
                     Transform::from_position(centre),

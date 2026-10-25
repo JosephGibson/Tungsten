@@ -1,7 +1,7 @@
 //! The physics toys: small balls set down at a point, bowling balls tossed,
-//! iron blocks placed, black holes opened, pushes from a point, sprays of
-//! fire or cold along an aim, and the fire missile's flight, blast and
-//! bending, each a function the spells call. Their caps bound the pile:
+//! iron blocks placed, black holes opened, the force push's wave along an
+//! aim (`wave`), sprays of fire or cold along an aim, and the fire
+//! missile's flight, blast and bending, each a function the spells call. Their caps bound the pile:
 //! [`BALL_CAP`] balls, [`IRON_CAP`] blocks, [`MISSILE_CAP`] missiles and
 //! [`HOLE_CAP`] black holes.
 
@@ -9,13 +9,16 @@ pub mod components;
 pub mod draw;
 pub mod spray_look;
 pub mod systems;
+pub mod wave;
 
 use glam::Vec2;
 use tungsten::core::{
     BodyKind, CommandBuffer, Entity, EventCursor, RigidBody, Schedule, Shape, Stage, Time,
     Transform, Velocity, World, system,
 };
-use tungsten::kit::{LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, ensure_phases};
+use tungsten::kit::{
+    LINEAR_MOTION, LinearMotion, PROJECTILE_TICK, Phase, TOP_DOWN_MOVER, ensure_phases,
+};
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
@@ -25,8 +28,8 @@ use crate::features::level::TILE;
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, SaveIds, body_centre, despawn_tree, spawn_burst};
 use components::{
-    Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, IronBlock, IronScrap,
-    PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
+    Ball, BallHue, BallSpawner, BlackHole, BowlingBall, Element, FireMissile, HoleHold, IronBlock,
+    IronScrap, OpeningOf, PreviousVelocity, Ring, ShockRing, SmallBall, Spray,
 };
 
 /// A bowling ball's radius, and a small ball's, each half its drawn size.
@@ -96,6 +99,21 @@ pub const HOLE_CAP: usize = 3;
 /// leaves a small ring this many pixels across.
 pub const HOLE_SHRINK_SECS: f32 = 0.5;
 pub const COLLAPSE_RING: f32 = 2.0 * HOLE_DIAMETER;
+/// A hole opens over its first [`HOLE_OPEN_SECS`], all presentation: drawn
+/// growing in, a ring closing on it from [`OPEN_RING`] across and its
+/// sparks rushing in from [`OPEN_REACH`] at [`OPEN_INWARD`] px/s.
+pub const HOLE_OPEN_SECS: f32 = 0.3;
+pub const OPEN_RING: f32 = 2.4 * HOLE_DIAMETER;
+pub const OPEN_REACH: f32 = 230.0;
+pub const OPEN_INWARD: f32 = 700.0;
+/// How much of a hole's pull a bowling ball takes: enough to lift it within
+/// about 200 px of the core, where iron stays down.
+pub const BOWLING_PULL: f32 = 0.625;
+/// The flyers' hold: a ring this far about the core, the pull easing within
+/// this of it, and its circling there as a share of the flyer's speed.
+pub const HOLD_RING: f32 = 40.0;
+pub const HOLD_EASE: f32 = 48.0;
+pub const HOLD_SWIRL: f32 = 0.55;
 /// The broom: the small balls whose centre comes within this reach of a
 /// hole's centre go, at most this many a hole a step.
 pub const BROOM_REACH: f32 = 24.0;
@@ -114,8 +132,6 @@ pub const BLAST_RADIUS: f32 = 72.0;
 pub const PUSH_RADIUS: f32 = 4.5 * TILE;
 pub const PUSH_SPEED: f32 = 2500.0;
 pub const BLAST_TRAUMA: f32 = 0.68;
-/// The force push's reach, wider than a blast's.
-pub const FORCE_PUSH_RADIUS: f32 = 6.0 * TILE;
 /// A spray's reach and half angle, and the rays it traces: 01 (h)'s 30 %
 /// further than 01 (f)'s 7 and 3.5 tiles.
 pub const SPRAY_RANGE: f32 = 9.1 * TILE;
@@ -137,11 +153,13 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 
 /// The toys as a plugin: the components their prefabs name; in the fixed
 /// step, the holes' life, the balls' hues and cooldowns, the velocities
-/// before physics, the holes' pull, the missiles' bending before their
-/// motion, their contacts before the kit's projectile step and their ends
+/// before physics, the holes' pull, their hold on the flyers about the
+/// top-down mover, the force push's waves, the missiles' bending before
+/// their motion, their contacts before the kit's projectile step and their ends
 /// after it, so a blast's hits take the step's resolve, the escaped
 /// bodies' cull, the holes' broom and the sprays' end; in the present
-/// phase the toys' looks, and before the frame's particles the sprays' and
+/// phase the toys' looks and the waves' crescents, and before the frame's
+/// particles the sprays' and
 /// the holes' particles, then the sprays' sprites and puffs; and their
 /// effects drawn after the sprites, the holes under them
 /// (`level::draw::base`).
@@ -157,6 +175,7 @@ impl Plugin for ToysPlugin {
         world.register_component::<BlackHole>("black_hole");
         world.register_component::<FireMissile>("fire_missile");
         world.insert_resource(BallSpawner::default());
+        world.insert_resource(HoleHold::default());
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let fixed = [
@@ -164,6 +183,9 @@ impl Plugin for ToysPlugin {
             Phase::Move.join(system("toys_velocities", systems::remember_velocities)),
             Phase::Move.join(system("iron_weight", systems::weight).after("toys_velocities")),
             Phase::Move.join(system("toys_pull", systems::pull)),
+            Phase::Move.join(system("toys_hold", systems::hold).before(TOP_DOWN_MOVER)),
+            Phase::Move.join(system("toys_release", systems::release).after(TOP_DOWN_MOVER)),
+            Phase::Move.join(system("toys_waves", wave::waves)),
             Phase::Move.join(system("missile_bend", systems::bend).before(LINEAR_MOTION)),
             Phase::Overlap.join(
                 system("missile_contacts", systems::missile_contacts).before(PROJECTILE_TICK),
@@ -188,6 +210,7 @@ impl Plugin for ToysPlugin {
             system("iron_look", systems::iron_look),
             system("missile_look", systems::missile_look),
             system("toys_flares", systems::flares),
+            system("wave_look", wave::looks),
         ];
         for desc in present {
             schedule.add(Stage::PostUpdate, Phase::Present.join(desc));
@@ -460,8 +483,9 @@ pub fn restore_hole(world: &mut World, at: Vec2) -> Entity {
     spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0)
 }
 
-/// Opens a black hole at `at` for [`HOLE_SECS`]; past [`HOLE_CAP`] the
-/// oldest, the lowest save ID, collapses first.
+/// Opens a black hole at `at` for [`HOLE_SECS`], with its opening's ring and
+/// rush of sparks; past [`HOLE_CAP`] the oldest, the lowest save ID,
+/// collapses first.
 pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
     let mut open: Vec<(SaveId, Entity)> = world
         .query::<(Entity, &BlackHole, &SaveId)>()
@@ -474,6 +498,10 @@ pub fn place_black_hole(world: &mut World, at: Vec2) -> Entity {
     }
     let hole = spawn_toy(world, BLACK_HOLE_PREFAB, at, 1.0);
     audio::play(world, Sound::HoleOpened, at);
+    systems::ring(world, at, OPEN_RING, Ring::Open);
+    if let Some(rush) = spawn_burst(world, "ex10_hole_open", at) {
+        world.insert(rush, OpeningOf(hole));
+    }
     hole
 }
 
@@ -518,22 +546,6 @@ pub fn adopt_missile(world: &mut World, missile: Entity, centre: Vec2) {
         transform.scale = Vec2::splat(MISSILE_SIZE / 64.0);
     }
     systems::show(world, missile);
-}
-
-/// Pushes what stands within `radius` of `at` straight away from it, up
-/// at the centre: [`PUSH_SPEED`] there, falling linearly to 0 at the
-/// reach, a dynamic body over its mass and a live enemy by its kind's pull
-/// (`systems::radial_push`).
-pub fn push(world: &mut World, at: Vec2, radius: f32) {
-    systems::radial_push(world, at, radius, PUSH_SPEED);
-}
-
-/// A force push from `at`: the push over [`FORCE_PUSH_RADIUS`], its ring
-/// and its warp in the gravity purple.
-pub fn force_push(world: &mut World, at: Vec2) {
-    push(world, at, FORCE_PUSH_RADIUS);
-    systems::ring(world, at, 2.0 * FORCE_PUSH_RADIUS, Ring::Push);
-    spawn_burst(world, "ex10_warp_burst", at);
 }
 
 /// A fireball's blast at `at`: its fire on the targets in its heat but the

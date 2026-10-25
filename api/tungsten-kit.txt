@@ -2601,6 +2601,8 @@ pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::phys
 pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_shove(self, f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_step_height(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController
 impl core::cmp::PartialEq for tungsten_kit::PlatformerController
@@ -6388,6 +6390,8 @@ pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::phys
 pub fn tungsten_kit::PlatformerController::with_gravity(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_buffer(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_jump_cut(self, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_shove(self, f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::with_step_height(self, f32) -> Self
 impl core::clone::Clone for tungsten_kit::PlatformerController
 pub fn tungsten_kit::PlatformerController::clone(&self) -> tungsten_kit::PlatformerController
 impl core::cmp::PartialEq for tungsten_kit::PlatformerController

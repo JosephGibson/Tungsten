@@ -44,8 +44,11 @@ pub const PLAYER_BLAST_SHARE: f32 = 0.5;
 pub const COLD_SPRAY_DPS: f32 = 15.0;
 pub const FIRE_SPRAY_DPS: f32 = 30.0;
 pub const SPRAY_PULSE: f32 = 0.1;
-/// The cold ladder's freeze rung, its share of a target's threshold: the
-/// chill's grade climbs to it ([`systems::chill_grade`]).
+/// The cold ladder's chill rung and freeze rung, their shares of a target's
+/// threshold: the frost climbs to the chill's before it, and the chill's
+/// grade climbs to the freeze's after it ([`systems::frost_level`],
+/// [`systems::chill_grade`]).
+pub const CHILL_NEEDS: f32 = 0.15;
 pub const FREEZE_NEEDS: f32 = 0.5;
 /// The fire missile's blast: its fire at its centre, half of it at the
 /// heat's reach.

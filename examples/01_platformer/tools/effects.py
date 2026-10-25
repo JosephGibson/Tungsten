@@ -1367,11 +1367,287 @@ SPRAY_DRAW = {
 }
 
 
+# The frost (01 (j)): a chilled creature's frost in four stages by the cold
+# it has taken, from the first point of it: rime at the feet, frost up the
+# legs, over the body, then a crust over all of it, until the freeze's cube
+# takes over. Fitted to each kind's hurtbox on its frame as the cube is, a
+# rounded box the body shows through, dense at the foot and along the
+# edges, glazed thinly in the middle, with feathers climbing from the foot
+# and crystals on its ragged top; the size classes keep a set over the
+# status box for a body with no fitted one. After the owner's review of the
+# first draw, white and subtle: rime in the palette's white alpha steps
+# (`Ψ φ x ϱ`, a sparse `u`) with no dark rim, its sides fading toward its
+# top so no frame shows round the body.
+FROST_STAGES = 4
+FROST_TOPS = (0.2, 0.45, 0.72, 1.0)  # how far up the box each stage reaches
+FROST_KINDS = ('wisp', 'beetle', 'bat', 'troll', 'goblin', 'dummy')
+# How far past its box a frost reaches, room for its crust's spikes, which
+# `generate.check_frost_fits` holds it to.
+FROST_REACH = 6
+
+
+def frost(size, box, keys, stage):
+    """The frost of `stage` on a `size` frame over `box`, white rime denser at
+    the foot and the edges, a faint glaze the body shows through, white
+    feathers and crystals."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0 + 1, y1 - y0 + 1
+    reach = FROST_TOPS[stage - 1]
+    radius = max(2.0, min(w, h) * 0.3)
+    small = min(w, h) < 30
+    px = {}
+
+    def wobble_at(x, y, scale=1.0):
+        return scale * (1.4 * math.sin(x * 0.9 + unit(keys, 'wx') * 6) * math.cos(y * 0.7 + unit(keys, 'wy') * 6)
+                        + 0.8 * (unit(keys, 'edge', x // 2, y // 2) - 0.5))
+
+    def edge_distance(x, y):
+        cx = min(max(x, x0 + radius), x1 - radius)
+        cy = min(max(y, y0 + radius), y1 - radius)
+        return radius - math.hypot(x - cx, y - cy)
+
+    def top_at(x):
+        u = (x - x0) / max(1, w - 1)
+        climb = 0.08 * (1 - math.sin(u * math.pi)) if stage < FROST_STAGES else 0.0
+        lump = (0.06 * math.sin(u * 7.1 + unit(keys, 'lump') * 6)
+                + 0.04 * math.sin(u * 17 + 1.3 + stage)) * (stage < FROST_STAGES)
+        spike = 0.05 * max(0.0, math.sin(u * 29 + unit(keys, 'spike-run') * 6)) ** 6
+        return y1 + 1 - h * min(1.0, reach + climb + lump + spike)
+
+    patches = []
+    for i in range(2 + stage + w // 16 + 3 * (stage == FROST_STAGES)):
+        px_ = x0 + unit(keys, 'patch-x', i) * w
+        py_ = y1 + 1 - unit(keys, 'patch-y', i) * h * reach * 0.95
+        r = (1.6 + 2.2 * unit(keys, 'patch-r', i)) * (0.8 + 0.2 * stage) * (0.6 if small else 1.0)
+        patches.append((px_, py_, r))
+
+    for y in range(max(0, y0 - 2), min(size, y1 + 1)):
+        for x in range(max(0, x0 - 3), min(size, x1 + 4)):
+            inside = edge_distance(x, y) + wobble_at(x, y)
+            if inside < 0:
+                continue
+            top = top_at(x)
+            if y < top + wobble_at(x, y, 0.8):
+                continue
+            depth = (y - top) / max(1.0, y1 + 1 - top)
+            near_edge = max(0.0, 1.0 - inside / (2.5 if small else 3.5))
+            foot = max(0.0, 1.0 - (y1 - y) / max(2.0, h * 0.08 + stage))
+            # The sides frost up from the foot, fading toward the frost's
+            # top, so no frame shows round the body.
+            rime = max(foot, near_edge * (0.5 + 0.08 * stage) * smoothstep(depth / 0.6))
+            for cx, cy, r in patches:
+                if cy >= top:
+                    rime = max(rime, 0.85 * (1.0 - math.hypot(x - cx, (y - cy) * 1.2) / r))
+            if stage == FROST_STAGES:
+                rime = max(rime, 0.22)
+            b = BAYER[y % 4][x % 4] / 16
+            if rime > 0.75:
+                px[(x, y)] = 'Ψ' if b < 0.45 else 'φ'
+            elif rime > 0.55:
+                px[(x, y)] = 'x' if b < 0.5 else 'ϱ'
+            elif rime > 0.38 and b < 0.35:
+                px[(x, y)] = 'x'
+            elif depth > 0.3 and b < 0.06:
+                px[(x, y)] = 'u'
+    # White feathers climbing from the foot, thin, longer each stage.
+    for i in range(1 + w // 18 + stage):
+        fx = round(x0 + 1 + unit(keys, 'feather-side', i) * (w - 3))
+        length = int(h * reach * (0.3 + 0.35 * unit(keys, 'feather-len', i)))
+        lean = (unit(keys, 'feather-lean', i) - 0.5) * 0.5
+        bend = (unit(keys, 'feather-bend', i) - 0.5) * 0.04
+        for k in range(length):
+            x = round(fx + lean * k + bend * k * k)
+            y = y1 - k
+            if (not (0 <= x < size and 0 <= y < size) or y < top_at(x) - 1
+                    or edge_distance(x, y) < 0.5):
+                break
+            px[(x, y)] = 'Ψ' if k < length - 2 else 'x'
+            if k % 3 == 1 and not small:
+                for d in (-1, 1):
+                    q = (x + d, y - 1)
+                    if q in px or edge_distance(*q) > 0:
+                        px[q] = 'u'
+    # Crystals on the ragged top edge, sparse.
+    for x in range(x0, x1 + 1):
+        if unit(keys, 'crystal', x, stage) > (0.16 if not small else 0.26):
+            continue
+        top = math.floor(top_at(x))
+        if edge_distance(x, top) < -1:
+            continue
+        length = 1 + int(unit(keys, 'crystal-len', x) * (2 if small else 3))
+        for k in range(length):
+            y = top - k
+            if 0 <= y < size:
+                px[(x, y)] = 'Ψ' if k < length - 1 else 'x'
+    arm = 1 if small else 2
+    for i in range(stage):
+        sx = round(x0 + 2 + unit(keys, 'spark', i) * (w - 4))
+        sy = round(max(top_at(sx) + 1, y1 - unit(keys, 'spark-y', i) * h * reach * 0.8))
+        if (sx, sy) in px:
+            px[(sx, sy)] = 'Ψ'
+            for k in range(1, arm + 1):
+                for dx, dy in NEIGHBOURS:
+                    q = (sx + dx * k, sy + dy * k)
+                    if q in px:
+                        px[q] = 'Ψ' if k < arm else 'x'
+    if stage == FROST_STAGES:
+        for i in range(5 + w // 8):
+            a = unit(keys, 'crust', i) * math.tau
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            ex = min(max(cx + math.cos(a) * (w / 2 + 0.5), x0), x1)
+            ey = min(max(cy + math.sin(a) * (h / 2 + 0.5), y0), y1)
+            for k in range(1 + int(unit(keys, 'crust-len', i) * (2 if small else 3))):
+                q = (round(ex + math.cos(a) * k), round(ey + math.sin(a) * k))
+                if 0 <= q[0] < size and 0 <= q[1] < size:
+                    px.setdefault(q, 'Ψ' if k == 0 else 'x')
+    return to_image(px, (size, size))
+
+
+def build_frost_art(images):
+    """Every frost sprite, unlit: `frost_<kind>_<stage>` on the kind's frame
+    at its fitted box, `frost_<class>_<stage>` over the class's status box."""
+    for kind in FROST_KINDS:
+        for stage in range(1, FROST_STAGES + 1):
+            images[f'frost_{kind}_{stage}'] = frost(ice_frame(kind), fitted_box(kind), ('frost', kind), stage)
+    for name, size in STATUS_CLASSES.items():
+        for stage in range(1, FROST_STAGES + 1):
+            images[f'frost_{name}_{stage}'] = frost(size, status_box(size), ('frost', name), stage)
+
+
 def build_spray_art(images):
     """Every frame of the sprays' clips, unlit: `<clip>_<n>`."""
     for clip, (_, frames, _, _) in SPRAY_CLIPS.items():
         for f in range(frames):
             images[f'{clip}_{f}'] = SPRAY_DRAW[clip](f, frames)
+
+
+# The force push's wave (01 (j)): a front of bent air flying from the wizard
+# toward the cursor, a crescent bowed forward, its leading edge a bright
+# seam with a gravity-purple fringe (`Щ Ш`), two fainter ripples of warped
+# air behind it and speed streaks trailing back, tapering and fading to its
+# tips. Drawn along +x for `toys::wave` to turn to the aim, its across axis
+# scaled to the front's width, so its frames are sampled linearly; it
+# shimmers over a looping clip. The dust it raises where it scrapes a
+# floor: a low cloud kicked along +x from its foot at the art's
+# bottom-left, billowing and thinning. A clip: its frame size, its frames,
+# the milliseconds a frame and whether it loops.
+PUSH_CLIPS = {
+    'push_wave': ((72, 128), 6, 40, True),
+    'push_dust': ((48, 32), 7, 55, False),
+}
+LINEAR_FILTER |= {f'push_wave_{f}' for f in range(PUSH_CLIPS['push_wave'][1])}
+PUSH_DUST = ('h', 'H', 'f', 'κ', 'λ', 'ι', 'μ')
+
+
+def push_wave(f, n):
+    (w, h), _, _, _ = PUSH_CLIPS['push_wave']
+    cy = (h - 1) / 2
+    px = {}
+    lead = w - 6
+
+    def front(y):
+        # The leading edge's x at row y: bowed forward at the middle, the
+        # tips swept back.
+        v = (y - cy) / (h / 2)
+        return lead - 22.0 * v * v - 3.0 * v ** 4
+
+    def taper(y):
+        v = abs(y - cy) / (h / 2)
+        return max(0.0, 1.0 - v ** 2.4)
+
+    phase = f / n * math.tau
+    for y in range(h):
+        t = taper(y)
+        if t <= 0.02:
+            continue
+        x0 = front(y) + 1.2 * math.sin(phase + y * 0.21)
+        thick = 2.0 + 7.5 * t
+        for x in range(w):
+            d = x0 - x  # how far behind the edge
+            if d < -1.0:
+                continue
+            a = 0.0
+            # The seam: bright on the edge, a band of warp behind it.
+            if d <= 1.0:
+                a = 255 * t
+            elif d <= thick:
+                a = (210 - 150 * (d / thick)) * t
+            # Two ripples of warped air behind, fainter, drifting back.
+            for k, (gap, width, peak) in enumerate(((thick + 7.0, 2.2, 120), (thick + 17.0, 2.6, 70))):
+                ripple = gap + 2.5 * math.sin(phase * (1 + k) + y * (0.13 + 0.04 * k))
+                a = max(a, peak * t ** (1.3 + k) * math.exp(-((d - ripple) / width) ** 2))
+            if a < 3:
+                continue
+            if d <= 1.0 and t > 0.25:
+                s = 'Ψ' if (y + f) % 7 else 'Щ'
+            elif d <= 3.0 and t > 0.45 and (x + y + f) % 4 == 0:
+                s = 'Щ'
+            elif thick - 2 < d <= thick and t > 0.5 and dither(x, y, 0.35):
+                s = 'Ш'
+            else:
+                s = white_alpha(x, y, min(255, a))
+            if s:
+                px[(x, y)] = s
+    # Speed streaks trailing back from the seam, each a bright head and a
+    # thinning tail, jittered from frame to frame.
+    for k in range(13):
+        y = round(cy + (unit('streak-y', k) - 0.5) * h * 0.82)
+        t = taper(y)
+        if t < 0.15:
+            continue
+        head = front(y) - 3 - 2 * unit('streak-head', k, f)
+        length = (14 + 34 * unit('streak-len', k)) * t * (0.75 + 0.5 * unit('streak-f', k, f))
+        for i in range(int(length)):
+            x = round(head - i)
+            if x < 0:
+                break
+            fade = 1 - i / length
+            s = white_alpha(x, y, 200 * fade * t) if i > 1 else 'Ψ'
+            if s and (x, y) not in px:
+                px[(x, y)] = s
+    return to_image(px, (w, h))
+
+
+def push_dust(f, n):
+    (w, h), _, _, _ = PUSH_CLIPS['push_dust']
+    t = f / (n - 1)
+    px = {}
+    # A few lobes rolling forward and up from the foot, growing and thinning.
+    lobes = [(4 + 30 * t + 6 * unit('lobe-x', k), h - 3 - (4 + 12 * t) * unit('lobe-y', k),
+              (3 + 9 * t) * (0.6 + 0.6 * unit('lobe-r', k))) for k in range(6)]
+    for y in range(h):
+        for x in range(w):
+            v = 0.0
+            for cx, cy, r in lobes:
+                d = math.hypot((x + 0.5 - cx) / 1.25, y + 0.5 - cy) / max(r, 0.5)
+                v = max(v, 1 - d)
+            if v <= 0:
+                continue
+            v = v * (1.15 - 0.95 * t) + (BAYER[y % 4][x % 4] / 16 - 0.5) * 0.25
+            # It thins from its edge inward as it settles.
+            if t > 0.45 and unit('dust-thin', x, y, f) < (t - 0.45) * 1.6:
+                continue
+            if v > 0.08:
+                px[(x, y)] = PUSH_DUST[min(len(PUSH_DUST) - 1, int(v * len(PUSH_DUST)))]
+    # Grit flung ahead of the cloud.
+    for k in range(5):
+        if f >= 5:
+            break
+        gx = round(10 + (12 + 22 * unit('grit-x', k)) * (t + 0.15))
+        gy = round(h - 4 - (2 + 10 * unit('grit-y', k)) * math.sin(min(1.0, t * 2.2) * math.pi * 0.8))
+        if 0 <= gx < w and 0 <= gy < h:
+            px[(gx, gy)] = 'Φ' if k % 2 else 'b'
+    return to_image(px, (w, h))
+
+
+PUSH_DRAW = {'push_wave': push_wave, 'push_dust': push_dust}
+
+
+def build_push_art(images):
+    """Every frame of the force push's clips, unlit: `<clip>_<n>`."""
+    for clip, (_, frames, _, _) in PUSH_CLIPS.items():
+        for f in range(frames):
+            images[f'{clip}_{f}'] = PUSH_DRAW[clip](f, frames)
 
 
 # The HUD's art (01 (h)): the bars' liquids, palette strips tileable
@@ -1479,4 +1755,6 @@ def build_effects(images):
     build_icons(images)
     build_element_art(images)
     build_hud_art(images)
+    build_frost_art(images)
     build_spray_art(images)
+    build_push_art(images)

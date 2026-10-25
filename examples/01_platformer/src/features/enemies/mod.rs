@@ -82,6 +82,13 @@ pub const WOOD_LAYER: u32 = 1 << 3;
 pub const WALL_LAYERS: u32 = SLAB_LAYER | IRON_LAYER | WOOD_LAYER;
 /// How close a mover counts as at its point.
 pub const ARRIVED: f32 = 10.0;
+/// The heaviest body a walker shoves aside, by the kit's shove (N19): the
+/// balls, a rock and a bomb, never a crate or a keg, which a fall from a
+/// ledge would set off.
+pub const WALK_SHOVE_MOST: f32 = 8.0;
+/// The ledge or body a walker steps over on its way, half a tile: a ball,
+/// a bowling ball, a rock or a bomb, never a crate or a keg.
+pub const WALK_STEP: f32 = 32.0;
 
 /// What an enemy's controller meets: everything but lava's surface, which
 /// holds the player alone, so a walker or a frozen flyer falls in.
@@ -90,22 +97,35 @@ pub fn walk_filter() -> SpatialFilter {
     SpatialFilter::new().with_mask(!LAVA_LAYER)
 }
 
-/// Gives `enemy`'s controller, when it has one, [`walk_filter`]: at a
-/// spawn, at a run's start for the map's, and after a load, whose saved
-/// controller leaves its filter out.
+/// Gives `enemy`'s controller, when it has one, [`walk_filter`], and a
+/// walker's its shove of up to [`WALK_SHOVE_MOST`] by its kind's mass and
+/// its [`WALK_STEP`]: at a spawn, at a run's start for the map's, and after
+/// a load, whose saved controller leaves its filter out. A frozen flyer's
+/// borrowed controller takes the filter alone.
 pub fn walk_on_rock(world: &mut World, enemy: Entity) {
+    let walker = world
+        .get::<Enemy>(enemy)
+        .map(|mine| mine.kind.info())
+        .filter(|info| !info.flyer);
     if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
-        *controller = controller.clone().with_filter(walk_filter());
+        let mut set = controller.clone().with_filter(walk_filter());
+        if let Some(info) = walker {
+            set = set
+                .with_shove(info.mass, WALK_SHOVE_MOST / info.mass)
+                .with_step_height(WALK_STEP);
+        }
+        *controller = set;
     }
 }
 
 /// A kind's table entry: its prefab, its frame's side, its body's half
 /// size and centre from its sprite's top-left (the entity's point), its
-/// eye from there facing right, its mass for impacts, its sight's reach,
-/// its alert's seconds, the black hole's hold on it, which the pushes take
-/// too, its knockback's resist as its prefab sets it (the kit's
-/// `Knockback` has no getter), its art, and its recovery's seconds after
-/// an attack.
+/// eye from there facing right, its mass for impacts and the walkers'
+/// shove, its sight's reach, its alert's seconds, the black hole's hold on
+/// it, which a blast's push takes too, the force push's wave's weight on
+/// it (`toys::wave`), its knockback's resist as its prefab sets it (the
+/// kit's `Knockback` has no getter), its art, and its recovery's seconds
+/// after an attack.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KindInfo {
     pub prefab: &'static str,
@@ -117,6 +137,7 @@ pub struct KindInfo {
     pub sight: f32,
     pub alert: f32,
     pub pull: f32,
+    pub wave: f32,
     pub resist: f32,
     pub icon: &'static str,
     pub ice: &'static str,
@@ -139,6 +160,7 @@ impl EnemyKind {
                 sight: 480.0,
                 alert: 0.5,
                 pull: 0.6,
+                wave: 3.5,
                 resist: 0.0,
                 icon: "ex10_icon_wisp",
                 ice: "ex10_status_ice_wisp",
@@ -155,6 +177,7 @@ impl EnemyKind {
                 sight: 400.0,
                 alert: 0.4,
                 pull: 0.15,
+                wave: 1.0,
                 resist: 0.0,
                 icon: "ex10_icon_crawler",
                 ice: "ex10_status_ice_crawler",
@@ -171,6 +194,7 @@ impl EnemyKind {
                 sight: 520.0,
                 alert: 0.5,
                 pull: 0.05,
+                wave: 0.53,
                 resist: 0.5,
                 icon: "ex10_icon_beetle",
                 ice: "ex10_status_ice_beetle",
@@ -187,6 +211,7 @@ impl EnemyKind {
                 sight: 440.0,
                 alert: 0.4,
                 pull: 0.7,
+                wave: 4.0,
                 resist: 0.0,
                 icon: "ex10_icon_bat",
                 ice: "ex10_status_ice_bat",
@@ -203,6 +228,7 @@ impl EnemyKind {
                 sight: 640.0,
                 alert: 0.8,
                 pull: 0.01,
+                wave: 0.14,
                 resist: 1.0,
                 icon: "ex10_icon_troll",
                 ice: "ex10_status_ice_troll",
@@ -219,6 +245,7 @@ impl EnemyKind {
                 sight: 520.0,
                 alert: 0.4,
                 pull: 0.12,
+                wave: 0.86,
                 resist: 0.0,
                 icon: "ex10_icon_goblin",
                 ice: "ex10_status_ice_goblin",
