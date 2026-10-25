@@ -6,6 +6,15 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.107.0] - 2026-10-25
+
+Summary: a fix with no plan, from the owner's note of 2026-10-25 that enemies falling into example 01's lava took no harm: lava's bite now burns and throws an enemy as it does the player. No kit, engine, template, shell or save change; the tomes stop (feedback plan §3.8) moves to 0.108.
+
+### Fixed
+
+- **Lava bites the enemies** (`D-208`'s lava, `tools/level.py`, `ex10_lava_<n>.json`): each basin's touch filters `any: [team.enemy, team.player]` where it filtered the player alone, so an enemy that falls through the surface takes the same 16 fire, by its kind's fire resistance, starts burning and is thrown up and toward the pool's nearer bank, its knockback resist applied: the beetle is thrown at half the speed, and the troll, which resists whole, sinks to the bed and burns out in about 4 s. Before, an enemy fell in and sat on the bed unhurt. `hazards::lava_bites_an_enemy_that_falls_in_and_throws_it_up_and_out` drops a goblin over each end of each basin; the crawler's sinking check in the player's throw test goes with it.
+- **Records**: the `Hazard` doc, example 01's README, DESIGN's status line and the feedback plan's tomes version.
+
 ## [0.106.0] - 2026-10-25
 
 Summary: M85, example 01's scenery, aqueduct and start from the owner's playtest of 2026-10-24 (N1, N2, N5 and N21) and their three reviews of the plan's art sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-85-example-01-scenery.md`; `D-214`), with no kit, engine, template or shell change: a generator check that fails the build on any scenery that floats, and props standing on what the terrain draws; a walled start with a boundary and save schema 15; the aqueduct's broken spans, pours and gargoyle; lava that freezes and thaws by one front.

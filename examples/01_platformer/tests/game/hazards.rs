@@ -1,10 +1,10 @@
 //! The hazards: lava's surface, which holds the player, its touch, which
 //! burns and throws on every touch, hurting once a window, and a dying touch
-//! starting the death screen; its crust's freeze and thaw, one front down
-//! through the basin each way with a sound and bursts at each change; what
-//! falls into lava, taken or set off; a hit's flash, shake and sound; and
-//! the fire hazards the level's data may place, which burst fast balls they
-//! sweep.
+//! starting the death screen; an enemy that falls in, bitten and thrown the
+//! same way; its crust's freeze and thaw, one front down through the basin
+//! each way with a sound and bursts at each change; what falls into lava,
+//! taken or set off; a hit's flash, shake and sound; and the fire hazards
+//! the level's data may place, which burst fast balls they sweep.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::BURNING;
@@ -29,7 +29,7 @@ use example_01_platformer::features::elements::FIRE_CENTRE;
 use example_01_platformer::features::elements::systems::fire_contacts;
 use example_01_platformer::features::toys::RING_CAP;
 use example_01_platformer::features::toys::components::{Ball, Ring, ShockRing};
-use example_01_platformer::shared::{BURST_CAP, Burst};
+use example_01_platformer::shared::{BURST_CAP, Burst, despawn_tree};
 
 use example_01_platformer::features::level::lava::Lava;
 use tungsten::core::RigidBody;
@@ -240,16 +240,59 @@ fn lava_throws_the_player_up_and_out_and_never_lets_them_sink() {
             }
         }
     }
-    // A walker falls in: lava's surface holds the player alone.
-    let lake = lava(&harness)[1];
-    let middle = harness.world().get::<Transform>(lake).unwrap().position + Vec2::new(128.0, -96.0);
-    let crawler = enemies::summon(harness.world_mut(), EnemyKind::Crawler, middle).unwrap();
-    harness.step(60);
-    let low = enemies::centre(harness.world(), crawler).map_or(f32::MAX, |at| at.y);
-    assert!(
-        low > skin(&harness, lake),
-        "the crawler sank below the skin: {low}"
-    );
+}
+
+#[test]
+fn lava_bites_an_enemy_that_falls_in_and_throws_it_up_and_out() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.step(10);
+    let mut basins = lava(&harness);
+    let corner = |harness: &UiHarness, basin: Entity| {
+        harness.world().get::<Transform>(basin).unwrap().position.x
+    };
+    basins.sort_by(|a, b| corner(&harness, *a).total_cmp(&corner(&harness, *b)));
+    // The lake's two pools, 4 columns each, and the shelf's pool, 3: a
+    // goblin dropped over each end of each.
+    let ends = basins
+        .into_iter()
+        .zip([4.0, 4.0, 3.0])
+        .flat_map(|(basin, columns)| {
+            let left = corner(&harness, basin);
+            let top = skin(&harness, basin);
+            [
+                (left + 40.0, top, -1.0),
+                (left + columns * 64.0 - 40.0, top, 1.0),
+            ]
+        });
+    for (x, top, bank) in ends.collect::<Vec<_>>() {
+        let at = Vec2::new(x, top - 96.0);
+        let goblin = enemies::summon(harness.world_mut(), EnemyKind::Goblin, at).unwrap();
+        let mut bite = Vec::new();
+        for _ in 0..60 {
+            harness.step(1);
+            bite = blows(&harness, goblin);
+            if !bite.is_empty() {
+                break;
+            }
+        }
+        assert_eq!(bite, [16.0], "at {x}: the player's bite");
+        let tags = harness.world().get::<Tags>(goblin).unwrap();
+        assert!(tags.has(BURNING), "at {x}: the bite burns");
+        let start = enemies::centre(harness.world(), goblin).unwrap();
+        harness.step(8);
+        let thrown = enemies::centre(harness.world(), goblin).unwrap();
+        assert!(
+            thrown.y < start.y - 30.0,
+            "at {x}: thrown up, {start} to {thrown}"
+        );
+        assert!(
+            (thrown.x - start.x) * bank > 0.0,
+            "at {x}: toward its nearer bank"
+        );
+        despawn_tree(harness.world_mut(), goblin);
+        harness.step(1);
+    }
 }
 
 #[test]

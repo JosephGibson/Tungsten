@@ -5,7 +5,8 @@
         "damage.fire": 16
       },
       "filter": {
-        "all": [
+        "any": [
+          "team.enemy",
           "team.player"
         ]
       },
