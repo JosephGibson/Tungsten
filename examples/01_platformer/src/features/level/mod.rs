@@ -17,8 +17,9 @@ pub mod title;
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::{
-    AmbientLight, CameraBounds, CameraController, DataRegistry, Entity, Light, ParticleBudget,
-    PhysicsConfig, Schedule, Stage, TilemapInstance, TilemapRegistry, Transform, World, system,
+    AmbientLight, Bundle, CameraBounds, CameraController, Collider, DataRegistry, Entity, Light,
+    ParticleBudget, PhysicsConfig, Position, RigidBodyBundle, Schedule, Stage, TilemapInstance,
+    TilemapRegistry, Transform, World, system,
 };
 use tungsten::kit::{PathFollower, Phase, ensure_phases};
 use tungsten::plugins::CAMERA_UPDATE;
@@ -61,6 +62,13 @@ pub const WORLD_MAX: Vec2 = Vec2::new(
     (MAP_COLS as f32 + 2.0) * TILE,
     (MAP_ROWS as f32 + 8.0) * TILE,
 );
+/// The start's boundary (01 (k)): a box left of the map, from x -64 to 0
+/// and from the world's top to its foot, its min and max corners. A static
+/// body in the slabs' stone layer meeting every layer, drawing nothing and
+/// saved by no save, so nothing flung over the start's wall leaves the map
+/// on the left; the map cannot place it, since the tests' sky refuses an
+/// object there.
+pub const BOUNDARY: [Vec2; 2] = [Vec2::new(-TILE, WORLD_MIN.y), Vec2::new(0.0, WORLD_MAX.y)];
 /// The camera's shake at full trauma, in world pixels, its carrier and its
 /// decay: a hit's trauma of 0.5 moves the view a few pixels for half a
 /// second. The shell's Screen shake option scales the offset.
@@ -176,7 +184,7 @@ impl Plugin for CursorPlugin {
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
 /// each one a save names ([`saved`]) taking the next of the run's
-/// [`SaveIds`] in layer and file order, the basins' chill and crust ([`lava::start`]), the elevator at rest
+/// [`SaveIds`] in layer and file order, the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the elevator at rest
 /// ([`elevator::start`]), the moon's light, the
 /// level's clock, the midnight ambient and the post stack, and bounds the
 /// camera to the map. Returns the objects in that order.
@@ -193,6 +201,15 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         }
         world.insert(entity, SceneEntity { state_id: GAMEPLAY });
     }
+    let [min, max] = BOUNDARY;
+    world.spawn_with(
+        RigidBodyBundle::r#static(
+            Position((min + max) * 0.5),
+            Collider::aabb((max - min) * 0.5),
+        )
+        .with_layers(crate::features::enemies::SLAB_LAYER)
+        .with((SceneEntity { state_id: GAMEPLAY },)),
+    );
     lava::start(world);
     elevator::start(world);
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);

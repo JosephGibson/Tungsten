@@ -172,6 +172,21 @@
     "path": "sounds/lava_hiss.wav",
     "volume": 0.5
   },
+  "ex10_lava_chill_sfx": {
+    "looping": false,
+    "path": "sounds/lava_chill.wav",
+    "volume": 0.45
+  },
+  "ex10_lava_crack_sfx": {
+    "looping": false,
+    "path": "sounds/lava_crack.wav",
+    "volume": 0.5
+  },
+  "ex10_lava_melt_sfx": {
+    "looping": false,
+    "path": "sounds/lava_melt.wav",
+    "volume": 0.35
+  },
   "ex10_lift_start_sfx": {
     "looping": false,
     "path": "sounds/lift_start.wav",

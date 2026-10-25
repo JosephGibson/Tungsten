@@ -15,7 +15,9 @@
 //! sprite's corner, the point a save keeps. Schema 14 drops the hints and
 //! carries 01 (i)'s tuning into an older run: the player's one maximum
 //! health and its wider reach, a crawler's harder touch, a troll's faster
-//! walk and the cold ladder's halved gates.
+//! walk and the cold ladder's halved gates. Schema 15 walls the start
+//! (01 (k)) and sets a saved body from the wall, or from left of the map,
+//! on the clearing's floor.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -176,6 +178,45 @@ pub const S11_PICKUPS: u64 = 28;
 /// migrations, which place a player by its body before schema 13 moves the
 /// point.
 pub const S12_BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
+/// Schema 14's start, which schema 15 walls (01 (k)): the wall's box over
+/// columns 0 and 1 from row 21 to the clearing's floor, min and max; the
+/// world left of the map, where the boundary stands, lies past its min x
+/// too. Frozen for the migration, as the boxes below are.
+pub const S15_WALL: [Vec2; 2] = [Vec2::new(0.0, 21.0 * 64.0), Vec2::new(128.0, 36.0 * 64.0)];
+/// The clearing's floor's top; the stretch of it from the wall's face to
+/// the terrace's, where a body out of the wall is set; and the moving
+/// deck's columns, which it skips, the deck coming down to 27 px over the
+/// floor.
+pub const S15_FLOOR: f32 = 36.0 * 64.0;
+pub const S15_SPAN: [f32; 2] = [128.0, 1024.0];
+pub const S15_DECK: [f32; 2] = [556.8, 723.2];
+/// A fresh run's spawn, the feet's point, where a player with no clear
+/// spot on the floor stands.
+pub const S15_SPAWN: Vec2 = Vec2::new(416.0, 36.0 * 64.0);
+/// Each saved body's box as schema 14 has it: its centre from its point
+/// and its half extents. A ball's and a goblin's bomb's and rock's are
+/// their circles' squares.
+const S15_PLAYER: [Vec2; 2] = [Vec2::new(48.0, 65.0), Vec2::new(20.0, 28.0)];
+const S15_DUMMY: [Vec2; 2] = [Vec2::new(32.0, 33.0), Vec2::new(14.0, 28.0)];
+const S15_ENEMIES: [(&str, [Vec2; 2]); 6] = [
+    ("wisp", [Vec2::new(32.0, 34.0), Vec2::new(12.0, 12.0)]),
+    ("crawler", [Vec2::new(32.0, 51.0), Vec2::new(24.0, 10.0)]),
+    ("beetle", [Vec2::new(32.0, 48.0), Vec2::new(24.0, 13.0)]),
+    ("bat", [Vec2::new(32.0, 28.0), Vec2::new(10.0, 9.0)]),
+    ("troll", [Vec2::new(74.0, 70.0), Vec2::new(28.0, 55.0)]),
+    ("goblin", [Vec2::new(34.0, 41.0), Vec2::new(9.0, 20.0)]),
+];
+const S15_BALL: [Vec2; 2] = [Vec2::splat(16.0), Vec2::splat(15.0)];
+const S15_SMALL_BALL: [Vec2; 2] = [Vec2::splat(8.0), Vec2::splat(7.5)];
+const S15_IRON: [Vec2; 2] = [Vec2::splat(64.0), Vec2::splat(60.0)];
+const S15_SCRAP: [Vec2; 2] = [Vec2::splat(16.0), Vec2::splat(15.0)];
+const S15_PROPS: [(&str, [Vec2; 2]); 4] = [
+    ("crate", [Vec2::splat(32.0), Vec2::splat(28.0)]),
+    ("keg", [Vec2::new(32.0, 35.0), Vec2::new(19.0, 25.0)]),
+    ("bomb", [Vec2::splat(8.0), Vec2::splat(6.0)]),
+    ("rock", [Vec2::splat(8.0), Vec2::splat(5.0)]),
+];
+const S15_ORB: [Vec2; 2] = [Vec2::splat(12.0), Vec2::splat(12.0)];
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
@@ -190,8 +231,10 @@ impl SaveData for SaveGame {
     /// map's goblins before its orbs and keeps the props
     /// (`to_12`). Schema 13 moves the player's point for the wizard's frame
     /// (`to_13`). Schema 14 drops the hints and moves the values 01 (i)
-    /// tuned that a save keeps (`to_14`).
-    const SCHEMA: u32 = 14;
+    /// tuned that a save keeps (`to_14`). Schema 15 sets the bodies in the
+    /// start's new wall or past its boundary on the clearing's floor
+    /// (`to_15`).
+    const SCHEMA: u32 = 15;
 
     fn migrate(
         from: u32,
@@ -214,6 +257,7 @@ impl SaveData for SaveGame {
                 to_12(&mut data);
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -223,6 +267,7 @@ impl SaveData for SaveGame {
                 to_12(&mut data);
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             9 => {
@@ -231,6 +276,7 @@ impl SaveData for SaveGame {
                 to_12(&mut data);
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             10 => {
@@ -238,21 +284,29 @@ impl SaveData for SaveGame {
                 to_12(&mut data);
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             11 => {
                 to_12(&mut data);
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             12 => {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
+                to_15(&mut data)?;
                 Ok(data)
             }
             13 => {
                 to_14(&mut data)?;
+                to_15(&mut data)?;
+                Ok(data)
+            }
+            14 => {
+                to_15(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -447,6 +501,215 @@ fn to_14(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         }
         halve_cold(&mut enemy["buckets"]);
     }
+    Ok(())
+}
+
+/// A saved body: its list and place in it (`player` for the player), its
+/// save ID, its centre from its point and its half extents, its point, and
+/// whether the map placed it.
+struct Body {
+    list: &'static str,
+    index: usize,
+    id: u64,
+    offset: Vec2,
+    half: Vec2,
+    point: Vec2,
+    map: bool,
+}
+
+impl Body {
+    fn min(&self) -> Vec2 {
+        self.point + self.offset - self.half
+    }
+
+    fn max(&self) -> Vec2 {
+        self.point + self.offset + self.half
+    }
+}
+
+/// Every body a schema 14 save keeps, the player first: the dummies, the
+/// enemies, the balls, the blocks and scraps, the props and the orbs.
+fn bodies(data: &Value) -> Result<Vec<Body>, Box<dyn std::error::Error + Send + Sync>> {
+    let pair = |xy: Option<&Value>| -> Option<Vec2> {
+        let xy = xy?.as_array()?;
+        Some(Vec2::new(
+            xy.first()?.as_f64()? as f32,
+            xy.get(1)?.as_f64()? as f32,
+        ))
+    };
+    let player =
+        pair(data.pointer("/player/position")).ok_or("schema 14: the player has no position")?;
+    let mut out = vec![Body {
+        list: "player",
+        index: 0,
+        id: data
+            .pointer("/player/id")
+            .and_then(Value::as_u64)
+            .unwrap_or(0),
+        offset: S15_PLAYER[0],
+        half: S15_PLAYER[1],
+        point: player,
+        map: false,
+    }];
+    for list in ["dummies", "enemies", "balls", "blocks", "props", "orbs"] {
+        for (index, entry) in data[list].as_array().into_iter().flatten().enumerate() {
+            let named = |table: &[(&str, [Vec2; 2])], key: &str| {
+                table
+                    .iter()
+                    .find(|(name, _)| entry[key].as_str() == Some(name))
+                    .map(|(_, sizes)| *sizes)
+            };
+            let (sizes, point) = match list {
+                "balls" => {
+                    let small = entry.get(1).and_then(Value::as_bool) == Some(true);
+                    let x = entry.get(2).and_then(Value::as_f64);
+                    let y = entry.get(3).and_then(Value::as_f64);
+                    let point = x.zip(y).map(|(x, y)| Vec2::new(x as f32, y as f32));
+                    (Some(if small { S15_SMALL_BALL } else { S15_BALL }), point)
+                }
+                "dummies" => (Some(S15_DUMMY), pair(entry.get("position"))),
+                "enemies" => (named(&S15_ENEMIES, "kind"), pair(entry.get("position"))),
+                "blocks" => (
+                    Some(if entry["scrap"].is_null() {
+                        S15_IRON
+                    } else {
+                        S15_SCRAP
+                    }),
+                    pair(entry.get("position")),
+                ),
+                "props" => (named(&S15_PROPS, "kind"), pair(entry.get("position"))),
+                _ => (Some(S15_ORB), pair(entry.get("position"))),
+            };
+            let (Some([offset, half]), Some(point)) = (sizes, point) else {
+                return Err(format!("schema 14: a body of /{list}/{index} has no box").into());
+            };
+            let id = if list == "balls" {
+                entry.get(0)
+            } else {
+                entry.get("id")
+            };
+            out.push(Body {
+                list,
+                index,
+                id: id.and_then(Value::as_u64).unwrap_or(0),
+                offset,
+                half,
+                point,
+                map: entry["map"].as_bool() == Some(true),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Schema 14 to 15 (01 (k)): the start's wall stands over columns 0 and 1
+/// from row 21, and the boundary left of the map. Each saved body whose box
+/// meets the wall's ([`S15_WALL`]) or lies past the map's left edge is set
+/// at rest on the clearing's floor, at the first x from the wall's face to
+/// the terrace's ([`S15_SPAN`]) where its box meets no other saved body's
+/// and skips the moving deck's columns ([`S15_DECK`]), the player first.
+/// A player with no such spot stands at the run's spawn, where the solver
+/// parts it from any body; any other body with no room is dropped, a map
+/// dummy or enemy taking its save ID into `gone` so the load takes the
+/// map's off too, and the log names each dropped save ID.
+fn to_15(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut bodies = bodies(data)?;
+    let [wall, face] = S15_WALL;
+    let inside = |body: &Body| {
+        let (min, max) = (body.min(), body.max());
+        min.x < 0.0 || (min.x < face.x && max.x > wall.x && min.y < face.y && max.y > wall.y)
+    };
+    let moving: Vec<usize> = (0..bodies.len()).filter(|&i| inside(&bodies[i])).collect();
+    if moving.is_empty() {
+        return Ok(());
+    }
+    let mut placed = vec![true; bodies.len()];
+    for &i in &moving {
+        placed[i] = false;
+    }
+    let mut dropped = Vec::new();
+    for &i in &moving {
+        let (offset, half) = (bodies[i].offset, bodies[i].half);
+        let y = S15_FLOOR - 0.5 - half.y;
+        let others: Vec<(Vec2, Vec2)> = (0..bodies.len())
+            .filter(|&j| j != i && placed[j])
+            .map(|j| (bodies[j].min(), bodies[j].max()))
+            .collect();
+        let fits = |left: f32| {
+            let (min, max) = (
+                Vec2::new(left, y - half.y),
+                Vec2::new(left + 2.0 * half.x, y + half.y),
+            );
+            max.x <= S15_SPAN[1]
+                && !(min.x < S15_DECK[1] && max.x > S15_DECK[0])
+                && others
+                    .iter()
+                    .all(|(a, b)| !(min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y))
+        };
+        let mut lefts: Vec<f32> = [S15_SPAN[0], S15_DECK[1]]
+            .into_iter()
+            .chain(others.iter().map(|(_, max)| max.x))
+            .filter(|&left| left >= S15_SPAN[0])
+            .collect();
+        lefts.sort_by(f32::total_cmp);
+        let centre = match lefts.into_iter().find(|&left| fits(left)) {
+            Some(left) => Vec2::new(left + half.x, y),
+            None if bodies[i].list == "player" => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
+            None => {
+                dropped.push(i);
+                continue;
+            }
+        };
+        bodies[i].point = centre - offset;
+        placed[i] = true;
+    }
+    for &i in &moving {
+        let body = &bodies[i];
+        if dropped.contains(&i) {
+            continue;
+        }
+        let [x, y] = body.point.to_array();
+        if body.list == "balls" {
+            let ball = &mut data["balls"][body.index];
+            for (k, value) in [x, y, 0.0, 0.0].into_iter().enumerate() {
+                ball[2 + k] = Value::from(value);
+            }
+            continue;
+        }
+        let entry = if body.list == "player" {
+            &mut data["player"]
+        } else {
+            &mut data[body.list][body.index]
+        };
+        entry["position"] = Value::from(vec![x, y]);
+        if entry.get("velocity").is_some() {
+            entry["velocity"] = Value::from(vec![0.0_f32, 0.0]);
+        }
+    }
+    // The dropped, from each list's last, so the places hold.
+    let mut gone: Vec<u64> = Vec::new();
+    let mut order = dropped.clone();
+    order.sort_by_key(|&i| std::cmp::Reverse(bodies[i].index));
+    for i in order {
+        let body = &bodies[i];
+        if let Some(list) = data[body.list].as_array_mut() {
+            list.remove(body.index);
+        }
+        if body.map && matches!(body.list, "dummies" | "enemies") {
+            gone.push(body.id);
+        }
+    }
+    if !gone.is_empty()
+        && let Some(list) = data["gone"].as_array_mut()
+    {
+        list.extend(gone.into_iter().map(Value::from));
+        list.sort_by_key(|id| id.as_u64());
+    }
+    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
+    log::info!(
+        "schema 15: saved bodies set out of the start's wall on the clearing's floor: {}; dropped with no room: {ids:?}",
+        moving.len() - dropped.len()
+    );
     Ok(())
 }
 

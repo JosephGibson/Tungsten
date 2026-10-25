@@ -179,11 +179,16 @@ pub enum Sound {
     GoblinStabbed,
     /// Lava taking what fell in: its sizzle.
     LavaTook,
+    /// Lava's freeze starting under the ice spray, its crust cracking at
+    /// each of its three stages, and its melt (01 (k)).
+    LavaChilled,
+    LavaCracked,
+    LavaMelted,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 66] = [
+    pub const ALL: [Sound; 69] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -250,6 +255,9 @@ impl Sound {
         Sound::Alerted,
         Sound::GoblinStabbed,
         Sound::LavaTook,
+        Sound::LavaChilled,
+        Sound::LavaCracked,
+        Sound::LavaMelted,
     ];
 
     /// Its cue event's name.
@@ -322,6 +330,9 @@ impl Sound {
             Sound::Alerted => "alerted",
             Sound::GoblinStabbed => "goblin_stabbed",
             Sound::LavaTook => "lava_took",
+            Sound::LavaChilled => "lava_chilled",
+            Sound::LavaCracked => "lava_cracked",
+            Sound::LavaMelted => "lava_melted",
         }
     }
 }

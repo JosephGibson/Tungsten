@@ -6,6 +6,12 @@
 //! last [`CRACK_SECS`]: its touches come back, so a player still on it is
 //! thrown out as by any touch, and what stood on it falls in.
 //!
+//! Its look (01 (k)) reads only the basin's chill and its crust's seconds
+//! left, which a save keeps: one front comes down through the whole basin
+//! as the chill builds and the crust sets, the crust's frames dull, hold
+//! and crack, and a second front comes down as it melts, with a sound and a
+//! burst at each change.
+//!
 //! An uncrusted basin takes the bodies that fall into its burn ([`take`]):
 //! a keg or a goblin's bomb goes off, a frozen prop is left to the heat's
 //! thermal shock, and every other ball, block, scrap, crate or rock goes in
@@ -62,22 +68,38 @@ pub struct Crust {
     pub frost: Option<ContactDamage>,
 }
 
-impl Crust {
-    /// Its look's stage: 0 set, then 1 to 3 over its last [`CRACK_SECS`].
-    #[must_use]
-    pub fn stage(&self) -> usize {
-        if self.left > CRACK_SECS {
-            return 0;
-        }
-        (1 + ((CRACK_SECS - self.left) / (CRACK_SECS / 3.0)) as usize).min(3)
-    }
+/// A basin's look: the freeze's front coming down, in px from the surface;
+/// the crust's frames (`0..9`: the set, its dulling, the hold, two a crack
+/// stage); or the melt's front coming down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Phase {
+    Freezing(f32),
+    Crust(usize),
+    Melting(f32),
 }
 
-/// A set crust's sprites, one a lava cell, which its look keeps: not saved,
-/// drawn again after a load.
-#[derive(Debug, Clone, Default)]
+/// The set's seconds, over which the front comes down the last of the
+/// depth; the crust's dulling after them; the melt's seconds after it goes.
+pub const SET_SECS: f32 = 0.3;
+pub const DULL_SECS: f32 = 0.15;
+pub const MELT_SECS: f32 = 0.4;
+/// The share of the depth the front comes down while the chill builds.
+const COLD_SHARE: f32 = 0.6;
+/// The px between a row's partial frames.
+const FRONT_STEP: f32 = 8.0;
+
+/// A basin's look's sprites (entity, row, variant), its rows, its phase,
+/// the melt's seconds left, and the freeze bursts' throttle: the third of
+/// the depth its front last burst at and the seconds since a build's first.
+/// Presentation: not saved, drawn again after a load.
+#[derive(Debug, Clone)]
 pub struct CrustLook {
-    sprites: Vec<(Entity, bool, usize)>,
+    sprites: Vec<(Entity, usize, usize)>,
+    rows: usize,
+    phase: Option<Phase>,
+    melt: f32,
+    third: i32,
+    since: f32,
 }
 
 /// At a run's start: each basin's chill and crust, none.
@@ -277,11 +299,15 @@ fn surface(world: &World, basin: Entity) -> Option<(f32, f32, f32)> {
     ))
 }
 
-/// The rows of lava under `basin`'s surface row, by its held touch's box:
-/// from just over the skin to the bed.
-fn rows(crust: &Crust) -> usize {
-    crust
-        .touch
+/// The rows of lava under `basin`'s surface row, by its touch's box (the
+/// crust's held one while set): from just over the skin to the bed.
+fn rows(world: &World, basin: Entity) -> usize {
+    let held = world
+        .get::<Lava>(basin)
+        .and_then(|lava| lava.crust.as_ref())
+        .and_then(|crust| crust.touch.clone());
+    let touch = held.or_else(|| world.get::<ContactDamage>(basin).cloned());
+    touch
         .as_ref()
         .and_then(ContactDamage::shape)
         .map_or(1, |shape| {
@@ -293,60 +319,205 @@ fn rows(crust: &Crust) -> usize {
         })
 }
 
-/// A set crust as its look reads it: its stage and its rows of lava.
-type Stage = Option<(usize, usize)>;
+/// The crust's frame at `left` seconds once its front is down: its dulling
+/// over [`DULL_SECS`], the hold, then two for each of the three crack
+/// stages over its last [`CRACK_SECS`].
+fn frame(left: f32) -> usize {
+    let since = CRUST_SECS - left;
+    if since < SET_SECS + DULL_SECS {
+        1
+    } else if left > CRACK_SECS {
+        2
+    } else {
+        3 + (((CRACK_SECS - left) / (CRACK_SECS / 6.0)) as usize).min(5)
+    }
+}
 
-/// `crust_look`, before the frame's sprites: a set crust's sprites over
-/// its lava, spawned when it sets and after a load, at its stage; gone when
-/// it melts.
-pub fn look(world: &mut World) {
-    let basins: Vec<(Entity, Stage, bool)> = world
-        .query::<(Entity, &Lava, Option<&CrustLook>)>()
-        .map(|(basin, lava, shown)| {
-            let crust = lava
-                .crust
-                .as_ref()
-                .map(|crust| (crust.stage(), rows(crust)));
-            (basin, crust, shown.is_some())
-        })
-        .collect();
-    for (basin, crust, shown) in basins {
-        match crust {
-            Some((stage, depth)) => {
-                if !shown {
-                    spawn_look(world, basin, depth);
-                }
-                restage(world, basin, stage);
+/// Row `row`'s sprite under `phase`, none where the melt shows: the set
+/// frame above a front, a partial at it ([`FRONT_STEP`] px apart) and
+/// nothing below it as it freezes; nothing above the melt's front, a
+/// partial at it and the last crack frame below it as it melts.
+fn row_sprite(phase: Phase, row: usize, variant: usize) -> Option<String> {
+    let part = if row == 0 { "top" } else { "deep" };
+    let local = |depth: f32| depth - row as f32 * TILE;
+    match phase {
+        Phase::Freezing(depth) => {
+            let at = local(depth);
+            if at >= TILE {
+                Some(format!("ex10_lava_crust_{part}_0_{variant}"))
+            } else if at >= 0.0 {
+                let partial = (at / FRONT_STEP) as usize;
+                Some(format!("ex10_lava_freeze_{part}_{partial}_{variant}"))
+            } else {
+                None
             }
-            None if shown => {
-                if let Some(look) = world.remove_component::<CrustLook>(basin) {
-                    for (sprite, ..) in look.sprites {
-                        world.despawn(sprite);
-                    }
-                }
+        }
+        Phase::Crust(n) => Some(format!("ex10_lava_crust_{part}_{n}_{variant}")),
+        Phase::Melting(depth) => {
+            let at = local(depth);
+            if at < 0.0 {
+                Some(format!("ex10_lava_crust_{part}_8_{variant}"))
+            } else if at < TILE {
+                let partial = (at / FRONT_STEP) as usize;
+                Some(format!("ex10_lava_melt_{part}_{partial}_{variant}"))
+            } else {
+                None
             }
-            None => {}
         }
     }
 }
 
-/// Spawns `basin`'s crust sprites: its surface row's tops and `depth` - 1
-/// rows of cooled rock under them, each column one of two variants.
-fn spawn_look(world: &mut World, basin: Entity, depth: usize) {
+/// `crust_look`, before the frame's sprites: each basin's look by its
+/// chill, its crust's seconds left and the melt's. One front comes down
+/// [`COLD_SHARE`] of the depth as the chill builds and the rest over the
+/// crust's first [`SET_SECS`]; the crust's frames follow; a second front
+/// comes down over the [`MELT_SECS`] after the crust goes. A sound and a
+/// burst mark each change ([`changed`]).
+pub fn look(world: &mut World) {
+    let dt = world.resource::<Time>().delta();
+    let basins: Vec<(Entity, f32, Option<f32>, bool)> = world
+        .query::<(Entity, &Lava, Option<&CrustLook>)>()
+        .map(|(basin, lava, shown)| {
+            let left = lava.crust.as_ref().map(|crust| crust.left);
+            (basin, lava.cold, left, shown.is_some())
+        })
+        .collect();
+    for (basin, cold, crust, shown) in basins {
+        if !shown && crust.is_none() && cold <= 0.0 {
+            continue;
+        }
+        if !shown {
+            spawn_look(world, basin);
+        }
+        let Some(mut look) = world.get::<CrustLook>(basin).cloned() else {
+            continue;
+        };
+        let depth = look.rows as f32 * TILE;
+        let before = look.phase;
+        look.since += dt;
+        let phase = match crust {
+            Some(left) => {
+                let since = CRUST_SECS - left;
+                if since < SET_SECS {
+                    let share = COLD_SHARE + (1.0 - COLD_SHARE) * since / SET_SECS;
+                    Some(Phase::Freezing(depth * share))
+                } else {
+                    Some(Phase::Crust(frame(left)))
+                }
+            }
+            None => match before {
+                Some(Phase::Crust(_)) => {
+                    look.melt = MELT_SECS;
+                    Some(Phase::Melting(0.0))
+                }
+                Some(Phase::Melting(_)) => {
+                    look.melt -= dt;
+                    (look.melt > 0.0).then(|| Phase::Melting(depth * (1.0 - look.melt / MELT_SECS)))
+                }
+                _ if cold > 0.0 => {
+                    let share = COLD_SHARE * (cold / CRUST_COLD).min(1.0);
+                    Some(Phase::Freezing(depth * share))
+                }
+                _ => None,
+            },
+        };
+        if phase.is_none() && cold <= 0.0 {
+            look.third = -1;
+        }
+        changed(world, basin, &mut look, before, phase, depth);
+        look.phase = phase;
+        for &(entity, row, variant) in &look.sprites {
+            let name = phase.and_then(|phase| row_sprite(phase, row, variant));
+            if let Some(visibility) = world.get_mut::<Visibility>(entity) {
+                visibility.visible = name.is_some();
+            }
+            if let Some(name) = name
+                && let Some(asset) = world
+                    .get_resource_mut::<AssetRegistry>()
+                    .map(|assets| assets.intern_sprite(&name))
+                && let Some(sprite) = world.get_mut::<Sprite>(entity)
+            {
+                sprite.asset_id = asset;
+            }
+        }
+        world.insert(basin, look);
+    }
+}
+
+/// The sound and the bursts a look's change makes, a burst to each two
+/// columns: as the freeze starts, `LavaChilled`, glints and frost mist, and
+/// more mist as its front reaches each further third of the depth, a new
+/// build after a full drain at most once a second; at each crack stage,
+/// `LavaCracked` and sparks; as the melt starts, `LavaMelted` and spatter.
+/// The set's steam and `LavaSet` are the tick's.
+fn changed(
+    world: &mut World,
+    basin: Entity,
+    look: &mut CrustLook,
+    before: Option<Phase>,
+    phase: Option<Phase>,
+    depth: f32,
+) {
     let Some((left, right, skin)) = surface(world, basin) else {
         return;
     };
+    let middle = Vec2::new((left + right) * 0.5, skin);
+    let pairs = (((right - left) / TILE).round() as usize).div_ceil(2);
+    if let Some(Phase::Freezing(front)) = phase {
+        let third = ((3.0 * front / depth) as i32).min(2);
+        if third > look.third && (look.third >= 0 || look.since >= 1.0) {
+            for k in 0..pairs {
+                let x = (left + (2 * k + 1) as f32 * TILE).min(right - 8.0);
+                spawn_burst(world, "ex10_lava_mist", Vec2::new(x, skin - 4.0));
+            }
+            if look.third < 0 {
+                spawn_burst(world, "ex10_lava_frost", middle - Vec2::new(0.0, 2.0));
+                audio::play(world, Sound::LavaChilled, middle);
+                look.since = 0.0;
+            }
+            look.third = third;
+        }
+    }
+    if let Some(Phase::Crust(n @ (3 | 5 | 7))) = phase
+        && before != Some(Phase::Crust(n))
+    {
+        for k in 0..pairs {
+            let x = left + ((2 * k) as f32 + 0.5 + 0.5 * ((n + k) % 2) as f32) * TILE;
+            spawn_burst(
+                world,
+                "ex10_lava_sparks",
+                Vec2::new(x.min(right - 8.0), skin + 4.0),
+            );
+        }
+        audio::play(world, Sound::LavaCracked, middle);
+    }
+    if phase == Some(Phase::Melting(0.0)) {
+        for k in 0..pairs {
+            let x = (left + (2 * k + 1) as f32 * TILE).min(right - 8.0);
+            spawn_burst(world, "ex10_lava_spatter", Vec2::new(x, skin));
+        }
+        audio::play(world, Sound::LavaMelted, middle);
+    }
+}
+
+/// Spawns `basin`'s look's sprites, hidden: its surface row's and each row
+/// under it to the bed, each column one of two variants.
+fn spawn_look(world: &mut World, basin: Entity) {
+    let Some((left, right, skin)) = surface(world, basin) else {
+        return;
+    };
+    let rows = rows(world, basin);
     let row_top = skin - 6.0;
     let mut sprites = Vec::new();
     let columns = ((right - left) / TILE).round() as usize;
     for column in 0..columns {
-        for row in 0..depth {
+        for row in 0..rows {
             let at = Vec2::new(left + column as f32 * TILE, row_top + row as f32 * TILE);
             let variant = (column + row) % 2;
-            let top = row == 0;
+            let part = if row == 0 { "top" } else { "deep" };
             let Some(asset) = world
                 .get_resource_mut::<AssetRegistry>()
-                .map(|assets| assets.intern_sprite(&crust_sprite(top, 0, variant)))
+                .map(|assets| assets.intern_sprite(&format!("ex10_lava_crust_{part}_0_{variant}")))
             else {
                 return;
             };
@@ -355,38 +526,21 @@ fn spawn_look(world: &mut World, basin: Entity, depth: usize) {
             let entity = world.spawn_with((
                 Transform::from_position(at),
                 sprite,
-                Visibility { visible: true },
+                Visibility { visible: false },
                 SceneEntity { state_id: GAMEPLAY },
             ));
-            sprites.push((entity, top, variant));
+            sprites.push((entity, row, variant));
         }
     }
-    world.insert(basin, CrustLook { sprites });
-}
-
-/// Shows `basin`'s crust sprites at `stage`.
-fn restage(world: &mut World, basin: Entity, stage: usize) {
-    let Some(sprites) = world
-        .get::<CrustLook>(basin)
-        .map(|look| look.sprites.clone())
-    else {
-        return;
-    };
-    for (entity, top, variant) in sprites {
-        let Some(asset) = world
-            .get_resource_mut::<AssetRegistry>()
-            .map(|assets| assets.intern_sprite(&crust_sprite(top, stage, variant)))
-        else {
-            return;
-        };
-        if let Some(sprite) = world.get_mut::<Sprite>(entity) {
-            sprite.asset_id = asset;
-        }
-    }
-}
-
-/// A crust sprite's manifest ID.
-fn crust_sprite(top: bool, stage: usize, variant: usize) -> String {
-    let part = if top { "top" } else { "deep" };
-    format!("ex10_lava_crust_{part}_{stage}_{variant}")
+    world.insert(
+        basin,
+        CrustLook {
+            sprites,
+            rows,
+            phase: None,
+            melt: 0.0,
+            third: -1,
+            since: 1.0,
+        },
+    );
 }

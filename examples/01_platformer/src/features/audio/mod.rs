@@ -147,6 +147,9 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::Alerted => occurrence::<63>,
         Sound::GoblinStabbed => occurrence::<64>,
         Sound::LavaTook => occurrence::<65>,
+        Sound::LavaChilled => occurrence::<66>,
+        Sound::LavaCracked => occurrence::<67>,
+        Sound::LavaMelted => occurrence::<68>,
     }
 }
 

@@ -12,8 +12,11 @@
 //! finishes the same; a schema 11 save's IDs move past the map's goblins;
 //! a schema 12 player keeps his body where it stood on the wizard's frame;
 //! a schema 13 save drops its hints and takes 01 (i)'s tuning, its
-//! player's health keeping its share; and a full pit saves within 2 MiB
-//! with the map's enemies alive.
+//! player's health keeping its share; a schema 13 save's crates leave the
+//! start's new wall, and a schema 14 save's bodies in the wall or past the
+//! boundary stand on the clearing's floor, those with no room dropped
+//! (01 (k)); and a full pit saves within 2 MiB with the map's enemies
+//! alive.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
@@ -21,6 +24,7 @@ use std::time::Instant;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::dummy::components::Dummy;
+use example_01_platformer::features::dummy::{DUMMY_CENTRE, DUMMY_HALF};
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
@@ -2061,6 +2065,122 @@ fn as_schema_14(old: &mut Value) {
     }
 }
 
+/// What schema 15 makes of an older save's props in the start's new wall
+/// (01 (k)): each one whose box met the wall stands where the migration set
+/// it, at rest. `a_schema_13_save_moves_its_crates_out_of_the_start_wall`
+/// holds where that is.
+fn as_schema_15(old: &mut Value, new: &Value) {
+    let [wall, face] = save::S15_WALL;
+    let moved = new["props"].as_array().unwrap();
+    for (prop, to) in old["props"].as_array_mut().unwrap().iter_mut().zip(moved) {
+        let kind: PropKind = serde_json::from_value(prop["kind"].clone()).unwrap();
+        let at = &prop["position"];
+        let point = Vec2::new(
+            at[0].as_f64().unwrap() as f32,
+            at[1].as_f64().unwrap() as f32,
+        );
+        let (min, max) = (
+            point + props::centre(kind) - props::half(kind),
+            point + props::centre(kind) + props::half(kind),
+        );
+        if min.x < face.x && max.x > wall.x && min.y < face.y && max.y > wall.y {
+            prop["position"] = to["position"].clone();
+            prop["velocity"] = serde_json::json!([0.0, 0.0]);
+        }
+    }
+}
+
+/// Each saved body's box in `save`, min and max, by save ID: the player,
+/// the dummies, the enemies, the balls, the blocks and scraps, the props
+/// and the orbs.
+fn saved_boxes(save: &SaveGame) -> Vec<(u64, Vec2, Vec2)> {
+    let boxed = |id: u64, point: [f32; 2], centre: Vec2, half: Vec2| {
+        let middle = Vec2::from(point) + centre;
+        (id, middle - half, middle + half)
+    };
+    let player = &save.player;
+    let mut out = vec![boxed(player.id, player.position, BODY_OFFSET, PLAYER_HALF)];
+    out.extend(
+        save.dummies
+            .iter()
+            .map(|dummy| boxed(dummy.id, dummy.position, DUMMY_CENTRE, DUMMY_HALF)),
+    );
+    out.extend(save.enemies.iter().map(|enemy| {
+        let info = enemy.kind.info();
+        boxed(enemy.id, enemy.position, info.centre, info.half)
+    }));
+    out.extend(save.balls.iter().map(|ball| {
+        if ball.small {
+            let half = Vec2::splat(toys::SMALL_BALL_RADIUS);
+            boxed(ball.id, ball.position, toys::SMALL_BALL_CENTRE, half)
+        } else {
+            let half = Vec2::splat(toys::BALL_RADIUS);
+            boxed(ball.id, ball.position, toys::BALL_CENTRE, half)
+        }
+    }));
+    out.extend(save.blocks.iter().map(|block| match block.scrap {
+        Some(_) => boxed(
+            block.id,
+            block.position,
+            toys::SCRAP_HALF + Vec2::ONE,
+            toys::SCRAP_HALF,
+        ),
+        None => boxed(
+            block.id,
+            block.position,
+            IRON_HALF + Vec2::splat(4.0),
+            IRON_HALF,
+        ),
+    }));
+    out.extend(save.props.iter().map(|prop| {
+        boxed(
+            prop.id,
+            prop.position,
+            props::centre(prop.kind),
+            props::half(prop.kind),
+        )
+    }));
+    out.extend(
+        save.orbs
+            .iter()
+            .map(|orb| boxed(orb.id, orb.position, drops::ORB_CENTRE, drops::ORB_HALF)),
+    );
+    out
+}
+
+/// Whether body `id` of `save` stands at rest on the clearing's floor
+/// between the wall's face and the terrace's, its box meeting no other
+/// saved body's: where schema 15 sets a body out of the start's wall.
+fn on_the_floor_clear(save: &SaveGame, id: u64) -> Result<(), String> {
+    let boxes = saved_boxes(save);
+    let &(_, min, max) = boxes
+        .iter()
+        .find(|(own, ..)| *own == id)
+        .ok_or(format!("{id} saved"))?;
+    if min.x < save::S15_SPAN[0] || max.x > save::S15_SPAN[1] {
+        return Err(format!("{id} at x {} to {}", min.x, max.x));
+    }
+    if (max.y - (save::S15_FLOOR - 0.5)).abs() > 1e-3 {
+        return Err(format!("{id}'s foot at {}", max.y));
+    }
+    for &(other, a, b) in &boxes {
+        if other != id && min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y {
+            return Err(format!("{id} meets {other}"));
+        }
+    }
+    Ok(())
+}
+
+/// `data`, a capture's JSON, as a schema 14 save's envelope: the two
+/// schemas keep the same shape.
+fn as_schema_14_envelope(data: &Value) -> String {
+    let envelope = serde_json::json!({
+        "envelope": 1, "slot": "slot_1", "schema": 14, "engine_version": "0.105.0",
+        "saved_at_ms": 1_792_900_000_000_u64, "data": data
+    });
+    serde_json::to_string(&envelope).unwrap()
+}
+
 /// Sets aside what a capture of a migrated save adds: the map's new enemies
 /// (`added`), the elevator at rest and the basins at rest, which a save
 /// from before schema 10 has none of, and the shoves and steps 01 gives
@@ -2730,6 +2850,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     );
     as_schema_13(&mut old);
     as_schema_14(&mut old);
+    as_schema_15(&mut old, &json(&migrated));
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -2794,6 +2915,7 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     );
     // And nothing else.
     as_schema_14(&mut old);
+    as_schema_15(&mut old, &new);
     let mut moved = Vec::new();
     moved_ids(&old, &new, "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -2823,6 +2945,193 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     assert_eq!(touch, 15.0 * 0.75, "a crawler's touch at Easy");
     let wisp = world.get::<Health>(of_kind(EnemyKind::Wisp)).unwrap().max();
     assert_eq!(wisp, 40.0 * 0.75, "a wisp's health at Easy");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
+    // 0.103's save: a fresh run's three crates stacked at the clearing's
+    // west end, inside the start's wall since 01 (k), the keg beside them
+    // clear of it.
+    const FIXTURE: &str = include_str!("fixtures/schema13.json");
+    let envelope: Value = serde_json::from_str(FIXTURE).unwrap();
+    let mut old = envelope["data"].clone();
+    let [wall, face] = save::S15_WALL;
+    let crates: Vec<u64> = old["props"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|prop| prop["kind"] == "crate")
+        .filter(|prop| {
+            let x = prop["position"][0].as_f64().unwrap() as f32 + CRATE_HALF.x + 4.0;
+            let y = prop["position"][1].as_f64().unwrap() as f32 + CRATE_HALF.y + 4.0;
+            x - CRATE_HALF.x < face.x && x + CRATE_HALF.x > wall.x && y - CRATE_HALF.y < face.y
+        })
+        .map(|prop| prop["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(crates.len(), 3, "the fixture's three crates in the wall");
+    let (migrated, dir) = migrate("schema-13-wall", FIXTURE);
+    // Each on the clearing's floor right of the wall, at rest, meeting no
+    // other saved body, and nothing else moved.
+    for &id in &crates {
+        on_the_floor_clear(&migrated, id).unwrap();
+        let prop = migrated.props.iter().find(|prop| prop.id == id).unwrap();
+        assert_eq!(prop.velocity, [0.0, 0.0], "{id} at rest");
+    }
+    as_schema_14(&mut old);
+    as_schema_15(&mut old, &json(&migrated));
+    let mut moved = Vec::new();
+    moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
+    assert!(moved.is_empty(), "{moved:?}");
+    // Loaded, the crates stand in the map a second on.
+    let mut run = super::harness();
+    load(&mut run, migrated);
+    run.harness_mut().set_dt(1.0 / 60.0);
+    run.world_mut().resource_mut::<Time>().resume();
+    run.step(60);
+    for &id in &crates {
+        let at = run.world().get::<Position>(by_id(&run, id)).unwrap().0 + props::CRATE_CENTRE;
+        assert!(
+            (save::S15_SPAN[0]..save::S15_SPAN[1]).contains(&at.x)
+                && (at.y - (save::S15_FLOOR - CRATE_HALF.y)).abs() < 2.0,
+            "{id} at {at}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
+    let (harness, _) = run();
+    let fresh = json(&capture(&harness));
+    let corner =
+        |centre: Vec2, offset: Vec2| serde_json::json!([centre.x - offset.x, centre.y - offset.y]);
+    // A crate in mid-air inside the wall at row 25, a small ball past the
+    // boundary and the player inside the wall: each on the floor, clear.
+    let mut data = fresh.clone();
+    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), BODY_OFFSET);
+    let id = data["next_id"].as_u64().unwrap();
+    let mut flying = data["props"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|prop| prop["kind"] == "crate")
+        .unwrap()
+        .clone();
+    flying["id"] = Value::from(id);
+    flying["position"] = corner(Vec2::new(64.0, 25.5 * 64.0), props::CRATE_CENTRE);
+    flying["velocity"] = serde_json::json!([300.0, -200.0]);
+    data["props"].as_array_mut().unwrap().push(flying);
+    let at = corner(Vec2::new(-60.0, 1500.0), toys::SMALL_BALL_CENTRE);
+    data["balls"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!([id + 1, true, at[0], at[1], -50.0, 0.0]));
+    data["next_id"] = Value::from(id + 2);
+    let (migrated, dir) = migrate("schema-14-wall", &as_schema_14_envelope(&data));
+    for body in [migrated.player.id, id, id + 1] {
+        on_the_floor_clear(&migrated, body).unwrap();
+    }
+    assert_eq!(migrated.player.velocity, [0.0, 0.0]);
+    let _ = std::fs::remove_dir_all(dir);
+    // Three iron blocks on the floor from x 132, 8 px apart: the player out
+    // of the wall stands at the first clear spot past them.
+    let mut data = fresh.clone();
+    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), BODY_OFFSET);
+    let id = data["next_id"].as_u64().unwrap();
+    for (k, x) in [192.0_f32, 320.0, 448.0].into_iter().enumerate() {
+        let at = corner(
+            Vec2::new(x, save::S15_FLOOR - 0.5 - IRON_HALF.y),
+            IRON_HALF + Vec2::splat(4.0),
+        );
+        data["blocks"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": id + k as u64, "scrap": null, "position": at, "velocity": [0.0, 0.0],
+                "chill": null, "frozen": null
+            }));
+    }
+    data["next_id"] = Value::from(id + 3);
+    let (migrated, dir) = migrate("schema-14-iron", &as_schema_14_envelope(&data));
+    let centre = Vec2::from(migrated.player.position) + BODY_OFFSET;
+    let past = 448.0 + IRON_HALF.x + PLAYER_HALF.x;
+    assert!(
+        centre.distance(Vec2::new(past, save::S15_FLOOR - 0.5 - PLAYER_HALF.y)) < 1e-3,
+        "the player at {centre}"
+    );
+    on_the_floor_clear(&migrated, migrated.player.id).unwrap();
+    let _ = std::fs::remove_dir_all(dir);
+    // The floor full, the player in the sky: the map's dummy and a keg in
+    // the wall have no room, so both go, the dummy's ID into `gone`, and
+    // the loaded run has no dummy at the clearing's west end.
+    let mut data = fresh;
+    data["player"]["position"] = corner(Vec2::new(2000.0, 900.0), BODY_OFFSET);
+    let mut keg = data["props"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|prop| prop["kind"] == "keg")
+        .unwrap()
+        .clone();
+    let crate_ = data["props"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|prop| prop["kind"] == "crate")
+        .unwrap()
+        .clone();
+    let id = data["next_id"].as_u64().unwrap();
+    let mut filled = Vec::new();
+    let lefts = (0..7)
+        .map(|k| save::S15_SPAN[0] + 56.0 * k as f32)
+        .chain((0..5).map(|k| save::S15_DECK[1] + 56.0 * k as f32));
+    for (k, left) in lefts.enumerate() {
+        let mut one = crate_.clone();
+        one["id"] = Value::from(id + k as u64);
+        one["position"] = corner(
+            Vec2::new(left + CRATE_HALF.x, save::S15_FLOOR - 0.5 - CRATE_HALF.y),
+            props::CRATE_CENTRE,
+        );
+        filled.push(one);
+    }
+    keg["id"] = Value::from(id + 12);
+    keg["position"] = corner(Vec2::new(64.0, 30.0 * 64.0), props::KEG_CENTRE);
+    filled.push(keg);
+    data["props"] = Value::Array(filled);
+    // A bowling ball closes the gap before the deck.
+    let at = corner(
+        Vec2::new(535.0, save::S15_FLOOR - 0.5 - toys::BALL_RADIUS),
+        toys::BALL_CENTRE,
+    );
+    data["balls"] = serde_json::json!([[id + 13, false, at[0], at[1], 0.0, 0.0]]);
+    data["next_id"] = Value::from(id + 14);
+    let dummy = data["dummies"][0]["id"].as_u64().unwrap();
+    assert_eq!(data["dummies"][0]["map"], true, "the map's dummy");
+    data["dummies"][0]["position"] = corner(Vec2::new(64.0, 26.0 * 64.0), DUMMY_CENTRE);
+    let (migrated, dir) = migrate("schema-14-full", &as_schema_14_envelope(&data));
+    assert!(
+        migrated.dummies.iter().all(|saved| saved.id != dummy),
+        "the dummy dropped"
+    );
+    assert!(migrated.gone.contains(&dummy), "its ID gone");
+    assert!(
+        migrated.props.iter().all(|prop| prop.id != id + 12),
+        "the keg dropped"
+    );
+    assert_eq!(migrated.props.len(), 12, "the floor's crates kept");
+    let mut run = super::harness();
+    load(&mut run, migrated);
+    let west: Vec<Vec2> = run
+        .world()
+        .query::<(&Dummy, &Position)>()
+        .map(|(_, at)| at.0 + DUMMY_CENTRE)
+        .filter(|at| at.x < 20.0 * 64.0)
+        .collect();
+    assert!(
+        west.is_empty(),
+        "a dummy at the clearing's west end: {west:?}"
+    );
     let _ = std::fs::remove_dir_all(dir);
 }
 

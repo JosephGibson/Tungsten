@@ -333,8 +333,10 @@ def terrain_cells(source):
     return cells
 
 
-def terrain_tiles(source, cells, rng):
-    """Each occupied cell's sprite, and the cells drawn as iron cladding."""
+def terrain_tiles(source, cells, stream):
+    """Each occupied cell's sprite, and the cells drawn as iron cladding. A
+    platform with `"variants": "own"` (01 (k)'s start wall) draws its cells'
+    variants from a stream of its own, so adding it moves no other tile's."""
     cols, rows = source['cols'], source['rows']
     pit = source.get('pit')
     inside = set()
@@ -355,9 +357,12 @@ def terrain_tiles(source, cells, rng):
         x, y = c
         return family(c) == 'mine' and (not closed((x - 1, y)) or not closed((x + 1, y)))
 
+    own = {p['name']: rng_for('terrain-variation-' + p['name']) for p in source['platforms'] if p.get('variants') == 'own'}
+    runs = [p['name'] for p in sorted(source['platforms'], key=lambda p: p['left']) if p['style'] == 'channel']
     tiles, iron = {}, set()
     for x, y in sorted(cells, key=lambda c: (c[1], c[0])):
         p = cells[(x, y)]
+        rng = own.get(p['name'], stream)
         fam = FAMILIES.get(p['style'])
         if fam is None:
             tiles[(x, y)] = p['style']
@@ -396,9 +401,18 @@ def terrain_tiles(source, cells, rng):
             else:
                 sprite = f'mine_rock_{mask}_{rng.randrange(4)}'
         elif fam == 'channel':
-            sprite = ('channel_break_left' if not left else 'channel_break_right' if not right
-                      else weighted(rng, (('channel_0', 3), ('channel_1', 3), ('channel_2', 3), ('channel_3', 3),
-                                          ('channel_mossy', 2), ('channel_cracked', 1))))
+            if not left or not right:
+                # A run's broken end (01 (k)): variant `n % 3` of the run's
+                # place `n` along the aqueduct, so a gap pairs right k with
+                # left k + 1; no draw, as before.
+                side = 'left' if not left else 'right'
+                sprite = f"channel_break_{side}_{runs.index(p['name']) % 3}"
+            else:
+                sprite = weighted(rng, (('channel_0', 3), ('channel_1', 3), ('channel_2', 3), ('channel_3', 3),
+                                        ('channel_mossy', 2), ('channel_cracked', 1)))
+                # A spout (`spouts`), after the draw, so no other variant moves.
+                if [x, y] in source.get('spouts', []):
+                    sprite = 'channel_spout'
         else:
             sprite = weighted(rng, (('bridge_deck_0', 3), ('bridge_deck_1', 1)))
         pair = BORDER_PAIRS.get((fam, family((x + 1, y))))
@@ -447,7 +461,7 @@ def background_tiles(source, cells, props, rng):
         for r in range(2):
             for c in range(2):
                 out[(tunnel['col'] + c, tunnel['row'] + r)] = f"cave_tunnel_{tunnel['kind']}_big_{r}_{c}"
-    falls = {int(p['x']) for p in props if p['sprite'].startswith('ex10_falls_')}
+    falls = {round(p['x']) for p in props if p['sprite'].startswith('ex10_falls_')}
     # Every span's cells first, so a wall built of many spans takes its edges
     # from its outline, not from each span's.
     backs = {}
@@ -515,10 +529,12 @@ def water_props(source, cells):
     return props
 
 
-def build_level(images, lit):
-    source=json.loads((TOOLS/'level.json').read_text())
-    from placement import prepare
-    source=prepare(source,images)
+def build_level(images, lit, source=None, check=True):
+    """The Tiled map, the prepared source and the level's prefabs, from
+    `level.json` (or `source`). With `check`, any piece the floating check
+    lists (`placement.floating`, 01 (k)) stops the build."""
+    source=json.loads((TOOLS/'level.json').read_text()) if source is None else source
+    from placement import floating, prepare
     cols,rows=source['cols'],source['rows']
     from backdrops import BACKDROPS
     catalog=sorted('ex10_'+s for s in images if s not in BACKDROPS)
@@ -528,8 +544,11 @@ def build_level(images, lit):
     def put(layer,x,y,sprite):
         if not 0<=x<cols or not 0<=y<rows:raise ValueError('placement outside map')
         layers[layer][y*cols+x]=gids[sprite]
+    # The terrain first, which reads only the platforms: props stand and
+    # hang on what its tiles draw.
     cells=terrain_cells(source)
     tiles,iron=terrain_tiles(source,cells,rng)
+    source=prepare(source,images,tiles)
     for (x,y),sprite in sorted(tiles.items(),key=lambda c:(c[0][1],c[0][0])):
         put('terrain',x,y,'ex10_'+sprite)
         if cells[(x,y)]['style'] in FAMILIES and (x,y) not in iron:put('collision',x,y,'ex10_ground')
@@ -566,6 +585,8 @@ def build_level(images, lit):
         tilesets=[dict(firstgid=1,name='twilight_ruin',tilewidth=tile,tileheight=tile,tilecount=len(catalog),columns=0,tiles=[dict(id=i,image='../sprites/'+s.removeprefix('ex10_')+'.png',imagewidth=tile,imageheight=tile,properties=[dict(name='sprite_id',type='string',value=s)]) for i,s in enumerate(catalog)])])
     for i,group in enumerate(tiled['layers']):group['id']=i+1
     validate_level(source,tiled,set(gids))
+    if check and (lines:=floating(source,tiled,images)):
+        raise ValueError('floating scenery:\n'+'\n'.join(lines))
     return tiled,source,prefabs
 
 

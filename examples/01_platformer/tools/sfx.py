@@ -554,6 +554,73 @@ def lava_hiss():
     return finish(samples, fade_in=0.003)
 
 
+def lava_chill():
+    """The cold taking lava (01 (k)): a sizzle that builds as the spray bites,
+    cold glints ticking over it, the skin's first stiffening creaks under."""
+    duration = 0.75
+    noise, ticks, low, high, creak = Noise(0xC01D), Noise(0x71C5), LowPass(), LowPass(), LowPass()
+    samples, glint, gphase, gfreq = [], 0.0, 0.0, 5000.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        rise = min(1.0, p * 1.6) * (1 - max(0.0, p - 0.85) / 0.15)
+        sizzle = (low(n, glide(3800, 6800, p)) - high(n, 1400)) * (0.6 + 0.4 * math.sin(math.tau * 31 * t))
+        if ticks() > 1 - 0.0016:
+            glint, gfreq = 0.35, 4200 + 2600 * (ticks() * 0.5 + 0.5)
+        glint *= 0.9985
+        gphase += math.tau * gfreq / RATE
+        crk = creak(n, 180) * 3.0 * (0.5 + 0.5 * math.sin(math.tau * 6 * t)) * p
+        samples.append(1.1 * sizzle * rise + glint * math.sin(gphase) + crk * rise)
+    return finish(samples, fade_in=0.01, fade_out=0.06)
+
+
+def lava_crack():
+    """A crust cracking as it warms (01 (k)): a sharp snap, a low split under
+    it and a short hot fizz spitting from the seam."""
+    duration = 0.45
+    noise, pops, low, high, split = Noise(0xC7AC), Noise(0x5BA7), LowPass(), LowPass(), LowPass()
+    samples, phase, pop = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        snap = (high(n, 2500) * -1 + n) * math.exp(-t / 0.006)
+        phase += math.tau * glide(140, 70, min(1.0, t / 0.12)) / RATE
+        thump = 0.9 * math.sin(phase) * math.exp(-t / 0.07) * min(1.0, t / 0.002)
+        fizz = (low(n, 6000) - split(n, 1800)) * math.exp(-t / 0.12) * min(1.0, max(0.0, t - 0.02) / 0.02)
+        if pops() > 1 - 0.004 * (1 - p):
+            pop = 0.45
+        pop *= 0.93
+        samples.append(1.6 * snap + thump + 0.9 * fizz + pop * pops())
+    return finish(samples, fade_in=0.0005)
+
+
+def lava_melt():
+    """The crust going back to melt (01 (k)): a deep glug as the plates
+    sink, two fat bubbles breaking, and a wet spatter and sizzle after."""
+    duration = 0.8
+    noise, spits, low, high, slosh = Noise(0x6106), Noise(0x5917), LowPass(), LowPass(), LowPass()
+    samples, spit = [], 0.0
+    bubbles = ((0.0, 95, 190, 0.22), (0.16, 120, 260, 0.16), (0.3, 105, 220, 0.14))
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        glug = 0.0
+        for start, f0, f1, length in bubbles:
+            u = t - start
+            if 0 <= u < length:
+                glug += math.sin(math.tau * glide(f0, f1, u / length) * u) * math.sin(math.pi * u / length) ** 0.6
+        wet = (slosh(n, 650) - high(n, 90)) * 2.2 * math.exp(-t / 0.25) * min(1.0, t / 0.02)
+        sizzle = (low(n, 5200) - high(n, 1500)) * 0.5 * min(1.0, max(0.0, t - 0.25) / 0.1) * math.exp(-max(0.0, t - 0.25) / 0.3)
+        if spits() > 1 - 0.003 * (1 - p):
+            spit = 0.5
+        spit *= 0.94
+        samples.append(0.9 * glug + wet + sizzle + spit * spits())
+    return finish(samples, fade_in=0.002, fade_out=0.08)
+
+
 def lift_start():
     """The mine's elevator setting off: the brake's iron clank, then the
     winch's ratcheting whir as the cable takes the cage's weight."""
@@ -1416,17 +1483,25 @@ def ambience_clearing():
 
 
 def ambience_aqueduct():
-    """Water trickling along the channel, fluttering, and drips falling from
-    its leaks into still water below."""
-    noise, flutter = Noise(0xA0DC), Noise(0xA0DD)
-    low, high, wobble = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
-    drips = [(start, 1700 + 900 * (flutter() * 0.5 + 0.5)) for start in events(0xA1, 11)]
+    """The broken aqueduct (01 (k)): the channel's steady flow along the
+    trough, one slow swell a loop so the seam stays smooth; the pours'
+    patter where they strike the floor, fluttering; a heavier plop now and
+    then from a spill; and water trickling, drips falling from its leaks."""
+    noise, flow_n, patter_n, rng = Noise(0xA0DC), Noise(0xA1DC), Noise(0xA2DC), Noise(0xA3DC)
+    low, high = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    flow_lo, flow_hi = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    pat_lo, pat_hi, wob = LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE), LowPass(AMBIENCE_RATE)
+    drips = [(start, 1700 + 900 * (rng() * 0.5 + 0.5)) for start in events(0xA1, 11)]
+    plops = [(start, 260 + 160 * (rng() * 0.5 + 0.5)) for start in events(0xA4, 7)]
 
     def voice(i, t):
-        n = noise()
-        trickle = (low(n, 2600) - high(n, 600)) * (0.45 + 0.55 * abs(wobble(flutter(), 14)) * 8)
+        n, f, q = noise(), flow_n(), patter_n()
+        trickle = (low(n, 2600) - high(n, 600)) * 0.5
+        flow = (flow_lo(f, 900) - flow_hi(f, 140)) * (0.75 + 0.25 * math.sin(math.tau * t / 6 + 0.7))
+        patter = (pat_lo(q, 5200) - pat_hi(q, 1700)) * (0.55 + 0.45 * abs(wob(rng(), 23)) * 9)
         drip = sum(tone_burst(t, start, freq, 0.18, glide_to=freq * 0.6, decay=0.05) for start, freq in drips)
-        return 0.5 * trickle + 0.45 * drip
+        plop = sum(tone_burst(t, start, freq, 0.22, glide_to=freq * 1.8, decay=0.06) for start, freq in plops)
+        return 0.32 * trickle + 1.1 * flow + 0.5 * patter + 0.32 * drip + 0.4 * plop
     return ambience_loop(voice)
 
 
@@ -2209,6 +2284,9 @@ def build_sounds():
         'steam_burst.wav': steam_burst(),
         'lava_sizzle.wav': lava_sizzle(),
         'lava_hiss.wav': lava_hiss(),
+        'lava_chill.wav': lava_chill(),
+        'lava_crack.wav': lava_crack(),
+        'lava_melt.wav': lava_melt(),
         'lift_start.wav': lift_start(),
         'lift_stop.wav': lift_stop(),
         'frost_blast.wav': frost_blast(),

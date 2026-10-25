@@ -1040,5 +1040,53 @@
         }
       }
     ]
+  },
+  {
+    "on": "lava_chilled",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lava_chill_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "lava_cracked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lava_crack_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "lava_melted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_lava_melt_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
   }
 ]

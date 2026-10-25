@@ -11,8 +11,8 @@ from PIL import Image, ImageDraw
 
 from art import rng_for
 from pixels import dither, to_image, unit, wave
-from terrain import (IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image, iron_clad, line,
-                     mine_rock, rect, rock_tiles, tinted, wet_rock)
+from terrain import (BREAK_LIPS, IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image, iron_clad,
+                     line, mine_rock, rect, rock_tiles, tinted, wet_rock)
 
 WIDTH = 1024
 STRIP = (WIDTH, 256)
@@ -444,6 +444,129 @@ def pier(i, part='shaft', back=True):
     return to_image(darker(c) if back else c)
 
 
+def pier_wet(k):
+    """A pier's shaft under a leak (01 (k)), `k` of 2: the back shaft with a
+    dark wet run down its middle, lime crusting its edges and moss pads on
+    the courses."""
+    c = from_image(pier(k * 2 + 1, 'shaft', back=True))
+    x0 = 18 + int(unit('wetx', k) * 16)
+    w = 10 + int(unit('wetw', k) * 8)
+    for y in range(TILE):
+        sway = round(math.sin(math.tau * y / TILE + k) * 2)
+        for x in range(x0 + sway, x0 + sway + w):
+            if (x, y) not in c:
+                continue
+            if x in (x0 + sway, x0 + sway + w - 1):
+                c[(x, y)] = 'σ' if dither(x, y, 0.5) else 'τ'
+            elif dither(x, y, 0.8):
+                c[(x, y)] = '<' if (x + y) % 5 else 'o'
+    for j in range(6):
+        mx, my = 8 + int(unit('pmoss', k, j) * 46), 4 + j * 10 + int(unit('pmy', k, j) * 4)
+        for dx in range(-3 - j % 2, 4):
+            for dy in range(0, 2 + (dx + 4) % 2):
+                if (mx + dx, my + dy) in c and dither(mx + dx, my + dy, 0.85):
+                    c[(mx + dx, my + dy)] = 't' if dy else 'T'
+    return to_image(c)
+
+
+def gap_strip(g):
+    """Gap `g`'s arcade tops (01 (k)), rows 29-30 from the right break's pier
+    to the left break's column, six tiles: the pier under the channel's
+    end, the broken bay, the pier standing in the gap and the next bay's
+    haunch under the channel's other end, cut along one broken profile.
+    Under the right lip the masonry drops near-plumb to a ragged ledge about
+    40 px down row 29; under the left lip it goes on down behind the pour
+    onto the capital of the pier beside it, whose broken top rises in a
+    ragged shoulder to the pour's outer edge, 14-18 px under the channel, so
+    the pier carries the channel's end; from each pier the spandrel falls
+    away steeply to the bay's broken ring, which keeps its springing
+    voussoirs. Slopes, ledges and the voussoirs kept differ by gap and side.
+    Returns the twelve tiles by (row, column)."""
+    full = arcade(back=True)
+    lip_r = BREAK_LIPS['right'][g]
+    face_l = 5 * TILE + BREAK_LIPS['left'][(g + 1) % 3] - 8
+    ledge_r = 36 + int(unit('ledger', g) * 10)
+    stump = 40 + int(unit('stump', g) * 12)
+    steep_r, steep_l = (1.5, 2.4, 1.9)[g], (2.2, 1.6, 2.7)[g]
+    step = math.pi / VOUSSOIRS
+    keep_r = 5 + int(unit('stubr', g) * 2)
+    keep_l = 5 + int(unit('stubl', g) * 2)
+    cx = TILE + 96
+    peak = (16, 14, 18)[g]
+    fall = (1.2, 1.0, 1.4)[g]
+
+    def rag(x, key, amp=6):
+        return (unit('rag', g, key, x // 3) - 0.5) * amp
+
+    def face(y):
+        """The left face's x at strip row `y`: plumb, ragged every 3 px."""
+        return face_l + rag(y, 'fl', 3)
+
+    def shoulder(x):
+        return peak + max(0, face_l - x) * fall + rag(x, 'sh', 5)
+
+    def top(x):
+        """The masonry's broken top at strip column `x`, in row 29's px."""
+        if x <= lip_r + rag(0, 'lr', 4) or x >= face_l + 2:
+            return -1e9
+        if x < TILE:
+            return ledge_r + rag(x, 'r')
+        if x < 4 * TILE:
+            if x < cx:
+                return ledge_r + (x - TILE) * steep_r + rag(x, 'sr', 8)
+            return stump + (4 * TILE - x) * steep_l + rag(x, 'sl', 8)
+        if x < 5 * TILE:
+            return min(stump + rag(x, 'p'), shoulder(x))
+        return min(stump - (x - 5 * TILE) * 0.5 + rag(x, 'h'), shoulder(x))
+
+    c = {}
+    for (x, y), sym in full.items():
+        if not 0 <= x < 6 * TILE:
+            continue
+        dx, dy = x - cx, SPRING - y
+        if TILE <= x < 4 * TILE and dy > 0:
+            d = math.hypot(dx, dy)
+            theta = math.atan2(dy, dx)
+            kk = int(theta / step)
+            kept = kk < keep_r or kk >= VOUSSOIRS - keep_l
+            if d < ARCH_R + ARCH_RING + 5:
+                if kept:
+                    c[(x, y)] = sym
+                continue
+            # A ragged band of backing courses rides the kept voussoirs.
+            backing = 9 + rag(x, 'bk', 10) + 4 * math.sin(theta * 5 + g)
+            edge = keep_r * step if dx > 0 else math.pi - keep_l * step
+            near = theta < edge if dx > 0 else theta > edge
+            if kept and near and d < ARCH_R + ARCH_RING + 5 + backing:
+                c[(x, y)] = sym
+                continue
+        if y < SPRING - 4 and x < face(y) and y < top(x):
+            continue
+        c[(x, y)] = sym
+    # Broken faces: lit where a top was torn, dark at the sides; rubble.
+    for (x, y) in list(c):
+        if y >= SPRING - 4:
+            continue
+        if (x, y - 1) not in c and y > 0:
+            c[(x, y)] = ';' if dither(x, y, 0.4) else ':'
+        elif ((x + 1, y) not in c or (x - 1, y) not in c) and c[(x, y)] != '<':
+            c[(x, y)] = '<' if dither(x, y, 0.6) else '-'
+    for n in range(18):
+        x0 = int(unit('rub', g, n) * 6 * TILE)
+        t = top(x0)
+        if t < 0 or t > SPRING - 12:
+            continue
+        r = 1 + int(unit('rubr', g, n) * 2)
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                q = (x0 + dx, round(t) - r + dy)
+                if dx * dx + dy * dy <= r * r and q not in c:
+                    c[q] = ';' if dy < 0 else '-'
+    im = to_image(c, (6 * TILE, 2 * TILE))
+    return {(row, col): im.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE))
+            for row in range(2) for col in range(6)}
+
+
 def parapet(i, kind='plain', back=True):
     """The deck's far parapet, behind the player: a low coursed wall under a
     coping (`plain`, `mossy`), a `post` over each pier, a `broken` stretch
@@ -702,28 +825,52 @@ def far_tower():
 
 
 def far_arcade():
-    """The aqueduct's horizon, over today's sky: a far arcade marching over
-    the hills, spans broken, its deck moonlit along its top."""
-    far = ridge_profile(196, 'arcade-far', (2, 40), (6, 16), (15, 5))
-    ground = ridge_profile(236, 'arcade-ground', (3, 12))
+    """The aqueduct's horizon (01 (k)): a far ridge, then a two-tier ruin
+    marching over it on taller piers, its lower arches deep, its upper tier
+    lighter; broken spans end in ragged stubs, two with a thread of water
+    glinting down from the break; dark against the sky."""
+    far = ridge_profile(200, 'arcade-far2', (2, 40), (6, 16), (15, 5))
+    ground = ridge_profile(238, 'arcade-ground2', (3, 10))
     canvas = strip_canvas([('β', far, True)])
+    glints = []
 
     def arcade_(draw):
         # Sixteen bays across the strip, each drawn at x and x + 1024, the
         # wrap through an opening's middle, so the arcade runs on across it.
         for k in range(16):
             g = round(ground(k * 64)) + 8
+            broken = unit('span2', k) < 0.24
             for x0 in (k * 64 - 38, k * 64 - 38 + WIDTH):
-                draw.rectangle((x0, 132, x0 + 12, g), fill=255)
-                if unit('span', k) > 0.22:
-                    draw.rectangle((x0, 120, x0 + 64, 150), fill=255)
-                    draw.pieslice((x0 + 12, 136, x0 + 64, 188), 180, 360, fill=0)
-                    draw.rectangle((x0 + 12, 162, x0 + 64, g), fill=0)
+                draw.rectangle((x0, 108, x0 + 10, g), fill=255)
+                draw.rectangle((x0 - 2, 106, x0 + 12, 110), fill=255)
+                if not broken:
+                    # The lower tier's deck and deep arch; the upper tier's
+                    # band and two small arches.
+                    draw.rectangle((x0, 132, x0 + 64, 146), fill=255)
+                    draw.pieslice((x0 + 10, 140, x0 + 64, 194), 180, 360, fill=0)
+                    draw.rectangle((x0 + 10, 167, x0 + 64, g), fill=0)
+                    draw.rectangle((x0, 100, x0 + 64, 110), fill=255)
+                    draw.rectangle((x0, 110, x0 + 64, 132), fill=255)
+                    for a in (0, 1):
+                        ax = x0 + 14 + a * 26
+                        draw.pieslice((ax, 114, ax + 20, 134), 180, 360, fill=0)
+                        draw.rectangle((ax, 124, ax + 20, 132), fill=0)
+                    draw.rectangle((x0 + 2, 96, x0 + 62, 100), fill=255)
                 else:
-                    draw.polygon([(x0 + 12, 132), (x0 + 22, 124), (x0 + 30, 138)], fill=255)
+                    # A ragged stub off each side, and the gap between.
+                    draw.polygon([(x0 + 10, 110), (x0 + 24, 104), (x0 + 30, 120), (x0 + 18, 136), (x0 + 10, 150)],
+                                 fill=255)
+                    draw.polygon([(x0 + 64, 100), (x0 + 56, 98), (x0 + 48, 116), (x0 + 58, 132), (x0 + 64, 140)],
+                                 fill=255)
+                    if unit('glint', k) < 0.6 and x0 < WIDTH:
+                        glints.append((x0 + 27, 108, g))
         return []
     silhouette(canvas, arcade_, 'γ')
-    return to_image(canvas, STRIP)
+    for x, top, g in glints:
+        for y in range(top, g - 6):
+            if dither(x, y, 0.5):
+                canvas[(x % WIDTH, y)] = 'ξ' if (y // 3) % 2 else 'δ'
+    return to_image({p: s for p, s in canvas.items() if 0 <= p[0] < WIDTH}, STRIP)
 
 
 def far_cliffs():
@@ -884,6 +1031,13 @@ def build_level_backs(images, lit):
         images[f'pier_{i}'] = pier(i)
         images[f'pier_front_{i}'] = pier(i, back=False)
     images['pier_base'] = pier(4, 'base')
+    # The aqueduct's broken spans (01 (k)): the wet shafts beside each gap
+    # and each gap's arcade tops.
+    for k in range(2):
+        images[f'pier_wet_{k}'] = pier_wet(k)
+    for g in range(3):
+        for (row, col), im in gap_strip(g).items():
+            images[f'arcade_gap_{g}_{row}_{col}'] = im
     images['pier_cutwater'] = pier(0, 'cutwater', back=False)
     images['parapet_post'] = parapet(0, 'post')
     images['parapet_0'] = parapet(1)

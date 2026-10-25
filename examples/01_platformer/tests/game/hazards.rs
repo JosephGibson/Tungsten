@@ -1,8 +1,10 @@
 //! The hazards: lava's surface, which holds the player, its touch, which
 //! burns and throws on every touch, hurting once a window, and a dying touch
-//! starting the death screen; what falls into lava, taken or set off; a
-//! hit's flash, shake and sound; and the fire hazards the level's data may
-//! place, which burst fast balls they sweep.
+//! starting the death screen; its crust's freeze and thaw, one front down
+//! through the basin each way with a sound and bursts at each change; what
+//! falls into lava, taken or set off; a hit's flash, shake and sound; and
+//! the fire hazards the level's data may place, which burst fast balls they
+//! sweep.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::BURNING;
@@ -16,8 +18,9 @@ use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    AudioCommand, Bundle, CameraController, Collider, Entity, Position, PrevPosition,
-    RigidBodyBundle, SoundRegistry, Transform, World,
+    AssetRegistry, AudioCommand, Bundle, CameraController, Collider, Entity,
+    ParticleConfigRegistry, ParticleEmitter, Position, PrevPosition, RigidBodyBundle,
+    SoundRegistry, Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{ContactDamage, DamageRequest, Damaged, Health, HitFlash, Tags, damage, heal};
 use tungsten::testing::UiHarness;
@@ -26,7 +29,7 @@ use example_01_platformer::features::elements::FIRE_CENTRE;
 use example_01_platformer::features::elements::systems::fire_contacts;
 use example_01_platformer::features::toys::RING_CAP;
 use example_01_platformer::features::toys::components::{Ball, Ring, ShockRing};
-use example_01_platformer::shared::BURST_CAP;
+use example_01_platformer::shared::{BURST_CAP, Burst};
 
 use example_01_platformer::features::level::lava::Lava;
 use tungsten::core::RigidBody;
@@ -362,6 +365,301 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
     // 14 frames past the melt: the lava takes the ball within 60.
     harness.step(46);
     assert!(!harness.world().is_alive(rock), "the ball fell in and went");
+}
+
+/// A look row's state: hidden, a crust frame, a freeze partial or a melt
+/// partial (01 (k)).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Row {
+    Hidden,
+    Crust(usize),
+    Freeze(usize),
+    Melt(usize),
+}
+
+/// The look's rows down `basin`'s first column, top first.
+fn first_column(harness: &UiHarness, basin: Entity) -> Vec<Row> {
+    let world = harness.world();
+    let left = world.get::<Transform>(basin).unwrap().position.x;
+    let assets = world.resource::<AssetRegistry>();
+    let mut rows: Vec<(f32, Row)> = world
+        .query::<(&Sprite, &Transform, &Visibility)>()
+        .filter(|(_, at, _)| (at.position.x - left).abs() < 1.0)
+        .filter_map(|(sprite, at, shown)| {
+            let name = assets.sprite_name(sprite.asset_id)?;
+            let parts: Vec<&str> = name.strip_prefix("ex10_lava_")?.split('_').collect();
+            let &[kind, _, n, _] = parts.as_slice() else {
+                return None;
+            };
+            let n: usize = n.parse().ok()?;
+            let row = match (shown.visible, kind) {
+                (false, "crust" | "freeze" | "melt") => Row::Hidden,
+                (true, "crust") => Row::Crust(n),
+                (true, "freeze") => Row::Freeze(n),
+                (true, "melt") => Row::Melt(n),
+                _ => return None,
+            };
+            Some((at.position.y, row))
+        })
+        .collect();
+    rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+    rows.into_iter().map(|(_, row)| row).collect()
+}
+
+/// The bursts spawned since `seen`, by their configs' names, which `seen`
+/// then holds.
+fn new_bursts(harness: &UiHarness, seen: &mut std::collections::HashSet<Entity>) -> Vec<String> {
+    let world = harness.world();
+    let configs = world.resource::<ParticleConfigRegistry>();
+    let mut out = Vec::new();
+    for (entity, _, emitter) in world.query::<(Entity, &Burst, &ParticleEmitter)>() {
+        if seen.insert(entity) {
+            out.push(
+                configs
+                    .name_for_id(emitter.config)
+                    .unwrap_or("?")
+                    .to_owned(),
+            );
+        }
+    }
+    out
+}
+
+/// The lava sounds of the last frame, in order.
+fn lava_sounds(harness: &UiHarness) -> Vec<Sound> {
+    let lava = [
+        Sound::LavaChilled,
+        Sound::LavaSet,
+        Sound::LavaCracked,
+        Sound::LavaMelted,
+    ];
+    harness
+        .harness()
+        .events::<Sounded>()
+        .map(|sounded| sounded.sound)
+        .filter(|sound| lava.contains(sound))
+        .collect()
+}
+
+#[test]
+fn the_lava_freezes_and_thaws_through_its_frames_with_a_sound_at_each_change() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    harness.step(10);
+    let mut basins = lava(&harness);
+    let corner = |harness: &UiHarness, basin: Entity| {
+        harness.world().get::<Transform>(basin).unwrap().position
+    };
+    basins.sort_by(|a, b| corner(&harness, *a).x.total_cmp(&corner(&harness, *b).x));
+    // The lake's west pool, three rows deep, sprayed until it sets, then
+    // watched through its hold and its melt.
+    let pool = basins[0];
+    let at = corner(&harness, pool);
+    let surface = skin(&harness, pool);
+    stand(&mut harness, player, at.x - 40.0, at.y - 64.0);
+    harness.step(2);
+    pin_camera(&mut harness, at - Vec2::new(500.0, 400.0));
+    choose(&mut harness, 2);
+    let target = Vec2::new(at.x + 96.0, surface + 2.0);
+    let mut seen = std::collections::HashSet::new();
+    let _ = new_bursts(&harness, &mut seen);
+    let lava_configs = [
+        "ex10_lava_mist",
+        "ex10_lava_frost",
+        "ex10_steam_burst",
+        "ex10_lava_sparks",
+        "ex10_lava_spatter",
+    ];
+    let mut columns = Vec::new();
+    let mut changes: Vec<(Vec<Sound>, Vec<String>)> = Vec::new();
+    let mut spraying = true;
+    harness.harness_mut().press_action("cast");
+    for _ in 0..600 {
+        if spraying {
+            aim_at(&mut harness, target);
+        }
+        harness.step(1);
+        let bursts: Vec<String> = new_bursts(&harness, &mut seen)
+            .into_iter()
+            .filter(|name| lava_configs.contains(&name.as_str()))
+            .collect();
+        let sounds = lava_sounds(&harness);
+        if !sounds.is_empty() || !bursts.is_empty() {
+            changes.push((sounds, bursts));
+        }
+        columns.push(first_column(&harness, pool));
+        if spraying && crusted(&harness, pool) {
+            harness.harness_mut().release_action("cast");
+            spraying = false;
+        }
+        if !spraying
+            && !crusted(&harness, pool)
+            && columns
+                .last()
+                .is_some_and(|rows| rows.iter().all(|row| *row == Row::Hidden))
+        {
+            break;
+        }
+    }
+    assert_eq!(columns.last().unwrap().len(), 3, "three rows down the pool");
+    // The freeze's front down row by row, each row whole before the next
+    // shows a partial; the crust's frames 1 to 8 in order; the melt's front
+    // down the same way; then nothing.
+    let mut stage = 0;
+    let (mut freeze_at, mut crust_at, mut melt_at) = ((0, 0), 0, (0, 0));
+    let mut frames = std::collections::BTreeSet::new();
+    for rows in &columns {
+        let whole = rows.iter().take_while(|row| **row == Row::Crust(0)).count();
+        let gone = rows.iter().take_while(|row| **row == Row::Hidden).count();
+        if rows.iter().all(|row| *row == Row::Hidden) {
+            assert!(
+                stage == 0 || stage == 3 || stage == 4,
+                "the look gone mid-way: {rows:?}"
+            );
+            if stage == 3 {
+                stage = 4;
+            }
+        } else if rows.iter().any(|row| matches!(row, Row::Freeze(_))) || rows[0] == Row::Crust(0) {
+            assert!(stage <= 1, "a freeze after the crust: {rows:?}");
+            stage = 1;
+            let front = match rows.get(whole) {
+                Some(Row::Freeze(j)) => *j,
+                _ => 8,
+            };
+            assert!(
+                rows[whole + usize::from(front < 8)..]
+                    .iter()
+                    .all(|row| *row == Row::Hidden),
+                "under the freeze's front: {rows:?}"
+            );
+            assert!(
+                (whole, front) >= freeze_at,
+                "the freeze's front rose: {rows:?}"
+            );
+            freeze_at = (whole, front);
+        } else if let Row::Crust(n) = rows[0] {
+            assert!(
+                stage == 1 || stage == 2,
+                "a crust frame out of turn: {rows:?}"
+            );
+            stage = 2;
+            assert!(
+                rows.iter().all(|row| *row == Row::Crust(n)),
+                "one frame down the column: {rows:?}"
+            );
+            assert!(n >= crust_at, "the crust's frames back: {rows:?}");
+            crust_at = n;
+            frames.insert(n);
+        } else {
+            assert!(stage == 2 || stage == 3, "a melt out of turn: {rows:?}");
+            stage = 3;
+            let front = match rows.get(gone) {
+                Some(Row::Melt(j)) => *j,
+                _ => 8,
+            };
+            assert!(
+                rows[gone + usize::from(front < 8)..]
+                    .iter()
+                    .all(|row| *row == Row::Crust(8)),
+                "under the melt's front: {rows:?}"
+            );
+            assert!((gone, front) >= melt_at, "the melt's front rose: {rows:?}");
+            melt_at = (gone, front);
+        }
+    }
+    assert_eq!(stage, 4, "frozen, held, melted and gone");
+    assert_eq!(frames, (1..=8).collect(), "the crust's frames");
+    // A sound at each change, and its bursts, a burst to each two of the
+    // pool's four columns, none dropped by the cap.
+    let sounds: Vec<Sound> = changes
+        .iter()
+        .flat_map(|(sounds, _)| sounds.clone())
+        .collect();
+    let want = [
+        Sound::LavaChilled,
+        Sound::LavaSet,
+        Sound::LavaCracked,
+        Sound::LavaCracked,
+        Sound::LavaCracked,
+        Sound::LavaMelted,
+    ];
+    assert_eq!(sounds, want);
+    let count =
+        |bursts: &[String], name: &str| bursts.iter().filter(|burst| *burst == name).count();
+    let at_sound = |sound: Sound| -> Vec<Vec<String>> {
+        changes
+            .iter()
+            .filter(|(sounds, _)| sounds.contains(&sound))
+            .map(|(_, bursts)| bursts.clone())
+            .collect()
+    };
+    let chilled = &at_sound(Sound::LavaChilled)[0];
+    assert_eq!(
+        (
+            count(chilled, "ex10_lava_mist"),
+            count(chilled, "ex10_lava_frost")
+        ),
+        (2, 1),
+        "{chilled:?}"
+    );
+    assert_eq!(count(&at_sound(Sound::LavaSet)[0], "ex10_steam_burst"), 3);
+    for cracked in at_sound(Sound::LavaCracked) {
+        assert_eq!(count(&cracked, "ex10_lava_sparks"), 2, "{cracked:?}");
+    }
+    assert_eq!(
+        count(&at_sound(Sound::LavaMelted)[0], "ex10_lava_spatter"),
+        2
+    );
+    let all: Vec<String> = changes
+        .iter()
+        .flat_map(|(_, bursts)| bursts.clone())
+        .collect();
+    assert_eq!(
+        count(&all, "ex10_lava_mist"),
+        6,
+        "mist as the freeze starts and at each further third"
+    );
+    // An interrupted spray on the shelf's pool, 0.2 s on and 0.1 s off three
+    // times: its front's mist at each new depth once, one chill.
+    let shelf = basins[2];
+    let at = corner(&harness, shelf);
+    let surface = skin(&harness, shelf);
+    stand(&mut harness, player, at.x - 40.0, at.y - 64.0);
+    harness.step(30);
+    pin_camera(&mut harness, at - Vec2::new(500.0, 400.0));
+    let _ = new_bursts(&harness, &mut seen);
+    let target = Vec2::new(at.x + 96.0, surface + 2.0);
+    let mut all = Vec::new();
+    let mut sounds = Vec::new();
+    for _ in 0..3 {
+        harness.harness_mut().press_action("cast");
+        for _ in 0..12 {
+            aim_at(&mut harness, target);
+            harness.step(1);
+            all.extend(new_bursts(&harness, &mut seen));
+            sounds.extend(lava_sounds(&harness));
+        }
+        harness.harness_mut().release_action("cast");
+        for _ in 0..6 {
+            harness.step(1);
+            all.extend(new_bursts(&harness, &mut seen));
+            sounds.extend(lava_sounds(&harness));
+        }
+    }
+    for _ in 0..60 {
+        harness.step(1);
+        all.extend(new_bursts(&harness, &mut seen));
+        sounds.extend(lava_sounds(&harness));
+    }
+    assert!(!crusted(&harness, shelf), "no crust from the broken spray");
+    assert_eq!(sounds, [Sound::LavaChilled], "one chill");
+    assert_eq!(count(&all, "ex10_lava_frost"), 1);
+    assert_eq!(
+        count(&all, "ex10_lava_mist"),
+        4,
+        "mist at its start and at the one further third it reached"
+    );
 }
 
 /// A body dropped into the world with its centre at a point.
