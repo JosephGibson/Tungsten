@@ -87,9 +87,9 @@ Run with `cargo run -p example-NN-name`.
 | Validation selection (`just checks`), repository QA | `docs/validation.md`, `scripts/check-repo.py`, `scripts/test-check-repo.py`, `justfile`; client setup: `docs/agent-setup.md` |
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
 | Stale `target/` artifacts, a full disk (`just clean-target`) | `scripts/clean-target.py`, `scripts/test-clean-target.py` |
-| Public-API snapshots (`just api`, `D-107`); breaks go in the W4 ledger | `scripts/public-api.sh`, `api/`, `docs/plans/1.0/w04-api-freeze.md` |
-| Writing or running a 1.0 milestone plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/plans/1.0/workflow.md` |
-| Road to 1.0: status, next prompt, roadmap page, stop stages, session tiers (`D-109`, `D-118`, `D-150`–`D-152`) | `.claude/skills/tungsten-next/SKILL.md`, `.claude/skills/tungsten-next/prompts.md`, `docs/plans/1.0/roadmap.json`, `scripts/roadmap.py`, `scripts/test-roadmap.py`, `.claude/skills/tungsten-next/page.html` |
+| Public-API snapshots (`just api`, `D-107`), a free diff of the surface (`D-215`) | `scripts/public-api.sh`, `api/` |
+| Writing or running a large plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/operating-rules.md` |
+| Status and what's next; rules for commits, plans, decisions, tiers and releases (`D-215`) | `ROADMAP.md`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
 | Releases: checks, hand-off, recovery, player archives, licenses, crash symbols (`D-071`, `D-074`, `D-079`, `D-120`, `D-122`, `D-196`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | CI jobs, the Windows test job (`D-070`, `D-121`) | `.github/workflows/ci.yml` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |

@@ -1,5 +1,7 @@
 # Acceptance game — draft
 
+**Frozen 2026-10-25 (`D-215`):** Example 01 is the acceptance game, accepted when the owner says it is; this game was never started. Status lives in [ROADMAP.md](../../../ROADMAP.md) and the plan in the [roadmap redo](../roadmap-redo.md); this file is not edited again, and step 9.7 deletes it.
+
 - **status:** in progress
 - **goal:** Specify the small, complete game that tests definition A early enough for its feature map to cut the tiers of W5, W6 and W13, then log the gaps it finds while it is built.
 - **non-goals:** The game's code, which lives in its own repository; features beyond what tests 1.0; engine patches made for it.

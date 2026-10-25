@@ -7,6 +7,8 @@ Start with the document that owns the fact you need. Code and executable checks 
 | Build, run, project overview | [README](../README.md) |
 | Making a game from the template | [Getting started](getting-started.md) |
 | Repository rules | [AGENTS](../AGENTS.md); [renderer rules](../crates/tungsten-render/AGENTS.md) when editing that crate |
+| Status: now, next, later | [Roadmap](../ROADMAP.md) |
+| How work is planned, committed and released; the plan to 1.0 | [Operating rules](operating-rules.md); [roadmap redo](plans/roadmap-redo.md) |
 | Change-to-check matrix, targeted iteration and read-only selection | [Validation](validation.md) |
 | Task → source paths | [LLM index](LLM_INDEX.md) |
 | Current architecture and reload support | [Design](../DESIGN.md) |

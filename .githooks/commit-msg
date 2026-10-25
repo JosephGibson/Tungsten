@@ -1,0 +1,36 @@
+#!/bin/sh
+# Conventional Commits, one line (docs/operating-rules.md#git); `just hooks` enables it.
+# Usage: commit-msg <message file>. The first line that is not a `#` comment is
+# `type(scope)!: summary` (scope and `!` optional) in at most 72 characters, and
+# nothing else follows but blank or comment lines: no body, no trailer. Git's own
+# merge, revert, fixup!, squash! and amend! messages pass whole. POSIX sh, sed,
+# grep, tr and wc only.
+set -eu
+LC_ALL=C
+export LC_ALL
+
+rules='docs/operating-rules.md#git'
+# Drop the verbose diff below git's scissors line, comment lines and trailing
+# whitespace (a CR included), then the blank lines before the subject.
+message=$(sed -e '/^# -\{1,\} >8 -\{1,\}$/,$d' -e '/^#/d' -e 's/[[:space:]]*$//' "$1" | sed -e '/./,$!d')
+subject=$(printf '%s\n' "$message" | sed -n '1p')
+
+case $subject in
+'') exit 0 ;; # git refuses an empty message itself
+'Merge '* | 'Revert "'* | 'fixup! '* | 'squash! '* | 'amend! '*) exit 0 ;;
+esac
+
+fail() {
+    printf 'commit-msg: %s (%s)\n  %s\n' "$1" "$rules" "$subject" >&2
+    exit 1
+}
+
+types='feat|fix|perf|refactor|test|docs|build|ci|chore|revert'
+printf '%s\n' "$subject" | grep -Eq "^($types)(\([a-z0-9._/-]+\))?!?: [a-z0-9]" ||
+    fail "the subject is type(scope): summary, the type one of ${types}, the scope and summary lowercase"
+# Characters, not bytes: count every byte but UTF-8 continuation bytes.
+length=$(( $(printf '%s' "$subject" | tr -d '\200-\277' | wc -c) ))
+[ "$length" -le 72 ] || fail "the subject is $length characters, over 72"
+[ -z "$(printf '%s\n' "$message" | sed -e '1d' -e '/^$/d')" ] ||
+    fail "a message is one line, with no body or trailer such as Co-Authored-By"
+exit 0
