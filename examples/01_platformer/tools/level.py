@@ -25,8 +25,10 @@ FIRE_HALF, FIRE_CENTRE = [18, 24], [32, 32]
 # stands on the surface overlaps them and the throw, away from the box's
 # centre, is up and out (M79).
 LAVA_TOP, LAVA_REACH = 6, 4
-# Lava's bite: typed fire that starts the burn, a throw on every touch,
-# its window's too (the kit's `push_always`), touched again soon after.
+# Lava's bite on the player and the enemies: typed fire that starts the
+# burn, a throw on every touch, its window's too (the kit's `push_always`),
+# touched again soon after. An enemy falls through the surface and meets
+# the box's top first, so its throw is up and out as the player's is.
 LAVA_DAMAGE, LAVA_KNOCKBACK, LAVA_INTERVAL = 16, 1500, 0.1
 # The surface the player stands on, never sinking in: a box this deep from
 # the skin, in its own physics layer, which only the player's controller
@@ -206,7 +208,7 @@ def build_objects(source, images, lit):
         frost = f'ex10_lava_frost_{i}'
         prefabs[frost] = dict(components=dict(contact_damage=dict(
             box, damage={'damage.fire': HAZARD_DAMAGE}, filter=dict(all=['status.frozen']))))
-        bite = dict(box, damage={'damage.fire': LAVA_DAMAGE}, filter=dict(all=['team.player']),
+        bite = dict(box, damage={'damage.fire': LAVA_DAMAGE}, filter=dict(any=['team.enemy', 'team.player']),
                     knockback=LAVA_KNOCKBACK, interval=LAVA_INTERVAL, push_always=True)
         surface = dict(kind='static', shape=dict(kind='aabb', half_extents=[width / 2, LAVA_SURFACE / 2]),
                        offset=[width / 2, LAVA_TOP + LAVA_SURFACE / 2], layers=[LAVA_LAYER], mask=[])

@@ -18,8 +18,9 @@ pub struct AmbientEmitter;
 /// it `hazard`. Cold douses a fire and crusts a basin over for a while
 /// (`lava`). A basin holds the player on its surface and its touch burns and
 /// throws it up and out of the pool, in its invulnerability window too
-/// (`push_always`); its child touches what is frozen with fire, which blows
-/// it apart.
+/// (`push_always`); an enemy falls through the surface and its touch burns
+/// and throws it the same way. Its child touches what is frozen with fire,
+/// which blows it apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct Hazard {
     pub fire: bool,
