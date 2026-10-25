@@ -13,19 +13,21 @@ use tungsten::core::{
 };
 use tungsten::kit::{
     Children, Health, LinearMotion, Modifier, PlatformerController, Projectile, ProjectileExpired,
-    Stats, knock_back,
+    Stats, TopDownMover, knock_back,
 };
 use tungsten::physics::wake;
 
 use super::components::{
-    Ball, BallHue, BlackHole, Element, FireMissile, Flare, IronBlock, IronScrap, Oriented,
-    PreviousVelocity, Ring, ScrapTumble, ShockRing, SmallBall, Spray, SprayEmitter,
+    Ball, BallHue, BlackHole, BowlingBall, Element, FireMissile, Flare, HoleHold, IronBlock,
+    IronScrap, OpeningOf, Oriented, PreviousVelocity, Ring, ScrapTumble, ShockRing, SmallBall,
+    Spray, SprayEmitter,
 };
 use super::{
-    BLAST_RADIUS, BLAST_TRAUMA, BROOM_MOST, BROOM_REACH, COLLAPSE_RING, FIRE_SPRAY_RANGE,
-    FROZEN_FRICTION, HOLE_FORCE, HOLE_RADIUS, IRON_FALL_FROM, IRON_FRICTION, IRON_LAND_SHAKE,
-    IRON_PULL, IRON_WEIGHT, LOOP_FADE, MISSILE_RADIUS, MISSILE_SIZE, PUSH_RADIUS, PUSH_SPEED,
-    RING_SECS, SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
+    BLAST_RADIUS, BLAST_TRAUMA, BOWLING_PULL, BROOM_MOST, BROOM_REACH, COLLAPSE_RING,
+    FIRE_SPRAY_RANGE, FROZEN_FRICTION, HOLD_EASE, HOLD_RING, HOLD_SWIRL, HOLE_FORCE, HOLE_RADIUS,
+    IRON_FALL_FROM, IRON_FRICTION, IRON_LAND_SHAKE, IRON_PULL, IRON_WEIGHT, LOOP_FADE,
+    MISSILE_RADIUS, MISSILE_SIZE, OPEN_INWARD, OPEN_REACH, PUSH_RADIUS, PUSH_SPEED, RING_SECS,
+    SCRAP_PULL, SCRAP_SCALE, SPRAY_HALF_ANGLE, SPRAY_RANGE, rings_full,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{
@@ -248,12 +250,15 @@ pub fn hole_pull(holes: &[Vec2], at: Vec2) -> Vec2 {
     pull
 }
 
-/// How much of a hole's pull `entity` takes: iron a fifth of a ball's,
-/// scraps as balls, a crate a half and a keg two fifths, a frozen dummy as
-/// iron and a thawed one none, the rest by their mass.
+/// How much of a hole's pull `entity` takes: iron a fifth of a ball's, a
+/// bowling ball [`BOWLING_PULL`], which lifts it near the core, scraps as
+/// balls, a crate a half and a keg two fifths, a frozen dummy as iron and a
+/// thawed one none, the rest by their mass.
 fn pull_response(world: &World, entity: Entity, inv_mass: f32) -> f32 {
     if world.has::<IronBlock>(entity) {
         IRON_PULL
+    } else if world.has::<BowlingBall>(entity) {
+        BOWLING_PULL
     } else if world.has::<IronScrap>(entity) {
         SCRAP_PULL
     } else if world.has::<Crate>(entity) {
@@ -303,8 +308,9 @@ fn slow_trolls(world: &mut World, holes: &[Vec2]) {
 }
 
 /// `toys_pull`, in the move phase: the holes pull every dynamic body in
-/// reach by its response, and every live enemy through its mover; a troll,
-/// which the pull barely moves, is slowed ([`HOLE_SLOW`]) while in reach.
+/// reach by its response, and every live walker through its controller,
+/// the flyers being held on their own movers (`toys_hold`); a troll, which
+/// the pull barely moves, is slowed ([`HOLE_SLOW`]) while in reach.
 pub fn pull(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let holes = holes(world);
@@ -333,8 +339,10 @@ pub fn pull(world: &mut World) {
     }
     // The enemies' kinematic bodies ride their movers, so the pull reaches
     // them as the velocity it would build over [`ENEMY_PULL_SECS`], by each
-    // kind's hold: a walker's controller takes it as a push, a flyer's
-    // knockback as a push it renews each step.
+    // kind's hold: a walker's controller, a frozen flyer's borrowed one
+    // too, takes it as a push; a flyer on its own mover is steered by
+    // `toys_hold` instead, since a knockback renewed each step flung it
+    // through the core.
     let enemies: Vec<(Entity, Vec2)> = world
         .query::<(Entity, &Enemy, &Position, &Health)>()
         .filter(|(.., health)| !health.is_dead())
@@ -347,8 +355,74 @@ pub fn pull(world: &mut World) {
     for (enemy, push) in enemies {
         if let Some(controller) = world.get_mut::<PlatformerController>(enemy) {
             controller.push(push);
-        } else {
+        } else if !world.has::<TopDownMover>(enemy) {
             knock_back(world, enemy, push);
+        }
+    }
+}
+
+/// `toys_hold`, in the move phase before the top-down mover, after the
+/// enemies' states have set their directions: a live flyer in a hole's
+/// reach is steered on its own mover toward a ring [`HOLD_RING`] about the
+/// nearest core at the hole's pull on it, capped at its own speed, the pull
+/// easing within [`HOLD_EASE`] of the ring and circling there at
+/// [`HOLD_SWIRL`] of its speed. That is blended with its own direction by
+/// the pull over its speed, so near the core the hole holds it and at its
+/// edge its own steering wins. Its own direction is kept for
+/// `toys_release`, so the hole's correction never stays.
+pub fn hold(world: &mut World) {
+    let holes = holes(world);
+    if holes.is_empty() {
+        return;
+    }
+    let held: Vec<(Entity, Vec2, Vec2)> = world
+        .query::<(Entity, &Enemy, &Position, &Health, &TopDownMover)>()
+        .filter(|(.., health, _)| !health.is_dead())
+        .filter_map(|(entity, enemy, at, _, mover)| {
+            let info = enemy.kind.info();
+            let centre = at.0 + info.centre;
+            let core = holes
+                .iter()
+                .copied()
+                .filter(|hole| hole.distance(centre) < HOLE_RADIUS)
+                .min_by(|a, b| a.distance(centre).total_cmp(&b.distance(centre)))?;
+            let speed = world
+                .get::<Stats>(entity)
+                .and_then(|stats| stats.get(Stats::MOVE_SPEED))
+                .unwrap_or(100.0)
+                .max(1.0);
+            let to_core = core - centre;
+            let distance = to_core.length().max(1.0);
+            let pull = HOLE_FORCE * (1.0 - distance / HOLE_RADIUS) * info.pull * ENEMY_PULL_SECS;
+            let off = distance - HOLD_RING;
+            let inward = pull.min(speed) * (off / HOLD_EASE).clamp(-1.0, 1.0);
+            let tangent = Vec2::new(-to_core.y, to_core.x) / distance;
+            let near = 1.0 - (off / (2.0 * HOLD_EASE)).clamp(0.0, 1.0);
+            let wanted = to_core / distance * inward + tangent * HOLD_SWIRL * speed * near;
+            let hold = (pull / speed).min(1.0);
+            let own = mover.direction();
+            Some((entity, own, own * (1.0 - hold) + wanted / speed * hold))
+        })
+        .collect();
+    let mut kept = Vec::with_capacity(held.len());
+    for (flyer, own, steered) in held {
+        if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
+            mover.set_direction(steered);
+            kept.push((flyer, own));
+        }
+    }
+    world.resource_mut::<HoleHold>().0 = kept;
+}
+
+/// `toys_release`, in the move phase after the top-down mover: each flyer
+/// `toys_hold` steered takes its own direction back once its mover has
+/// moved, so a direction its state set once, a bat's dive, is whole again
+/// when the hole closes or it leaves the reach.
+pub fn release(world: &mut World) {
+    let kept = std::mem::take(&mut world.resource_mut::<HoleHold>().0);
+    for (flyer, own) in kept {
+        if let Some(mover) = world.get_mut::<TopDownMover>(flyer) {
+            mover.set_direction(own);
         }
     }
 }
@@ -1657,7 +1731,8 @@ pub fn missile_look(world: &mut World) {
 /// `hole_particles`, in the present phase: a hole's newborn particles are
 /// set on a ring about it, and every one of its particles is aimed at the
 /// next point of a spiral inward, so the dust reads as accretion; one at
-/// the core is gone.
+/// the core is gone. Its opening's rush (an emitter with [`OpeningOf`]) is
+/// set [`OPEN_REACH`] out and drawn in at [`OPEN_INWARD`] px/s.
 pub fn hole_particles(world: &mut World) {
     // No hole open, no particle of its to steer (P6).
     if world.query::<&BlackHole>().next().is_none() {
@@ -1668,15 +1743,23 @@ pub fn hole_particles(world: &mut World) {
         .query::<(Entity, &Particle, &Transform)>()
         .filter_map(|(entity, particle, at)| {
             let emitter = particle.emitter?;
-            let owner = world
-                .get::<tungsten::kit::Parent>(emitter)
-                .map_or(emitter, |parent| parent.entity());
+            let opening = world.get::<OpeningOf>(emitter).map(|of| of.0);
+            let owner = opening.unwrap_or_else(|| {
+                world
+                    .get::<tungsten::kit::Parent>(emitter)
+                    .map_or(emitter, |parent| parent.entity())
+            });
             world.get::<BlackHole>(owner)?;
             let centre = world.get::<Transform>(owner)?.position;
+            let (reach, share, inward) = if opening.is_some() {
+                (OPEN_REACH, 0.08, OPEN_INWARD)
+            } else {
+                (110.0, 0.25, 105.0)
+            };
             let position = if particle.age == 0.0 {
                 centre
                     + particle.velocity.normalize_or_zero()
-                        * (110.0 + particle.velocity.length() * 0.25)
+                        * (reach + particle.velocity.length() * share)
             } else {
                 at.position
             };
@@ -1691,7 +1774,7 @@ pub fn hole_particles(world: &mut World) {
                     radial.x * cos - radial.y * sin,
                     radial.x * sin + radial.y * cos,
                 );
-                (next * (delta.length() - 105.0 * dt).max(0.0) - delta) / dt
+                (next * (delta.length() - inward * dt).max(0.0) - delta) / dt
             } else {
                 particle.velocity
             };

@@ -41,6 +41,7 @@ use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::components::SceneTime;
+use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
 use example_01_platformer::features::toys::{self, components::BlackHole};
 use example_01_platformer::save::{self, SaveGame};
 use example_01_platformer::shared::{SaveId, SaveIds};
@@ -50,7 +51,7 @@ use tungsten::core::Shape;
 use tungsten::core::{AudioCommand, SoundRegistry, Time};
 use tungsten::kit::{Hitbox, KitDebug, StateMachine};
 
-use super::{centre, fall_dead, mock_sprite, press, run, teleport};
+use super::{aim_at, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -1339,4 +1340,64 @@ fn the_title_draws_its_sky_and_its_twinkles_leave_with_it() {
     assert_eq!(stars(&harness), 0, "no star lingers");
     let run = drawn(&harness);
     assert!(run.contains(&960), "the run's sky: {run:?}");
+}
+
+#[test]
+fn a_hole_opens_over_three_tenths_of_a_second() {
+    let (mut harness, _) = run();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for name in [
+        "ex10_accretion_disk",
+        "ex10_vortex",
+        "ex10_infall_streak",
+        "ex10_photon_ring",
+        "ex10_vortex_core",
+    ] {
+        mock_sprite(assets, name, 510, false);
+    }
+    // Slot 6's press opens one at the cursor, in the sky.
+    pin_camera(&mut harness, Vec2::new(200.0, 200.0));
+    aim_at(&mut harness, Vec2::new(520.0, 480.0));
+    choose(&mut harness, 5);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    let world = harness.world_mut();
+    let hole = world
+        .query::<(Entity, &BlackHole)>()
+        .map(|(entity, _)| entity)
+        .next()
+        .expect("the press opened a hole");
+    let opening: Vec<f32> = world
+        .query::<&ShockRing>()
+        .filter(|ring| ring.kind == Ring::Open)
+        .map(|ring| ring.size)
+        .collect();
+    assert!(
+        opening.len() == 1 && (opening[0] - 432.0).abs() < 0.01,
+        "its closing ring, 432 px across: {opening:?}"
+    );
+    let rushes = world
+        .query::<(&OpeningOf, &ParticleEmitter)>()
+        .filter(|(of, _)| of.0 == hole)
+        .count();
+    assert_eq!(rushes, 1, "the rush's emitter names the hole");
+    // The vortex at its age 0 and at 0.3 s, at the same drawn time.
+    let sizes = |world: &mut tungsten::core::World, age: f32| {
+        world.get_mut::<BlackHole>(hole).unwrap().left = toys::HOLE_SECS - age;
+        toys::draw::vortices(world)
+            .iter()
+            .flat_map(|batch| &batch.instances)
+            .map(|quad| quad.size[0])
+            .collect::<Vec<f32>>()
+    };
+    let (born, open) = (sizes(world, 0.0), sizes(world, toys::HOLE_OPEN_SECS));
+    assert!(!born.is_empty() && born.len() == open.len());
+    for (small, full) in born.iter().zip(&open) {
+        assert!(
+            (small / full - 0.08).abs() <= 0.01,
+            "{small} of {full}: not 0.08"
+        );
+    }
 }

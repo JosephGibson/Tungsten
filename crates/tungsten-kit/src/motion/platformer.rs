@@ -5,8 +5,11 @@
 use std::collections::HashSet;
 
 use glam::Vec2;
-use serde::{Deserialize, Serialize};
-use tungsten_core::physics::{Collider, Position, SpatialFilter, Velocity};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
+use tungsten_core::physics::{
+    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, wake,
+};
 use tungsten_core::{
     Entity, Inspectable, PhysicsConfig, Plugin, Schedule, SpawnContext, World, system,
 };
@@ -19,11 +22,13 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::{
-    fraction, non_negative, optional_non_negative, optional_vec2, positive, vec2,
+    fraction, non_negative, optional_non_negative, optional_positive, optional_vec2, positive, vec2,
 };
 use crate::intent::action_input::Intent;
 use crate::motion::path::PATH_FOLLOW;
-use crate::motion::slide::{SKIN, is_kinematic, move_and_slide, probe_ground, step_dt};
+use crate::motion::slide::{
+    SKIN, Slide, climb, is_kinematic, move_and_slide, probe_ground, step_dt,
+};
 
 /// [`PlatformerControllerPlugin`]'s system, in the move phase.
 pub const PLATFORMER_CONTROLLER: &str = "platformer_controller";
@@ -39,6 +44,18 @@ const DEFAULT_GRACE: f32 = 0.1;
 
 /// The default jump cut.
 const DEFAULT_JUMP_CUT: f32 = 0.5;
+
+/// The default share of its mass that a body it shoves may weigh.
+const DEFAULT_SHOVE_SHARE: f32 = 0.5;
+
+/// The least a climb goes across, as a share of the step height. A cast's
+/// contact turns floor-like 0.286 of the two shapes' summed radii past side
+/// contact, which for a round step no taller than the height is 0.143 of it.
+const CLIMB_REACH: f32 = 0.15;
+
+/// What a round controller's climb adds across, as a share of its radius,
+/// whose own rounding adds 0.286 of it to that contact.
+const CLIMB_ROUND_REACH: f32 = 0.29;
 
 /// A side-view character: it runs, jumps and falls on a kinematic body,
 /// stops at walls, lands on floors and rides the kinematic body it stands
@@ -66,25 +83,33 @@ const DEFAULT_JUMP_CUT: f32 = 0.5;
 ///    press with [air jumps](Self::with_air_jumps) left jumps again, one a
 ///    press, and being grounded refills them. While locked, presses are
 ///    dropped and the horizontal speed holds.
-/// 5. Adds the [`push`](Self::push)es made since its last step.
+/// 5. Adds the [`push`](Self::push)es made since its last step, velocity
+///    given to it, where a [shove](Self::with_shove) moves what it walks
+///    into.
 /// 6. Cuts a rising jump by the jump cut once, when the jump is released.
 /// 7. Applies gravity, `with_gravity`'s or the world's
 ///    `PhysicsConfig::gravity.y`, over the step's mean velocity, so a jump
 ///    follows the exact parabola at each step and peaks at
 ///    `jump_speed² / 2g`. A zero-gravity world needs `with_gravity`.
 /// 8. Moves and slides against the last step's positions: a floor lands
-///    it, a ceiling stops its rise and a wall its horizontal speed.
+///    it, a ceiling stops its rise and a wall its horizontal speed. A wall
+///    met on the ground that its [step height](Self::with_step_height)
+///    climbs is climbed instead, and a light dynamic body met as a wall
+///    takes a [shove](Self::with_shove).
 /// 9. On a kinematic ground, adds the ground's `Velocity` times the step,
 ///    uncast, unless it jumped, was launched or was pushed up.
-/// 10. Writes `Velocity`, which its body moves by in the step, and ticks
-///     the input lock, the jump buffer and coyote time on the game clock.
+/// 10. Writes `Velocity`, which its body moves by in the step, or after a
+///     climb its `Position` at the landing and a zero `Velocity`; writes a
+///     shoved body's `Velocity.x` and wakes it; and ticks the input lock,
+///     the jump buffer and coyote time on the game clock.
 ///
 /// Its [`SpatialFilter`] says what blocks it, by default bodies and tiles,
 /// its own body excluded. Dynamic bodies block it and hold it up as walls
-/// and floors do; it never pushes one. Two controllers do not see each
-/// other's motion within a step, a body spawned since the last step is not
-/// seen until the next, and nothing pushes a kinematic body out of an
-/// overlap, though a move may leave one.
+/// and floors do, unless it shoves or climbs them: a shoved body moves by
+/// its own physics, a step behind, and one that cannot move holds it. Two
+/// controllers do not see each other's motion within a step, a body spawned
+/// since the last step is not seen until the next, and nothing pushes a
+/// kinematic body out of an overlap, though a move may leave one.
 ///
 /// It is data: a save holds its settings and its runtime state, the air
 /// jumps left among them, but not its filter, which loads as
@@ -94,9 +119,11 @@ const DEFAULT_JUMP_CUT: f32 = 0.5;
 ///
 /// Scene name `platformer_controller`, on a prefab with a kinematic
 /// `rigid_body`:
-/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5, "air_jumps": 1 }`,
-/// `gravity` optional (the world's by default) and the last four with
-/// the defaults 0.1, 0.1, 0.5 and 0.
+/// `{ "run_speed": 200, "jump_speed": 600, "gravity": 2000, "coyote_time": 0.1, "jump_buffer": 0.1, "jump_cut": 0.5, "air_jumps": 1, "shove_mass": 60, "shove_share": 0.5, "step_height": 16 }`,
+/// `gravity` and `shove_mass` optional (the world's gravity and no shove by
+/// default), and `coyote_time`, `jump_buffer`, `jump_cut`, `air_jumps`,
+/// `shove_share` and `step_height` with the defaults 0.1, 0.1, 0.5, 0, 0.5
+/// and 0; `shove_share` is read only with `shove_mass`.
 ///
 /// # Examples
 ///
@@ -183,6 +210,10 @@ pub struct PlatformerController {
     jump_buffer: f32,
     jump_cut: f32,
     air_jumps: u32,
+    /// `None`, the default, shoves nothing.
+    shove: Option<Shove>,
+    /// 0, the default, climbs nothing.
+    step_height: f32,
     /// Not saved: a load takes `new`'s.
     filter: SpatialFilter,
     /// The run input, in `[-1, 1]`.
@@ -239,6 +270,8 @@ impl PlatformerController {
             jump_buffer: DEFAULT_GRACE,
             jump_cut: DEFAULT_JUMP_CUT,
             air_jumps: 0,
+            shove: None,
+            step_height: 0.0,
             filter: SpatialFilter::new(),
             run: 0.0,
             jump_held: false,
@@ -335,6 +368,57 @@ impl PlatformerController {
     pub fn with_air_jumps(mut self, jumps: u32) -> Self {
         self.air_jumps = jumps;
         self.air_jumps_left = jumps;
+        self
+    }
+
+    /// The controller with a shove: of the dynamic bodies its horizontal
+    /// move meets as walls, one of mass `m` up to `share` of `mass` (its
+    /// own mass for shoves) takes the controller's horizontal velocity
+    /// less `m / mass` of it, unless it already moves that way faster, and
+    /// is woken. The controller stops at the body that step, as at a wall,
+    /// then follows at the body's own pace, so it slows by `m / mass`; a
+    /// body that cannot move holds it as before. A heavier body, a
+    /// kinematic or static one and a tile block it as before.
+    ///
+    /// # Panics
+    ///
+    /// When `mass` is not finite and above 0, or `share` is not in (0, 1].
+    #[must_use]
+    #[track_caller]
+    pub fn with_shove(mut self, mass: f32, share: f32) -> Self {
+        assert!(
+            mass.is_finite() && mass > 0.0,
+            "PlatformerController::with_shove: mass must be finite and > 0 (got {mass})"
+        );
+        assert!(
+            share > 0.0 && share <= 1.0,
+            "PlatformerController::with_shove: share must be in (0, 1] (got {share})"
+        );
+        self.shove = Some(Shove { mass, share });
+        self
+    }
+
+    /// The controller with a step height: on the ground, a horizontal move
+    /// that meets a wall goes up to `height` px, across and back down in
+    /// the same step when that lands it on a floor farther on, so it
+    /// climbs a ledge or a body no taller than `height` with room above. A
+    /// climb goes at least 0.15 of `height` across, and 0.29 of its radius
+    /// more for a circle collider, so it reaches a round top's walkable
+    /// part, and moves the body by its position rather than its velocity,
+    /// so it shoves nothing it climbs. A kinematic body is never a step,
+    /// and neither is a floor on one. 0, the default, climbs nothing.
+    ///
+    /// # Panics
+    ///
+    /// When `height` is not finite and at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_step_height(mut self, height: f32) -> Self {
+        assert!(
+            height.is_finite() && height >= 0.0,
+            "PlatformerController::with_step_height: height must be finite and >= 0 (got {height})"
+        );
+        self.step_height = height;
         self
     }
 
@@ -473,8 +557,8 @@ impl PlatformerController {
         self.air_jumped
     }
 
-    /// One step of `dt` for the body at `position` with `collider`: the
-    /// velocity its body moves by in this step.
+    /// One step of `dt` for the body at `position` with `collider`: how its
+    /// body moves in this step, and the body it shoves.
     fn step(
         &mut self,
         world: &World,
@@ -483,12 +567,16 @@ impl PlatformerController {
         collider: Collider,
         world_gravity: f32,
         dt: f32,
-    ) -> Vec2 {
+    ) -> Moved {
         self.jumped = false;
         self.air_jumped = false;
         if !self.started {
             self.started = true;
-            return Vec2::ZERO;
+            return Moved {
+                velocity: Vec2::ZERO,
+                position: None,
+                shove: None,
+            };
         }
         let filter = self.filter.excluding(entity);
         let origin = position + collider.offset;
@@ -569,14 +657,11 @@ impl PlatformerController {
             mean
         };
 
-        // Move and slide, then the ground's carry.
-        let slide = move_and_slide(
-            world,
-            collider.shape,
-            at,
-            Vec2::new(self.velocity.x, mean_vy) * dt,
-            &filter,
-        );
+        // Move and slide, a climb or a shove at a wall, then the ground's
+        // carry.
+        let walking = self.grounded;
+        let delta = Vec2::new(self.velocity.x, mean_vy) * dt;
+        let slide = move_and_slide(world, collider.shape, at, delta, &filter);
         at += slide.moved;
         if slide.floor && self.velocity.y >= 0.0 {
             self.grounded = true;
@@ -587,8 +672,29 @@ impl PlatformerController {
         if slide.ceiling && self.velocity.y < 0.0 {
             self.velocity.y = 0.0;
         }
+        let mut climbed = false;
+        let mut shoved = None;
         if slide.wall {
-            self.velocity.x = 0.0;
+            let landing = if walking {
+                self.climb(
+                    world,
+                    collider.shape,
+                    at,
+                    delta.x - slide.moved.x,
+                    &slide,
+                    &filter,
+                )
+            } else {
+                None
+            };
+            if let Some((landing, floor)) = landing {
+                at = landing;
+                ground = floor;
+                climbed = true;
+            } else {
+                shoved = self.shove_of(world, &slide);
+                self.velocity.x = 0.0;
+            }
         }
         if self.grounded
             && !lifted
@@ -608,8 +714,104 @@ impl PlatformerController {
         } else {
             count_down(self.coyote_left, dt)
         };
-        (at - origin) / dt
+        if climbed {
+            Moved {
+                velocity: Vec2::ZERO,
+                position: Some(at - collider.offset),
+                shove: None,
+            }
+        } else {
+            Moved {
+                velocity: (at - origin) / dt,
+                position: None,
+                shove: shoved,
+            }
+        }
     }
+
+    /// Where a climb over the wall `slide` met lands its shape from `at`,
+    /// the move's end, with `rest` px of its horizontal move left: with a
+    /// step height, moving, at a wall that is not a kinematic body.
+    fn climb(
+        &self,
+        world: &World,
+        shape: Shape,
+        at: Vec2,
+        rest: f32,
+        slide: &Slide,
+        filter: &SpatialFilter,
+    ) -> Option<(Vec2, Option<Entity>)> {
+        if self.step_height <= 0.0
+            || self.velocity.x == 0.0
+            || slide
+                .wall_body
+                .is_some_and(|body| is_kinematic(world, body))
+        {
+            return None;
+        }
+        let round = match shape {
+            Shape::Circle { radius } => CLIMB_ROUND_REACH * radius,
+            Shape::Aabb { .. } => 0.0,
+        };
+        let across = rest.abs().max(CLIMB_REACH * self.step_height + round);
+        climb(
+            world,
+            shape,
+            at,
+            self.step_height,
+            across.copysign(self.velocity.x),
+            filter,
+        )
+    }
+
+    /// The body its move shoves and the horizontal speed it gives it: the
+    /// first wall `slide` met, when that is a dynamic body light enough and
+    /// the move went into it.
+    fn shove_of(&self, world: &World, slide: &Slide) -> Option<(Entity, f32)> {
+        let shove = self.shove?;
+        let body = slide.wall_body?;
+        if self.velocity.x * slide.wall_normal.x >= 0.0 || !world.has::<Velocity>(body) {
+            return None;
+        }
+        let rigid = world.get::<RigidBody>(body)?;
+        if rigid.kind != BodyKind::Dynamic || rigid.inv_mass <= 0.0 {
+            return None;
+        }
+        let mass = rigid.inv_mass.recip();
+        let speed = self.velocity.x * (1.0 - mass / shove.mass);
+        (mass <= shove.share * shove.mass && speed != 0.0).then_some((body, speed))
+    }
+}
+
+/// A controller's shove: the mass it shoves as, and the share of it a body
+/// it moves may weigh.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Shove {
+    mass: f32,
+    share: f32,
+}
+
+/// What a controller's step writes.
+struct Moved {
+    /// The velocity its body moves by in the step.
+    velocity: Vec2,
+    /// Where a climb set its body, which then moves by a zero velocity.
+    position: Option<Vec2>,
+    /// The body it shoved and the horizontal speed the shove gives it.
+    shove: Option<(Entity, f32)>,
+}
+
+/// Gives `body` a shove's horizontal `speed`, unless it already moves that
+/// way faster, as another shover's may have, and wakes it.
+fn shove(world: &mut World, body: Entity, speed: f32) {
+    let Some(velocity) = world.get_mut::<Velocity>(body) else {
+        return;
+    };
+    if velocity.0.x * speed.signum() < speed.abs() {
+        velocity.0.x = speed;
+    }
+    wake(world, body);
 }
 
 /// Registers the `platformer_controller` scene component and
@@ -701,6 +903,39 @@ impl Plugin for PlatformerControllerPlugin {
                 )
                 .default("0"),
             )
+            .field(
+                FieldDescription::new(
+                    "shove_mass",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "the mass it shoves as: a dynamic body it walks into of up to shove_share of it takes its run less the body's share of it; none when left out",
+                )
+                .default("null"),
+            )
+            .field(
+                FieldDescription::new(
+                    "shove_share",
+                    FieldType::F32 {
+                        min: Bound::Exclusive(0.0),
+                        max: Bound::Inclusive(1.0),
+                    },
+                    "the share of shove_mass a body it shoves may weigh; read only with shove_mass",
+                )
+                .default("0.5"),
+            )
+            .field(
+                FieldDescription::new(
+                    "step_height",
+                    FieldType::F32 {
+                        min: Bound::Inclusive(0.0),
+                        max: Bound::Open,
+                    },
+                    "world pixels of ledge or body it climbs on the ground, with room above; 0 climbs nothing",
+                )
+                .default("0.0"),
+            )
             .genre(PLATFORMER)
             .genre(SHMUP)
             .sample(r#"{ "run_speed": 200, "jump_speed": 600 }"#)
@@ -709,15 +944,19 @@ impl Plugin for PlatformerControllerPlugin {
         world.register_component_with(
             PLATFORMER_CONTROLLER_COMPONENT,
             |def: PlatformerControllerDef, _: &SpawnContext<'_>| {
-                let controller = PlatformerController::new(def.run_speed, def.jump_speed)
+                let mut controller = PlatformerController::new(def.run_speed, def.jump_speed)
                     .with_coyote_time(def.coyote_time)
                     .with_jump_buffer(def.jump_buffer)
                     .with_jump_cut(def.jump_cut)
-                    .with_air_jumps(def.air_jumps);
-                (def.gravity.map_or_else(
-                    || controller.clone(),
-                    |gravity| controller.clone().with_gravity(gravity),
-                ),)
+                    .with_air_jumps(def.air_jumps)
+                    .with_step_height(def.step_height);
+                if let Some(gravity) = def.gravity {
+                    controller = controller.with_gravity(gravity);
+                }
+                if let Some(mass) = def.shove_mass {
+                    controller = controller.with_shove(mass, def.shove_share);
+                }
+                (controller,)
             },
         );
         let mut runner = Runner::default();
@@ -750,10 +989,17 @@ struct PlatformerControllerDef {
     jump_cut: f32,
     #[serde(default)]
     air_jumps: u32,
+    #[serde(default, deserialize_with = "optional_positive")]
+    shove_mass: Option<f32>,
+    #[serde(default = "default_shove_share", deserialize_with = "share")]
+    shove_share: f32,
+    #[serde(default, deserialize_with = "non_negative")]
+    step_height: f32,
 }
 
 /// A controller as a save writes it: its settings and its runtime state,
-/// without the filter or the first-step flag.
+/// without the filter or the first-step flag. The shove and the step height
+/// are left out when off, so a save from before them loads with both off.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)] // The controller's own flags, saved as they are.
@@ -765,6 +1011,10 @@ struct ControllerSave {
     jump_buffer: f32,
     jump_cut: f32,
     air_jumps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shove: Option<Shove>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    step_height: f32,
     run: f32,
     jump_held: bool,
     pressed: bool,
@@ -829,6 +1079,26 @@ impl TryFrom<ControllerSave> for PlatformerController {
                 return Err(format!("{field}: must be finite (got {value})"));
             }
         }
+        if let Some(shove) = save.shove {
+            if !(shove.mass.is_finite() && shove.mass > 0.0) {
+                return Err(format!(
+                    "shove.mass: must be finite and > 0 (got {})",
+                    shove.mass
+                ));
+            }
+            if !(shove.share > 0.0 && shove.share <= 1.0) {
+                return Err(format!(
+                    "shove.share: must be in (0, 1] (got {})",
+                    shove.share
+                ));
+            }
+        }
+        if !at_least_0(save.step_height) {
+            return Err(format!(
+                "step_height: must be finite and >= 0 (got {})",
+                save.step_height
+            ));
+        }
         if save.air_jumps_left > save.air_jumps {
             return Err(format!(
                 "air_jumps_left: must be at most air_jumps, {} (got {})",
@@ -843,6 +1113,8 @@ impl TryFrom<ControllerSave> for PlatformerController {
             jump_buffer: save.jump_buffer,
             jump_cut: save.jump_cut,
             air_jumps: save.air_jumps,
+            shove: save.shove,
+            step_height: save.step_height,
             filter: SpatialFilter::new(),
             run: save.run,
             jump_held: save.jump_held,
@@ -874,6 +1146,8 @@ impl From<PlatformerController> for ControllerSave {
             jump_buffer: controller.jump_buffer,
             jump_cut: controller.jump_cut,
             air_jumps: controller.air_jumps,
+            shove: controller.shove,
+            step_height: controller.step_height,
             run: controller.run,
             jump_held: controller.jump_held,
             pressed: controller.pressed,
@@ -898,6 +1172,26 @@ fn default_grace() -> f32 {
 
 fn default_jump_cut() -> f32 {
     DEFAULT_JUMP_CUT
+}
+
+fn default_shove_share() -> f32 {
+    DEFAULT_SHOVE_SHARE
+}
+
+/// A number in `(0, 1]`, for `shove_share`'s `deserialize_with`.
+fn share<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = f32::deserialize(deserializer)?;
+    if value > 0.0 && value <= 1.0 {
+        Ok(value)
+    } else {
+        Err(D::Error::custom(format!("must be in (0, 1] (got {value})")))
+    }
+}
+
+// The reference is serde's `skip_serializing_if` signature.
+#[allow(clippy::trivially_copy_pass_by_ref)]
+fn is_zero(value: &f32) -> bool {
+    *value == 0.0
 }
 
 /// The system's state between steps.
@@ -942,9 +1236,15 @@ impl Runner {
                     controller.press_jump();
                 }
             }
-            let velocity = controller.step(world, entity, position, collider, gravity, dt);
+            let moved = controller.step(world, entity, position, collider, gravity, dt);
             *world.get_mut::<PlatformerController>(entity).unwrap() = controller;
-            world.get_mut::<Velocity>(entity).unwrap().0 = velocity;
+            world.get_mut::<Velocity>(entity).unwrap().0 = moved.velocity;
+            if let Some(at) = moved.position {
+                world.get_mut::<Position>(entity).unwrap().0 = at;
+            }
+            if let Some((body, speed)) = moved.shove {
+                shove(world, body, speed);
+            }
         }
     }
 }

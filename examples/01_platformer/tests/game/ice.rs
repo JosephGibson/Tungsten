@@ -9,8 +9,11 @@
 //! the cold pulses draw unlit, bounded, and leave.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::combat::components::{StatusEmitter, StatusLook};
 use example_01_platformer::features::combat::draw::overlays;
-use example_01_platformer::features::combat::systems::frozen_left;
+use example_01_platformer::features::combat::systems::{
+    CHILL_DEEP, FROST_TINT, frost_level, frost_stage, frozen_left,
+};
 use example_01_platformer::features::combat::{
     CHILLED, FREEZE_NEEDS, FROZEN, Hit, Kind, has_status,
 };
@@ -1102,5 +1105,228 @@ fn a_thaw_cracks_the_cube_first_and_ends_in_glints_and_a_crack() {
     assert!(
         late.contains(&601) && late.contains(&602),
         "flickering: {late:?}"
+    );
+}
+
+/// `target`'s frost stage, none without frost or frozen.
+fn stage(harness: &UiHarness, target: Entity) -> Option<u8> {
+    let world = harness.world();
+    let tags = world.get::<tungsten::kit::Tags>(target).expect("its tags");
+    frost_stage(frost_level(world, target, tags))
+}
+
+#[test]
+fn the_frost_climbs_in_four_stages_from_the_first_point_of_cold() {
+    let (mut harness, _) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    // The beam's cold, 1.5 every 0.1 s: each stage as the frost first shows
+    // it, and whether the beetle was chilled then.
+    let mut seen: Vec<(Option<u8>, bool)> = Vec::new();
+    for _ in 0..200 {
+        cold(&mut harness, beetle, 1.5);
+        harness.step(5);
+        let now = (
+            stage(&harness, beetle),
+            has_status(harness.world(), beetle, CHILLED),
+        );
+        if seen.last().is_none_or(|last| last.0 != now.0) {
+            seen.push(now);
+        }
+        if has_status(harness.world(), beetle, FROZEN) {
+            break;
+        }
+    }
+    assert!(has_status(harness.world(), beetle, FROZEN), "{seen:?}");
+    assert_eq!(
+        seen,
+        [
+            (Some(1), false),
+            (Some(2), true),
+            (Some(3), true),
+            (Some(4), true),
+            (None, true),
+        ],
+        "rime before the chill, the legs at it, then the body and a crust, none frozen"
+    );
+}
+
+#[test]
+fn the_frost_draws_each_kind_s_own_overlay() {
+    use example_01_platformer::features::dummy::components::Dummy;
+    let (mut harness, _) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    let dummy = super::combat::dummy_at(&mut harness, 900.0);
+    // A body with no fitted frost: a dummy that is no longer one.
+    let plain = super::combat::dummy_at(&mut harness, 1500.0);
+    harness.world_mut().remove_component::<Dummy>(plain);
+    harness.step(1);
+    let names = [
+        "ex10_frost_beetle_1",
+        "ex10_frost_dummy_1",
+        "ex10_frost_medium_1",
+    ];
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for (i, name) in names.iter().enumerate() {
+        mock_sprite(assets, name, 701 + i as u32, false);
+    }
+    for body in [beetle, dummy, plain] {
+        cold(&mut harness, body, 2.0);
+        assert_eq!(stage(&harness, body), Some(1), "rime before the chill");
+    }
+    pin_camera(&mut harness, Vec2::new(800.0, 600.0));
+    let drawn: Vec<u32> = overlays(harness.world())
+        .iter()
+        .map(|batch| batch.texture.0)
+        .filter(|handle| (701..704).contains(handle))
+        .collect();
+    for (i, name) in names.iter().enumerate() {
+        assert!(drawn.contains(&(701 + i as u32)), "{name}: {drawn:?}");
+    }
+}
+
+#[test]
+fn the_tint_turns_toward_frost_before_the_chill() {
+    assert_eq!(FROST_TINT, [222, 241, 255, 255]);
+    assert_eq!(CHILL_DEEP, [194, 229, 255, 255]);
+    let (mut harness, _) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    let tint = |h: &UiHarness| h.world().get::<Sprite>(beetle).unwrap().color;
+    let between = |color: [u8; 4], low: [u8; 4], high: [u8; 4]| {
+        (0..4).all(|i| low[i] <= color[i] && color[i] <= high[i])
+    };
+    cold(&mut harness, beetle, 1.0);
+    let light = tint(&harness);
+    cold(&mut harness, beetle, 2.0);
+    let more = tint(&harness);
+    assert!(!has_status(harness.world(), beetle, CHILLED));
+    assert!(
+        between(light, FROST_TINT, [255; 4]) && between(more, FROST_TINT, [255; 4]),
+        "whiter, toward frost: {light:?} {more:?}"
+    );
+    assert!(more[0] < light[0] && light[0] < 255, "frostier as it fills");
+    for _ in 0..4 {
+        cold(&mut harness, beetle, 2.0);
+    }
+    assert!(has_status(harness.world(), beetle, CHILLED), "chilled");
+    let chilled = tint(&harness);
+    assert!(
+        between(chilled, CHILL_DEEP, FROST_TINT),
+        "from the chill, toward its pale deep end: {chilled:?}"
+    );
+}
+
+#[test]
+fn the_flakes_thicken_by_stage() {
+    let (mut harness, player) = cold_arena();
+    let beetle = creature(&mut harness, EnemyKind::Beetle, 1200.0);
+    let flakes = |h: &UiHarness, owner: Entity| -> Vec<(u8, String)> {
+        let world = h.world();
+        let registry = world.resource::<ParticleConfigRegistry>();
+        world
+            .query::<(&StatusEmitter, &ParticleEmitter)>()
+            .filter(|(of, _)| of.owner == owner && of.look == StatusLook::Chilled)
+            .map(|(of, emitter)| {
+                let name = (1..=4)
+                    .map(|n| format!("ex10_chill_flakes_{n}"))
+                    .chain(["ex10_chill_flakes".to_string()])
+                    .find(|name| registry.id_for_name(name) == Some(emitter.config))
+                    .expect("a flakes config");
+                (of.stage, name)
+            })
+            .collect()
+    };
+    let mut stages = Vec::new();
+    for _ in 0..200 {
+        cold(&mut harness, beetle, 1.5);
+        harness.step(5);
+        if has_status(harness.world(), beetle, FROZEN) {
+            break;
+        }
+        let shown = flakes(&harness, beetle);
+        let now = stage(&harness, beetle).expect("frost");
+        assert_eq!(
+            shown,
+            [(now, format!("ex10_chill_flakes_{now}"))],
+            "one emitter, its stage's"
+        );
+        if stages.last() != Some(&now) {
+            stages.push(now);
+        }
+    }
+    assert_eq!(stages, [1, 2, 3, 4], "each stage's flakes in turn");
+    // The wizard only chills, on the flakes he had.
+    cold(&mut harness, player, 10.0);
+    assert!(has_status(harness.world(), player, CHILLED));
+    assert_eq!(
+        flakes(&harness, player),
+        [(0, "ex10_chill_flakes".to_string())]
+    );
+}
+
+#[test]
+fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
+    use example_01_platformer::features::enemies::components::Enemy;
+    use tungsten::kit::PlatformerController;
+    // A troll with its mind, so its clip shows and a left one is drawn
+    // shifted, its input locked so it stands: where its frost, then its
+    // cube, draws facing `heading`, against its point and its drawing.
+    let drawn = |heading: f32| -> (Vec2, Vec2, Vec2, f32) {
+        let (mut harness, _) = cold_arena();
+        let kind = EnemyKind::Troll;
+        let centre = Vec2::new(1200.0, GROUND - kind.info().half.y - 0.5);
+        let world = harness.world_mut();
+        let id = world.resource_mut::<SaveIds>().take();
+        let troll =
+            enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+        enemies::scale(world, troll, Difficulty::Normal);
+        world.get_mut::<Enemy>(troll).unwrap().heading = heading;
+        world
+            .get_mut::<PlatformerController>(troll)
+            .unwrap()
+            .lock_input(60.0);
+        let assets = world.resource_mut::<AssetRegistry>();
+        mock_sprite(assets, "ex10_frost_troll_1", 711, false);
+        mock_sprite(assets, "ex10_status_ice_troll", 712, false);
+        harness.step(2);
+        pin_camera(&mut harness, Vec2::new(800.0, 600.0));
+        let quad = |h: &UiHarness, handle: u32| {
+            let batches = overlays(h.world());
+            let batch = batches
+                .iter()
+                .find(|batch| batch.texture.0 == handle)
+                .unwrap_or_else(|| panic!("{handle} drawn"));
+            Vec2::from(batch.instances[0].position)
+        };
+        cold(&mut harness, troll, 2.0);
+        assert_eq!(
+            harness.world().get::<Enemy>(troll).unwrap().heading,
+            heading,
+            "it still faces its way"
+        );
+        let frost = quad(&harness, 711);
+        let point = harness.world().get::<Position>(troll).unwrap().0;
+        let shift = harness.world().get::<Transform>(troll).unwrap().position.x - point.x;
+        super::combat::apply(&mut harness, troll, "frozen", None);
+        harness.step(1);
+        let cube = quad(&harness, 712);
+        (frost, cube, point, shift)
+    };
+    let (frost, cube, point, shift) = drawn(-1.0);
+    assert!(
+        (shift - 20.0).abs() < 0.01,
+        "a left troll draws 20 px on: {shift}"
+    );
+    assert!(
+        frost.distance(point) < 0.01 && cube.distance(point) < 0.01,
+        "its frost and cube on its body: {frost} {cube} at {point}"
+    );
+    let (frost, cube, point, shift) = drawn(1.0);
+    assert!(
+        shift.abs() < 0.01,
+        "a right troll draws at its point: {shift}"
+    );
+    assert!(
+        frost.distance(point) < 0.01 && cube.distance(point) < 0.01,
+        "facing right too: {frost} {cube} at {point}"
     );
 }

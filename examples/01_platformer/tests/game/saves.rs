@@ -2063,10 +2063,21 @@ fn as_schema_14(old: &mut Value) {
 
 /// Sets aside what a capture of a migrated save adds: the map's new enemies
 /// (`added`), the elevator at rest and the basins at rest, which a save
-/// from before schema 10 has none of.
+/// from before schema 10 has none of, and the shoves and steps 01 gives
+/// the controllers at a load, which a save from before 0.105 has none of.
 fn without_new(save: &mut Value, added: &std::ops::Range<u64>) {
+    let unset = |controller: Option<&mut Value>| {
+        if let Some(fields) = controller.and_then(Value::as_object_mut) {
+            fields.remove("shove");
+            fields.remove("step_height");
+        }
+    };
+    unset(save["player"].get_mut("controller"));
     let enemies = save["enemies"].as_array_mut().unwrap();
     enemies.retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
+    for enemy in enemies.iter_mut() {
+        unset(enemy.get_mut("controller"));
+    }
     let lifts = save["elevators"].as_array().unwrap();
     assert_eq!(lifts.len(), 1, "the elevator");
     assert_eq!(lifts[0]["stop"], "bottom", "at rest");
@@ -2901,4 +2912,40 @@ fn schema_10_saves_keep_at_most_nine_rounds() {
         }
         let _ = std::fs::remove_dir_all(dir);
     }
+}
+
+#[test]
+fn a_wizard_loaded_from_an_older_save_still_shoves() {
+    let (mut harness, _) = grounded();
+    harness.step(5);
+    // A 0.104 save: its controller has no shove or step fields.
+    let mut older = json(&capture(&harness));
+    let controller = older["player"]["controller"]
+        .as_object_mut()
+        .expect("the player's controller");
+    assert!(
+        controller.remove("shove").is_some(),
+        "a 0.105 save holds it"
+    );
+    assert!(controller.remove("step_height").is_none(), "he has no step");
+    let read: SaveGame = serde_json::from_value(older).expect("an older save reads");
+    let mut loaded = reloaded(read, false);
+    loaded.harness_mut().set_dt(1.0 / 60.0);
+    let player = player_entity(&loaded);
+    let at = centre(&loaded, player);
+    let ball = toys::spawn_ball(
+        loaded.world_mut(),
+        Vec2::new(at.x + PLAYER_HALF.x + 40.0, TOP - 7.5),
+        true,
+    );
+    loaded.step(2);
+    let start = super::body(&loaded, ball);
+    loaded.harness_mut().press_action("move_right");
+    loaded.step(30);
+    loaded.harness_mut().release_action("move_right");
+    let end = super::body(&loaded, ball);
+    assert!(
+        end.x - start.x > 100.0,
+        "the ball went ahead: {start} {end}"
+    );
 }

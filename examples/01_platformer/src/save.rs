@@ -1326,6 +1326,7 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             p.tags.clone(),
         ),
     );
+    crate::features::player::shove_bodies(world, player);
     let lantern = Lantern {
         on: save.lantern,
         guttered: save.lantern_guttered,

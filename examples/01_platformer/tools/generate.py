@@ -229,6 +229,8 @@ def particle_configs():
                     alpha_over_life=[[0, 0], [.1, .8], [.65, .6], [1, 0]],
                     color_over_life=[[0, [1, 1, 1, 1]], [1, [.6, .75, .85, 1]]])
     ice_ramp = [[0, [.75, .95, 1, 1]], [.5, [.25, .65, 1, 1]], [1, [.1, .35, .8, 0]]]
+    # 01 (j): the chill's flakes white and fine, fading to a pale blue.
+    frost_ramp = [[0, [1, 1, 1, 1]], [.6, [.88, .96, 1, 1]], [1, [.78, .9, 1, 0]]]
     fire_ramp = [[0, [1, 1, .88, 1]], [.22, [1, .86, .38, 1]], [.5, [1, .52, .12, 1]],
                  [1, [.5, .13, .05, 0]]]
     configs['ice_beam'] = dict(
@@ -316,7 +318,7 @@ def particle_configs():
         config('ice_crystal', 10, 6, 1.4, 30, .12, spread=180),
         gravity=[0, 40], drag_per_sec=.8, angular_velocity=dict(min=-3, max=3),
         lifetime=dict(min=.8, max=1.4), start_scale=dict(min=.06, max=.12),
-        alpha_over_life=[[0, 0], [.15, .9], [.7, .7], [1, 0]], color_over_life=ice_ramp)
+        alpha_over_life=[[0, 0], [.15, .9], [.7, .7], [1, 0]], color_over_life=frost_ramp)
     configs['shock_sparks'] = dict(
         config('spark', 12, 14, .25, 260, .1, spread=360),
         initial_velocity=dict(kind='radial', speed=dict(min=80, max=260)),
@@ -411,15 +413,6 @@ def particle_configs():
         initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=70,
                               speed=dict(min=30, max=110)),
         gravity=[0, -120], lifetime=dict(min=.35, max=1.0), start_scale=dict(min=.06, max=.2))
-    configs['warp_burst'] = dict(
-        config('flame_glow', 48, 48, .6, 1150, .6, spread=360, burst=True),
-        initial_velocity=dict(kind='radial', speed=dict(min=700, max=1150)),
-        lifetime=dict(min=.35, max=.6), gravity=[0, 0], drag_per_sec=3.2,
-        angular_velocity=dict(min=-2, max=2), start_scale=dict(min=.3, max=.6),
-        scale_over_life=[[0, .4], [.2, 1], [1, 1.4]],
-        alpha_over_life=[[0, 0], [.06, .9], [.5, .6], [1, 0]],
-        color_over_life=[[0, [1, .86, 1, 1]], [.2, [.87, .38, .95, 1]],
-                         [.55, [.55, .14, .72, 1]], [1, [.25, .06, .42, 0]]])
     configs['strike_sparks'] = dict(
         config('spark', 32, 32, .5, 650, .2, spread=150, burst=True),
         lifetime=dict(min=.18, max=.5), gravity=[0, 1200], drag_per_sec=1.0,
@@ -460,6 +453,26 @@ def particle_configs():
         return dict(kind='burst', count=count, once=True)
     def cone(direction, spread, low, high):
         return dict(kind='cone', direction=list(direction), spread_deg=spread, speed=dict(min=low, max=high))
+    # 01 (j): the frost's flakes by its stage, a pulse every 0.45 s of one,
+    # one, two and three crystals, each emitter its target's own.
+    for stage, (count, cap) in enumerate(((1, 3), (1, 4), (2, 7), (3, 10)), start=1):
+        configs[f'chill_flakes_{stage}'] = full(
+            'ice_crystal', cap, dict(kind='pulse', count_per_pulse=count, interval_sec=.45), (.8, 1.3),
+            cone((0, -1), 180, 10, 24 + 4 * stage), (0, 36), .8, (.05, .08 + .01 * stage),
+            [[0, .7], [.25, 1], [1, .2]], [[0, 0], [.15, .75], [.7, .55], [1, 0]], frost_ramp, (-3, 3))
+    # 01 (j): a hole's opening, sparks set on a ring about it that rush in
+    # to the core over its 0.3 s (`hole_particles` places and steers them).
+    configs['hole_open'] = full(
+        'spark', 72, burst(72), (.32, .4), dict(kind='radial', speed=dict(min=360, max=520)), (0, 0), 0,
+        (.08, .22), [[0, .6], [.5, 1], [1, .3]], [[0, 0], [.1, 1], [.8, .9], [1, 0]],
+        [[0, [.85, .75, 1, 1]], [.5, [.96, .55, .98, 1]], [1, [1, .92, .8, 1]]], (3, 10))
+    # 01 (j): the force push's wave kicks grit up where it scrapes a floor,
+    # accents to its dust's clip; thrown up in a cone, so it needs no turn
+    # for a left aim.
+    configs['push_grit'] = full(
+        'dust', 16, burst(6), (.25, .5), cone((0, -1), 110, 140, 360), (0, 900), 2.0, (.05, .12),
+        [[0, 1], [1, .5]], [[0, .9], [.7, .6], [1, 0]],
+        [[0, [.66, .6, .52, 1]], [1, [.4, .36, .32, 0]]], (-3, 3))
     configs['fuse_sparks'] = full(
         'spark', 18, dict(kind='continuous', rate_hz=48), (.16, .4), cone((0, -1), 200, 50, 170), (0, 420), .6,
         (.05, .12), [[0, 1], [1, .3]], [[0, 1], [.7, .9], [1, 0]],
@@ -526,10 +539,11 @@ def mirror_facing(images,lit,animations):
 
 
 def spray_clips(animations):
-    """The sprays' clips (`effects.SPRAY_CLIPS`), unmirrored: `toys` turns each
-    to its aim and flips it top to bottom when the aim faces left."""
-    from effects import SPRAY_CLIPS
-    for clip,(_,frames,ms,looping) in SPRAY_CLIPS.items():
+    """The sprays' clips (`effects.SPRAY_CLIPS`) and the force push's wave and
+    dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
+    flips it top to bottom when the aim faces left, and mirrors the dust."""
+    from effects import PUSH_CLIPS, SPRAY_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
@@ -562,6 +576,22 @@ def check_ice_fits(images):
             raise ValueError(f'status_ice_{name}_cracked: covers {cracked.getbbox()}, not its cube\'s {whole.getbbox()}')
 
 
+def check_frost_fits(images):
+    """Each frost sprite keeps to its box, its kind's fitted box or its
+    class's status box, grown by `effects.FROST_REACH` for its crust's
+    spikes, as `check_ice_fits` holds the cubes to their hurtboxes."""
+    from art import STATUS_CLASSES
+    from effects import FROST_KINDS, FROST_REACH, FROST_STAGES, fitted_box, status_box
+    boxes={**{kind:fitted_box(kind) for kind in FROST_KINDS},**{name:status_box(size) for name,size in STATUS_CLASSES.items()}}
+    for name,(x0,y0,x1,y1) in boxes.items():
+        for stage in range(1,FROST_STAGES+1):
+            bbox=images[f'frost_{name}_{stage}'].getbbox()
+            if bbox is None:raise ValueError(f'frost_{name}_{stage}: empty')
+            left,top,right,bottom=bbox
+            if left<x0-FROST_REACH or top<y0-FROST_REACH or right-1>x1+FROST_REACH or bottom-1>y1+FROST_REACH:
+                raise ValueError(f'frost_{name}_{stage}: reaches {bbox}, past its box {(x0,y0,x1,y1)} by more than {FROST_REACH}')
+
+
 def write_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True)
     path.write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
@@ -571,7 +601,7 @@ def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
     images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
     spray_clips(animations)
-    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images)
+    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images);check_frost_fits(images)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
     manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())

@@ -13,7 +13,9 @@ pub mod systems;
 
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
-use tungsten::kit::{ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, ensure_phases};
+use tungsten::kit::{
+    ACTION_INPUT, CHARACTER_ANIMATOR, CUES, Phase, PlatformerController, ensure_phases,
+};
 use tungsten::{Plugin, SceneEntity};
 
 use crate::features::level::GLOWS;
@@ -67,6 +69,13 @@ pub const SHOVE_SIDE: f32 = 16.0;
 pub const SHOVE_OVER: f32 = 1600.0;
 pub const SHOVE_BESIDE: f32 = 600.0;
 pub const STUCK_BY: f32 = 2.0;
+/// The mass the wizard walks bodies aside as, by the kit's shove (N6), and
+/// the share of it a body he moves may weigh: up to 30, so a ball, a
+/// bowling ball, a rock, a bomb, a crate, a keg and a scrap, each slowing
+/// him by its mass over 60 (a crate 20 %, a keg 27 %); the dummy and iron
+/// stop him.
+pub const PLAYER_SHOVE_MASS: f32 = 60.0;
+pub const PLAYER_SHOVE_SHARE: f32 = 0.5;
 
 /// How far the player draws a pickup in, its prefab's `pickup_radius`
 /// stat: restated so a save can move an older player's reach to it.
@@ -164,8 +173,19 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     if let Some(glow) = world.get::<Glow>(player).copied() {
         world.insert(player, StaffGlow(glow));
     }
+    shove_bodies(world, player);
     world.insert_resource(Bursts::default());
     player
+}
+
+/// Gives `player`'s controller its shove ([`PLAYER_SHOVE_MASS`]): at a
+/// spawn, and after a load, whose saved controller may be from before it.
+pub fn shove_bodies(world: &mut World, player: Entity) {
+    if let Some(controller) = world.get_mut::<PlatformerController>(player) {
+        *controller = controller
+            .clone()
+            .with_shove(PLAYER_SHOVE_MASS, PLAYER_SHOVE_SHARE);
+    }
 }
 
 /// Shows a cast by `player` along `aim` with `gesture`, for [`CAST_SECS`]:

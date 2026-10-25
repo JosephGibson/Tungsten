@@ -1,6 +1,6 @@
 //! The controllers' shared motion: the step's length as the physics step
-//! takes it, the ground probe and the cast loop that moves a body and slides
-//! it along what it meets.
+//! takes it, the ground probe, the cast loop that moves a body and slides it
+//! along what it meets, and the climb over a step.
 
 use glam::Vec2;
 use tungsten_core::physics::{BodyKind, RigidBody, Shape, SpatialFilter, SpatialHit, cast_shape};
@@ -46,6 +46,10 @@ pub(crate) struct Slide {
     pub(crate) ceiling: bool,
     /// It met a wall.
     pub(crate) wall: bool,
+    /// The first wall's body; `None` for a tile, or with no wall.
+    pub(crate) wall_body: Option<Entity>,
+    /// The first wall's outward normal; zero with no wall.
+    pub(crate) wall_normal: Vec2,
 }
 
 /// Moves `shape` from `origin` by `delta` against the last step's positions
@@ -79,6 +83,10 @@ pub(crate) fn move_and_slide(
         } else if hit.normal.y >= -FLOOR_NORMAL_Y {
             slide.ceiling = true;
         } else {
+            if !slide.wall {
+                slide.wall_body = hit.entity;
+                slide.wall_normal = hit.normal;
+            }
             slide.wall = true;
         }
         rest = direction * (length - travel);
@@ -98,6 +106,45 @@ pub(crate) fn probe_ground(
 ) -> Option<SpatialHit> {
     cast_shape(world, shape, origin, Vec2::Y, GROUND_PROBE, filter)
         .filter(|hit| hit.normal.y <= FLOOR_NORMAL_Y)
+}
+
+/// Where `shape` at `origin` lands climbing a step: up by at most `height`,
+/// as far as there is room, across by `across` px (signed, along x) as far
+/// as nothing stops it, then down by what it rose plus [`GROUND_PROBE`].
+/// The landing's shape position and the floor's body (`None` for a tile),
+/// when the way down meets a floor that is not a kinematic body; `None`
+/// when it rises or goes across by no move, or lands on nothing.
+pub(crate) fn climb(
+    world: &World,
+    shape: Shape,
+    origin: Vec2,
+    height: f32,
+    across: f32,
+    filter: &SpatialFilter,
+) -> Option<(Vec2, Option<Entity>)> {
+    let rise = cast_shape(world, shape, origin, Vec2::NEG_Y, height, filter)
+        .map_or(height, |hit| (hit.distance - SKIN).max(0.0));
+    if rise <= MIN_MOVE {
+        return None;
+    }
+    let up = origin - Vec2::new(0.0, rise);
+    let direction = Vec2::new(across.signum(), 0.0);
+    let reach = across.abs();
+    let travel = cast_shape(world, shape, up, direction, reach, filter)
+        .map_or(reach, |hit| (hit.distance - SKIN).max(0.0));
+    if travel <= MIN_MOVE {
+        return None;
+    }
+    let over = up + direction * travel;
+    let floor = cast_shape(world, shape, over, Vec2::Y, rise + GROUND_PROBE, filter)?;
+    if floor.normal.y > FLOOR_NORMAL_Y || floor.entity.is_some_and(|body| is_kinematic(world, body))
+    {
+        return None;
+    }
+    Some((
+        over + Vec2::Y * (floor.distance - SKIN).max(0.0),
+        floor.entity,
+    ))
 }
 
 /// Whether `entity` is a kinematic body.

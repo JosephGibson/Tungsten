@@ -1,10 +1,14 @@
 use super::*;
 use crate::{KIT_INTENT, KIT_MOVE, KIT_OVERLAP, KIT_REACT, KIT_RESOLVE, KIT_TICK};
+use serde_json::json;
 use tungsten_core::Stage;
 use tungsten_core::physics::{
-    PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsPlugin, RigidBody, RigidBodyBundle,
+    PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PhysicsBuffers, PhysicsPlugin, RigidBody, RigidBodyBundle,
 };
-use tungsten_core::{Bundle, LayerKind, TilemapData, TilemapInstance, TilemapRegistry, Time};
+use tungsten_core::{
+    Bundle, CommandBuffer, ComponentRegistry, LayerKind, TilemapData, TilemapInstance,
+    TilemapRegistry, Time, Transform,
+};
 
 const DT: f32 = 1.0 / 60.0;
 const GRAVITY: f32 = 3600.0;
@@ -45,6 +49,25 @@ fn static_box(world: &mut World, center: Vec2, half: Vec2) -> Entity {
     world.spawn_with(RigidBodyBundle::r#static(
         Position(center),
         Collider::aabb(half),
+    ))
+}
+
+/// A dynamic box of `mass` and half extents `half` with its foot at `foot`.
+fn dynamic_box(world: &mut World, foot: Vec2, half: Vec2, mass: f32) -> Entity {
+    world.spawn_with(
+        RigidBodyBundle::dynamic(
+            Position(foot - Vec2::new(0.0, half.y)),
+            Collider::aabb(half),
+        )
+        .with_body(RigidBody::dynamic().with_mass(mass)),
+    )
+}
+
+/// A dynamic circle of `radius` resting with its foot at `foot`.
+fn ball(world: &mut World, foot: Vec2, radius: f32) -> Entity {
+    world.spawn_with(RigidBodyBundle::dynamic(
+        Position(foot - Vec2::new(0.0, radius)),
+        Collider::circle(radius),
     ))
 }
 
@@ -698,4 +721,390 @@ fn the_controller_reports_the_kinematic_body_it_stands_on() {
     assert_eq!(state(&world, rider).ground(), None, "the still first step");
     step(&mut world, &mut schedule);
     assert_eq!(state(&world, rider).ground(), Some(deck));
+}
+
+/// A shove of 60 at 0.5: what the shove tests run with.
+fn shover() -> PlatformerController {
+    PlatformerController::new(RUN, JUMP).with_shove(60.0, 0.5)
+}
+
+#[test]
+fn a_shove_moves_a_light_body_at_the_run_less_its_share() {
+    let (mut world, mut schedule, entity) = standing(shover());
+    let crate_ = dynamic_box(&mut world, Vec2::new(260.0, 0.0), Vec2::splat(15.0), 12.0);
+    controller(&mut world, entity).set_run(1.0);
+    let mut paces = Vec::new();
+    for n in 0..30 {
+        let before = position(&world, entity).x;
+        step(&mut world, &mut schedule);
+        let at = position(&world, entity);
+        let crate_at = position(&world, crate_);
+        assert!(
+            at.x + HALF.x <= crate_at.x - 15.0 + 0.001,
+            "step {n}: it overlaps the crate: {at} {crate_at}"
+        );
+        paces.push((at.x - before) / DT);
+    }
+    let speed = world.get::<Velocity>(crate_).unwrap().0.x;
+    let expected = 0.8 * RUN;
+    assert!(
+        (speed - expected).abs() <= 0.05 * expected,
+        "{speed} vs {expected}"
+    );
+    let pace = paces[20..].iter().sum::<f32>() / 10.0;
+    assert!(
+        (pace - expected).abs() <= 0.05 * expected,
+        "it follows at the crate's pace: {pace}"
+    );
+    assert!(
+        !world.resource::<PhysicsBuffers>().is_sleeping(crate_),
+        "the crate is awake"
+    );
+}
+
+#[test]
+fn a_body_past_the_share_blocks_as_before() {
+    let (mut world, mut schedule, entity) = standing(shover());
+    let crate_ = dynamic_box(&mut world, Vec2::new(260.0, 0.0), Vec2::splat(15.0), 40.0);
+    controller(&mut world, entity).set_run(1.0);
+    steps(&mut world, &mut schedule, 30);
+    let at = position(&world, entity);
+    let crate_at = position(&world, crate_);
+    assert!(at.x + HALF.x <= crate_at.x - 15.0 + 0.5, "{at} {crate_at}");
+    assert!((crate_at.x - 260.0).abs() < 0.5, "it holds: {crate_at}");
+    assert_eq!(world.get::<Velocity>(crate_).unwrap().0.x, 0.0);
+}
+
+#[test]
+fn a_pinned_body_holds_the_shover() {
+    let (mut world, mut schedule, entity) = standing(shover());
+    let crate_ = dynamic_box(&mut world, Vec2::new(260.0, 0.0), Vec2::splat(15.0), 12.0);
+    // A wall whose face touches the crate's far side.
+    static_box(&mut world, Vec2::new(285.0, -50.0), Vec2::new(10.0, 50.0));
+    controller(&mut world, entity).set_run(1.0);
+    steps(&mut world, &mut schedule, 120);
+    let at = position(&world, entity);
+    let crate_at = position(&world, crate_);
+    // The wall's soft contact takes the crate under a pixel into it.
+    assert!((crate_at.x - 260.0).abs() < 1.0, "pinned: {crate_at}");
+    assert!(at.x + HALF.x <= crate_at.x - 15.0 + 0.5, "{at} {crate_at}");
+    assert!(at.x + HALF.x > 244.0, "it reached the crate: {at}");
+}
+
+#[test]
+fn a_shove_moves_no_kinematic_or_static_body() {
+    for kinematic in [true, false] {
+        let (mut world, mut schedule, entity) = standing(shover());
+        let center = Vec2::new(260.0, -15.0);
+        let half = Vec2::splat(15.0);
+        let block = if kinematic {
+            world.spawn_with(RigidBodyBundle::kinematic(
+                Position(center),
+                Collider::aabb(half),
+            ))
+        } else {
+            static_box(&mut world, center, half)
+        };
+        controller(&mut world, entity).set_run(1.0);
+        steps(&mut world, &mut schedule, 20);
+        let at = position(&world, entity);
+        assert!(at.x + HALF.x <= 245.0 && at.x + HALF.x > 244.9, "{at}");
+        assert_eq!(position(&world, block), center, "kinematic {kinematic}");
+        if kinematic {
+            assert_eq!(world.get::<Velocity>(block).unwrap().0, Vec2::ZERO);
+        }
+    }
+}
+
+#[test]
+fn a_shove_keeps_a_faster_body_s_speed() {
+    let (mut world, mut schedule, entity) = standing(shover());
+    // A crate just ahead, already moving away at 500 px/s: faster than the
+    // shove's 448, slower than the run.
+    let crate_ = dynamic_box(&mut world, Vec2::new(226.0, 0.0), Vec2::splat(15.0), 12.0);
+    world.get_mut::<Velocity>(crate_).unwrap().0.x = 500.0;
+    controller(&mut world, entity).set_run(1.0);
+    for n in 0..10 {
+        step(&mut world, &mut schedule);
+        let speed = world.get::<Velocity>(crate_).unwrap().0.x;
+        assert!((speed - 500.0).abs() < 0.01, "step {n}: {speed}");
+    }
+    // It meets the crate each step, which moves a step's travel on.
+    let at = position(&world, entity);
+    let crate_at = position(&world, crate_);
+    let gap = crate_at.x - 15.0 - (at.x + HALF.x);
+    assert!(
+        (0.0..500.0 * DT + 0.1).contains(&gap),
+        "it follows the crate: {at} {crate_at}"
+    );
+}
+
+#[test]
+fn the_step_climbs_a_low_box_and_not_a_tall_one() {
+    let after = |height: f32| {
+        let (mut world, mut schedule, entity) =
+            standing(PlatformerController::new(RUN, JUMP).with_step_height(16.0));
+        static_box(
+            &mut world,
+            Vec2::new(300.0, -height * 0.5),
+            Vec2::new(60.0, height * 0.5),
+        );
+        controller(&mut world, entity).set_run(1.0);
+        steps(&mut world, &mut schedule, 12);
+        let at = position(&world, entity);
+        assert!(state(&world, entity).grounded(), "{height}: {at}");
+        at
+    };
+    let low = after(12.0);
+    assert!(
+        (low.y + HALF.y + 12.0).abs() < 0.02,
+        "on the low box: {low}"
+    );
+    assert!(low.x > 240.0 + HALF.x, "past its edge: {low}");
+    let tall = after(20.0);
+    assert_eq!(tall.y, -HALF.y, "on the floor at the tall box: {tall}");
+    assert!(
+        tall.x + HALF.x <= 240.0 && tall.x + HALF.x > 239.9,
+        "{tall}"
+    );
+}
+
+/// The highest a hero rose, whether it stood on `body`, where it ended and
+/// how far `body` moved, walking at 50 px/s with a step of 32 into a ball
+/// of radius 15 for 200 steps.
+fn walk_into_a_ball(collider: Collider) -> (f32, bool, Vec2, f32) {
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 64);
+    let half_height = match collider.shape {
+        tungsten_core::physics::Shape::Circle { radius } => radius,
+        tungsten_core::physics::Shape::Aabb { half_extents } => half_extents.y,
+    };
+    let mut pc = PlatformerController::new(50.0, JUMP).with_step_height(32.0);
+    pc.set_run(1.0);
+    let entity = world.spawn_with(
+        RigidBodyBundle::kinematic(Position::new(200.0, -half_height), collider).with((pc,)),
+    );
+    let ball = ball(&mut world, Vec2::new(240.0, 0.0), 15.0);
+    let start = position(&world, ball);
+    let (mut top, mut stood) = (0.0_f32, false);
+    for _ in 0..200 {
+        step(&mut world, &mut schedule);
+        top = top.min(position(&world, entity).y + half_height);
+        stood |= state(&world, entity).ground() == Some(ball);
+    }
+    let moved = position(&world, ball).distance(start);
+    (top, stood, position(&world, entity), moved)
+}
+
+#[test]
+fn the_step_climbs_a_ball_at_a_slow_walk() {
+    let (top, stood, at, moved) = walk_into_a_ball(Collider::aabb(HALF));
+    assert!(stood, "it stood on the ball");
+    assert!(top < -20.0, "it rose over the ball: {top}");
+    assert!(at.x - HALF.x > 255.0, "past the ball: {at}");
+    assert!((at.y + HALF.y).abs() < 0.02, "on the floor again: {at}");
+    assert!(moved <= 0.5, "the ball moved {moved} px");
+}
+
+#[test]
+fn a_round_controller_climbs_a_ball_too() {
+    let (top, stood, at, moved) = walk_into_a_ball(Collider::circle(15.0));
+    assert!(stood, "it stood on the ball");
+    assert!(top < -20.0, "it rose over the ball: {top}");
+    assert!(at.x - 15.0 > 255.0, "past the ball: {at}");
+    assert!((at.y + 15.0).abs() < 0.02, "on the floor again: {at}");
+    assert!(moved <= 0.5, "the ball moved {moved} px");
+}
+
+#[test]
+fn the_step_needs_the_ground_and_room_above() {
+    // In the air: falling from 30 px into a box 12 px tall, it lands beside
+    // it on the floor, though the step would climb it from the ground.
+    let (mut world, mut schedule) = rig();
+    tile_floor(&mut world, 64);
+    let mut pc = PlatformerController::new(RUN, JUMP).with_step_height(16.0);
+    pc.set_run(1.0);
+    let entity = hero(&mut world, Vec2::new(200.0, -30.0), pc);
+    // It reaches the box's face at x 278 with its feet under the box's top.
+    static_box(&mut world, Vec2::new(338.0, -6.0), Vec2::new(60.0, 6.0));
+    let mut landed = None;
+    for _ in 0..30 {
+        step(&mut world, &mut schedule);
+        if state(&world, entity).grounded() {
+            landed = Some(position(&world, entity));
+            break;
+        }
+    }
+    let landed = landed.expect("it landed");
+    assert!((landed.y + HALF.y).abs() < 0.02, "on the floor: {landed}");
+    assert!(landed.x + HALF.x <= 278.0, "beside the box: {landed}");
+    // Under a ceiling 5 px over its head, a box 12 px tall stops it.
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_step_height(16.0));
+    static_box(&mut world, Vec2::new(300.0, -6.0), Vec2::new(60.0, 6.0));
+    static_box(&mut world, Vec2::new(300.0, -55.0), Vec2::new(150.0, 10.0));
+    controller(&mut world, entity).set_run(1.0);
+    steps(&mut world, &mut schedule, 20);
+    let at = position(&world, entity);
+    assert_eq!(at.y, -HALF.y, "still on the floor: {at}");
+    assert!(at.x + HALF.x <= 240.0 && at.x + HALF.x > 239.9, "{at}");
+}
+
+#[test]
+fn a_kinematic_body_is_never_a_step() {
+    // A low kinematic box blocks it.
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_step_height(16.0));
+    world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(300.0, -6.0),
+        Collider::aabb(Vec2::new(60.0, 6.0)),
+    ));
+    controller(&mut world, entity).set_run(1.0);
+    steps(&mut world, &mut schedule, 20);
+    let at = position(&world, entity);
+    assert_eq!(at.y, -HALF.y, "{at}");
+    assert!(at.x + HALF.x <= 240.0 && at.x + HALF.x > 239.9, "{at}");
+    // A low static lip before a kinematic deck: the way down meets the
+    // deck first, so it does not climb.
+    let (mut world, mut schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_step_height(16.0));
+    static_box(&mut world, Vec2::new(247.0, -6.0), Vec2::new(1.0, 6.0));
+    world.spawn_with(RigidBodyBundle::kinematic(
+        Position::new(288.0, -7.0),
+        Collider::aabb(Vec2::new(40.0, 7.0)),
+    ));
+    controller(&mut world, entity).set_run(1.0);
+    steps(&mut world, &mut schedule, 20);
+    let at = position(&world, entity);
+    assert_eq!(at.y, -HALF.y, "{at}");
+    assert!(at.x + HALF.x <= 246.0 && at.x + HALF.x > 245.9, "{at}");
+}
+
+#[test]
+fn a_step_comes_before_a_shove() {
+    let (mut world, mut schedule, entity) = standing(shover().with_step_height(16.0));
+    let block = dynamic_box(&mut world, Vec2::new(260.0, 0.0), Vec2::new(15.0, 6.0), 1.0);
+    let start = position(&world, block);
+    controller(&mut world, entity).set_run(1.0);
+    let mut stood = false;
+    for _ in 0..12 {
+        step(&mut world, &mut schedule);
+        stood |= state(&world, entity).ground() == Some(block);
+    }
+    assert!(stood, "it climbed the block");
+    assert!(
+        position(&world, block).distance(start) <= 0.5,
+        "climbed, not pushed: {}",
+        position(&world, block)
+    );
+}
+
+#[test]
+fn the_scene_fields_build_the_same_controller() {
+    let (mut world, _) = rig();
+    let components = world.resource::<ComponentRegistry>();
+    let fields = json!({
+        "run_speed": RUN,
+        "jump_speed": JUMP,
+        "shove_mass": 60,
+        "shove_share": 0.25,
+        "step_height": 16
+    });
+    for bad in [
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "shove_mass": 0 }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "shove_mass": 60, "shove_share": 0 }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "shove_mass": 60, "shove_share": 1.5 }),
+        json!({ "run_speed": RUN, "jump_speed": JUMP, "step_height": -1 }),
+    ] {
+        assert!(
+            components
+                .check(PLATFORMER_CONTROLLER_COMPONENT, &bad)
+                .is_err(),
+            "{bad}"
+        );
+    }
+    let built = |world: &mut World, value: &serde_json::Value| {
+        let prepared = world
+            .resource::<ComponentRegistry>()
+            .prepare(
+                PLATFORMER_CONTROLLER_COMPONENT,
+                value,
+                &SpawnContext::new(world, Transform::default()),
+            )
+            .unwrap();
+        let mut buffer = CommandBuffer::new();
+        let pending = buffer.spawn();
+        prepared.insert_pending(&mut buffer, pending);
+        world.flush_reusing(&mut buffer);
+        world
+            .query::<&PlatformerController>()
+            .last()
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(
+        built(&mut world, &fields),
+        PlatformerController::new(RUN, JUMP)
+            .with_shove(60.0, 0.25)
+            .with_step_height(16.0)
+    );
+    let plain = json!({ "run_speed": RUN, "jump_speed": JUMP, "shove_share": 0.25 });
+    let built_plain = built(&mut world, &plain);
+    assert_eq!(built_plain.shove, None, "the share alone shoves nothing");
+    assert_eq!(built_plain.step_height, 0.0);
+}
+
+#[test]
+fn a_save_keeps_the_shove_and_the_step_and_an_old_one_loads_them_off() {
+    let set = shover().with_step_height(32.0);
+    let saved = serde_json::to_value(&set).unwrap();
+    assert_eq!(saved["shove"], json!({ "mass": 60.0, "share": 0.5 }));
+    assert_eq!(saved["step_height"], json!(32.0));
+    assert_eq!(
+        serde_json::from_value::<PlatformerController>(saved.clone()).unwrap(),
+        set
+    );
+    // Off, the saved form is as before: neither field is written.
+    let off = serde_json::to_value(PlatformerController::new(RUN, JUMP)).unwrap();
+    assert!(off.get("shove").is_none() && off.get("step_height").is_none());
+    // A save from before them loads with both off.
+    let mut old = saved.clone();
+    let object = old.as_object_mut().unwrap();
+    object.remove("shove");
+    object.remove("step_height");
+    let loaded: PlatformerController = serde_json::from_value(old).unwrap();
+    assert_eq!(loaded.shove, None);
+    assert_eq!(loaded.step_height, 0.0);
+    for (field, value) in [
+        ("shove", json!({ "mass": 0.0, "share": 0.5 })),
+        ("shove", json!({ "mass": 60.0, "share": 0.0 })),
+        ("shove", json!({ "mass": 60.0, "share": 1.5 })),
+        ("shove", json!({ "mass": 60.0 })),
+        ("step_height", json!(-1.0)),
+    ] {
+        let mut bad = saved.clone();
+        bad[field] = value.clone();
+        assert!(
+            serde_json::from_value::<PlatformerController>(bad).is_err(),
+            "{field} = {value}"
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "mass must be finite and > 0")]
+fn a_zero_shove_mass_panics() {
+    let _ = PlatformerController::new(RUN, JUMP).with_shove(0.0, 0.5);
+}
+
+#[test]
+#[should_panic(expected = "share must be in (0, 1]")]
+fn a_shove_share_above_one_panics() {
+    let _ = PlatformerController::new(RUN, JUMP).with_shove(60.0, 1.5);
+}
+
+#[test]
+#[should_panic(expected = "height must be finite and >= 0")]
+fn a_negative_step_height_panics() {
+    let _ = PlatformerController::new(RUN, JUMP).with_step_height(-1.0);
 }

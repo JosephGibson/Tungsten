@@ -1,0 +1,33 @@
+{
+  "frames": [
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_0"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_1"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_2"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_3"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_4"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_5"
+    },
+    {
+      "duration_ms": 55,
+      "sprite": "ex10_push_dust_6"
+    }
+  ],
+  "looping": false
+}

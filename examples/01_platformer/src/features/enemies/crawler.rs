@@ -5,13 +5,12 @@
 //! player, scared, and lunges only at a player whose light is out.
 
 use glam::Vec2;
-use tungsten::core::{BodyKind, Entity, Position, RigidBody, Time, World};
+use tungsten::core::{Entity, Position, Time, World};
 use tungsten::kit::PlatformerController;
-use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{Enemy, EnemyKind, EnemyState, Scared};
-use super::systems::{elapsed, face, go, player, rest, sees};
-use super::{ARRIVED, centre};
+use super::systems::{elapsed, face, go, player, rest, sees, solid};
+use super::{ARRIVED, WALK_STEP, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
@@ -45,21 +44,10 @@ pub const DAMAGE: f32 = 15.0;
 pub const SCARED_HOLD: f32 = 0.4;
 pub const FROST_BREATH: &str = "ex10_frost_breath";
 
-/// Whether a cast from `from` along `direction` meets ground within
-/// `distance`: a solid tile or a static body, never a ball or the player.
-fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, me: Entity) -> bool {
-    let filter = SpatialFilter::new().excluding(me);
-    cast_ray(world, from, direction, distance, &filter).is_some_and(|hit| {
-        hit.entity.is_none_or(|entity| {
-            world
-                .get::<RigidBody>(entity)
-                .is_some_and(|body| body.kind == BodyKind::Static)
-        })
-    })
-}
-
 /// Whether walking `crawler` along `heading` is blocked: a wall ahead, or
-/// no ground under its leading feet.
+/// no ground under its leading feet within [`WALK_STEP`] past a step's
+/// depth, as the other walkers' [`blocked`](super::systems::blocked) has
+/// it; [`solid`] looks past balls and the other dynamic bodies.
 fn blocked(world: &World, crawler: Entity, heading: f32) -> bool {
     let Some(at) = centre(world, crawler) else {
         return true;
@@ -67,7 +55,7 @@ fn blocked(world: &World, crawler: Entity, heading: f32) -> bool {
     let half = EnemyKind::Crawler.info().half;
     let wall = solid(world, at, Vec2::new(heading, 0.0), half.x + 8.0, crawler);
     let toes = Vec2::new(at.x + heading * (half.x + 6.0), at.y);
-    let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0, crawler);
+    let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0 + WALK_STEP, crawler);
     wall || ledge
 }
 

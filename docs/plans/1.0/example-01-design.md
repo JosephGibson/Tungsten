@@ -386,7 +386,7 @@ Fallback: (d) is content with no public API. If Phase 6 runs long, the feature g
 
 ## After (d): the feedback stops
 
-The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release; their notes of 2026-10-22 added two between (e) and (f), the quick fixes and a level and title pass, and their notes of 2026-10-24 three after (h): (i) fixes and tuning, (j) pushes and spells and (k) scenery, the aqueduct and the start.
+The owner's notes after 0.97 became four more stops, (e) to (h), planned in the [feedback plan](example-01-feedback.md) (§3), each its own milestone and release; their notes of 2026-10-22 added two between (e) and (f), the quick fixes and a level and title pass, and their notes of 2026-10-24 three after (h): (i) fixes and tuning, (j) pushes and spells and (k) scenery, the aqueduct and the start; their request the same day added (l) the tomes, three hidden pickups, after (k).
 
 - **As built, 01 (e) (M77, `D-205`).** Where it changed this file's rules and its stops' rows:
   - the player's lantern is the staff light's flame until (h)'s wizard: a kit ability burns 3 mana a second while it is lit, handed back at full mana, where the regeneration covers it; without mana it gutters out and relights at 10 (feedback Q15); 01 (c)'s crawler holds at the light's drawn edge, scared, with a clip, a hiss and a puff of frost breath, where it parked unexplained;

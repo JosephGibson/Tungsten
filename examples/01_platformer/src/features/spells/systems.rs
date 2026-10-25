@@ -264,7 +264,7 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         // The ability's spawn payload fires it; `adopt` takes it in.
         Spell::FireMissile => audio::play(world, Sound::Cast, centre),
         Spell::ForcePush => {
-            toys::force_push(world, centre);
+            toys::wave::cast(world, centre, aim);
             audio::play(world, Sound::Pushed, centre);
         }
         Spell::BlackHole => {

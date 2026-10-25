@@ -1257,6 +1257,26 @@
       "questions": []
     },
     {
+      "id": "e01tomes",
+      "row": "01 (l) the tomes",
+      "label": "01 (l) the tomes",
+      "group": "audio-shipping",
+      "kind": "release",
+      "level": "B",
+      "title": "The tomes",
+      "summary": "Three glowing tomes hidden off the level's routes, each taken at a prompt on a new interact key and shown on the HUD: a demonic pact that halves health for a 50-point shield recharging 3 s after a hit, drawn in light blue over the health bar; bounding, air jumps past the double jump at 25 mana each with a blue burst and a sound of their own; arcane power, every spell at twice the mana, damage and build-up.",
+      "note": "From the owner's request of 2026-10-24 (example-01-feedback.md §3.8). The kit's platformer controller gains a run-time air-jump count and a paid air jump (K25), and abilities a cost scaled by a stat (K26), both opt-in; the plan re-rates the stop C if either needs an API sketch. Opus max by its own tier (D-195), as it draws the books, icons and bursts and synthesizes sounds.",
+      "src": ["docs/plans/1.0/example-01-feedback.md"],
+      "slug": "example-01-tomes",
+      "complexity": 3,
+      "effort": "XL",
+      "tier": {"model": "opus", "effort": "max"},
+      "shows": "see",
+      "roles": ["play"],
+      "flags": [],
+      "questions": []
+    },
+    {
       "id": "qa6",
       "row": "Phase 6 QA pass",
       "label": "Phase 6 QA pass",

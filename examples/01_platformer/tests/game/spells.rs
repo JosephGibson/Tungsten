@@ -18,7 +18,7 @@ use example_01_platformer::features::spells::{
     SUMMON_NEXT, SUMMON_PREV, SUMMONS, Summoned, summon_type,
 };
 use example_01_platformer::features::toys::components::{
-    BlackHole, FireMissile, Ring, ShockRing, SmallBall, Spray, SprayLook, SprayPuff,
+    BlackHole, FireMissile, Ring, ShockRing, SmallBall, Spray, SprayLook, SprayPuff, Wave,
 };
 use example_01_platformer::features::toys::{
     self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
@@ -788,4 +788,97 @@ fn a_spray_draws_its_sprites_and_clears_them() {
     assert!(until(&mut harness, 24, |h| {
         h.world().query::<&SprayPuff>().count() == 0
     }));
+}
+
+#[test]
+fn the_wave_meets_a_body_running_into_it() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    // In the level's empty sky.
+    let caster = Vec2::new(1000.0, 700.0);
+    let origin = caster + Vec2::X * toys::wave::WAVE_START;
+    let velocity = |h: &UiHarness, e: Entity| h.world().get::<Velocity>(e).unwrap().0;
+    // Head on: a small ball 22 px past the front's start, just past its
+    // first step's 20 px, flying back at 900 px/s. A test of where it is at
+    // each step alone would never cross it.
+    let head_on = ball(&mut harness, origin + Vec2::new(22.0, 0.0), true);
+    harness.world_mut().get_mut::<Velocity>(head_on).unwrap().0 = Vec2::new(-900.0, 0.0);
+    toys::wave::cast(harness.world_mut(), caster, Vec2::X);
+    harness.step(1);
+    assert!(
+        velocity(&harness, head_on).x > 0.0,
+        "thrown back: {}",
+        velocity(&harness, head_on)
+    );
+    // On a slant, the front at 100 px: a bowling ball 130 px along and 65
+    // across, flying in at 900 px/s on each axis, meets it inside the sector
+    // within the step, though at the step's start it lies outside.
+    harness.step(4);
+    let slant = ball(&mut harness, origin + Vec2::new(130.0, 65.0), false);
+    harness.world_mut().get_mut::<Velocity>(slant).unwrap().0 = Vec2::new(-900.0, -900.0);
+    harness.step(1);
+    let crossed = harness
+        .world()
+        .query::<&Wave>()
+        .any(|wave| wave.crossed.contains(&slant));
+    assert!(crossed, "the front met it");
+    assert!(
+        velocity(&harness, slant).x > -800.0,
+        "pushed along: {}",
+        velocity(&harness, slant)
+    );
+}
+
+#[test]
+fn a_wave_lives_three_tenths_of_a_second() {
+    let (mut harness, _) = run();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    choose(&mut harness, 4);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    let looks = |h: &UiHarness| {
+        h.world()
+            .query::<&Wave>()
+            .map(|wave| wave.look)
+            .collect::<Vec<_>>()
+    };
+    let cast = looks(&harness);
+    assert_eq!(cast.len(), 1, "the force push casts one wave");
+    let look = cast[0].expect("its crescent");
+    harness.step(18);
+    assert!(looks(&harness).is_empty(), "gone after 19 steps");
+    assert!(!harness.world().is_alive(look), "its crescent too");
+}
+
+#[test]
+fn a_hole_lifts_bowling_balls_within_200_px_and_leaves_iron() {
+    const FLOOR: f32 = 1000.0;
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    ground(&mut harness, FLOOR);
+    harness.step(1);
+    // Three holes 800 px apart, out of each other's reach: one 180 px over a
+    // bowling ball, one 230 px over another and one 120 px over iron.
+    let near = ball(&mut harness, Vec2::new(600.0, FLOOR - BALL_RADIUS), false);
+    let far = ball(&mut harness, Vec2::new(1400.0, FLOOR - BALL_RADIUS), false);
+    let iron = toys::place_iron(harness.world_mut(), Vec2::new(2200.0, FLOOR - IRON_HALF.y));
+    harness.step(2);
+    let starts = [near, far, iron].map(|entity| body(&harness, entity));
+    for (thing, over) in [(starts[0], 180.0), (starts[1], 230.0), (starts[2], 120.0)] {
+        toys::place_black_hole(harness.world_mut(), thing - Vec2::new(0.0, over));
+    }
+    let mut rose = 0.0_f32;
+    let mut stirred = [0.0_f32; 2];
+    for _ in 0..60 {
+        harness.step(1);
+        rose = rose.max(starts[0].y - body(&harness, near).y);
+        stirred[0] = stirred[0].max(body(&harness, far).distance(starts[1]));
+        stirred[1] = stirred[1].max(body(&harness, iron).distance(starts[2]));
+    }
+    assert!(rose > 60.0, "the near ball rose {rose} px");
+    assert!(stirred[0] < 1.0, "the far ball stayed down: {}", stirred[0]);
+    assert!(stirred[1] < 1.0, "the iron stayed down: {}", stirred[1]);
 }

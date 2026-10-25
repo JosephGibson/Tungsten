@@ -4,12 +4,15 @@ use tungsten::core::Entity;
 
 /// A status's particles on the target `owner`: chilled's flakes,
 /// bleeding's drips, shocked's sparks, frozen's glints or burning's
-/// embers, which follow it while it carries the status. Presentation,
-/// never saved.
+/// embers, which follow it while it carries the status. A freezable
+/// creature's flakes come from the first point of cold by its frost's
+/// `stage`, 1 to 4, each stage an emitter of its own; 0 for every other.
+/// Presentation, never saved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StatusEmitter {
     pub owner: Entity,
     pub look: StatusLook,
+    pub stage: u8,
 }
 
 /// A status a target shows with particles.

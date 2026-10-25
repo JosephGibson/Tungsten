@@ -6,6 +6,31 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.105.0] - 2026-10-25
+
+Summary: M84, example 01's pushes and spells from the owner's playtest of 2026-10-24 (N4, N6, N9, N15, N19 and N20) and their review of the plan's art sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-84-example-01-pushes-spells.md`; `D-213`), with two kit additions and no engine, template or shell change: the kit's platformer controller shoving light bodies and climbing low steps when set; the wizard walking bodies aside and walkers stepping over the balls in their way; the force push as a wave toward the cursor that throws what its front meets, the troll a little; a black hole that lifts bowling balls, tears open over 0.3 s and holds bats and wisps about its core; a chilled creature's frost in four white stages from the first point of cold; save schema 14 unchanged
+
+### Added
+
+- **The kit's shove and step height** (`D-213`, amending `D-158`, `kit::motion::platformer`): `PlatformerController::with_shove(mass, share)` gives a light dynamic body it walks into its horizontal speed less the body's share of its mass, the faster kept, and wakes it; `with_step_height(height)` climbs a ledge or a body no taller than that from the ground, by casts up, across and down, and sets its `Position` at the landing, so it shoves nothing it climbs. Both are off by default, with the `platformer_controller` component's `shove_mass`, `shove_share` and `step_height` and the saved form's `shove` and `step_height`, left out when off; the recipes hash holds.
+- **Walking bodies aside** (`D-213`): the wizard shoves at 60 × 0.5 (`player::shove_bodies`), 448 px/s behind a crate; walkers shove balls, rocks and bombs up to 8 by their kind's mass and step 32 px, looking past bodies to the walls and ground behind them (`enemies::walk_on_rock`, `WALK_SHOVE_MOST`, `WALK_STEP`).
+- **The force push's wave** (`D-213`, `toys/wave.rs`): a front from the wizard's hand toward the cursor at 1,200 px/s for 0.3 s, widening from 15° to 30°, taking each body and enemy once where it meets the front and throwing it along the aim, half as hard at 360 px, an enemy by its kind's `KindInfo::wave` and the troll launched past its resist; drawn as `push_wave`, a crescent of bent air, with `push_dust` and `push_grit` where it scrapes a floor, under a new whoosh.
+- **A black hole's opening and its hold** (`D-213`): over 0.3 s its layers grow in, a ring of its photon ring art closes on it and a rush of 72 sparks comes in (`hole_open`), with a generated `black_hole_open.wav`; a bat or a wisp in reach is held circling about its core on its own mover (`toys_hold`), its own direction given back after the movers (`toys_release`).
+- **The frost's build-up** (`D-213`, `combat::frost_level`): a creature that freezes frosts from the first point of cold in four stages, white rime on its hurtbox from the feet to a crust (`frost_<kind>_<stage>`, `frost_<class>_<stage>`), with flakes by stage (`chill_flakes_1` to `_4`).
+
+### Changed
+
+- **The force push** (`D-213`, amending `D-209`): the wave in place of the radial push; `radial_push` stays the missile's blast.
+- **The black hole** (`D-213`, amending `D-209`): bowling balls take 0.625 of the pull and lift within about 200 px of the core, iron staying down; the flyers' knockback renewed each step is gone.
+- **The chill's look** (`D-213`): its tint turns toward a whiter `FROST_TINT` before the chill and toward a pale `CHILL_DEEP` from it, frozen keeping its cold, and `chill_flakes` is white.
+- **A left-facing enemy's overlays** (`D-213`): its frost and its ice cube sit on its body, the troll's 20 px back.
+- **Records**: the feedback plan's §3.6 landing and K7, K18, K20, K21 and K28, backlog rows for K7's other half, K20, K21 and K28, the break ledger's row, known issues, DESIGN's controller paragraph, example 01's READMEs and the register.
+
+### Removed
+
+- **The radial force push** (`D-213`): `Ring::Push`, `FORCE_PUSH_RADIUS`, `toys::force_push`, `toys::push` and the `warp_burst` particles.
+- **The hand-authored hole sound** (`D-213`): `black_hole.ogg`; `HAND_AUTHORED_SOUNDS` is empty.
+
 ## [0.104.0] - 2026-10-24
 
 Summary: M83, example 01's fixes and tuning from the owner's playtest of 2026-10-24 and their review of the run's frames (plan archived at `docs/plans/archive/1.0/phase6-milestone-83-example-01-tuning.md`; `D-212`), with two kit fixes and no engine, template or shell change: frost crawlers that leap twice as far and touch for 15; a floor on body hits; an ice beam at half damage that freezes as fast; difficulty on the enemies alone; bats flush on their roosts; an elevator that turns back over the courier, who idles riding it; drops that land where their enemy fell, fall and are drawn in from 192 px; lava that takes what falls in; F1's hit boxes while a blow lands; a double jump that sounds like a jump; no hint toasts; a faster troll whose slam cools down; a darker theme and a slower, scattered starry title; save schema 14

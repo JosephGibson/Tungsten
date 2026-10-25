@@ -351,6 +351,12 @@
     "ex10_pour": {
       "path": "animations/pour.json"
     },
+    "ex10_push_dust": {
+      "path": "animations/push_dust.json"
+    },
+    "ex10_push_wave": {
+      "path": "animations/push_wave.json"
+    },
     "ex10_river": {
       "path": "animations/river.json"
     },
@@ -774,6 +780,18 @@
     "ex10_chill_flakes": {
       "path": "particles/chill_flakes.json"
     },
+    "ex10_chill_flakes_1": {
+      "path": "particles/chill_flakes_1.json"
+    },
+    "ex10_chill_flakes_2": {
+      "path": "particles/chill_flakes_2.json"
+    },
+    "ex10_chill_flakes_3": {
+      "path": "particles/chill_flakes_3.json"
+    },
+    "ex10_chill_flakes_4": {
+      "path": "particles/chill_flakes_4.json"
+    },
     "ex10_collapse_embers": {
       "path": "particles/collapse_embers.json"
     },
@@ -831,6 +849,9 @@
     "ex10_gore_burst": {
       "path": "particles/gore_burst.json"
     },
+    "ex10_hole_open": {
+      "path": "particles/hole_open.json"
+    },
     "ex10_ice_beam": {
       "path": "particles/ice_beam.json"
     },
@@ -869,6 +890,9 @@
     },
     "ex10_poof": {
       "path": "particles/poof.json"
+    },
+    "ex10_push_grit": {
+      "path": "particles/push_grit.json"
     },
     "ex10_ricochet": {
       "path": "particles/ricochet.json"
@@ -911,9 +935,6 @@
     },
     "ex10_torch_embers": {
       "path": "particles/torch_embers.json"
-    },
-    "ex10_warp_burst": {
-      "path": "particles/warp_burst.json"
     },
     "ex10_waterfall_spray": {
       "path": "particles/waterfall_spray.json"
@@ -1989,7 +2010,7 @@
     },
     "ex10_black_hole_sfx": {
       "looping": false,
-      "path": "sounds/black_hole.ogg",
+      "path": "sounds/black_hole_open.wav",
       "volume": 0.65
     },
     "ex10_crackle_sfx": {
@@ -5674,6 +5695,38 @@
       "normal_map": "sprites/flowers_n.png",
       "path": "sprites/flowers.png"
     },
+    "ex10_frost_bat_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_bat_1.png"
+    },
+    "ex10_frost_bat_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_bat_2.png"
+    },
+    "ex10_frost_bat_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_bat_3.png"
+    },
+    "ex10_frost_bat_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_bat_4.png"
+    },
+    "ex10_frost_beetle_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_beetle_1.png"
+    },
+    "ex10_frost_beetle_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_beetle_2.png"
+    },
+    "ex10_frost_beetle_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_beetle_3.png"
+    },
+    "ex10_frost_beetle_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_beetle_4.png"
+    },
     "ex10_frost_core_0": {
       "filter": "nearest",
       "path": "sprites/frost_core_0.png"
@@ -5705,6 +5758,70 @@
     "ex10_frost_core_7": {
       "filter": "nearest",
       "path": "sprites/frost_core_7.png"
+    },
+    "ex10_frost_dummy_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_dummy_1.png"
+    },
+    "ex10_frost_dummy_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_dummy_2.png"
+    },
+    "ex10_frost_dummy_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_dummy_3.png"
+    },
+    "ex10_frost_dummy_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_dummy_4.png"
+    },
+    "ex10_frost_goblin_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_goblin_1.png"
+    },
+    "ex10_frost_goblin_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_goblin_2.png"
+    },
+    "ex10_frost_goblin_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_goblin_3.png"
+    },
+    "ex10_frost_goblin_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_goblin_4.png"
+    },
+    "ex10_frost_large_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_large_1.png"
+    },
+    "ex10_frost_large_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_large_2.png"
+    },
+    "ex10_frost_large_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_large_3.png"
+    },
+    "ex10_frost_large_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_large_4.png"
+    },
+    "ex10_frost_medium_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_medium_1.png"
+    },
+    "ex10_frost_medium_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_medium_2.png"
+    },
+    "ex10_frost_medium_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_medium_3.png"
+    },
+    "ex10_frost_medium_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_medium_4.png"
     },
     "ex10_frost_muzzle_0": {
       "filter": "nearest",
@@ -5762,6 +5879,22 @@
       "filter": "nearest",
       "path": "sprites/frost_puff_7.png"
     },
+    "ex10_frost_small_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_small_1.png"
+    },
+    "ex10_frost_small_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_small_2.png"
+    },
+    "ex10_frost_small_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_small_3.png"
+    },
+    "ex10_frost_small_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_small_4.png"
+    },
     "ex10_frost_splash_0": {
       "filter": "nearest",
       "path": "sprites/frost_splash_0.png"
@@ -5785,6 +5918,38 @@
     "ex10_frost_splash_5": {
       "filter": "nearest",
       "path": "sprites/frost_splash_5.png"
+    },
+    "ex10_frost_troll_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_troll_1.png"
+    },
+    "ex10_frost_troll_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_troll_2.png"
+    },
+    "ex10_frost_troll_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_troll_3.png"
+    },
+    "ex10_frost_troll_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_troll_4.png"
+    },
+    "ex10_frost_wisp_1": {
+      "filter": "nearest",
+      "path": "sprites/frost_wisp_1.png"
+    },
+    "ex10_frost_wisp_2": {
+      "filter": "nearest",
+      "path": "sprites/frost_wisp_2.png"
+    },
+    "ex10_frost_wisp_3": {
+      "filter": "nearest",
+      "path": "sprites/frost_wisp_3.png"
+    },
+    "ex10_frost_wisp_4": {
+      "filter": "nearest",
+      "path": "sprites/frost_wisp_4.png"
     },
     "ex10_gargoyle": {
       "emissive_mask": "sprites/gargoyle_e.png",
@@ -9263,6 +9428,58 @@
       "filter": "nearest",
       "normal_map": "sprites/powder_keg_lit_3_n.png",
       "path": "sprites/powder_keg_lit_3.png"
+    },
+    "ex10_push_dust_0": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_0.png"
+    },
+    "ex10_push_dust_1": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_1.png"
+    },
+    "ex10_push_dust_2": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_2.png"
+    },
+    "ex10_push_dust_3": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_3.png"
+    },
+    "ex10_push_dust_4": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_4.png"
+    },
+    "ex10_push_dust_5": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_5.png"
+    },
+    "ex10_push_dust_6": {
+      "filter": "nearest",
+      "path": "sprites/push_dust_6.png"
+    },
+    "ex10_push_wave_0": {
+      "filter": "linear",
+      "path": "sprites/push_wave_0.png"
+    },
+    "ex10_push_wave_1": {
+      "filter": "linear",
+      "path": "sprites/push_wave_1.png"
+    },
+    "ex10_push_wave_2": {
+      "filter": "linear",
+      "path": "sprites/push_wave_2.png"
+    },
+    "ex10_push_wave_3": {
+      "filter": "linear",
+      "path": "sprites/push_wave_3.png"
+    },
+    "ex10_push_wave_4": {
+      "filter": "linear",
+      "path": "sprites/push_wave_4.png"
+    },
+    "ex10_push_wave_5": {
+      "filter": "linear",
+      "path": "sprites/push_wave_5.png"
     },
     "ex10_rail_0": {
       "emissive_mask": "sprites/rail_0_e.png",
