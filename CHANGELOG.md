@@ -6,6 +6,29 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.106.0] - 2026-10-25
+
+Summary: M85, example 01's scenery, aqueduct and start from the owner's playtest of 2026-10-24 (N1, N2, N5 and N21) and their three reviews of the plan's art sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-85-example-01-scenery.md`; `D-214`), with no kit, engine, template or shell change: a generator check that fails the build on any scenery that floats, and props standing on what the terrain draws; a walled start with a boundary and save schema 15; the aqueduct's broken spans, pours and gargoyle; lava that freezes and thaws by one front.
+
+### Added
+
+- **The floating check** (`D-214`, `tools/placement.py`): `placement.floating` lists every prop, group, stream, support and decoration of the built level that floats, sinks or states no way it stands (a foot within 2 px of the drawn surface over 60 % of its columns and sunk no more than 6 px, a hung top within 2 px, a wall touch, a stream's source, joins and foot, a pier column to its base, a springing beside its capital); `generate.py --floating` reports them and `build_level` fails on any. It found 135 at 0.105.
+- **The start's wall and boundary** (`D-214`): `start_wall` over columns 0–1 from row 21, its variants from a stream of its own, and `level::BOUNDARY`, a static box left of the map in the slabs' layer, so nothing flies off the west edge.
+- **The aqueduct's pass** (`D-214`): three ragged broken ends a side (`channel_break_<side>_<k>`), spills past each lip, 10 px pours (`pour_wide`) with splash feet (`pour_foot`), three spouts (`spouts`), each gap's arcade tops broken along one profile (`arcade_gap_*`) onto wet piers (`pier_wet_*`), fallen voussoirs, lime drips (`channel_drips`) and a fuller ambience.
+- **The lava's freeze and thaw** (`D-214`, `level/lava.rs`): one front down through the whole basin as the chill builds and the crust sets, nine crust frames that dull, hold and crack, and a second front down as it melts; `Sound::LavaChilled`, `LavaCracked` and `LavaMelted` with their sounds and cue rules, and `lava_mist`, `lava_frost`, `lava_sparks` and `lava_spatter` bursts, each over within a second.
+
+### Changed
+
+- **Placement** (`D-214`): `build_level` makes the terrain tiles first and `prepare` moves each supported prop and group by the smallest 0–12 px that passes the check's rule on the drawn terrain; a group takes the pieces inside its box and two groups may not share one; the pours, the lavafall, the falls, the gargoyle (`anchor: wall`), the fissure (`anchor: back`), a bone pile and a boulder set by hand.
+- **The start's props** (`D-214`): the crates, keg and dummy right of the moving deck under the perch, the oak and its roots two columns right; the spawn stays at 6.5.
+- **Save schema 15** (`D-214`, `src/save.rs`): `to_15` sets each body saved in the new wall or left of the map at rest on the clearing's floor, clear of every other body and the moving deck, the player at the spawn when no spot is clear, and drops any other with no room, logged, a map dummy or enemy into `gone`.
+- **The gargoyle and the far arcade** (`D-214`): the gargoyle a horned beast on a corbel in pale limestone, a 4-frame clip with its water over its tongue; `far_arcade` a two-tier ruin with broken spans.
+- **Records**: the feedback plan's §3.7 landing, the design's as-built bullet, example 01's READMEs and the register.
+
+### Removed
+
+- **The old pieces** (`D-214`): `channel_break_left` and `_right`, the static `gargoyle`, the 6 px `pour` clip and `Crust::stage`.
+
 ## [0.105.0] - 2026-10-25
 
 Summary: M84, example 01's pushes and spells from the owner's playtest of 2026-10-24 (N4, N6, N9, N15, N19 and N20) and their review of the plan's art sheet (plan archived at `docs/plans/archive/1.0/phase6-milestone-84-example-01-pushes-spells.md`; `D-213`), with two kit additions and no engine, template or shell change: the kit's platformer controller shoving light bodies and climbing low steps when set; the wizard walking bodies aside and walkers stepping over the balls in their way; the force push as a wave toward the cursor that throws what its front meets, the troll a little; a black hole that lifts bowling balls, tears open over 0.3 s and holds bats and wisps about its core; a chilled creature's frost in four white stages from the first point of cold; save schema 14 unchanged

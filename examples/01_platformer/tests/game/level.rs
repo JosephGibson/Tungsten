@@ -1,27 +1,28 @@
 //! The level from its generator, on the kit's controller and path follower:
 //! every route's jumps, a ride through a platform's cycle, the platforms'
 //! sweeps, the elevator turning back over a player and setting one out of
-//! its deck, a still rider idling on it, a thin deck's underside, and one
-//! collider per slab and iron box.
+//! its deck, a still rider idling on it, a thin deck's underside, one
+//! collider per slab and iron box, and the start's wall and boundary
+//! keeping a thrown ball in the map.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
-use example_01_platformer::features::level::{LAVA_LAYER, MAP, TILE};
+use example_01_platformer::features::level::{BOUNDARY, LAVA_LAYER, MAP, TILE};
 use example_01_platformer::features::player::{self, PLAYER_HALF};
 use example_01_platformer::features::run::Run;
 use glam::Vec2;
 use serde::Deserialize;
 use tungsten::core::{
     Collider, Entity, LayerKind, PhysicsConfig, Position, PrevPosition, RigidBody, Shape, Sprite,
-    TilemapRegistry,
+    TilemapRegistry, Velocity,
 };
 use tungsten::kit::{CharacterAnimator, PathFollower, PlatformerController};
 use tungsten::physics::BodyKind;
 use tungsten::testing::UiHarness;
 
-use super::{calm, harness, start};
+use super::{ball, calm, harness, start};
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -901,7 +902,8 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
         }
     }
     // Every static body is a slab's or an iron box's, its box the object's,
-    // or a lava basin's surface, in its own layer.
+    // the start's boundary (01 (k)), or a lava basin's surface, in its own
+    // layer.
     let surfaces = world
         .query::<&RigidBody>()
         .filter(|body| body.kind == BodyKind::Static && body.layers & LAVA_LAYER != 0)
@@ -925,8 +927,31 @@ fn each_slab_platform_and_iron_box_spawns_one_collider_with_no_join_inside() {
         })
         .collect();
     let mut want = slabs.clone();
+    let [min, max] = BOUNDARY;
+    want.push([min.x, min.y, max.x - min.x, max.y - min.y]);
     let key = |b: &[f32; 4]| (b[1] as i64, b[0] as i64, b[2] as i64, b[3] as i64);
     boxes.sort_by_key(key);
     want.sort_by_key(key);
     assert_eq!(boxes, want, "one collider per slab and iron object");
+}
+
+#[test]
+fn the_start_wall_and_its_boundary_keep_a_thrown_ball_in_the_map() {
+    // A bowling ball flung from over the clearing crosses x 0 near row 18,
+    // over the wall's top at row 21: the boundary turns it back, where
+    // without it `toys::bounds` would take it past x -128.
+    let mut harness = harness();
+    start(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    let thrown = ball(&mut harness, Vec2::new(6.0, 18.0) * TILE, false);
+    harness
+        .world_mut()
+        .get_mut::<Velocity>(thrown)
+        .expect("a ball's velocity")
+        .0 = Vec2::new(-1200.0, -600.0);
+    harness.step(180);
+    let world = harness.world();
+    assert!(world.is_alive(thrown), "the ball left the map");
+    let at = world.get::<Position>(thrown).expect("a ball's point").0;
+    assert!(at.x >= 0.0, "the ball at {at}");
 }

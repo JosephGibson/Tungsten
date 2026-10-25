@@ -1,13 +1,19 @@
 """Focused source/format failures and byte determinism; run with unittest."""
 import copy
+import json
 from pathlib import Path
 import tempfile
 import unittest
 
-from art import build_art, read_grid, validate_art, validate_palette
+from art import TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import generate
 from level import FAMILIES, build_level, validate_level
-from placement import UNDER_TUCK, underside
+from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
+
+
+def tiles(v):
+    """`v` as the floating check writes a place."""
+    return ('%.4f' % v).rstrip('0').rstrip('.')
 
 
 class AuthoringTests(unittest.TestCase):
@@ -68,14 +74,27 @@ class AuthoringTests(unittest.TestCase):
             self.assertEqual(self.images[frame['sprite'].removeprefix('ex10_')].getbbox()[3],93)
 
     def test_grounded_props_and_hanging_vegetation_meet_their_support(self):
-        platforms={p['name']:p for p in self.source['platforms']}
+        # Each supported prop on its support's drawn edge, what the terrain
+        # tiles draw, not the cell's edge (01 (k)).
+        catalog={t['id']+1:t['properties'][0]['value'].removeprefix('ex10_') for t in self.tiled['tilesets'][0]['tiles']}
+        terrain=next(l['data'] for l in self.tiled['layers'] if l['name']=='terrain')
+        drawn=Placed(self.images,64);cols=self.source['cols']
+        for i,g in enumerate(terrain):
+            if g:drawn.add(catalog[g],i%cols*64,i//cols*64)
         for p in self.source['props']:
             if 'support' not in p:continue
-            support=platforms[p['support']];box=self.images[p['sprite'].removeprefix('ex10_')].getbbox()
-            if p['anchor']=='ground':self.assertAlmostEqual(p['y']*64+box[3],support['row']*64,msg=str(p))
-            elif p['anchor']=='under':self.assertAlmostEqual(p['y']*64+box[1],underside(support,self.images,64)*64-UNDER_TUCK,msg=str(p))
-            else:self.assertAlmostEqual(p['y']*64+box[1],support['row']*64+self.images[support['style']].getbbox()[3],msg=str(p))
+            pts=drawn.points(p['sprite'].removeprefix('ex10_'),round(p['x']*64),round(p['y']*64))
+            if p['anchor']=='ground':
+                share,sink=stands(drawn.hit,pts);self.assertGreaterEqual(share,MOST,msg=str(p));self.assertLessEqual(sink,SINK,msg=str(p))
+            else:
+                self.assertEqual(p['anchor'],'under',msg=str(p));self.assertGreaterEqual(hangs(drawn.hit,pts),MOST,msg=str(p))
         self.assertEqual(sum(g['sprite']=='ex10_arch' for g in self.source['groups']),1)
+
+    def test_floating_scenery_fails_the_build(self):
+        source=json.loads((TOOLS/'level.json').read_text())
+        gargoyle=next(p for p in source['props'] if p.get('anchor')=='wall')
+        gargoyle['y']-=2
+        with self.assertRaisesRegex(ValueError,'floating'):build_level(self.images,self.lit,source)
 
     def test_shallow_collision_matches_alpha_and_never_uses_full_tile(self):
         layer=next(l['data'] for l in self.tiled['layers'] if l['name']=='collision')
@@ -92,6 +111,11 @@ class AuthoringTests(unittest.TestCase):
         terrain=next(l['data'] for l in self.tiled['layers'] if l['name']=='terrain')
         for y in range(31,36):
             for x in range(4,9):self.assertEqual(terrain[y*self.source['cols']+x],0)
+        # The start's wall (01 (k)): columns 0-1 rock from row 21, open air
+        # over it.
+        for x in range(2):
+            for y in range(21):self.assertEqual(terrain[y*self.source['cols']+x],0)
+            for y in range(21,36):self.assertNotEqual(terrain[y*self.source['cols']+x],0)
 
     def test_midnight_sky_and_moon_keep_clear_brightness_separation(self):
         sky=self.images['sky'];moon=self.images['moon']
@@ -113,6 +137,88 @@ class AuthoringTests(unittest.TestCase):
         for name in names:
             self.assertIn(name,self.lit)
             self.assertNotEqual(self.images[name].tobytes(),self.images['ball'].tobytes())
+
+    def lines_after(self, change):
+        """The floating check's lines for a copy of the level that `change`
+        edits in place."""
+        source = copy.deepcopy(self.source)
+        change(source)
+        return floating(source, self.tiled, self.images)
+
+    def judged_clean(self, anchor):
+        """The first supported prop with `anchor` that the check passes."""
+        found = {(line.split()[1], float(line.split()[2])) for line in floating(self.source, self.tiled, self.images)}
+        for i, p in enumerate(self.source['props']):
+            name = p['sprite'].removeprefix('ex10_')
+            if p.get('anchor') == anchor and 'support' in p and (name, round(p['x'], 4)) not in found:
+                return i, name
+        self.fail('no clean ' + anchor + ' prop')
+
+    def test_floating_lists_a_lifted_grounded_prop_as_stand(self):
+        i, name = self.judged_clean('ground')
+        def lift(source):
+            source['props'][i]['y'] -= 8 / 64
+        self.assertTrue(any(line.startswith(f'stand {name} ') for line in self.lines_after(lift)))
+
+    def test_floating_lists_a_dropped_hung_prop_as_hang(self):
+        i, name = self.judged_clean('under')
+        def drop(source):
+            source['props'][i]['y'] += 8 / 64
+        self.assertTrue(any(line.startswith(f'hang {name} ') for line in self.lines_after(drop)))
+
+    def pour(self, source, x=None):
+        """The props of the pour stack at `x`, else of the first one of six
+        segments or more that the check passes, top first."""
+        stacks = {}
+        for p in source['props']:
+            if stream_kind((p['animation'] or p['sprite']).removeprefix('ex10_')) == 'pour':
+                stacks.setdefault(p['x'], []).append(p)
+        found = ' '.join(floating(self.source, self.tiled, self.images))
+        for at, parts in sorted(stacks.items()):
+            if at == x or (x is None and len(parts) >= 6 and f' {tiles(at)} ' not in found):
+                return sorted(parts, key=lambda p: p['y'])
+        self.fail('no such pour')
+
+    def test_floating_lists_a_pour_short_of_its_surface(self):
+        x = self.pour(self.source)[0]['x']
+        def cut(source):
+            source['props'].remove(self.pour(source, x)[-1])
+        self.assertTrue(any(line.startswith(f'stream-short pour {tiles(x)} ') for line in self.lines_after(cut)))
+
+    def test_floating_lists_a_gap_in_a_pour(self):
+        x = self.pour(self.source)[0]['x']
+        def cut(source):
+            source['props'].remove(self.pour(source, x)[4])
+        self.assertTrue(any(line.startswith(f'stream-gap pour {tiles(x)} ') for line in self.lines_after(cut)))
+
+    def test_floating_lists_a_prop_with_no_anchor_and_no_class_as_unjudged(self):
+        def add(source):
+            source['props'].append(dict(sprite='ex10_lantern', x=60, y=34, depth='world', animation=None))
+        self.assertIn('unjudged lantern 60 34 no anchor and in no list of scenery.py', self.lines_after(add))
+
+    def test_floating_lists_a_vine_piece_inside_two_groups_boxes(self):
+        k, group = next((k, g) for k, g in enumerate(self.source['groups']) if g['sprite'] == 'ex10_vine_0')
+        def overlap(source):
+            # The group's top piece half a tile right, into a second vine
+            # group's box beside its own.
+            piece = source['props'][group['pieces'][0]]
+            piece['x'] += 0.5
+            source['groups'].append(dict(group, x=group['x'] + 0.5, pieces=[]))
+        lines = self.lines_after(overlap)
+        self.assertIn(f"group vine_0_big_0_0 {group['x'] + 0.5:g}", ' '.join(lines))
+        self.assertIn("inside 2 groups' boxes", ' '.join(lines))
+
+    def test_floating_lists_a_parapet_moved_up_a_row(self):
+        i, d = next((i, d) for i, d in enumerate(self.source['decorations']) if d['sprite'] == 'ex10_parapet_0')
+        self.assertFalse(any(line.startswith('parapet ') for line in floating(self.source, self.tiled, self.images)))
+        def lift(source):
+            source['decorations'][i]['row'] -= 1
+        self.assertTrue(any(line.startswith(f"parapet parapet_0 {d['col']} {d['row'] - 1} ") for line in self.lines_after(lift)))
+
+    def test_floating_lists_an_unknown_decoration_sprite_as_unjudged(self):
+        def add(source):
+            source['decorations'].append(dict(col=60, row=30, layer='background', sprite='ex10_lantern'))
+        self.assertIn('unjudged lantern 60 30 a decoration in no structure', self.lines_after(add))
 
     def test_pit_has_clear_interior_and_four_tile_shell(self):
         cols=self.source['cols'];pit=self.source['pit']

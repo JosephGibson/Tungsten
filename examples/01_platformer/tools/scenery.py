@@ -12,7 +12,7 @@ from PIL import Image
 
 from art import rng_for
 from pixels import Part, compose, despeckle, dither, outline, shade, to_image, unit
-from terrain import DECK, FROND, LEAF, TILE, darker, ellipse, from_image, line, rect, tinted
+from terrain import BREAK_LIPS, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image, line, rect, tinted
 
 STONE = dict(base='~', light=':', shadow='-', back='=')
 PALE_STONE = dict(base=':', light=';', shadow='=', back='~')
@@ -686,45 +686,149 @@ def fissure(height, seed=0):
     return to_image(c, (width, height))
 
 
-def gargoyle(i):
-    """A carved beast's head on the channel's face, jaws wide, water pouring
-    from them down the face: the broken span's spout."""
-    head, snout, jaw, mouth, horn, ear, brow = (Part() for _ in range(7))
-    head.polygon([(2, 15), (18, 11), (32, 14), (44, 19), (52, 24), (52, 33), (36, 33), (22, 36), (2, 38)])
-    snout.polygon([(46, 21), (56, 23), (61, 27), (60, 32), (50, 33)])
-    jaw.polygon([(18, 39), (34, 38), (48, 40), (54, 41), (50, 47), (32, 47), (16, 44)])
-    mouth.polygon([(24, 34), (54, 33), (55, 41), (26, 39)])
-    horn.limb([(14, 14), (9, 7), (3, 4), (0, 8)], 4)
-    ear.polygon([(22, 13), (27, 2), (31, 14)])
-    brow.polygon([(33, 15), (47, 20), (45, 24), (34, 21)])
+# The x the gargoyle's water leaves its jaws at, where its pour stands.
+GARGOYLE_MOUTH = 32
+
+
+def limestone(pixels, base='σ', light='w', mid='τ', dark='S'):
+    """Pale limestone shading for a mask lit from the upper right: tops and
+    right-facing edges catch the moon, bottoms and left-facing edges fall
+    into shade, the body a dither between `base` and `mid` by height."""
+    c = {}
+    if not pixels:
+        return c
+    top, bottom = min(y for _, y in pixels), max(y for _, y in pixels)
+    for x, y in pixels:
+        v = (y - top) / max(1, bottom - top)
+        sym = base if not dither(x, y, max(0.0, v - 0.45) * 1.6) else mid
+        if (x, y - 1) not in pixels or (x + 1, y) not in pixels:
+            sym = light
+        if (x, y + 1) not in pixels:
+            sym = dark
+        elif (x - 1, y) not in pixels:
+            sym = mid
+        c[(x, y)] = sym
+    return c
+
+
+def gargoyle(frame):
+    """The channel's gargoyle (01 (k)), frame `frame` of 4: a horned beast
+    crouched on a stepped corbel and leaning out of the channel's face
+    toward the viewer, seen from a little below, in pale weathered
+    limestone apart from the blue-grey masonry and the arcade: its crown
+    seen from above under moss, a heavy brow shading deep eye hollows with
+    a faint green glint, a foreshortened snout, jaws wide with fangs over
+    the jaw's shadowed underside, forelegs whose claws grip the corbel,
+    lichen and water stains, a shadow cast on the wall, and the channel's
+    water pouring over its tongue."""
+    def mask(draw):
+        part = Part()
+        draw(part)
+        return part.pixels()
+    corbel = mask(lambda q: q.polygon([(15, 47), (49, 47), (47, 52), (42, 52), (40, 57), (24, 57), (22, 52), (17, 52)]))
+    arm_l = mask(lambda q: q.limb([(13, 30), (9, 40), (14, 48)], 6))
+    arm_r = mask(lambda q: q.limb([(51, 30), (55, 40), (50, 48)], 6))
+    horn_l = mask(lambda q: (q.limb([(19, 10), (13, 5), (9, 4)], 4), q.limb([(9, 4), (6, 7)], 2)))
+    horn_r = mask(lambda q: (q.limb([(45, 10), (51, 5), (55, 4)], 4), q.limb([(55, 4), (58, 7)], 2)))
+    ear_l = mask(lambda q: q.polygon([(13, 16), (4, 13), (9, 18), (13, 24)]))
+    ear_r = mask(lambda q: q.polygon([(51, 16), (60, 13), (55, 18), (51, 24)]))
+    head = mask(lambda q: q.polygon([(16, 9), (32, 6), (48, 9), (53, 18), (52, 31), (45, 38), (19, 38), (12, 31), (11, 18)]))
+    jaw = mask(lambda q: q.polygon([(20, 40), (44, 40), (41, 47), (23, 47)]))
     c = compose([
-        (shaded(horn, PALE_STONE), None),
-        (shaded(ear, STONE), None),
-        ({p: 'o' for p in mouth.pixels()}, None),
-        (shaded(jaw, STONE), 'o'),
-        (shaded(head, PALE_STONE), 'o'),
-        (shaded(snout, PALE_STONE), 'o'),
-        (shaded(brow, STONE), None),
+        (limestone(corbel, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(arm_l, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(arm_r), 'o'),
+        (limestone(horn_l, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(horn_r), 'o'),
+        (limestone(ear_l, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(ear_r), 'o'),
+        (limestone(jaw, 'S', 'τ', 's', 's'), 'o'),
+        (limestone(head), 'o'),
     ])
-    for x, y in ((39, 24), (40, 24), (41, 24), (39, 25), (40, 25)):
-        c[(x, y)] = '<'
-    c[(41, 25)] = '-'
-    c[(58, 25)], c[(59, 26)] = '<', '<'
-    for x in range(28, 54, 4):
-        c[(x, 34)], c[(x, 35)], c[(x, 36)] = 'w', 'w', 'σ'
-    for x in range(30, 52, 5):
-        c[(x, 39)], c[(x, 38)] = 'w', 'σ'
-    for k in range(4):
-        for d in range(5):
-            c[(8 + k * 7 + d, 20 + k % 2 + d // 2)] = '='
-    for (x, y), s in list(c.items()):
-        if s == PALE_STONE['base'] and unit('gmoss', i, x // 3, y // 2) < 0.18 and y < 20:
-            c[(x, y)] = 'T'
-    for y in range(36, TILE):
-        sway = round(math.sin(y * 0.35 + i) * 0.8)
-        for x in range(46 + sway, 52 + sway + (y - 36) // 9):
-            c[(x, y)] = '`' if (x == 47 + sway and y % 4 == 0) else '}' if (x + y) % 3 else ')'
-    return finish(c)
+    # Claws gripping the corbel's corners.
+    for x0, sign in ((15, 1), (49, -1)):
+        for k in range(3):
+            x = x0 + sign * (k * 3)
+            c[(x, 48)], c[(x, 49)], c[(x + sign, 50)] = 'w', 'σ', 'o'
+    # The crown seen from above, a lit plane; the brow a shelf casting
+    # shadow into the eye hollows.
+    for x in range(17, 48):
+        for y in range(8, 12):
+            if (x, y) in c and c[(x, y)] not in ('o',):
+                c[(x, y)] = 'w' if dither(x, y, 0.5) else 'σ'
+    for x in range(14, 51):
+        if (x, 15) in c:
+            c[(x, 14)], c[(x, 15)] = 'I' if x > 32 else 'w', 'S'
+            if (x, 16) in c:
+                c[(x, 16)] = 's'
+    for ex in (24, 40):
+        for dy in range(0, 6):
+            for dx in range(-4, 5):
+                if (dx / 4.5) ** 2 + ((dy - 2.5) / 3) ** 2 <= 1:
+                    c[(ex + dx, 17 + dy)] = '■' if abs(dx) < 3 and 1 <= dy <= 4 else 'o'
+        c[(ex + 1, 19)] = 'c'
+    # The snout, foreshortened toward us, its nostrils on its front.
+    snout = {(x, y) for x in range(25, 40) for y in range(24, 33) if ((x - 32) / 7.5) ** 2 + ((y - 28) / 4.8) ** 2 <= 1}
+    for (x, y), sym in limestone(snout, 'σ', 'I', 'τ', 'S').items():
+        c[(x, y)] = sym
+    for nx in (29, 35):
+        c[(nx, 29)], c[(nx, 30)], c[(nx + (1 if nx < 32 else -1), 30)] = 's', 'o', 'o'
+    # Jaws wide under the snout: the dark throat, fangs, a tongue lip.
+    for y in range(34, 43):
+        for x in range(18, 47):
+            if ((x - 32) / 13) ** 2 + ((y - 38) / 4) ** 2 <= 1:
+                c[(x, y)] = '■' if abs(x - 32) < 9 and 35 <= y <= 41 else 'o'
+    for x, length in ((21, 4), (43, 4), (26, 2), (30, 1), (34, 1), (38, 2)):
+        for d in range(length):
+            c[(x, 35 + d)] = 'I' if d < length - 1 else 'w'
+    for x, length in ((24, 2), (40, 2)):
+        for d in range(length):
+            c[(x, 41 - d)] = 'w'
+    for x in range(28, 37):
+        c[(x, 41)] = 'τ' if 29 <= x <= 35 else 'S'
+        c[(x, 42)] = 'S'
+    # Moss on the crown and the horns' roots; lichen; stains; a crack.
+    for x in range(16, 49):
+        if unit('gm4', x // 2) < 0.7:
+            ys = sorted(y for (xx, y) in c if xx == x and y < 12 and c[(xx, y)] != 'o')
+            if ys:
+                for y in ys[:1 + int(unit('gm4l', x) * 3)]:
+                    c[(x, y)] = 'T' if y == ys[0] else 'g'
+    for n in range(14):
+        q = (14 + int(unit('lich4', n) * 36), 18 + int(unit('lich4y', n) * 16))
+        if c.get(q) in ('σ', 'τ', 'w'):
+            c[q] = 'G' if n % 3 else 'm'
+    for x0, y0, n in ((22, 23, 6), (42, 23, 6), (19, 43, 4), (45, 43, 4)):
+        for d in range(n):
+            q = (x0, y0 + d)
+            if c.get(q) in ('σ', 'τ', 'w', 'S'):
+                c[q] = 's' if d < n - 2 else 'S'
+    for d in range(7):
+        q = (47 - d // 2, 19 + d)
+        if c.get(q) in ('σ', 'w', 'τ', 'I'):
+            c[q] = 's'
+    outline(c, 'o')
+    # The shadow it casts down and to its left on the channel's face.
+    for (x, y) in list(c):
+        q = (x - 3, y + 4)
+        if q not in c and 0 <= q[0] < TILE and 0 <= q[1] < TILE:
+            c[q] = 'λ'
+    # The channel's water pouring over its tongue, to the tile's foot.
+    for y in range(41, TILE):
+        half = 3 + (y - 41) / 10
+        for x in range(round(GARGOYLE_MOUTH - half) - 1, round(GARGOYLE_MOUTH + half) + 2):
+            if y < 48 and c.get((x, y)) not in (None, 'λ', 'S', 'τ', 'o', 's'):
+                continue
+            d = abs(x - GARGOYLE_MOUTH)
+            v = (y - 16 * frame + x * 5) % 32
+            if d > half:
+                if dither(x, y + 4 * frame, 0.35):
+                    c[(x, y)] = 'ϰ'
+            elif d > half - 1:
+                c[(x, y)] = 'ς'
+            else:
+                c[(x, y)] = '`' if v < 2 else '_' if (v + x) % 7 == 0 else '}' if (x + y) % 3 else ')'
+    return to_image(c)
 
 
 def splash_rocks(i):
@@ -2200,18 +2304,345 @@ def lava_crust(stage, part='top', i=0):
     return to_image(c)
 
 
-def stream_frame(frame, width=6):
-    """A thin fall of water from a spout or a break, frame `frame` of 4, its
-    streaks moving 16 px a frame; segments stack every 64 px."""
+# The crust's look (01 (k)): its tables by crack stage, read at a
+# fractional stage.
+SEAM = ('θ', 'M', 'L', 'K')
+SEAM_HOT = (None, 'L', 'J', 'y')
+VEIN = ('M', 'M', 'L', 'K')
+# The px between a row's partial frames as a front comes down it.
+FRONT_STEP = 8
+
+
+def value_noise(key, x, y, cell):
+    """Smooth value noise in [0, 1): a grid of `cell` px, bilinear between
+    its corners, wrapping every tile across so tiles join."""
+    gx, gy = x / cell, y / cell
+    x0, y0 = math.floor(gx), math.floor(gy)
+    fx, fy = gx - x0, gy - y0
+    fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+    n = TILE // cell
+
+    def v(a, b):
+        return unit(key, a % n, b % n)
+    top = v(x0, y0) * (1 - fx) + v(x0 + 1, y0) * fx
+    bottom = v(x0, y0 + 1) * (1 - fx) + v(x0 + 1, y0 + 1) * fx
+    return top * (1 - fy) + bottom * fy
+
+
+def blobs(key, x, y):
+    return 0.6 * value_noise(key, x, y, 16) + 0.4 * value_noise(key + '2', x, y, 8)
+
+
+def wavy(key, x, base, amp=4.0):
+    """A wavy front's row at column `x`, repeating every tile across so
+    tiles join: `base` plus two sines of the tile's period."""
+    a, b = unit(key, 'a') * math.tau, unit(key, 'b') * math.tau
+    return base + amp * (0.65 * math.sin(math.tau * x / TILE + a) + 0.35 * math.sin(math.tau * 2 * x / TILE + b))
+
+
+def crust_at(stage, part, i, hot_seams=None, rime=0.0, warm=0.0, veins=None):
+    """`lava_crust` at a fractional crack stage: the tables of
+    `floor(stage)`, the cracks' length and heat by the fraction;
+    `hot_seams` forces the seams' symbols (the set's bright seams), `rime`
+    frosts the plates' tops, `warm` dithers the cooled melt warm and `veins`
+    forces the veins' symbols."""
+    s = int(stage)
+    f = stage - s
+    c = {}
+    seam_sym, seam_hot = (SEAM[s], SEAM_HOT[s]) if not hot_seams else hot_seams
+    vein_sym, vein_hot = (VEIN[s], seam_hot) if not veins else veins
+    lip = {x: 24 + round(2.0 * math.sin(math.tau * x / TILE * 2 + i * 1.7) + 1.2 * math.sin(x * 0.61 + i))
+           for x in range(TILE)}
+    for x in range(TILE):
+        rise = 3 + round(0.7 * math.sin(x * 0.37 + i) + 0.6 * math.sin(x * 0.11 + 2 * i)) if part == 'top' else 0
+        for y in range(max(0, rise), TILE):
+            n = unit('crust', part, i, x // 2, y // 2)
+            if part == 'top' and y == rise:
+                sym = 'α' if n < 0.75 else 'ξ'
+            elif part == 'top' and y == rise + 1:
+                sym = 'ξ' if n < 0.6 else 'β'
+            elif part == 'top' and y < lip[x]:
+                v = (y - rise) / max(1, lip[x] - rise)
+                sym = ('β' if n < 0.55 else 'γ') if v < 0.55 else ('γ' if n < 0.5 else 'ν')
+            elif part == 'top' and y == lip[x]:
+                sym = 'θ'
+            else:
+                sym = 'ν' if n < 0.55 else 'ζ' if n < 0.85 else 'ε'
+                if dither(x, y, 0.06 + 0.04 * stage) and unit('warm', part, i, x // 3, y // 3) < 0.35:
+                    sym = 'M'
+                if warm and blobs('setwarm%s%d' % (part, i), x, y) < warm * (1.1 - (y / TILE if part == 'top' else 0.4)):
+                    sym = 'M' if dither(x, y, 0.6) else sym
+            c[(x, y)] = sym
+    if part == 'top':
+        x = int(unit('seam0', i) * 8) + 4
+        seams = []
+        while x < TILE:
+            seams.append(x)
+            x += 14 + int(unit('seamw', i, x) * 9)
+        for s0 in seams:
+            x = s0
+            for y in range(3, 28):
+                r = unit('seam', i, s0, y)
+                x += -1 if r < 0.28 else 1 if r > 0.72 else 0
+                xx = x % TILE
+                if (xx, y) in c and y < lip[xx]:
+                    hot = seam_hot and unit('seamh', i, s0, y) < 0.18 + 0.15 * stage
+                    c[(xx, y)] = seam_hot if hot else seam_sym
+        cracks = round(stage * 3)
+        for k in range(cracks):
+            x, y = int(unit('ckx', i, k) * 60) + 2, 6 + int(unit('cky', i, k) * 10)
+            length = 4 + round(stage * 3) + (round(f * 4) if k >= cracks - 3 else 0)
+            for d in range(length):
+                r = unit('ckd', i, k, d)
+                x += 1 if r > 0.2 else 0
+                y += -1 if r < 0.25 else 1 if r > 0.8 else 0
+                xx = x % TILE
+                if (xx, y) in c and 5 <= y < lip[xx] - 1 and seam_hot:
+                    c[(xx, y)] = seam_hot if unit('ckh', i, k, d) < 0.3 + 0.15 * stage else seam_sym
+        if stage >= 2.5:
+            # The plates' edges lift: a glowing rim under a lifted edge.
+            for s0 in seams:
+                for y in range(4, 22):
+                    xx = (s0 + round(math.sin(y * 0.5 + i) * 1.5)) % TILE
+                    if (xx + 1, y) in c and unit('lift', i, s0, y) < 0.25 * (stage - 2):
+                        c[((xx + 1) % TILE, y)] = 'J'
+        if rime:
+            for (x, y), sym in list(c.items()):
+                if sym in ('α', 'ξ') and dither(x, y, rime):
+                    c[(x, y)] = 'π' if unit('rime2', i, x, y) < 0.55 else '`'
+                elif sym == 'β' and y <= 8 and dither(x, y, rime * 0.4):
+                    c[(x, y)] = 'ξ'
+    start = 30 if part == 'top' else 0
+    for k in range(2 + s):
+        x0, y0 = int(unit('vein', part, i, k) * 56) + 4, start + int(unit('veiny', part, i, k) * 20)
+        for d in range(12 + round(6 * stage)):
+            r = unit('vd', part, i, k, d)
+            x0 += -1 if r < 0.3 else 1 if r > 0.7 else 0
+            y0 += 1
+            if 0 <= y0 < TILE:
+                hot = vein_hot and unit('vh', part, i, k, d) < 0.1 + 0.12 * max(stage, 1.5 if veins else 0)
+                c[(x0 % TILE, y0)] = vein_hot if hot else vein_sym
+    return to_image(c)
+
+
+def lava_crust_frame(n, part, i):
+    """The crust's frame `n` of 9: 0 just set (bright seams, rime on the
+    plates), 1 dulling, 2 the hold (`lava_crust`'s stage 0), 3 to 8 two
+    for each of the three crack stages, its cracks lengthening and warming
+    to yellow, the plates' edges lifting."""
+    if n == 0:
+        return crust_at(0, part, i, hot_seams=('K', 'J'), rime=0.75, veins=('K', 'J'))
+    if n == 1:
+        return crust_at(0, part, i, hot_seams=('L', 'K'), rime=0.4, veins=('L', 'K'))
+    if n == 2:
+        return lava_crust(0, part, i)
+    return crust_at(1 + (n - 3) / 2, part, i)
+
+
+def front_row(x, j, key):
+    """A front's row at column `x` for partial `j` (0 to 7): `j` steps of
+    `FRONT_STEP` px down, waving with the tile's period so columns join, the
+    wave easing to nothing at a row's edges so rows join too."""
+    amp = 3.0 * math.sin(math.pi * min(j, TILE // FRONT_STEP - j) / (TILE // FRONT_STEP))
+    return wavy(key, x, j * FRONT_STEP + (1 if j == 0 else 0), amp)
+
+
+def lava_freeze(j, part, i):
+    """A row the freeze's front has reached `j` steps down, over the molten
+    clip: the fresh crust's pixels above the front (the set's bright seams
+    and rime), a cooling edge that glows at the front and a band of
+    darkening melt just under it; clear below, where the melt still
+    shows."""
+    from art import PALETTE
+    back = {tuple(v): s for s, v in PALETTE.items()}
+    crust = lava_crust_frame(0, part, i).load()
+    c = {}
+    for x in range(TILE):
+        edge = front_row(x, j, 'freeze-front')
+        for y in range(TILE):
+            if y < edge - 1:
+                if crust[x, y][3]:
+                    c[(x, y)] = back.get(tuple(crust[x, y]), 'β')
+            elif y < edge + 1:
+                if crust[x, min(TILE - 1, y)][3]:
+                    c[(x, y)] = 'K' if dither(x, y, 0.6) else 'L'
+            elif y < edge + 5:
+                if dither(x, y, 0.75 - (y - edge) * 0.15):
+                    c[(x, y)] = 'M' if dither(x, y, 0.5) else 'ϑ'
+    return to_image(c)
+
+
+def lava_melt(j, part, i):
+    """A row the melt's front has reached `j` steps down, over the molten
+    clip: clear above the front, where the melt is back; at the front a hot
+    glowing edge and dark rafts breaking off and sinking; below it the
+    crust as it was at its last crack, still hot."""
+    from art import PALETTE
+    back = {tuple(v): s for s, v in PALETTE.items()}
+    crust = lava_crust_frame(8, part, i).load()
+    c = {}
+    for x in range(TILE):
+        edge = front_row(x, j, 'melt-front')
+        for y in range(TILE):
+            if crust[x, y][3] and y > edge + 1:
+                c[(x, y)] = back.get(tuple(crust[x, y]), 'ν')
+            elif crust[x, y][3] and edge - 1 <= y <= edge + 1:
+                c[(x, y)] = 'y' if dither(x, y, 0.5) else 'J'
+    for k in range(5):
+        cx = int(unit('raft', part, i, j, k) * 60) + 2
+        w = 5 + int(unit('raftw', part, i, k) * 7)
+        lift = 3 + int(unit('rafth', part, i, j, k) * 5)
+        for x in range(cx, cx + w):
+            xx = x % TILE
+            top = round(front_row(xx, j, 'melt-front')) - lift
+            for y in range(top, top + 2 + (x - cx) % 2):
+                if 0 <= y < TILE:
+                    c[(xx, y)] = 'K' if x in (cx, cx + w - 1) else ('γ' if y == top else 'ν')
+    return to_image(c)
+
+
+def pour_wide(frame):
+    """A thin fall of water from a broken end, a spout or the gargoyle
+    (01 (k)), frame `frame` of 4: a 10 px column, its core of streaks moving
+    16 px a frame between translucent edges; segments stack every 64 px."""
     c = {}
     for y in range(TILE):
         sway = round(math.sin(math.tau * y / TILE) * 1.2)
-        x0 = TILE // 2 - width // 2 + sway
-        for x in range(x0, x0 + width):
-            if x in (x0, x0 + width - 1) and not dither(x, y, 0.6):
-                continue
+        x0 = TILE // 2 - 5 + sway
+        for x in range(x0 - 1, x0 + 11):
             v = (y - 16 * frame) % TILE
-            c[(x, y)] = '`' if (v + x * 7) % 32 < 2 else '}' if (v + x) % 4 else ')'
+            if x in (x0 - 1, x0 + 10):
+                if dither(x, y + frame * 4, 0.45):
+                    c[(x, y)] = 'ϰ'
+                continue
+            if x in (x0, x0 + 9):
+                c[(x, y)] = 'ς' if dither(x, y, 0.7) else '}'
+                continue
+            c[(x, y)] = '`' if (v + x * 7) % 32 < 2 else '_' if (v + x * 5) % 29 == 0 else '}' if (v + x) % 4 else ')'
+    return to_image(c)
+
+
+def pour_foot(frame):
+    """A pour's last segment over the floor, frame `frame` of 4: the stream
+    to its foot, a crown of drops thrown up and out, foam and a shallow pool
+    on the floor ringing out to its sides."""
+    c = from_image(pour_wide(frame))
+    for (x, y) in list(c):
+        if y > 52:
+            del c[(x, y)]
+    for x in range(4, 60):
+        d = abs(x - 31.5)
+        depth = 3 if d < 20 else 2 if d < 26 else 1
+        for y in range(TILE - depth, TILE):
+            ring = (d - 3 * frame) % 12 < 2
+            c[(x, y)] = '`' if ring and y == TILE - depth else '_' if y == TILE - depth else '}' if dither(x, y, 0.6) else ')'
+    for x in range(22, 42):
+        for y in range(53, TILE - 2):
+            if dither(x + frame, y, 0.75 - abs(x - 31.5) / 16):
+                c[(x, y)] = '`' if unit('foam', frame, x, y) < 0.5 else '_'
+    for k in range(10):
+        a = (k / 10) * math.pi
+        speed = 0.6 + unit('crown', k) * 0.6
+        t = ((frame + unit('ph', k) * 4) % 4) / 4
+        x = 31.5 + math.cos(a) * 20 * speed * t
+        y = 56 - math.sin(a) * 18 * speed * t * (1 - t) * 4 / 2
+        for dx, dy in ((0, 0), (1, 0)) if t < 0.6 else ((0, 0),):
+            q = (round(x) + dx, round(y) + dy)
+            if 0 <= q[1] < TILE:
+                c[q] = '`' if t < 0.4 else '_'
+    return to_image(c)
+
+
+def spill(frame, side, k):
+    """The trough's water over a broken end's lip (`terrain.BREAK_LIPS`),
+    frame `frame` of 4: a sheet bulging out past the lip with foam and
+    spray, falling into a column 4.5 px past it, the wide pour's width."""
+    sign = 1 if side == 'right' else -1
+    lip = BREAK_LIPS[side][k]
+    col = lip + sign * 4.5
+    c = {}
+    for y in range(2, TILE):
+        t = min(1.0, (y - 2) / 14)
+        centre = lip + sign * (1.5 + 3 * math.sin(t * math.pi * 0.5))
+        centre = centre * (1 - t) + col * t
+        half = 5.5 - 0.5 * t + 0.6 * math.sin(y * 0.45 + frame * 1.6)
+        for x in range(round(centre - half) - 2, round(centre + half) + 3):
+            if sign * (x - lip) < -1 and y < 12:
+                continue
+            d = abs(x - centre)
+            if d > half + 0.5:
+                if d < half + 2 and dither(x, y + frame * 4, 0.3):
+                    c[(x, y)] = 'ϰ'
+                continue
+            v = (y - 16 * frame + x * 3) % 32
+            if y < 6 and d < half - 1:
+                sym = '`' if (x + frame) % 3 else '_'
+            elif d > half - 1:
+                sym = 'ς' if dither(x, y, 0.6) else '}'
+            elif v < 2:
+                sym = '`'
+            elif (v + x) % 7 == 0:
+                sym = '_'
+            else:
+                sym = '}' if (x + y) % 3 else ')'
+            c[(x, y)] = sym
+    for n in range(6):
+        t = ((frame + unit('sp2', side, k, n) * 4) % 4) / 4
+        x = lip + sign * (3 + 12 * t * (0.6 + unit('sp2x', k, n) * 0.6))
+        y = 4 - 5 * t + 16 * t * t
+        if 0 <= round(y) < TILE:
+            c[(round(x), round(y))] = '`' if t < 0.5 else 'ϰ'
+    return to_image(c)
+
+
+def channel_drips(frame):
+    """Lime drips under the channel's coping, frame `frame` of 6: three
+    stubby stalactites, and a drop that swells at the middle one, falls and
+    thins to a streak."""
+    c = {}
+    for k, x in enumerate((14, 31, 50)):
+        n = 3 + int(unit('stal', k) * 5)
+        for y in range(0, n):
+            for dx in range(-(n - y) // 3, (n - y) // 3 + 1):
+                c[(x + dx, y)] = 'w' if dx < 0 else 'σ' if dx == 0 else 'τ'
+    x = 31
+    if frame < 2:
+        for dy in range(frame + 2):
+            c[(x, 7 + dy)] = '`' if dy == 0 else '_'
+        c[(x - 1, 8)] = '}'
+    else:
+        y = 8 + (frame - 1) * 11
+        for d in range(4):
+            if y - d < TILE:
+                c[(x, y - d)] = '`' if d == 0 else '_' if d == 1 else 'ϰ'
+    return to_image(c)
+
+
+def fallen_voussoir(k):
+    """A fallen arch stone, `k` of 3: a wedge on its side or end, chipped,
+    its face moss-flecked; its foot on the tile's floor."""
+    p = Part()
+    ww, hh = ((26, 18), (30, 14), (20, 22))[k]
+    base = TILE - 1
+    slope = (6, 4, 8)[k]
+    p.polygon([(32 - ww // 2, base), (32 + ww // 2, base), (32 + ww // 2 - slope, base - hh),
+               (32 - ww // 2 + slope // 2, base - hh)])
+    pts = p.pixels()
+    c = {}
+    for (x, y) in pts:
+        if (x, y - 1) not in pts:
+            c[(x, y)] = ';'
+        elif (x, y + 1) not in pts:
+            c[(x, y)] = '<'
+        elif (x - 1, y) not in pts:
+            c[(x, y)] = '-'
+        else:
+            c[(x, y)] = coursed(x * 3, y * 3, ('fv', k), course=40, block=60)
+            if unit('fvmoss', k, x // 3, y // 2) < 0.12:
+                c[(x, y)] = 'T'
+    for d in range(4):
+        c.pop((32 + ww // 2 - slope - d, base - hh + d // 2), None)
+    outline(c, 'o')
     return to_image(c)
 
 
@@ -2271,7 +2702,7 @@ def clip(images, animations, name, frames, duration):
 LEVEL_PROPS = (
     ('fence_0', lambda: fence(0)), ('fence_1', lambda: fence(1)), ('signpost', lambda: signpost(0)),
     ('stump', lambda: stump(0)), ('log_pile', lambda: log_pile(0)),
-    ('gargoyle', lambda: gargoyle(0)), ('pillar_stump_0', lambda: pillar_stump(0)),
+    ('pillar_stump_0', lambda: pillar_stump(0)),
     ('pillar_stump_1', lambda: pillar_stump(1)), *((f'reeds_{i}', lambda i=i: reeds(i)) for i in range(4)),
     ('statue', lambda: statue(0)),
     ('fern_clump_0', lambda: fern_clump(0)), ('fern_clump_1', lambda: fern_clump(1, (64, 40))),
@@ -2296,6 +2727,7 @@ LEVEL_PROPS = (
     ('toll_boom', lambda: toll_boom(0)), ('toll_sign', lambda: toll_sign(0)), ('lean_to', lambda: lean_to(0)),
     ('spoil_heap', lambda: spoil_heap(0)), ('cart_tipped', broken_cart),
     ('lift_gantry', lambda: lift_gantry(0)),
+    *((f'fallen_voussoir_{k}', lambda k=k: fallen_voussoir(k)) for k in range(3)),
 )
 HUNG_PROPS = (
     *((f'vine_{i}', lambda i=i, n=n: vine(n, 2 + i, i != 1)) for i, n in enumerate((110, 150, 84))),
@@ -2397,7 +2829,16 @@ def build_level_scenery(images, lit, animations):
     falls = [dict(falls_tiles(f)) for f in range(4)]
     for name in falls[0]:
         lit.update(clip(images, animations, name, [frames[name] for frames in falls], 80))
-    lit.update(clip(images, animations, 'pour', [stream_frame(f) for f in range(4)], 80))
+    # The aqueduct's water (01 (k)): its pours and their splash feet, the
+    # spill over each broken end's lip, the drips under the coping and the
+    # gargoyle with the water over its tongue.
+    lit.update(clip(images, animations, 'pour_wide', [pour_wide(f) for f in range(4)], 80))
+    lit.update(clip(images, animations, 'pour_foot', [pour_foot(f) for f in range(4)], 80))
+    for side in ('left', 'right'):
+        for k in range(3):
+            lit.update(clip(images, animations, f'spill_{side}_{k}', [spill(f, side, k) for f in range(4)], 80))
+    lit.update(clip(images, animations, 'channel_drips', [channel_drips(f) for f in range(6)], 120))
+    lit.update(clip(images, animations, 'gargoyle', [gargoyle(f) for f in range(4)], 80))
     lit.update(clip(images, animations, 'lava_surface', [lava_frame(f) for f in range(4)], 220))
     lit.update(clip(images, animations, 'lava_deep', [lava_frame(f, 'deep') for f in range(4)], 220))
     lit.update(clip(images, animations, 'lavafall', [lavafall_frame(f) for f in range(4)], 100))
@@ -2405,10 +2846,17 @@ def build_level_scenery(images, lit, animations):
     images['lift_deck_elevator'] = elevator_cage()
     images['lift_cable'] = lift_cable()
     lit.update({'lift_deck_elevator', 'lift_cable'})
-    # The ice spray's crust, drawn by the game over a set basin's lava (M79).
-    for stage in range(4):
+    # The crust's look (01 (k)), drawn by the game over a basin's lava: its
+    # nine frames, and each row's partials as the freeze's front and the
+    # melt's come down through it.
+    for i in range(2):
         for part in ('top', 'deep'):
-            for i in range(2):
-                name = f'lava_crust_{part}_{stage}_{i}'
-                images[name] = lava_crust(stage, part, i)
+            for n in range(9):
+                name = f'lava_crust_{part}_{n}_{i}'
+                images[name] = lava_crust_frame(n, part, i)
                 lit.add(name)
+            for j in range(TILE // FRONT_STEP):
+                for kind, draw in (('freeze', lava_freeze), ('melt', lava_melt)):
+                    name = f'lava_{kind}_{part}_{j}_{i}'
+                    images[name] = draw(j, part, i)
+                    lit.add(name)

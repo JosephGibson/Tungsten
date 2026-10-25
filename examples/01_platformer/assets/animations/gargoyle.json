@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_gargoyle_0"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_gargoyle_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_gargoyle_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_gargoyle_3"
+    }
+  ],
+  "looping": true
+}

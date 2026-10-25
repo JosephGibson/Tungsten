@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_channel_drips"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_channel_drips_0",
+    "z_order": -10
+  }
+}

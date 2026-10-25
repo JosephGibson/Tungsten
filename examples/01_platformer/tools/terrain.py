@@ -826,37 +826,77 @@ def channel(i, broken=None, kind='plain'):
     return to_image(c)
 
 
-def channel_break(i, side='right'):
-    """A channel's broken end: the facing gone block by block along a stepped
-    edge, the rubble core showing as rounded stones in dark mortar, the
-    trough's water spilling over the break."""
-    c = from_image(channel(i))
-    sign = 1 if side == 'right' else -1
+# A channel's broken ends (01 (k)), three a side: each variant's lip, the x
+# of the trough's last masonry, where the water leaves (a spill falls 4.5 px
+# past it), and its drawing's seed. A right break's lip stands over its
+# pier's shaft; a left one's over the haunch beside its pier, so the
+# channel's end sits on the pier.
+BREAK_LIPS = {'right': (38, 40, 36), 'left': (12, 11, 14)}
+BREAK_SEEDS = {'right': (8, 5, 11), 'left': (12, 3, 14)}
 
-    def edge(y):
-        step = int(unit('breakstep', i, y // 8) * 14)
-        return 40 + step if side == 'right' else 23 - step
+
+def break_edge(side, k, y):
+    """Variant `k`'s broken face at row `y`: the x of the last masonry pixel
+    on a right break (the first on a left one). The trough ends at the lip
+    and the face drops near-plumb under it, ragged every 3 px: chipped (0),
+    crumbling in small steps (1) or under a coping that juts 3 px (2);
+    never a square cut. A left face recedes less, so its water runs down
+    it."""
+    lip = BREAK_LIPS[side][k]
+    jag = (unit('bj', side, k, y // 3) - 0.5) * 5 if y > 3 else 0
+    soft = 1.0 if side == 'right' else 0.35
+    if k == 0:
+        back = max(0, y - 12) * 0.12 * soft
+    elif k == 1:
+        back = (max(0, y - 12) // 14) * 3 * soft + (unit('bs', side, y // 14) - 0.5) * 2
+    else:
+        back = -3 if 10 <= y <= 15 else max(0, y - 15) * 0.08 * soft
+    return lip - back + jag if side == 'right' else lip + back - jag
+
+
+def channel_break(side, k):
+    """A channel's broken end, variant `k` of 3: the trough and coping cut
+    along `break_edge`, the rubble core in dark mortar along the face, a
+    crack running back into the coping, moss in the face's lower crevices
+    and a glint where the water meets the lip."""
+    c = from_image(channel(BREAK_SEEDS[side][k]))
+    sign = 1 if side == 'right' else -1
+    kept = (lambda x, y: x <= break_edge(side, k, y)) if side == 'right' else (lambda x, y: x >= break_edge(side, k, y))
+    for (x, y) in list(c):
+        if not kept(x, y):
+            del c[(x, y)]
     for y in range(TILE):
-        for x in range(TILE):
-            if sign * (x - edge(y)) > 0:
-                c.pop((x, y), None)
-    for y in range(11, TILE):
-        for d in range(11):
-            x = edge(y) - sign * d
-            if (x, y) in c:
-                c[(x, y)] = 'o' if d == 0 else '<'
-    for k in range(30):
-        y0 = 13 + int(unit('cs', i, k) * 49)
-        x0 = edge(y0) - sign * (3 + int(unit('cd', i, k) * 7))
-        r = 1 + int(unit('cr', i, k) * 3)
+        e = round(break_edge(side, k, y))
+        for d in range(0, 10):
+            x = e - sign * d
+            if (x, y) in c and y >= 11:
+                c[(x, y)] = 'o' if d == 0 else '<' if d < 3 or c[(x, y)] in ('-', '<') else c[(x, y)]
+    for n in range(26):
+        y0 = 13 + int(unit('bstone', side, k, n) * 50)
+        x0 = round(break_edge(side, k, y0)) - sign * (2 + int(unit('bsd', side, k, n) * 6))
+        r = 1 + int(unit('bsr', side, k, n) * 2.5)
         for dy in range(-r, r + 1):
             for dx in range(-r, r + 1):
-                if dx * dx + dy * dy <= r * r + 1 and (x0 + dx, y0 + dy) in c and c[(x0 + dx, y0 + dy)] == '<':
-                    c[(x0 + dx, y0 + dy)] = ';' if dx + dy <= -r else ':' if dx + dy < r // 2 + 1 else '-'
-    e = edge(3)
-    for y in range(2, 13):
-        c[(e + sign, y)] = '`' if y % 4 == 0 else '}'
-        c[(e + 2 * sign, y + 1)] = ')'
+                p = (x0 + dx, y0 + dy)
+                if dx * dx + dy * dy <= r * r and p in c and c[p] != 'o':
+                    c[p] = ';' if dx + dy <= -r else ':' if dx + dy < 1 else '-'
+    x, y = round(break_edge(side, k, 13)) - sign * 2, 13
+    for d in range(10 + 4 * k):
+        if (x, y) in c:
+            c[(x, y)] = '<'
+        x -= sign
+        y += 1 if unit('bcrack', side, k, d) < 0.35 else 0
+    for n in range(5 + k):
+        y0 = 30 + int(unit('bmoss', side, k, n) * 30)
+        x0 = round(break_edge(side, k, y0)) - sign * 1
+        for t in range(2 + n % 3):
+            p = (x0 - sign * (t % 2), y0 + t)
+            if p in c:
+                c[p] = 'T' if t else 'g'
+    lip = BREAK_LIPS[side][k]
+    for y in range(2, 9):
+        if (lip, y) in c:
+            c[(lip, y)] = '`' if y % 3 == 0 else '_'
     return to_image(c)
 
 
@@ -1480,8 +1520,9 @@ def build_level_terrain(images):
     images['channel_mossy'] = channel(4, None, 'mossy')
     images['channel_spout'] = channel(5, None, 'spout')
     images['channel_cracked'] = channel(6, None, 'cracked')
-    images['channel_break_left'] = channel_break(12, 'left')
-    images['channel_break_right'] = channel_break(8, 'right')
+    for side in ('left', 'right'):
+        for k in range(3):
+            images[f'channel_break_{side}_{k}'] = channel_break(side, k)
     for i in range(BASALT_VARIANTS):
         images[f'basalt_{i}'] = basalt(i)
     seamed(images, [f'basalt_{i}' for i in range(BASALT_VARIANTS)])

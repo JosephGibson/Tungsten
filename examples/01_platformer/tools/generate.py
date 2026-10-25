@@ -10,6 +10,7 @@ from PIL import __version__ as pillow_version
 from art import TOOLS, auxiliary, build_art, relief, validate_art
 from effects import LINEAR_FILTER
 from level import build_level
+from placement import floating
 from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
 
 ROOT=TOOLS.parent
@@ -512,6 +513,26 @@ def particle_configs():
     configs['rock_chips'] = full(
         'rock_chip', 8, burst(8), (.3, .6), cone((0, -1), 160, 90, 260), (0, 650), .5, (.14, .24),
         [[0, 1], [1, .8]], [[0, 1], [.7, .9], [1, 0]], [[0, [1, 1, 1, 1]], [1, [.7, .7, .7, 1]]], (-10, 10))
+    # 01 (k): the lava's freeze and thaw, each burst over within a second so
+    # a basin's bursts stay under the cap: frost mist off its surface as the
+    # freeze's front comes down, cold glints as it starts, sparks from its
+    # cracks and spatter as it melts.
+    configs['lava_mist'] = full(
+        'dust', 24, burst(3), (.6, 1.0), cone((0, -1), 80, 10, 35), (0, -25), 1.8, (.3, .45),
+        [[0, .7], [.5, 1.3], [1, 1.9]], [[0, 0], [.25, .09], [.7, .06], [1, 0]],
+        [[0, [.9, .96, 1, 1]], [1, [.75, .85, .95, 0]]])
+    configs['lava_frost'] = full(
+        'ice_crystal', 24, burst(4), (.5, .9), cone((0, -1), 70, 30, 90), (0, -20), 1.2, (.05, .1),
+        [[0, 1], [1, .6]], [[0, 0], [.15, .9], [.7, .6], [1, 0]],
+        [[0, [1, 1, 1, 1]], [1, [.8, .92, 1, 0]]], (-3, 3))
+    configs['lava_sparks'] = full(
+        'spark', 24, burst(7), (.25, .6), cone((0, -1), 50, 140, 330), (0, 900), .4, (.06, .13),
+        [[0, 1], [1, .4]], [[0, 1], [.6, .9], [1, 0]],
+        [[0, [1, 1, .86, 1]], [.25, [1, .86, .32, 1]], [.65, [1, .42, .1, 1]], [1, [.5, .1, .05, 0]]])
+    configs['lava_spatter'] = full(
+        'droplet', 32, burst(6), (.35, .7), cone((0, -1), 60, 160, 380), (0, 1500), .2, (.12, .22),
+        [[0, 1], [1, .7]], [[0, 1], [.75, 1], [1, 0]],
+        [[0, [1, .95, .6, 1]], [.3, [1, .62, .2, 1]], [.8, [.85, .22, .1, 1]], [1, [.4, .08, .06, 0]]])
     return configs
 
 
@@ -708,8 +729,21 @@ def validate_references(manifest,animations,configs,source):
     if len({p['seed'] for p in source['emitters']})!=len(source['emitters']):raise ValueError('duplicate emitter seed')
 
 
+def floating_report():
+    """`--floating`: the level built in memory, every piece that floats
+    (`placement.floating`) and a total; exit 1 on any."""
+    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);spray_clips(animations)
+    tiled,source,_=build_level(images,lit,check=False)
+    lines=floating(source,tiled,images)
+    for line in lines:print(line)
+    print(f'floating: {len(lines)} pieces' if lines else 'no floating scenery')
+    raise SystemExit(1 if lines else 0)
+
+
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true')
+    parser.add_argument('--floating',action='store_true',help='list the scenery that floats and exit 1 on any');args=parser.parse_args()
+    if args.floating:floating_report()
     with tempfile.TemporaryDirectory(prefix='platformer-generate-') as temp:
         dest=Path(temp);owned=generate(dest)
         previous=json.loads((TOOLS/'outputs.json').read_text()) if (TOOLS/'outputs.json').exists() else json.loads((TOOLS/'legacy_outputs.json').read_text())

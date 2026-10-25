@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_0"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_1"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_2"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_3"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_4"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_channel_drips_5"
+    }
+  ],
+  "looping": true
+}

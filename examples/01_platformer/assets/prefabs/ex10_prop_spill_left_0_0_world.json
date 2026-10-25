@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_spill_left_0"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_spill_left_0_0",
+    "z_order": -10
+  }
+}
