@@ -7,17 +7,16 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 `D-140` scales planning to the change:
 
 - Bounded maintenance (a local bug fix, documentation correction or tooling repair) records scope/non-goals, affected files and acceptance commands in the session before editing. Use the [validation matrix](../validation.md) to select checks. A saved milestone plan or another approval round is unnecessary within the owner's authorized scope.
-- Multi-session work keeps a saved handoff plan with the headers below, ordered steps, stop conditions and evidence, so a fresh context can resume it. Promote maintenance to this route when its scope grows or a handoff is needed.
-- 1.0 milestone candidates and work whose deliverable is a new public API keep the [program workflow](1.0/workflow.md#2-session-types), the milestone skill and the plan's critique, with level C's step 1 API critique where it applies; none stops for the owner's approval (`D-150`). Calling that work maintenance cannot bypass the critique.
+- Multi-session or risky work keeps one saved plan with the headers below, ordered steps, stop conditions and evidence, so a fresh context can resume it, and one critique round at xhigh (a second only when the first changed a mechanism). Done means the tests pass and a demo works; the plan is deleted when done, with its citations. Promote maintenance to this route when its scope grows or a handoff is needed.
+- The 1.0 milestone route (the milestone skill's plan, its critique rounds and level C) is retired (`D-215`); the [operating rules](../operating-rules.md#plans) own the plan sizes, and nothing stops for the owner's approval (`D-150`).
 
 Audit scope is separate: a crate correctness audit reads the full named crate surface; a scoped workflow/documentation audit reads its named documents/tools and reports within that scope. Both report findings unless fixes were requested.
 
-Commit, publication, capture provenance and hardware-check rules stand (`D-105`, `D-070`, `D-079`, `D-095`). All routes leave work uncommitted; no route cuts a release unless the owner requested one.
+Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every route commits at each logical step and the owner pushes ([operating rules](../operating-rules.md#git), `D-215`); no route cuts a release unless the owner requested one.
 
 ## Naming
 
-- Milestone implementation plans: `phaseN-milestone-NN-short-topic.md`. `N` is the phase number, `NN` the zero-padded milestone number, `short-topic` a concise kebab-case slug for the deliverable. Example: `phase4-milestone-26-materials-post-stack.md`.
-- Other handoff plans: `descriptive-topic.md`.
+- Plans: `descriptive-topic.md`. Milestone numbers ended at M85 (`D-215`); the archive keeps the `phaseN-milestone-NN-short-topic.md` names.
 - Program folders: plans that serve one goal may share `docs/plans/<program>/`, with a README that maps its files, as [`1.0/`](1.0/README.md) does. Header rules apply to every file there except the README, and `just repo-check` reads them one folder deep.
 
 ## Contents
@@ -33,8 +32,8 @@ Commit, publication, capture provenance and hardware-check rules stand (`D-105`,
 - Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
 - Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
 - Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
-- Don't commit (`D-105`): leave the work uncommitted on the milestone branch and end with the list of files you changed. The release session's command block makes the release's only commit; push, tags and merges stay with the human. Keep scratch files out of the tree, since that commit takes all of it.
-- Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. A plan adds one `CHANGELOG.md` `[Unreleased]` line, not one per step.
+- Commit at each logical step in Conventional Commits, staging only the paths you changed (never `git add -A`); push, tags and merges stay with the human ([operating rules](../operating-rules.md#git)). Keep scratch files out of the tree.
+- Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. The release's changelog section is written from the commits at the cut.
 - For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
 
 ## Lifecycle

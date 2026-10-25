@@ -409,7 +409,7 @@ IDs are the next free ones when each is written (`tungsten-decision`).
   - Opt-in plugins.
   - No render types in the kit.
   - Two background threads.
-  - Prefab and scene files keep their fields (`D-153`, `D-157`): new behaviour arrives as components and data kinds.
+  - Prefab and scene files keep their fields (`D-153`, `D-157`): new behaviour arrives as components and data kinds. Retired 2026-10-25 (`D-215`): fields may change with a migration while 0.x breaks.
 - **Stop and record, do not work around:**
   - An item needs a physics change: mark it waiting.
   - An item cannot pass recipes in two genres: it is not generic, so leave it out.
@@ -515,7 +515,7 @@ The catalogue's two critique rounds, each finding with its disposition, and its 
 
 ## Follow-ups
 
-- **Links into the archived catalogue.** `docs/plans/phase7-rewrite.md`, another session's draft open while the catalogue was archived on 2026-10-16, links `kit-catalogue.md` twice (its non-goals and its §10 "Why B2"); both should point at this file, `1.0/w13-kit.md`, which holds the catalogue and its digest. Left to that draft's session; `just repo-check` reports the three broken links until then.
+- **Links into the archived catalogue.** `docs/plans/archive/phase7-rewrite.md` (archived 2026-10-25), another session's draft open while the catalogue was archived on 2026-10-16, links `kit-catalogue.md` twice (its non-goals and its §10 "Why B2"); both should point at this file, `1.0/w13-kit.md`, which holds the catalogue and its digest. Left to that draft's session; `just repo-check` reports the three broken links until then.
 Each waits for a user (M50's plan, archived at `docs/plans/archive/1.0/phase6-milestone-50-kit-basics-hierarchy.md`):
 
 - Reparenting and detaching through the kit; today a game removes `Parent`, which detaches the child where it stands.

@@ -21,7 +21,7 @@ DOCS = (
     "README.md", "CHANGELOG.md", "docs/LLM_INDEX.md", "docs/DECISION_INDEX.md",
     "docs/agent-setup.md", "docs/perf/profiling-workflow.md", "docs/perf/benchmarks.md",
     "docs/plans/README.md", "docs/releases.md", "docs/assets.md", "docs/getting-started.md",
-    "docs/README.md", "docs/validation.md",
+    "docs/README.md", "docs/validation.md", "ROADMAP.md", "docs/operating-rules.md",
 )
 ARCHIVE = "docs/plans/archive"
 # Existing content outside the manifest schema, not a blanket file exemption.
@@ -39,17 +39,12 @@ CITING_SUFFIXES = (".rs", ".py", ".sh", ".md", ".toml", ".yml")
 # History keeps the plan names of its time; the scripts' tests cite fixture plans.
 CITATION_EXEMPT = ("CHANGELOG.md", "DECISIONS.md")
 PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
-ROADMAP_ID = re.compile(r"[a-z0-9]+")
-# Owned summary fields that roadmap.derive reads from local tags and origin/main.
-REF_FIELDS = ("First open stop", "Stop state")
+# The status record (D-215) and its sections, in order.
+ROADMAP = "ROADMAP.md"
+ROADMAP_SECTIONS = ("Now", "Next", "Later")
 LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)', re.M)
 # The milestone skeleton is not a live plan; its links resolve at its eventual
 # docs/plans/1.0/ destination. It is outside active_plan_documents, intentionally.
-
-# The register parser the roadmap sync uses, so both read the register one way.
-_spec = importlib.util.spec_from_file_location("roadmap", Path(__file__).with_name("roadmap.py"))
-roadmap = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(roadmap)
 
 
 def archive_path(path):
@@ -361,61 +356,43 @@ def check_plan_citations(root, errors, notes):
                 errors.append(f"{rel}: cites missing plan {cited}")
 
 
-def check_roadmap(root, errors, notes):
-    """The roadmap catalog against the register, the §3 cards and the question lists."""
-    rel = roadmap.CATALOG
-    if not (root / rel).exists() and not (root / roadmap.PLAN).exists():
+def check_roadmap_md(root, errors, notes):
+    """ROADMAP.md, the only status record (D-215; docs/operating-rules.md#status):
+    `## Now`, `## Next` and `## Later` once each and in that order, one to
+    three `- ` items in Now, and every item one line."""
+    path = root / ROADMAP
+    if not path.is_file():
+        errors.append(f"{ROADMAP}: missing; the status record is ROADMAP.md at the root (D-215)")
         return
-    try:
-        catalog = roadmap.load_catalog(root)
-        stops, questions = catalog["stops"], catalog["questions"]
-        groups = {group["id"] for group in catalog["groups"]}
-        qids = [question["id"] for question in questions]
-        ids = [stop["id"] for stop in stops] + qids
-        for stop in stops:
-            if stop["group"] not in groups:
-                errors.append(f"{rel}: {stop['id']}: unknown group {stop['group']}")
-            for qid in stop.get("questions", []):
-                if qid not in qids:
-                    errors.append(f"{rel}: {stop['id']}: unknown question {qid}")
-            for entry in stop.get("src", []) + stop.get("reads", []):
-                path = entry.split(" ", 1)[0]
-                target = root / path
-                if not (target.is_dir() if path.endswith("/") else target.is_file()):
-                    errors.append(f"{rel}: {stop['id']}: missing path {path}")
-        if (root / roadmap.PROMPTS).exists():  # each stop's stages from prompts.md's Flow table (D-118)
-            roadmap.catalog_payload(root)
-    except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
-        errors.append(f"{rel}: {exc!r}")
-        return
-    for duplicate in sorted({i for i in ids if ids.count(i) > 1}):
-        errors.append(f"{rel}: duplicate id {duplicate}")
-    for bad in sorted({i for i in ids if not ROADMAP_ID.fullmatch(str(i))}):
-        errors.append(f"{rel}: id {bad!r} is not lowercase letters and digits")
-
-    # Pairs and placeholders are one register row and one stop, or several stops in a run.
-    rows = []
-    for stop in stops:
-        if stop.get("row") is not None and (not rows or rows[-1] != stop["row"]):
-            rows.append(stop["row"])
-    register = [row["candidate"] for row in roadmap.register(root)]
-    if rows != register:
-        at = next((i for i, (a, b) in enumerate(zip(rows, register)) if a != b), min(len(rows), len(register)))
-        ours = rows[at] if at < len(rows) else "(end)"
-        theirs = register[at] if at < len(register) else "(end)"
-        errors.append(f"{rel}: row {at + 1} is {ours!r}, the register's (implementation plan §10) is {theirs!r}")
-
-    cards = roadmap.card_levels(root)
-    for stop in stops:
-        card = cards.get(stop.get("row"))
-        if card is not None and not (stop.get("level") and card.startswith(stop["level"])):
-            errors.append(f"{rel}: {stop['id']}: level {stop.get('level')!r}, its §3 card says {card!r}")
-
-    numbers = roadmap.question_numbers(root)
-    for qid in qids:
-        match = re.fullmatch(r"q(\d+)", str(qid))
-        if not match or int(match[1]) not in numbers:
-            errors.append(f"{rel}: question {qid} is not in implementation plan §7 or criteria §10")
+    lines = path.read_text().splitlines()
+    headings = [(i, line) for i, line in enumerate(lines) if re.match(r"^#{1,6}\s", line)]
+    at = {}
+    for name in ROADMAP_SECTIONS:
+        found = [i for i, line in headings if line.rstrip() == f"## {name}"]
+        if len(found) == 1:
+            at[name] = found[0]
+        else:
+            errors.append(f"{ROADMAP}: needs one '## {name}' heading, found {len(found)}; sections are Now, Next and Later")
+    if len(at) == len(ROADMAP_SECTIONS) and sorted(at.values()) != [at[name] for name in ROADMAP_SECTIONS]:
+        errors.append(f"{ROADMAP}: sections must run Now, Next, Later in that order")
+    if "Now" in at:
+        end = next((i for i, _ in headings if i > at["Now"]), len(lines))
+        count = sum(line.startswith("- ") for line in lines[at["Now"] + 1:end])
+        if not 1 <= count <= 3:
+            errors.append(f"{ROADMAP}: Now holds {count} items; it holds one to three")
+    # A wrapped item: a line straight after an item's line, or an indented one
+    # after blank lines, which Markdown folds into the item.
+    item, blank = None, False
+    for number, line in enumerate(lines, 1):
+        if line.startswith("- "):
+            item, blank = number, False
+        elif not line.strip():
+            blank = item is not None
+        elif item is not None and not line.startswith("#") and (not blank or line[0].isspace()):
+            errors.append(f"{ROADMAP}:{number}: item of line {item} wraps; every item is one line")
+            item, blank = None, False
+        else:
+            item, blank = None, False
 
 
 def check_agent_config(root, errors):
@@ -429,40 +406,6 @@ def check_agent_config(root, errors):
             errors.append(".claude/settings.json: execution allows must use exact commands")
     if "docs/plans/archive/" not in (root / ".ignore").read_text().splitlines():
         errors.append(".ignore: missing archive exclusion")
-
-
-def has_release_refs(root):
-    """Whether the checkout holds origin/main unshallowed, which REF_FIELDS derive from."""
-    git = roadmap.Git(root)
-    return (bool(git.run("rev-parse", "--verify", "--quiet", "refs/remotes/origin/main"))
-            and git.run("rev-parse", "--is-shallow-repository") == "false")
-
-
-def check_summary(root, errors, notes):
-    if not (root / roadmap.CATALOG).is_file():
-        return
-    rel = roadmap.SUMMARY_DOC
-    text = (root / rel).read_text()
-    if text.count(roadmap.SUMMARY_START) != 1 or text.count(roadmap.SUMMARY_END) != 1:
-        errors.append(f"{rel}: expected one owned roadmap summary block; run python3 -B scripts/roadmap.py summary --write")
-        return
-    if text.index(roadmap.SUMMARY_END) < text.index(roadmap.SUMMARY_START):
-        errors.append(f"{rel}: owned roadmap summary end precedes its start")
-        return
-    block = text.split(roadmap.SUMMARY_START, 1)[1].split(roadmap.SUMMARY_END, 1)[0]
-    lines = re.findall(r"^- \*\*([^*]+):\*\* `([^`]+)`$", block, re.M)
-    expected = roadmap.summary_fields(roadmap.derive(root))
-    if len(lines) != len(expected) or set(dict(lines)) != set(expected):
-        errors.append(f"{rel}: owned roadmap summary needs exactly {', '.join(expected)}")
-        return
-    refs = has_release_refs(root)
-    for field, value in lines:
-        if value != expected[field] and (refs or field not in REF_FIELDS):
-            errors.append(f"{rel}: stale owned field {field!r}: {value!r}, expected {expected[field]!r}; run python3 -B scripts/roadmap.py summary --write")
-    if refs:
-        notes.append("roadmap summary uses local refs only; inspect roadmap.py status's fetch freshness before publication claims")
-    else:
-        notes.append(f"roadmap summary: no unshallowed origin/main (CI's checkout), so {' and '.join(REF_FIELDS)} were not compared")
 
 
 def changed_paths(root, base=None):
@@ -529,21 +472,21 @@ def select_checks(root, paths):
             matched = True
             add(command, kind, f"{path}: {why}")
 
+        if path == ROADMAP:
+            require("just repo-check", "CPU", "the status record's Now, Next and Later, one to three Now items, one line each")
         if path.endswith(".md"):
             require("just ctx", "CPU", "instruction/navigation links and budgets")
             require("just repo-check", "CPU", "maintained and active-plan links, headers, status, manifest/index QA")
             if path not in DOCS and not path.startswith("docs/plans/"):
                 review.add(f"{path}: check touched local links/anchors manually; not all Markdown is in repository QA")
             continue
-        if path.startswith(("scripts/", ".github/workflows/")) or path == "justfile":
-            require("just script-test", "CPU", "script regressions, ShellCheck and workflow lint")
+        if path.startswith(("scripts/", ".github/workflows/", ".githooks/")) or path == "justfile":
+            require("just script-test", "CPU", "script and hook regressions, ShellCheck and workflow lint")
             require("just repo-check", "CPU", "repository/tooling consistency")
             require("just ctx", "CPU", "tooling/documentation routes")
         if path.startswith((".claude/", ".agents/")) or path in (".ignore", ".gitignore"):
             require("just ctx", "CPU", "shared instructions/skill routes and filters")
             require("just repo-check", "CPU", "agent configuration and repository consistency")
-        if path == "docs/plans/1.0/roadmap.json":
-            require("just repo-check", "CPU", "catalog/register/owned summary consistency")
         if path.endswith("Cargo.toml") or path in ("Cargo.lock", "rust-toolchain.toml", ".cargo/config.toml", "deny.toml"):
             require("just deps", "CPU", "dependency/toolchain/build policy")
             require("just repo-check", "CPU", "manifest/template/version consistency")
@@ -692,7 +635,7 @@ def main(argv=None):
             print(f"ERROR: check selection: {exc}")
             return 2
         return 0
-    for check in (check_assets, check_templates, check_kit_catalogue, check_shell_copies, check_plans, check_docs, check_plan_citations, check_roadmap, check_summary):
+    for check in (check_assets, check_templates, check_kit_catalogue, check_shell_copies, check_plans, check_docs, check_plan_citations, check_roadmap_md):
         try:
             check(root, errors, notes)
         except (OSError, ValueError) as exc:

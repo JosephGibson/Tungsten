@@ -20,6 +20,8 @@ Graduated on 2026-10-03 from [criteria](criteria.md) §7 after the definition ga
 
 ## Break ledger
 
+**Frozen 2026-10-25 (`D-215`):** no rows after 0.107; 0.x breaks freely, with migrations for saves and formats, and the policy after 1.0 is the [roadmap redo](../roadmap-redo.md)'s step 9.3.
+
 Every public-API break bound for 1.0, with its source and where it landed. Seeded at graduation from the breaks list in the scope below and from `D-103`; from now on this table is the list. A milestone that lands a break fills in its row, and one that finds a new break adds a row ([workflow](workflow.md) §5).
 
 | Break | From | Status | Landed in |

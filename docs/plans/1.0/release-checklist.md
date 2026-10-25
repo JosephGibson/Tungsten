@@ -1,5 +1,7 @@
 # Tungsten 1.0 release checklist — draft
 
+**Revised 2026-10-25 (`D-215`):** RC-A1, RC-B2 and RC-B4 are retired with the separate acceptance game and the freeze, and RC-B1 publishes step 9.3's policy; the [roadmap redo](../roadmap-redo.md)'s step 9.8 runs the rest on each candidate.
+
 - **status:** in progress
 - **goal:** One list of checks that, once each has passed or been accepted by the owner, tags 1.0. C3 runs it on a release candidate and records the result here.
 - **non-goals:** How each check gets to green, which the workstreams own; dates.
@@ -13,7 +15,7 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 
 | ID | Check | Run by | Source |
 | --- | --- | --- | --- |
-| RC-A1 | The [acceptance game](acceptance-game.md) builds in its own repository on a git dependency, using only the public API and `tungsten-kit`, with no engine patches | Owner | §1 |
+| RC-A1 | **Retired (`D-215`):** example 01 is the acceptance game. The [acceptance game](acceptance-game.md) builds in its own repository on a git dependency, using only the public API and `tungsten-kit`, with no engine patches | Owner | §1 |
 | RC-A2 | Its release archive, made by `tungsten package`, plays start to finish on the Linux reference machine | Owner playthrough | §1, §8.8 C3 |
 | RC-A3 | Title menu, pause and transitions work; settings for volume, rebinding and display are kept across a restart | Owner playthrough | §1 |
 | RC-A4 | A corrupt settings file falls back to defaults and keeps the bad file beside them | Owner playthrough; W11 tests | [w11](w11-shipping-basics.md) |
@@ -28,10 +30,10 @@ Rows marked *if Qn* wait on an open question in [criteria](criteria.md) §10, an
 
 | ID | Check | Run by | Source |
 | --- | --- | --- | --- |
-| RC-B1 | The stability policy is published: semver scope, MSRV rule, deprecation, and where `wgpu` and `winit` types sit | Decision entry and README | [w04](w04-api-freeze.md) |
-| RC-B2 | The public surface, diffed against the freeze snapshot, shows no change | `cargo-public-api` (`D-104`) | §8.8 C3 |
+| RC-B1 | Step 9.3's policy (`D-215`). The stability policy is published: semver scope, MSRV rule, deprecation, and where `wgpu` and `winit` types sit | Decision entry and README | [w04](w04-api-freeze.md) |
+| RC-B2 | **Retired (`D-215`):** no freeze snapshot. The public surface, diffed against the freeze snapshot, shows no change | `cargo-public-api` (`D-104`) | §8.8 C3 |
 | RC-B3 | Rustdoc is clean under `missing_docs`, with examples where a public item needs one | Automated | [w04](w04-api-freeze.md) |
-| RC-B4 | No item remains that the policy says the freeze removes, such as the arity-named queries | Automated | [w04](w04-api-freeze.md) |
+| RC-B4 | **Retired (`D-215`):** step 7.1 removes the deprecated surface. No item remains that the policy says the freeze removes, such as the arity-named queries | Automated | [w04](w04-api-freeze.md) |
 
 ## T. Tests and tooling
 

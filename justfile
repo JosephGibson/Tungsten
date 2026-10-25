@@ -61,14 +61,14 @@ perf-test:
 clean-target *args:
     python3 -B scripts/clean-target.py "$@"
 
-# Shell and workflow lint plus smoke-script, perf-helper, repo-checker, roadmap-helper and release-script tests (no GPU).
+# Shell, hook and workflow lint plus smoke-script, perf-helper, repo-checker, commit-hook and release-script tests (no GPU).
 script-test: perf-test
-    shellcheck scripts/*.sh
+    shellcheck scripts/*.sh .githooks/commit-msg
     actionlint
     bash scripts/test-smoke-examples.sh
     python3 -B scripts/test-clean-target.py
     python3 -B scripts/test-check-repo.py
-    python3 -B scripts/test-roadmap.py
+    python3 -B scripts/test-commit-msg.py
     python3 -B scripts/test-release.py
     python3 -B scripts/test-crash-report.py
     python3 -B scripts/test-release-preflight.py
@@ -131,11 +131,18 @@ release-check *args:
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 
-# Cut VERSION: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines, Cargo.lock and the 1.0 README's owned fields (D-152) follow.
-release-cut version *args:
+# Cut VERSION after the missing_docs ratchet: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines and Cargo.lock follow.
+release-cut version *args: docs-ratchet
     python3 -B scripts/release.py cut "$@"
-    python3 -B scripts/roadmap.py summary --write
     cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
+
+# missing_docs only falls (D-215): public items without rustdoc per crate against scripts/missing-docs.json; `--write` lowers the baseline, `--list CRATE` names the items.
+docs-ratchet *args:
+    python3 -B scripts/missing-docs.py "$@"
+
+# Use the repository's Git hooks (.githooks/): commit-msg checks Conventional Commits, one line (docs/operating-rules.md#git).
+hooks:
+    git config core.hooksPath .githooks
 
 # Fast iteration: format check, agent/repo QA, type-check; `just check` still runs clippy and tests.
 quick: fmt-check ctx repo-check

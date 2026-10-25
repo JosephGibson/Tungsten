@@ -319,53 +319,67 @@ class RepoChecks(unittest.TestCase):
         self.assertEqual(errors, [])
 
 
-class SummaryChecks(unittest.TestCase):
+ROADMAP_MD = """# Roadmap
+
+What is being worked on, one line per item.
+
+## Now
+
+- `h1`: the cutover.
+- `e01quick2`: quick fixes.
+
+## Next
+
+- `e01tomes`: the tomes.
+
+## Later
+
+- Phase 7, Seams.
+"""
+
+
+class RoadmapMdChecks(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        (self.root / qa.roadmap.PROGRAM).mkdir(parents=True)
-        (self.root / qa.roadmap.CATALOG).write_text("{}")
-        self.state = {"workspace": "0.60.0", "stop": "w8a", "milestone": "M43",
-                      "stops": [{"id": "w8a", "status": "todo"}]}
-        self.doc = self.root / qa.roadmap.SUMMARY_DOC
-        self.doc.write_text(qa.roadmap.summary_text(self.state))
 
-    def check(self, refs=True):
-        errors, notes = [], []
-        with (patch.object(qa.roadmap, "derive", return_value=self.state),
-              patch.object(qa, "has_release_refs", return_value=refs)):
-            qa.check_summary(self.root, errors, notes)
+    def check(self, text):
+        if text is not None:
+            (self.root / "ROADMAP.md").write_text(text)
+        errors = []
+        qa.check_roadmap_md(self.root, errors, [])
         return errors
 
-    def test_current_owned_fields_pass_and_dated_prose_is_not_interpreted(self):
-        self.doc.write_text(self.doc.read_text() + "\nHistorical: 0.56 awaits a merge; 2020-01-01.\n")
-        self.assertEqual(self.check(), [])
+    def test_sections_in_order_with_one_line_items_pass(self):
+        self.assertEqual(self.check(ROADMAP_MD), [])
+        self.assertEqual(self.check(ROADMAP_MD.replace("- `h1`: the cutover.\n", "")), [], "one Now item")
 
-    def test_each_stale_owned_field_fails_with_its_expected_value(self):
-        for field, value in qa.roadmap.summary_fields(self.state).items():
-            with self.subTest(field=field):
-                self.doc.write_text(qa.roadmap.summary_text(self.state).replace(f"`{value}`", "`stale`"))
-                errors = self.check()
-                self.assertEqual(len(errors), 1)
-                self.assertIn(f"stale owned field {field!r}: 'stale', expected {value!r}", errors[0])
+    def test_a_missing_file_fails(self):
+        self.assertEqual(self.check(None), ["ROADMAP.md: missing; the status record is ROADMAP.md at the root (D-215)"])
 
-    def test_without_release_refs_only_tree_fields_are_compared(self):
-        for field, value in qa.roadmap.summary_fields(self.state).items():
-            with self.subTest(field=field):
-                self.doc.write_text(qa.roadmap.summary_text(self.state).replace(f"`{value}`", "`stale`"))
-                self.assertEqual(len(self.check(refs=False)), 0 if field in qa.REF_FIELDS else 1)
+    def test_a_missing_or_repeated_heading_and_the_order_fail(self):
+        self.assertEqual(self.check(ROADMAP_MD.replace("## Next\n", "## Soon\n")),
+                         ["ROADMAP.md: needs one '## Next' heading, found 0; sections are Now, Next and Later"])
+        self.assertEqual(self.check(ROADMAP_MD + "\n## Later\n"),
+                         ["ROADMAP.md: needs one '## Later' heading, found 2; sections are Now, Next and Later"])
+        swapped = ROADMAP_MD.replace("## Next", "## Swap").replace("## Later", "## Next").replace("## Swap", "## Later")
+        self.assertEqual(self.check(swapped), ["ROADMAP.md: sections must run Now, Next, Later in that order"])
 
-    def test_a_tree_outside_git_has_no_release_refs(self):
-        self.assertFalse(qa.has_release_refs(self.root))
+    def test_zero_or_four_now_items_fail(self):
+        empty = ROADMAP_MD.replace("- `h1`: the cutover.\n- `e01quick2`: quick fixes.\n", "Nothing yet.\n")
+        self.assertEqual(self.check(empty), ["ROADMAP.md: Now holds 0 items; it holds one to three"])
+        four = ROADMAP_MD.replace("- `h1`: the cutover.\n", "- `a`: one.\n- `b`: two.\n- `c`: three.\n")
+        self.assertEqual(self.check(four), ["ROADMAP.md: Now holds 4 items; it holds one to three"])
 
-    def test_missing_duplicate_and_unknown_fields_are_not_accepted(self):
-        for corrupt in (qa.roadmap.summary_text(self.state).replace("Workspace", "Unknown"),
-                        qa.roadmap.summary_text(self.state).replace("Next milestone", "Workspace"),
-                        qa.roadmap.SUMMARY_END + qa.roadmap.summary_text(self.state).replace(qa.roadmap.SUMMARY_END, ""),
-                        "# Now\n"):
-            self.doc.write_text(corrupt)
-            self.assertTrue(self.check())
+    def test_a_wrapped_item_fails_once_and_prose_after_a_blank_line_passes(self):
+        wrapped = ROADMAP_MD.replace("- `e01tomes`: the tomes.\n", "- `e01tomes`: the tomes,\n  and more,\n  and more.\n")
+        self.assertEqual(self.check(wrapped), ["ROADMAP.md:13: item of line 12 wraps; every item is one line"])
+        lazy = ROADMAP_MD.replace("- `h1`: the cutover.\n", "- `h1`: the cutover,\nlazily wrapped.\n")
+        self.assertEqual(self.check(lazy), ["ROADMAP.md:8: item of line 7 wraps; every item is one line"])
+        indented = ROADMAP_MD.replace("- Phase 7, Seams.\n", "- Phase 7, Seams.\n\n  More of it.\n")
+        self.assertEqual(self.check(indented), ["ROADMAP.md:18: item of line 16 wraps; every item is one line"])
+        self.assertEqual(self.check(ROADMAP_MD + "\nA closing paragraph.\n"), [])
 
 
 class Output(unittest.TestCase):
@@ -379,8 +393,8 @@ class Output(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, contextlib.redirect_stdout(output), \
                 patch.object(qa, "check_assets", notes), patch.object(qa, "check_templates", failing), \
                 patch.object(qa, "check_plans", quiet), patch.object(qa, "check_docs", quiet), \
-                patch.object(qa, "check_plan_citations", quiet), patch.object(qa, "check_roadmap", quiet), \
-                patch.object(qa, "check_summary", quiet), patch.object(qa, "check_agent_config", lambda root, errors: None):
+                patch.object(qa, "check_plan_citations", quiet), patch.object(qa, "check_roadmap_md", quiet), \
+                patch.object(qa, "check_agent_config", lambda root, errors: None):
             code = qa.main(["--root", temp, *args])
         return code, output.getvalue().splitlines()
 
@@ -483,6 +497,8 @@ class CheckSelection(unittest.TestCase):
             "tools/cli/src/main.rs": {"cargo test -p tungsten-cli --locked", "just template-check"},
             "tools/launcher/src/main.rs": {"cargo test -p tungsten-launcher --locked", "just script-test"},
             ".github/workflows/ci.yml": {"just script-test", "just repo-check"},
+            "ROADMAP.md": {"just repo-check", "just ctx"},
+            ".githooks/commit-msg": {"just script-test"},
             "Cargo.lock": {"just deps", "just smoke"},
         }
         for path, wanted in cases.items():
@@ -553,126 +569,6 @@ class GitCheckSelection(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True, capture_output=True)
             (root / "new doc.md").write_text("new")
             self.assertEqual(qa.changed_paths(root), ["new doc.md"])
-
-
-ROADMAP_PLAN = """# Plan
-
-## 3. Phase 5
-
-| Candidate | Contents |
-| --- | --- |
-| W14a | Harness |
-
-| Candidate | Touches | Level |
-| --- | --- | --- |
-| W14a | `app.rs` | B |
-| W9a | `release.yml` | B |
-| W1 glyph gate, M2, M3 | w01 | S, then C |
-
-## 7. Questions by when
-
-| Question (criteria §10) | Needed by |
-| --- | --- |
-| Q14 logs on by default | W11a starts |
-
-## 10. Register
-
-| Candidate | Milestone plan | Release | Status |
-| --- | --- | --- | --- |
-| W14a | — | — | Next |
-| W9a with W12a | — | — | Not started |
-| W1 M2, M3 | — | — | Wait |
-
-## 11. Gate records
-"""
-
-
-class RoadmapChecks(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        self.write("docs/plans/1.0/implementation-plan.md", ROADMAP_PLAN)
-        self.write("docs/plans/1.0/criteria.md", "## 10. Questions\n\n- **14.** Logs?\n\n### Answered\n\n- **19.** Text.\n\n## 11. Next\n")
-        self.write("docs/plans/1.0/w14-tooling.md", "plan")
-        (self.root / "perf-runs").mkdir()
-        stop = {"group": "a", "kind": "release", "level": "B", "src": [], "questions": []}
-        self.catalog = {
-            "schema": 1, "groups": [{"id": "a", "phase": 5}],
-            "stops": [
-                dict(stop, id="gdef", row=None, kind="gate", level=None, reads=["perf-runs/ (verdicts)"]),
-                dict(stop, id="w14a", row="W14a", src=["docs/plans/1.0/w14-tooling.md"], questions=["q14"]),
-                dict(stop, id="w9a", row="W9a with W12a"),
-                dict(stop, id="m2", row="W1 M2, M3", level="C"),
-                dict(stop, id="m3", row="W1 M2, M3", level="C"),
-            ],
-            "questions": [{"id": "q14"}, {"id": "q19"}],
-        }
-
-    def write(self, rel, text):
-        path = self.root / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
-
-    def check(self):
-        self.write("docs/plans/1.0/roadmap.json", json.dumps(self.catalog))
-        errors, notes = [], []
-        qa.check_roadmap(self.root, errors, notes)
-        return errors
-
-    def stop(self, sid):
-        return next(s for s in self.catalog["stops"] if s["id"] == sid)
-
-    def test_catalog_matching_the_register_passes(self):
-        self.assertEqual(self.check(), [])
-
-    def test_rows_out_of_order_fail(self):
-        stops = self.catalog["stops"]
-        stops[1], stops[2] = stops[2], stops[1]
-        self.assertEqual(self.check(), ["docs/plans/1.0/roadmap.json: row 1 is 'W9a with W12a', the register's (implementation plan §10) is 'W14a'"])
-
-    def test_missing_row_fails(self):
-        self.catalog["stops"] = [s for s in self.catalog["stops"] if s["id"] != "w9a"]
-        self.assertIn("row 2 is 'W1 M2, M3'", " ".join(self.check()))
-
-    def test_register_split_fails_until_the_catalog_splits(self):
-        self.write("docs/plans/1.0/implementation-plan.md", ROADMAP_PLAN.replace("| W1 M2, M3 | — | — | Wait |", "| W1 M2 | — | — | Wait |\n| W1 M3 | — | — | Wait |"))
-        self.assertIn("row 3 is 'W1 M2, M3'", " ".join(self.check()))
-        self.stop("m2")["row"], self.stop("m3")["row"] = "W1 M2", "W1 M3"
-        self.assertEqual(self.check(), [])
-
-    def test_level_disagreeing_with_its_card_fails(self):
-        self.stop("w14a")["level"] = "C"
-        self.assertEqual(self.check(), ["docs/plans/1.0/roadmap.json: w14a: level 'C', its §3 card says 'B'"])
-
-    def test_missing_src_and_reads_paths_fail(self):
-        self.stop("w14a")["src"] = ["docs/plans/1.0/w99-gone.md §2"]
-        self.stop("gdef")["reads"] = ["docs/plans/1.0/w14-tooling.md/ (a folder)"]
-        errors = self.check()
-        self.assertIn("docs/plans/1.0/roadmap.json: w14a: missing path docs/plans/1.0/w99-gone.md", errors)
-        self.assertIn("docs/plans/1.0/roadmap.json: gdef: missing path docs/plans/1.0/w14-tooling.md/", errors)
-
-    def test_unknown_question_ids_fail(self):
-        self.catalog["questions"].append({"id": "q99"})
-        self.stop("w9a")["questions"] = ["q15"]
-        errors = self.check()
-        self.assertIn("docs/plans/1.0/roadmap.json: question q99 is not in implementation plan §7 or criteria §10", errors)
-        self.assertIn("docs/plans/1.0/roadmap.json: w9a: unknown question q15", errors)
-
-    def test_duplicate_and_malformed_ids_fail(self):
-        self.stop("m3")["id"] = "m2"
-        self.catalog["questions"].append({"id": "Q14"})
-        errors = self.check()
-        self.assertIn("docs/plans/1.0/roadmap.json: duplicate id m2", errors)
-        self.assertIn("docs/plans/1.0/roadmap.json: id 'Q14' is not lowercase letters and digits", errors)
-
-    def test_duplicate_key_and_unknown_group_fail(self):
-        self.stop("w9a")["group"] = "b"
-        self.assertEqual(self.check(), ["docs/plans/1.0/roadmap.json: w9a: unknown group b"])
-        self.write("docs/plans/1.0/roadmap.json", '{"stops": [], "stops": []}')
-        errors, notes = [], []
-        qa.check_roadmap(self.root, errors, notes)
-        self.assertIn("duplicate JSON key", " ".join(errors))
 
 
 if __name__ == "__main__":

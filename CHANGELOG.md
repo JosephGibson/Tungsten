@@ -6,6 +6,32 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.108.0] - 2026-10-25
+
+Summary: the roadmap redo adopted as the plan of record after Phase 6 (plan `docs/plans/roadmap-redo.md`; `D-215`), and its H1 in place: `ROADMAP.md` replaces the 1.0 register, catalog, roadmap page and owned README fields, which are frozen behind banners; the operating rules; a commit-message hook, so agents commit from the next session; a `missing_docs` ratchet. The last release on the old pipeline. It also carries the owner's notes of 2026-10-25 as five more example stops. No engine, kit, template, shell or example code change.
+
+### Added
+
+- **`ROADMAP.md`** (`D-215`): Now, Next and Later, one line per item; `check-repo.py`'s `check_roadmap_md` holds Now to one to three one-line items under the three headings in order.
+- **The operating rules** (`docs/operating-rules.md`): status, the owner's habits (toward agile by a gradient), Git, records, plans, decisions, the removed freeze process, releases, tiers, assets and docs, each rule naming the failure it prevents.
+- **A commit-message hook** (`.githooks/commit-msg`, `just hooks`, `scripts/test-commit-msg.py`): Conventional Commits, one line of at most 72 characters, no body or trailer; Git's merge, revert, fixup, squash and amend messages pass.
+- **The `missing_docs` ratchet** (`scripts/missing-docs.py`, `scripts/missing-docs.json`, `just docs-ratchet`, run first by `release-cut`): public items without rustdoc per crate, counted once each, may only fall from 1,165 (core 880, render 219, umbrella 66).
+- **Example 01's remaining stops** from the owner's notes of 2026-10-25 (feedback plan §3.7a and §3.9–§3.12, K29–K31): the second quick fixes, foes, sounds and effects, the aqueduct and the hollow, and the toxic flask, around the tomes; `ROADMAP.md` carries them.
+- **A 1.x backlog note**: `tungsten new --genre`, a starter per 1.0 genre, which the template's final pass (the redo's step 8.5) leaves out.
+
+### Changed
+
+- **The roadmap redo** (`D-215`): rechecked at `bb1e4c0` by three fresh-context checkers, with the facts that moved marked; the paper designs' 37 register rows folded into Phases 7 and 8 by ID; step 8.5, the template's final pass, with proof at 8.6; the owner's agile gradient as H1's habits; one artifact-only critique round, five findings accepted; the overhead baseline of M76–M85 (22 % of tool calls and 20 % of output tokens on bookkeeping, a median of 12 record files per release).
+- **Decisions** (`D-215`): supersedes `D-102`, `D-103`, `D-105`, `D-108`, `D-109`, `D-118`, `D-132`, `D-152` and `D-195`, and amends `D-079`, `D-140`, `D-150`, `D-151`, `D-153`, `D-157`, `D-172` and `D-194`: example 01 is the acceptance game, 1.0 promises capability in four genres, agents commit, plans by size, tiers by rule, no freeze process.
+- **Records frozen** behind a one-line banner: the implementation plan, `roadmap.json`, the 1.0 README's owned fields, `w04-api-freeze.md`'s break ledger, the 1.0 workflow, `acceptance-game.md` and w13 §14's field rule; the release checklist's RC-A1, RC-B2 and RC-B4 retired.
+- **Skills**: `tungsten-next` reads `ROADMAP.md` and the Git state (`state.sh`) and no longer syncs the roadmap page; `tungsten-milestone` writes or runs a large plan under the operating rules.
+- **Docs**: `AGENTS.md`'s read path, commit and decision rules; the LLM index, the doc map, the plans README's routes, agent setup, validation, DESIGN's status links and known issues; the release guide's release subjects (`chore(release): X.Y.Z …` from 0.109) and merge commits in place of squashes once the repository allows them.
+
+### Removed
+
+- **The roadmap tooling** (`D-215`): `scripts/roadmap.py` and its test, `check-repo.py`'s `check_roadmap` and `check_summary`, `release-cut`'s summary write, and `tungsten-next`'s `page.html` and `roadmap.md`. The published roadmap page stays until the owner deletes it.
+- **The Phase 7 rewrite**, superseded by the roadmap redo and archived at `docs/plans/archive/phase7-rewrite.md`.
+
 ## [0.107.0] - 2026-10-25
 
 Summary: a fix with no plan, from the owner's note of 2026-10-25 that enemies falling into example 01's lava took no harm: lava's bite now burns and throws an enemy as it does the player. No kit, engine, template, shell or save change; the tomes stop (feedback plan §3.8) moves to 0.108.

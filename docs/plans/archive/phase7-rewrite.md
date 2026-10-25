@@ -2,7 +2,7 @@
 
 A working draft that restructures Phase 7, the road to 1.0, around two aims; only the feature gate adopts it. §1 is the order both parts feed, §2 and §3 the proposals, §4 the verification record, §5 the critique rounds, §6 the open questions with defaults, §7 the adoption notes. Facts marked `@0732305` were measured at that commit on 2026-10-16 and are rechecked before adoption (ordered step 3). Decisions and constraints are settled here; mechanisms belong to each step's plan.
 
-- **status:** draft
+- **status:** superseded by the [roadmap redo](../roadmap-redo.md) on 2026-10-25 (`D-215`)
 - **goal:** Restructure Phase 7 around two aims, as the last waterfall, the one that gets the project out of the waterfall loop:
   1. Every optimization needing an API or data-format change lands before the freeze gate, so C2 tunes internals only.
   2. 1.0 is a soft reset: a conventional Git flow and semver, a scripted release pipeline, rewritten AI workflow and skills, a simple status display in place of the roadmap site, far fewer and leaner docs, a crushed and rebuilt test suite, and a less waterfall-driven way of working after 1.0.
@@ -14,8 +14,8 @@ A working draft that restructures Phase 7, the road to 1.0, around two aims; onl
   - Kit block scope.
   - Implementation, and the mechanisms of later steps (the release script's steps, the crush's run procedure, the rehearsal matrix): each step's plan specifies them with current facts.
 - **files to touch:** This file while it is a draft. On adoption, at the feature gate:
-  - [implementation plan](1.0/implementation-plan.md) §2 (freeze gate row), §5, §6, §7 and §10;
-  - [w10](1.0/w10-closing-phases.md);
+  - [implementation plan](../1.0/implementation-plan.md) §2 (freeze gate row), §5, §6, §7 and §10;
+  - [w10](../1.0/w10-closing-phases.md);
   - `roadmap.json`;
   - the decision entries listed in §3 (R9).
 - **ordered steps:**
@@ -33,11 +33,11 @@ A working draft that restructures Phase 7, the road to 1.0, around two aims; onl
 
 `@0732305`, with the kit catalogue's uncommitted edits to `docs/plans/1.0/` of 2026-10-16.
 
-- **Phase 7 today** ([implementation plan §5](1.0/implementation-plan.md#5-phase-7-release)): C1 → W4b → freeze gate → C2 → W7b, W9b, W9c → C3 on `v1.0.0-rc.N` → 1.0 gate. C1: a dated baseline, the new rows, a budget per row, and the fixes that need an API change; W4b: the freeze gate's list plus `#[non_exhaustive]` and rustdoc examples; C2: internal changes only.
-- **Gates** ([§2](1.0/implementation-plan.md#2-gates)): feature gate: the acceptance game plays from a `tungsten package` archive, every Must candidate landed, the Phase 6 QA pass closed, the break ledger holds only what Phase 7 lands; Q3, Q10's rest and Q12 answered there. Freeze gate: C1 baselines and budgets dated, break ledger empty, arity-named queries removed, `missing_docs` clean, API snapshot taken; Q2. RC gate: every budget passes or has an accepted exception; `v1.0.0-rc.N` publishes without a pull request.
-- **Owner-question defaults that shrink Phase 7** ([criteria §10](1.0/criteria.md#10-questions-for-the-owner)): Q2, no crates.io, so the freeze gate strikes W9c and RC-D5. Q3, Linux certified, other platforms on stated tiers, no macOS release build, so W7b shrinks to the README's tiers.
+- **Phase 7 today** ([implementation plan §5](../1.0/implementation-plan.md#5-phase-7-release)): C1 → W4b → freeze gate → C2 → W7b, W9b, W9c → C3 on `v1.0.0-rc.N` → 1.0 gate. C1: a dated baseline, the new rows, a budget per row, and the fixes that need an API change; W4b: the freeze gate's list plus `#[non_exhaustive]` and rustdoc examples; C2: internal changes only.
+- **Gates** ([§2](../1.0/implementation-plan.md#2-gates)): feature gate: the acceptance game plays from a `tungsten package` archive, every Must candidate landed, the Phase 6 QA pass closed, the break ledger holds only what Phase 7 lands; Q3, Q10's rest and Q12 answered there. Freeze gate: C1 baselines and budgets dated, break ledger empty, arity-named queries removed, `missing_docs` clean, API snapshot taken; Q2. RC gate: every budget passes or has an accepted exception; `v1.0.0-rc.N` publishes without a pull request.
+- **Owner-question defaults that shrink Phase 7** ([criteria §10](../1.0/criteria.md#10-questions-for-the-owner)): Q2, no crates.io, so the freeze gate strikes W9c and RC-D5. Q3, Linux certified, other platforms on stated tiers, no macOS release build, so W7b shrinks to the README's tiers.
 - **Settled for parallelism** (`D-131`, Q4–Q6): no workers and no `Send`/`Sync` bounds in 1.0; a parallel path bounds the types it slices at its call site; a rayon `ThreadPool` owned by `App` if a fork-join stage ever lands. R4, the pipelined render thread, returns only if C1 shows a game-frame row over budget that R4 would fix (`D-102`).
-- **Before the feature gate:** W13e–W13k (the kit catalogue's F1, F2, F3, A, M, C and E; its eighth group G was dissolved into them, [w13-kit §7](1.0/w13-kit.md#7-catalogue-by-milestone)), W6b and W6c, W14b, W12b with W1 M6 after W13k, then the Phase 6 QA pass. At `0732305` the first open stop was `w13e`; M60 cut it as 0.80 in the tree, so `w13f` and M61 are next. None of this changes.
+- **Before the feature gate:** W13e–W13k (the kit catalogue's F1, F2, F3, A, M, C and E; its eighth group G was dissolved into them, [w13-kit §7](../1.0/w13-kit.md#7-catalogue-by-milestone)), W6b and W6c, W14b, W12b with W1 M6 after W13k, then the Phase 6 QA pass. At `0732305` the first open stop was `w13e`; M60 cut it as 0.80 in the tree, so `w13f` and M61 are next. None of this changes.
 - **Owner's principles** ([Owner answers](#owner-answers-2026-10-16)): API- and format-changing optimizations before the freeze; the bench suite rewritten only after the kit and every core system are finished, purging the old data; nothing of the reset during Phase 6.
 
 ## 1. Phase 7 at a glance
@@ -97,11 +97,11 @@ A working draft that restructures Phase 7, the road to 1.0, around two aims; onl
 
 **Timing (owner).** After the kit and every core system are finished, which is the feature gate. Kit milestones keep capturing on today's suite until then.
 
-**Scope: both the runner and the workloads, in one candidate.** Today's suite (`@0732305`): `scripts/bench.py` (62 KiB: capture, sweeps, a capacity search against a frame budget), `bench_report.py` (100 KiB: compares and verdicts), the `examples/02_bench` harness and eight `benches/` files. What the rewrite adds is what past capture sessions wrote into plans by hand; the rewrite's plan confirms each item against the scripts and [benchmarks.md](../perf/benchmarks.md):
+**Scope: both the runner and the workloads, in one candidate.** Today's suite (`@0732305`): `scripts/bench.py` (62 KiB: capture, sweeps, a capacity search against a frame budget), `bench_report.py` (100 KiB: compares and verdicts), the `examples/02_bench` harness and eight `benches/` files. What the rewrite adds is what past capture sessions wrote into plans by hand; the rewrite's plan confirms each item against the scripts and [benchmarks.md](../../perf/benchmarks.md):
 
 **Runner:** verdicts against absolute budgets as well as A/B compares; a same-sitting A/A and the one-rerun way-out for known same-build drift rows, built in rather than written into each plan; code-placement noise handled by default; a contamination check at sitting start; RSS compared within a sitting only; deterministic counters (allocations, archetype moves, events, draw calls, upload bytes) as noise-free guards in CI and `just check`, with time rows local; a short guard mode beside the full sitting; GPU timestamps read back without stalling the frame, since today's timed frame blocks on `device.poll` each frame (`crates/tungsten-render/src/timing.rs:161` `@0732305`) and §2.5's timeline must keep the overlap it measures.
 
-**Workloads:** C1's listed rows; rows from the rebuilt example games; structural stress rows (entity-count scaling, spawn and despawn churn, event volume, load and hot reload, startup parse); each row names its budget category (§2.5) and the API surfaces it exercises, so an over-budget row maps to its levers. The acceptance game's row is cross-repository ([acceptance game](1.0/acceptance-game.md); `D-102` clones it beside this checkout): a pinned revision or a vendored snapshot (R-Q12).
+**Workloads:** C1's listed rows; rows from the rebuilt example games; structural stress rows (entity-count scaling, spawn and despawn churn, event volume, load and hot reload, startup parse); each row names its budget category (§2.5) and the API surfaces it exercises, so an over-budget row maps to its levers. The acceptance game's row is cross-repository ([acceptance game](../1.0/acceptance-game.md); `D-102` clones it beside this checkout): a pinned revision or a vendored snapshot (R-Q12).
 
 **Purge (owner):** `perf-runs/` (`@0732305`: 9.7 GB in 801 entries, untracked apart from `.gitkeep`); the old suite's code and tests (`bench.py`, `bench_report.py`, `test-bench.py`, 227 KiB) and the crates' `benches/`; `docs/perf/benchmarks.md` (92 KiB), rewritten with the suite; the agent's perf memory. **Before purging,** carry `benchmarks.md`'s "Engine findings" and "Open proposals" (lines 458 and 474) into pass 1's lever list, and keep the machine-level capture facts that stay true: remote-desktop contamination, the compositor's acquire stall, THP shifting RSS, code-placement noise.
 
@@ -312,7 +312,7 @@ Until 7.11 they go into `DECISIONS.md` as usual.
 1. **`release.yml`'s trigger** (R3, R9): under `D-079` a final tag publishes only through the release pull request's merge, not on push as the draft had it. R3 changes the trigger at 7.6 and keeps `release.py`'s CI half.
 2. **Iteration orders** (§2.1): promised, not "to check" (`ecs/world.rs:224`), so reordering levers are breaking-later unless the sweep unpromises the order first.
 3. **Containers in signatures** (§2.1): the 13 slice-returning methods and the container field counts listed from `api/*.txt`.
-4. **Kit block** (digest): W13e–W13k, seven candidates; group G was dissolved ([w13-kit §7](1.0/w13-kit.md#7-catalogue-by-milestone)), so "W13e to W13l" was wrong.
+4. **Kit block** (digest): W13e–W13k, seven candidates; group G was dissolved ([w13-kit §7](../1.0/w13-kit.md#7-catalogue-by-milestone)), so "W13e to W13l" was wrong.
 5. **Figures** (§3): recounted at `0732305`; 16 Python files under `scripts/` not 20, 29 recipes not 30, 9.7 GB of `perf-runs/`, 331 transcripts, the generator separated from tooling, the skills' other files named.
 6. **Read signal** (§3, R6): mined from the transcripts; every bookkeeping doc is searched in a third to a half of sessions, so "written often, rarely read" describes none of them, and R6's first triage question changed.
 7. **`winit` 0.31** (R10): still a beta on crates.io; the condition now says "stable by then".
@@ -322,7 +322,7 @@ Until 7.11 they go into `DECISIONS.md` as usual.
 
 **Structure changed in this pass:** skills rewritten at the step that first needs them (R4, §1); 7.1 and 7.2 may share a release (R-Q14); `docs/releases.md` among what 7.6 replaces (R4); the release script's steps, the crush's run procedure and the rehearsal lists pushed down to 7.6's and 7.7's plans, their constraints kept here; the recheck step added (ordered step 3); every open question given a default (§6).
 
-**Verified and holding** (`@0732305`): every decision ID cited is in [`DECISION_INDEX.md`](../DECISION_INDEX.md); the line references in §2.1 and §2.2; implementation plan §2 and §5 unchanged by the kit catalogue's edits; the test counts, branches and raw write counts; `release-cut`'s `cargo update --workspace`; RC-A9, RC-B2 and RC-D5 in the release checklist.
+**Verified and holding** (`@0732305`): every decision ID cited is in [`DECISION_INDEX.md`](../../DECISION_INDEX.md); the line references in §2.1 and §2.2; implementation plan §2 and §5 unchanged by the kit catalogue's edits; the test counts, branches and raw write counts; `release-cut`'s `cargo update --workspace`; RC-A9, RC-B2 and RC-D5 in the release checklist.
 
 **Not rechecked:** the count of archived plans (the archive is never read); `scripts/bench.py` beyond its size and function list.
 

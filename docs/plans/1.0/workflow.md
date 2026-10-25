@@ -1,5 +1,7 @@
 # Tungsten 1.0 workflow — draft
 
+**Frozen 2026-10-25 (`D-215`):** the [operating rules](../../operating-rules.md) replace this workflow; level C (§4), the milestone route and what every milestone owes (§5) are retired. This file is not edited again, and step 9.7 deletes it.
+
 - **status:** in progress
 - **goal:** Say how the road to 1.0 runs as Claude Code sessions in this repository's existing style: the kinds of session, what each candidate's level adds, what every milestone owes before it releases, how sessions share the tree and the reference machine, where the owner is needed, and the tooling that had to exist first.
 - **non-goals:** The order of work and the gates ([implementation plan](implementation-plan.md)); scoping ([criteria](criteria.md) and the workstream files); rules that already have a home ([plan rules](../README.md), [profiling workflow](../../perf/profiling-workflow.md), [release procedure](../../releases.md)), which this file links instead of copying.
@@ -73,7 +75,7 @@ Each candidate's card in the implementation plan sets its level. No level stops 
 | **C** New public API | New public API whose shape is the deliverable and which the freeze fixes | An Opus 5.5 max plan (`D-151`), an API sketch in the plan, and a critique of step 1's API and template diff before the rest runs; no `D-108` pair | W2 R0's ID API, W15a–c, W1 M1–M3, W16a–b, the kit |
 | **S** Spike | Evidence for a gate | A verdict in the gate record | The R1 spike, the tuple-query spike, the frame-loop design, the glyph-path prototype |
 
-Level C exists because the freeze makes API taste expensive to fix later. Every public name ends up in the break ledger or the freeze snapshot, and the template shows it to every game.
+Retired with the freeze (`D-215`). Level C exists because the freeze makes API taste expensive to fix later. Every public name ends up in the break ledger or the freeze snapshot, and the template shows it to every game.
 
 ## 5. What every milestone owes before its release
 

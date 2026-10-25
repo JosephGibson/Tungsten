@@ -11,6 +11,7 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 - Start here, then open only the files the task touches. [`docs/LLM_INDEX.md`](docs/LLM_INDEX.md) maps tasks to files; open it before a broad search.
 - Rationale: matching rows in [`docs/DECISION_INDEX.md`](docs/DECISION_INDEX.md), then `rg -n 'D-0NN' DECISIONS.md`. Never read `DECISIONS.md`, `DESIGN.md` or `CHANGELOG.md` whole: `rg -n '^#' <file>`, then read one section.
 - **Never read, search or glob `docs/plans/archive/`** (completed or abandoned plans). `.ignore` filters it; never bypass that with `rg -uu`.
+- Status: [`ROADMAP.md`](ROADMAP.md); the plan to 1.0: [the roadmap redo](docs/plans/roadmap-redo.md); how work runs: [operating rules](docs/operating-rules.md) (`D-215`). The 1.0 register, `roadmap.json` and the 1.0 README's fields are frozen.
 - [Doc map](docs/README.md): canonical sources. Plans follow [`docs/plans/README.md`](docs/plans/README.md); client setup is in [`docs/agent-setup.md`](docs/agent-setup.md).
 
 ## Commands
@@ -44,7 +45,8 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).
-- No scope creep: finish the task, open a new one for the rest. Leave work uncommitted (`D-105`); Git publication stays with the human.
+- No scope creep: finish the task, name what grows past it and propose the smallest version; a new idea goes to `ROADMAP.md`'s Later as one line.
+- Commit at each logical step in Conventional Commits, staging only the paths you changed, never `git add -A`; push, tags and merges stay with the human ([rules](docs/operating-rules.md#git)).
 
 ## Conventions
 
@@ -55,9 +57,9 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 
 ## Sessions
 
-- **Feature:** plan first (files, API shape, tests). Bounded maintenance records scope, affected files and acceptance checks in the session; multi-session work keeps a saved handoff plan (`D-140`, [routes](docs/plans/README.md#choosing-a-route)). Milestones keep their plan and critique; nothing stops for approval (`D-150`).
+- **Feature:** plan first (files, API shape, tests). Bounded maintenance records scope, affected files and acceptance checks in the session; multi-session or risky work keeps one plan file, deleted when done, with one critique round at xhigh (`D-140`, [routes](docs/plans/README.md#choosing-a-route)); nothing stops for approval (`D-150`).
 - **Audit:** crate correctness audits read the full named crate surface; scoped workflow/documentation audits read the named docs and tools. Report findings only unless fixes are requested. Check decisions before calling a choice wrong.
-- **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. New decisions add their `docs/DECISION_INDEX.md` row in the same change (test-enforced). Releases follow [docs/releases.md](docs/releases.md); README stays version-free.
+- **Docs:** read the whole doc before editing. Decisions are immutable: a reversal adds an entry and marks the old one `Superseded by D-NNN`. A decision only for a choice that constrains later work (dependency, format, policy), short, with its `docs/DECISION_INDEX.md` row in the same change (test-enforced). Releases follow [docs/releases.md](docs/releases.md); README stays version-free.
 - Don't change code you haven't read. Stuck: re-read scope, check decisions, or leave `// TODO: ask about X`.
 
 ## Not doing
