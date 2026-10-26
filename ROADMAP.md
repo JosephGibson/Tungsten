@@ -4,7 +4,6 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `h1`: the roadmap redo adopted and H1 in place; 0.108, the old pipeline's last release, waits for the owner's commit, tag and push.
 - `e01quick2`: example 01's quick fixes from the fourth playtest ([feedback](docs/plans/1.0/example-01-feedback.md) §3.7a).
 
 ## Next
