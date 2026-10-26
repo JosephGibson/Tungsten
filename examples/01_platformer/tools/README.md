@@ -627,9 +627,9 @@ knocked back through the kit's `knock_back`, at the same falloff times its
 kind's black-hole pull (`toys::radial_push`); the troll, whose knockback resists
 the push whole, stands. The wizard, a kinematic body, stays put. The force push,
 slot 5, is a wave instead (01 (j), `toys::wave`): a front from the wizard's hand
-toward the cursor at 1,200 pixels/second for 0.3 s, its sector widening from 15°
+toward the cursor at 1,620 pixels/second for 0.3 s, its sector widening from 15°
 to 30°, that throws each body and enemy it meets once along the aim, half as hard
-at its 360-pixel reach. It draws as `push_wave`, a crescent of bent air turned to
+at its 486-pixel reach (§3.7a: its throws half again as hard). It draws as `push_wave`, a crescent of bent air turned to
 the aim and scaled across to the front's width (sampled linearly), and raises a
 `push_dust` puff and a `push_grit` burst where it scrapes a floor. The blast ignites every small ball within 72 pixels through
 `elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
@@ -785,9 +785,10 @@ and game over.
 ## Ice spray and thermal shattering
 
 Hold `cast` on slot 3 to channel the ice spray toward the cursor, for 18 mana a
-second; slot 2's flamethrower is the same spray in fire, half the reach, lighting
-the small balls it meets. The 28-degree cone reaches 582 pixels, 9.1 tiles, and
-the flamethrower's 291, 4.55 tiles (01 (h): 30 % further than 01 (f)'s); seven
+second; slot 2's flamethrower is the same spray in fire, a shorter reach, lighting
+the small balls it meets. The 28-degree cone reaches 582 pixels, 9.1 tiles (01 (h):
+30 % further than 01 (f)'s), and the flamethrower's 378, 5.9 tiles (§3.7a: 30 %
+further again, its puffs and sparks flying 30 % faster to fill it); seven
 rays stop on colliders and solid tiles, so exposed iron at the sides freezes too.
 The nozzle follows the interpolated caster and current aim every drawn frame.
 Its visuals and sound start on press even before the next fixed physics step;
