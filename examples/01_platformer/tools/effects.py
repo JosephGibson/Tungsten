@@ -2281,6 +2281,40 @@ def build_tome_art(images, lit):
         images[f'bound_ring_{f}'] = bound_ring(f)
 
 
+# e01foes' effects: the crawler's snowball turning and its burst, and the
+# beetle's charge streaks drawn behind its rear, which `generate.mirror_facing`
+# twins for a beetle facing left (`FACING_CLIPS`). Today's art stands in at
+# each clip's size, count and timing until its asset session draws them: the
+# goblin's rock, the frost puff's first six frames and the tracer drawn out
+# to the streak's width. A clip: its frame size, its frames, the
+# milliseconds a frame and whether it loops.
+FOE_CLIPS = {
+    'snowball': ((16, 16), 4, 60, True),
+    'snowball_burst': ((48, 48), 6, 50, False),
+    'charge_streak': ((64, 24), 4, 50, True),
+}
+FACING_CLIPS = ('charge_streak',)
+
+
+def build_foe_art(images):
+    """The foes' effects' frames, unlit: `<clip>_<f>`; after the sprays',
+    since the burst copies the frost puff's."""
+    from PIL import Image
+
+    from actors import goblin_rock
+    for f in range(FOE_CLIPS['snowball'][1]):
+        images[f'snowball_{f}'] = goblin_rock(f % 2)
+    for f in range(FOE_CLIPS['snowball_burst'][1]):
+        images[f'snowball_burst_{f}'] = images[f'frost_puff_{f}'].copy()
+    (w, h), frames, _, _ = FOE_CLIPS['charge_streak']
+    trail = tracer()
+    trail = trail.resize((w, 2 * trail.height), Image.Resampling.NEAREST)
+    for f in range(frames):
+        im, _ = canvas((w, h))
+        im.paste(trail, (0, (h - trail.height) // 2))
+        images[f'charge_streak_{f}'] = im
+
+
 def build_effects(images):
     images['halo'] = radial_glow(HALO_STEPS, 1.8)
     images['flame_glow'] = radial_glow(FLAME_STEPS, 2.2)
@@ -2295,3 +2329,4 @@ def build_effects(images):
     build_frost_art(images)
     build_spray_art(images)
     build_push_art(images)
+    build_foe_art(images)

@@ -508,5 +508,45 @@
     "looping": false,
     "path": "sounds/bound.wav",
     "volume": 0.4
+  },
+  "ex10_beetle_plough_sfx": {
+    "looping": false,
+    "path": "sounds/beetle_plough.wav",
+    "volume": 0.5
+  },
+  "ex10_crawler_retreat_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_retreat.wav",
+    "volume": 0.45
+  },
+  "ex10_crawler_hop_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_hop.wav",
+    "volume": 0.4
+  },
+  "ex10_snowball_throw_sfx": {
+    "looping": false,
+    "path": "sounds/snowball_throw.wav",
+    "volume": 0.4
+  },
+  "ex10_snowball_burst_sfx": {
+    "looping": false,
+    "path": "sounds/snowball_burst.wav",
+    "volume": 0.45
+  },
+  "ex10_goblin_crouch_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_crouch.wav",
+    "volume": 0.4
+  },
+  "ex10_goblin_dash_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_dash.wav",
+    "volume": 0.45
+  },
+  "ex10_goblin_yelp_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_yelp.wav",
+    "volume": 0.45
   }
 }

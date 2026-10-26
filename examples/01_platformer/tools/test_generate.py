@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import wave
 
 from art import TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import generate
@@ -231,6 +232,97 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+
+# e01foes' contract, the files its families own as the game reads them: each
+# clip's frame size, durations and looping, then whether it has a left-facing
+# twin and whether its frames stand on row 60; each particle config's cap;
+# each sound's seconds. Its placeholders pass it, and so must its art.
+ASSETS = TOOLS.parent / 'assets'
+FOE_CLIPS = {
+    'crawler_walk': ((64, 64), [90] * 6, True, True, True),
+    'crawler_windup': ((64, 64), [100] * 4, False, True, True),
+    'crawler_lunge': ((64, 64), [60, 80, 400], False, True, True),
+    'crawler_recover': ((64, 64), [100, 120, 140], False, True, True),
+    'crawler_scared': ((64, 64), [90, 70, 90, 70], True, True, True),
+    'crawler_retreat': ((64, 64), [80] * 6, True, True, True),
+    'crawler_hop': ((64, 64), [70, 90, 240], False, True, False),
+    'crawler_snowball_windup': ((64, 64), [90] * 4, False, True, True),
+    'crawler_snowball_throw': ((64, 64), [50, 80, 120], False, True, True),
+    'snowball': ((16, 16), [60] * 4, True, False, False),
+    'snowball_burst': ((48, 48), [50] * 6, False, False, False),
+    'beetle_paw': ((64, 64), [100] * 8, False, True, True),
+    'beetle_charge': ((64, 64), [60] * 4, True, True, True),
+    'charge_streak': ((64, 24), [50] * 4, True, True, False),
+    'goblin_dash_windup': ((64, 64), [120, 180], False, True, True),
+    'goblin_dash': ((64, 64), [70] * 4, True, True, True),
+    'goblin_panic': ((64, 64), [70] * 6, True, True, True),
+}
+FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 12, 'dash_dust': 10}
+FOE_SOUNDS = {
+    'beetle_paw': (.75, .85), 'beetle_plough': (0, .35), 'crawler_retreat': (.4, .7),
+    'crawler_hop': (0, .35), 'snowball_throw': (0, .35), 'snowball_burst': (0, .45),
+    'goblin_crouch': (0, .35), 'goblin_dash': (0, .35), 'goblin_yelp': (.4, .8),
+}
+
+
+class FoeContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def sprite(self, name):
+        from PIL import Image
+        with Image.open(ASSETS / self.manifest['sprites'][name]['path']) as im:
+            return im.convert('RGBA')
+
+    def clip(self, name):
+        return json.loads((ASSETS / self.manifest['animations'][name]['path']).read_text())
+
+    def test_every_clip_keeps_its_size_timing_twin_and_feet(self):
+        from PIL import ImageOps
+        for clip, (size, durations, looping, twinned, grounded) in FOE_CLIPS.items():
+            data = self.clip('ex10_' + clip)
+            self.assertEqual(data['looping'], looping, clip)
+            self.assertEqual([f['duration_ms'] for f in data['frames']], durations, clip)
+            sprites = [f['sprite'] for f in data['frames']]
+            self.assertEqual(sprites, [f'ex10_{clip}_{i}' for i in range(len(durations))], clip)
+            self.assertEqual('ex10_' + clip + '_left' in self.manifest['animations'], twinned, clip)
+            if twinned:
+                left = self.clip('ex10_' + clip + '_left')
+                self.assertEqual([f['duration_ms'] for f in left['frames']], durations, clip)
+                self.assertEqual([f['sprite'] for f in left['frames']], [s + '_left' for s in sprites], clip)
+            for name in sprites:
+                im = self.sprite(name)
+                self.assertEqual(im.size, size, name)
+                if twinned:
+                    self.assertEqual(self.sprite(name + '_left').tobytes(), ImageOps.mirror(im).tobytes(), name)
+                if grounded:
+                    self.assertEqual(im.getbbox()[3] - 1, 60, f'{name}: its lowest opaque row')
+
+    def test_the_crawler_walk_reaches_thirty_to_thirty_two_pixels_each_side(self):
+        # Lightning meets a crawler within 32 px of its centre, x 32 on its
+        # 64 px frame, which bounds the reach (`KindInfo::strike`).
+        boxes = [self.sprite(f'ex10_crawler_walk_{i}').getbbox() for i in range(6)]
+        self.assertGreaterEqual(32 - min(b[0] for b in boxes), 30)
+        self.assertGreaterEqual(max(b[2] for b in boxes) - 32, 30)
+        self.assertEqual(self.sprite('ex10_icon_crawler').size, (36, 36))
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in FOE_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_and_volumes(self):
+        for name, (shortest, longest) in FOE_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertFalse(sound['looping'], name)
+            self.assertTrue(.4 <= sound['volume'] <= .75, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
 
 
 if __name__=='__main__':unittest.main()

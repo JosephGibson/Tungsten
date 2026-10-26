@@ -568,6 +568,13 @@ def particle_configs():
     configs['bound_trail'] = full(
         'mote', 12, burst(12), (.4, .75), dict(kind='radial', speed=dict(min=6, max=34)), (0, 40), 1.4,
         (.3, .45), [[0, 1], [1, .4]], [[0, 0], [.1, 1], [.6, .7], [1, 0]], sky)
+    # e01foes, until its asset session: the beetle's paw dust and the
+    # goblin's dash dust, the charge's; the snowball's burst, the ice's
+    # shatter held to 24.
+    configs['paw_dust'] = dict(configs['charge_dust'])
+    configs['dash_dust'] = dict(configs['charge_dust'])
+    configs['snowball_burst'] = dict(
+        configs['ice_shatter'], max_alive=24, emission=dict(kind='burst', count=24, once=True))
     return configs
 
 
@@ -578,13 +585,15 @@ MATERIALS={'soft_halo':('soft_glow',[1.8,0.0,1.0,0.1]),'soft_flame':('soft_glow'
 
 def mirror_facing(images,lit,animations):
     """Left-facing copies of the wizard's frames and clips, the fireball's, the
-    fire missile's and the enemies': nothing flips a sprite in place, so the kit's
-    animator, and 01's fireballs, missiles and enemies, show mirrored art by
-    facing. Their maps derive from the mirrored silhouettes."""
+    fire missile's, the enemies' and the beetle's charge streaks: nothing flips
+    a sprite in place, so the kit's animator, and 01's fireballs, missiles and
+    enemies, show mirrored art by facing. Their maps derive from the mirrored
+    silhouettes. After `spray_clips`, which makes the streaks' clip."""
     from PIL import ImageOps
     from actors import ENEMY_CLIPS
+    from effects import FACING_CLIPS
     flying=('fireball','fire_missile')
-    for clip in sorted(c for c in animations if c.startswith('player') or c in flying or c in ENEMY_CLIPS):
+    for clip in sorted(c for c in animations if c.startswith('player') or c in flying or c in ENEMY_CLIPS or c in FACING_CLIPS):
         frames=[]
         for frame in animations[clip]['frames']:
             name=frame['sprite'].removeprefix('ex10_');left=name+'_left'
@@ -599,9 +608,11 @@ def spray_clips(animations):
     dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
     flips it top to bottom when the aim faces left, and mirrors the dust.
     And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
-    and the bound's ring, which nothing turns."""
-    from effects import PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS}.items():
+    and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
+    the snowball's, its burst's and the beetle's streaks, which
+    `mirror_facing` then twins."""
+    from effects import FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
@@ -657,8 +668,8 @@ def write_json(path,data):
 
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
-    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
-    spray_clips(animations)
+    images,lit,animations,anchors=build_art();spray_clips(animations)
+    mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
     tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images);check_frost_fits(images)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
@@ -769,7 +780,7 @@ def validate_references(manifest,animations,configs,source):
 def floating_report():
     """`--floating`: the level built in memory, every piece that floats
     (`placement.floating`) and a total; exit 1 on any."""
-    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);spray_clips(animations)
+    images,lit,animations,anchors=build_art();spray_clips(animations);mirror_facing(images,lit,animations)
     tiled,source,_=build_level(images,lit,check=False)
     lines=floating(source,tiled,images)
     for line in lines:print(line)

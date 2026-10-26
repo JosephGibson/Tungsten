@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_0_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_1_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_2_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_3_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_4_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_panic_5_left"
+    }
+  ],
+  "looping": true
+}

@@ -1569,6 +1569,34 @@ def crawler_scared_frames():
     return [to_image(crawler_canvas(scared=1.0, shiver=s)) for s in (0, 1, 0, 1)], [90, 70, 90, 70]
 
 
+# e01foes' new clips stand in with today's frames at their counts and
+# timings until its asset session draws them: the retreat the walk run
+# backwards, the hop the lunge's leap, the snowball's tell the lunge's
+# coil and its throw the landing.
+def crawler_retreat_frames():
+    """Backing out of the light (a placeholder): the walk in reverse."""
+    frames, _ = crawler_walk_frames()
+    return frames[::-1], [80] * CRAWLER_FRAMES
+
+
+def crawler_hop_frames():
+    """A hop or a leap (a placeholder): the lunge's frames."""
+    frames, _ = crawler_lunge_frames()
+    return frames, [70, 90, 240]
+
+
+def crawler_snowball_windup_frames():
+    """The snowball's tell, 0.36 s (a placeholder): the lunge's coil."""
+    frames, _ = crawler_windup_frames()
+    return frames, [90] * 4
+
+
+def crawler_snowball_throw_frames():
+    """The snowball's throw, 0.25 s (a placeholder): the landing's frames."""
+    frames, _ = crawler_recover_frames()
+    return frames, [50, 80, 120]
+
+
 # The beetle: a rhinoceros beetle of riveted iron, rusting.
 
 BEETLE_FRAMES = 6
@@ -1708,8 +1736,11 @@ def beetle_walk_frames():
 
 
 def beetle_paw_frames():
-    """The charge's tell: a front foot pawing the ground, raising dust."""
-    return [to_image(beetle_canvas('paw', i / 4)) for i in range(4)], [100] * 4
+    """The charge's tell: a front foot pawing the ground, raising dust; its
+    four poses twice over the tell's 0.8 s, a placeholder for e01foes'
+    rearing."""
+    frames = [to_image(beetle_canvas('paw', i / 4)) for i in range(4)]
+    return frames + [im.copy() for im in frames], [100] * 8
 
 
 def beetle_charge_frames():
@@ -2548,6 +2579,26 @@ def goblin_hop_frames():
     return [to_image(goblin_canvas(p)) for p in poses], [110, 110]
 
 
+# e01foes' new clips, placeholders as the crawler's: the dash-in's crouch
+# the stab's tell held, its sprint and the panic the walk's frames.
+def goblin_dash_windup_frames():
+    """The dash-in's crouch, 0.3 s (a placeholder): the stab's tell."""
+    frames, _ = goblin_stab_windup_frames()
+    return [frames[0], frames[0].copy()], [120, 180]
+
+
+def goblin_dash_frames():
+    """The dash-in's sprint (a placeholder): four of the walk's frames."""
+    frames, _ = goblin_walk_frames()
+    return [frames[i] for i in (0, 1, 3, 4)], [70] * 4
+
+
+def goblin_panic_frames():
+    """Its panic while burning (a placeholder): the walk, quicker."""
+    frames, _ = goblin_walk_frames()
+    return frames, [70] * 6
+
+
 def goblin_rock(i):
     """The thrown rock, two turns of it: a faceted stone, pale where the
     moon catches it."""
@@ -2602,8 +2653,12 @@ ENEMY_CLIPS = {
     'crawler_lunge': (crawler_lunge_frames, False),
     'crawler_recover': (crawler_recover_frames, False),
     'crawler_scared': (crawler_scared_frames, True),
+    'crawler_retreat': (crawler_retreat_frames, True),
+    'crawler_hop': (crawler_hop_frames, False),
+    'crawler_snowball_windup': (crawler_snowball_windup_frames, False),
+    'crawler_snowball_throw': (crawler_snowball_throw_frames, False),
     'beetle_walk': (beetle_walk_frames, True),
-    'beetle_paw': (beetle_paw_frames, True),
+    'beetle_paw': (beetle_paw_frames, False),
     'beetle_charge': (beetle_charge_frames, True),
     'bat_roost': (bat_roost_frames, True),
     'bat_fly': (bat_fly_frames, True),
@@ -2625,6 +2680,9 @@ ENEMY_CLIPS = {
     'goblin_stab_windup': (goblin_stab_windup_frames, False),
     'goblin_stab': (goblin_stab_frames, False),
     'goblin_hop': (goblin_hop_frames, True),
+    'goblin_dash_windup': (goblin_dash_windup_frames, False),
+    'goblin_dash': (goblin_dash_frames, True),
+    'goblin_panic': (goblin_panic_frames, True),
 }
 def build_enemies(images, animations):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no

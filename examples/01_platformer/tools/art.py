@@ -67,6 +67,11 @@ ELEMENT_SIZES = {
        for clip, (size, frames) in (('idle', ((32, 32), 4)), ('take', ((64, 64), 6))) for i in range(frames)},
     **{f'bound_ring_{i}': (64, 32) for i in range(6)},
     'hud_liquid_shield': (128, 10),
+    # e01foes: the crawler's snowball and its burst, and the beetle's
+    # charge streaks with their left-facing twins.
+    **{f'snowball_{i}': (16, 16) for i in range(4)},
+    **{f'snowball_burst_{i}': (48, 48) for i in range(6)},
+    **{f'charge_streak_{i}{facing}': (64, 24) for i in range(4) for facing in ('', '_left')},
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat
@@ -77,9 +82,11 @@ SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96)}
 PLAYER_FEET = 93
 # A walker's frames keep their lowest pixel on its feet's row: the outline's
 # row under its soles (`actors.SOLE` and `BIG_SOLE`); the goblin's by its
-# clips, apart from its rock and bomb.
+# clips, apart from its rock and bomb; the crawler's but its hop's, which
+# may rise off it (e01foes, `AIRBORNE`).
 WALKER_FEET = {'crawler_': 61, 'beetle_': 61, 'troll_': 125,
                **{f'goblin_{clip}_': 61 for clip in ('idle', 'walk', 'windup', 'throw')}}
+AIRBORNE = ('crawler_hop_',)
 
 
 def expected_size(name):
@@ -226,7 +233,7 @@ def validate_art(images,lit):
             if not box or box[0]<1 or box[1]<1 or box[2]>im.width-1 or box[3]>im.height-1:raise ValueError(f'{name}: clipped frame')
             if name.startswith('player') and box[3]!=PLAYER_FEET:raise ValueError(f'{name}: unstable foot anchor')
         for prefix,feet in WALKER_FEET.items():
-            if name.startswith(prefix) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
+            if name.startswith(prefix) and not name.startswith(AIRBORNE) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
     for name in ('ground_1','ground_2','ground_3'):
         if images[name].crop((0,0,64,6)).tobytes()!=images['ground'].crop((0,0,64,6)).tobytes():raise ValueError('terrain seam')
     from backdrops import validate_backdrops

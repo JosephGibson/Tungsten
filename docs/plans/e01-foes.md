@@ -1,6 +1,6 @@
 # Example 01: foes (`e01foes`) — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01 (m) ([feedback](1.0/example-01-feedback.md) §3.9, V17–V22, V25, V26): a beetle whose charge ploughs through crates and kegs and throws the player hard, with a tell that reads (a rearing pose, scraping dust, a rising sound) and stronger streaks; a frost crawler redrawn, afraid at 1.3 × the staff light's reach and backing out of it, quicker, hopping ledges and gaps, with a chilling snowball on a cooldown; a troll that lifts and tosses kegs and clears its way in Search and Return; goblins with a throw cooldown, a dash-in stab one approach in three and a panic while burning; their sounds; save schema 17. The art and sound come from a redo [§6 asset session](roadmap-redo.md#6-asset-sessions) on §3's brief, after the code steps, which build on placeholders until the art is accepted.
 - **non-goals:** K30 in the kit (the beetle relaunches in 01; the kit row stays in the backlog). The bat's dive tell (V18 names it; Q51 picked the beetle's). Burning sounds and the player's damage tell (V31, `e01sfx`). Snowballs that douse fire or chill props. New kinds, the armoured troll (V43, `e01flask`). Any map, route, light or level change. Any kit, core, render or template change. A release, a changelog section or a decision entry (§5 Q14): a release is cut separately (`D-215`).
 - **files to touch:** paths under `examples/01_platformer/` (01's) unless rooted; "the generated `assets/`" is the generator's output with `tools/outputs.json`.
@@ -318,6 +318,7 @@ Round 1 changed mechanisms (the plough's gate, the panic's launch, the leap's wi
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-26 | Passed | `level-check`: `OK: 5015 owned outputs match`, `Ran 28 tests … OK` (the four `FoeContractTests` among them); 01's suite 351 passed, 1 ignored; `repo-check` exit 0. 82 sprites, 19 clips, 3 particle configs and 8 sounds added; `beetle_paw` 4 frames looping → 8 once, its sound 0.42 → 0.8 s. The streak's "trail frame" is the gun's `tracer`, doubled. Deviation: `tools/art.py`, outside the list, takes the new off-grid sizes (`ELEMENT_SIZES`, which `validate_art` holds every sprite to) and `AIRBORNE`, the crawler's hop let off `WALKER_FEET`'s row 60 as §3.1 lets it rise, so Step 7 needs no `art.py` change | `examples/01_platformer/tools/`, its `assets/` |
 
 ## Follow-ups
 

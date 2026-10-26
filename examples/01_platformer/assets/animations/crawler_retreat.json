@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_0"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_3"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_4"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_5"
+    }
+  ],
+  "looping": true
+}

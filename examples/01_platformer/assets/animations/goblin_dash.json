@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_dash_0"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_dash_1"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_dash_2"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_goblin_dash_3"
+    }
+  ],
+  "looping": true
+}

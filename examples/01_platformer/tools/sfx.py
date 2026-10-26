@@ -840,25 +840,6 @@ def staff_gutter():
     return finish(samples)
 
 
-def beetle_paw():
-    """The beetle's tell: an iron claw scraping stone, grit and a rasp."""
-    duration = 0.42
-    noise, grit, low, high = Noise(0xBE71), Noise(0xBE72), LowPass(), LowPass()
-    samples, chip = [], 0.0
-    for i in range(int(duration * RATE)):
-        t = i / RATE
-        p = t / duration
-        n = noise()
-        scrape = low(n, glide(2600, 1400, p)) - high(n, 500)
-        rasp = .6 + .4 * math.sin(math.tau * 46 * t) * math.sin(math.tau * 7 * t)
-        if grit() > .996:
-            chip = .5
-        chip *= .9
-        envelope = min(1.0, t / 0.03) * (1 - p) ** 0.8
-        samples.append((1.6 * scrape * rasp + chip * grit()) * envelope)
-    return finish(samples)
-
-
 def beetle_charge():
     """The charge: a heavy iron rumble rolling forward, plates clanking."""
     duration = 0.8
@@ -2385,7 +2366,9 @@ def build_sounds():
         'crawler_lunge.wav': crawler_lunge(),
         'crawler_scared.wav': crawler_scared(),
         'staff_gutter.wav': staff_gutter(),
-        'beetle_paw.wav': beetle_paw(),
+        # The paw's 0.8 s tell stands on the charge until e01foes' asset
+        # session redraws it.
+        'beetle_paw.wav': beetle_charge(),
         'beetle_charge.wav': beetle_charge(),
         'bat_screech.wav': bat_screech(),
         'bat_dive.wav': bat_dive(),
@@ -2431,5 +2414,15 @@ def build_sounds():
         'tome_bounding.wav': tome_bounding(),
         'tome_arcane.wav': tome_arcane(),
         'bound.wav': bound(),
+        # e01foes' sounds, each one of today's within its length until its
+        # asset session draws them.
+        'beetle_plough.wav': rock_throw(),
+        'crawler_retreat.wav': crawler_hiss(),
+        'crawler_hop.wav': rock_throw(),
+        'snowball_throw.wav': rock_throw(),
+        'snowball_burst.wav': crawler_lunge(),
+        'goblin_crouch.wav': goblin_stab(),
+        'goblin_dash.wav': goblin_stab(),
+        'goblin_yelp.wav': goblin_cackle(),
         **{name: make() for name, make in AMBIENCE.items()},
     }
