@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-10-26
+
 Summary: two example 01 stops from the owner's notes (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.7a and §3.8), the first release under the operating rules (`D-215`, `D-216`), with two opt-in kit additions and no engine, template or shell change: `e01quick2`, the second quick fixes (kegs weighed by what strikes them, a harder, farther push, a longer flamethrower, sight that bodies block, every enemy conducting, bolts that meet an enemy across its art, cheaper summons on the arrows); `e01tomes`, three hidden tomes (the demonic pact, bounding and arcane power) on the kit's paid air jumps and stat-scaled ability costs; save schema 16.
 
 ### Added
