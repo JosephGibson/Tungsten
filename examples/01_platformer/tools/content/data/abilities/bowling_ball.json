@@ -1,7 +1,8 @@
 {
   "cost": {
     "stat": "mana",
-    "amount": 6
+    "amount": 6,
+    "scale": "spell_cost"
   },
   "cooldown": 0.3,
   "target": {

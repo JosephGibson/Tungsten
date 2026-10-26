@@ -7,12 +7,15 @@ use tungsten::kit::{Health, Lifetime, Modifier, PlatformerController, Shield, St
 
 use super::components::{TomeKind, Tomes};
 use super::{
-    BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_SPARKS, BOUND_TRAIL, BOUND_Z, INTERACT,
-    PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z, nearest,
+    ARCANE_FACTOR, ARCANE_SOURCE, BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_SPARKS,
+    BOUND_TRAIL, BOUND_Z, INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE,
+    TAKE_CENTRE, TAKE_SECS, TAKE_Z, nearest,
 };
 use crate::features::audio;
 use crate::features::audio::components::Sound;
+use crate::features::combat::SPELL_POWER;
 use crate::features::run::Run;
+use crate::features::spells::SPELL_COST;
 use crate::features::spells::hud;
 use crate::game::GAMEPLAY;
 use crate::shared::{despawn_tree, just_pressed, spawn_burst, spawn_key_burst};
@@ -61,7 +64,9 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
 /// into `Health` in the take's own step, keeping its share, and a full
 /// shield of [`PACT_SHIELD`] that recharges [`PACT_RECHARGE`] a second
 /// [`PACT_DELAY`] seconds after a hit. Bounding: an air jump past the
-/// controller's free one costs [`BOUND_COST`] mana, with no cap.
+/// controller's free one costs [`BOUND_COST`] mana, with no cap. Arcane
+/// power: [`SPELL_COST`] and [`SPELL_POWER`] at a base of 1 where the
+/// player lacks them, an older save's, each times [`ARCANE_FACTOR`].
 fn apply(world: &mut World, player: Entity, kind: TomeKind) {
     match kind {
         TomeKind::Pact => {
@@ -76,7 +81,16 @@ fn apply(world: &mut World, player: Entity, kind: TomeKind) {
                 controller.set_air_jump_cost(Some(("mana", BOUND_COST)));
             }
         }
-        TomeKind::Arcane => {}
+        TomeKind::Arcane => {
+            if let Some(stats) = world.get_mut::<Stats>(player) {
+                for stat in [SPELL_COST, SPELL_POWER] {
+                    if stats.base(stat).is_none() {
+                        stats.set_base(stat, 1.0);
+                    }
+                    stats.add_modifier(stat, ARCANE_SOURCE, Modifier::Mul(ARCANE_FACTOR));
+                }
+            }
+        }
     }
 }
 

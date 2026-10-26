@@ -2,22 +2,33 @@
 //! panel over a book in reach, the take with its burst and sound, and the
 //! strip in the order taken; the pact's half health and its shield, which
 //! takes a hit first, comes back after one and falls with the kill row;
-//! and bounding's paid air jumps with their look and sound.
+//! bounding's paid air jumps with their look and sound; and arcane power's
+//! dearer spells and their doubled hits, beside the hits it leaves alone,
+//! and all three tomes held together.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::level::KILL_Y;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::hud::Hud;
+use example_01_platformer::features::spells::{self, hud as spell_hud};
 use example_01_platformer::features::tomes::{BOOK_CENTRE, INTERACT, Tome, TomeKind, Tomes};
+use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::features::{gun, lightning};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shell::widgets;
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::Entity;
 use tungsten::core::ui::Visibility;
-use tungsten::kit::{DamageRequest, Health, PlatformerController, Shield, Stats, Tags};
+use tungsten::core::{DataRegistry, Entity};
+use tungsten::kit::{
+    Ability, DamageRequest, DamagedPart, Health, KitRng, PlatformerController, Shield, Stats, Tags,
+};
 use tungsten::testing::UiHarness;
 
-use super::{bursts, centre, ground, run, stand, teleport};
+use super::combat::{PLAIN_SEED, TOP as ARENA, with_dummy};
+use super::{
+    aim_at, ball, body, bursts, centre, choose, ground, kick, pin_camera, run, stand, teleport,
+};
 
 /// The test's floor's top, in the level's empty sky.
 const TOP: f32 = 900.0;
@@ -355,5 +366,179 @@ fn a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump() {
         bursts(&harness, "ex10_double_jump"),
         doubled,
         "no double jump's burst"
+    );
+}
+
+/// The player in `harness` takes `kind` from beside it.
+fn take(harness: &mut UiHarness, player: Entity, kind: TomeKind) {
+    let eye = centre(harness, player);
+    book(harness, kind, eye + Vec2::new(30.0, 0.0));
+    harness.step(1);
+    assert_eq!(interact(harness, kind.sound()), 1, "{kind:?}");
+}
+
+#[test]
+fn arcane_power_doubles_the_ten_slots_costs_and_the_huds_payable_follows() {
+    let (mut harness, player) = sky();
+    assert_eq!(
+        spells::cost(harness.world(), player, Spell::FireMissile),
+        Some(4.0)
+    );
+    take(&mut harness, player, TomeKind::Arcane);
+    let world = harness.world();
+    assert_eq!(spells::cost(world, player, Spell::FireMissile), Some(8.0));
+    assert_eq!(spells::cost(world, player, Spell::Summon), Some(20.0));
+    let staff = world
+        .resource::<DataRegistry>()
+        .get::<Ability>("staff_light")
+        .unwrap();
+    assert_eq!(
+        staff.cost_for(world.get::<Stats>(player)),
+        Some(("mana", 0.05)),
+        "the staff light's step unscaled"
+    );
+    // The mana's regeneration held, the missile's slot greys under 8.
+    harness
+        .world_mut()
+        .get_mut::<Tags>(player)
+        .unwrap()
+        .insert("casting");
+    set_mana(&mut harness, player, 7.9);
+    assert!(!spell_hud::payable(
+        harness.world(),
+        player,
+        Spell::FireMissile
+    ));
+    set_mana(&mut harness, player, 8.0);
+    assert!(spell_hud::payable(
+        harness.world(),
+        player,
+        Spell::FireMissile
+    ));
+}
+
+/// The first part `dummy` takes after `act`, within `frames` frames: its
+/// amount with a crit's ×2 taken out, none of a tick's.
+fn first_part(
+    harness: &mut UiHarness,
+    dummy: Entity,
+    frames: u32,
+    act: impl FnOnce(&mut UiHarness),
+) -> f32 {
+    harness
+        .world_mut()
+        .insert_resource(KitRng::seeded(PLAIN_SEED));
+    act(harness);
+    for _ in 0..frames {
+        harness.step(1);
+        let part = harness
+            .harness()
+            .events::<DamagedPart>()
+            .find(|part| part.entity == dummy && !part.periodic)
+            .map(|part| part.amount / if part.crit { 2.0 } else { 1.0 });
+        if let Some(amount) = part {
+            return amount;
+        }
+    }
+    panic!("no hit on the dummy within {frames} frames");
+}
+
+/// What the dummy takes first from each of the player's hits, with and
+/// without arcane power: the player at x 300 on the sky's ground, a dummy
+/// at x 900, the camera held over them.
+fn arcane_and_plain(act: impl Fn(&mut UiHarness, Entity, Entity)) -> (f32, f32) {
+    let mut amounts = [0.0; 2];
+    for (amount, arcane) in amounts.iter_mut().zip([true, false]) {
+        let (mut harness, player, dummy) = with_dummy();
+        if arcane {
+            take(&mut harness, player, TomeKind::Arcane);
+            stand(&mut harness, player, 300.0, ARENA);
+            harness.step(1);
+        }
+        pin_camera(&mut harness, Vec2::new(0.0, 500.0));
+        *amount = first_part(&mut harness, dummy, 120, |harness| {
+            act(harness, player, dummy);
+        });
+    }
+    (amounts[0], amounts[1])
+}
+
+#[test]
+fn arcane_power_doubles_a_spells_own_hits_and_leaves_the_gun_and_a_ball_alone() {
+    let blast = arcane_and_plain(|harness, _, dummy| {
+        let at = body(harness, dummy);
+        toys::explode(harness.world_mut(), at);
+    });
+    let strike = arcane_and_plain(|harness, player, dummy| {
+        let at = body(harness, dummy);
+        lightning::strike(harness.world_mut(), player, at);
+    });
+    let jump = arcane_and_plain(|harness, player, _| {
+        // An iron block 200 px from the dummy, struck: the chain's first
+        // jump is the dummy's.
+        let iron = toys::place_iron(harness.world_mut(), Vec2::new(700.0, ARENA - IRON_HALF.y));
+        harness.step(2);
+        let at = body(harness, iron);
+        lightning::strike(harness.world_mut(), player, at);
+    });
+    let pulse = arcane_and_plain(|harness, player, dummy| {
+        stand(harness, player, 820.0, ARENA);
+        harness.step(1);
+        let at = body(harness, dummy);
+        aim_at(harness, at);
+        choose(harness, 1);
+        harness.harness_mut().press_action("cast");
+    });
+    for (what, (arcane, plain)) in [
+        ("the blast", blast),
+        ("the strike", strike),
+        ("the chain's first jump", jump),
+        ("a spray's pulse", pulse),
+    ] {
+        println!("{what}: {arcane} under arcane power, {plain} without");
+        assert!(plain > 0.0, "{what}");
+        assert!(
+            (arcane - 2.0 * plain).abs() < 1e-3,
+            "{what}: {arcane} for twice {plain}"
+        );
+    }
+    let shot = arcane_and_plain(|harness, _, dummy| {
+        let at = body(harness, dummy);
+        aim_at(harness, at);
+        harness.harness_mut().press_action(gun::SHOOT);
+    });
+    let impact = arcane_and_plain(|harness, _, dummy| {
+        let at = body(harness, dummy) - Vec2::new(150.0, 0.0);
+        let bowling = ball(harness, at, false);
+        kick(harness, bowling, Vec2::new(1500.0, 0.0));
+    });
+    // The same within a hundredth: the ball's closing speed moves a little
+    // with the steps the take adds, which a doubling would dwarf.
+    for (what, (arcane, plain)) in [("a shot", shot), ("a bowling ball", impact)] {
+        println!("{what}: {arcane} under arcane power, {plain} without");
+        assert!(plain > 0.0, "{what}");
+        assert!(
+            (arcane / plain - 1.0).abs() < 0.01,
+            "{what}: {arcane} for {plain}"
+        );
+    }
+}
+
+#[test]
+fn all_three_tomes_together_hold_their_own_changes() {
+    let (mut harness, player) = sky();
+    for kind in TomeKind::ALL {
+        take(&mut harness, player, kind);
+    }
+    assert_eq!(held(&harness, player), TomeKind::ALL);
+    assert_eq!(health(&harness, player), (50.0, 50.0));
+    assert_eq!(shield(&harness, player), Some(50.0));
+    let world = harness.world();
+    assert_eq!(spells::cost(world, player, Spell::FireMissile), Some(8.0));
+    let controller = world.get::<PlatformerController>(player).unwrap();
+    assert_eq!(
+        controller.air_jump_cost(),
+        Some(("mana", 25.0)),
+        "a bound at 25"
     );
 }

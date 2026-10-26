@@ -23,7 +23,8 @@ pub mod systems;
 use glam::Vec2;
 use tungsten::core::{Entity, EventCursor, Schedule, Stage, World, system};
 use tungsten::kit::{
-    DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Penetration, Phase, Tags, ensure_phases,
+    DAMAGE_RESOLVE, DamagePart, DamageRequest, KitRng, Penetration, Phase, Stats, Tags,
+    ensure_phases,
 };
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
@@ -98,6 +99,8 @@ impl Kind {
 /// on a beetle's rear half, or one made whole, takes physical penetration
 /// 1, so its shell's physical resistance takes nothing; and one on a kind
 /// that resists knockback whole carries no push (`enemies::stands_firm`).
+/// A spell's own hit ([`Hit::spell`]) takes its source's [`SPELL_POWER`]
+/// too, which arcane power doubles; the build-up follows the damage.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hit {
     target: Entity,
@@ -107,7 +110,12 @@ pub struct Hit {
     push: Option<Vec2>,
     blast: bool,
     whole: bool,
+    spell: bool,
 }
+
+/// The stat a spell's own hit is multiplied by, its source's: 1 without
+/// it, 2 under the tome of arcane power.
+pub const SPELL_POWER: &str = "spell_power";
 
 impl Hit {
     /// A hit on `target` of `parts`, from nobody.
@@ -121,6 +129,7 @@ impl Hit {
             push: None,
             blast: false,
             whole: false,
+            spell: false,
         }
     }
 
@@ -161,14 +170,32 @@ impl Hit {
         self
     }
 
+    /// The hit, a spell's own: the missile's blast, a spray's pulse, the
+    /// strike or a jump of its chain, which its source's [`SPELL_POWER`]
+    /// multiplies.
+    #[must_use]
+    pub fn spell(mut self) -> Self {
+        self.spell = true;
+        self
+    }
+
     /// The kit's request: the base amounts, doubled on a crit (one draw,
-    /// for a hit from the run's player), halved on the player for a blast,
-    /// with physical penetration 1 when whole or on a beetle's rear half,
-    /// and its push unless the target stands firm.
+    /// for a hit from the run's player), a spell's times its source's
+    /// [`SPELL_POWER`], halved on the player for a blast, with physical
+    /// penetration 1 when whole or on a beetle's rear half, and its push
+    /// unless the target stands firm.
     pub fn request(&self, world: &mut World) -> DamageRequest {
         let player = world.get_resource::<Run>().map(|run| run.player);
         let crit = self.source.is_some() && self.source == player && roll_crit(world);
         let mut factor = if crit { CRIT_FACTOR } else { 1.0 };
+        if self.spell
+            && let Some(power) = self
+                .source
+                .and_then(|source| world.get::<Stats>(source))
+                .and_then(|stats| stats.get(SPELL_POWER))
+        {
+            factor *= power.max(0.0);
+        }
         if self.blast && Some(self.target) == player {
             factor *= PLAYER_BLAST_SHARE;
         }

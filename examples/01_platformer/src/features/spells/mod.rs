@@ -171,13 +171,20 @@ pub fn select(world: &mut World, player: Entity, slot: usize) -> bool {
     false
 }
 
-/// What one use of `spell` costs, in mana: its ability's data.
+/// The stat the ten slots' costs scale by, `player`'s: 1 without it, 2
+/// under the tome of arcane power.
+pub const SPELL_COST: &str = "spell_cost";
+
+/// What one use of `spell` costs `player`, in mana: its ability's data,
+/// scaled by the player's [`SPELL_COST`].
 #[must_use]
-pub fn cost(world: &World, spell: Spell) -> Option<f32> {
+pub fn cost(world: &World, player: Entity, spell: Spell) -> Option<f32> {
     let ability = world
         .get_resource::<DataRegistry>()?
         .get::<Ability>(spell.ability())?;
-    ability.cost().map(|(_, amount)| amount)
+    ability
+        .cost_for(world.get::<Stats>(player))
+        .map(|(_, amount)| amount)
 }
 
 /// The mana `player` holds.

@@ -7,7 +7,9 @@
 //! HUD's strip shows. The demonic pact halves the maximum health for good
 //! for a shield over it that comes back after a hit; the tome of bounding
 //! lets every air jump past the double jump cost mana, with no cap, each
-//! one a bound with its ring and its sound.
+//! one a bound with its ring and its sound; the tome of arcane power
+//! doubles the player's `spell_cost` and `spell_power`, so every spell
+//! costs twice and hits twice as hard.
 
 pub mod components;
 pub mod systems;
@@ -54,6 +56,10 @@ pub const BOUND_SECS: f32 = 0.3;
 pub const BOUND_Z: i32 = 11;
 pub const BOUND_SPARKS: &str = "ex10_bound_sparks";
 pub const BOUND_TRAIL: &str = "ex10_bound_trail";
+/// Arcane power's modifier source on the player's stats, and what it
+/// multiplies `spell_cost` and `spell_power` by.
+pub const ARCANE_SOURCE: &str = "tome.arcane";
+pub const ARCANE_FACTOR: f32 = 2.0;
 
 /// The tomes as a plugin: the `tome` component the books' prefabs name,
 /// the take in the tick phase before the kit's `stats_apply`, so what a

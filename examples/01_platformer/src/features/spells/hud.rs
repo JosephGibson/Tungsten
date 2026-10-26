@@ -791,7 +791,9 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
     let charges = ability
         .charges()
         .map(|(most, _, _)| (abilities.charges(name).unwrap_or(most), most));
-    let payable = ability.cost().is_none_or(|(_, cost)| mana >= cost)
+    let payable = ability
+        .cost_for(world.get::<Stats>(player))
+        .is_none_or(|(_, cost)| mana >= cost)
         && charges.is_none_or(|(left, _)| left > 0);
     Some(Shown {
         payable,
@@ -799,6 +801,13 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
         cooldown,
         charges,
     })
+}
+
+/// Whether `player` can pay for a use of `spell` now, its cost scaled by
+/// the player's `spell_cost` and a charge left: what greys a slot.
+#[must_use]
+pub fn payable(world: &World, player: Entity, spell: Spell) -> bool {
+    shown(world, player, spell, mana(world, player)).is_some_and(|shown| shown.payable)
 }
 
 /// The key a slot shows for `action`: its first key or mouse binding, else

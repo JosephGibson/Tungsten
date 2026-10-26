@@ -1,7 +1,8 @@
 {
   "cost": {
     "stat": "mana",
-    "amount": 0.15
+    "amount": 0.15,
+    "scale": "spell_cost"
   },
   "target": {
     "aim": {}

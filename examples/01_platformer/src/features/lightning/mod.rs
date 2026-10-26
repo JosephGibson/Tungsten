@@ -226,6 +226,7 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
             Hit::new(target, [(Kind::Shock, STRIKE_SHOCK)])
                 .from(caster)
                 .at(landing)
+                .spell()
                 .queue(world);
         }
         if world.has::<Keg>(target) {
@@ -341,7 +342,9 @@ pub fn conduct(
         return;
     };
     if world.get::<Health>(receiver).is_some_and(|h| !h.is_dead()) {
-        let mut hit = Hit::new(receiver, [(Kind::Shock, entry.strength)]).at(at);
+        let mut hit = Hit::new(receiver, [(Kind::Shock, entry.strength)])
+            .at(at)
+            .spell();
         if let Some(source) = source {
             hit = hit.from(source);
         }
