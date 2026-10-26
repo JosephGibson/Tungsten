@@ -17,6 +17,7 @@ use crate::features::player::PlayerPlugin;
 use crate::features::props::PropsPlugin;
 use crate::features::run::{GameplayState, RunPlugin};
 use crate::features::spells::SpellsPlugin;
+use crate::features::tomes::TomesPlugin;
 use crate::features::toys::ToysPlugin;
 use crate::shell::{Difficulty, GameInfo, RunStart, ShellPlugin};
 
@@ -37,6 +38,7 @@ pub const BINDABLE_ACTIONS: &[(&str, &str)] = &[
     ("cast", "Cast"),
     ("shoot", "Shoot"),
     ("reload", "Reload"),
+    ("interact", "Interact"),
     ("spell_next", "Next spell"),
     ("spell_prev", "Previous spell"),
     ("summon_next", "Next summon"),
@@ -91,6 +93,7 @@ pub fn register(app: &mut App, info: GameInfo) {
     app.add_plugin(LightningPlugin);
     app.add_plugin(GunPlugin);
     app.add_plugin(SpellsPlugin);
+    app.add_plugin(TomesPlugin);
     // Last, so the cursor draws over every other contribution.
     app.add_plugin(CursorPlugin);
 }

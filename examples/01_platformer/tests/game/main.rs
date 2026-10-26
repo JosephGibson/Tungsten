@@ -9,7 +9,8 @@
 //! `combat` the damage model, `data` the constants that restate the data,
 //! `cascades` the endings and their chains, `lightning` the strike and its
 //! conduction, `gun` the gun and its shots, `dummy` the training dummy,
-//! `enemies` the bestiary and `props` the crates and kegs; `hud` the bars. The shell's own tests run in the
+//! `enemies` the bestiary and `props` the crates and kegs; `hud` the bars;
+//! `tomes` the books, their panel, the take and the strip. The shell's own tests run in the
 //! template, on the same bytes, which `just repo-check` holds.
 
 mod areas;
@@ -39,6 +40,7 @@ mod saves;
 mod seam;
 mod spawning;
 mod spells;
+mod tomes;
 
 use std::path::PathBuf;
 

@@ -15,8 +15,10 @@
 //! player's health keeping its share; a schema 13 save's crates leave the
 //! start's new wall, and a schema 14 save's bodies in the wall or past the
 //! boundary stand on the clearing's floor, those with no room dropped
-//! (01 (k)); and a full pit saves within 2 MiB with the map's enemies
-//! alive.
+//! (01 (k)); a run holding tomes loads them with their books gone, a
+//! schema 15 save loads with none and every book, and its bodies inside
+//! the books' new supports stand on them (01 (l)); and a full pit saves
+//! within 2 MiB with the map's enemies alive.
 
 use std::any::type_name as name;
 use std::collections::{BTreeMap, BTreeSet};
@@ -44,6 +46,7 @@ use example_01_platformer::features::player::{
 };
 use example_01_platformer::features::props::components::{Bomb, Crate, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF};
+use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
 };
@@ -335,6 +338,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Spellbook>(),
                     name::<Lantern>(),
                     name::<Reload>(),
+                    name::<Tomes>(),
                 ],
             ]
             .concat(),
@@ -2174,8 +2178,13 @@ fn on_the_floor_clear(save: &SaveGame, id: u64) -> Result<(), String> {
 /// `data`, a capture's JSON, as a schema 14 save's envelope: the two
 /// schemas keep the same shape.
 fn as_schema_14_envelope(data: &Value) -> String {
+    as_envelope(data, 14)
+}
+
+/// `data`, a capture's JSON, as a save's envelope at `schema`.
+fn as_envelope(data: &Value, schema: u32) -> String {
     let envelope = serde_json::json!({
-        "envelope": 1, "slot": "slot_1", "schema": 14, "engine_version": "0.105.0",
+        "envelope": 1, "slot": "slot_1", "schema": schema, "engine_version": "0.105.0",
         "saved_at_ms": 1_792_900_000_000_u64, "data": data
     });
     serde_json::to_string(&envelope).unwrap()
@@ -3257,4 +3266,116 @@ fn a_wizard_loaded_from_an_older_save_still_shoves() {
         end.x - start.x > 100.0,
         "the ball went ahead: {start} {end}"
     );
+}
+
+/// The kinds of the books on the map, in [`TomeKind::ALL`]'s order.
+fn books(harness: &UiHarness) -> Vec<TomeKind> {
+    let mut kinds: Vec<TomeKind> = harness
+        .world()
+        .query::<&Tome>()
+        .map(|tome| tome.kind)
+        .collect();
+    kinds.sort_by_key(|kind| kind.index());
+    kinds
+}
+
+#[test]
+fn a_run_holding_two_tomes_loads_them_back_with_their_books_gone() {
+    let (mut harness, player) = run();
+    assert_eq!(books(&harness), TomeKind::ALL, "the map's three");
+    // As two takes leave it: those books gone, their kinds on the player.
+    let world = harness.world_mut();
+    let taken: Vec<Entity> = world
+        .query::<(Entity, &Tome)>()
+        .filter(|(_, tome)| tome.kind != TomeKind::Arcane)
+        .map(|(book, _)| book)
+        .collect();
+    for book in taken {
+        example_01_platformer::shared::despawn_tree(world, book);
+    }
+    world.insert(player, Tomes(vec![TomeKind::Bounding, TomeKind::Pact]));
+    let saved = capture(&harness);
+    assert_eq!(saved.player.tomes, [TomeKind::Bounding, TomeKind::Pact]);
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
+    let mut fresh = super::harness();
+    load(&mut fresh, read);
+    let player = player_entity(&fresh);
+    assert_eq!(
+        fresh.world().get::<Tomes>(player),
+        Some(&Tomes(vec![TomeKind::Bounding, TomeKind::Pact]))
+    );
+    assert_eq!(books(&fresh), [TomeKind::Arcane], "the third on the map");
+    assert_eq!(capture(&fresh).player.tomes, saved.player.tomes);
+}
+
+#[test]
+fn a_schema_15_save_loads_with_no_tome_and_every_book_on_the_map() {
+    let (harness, _) = run();
+    // The 0.108 code's save: a capture without the new fields, numbered 15.
+    let data = json(&capture(&harness));
+    assert!(
+        data["player"].get("tomes").is_none(),
+        "none held, none written"
+    );
+    let (migrated, dir) = migrate("schema-15", &as_envelope(&data, 15));
+    assert!(migrated.player.tomes.is_empty());
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
+    let player = player_entity(&fresh);
+    assert!(fresh.world().get::<Tomes>(player).is_none());
+    assert_eq!(books(&fresh), TomeKind::ALL);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn to_16_sets_bodies_inside_the_tomes_supports_on_their_tops() {
+    let (harness, _) = run();
+    let mut data = json(&capture(&harness));
+    let corner =
+        |centre: Vec2, offset: Vec2| serde_json::json!([centre.x - offset.x, centre.y - offset.y]);
+    let middle = |[low, high]: [Vec2; 2]| (low + high) * 0.5;
+    let [pact, bound, arcane] = save::S16_SUPPORTS;
+    // The player inside `pact_shelf`, a falling bowling ball inside
+    // `bound_shelf` and a dropped orb inside `arcane_ledge`.
+    data["player"]["position"] = corner(middle(pact), BODY_OFFSET);
+    let id = data["next_id"].as_u64().unwrap();
+    let at = corner(middle(bound), toys::BALL_CENTRE);
+    data["balls"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!([id, false, at[0], at[1], 0.0, 300.0]));
+    let at = corner(middle(arcane), drops::ORB_CENTRE);
+    data["orbs"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id": id + 1, "kind": "health", "position": at, "left": 10.0
+        }));
+    data["next_id"] = Value::from(id + 2);
+    let (migrated, dir) = migrate("schema-15-supports", &as_envelope(&data, 15));
+    let boxes = saved_boxes(&migrated);
+    for (body, [low, high]) in [(migrated.player.id, pact), (id, bound), (id + 1, arcane)] {
+        let &(_, min, max) = boxes
+            .iter()
+            .find(|(own, ..)| *own == body)
+            .unwrap_or_else(|| panic!("{body} kept"));
+        assert!(
+            (max.y - (low.y - 0.5)).abs() < 1e-3,
+            "{body} rests on its support's top: {max}"
+        );
+        assert!(
+            min.x >= low.x && max.x <= high.x,
+            "{body} over its support: {min}..{max}"
+        );
+        for &(other, a, b) in &boxes {
+            assert!(
+                other == body || !(min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y),
+                "{body} meets {other}"
+            );
+        }
+    }
+    assert_eq!(migrated.player.velocity, [0.0, 0.0]);
+    let ball = migrated.balls.iter().find(|ball| ball.id == id).unwrap();
+    assert_eq!(ball.velocity, [0.0, 0.0], "at rest");
+    let _ = std::fs::remove_dir_all(dir);
 }

@@ -184,11 +184,16 @@ pub enum Sound {
     LavaChilled,
     LavaCracked,
     LavaMelted,
+    /// A tome taken (01 (l)): the pact, bounding and arcane power, each
+    /// its own.
+    TomePactTaken,
+    TomeBoundingTaken,
+    TomeArcaneTaken,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 69] = [
+    pub const ALL: [Sound; 72] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -258,6 +263,9 @@ impl Sound {
         Sound::LavaChilled,
         Sound::LavaCracked,
         Sound::LavaMelted,
+        Sound::TomePactTaken,
+        Sound::TomeBoundingTaken,
+        Sound::TomeArcaneTaken,
     ];
 
     /// Its cue event's name.
@@ -333,6 +341,9 @@ impl Sound {
             Sound::LavaChilled => "lava_chilled",
             Sound::LavaCracked => "lava_cracked",
             Sound::LavaMelted => "lava_melted",
+            Sound::TomePactTaken => "tome_pact_taken",
+            Sound::TomeBoundingTaken => "tome_bounding_taken",
+            Sound::TomeArcaneTaken => "tome_arcane_taken",
         }
     }
 }

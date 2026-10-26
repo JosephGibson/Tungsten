@@ -1088,5 +1088,50 @@
         }
       }
     ]
+  },
+  {
+    "on": "tome_pact_taken",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_tome_pact_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "tome_bounding_taken",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_tome_bounding_sfx"
+        }
+      }
+    ]
+  },
+  {
+    "on": "tome_arcane_taken",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_tome_arcane_sfx"
+        }
+      }
+    ]
   }
 ]

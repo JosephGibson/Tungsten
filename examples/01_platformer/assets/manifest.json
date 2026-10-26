@@ -2030,6 +2030,24 @@
     "small_ball": {
       "path": "prefabs/small_ball.json"
     },
+    "tome_arcane": {
+      "path": "prefabs/tome_arcane.json"
+    },
+    "tome_bounding": {
+      "path": "prefabs/tome_bounding.json"
+    },
+    "tome_motes_arcane": {
+      "path": "prefabs/tome_motes_arcane.json"
+    },
+    "tome_motes_bounding": {
+      "path": "prefabs/tome_motes_bounding.json"
+    },
+    "tome_motes_pact": {
+      "path": "prefabs/tome_motes_pact.json"
+    },
+    "tome_pact": {
+      "path": "prefabs/tome_pact.json"
+    },
     "troll": {
       "path": "prefabs/troll.json"
     },

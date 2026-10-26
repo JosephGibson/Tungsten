@@ -725,6 +725,30 @@
       "bottom": 72,
       "style": "ground",
       "variants": "own"
+    },
+    {
+      "name": "pact_shelf",
+      "left": 231,
+      "right": 234,
+      "row": 57,
+      "bottom": 58,
+      "style": "basalt"
+    },
+    {
+      "name": "bound_shelf",
+      "left": 194,
+      "right": 196,
+      "row": 40,
+      "bottom": 41,
+      "style": "wet"
+    },
+    {
+      "name": "arcane_ledge",
+      "left": 117,
+      "right": 120,
+      "row": 34,
+      "bottom": 35,
+      "style": "slab_carved"
     }
   ],
   "routes": {
@@ -10840,6 +10864,32 @@
       "support": "bridge_head",
       "x": 362.5,
       "float": 0.6
+    }
+  ],
+  "tomes": [
+    {
+      "name": "pact tome",
+      "kind": "pact",
+      "support": "pact_shelf",
+      "x": 232.5,
+      "float": 0.6,
+      "from": "hollow_floor_1"
+    },
+    {
+      "name": "bounding tome",
+      "kind": "bounding",
+      "support": "bound_shelf",
+      "x": 195.0,
+      "float": 0.6,
+      "from": "rv_ledge_4"
+    },
+    {
+      "name": "arcane tome",
+      "kind": "arcane",
+      "support": "arcane_ledge",
+      "x": 118.5,
+      "float": 0.6,
+      "from": "aqueduct_floor"
     }
   ],
   "spouts": [
