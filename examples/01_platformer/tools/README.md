@@ -69,9 +69,9 @@ pixel) for any hand-authored sprite. The modules:
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
-| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
+| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV); e01tomes' three pickups and the bound |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
 `actors.py` draws the wizard, the fireball and the fire missile. The wizard is one rig posed per
@@ -124,7 +124,9 @@ authored colors and has no normal or emissive map. The existing `fire_*` frames
 remain the burning-ball flames.
 
 Normal and emissive images derive from each final frame's silhouette and glowing
-detail colors, including every player clip and all rune rotations. Terrain
+detail colors, including every player clip and all rune rotations. Only the glow
+set's symbols glow, matched by colour value (`art.GLOW`: `y Y C c`, and e01tomes'
+`Ъ Ч Я Э Ы`, which no other art uses). Terrain
 (names in `terrain.RELIEF_PREFIXES`) and multi-tile scenery (`*_big_*`) use
 relief normals instead. Relief treats luminance as height and has no whole-tile
 tilt, so light pools cross tile seams smoothly. Fully opaque tiles wrap their
@@ -1019,3 +1021,28 @@ at 128 BPM in step with `music_explore`'s bars and chords, which it plays over w
 an enemy sees the wizard: toms on every beat, an eighth-note low pulse, string stabs
 on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
 seam.
+
+## The tomes
+
+e01tomes' families (`effects.py`, plan `docs/plans/example-01-tomes.md` §3), drawn
+from the review sheet the owner accepted on 2026-10-26; the plan's §3.5 holds
+their files' hashes. Each book is closed on its 32-pixel frame, its front cover
+facing and its head and fore-edge receding up and to the right (`TOME_LOOKS`,
+`tome_parts`), its centre at (16, 16): the pact in cracked hide with iron corner
+caps and a horned, eyed sigil, its page edges glowing ember; bounding in sky-blue
+tooled leather with gusts and a silver wing clasp, its top sheets lifting; arcane
+in violet with gold-leaf fleurons, a gold ring of runes about a cut gem, and a
+ribbon. Their idle frames (`tome_<kind>_idle_<f>`, four at 180 ms) are lit; their
+glow comes from the glow set alone, and the loop moves a bright band round it.
+Each take (`tome_<kind>_take_<f>`, 64 pixels, six at 80 ms, unlit) flares the
+book, breaks it into shards of light and opens a ring behind them. The bound's
+ring (`bound_ring_<f>`, 64 × 32, six at 50 ms, unlit) is centred on the feet.
+`TOME_CLIPS` lists the three clips of each kind and the ring's, which
+`generate.spray_clips` registers. The tome tiles (`icon_tome_<kind>`) are each
+book's first frame on a square tile in its own metal with a bracket on each
+corner, apart from the spells' bevels; `hud_liquid_shield` is the shield's light,
+cool blue strip. `generate.particle_configs` adds each book's motes
+(`tome_<kind>_motes`, at most 8), which leave the book fast because particles
+draw under it, each take's sparks (`tome_<kind>_take_sparks`, 24) and the bound's
+(`bound_sparks`, 20; `bound_trail`, 12). `sfx.py` adds `tome_pact`, `tome_bounding`,
+`tome_arcane` and `bound`, registered as `ex10_<name>_sfx`.

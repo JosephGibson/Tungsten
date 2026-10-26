@@ -201,11 +201,11 @@ Step 1 tunes these in its captures and writes the final column; the run copies i
 
 | Value | Default | Final |
 | --- | --- | --- |
-| Glow colours (RGBA) | Pact [255, 110, 60, 220]; bounding [130, 205, 255, 220]; arcane [185, 120, 255, 220] | |
-| Glow shape | `offset` [16, 16], `radius` 56, `light` 0.5, `reach` 96 | |
-| Bob | `oscillator` position, `amplitude` [0, 3] px, `period` 2.4 s | |
-| Shield edge, readout (RGBA) | [200, 240, 255, 255], [150, 215, 255, 255] | |
-| Shield flow | 6 texels a second | |
+| Glow colours (RGBA) | Pact [255, 110, 60, 220]; bounding [130, 205, 255, 220]; arcane [185, 120, 255, 220] | Pact [255, 110, 60, 220]; bounding [130, 205, 255, 220]; arcane [185, 120, 255, 220] |
+| Glow shape | `offset` [16, 16], `radius` 56, `light` 0.5, `reach` 96 | `offset` [16, 16], `radius` 56, `light` 0.5, `reach` 96 |
+| Bob | `oscillator` position, `amplitude` [0, 3] px, `period` 2.4 s | `oscillator` position, `amplitude` [0, 3] px, `period` 2.4 s |
+| Shield edge, readout (RGBA) | [200, 240, 255, 255], [150, 215, 255, 255] | [200, 240, 255, 255], [150, 215, 255, 255] |
+| Shield flow | 6 texels a second | 6 texels a second |
 
 ### 3.4 The review sheet
 
@@ -222,6 +222,89 @@ In `perf-runs/20261026-e01tomes-art-review/` (machine-local), shown in the conve
 On acceptance, Step 1 writes one `sha256sum` line per file §3.1's families own, paths from the repository root, between these fences. The run's check, `sed -n '/^```sha256$/,/^```$/p' docs/plans/example-01-tomes.md | sed '1d;$d' | sha256sum -c --quiet`, exits 0 only when every file is unchanged, and 1 while the block is empty.
 
 ```sha256
+786a68502a146f3531146a67392f8fd8b1283c3d4d2751cb4773774c623943bb  examples/01_platformer/assets/animations/bound_ring.json
+3c0712efc3409681d315eb006265f19e2dd627d2cf6259319b91978ebd331541  examples/01_platformer/assets/animations/tome_arcane_idle.json
+ceb8c083182a104032c26994ce1a650b9a48ab9daead56538e6e8f52db7d66e7  examples/01_platformer/assets/animations/tome_arcane_take.json
+eca4e671bc8b7d352df97bd1fcab5f71e078041540a0fd559c5403c8517594e1  examples/01_platformer/assets/animations/tome_bounding_idle.json
+2b56842ded5ee9c002477aaad528ef08010afb15490b0e2a7d634aa13b20888d  examples/01_platformer/assets/animations/tome_bounding_take.json
+bb7ef1f6451e154bdd1f49e40c91a33df3709400fa8e3c38c71b35ba55e3b878  examples/01_platformer/assets/animations/tome_pact_idle.json
+e2b035da63fa2b5e32a37c03a003c61853501499ab5d715664924bcbd10fd0d1  examples/01_platformer/assets/animations/tome_pact_take.json
+9ab9576cac8c9da7e0739cf3a2ca12748256b5d66bb8aa8d58d39f1a8399e122  examples/01_platformer/assets/particles/bound_sparks.json
+6b8f3b54dbb0605920c8ae0b5f587fc230c34f72e332fbf66d64d1671f5fb4e9  examples/01_platformer/assets/particles/bound_trail.json
+c055d32d4b666bab2384329d0b8df30ce40f6b5ab468ef6d514ad15b9a25c931  examples/01_platformer/assets/particles/tome_arcane_motes.json
+25ba9043a57ad444d79383e114febf3ac9d61db3fc0ef25a2f8e8cec333ea674  examples/01_platformer/assets/particles/tome_arcane_take_sparks.json
+50dff321e010ff764815f1c2d305f5fc0fc99f149456802b61cf608f55960605  examples/01_platformer/assets/particles/tome_bounding_motes.json
+aca127ca4acc664933cde43b38ad34b3dc06d9b073270a96b49aabb15da4cc97  examples/01_platformer/assets/particles/tome_bounding_take_sparks.json
+42afa30a28cac49976f24d5bf617ae44f8aabbef53e5caa9f3f3b47c2b0f0ac4  examples/01_platformer/assets/particles/tome_pact_motes.json
+16ab2e3f72e3bf756196196512f947af73af06f9eaacccdd08ff41e921bb245f  examples/01_platformer/assets/particles/tome_pact_take_sparks.json
+7da2fd8d449bb2920beca5d7f3106f2b7c65d266bfd3b85ff1dae401a56df45a  examples/01_platformer/assets/sounds/bound.wav
+7910ec968da4d5b4741fce6bdc1e79f408c906776f072f8ad7c8234c2fe33aa8  examples/01_platformer/assets/sounds/tome_arcane.wav
+02b3da223bf379ce666eae6e52bc25488916955e8125b99c04ea46c5bcb84901  examples/01_platformer/assets/sounds/tome_bounding.wav
+279cbc9b2af729d4082fc77ada969e7045b3d2aa7ffc093bb7ee55a9ef62f57a  examples/01_platformer/assets/sounds/tome_pact.wav
+f4496e3466d63bd54544f26ca159d6791bf59391378a9d8c29e7f07412f0b03f  examples/01_platformer/assets/sprites/bound_ring_0.png
+ba6e1473be3222e8d4656717a4e1f7050ae4254dbe869f923fffda62c7e403a9  examples/01_platformer/assets/sprites/bound_ring_1.png
+99838e7b0d6ade2a99e2419c097a62760f0c8e8ea582772b86f84a533c10b52d  examples/01_platformer/assets/sprites/bound_ring_2.png
+bb41ed232be430949292ba4ef4a6fbc81e410f587bdf044694c9522427ca6d9e  examples/01_platformer/assets/sprites/bound_ring_3.png
+c9aa844658be41b524b38d35bff25fa55c0b502bb2aa4af7c76a9a4f4f713176  examples/01_platformer/assets/sprites/bound_ring_4.png
+b54fd468c656c1c5841917c716b7537e9ee67140708083b740328a03b14505e8  examples/01_platformer/assets/sprites/bound_ring_5.png
+5ac6bafea3fee34432f0c338b0511db1ec3dece2c5c4f73b584c19314cace015  examples/01_platformer/assets/sprites/hud_liquid_shield.png
+56335a6f3be295c01af67b79ecf5f9df751f4c48f1df7f5864a8af1a38fd7820  examples/01_platformer/assets/sprites/icon_tome_arcane.png
+fb734c77c99dfdaad6d4dea935fbf8458e108dcf401a59a3eccabac529ceb1cc  examples/01_platformer/assets/sprites/icon_tome_bounding.png
+badfc0f9649c03c4355bb53d5f0f8a97e811aa2c95d1f5b255bce441fa8d4552  examples/01_platformer/assets/sprites/icon_tome_pact.png
+3b26c126acdd3ab353adae9daa3e845140e35bf67390e8a2709bd5e9bcfbfcd0  examples/01_platformer/assets/sprites/tome_arcane_idle_0.png
+b2d40583c19f10987deda256b37222f113934d245a8eb4369b5b5cf70601f376  examples/01_platformer/assets/sprites/tome_arcane_idle_0_e.png
+ed2be34548282415f558a03ad8d8b173ace2307b13f1ce88784e839f30e5dc4b  examples/01_platformer/assets/sprites/tome_arcane_idle_0_n.png
+c2a29a694a0e7ed2b3bb5fb2e50a5ddbd54c879ddd05acd8faa6f61a302a4ca3  examples/01_platformer/assets/sprites/tome_arcane_idle_1.png
+b4cbd0cb3485b6d6a001ed7c192dc5966d4bd81e9cc919f8285d61dfc7c62697  examples/01_platformer/assets/sprites/tome_arcane_idle_1_e.png
+9817a0e6ebd3ca32ecf6906bacf423cf5d3419d5cc23b5ec61618b06b778f961  examples/01_platformer/assets/sprites/tome_arcane_idle_1_n.png
+02d8fa1e6ac6a15e04970ea11673060e12bdbc524fa2dc69b51e3d0795af5785  examples/01_platformer/assets/sprites/tome_arcane_idle_2.png
+b8d4c1021a6ed60e102fe90b87fdcc60f9b9abd0a1e0cad86b4075f1691e4728  examples/01_platformer/assets/sprites/tome_arcane_idle_2_e.png
+9817a0e6ebd3ca32ecf6906bacf423cf5d3419d5cc23b5ec61618b06b778f961  examples/01_platformer/assets/sprites/tome_arcane_idle_2_n.png
+8ed9b723af0e8f59afee466e34d0698257dee9990db3a09621ca4c81edae19e7  examples/01_platformer/assets/sprites/tome_arcane_idle_3.png
+5b6ef9ed2ebefcaf49d4e6c0e7ff5308099acbb738f645837c4e56f18f06bf82  examples/01_platformer/assets/sprites/tome_arcane_idle_3_e.png
+ed2be34548282415f558a03ad8d8b173ace2307b13f1ce88784e839f30e5dc4b  examples/01_platformer/assets/sprites/tome_arcane_idle_3_n.png
+22f2b1b288eade3a4f918b120f83b336a3a452ecac3f0bb96a2a45a0e4a45249  examples/01_platformer/assets/sprites/tome_arcane_take_0.png
+7f8279522cd4a9eb24bac6227b7c6ead295c451af252913a0aff07587285c035  examples/01_platformer/assets/sprites/tome_arcane_take_1.png
+de782fd6a7d08526cfd297bba39104354b97e6636f30761facfaa468fbeafb6e  examples/01_platformer/assets/sprites/tome_arcane_take_2.png
+d11ca5776dcb7f5671150389f4b97aca7f2f9ca49f6b05d0f65cbae3b98c5aa8  examples/01_platformer/assets/sprites/tome_arcane_take_3.png
+bae6172828fa863e14af62ecdd7956373f715d652a86e95e63a61a8c51c46843  examples/01_platformer/assets/sprites/tome_arcane_take_4.png
+cbc2e81ab7bc8c1d492398aace8ebac5aebce68e6bb1648ac8ccd8eaaadff05f  examples/01_platformer/assets/sprites/tome_arcane_take_5.png
+65aef6f3aa94fd2e26763f9865af1458005694c953aa487f9620096219437191  examples/01_platformer/assets/sprites/tome_bounding_idle_0.png
+ad488b2556e69bab59342fcbed239d4490d99d7915e93d0da5101b4163c803d6  examples/01_platformer/assets/sprites/tome_bounding_idle_0_e.png
+a13cfb3b8c9c7a3dc51d8cd0388994b9b0691c23da171647ddcde7c6cd0f1cd0  examples/01_platformer/assets/sprites/tome_bounding_idle_0_n.png
+a631c610cb55c711c08d24c7b042a817180f42ec74a221290283a32a1f4e2755  examples/01_platformer/assets/sprites/tome_bounding_idle_1.png
+ed8ef3af1551055a6c20becc6ff06b48bfcc9902d8d95eae948523a1830045b9  examples/01_platformer/assets/sprites/tome_bounding_idle_1_e.png
+11ad513fe2b0ded65ef0586b1498113d54a31d1fd3bb6628703f0760237fe7fd  examples/01_platformer/assets/sprites/tome_bounding_idle_1_n.png
+935036e4941b513c9654a9fb9e7875d3c2ceb90c8c9bacede2731104bcb1720b  examples/01_platformer/assets/sprites/tome_bounding_idle_2.png
+f4f434ffed8addd4151e404e1d4fa48441cfbc543bc3b98cedf18ed842d24dd2  examples/01_platformer/assets/sprites/tome_bounding_idle_2_e.png
+53584989f5d9d2d420359dfb87eb2e94e6a7692a52ba2a5da3fbe5d42e96e2bd  examples/01_platformer/assets/sprites/tome_bounding_idle_2_n.png
+98202cbd06a658cc4698d5d198d5398a8d0ece61e4d06538829550c3c225ccf8  examples/01_platformer/assets/sprites/tome_bounding_idle_3.png
+632deeeeabe0ff3a8ea23f74c3d0e11102c56bae0d100ca78198285dbc683c39  examples/01_platformer/assets/sprites/tome_bounding_idle_3_e.png
+11ad513fe2b0ded65ef0586b1498113d54a31d1fd3bb6628703f0760237fe7fd  examples/01_platformer/assets/sprites/tome_bounding_idle_3_n.png
+7921cbe1856eed196cd137cf97127596073a808d6996c4a2a1b32e14079d2487  examples/01_platformer/assets/sprites/tome_bounding_take_0.png
+1575015016ed80a79698e30093b4e87510d92d1073139ccb431d920987cf929f  examples/01_platformer/assets/sprites/tome_bounding_take_1.png
+6772859e5d4fb80e0bca514a3e4c68dc097f9a1d8b611a7e9c5146360a8fd3c4  examples/01_platformer/assets/sprites/tome_bounding_take_2.png
+32303863197fd73921b0a5dde5bbb99da44060499b1c906c098ca36949e60ce2  examples/01_platformer/assets/sprites/tome_bounding_take_3.png
+f1690b689d4638a9d5844abc88960d83142870b0aaf6ffc5633c2f5ea6cbe591  examples/01_platformer/assets/sprites/tome_bounding_take_4.png
+19f7f880a0990ef90fe5ec73acd2dbcee90c5ee3c23ee3b602f36c63e57eed50  examples/01_platformer/assets/sprites/tome_bounding_take_5.png
+0cf18b79e18a031854b1ac8940920157fdab83afefe362c506b98b0c3a53b9ad  examples/01_platformer/assets/sprites/tome_pact_idle_0.png
+b515d5334dc5c9f83fc905ac9085199abca763247c4df6bfced5d8a260a66209  examples/01_platformer/assets/sprites/tome_pact_idle_0_e.png
+be812860e85aea7d28cc6286f58d4e06415c8d523ae5c000cdff546006f6ce13  examples/01_platformer/assets/sprites/tome_pact_idle_0_n.png
+9f6347521e613e9440d7321fdfd2361206ffc41e373f0b173ebbd089c607ca94  examples/01_platformer/assets/sprites/tome_pact_idle_1.png
+2a012c6c5b2104d8ed0efc6807cf3c49cfd64402955f04a2acc1e9ccffc51ccf  examples/01_platformer/assets/sprites/tome_pact_idle_1_e.png
+be812860e85aea7d28cc6286f58d4e06415c8d523ae5c000cdff546006f6ce13  examples/01_platformer/assets/sprites/tome_pact_idle_1_n.png
+02d602d52ad77d68ef852b135c9b1601f00baf99402d2c128bfe3430f9af0185  examples/01_platformer/assets/sprites/tome_pact_idle_2.png
+54550dce652fd2b7cc3ab6e29bbe27bb878157649f3c13681b4f33bb9e5cb310  examples/01_platformer/assets/sprites/tome_pact_idle_2_e.png
+be812860e85aea7d28cc6286f58d4e06415c8d523ae5c000cdff546006f6ce13  examples/01_platformer/assets/sprites/tome_pact_idle_2_n.png
+0246f8e3dc724e948e96068c368ead5e992e7e18bef452b019713426b63fce96  examples/01_platformer/assets/sprites/tome_pact_idle_3.png
+dd260eadc3095099979e2f6950740e14b922bb9aac8b56d1f5cc21adec697391  examples/01_platformer/assets/sprites/tome_pact_idle_3_e.png
+be812860e85aea7d28cc6286f58d4e06415c8d523ae5c000cdff546006f6ce13  examples/01_platformer/assets/sprites/tome_pact_idle_3_n.png
+4513c0f8d08ecbab5b5f87d4ffb41dbc62ee7fa98c5336f27f94c82d2f20f1dd  examples/01_platformer/assets/sprites/tome_pact_take_0.png
+4086cb53ea17f1736714fd3c50f5dddc853268fb97eae9e4b3e014f4ffa44011  examples/01_platformer/assets/sprites/tome_pact_take_1.png
+fcea4ba9bdb7ce097fed1a7de84aea9475fcff09297c2cba58fb7a1c5c902246  examples/01_platformer/assets/sprites/tome_pact_take_2.png
+7ca56d25d36617b96b26540cffd38ebb8ff1002dfa06fe312deb689273cb290c  examples/01_platformer/assets/sprites/tome_pact_take_3.png
+17de1f190d2577eda1fe9a0b93b3d8bc1626b99580b49b1361223e7a23dcad23  examples/01_platformer/assets/sprites/tome_pact_take_4.png
+5d6434ae1813dc150016c3875b9f8791728a9f0fa5286d227dfcce0190162df8  examples/01_platformer/assets/sprites/tome_pact_take_5.png
 ```
 
 ## 4. Steps
@@ -329,6 +412,7 @@ Checking finding 2 against the tree also showed two spots the generator or the l
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-26 | Pass: the owner accepted round 1's sheet, "Accept the changes and prepare for next session" | 83 files under §3.1, hashed in §3.5: 64 PNGs (the 12 idle frames with their normal and emissive maps, 18 take frames, 6 ring frames, 3 tome tiles, the shield strip), 7 clips, 8 particle configs, 4 WAVs (pickups 1.10, 0.95 and 1.15 s, the bound 0.32 s, peaks −2 dBFS). `PATH="$VENV/bin:$PATH" just level-check` → pass (4,898 owned outputs match, 24 tests); `cargo test -p example-01-platformer --locked` → pass (333 passed, 1 ignored); `just repo-check` → pass (0 errors); §3.5's check → exit 0 (83 lines); `git status --porcelain` → only Step 1's paths (95). The palette gains five glow symbols in `art.GLOW` (`Ъ`, an ember orange beside the brief's cyan `Ч Я` and violet `Э Ы`); `assets/data/opaque_tiles/level.json` gains 4 lines (the shield strip and the three square tome tiles are opaque); the motes launch fast because particles draw at z 0 under the book; §3.3's finals are its defaults | 01's `tools/{art,effects,generate,sfx}.py`, `tools/{sounds,palette,outputs}.json`, `tools/README.md` and `assets/` (83 new, `manifest.json`, `tilemaps/level.tmj`, `data/opaque_tiles/level.json`); the sheet in `perf-runs/20261026-e01tomes-art-review/` (machine-local), published at https://claude.ai/artifact/EDdQScct3BdqSydJ31fUnv; the shot driver and the venv deleted |
 
 ## Follow-ups
 

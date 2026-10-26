@@ -2205,6 +2205,93 @@ def troll_grunt():
     return finish(samples, fade_out=0.06)
 
 
+# e01tomes: each book taken, apart from an orb's pickup and from the others,
+# and a bound, apart from the air jump's push-off.
+
+
+def tome_pact():
+    """The demonic pact taken: a deep minor chord with a tritone in it
+    swelling out of the dark, a heartbeat's two thumps under it and the
+    crackle of embers over it, about a second."""
+    duration = 1.1
+    noise, embers, low, crisp = Noise(0x7A01), Noise(0x7A02), LowPass(), LowPass()
+    samples, crack = [], 0.0
+    chord = ((note('D2'), 1.0), (note('A2'), 0.7), (note('F3'), 0.45), (note('G#3'), 0.32))
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        swell = min(1.0, t / 0.08) * math.exp(-max(0.0, t - 0.15) / 0.45)
+        tone = sum(weight * math.sin(math.tau * freq * t * (1 + 0.004 * k) + k)
+                   * (1 + 0.25 * math.sin(math.tau * (4.5 + k) * t))
+                   for k, (freq, weight) in enumerate(chord))
+        growl = low(noise(), 240) * 1.6
+        e = embers()
+        if e > .9975 and 0.12 < t < 0.95:
+            crack = .7 if e > .9993 else .4
+        crack *= .88
+        snap = crack * (e - crisp(e, 3000))
+        samples.append((tone + growl) * swell * 0.55 + snap * (1 - t / duration))
+    for at in (0.0, 0.2):  # lub, dub
+        place(samples, int(at * RATE), thud(58 if at else 64, 0.16, 1.1 if at else 0.8, 0x7A03))
+    return finish(samples, fade_in=0.002, fade_out=0.12)
+
+
+def tome_bounding():
+    """The tome of bounding taken: a bright chime climbing an octave, C6 to
+    C7, a shimmer above it and a soft whoosh of air rising with it."""
+    duration = 0.95
+    noise, low, high = Noise(0x7B01), LowPass(), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        whoosh = (low(n, glide(600, 4200, min(1.0, p * 1.6))) - high(n, glide(240, 1500, min(1.0, p * 1.6))))
+        samples.append(1.3 * whoosh * math.sin(math.pi * min(1.0, p * 1.25)) ** 2)
+    for k, name in enumerate(('C6', 'E6', 'G6', 'C7')):
+        place(samples, int((0.04 + 0.075 * k) * RATE), chime(note(name), 0.6, 0.5 + 0.08 * k, decay=0.22))
+    place(samples, int(0.34 * RATE), chime(note('G7'), 0.5, 0.18, decay=0.16))
+    return finish(samples, fade_in=0.002, fade_out=0.1)
+
+
+def tome_arcane():
+    """The tome of arcane power taken: a hum swelling under a shimmering
+    arpeggio climbing an A major ninth, its partials beating, its last note
+    ringing out."""
+    duration = 1.15
+    noise, low = Noise(0x7C01), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        swell = math.sin(math.pi * min(1.0, t / duration)) ** 1.5
+        hum = sum(w * math.sin(math.tau * f * t) for f, w in ((110, 1.0), (165.4, 0.5), (220.6, 0.4)))
+        hum *= 1 + 0.3 * math.sin(math.tau * 6 * t)
+        air = low(noise(), 1800) * 0.25
+        samples.append((hum * 0.6 + air) * swell)
+    shimmer = [(1.0, 1.0, 1.0), (2.005, 0.5, 0.6), (3.02, 0.25, 0.4), (4.4, 0.12, 0.25)]
+    for k, name in enumerate(('A5', 'C#6', 'E6', 'G#6', 'B6', 'E7')):
+        place(samples, int((0.08 + 0.065 * k) * RATE),
+              chime(note(name), 0.7, 0.3 + 0.03 * k, decay=0.16 + 0.04 * (k == 5), partials=shimmer))
+    return finish(samples, fade_in=0.003, fade_out=0.12)
+
+
+def bound():
+    """A bound: a bright, airy spring, a quick whoosh of air sweeping up and
+    a crystalline ping as the ring opens, under a third of a second."""
+    duration = 0.32
+    noise, low, high = Noise(0x7D01), LowPass(), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        rise = (low(n, glide(1200, 7000, p)) - high(n, glide(500, 2600, p)))
+        samples.append(1.4 * rise * min(1.0, t / 0.006) * (1 - p) ** 1.6)
+    crystal = [(1.0, 1.0, 1.0), (2.76, 0.35, 0.45), (5.4, 0.18, 0.25)]
+    place(samples, int(0.01 * RATE), chime(note('E7'), 0.28, 0.55, decay=0.07, partials=crystal))
+    place(samples, int(0.055 * RATE), chime(note('B7'), 0.24, 0.3, decay=0.05, partials=crystal))
+    return finish(samples, fade_in=0.001, fade_out=0.05)
+
+
 AMBIENCE = {
     'ambience_clearing.wav': ambience_clearing,
     'ambience_aqueduct.wav': ambience_aqueduct,
@@ -2340,5 +2427,9 @@ def build_sounds():
         'goblin_stab.wav': goblin_stab(),
         'troll_swipe.wav': troll_swipe(),
         'troll_grunt.wav': troll_grunt(),
+        'tome_pact.wav': tome_pact(),
+        'tome_bounding.wav': tome_bounding(),
+        'tome_arcane.wav': tome_arcane(),
+        'bound.wav': bound(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

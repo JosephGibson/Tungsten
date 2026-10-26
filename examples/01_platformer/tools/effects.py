@@ -9,7 +9,7 @@ tinted at extraction; each fades to transparent before its canvas edge.
 import math
 
 from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
-from pixels import BAYER, NEIGHBOURS, Part, dither, outline, shade, smoothstep, to_image, unit
+from pixels import BAYER, NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -202,6 +202,13 @@ ICON_ELEMENTS = {
     'mana': dict(frame=('Ю', 'З', 'Й'), back=('θ', 'г', 'И', 'Й', 'З', 'Ю'), rim='Ю'),
     'physical': dict(frame=('I', 'σ', 'τ'), back=('θ', 'ν', 'α', 'δ', 'ъ', 'ψ'), rim='φ'),
     'shock': dict(frame=('ϕ', 'Σ', 'Λ'), back=('θ', 'Δ', 'Δ', 'Λ', 'Σ', 'ϕ'), rim='ϕ'),
+    # e01tomes: a book's tile in its own metal, square at its corners with a
+    # bracket on each, as its book's corners are, apart from the spells'
+    # bevels; its backing in its glow's colour, and the bracket's light and
+    # rivet.
+    'pact': dict(frame=('ψ', 'Ω', 'Φ'), back=('θ', 'д', 'ь', 'Θ', 'M', 'L'), rim='Ъ', corners=('χ', 'B')),
+    'bounding': dict(frame=('φ', 'χ', 'ψ'), back=('θ', 'х', 'И', 'Й', 'З', 'Ч'), rim='Я', corners=('Ψ', 'Ω')),
+    'arcane': dict(frame=('J', 'A', 'У'), back=('θ', 'Ж', 'Δ', 'Ф', 'Λ', 'Э'), rim='Ы', corners=('Z', 'a')),
 }
 ICON_ELEMENT = {
     'icon_fire_missile': 'fire', 'icon_flamethrower': 'fire', 'icon_ice_spray': 'cold',
@@ -210,6 +217,7 @@ ICON_ELEMENT = {
     'icon_gun': 'physical', 'icon_dummy': 'mana', 'icon_wisp': 'mana', 'icon_crawler': 'mana',
     'icon_beetle': 'mana', 'icon_bat': 'mana', 'icon_troll': 'mana', 'icon_goblin': 'mana',
     'icon_crate': 'mana', 'icon_keg': 'mana',
+    'icon_tome_pact': 'pact', 'icon_tome_bounding': 'bounding', 'icon_tome_arcane': 'arcane',
 }
 # The summons' ring, drawn in indigo, recoloured to mana's blue.
 SUMMON_RING = {'Ξ': 'З', 'Π': 'Й'}
@@ -255,13 +263,15 @@ def icon_tile(name, subject):
     # The subject, outlined where it meets the glow.
     for p, s in outline(dict(lit), 'o', (ICON_TILE, ICON_TILE)).items():
         canvas[p] = s
-    # The frame: an outer dark line, a bevel lit along the top and left.
+    # The frame: an outer dark line, a bevel lit along the top and left;
+    # a tome's square, a bracket over each corner.
     end = ICON_TILE - 1
+    corners = element.get('corners')
     for y in range(ICON_TILE):
         for x in range(ICON_TILE):
             edge = min(x, y, end - x, end - y)
             corner = min(x, end - x) + min(y, end - y)
-            if corner < 2:
+            if corner < 2 and not corners:
                 canvas.pop((x, y), None)
                 continue
             if edge == 0:
@@ -272,6 +282,16 @@ def icon_tile(name, subject):
                     canvas[(x, y)] = dark
                 if (x == 1 or y == 1) and not (x == end - 1 or y == end - 1):
                     canvas[(x, y)] = light if x + y < ICON_TILE else mid
+    if corners:
+        bright, rivet = corners
+        for cx, cy, sx, sy in ((0, 0, 1, 1), (end, 0, -1, 1), (0, end, 1, -1), (end, end, -1, -1)):
+            for i in range(1, 7):
+                for j in (1, 2):
+                    canvas[(cx + sx * i, cy + sy * j)] = bright if j == 1 or i < 3 else mid
+                    canvas[(cx + sx * j, cy + sy * i)] = bright if j == 1 or i < 3 else mid
+                canvas[(cx + sx * i, cy + sy * 3)] = 'o' if i < 4 else canvas.get((cx + sx * i, cy + sy * 3), 'o')
+                canvas[(cx + sx * 3, cy + sy * i)] = 'o' if i < 4 else canvas.get((cx + sx * 3, cy + sy * i), 'o')
+            canvas[(cx + sx * 2, cy + sy * 2)] = rivet
     return to_image(canvas, (ICON_TILE, ICON_TILE))
 
 
@@ -617,6 +637,10 @@ ICON_ART = {
     'icon_goblin': icon_goblin,
     'icon_crate': icon_crate,
     'icon_keg': icon_keg,
+    # e01tomes: each book's first idle frame, unoutlined, as its subject.
+    'icon_tome_pact': lambda: tome_pact(0, outlined=False),
+    'icon_tome_bounding': lambda: tome_bounding(0, outlined=False),
+    'icon_tome_arcane': lambda: tome_arcane(0, outlined=False),
 }
 
 
@@ -1656,6 +1680,8 @@ def build_push_art(images):
 LIQUID_RAMPS = {
     'health': ('Θ', 'M', 'ϑ', 'z', 'F', '+'),
     'mana': ('в', 'И', 'Й', 'З', 'Ю', 'Ю'),
+    # e01tomes: the pact's shield over the health, a light, cool blue.
+    'shield': (',', 'Ч', 'Ч', 'Ю', 'Я', 'Я'),
 }
 LIQUID_GLINT = 'φ'
 
@@ -1742,6 +1768,517 @@ def build_hud_art(images):
     images['hud_bullet'] = hud_bullet()
     images['hud_bullet_spent'] = hud_bullet(spent=True)
     images['title_star'] = title_star()
+
+
+# The tomes (e01tomes): three books hidden off the routes, each its own
+# cover, colour and glow. A book is drawn closed on its 32 px frame, its
+# front cover facing, its head and fore-edge receding up and to the right,
+# its centre the frame's (16, 16). It is lit, so its glowing parts come from
+# the glow set alone (`art.GLOW`): the pact's ember from `Ъ y Y`, bounding's
+# pale cyan from `Ч Я`, arcane's violet over white from `Э Ы`, the last four
+# used by no other art. Its idle loop is a slow shimmer of those parts, a
+# bright band moving round them, never a flicker.
+TOME_KINDS = ('pact', 'bounding', 'arcane')
+TOME_FRAMES = 4
+TOME_SIZE = ELEMENT_SIZES['tome_pact_idle_0']
+# Each book's front cover (an inclusive box), how far its sheets recede
+# right (`depth`, its back board's edge the last pixel) and up (`rise`),
+# its cover's shading and its sheets' tones: the seams between them, the
+# sheets' edges and, for a glowing book, the glow's three steps.
+TOME_LOOKS = {
+    'pact': dict(front=(6, 7, 21, 28), depth=5, rise=2,
+                 cover=dict(base='а', light='ω', shadow='б', back='б', rim='п'),
+                 sheet=('M', 'L'), glow=('Ъ', 'y', 'Y')),
+    'bounding': dict(front=(7, 7, 21, 28), depth=4, rise=2,
+                     cover=dict(base='З', light='Ю', shadow='Й', back='Й', rim='Ю'),
+                     sheet=(',', '`'), glow=('Ч', 'Ч', 'Я')),
+    'arcane': dict(front=(7, 7, 21, 28), depth=4, rise=2,
+                   cover=dict(base='Δ', light='Λ', shadow='Ж', back='Ж', rim='Λ'),
+                   sheet=('σ', 'w'), glow=None),
+}
+
+
+def tome_parts(kind):
+    """A closed book's parts: its front cover; its sheets, from a pixel inside
+    the cover's edges back to the back board, each pixel by the sheet it
+    shows and whether it lies on the head; the spine's cap at the head's
+    left; and the back board's edge about the sheets."""
+    look = TOME_LOOKS[kind]
+    x0, y0, x1, y1 = look['front']
+    depth, rise = look['depth'], look['rise']
+    cover = {(x, y) for x in range(x0, x1 + 1) for y in range(y0, y1 + 1)}
+    sheets = {}
+    for k in range(depth, 0, -1):
+        up = -(-k * rise // depth)
+        for x in range(x0 + 2, x1):
+            for y in range(y0 + 1, y1):
+                sheets[(x + k, y - up)] = (k, y == y0 + 1)
+    spine = {(x, y0 - 1) for x in range(x0 + 1, x0 + 5)} | {(x, y0 - 2) for x in range(x0 + 2, x0 + 5)}
+    spine -= cover
+    sheets = {p: v for p, v in sheets.items() if p not in cover and p not in spine}
+    back = {(x + depth, y - rise) for x, y in cover} - cover - set(sheets) - spine
+    return cover, sheets, spine, back
+
+
+def tome_shimmer(p, f, width=0.3):
+    """How bright a glowing pixel `p` along its path (0 to 1) stands in frame
+    `f`: two soft bands moving along it, a quarter of a band a frame."""
+    u = (p * 2 - f / TOME_FRAMES) % 1.0
+    return max(0.0, 1 - min(u, 1 - u) / width)
+
+
+def tome_pages(c, kind, f, sheets):
+    """The sheets' edges on the head and the fore-edge: each sheet's edge,
+    and the seams between them, where a glowing book's light seeps out,
+    brightest where the shimmer runs from the spine over the head and down."""
+    look = TOME_LOOKS[kind]
+    x0, y0, x1, y1 = look['front']
+    seam, edge = look['sheet']
+    for (x, y), (k, head) in sheets.items():
+        along = ((x - x0) / (x1 - x0 + look['depth']) * 0.3 if head
+                 else 0.3 + (y - y0 + look['rise']) / (y1 - y0) * 0.7)
+        # Every other sheet a seam, and some sheets proud of their
+        # neighbours by a tone.
+        gap = (k + (x if head else 0)) % 2 == 0
+        if look['glow'] is None:
+            c[(x, y)] = seam if gap and unit('tome-seam', kind, k, y // 2) < 0.7 else edge
+            continue
+        low, mid, hot = look['glow']
+        if gap:
+            shine = tome_shimmer(along, f)
+            c[(x, y)] = hot if shine > 0.5 else (mid if shine > 0.05 or unit('tome-ember', kind, x, y) < 0.45 else low)
+        else:
+            c[(x, y)] = seam if unit('tome-sheet', kind, k, y // 3, x // 4) < 0.4 else edge
+
+
+def tome_cracks(c, inside, seed, crack, lip, plates=14):
+    """Cracked hide: plates round hashed seeds, split by `crack` lines with a
+    raised `lip` under each, as dried leather splits."""
+    xs = [x for x, _ in inside]
+    ys = [y for _, y in inside]
+    seeds = [(min(xs) + unit(seed, 'x', i) * (max(xs) - min(xs)),
+              min(ys) + unit(seed, 'y', i) * (max(ys) - min(ys))) for i in range(plates)]
+    cracks = set()
+    for (x, y) in sorted(inside):
+        d = sorted(math.hypot(x - sx, (y - sy) * 0.75) for sx, sy in seeds)
+        if d[1] - d[0] < 0.8:
+            cracks.add((x, y))
+    for p in sorted(cracks):
+        c[p] = crack
+        below = (p[0], p[1] + 1)
+        if below in inside and below not in cracks:
+            c[below] = lip
+
+
+def tome_corner(c, cx, cy, sx, sy, legs=5):
+    """An iron corner cap with its legs `legs` px along the cover's edges
+    from the corner (`sx`, `sy` the way in), a rivet in it and a dark line
+    where it meets the hide."""
+    for i in range(legs + 1):
+        for j in range(legs + 1 - i):
+            p = (cx + sx * i, cy + sy * j)
+            if i + j == legs:
+                c[p] = 'θ'
+            elif (i == 0 and sx > 0) or (j == 0 and sy > 0):
+                c[p] = 'ψ'
+            elif i == 0 or j == 0:
+                c[p] = 'Ω'
+            else:
+                c[p] = 'Φ' if i + j < legs - 1 else 'B'
+    c[(cx + sx * 1, cy + sy * 1)] = 'χ'
+    c[(cx + sx * 2, cy + sy * 2)] = 'θ'
+
+
+HIDE = ('а', 'ω', 'б', 'п', 'Θ', 'д')
+
+
+def tome_sigil(c, cx, cy, f):
+    """The pact's sigil, burnt into the hide: a ring of ember with two horns
+    sweeping up out of it about a slit-pupilled eye, the hide scorched round
+    it and cracked with embers, the shimmer running round the ring."""
+    for y in range(cy - 7, cy + 8):
+        for x in range(cx - 7, cx + 8):
+            r = math.hypot(x - cx, y - cy)
+            if 4.6 <= r < 6.2 and c.get((x, y)) in HIDE and unit('scorch', x, y) < 0.8:
+                c[(x, y)] = 'д' if r < 5.4 else 'б'
+    for y in range(cy - 5, cy + 6):
+        for x in range(cx - 5, cx + 6):
+            r = math.hypot(x - cx, y - cy)
+            if 3.5 <= r < 4.6:
+                a = (math.atan2(y - cy, x - cx) / math.tau + 0.25) % 1.0
+                shine = tome_shimmer(a, f, 0.28)
+                c[(x, y)] = 'Y' if shine > 0.55 else ('y' if shine > 0.1 else 'Ъ')
+            elif r < 3.5:
+                c[(x, y)] = 'д'
+    for side in (-1, 1):  # the horns, out of the ring's shoulders
+        for i, (dx, dy) in enumerate(((3, -3), (4, -4), (4, -5), (5, -6))):
+            c[(cx + side * dx, cy + dy)] = 'y' if i < 2 else 'Ъ'
+    # The eye: an almond of ember, its slit pupil hottest.
+    for dx, dy in ((-2, 0), (-1, -1), (0, -1), (1, -1), (-1, 1), (0, 1), (1, 1), (2, 0), (-1, 0), (1, 0)):
+        c[(cx + dx, cy + dy)] = 'Ъ'
+    for dy in (-1, 0, 1):
+        c[(cx, cy + dy)] = 'Y' if dy == 0 or f % 2 == 0 else 'y'
+    # Embers cracking out of the ring into the hide below the horns.
+    for k in range(5):
+        a = math.tau * (0.1 + 0.16 * k + 0.05 * unit('sigil-crack', k))
+        for t in range(1 + round(unit('sigil-crack-l', k) * 2)):
+            p = (round(cx + math.cos(a) * (4.8 + t)), round(cy + math.sin(a) * (4.8 + t)))
+            if c.get(p) in HIDE:
+                c[p] = 'K' if t == 0 else 'L'
+
+
+def tome_pact(f, outlined=True):
+    """The demonic pact: a heavy grimoire bound in dark, cracked hide with
+    iron corners and an ember sigil, its page edges glowing ember."""
+    look = TOME_LOOKS['pact']
+    x0, y0, x1, y1 = look['front']
+    cover, sheets, spine, back = tome_parts('pact')
+    c = compose([
+        (shade(back, 'б', light='а', shadow='д'), None),
+        (shade(spine, 'а', light='ω', shadow='б'), None),
+        ({p: 'M' for p in sheets}, None),
+        (shade(cover, **look['cover']), 'д'),
+    ])
+    tome_pages(c, 'pact', f, sheets)
+    hide = {p for p in cover if c[p] == 'а'}
+    for p in sorted(hide):  # oxblood soaked into the hide
+        if unit('pact-stain', p[0] // 3, p[1] // 4) < 0.3 and unit('pact-stain-t', *p) < 0.7:
+            c[p] = 'Θ'
+    tome_cracks(c, hide, 'pact-hide', 'д', 'п', plates=18)
+    # The joint: a groove down the cover beside the spine, the spine's
+    # raised bands at its cap.
+    for y in range(y0 + 1, y1):
+        c[(x0 + 2, y)] = 'д'
+        c[(x0 + 1, y)] = 'ω' if y % 5 else 'п'
+    for p in ((x0 + 2, y0 - 1), (x0 + 3, y0 - 2)):
+        c[p] = 'ω'
+    for cx, cy, sx, sy in ((x0, y0, 1, 1), (x1, y0, -1, 1), (x0, y1, 1, -1), (x1, y1, -1, -1)):
+        tome_corner(c, cx, cy, sx, sy)
+    tome_sigil(c, (x0 + x1) // 2 + 1, (y0 + y1) // 2 + 2, f)
+    return outline(c, 'o', TOME_SIZE) if outlined else c
+
+
+# Bounding's tooled gusts over the clasp: a line of wind ending in a curl,
+# from its left end.
+GUST = ((0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, -1), (7, -2), (7, -3), (6, -4), (5, -4),
+        (4, -3))
+# The clasp's wing, pointing to the spine: its leading edge along the top,
+# three feathers stepping down to their tips.
+WING_CLASP = (
+    '....φφχ',
+    '..φφχψψ',
+    'φφχχψψΩ',
+    '.χ.ψ.Ω.',
+)
+
+
+def tome_bounding(f, outlined=True):
+    """The tome of bounding: sky-blue tooled leather with a silver wing clasp,
+    its top sheets lifting as if in a draught, its pages glowing pale cyan."""
+    look = TOME_LOOKS['bounding']
+    x0, y0, x1, y1 = look['front']
+    depth, rise = look['depth'], look['rise']
+    cover, sheets, spine, back = tome_parts('bounding')
+    c = compose([
+        (shade(back, 'Й', light='З', shadow='И'), None),
+        (shade(spine, 'Й', light='З', shadow='И'), None),
+        ({p: '`' for p in sheets}, None),
+        (shade(cover, **look['cover']), 'И'),
+    ])
+    tome_pages(c, 'bounding', f, sheets)
+    # The tooling: a border pressed in two pixels from the edges and three
+    # chevrons rising up the cover; each groove dark with a lit lip under it.
+    groove = set()
+    for x in range(x0 + 2, x1 - 1):
+        groove |= {(x, y0 + 2), (x, y1 - 2)}
+    for y in range(y0 + 2, y1 - 1):
+        groove |= {(x0 + 3, y), (x1 - 2, y)}
+    for p in sorted(groove):
+        if p in cover:
+            c[p] = 'И'
+            below = (p[0], p[1] + 1)
+            if below in cover and below not in groove:
+                c[below] = 'Ю'
+    for gx, gy in ((x0 + 3, y0 + 7), (x0 + 4, y0 + 12)):
+        for dx, dy in GUST:
+            c[(gx + dx, gy + dy)] = 'Й'
+    # The clasp: a strap from the back board over the fore-edge onto the
+    # cover, fastened by a silver wing.
+    sy = y1 - 5
+    for x in range(x1 - 4, x1 + depth + 1):
+        up = 0 if x <= x1 else -(-(x - x1) * rise // depth)
+        for dy, s in ((-1, 'Й'), (0, 'И'), (1, 'И')):
+            c[(x, sy - up + dy)] = s
+    wing = {(x1 - 10 + i, sy - 2 + j): s for j, row in enumerate(WING_CLASP)
+            for i, s in enumerate(row) if s != '.'}
+    for x, y in wing:
+        for dx, dy in NEIGHBOURS:
+            q = (x + dx, y + dy)
+            if q not in wing and q in cover:
+                c[q] = 'И'
+    c.update(wing)
+    # The top sheets lifting off the head by the fore-edge, by frame.
+    lift = (0, 1, 2, 1)[f]
+    for i, length in enumerate((5, 3)):
+        for t in range(length):
+            x = x1 + depth - 1 - t - i
+            y = y0 - rise - 1 - max(0, lift - i) + (t * (1 + i)) // 3
+            if (x, y) not in c or c[(x, y)] in ('Й', 'З', 'И'):
+                c[(x, y)] = 'Я' if t < 2 else '`'
+    return outline(c, 'o', TOME_SIZE) if outlined else c
+
+
+def tome_arcane(f, outlined=True):
+    """The tome of arcane power: a violet cover with gold-leaf fleurons, a ring
+    of gold leaf about a cut gem, its runes glowing violet over white, the
+    shimmer passing round them; a ribbon marking its place."""
+    look = TOME_LOOKS['arcane']
+    x0, y0, x1, y1 = look['front']
+    cover, sheets, spine, back = tome_parts('arcane')
+    c = compose([
+        (shade(back, 'Δ', light='Λ', shadow='Ж'), None),
+        (shade(spine, 'Δ', light='Λ', shadow='Ж'), None),
+        ({p: 'w' for p in sheets}, None),
+        (shade(cover, **look['cover']), 'Ж'),
+    ])
+    tome_pages(c, 'arcane', f, sheets)
+    for p in ((x0 + 2, y0 - 1), (x0 + 4, y0 - 2)):  # gilt bands on the spine's cap
+        c[p] = 'A'
+    for cx, cy, sx, sy in ((x0 + 1, y0 + 1, 1, 1), (x1 - 1, y0 + 1, -1, 1),
+                           (x0 + 1, y1 - 1, 1, -1), (x1 - 1, y1 - 1, -1, -1)):
+        for dx, dy, s in ((0, 0, 'J'), (1, 0, 'A'), (2, 0, 'У'), (0, 1, 'A'), (0, 2, 'У'), (1, 1, 'У')):
+            c[(cx + sx * dx, cy + sy * dy)] = s
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2 + 0.5
+    # The ring of gold leaf, its runes cut through it glowing, the shimmer
+    # moving round them.
+    runes = 8
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            r = math.hypot(x - cx, (y - cy) * 0.9)
+            if 5.2 <= r < 6.3:
+                a = (math.atan2(y - cy, x - cx) / math.tau + 0.25) % 1.0
+                slot = a * runes
+                if abs(slot - round(slot)) < 0.22:
+                    lit = (round(slot) - f * 2) % runes in (0, 1)
+                    c[(x, y)] = 'Ы' if lit else 'Э'
+                else:
+                    c[(x, y)] = 'J' if y < cy - 2 and x < cx else ('A' if y < cy + 2 else 'У')
+    # The gem: a cut violet stone, its table bright, its lower facets dark,
+    # in a bezel of gold.
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            u, v = (x - cx) / 2.6, (y - cy) / 3.4
+            d = abs(u) + abs(v)
+            if d <= 1.0:
+                if u + v < -0.35:
+                    c[(x, y)] = 'Ы'
+                elif u + v > 0.55:
+                    c[(x, y)] = 'Λ'
+                else:
+                    c[(x, y)] = 'Ы' if (x + y + f) % 4 == 0 and v < 0.2 else 'Э'
+            elif d <= 1.45 and c.get((x, y)) in ('Δ', 'Λ', 'Ж'):
+                c[(x, y)] = 'У' if u + v > 0 else 'A'
+    # A ribbon hanging from the sheets below the fore-edge, swaying.
+    sway = (0, 1, 1, 0)[f]
+    rx = x1 + 2
+    for t in range(6):
+        p = (rx + (t * sway) // 4, y1 - 3 + t)
+        if p not in cover:
+            c[p] = 'Ш' if t < 2 else 'Ц'
+    end = (rx + sway, y1 + 3)
+    c[(end[0] - 1, end[1])] = 'Ц'
+    c[(end[0] + 1, end[1])] = 'Ц'
+    return outline(c, 'o', TOME_SIZE) if outlined else c
+
+
+TOME_DRAW = {'pact': tome_pact, 'bounding': tome_bounding, 'arcane': tome_arcane}
+
+# The take (unlit, 64 px, its centre on the book's): the book flares in its
+# colour, breaks into shards of light that fly out and dissolve, and a ring
+# of light opens behind them; its sparks follow it out (`take_sparks`).
+# Each kind's light, dark to white, and the haze it flares in, faint to
+# strong (`None`: the palette's white steps).
+TAKE_RAMPS = {
+    'pact': ('M', 'L', 'K', 'Ъ', 'y', 'Y', 'Z', 'Ψ'),
+    'bounding': ('И', 'Й', 'З', 'Ч', 'Ю', '`', 'Я', 'Ψ'),
+    'arcane': ('Ж', 'Δ', 'Λ', 'Э', 'Σ', 'ϕ', 'Ы', 'Ψ'),
+}
+TAKE_HAZE = {'pact': 'эюяБГД', 'bounding': None, 'arcane': None}
+TAKE_SIZE = ELEMENT_SIZES['tome_pact_take_0']
+TAKE_FRAMES = 6
+
+
+def haze(kind, x, y, alpha):
+    """A translucent pixel of `kind`'s flare at `alpha` (0..255), dithered
+    between its steps, or None."""
+    steps = TAKE_HAZE[kind]
+    if steps is None:
+        return white_alpha(x, y, alpha)
+    levels = [(PALETTE[s][3], s) for s in steps]
+    low_alpha, low = 0, None
+    for high_alpha, high in levels:
+        if alpha <= high_alpha:
+            return high if dither(x, y, (alpha - low_alpha) / (high_alpha - low_alpha)) else low
+        low_alpha, low = high_alpha, high
+    return levels[-1][1]
+
+
+def lum(symbol):
+    r, g, b, _ = PALETTE[symbol]
+    return (0.3 * r + 0.59 * g + 0.11 * b) / 255
+
+
+def tome_take(kind, f):
+    w, h = TAKE_SIZE
+    ramp = TAKE_RAMPS[kind]
+    cx, cy = w / 2, h / 2
+    px = {}
+    # The flare's haze, swelling then fading.
+    radius, peak = (12, 18, 22, 22, 20, 16)[f], (60, 110, 150, 70, 30, 10)[f]
+    for y in range(h):
+        for x in range(w):
+            r = math.hypot(x + 0.5 - cx, y + 0.5 - cy) / radius
+            if r < 1:
+                s = haze(kind, x, y, peak * (1 - r) ** 1.6)
+                if s:
+                    px[(x, y)] = s
+    # Rays out of the book while it flares, longest as it breaks.
+    length = (7, 14, 22, 0, 0, 0)[f]
+    for i in range(8):
+        a = (i + 0.35 * unit('take-ray', kind, i)) * math.tau / 8
+        reach = length * (0.6 + 0.4 * unit('take-ray-l', kind, i))
+        for t in range(int(reach)):
+            r = 6 + t
+            p = (round(cx - 0.5 + math.cos(a) * r), round(cy - 0.5 + math.sin(a) * r))
+            fade = 1 - t / max(reach, 1)
+            if fade > 0.55:
+                px[p] = ramp[4 + round(fade * 2)]
+            elif (s := haze(kind, *p, 200 * fade)):
+                px[p] = s
+    # The book: washed toward its light, then solid light breaking into
+    # shards that fly out and dissolve.
+    book = TOME_DRAW[kind](0)
+    levels = sorted({lum(s) for s in book.values()})
+    low, high = levels[0], levels[-1]
+    seeds = [(8 + unit('shard-x', kind, i) * 16, 6 + unit('shard-y', kind, i) * 22) for i in range(9)]
+    travel = (0, 0, 2, 6, 11, 16)[f]
+    erode = (0, 0, 0, 1.0, 2.0, 2.8)[f]
+    for (bx, by), s in sorted(book.items()):
+        p = (bx + 16, by + 16)
+        v = (lum(s) - low) / max(high - low, 1e-6)
+        if f < 2:
+            # Washed toward its light, its detail kept: the flare.
+            px[p] = ramp[min(7, 1 + 2 * f + round(v * (6 - 2 * f)))]
+            continue
+        d = sorted((math.hypot(bx - sx, by - sy), i) for i, (sx, sy) in enumerate(seeds))
+        if d[1][0] - d[0][0] < erode:
+            continue
+        sx, sy = seeds[d[0][1]]
+        n = math.hypot(sx - 16, sy - 16) or 1
+        q = (round(p[0] + (sx - 16) / n * travel), round(p[1] + (sy - 16) / n * travel))
+        edge = d[1][0] - d[0][0] - erode
+        px[q] = ramp[max(3, min(7, 8 - f + (edge > 1.5) - (edge < 0.7)))]
+    # A ring of light opening behind the shards.
+    if f >= 2:
+        ring_r = (0, 0, 9, 15, 21, 26)[f]
+        for y in range(h):
+            for x in range(w):
+                d = abs(math.hypot(x + 0.5 - cx, y + 0.5 - cy) - ring_r)
+                if d < 1.1 and (f < 5 or dither(x, y, 0.5)) and \
+                        ((x, y) not in px or PALETTE[px[(x, y)]][3] < 255):
+                    px[(x, y)] = ramp[(7, 6, 5, 4)[f - 2]]
+    # Twinkles left where the shards went out.
+    if f >= 3:
+        for k in range(5):
+            a = unit('twinkle', kind, k) * math.tau
+            r = 12 + 14 * unit('twinkle-r', kind, k) + 3 * (f - 3)
+            x, y = round(cx + math.cos(a) * r), round(cy + math.sin(a) * r)
+            if (k + f) % 2:
+                px[(x, y)] = ramp[7]
+                for dx, dy in NEIGHBOURS:
+                    px[(x + dx, y + dy)] = ramp[5]
+    return to_image(px, (w, h))
+
+
+# The bound (unlit, 64 x 32, its centre on the feet): a ring of sky-blue
+# light flattened under the wizard's feet, flashing and opening outward,
+# a gust of light rising from it; apart from the double jump's warm sparks.
+BOUND_SIZE = ELEMENT_SIZES['bound_ring_0']
+BOUND_FRAMES = 6
+
+
+def bound_ring(f):
+    w, h = BOUND_SIZE
+    cx, cy = (w - 1) / 2, h / 2
+    rx = (5, 10, 15, 20, 24, 27)[f]
+    ry = rx * 0.28 + 0.6
+    band = (2.2, 1.9, 1.6, 1.3, 1.1, 0.9)[f]
+    px = {}
+    for y in range(h):
+        for x in range(w):
+            dx, dy = (x - cx) / rx, (y + 0.5 - cy) / ry
+            e = math.hypot(dx, dy)
+            off = abs(e - 1) * rx
+            front = y + 0.5 >= cy
+            if off < band:
+                core = off < band * 0.45
+                if f >= 4 and not dither(x, y, (0.75, 0.45)[f - 4]):
+                    continue
+                if front:
+                    px[(x, y)] = ('Ψ' if f < 2 else 'Я') if core else 'Ч'
+                else:
+                    px[(x, y)] = 'Я' if core and f < 3 else ('Ч' if core else ',')
+            elif e < 1 and f < 4:
+                # The light inside the ring, strongest by its rim.
+                s = white_alpha(x, y, (110, 80, 50, 24)[f] * max(0.0, e - 0.25) / 0.75)
+                if s:
+                    px[(x, y)] = s
+    if f == 0:  # the flash under the feet
+        for x in range(round(cx) - 3, round(cx) + 4):
+            for y in (round(cy) - 1, round(cy)):
+                px[(x, y)] = 'Ψ' if abs(x - cx) < 2 else 'Я'
+    if f < 4:  # the gust rising off it: three streaks, heads climbing
+        for k, (gx, reach) in enumerate(((-9, 1.0), (-2, 0.8), (6, 0.9))):
+            head = round(cy - 3 - (5, 10, 14, 17)[f] * reach)
+            length = round((4, 7, 8, 6)[f] * reach)
+            x = round(cx + gx + (f > 1) * (1 if gx > 0 else -1))
+            for i in range(1, length + 1):
+                s = white_alpha(x, head + i, 220 * (1 - i / (length + 1)) * (1 - 0.2 * f))
+                if s:
+                    px[(x, head + i)] = s
+            px[(x, head)] = 'Ψ' if f < 2 else 'Я'
+    for k in range(6):  # sparks set along the ring
+        if not 1 <= f <= 4:
+            break
+        a = (k + unit('bound-spark', k)) * math.tau / 6
+        x, y = round(cx + math.cos(a) * rx), round(cy + math.sin(a) * ry)
+        if 0 <= x < w and 0 <= y < h:
+            px[(x, y)] = 'Ψ'
+    return to_image(px, (w, h))
+
+
+# The clips: each book's idle loop, its take, and the bound's ring; a clip's
+# frame size, its frames, the milliseconds a frame and whether it loops.
+TOME_CLIPS = {
+    **{f'tome_{kind}_idle': (TOME_SIZE, TOME_FRAMES, 180, True) for kind in TOME_KINDS},
+    **{f'tome_{kind}_take': (TAKE_SIZE, TAKE_FRAMES, 80, False) for kind in TOME_KINDS},
+    'bound_ring': (BOUND_SIZE, BOUND_FRAMES, 50, False),
+}
+
+
+def build_tome_art(images, lit):
+    """Every book's idle frames, lit, its take's frames and the bound's
+    ring's, unlit: `tome_<kind>_idle_<f>`, `tome_<kind>_take_<f>` and
+    `bound_ring_<f>`."""
+    for kind, draw in TOME_DRAW.items():
+        for f in range(TOME_FRAMES):
+            name = f'tome_{kind}_idle_{f}'
+            images[name] = to_image(draw(f), TOME_SIZE)
+            lit.add(name)
+        for f in range(TAKE_FRAMES):
+            images[f'tome_{kind}_take_{f}'] = tome_take(kind, f)
+    for f in range(BOUND_FRAMES):
+        images[f'bound_ring_{f}'] = bound_ring(f)
 
 
 def build_effects(images):

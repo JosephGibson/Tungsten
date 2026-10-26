@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_0"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_1"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_2"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_3"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_4"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_tome_bounding_take_5"
+    }
+  ],
+  "looping": false
+}
