@@ -30,7 +30,7 @@ use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
-use example_01_platformer::features::enemies::beetle::{CHARGE_SPEED, PAW_SECS};
+use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Shown, Sight, Strike,
 };
@@ -1212,6 +1212,178 @@ fn the_beetle_paws_then_charges_and_its_charge_hurts_enemies_too() {
     // One charge hit; what follows is the crawler's bleeding, from it too.
     assert_eq!(struck.first(), Some(&30.0), "its charge hurts the crawler");
     assert!(struck[1..].iter().all(|&tick| tick < 30.0), "{struck:?}");
+}
+
+/// A beetle standing on the sky's ground at `x` with no mind, and `prop`
+/// spawned before it along `heading`, 4 px off its face; both indexed.
+fn beetle_before(
+    harness: &mut UiHarness,
+    x: f32,
+    heading: f32,
+    prop: impl FnOnce(&mut UiHarness, f32) -> Entity,
+) -> (Entity, Entity) {
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(harness, EnemyKind::Beetle, x, TOP);
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(beetle);
+    let face = x + heading * EnemyKind::Beetle.info().half.x;
+    let prop = prop(harness, face + heading * 4.0);
+    harness.step(2);
+    (beetle, prop)
+}
+
+/// Sets `beetle` charging along `heading`: its machine starts in its
+/// attack, entered at the next step.
+fn charge(harness: &mut UiHarness, beetle: Entity, heading: f32) {
+    let world = harness.world_mut();
+    world.get_mut::<Enemy>(beetle).unwrap().heading = heading;
+    world.insert(beetle, StateMachine::new(EnemyState::Attack));
+}
+
+/// How often `sound` was heard in the last frame.
+fn heard(harness: &UiHarness, sound: Sound) -> usize {
+    harness
+        .harness()
+        .events::<Sounded>()
+        .filter(|sounded| sounded.sound == sound)
+        .count()
+}
+
+#[test]
+fn a_charge_ploughs_crates_and_kegs_out_of_its_way_from_either_side() {
+    for heading in [1.0, -1.0] {
+        for (kind, half) in [
+            (PropKind::Crate, CRATE_HALF),
+            (PropKind::Keg, props::KEG_HALF),
+        ] {
+            let (mut harness, _) = arena();
+            let (beetle, prop) = beetle_before(&mut harness, 1200.0, heading, |h, near| {
+                let centre = Vec2::new(near + heading * half.x, TOP - half.y - 0.5);
+                props::spawn(h.world_mut(), kind, centre)
+            });
+            let start = body(&harness, prop);
+            charge(&mut harness, beetle, heading);
+            let (mut ploughed, mut blown) = (0, 0);
+            for _ in 0..60 {
+                harness.step(1);
+                let now = heard(&harness, Sound::BeetlePloughed);
+                assert!(now <= 1, "{kind:?}, {heading}: {now} plough sounds a step");
+                ploughed += now;
+                blown += heard(&harness, Sound::KegBlasted);
+            }
+            assert!(ploughed >= 1, "{kind:?}, {heading}: it sounds");
+            assert_eq!(blown, 0, "{kind:?}, {heading}: nothing blew");
+            assert!(harness.world().is_alive(prop), "{kind:?}, {heading}");
+            let end = body(&harness, prop);
+            assert!(
+                (end.x - start.x) * heading >= 120.0,
+                "{kind:?}, {heading}: from {start} to {end}"
+            );
+            assert!(
+                (at(&harness, beetle).x - start.x) * heading > 0.0,
+                "{kind:?}, {heading}: the beetle passed where it stood: {}",
+                at(&harness, beetle)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_charge_throws_a_standing_player_back_and_up() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 560.0, TOP);
+    harness
+        .world_mut()
+        .remove_component::<StateMachine<EnemyState>>(beetle);
+    harness.step(2);
+    charge(&mut harness, beetle, -1.0);
+    let (mut hit, mut thrown) = (false, None);
+    for _ in 0..60 {
+        harness.step(1);
+        if hit {
+            let velocity = speed(&harness, player);
+            if velocity.length() > 100.0 {
+                thrown = Some(velocity);
+                break;
+            }
+        }
+        hit |= !took(&harness, player, Some(beetle)).is_empty();
+    }
+    let thrown = thrown.expect("the charge hit the player and threw it");
+    assert!(
+        (700.0..=850.0).contains(&thrown.length()),
+        "thrown at {thrown}"
+    );
+    assert!(thrown.x < 0.0 && -thrown.y > 150.0, "back and up: {thrown}");
+}
+
+#[test]
+fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
+    let (mut harness, _) = arena();
+    let (beetle, iron) = beetle_before(&mut harness, 1200.0, 1.0, |h, near| {
+        let centre = Vec2::new(near + IRON_HALF.x, TOP - IRON_HALF.y - 0.5);
+        toys::place_iron(h.world_mut(), centre)
+    });
+    harness.step(30);
+    let start = body(&harness, iron);
+    charge(&mut harness, beetle, 1.0);
+    let mut recovered = None;
+    for step in 1..=70 {
+        harness.step(1);
+        if recovered.is_none() && state(&harness, beetle) == EnemyState::Recover {
+            recovered = Some(step);
+        }
+    }
+    let end = body(&harness, iron);
+    assert!(start.distance(end) < 4.0, "iron from {start} to {end}");
+    let face = at(&harness, beetle).x + EnemyKind::Beetle.info().half.x;
+    assert!(face <= end.x - IRON_HALF.x + 0.5, "behind it: {face}");
+    // Its first visit enters the attack at step 1.
+    let charged = (recovered.expect("its recovery") - 1) as f32 / 60.0;
+    assert!(
+        (charged - CHARGE_SECS).abs() <= 1.5 / 60.0,
+        "a charge of {charged} s"
+    );
+}
+
+#[test]
+fn the_beetles_paw_puffs_its_dust_and_its_charge_draws_its_streaks() {
+    let (mut harness, _) = arena();
+    let names: Vec<String> = (0..4)
+        .flat_map(|f| {
+            [
+                format!("ex10_charge_streak_{f}"),
+                format!("ex10_charge_streak_{f}_left"),
+            ]
+        })
+        .collect();
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for (i, name) in names.iter().enumerate() {
+        mock_sprite(assets, name, 800 + i as u32, false);
+    }
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 620.0, TOP);
+    assert!(until(&mut harness, 240, |h| state(h, beetle)
+        == EnemyState::WindUp));
+    harness.step(12);
+    assert!(bursts(&harness, "ex10_paw_dust") > 0, "its paw's dust");
+    assert_eq!(bursts(&harness, "ex10_charge_dust"), 0, "no trail yet");
+    assert!(until(&mut harness, 60, |h| state(h, beetle) == EnemyState::Attack));
+    let mut drawn = std::collections::BTreeSet::new();
+    for _ in 0..12 {
+        harness.step(1);
+        let batches = enemies::draw::charges(harness.world());
+        drawn.extend(batches.iter().map(|batch| batch.texture.0));
+    }
+    // It charges left, at the player: the left-facing frames, 801 to 807.
+    assert!(
+        drawn
+            .iter()
+            .all(|handle| handle % 2 == 1 && (801..808).contains(handle)),
+        "{drawn:?}"
+    );
+    assert!(drawn.len() >= 2, "its frames turn over: {drawn:?}");
 }
 
 #[test]

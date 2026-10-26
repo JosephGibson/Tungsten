@@ -33,7 +33,10 @@ use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
-use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
+use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
+use example_01_platformer::features::enemies::components::{
+    Brain, Enemy, EnemyKind, EnemyState, Strike,
+};
 use example_01_platformer::features::enemies::draw::{
     HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
 };
@@ -1092,6 +1095,41 @@ fn f1_draws_the_hit_boxes_with_the_colliders_while_they_land() {
     harness.step(2);
     assert!(!harness.world().resource::<KitDebug>().enabled());
     assert_eq!(hit_shapes(&harness), 0, "no hit shape");
+}
+
+#[test]
+fn f1_outlines_a_charging_beetles_plough_box() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    let beetle = standing(&mut harness, EnemyKind::Beetle, 1200.0);
+    harness
+        .world_mut()
+        .resource_mut::<PhysicsDebugOverlay>()
+        .enabled = true;
+    harness.step(2);
+    let plough_quad = |harness: &UiHarness| {
+        let corner = beetle::plough_box(harness.world(), beetle).unwrap() - PLOUGH_HALF;
+        let draw = harness.harness().draw().expect("a frame drew");
+        draw.debug_quads
+            .iter()
+            .find(|quad| Vec2::from(quad.position).distance(corner) < 0.01)
+            .map(|quad| (quad.color, quad.size[1]))
+    };
+    assert_eq!(plough_quad(&harness), None, "it stands: no plough");
+    let world = harness.world_mut();
+    world.get_mut::<Enemy>(beetle).unwrap().heading = 1.0;
+    world.insert(beetle, StateMachine::new(EnemyState::Attack));
+    harness.step(2);
+    assert_eq!(
+        plough_quad(&harness),
+        Some((HIT_COLOR, HIT_THICKNESS)),
+        "the plough's box while it charges"
+    );
 }
 
 #[test]

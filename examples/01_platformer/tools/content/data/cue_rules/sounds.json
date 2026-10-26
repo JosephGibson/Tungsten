@@ -1149,5 +1149,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "beetle_ploughed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_beetle_plough_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
   }
 ]

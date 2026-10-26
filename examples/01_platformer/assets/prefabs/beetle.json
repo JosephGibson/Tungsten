@@ -69,7 +69,7 @@
         "damage.physical": 30
       },
       "window": 0.8,
-      "knockback": 520
+      "knockback": 800
     },
     "abilities": [
       "beetle_charge"
