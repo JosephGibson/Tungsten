@@ -4,11 +4,10 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `e01quick2`: example 01's quick fixes from the fourth playtest ([feedback](docs/plans/1.0/example-01-feedback.md) §3.7a).
+- `e01tomes`: example 01 (l), the tomes ([feedback](docs/plans/1.0/example-01-feedback.md) §3.8).
 
 ## Next
 
-- `e01tomes`: example 01 (l), the tomes (feedback §3.8).
 - `e01foes`: example 01 (m), foes (feedback §3.9).
 - `e01sfx`: example 01 (n), sounds and effects, with the kit's cue falloff by distance (K29; feedback §3.10).
 - `e01hollow`: example 01 (o), the aqueduct and the hollow (feedback §3.11).
