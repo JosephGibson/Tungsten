@@ -46,7 +46,7 @@ const FLAME: Style = Style {
     splash: "ex10_flame_splash",
     puff: "ex10_flame_puff",
     every: 0.012,
-    speed: 900.0,
+    speed: 1170.0,
     life: 0.32,
     grow: (0.9, 1.6),
     color: Vec3::new(1.0, 0.6, 0.26),

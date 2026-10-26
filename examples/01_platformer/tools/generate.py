@@ -253,7 +253,7 @@ def particle_configs():
         color_over_life=[[0, [1, 1, 1, 1]], [.5, [.7, .92, 1, 1]], [1, [.4, .7, 1, 0]]],
         alpha_over_life=[[0, 1], [.7, .9], [1, 0]])
     configs['flame_spray'] = dict(
-        aimed('spark', 120, 200, (.28, .45), (546, 806), (.1, .22), spread=24),
+        aimed('spark', 120, 200, (.28, .45), (710, 1048), (.1, .22), spread=24),
         gravity=[0, -60], drag_per_sec=.3, angular_velocity=dict(min=-6, max=6),
         scale_over_life=[[0, .6], [.2, 1], [1, .2]],
         color_over_life=fire_ramp, alpha_over_life=[[0, .7], [.1, 1], [.7, .85], [1, 0]])

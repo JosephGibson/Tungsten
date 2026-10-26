@@ -76,8 +76,8 @@
     ],
     "kind": "cone",
     "speed": {
-      "max": 806,
-      "min": 546
+      "max": 1048,
+      "min": 710
     },
     "spread_deg": 24
   },

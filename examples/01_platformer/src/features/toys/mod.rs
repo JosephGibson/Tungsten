@@ -133,10 +133,11 @@ pub const PUSH_RADIUS: f32 = 4.5 * TILE;
 pub const PUSH_SPEED: f32 = 2500.0;
 pub const BLAST_TRAUMA: f32 = 0.68;
 /// A spray's reach and half angle, and the rays it traces: 01 (h)'s 30 %
-/// further than 01 (f)'s 7 and 3.5 tiles.
+/// further than 01 (f)'s 7 and 3.5 tiles, the flamethrower's 30 % further
+/// again (§3.7a).
 pub const SPRAY_RANGE: f32 = 9.1 * TILE;
 pub const SPRAY_HALF_ANGLE: f32 = 14.0 * std::f32::consts::PI / 180.0;
-pub const FIRE_SPRAY_RANGE: f32 = 4.55 * TILE;
+pub const FIRE_SPRAY_RANGE: f32 = 5.9 * TILE;
 /// Most shock rings at once.
 pub const RING_CAP: usize = 16;
 /// The small balls' loop, which plays while they pour, and the seconds a

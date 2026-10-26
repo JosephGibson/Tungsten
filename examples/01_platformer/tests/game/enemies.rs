@@ -2405,13 +2405,13 @@ fn the_wave_throws_each_kind_along_the_aim_the_troll_a_little() {
         at(&harness, enemy).x - start
     };
     for (kind, low, high) in [
-        (EnemyKind::Crawler, 140.0, 175.0),
-        (EnemyKind::Goblin, 118.0, 150.0),
-        (EnemyKind::Beetle, 32.0, 50.0),
-        (EnemyKind::Bat, 100.0, f32::INFINITY),
-        (EnemyKind::Wisp, 100.0, f32::INFINITY),
+        (EnemyKind::Crawler, 220.0, 265.0),
+        (EnemyKind::Goblin, 185.0, 230.0),
+        (EnemyKind::Beetle, 55.0, 75.0),
+        (EnemyKind::Bat, 150.0, f32::INFINITY),
+        (EnemyKind::Wisp, 150.0, f32::INFINITY),
         // Pushed back a little, past its resist.
-        (EnemyKind::Troll, 12.0, 35.0),
+        (EnemyKind::Troll, 24.0, 45.0),
     ] {
         let moved = thrown(kind);
         assert!(
