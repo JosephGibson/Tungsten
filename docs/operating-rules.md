@@ -20,7 +20,7 @@ The owner's answer of 2026-10-23: toward agile by a gradient, the 1.0 batch plan
 
 ## Git
 
-- Agents commit at each logical step; the owner pushes, tags and merges. An uncommitted tree (`D-105`, superseded) lost the history of every step inside a milestone's one squashed commit.
+- Agents commit at each logical step and push the version branch after each commit (`git push origin 0.NNN`, the whole command, `D-216`); the owner tags and merges, and every other push stays the owner's. An uncommitted tree (`D-105`, superseded) lost the history of every step inside a milestone's one squashed commit, and an unpushed one kept a session's commits on one machine until the owner pushed by hand.
 - Stage only the paths you changed (`git add <paths>`), never `git add -A` or `git add .`, so one session's commit cannot take another's files.
 - A second session in parallel works in its own worktree or clone, which the owner makes (`git worktree add` stays denied to agents), since two sessions share one index otherwise.
 - Messages follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): summary`, one line, imperative, lowercase, at most 72 characters, no attribution. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `revert`; `!` before the colon marks a break. The [`commit-msg` hook](../.githooks/commit-msg) checks it once `just hooks` has run, so a malformed message never lands.

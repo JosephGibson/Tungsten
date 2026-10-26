@@ -46,7 +46,7 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).
 - No scope creep: finish the task, name what grows past it and propose the smallest version; a new idea goes to `ROADMAP.md`'s Later as one line.
-- Commit at each logical step in Conventional Commits, staging only the paths you changed, never `git add -A`; push, tags and merges stay with the human ([rules](docs/operating-rules.md#git)).
+- Commit at each logical step in Conventional Commits, staging only the paths you changed, never `git add -A`, and push the version branch after each commit; tags, merges and every other push stay with the human ([rules](docs/operating-rules.md#git)).
 
 ## Conventions
 

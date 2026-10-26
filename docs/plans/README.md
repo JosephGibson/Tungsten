@@ -12,7 +12,7 @@ Short-lived multi-step plans saved as `*.md`. A plan is the handoff artifact for
 
 Audit scope is separate: a crate correctness audit reads the full named crate surface; a scoped workflow/documentation audit reads its named documents/tools and reports within that scope. Both report findings unless fixes were requested.
 
-Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every route commits at each logical step and the owner pushes ([operating rules](../operating-rules.md#git), `D-215`); no route cuts a release unless the owner requested one.
+Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every route commits at each logical step and pushes the version branch ([operating rules](../operating-rules.md#git), `D-215`, `D-216`); no route cuts a release unless the owner requested one.
 
 ## Naming
 
@@ -32,7 +32,7 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 - Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
 - Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
 - Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
-- Commit at each logical step in Conventional Commits, staging only the paths you changed (never `git add -A`); push, tags and merges stay with the human ([operating rules](../operating-rules.md#git)). Keep scratch files out of the tree.
+- Commit at each logical step in Conventional Commits, staging only the paths you changed (never `git add -A`), and push the version branch after each commit; tags, merges and every other push stay with the human ([operating rules](../operating-rules.md#git)). Keep scratch files out of the tree.
 - Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. The release's changelog section is written from the commits at the cut.
 - For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
 
