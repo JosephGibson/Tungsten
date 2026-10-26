@@ -1026,9 +1026,8 @@ seam.
 
 ## The tomes
 
-e01tomes' families (`effects.py`, plan `docs/plans/example-01-tomes.md` §3), drawn
-from the review sheet the owner accepted on 2026-10-26; the plan's §3.5 holds
-their files' hashes. Each book is closed on its 32-pixel frame, its front cover
+e01tomes' families (`effects.py`), drawn from the review sheet the owner
+accepted on 2026-10-26. Each book is closed on its 32-pixel frame, its front cover
 facing and its head and fore-edge receding up and to the right (`TOME_LOOKS`,
 `tome_parts`), its centre at (16, 16): the pact in cracked hide with iron corner
 caps and a horned, eyed sigil, its page edges glowing ember; bounding in sky-blue

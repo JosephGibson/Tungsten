@@ -52,6 +52,18 @@ The map is 430 × 72 tiles of 64 px, generated from `tools/level.json` ([tools/R
 
 Each area flows into the next through a border of mixed tiles, and its look crossfades over the five tiles either side as the view crosses it. Outdoors, each area draws its own far strip between the ridges and the woodland, the ravine's and the mine's far walls standing dark behind their mist; the ravine, the mine and the bridge sit under a true-black night sky without the woodland, while the clearing and the aqueduct keep the moonlit one. Inside the hollow the light dims and the moon goes out, eased over a second, and every lit sprite darkens with it; the wisps, the fires and the staff light the cave. Each area's ambience loop rises over 1.5 s as the wizard enters, the others falling silent, and every loop is silent under pause and game over. Lava is a surface the wizard never sinks below: its touch burns and throws the wizard up and toward the nearer bank, an enemy that falls through it too, and it never goes out, though the ice spray sets a basin's crust solid for six seconds, its cracks glowing before it melts: as the chill builds, one front of crust comes down from the surface through the whole basin, frost mist rising off it, and it sets with a hiss; its cracks snap and spark at each of their three stages, and a second front comes down as it melts, glugging and spattering. Mist rises off the falls' plunge, billowing as it climbs. Shots meet the walls by their material: iron turns bullets and the missile, wood lets bullets through, and stone and the tiles end them.
 
+## The tomes
+
+Three books lie off the routes, each a faint glint in its area's dark until the wizard stands beside it: the demonic pact in the ember hollow, high over the dark pool; the tome of bounding in the ravine's shaft, east of the zigzag; the tome of arcane power in a bay of the aqueduct's arcade. Each is reached by the double jump alone. Within 64 px of one, a panel over it names it, what it gives and what it costs, and E (the pad's East) takes it for good, with its flare, sparks and sound:
+
+| Tome | Gives | Costs |
+| --- | --- | --- |
+| The Demonic Pact | A shield of 50 over the health, a light blue layer on the bar with its "+50", back 3 s after a hit at 20 a second | Half the maximum health; the kill row still kills through the shield |
+| The Tome of Bounding | Another air jump after the double jump whenever the mana holds 25, with no cap, each a blue ring under the feet and a bright spring | 25 mana a bound, refused below it with the no-mana sound; the view stays on the map while a bound carries the wizard over its top |
+| The Tome of Arcane Power | Twice the damage, and twice the build-up, from each hit a spell makes itself: the missile's blast, the sprays, the strike and its chain | Twice the mana for each of the ten slots; the staff light and the gun as they were |
+
+The HUD shows the tomes held under the bars, in the order taken; a save keeps them, and the books taken stay gone.
+
 ## The spells
 
 | Slot | Spell | Use | Mana | Cooldown |
