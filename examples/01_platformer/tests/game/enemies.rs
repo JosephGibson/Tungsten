@@ -856,11 +856,13 @@ fn a_crawler_is_scared_at_the_drawn_light() {
         harness.step(2);
         let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0 + side * 340.0, TOP);
         let light = |h: &UiHarness| crawler::light(h.world()).expect("the light burns");
+        // It keeps out of its fear's edge, 1.3 times the drawn glow's.
+        let fear = |h: &UiHarness| crawler::fear(h.world()).expect("the light burns");
         let (mut nearest, mut hisses) = (f32::MAX, 0);
         let mut puffs = 0;
         for _ in 0..240 {
             harness.step(1);
-            let (centre, reach) = light(&harness);
+            let (centre, reach) = fear(&harness);
             nearest = nearest.min(at(&harness, crawler).distance(centre) - reach);
             hisses += harness
                 .harness()
@@ -869,8 +871,8 @@ fn a_crawler_is_scared_at_the_drawn_light() {
                 .count();
             puffs = puffs.max(super::bursts(&harness, FROST_BREATH));
         }
-        assert!(nearest >= -1.0, "outside the drawn light: {nearest}");
-        assert!(nearest <= 24.0, "held at its edge: {nearest}");
+        assert!(nearest >= -1.0, "outside its fear's edge: {nearest}");
+        assert!(nearest <= 24.0, "held at the edge: {nearest}");
         let heading = harness.world().get::<Enemy>(crawler).unwrap().heading;
         assert_eq!(heading, -side, "facing the player");
         let clip = &harness
@@ -898,6 +900,177 @@ fn a_crawler_is_scared_at_the_drawn_light() {
             .unwrap()
             .animation_id;
         assert!(!clip.contains("scared"), "{clip}");
+    }
+}
+
+/// The arena's player facing right with its staff lit, at x 900, and the
+/// light's centre.
+fn lit_arena() -> (UiHarness, Entity, Vec2) {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = true;
+    harness.harness_mut().press_action("move_right");
+    harness.step(1);
+    harness.harness_mut().release_action("move_right");
+    stand(&mut harness, player, 900.0, TOP);
+    harness.step(2);
+    let (light, _) = crawler::light(harness.world()).expect("the light burns");
+    (harness, player, light)
+}
+
+#[test]
+fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
+    let (mut harness, _, light) = lit_arena();
+    // On the ground right of the light, 120 px from its centre.
+    let y = TOP - EnemyKind::Crawler.info().half.y - 0.5;
+    let x = light.x + (120.0_f32.powi(2) - (y - light.y).powi(2)).sqrt();
+    let crawler = walker(&mut harness, EnemyKind::Crawler, x, TOP);
+    let (mut out, mut retreats, mut clips) = (None, 0, Vec::new());
+    for frame in 1..=90 {
+        harness.step(1);
+        retreats += heard(&harness, Sound::CrawlerRetreated);
+        assert_ne!(state(&harness, crawler), EnemyState::WindUp, "no tell");
+        clips.push(
+            harness
+                .world()
+                .get::<AnimationState>(crawler)
+                .unwrap()
+                .animation_id
+                .clone(),
+        );
+        let (centre, reach) = crawler::fear(harness.world()).unwrap();
+        if out.is_none() && at(&harness, crawler).distance(centre) >= reach {
+            out = Some(frame);
+        }
+    }
+    assert!(out.is_some(), "out past its fear's edge within 1.5 s");
+    let heading = harness.world().get::<Enemy>(crawler).unwrap().heading;
+    assert_eq!(heading, -1.0, "facing the player");
+    assert!(
+        clips.iter().any(|clip| clip == "ex10_crawler_retreat_left"),
+        "{clips:?}"
+    );
+    assert_eq!(retreats, 1, "one retreat's hiss");
+}
+
+#[test]
+fn a_cornered_crawler_stands_and_still_chills_on_touch() {
+    let (mut harness, player, _) = lit_arena();
+    // Right against the player, a wall at its back.
+    let half = EnemyKind::Crawler.info().half;
+    let x = 900.0 + courier::PLAYER_HALF.x + half.x + 2.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(x + half.x + 11.0, TOP - 60.0),
+        Vec2::new(10.0, 60.0),
+    );
+    harness.step(1);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, x, TOP);
+    let start = at(&harness, crawler);
+    let hits = crawler_hits(&mut harness, player, crawler, 60);
+    assert!(crawler::afraid(harness.world(), crawler), "inside its fear");
+    assert!(
+        (at(&harness, crawler).x - start.x).abs() < 4.0,
+        "it stands: {start} to {}",
+        at(&harness, crawler)
+    );
+    assert_eq!(hits.first(), Some(&15.0), "its touch, 15 cold");
+}
+
+#[test]
+fn the_crawler_runs_at_210_from_a_fresh_spawn() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 300.0 + 395.0, TOP);
+    // Facing the player, which its eye sees from there.
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = -1.0;
+    let mut fastest = 0.0_f32;
+    for _ in 0..60 {
+        harness.step(1);
+        if state(&harness, crawler) == EnemyState::Chase {
+            fastest = fastest.max(speed(&harness, crawler).x.abs());
+        }
+    }
+    assert!((fastest - crawler::MOVE_SPEED).abs() < 1.0, "{fastest}");
+    assert_eq!(crawler::MOVE_SPEED, 210.0);
+}
+
+/// A crawler 50 px short of a ledge's edge at x 1200 high in the sky, the
+/// dark player 400 px on along `side` on ground `up` px higher across a gap
+/// of `gap` px, a step up when it has none: over 3 s, whether the crawler
+/// stood on the far ground, whether it kept to the near one throughout,
+/// its hops' sounds and the nearest its centre came to the edge.
+fn crossing(side: f32, gap: f32, up: f32) -> (bool, bool, usize, f32) {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let (edge, near) = (1200.0, TOP - 300.0);
+    let far = near - up;
+    super::floor(
+        &mut harness,
+        Vec2::new(edge - side * 200.0, near + 10.0),
+        Vec2::new(200.0, 10.0),
+    );
+    // Solid down past the near ledge's top, so a step up shows its face.
+    let bottom = far.max(near) + 20.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(edge + side * (gap + 300.0), (far + bottom) / 2.0),
+        Vec2::new(300.0, (bottom - far) / 2.0),
+    );
+    harness.step(1);
+    stand(&mut harness, player, edge + side * 350.0, far);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, edge - side * 50.0, near);
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = side;
+    let half = EnemyKind::Crawler.info().half;
+    let (mut hops, mut reached, mut kept, mut nearest) = (0, false, true, f32::MAX);
+    for _ in 0..180 {
+        harness.step(1);
+        hops += heard(&harness, Sound::CrawlerHopped);
+        let at = at(&harness, crawler);
+        let on = |top: f32| (at.y - (top - half.y)).abs() < 2.0;
+        reached |= (at.x - (edge + side * gap)) * side > 0.0 && on(far);
+        kept &= (at.x - edge) * side < 0.0 && at.y <= near - half.y + 2.0;
+        nearest = nearest.min((edge - at.x) * side);
+    }
+    (reached, kept, hops, nearest)
+}
+
+#[test]
+fn a_chasing_crawler_hops_a_step_and_leaps_the_gaps_it_can_land_across() {
+    for side in [1.0, -1.0] {
+        for (gap, up, what) in [
+            (0.0, 48.0, "a 48 px step"),
+            (64.0, 0.0, "a level 64 px gap"),
+            (64.0, 16.0, "a 64 px gap onto ground 16 px higher"),
+            (140.0, -90.0, "a 140 px gap onto ground 90 px lower"),
+        ] {
+            let (reached, _, hops, _) = crossing(side, gap, up);
+            assert!(reached, "{side}: over {what}");
+            assert!(hops >= 1, "{side}: it chitters over {what}");
+        }
+        for (gap, up, what) in [
+            (64.0, 48.0, "a gap onto ground 48 px higher"),
+            (256.0, 0.0, "a 256 px gap"),
+        ] {
+            let (_, kept, hops, nearest) = crossing(side, gap, up);
+            assert!(kept, "{side}: it stops at {what}");
+            let half = EnemyKind::Crawler.info().half.x;
+            assert!(
+                nearest <= half + 8.0,
+                "{side}: at the edge of {what}: {nearest}"
+            );
+            assert_eq!(hops, 0, "{side}: no hop at {what}");
+        }
     }
 }
 

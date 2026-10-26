@@ -26,21 +26,16 @@
 //! fuse, credited to the goblin.
 
 use glam::Vec2;
-use tungsten::core::{
-    BodyKind, Collider, Entity, PhysicsConfig, Position, RigidBody, Shape, Time, Velocity, World,
-};
+use tungsten::core::{Collider, Entity, PhysicsConfig, Position, Time, Velocity, World};
 use tungsten::kit::{Health, KitRng, PlatformerController, Stats, Tags};
-use tungsten::physics::{SpatialFilter, cast_ray, overlap};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
-use super::systems::{blocked, elapsed, face, go, player, rest, sees, solid, stride};
+use super::hop::{self, Hops, grounded};
+use super::systems::{elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, centre, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{Hit, Kind};
-use crate::features::props::{
-    self,
-    components::{Bomb, Keg},
-};
+use crate::features::props;
 use crate::shared::SaveId;
 
 /// Its patrol's and its search's share of its run speed.
@@ -93,6 +88,13 @@ pub const LEAP_LOCK: f32 = 0.3;
 pub const HOP_RISE: f32 = 720.0;
 pub const HOP_CLEAR: f32 = 64.0;
 pub const STEP_DOWN: f32 = 96.0;
+/// Its hops by those, and no leap: a deep ledge stops it.
+pub const HOPS: Hops = Hops {
+    rise: HOP_RISE,
+    clear: HOP_CLEAR,
+    step_down: STEP_DOWN,
+    leap: None,
+};
 /// Its patrol's fidget: every [`FIDGET_EVERY`] seconds and a bit more by
 /// its save ID, for [`FIDGET_PAUSE`] it stands looking back, or skips in
 /// place at [`SKIP`] px/s up, in turn.
@@ -168,142 +170,18 @@ fn wander(world: &mut World, goblin: Entity, pace: f32) {
     }
 }
 
+/// Walks `goblin` along `heading` at `pace` by its [`HOPS`]
+/// ([`hop::scurry`]). Whether it moves.
+fn scurry(world: &mut World, goblin: Entity, heading: f32, pace: f32) -> bool {
+    hop::scurry(world, goblin, heading, pace, &HOPS).moves()
+}
+
 /// A skip in place: a little hop straight up.
 fn skip(world: &mut World, goblin: Entity) {
     if grounded(world, goblin)
         && let Some(controller) = world.get_mut::<PlatformerController>(goblin)
     {
         controller.launch(Vec2::new(0.0, -SKIP));
-    }
-}
-
-/// Whether `goblin` stands on something.
-fn grounded(world: &World, goblin: Entity) -> bool {
-    world
-        .get::<PlatformerController>(goblin)
-        .is_some_and(PlatformerController::grounded)
-}
-
-/// What is ahead of a walking goblin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Ahead {
-    Clear,
-    Hop,
-    Step,
-    Stop,
-}
-
-/// What lies ahead of `goblin` along `heading`: a body at its height that
-/// is no keg or bomb, or a wall no higher than [`HOP_CLEAR`], with room
-/// over it and ground beyond, to hop; a keg, a bomb, a higher wall or a
-/// ledge with no ground within [`STEP_DOWN`] under its feet, to stop at;
-/// a short drop to step down; else a clear way.
-fn ahead(world: &World, goblin: Entity, heading: f32) -> Ahead {
-    let Some(at) = centre(world, goblin) else {
-        return Ahead::Stop;
-    };
-    let half = EnemyKind::Goblin.info().half;
-    // From inside its own edge, so a body it already presses against counts.
-    let probe = at + Vec2::new(heading * (half.x + 4.0), 0.0);
-    let mut met = Vec::new();
-    let shape = Shape::Aabb {
-        half_extents: Vec2::new(8.0, half.y - 4.0),
-    };
-    let filter = SpatialFilter::new().with_tiles(false).excluding(goblin);
-    overlap(world, shape, probe, &filter, &mut met);
-    let body = met.into_iter().flatten().find(|&entity| {
-        world
-            .get::<RigidBody>(entity)
-            .is_some_and(|body| body.kind == BodyKind::Dynamic)
-    });
-    if let Some(body) = body {
-        let hop =
-            !world.has::<Keg>(body) && !world.has::<Bomb>(body) && room(world, goblin, heading);
-        return if hop { Ahead::Hop } else { Ahead::Stop };
-    }
-    if !blocked(world, goblin, heading) {
-        return Ahead::Clear;
-    }
-    let wall = solid(world, at, Vec2::new(heading, 0.0), half.x + 8.0, goblin);
-    if wall {
-        return if room(world, goblin, heading) {
-            Ahead::Hop
-        } else {
-            Ahead::Stop
-        };
-    }
-    // A ledge: a short drop it steps down, a deep one it stops at.
-    let toes = Vec2::new(at.x + heading * (half.x + 6.0), at.y);
-    let filter = SpatialFilter::new().excluding(goblin);
-    match cast_ray(world, toes, Vec2::Y, half.y + STEP_DOWN, &filter) {
-        Some(_) => Ahead::Step,
-        None => Ahead::Stop,
-    }
-}
-
-/// Whether a hop along `heading` has room: nothing over its head for the
-/// hop's height, nothing ahead [`HOP_CLEAR`] over its feet, and ground
-/// beyond, no more than a tile down.
-fn room(world: &World, goblin: Entity, heading: f32) -> bool {
-    let Some(at) = centre(world, goblin) else {
-        return false;
-    };
-    let half = EnemyKind::Goblin.info().half;
-    let filter = SpatialFilter::new().excluding(goblin);
-    let rise = HOP_RISE * HOP_RISE / 7200.0;
-    let head = cast_ray(world, at, Vec2::NEG_Y, half.y + rise, &filter).is_none();
-    let over = Vec2::new(at.x, at.y + half.y - HOP_CLEAR - 6.0);
-    let clear = cast_ray(world, over, Vec2::new(heading, 0.0), half.x + 64.0, &filter).is_none();
-    let beyond = Vec2::new(at.x + heading * (half.x + 72.0), over.y);
-    let ground = cast_ray(
-        world,
-        beyond,
-        Vec2::Y,
-        HOP_CLEAR + half.y * 2.0 + 64.0,
-        &filter,
-    )
-    .is_some();
-    head && clear && ground
-}
-
-/// Hops along `heading`: up at [`HOP_RISE`], running at its full speed, so
-/// its run carries it over once it is clear of what it hops.
-fn hop(world: &mut World, goblin: Entity, heading: f32) -> bool {
-    if !grounded(world, goblin) {
-        return false;
-    }
-    if let Some(mine) = world.get_mut::<Enemy>(goblin) {
-        mine.heading = heading;
-    }
-    if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
-        controller.launch(Vec2::new(0.0, -HOP_RISE));
-        controller.set_run(heading);
-    }
-    true
-}
-
-/// Walks `goblin` along `heading` at `pace` of its run speed, as a walker's
-/// stride does, hopping a body or a low step ahead and stepping down a
-/// short drop; stopped by a keg, a bomb, a high wall or a deep ledge, it
-/// stands. Whether it moves.
-pub fn scurry(world: &mut World, goblin: Entity, heading: f32, pace: f32) -> bool {
-    match ahead(world, goblin, heading) {
-        Ahead::Clear => stride(world, goblin, heading, pace),
-        Ahead::Hop => hop(world, goblin, heading),
-        Ahead::Step => {
-            // Off the short drop, which the walk's ledge check refuses.
-            if let Some(mine) = world.get_mut::<Enemy>(goblin) {
-                mine.heading = heading;
-            }
-            if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
-                controller.set_run(heading * pace);
-            }
-            true
-        }
-        Ahead::Stop => {
-            rest(world, goblin);
-            false
-        }
     }
 }
 

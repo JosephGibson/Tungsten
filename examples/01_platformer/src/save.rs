@@ -254,8 +254,9 @@ impl SaveData for SaveGame {
     /// tuned that a save keeps (`to_14`). Schema 15 sets the bodies in the
     /// start's new wall or past its boundary on the clearing's floor
     /// (`to_15`). Schema 16 keeps the tomes held and sets the bodies inside
-    /// their supports on top (`to_16`).
-    const SCHEMA: u32 = 16;
+    /// their supports on top (`to_16`). Schema 17 moves each crawler's run
+    /// to e01foes' (`to_17`).
+    const SCHEMA: u32 = 17;
 
     fn migrate(
         from: u32,
@@ -280,6 +281,7 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             8 => {
@@ -291,6 +293,7 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             9 => {
@@ -301,6 +304,7 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             10 => {
@@ -310,6 +314,7 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             11 => {
@@ -318,6 +323,7 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             12 => {
@@ -325,21 +331,29 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             13 => {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             14 => {
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
                 Ok(data)
             }
             15 => {
                 to_16(&mut data)?;
+                to_17(&mut data);
+                Ok(data)
+            }
+            16 => {
+                to_17(&mut data);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -764,6 +778,17 @@ fn to_16(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         moving.len() - dropped.len()
     );
     Ok(())
+}
+
+/// Schema 16 to 17 (e01foes): each saved crawler's `move_speed` base moves
+/// to [`crawler::MOVE_SPEED`], its modifiers kept, as [`to_14`] moved the
+/// troll's.
+fn to_17(data: &mut Value) {
+    for enemy in data["enemies"].as_array_mut().into_iter().flatten() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(crawler::MOVE_SPEED));
+        }
+    }
 }
 
 /// Writes the points [`to_15`] or [`to_16`] gave the `moving` bodies into

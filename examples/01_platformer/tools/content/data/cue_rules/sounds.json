@@ -1165,5 +1165,37 @@
         }
       }
     ]
+  },
+  {
+    "on": "crawler_retreated",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_retreat_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_hopped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_hop_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
   }
 ]

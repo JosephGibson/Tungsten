@@ -1,16 +1,20 @@
 //! The frost crawler: an alien, many-legged walker on the kit's platformer
 //! controller. It walks its ledge, turning at the ends and at walls,
-//! chills what it touches and, after a hissing tell, lunges. It never steps
-//! into the staff light's drawn glow: it holds at its edge, facing the
-//! player, scared, and lunges only at a player whose light is out.
+//! chills what it touches and, after a hissing tell, lunges. It fears the
+//! staff light past its drawn glow, to [`FEAR_SHARE`] of its reach: it
+//! never steps over that edge, holding there facing the player, scared;
+//! caught inside it, it backs out ([`retreat`]); it lunges only at a player
+//! whose light is out. Chasing, searching or going home it hops bodies and
+//! steps and leaps gaps by its [`HOPS`].
 
 use glam::Vec2;
-use tungsten::core::{Entity, Position, Time, World};
+use tungsten::core::{Entity, Position, Time, Velocity, World};
 use tungsten::kit::PlatformerController;
 
-use super::components::{Enemy, EnemyKind, EnemyState, Scared};
-use super::systems::{elapsed, face, go, player, rest, sees, solid};
-use super::{ARRIVED, WALK_STEP, centre};
+use super::components::{Brain, Enemy, EnemyState, Scared};
+use super::hop::{self, Ahead, Hops, Leap, grounded};
+use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
+use super::{ARRIVED, centre};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
@@ -36,28 +40,34 @@ pub const LUNGE_LOCK: f32 = 0.45;
 /// The longest a lunge runs before the recovery, landed or not.
 pub const LUNGE_MOST: f32 = 1.0;
 /// The cold its touch deals, its prefab's `damage` stat and contact
-/// damage: restated so a save can move an older crawler's base to it.
+/// damage, and its run, its `move_speed` stat and its controller's run
+/// speed: restated so a save can move an older crawler's bases to them.
 pub const DAMAGE: f32 = 15.0;
+pub const MOVE_SPEED: f32 = 210.0;
 /// How long its scared look holds after the light last refused its walk,
 /// in game seconds: a refusal after that starts a new scare, with its hiss
 /// and its puff of frost breath (B4).
 pub const SCARED_HOLD: f32 = 0.4;
 pub const FROST_BREATH: &str = "ex10_frost_breath";
-
-/// Whether walking `crawler` along `heading` is blocked: a wall ahead, or
-/// no ground under its leading feet within [`WALK_STEP`] past a step's
-/// depth, as the other walkers' [`blocked`](super::systems::blocked) has
-/// it; [`solid`] looks past balls and the other dynamic bodies.
-fn blocked(world: &World, crawler: Entity, heading: f32) -> bool {
-    let Some(at) = centre(world, crawler) else {
-        return true;
-    };
-    let half = EnemyKind::Crawler.info().half;
-    let wall = solid(world, at, Vec2::new(heading, 0.0), half.x + 8.0, crawler);
-    let toes = Vec2::new(at.x + heading * (half.x + 6.0), at.y);
-    let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0 + WALK_STEP, crawler);
-    wall || ledge
-}
+/// Its fear's reach over the staff light's drawn one (V20): 227.5 px for
+/// the staff's 175, the drawn light unchanged.
+pub const FEAR_SHARE: f32 = 1.3;
+/// Its retreat's share of its run speed as it backs out of the fear.
+pub const RETREAT_PACE: f32 = 0.8;
+/// Its hops (V21): a hop of 720 px/s up over a body or a step no higher
+/// than 64 px, a step down a drop no deeper than 96 px, and a leap over a
+/// gap of 420 px/s across and 600 up, its input locked 0.35 s, which rises
+/// 50 px and carries it about 140 px to level ground.
+pub const HOPS: Hops = Hops {
+    rise: 720.0,
+    clear: 64.0,
+    step_down: 96.0,
+    leap: Some(Leap {
+        across: 420.0,
+        lift: 600.0,
+        lock: 0.35,
+    }),
+};
 
 /// The staff light's drawn glow, its centre and its reach, while the
 /// player lives and the light burns: the glow on the flame of the frame
@@ -71,17 +81,33 @@ pub fn light(world: &World) -> Option<(Vec2, f32)> {
     lit.then(|| (glow.centre(at), glow.reach()))
 }
 
-/// Whether a step along `heading` takes `crawler` into the staff light.
+/// The edge of its fear while the light burns: the light's centre and
+/// [`FEAR_SHARE`] of its reach.
+#[must_use]
+pub fn fear(world: &World) -> Option<(Vec2, f32)> {
+    light(world).map(|(centre, reach)| (centre, FEAR_SHARE * reach))
+}
+
+/// Whether `crawler`'s centre lies inside its fear's edge.
+#[must_use]
+pub fn afraid(world: &World, crawler: Entity) -> bool {
+    match (fear(world), centre(world, crawler)) {
+        (Some((light, reach)), Some(at)) => at.distance(light) < reach,
+        _ => false,
+    }
+}
+
+/// Whether a step along `heading` takes `crawler` over its fear's edge.
 fn into_light(world: &World, crawler: Entity, heading: f32) -> bool {
-    let (Some((light, reach)), Some(at)) = (light(world), centre(world, crawler)) else {
+    let (Some((light, reach)), Some(at)) = (fear(world), centre(world, crawler)) else {
         return false;
     };
     let next = at + Vec2::new(heading * 8.0, 0.0);
     next.distance(light) <= reach && next.distance(light) < at.distance(light)
 }
 
-/// Whether `crawler` shows its scare: the light refused its walk within
-/// [`SCARED_HOLD`].
+/// Whether `crawler` shows its scare: the light refused its walk, or drove
+/// it back, within [`SCARED_HOLD`].
 #[must_use]
 pub fn scared(world: &World, crawler: Entity) -> bool {
     let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
@@ -90,9 +116,10 @@ pub fn scared(world: &World, crawler: Entity) -> bool {
         .is_some_and(|scared| now - scared.at <= f64::from(SCARED_HOLD))
 }
 
-/// The light refused `crawler`'s walk: a scare starts, with a hiss and a
-/// puff of frost breath at its mouth, unless one shows already.
-fn scare(world: &mut World, crawler: Entity) {
+/// The light refused `crawler`'s walk, or, `retreating`, drives it back: a
+/// scare starts, with a puff of frost breath at its mouth and its hiss, or
+/// its retreat's longer one, unless one shows already.
+fn scare(world: &mut World, crawler: Entity, retreating: bool) {
     let fresh = !scared(world, crawler);
     let now = world.get_resource::<Time>().map_or(0.0, Time::elapsed);
     world.insert(crawler, Scared { at: now });
@@ -100,38 +127,90 @@ fn scare(world: &mut World, crawler: Entity) {
     if let (true, Some(at)) = (fresh, centre(world, crawler)) {
         let mouth = at + Vec2::new(heading * 26.0, -2.0);
         spawn_burst(world, FROST_BREATH, mouth);
-        audio::play(world, Sound::CrawlerScared, mouth);
+        let sound = if retreating {
+            Sound::CrawlerRetreated
+        } else {
+            Sound::CrawlerScared
+        };
+        audio::play(world, sound, mouth);
+    }
+}
+
+/// Stands `crawler` at its fear's edge, facing the player, scared.
+fn hold(world: &mut World, crawler: Entity) {
+    rest(world, crawler);
+    if let Some((_, at)) = player(world) {
+        face(world, crawler, at.x);
+    }
+    scare(world, crawler, false);
+}
+
+/// Backs `crawler` out of its fear (V20): facing the player, it runs
+/// straight away from the light's centre at [`RETREAT_PACE`] of its run;
+/// stopped behind by a wall or a ledge, it stands, cornered, its touch
+/// hurting as ever. Its scare shows throughout, its first step sounding
+/// [`Sound::CrawlerRetreated`] with a puff of frost breath; in the air it
+/// keeps its run.
+pub fn retreat(world: &mut World, crawler: Entity) {
+    let (Some((light, _)), Some(at)) = (fear(world), centre(world, crawler)) else {
+        return;
+    };
+    if let Some((_, target)) = player(world) {
+        face(world, crawler, target.x);
+    }
+    scare(world, crawler, true);
+    if !grounded(world, crawler) {
+        return;
+    }
+    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let away = if (at.x - light.x).abs() > 1.0 {
+        (at.x - light.x).signum()
+    } else {
+        -heading
+    };
+    if blocked(world, crawler, away) {
+        rest(world, crawler);
+    } else if let Some(controller) = world.get_mut::<PlatformerController>(crawler) {
+        controller.set_run(away * RETREAT_PACE);
     }
 }
 
 /// Walks `crawler` along `heading` at `pace` of its run speed, unless that
-/// is blocked or steps into the light: then it stands, facing the player at
-/// the light's edge, scared. Whether it walks.
+/// is blocked or steps over its fear's edge: then it stands, held at the
+/// edge. Whether it walks. Its patrol's walk: it keeps its ledge.
 fn walk(world: &mut World, crawler: Entity, heading: f32, pace: f32) -> bool {
     if into_light(world, crawler, heading) {
-        rest(world, crawler);
-        if let Some((_, at)) = player(world) {
-            face(world, crawler, at.x);
-        }
-        scare(world, crawler);
+        hold(world, crawler);
         return false;
     }
-    if blocked(world, crawler, heading) {
-        rest(world, crawler);
+    stride(world, crawler, heading, pace)
+}
+
+/// Goes along `heading` at `pace` in its chase, its search or its way
+/// home: held at its fear's edge as its walk is, else hopping, leaping and
+/// stepping down what it can by its [`HOPS`], chittering at each hop or
+/// leap. Whether it moves.
+fn scuttle(world: &mut World, crawler: Entity, heading: f32, pace: f32) -> bool {
+    if into_light(world, crawler, heading) {
+        hold(world, crawler);
         return false;
     }
-    if let Some(mine) = world.get_mut::<Enemy>(crawler) {
-        mine.heading = heading;
+    let went = hop::scurry(world, crawler, heading, pace, &HOPS);
+    if matches!(went, Ahead::Hop | Ahead::Leap)
+        && let Some(at) = centre(world, crawler)
+    {
+        audio::play(world, Sound::CrawlerHopped, at);
     }
-    if let Some(controller) = world.get_mut::<PlatformerController>(crawler) {
-        controller.set_run(heading * pace);
-    }
-    true
+    went.moves()
 }
 
 /// On patrol it walks its ledge, turning at each end, at walls and, on a
-/// leash, once that far from its home.
+/// leash, once that far from its home; afraid, it backs out first.
 pub fn patrol(world: &mut World, crawler: Entity) {
+    if afraid(world, crawler) {
+        retreat(world, crawler);
+        return;
+    }
     let Some(mine) = world.get::<Enemy>(crawler).copied() else {
         return;
     };
@@ -142,10 +221,7 @@ pub fn patrol(world: &mut World, crawler: Entity) {
             heading = -heading;
         }
     }
-    let grounded = world
-        .get::<PlatformerController>(crawler)
-        .is_some_and(PlatformerController::grounded);
-    if !grounded {
+    if !grounded(world, crawler) {
         rest(world, crawler);
         return;
     }
@@ -157,11 +233,16 @@ pub fn patrol(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The chase: toward the player while it sees it, winding up a lunge once
-/// within [`LUNGE_RANGE`] across and no more than [`LUNGE_RISE`] above it,
-/// unless the staff light burns, which it keeps out of; it searches once it
-/// loses sight.
+/// The chase: afraid, it backs out first; else toward the player while it
+/// sees it, hopping and leaping on its way, winding up a lunge once within
+/// [`LUNGE_RANGE`] across and no more than [`LUNGE_RISE`] above it, unless
+/// the staff light burns, whose fear's edge it keeps behind; it searches
+/// once it loses sight. In the air it keeps its run.
 pub fn chase(world: &mut World, crawler: Entity) {
+    if afraid(world, crawler) {
+        retreat(world, crawler);
+        return;
+    }
     if !sees(world, crawler) {
         go(world, crawler, EnemyState::Search);
         return;
@@ -169,24 +250,19 @@ pub fn chase(world: &mut World, crawler: Entity) {
     let (Some((_, target)), Some(at)) = (player(world), centre(world, crawler)) else {
         return;
     };
-    let grounded = world
-        .get::<PlatformerController>(crawler)
-        .is_some_and(PlatformerController::grounded);
+    if !grounded(world, crawler) {
+        return;
+    }
     let across = target.x - at.x;
     let lit = light(world).is_some();
     let rise = at.y - target.y;
-    if grounded
-        && !lit
-        && across.abs() <= LUNGE_RANGE
-        && rise <= LUNGE_RISE
-        && -rise <= 2.0 * LUNGE_RANGE
-    {
+    if !lit && across.abs() <= LUNGE_RANGE && rise <= LUNGE_RISE && -rise <= 2.0 * LUNGE_RANGE {
         face(world, crawler, target.x);
         go(world, crawler, EnemyState::WindUp);
         rest(world, crawler);
         return;
     }
-    walk(world, crawler, across.signum(), 1.0);
+    scuttle(world, crawler, across.signum(), 1.0);
 }
 
 /// Its tell: it rears and hisses.
@@ -199,9 +275,17 @@ pub fn enter_windup(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The tell lasts [`TELL_SECS`], then the lunge.
+/// The tell lasts [`TELL_SECS`], then the lunge; afraid, it spends its
+/// strike and chases again, so it backs out.
 pub fn windup(world: &mut World, crawler: Entity) {
     rest(world, crawler);
+    if afraid(world, crawler) {
+        if let Some(brain) = world.get_mut::<Brain>(crawler) {
+            brain.strike = None;
+        }
+        go(world, crawler, EnemyState::Chase);
+        return;
+    }
     if elapsed(world, crawler) >= TELL_SECS - 1e-4 {
         go(world, crawler, EnemyState::Attack);
     }
@@ -225,17 +309,19 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
 /// The lunge ends when it lands, or after [`LUNGE_MOST`].
 pub fn attack(world: &mut World, crawler: Entity) {
     let t = elapsed(world, crawler);
-    let grounded = world
-        .get::<PlatformerController>(crawler)
-        .is_some_and(PlatformerController::grounded);
-    if (t > 0.15 && grounded) || t >= LUNGE_MOST {
+    if (t > 0.15 && grounded(world, crawler)) || t >= LUNGE_MOST {
         go(world, crawler, EnemyState::Recover);
     }
 }
 
-/// Walks toward `point`'s column: its search's or its home's. Whether it is
-/// there, or can go no nearer.
+/// Goes toward `point`'s column, hopping and leaping on its way: its
+/// search's or its home's; afraid, it backs out first. Whether it is there,
+/// or can go no nearer.
 pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
+    if afraid(world, crawler) {
+        retreat(world, crawler);
+        return false;
+    }
     let (Some(point), Some(at)) = (point, centre(world, crawler)) else {
         rest(world, crawler);
         return true;
@@ -245,24 +331,29 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
         rest(world, crawler);
         return true;
     }
-    !walk(world, crawler, across.signum(), SEARCH_PACE)
+    if !grounded(world, crawler) {
+        return false;
+    }
+    !scuttle(world, crawler, across.signum(), SEARCH_PACE)
         && !into_light(world, crawler, across.signum())
 }
 
 /// Its clip for `state`: the lunge's three, its coil through the tell, its
-/// stretch through the leap and its landing through the recovery, else its
-/// scare while it shows one, else its walk.
+/// stretch through the leap and its landing through the recovery; a hop in
+/// the air; its retreat while it backs out of its fear, its scare while it
+/// holds at the edge or stands cornered; else its walk.
 #[must_use]
-pub fn clip(state: EnemyState, scared: bool) -> &'static str {
-    if state == EnemyState::WindUp {
-        "crawler_windup"
-    } else if state == EnemyState::Attack {
-        "crawler_lunge"
-    } else if state == EnemyState::Recover {
-        "crawler_recover"
-    } else if scared {
-        "crawler_scared"
-    } else {
-        "crawler_walk"
+pub fn clip(world: &World, crawler: Entity, state: EnemyState) -> &'static str {
+    let moving = world
+        .get::<Velocity>(crawler)
+        .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
+    match state {
+        EnemyState::WindUp => "crawler_windup",
+        EnemyState::Attack => "crawler_lunge",
+        EnemyState::Recover => "crawler_recover",
+        _ if !grounded(world, crawler) => "crawler_hop",
+        _ if moving && afraid(world, crawler) => "crawler_retreat",
+        _ if scared(world, crawler) => "crawler_scared",
+        _ => "crawler_walk",
     }
 }

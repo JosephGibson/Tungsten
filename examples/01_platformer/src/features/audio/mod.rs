@@ -155,6 +155,8 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::TomeArcaneTaken => occurrence::<71>,
         Sound::Bounded => occurrence::<72>,
         Sound::BeetlePloughed => occurrence::<73>,
+        Sound::CrawlerRetreated => occurrence::<74>,
+        Sound::CrawlerHopped => occurrence::<75>,
     }
 }
 

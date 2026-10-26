@@ -15,8 +15,9 @@
 //! machine and sets a frozen one's touch aside, the difficulty's factor on
 //! health and damage, a frozen flyer's
 //! fall, a bat's roost, a troll's hold and throws, a goblin's throws, its
-//! stab, its hops, its fidgets and its flight, the deaths' bursts, their
-//! clips and the troll's bar. A run keeps its placed
+//! stab, its fidgets and its flight, a crawler's fear of the light and its
+//! retreat, the walkers' hops and leaps ([`hop`]), the deaths' bursts,
+//! their clips and the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
 //! places more, [`SUMMON_CAP`] at most, the oldest going.
 
@@ -27,6 +28,7 @@ pub mod crawler;
 pub mod draw;
 pub mod drops;
 pub mod goblin;
+pub mod hop;
 pub mod systems;
 pub mod troll;
 pub mod wisp;

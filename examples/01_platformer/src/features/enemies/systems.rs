@@ -732,7 +732,7 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
     let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
     let clip = match mine.kind {
         EnemyKind::Wisp => wisp::clip(state),
-        EnemyKind::Crawler => crawler::clip(state, crawler::scared(world, enemy)),
+        EnemyKind::Crawler => crawler::clip(world, enemy, state),
         EnemyKind::Beetle => beetle::clip(state),
         EnemyKind::Bat => bat::clip(world, enemy, state),
         EnemyKind::Troll => {

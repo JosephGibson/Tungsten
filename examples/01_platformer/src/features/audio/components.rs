@@ -193,11 +193,15 @@ pub enum Sound {
     Bounded,
     /// A beetle's charge setting a body moving out of its way (e01foes).
     BeetlePloughed,
+    /// A crawler backing out of the staff light's fear, and its hop or
+    /// leap (e01foes).
+    CrawlerRetreated,
+    CrawlerHopped,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 74] = [
+    pub const ALL: [Sound; 76] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -272,6 +276,8 @@ impl Sound {
         Sound::TomeArcaneTaken,
         Sound::Bounded,
         Sound::BeetlePloughed,
+        Sound::CrawlerRetreated,
+        Sound::CrawlerHopped,
     ];
 
     /// Its cue event's name.
@@ -352,6 +358,8 @@ impl Sound {
             Sound::TomeArcaneTaken => "tome_arcane_taken",
             Sound::Bounded => "bounded",
             Sound::BeetlePloughed => "beetle_ploughed",
+            Sound::CrawlerRetreated => "crawler_retreated",
+            Sound::CrawlerHopped => "crawler_hopped",
         }
     }
 }

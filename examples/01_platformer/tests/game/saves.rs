@@ -2070,6 +2070,16 @@ fn as_schema_14(old: &mut Value) {
     }
 }
 
+/// What schema 17 makes of an older save (e01foes): each crawler's
+/// `move_speed` base at its run's.
+fn as_schema_17(old: &mut Value) {
+    for enemy in old["enemies"].as_array_mut().unwrap() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(crawler::MOVE_SPEED));
+        }
+    }
+}
+
 /// What schema 15 makes of an older save's props in the start's new wall
 /// (01 (k)): each one whose box met the wall stands where the migration set
 /// it, at rest. `a_schema_13_save_moves_its_crates_out_of_the_start_wall`
@@ -2319,6 +2329,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_12(&mut old);
     as_schema_13(&mut old);
     as_schema_14(&mut old);
+    as_schema_17(&mut old);
     let to = |id: u64| {
         schema_12_id(schema_10_id(if id >= from {
             id + save::SHIFT_9
@@ -2510,6 +2521,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_12(&mut old);
     as_schema_13(&mut old);
     as_schema_14(&mut old);
+    as_schema_17(&mut old);
     let to = |id: u64| schema_12_id(schema_10_id(id));
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
@@ -2789,6 +2801,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     as_schema_12(&mut old);
     as_schema_13(&mut old);
     as_schema_14(&mut old);
+    as_schema_17(&mut old);
     let (migrated, dir) = migrate("schema-11", FIXTURE);
     // Every ID from the first placed orb's on moved past the goblins, every
     // one under it kept, and nothing else.
@@ -2861,6 +2874,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     as_schema_13(&mut old);
     as_schema_14(&mut old);
     as_schema_15(&mut old, &json(&migrated));
+    as_schema_17(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -2926,6 +2940,7 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     // And nothing else.
     as_schema_14(&mut old);
     as_schema_15(&mut old, &new);
+    as_schema_17(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &new, "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -2990,6 +3005,7 @@ fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
     }
     as_schema_14(&mut old);
     as_schema_15(&mut old, &json(&migrated));
+    as_schema_17(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &|id| id, &mut moved);
     assert!(moved.is_empty(), "{moved:?}");
@@ -3339,6 +3355,40 @@ fn a_schema_15_save_loads_with_no_tome_and_every_book_on_the_map() {
     let player = player_entity(&fresh);
     assert!(fresh.world().get::<Tomes>(player).is_none());
     assert_eq!(books(&fresh), TomeKind::ALL);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_16_save_loads_its_crawlers_at_their_new_run() {
+    let (harness, _) = run();
+    // The 0.109 code's save: a capture without the new fields, numbered
+    // 16, its crawlers' run at 0.109's 160.
+    let mut data = json(&capture(&harness));
+    let mut crawlers = 0;
+    for enemy in data["enemies"].as_array_mut().unwrap() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(160.0);
+            crawlers += 1;
+        }
+    }
+    assert!(crawlers >= 1, "the map's crawlers");
+    let (migrated, dir) = migrate("schema-16", &as_envelope(&data, 16));
+    let runs: Vec<Option<f32>> = migrated
+        .enemies
+        .iter()
+        .filter(|enemy| enemy.kind == EnemyKind::Crawler)
+        .map(|enemy| enemy.stats.base(Stats::MOVE_SPEED))
+        .collect();
+    assert_eq!(runs, vec![Some(crawler::MOVE_SPEED); crawlers]);
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
+    let loaded: Vec<Option<f32>> = fresh
+        .world()
+        .query::<(&Enemy, &Stats)>()
+        .filter(|(enemy, _)| enemy.kind == EnemyKind::Crawler)
+        .map(|(_, stats)| stats.get(Stats::MOVE_SPEED))
+        .collect();
+    assert_eq!(loaded, vec![Some(crawler::MOVE_SPEED); crawlers], "at 210");
     let _ = std::fs::remove_dir_all(dir);
 }
 

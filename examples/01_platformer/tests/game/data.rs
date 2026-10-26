@@ -118,6 +118,13 @@ fn every_restated_constant_matches_its_data() {
     ] {
         assert_eq!(number(&frost, pointer), crawler::DAMAGE, "{pointer}");
     }
+    // And its run, its `move_speed` stat and its run speed, likewise.
+    for pointer in [
+        "/components/stats/move_speed",
+        "/components/platformer_controller/run_speed",
+    ] {
+        assert_eq!(number(&frost, pointer), crawler::MOVE_SPEED, "{pointer}");
+    }
     assert_eq!(body("iron_scrap").0, SCRAP_HALF);
     assert_eq!(body("bowling_ball").0, Vec2::splat(BALL_RADIUS));
     assert_eq!(body("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
