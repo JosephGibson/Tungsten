@@ -1,7 +1,8 @@
 //! The tomes (01 (l)) on books a test sets in the level's empty sky: the
 //! panel over a book in reach, the take with its burst and sound, and the
 //! strip in the order taken; the pact's half health and its shield, which
-//! takes a hit first, comes back after one and falls with the kill row.
+//! takes a hit first, comes back after one and falls with the kill row;
+//! and bounding's paid air jumps with their look and sound.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::level::KILL_Y;
@@ -13,7 +14,7 @@ use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::Entity;
 use tungsten::core::ui::Visibility;
-use tungsten::kit::{DamageRequest, Health, Shield};
+use tungsten::kit::{DamageRequest, Health, PlatformerController, Shield, Stats, Tags};
 use tungsten::testing::UiHarness;
 
 use super::{bursts, centre, ground, run, stand, teleport};
@@ -257,4 +258,102 @@ fn the_kill_row_kills_a_player_behind_a_full_shield() {
     let world = harness.world();
     assert!(world.get::<Health>(player).unwrap().is_dead());
     assert_eq!(shield(&harness, player), Some(0.0));
+}
+
+fn mana(harness: &UiHarness, player: Entity) -> f32 {
+    let stats = harness.world().get::<Stats>(player).expect("stats");
+    stats.base("mana").expect("mana")
+}
+
+fn set_mana(harness: &mut UiHarness, player: Entity, mana: f32) {
+    let stats = harness.world_mut().get_mut::<Stats>(player).expect("stats");
+    stats.set_base("mana", mana);
+}
+
+/// A player in the sky holding bounding, the mana's regeneration held by
+/// the `casting` tag, so each step's mana is the jumps' alone.
+fn bounder() -> (UiHarness, Entity) {
+    let (mut harness, player) = sky();
+    let eye = centre(&harness, player);
+    book(&mut harness, TomeKind::Bounding, eye + Vec2::new(30.0, 0.0));
+    harness.step(1);
+    assert_eq!(interact(&mut harness, Sound::TomeBoundingTaken), 1);
+    let world = harness.world_mut();
+    world.get_mut::<Tags>(player).unwrap().insert("casting");
+    let controller = world.get::<PlatformerController>(player).unwrap();
+    assert_eq!(controller.air_jump_cost(), Some(("mana", 25.0)));
+    (harness, player)
+}
+
+/// Presses jump for a frame and releases it the next, then lets the rise
+/// run on for two more: whether it jumped, and the sounds of each kind it
+/// made meanwhile.
+fn jump(harness: &mut UiHarness, player: Entity, sounds: &[Sound]) -> (bool, Vec<usize>) {
+    let mut heard = vec![0; sounds.len()];
+    let mut jumped = false;
+    harness.harness_mut().press_action("jump");
+    for frame in 0..4 {
+        if frame == 1 {
+            harness.harness_mut().release_action("jump");
+        }
+        harness.step(1);
+        let world = harness.world();
+        jumped |= world.get::<PlatformerController>(player).unwrap().jumped();
+        for (count, sound) in heard.iter_mut().zip(sounds) {
+            *count += harness
+                .harness()
+                .events::<Sounded>()
+                .filter(|sounded| sounded.sound == *sound)
+                .count();
+        }
+    }
+    (jumped, heard)
+}
+
+#[test]
+fn bounding_pays_25_for_each_air_jump_past_the_second_and_refuses_24() {
+    let (mut harness, player) = bounder();
+    assert_eq!(mana(&harness, player), 100.0);
+    for what in ["the ground jump", "the free air jump"] {
+        assert!(jump(&mut harness, player, &[]).0, "{what}");
+        assert_eq!(mana(&harness, player), 100.0, "{what} is free");
+    }
+    for left in [75.0, 50.0] {
+        assert!(jump(&mut harness, player, &[]).0);
+        assert_eq!(mana(&harness, player), left, "a bound costs 25");
+    }
+    set_mana(&mut harness, player, 25.0);
+    assert!(jump(&mut harness, player, &[]).0, "exactly 25 pays");
+    assert_eq!(mana(&harness, player), 0.0);
+    set_mana(&mut harness, player, 24.0);
+    let (jumped, heard) = jump(&mut harness, player, &[Sound::NoMana]);
+    assert!(!jumped, "24 is refused");
+    assert_eq!(heard, [1], "one refusal a press");
+    assert_eq!(mana(&harness, player), 24.0);
+}
+
+#[test]
+fn a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump() {
+    let (mut harness, player) = bounder();
+    let sounds = [Sound::AirJumped, Sound::Bounded];
+    assert_eq!(
+        jump(&mut harness, player, &sounds).1,
+        [0, 0],
+        "the ground jump"
+    );
+    assert_eq!(
+        jump(&mut harness, player, &sounds).1,
+        [1, 0],
+        "the double jump"
+    );
+    let doubled = bursts(&harness, "ex10_double_jump");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks"), 0);
+    assert_eq!(jump(&mut harness, player, &sounds).1, [0, 1], "the bound");
+    assert_eq!(bursts(&harness, "ex10_bound_sparks"), 1);
+    assert_eq!(bursts(&harness, "ex10_bound_trail"), 1);
+    assert_eq!(
+        bursts(&harness, "ex10_double_jump"),
+        doubled,
+        "no double jump's burst"
+    );
 }

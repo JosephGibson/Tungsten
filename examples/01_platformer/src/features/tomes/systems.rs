@@ -3,18 +3,19 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, World};
-use tungsten::kit::{Health, Lifetime, Modifier, Shield, Stats};
+use tungsten::kit::{Health, Lifetime, Modifier, PlatformerController, Shield, Stats};
 
 use super::components::{TomeKind, Tomes};
 use super::{
-    INTERACT, PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z,
-    nearest,
+    BOUND_CENTRE, BOUND_CLIP, BOUND_COST, BOUND_SECS, BOUND_SPARKS, BOUND_TRAIL, BOUND_Z, INTERACT,
+    PACT_DELAY, PACT_RECHARGE, PACT_SHIELD, PACT_SOURCE, TAKE_CENTRE, TAKE_SECS, TAKE_Z, nearest,
 };
 use crate::features::audio;
+use crate::features::audio::components::Sound;
 use crate::features::run::Run;
 use crate::features::spells::hud;
 use crate::game::GAMEPLAY;
-use crate::shared::{despawn_tree, just_pressed, spawn_key_burst};
+use crate::shared::{despawn_tree, just_pressed, spawn_burst, spawn_key_burst};
 use crate::shell;
 
 /// The run's player while it lives.
@@ -50,7 +51,7 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
     }
     apply(world, player, kind);
     despawn_tree(world, book);
-    clip(world, kind, at);
+    one_shot(world, kind.take_clip(), at - TAKE_CENTRE, TAKE_SECS, TAKE_Z);
     spawn_key_burst(world, kind.take_sparks(), at);
     audio::play(world, kind.sound(), at);
 }
@@ -59,7 +60,8 @@ pub fn take(world: &mut World, taken: &mut Option<u64>) {
 /// health for good, a `Mul(0.5)` on `max_health` that `stats_apply` writes
 /// into `Health` in the take's own step, keeping its share, and a full
 /// shield of [`PACT_SHIELD`] that recharges [`PACT_RECHARGE`] a second
-/// [`PACT_DELAY`] seconds after a hit.
+/// [`PACT_DELAY`] seconds after a hit. Bounding: an air jump past the
+/// controller's free one costs [`BOUND_COST`] mana, with no cap.
 fn apply(world: &mut World, player: Entity, kind: TomeKind) {
     match kind {
         TomeKind::Pact => {
@@ -69,23 +71,37 @@ fn apply(world: &mut World, player: Entity, kind: TomeKind) {
             let shield = Shield::new(PACT_SHIELD).with_recharge(PACT_RECHARGE, PACT_DELAY);
             world.insert(player, shield);
         }
-        TomeKind::Bounding | TomeKind::Arcane => {}
+        TomeKind::Bounding => {
+            if let Some(controller) = world.get_mut::<PlatformerController>(player) {
+                controller.set_air_jump_cost(Some(("mana", BOUND_COST)));
+            }
+        }
+        TomeKind::Arcane => {}
     }
 }
 
-/// `kind`'s take clip, once, centred on `centre`, owned by gameplay and
-/// gone when it ends.
-fn clip(world: &mut World, kind: TomeKind, centre: Vec2) {
+/// A bound from `feet`, in place of the double jump's burst and whoosh:
+/// its ring opening under them, its sparks and its trail, and its sound.
+pub fn bound(world: &mut World, feet: Vec2) {
+    one_shot(world, BOUND_CLIP, feet - BOUND_CENTRE, BOUND_SECS, BOUND_Z);
+    spawn_burst(world, BOUND_SPARKS, feet);
+    spawn_burst(world, BOUND_TRAIL, feet);
+    audio::play(world, Sound::Bounded, feet);
+}
+
+/// The clip `clip` once, its sprite's top-left at `corner` at `z`, owned by
+/// gameplay and gone `secs` later, as it ends.
+fn one_shot(world: &mut World, clip: &str, corner: Vec2, secs: f32, z: i32) {
     let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
         return;
     };
-    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{}_0", kind.take_clip())));
-    sprite.z_order = TAKE_Z;
+    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    sprite.z_order = z;
     world.spawn_with((
-        Transform::from_position(centre - TAKE_CENTRE),
+        Transform::from_position(corner),
         sprite,
-        AnimationState::new(kind.take_clip()),
-        Lifetime::new(TAKE_SECS),
+        AnimationState::new(clip),
+        Lifetime::new(secs),
         SceneEntity { state_id: GAMEPLAY },
     ));
 }

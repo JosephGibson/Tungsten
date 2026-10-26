@@ -23,7 +23,7 @@ Every action is in `input.json` and rebindable in Settings → Controls.
 | Action | Keyboard and mouse | Pad |
 | --- | --- | --- |
 | Move | A, D, ←, → | Left stick |
-| Jump, and the air jump | Space | South |
+| Jump, the air jump, and with the tome of bounding a bound for 25 mana | Space | South |
 | Shoot, held to repeat | Left mouse button | RT |
 | Reload the gun | R | West |
 | Take a tome, in reach of its panel | E | East |
@@ -107,7 +107,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Running, jumping, the air jump, coyote time and the jump buffer, and walking bodies aside | `tungsten::kit::PlatformerController` (`kit::motion::platformer`) and its shove (`with_shove`) | `player.json`'s `platformer_controller`, `air_jumps: 1`; the shove, 60 at 0.5, set in code at a spawn and a load (`player::shove_bodies`) | The jump puffs, the landing dust, the land and air-jump clips, and the jump's shove off the bodies over and beside the wizard (`player_unstick`, `features/player/`) |
 | Input into intent | `tungsten::kit::ActionInput` | `player.json`'s `action_input` | |
 | Aim at the cursor | `tungsten::kit::Aim` | `player.json`'s `aim`, from the cursor | |
-| Health, hits and their window | `tungsten::kit::Health` and `kit::DamageRequest` (`kit::damage`) | `player.json`'s `health`, 100 at every difficulty | The kill row and the world box (`features/player/systems.rs`) |
+| Health, hits and their window | `tungsten::kit::Health` and `kit::DamageRequest` (`kit::damage`) | `player.json`'s `health`, 100 at every difficulty | The kill row and the world box's sides and foot (`features/player/systems.rs`) |
 | Lava, and the spikes and fire the level's data may place (none today) | `tungsten::kit::ContactDamage`, lava's 16 fire a touch on the player and the enemies, pushing past the window (`with_push_always`), the others' 34 | `ex10_lava_<n>.json` (from `tools/level.py`) | Lava's surface in physics layer 4, its crust and what falls in, taken (`features/level/lava.rs`); lava never goes out (`Hazard::lava`) |
 | The fire's motion | `tungsten::kit::Oscillator` (`kit::motion::oscillator`) | `ex10_fire_<n>.json` | Its glow, trail and drips |
 | Moving platforms | `tungsten::kit::PathFollower` (`kit::motion::path`) | `ex10_platform_<n>.json` | |
@@ -146,6 +146,7 @@ Each mechanic is the kit's where the kit has it, set up in a prefab under `tools
 | Drops | `loot_tables`, the `killed` cue's `roll`, `kit::Pickup` with a magnet, `kit::Lifetime` | `data/loot_tables/*.json`, `health_orb.json`, `mana_orb.json`, `data/effects/orb_heal.json`, `orb_mana.json`; `player.json`'s `pickup_radius` | The pickup's effect in the overlap phase, the orbs' save IDs, a dropped orb's place where its enemy fell, its fall, pop and blink (`features/enemies/drops.rs`) |
 | The troll's bar | none | | Drawn over its head (`features/enemies/draw.rs`) |
 | The tomes' books: their bob, glow and motes | `kit::Oscillator`, `spawn_children` | `tome_pact.json`, `tome_bounding.json`, `tome_arcane.json`, `tome_motes_<kind>.json`; the map's `tomes` layer | The panel over the book in reach, the take with its clip, burst and sound, the player's `Tomes` and the HUD's strip of the tomes held (`features/tomes/`, `features/spells/hud.rs`) |
+| The tome of bounding | `kit::PlatformerController`'s paid air jump (`set_air_jump_cost`), 25 mana past the free one, with no cap, saved in the controller's own form | | The bound's ring, sparks, trail and sound, the refusal's sound once a press, and the world box with no top for the player, whom gravity brings back (`features/tomes/`, `features/player/systems.rs`) |
 | The demonic pact | `kit::Shield` with its recharge, a `Mul(0.5)` on `max_health` from the source `tome.pact`, which `stats_apply` writes into `Health` keeping its share | | Applied in the take's step, before `stats_apply`; the kill row and the world box hit for health and shield; the shield's layer and "+shield" on the health bar (`features/tomes/`, `features/player/systems.rs`, `features/spells/hud.rs`) |
 
 01's own rules are game code: the toys (small and bowling balls, iron blocks and their scraps, the black holes and their broom, the missile's blast and its push, the force push's wave), the crates' fire and the kegs' fuses and blasts (`features/props/`), the jump's shove (`features/player/`), the bodies' element rules (burning and its spread, chill and freezing, the endings, crushing, impact damage, putting out fire) and the sprays (`features/toys/`, `features/elements/`), the strike and its conduction (`features/lightning/`), the gun's hits (`features/gun/`), the dummy's end (`features/dummy/`) and the enemies' sight, alerts, holds and throws (`features/enemies/`). The level's backdrop, far strips, night sky, light, glows and cursor are its presentation (`features/level/`), and the ambience loops are its audio's (`features/audio/`).

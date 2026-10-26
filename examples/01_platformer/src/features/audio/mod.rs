@@ -153,6 +153,7 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::TomePactTaken => occurrence::<69>,
         Sound::TomeBoundingTaken => occurrence::<70>,
         Sound::TomeArcaneTaken => occurrence::<71>,
+        Sound::Bounded => occurrence::<72>,
     }
 }
 

@@ -1133,5 +1133,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "bounded",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_bound_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
   }
 ]

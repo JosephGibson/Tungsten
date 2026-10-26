@@ -189,11 +189,13 @@ pub enum Sound {
     TomePactTaken,
     TomeBoundingTaken,
     TomeArcaneTaken,
+    /// An air jump paid for in mana under the tome of bounding.
+    Bounded,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 72] = [
+    pub const ALL: [Sound; 73] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -266,6 +268,7 @@ impl Sound {
         Sound::TomePactTaken,
         Sound::TomeBoundingTaken,
         Sound::TomeArcaneTaken,
+        Sound::Bounded,
     ];
 
     /// Its cue event's name.
@@ -344,6 +347,7 @@ impl Sound {
             Sound::TomePactTaken => "tome_pact_taken",
             Sound::TomeBoundingTaken => "tome_bounding_taken",
             Sound::TomeArcaneTaken => "tome_arcane_taken",
+            Sound::Bounded => "bounded",
         }
     }
 }

@@ -5,7 +5,9 @@
 //! so the map spawns all three and a load takes off those the player
 //! holds. The player's [`Tomes`] lists the kinds taken, in order, which the
 //! HUD's strip shows. The demonic pact halves the maximum health for good
-//! for a shield over it that comes back after a hit.
+//! for a shield over it that comes back after a hit; the tome of bounding
+//! lets every air jump past the double jump cost mana, with no cap, each
+//! one a bound with its ring and its sound.
 
 pub mod components;
 pub mod systems;
@@ -39,6 +41,19 @@ pub const PACT_SOURCE: &str = "tome.pact";
 pub const PACT_SHIELD: f32 = 50.0;
 pub const PACT_RECHARGE: f32 = 20.0;
 pub const PACT_DELAY: f32 = 3.0;
+/// What a bound, an air jump past the double jump, costs (Q40: arcane power
+/// leaves it as it is).
+pub const BOUND_COST: f32 = 25.0;
+/// The bound's ring under the feet: its clip, its centre from its
+/// top-left, which stands on the feet, its game seconds, six frames at
+/// 0.05 s, and its draw order, over the wizard's; and the sparks ringing
+/// out from it and the motes it leaves as he rises.
+pub const BOUND_CLIP: &str = "ex10_bound_ring";
+pub const BOUND_CENTRE: Vec2 = Vec2::new(32.0, 16.0);
+pub const BOUND_SECS: f32 = 0.3;
+pub const BOUND_Z: i32 = 11;
+pub const BOUND_SPARKS: &str = "ex10_bound_sparks";
+pub const BOUND_TRAIL: &str = "ex10_bound_trail";
 
 /// The tomes as a plugin: the `tome` component the books' prefabs name,
 /// the take in the tick phase before the kit's `stats_apply`, so what a

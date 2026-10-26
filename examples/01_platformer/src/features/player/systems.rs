@@ -24,6 +24,7 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
 use crate::features::level::{KILL_Y, WORLD_MAX, WORLD_MIN};
+use crate::features::tomes;
 use crate::shared::{body_centre, just_pressed, spawn_burst};
 
 /// The one-shot clips, each with a left-facing twin named `<clip>_left`:
@@ -204,21 +205,35 @@ pub fn unstick(world: &mut World) {
 /// level's bodies live in.
 #[must_use]
 pub fn escaped(at: Vec2, collider: Option<&Collider>) -> bool {
-    let (min, max) = collider.map_or((at, at), |collider| {
+    let (min, max) = extent(at, collider);
+    max.y < WORLD_MIN.y || past_the_sides_or_foot(min, max)
+}
+
+/// The box of a body at `at` with `collider`, min and max; its point with
+/// none.
+fn extent(at: Vec2, collider: Option<&Collider>) -> (Vec2, Vec2) {
+    collider.map_or((at, at), |collider| {
         let centre = at + collider.offset;
         let half = match collider.shape {
             Shape::Aabb { half_extents } => half_extents,
             Shape::Circle { radius } => Vec2::splat(radius),
         };
         (centre - half, centre + half)
-    });
-    max.x < WORLD_MIN.x || min.x > WORLD_MAX.x || max.y < WORLD_MIN.y || min.y > WORLD_MAX.y
+    })
+}
+
+/// Whether a box, min to max, lies wholly past the level box's sides or its
+/// foot: what the player's check reads, since a bound may carry the wizard
+/// over its top, and gravity always brings him back.
+fn past_the_sides_or_foot(min: Vec2, max: Vec2) -> bool {
+    max.x < WORLD_MIN.x || min.x > WORLD_MAX.x || min.y > WORLD_MAX.y
 }
 
 /// `player_bounds`, in the overlap phase: a player whose body falls past
-/// the kill row, or leaves the level's box, takes a hit of all its health
-/// and the pact's shield over it. The hit is periodic, so it lands inside
-/// the invulnerability window.
+/// the kill row, or leaves the level's box by a side or its foot, takes a
+/// hit of all its health and the pact's shield over it; over the box's top,
+/// where a bound may carry him, he falls back. The hit is periodic, so it
+/// lands inside the invulnerability window.
 pub fn bounds(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -236,7 +251,8 @@ pub fn bounds(world: &mut World) {
     let amount = health.current() + world.get::<Shield>(player).map_or(0.0, Shield::current);
     let collider = world.get::<Collider>(player);
     let below = body_centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
-    if below || escaped(at, collider) {
+    let (min, max) = extent(at, collider);
+    if below || past_the_sides_or_foot(min, max) {
         DamageRequest::new(player, amount)
             .with_periodic(true)
             .queue(world);
@@ -333,11 +349,11 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
 }
 
 /// `player_moves`, in the react phase: a jump puffs at the feet it left
-/// from and an air jump bursts there with its whoosh and tucks; a landing
-/// after the first
-/// raises dust and holds the land clip. A dead player's body drops where it
-/// died and falls as its controller falls, its input locked for good
-/// (F13), and its clips and bursts end.
+/// from and an air jump bursts there with its whoosh and tucks, a bound
+/// with its ring and its sound, and a bound refused for mana sounds its
+/// refusal; a landing after the first raises dust and holds the land clip.
+/// A dead player's body drops where it died and falls as its controller
+/// falls, its input locked for good (F13), and its clips and bursts end.
 pub fn moves(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -381,6 +397,7 @@ pub fn moves(world: &mut World) {
         controller.air_jumped(),
         controller.grounded(),
     );
+    let (bound, refused) = (controller.paid_air_jumped(), controller.air_jump_refused());
     let feet = BODY_OFFSET + Vec2::new(0.0, PLAYER_HALF.y);
     let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
     let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
@@ -403,12 +420,18 @@ pub fn moves(world: &mut World) {
         moves.tuck = false;
     }
     moves.grounded = grounded;
-    if jumped {
+    if jumped && bound {
+        tomes::systems::bound(world, from + feet);
+    } else if jumped {
         let burst = if air { AIR_JUMP_BURST } else { JUMP_PUFF };
         spawn_burst(world, burst, from + feet);
         if air {
             audio::play(world, Sound::AirJumped, from + feet);
         }
+    }
+    // A bound the mana could not pay for, once a press.
+    if refused {
+        audio::play(world, Sound::NoMana, at + feet);
     }
     if landed {
         spawn_burst(world, LANDING_DUST, at + feet);
