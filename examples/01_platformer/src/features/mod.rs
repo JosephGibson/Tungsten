@@ -14,4 +14,5 @@ pub mod player;
 pub mod props;
 pub mod run;
 pub mod spells;
+pub mod tomes;
 pub mod toys;

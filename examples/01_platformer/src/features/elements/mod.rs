@@ -69,6 +69,9 @@ pub const BODY_HIT_FLOOR: f32 = 2.0;
 /// The least mass that shatters a frozen body it meets hard: a bowling
 /// ball's, so small balls flying in a pile break no ice.
 pub const SHATTER_MASS: f32 = 8.0;
+/// The closing speed that sets a keg off ([`blows_keg`]): a keg dropped
+/// about 150 px onto the ground.
+pub const KEG_SPEED: f32 = 1050.0;
 /// Seconds cold puts a fire hazard out for.
 pub const DOUSE_SECS: f32 = 4.0;
 /// Most emitters over a burning pile's surface: 64 pairs.
@@ -196,6 +199,16 @@ pub fn body_hit(mass: f32, closing: f32) -> f32 {
     };
     let amount = (BODY_HIT_K * mass * (closing - BODY_HIT_SPEED)).min(BODY_HIT_MOST);
     if amount < BODY_HIT_FLOOR { 0.0 } else { amount }
+}
+
+/// Whether a keg meeting something of `mass` (infinite for a tile or a
+/// body that does not move) at `closing` px/s goes off: at [`KEG_SPEED`]
+/// against anything of [`SHATTER_MASS`] or more, a bowling ball, iron or
+/// the ground; faster in proportion against a lighter body; never against
+/// one under [`LIGHT_MASS`], a small ball or a goblin's bomb (Q46).
+#[must_use]
+pub fn blows_keg(mass: f32, closing: f32) -> bool {
+    mass >= LIGHT_MASS && closing * (mass / SHATTER_MASS).min(1.0) >= KEG_SPEED
 }
 
 /// How frozen a body is, 0 to 1.

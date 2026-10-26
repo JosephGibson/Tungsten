@@ -1,9 +1,12 @@
 //! The HUD, in the shell's theme, built as the template's sample builds its
 //! bar: at the top left the health bar over the mana bar, each a dark
 //! track whose fill clips its own liquid, scrolled by the game clock, with
-//! a bright edge where it stands, beside its "current / max" in mono; at a
+//! a bright edge where it stands, beside its "current / max" in mono; the
+//! pact's shield a lighter liquid over health's from the left, as wide as
+//! its share of the maximum, with its "+shield" after the readout; at a
 //! third or less, health's liquid pulses and its track's border beats in
-//! the danger colour. At the bottom centre the spell bar: each slot its
+//! the danger colour; under them, from the first take, the tomes held as
+//! tiles in the order taken. At the bottom centre the spell bar: each slot its
 //! icon tile, its live key on a corner plate, its cooldown's sweep and its
 //! charges, the selected slot ringed in the focus colour and one the player
 //! cannot pay for greyed, a white flash as a long cooldown ends and a red
@@ -13,7 +16,9 @@
 //! reload runs "reloading", the tile greyed under the reload's sweep and
 //! every cartridge spent. Above the lane where the shell's toasts rise. Two
 //! roots gameplay owns, drawn and frozen under a pause, which the pointer
-//! passes through.
+//! passes through; and a third, hidden under a pause, the panel over a
+//! book in reach: its name, what it gives, what it costs and the key that
+//! takes it.
 
 use std::f32::consts::{FRAC_PI_2, PI, TAU};
 
@@ -22,13 +27,13 @@ use tungsten::RootCover;
 use tungsten::core::text::{TextAlign, TextWrap};
 use tungsten::core::ui::{
     Align, Anchor, Edges, Justify, LayoutStyle, Sizing, StyleOverrides, UiLayer, UiTree, UiVertex,
-    WidgetId,
+    Visibility, WidgetId,
 };
 use tungsten::core::{
-    ActionMap, AssetRegistry, Binding, DataRegistry, Entity, ScaleFactor, SpriteAssetId, Time,
-    World,
+    ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, ScaleFactor,
+    SpriteAssetId, Time, World,
 };
-use tungsten::kit::{Abilities, Ability, Health, Stats};
+use tungsten::kit::{Abilities, Ability, Health, Shield, Stats};
 
 use super::components::{Spell, Spellbook};
 use super::{SLOT_ACTIONS, SLOTS, mana, summon_type};
@@ -36,6 +41,7 @@ use crate::features::gun::components::Reload;
 use crate::features::gun::{self, MAGAZINE, RELOAD_SECS};
 use crate::features::level::systems::drawn_time;
 use crate::features::run::Run;
+use crate::features::tomes::{self, BOOK_CENTRE, TomeKind};
 use crate::shell::{self, theme, widgets};
 
 /// A bar: its bordered track, the fill as wide as the share left, which
@@ -86,15 +92,48 @@ pub struct Magazine {
     pub rounds: [WidgetId; ROUNDS],
 }
 
-/// The HUD's sprites: the gun's icon, the bars' liquids and the
-/// cartridges, live and spent.
+/// The pact's shield on the health bar: a layer in its well from the left,
+/// as wide as the shield's share of the maximum, which clips the shield's
+/// liquid, with its own edge, and its "+shield" after the health's
+/// readout; both collapsed while it holds none.
+#[derive(Debug, Clone, Copy)]
+pub struct ShieldBar {
+    pub fill: WidgetId,
+    pub strip: WidgetId,
+    pub edge: WidgetId,
+    pub text: WidgetId,
+}
+
+/// The tomes held, under the bars: a tile a tome, in the order taken, the
+/// row collapsed until the first.
+#[derive(Debug, Clone, Copy)]
+pub struct Strip {
+    pub row: WidgetId,
+    pub tiles: [WidgetId; 3],
+}
+
+/// The panel over a book in reach: its root, the book's name, what it
+/// gives and what it costs, over the key that takes it.
+#[derive(Debug, Clone, Copy)]
+pub struct Panel {
+    pub root: WidgetId,
+    pub name: WidgetId,
+    pub gives: WidgetId,
+    pub costs: WidgetId,
+}
+
+/// The HUD's sprites: the gun's icon, the bars' and the shield's liquids,
+/// the cartridges, live and spent, and the tomes' tiles in
+/// [`TomeKind::ALL`]'s order.
 #[derive(Debug, Clone, Copy)]
 pub struct Art {
     pub gun: SpriteAssetId,
     pub health: SpriteAssetId,
     pub mana: SpriteAssetId,
+    pub shield: SpriteAssetId,
     pub live: SpriteAssetId,
     pub spent: SpriteAssetId,
+    pub tomes: [SpriteAssetId; 3],
 }
 
 /// The HUD's widgets and what it shows over time: a `World` resource while
@@ -106,12 +145,15 @@ pub struct Hud {
     /// The bottom centre's root, with the spell bar.
     pub bar: WidgetId,
     pub health: Meter,
+    pub shield: ShieldBar,
     pub mana: Meter,
+    pub strip: Strip,
     pub slots: [Slot; 10],
     /// The summon's name over slot 0, and its plate.
     pub name_plate: WidgetId,
     pub name: WidgetId,
     pub magazine: Magazine,
+    pub panel: Panel,
     pub art: Art,
     /// The UI's scale the HUD was sized for: an art pixel is a whole
     /// number of screen pixels at it, and the bars sit on whole pixels.
@@ -142,6 +184,13 @@ const MANA_LIQUID: &str = "ex10_hud_liquid_mana";
 const HEALTH_FLOW: f32 = 14.0;
 const MANA_FLOW: f32 = 9.0;
 const MANA_PHASE: f32 = 40.0;
+/// The pact's shield: its liquid, its flow, slower than health's, its
+/// edge, its readout's colour and the room "+50" takes in mono.
+const SHIELD_LIQUID: &str = "ex10_hud_liquid_shield";
+const SHIELD_FLOW: f32 = 6.0;
+const SHIELD_EDGE: [u8; 4] = [200, 240, 255, 255];
+const SHIELD_TEXT: [u8; 4] = [150, 215, 255, 255];
+const SHIELD_READOUT: f32 = 36.0;
 /// The bright edge where each liquid stands, and the well under it.
 const HEALTH_EDGE: [u8; 4] = [255, 150, 140, 255];
 const MANA_EDGE: [u8; 4] = [152, 192, 255, 255];
@@ -205,6 +254,16 @@ const VEIL: [u8; 4] = [11, 12, 16, 170];
 const GREYED: [u8; 4] = [120, 120, 128, 150];
 const WHITE: [u8; 4] = [255; 4];
 const CLEAR: [u8; 4] = [0; 4];
+/// The book's panel: its width, the name's size and line, the alpha the
+/// theme's background takes behind it, its border's width and the room
+/// between it and the book's top.
+const PANEL_WIDTH: f32 = 280.0;
+const PANEL_NAME: [f32; 2] = [17.0, 22.0];
+const PANEL_ALPHA: u8 = 230;
+const PANEL_BORDER: f32 = 1.0;
+const PANEL_LIFT: f32 = 10.0;
+/// What the panel's last line says, the key from the player's bindings.
+const TAKE_PROMPT: &str = "{action:interact} Take";
 
 /// Builds the HUD for the run gameplay starts: its roots owned by gameplay,
 /// shown and frozen under a pause.
@@ -215,8 +274,10 @@ pub fn start(world: &mut World) {
         gun: assets.intern_sprite(GUN_ICON),
         health: assets.intern_sprite(HEALTH_LIQUID),
         mana: assets.intern_sprite(MANA_LIQUID),
+        shield: assets.intern_sprite(SHIELD_LIQUID),
         live: assets.intern_sprite(LIVE_ROUND),
         spent: assets.intern_sprite(SPENT_ROUND),
+        tomes: TomeKind::ALL.map(|kind| assets.intern_sprite(kind.icon())),
     };
     let scale = ui_scale(world);
     let tree = world.resource_mut::<UiTree>();
@@ -226,6 +287,7 @@ pub fn start(world: &mut World) {
     let stack = shell::stack(world);
     stack.own_root(hud.meters, RootCover::Show);
     stack.own_root(hud.bar, RootCover::Show);
+    stack.own_root(hud.panel.root, RootCover::Hide);
     world.insert_resource(hud);
     update(world);
 }
@@ -320,7 +382,9 @@ fn build(
     tree.set_hit_testable(meters, false);
     widgets::fill(tree, meters, faded(colors.background, METERS_ALPHA));
     let health = meter(tree, meters, art.health, HEALTH_EDGE);
+    let shield = shield_bar(tree, &health, art.shield);
     let mana = meter(tree, meters, art.mana, MANA_EDGE);
+    let strip = strip(tree, meters, art);
     let style = LayoutStyle::row().with_gap(theme::GAP).anchored(
         Anchor::BottomCenter,
         Vec2::new(0.0, theme::MARGIN + TOAST_LANE + theme::GAP),
@@ -332,15 +396,19 @@ fn build(
     let (name_plate, name) = name_plate(tree, slots[9].ring);
     divider(tree, bar);
     let magazine = magazine(tree, bar, art);
+    let panel = book_panel(tree);
     let hud = Hud {
         meters,
         bar,
         health,
+        shield,
         mana,
+        strip,
         slots: slots.try_into().expect("ten slots"),
         name_plate,
         name,
         magazine,
+        panel,
         art,
         scale,
         ready: [0.0; 10],
@@ -363,6 +431,7 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
         .iter()
         .map(|slot| slot.tile)
         .chain([hud.magazine.tile])
+        .chain(hud.strip.tiles)
     {
         resize(tree, id, tile, tile);
     }
@@ -380,6 +449,12 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
         }
         resize(tree, meter.edge, texel, height * texel);
     }
+    let strip = LIQUID[0] * LIQUID_TILES as f32;
+    resize(tree, hud.shield.strip, strip * texel, height * texel);
+    for tile in tree.children(hud.shield.strip).to_vec() {
+        resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+    }
+    resize(tree, hud.shield.edge, texel, height * texel);
     for round in hud.magazine.rounds {
         resize(tree, round, BULLET[0] * texel, BULLET[1] * texel);
     }
@@ -428,6 +503,121 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
         edge: stand,
         text,
     }
+}
+
+/// The shield's layer in `health`'s well, over its fill, and its readout
+/// after the health's, collapsed; [`size`] gives them their sizes.
+fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> ShieldBar {
+    let style = LayoutStyle::default()
+        .with_size(Sizing::Percent(0.0), Sizing::Percent(100.0))
+        .anchored(Anchor::TopStart, Vec2::ZERO);
+    let fill = tree.panel(health.well, style);
+    widgets::fill(tree, fill, CLEAR);
+    tree.set_clip_children(fill, true);
+    let strip = tree.panel(
+        fill,
+        LayoutStyle::row().anchored(Anchor::TopStart, Vec2::ZERO),
+    );
+    widgets::fill(tree, strip, CLEAR);
+    for _ in 0..LIQUID_TILES {
+        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+    }
+    let edge = tree.panel(
+        fill,
+        LayoutStyle::default().anchored(Anchor::TopEnd, Vec2::ZERO),
+    );
+    widgets::fill(tree, edge, SHIELD_EDGE);
+    let row = tree.parent(health.text).expect("the health bar's row");
+    let text = readout(tree, row, READOUT_TEXT, SHIELD_READOUT);
+    widgets::restyle(tree, text, |text| text.color = Some(SHIELD_TEXT));
+    widgets::show(tree, fill, false);
+    widgets::show(tree, text, false);
+    ShieldBar {
+        fill,
+        strip,
+        edge,
+        text,
+    }
+}
+
+/// The tomes' row under the bars, collapsed, its tiles in the icon
+/// family; [`size`] sizes them as the spell bar's.
+fn strip(tree: &mut UiTree, parent: WidgetId, art: Art) -> Strip {
+    let row = tree.panel(parent, LayoutStyle::row().with_gap(theme::GAP / 2.0));
+    widgets::fill(tree, row, CLEAR);
+    let tiles = art
+        .tomes
+        .map(|icon| tree.image(row, icon, Vec2::splat(ICON), LayoutStyle::default()));
+    widgets::show(tree, row, false);
+    Strip { row, tiles }
+}
+
+/// The book's panel, a root of its own placed by [`panel`], hidden.
+fn book_panel(tree: &mut UiTree) -> Panel {
+    let colors = tree.theme().tokens.colors;
+    let style = LayoutStyle::column()
+        .with_gap(theme::GAP / 2.0)
+        .with_padding(theme::GAP)
+        .with_size(Sizing::Px(PANEL_WIDTH), Sizing::Auto)
+        .anchored(Anchor::TopStart, Vec2::ZERO);
+    let root = tree.add_root(UiLayer::Game, style);
+    tree.set_hit_testable(root, false);
+    let background = faded(colors.background, PANEL_ALPHA);
+    edged(tree, root, colors.border, background, PANEL_BORDER);
+    let name = widgets::display(tree, root, "", PANEL_NAME);
+    widgets::restyle(tree, name, |text| text.align = None);
+    let gives = tree.label(root, "");
+    let costs = tree.label(root, "");
+    widgets::danger(tree, costs);
+    widgets::prompt_row(tree, root, TAKE_PROMPT);
+    tree.set_visibility(root, Visibility::Hidden);
+    Panel {
+        root,
+        name,
+        gives,
+        costs,
+    }
+}
+
+/// Shows the panel for `book`, its kind and its centre, over the book and
+/// kept on screen, or hides it with none: what `tomes_panel` sets after
+/// the camera's update.
+pub fn panel(world: &mut World, book: Option<(TomeKind, Vec2)>) {
+    let Some(panel) = world.get_resource::<Hud>().map(|hud| hud.panel) else {
+        return;
+    };
+    let Some((kind, centre)) = book else {
+        world
+            .resource_mut::<UiTree>()
+            .set_visibility(panel.root, Visibility::Hidden);
+        return;
+    };
+    let scale = ui_scale(world);
+    let top = centre - Vec2::new(0.0, BOOK_CENTRE.y);
+    let at = world.resource::<CameraState>().world_to_screen(top) / scale;
+    let tree = world.resource_mut::<UiTree>();
+    for (id, text) in [
+        (panel.name, kind.name()),
+        (panel.gives, kind.gives()),
+        (panel.costs, kind.costs()),
+    ] {
+        if widgets::text_of(tree, id) != text {
+            tree.set_plain_text(id, text);
+        }
+    }
+    // The last layout's size, over the book's top and inside the view.
+    let size = tree
+        .rect(panel.root)
+        .map_or(Vec2::new(PANEL_WIDTH, 0.0), |rect| rect.size());
+    let view = tree.layer_viewport(UiLayer::Game).unwrap_or(size);
+    let margin = snap(theme::MARGIN, scale);
+    let most = (view - size - Vec2::splat(margin)).max(Vec2::splat(margin));
+    let corner =
+        Vec2::new(at.x - size.x * 0.5, at.y - size.y - PANEL_LIFT).clamp(Vec2::splat(margin), most);
+    let corner = Vec2::new(snap(corner.x, scale), snap(corner.y, scale));
+    let style = tree.layout_style(panel.root).cloned().unwrap_or_default();
+    tree.set_layout_style(panel.root, style.anchored(Anchor::TopStart, corner));
+    tree.set_visibility(panel.root, Visibility::Visible);
 }
 
 /// Edges of `color`, `width` wide, round a `background` box.
@@ -601,7 +791,9 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
     let charges = ability
         .charges()
         .map(|(most, _, _)| (abilities.charges(name).unwrap_or(most), most));
-    let payable = ability.cost().is_none_or(|(_, cost)| mana >= cost)
+    let payable = ability
+        .cost_for(world.get::<Stats>(player))
+        .is_none_or(|(_, cost)| mana >= cost)
         && charges.is_none_or(|(left, _)| left > 0);
     Some(Shown {
         payable,
@@ -609,6 +801,13 @@ fn shown(world: &World, player: Entity, spell: Spell, mana: f32) -> Option<Shown
         cooldown,
         charges,
     })
+}
+
+/// Whether `player` can pay for a use of `spell` now, its cost scaled by
+/// the player's `spell_cost` and a charge left: what greys a slot.
+#[must_use]
+pub fn payable(world: &World, player: Entity, spell: Spell) -> bool {
+    shown(world, player, spell, mana(world, player)).is_some_and(|shown| shown.payable)
 }
 
 /// The key a slot shows for `action`: its first key or mouse binding, else
@@ -672,6 +871,7 @@ pub fn update(world: &mut World) {
         .get::<Health>(player)
         .map_or((0.0, 1.0), |health| (health.current(), health.max()));
     let shown_health = whole_health(world.get::<Health>(player));
+    let shield = world.get::<Shield>(player).map_or(0.0, Shield::current);
     let held = mana(world, player);
     let most = world
         .get::<Stats>(player)
@@ -680,6 +880,10 @@ pub fn update(world: &mut World) {
     let selected = world.get::<Spellbook>(player).map(|book| book.slot);
     let states = SLOTS.map(|slot| slot.and_then(|spell| shown(world, player, spell, held)));
     let keys = SLOT_ACTIONS.map(|action| key_of(world.get_resource::<ActionMap>(), action));
+    let mut taken = [None; 3];
+    for (slot, kind) in taken.iter_mut().zip(tomes::held(world, player)) {
+        *slot = Some(*kind);
+    }
     let rounds = gun::rounds(world, player);
     let reload = world.get::<Reload>(player).map(|reload| reload.left);
     let summoned = summon_type(world);
@@ -700,6 +904,14 @@ pub fn update(world: &mut World) {
     let beat = 0.5 + 0.5 * (time * TAU * PULSE_HZ).sin();
     let health_flow = time * HEALTH_FLOW;
     fill(tree, hud.health, health, shown_health, health_flow, texel);
+    shield_fill(
+        tree,
+        hud.shield,
+        shield / health.1.max(f32::EPSILON),
+        shield,
+        time,
+        texel,
+    );
     let border = if low && beat > 0.5 {
         colors.danger
     } else {
@@ -769,6 +981,16 @@ pub fn update(world: &mut World) {
             }
         }
     }
+    widgets::show(tree, hud.strip.row, taken[0].is_some());
+    for (tile, kind) in hud.strip.tiles.into_iter().zip(taken) {
+        widgets::show(tree, tile, kind.is_some());
+        if let Some(kind) = kind {
+            let art = hud.art.tomes[kind.index()];
+            if tree.image_sprite(tile) != Some(art) {
+                tree.set_image(tile, art, Vec2::splat(ICON));
+            }
+        }
+    }
     hud.named = (hud.named - dt).max(0.0);
     let name = titled(summoned.name);
     if widgets::text_of(tree, hud.name) != name {
@@ -826,6 +1048,34 @@ pub fn whole_health(health: Option<&Health>) -> f32 {
             health.current().ceil()
         }
     })
+}
+
+/// Fills the shield's layer to `share` of the bar, capped at its width,
+/// scrolls its liquid by the game clock `time`, and writes `+shield`,
+/// rounded up, after the health's readout; with no shield, both collapse.
+fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time: f32, texel: f32) {
+    let held = shield.ceil();
+    widgets::show(tree, bar.fill, held > 0.0);
+    widgets::show(tree, bar.text, held > 0.0);
+    if held <= 0.0 {
+        return;
+    }
+    let text = format!("+{held}");
+    if widgets::text_of(tree, bar.text) != text {
+        tree.set_plain_text(bar.text, &text);
+    }
+    let width = Sizing::Percent((share * 100.0).clamp(0.0, 100.0));
+    if tree
+        .layout_style(bar.fill)
+        .is_some_and(|style| style.width != width)
+    {
+        let style = LayoutStyle::default()
+            .with_size(width, Sizing::Percent(100.0))
+            .anchored(Anchor::TopStart, Vec2::ZERO);
+        tree.set_layout_style(bar.fill, style);
+    }
+    let scrolled = (time * SHIELD_FLOW).rem_euclid(LIQUID[0]) * texel;
+    tree.set_translation(bar.strip, Vec2::new(-scrolled, 0.0));
 }
 
 /// Writes `shown / max` into `meter`, fills it to `current / max` and

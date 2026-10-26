@@ -150,6 +150,10 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::LavaChilled => occurrence::<66>,
         Sound::LavaCracked => occurrence::<67>,
         Sound::LavaMelted => occurrence::<68>,
+        Sound::TomePactTaken => occurrence::<69>,
+        Sound::TomeBoundingTaken => occurrence::<70>,
+        Sound::TomeArcaneTaken => occurrence::<71>,
+        Sound::Bounded => occurrence::<72>,
     }
 }
 

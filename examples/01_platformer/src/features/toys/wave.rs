@@ -24,7 +24,7 @@ use crate::shared::{body_centre, spawn_burst};
 /// The front's speed and life, so its reach; its sector's half angle at its
 /// start and at its end; and where it starts ahead of the wizard's centre,
 /// at the push gesture's hand.
-pub const WAVE_SPEED: f32 = 1200.0;
+pub const WAVE_SPEED: f32 = 1620.0;
 pub const WAVE_SECS: f32 = 0.3;
 pub const WAVE_RANGE: f32 = WAVE_SPEED * WAVE_SECS;
 pub const WAVE_HALF_FROM: f32 = 15.0 * std::f32::consts::PI / 180.0;
@@ -34,11 +34,11 @@ pub const WAVE_START: f32 = 24.0;
 /// each by its kind's weight ([`KindInfo::wave`](enemies::KindInfo::wave)),
 /// a walker's held through a lock of [`WAVE_LOCK`]; a body's along the aim
 /// and a lift, over its mass; and the share of it left at its reach.
-pub const WAVE_THROW: f32 = 500.0;
-pub const WAVE_HOP: f32 = 300.0;
+pub const WAVE_THROW: f32 = 750.0;
+pub const WAVE_HOP: f32 = 450.0;
 pub const WAVE_LOCK: f32 = 0.35;
-pub const WAVE_SHOVE: f32 = 1800.0;
-pub const WAVE_BODY_HOP: f32 = 500.0;
+pub const WAVE_SHOVE: f32 = 2700.0;
+pub const WAVE_BODY_HOP: f32 = 750.0;
 pub const WAVE_FAR: f32 = 0.5;
 /// The samples across the front that raise its dust.
 pub const DUST_SAMPLES: usize = 9;

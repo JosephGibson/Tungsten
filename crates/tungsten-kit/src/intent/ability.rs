@@ -182,8 +182,9 @@ struct Charges {
 /// ```
 ///
 /// `trigger` `manual`, `cost` none, `cooldown` 0, `charges` none and
-/// `target` `self` by default; `payload` at least one, run in order. The
-/// load checks each prefab (with a `linear_motion` when it spawns with a
+/// `target` `self` by default; `payload` at least one, run in order. A
+/// cost's optional `scale` names a stat whose value for the user multiplies
+/// the amount ([`cost_for`](Self::cost_for)). The load checks each prefab (with a `linear_motion` when it spawns with a
 /// speed), each effect and each target's tags.
 ///
 /// # Examples
@@ -215,6 +216,8 @@ struct Charges {
 pub struct Ability {
     trigger: Trigger,
     cost: Option<(String, f32)>,
+    /// The stat whose value multiplies the cost; only with a cost.
+    cost_scale: Option<String>,
     cooldown: f32,
     charges: Option<Charges>,
     target: AbilityTarget,
@@ -236,6 +239,7 @@ impl Ability {
         Self {
             trigger: Trigger::Manual,
             cost: None,
+            cost_scale: None,
             cooldown: 0.0,
             charges: None,
             target: AbilityTarget::Itself,
@@ -286,6 +290,28 @@ impl Ability {
             "Ability::with_cost: amount must be finite and >= 0 (got {amount})"
         );
         self.cost = Some((stat.to_owned(), amount));
+        self
+    }
+
+    /// The ability, its cost scaled by its user's value of the stat
+    /// `stat`: 2 spends twice the amount, 0 nothing; a user without it pays
+    /// the amount.
+    ///
+    /// # Panics
+    ///
+    /// When `stat` is not `[a-z][a-z0-9_]*` or the ability has no cost.
+    #[must_use]
+    #[track_caller]
+    pub fn with_cost_scale(mut self, stat: &str) -> Self {
+        assert!(
+            valid_stat(stat),
+            "Ability::with_cost_scale: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
+        );
+        assert!(
+            self.cost.is_some(),
+            "Ability::with_cost_scale: the ability has no cost to scale; call `with_cost` first"
+        );
+        self.cost_scale = Some(stat.to_owned());
         self
     }
 
@@ -387,12 +413,34 @@ impl Ability {
         &self.trigger
     }
 
-    /// The stat and amount a use spends, when it costs.
+    /// The stat and amount a use spends, when it costs: the data's amount,
+    /// before any [scale](Self::with_cost_scale).
     #[must_use]
     pub fn cost(&self) -> Option<(&str, f32)> {
         self.cost
             .as_ref()
             .map(|(stat, amount)| (stat.as_str(), *amount))
+    }
+
+    /// The stat its cost scales by, when it has one.
+    #[must_use]
+    pub fn cost_scale(&self) -> Option<&str> {
+        self.cost_scale.as_deref()
+    }
+
+    /// The stat and amount a use by an entity with `stats` spends, which
+    /// [`use_ability`] checks and takes: the amount times the entity's
+    /// value of the [scale](Self::with_cost_scale) stat, at least 0, or
+    /// the amount when it lacks the stat or there is no scale.
+    #[must_use]
+    pub fn cost_for(&self, stats: Option<&Stats>) -> Option<(&str, f32)> {
+        let (stat, amount) = self.cost()?;
+        let factor = self
+            .cost_scale
+            .as_deref()
+            .and_then(|scale| stats?.get(scale))
+            .unwrap_or(1.0);
+        Some((stat, (amount * factor).max(0.0)))
     }
 
     /// Seconds between uses.
@@ -572,6 +620,8 @@ impl Default for TriggerDef {
 struct CostDef {
     stat: String,
     amount: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scale: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -580,6 +630,8 @@ struct CostFields {
     stat: String,
     #[serde(deserialize_with = "non_negative")]
     amount: f32,
+    #[serde(default)]
+    scale: Option<String>,
 }
 
 impl TryFrom<CostFields> for CostDef {
@@ -592,9 +644,17 @@ impl TryFrom<CostFields> for CostDef {
                 fields.stat
             ));
         }
+        if let Some(scale) = &fields.scale
+            && !valid_stat(scale)
+        {
+            return Err(format!(
+                "scale: `{scale}` is not a stat name (`[a-z][a-z0-9_]*`)"
+            ));
+        }
         Ok(Self {
             stat: fields.stat,
             amount: fields.amount,
+            scale: fields.scale,
         })
     }
 }
@@ -756,6 +816,7 @@ impl TryFrom<AbilityDef> for Ability {
                 TriggerDef::Action(slot) => Trigger::Action(slot),
                 TriggerDef::Interval(seconds) => Trigger::Interval(seconds),
             },
+            cost_scale: def.cost.as_ref().and_then(|cost| cost.scale.clone()),
             cost: def.cost.map(|cost| (cost.stat, cost.amount)),
             cooldown: def.cooldown,
             charges: def.charges.map(|c| Charges {
@@ -801,7 +862,11 @@ impl From<Ability> for AbilityDef {
                 Trigger::Action(slot) => TriggerDef::Action(slot),
                 Trigger::Interval(seconds) => TriggerDef::Interval(seconds),
             },
-            cost: ability.cost.map(|(stat, amount)| CostDef { stat, amount }),
+            cost: ability.cost.map(|(stat, amount)| CostDef {
+                stat,
+                amount,
+                scale: ability.cost_scale,
+            }),
             cooldown: ability.cooldown,
             charges: ability.charges.map(|c| ChargesDef {
                 max: c.max,
@@ -1111,7 +1176,8 @@ pub enum Used {
     NotReady,
     /// No charge is left.
     NoCharge,
-    /// The cost's stat is missing or its base is below the amount.
+    /// The cost's stat is missing or its base is below the amount, as
+    /// [`Ability::cost_for`] scales it.
     NoCost,
     /// Nothing to aim at, or no direction for a payload that needs one.
     NoTarget,
@@ -1125,8 +1191,8 @@ pub enum Used {
 /// `random` over the live, undespawned entities whose tags pass the filter
 /// within range, not dead by a [`Health`]; `aim` and a `spawn` with a speed
 /// or an `impulse` need a direction, from the entity's [`Aim`], else its
-/// [`Intent`]'s aim), and nothing is spent without one. Then the cost
-/// comes off the stat's base, a charge and the cooldown are spent, the
+/// [`Intent`]'s aim), and nothing is spent without one. Then the cost, as
+/// [`Ability::cost_for`] scales it, comes off the stat's base, a charge and the cooldown are spent, the
 /// payloads run in order, [`AbilityUsed`] goes out and the trace records
 /// `ability_used`. A payload that cannot run (no `CommandBuffer` for a
 /// spawn, no [`Knockback`](crate::Knockback) for an impulse, no [`Hitbox`]
@@ -1376,11 +1442,12 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
     if charges == Some(0) {
         return Used::NoCharge;
     }
-    if let Some((stat, amount)) = &ability.cost {
+    let cost = ability.cost_for(world.get::<Stats>(entity));
+    if let Some((stat, amount)) = cost {
         let base = world
             .get::<Stats>(entity)
             .and_then(|stats| stats.base(stat));
-        if !base.is_some_and(|base| base >= *amount) {
+        if !base.is_some_and(|base| base >= amount) {
             return Used::NoCost;
         }
     }
@@ -1393,7 +1460,7 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
         return Used::NoTarget;
     }
     // Spend.
-    if let Some((stat, amount)) = &ability.cost
+    if let Some((stat, amount)) = cost
         && let Some(stats) = world.get_mut::<Stats>(entity)
         && let Some(base) = stats.base(stat)
     {
@@ -1749,6 +1816,14 @@ fn describe_abilities(world: &mut World) {
                 },
                 "taken off the base",
             ))
+            .field(
+                FieldDescription::new(
+                    "scale",
+                    FieldType::Text,
+                    "a stat whose value for the user multiplies the amount, at least 0; the amount for a user without it; none when left out",
+                )
+                .default("null"),
+            )
             .sample(r#"{ "stat": "mana", "amount": 10 }"#)
             .roundtrip(round_trip::<CostDef>),
         ComponentDescription::new(ABILITY_CHARGES, "Uses in hand, a use taking one, time giving them back.")

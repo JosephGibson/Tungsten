@@ -11,11 +11,12 @@ TOOLS = Path(__file__).resolve().parent
 # Black-hole layers are drawn larger so their soft edges hold up when scaled.
 EFFECT_SIZES = {name: (96, 96) for name in (
     'vortex', 'vortex_core', 'accretion_disk', 'photon_ring', 'infall_streak')}
-# The spell, gun and summon icons, 36 px tiles (01 (h)'s icon family), which
-# the HUD shows at whole-number scale.
+# The spell, gun, summon and tome icons, 36 px tiles (01 (h)'s icon
+# family), which the HUD shows at whole-number scale.
 ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
          'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy',
-         'wisp', 'crawler', 'beetle', 'bat', 'troll', 'goblin', 'crate', 'keg')
+         'wisp', 'crawler', 'beetle', 'bat', 'troll', 'goblin', 'crate', 'keg',
+         'tome_pact', 'tome_bounding', 'tome_arcane')
 ICON_SIZES = {'icon_' + name: (36, 36) for name in ICONS}
 # The elements' and weapons' art off the 64 px grid: the bolt's segments, the
 # status overlays' small and large classes (the medium class is 64), the
@@ -60,6 +61,12 @@ ELEMENT_SIZES = {
     'hud_bullet_spent': (5, 11),
     # The title's twinkle.
     'title_star': (15, 15),
+    # e01tomes: the books' idle frames and their takes, the bound's ring
+    # and the shield's liquid.
+    **{f'tome_{kind}_{clip}_{i}': size for kind in ('pact', 'bounding', 'arcane')
+       for clip, (size, frames) in (('idle', ((32, 32), 4)), ('take', ((64, 64), 6))) for i in range(frames)},
+    **{f'bound_ring_{i}': (64, 32) for i in range(6)},
+    'hud_liquid_shield': (128, 10),
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat
@@ -90,6 +97,10 @@ def validate_palette(palette):
 
 
 PALETTE = validate_palette(json.loads((TOOLS / 'palette.json').read_text()))
+# The symbols a lit sprite's emissive map takes, matched by colour: the warm
+# lights and the glowing greens, and e01tomes' ember, pale cyan and violet
+# over white, which no other art uses.
+GLOW = 'yYCcЪЧЯЭЫ'
 
 
 def rng_for(name):
@@ -136,7 +147,7 @@ def relief_heights(im):
 def auxiliary(im, relief=False):
     normal = Image.new('RGBA', im.size, (128, 128, 255, 0))
     emissive = Image.new('RGBA', im.size, (0, 0, 0, 255))
-    glow = {PALETTE[c] for c in 'yYCc'}
+    glow = {PALETTE[c] for c in GLOW}
     alpha = im.getchannel('A')
     heights = relief_heights(im) if relief else None
     # Fully opaque tiles repeat, so their slopes wrap across the tile edge.
@@ -180,7 +191,7 @@ def build_art():
         build_balls, build_dummy, build_enemies, build_fire_missile, build_fireball, build_player,
     )
     from backdrops import build_backdrops
-    from effects import build_effects
+    from effects import build_effects, build_tome_art
     from props import build_props
     from scenery import build_scenery
     from terrain import build_terrain
@@ -196,6 +207,7 @@ def build_art():
     build_terrain(images, lit)
     build_backdrops(images, lit)
     build_effects(images)
+    build_tome_art(images, lit)
     from polish_art import enrich_art
     enrich_art(images,lit,animations)
     return images,lit,animations,anchors

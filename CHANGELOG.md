@@ -6,6 +6,36 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.109.0] - 2026-10-26
+
+Summary: two example 01 stops from the owner's notes (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.7a and §3.8), the first release under the operating rules (`D-215`, `D-216`), with two opt-in kit additions and no engine, template or shell change: `e01quick2`, the second quick fixes (kegs weighed by what strikes them, a harder, farther push, a longer flamethrower, sight that bodies block, every enemy conducting, bolts that meet an enemy across its art, cheaper summons on the arrows); `e01tomes`, three hidden tomes (the demonic pact, bounding and arcane power) on the kit's paid air jumps and stat-scaled ability costs; save schema 16.
+
+### Added
+
+- **The kit's paid air jump** (`motion/platformer.rs`): `PlatformerController::with_air_jump_cost` and `set_air_jump_cost` charge a stat's amount for each air jump past the free ones, with no cap; a buffered press pays, `paid_air_jumped` reports the jump and `air_jump_refused` a refusal, once a press. Off by default, the recipes hash unmoved; the free count set at run time and an unlimited free count wait in `ROADMAP.md`'s Later.
+- **An ability cost's `scale`** (`intent/ability.rs`): a stat whose value for the user multiplies the cost (`Ability::with_cost_scale`, `cost_scale`, `cost_for`); the plain amount for a user without it, none when left out.
+- **Example 01's tomes** (feedback §3.8, `features/tomes/`, `tome_*` prefabs): three books in the hollow over the dark pool (`pact_shelf`), the ravine's shaft east of the zigzag (`bound_shelf`) and the aqueduct's bay between the piers at 116 and 120 (`arcane_ledge`), each reached by the stock double jump, which the route test makes. A panel over the book in reach names it, its gift and its cost over "E Take"; the take plays its clip, sparks and sound, and the HUD's strip shows the tomes held in order.
+- **The demonic pact**: halves the maximum health in the take's step for a shield of 50 that comes back 3 s after a hit at 20 a second, a light-blue layer over the health bar with its "+50"; the kill row kills through it.
+- **Bounding**: 25 mana for each air jump past the double jump, with its ring, sparks, trail and sound, the refusal sounding once; the player's world box has no top, since gravity brings a bound back.
+- **Arcane power**: the ten slots' costs doubled through `spell_cost`, the staff light's burn and the gun excepted, and every hit a spell makes itself doubled through `spell_power`, its build-up with it: the blast 20 → 40, the strike 40 → 80, the chain's first jump 28 → 56, a flamethrower pulse 3 → 6.
+- **The tomes' art and sounds** (`tools/art.py`, `tools/effects.py`, `tools/sfx.py`): each book's idle and take clips with normal and emissive maps, motes and take sparks, the bound's ring, sparks and trail, the HUD's shield liquid, three tome icons and four sounds, from an asset session whose sheet the owner accepted in one round.
+
+### Changed
+
+- **The force push** (feedback §3.7a, `toys/wave.rs`): the wave runs at 1,620 px/s for 0.3 s to 486 px, its throw, shove and hops half again as hard (at 1.5 tiles a crawler 243 px, a goblin 209), its crescent larger with the reach.
+- **The flamethrower**: it reaches 5.9 tiles, its puffs and sparks 30 % faster to fill it (`flame_spray`).
+- **Sight** (`enemies/systems.rs`): crates, kegs, iron, scrap, dummies and frozen enemies hide the player; the one ray looks past up to eight other bodies, the rest of the line clear past them. A check across a full pit costs 144 µs, a 480 px line 22 µs, from 14.8 and 2.4, dev profile.
+- **Lightning's chain** (`lightning/mod.rs`): every live enemy conducts, and a receiver whose shock factor is 0 stops the chain.
+- **The summons**: on Arrow Down and Up (down the next, as the wheel), the D-pad unchanged, at 10 mana, with 8 dummies and 10 enemies at most; the map's own crates and kegs, known by a fresh run's save IDs, stand outside the caps.
+- **Example 01's save** (`save::to_16`): schema 16 keeps the tomes held and the shield, records the books taken off the map by kind rather than in `gone`, and sets a body saved inside a new support on its top.
+- **Agents push the version branch after each commit** (`D-216`, amending `D-215`): `AGENTS.md`, the operating rules, the release guide, the plans README and the `tungsten-milestone` and `tungsten-next` skills.
+- **Records**: the feedback plan's §3.7a and §3.8 landings, example 01's READMEs, DESIGN's status line and kit sections, `ROADMAP.md` and known issues; the tomes' plan, deleted when done.
+
+### Fixed
+
+- **Kegs blown by light bodies** (`elements::body_impacts`): a keg goes off at 1,050 px/s closing (a fall of about 150 px) against terrain, a still body or anything of a bowling ball's mass or more, faster in proportion against a lighter body, and never against one under 4, a small ball or a goblin's bomb; frozen shatters keep 600. A bowling ball tossed level at 700 px/s no longer sets one off, and small balls the push throws shove a keg 3–4 tiles without blowing it; the known issue goes.
+- **Bolts through the flyers' art** (`lightning/mod.rs`): a bolt passed through the bat's and the wisp's art to the ground and met the walkers only from the ground beside them; it now meets an enemy within its kind's strike width, the opaque columns of its frames about its body's centre: wisp 17, crawler and beetle 32, bat 31, troll 41, goblin 22.
+
 ## [0.108.0] - 2026-10-25
 
 Summary: the roadmap redo adopted as the plan of record after Phase 6 (plan `docs/plans/roadmap-redo.md`; `D-215`), and its H1 in place: `ROADMAP.md` replaces the 1.0 register, catalog, roadmap page and owned README fields, which are frozen behind banners; the operating rules; a commit-message hook, so agents commit from the next session; a `missing_docs` ratchet. The last release on the old pipeline. It also carries the owner's notes of 2026-10-25 as five more example stops. No engine, kit, template, shell or example code change.

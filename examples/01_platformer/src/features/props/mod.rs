@@ -9,8 +9,8 @@
 //! blast, the keg blows through the saved cascade queue
 //! (`CascadeKind::Detonation`), crediting whoever lit it. A frozen crate or
 //! keg never lights: fire on it is thermal shock. The summon slot places
-//! them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at most, the map's
-//! counted. A goblin's bomb is a lit keg in small: thrown on the world's
+//! them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at most, the map's own
+//! besides ([`map_ids`]). A goblin's bomb is a lit keg in small: thrown on the world's
 //! gravity, it rolls, its fuse turning with it, blows at [`BOMB_BLAST`]
 //! after [`FUSE_SECS`], credited to its goblin, and fizzles out at once
 //! when snuffed. A goblin's rock is a stone body that bounces and rolls and
@@ -31,6 +31,8 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::elements::DOUSE_SECS;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
+use crate::features::level;
+use crate::features::run::Run;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
 use components::{Bomb, Crate, Fuel, Keg, PropKind, Rock};
@@ -52,8 +54,9 @@ pub const BOMB_RADIUS: f32 = 6.0;
 pub const BOMB_CENTRE: Vec2 = Vec2::splat(8.0);
 pub const ROCK_RADIUS: f32 = 5.0;
 pub const ROCK_CENTRE: Vec2 = Vec2::splat(8.0);
-/// Most crates and most kegs at once, the map's counted: one placed past
-/// its cap replaces the oldest, which poofs.
+/// Most summoned crates and most summoned kegs at once, the map's own
+/// besides (Q45): one placed past its cap replaces the oldest summoned,
+/// which poofs.
 pub const CRATE_CAP: usize = 16;
 pub const KEG_CAP: usize = 8;
 /// Most rocks at once: a throw past it crumbles the oldest.
@@ -303,14 +306,32 @@ pub fn crumble(world: &mut World, rock: Entity) {
     despawn_tree(world, rock);
 }
 
+/// The save IDs of the map's own crates and kegs: a fresh run sets them
+/// down after the player and the mine's loose iron, one a marker, and a
+/// load keeps them (`run`). Empty outside a run.
+#[must_use]
+pub fn map_ids(world: &World) -> std::ops::Range<u64> {
+    let Some(player) = world
+        .get_resource::<Run>()
+        .and_then(|run| world.get::<SaveId>(run.player))
+    else {
+        return 0..0;
+    };
+    let count = |marker: &str| level::markers(world, marker).len() as u64;
+    let first = player.0 + 1 + count(level::IRON_MARKER);
+    first..first + count(level::CRATE_MARKER) + count(level::KEG_MARKER)
+}
+
 /// Places a prop of `kind` with its centre at `at`, as the summon slot
-/// does: past its kind's cap, the map's counted, the oldest, the lowest
-/// save ID, goes first in a poof.
+/// does: past its kind's cap, the map's own aside ([`map_ids`]), the
+/// oldest, the lowest save ID, goes first in a poof.
 pub fn place(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
+    let map = map_ids(world);
     let mut live: Vec<(SaveId, Entity)> = all(world)
         .into_iter()
         .filter(|&entity| self::kind(world, entity) == Some(kind))
         .filter_map(|entity| Some((*world.get::<SaveId>(entity)?, entity)))
+        .filter(|(id, _)| !map.contains(&id.0))
         .collect();
     live.sort_by_key(|(id, _)| *id);
     let surplus = (live.len() + 1).saturating_sub(cap(kind));

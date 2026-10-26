@@ -4,5 +4,11 @@
   },
   "max_mana": {
     "min": 0
+  },
+  "spell_cost": {
+    "min": 0
+  },
+  "spell_power": {
+    "min": 0
   }
 }

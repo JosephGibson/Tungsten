@@ -17,7 +17,8 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-102` | 1.0 means a complete game engine and stable library, tested by an acceptance game. Amended by `D-131`: R2 only, R1/R4 to 1.x. Superseded by `D-215`: 1.0 promises capability in four genres; example 01 is the acceptance game. |
 | `D-103` | Semver promises umbrella API, file formats and CLI; excludes direct crate/backend types. Amends `D-069`: MSRV bumps in minors. Amended by `D-153`: the default scene component names are fixed from 1.0. Superseded by `D-215`: no ledger in 0.x; the policy after 1.0 is the redo's 9.3. |
 | `D-132` | Acceptance-game map sets W6/W13 tiers; bodies on roots, tilemap builder in W16b, world labels after M3. Superseded by `D-215`: scope is the redo's §5.7. |
-| `D-215` | The roadmap redo is the plan of record after Phase 6: 01 is the acceptance game, 1.0 promises capability in four genres, H1 freezes the 1.0 records behind `ROADMAP.md`, agents commit, rules in `docs/operating-rules.md`. Supersedes `D-102`, `D-103`, `D-105`, `D-108`, `D-109`, `D-118`, `D-132`, `D-152`, `D-195`; amends `D-079`, `D-140`, `D-150`, `D-151`, `D-153`, `D-157`, `D-172`, `D-194`. |
+| `D-215` | The roadmap redo is the plan of record after Phase 6: 01 is the acceptance game, 1.0 promises capability in four genres, H1 freezes the 1.0 records behind `ROADMAP.md`, agents commit, rules in `docs/operating-rules.md`. Supersedes `D-102`, `D-103`, `D-105`, `D-108`, `D-109`, `D-118`, `D-132`, `D-152`, `D-195`; amends `D-079`, `D-140`, `D-150`, `D-151`, `D-153`, `D-157`, `D-172`, `D-194`. Amended by `D-216`: agents push the version branch after each commit. |
+| `D-216` | Agents push the version branch after each commit (`git push origin 0.NNN`, the whole command); tags, merges and every other push stay the owner's, held by a global PreToolUse push guard. Amends `D-215`. |
 
 ## Assets / Rendering
 

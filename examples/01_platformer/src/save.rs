@@ -17,7 +17,9 @@
 //! health and its wider reach, a crawler's harder touch, a troll's faster
 //! walk and the cold ladder's halved gates. Schema 15 walls the start
 //! (01 (k)) and sets a saved body from the wall, or from left of the map,
-//! on the clearing's floor.
+//! on the clearing's floor. Schema 16 keeps the tomes the player holds
+//! (01 (l)) and sets a saved body from inside one of the books' three new
+//! supports on its top.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -39,7 +41,7 @@ use tungsten::core::{
 use tungsten::kit::{
     Abilities, AilmentBuckets, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng,
     Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
-    Projectile, Resist, Source, StateMachine, Stats, Tags, TopDownMover,
+    Projectile, Resist, Shield, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
 use crate::features::dummy::{self, components::Dummy};
@@ -63,6 +65,7 @@ use crate::features::props::{
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
+use crate::features::tomes::{Tome, TomeKind, Tomes};
 use crate::features::toys::components::{
     Ball, BallHue, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
 };
@@ -217,6 +220,23 @@ const S15_PROPS: [(&str, [Vec2; 2]); 4] = [
     ("rock", [Vec2::splat(8.0), Vec2::splat(5.0)]),
 ];
 const S15_ORB: [Vec2; 2] = [Vec2::splat(12.0), Vec2::splat(12.0)];
+/// The tomes' supports, which schema 16 adds (01 (l)): `pact_shelf`,
+/// `bound_shelf` and `arcane_ledge`, each its cells' box, min and max.
+/// Frozen for the migration, as schema 15's wall is.
+pub const S16_SUPPORTS: [[Vec2; 2]; 3] = [
+    [
+        Vec2::new(231.0 * 64.0, 57.0 * 64.0),
+        Vec2::new(234.0 * 64.0, 58.0 * 64.0),
+    ],
+    [
+        Vec2::new(194.0 * 64.0, 40.0 * 64.0),
+        Vec2::new(196.0 * 64.0, 41.0 * 64.0),
+    ],
+    [
+        Vec2::new(117.0 * 64.0, 34.0 * 64.0),
+        Vec2::new(120.0 * 64.0, 35.0 * 64.0),
+    ],
+];
 
 impl SaveData for SaveGame {
     /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
@@ -233,8 +253,9 @@ impl SaveData for SaveGame {
     /// (`to_13`). Schema 14 drops the hints and moves the values 01 (i)
     /// tuned that a save keeps (`to_14`). Schema 15 sets the bodies in the
     /// start's new wall or past its boundary on the clearing's floor
-    /// (`to_15`).
-    const SCHEMA: u32 = 15;
+    /// (`to_15`). Schema 16 keeps the tomes held and sets the bodies inside
+    /// their supports on top (`to_16`).
+    const SCHEMA: u32 = 16;
 
     fn migrate(
         from: u32,
@@ -258,6 +279,7 @@ impl SaveData for SaveGame {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -268,6 +290,7 @@ impl SaveData for SaveGame {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             9 => {
@@ -277,6 +300,7 @@ impl SaveData for SaveGame {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             10 => {
@@ -285,6 +309,7 @@ impl SaveData for SaveGame {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             11 => {
@@ -292,21 +317,29 @@ impl SaveData for SaveGame {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             12 => {
                 to_13(&mut data)?;
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             13 => {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
+                to_16(&mut data)?;
                 Ok(data)
             }
             14 => {
                 to_15(&mut data)?;
+                to_16(&mut data)?;
+                Ok(data)
+            }
+            15 => {
+                to_16(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -527,8 +560,8 @@ impl Body {
     }
 }
 
-/// Every body a schema 14 save keeps, the player first: the dummies, the
-/// enemies, the balls, the blocks and scraps, the props and the orbs.
+/// Every body a schema 14 or 15 save keeps, the player first: the dummies,
+/// the enemies, the balls, the blocks and scraps, the props and the orbs.
 fn bodies(data: &Value) -> Result<Vec<Body>, Box<dyn std::error::Error + Send + Sync>> {
     let pair = |xy: Option<&Value>| -> Option<Vec2> {
         let xy = xy?.as_array()?;
@@ -663,7 +696,82 @@ fn to_15(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         bodies[i].point = centre - offset;
         placed[i] = true;
     }
-    for &i in &moving {
+    write_bodies(data, &bodies, &moving, &dropped);
+    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
+    log::info!(
+        "schema 15: saved bodies set out of the start's wall on the clearing's floor: {}; dropped with no room: {ids:?}",
+        moving.len() - dropped.len()
+    );
+    Ok(())
+}
+
+/// Schema 15 to 16 (01 (l)): the tomes' three supports stand where a
+/// schema 15 run had open air. Each saved body whose box meets one
+/// ([`S16_SUPPORTS`]) is set at rest on that support's top, its x kept on
+/// it, where its box meets no other saved body's, the player first; a
+/// player with no room there stands at the run's spawn, and any other body
+/// is dropped, as [`to_15`] drops one.
+fn to_16(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut bodies = bodies(data)?;
+    let meets = |(min, max): (Vec2, Vec2), [low, high]: [Vec2; 2]| {
+        min.x < high.x && max.x > low.x && min.y < high.y && max.y > low.y
+    };
+    let moving: Vec<(usize, [Vec2; 2])> = (0..bodies.len())
+        .filter_map(|i| {
+            let boxed = (bodies[i].min(), bodies[i].max());
+            let support = S16_SUPPORTS.into_iter().find(|&s| meets(boxed, s))?;
+            Some((i, support))
+        })
+        .collect();
+    if moving.is_empty() {
+        return Ok(());
+    }
+    let mut placed = vec![true; bodies.len()];
+    for &(i, _) in &moving {
+        placed[i] = false;
+    }
+    let mut dropped = Vec::new();
+    for &(i, [low, high]) in &moving {
+        let (offset, half) = (bodies[i].offset, bodies[i].half);
+        // Its x on the support, which a body wider than it cannot keep.
+        let fits = 2.0 * half.x <= high.x - low.x;
+        let x = (bodies[i].point.x + offset.x)
+            .min(high.x - half.x)
+            .max(low.x + half.x);
+        let centre = Vec2::new(x, low.y - 0.5 - half.y);
+        let clear = (0..bodies.len()).filter(|&j| j != i && placed[j]).all(|j| {
+            !meets(
+                (centre - half, centre + half),
+                [bodies[j].min(), bodies[j].max()],
+            )
+        });
+        let centre = match (fits && clear, bodies[i].list) {
+            (true, _) => centre,
+            (false, "player") => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
+            (false, _) => {
+                dropped.push(i);
+                continue;
+            }
+        };
+        bodies[i].point = centre - offset;
+        placed[i] = true;
+    }
+    let moving: Vec<usize> = moving.into_iter().map(|(i, _)| i).collect();
+    write_bodies(data, &bodies, &moving, &dropped);
+    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
+    log::info!(
+        "schema 16: saved bodies set out of the tomes' supports on top: {}; dropped with no room: {ids:?}",
+        moving.len() - dropped.len()
+    );
+    Ok(())
+}
+
+/// Writes the points [`to_15`] or [`to_16`] gave the `moving` bodies into
+/// `data`, at rest, and takes the `dropped` off their lists, a map dummy
+/// or enemy taking its save ID into `gone` so the load takes the map's off
+/// too.
+fn write_bodies(data: &mut Value, bodies: &[Body], moving: &[usize], dropped: &[usize]) {
+    for &i in moving {
         let body = &bodies[i];
         if dropped.contains(&i) {
             continue;
@@ -688,7 +796,7 @@ fn to_15(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     }
     // The dropped, from each list's last, so the places hold.
     let mut gone: Vec<u64> = Vec::new();
-    let mut order = dropped.clone();
+    let mut order = dropped.to_vec();
     order.sort_by_key(|&i| std::cmp::Reverse(bodies[i].index));
     for i in order {
         let body = &bodies[i];
@@ -705,12 +813,6 @@ fn to_15(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         list.extend(gone.into_iter().map(Value::from));
         list.sort_by_key(|id| id.as_u64());
     }
-    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
-    log::info!(
-        "schema 15: saved bodies set out of the start's wall on the clearing's floor: {}; dropped with no room: {ids:?}",
-        moving.len() - dropped.len()
-    );
-    Ok(())
 }
 
 /// Halves the `damage.cold` fill in a saved `{damage type: fill}` map.
@@ -792,8 +894,8 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
 }
 
 /// The player: its body's point and velocity, its controller, health,
-/// stats, effects with their sources, abilities, ailment buckets, tags and
-/// the gun's reload while one runs.
+/// stats, effects with their sources, abilities, ailment buckets, tags,
+/// the gun's reload while one runs, the tomes held and the pact's shield.
 /// The tags hold what an effect grants, so a save during `casting` loads
 /// with the mana still paused.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -814,6 +916,12 @@ pub struct PlayerSave {
     /// The seconds the gun's reload has left; none while no reload runs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reload: Option<f32>,
+    /// The tomes taken, in order; none before schema 16.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tomes: Vec<TomeKind>,
+    /// The pact's shield, with its recharge's wait; none without the pact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<Shield>,
 }
 
 /// A training dummy: one the map placed (`map`), found by its save ID, or
@@ -1533,6 +1641,11 @@ fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
             .unwrap_or_default(),
         tags: world.get::<Tags>(player)?.clone(),
         reload: world.get::<Reload>(player).map(|reload| reload.left),
+        tomes: world
+            .get::<Tomes>(player)
+            .map(|tomes| tomes.0.clone())
+            .unwrap_or_default(),
+        shield: world.get::<Shield>(player).cloned(),
     })
 }
 
@@ -1597,6 +1710,21 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     world.insert_bundle(player, (Spellbook { slot: save.spell }, lantern));
     if let Some(left) = p.reload {
         world.insert(player, Reload { left });
+    }
+    if let Some(shield) = &p.shield {
+        world.insert(player, shield.clone());
+    }
+    // The books the player holds leave the map, which spawned all three.
+    if !p.tomes.is_empty() {
+        world.insert(player, Tomes(p.tomes.clone()));
+        let taken: Vec<Entity> = world
+            .query::<(Entity, &Tome)>()
+            .filter(|(_, tome)| p.tomes.contains(&tome.kind))
+            .map(|(book, _)| book)
+            .collect();
+        for book in taken {
+            crate::shared::despawn_tree(world, book);
+        }
     }
     for platform in &save.platforms {
         if let Some(&entity) = by_id.get(&platform.id) {

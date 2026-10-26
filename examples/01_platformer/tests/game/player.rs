@@ -192,6 +192,26 @@ fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
 }
 
 #[test]
+fn a_wizard_ten_tiles_over_the_maps_top_falls_back_alive() {
+    let (mut harness, player) = run();
+    harness.step(5);
+    // Over the clearing, above the level box's top, where a bound may
+    // carry him: he falls back onto its floor.
+    teleport(&mut harness, player, Vec2::new(400.0, -10.0 * TILE));
+    harness.step(1);
+    assert!(!health(&harness, player).is_dead(), "over the top, alive");
+    for _ in 0..240 {
+        if controller(&harness, player).grounded() {
+            break;
+        }
+        harness.step(1);
+    }
+    assert!(controller(&harness, player).grounded(), "back on the map");
+    assert!(!health(&harness, player).is_dead());
+    assert!(centre(&harness, player).y > 0.0);
+}
+
+#[test]
 fn despawn_out_of_bounds_is_noop_for_in_bounds_player() {
     let (mut harness, player) = run();
     let collider = *harness.world().get::<Collider>(player).unwrap();

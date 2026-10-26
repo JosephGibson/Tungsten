@@ -19,8 +19,8 @@ use super::{
     BASE_SMASH, BODY_HIT_SPEED, BURN_SECS, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP,
     DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS,
     IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE, SHATTER_MASS,
-    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE, body_hit,
-    freeze_amount,
+    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE, blows_keg,
+    body_hit, freeze_amount,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
@@ -1139,8 +1139,8 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// whether it killed: a `flesh` target it killed is marked ([`IronKills`]).
 /// A block meeting a still body or a tile at [`IRON_LAND_SPEED`] or more
 /// lands hard, once a step (`toys::systems::iron_landed`). A keg that is
-/// not frozen meeting anything at [`SHATTER_SPEED`] or more goes off,
-/// credited to the thrower of what met it, else the player; a burning
+/// not frozen meeting something hard enough for its mass ([`blows_keg`])
+/// goes off, credited to the thrower of what met it, else the player; a burning
 /// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
 /// meeting anything at [`SHATTER_SPEED`] or more clacks, at most
 /// [`IMPACT_BURSTS_PER_STEP`] a step.
@@ -1194,7 +1194,11 @@ pub fn body_impacts(world: &mut World) {
                     .entry(world.get::<SaveId>(this).copied())
                     .or_insert(centre);
             }
-            if world.has::<Keg>(this) && !world.has::<Frozen>(this) {
+            // What met it weighs in full unless it is a lighter dynamic body.
+            let weight = other
+                .filter(|&other| moves(world, other))
+                .map_or(f32::INFINITY, |other| mass(world, other));
+            if world.has::<Keg>(this) && !world.has::<Frozen>(this) && blows_keg(weight, closing) {
                 let thrower = other
                     .and_then(|other| throws.and_then(|throws| throws.of(other)))
                     .map(|throw| throw.thrower);

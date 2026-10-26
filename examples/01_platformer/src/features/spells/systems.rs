@@ -338,7 +338,7 @@ pub fn held(world: &mut World) {
     let Some((player, spell, element)) = wanted else {
         return;
     };
-    let payable = cost(world, spell).is_some_and(|cost| mana(world, player) >= cost);
+    let payable = cost(world, player, spell).is_some_and(|cost| mana(world, player) >= cost);
     if !payable && toys::spraying(world, player).is_none() {
         say(world, player, Refusal::NoMana);
     }

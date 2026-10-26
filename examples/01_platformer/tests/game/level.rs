@@ -1,5 +1,6 @@
 //! The level from its generator, on the kit's controller and path follower:
-//! every route's jumps, a ride through a platform's cycle, the platforms'
+//! every route's jumps, each tome's support by the double jump, a ride
+//! through a platform's cycle, the platforms'
 //! sweeps, the elevator turning back over a player and setting one out of
 //! its deck, a still rider idling on it, a thin deck's underside, one
 //! collider per slab and iron box, and the start's wall and boundary
@@ -34,6 +35,16 @@ struct Source {
     hazards: Vec<SourceHazard>,
     moving_platforms: Vec<Moving>,
     kill_row: f32,
+    tomes: Vec<SourceTome>,
+}
+
+/// A book: its name, the platform it lies over and the route platform its
+/// launch starts on.
+#[derive(Deserialize)]
+struct SourceTome {
+    name: String,
+    support: String,
+    from: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -171,6 +182,15 @@ const LAUNCHES: &[(&str, &str, f32, f32, bool)] = &[
     ("meadow", "pit_floor", 47.85, 48.75, true),
 ];
 
+/// The launch that lands each book's support from its `from` by the
+/// double jump: the book's name in `tools/level.json`'s `tomes`, start and
+/// goal x in tiles. Every book has one row, and a row no book takes fails.
+const TOME_LAUNCHES: &[(&str, f32, f32)] = &[
+    ("pact tome", 226.85, 231.75),
+    ("bounding tome", 191.85, 194.75),
+    ("arcane tome", 124.35, 117.75),
+];
+
 /// A run with no hazard or moving platform, so a route's jumps meet the map
 /// alone, at a fixed step a frame.
 fn bare_level() -> UiHarness {
@@ -216,22 +236,48 @@ fn release_all(harness: &mut UiHarness) {
     }
 }
 
+/// Whether a player's body centred at `centre` meets a collision tile.
+fn embedded(harness: &UiHarness, centre: Vec2) -> bool {
+    let map = harness
+        .world()
+        .resource::<TilemapRegistry>()
+        .get(MAP)
+        .expect("the level's map");
+    let collision = map
+        .layers
+        .iter()
+        .find(|layer| layer.kind == LayerKind::Collision)
+        .expect("a collision layer");
+    let (min, max) = (centre - PLAYER_HALF, centre + PLAYER_HALF);
+    let rows = (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32;
+    rows.flat_map(|row| {
+        ((min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32).map(move |col| (col, row))
+    })
+    .any(|(col, row)| collision.tiles[(row * map.width + col) as usize] >= 0)
+}
+
 /// One attempt with ordinary input on the real map: the player settles at
 /// `start` on `from`, steers toward `goal`, holding jump through the rise
-/// when it jumps so the jump cut never acts, and must stand on `to`.
+/// when it jumps so the jump cut never acts, and must stand on `to`. With
+/// `air` it releases jump at the rise's top and presses it again the next
+/// step, so the controller makes its air jump.
 fn launch_lands(
     harness: &mut UiHarness,
     level: &Source,
     from: &Platform,
     to: &Platform,
     (start, goal, jump): (f32, f32, bool),
+    air: bool,
 ) -> bool {
-    // A stale row's start may lie off `from`; one on `to` would land at once.
-    if !(from.left..from.right).contains(&start) {
+    // A stale row's start may lie off `from`; one on `to` would land at
+    // once. A book's start may not meet a solid stair over `from`, as one
+    // inside `aq_rubble_2` did; the routes' rows keep their old starts,
+    // some of which overhang the next step's face.
+    let at = Vec2::new(start * TILE, from.row * TILE - PLAYER_HALF.y - 0.5);
+    if !(from.left..from.right).contains(&start) || (air && embedded(harness, at)) {
         return false;
     }
     release_all(harness);
-    let at = Vec2::new(start * TILE, from.row * TILE - PLAYER_HALF.y - 0.5);
     let player = fresh_player(harness, at);
     harness.step(4);
     let settled = centre(harness, player);
@@ -244,8 +290,14 @@ fn launch_lands(
         .filter(|hazard| !hazard.fire)
         .map(|hazard| Vec2::from(hazard.position) * TILE)
         .collect();
+    // While rising, then released, then spent.
+    let mut double = air.then_some(false);
     let landed = (0..(2.5 / DT) as usize).any(|tick| {
         let dx = goal * TILE - centre(harness, player).x;
+        let falling = harness
+            .world()
+            .get::<Velocity>(player)
+            .is_some_and(|velocity| velocity.0.y >= 0.0);
         let input = harness.harness_mut();
         input.release_action("move_left");
         input.release_action("move_right");
@@ -254,6 +306,17 @@ fn launch_lands(
         }
         if tick == 0 && jump {
             input.press_action("jump");
+        }
+        match double {
+            Some(false) if tick > 0 && falling => {
+                input.release_action("jump");
+                double = Some(true);
+            }
+            Some(true) => {
+                input.press_action("jump");
+                double = None;
+            }
+            _ => {}
         }
         harness.step(1);
         let at = centre(harness, player);
@@ -281,13 +344,14 @@ fn launch_lands(
 }
 
 /// Launch points on `from`: starts every half tile, nearest the target's
-/// midpoint first; for each, three goals; for each, a jump before none.
-/// The first that lands.
+/// midpoint first; for each, three goals; for each, a jump before none, or
+/// with `air` the double jump alone. The first that lands.
 fn search_launch(
     harness: &mut UiHarness,
     level: &Source,
     from: &Platform,
     to: &Platform,
+    air: bool,
 ) -> Option<(f32, f32, bool)> {
     let midpoint = f32::midpoint(to.left, to.right);
     let goals = [to.left + 0.75, to.right - 0.75, midpoint];
@@ -298,7 +362,9 @@ fn search_launch(
     for start in starts {
         for goal in goals {
             for jump in [true, false] {
-                if launch_lands(harness, level, from, to, (start, goal, jump)) {
+                if (jump || !air)
+                    && launch_lands(harness, level, from, to, (start, goal, jump), air)
+                {
                     return Some((start, goal, jump));
                 }
             }
@@ -338,7 +404,7 @@ fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
                 .iter()
                 .find(|row| row.0 == from.name && row.1 == to.name);
             if let Some(&(_, _, start, goal, jump)) = row
-                && launch_lands(&mut harness, &level, from, to, (start, goal, jump))
+                && launch_lands(&mut harness, &level, from, to, (start, goal, jump), false)
             {
                 println!(
                     "{route}: {} -> {} landed on the controller",
@@ -351,7 +417,7 @@ fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
             } else {
                 "add a LAUNCHES row"
             };
-            failures.push(match search_launch(&mut harness, &level, from, to) {
+            failures.push(match search_launch(&mut harness, &level, from, to, false) {
                 Some((start, goal, jump)) => format!(
                     "{route}: {} -> {}: {fix}: ({:?}, {:?}, {start:?}, {goal:?}, {jump}),",
                     from.name, to.name, from.name, to.name
@@ -359,6 +425,47 @@ fn authored_routes_and_recovery_shelves_traverse_with_real_physics() {
                 None => format!("{route}: {} -> {} is not traversable", from.name, to.name),
             });
         }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn each_tomes_support_is_reached_from_its_platform_by_the_double_jump() {
+    let level = source();
+    let mut harness = bare_level();
+    let mut failures = Vec::new();
+    for &(name, ..) in TOME_LAUNCHES {
+        if !level.tomes.iter().any(|tome| tome.name == name) {
+            failures.push(format!("{name}: a TOME_LAUNCHES row no book takes"));
+        }
+    }
+    for tome in &level.tomes {
+        let (from, to) = (level.platform(&tome.from), level.platform(&tome.support));
+        let row = TOME_LAUNCHES.iter().find(|row| row.0 == tome.name);
+        if let Some(&(_, start, goal)) = row
+            && launch_lands(&mut harness, &level, from, to, (start, goal, true), true)
+        {
+            println!(
+                "{}: {} -> {} landed by the double jump",
+                tome.name, from.name, to.name
+            );
+            continue;
+        }
+        let fix = if row.is_some() {
+            "replace its TOME_LAUNCHES row with"
+        } else {
+            "add a TOME_LAUNCHES row"
+        };
+        failures.push(match search_launch(&mut harness, &level, from, to, true) {
+            Some((start, goal, _)) => format!(
+                "{}: {fix}: ({:?}, {start:?}, {goal:?}),",
+                tome.name, tome.name
+            ),
+            None => format!(
+                "{}: {} -> {} is not reached by the double jump",
+                tome.name, from.name, to.name
+            ),
+        });
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }

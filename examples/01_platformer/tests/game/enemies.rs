@@ -25,6 +25,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::audio::{COMBAT_IN, COMBAT_OUT, MUSIC_COMBAT};
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind};
+use example_01_platformer::features::dummy::{self, DUMMY_CENTRE};
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
@@ -50,11 +51,11 @@ use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
-use example_01_platformer::features::toys::components::PreviousVelocity;
+use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapTumble};
 use example_01_platformer::features::{player as courier, toys};
 use example_01_platformer::game;
 use example_01_platformer::save;
-use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::shared::{SaveId, SaveIds, body_centre};
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart};
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -408,7 +409,81 @@ fn line_of_sight_is_blocked_by_a_wall() {
     harness.step(3);
     other.step(3);
     assert!(!sees(&harness, walled), "a slab between");
-    assert!(sees(&other, clear), "a crate's layer is not looked through");
+    assert!(
+        sees(&other, clear),
+        "a still body outside the walls hides nothing"
+    );
+}
+
+#[test]
+fn crates_kegs_iron_scrap_dummies_and_the_frozen_hide_and_the_rest_do_not() {
+    // Q47: each body alone on its own row of the sky, a level line along
+    // the row through its centre, the seer elsewhere.
+    let (mut harness, _) = arena();
+    let seer = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1800.0, 300.0));
+    let row = |k: usize| Vec2::new(1000.0, 180.0 + 130.0 * k as f32);
+    let world = harness.world_mut();
+    let mut bodies: Vec<(&str, Entity, bool)> = vec![
+        (
+            "a crate",
+            props::spawn(world, PropKind::Crate, row(0)),
+            true,
+        ),
+        ("a keg", props::spawn(world, PropKind::Keg, row(1)), true),
+        ("iron", toys::place_iron(world, row(2)), true),
+        (
+            "a scrap",
+            toys::spawn_scrap(
+                world,
+                row(3),
+                Vec2::ZERO,
+                0,
+                ScrapTumble {
+                    born_at: 0.0,
+                    initial_angle: 0.0,
+                    total_turn: 0.0,
+                },
+            ),
+            true,
+        ),
+        ("a dummy", dummy::spawn(world, row(4) - DUMMY_CENTRE), true),
+        ("a small ball", toys::spawn_ball(world, row(5), true), false),
+        (
+            "a bowling ball",
+            toys::spawn_ball(world, row(6), false),
+            false,
+        ),
+        ("a rock", props::spawn(world, PropKind::Rock, row(7)), false),
+    ];
+    let frozen = enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(1000.0, 180.0 + 130.0 * 8.0),
+    );
+    let live = enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(1000.0, 180.0 + 130.0 * 9.0),
+    );
+    apply(&mut harness, frozen, "frozen", None);
+    bodies.push(("a frozen goblin", frozen, true));
+    bodies.push(("a live goblin", live, false));
+    // Small balls before a crate: the ray passes them and meets it.
+    let world = harness.world_mut();
+    let behind = Vec2::new(1400.0, 180.0 + 130.0 * 10.0);
+    for k in 0..3 {
+        toys::spawn_ball(world, behind - Vec2::new(60.0 + 20.0 * k as f32, 0.0), true);
+    }
+    let crate_ = props::spawn(world, PropKind::Crate, behind);
+    bodies.push(("small balls, then a crate", crate_, true));
+    // Indexed, as a step leaves them.
+    harness.step(1);
+    let world = harness.world();
+    for (name, body, hides) in bodies {
+        let y = body_centre(world, body).expect("a body").y;
+        let clear = enemies::systems::clear(world, seer, Vec2::new(700.0, y), Vec2::new(1500.0, y));
+        assert_eq!(clear, !hides, "{name}");
+    }
 }
 
 #[test]
@@ -2405,13 +2480,13 @@ fn the_wave_throws_each_kind_along_the_aim_the_troll_a_little() {
         at(&harness, enemy).x - start
     };
     for (kind, low, high) in [
-        (EnemyKind::Crawler, 140.0, 175.0),
-        (EnemyKind::Goblin, 118.0, 150.0),
-        (EnemyKind::Beetle, 32.0, 50.0),
-        (EnemyKind::Bat, 100.0, f32::INFINITY),
-        (EnemyKind::Wisp, 100.0, f32::INFINITY),
+        (EnemyKind::Crawler, 220.0, 265.0),
+        (EnemyKind::Goblin, 185.0, 230.0),
+        (EnemyKind::Beetle, 55.0, 75.0),
+        (EnemyKind::Bat, 150.0, f32::INFINITY),
+        (EnemyKind::Wisp, 150.0, f32::INFINITY),
         // Pushed back a little, past its resist.
-        (EnemyKind::Troll, 12.0, 35.0),
+        (EnemyKind::Troll, 24.0, 45.0),
     ] {
         let moved = thrown(kind);
         assert!(

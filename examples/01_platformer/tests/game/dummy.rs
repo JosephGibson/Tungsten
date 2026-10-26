@@ -156,8 +156,8 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     assert_eq!(mine.len(), 1);
     let (_, first) = mine[0];
     assert!(body(&harness, first).distance(at) < 2.0, "at the cursor");
-    assert_eq!(mana(&harness), before - 20.0, "a summon costs 20");
-    // Five summons a second apart leave the four latest.
+    assert_eq!(mana(&harness), before - 10.0, "a summon costs 10");
+    // Nine summons a second apart leave the eight latest.
     for i in 1..=SUMMON_CAP {
         harness.step(61);
         cast_at(&mut harness, at + Vec2::new(150.0 * i as f32, 0.0));

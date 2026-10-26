@@ -717,7 +717,9 @@ fn burn_targets(world: &mut World, at: Vec2) {
     targets.sort_by_key(|(id, ..)| *id);
     for (_, target, distance) in targets {
         let amount = BLAST_FIRE * (1.0 - 0.5 * distance / BLAST_RADIUS);
-        let mut hit = combat::Hit::new(target, [(Kind::Fire, amount)]).at(at);
+        let mut hit = combat::Hit::new(target, [(Kind::Fire, amount)])
+            .at(at)
+            .spell();
         if let Some(player) = player {
             hit = hit.from(player);
         }
@@ -1172,6 +1174,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             combat::Hit::new(target, [(kind, dps * SPRAY_PULSE)])
                 .from(caster)
                 .at(contact)
+                .spell()
                 .queue(world);
         }
         for _ in 0..bursts {

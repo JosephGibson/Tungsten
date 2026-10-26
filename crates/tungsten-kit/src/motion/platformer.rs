@@ -21,6 +21,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::stats::Stats;
 use crate::foundation::{
     fraction, non_negative, optional_non_negative, optional_positive, optional_vec2, positive, vec2,
 };
@@ -81,8 +82,12 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 /// 4. Unless the input is locked, runs at `run · run_speed` and jumps on a
 ///    buffered press while grounded or within coyote time; past them, a
 ///    press with [air jumps](Self::with_air_jumps) left jumps again, one a
-///    press, and being grounded refills them. While locked, presses are
-///    dropped and the horizontal speed holds.
+///    press, and being grounded refills them. With none left, a press jumps
+///    again when the controller has an
+///    [air-jump cost](Self::with_air_jump_cost) and the entity's
+///    [`Stats`] base of its stat holds the amount, with no cap; below it
+///    the jump buffer keeps the press. While locked, presses are dropped
+///    and the horizontal speed holds.
 /// 5. Adds the [`push`](Self::push)es made since its last step, velocity
 ///    given to it, where a [shove](Self::with_shove) moves what it walks
 ///    into.
@@ -100,8 +105,9 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 ///    uncast, unless it jumped, was launched or was pushed up.
 /// 10. Writes `Velocity`, which its body moves by in the step, or after a
 ///     climb its `Position` at the landing and a zero `Velocity`; writes a
-///     shoved body's `Velocity.x` and wakes it; and ticks the input lock,
-///     the jump buffer and coyote time on the game clock.
+///     shoved body's `Velocity.x` and wakes it; takes a paid air jump's
+///     amount off its stat's base; and ticks the input lock, the jump
+///     buffer and coyote time on the game clock.
 ///
 /// Its [`SpatialFilter`] says what blocks it, by default bodies and tiles,
 /// its own body excluded. Dynamic bodies block it and hold it up as walls
@@ -112,7 +118,7 @@ const CLIMB_ROUND_REACH: f32 = 0.29;
 /// kinematic body out of an overlap, though a move may leave one.
 ///
 /// It is data: a save holds its settings and its runtime state, the air
-/// jumps left among them, but not its filter, which loads as
+/// jumps left and the air-jump cost among them, but not its filter, which loads as
 /// [`SpatialFilter::new`], or its first-step flag. A loaded controller
 /// therefore takes its still first step, as a fresh one does, while the
 /// physics index fills, and a game that set its own filter sets it again.
@@ -210,6 +216,9 @@ pub struct PlatformerController {
     jump_buffer: f32,
     jump_cut: f32,
     air_jumps: u32,
+    /// The stat and amount a paid air jump spends; `None`, the default, has
+    /// no paid jump.
+    air_jump_cost: Option<(String, f32)>,
     /// `None`, the default, shoves nothing.
     shove: Option<Shove>,
     /// 0, the default, climbs nothing.
@@ -232,6 +241,10 @@ pub struct PlatformerController {
     jumped: bool,
     /// The jump its last step started was an air jump.
     air_jumped: bool,
+    /// The air jump its last step started was paid.
+    paid_air_jumped: bool,
+    /// Its last step's fresh press was refused by the air-jump cost.
+    air_jump_refused: bool,
     /// The jump cut may still act on the current jump.
     cut_armed: bool,
     air_jumps_left: u32,
@@ -270,6 +283,7 @@ impl PlatformerController {
             jump_buffer: DEFAULT_GRACE,
             jump_cut: DEFAULT_JUMP_CUT,
             air_jumps: 0,
+            air_jump_cost: None,
             shove: None,
             step_height: 0.0,
             filter: SpatialFilter::new(),
@@ -285,6 +299,8 @@ impl PlatformerController {
             grounded: false,
             jumped: false,
             air_jumped: false,
+            paid_air_jumped: false,
+            air_jump_refused: false,
             cut_armed: false,
             air_jumps_left: 0,
             started: false,
@@ -369,6 +385,54 @@ impl PlatformerController {
         self.air_jumps = jumps;
         self.air_jumps_left = jumps;
         self
+    }
+
+    /// The controller with a paid air jump: past its free
+    /// [air jumps](Self::with_air_jumps), a press in the air jumps at
+    /// `jump_speed` again when the entity's [`Stats`] base of `stat` holds
+    /// `amount`, which the step takes off it, with no cap. Below it the
+    /// press is refused, and the jump buffer keeps it. Being grounded
+    /// refills the free jumps alone.
+    ///
+    /// # Panics
+    ///
+    /// When `stat` is not `[a-z][a-z0-9_]*` or `amount` is not finite and
+    /// at least 0.
+    #[must_use]
+    #[track_caller]
+    pub fn with_air_jump_cost(mut self, stat: &str, amount: f32) -> Self {
+        self.set_air_jump_cost(Some((stat, amount)));
+        self
+    }
+
+    /// Sets the [paid air jump](Self::with_air_jump_cost)'s stat and
+    /// amount at run time, or takes it away with `None`.
+    ///
+    /// # Panics
+    ///
+    /// When the stat is not `[a-z][a-z0-9_]*` or the amount is not finite
+    /// and at least 0.
+    #[track_caller]
+    pub fn set_air_jump_cost(&mut self, cost: Option<(&str, f32)>) {
+        if let Some((stat, amount)) = cost {
+            assert!(
+                valid_stat(stat),
+                "PlatformerController::set_air_jump_cost: `{stat}` is not a stat name (`[a-z][a-z0-9_]*`)"
+            );
+            assert!(
+                amount.is_finite() && amount >= 0.0,
+                "PlatformerController::set_air_jump_cost: amount must be finite and >= 0 (got {amount})"
+            );
+        }
+        self.air_jump_cost = cost.map(|(stat, amount)| (stat.to_owned(), amount));
+    }
+
+    /// The stat and amount a paid air jump spends, when it has one.
+    #[must_use]
+    pub fn air_jump_cost(&self) -> Option<(&str, f32)> {
+        self.air_jump_cost
+            .as_ref()
+            .map(|(stat, amount)| (stat.as_str(), *amount))
     }
 
     /// The controller with a shove: of the dynamic bodies its horizontal
@@ -557,6 +621,22 @@ impl PlatformerController {
         self.air_jumped
     }
 
+    /// Its last step started a [paid air jump](Self::with_air_jump_cost),
+    /// a buffered press's included, which [`air_jumped`](Self::air_jumped)
+    /// also reports.
+    #[must_use]
+    pub fn paid_air_jumped(&self) -> bool {
+        self.paid_air_jumped
+    }
+
+    /// Its last step refused a fresh press in the air for the
+    /// [air-jump cost](Self::with_air_jump_cost): once a press, though the
+    /// jump buffer keeps it.
+    #[must_use]
+    pub fn air_jump_refused(&self) -> bool {
+        self.air_jump_refused
+    }
+
     /// One step of `dt` for the body at `position` with `collider`: how its
     /// body moves in this step, and the body it shoves.
     fn step(
@@ -570,6 +650,8 @@ impl PlatformerController {
     ) -> Moved {
         self.jumped = false;
         self.air_jumped = false;
+        self.paid_air_jumped = false;
+        self.air_jump_refused = false;
         if !self.started {
             self.started = true;
             return Moved {
@@ -624,6 +706,21 @@ impl PlatformerController {
                 self.air_jumped = true;
                 self.cut_armed = true;
                 lifted = true;
+            } else if pressed && let Some((stat, amount)) = &self.air_jump_cost {
+                let base = world
+                    .get::<Stats>(entity)
+                    .and_then(|stats| stats.base(stat));
+                if base.is_some_and(|base| base >= *amount) {
+                    self.velocity.y = -self.jump_speed;
+                    self.buffer_left = 0.0;
+                    self.jumped = true;
+                    self.air_jumped = true;
+                    self.paid_air_jumped = true;
+                    self.cut_armed = true;
+                    lifted = true;
+                } else if self.pressed {
+                    self.air_jump_refused = true;
+                }
             }
         }
         self.pressed = false;
@@ -998,8 +1095,9 @@ struct PlatformerControllerDef {
 }
 
 /// A controller as a save writes it: its settings and its runtime state,
-/// without the filter or the first-step flag. The shove and the step height
-/// are left out when off, so a save from before them loads with both off.
+/// without the filter or the first-step flag. The air-jump cost, the shove,
+/// the step height and the paid-jump flags are left out when off, so a save
+/// from before them loads with each off.
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[allow(clippy::struct_excessive_bools)] // The controller's own flags, saved as they are.
@@ -1011,6 +1109,8 @@ struct ControllerSave {
     jump_buffer: f32,
     jump_cut: f32,
     air_jumps: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    air_jump_cost: Option<AirJumpCost>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shove: Option<Shove>,
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -1030,8 +1130,20 @@ struct ControllerSave {
     grounded: bool,
     jumped: bool,
     air_jumped: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    paid_air_jumped: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    air_jump_refused: bool,
     cut_armed: bool,
     air_jumps_left: u32,
+}
+
+/// A paid air jump's cost as a save writes it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AirJumpCost {
+    stat: String,
+    amount: f32,
 }
 
 impl TryFrom<ControllerSave> for PlatformerController {
@@ -1099,6 +1211,20 @@ impl TryFrom<ControllerSave> for PlatformerController {
                 save.step_height
             ));
         }
+        if let Some(cost) = &save.air_jump_cost {
+            if !valid_stat(&cost.stat) {
+                return Err(format!(
+                    "air_jump_cost.stat: `{}` is not a stat name (`[a-z][a-z0-9_]*`)",
+                    cost.stat
+                ));
+            }
+            if !at_least_0(cost.amount) {
+                return Err(format!(
+                    "air_jump_cost.amount: must be finite and >= 0 (got {})",
+                    cost.amount
+                ));
+            }
+        }
         if save.air_jumps_left > save.air_jumps {
             return Err(format!(
                 "air_jumps_left: must be at most air_jumps, {} (got {})",
@@ -1113,6 +1239,7 @@ impl TryFrom<ControllerSave> for PlatformerController {
             jump_buffer: save.jump_buffer,
             jump_cut: save.jump_cut,
             air_jumps: save.air_jumps,
+            air_jump_cost: save.air_jump_cost.map(|cost| (cost.stat, cost.amount)),
             shove: save.shove,
             step_height: save.step_height,
             filter: SpatialFilter::new(),
@@ -1128,6 +1255,8 @@ impl TryFrom<ControllerSave> for PlatformerController {
             grounded: save.grounded,
             jumped: save.jumped,
             air_jumped: save.air_jumped,
+            paid_air_jumped: save.paid_air_jumped,
+            air_jump_refused: save.air_jump_refused,
             cut_armed: save.cut_armed,
             air_jumps_left: save.air_jumps_left,
             started: false,
@@ -1146,6 +1275,9 @@ impl From<PlatformerController> for ControllerSave {
             jump_buffer: controller.jump_buffer,
             jump_cut: controller.jump_cut,
             air_jumps: controller.air_jumps,
+            air_jump_cost: controller
+                .air_jump_cost
+                .map(|(stat, amount)| AirJumpCost { stat, amount }),
             shove: controller.shove,
             step_height: controller.step_height,
             run: controller.run,
@@ -1160,10 +1292,19 @@ impl From<PlatformerController> for ControllerSave {
             grounded: controller.grounded,
             jumped: controller.jumped,
             air_jumped: controller.air_jumped,
+            paid_air_jumped: controller.paid_air_jumped,
+            air_jump_refused: controller.air_jump_refused,
             cut_armed: controller.cut_armed,
             air_jumps_left: controller.air_jumps_left,
         }
     }
+}
+
+/// Whether `name` is a stat name, as `Stats` reads one.
+fn valid_stat(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|first| first.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
 fn default_grace() -> f32 {
@@ -1228,7 +1369,12 @@ impl Runner {
                 }
                 continue;
             };
-            let mut controller = world.get::<PlatformerController>(entity).unwrap().clone();
+            // The cost moves across rather than cloning, so a step allocates
+            // nothing.
+            let stored = world.get_mut::<PlatformerController>(entity).unwrap();
+            let cost = stored.air_jump_cost.take();
+            let mut controller = stored.clone();
+            controller.air_jump_cost = cost;
             if let Some(intent) = world.get::<Intent>(entity) {
                 controller.set_run(intent.movement().x);
                 controller.set_jump_held(intent.held(JUMP_SLOT));
@@ -1237,6 +1383,13 @@ impl Runner {
                 }
             }
             let moved = controller.step(world, entity, position, collider, gravity, dt);
+            if controller.paid_air_jumped
+                && let Some((stat, amount)) = &controller.air_jump_cost
+                && let Some(stats) = world.get_mut::<Stats>(entity)
+                && let Some(base) = stats.base(stat)
+            {
+                stats.set_base(stat, base - amount);
+            }
             *world.get_mut::<PlatformerController>(entity).unwrap() = controller;
             world.get_mut::<Velocity>(entity).unwrap().0 = moved.velocity;
             if let Some(at) = moved.position {

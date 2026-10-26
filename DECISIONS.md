@@ -3219,6 +3219,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 - Owner checks: a playthrough of the start, the aqueduct, the hollow's lava and the mine; the review page at https://claude.ai/artifact/XszVhBV87spJFg3GYkReqT and `perf-runs/20261025-e01k-art-review/` (the run's captures in `shots/run/`).
 
 ## D-215 — The roadmap redo replaces the 1.0 roadmap after Phase 6: example 01 is the acceptance game, 1.0 promises a fully featured engine in four genres, and H1 freezes the 1.0 records behind `ROADMAP.md`
+**Amended by D-216:** the Git bullet's push only; agents push the version branch after each commit, while tags, merges and every other push stay the owner's; the rest stands.
 **Date:** 2026-10-25
 **Decision:** [docs/plans/roadmap-redo.md](docs/plans/roadmap-redo.md) is the plan of record from Phase 6's tail to 1.0: Phase 7 Seams, Phase 8 Genres and Phase 9 Release (its §3), with health in two parts, H1 now and H2 at step 7.4. 1.0 promises a fully featured engine, tooling and kit for platformer, top-down, story-driven RPG and shooter games, with no API stability promise at 1.0 (§5.7; the policy after it is step 9.3). Example 01 is the acceptance game, accepted when the owner says it is. H1 lands in this change, with its rules in [docs/operating-rules.md](docs/operating-rules.md), each naming the failure it prevents:
 
@@ -3238,3 +3239,15 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 - Frozen behind a banner, until step 9.7 deletes them: the implementation plan, `roadmap.json`, the 1.0 README's owned fields, `w04-api-freeze.md`'s break ledger, workflow §4's level C, the release checklist's RC-A1, RC-B2 and RC-B4 (RC-B1 now publishes step 9.3's policy), `acceptance-game.md` and w13 §14's field rule.
 - Stops keep their IDs; milestone numbers end with the register at M85. 0.108 is the last release on the old pipeline, and agents commit from the next session.
 - The overhead is retaken after the first example stops under H1 (the redo's §4), with the baseline's scripts.
+
+## D-216 — Agents push the version branch after each commit; tags, merges and every other push stay the owner's
+**Date:** 2026-10-26
+**Decision:** After each commit, an agent pushes the version branch it works on with `git push origin 0.NNN`, or `git push -u origin 0.NNN` the first time, as the whole command: a fast-forward. Force pushes, `main`, `HEAD`, refspecs, `--all`, `--mirror`, `--delete`, bare and chained pushes stay the owner's, as do tags and merges. The owner's global `~/.claude/settings.json` holds it: a PreToolUse hook on the Bash tool, `~/.claude/hooks/git-push-guard.sh`, refuses every other command that runs a push, in place of the deny on all of `git push`.
+
+**Why:** H1 (`D-215`) had agents commit and the owner push. On 2026-10-26, with `e01tomes`' plan committed and left unpushed, the owner asked for agents to push as well: until the owner pushed by hand, a session's commits sat on one machine, unseen by the remote, other clones and GitHub. A deny pattern cannot tell a version branch's fast-forward from a force push in a session that bypasses permission prompts, so the guard matches the one allowed form whole.
+
+**Consequences:**
+- Amends `D-215` as its marker line says.
+- `docs/operating-rules.md` (Git), `AGENTS.md`, `docs/plans/README.md`, `docs/releases.md` and the `tungsten-milestone` and `tungsten-next` skills say so. The release block still has the owner push the tag with the branch, open the pull request and merge it.
+- A refused push (the remote moved, while `git fetch` stays denied) is reported, never forced; the owner fetches and the session carries on.
+- The guard catches mistakes, not evasion: as with the other denies, a push is never hidden from it through another command or API. A Bash command whose text names a push, such as a commit message or a heredoc, trips it too; reword it, or write the file with the editing tools.

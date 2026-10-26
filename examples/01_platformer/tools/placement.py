@@ -79,10 +79,13 @@ def prepare(source, images, tiles):
         else:
             depth=images[support['style']].getbbox()[3]
             p['y']=support['row']+(depth-box[1])/tile
-    # The placed health orbs: each over its support's surface, its centre
-    # `float` tiles up, refused off its support; a solid stair over the
-    # support takes its place, as for a grounded prop.
-    for p in source.get('pickups', []):
+    # The placed health orbs and the tomes (e01tomes): each over its
+    # support's surface, its centre `float` tiles up, sized by its sprite (a
+    # book by its idle frame), refused off its support; a solid stair over
+    # the support takes its place, as for a grounded prop.
+    placed = [(p, 'health_orb') for p in source.get('pickups', [])]
+    placed += [(t, f"tome_{t['kind']}_idle_0") for t in source.get('tomes', [])]
+    for p, sprite in placed:
         support = platforms[p['support']]
         if not support['left'] <= p['x'] < support['right']:
             raise ValueError(f"pickup outside support: {p['name']} at {p['x']} on {support['name']}")
@@ -91,7 +94,7 @@ def prepare(source, images, tiles):
         if covers:
             support = min(covers, key=lambda q: q['row'])
             p['support'] = support['name']
-        half = images['health_orb'].width / 2 / tile
+        half = images[sprite].width / 2 / tile
         p['left'], p['top'] = p['x'] - half, support['row'] - p['float'] - half
     # The placed crates and kegs: each box's centre `y`, its bottom half a
     # pixel over its support's surface, refused with any of its box off its

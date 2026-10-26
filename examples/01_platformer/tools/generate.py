@@ -253,7 +253,7 @@ def particle_configs():
         color_over_life=[[0, [1, 1, 1, 1]], [.5, [.7, .92, 1, 1]], [1, [.4, .7, 1, 0]]],
         alpha_over_life=[[0, 1], [.7, .9], [1, 0]])
     configs['flame_spray'] = dict(
-        aimed('spark', 120, 200, (.28, .45), (546, 806), (.1, .22), spread=24),
+        aimed('spark', 120, 200, (.28, .45), (710, 1048), (.1, .22), spread=24),
         gravity=[0, -60], drag_per_sec=.3, angular_velocity=dict(min=-6, max=6),
         scale_over_life=[[0, .6], [.2, 1], [1, .2]],
         color_over_life=fire_ramp, alpha_over_life=[[0, .7], [.1, 1], [.7, .85], [1, 0]])
@@ -533,6 +533,41 @@ def particle_configs():
         'droplet', 32, burst(6), (.35, .7), cone((0, -1), 60, 160, 380), (0, 1500), .2, (.12, .22),
         [[0, 1], [1, .7]], [[0, 1], [.75, 1], [1, 0]],
         [[0, [1, .95, .6, 1]], [.3, [1, .62, .2, 1]], [.8, [.85, .22, .1, 1]], [1, [.4, .08, .06, 0]]])
+    # e01tomes: each book's motes in its colour, at most 8 alive off its
+    # centre: the pact's embers rising and cooling to ash, bounding's small
+    # blue sparks rising, arcane's violet sparks drifting out and twinkling;
+    # each take's sparks following it out; and the bound's sparks ringing
+    # out from its ring and the motes it leaves as the wizard rises. Particles
+    # draw under the book, so its motes leave it fast and then drift.
+    twinkle = [[0, 0], [.12, 1], [.35, .45], [.55, 1], [.8, .6], [1, 0]]
+    configs['tome_pact_motes'] = full(
+        'mote', 8, dict(kind='continuous', rate_hz=6), (.9, 1.3), cone((0, -1), 160, 40, 75), (0, -30), 2.2,
+        (.3, .45), [[0, .6], [.2, 1], [1, .5]], [[0, 0], [.1, 1], [.7, .8], [1, 0]],
+        [[0, [1, .9, .55, 1]], [.35, [1, .52, .16, 1]], [.7, [.75, .3, .14, 1]], [1, [.4, .36, .36, 1]]])
+    configs['tome_bounding_motes'] = full(
+        'title_star', 8, dict(kind='continuous', rate_hz=6), (.8, 1.3), cone((0, -1), 130, 45, 80), (0, -40), 2.0,
+        (.7, 1.1), [[0, .5], [.25, 1], [1, .3]], twinkle,
+        [[0, [.88, .97, 1, 1]], [.5, [.52, .82, 1, 1]], [1, [.3, .62, 1, 0]]], (-2, 2))
+    configs['tome_arcane_motes'] = full(
+        'title_star', 8, dict(kind='continuous', rate_hz=5), (1.0, 1.6), dict(kind='radial', speed=dict(min=40, max=70)),
+        (0, -12), 2.4, (.7, 1.1), [[0, .5], [.25, 1], [1, .3]], twinkle,
+        [[0, [.97, .93, 1, 1]], [.4, [.76, .52, 1, 1]], [1, [.5, .26, .92, 0]]], (-3, 3))
+    for kind, sprite, color in (
+        ('pact', 'mote', [[0, [1, .96, .8, 1]], [.25, [1, .7, .28, 1]], [.6, [.95, .32, .1, 1]], [1, [.4, .16, .1, 0]]]),
+        ('bounding', 'title_star', [[0, [1, 1, 1, 1]], [.3, [.68, .9, 1, 1]], [1, [.3, .62, 1, 0]]]),
+        ('arcane', 'title_star', [[0, [1, 1, 1, 1]], [.3, [.86, .7, 1, 1]], [1, [.52, .26, .95, 0]]]),
+    ):
+        configs[f'tome_{kind}_take_sparks'] = full(
+            sprite, 24, burst(24), (.45, .9), dict(kind='radial', speed=dict(min=70, max=240)), (0, -70), 2.0,
+            (.9, 1.4) if sprite == 'title_star' else (.35, .55), [[0, 1], [.5, .8], [1, .2]],
+            [[0, 1], [.7, .85], [1, 0]], color, (-4, 4))
+    sky = [[0, [1, 1, 1, 1]], [.3, [.72, .92, 1, 1]], [1, [.32, .64, 1, 0]]]
+    configs['bound_sparks'] = full(
+        'title_star', 20, burst(20), (.25, .5), dict(kind='radial', speed=dict(min=160, max=340)), (0, 260), 2.6,
+        (.7, 1.1), [[0, 1], [1, .3]], [[0, 1], [.6, .9], [1, 0]], sky, (-6, 6))
+    configs['bound_trail'] = full(
+        'mote', 12, burst(12), (.4, .75), dict(kind='radial', speed=dict(min=6, max=34)), (0, 40), 1.4,
+        (.3, .45), [[0, 1], [1, .4]], [[0, 0], [.1, 1], [.6, .7], [1, 0]], sky)
     return configs
 
 
@@ -562,9 +597,11 @@ def mirror_facing(images,lit,animations):
 def spray_clips(animations):
     """The sprays' clips (`effects.SPRAY_CLIPS`) and the force push's wave and
     dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
-    flips it top to bottom when the aim faces left, and mirrors the dust."""
-    from effects import PUSH_CLIPS, SPRAY_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS}.items():
+    flips it top to bottom when the aim faces left, and mirrors the dust.
+    And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
+    and the bound's ring, which nothing turns."""
+    from effects import PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 

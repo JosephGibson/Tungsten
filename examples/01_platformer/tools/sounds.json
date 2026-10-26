@@ -488,5 +488,25 @@
     "looping": false,
     "path": "sounds/troll_grunt.wav",
     "volume": 0.55
+  },
+  "ex10_tome_pact_sfx": {
+    "looping": false,
+    "path": "sounds/tome_pact.wav",
+    "volume": 0.6
+  },
+  "ex10_tome_bounding_sfx": {
+    "looping": false,
+    "path": "sounds/tome_bounding.wav",
+    "volume": 0.5
+  },
+  "ex10_tome_arcane_sfx": {
+    "looping": false,
+    "path": "sounds/tome_arcane.wav",
+    "volume": 0.55
+  },
+  "ex10_bound_sfx": {
+    "looping": false,
+    "path": "sounds/bound.wav",
+    "volume": 0.4
   }
 }

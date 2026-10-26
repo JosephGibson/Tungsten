@@ -68,8 +68,9 @@ pub const RECOVER_SECS: f32 = 0.5;
 /// search lasts before its "?" shows.
 pub const ALERT_MARK_SECS: f32 = 0.8;
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
-/// The most summoned enemies live at once (Q12), beside the dummies' four.
-pub const SUMMON_CAP: usize = 6;
+/// The most summoned enemies live at once (Q12, Q45), beside the dummies'
+/// eight.
+pub const SUMMON_CAP: usize = 10;
 /// The source of the difficulty's modifiers on an enemy's stats.
 pub const DIFFICULTY: &str = "difficulty";
 /// The physics layers of the level's static walls besides its tiles
@@ -119,7 +120,10 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
 }
 
 /// A kind's table entry: its prefab, its frame's side, its body's half
-/// size and centre from its sprite's top-left (the entity's point), its
+/// size, how far either side of its body's centre a lightning bolt meets
+/// it (the opaque columns of its walk's or its flight's frames, mirrored
+/// as it faces; Q49), its body's centre from its sprite's top-left (the
+/// entity's point), its
 /// eye from there facing right, its mass for impacts and the walkers'
 /// shove, its sight's reach, its alert's seconds, the black hole's hold on
 /// it, which a blast's push takes too, the force push's wave's weight on
@@ -131,6 +135,7 @@ pub struct KindInfo {
     pub prefab: &'static str,
     pub frame: f32,
     pub half: Vec2,
+    pub strike: f32,
     pub centre: Vec2,
     pub eye: Vec2,
     pub mass: f32,
@@ -154,6 +159,7 @@ impl EnemyKind {
                 prefab: "wisp",
                 frame: 64.0,
                 half: Vec2::new(12.0, 12.0),
+                strike: 17.0,
                 centre: Vec2::new(32.0, 34.0),
                 eye: Vec2::new(40.0, 32.0),
                 mass: 3.0,
@@ -171,6 +177,7 @@ impl EnemyKind {
                 prefab: "crawler",
                 frame: 64.0,
                 half: Vec2::new(24.0, 10.0),
+                strike: 32.0,
                 centre: Vec2::new(32.0, 51.0),
                 eye: Vec2::new(56.0, 48.0),
                 mass: 40.0,
@@ -188,6 +195,7 @@ impl EnemyKind {
                 prefab: "beetle",
                 frame: 64.0,
                 half: Vec2::new(24.0, 13.0),
+                strike: 32.0,
                 centre: Vec2::new(32.0, 48.0),
                 eye: Vec2::new(57.0, 45.0),
                 mass: 120.0,
@@ -205,6 +213,7 @@ impl EnemyKind {
                 prefab: "bat",
                 frame: 64.0,
                 half: Vec2::new(10.0, 9.0),
+                strike: 31.0,
                 centre: Vec2::new(32.0, 28.0),
                 eye: Vec2::new(32.0, 21.0),
                 mass: 2.0,
@@ -222,6 +231,7 @@ impl EnemyKind {
                 prefab: "troll",
                 frame: 128.0,
                 half: Vec2::new(28.0, 55.0),
+                strike: 41.0,
                 centre: Vec2::new(74.0, 70.0),
                 eye: Vec2::new(95.0, 21.0),
                 mass: 600.0,
@@ -239,6 +249,7 @@ impl EnemyKind {
                 prefab: "goblin",
                 frame: 64.0,
                 half: Vec2::new(9.0, 20.0),
+                strike: 22.0,
                 centre: Vec2::new(34.0, 41.0),
                 eye: Vec2::new(41.0, 24.0),
                 mass: 50.0,

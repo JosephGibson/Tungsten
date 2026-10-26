@@ -69,9 +69,9 @@ pixel) for any hand-authored sprite. The modules:
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
-| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`) |
+| `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
-| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV) |
+| `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV); e01tomes' three pickups and the bound |
 | `shaders/soft_glow.wgsl` | Example-local glow material, copied to `assets/shaders/` |
 
 `actors.py` draws the wizard, the fireball and the fire missile. The wizard is one rig posed per
@@ -124,7 +124,9 @@ authored colors and has no normal or emissive map. The existing `fire_*` frames
 remain the burning-ball flames.
 
 Normal and emissive images derive from each final frame's silhouette and glowing
-detail colors, including every player clip and all rune rotations. Terrain
+detail colors, including every player clip and all rune rotations. Only the glow
+set's symbols glow, matched by colour value (`art.GLOW`: `y Y C c`, and e01tomes'
+`Ъ Ч Я Э Ы`, which no other art uses). Terrain
 (names in `terrain.RELIEF_PREFIXES`) and multi-tile scenery (`*_big_*`) use
 relief normals instead. Relief treats luminance as height and has no whole-tile
 tilt, so light pools cross tile seams smoothly. Fully opaque tiles wrap their
@@ -249,6 +251,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
 | `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
 | `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
+| `tomes` | Each book (01 (l)) by `name` and `kind` (`pact`, `bounding`, `arcane`), placed as an orb is over its `support` at column `x`, sized by its idle frame, and the route platform its double jump starts `from`, which the route test reads; each book's glow counts in the light budget |
 
 `routes` names platform waypoints: `main` runs from the spawn through all six
 areas to the bridge's east end, over the pit's chutes and the gap between its
@@ -287,8 +290,9 @@ orbs, `D-208`), so a prop or a slab moves none:
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 26 enemies, after every other object layer but `pickups`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
-| `pickups` | The eight placed health orbs, the map's last object layer | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
+| `enemies` | The 26 enemies, after every other object layer but `pickups` and `tomes`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `pickups` | The eight placed health orbs, after the enemies | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
+| `tomes` | The three books, the map's last object layer; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
@@ -627,9 +631,9 @@ knocked back through the kit's `knock_back`, at the same falloff times its
 kind's black-hole pull (`toys::radial_push`); the troll, whose knockback resists
 the push whole, stands. The wizard, a kinematic body, stays put. The force push,
 slot 5, is a wave instead (01 (j), `toys::wave`): a front from the wizard's hand
-toward the cursor at 1,200 pixels/second for 0.3 s, its sector widening from 15°
+toward the cursor at 1,620 pixels/second for 0.3 s, its sector widening from 15°
 to 30°, that throws each body and enemy it meets once along the aim, half as hard
-at its 360-pixel reach. It draws as `push_wave`, a crescent of bent air turned to
+at its 486-pixel reach (§3.7a: its throws half again as hard). It draws as `push_wave`, a crescent of bent air turned to
 the aim and scaled across to the front's width (sampled linearly), and raises a
 `push_dust` puff and a `push_grit` burst where it scrapes a floor. The blast ignites every small ball within 72 pixels through
 `elements::ignite`, so spent balls stay spent and bowling balls never burn. It does
@@ -785,9 +789,10 @@ and game over.
 ## Ice spray and thermal shattering
 
 Hold `cast` on slot 3 to channel the ice spray toward the cursor, for 18 mana a
-second; slot 2's flamethrower is the same spray in fire, half the reach, lighting
-the small balls it meets. The 28-degree cone reaches 582 pixels, 9.1 tiles, and
-the flamethrower's 291, 4.55 tiles (01 (h): 30 % further than 01 (f)'s); seven
+second; slot 2's flamethrower is the same spray in fire, a shorter reach, lighting
+the small balls it meets. The 28-degree cone reaches 582 pixels, 9.1 tiles (01 (h):
+30 % further than 01 (f)'s), and the flamethrower's 378, 5.9 tiles (§3.7a: 30 %
+further again, its puffs and sparks flying 30 % faster to fill it); seven
 rays stop on colliders and solid tiles, so exposed iron at the sides freezes too.
 The nozzle follows the interpolated caster and current aim every drawn frame.
 Its visuals and sound start on press even before the next fixed physics step;
@@ -1018,3 +1023,27 @@ at 128 BPM in step with `music_explore`'s bars and chords, which it plays over w
 an enemy sees the wizard: toms on every beat, an eighth-note low pulse, string stabs
 on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
 seam.
+
+## The tomes
+
+e01tomes' families (`effects.py`), drawn from the review sheet the owner
+accepted on 2026-10-26. Each book is closed on its 32-pixel frame, its front cover
+facing and its head and fore-edge receding up and to the right (`TOME_LOOKS`,
+`tome_parts`), its centre at (16, 16): the pact in cracked hide with iron corner
+caps and a horned, eyed sigil, its page edges glowing ember; bounding in sky-blue
+tooled leather with gusts and a silver wing clasp, its top sheets lifting; arcane
+in violet with gold-leaf fleurons, a gold ring of runes about a cut gem, and a
+ribbon. Their idle frames (`tome_<kind>_idle_<f>`, four at 180 ms) are lit; their
+glow comes from the glow set alone, and the loop moves a bright band round it.
+Each take (`tome_<kind>_take_<f>`, 64 pixels, six at 80 ms, unlit) flares the
+book, breaks it into shards of light and opens a ring behind them. The bound's
+ring (`bound_ring_<f>`, 64 × 32, six at 50 ms, unlit) is centred on the feet.
+`TOME_CLIPS` lists the three clips of each kind and the ring's, which
+`generate.spray_clips` registers. The tome tiles (`icon_tome_<kind>`) are each
+book's first frame on a square tile in its own metal with a bracket on each
+corner, apart from the spells' bevels; `hud_liquid_shield` is the shield's light,
+cool blue strip. `generate.particle_configs` adds each book's motes
+(`tome_<kind>_motes`, at most 8), which leave the book fast because particles
+draw under it, each take's sparks (`tome_<kind>_take_sparks`, 24) and the bound's
+(`bound_sparks`, 20; `bound_trail`, 12). `sfx.py` adds `tome_pact`, `tome_bounding`,
+`tome_arcane` and `bound`, registered as `ex10_<name>_sfx`.

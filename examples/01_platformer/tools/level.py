@@ -309,6 +309,11 @@ def build_objects(source, images, lit):
     # map's earlier objects keep their save IDs; the run takes their fade off.
     layer('pickups', [obj('health_orb', p['left'] * tile, p['top'] * tile, name=p['name'])
         for p in source.get('pickups', [])])
+    # The tomes (e01tomes), after the pickups: no save names a book, so no
+    # save ID moves; each object's class names its kind's prefab, its point
+    # the book's top-left.
+    layer('tomes', [obj('tome_' + t['kind'], t['left'] * tile, t['top'] * tile, name=t['name'])
+        for t in source.get('tomes', [])])
     return layers, prefabs
 
 
@@ -668,9 +673,10 @@ def validate_layout(source, tiled, iron, shallow):
                     raise ValueError(f"tests' sky: {o['type'] or o['name']} at {o['x'] / tile},{o['y'] / tile}")
     collision = next(l['data'] for l in tiled['layers'] if l['name'] == 'collision')
     walls = {(i % cols, i // cols) for i, gid in enumerate(collision) if gid} | shallow | iron
-    # The map's lights: glowing props, fires, the lava lake, wisps and the
-    # campfire, each at its point in tiles.
+    # The map's lights: glowing props, fires, the lava lake, wisps, the
+    # campfire and the tomes, each at its point in tiles.
     lights = [(p['x'], p['y']) for p in source['props'] if p['sprite'] in GLOWS]
+    lights += [(t['x'], t['top']) for t in source.get('tomes', [])]
     lights += [tuple(h['position']) for h in source['hazards'] if h['fire']]
     lights += [((b['left'] + b['right']) / 2, b['row']) for b in source.get('lava', []) if b.get('light')]
     lights += [(e['x'], e['y']) for e in source['enemies'] if e['kind'] == 'wisp']

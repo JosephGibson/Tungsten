@@ -584,7 +584,7 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     harness.step(61);
     turn(&mut harness, SUMMON_NEXT);
     assert_eq!(summon_type(harness.world()).summoned, Summoned::Keg);
-    // Near the ground: a keg landing at 600 px/s or more goes off.
+    // Near the ground: a keg landing hard ([`elements::blows_keg`]) goes off.
     let at = Vec2::new(1000.0, 965.0);
     aim_at(&mut harness, at);
     harness.harness_mut().press_action("cast");
@@ -799,10 +799,10 @@ fn the_wave_meets_a_body_running_into_it() {
     let caster = Vec2::new(1000.0, 700.0);
     let origin = caster + Vec2::X * toys::wave::WAVE_START;
     let velocity = |h: &UiHarness, e: Entity| h.world().get::<Velocity>(e).unwrap().0;
-    // Head on: a small ball 22 px past the front's start, just past its
-    // first step's 20 px, flying back at 900 px/s. A test of where it is at
+    // Head on: a small ball 29 px past the front's start, just past its
+    // first step's 27 px, flying back at 900 px/s. A test of where it is at
     // each step alone would never cross it.
-    let head_on = ball(&mut harness, origin + Vec2::new(22.0, 0.0), true);
+    let head_on = ball(&mut harness, origin + Vec2::new(29.0, 0.0), true);
     harness.world_mut().get_mut::<Velocity>(head_on).unwrap().0 = Vec2::new(-900.0, 0.0);
     toys::wave::cast(harness.world_mut(), caster, Vec2::X);
     harness.step(1);
@@ -811,11 +811,11 @@ fn the_wave_meets_a_body_running_into_it() {
         "thrown back: {}",
         velocity(&harness, head_on)
     );
-    // On a slant, the front at 100 px: a bowling ball 130 px along and 65
+    // On a slant, the front at 135 px: a bowling ball 175 px along and 85
     // across, flying in at 900 px/s on each axis, meets it inside the sector
     // within the step, though at the step's start it lies outside.
     harness.step(4);
-    let slant = ball(&mut harness, origin + Vec2::new(130.0, 65.0), false);
+    let slant = ball(&mut harness, origin + Vec2::new(175.0, 85.0), false);
     harness.world_mut().get_mut::<Velocity>(slant).unwrap().0 = Vec2::new(-900.0, -900.0);
     harness.step(1);
     let crossed = harness

@@ -1,6 +1,6 @@
 # tungsten-next prompts
 
-The prompt shapes [SKILL.md](SKILL.md) fills under the [operating rules](../../../docs/operating-rules.md). Fill every angle bracket; a reply never shows one. `<id>` is the item's ID in [ROADMAP.md](../../../ROADMAP.md) and `<source>` what its line cites (a feedback section, a redo step). A session commits at each logical step in Conventional Commits, staging only its own paths, and the owner pushes; the prompts say so once, by naming the rules. No session stops for the owner's approval: open questions take their stated defaults.
+The prompt shapes [SKILL.md](SKILL.md) fills under the [operating rules](../../../docs/operating-rules.md). Fill every angle bracket; a reply never shows one. `<id>` is the item's ID in [ROADMAP.md](../../../ROADMAP.md) and `<source>` what its line cites (a feedback section, a redo step). A session commits at each logical step in Conventional Commits, staging only its own paths, and pushes the version branch after each commit; the prompts say so once, by naming the rules. No session stops for the owner's approval: open questions take their stated defaults.
 
 | Key | Step | Where | Prompt |
 | --- | --- | --- | --- |
