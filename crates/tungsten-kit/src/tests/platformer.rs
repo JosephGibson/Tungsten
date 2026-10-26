@@ -613,6 +613,187 @@ fn air_jumps_refill_on_landing_and_spend_once_per_press() {
     assert_eq!(state(&world, entity).air_jumps_left(), 0);
 }
 
+/// A grounded hero with one free air jump, 100 mana and a paid air jump of
+/// 25 mana, set at run time.
+fn bounder() -> (World, Schedule, Entity) {
+    let (mut world, schedule, entity) =
+        standing(PlatformerController::new(RUN, JUMP).with_air_jumps(1));
+    world.insert(entity, Stats::new().with("mana", 100.0));
+    controller(&mut world, entity).set_air_jump_cost(Some(("mana", 25.0)));
+    assert_eq!(state(&world, entity).air_jump_cost(), Some(("mana", 25.0)));
+    (world, schedule, entity)
+}
+
+fn mana(world: &World, entity: Entity) -> f32 {
+    world.get::<Stats>(entity).unwrap().base("mana").unwrap()
+}
+
+/// Presses jump and steps once.
+fn press<'a>(
+    world: &'a mut World,
+    schedule: &mut Schedule,
+    entity: Entity,
+) -> &'a PlatformerController {
+    controller(world, entity).press_jump();
+    step(world, schedule);
+    state(world, entity)
+}
+
+#[test]
+fn past_the_free_air_jumps_each_press_pays_with_no_cap_and_below_the_cost_is_refused() {
+    let (mut world, mut schedule, entity) = bounder();
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(
+        pc.jumped() && !pc.air_jumped() && !pc.paid_air_jumped(),
+        "a ground jump"
+    );
+    steps(&mut world, &mut schedule, 3);
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(
+        pc.air_jumped() && !pc.paid_air_jumped(),
+        "the free air jump"
+    );
+    assert_eq!(mana(&world, entity), 100.0, "both free");
+    for left in [75.0, 50.0, 25.0, 0.0] {
+        steps(&mut world, &mut schedule, 3);
+        let before = position(&world, entity).y;
+        let pc = press(&mut world, &mut schedule, entity);
+        assert!(
+            pc.jumped() && pc.air_jumped() && pc.paid_air_jumped(),
+            "paid to {left}"
+        );
+        assert!(!pc.air_jump_refused());
+        let rise = before - position(&world, entity).y;
+        let expected = (JUMP - GRAVITY * DT * 0.5) * DT;
+        assert!(
+            (rise - expected).abs() < 0.01,
+            "at jump_speed: {rise} vs {expected}"
+        );
+        assert_eq!(mana(&world, entity), left);
+    }
+    // At 24 a press is refused, reported on its fresh step alone.
+    world
+        .get_mut::<Stats>(entity)
+        .unwrap()
+        .set_base("mana", 24.0);
+    steps(&mut world, &mut schedule, 3);
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(!pc.jumped() && pc.air_jump_refused(), "refused at 24");
+    step(&mut world, &mut schedule);
+    let pc = state(&world, entity);
+    assert!(!pc.jumped() && !pc.air_jump_refused(), "once a press");
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(pc.air_jump_refused(), "a second press reports again");
+    assert_eq!(mana(&world, entity), 24.0, "nothing spent");
+    // The buffer keeps the refused press: at 25 it pays on that step.
+    world
+        .get_mut::<Stats>(entity)
+        .unwrap()
+        .set_base("mana", 25.0);
+    step(&mut world, &mut schedule);
+    let pc = state(&world, entity);
+    assert!(
+        pc.air_jumped() && pc.paid_air_jumped() && !pc.air_jump_refused(),
+        "paid in the buffer"
+    );
+    assert_eq!(mana(&world, entity), 0.0);
+    // Landing refills the free jump alone; without the stat a press is refused.
+    for _ in 0..240 {
+        if state(&world, entity).grounded() {
+            break;
+        }
+        step(&mut world, &mut schedule);
+    }
+    assert!(state(&world, entity).grounded(), "it landed");
+    assert_eq!(state(&world, entity).air_jumps_left(), 1);
+    assert_eq!(mana(&world, entity), 0.0);
+    world.remove_component::<Stats>(entity);
+    press(&mut world, &mut schedule, entity);
+    steps(&mut world, &mut schedule, 3);
+    press(&mut world, &mut schedule, entity);
+    steps(&mut world, &mut schedule, 3);
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(
+        !pc.jumped() && pc.air_jump_refused(),
+        "no stat, no paid jump"
+    );
+    // Taken away at run time, a press past the free ones does nothing.
+    controller(&mut world, entity).set_air_jump_cost(None);
+    steps(&mut world, &mut schedule, 10);
+    let pc = press(&mut world, &mut schedule, entity);
+    assert!(!pc.jumped() && !pc.air_jump_refused() && pc.air_jump_cost().is_none());
+}
+
+#[test]
+fn the_air_jump_cost_and_its_flags_round_trip_and_an_old_save_has_none() {
+    let (mut world, mut schedule, entity) = bounder();
+    press(&mut world, &mut schedule, entity);
+    steps(&mut world, &mut schedule, 3);
+    press(&mut world, &mut schedule, entity);
+    steps(&mut world, &mut schedule, 3);
+    assert!(press(&mut world, &mut schedule, entity).paid_air_jumped());
+    let saved = serde_json::to_value(state(&world, entity)).unwrap();
+    assert_eq!(
+        saved["air_jump_cost"],
+        json!({ "stat": "mana", "amount": 25.0 })
+    );
+    assert_eq!(saved["paid_air_jumped"], json!(true));
+    assert!(saved.get("air_jump_refused").is_none(), "false is left out");
+    let loaded: PlatformerController = serde_json::from_value(saved.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&loaded).unwrap(), saved);
+    assert!(loaded.paid_air_jumped() && loaded.air_jump_cost() == Some(("mana", 25.0)));
+    world
+        .get_mut::<Stats>(entity)
+        .unwrap()
+        .set_base("mana", 0.0);
+    steps(&mut world, &mut schedule, 3);
+    assert!(press(&mut world, &mut schedule, entity).air_jump_refused());
+    let refused = serde_json::to_value(state(&world, entity)).unwrap();
+    assert_eq!(refused["air_jump_refused"], json!(true));
+    assert!(
+        serde_json::from_value::<PlatformerController>(refused)
+            .unwrap()
+            .air_jump_refused()
+    );
+    // Off, none of the three is written, and a save from before them loads
+    // with none.
+    let off = serde_json::to_value(PlatformerController::new(RUN, JUMP)).unwrap();
+    for field in ["air_jump_cost", "paid_air_jumped", "air_jump_refused"] {
+        assert!(off.get(field).is_none(), "{field}");
+    }
+    let mut old = saved.clone();
+    let object = old.as_object_mut().unwrap();
+    object.remove("air_jump_cost");
+    object.remove("paid_air_jumped");
+    let loaded: PlatformerController = serde_json::from_value(old).unwrap();
+    assert!(loaded.air_jump_cost().is_none() && !loaded.paid_air_jumped());
+    for value in [
+        json!({ "stat": "Mana", "amount": 25.0 }),
+        json!({ "stat": "mana", "amount": -1.0 }),
+        json!({ "stat": "mana" }),
+        json!({ "stat": "mana", "amount": 25.0, "extra": 1 }),
+    ] {
+        let mut bad = saved.clone();
+        bad["air_jump_cost"] = value.clone();
+        assert!(
+            serde_json::from_value::<PlatformerController>(bad).is_err(),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "is not a stat name")]
+fn an_air_jump_cost_on_a_bad_stat_panics() {
+    let _ = PlatformerController::new(RUN, JUMP).with_air_jump_cost("Mana", 25.0);
+}
+
+#[test]
+#[should_panic(expected = "amount must be finite and >= 0")]
+fn a_negative_air_jump_cost_panics() {
+    PlatformerController::new(RUN, JUMP).set_air_jump_cost(Some(("mana", -1.0)));
+}
+
 #[test]
 fn a_save_mid_jump_continues_exactly() {
     let (mut world, mut schedule, entity) =

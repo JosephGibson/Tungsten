@@ -329,6 +329,8 @@ impl tungsten_kit::Ability
 pub fn tungsten_kit::Ability::charges(&self) -> core::option::Option<(u32, f32, bool)>
 pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::target(&self) -> &tungsten_kit::AbilityTarget
@@ -336,6 +338,7 @@ pub fn tungsten_kit::Ability::trigger(&self) -> &tungsten_kit::Trigger
 pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
+pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_target(self, tungsten_kit::AbilityTarget) -> Self
 pub fn tungsten_kit::Ability::with_trigger(self, tungsten_kit::Trigger) -> Self
@@ -2582,6 +2585,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
 pub struct tungsten_kit::prelude::PlatformerController
 impl tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::air_jump_cost(&self) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
@@ -2591,10 +2596,13 @@ pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::lock_input(&mut self, f32)
 pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::paid_air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::PlatformerController::set_air_jump_cost(&mut self, core::option::Option<(&str, f32)>)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)
+pub fn tungsten_kit::PlatformerController::with_air_jump_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_air_jumps(self, u32) -> Self
 pub fn tungsten_kit::PlatformerController::with_coyote_time(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self
@@ -4027,6 +4035,8 @@ impl tungsten_kit::Ability
 pub fn tungsten_kit::Ability::charges(&self) -> core::option::Option<(u32, f32, bool)>
 pub fn tungsten_kit::Ability::cooldown(&self) -> f32
 pub fn tungsten_kit::Ability::cost(&self) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::Ability::cost_for(&self, core::option::Option<&tungsten_kit::Stats>) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::Ability::cost_scale(&self) -> core::option::Option<&str>
 pub fn tungsten_kit::Ability::new() -> Self
 pub fn tungsten_kit::Ability::payload(&self) -> &[tungsten_kit::Payload]
 pub fn tungsten_kit::Ability::target(&self) -> &tungsten_kit::AbilityTarget
@@ -4034,6 +4044,7 @@ pub fn tungsten_kit::Ability::trigger(&self) -> &tungsten_kit::Trigger
 pub fn tungsten_kit::Ability::with_charges(self, u32, f32, bool) -> Self
 pub fn tungsten_kit::Ability::with_cooldown(self, f32) -> Self
 pub fn tungsten_kit::Ability::with_cost(self, &str, f32) -> Self
+pub fn tungsten_kit::Ability::with_cost_scale(self, &str) -> Self
 pub fn tungsten_kit::Ability::with_payload(self, tungsten_kit::Payload) -> Self
 pub fn tungsten_kit::Ability::with_target(self, tungsten_kit::AbilityTarget) -> Self
 pub fn tungsten_kit::Ability::with_trigger(self, tungsten_kit::Trigger) -> Self
@@ -6371,6 +6382,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::PickupPlugin
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::PickupPlugin
 pub struct tungsten_kit::PlatformerController
 impl tungsten_kit::PlatformerController
+pub fn tungsten_kit::PlatformerController::air_jump_cost(&self) -> core::option::Option<(&str, f32)>
+pub fn tungsten_kit::PlatformerController::air_jump_refused(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::air_jumps_left(&self) -> u32
 pub fn tungsten_kit::PlatformerController::can_jump(&self) -> bool
@@ -6380,10 +6393,13 @@ pub fn tungsten_kit::PlatformerController::jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::launch(&mut self, glam::f32::vec2::Vec2)
 pub fn tungsten_kit::PlatformerController::lock_input(&mut self, f32)
 pub fn tungsten_kit::PlatformerController::new(f32, f32) -> Self
+pub fn tungsten_kit::PlatformerController::paid_air_jumped(&self) -> bool
 pub fn tungsten_kit::PlatformerController::press_jump(&mut self)
 pub fn tungsten_kit::PlatformerController::push(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::PlatformerController::set_air_jump_cost(&mut self, core::option::Option<(&str, f32)>)
 pub fn tungsten_kit::PlatformerController::set_jump_held(&mut self, bool)
 pub fn tungsten_kit::PlatformerController::set_run(&mut self, f32)
+pub fn tungsten_kit::PlatformerController::with_air_jump_cost(self, &str, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_air_jumps(self, u32) -> Self
 pub fn tungsten_kit::PlatformerController::with_coyote_time(self, f32) -> Self
 pub fn tungsten_kit::PlatformerController::with_filter(self, tungsten_core::physics::query::SpatialFilter) -> Self

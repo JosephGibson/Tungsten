@@ -242,6 +242,110 @@ fn a_cost_is_refused_below_the_base_and_spent_from_it() {
 }
 
 #[test]
+fn a_scaled_cost_spends_the_amount_times_the_users_stat() {
+    let (mut world, _schedule) = rig();
+    let bolt = insert(
+        &mut world,
+        "bolt",
+        Ability::new()
+            .with_cost("mana", 4.0)
+            .with_cost_scale("spell_cost")
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let mage = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(bolt.clone()),
+            Stats::new().with("mana", 10.0).with("spell_cost", 2.0),
+        ),
+    );
+    let ability = world
+        .resource::<DataRegistry>()
+        .get::<Ability>("bolt")
+        .unwrap()
+        .clone();
+    assert_eq!(ability.cost(), Some(("mana", 4.0)), "the data's amount");
+    assert_eq!(ability.cost_scale(), Some("spell_cost"));
+    assert_eq!(
+        ability.cost_for(world.get::<Stats>(mage)),
+        Some(("mana", 8.0))
+    );
+    assert_eq!(use_ability(&mut world, mage, "bolt"), Used::Used);
+    assert_eq!(mana(&world, mage), Some(2.0), "twice the amount");
+    // 1.9 times the amount is short of twice it.
+    world
+        .get_mut::<Stats>(mage)
+        .unwrap()
+        .set_base("mana", 4.0 * 1.9);
+    assert_eq!(use_ability(&mut world, mage, "bolt"), Used::NoCost);
+    assert!(close(mana(&world, mage).unwrap(), 7.6), "nothing spent");
+    // A user without the scale stat pays the amount, and a negative scale
+    // nothing.
+    let plain = at(
+        &mut world,
+        0.0,
+        0.0,
+        (
+            Abilities::new().with(bolt.clone()),
+            Stats::new().with("mana", 10.0),
+        ),
+    );
+    assert_eq!(use_ability(&mut world, plain, "bolt"), Used::Used);
+    assert_eq!(mana(&world, plain), Some(6.0));
+    assert_eq!(ability.cost_for(None), Some(("mana", 4.0)));
+    let odd = Stats::new().with("spell_cost", -1.0);
+    assert_eq!(ability.cost_for(Some(&odd)), Some(("mana", 0.0)));
+    // The data form, with and without the scale.
+    let scaled: Ability = serde_json::from_value(json!({
+        "cost": { "stat": "mana", "amount": 4, "scale": "spell_cost" },
+        "payload": [{ "impulse": 1 }]
+    }))
+    .unwrap();
+    assert_eq!(
+        scaled,
+        Ability::new()
+            .with_cost("mana", 4.0)
+            .with_cost_scale("spell_cost")
+            .with_payload(Payload::Impulse(1.0))
+    );
+    let back = serde_json::to_value(&scaled).unwrap();
+    assert_eq!(
+        back["cost"],
+        json!({ "stat": "mana", "amount": 4.0, "scale": "spell_cost" })
+    );
+    assert_eq!(serde_json::from_value::<Ability>(back).unwrap(), scaled);
+    let unscaled = serde_json::to_value(
+        Ability::new()
+            .with_cost("mana", 4.0)
+            .with_payload(Payload::Impulse(1.0)),
+    )
+    .unwrap();
+    assert_eq!(unscaled["cost"], json!({ "stat": "mana", "amount": 4.0 }));
+    assert_eq!(
+        serde_json::from_value::<Ability>(unscaled)
+            .unwrap()
+            .cost_scale(),
+        None
+    );
+    assert!(
+        serde_json::from_value::<Ability>(json!({
+            "cost": { "stat": "mana", "amount": 4, "scale": "Spell" },
+            "payload": [{ "impulse": 1 }]
+        }))
+        .is_err()
+    );
+    assert!(
+        std::panic::catch_unwind(|| Ability::new()
+            .with_cost("mana", 1.0)
+            .with_cost_scale("Spell"))
+        .is_err()
+    );
+    assert!(std::panic::catch_unwind(|| Ability::new().with_cost_scale("spell_cost")).is_err());
+}
+
+#[test]
 fn a_cooldown_counts_at_the_cooldown_rate() {
     let (mut world, mut schedule) = rig();
     let swing = insert(

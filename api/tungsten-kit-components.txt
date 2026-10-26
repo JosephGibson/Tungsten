@@ -310,6 +310,7 @@ shape ability_charges: Uses in hand, a use taking one, time giving them back.
 shape ability_cost: A stat's base spent per use.
   field stat: text — the stat, `[a-z][a-z0-9_]*`; an entity without it cannot use the ability
   field amount: f32 (>= 0) — taken off the base
+  field scale: text = null — a stat whose value for the user multiplies the amount, at least 0; the amount for a user without it; none when left out
   sample: { "stat": "mana", "amount": 10 }
 shape ability_payload: One thing a use does.
   exactly one of its fields
