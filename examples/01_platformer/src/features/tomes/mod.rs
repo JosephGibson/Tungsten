@@ -4,7 +4,8 @@
 //! on the kit's oscillator, glows and trails its motes; no save names it,
 //! so the map spawns all three and a load takes off those the player
 //! holds. The player's [`Tomes`] lists the kinds taken, in order, which the
-//! HUD's strip shows.
+//! HUD's strip shows. The demonic pact halves the maximum health for good
+//! for a shield over it that comes back after a hit.
 
 pub mod components;
 pub mod systems;
@@ -31,6 +32,13 @@ pub const TAKE_SECS: f32 = 0.48;
 pub const TAKE_Z: i32 = 13;
 /// The action that takes a book.
 pub const INTERACT: &str = "interact";
+/// The pact's modifier source on the player's stats, and its shield: its
+/// size, what it recharges a second and the game seconds after a hit it
+/// waits first (Q37).
+pub const PACT_SOURCE: &str = "tome.pact";
+pub const PACT_SHIELD: f32 = 50.0;
+pub const PACT_RECHARGE: f32 = 20.0;
+pub const PACT_DELAY: f32 = 3.0;
 
 /// The tomes as a plugin: the `tome` component the books' prefabs name,
 /// the take in the tick phase before the kit's `stats_apply`, so what a

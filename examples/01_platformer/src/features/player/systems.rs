@@ -10,7 +10,8 @@ use tungsten::core::{
     With, World,
 };
 use tungsten::kit::{
-    DamageRequest, Damaged, Facing, Health, Intent, PlatformerController, Stats, Used, use_ability,
+    DamageRequest, Damaged, Facing, Health, Intent, PlatformerController, Shield, Stats, Used,
+    use_ability,
 };
 use tungsten::physics::{SpatialFilter, overlap, wake};
 
@@ -215,8 +216,9 @@ pub fn escaped(at: Vec2, collider: Option<&Collider>) -> bool {
 }
 
 /// `player_bounds`, in the overlap phase: a player whose body falls past
-/// the kill row, or leaves the level's box, takes a hit of all its health.
-/// The hit is periodic, so it lands inside the invulnerability window.
+/// the kill row, or leaves the level's box, takes a hit of all its health
+/// and the pact's shield over it. The hit is periodic, so it lands inside
+/// the invulnerability window.
 pub fn bounds(world: &mut World) {
     let Some(player) = player(world) else {
         return;
@@ -230,7 +232,8 @@ pub fn bounds(world: &mut World) {
     if health.is_dead() {
         return;
     }
-    let amount = health.current();
+    // Through the pact's shield too, which takes a hit first.
+    let amount = health.current() + world.get::<Shield>(player).map_or(0.0, Shield::current);
     let collider = world.get::<Collider>(player);
     let below = body_centre(world, player).is_some_and(|centre| centre.y > KILL_Y);
     if below || escaped(at, collider) {

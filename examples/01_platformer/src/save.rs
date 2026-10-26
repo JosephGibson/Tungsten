@@ -41,7 +41,7 @@ use tungsten::core::{
 use tungsten::kit::{
     Abilities, AilmentBuckets, ContactDamage, ContactTouch, Effects, Health, Hitbox, KitRng,
     Knockback, Lifetime, LinearMotion, Oscillator, PathFollower, Pickup, PlatformerController,
-    Projectile, Resist, Source, StateMachine, Stats, Tags, TopDownMover,
+    Projectile, Resist, Shield, Source, StateMachine, Stats, Tags, TopDownMover,
 };
 
 use crate::features::dummy::{self, components::Dummy};
@@ -894,8 +894,8 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
 }
 
 /// The player: its body's point and velocity, its controller, health,
-/// stats, effects with their sources, abilities, ailment buckets, tags and
-/// the gun's reload while one runs.
+/// stats, effects with their sources, abilities, ailment buckets, tags,
+/// the gun's reload while one runs, the tomes held and the pact's shield.
 /// The tags hold what an effect grants, so a save during `casting` loads
 /// with the mana still paused.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -919,6 +919,9 @@ pub struct PlayerSave {
     /// The tomes taken, in order; none before schema 16.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tomes: Vec<TomeKind>,
+    /// The pact's shield, with its recharge's wait; none without the pact.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub shield: Option<Shield>,
 }
 
 /// A training dummy: one the map placed (`map`), found by its save ID, or
@@ -1642,6 +1645,7 @@ fn capture_player(world: &World, player: Entity) -> Option<PlayerSave> {
             .get::<Tomes>(player)
             .map(|tomes| tomes.0.clone())
             .unwrap_or_default(),
+        shield: world.get::<Shield>(player).cloned(),
     })
 }
 
@@ -1706,6 +1710,9 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     world.insert_bundle(player, (Spellbook { slot: save.spell }, lantern));
     if let Some(left) = p.reload {
         world.insert(player, Reload { left });
+    }
+    if let Some(shield) = &p.shield {
+        world.insert(player, shield.clone());
     }
     // The books the player holds leave the map, which spawned all three.
     if !p.tomes.is_empty() {

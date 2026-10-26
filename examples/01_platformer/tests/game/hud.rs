@@ -13,9 +13,10 @@ use example_01_platformer::features::spells::{
 };
 use example_01_platformer::shell::widgets::text_of;
 use glam::Vec2;
+use tungsten::core::ui::Visibility;
 use tungsten::core::ui::WidgetId;
 use tungsten::core::{ActionMap, AssetRegistry, Binding, MouseButton};
-use tungsten::kit::{Health, damage};
+use tungsten::kit::{Health, Modifier, Shield, Stats, damage};
 use tungsten::testing::UiHarness;
 
 use super::{choose, run, steps_this_frame};
@@ -243,4 +244,39 @@ fn a_slot_flashes_when_ready_and_red_when_refused() {
     assert!(white, "a white flash as it is ready");
     harness.step(20);
     assert_eq!(flash(&harness, push), None, "gone after 0.25 s");
+}
+
+#[test]
+fn the_shield_reads_its_share_of_the_bar_and_its_plus_and_hides_at_zero() {
+    let (mut harness, player) = run();
+    let hud = *harness.world().resource::<Hud>();
+    let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
+    stats.add_modifier(Stats::MAX_HEALTH, "tome.pact", Modifier::Mul(0.5));
+    let shield = |current: f32| {
+        let fields = serde_json::json!({ "current": current, "max": 50.0 });
+        serde_json::from_value::<Shield>(fields).expect("a shield")
+    };
+    for (current, share, plus) in [(50.0, 1.0, "+50"), (25.0, 0.5, "+25")] {
+        harness.world_mut().insert(player, shield(current));
+        harness.step(1);
+        assert_eq!(text_of(harness.tree(), hud.health.text), "50 / 50");
+        assert_eq!(text_of(harness.tree(), hud.shield.text), plus);
+        let well = harness.rect(hud.health.well).unwrap().size().x;
+        let layer = harness.rect(hud.shield.fill).unwrap().size().x;
+        assert!(
+            (layer - well * share).abs() < 0.01,
+            "{current}: {layer} of {well}"
+        );
+    }
+    harness.world_mut().insert(player, shield(0.0));
+    harness.step(1);
+    let tree = harness.tree();
+    assert_eq!(
+        tree.visibility(hud.shield.text),
+        Some(Visibility::Collapsed)
+    );
+    assert_eq!(
+        tree.visibility(hud.shield.fill),
+        Some(Visibility::Collapsed)
+    );
 }

@@ -1,7 +1,9 @@
 //! The HUD, in the shell's theme, built as the template's sample builds its
 //! bar: at the top left the health bar over the mana bar, each a dark
 //! track whose fill clips its own liquid, scrolled by the game clock, with
-//! a bright edge where it stands, beside its "current / max" in mono; at a
+//! a bright edge where it stands, beside its "current / max" in mono; the
+//! pact's shield a lighter liquid over health's from the left, as wide as
+//! its share of the maximum, with its "+shield" after the readout; at a
 //! third or less, health's liquid pulses and its track's border beats in
 //! the danger colour; under them, from the first take, the tomes held as
 //! tiles in the order taken. At the bottom centre the spell bar: each slot its
@@ -31,7 +33,7 @@ use tungsten::core::{
     ActionMap, AssetRegistry, Binding, CameraState, DataRegistry, Entity, ScaleFactor,
     SpriteAssetId, Time, World,
 };
-use tungsten::kit::{Abilities, Ability, Health, Stats};
+use tungsten::kit::{Abilities, Ability, Health, Shield, Stats};
 
 use super::components::{Spell, Spellbook};
 use super::{SLOT_ACTIONS, SLOTS, mana, summon_type};
@@ -90,6 +92,18 @@ pub struct Magazine {
     pub rounds: [WidgetId; ROUNDS],
 }
 
+/// The pact's shield on the health bar: a layer in its well from the left,
+/// as wide as the shield's share of the maximum, which clips the shield's
+/// liquid, with its own edge, and its "+shield" after the health's
+/// readout; both collapsed while it holds none.
+#[derive(Debug, Clone, Copy)]
+pub struct ShieldBar {
+    pub fill: WidgetId,
+    pub strip: WidgetId,
+    pub edge: WidgetId,
+    pub text: WidgetId,
+}
+
 /// The tomes held, under the bars: a tile a tome, in the order taken, the
 /// row collapsed until the first.
 #[derive(Debug, Clone, Copy)]
@@ -108,13 +122,15 @@ pub struct Panel {
     pub costs: WidgetId,
 }
 
-/// The HUD's sprites: the gun's icon, the bars' liquids, the cartridges,
-/// live and spent, and the tomes' tiles in [`TomeKind::ALL`]'s order.
+/// The HUD's sprites: the gun's icon, the bars' and the shield's liquids,
+/// the cartridges, live and spent, and the tomes' tiles in
+/// [`TomeKind::ALL`]'s order.
 #[derive(Debug, Clone, Copy)]
 pub struct Art {
     pub gun: SpriteAssetId,
     pub health: SpriteAssetId,
     pub mana: SpriteAssetId,
+    pub shield: SpriteAssetId,
     pub live: SpriteAssetId,
     pub spent: SpriteAssetId,
     pub tomes: [SpriteAssetId; 3],
@@ -129,6 +145,7 @@ pub struct Hud {
     /// The bottom centre's root, with the spell bar.
     pub bar: WidgetId,
     pub health: Meter,
+    pub shield: ShieldBar,
     pub mana: Meter,
     pub strip: Strip,
     pub slots: [Slot; 10],
@@ -167,6 +184,13 @@ const MANA_LIQUID: &str = "ex10_hud_liquid_mana";
 const HEALTH_FLOW: f32 = 14.0;
 const MANA_FLOW: f32 = 9.0;
 const MANA_PHASE: f32 = 40.0;
+/// The pact's shield: its liquid, its flow, slower than health's, its
+/// edge, its readout's colour and the room "+50" takes in mono.
+const SHIELD_LIQUID: &str = "ex10_hud_liquid_shield";
+const SHIELD_FLOW: f32 = 6.0;
+const SHIELD_EDGE: [u8; 4] = [200, 240, 255, 255];
+const SHIELD_TEXT: [u8; 4] = [150, 215, 255, 255];
+const SHIELD_READOUT: f32 = 36.0;
 /// The bright edge where each liquid stands, and the well under it.
 const HEALTH_EDGE: [u8; 4] = [255, 150, 140, 255];
 const MANA_EDGE: [u8; 4] = [152, 192, 255, 255];
@@ -250,6 +274,7 @@ pub fn start(world: &mut World) {
         gun: assets.intern_sprite(GUN_ICON),
         health: assets.intern_sprite(HEALTH_LIQUID),
         mana: assets.intern_sprite(MANA_LIQUID),
+        shield: assets.intern_sprite(SHIELD_LIQUID),
         live: assets.intern_sprite(LIVE_ROUND),
         spent: assets.intern_sprite(SPENT_ROUND),
         tomes: TomeKind::ALL.map(|kind| assets.intern_sprite(kind.icon())),
@@ -357,6 +382,7 @@ fn build(
     tree.set_hit_testable(meters, false);
     widgets::fill(tree, meters, faded(colors.background, METERS_ALPHA));
     let health = meter(tree, meters, art.health, HEALTH_EDGE);
+    let shield = shield_bar(tree, &health, art.shield);
     let mana = meter(tree, meters, art.mana, MANA_EDGE);
     let strip = strip(tree, meters, art);
     let style = LayoutStyle::row().with_gap(theme::GAP).anchored(
@@ -375,6 +401,7 @@ fn build(
         meters,
         bar,
         health,
+        shield,
         mana,
         strip,
         slots: slots.try_into().expect("ten slots"),
@@ -422,6 +449,12 @@ fn size(tree: &mut UiTree, hud: &Hud, scale: f32) {
         }
         resize(tree, meter.edge, texel, height * texel);
     }
+    let strip = LIQUID[0] * LIQUID_TILES as f32;
+    resize(tree, hud.shield.strip, strip * texel, height * texel);
+    for tile in tree.children(hud.shield.strip).to_vec() {
+        resize(tree, tile, LIQUID[0] * texel, LIQUID[1] * texel);
+    }
+    resize(tree, hud.shield.edge, texel, height * texel);
     for round in hud.magazine.rounds {
         resize(tree, round, BULLET[0] * texel, BULLET[1] * texel);
     }
@@ -468,6 +501,41 @@ fn meter(tree: &mut UiTree, parent: WidgetId, liquid: SpriteAssetId, edge: [u8; 
         strip,
         pulse,
         edge: stand,
+        text,
+    }
+}
+
+/// The shield's layer in `health`'s well, over its fill, and its readout
+/// after the health's, collapsed; [`size`] gives them their sizes.
+fn shield_bar(tree: &mut UiTree, health: &Meter, liquid: SpriteAssetId) -> ShieldBar {
+    let style = LayoutStyle::default()
+        .with_size(Sizing::Percent(0.0), Sizing::Percent(100.0))
+        .anchored(Anchor::TopStart, Vec2::ZERO);
+    let fill = tree.panel(health.well, style);
+    widgets::fill(tree, fill, CLEAR);
+    tree.set_clip_children(fill, true);
+    let strip = tree.panel(
+        fill,
+        LayoutStyle::row().anchored(Anchor::TopStart, Vec2::ZERO),
+    );
+    widgets::fill(tree, strip, CLEAR);
+    for _ in 0..LIQUID_TILES {
+        tree.image(strip, liquid, Vec2::from(LIQUID), LayoutStyle::default());
+    }
+    let edge = tree.panel(
+        fill,
+        LayoutStyle::default().anchored(Anchor::TopEnd, Vec2::ZERO),
+    );
+    widgets::fill(tree, edge, SHIELD_EDGE);
+    let row = tree.parent(health.text).expect("the health bar's row");
+    let text = readout(tree, row, READOUT_TEXT, SHIELD_READOUT);
+    widgets::restyle(tree, text, |text| text.color = Some(SHIELD_TEXT));
+    widgets::show(tree, fill, false);
+    widgets::show(tree, text, false);
+    ShieldBar {
+        fill,
+        strip,
+        edge,
         text,
     }
 }
@@ -794,6 +862,7 @@ pub fn update(world: &mut World) {
         .get::<Health>(player)
         .map_or((0.0, 1.0), |health| (health.current(), health.max()));
     let shown_health = whole_health(world.get::<Health>(player));
+    let shield = world.get::<Shield>(player).map_or(0.0, Shield::current);
     let held = mana(world, player);
     let most = world
         .get::<Stats>(player)
@@ -826,6 +895,14 @@ pub fn update(world: &mut World) {
     let beat = 0.5 + 0.5 * (time * TAU * PULSE_HZ).sin();
     let health_flow = time * HEALTH_FLOW;
     fill(tree, hud.health, health, shown_health, health_flow, texel);
+    shield_fill(
+        tree,
+        hud.shield,
+        shield / health.1.max(f32::EPSILON),
+        shield,
+        time,
+        texel,
+    );
     let border = if low && beat > 0.5 {
         colors.danger
     } else {
@@ -962,6 +1039,34 @@ pub fn whole_health(health: Option<&Health>) -> f32 {
             health.current().ceil()
         }
     })
+}
+
+/// Fills the shield's layer to `share` of the bar, capped at its width,
+/// scrolls its liquid by the game clock `time`, and writes `+shield`,
+/// rounded up, after the health's readout; with no shield, both collapse.
+fn shield_fill(tree: &mut UiTree, bar: ShieldBar, share: f32, shield: f32, time: f32, texel: f32) {
+    let held = shield.ceil();
+    widgets::show(tree, bar.fill, held > 0.0);
+    widgets::show(tree, bar.text, held > 0.0);
+    if held <= 0.0 {
+        return;
+    }
+    let text = format!("+{held}");
+    if widgets::text_of(tree, bar.text) != text {
+        tree.set_plain_text(bar.text, &text);
+    }
+    let width = Sizing::Percent((share * 100.0).clamp(0.0, 100.0));
+    if tree
+        .layout_style(bar.fill)
+        .is_some_and(|style| style.width != width)
+    {
+        let style = LayoutStyle::default()
+            .with_size(width, Sizing::Percent(100.0))
+            .anchored(Anchor::TopStart, Vec2::ZERO);
+        tree.set_layout_style(bar.fill, style);
+    }
+    let scrolled = (time * SHIELD_FLOW).rem_euclid(LIQUID[0]) * texel;
+    tree.set_translation(bar.strip, Vec2::new(-scrolled, 0.0));
 }
 
 /// Writes `shown / max` into `meter`, fills it to `current / max` and

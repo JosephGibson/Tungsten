@@ -62,8 +62,8 @@ use tungsten::core::{
     Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, Velocity, World,
 };
 use tungsten::kit::{
-    Abilities, ContactDamage, Damaged, Effects, Health, Hitbox, Oscillator, PathFollower,
-    StateMachine, Stats, Tags,
+    Abilities, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
+    Oscillator, PathFollower, Shield, StateMachine, Stats, Tags,
 };
 use tungsten::testing::UiHarness;
 
@@ -339,6 +339,7 @@ fn lists(kind: &str) -> Lists {
                     name::<Lantern>(),
                     name::<Reload>(),
                     name::<Tomes>(),
+                    name::<Shield>(),
                 ],
             ]
             .concat(),
@@ -3280,10 +3281,11 @@ fn books(harness: &UiHarness) -> Vec<TomeKind> {
 }
 
 #[test]
-fn a_run_holding_two_tomes_loads_them_back_with_their_books_gone() {
+fn a_run_holding_two_tomes_and_a_half_shield_loads_them_back_with_their_books_gone() {
     let (mut harness, player) = run();
     assert_eq!(books(&harness), TomeKind::ALL, "the map's three");
-    // As two takes leave it: those books gone, their kinds on the player.
+    // As two takes leave it: those books gone, their kinds on the player,
+    // the pact's half health and its shield, hit to half and waiting.
     let world = harness.world_mut();
     let taken: Vec<Entity> = world
         .query::<(Entity, &Tome)>()
@@ -3294,8 +3296,17 @@ fn a_run_holding_two_tomes_loads_them_back_with_their_books_gone() {
         example_01_platformer::shared::despawn_tree(world, book);
     }
     world.insert(player, Tomes(vec![TomeKind::Bounding, TomeKind::Pact]));
+    let stats = world.get_mut::<Stats>(player).unwrap();
+    stats.add_modifier(Stats::MAX_HEALTH, "tome.pact", Modifier::Mul(0.5));
+    world.insert(player, Shield::new(50.0).with_recharge(20.0, 3.0));
+    harness.step(1);
+    DamageRequest::new(player, 25.0).queue(harness.world_mut());
+    harness.step(30);
     let saved = capture(&harness);
     assert_eq!(saved.player.tomes, [TomeKind::Bounding, TomeKind::Pact]);
+    let shield = saved.player.shield.clone().expect("the pact's shield");
+    assert_eq!(shield.current(), 25.0, "half full");
+    assert_eq!(saved.player.health.max(), 50.0);
     let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
     let mut fresh = super::harness();
     load(&mut fresh, read);
@@ -3305,7 +3316,11 @@ fn a_run_holding_two_tomes_loads_them_back_with_their_books_gone() {
         Some(&Tomes(vec![TomeKind::Bounding, TomeKind::Pact]))
     );
     assert_eq!(books(&fresh), [TomeKind::Arcane], "the third on the map");
-    assert_eq!(capture(&fresh).player.tomes, saved.player.tomes);
+    let again = capture(&fresh);
+    assert_eq!(again.player.tomes, saved.player.tomes);
+    assert_eq!(again.player.shield, Some(shield), "its wait too");
+    let health = |save: &SaveGame| (save.player.health.current(), save.player.health.max());
+    assert_eq!(health(&again), health(&saved));
 }
 
 #[test]

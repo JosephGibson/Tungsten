@@ -1,8 +1,10 @@
 //! The tomes (01 (l)) on books a test sets in the level's empty sky: the
 //! panel over a book in reach, the take with its burst and sound, and the
-//! strip in the order taken.
+//! strip in the order taken; the pact's half health and its shield, which
+//! takes a hit first, comes back after one and falls with the kill row.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::level::KILL_Y;
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::tomes::{BOOK_CENTRE, INTERACT, Tome, TomeKind, Tomes};
 use example_01_platformer::game::GAMEPLAY;
@@ -11,9 +13,10 @@ use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::Entity;
 use tungsten::core::ui::Visibility;
+use tungsten::kit::{DamageRequest, Health, Shield};
 use tungsten::testing::UiHarness;
 
-use super::{bursts, centre, ground, run, stand};
+use super::{bursts, centre, ground, run, stand, teleport};
 
 /// The test's floor's top, in the level's empty sky.
 const TOP: f32 = 900.0;
@@ -170,4 +173,88 @@ fn the_strip_follows_the_order_taken() {
     );
     assert_eq!(tree.visibility(strip.tiles[1]), Some(Visibility::Visible));
     assert_eq!(tree.visibility(strip.tiles[2]), Some(Visibility::Collapsed));
+}
+
+fn health(harness: &UiHarness, player: Entity) -> (f32, f32) {
+    let health = harness.world().get::<Health>(player).expect("a health");
+    (health.current(), health.max())
+}
+
+fn shield(harness: &UiHarness, player: Entity) -> Option<f32> {
+    harness.world().get::<Shield>(player).map(Shield::current)
+}
+
+/// The player in the sky takes the pact from beside it.
+fn pact(harness: &mut UiHarness, player: Entity) {
+    let eye = centre(harness, player);
+    book(harness, TomeKind::Pact, eye + Vec2::new(30.0, 0.0));
+    harness.step(1);
+    assert_eq!(interact(harness, Sound::TomePactTaken), 1);
+}
+
+#[test]
+fn the_pact_halves_the_health_for_a_full_shield_of_50() {
+    let (mut harness, player) = sky();
+    assert_eq!(health(&harness, player), (100.0, 100.0));
+    pact(&mut harness, player);
+    assert_eq!(health(&harness, player), (50.0, 50.0));
+    assert_eq!(shield(&harness, player), Some(50.0));
+    // Hurt to 80 first, it keeps its share: 40 of 50.
+    let (mut harness, player) = sky();
+    DamageRequest::new(player, 20.0).apply(harness.world_mut());
+    assert_eq!(health(&harness, player), (80.0, 100.0));
+    pact(&mut harness, player);
+    assert_eq!(health(&harness, player), (40.0, 50.0));
+    let full = harness.world().get::<Shield>(player).unwrap();
+    assert_eq!((full.current(), full.max()), (50.0, 50.0));
+}
+
+#[test]
+fn a_hit_in_the_takes_own_step_meets_the_halved_health_behind_the_shield() {
+    let (mut harness, player) = sky();
+    let eye = centre(&harness, player);
+    book(&mut harness, TomeKind::Pact, eye + Vec2::new(30.0, 0.0));
+    harness.step(1);
+    // The take and a 75-point hit resolve in one step.
+    DamageRequest::new(player, 75.0).queue(harness.world_mut());
+    harness.harness_mut().press_action(INTERACT);
+    harness.step(1);
+    harness.harness_mut().release_action(INTERACT);
+    assert_eq!(held(&harness, player), [TomeKind::Pact]);
+    assert_eq!(health(&harness, player), (25.0, 50.0));
+    assert_eq!(shield(&harness, player), Some(0.0));
+}
+
+#[test]
+fn the_shield_takes_a_hit_first_and_comes_back_three_seconds_after() {
+    let (mut harness, player) = sky();
+    pact(&mut harness, player);
+    DamageRequest::new(player, 30.0).queue(harness.world_mut());
+    harness.step(1);
+    assert_eq!(shield(&harness, player), Some(20.0));
+    assert_eq!(health(&harness, player), (50.0, 50.0), "health whole");
+    // It holds for 3 s, then fills at 20 a second.
+    harness.step(179);
+    let held = shield(&harness, player).unwrap();
+    assert!((held - 20.0).abs() < 1e-3, "held through the wait: {held}");
+    harness.step(31);
+    let rising = shield(&harness, player).unwrap();
+    assert!(
+        (rising - 30.0).abs() < 0.5,
+        "half a second past the wait: {rising}"
+    );
+    harness.step(70);
+    assert_eq!(shield(&harness, player), Some(50.0), "full again");
+}
+
+#[test]
+fn the_kill_row_kills_a_player_behind_a_full_shield() {
+    let (mut harness, player) = sky();
+    pact(&mut harness, player);
+    assert_eq!(shield(&harness, player), Some(50.0));
+    teleport(&mut harness, player, Vec2::new(400.0, KILL_Y + 20.0));
+    harness.step(1);
+    let world = harness.world();
+    assert!(world.get::<Health>(player).unwrap().is_dead());
+    assert_eq!(shield(&harness, player), Some(0.0));
 }
