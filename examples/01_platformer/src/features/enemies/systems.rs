@@ -21,8 +21,11 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
+use crate::features::dummy::components::Dummy;
 use crate::features::elements;
+use crate::features::props::components::{Crate, Keg};
 use crate::features::run::Run;
+use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::shared::spawn_key_burst;
 
 /// The machine every enemy thinks on: each state's hooks run its kind's
@@ -417,10 +420,28 @@ fn enemies(world: &World) -> Vec<Entity> {
     enemies
 }
 
-/// Whether nothing blocks the line from `from` to `to`: no solid tile, and
-/// no body in a wall layer, the nearer hit blocking.
+/// The most bodies [`clear`]'s ray sees past.
+const SEEN_PAST: usize = 8;
+
+/// Whether a body hides what is behind it from an enemy's eye (Q47): a
+/// crate, a keg, iron, a scrap, a dummy or a frozen enemy; never a ball, a
+/// rock, a bomb, the player or a live enemy.
+fn hides(world: &World, body: Entity) -> bool {
+    world.has::<Crate>(body)
+        || world.has::<Keg>(body)
+        || world.has::<IronBlock>(body)
+        || world.has::<IronScrap>(body)
+        || world.has::<Dummy>(body)
+        || (world.has::<Enemy>(body) && has_status(world, body, FROZEN))
+}
+
+/// Whether nothing blocks `seer`'s line from `from` to `to`: no solid tile,
+/// no body in a wall layer, and no body that [`hides`] what is behind it.
+/// One ray looks past the other bodies, going on from inside the body it
+/// met, as [`solid`]'s does; past [`SEEN_PAST`] of them, a full pit's
+/// balls, the rest of the line counts as clear.
 #[must_use]
-pub fn clear(world: &World, from: Vec2, to: Vec2) -> bool {
+pub fn clear(world: &World, seer: Entity, from: Vec2, to: Vec2) -> bool {
     let delta = to - from;
     let distance = delta.length();
     if distance < 1.0 {
@@ -429,10 +450,31 @@ pub fn clear(world: &World, from: Vec2, to: Vec2) -> bool {
     let direction = delta / distance;
     let tiles = SpatialFilter::new().with_bodies(false);
     let walls = SpatialFilter::new().with_mask(WALL_LAYERS);
-    [tiles, walls].iter().all(|filter| {
+    let open = [tiles, walls].iter().all(|filter| {
         cast_ray(world, from, direction, distance, filter)
             .is_none_or(|hit| hit.distance >= distance - 1.0)
-    })
+    });
+    if !open {
+        return false;
+    }
+    let bodies = SpatialFilter::new().with_tiles(false).excluding(seer);
+    let (mut from, mut left) = (from, distance - 1.0);
+    for _ in 0..=SEEN_PAST {
+        let Some(hit) = cast_ray(world, from, direction, left, &bodies) else {
+            return true;
+        };
+        if hit.entity.is_some_and(|body| hides(world, body)) {
+            return false;
+        }
+        // A hair inside its edge, where the ray passes it.
+        let into = hit.distance + 0.01;
+        from += direction * into;
+        left -= into;
+        if left <= 0.0 {
+            return true;
+        }
+    }
+    true
 }
 
 /// `enemy`'s eye, mirrored about its body's centre as it faces, as its
@@ -452,7 +494,8 @@ pub fn eye(world: &World, enemy: Entity) -> Option<Vec2> {
 
 /// `enemy_sight`, in the intent phase: every [`SIGHT_EVERY`] seconds an
 /// awake enemy within its reach of the player casts from its eye to the
-/// player's centre, over the tiles and the slabs; seeing sets where it last
+/// player's centre, over the tiles, the slabs and the bodies that hide
+/// ([`clear`]); seeing sets where it last
 /// saw the player, and a sight that turns on sends [`Spotted`].
 pub fn sight(world: &mut World) {
     let dt = world.resource::<Time>().delta();
@@ -480,7 +523,7 @@ pub fn sight(world: &mut World) {
             }
             continue;
         }
-        let sees = eye.distance(target) <= kind.info().sight && clear(world, eye, target);
+        let sees = eye.distance(target) <= kind.info().sight && clear(world, enemy, eye, target);
         let was = world.get::<Sight>(enemy).is_some_and(|sight| sight.sees);
         if let Some(sight) = world.get_mut::<Sight>(enemy) {
             sight.next = SIGHT_EVERY;
