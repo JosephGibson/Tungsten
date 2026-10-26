@@ -19,7 +19,7 @@ use example_01_platformer::shell::widgets;
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::ui::Visibility;
-use tungsten::core::{DataRegistry, Entity};
+use tungsten::core::{AnimationState, DataRegistry, Entity, Visibility as Shown};
 use tungsten::kit::{
     Ability, DamageRequest, DamagedPart, Health, KitRng, PlatformerController, Shield, Stats, Tags,
 };
@@ -59,6 +59,14 @@ fn held(harness: &UiHarness, player: Entity) -> Vec<TomeKind> {
         .get::<Tomes>(player)
         .map(|tomes| tomes.0.clone())
         .unwrap_or_default()
+}
+
+/// Whether a sprite plays `clip` now, shown.
+fn playing(harness: &UiHarness, clip: &str) -> bool {
+    harness
+        .world()
+        .query::<(&AnimationState, &Shown)>()
+        .any(|(state, shown)| state.animation_id == clip && shown.visible)
 }
 
 fn hud(harness: &UiHarness) -> Hud {
@@ -142,6 +150,7 @@ fn an_interact_press_takes_the_nearest_book_once_with_its_burst_and_sound() {
     assert_eq!(held(&harness, player), [TomeKind::Pact]);
     assert_eq!(bursts(&harness, "ex10_tome_pact_take_sparks"), 1);
     assert_eq!(bursts(&harness, "ex10_tome_arcane_take_sparks"), 0);
+    assert!(playing(&harness, "ex10_tome_pact_take"), "its clip, shown");
     // Out of reach, a press takes nothing; within it, the other.
     harness.step(3);
     assert_eq!(held(&harness, player), [TomeKind::Pact], "once a press");
@@ -360,6 +369,7 @@ fn a_bound_sounds_bounded_and_bursts_its_sparks_never_the_air_jump() {
     let doubled = bursts(&harness, "ex10_double_jump");
     assert_eq!(bursts(&harness, "ex10_bound_sparks"), 0);
     assert_eq!(jump(&mut harness, player, &sounds).1, [0, 1], "the bound");
+    assert!(playing(&harness, "ex10_bound_ring"), "its ring, shown");
     assert_eq!(bursts(&harness, "ex10_bound_sparks"), 1);
     assert_eq!(bursts(&harness, "ex10_bound_trail"), 1);
     assert_eq!(

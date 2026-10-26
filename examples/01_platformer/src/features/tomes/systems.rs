@@ -2,7 +2,9 @@
 
 use glam::Vec2;
 use tungsten::SceneEntity;
-use tungsten::core::{AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, World};
+use tungsten::core::{
+    AnimationState, AssetRegistry, Entity, Sprite, Time, Transform, Visibility, World,
+};
 use tungsten::kit::{Health, Lifetime, Modifier, PlatformerController, Shield, Stats};
 
 use super::components::{TomeKind, Tomes};
@@ -103,8 +105,9 @@ pub fn bound(world: &mut World, feet: Vec2) {
     audio::play(world, Sound::Bounded, feet);
 }
 
-/// The clip `clip` once, its sprite's top-left at `corner` at `z`, owned by
-/// gameplay and gone `secs` later, as it ends.
+/// The clip `clip` once, its sprite's top-left at `corner` at `z`, shown
+/// (the sprite extract draws only what says so), owned by gameplay and gone
+/// `secs` later, as it ends.
 fn one_shot(world: &mut World, clip: &str, corner: Vec2, secs: f32, z: i32) {
     let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
         return;
@@ -114,6 +117,7 @@ fn one_shot(world: &mut World, clip: &str, corner: Vec2, secs: f32, z: i32) {
     world.spawn_with((
         Transform::from_position(corner),
         sprite,
+        Visibility { visible: true },
         AnimationState::new(clip),
         Lifetime::new(secs),
         SceneEntity { state_id: GAMEPLAY },
