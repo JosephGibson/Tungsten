@@ -1,6 +1,7 @@
-//! Lightning: the bolt stops at the first solid on its way down; it falls
-//! on the nearest rod; its chain jumps one conductor at a time, weaker each
-//! jump, at most six and never past ice; a strike lights nothing; and it
+//! Lightning: the bolt stops at the first solid on its way down, and meets
+//! an enemy across its art; it falls on the nearest rod; its chain jumps one
+//! conductor at a time, every enemy one, weaker each jump, at most six and
+//! never past ice or what takes no shock; a strike lights nothing; and it
 //! shows its bolt, its veil for one frame, its light and its shake.
 
 use std::collections::BTreeSet;
@@ -10,6 +11,8 @@ use example_01_platformer::features::combat::{BURNING, has_status};
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades, Entry};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
 use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::draw::view;
 use example_01_platformer::features::lightning::components::{Arc, Bolt, StrikeLight};
@@ -18,9 +21,10 @@ use example_01_platformer::features::lightning::{
 };
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::toys::{self, IRON_HALF};
-use example_01_platformer::shared::SaveId;
+use example_01_platformer::shared::{SaveId, SaveIds};
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, CameraController, Entity, Light, TextureHandle, Transform};
+use tungsten::kit::{Health, Resist, StateMachine};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, dummy_at, health};
@@ -403,4 +407,93 @@ fn a_strike_shows_its_bolt_flash_light_and_shake() {
     assert_eq!(world.query::<&Bolt>().count(), 0, "gone after 0.15 s");
     assert_eq!(world.query::<&Arc>().count(), 0);
     assert!(glow(&harness).is_none(), "the light faded out");
+}
+
+/// An enemy of `kind`, its mind taken away, its body's centre at `centre`.
+fn still_enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    world.remove_component::<StateMachine<EnemyState>>(enemy);
+    enemy
+}
+
+#[test]
+fn a_bolt_through_an_enemy_s_art_meets_it() {
+    // Q49: each kind, a bolt a hair inside its art's opaque edge on either
+    // side, past its body's: a walker on the sky's ground, a flyer 200 px
+    // over it, which the bolt passed for the ground before.
+    let mut missed = Vec::new();
+    for kind in EnemyKind::ALL {
+        let info = kind.info();
+        assert!(info.strike > info.half.x, "{kind:?}'s art is wider");
+        for side in [-1.0, 1.0] {
+            let (mut harness, player) = sky();
+            let centre = if info.flyer {
+                Vec2::new(900.0, TOP - 200.0)
+            } else {
+                Vec2::new(900.0, TOP - info.half.y - 0.5)
+            };
+            let enemy = still_enemy(&mut harness, kind, centre);
+            harness.step(1);
+            let before = health(&harness, enemy);
+            let at = Vec2::new(centre.x + side * (info.strike - 2.0), TOP - 400.0);
+            let landing = lightning::strike(harness.world_mut(), player, at);
+            harness.step(2);
+            // A bat dies of it.
+            let hurt = harness
+                .world()
+                .get::<Health>(enemy)
+                .is_none_or(|health| health.current() < before);
+            if !hurt {
+                missed.push(format!(
+                    "{kind:?} on its {side} side, the bolt at {landing}"
+                ));
+            }
+        }
+    }
+    assert!(missed.is_empty(), "missed: {missed:#?}");
+}
+
+#[test]
+fn every_enemy_conducts_and_one_that_takes_no_shock_ends_the_chain() {
+    // Q48: iron, then a goblin, a crawler, a wisp that takes no shock and a
+    // goblin past it, each within a jump of the next.
+    let (mut harness, player) = sky();
+    let rod = toys::place_iron(harness.world_mut(), Vec2::new(600.0, IRON_Y));
+    let goblin = EnemyKind::Goblin.info().half.y;
+    let crawler = EnemyKind::Crawler.info().half.y;
+    let first = still_enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(800.0, TOP - goblin - 0.5),
+    );
+    let second = still_enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(1000.0, TOP - crawler - 0.5),
+    );
+    let proof = still_enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1200.0, TOP - 60.0));
+    let past = still_enemy(
+        &mut harness,
+        EnemyKind::Goblin,
+        Vec2::new(1400.0, TOP - goblin - 0.5),
+    );
+    let resist = Resist::default().with_factor("damage.shock", 0.0);
+    harness.world_mut().insert(proof, resist);
+    harness.step(2);
+    assert!(lightning::shock_proof(harness.world(), proof));
+    assert!(!lightning::shock_proof(harness.world(), first));
+    strike_on(&mut harness, player, rod);
+    let (chain, _) = conduction(&mut harness, 20);
+    assert_eq!(
+        receivers(&chain),
+        ids(&harness, &[first, second, proof]),
+        "the wisp takes its jump and passes none on"
+    );
+    assert!(
+        !ids(&harness, &[past])
+            .iter()
+            .any(|id| receivers(&chain).contains(id))
+    );
 }

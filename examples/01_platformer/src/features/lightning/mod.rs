@@ -6,9 +6,9 @@
 //! time through the saved cascade queue: from the rod, or from the struck
 //! conductive thing nearest the strike, to the nearest conductive thing not
 //! yet in the chain, each jump weaker, at most six, and none past a frozen
-//! receiver. Conductive things are iron, its scraps, a keg's hoops and the
-//! targets tagged `conductive`; a strike or a jump that reaches a keg sets
-//! it off.
+//! receiver or one that takes no shock. Conductive things are iron, its
+//! scraps, a keg's hoops, every live enemy and the targets tagged
+//! `conductive`; a strike or a jump that reaches a keg sets it off.
 
 pub mod components;
 pub mod draw;
@@ -19,7 +19,7 @@ use tungsten::core::{
     BodyKind, Collider, Entity, EventQueue, Light, Position, RigidBody, Schedule, ShakeEvent,
     Shape, Stage, Transform, World, system,
 };
-use tungsten::kit::{Health, Phase, Tags, ensure_phases};
+use tungsten::kit::{Health, Phase, Resist, Tags, ensure_phases};
 use tungsten::physics::{SpatialFilter, cast_ray};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
@@ -27,6 +27,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
 use crate::features::elements::components::Frozen;
+use crate::features::enemies::components::Enemy;
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
 use crate::features::run::Run;
@@ -77,29 +78,40 @@ fn gap(world: &World, at: Vec2, entity: Entity) -> Option<f32> {
     Some(surface_distance(at, body_centre(world, entity)?, shape))
 }
 
-/// Whether `entity` conducts: iron, its scraps, a keg's hoops, or a live
-/// target tagged `conductive`.
+/// Whether `entity` conducts: iron, its scraps, a keg's hoops, a live
+/// enemy, or a live target tagged `conductive` (Q48).
 #[must_use]
 pub fn conductive(world: &World, entity: Entity) -> bool {
     conducts(
         world.has::<IronBlock>(entity)
             || world.has::<IronScrap>(entity)
             || world.has::<Keg>(entity),
+        world.has::<Enemy>(entity),
         world.get::<Health>(entity),
         world.get::<Tags>(entity),
     )
 }
 
-/// Whether a thing conducts: metal, or a live thing tagged `conductive`.
-fn conducts(iron: bool, health: Option<&Health>, tags: Option<&Tags>) -> bool {
+/// Whether a thing conducts: metal, or a live enemy or thing tagged
+/// `conductive`.
+fn conducts(iron: bool, enemy: bool, health: Option<&Health>, tags: Option<&Tags>) -> bool {
     iron || (health.is_some_and(|health| !health.is_dead())
-        && tags.is_some_and(|tags| tags.has("conductive")))
+        && (enemy || tags.is_some_and(|tags| tags.has("conductive"))))
 }
 
 /// Whether `entity` is frozen: a frozen body, or a target carrying frozen.
 #[must_use]
 pub fn frozen(world: &World, entity: Entity) -> bool {
     world.has::<Frozen>(entity) || has_status(world, entity, FROZEN)
+}
+
+/// Whether `entity` takes no shock: its resistance to it 0, which stops a
+/// chain where it reaches it (Q48).
+#[must_use]
+pub fn shock_proof(world: &World, entity: Entity) -> bool {
+    world
+        .get::<Resist>(entity)
+        .is_some_and(|resist| resist.factor(&Tags::new([Kind::Shock.tag()])) == 0.0)
 }
 
 /// The conductive things with save IDs, their centres, but `spared`.
@@ -112,12 +124,13 @@ fn conductors(world: &World, spared: Option<Entity>) -> Vec<(Entity, Vec2, u64)>
             Option<&IronBlock>,
             Option<&IronScrap>,
             Option<&Keg>,
+            Option<&Enemy>,
             Option<&Health>,
             Option<&Tags>,
         )>()
-        .filter(|&(entity, _, iron, scrap, keg, health, tags)| {
+        .filter(|&(entity, _, iron, scrap, keg, enemy, health, tags)| {
             let metal = iron.is_some() || scrap.is_some() || keg.is_some();
-            Some(entity) != spared && conducts(metal, health, tags)
+            Some(entity) != spared && conducts(metal, enemy.is_some(), health, tags)
         })
         .filter_map(|(entity, id, ..)| Some((entity, body_centre(world, entity)?, id.0)))
         .collect()
@@ -145,9 +158,12 @@ pub fn nearest_conductor(
 }
 
 /// Where a bolt falling from the top of the level at `point.x` stops: the
-/// first solid tile or body its line meets, `caster`'s body aside, or the
-/// top of the first static collider it crosses, else the level's foot. The
-/// aim point's height does not stop it.
+/// first solid tile or body its line meets, `caster`'s body aside, the top
+/// of a live enemy's body within its kind's strike width of its centre
+/// ([`KindInfo::strike`](crate::features::enemies::KindInfo::strike)),
+/// its art being wider than its body, or the top of the first static
+/// collider it crosses, else the level's foot. The aim point's height does
+/// not stop it.
 #[must_use]
 pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
     let top = Vec2::new(point.x, WORLD_MIN.y);
@@ -168,6 +184,19 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
         let centre = at.0 + collider.offset;
         let face = centre.y - half_extents.y - top.y;
         if (point.x - centre.x).abs() <= half_extents.x && (0.0..stop).contains(&face) {
+            stop = face;
+        }
+    }
+    for (entity, enemy, health) in world.query::<(Entity, &Enemy, &Health)>() {
+        if health.is_dead() || Some(entity) == caster {
+            continue;
+        }
+        let Some(centre) = body_centre(world, entity) else {
+            continue;
+        };
+        let info = enemy.kind.info();
+        let face = centre.y - info.half.y - top.y;
+        if (point.x - centre.x).abs() <= info.strike && (0.0..stop).contains(&face) {
             stop = face;
         }
     }
@@ -223,7 +252,8 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
                 .then(a.2.cmp(&b.2))
         })
         .map(|(entity, ..)| entity);
-    if let Some(start) = start.filter(|&start| !frozen(world, start)) {
+    if let Some(start) = start.filter(|&start| !frozen(world, start) && !shock_proof(world, start))
+    {
         let members: Vec<u64> = conductors.iter().map(|&(_, id)| id).collect();
         let from = body_centre(world, start).unwrap_or(landing);
         if let Some((next, _)) = nearest_conductor(world, from, JUMP_REACH, &members, Some(caster))
@@ -284,8 +314,9 @@ fn show(world: &mut World, landing: Vec2, number: u64) {
 /// A jump's run, from its cascade entry: its arc from `from` to `at` and a
 /// crackle; its strength in shock to its receiver when it lives, and a keg
 /// set off, credited as the entry is; then, unless the receiver is frozen
-/// on arrival, conducts no more or the chain has made [`MAX_JUMPS`], the
-/// next jump queued from it, due the next step.
+/// on arrival, takes no shock ([`shock_proof`]), conducts no more or the
+/// chain has made [`MAX_JUMPS`], the next jump queued from it, due the next
+/// step.
 pub fn conduct(
     world: &mut World,
     receiver: Option<Entity>,
@@ -319,7 +350,11 @@ pub fn conduct(
     if world.has::<Keg>(receiver) {
         props::set_off(world, receiver, None, entry.source);
     }
-    if frozen(world, receiver) || !conductive(world, receiver) || entry.jumps >= MAX_JUMPS {
+    if frozen(world, receiver)
+        || shock_proof(world, receiver)
+        || !conductive(world, receiver)
+        || entry.jumps >= MAX_JUMPS
+    {
         return;
     }
     let mut chain = entry.chain.clone();
