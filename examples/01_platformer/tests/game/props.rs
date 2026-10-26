@@ -1,7 +1,8 @@
 //! Props: a crate set alight burns down, lighting its neighbours, and falls
 //! in; cold and a black hole put one out with its fuel kept; a lit keg
 //! blows after its fuse and its neighbours follow in waves; a bullet, a
-//! hard landing and lightning each set a keg off; a frozen keg shatters in
+//! hard landing and lightning each set a keg off, a blow by its weight, a
+//! small ball's never and a short fall's not; a frozen keg shatters in
 //! fire and never blows; a detonation's credit passes through the endings
 //! it sets off; two kegs blowing in one step blow once each; and a bomb
 //! rolls with its fuse turning on it, while a goblin's rock stays a body
@@ -278,6 +279,49 @@ fn a_bullet_a_hard_landing_and_lightning_each_set_a_keg_off() {
     }
     assert!(!alive(&harness, struck), "the bolt set it off");
     assert_eq!(booms, 3);
+}
+
+#[test]
+fn a_keg_blows_from_a_blow_as_hard_as_its_weight_asks() {
+    // Q46: by the other body's mass.
+    assert!(!elements::blows_keg(1.0, 10_000.0), "a small ball never");
+    assert!(!elements::blows_keg(3.0, 10_000.0), "a goblin's bomb never");
+    assert!(!elements::blows_keg(
+        f32::INFINITY,
+        elements::KEG_SPEED - 1.0
+    ));
+    assert!(elements::blows_keg(f32::INFINITY, elements::KEG_SPEED));
+    assert!(
+        elements::blows_keg(8.0, elements::KEG_SPEED),
+        "a bowling ball"
+    );
+    assert!(elements::blows_keg(400.0, elements::KEG_SPEED), "iron");
+    assert!(
+        !elements::blows_keg(6.0, elements::KEG_SPEED),
+        "a rock, faster"
+    );
+    assert!(elements::blows_keg(6.0, elements::KEG_SPEED * 8.0 / 6.0));
+    // In play: a 120 px drop, a small ball and a bowling ball.
+    let (mut harness, _) = sky(300.0);
+    let dropped = props::spawn(
+        harness.world_mut(),
+        PropKind::Keg,
+        Vec2::new(700.0, TOP - KEG_HALF.y - 120.0),
+    );
+    let pelted = prop(&mut harness, PropKind::Keg, 1100.0);
+    let bowled = prop(&mut harness, PropKind::Keg, 1500.0);
+    harness.step(2);
+    let world = harness.world_mut();
+    let small = toys::spawn_ball(world, Vec2::new(1000.0, TOP - KEG_HALF.y), true);
+    world.get_mut::<Velocity>(small).unwrap().0 = Vec2::X * 2700.0;
+    let bowling = toys::spawn_ball(world, Vec2::new(1400.0, TOP - KEG_HALF.y), false);
+    world.get_mut::<Velocity>(bowling).unwrap().0 = Vec2::X * 1200.0;
+    for _ in 0..60 {
+        harness.step(1);
+    }
+    assert!(alive(&harness, dropped), "a short fall leaves it");
+    assert!(alive(&harness, pelted), "a small ball never sets one off");
+    assert!(!alive(&harness, bowled), "a fast bowling ball does");
 }
 
 #[test]
