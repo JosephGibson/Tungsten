@@ -584,7 +584,7 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     harness.step(61);
     turn(&mut harness, SUMMON_NEXT);
     assert_eq!(summon_type(harness.world()).summoned, Summoned::Keg);
-    // Near the ground: a keg landing at 600 px/s or more goes off.
+    // Near the ground: a keg landing hard ([`elements::blows_keg`]) goes off.
     let at = Vec2::new(1000.0, 965.0);
     aim_at(&mut harness, at);
     harness.harness_mut().press_action("cast");

@@ -68,8 +68,9 @@ pub const RECOVER_SECS: f32 = 0.5;
 /// search lasts before its "?" shows.
 pub const ALERT_MARK_SECS: f32 = 0.8;
 pub const SEARCH_MARK_AFTER: f32 = 0.4;
-/// The most summoned enemies live at once (Q12), beside the dummies' four.
-pub const SUMMON_CAP: usize = 6;
+/// The most summoned enemies live at once (Q12, Q45), beside the dummies'
+/// eight.
+pub const SUMMON_CAP: usize = 10;
 /// The source of the difficulty's modifiers on an enemy's stats.
 pub const DIFFICULTY: &str = "difficulty";
 /// The physics layers of the level's static walls besides its tiles

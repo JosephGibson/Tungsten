@@ -30,8 +30,8 @@ pub const DUMMY_PREFAB: &str = "dummy";
 /// top-left, as its prefab sets them.
 pub const DUMMY_HALF: Vec2 = Vec2::new(14.0, 28.0);
 pub const DUMMY_CENTRE: Vec2 = Vec2::new(32.0, 33.0);
-/// The most summoned dummies live at once (Q14).
-pub const SUMMON_CAP: usize = 4;
+/// The most summoned dummies live at once (Q14, Q45).
+pub const SUMMON_CAP: usize = 8;
 
 /// The dummy as a plugin: the `dummy` component its prefab names, and
 /// `dummy_deaths` in the react phase after combat's reactions.

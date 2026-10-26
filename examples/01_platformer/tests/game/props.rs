@@ -511,3 +511,41 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
         .count();
     assert_eq!(rocks, ROCK_CAP);
 }
+
+#[test]
+fn the_map_s_own_crates_and_kegs_stay_outside_the_summon_s_caps() {
+    // Q45: a fresh run's crates and kegs take the map's IDs, and the
+    // summon's caps count only its own.
+    let (mut harness, _) = sky(300.0);
+    let world = harness.world();
+    let map = props::map_ids(world);
+    let own: Vec<Entity> = props::all(world)
+        .into_iter()
+        .filter(|&prop| {
+            matches!(
+                props::kind(world, prop),
+                Some(PropKind::Crate | PropKind::Keg)
+            )
+        })
+        .collect();
+    assert_eq!(own.len() as u64, map.end - map.start, "one ID a marker");
+    assert!(own.iter().all(|&prop| map.contains(&id_of(world, prop))));
+    let crates = own
+        .iter()
+        .filter(|&&prop| props::kind(world, prop) == Some(PropKind::Crate))
+        .count();
+    assert!(crates > 0, "the map sets crates down");
+    // A cap's worth and one more, along the sky's ground.
+    let mut summoned = Vec::new();
+    for i in 0..=props::CRATE_CAP {
+        let at = Vec2::new(700.0 + 80.0 * i as f32, TOP - CRATE_HALF.y);
+        summoned.push(props::place(harness.world_mut(), PropKind::Crate, at));
+    }
+    let world = harness.world();
+    assert!(
+        own.iter().all(|&prop| world.is_alive(prop)),
+        "the map's stay"
+    );
+    assert!(!world.is_alive(summoned[0]), "the oldest summoned went");
+    assert!(summoned[1..].iter().all(|&prop| world.is_alive(prop)));
+}
