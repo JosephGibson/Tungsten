@@ -213,11 +213,14 @@ pub enum Sound {
     PlayerTicked,
     /// A crate breaking into its planks under a heavy hit (e01sfx).
     CrateBroke,
+    /// A geyser's sputter starting, and its eruption (e01hollow).
+    GeyserSputter,
+    GeyserErupt,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 84] = [
+    pub const ALL: [Sound; 86] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -302,6 +305,8 @@ impl Sound {
         Sound::GroundStruck,
         Sound::PlayerTicked,
         Sound::CrateBroke,
+        Sound::GeyserSputter,
+        Sound::GeyserErupt,
     ];
 
     /// Its cue event's name.
@@ -392,6 +397,8 @@ impl Sound {
             Sound::GroundStruck => "ground_struck",
             Sound::PlayerTicked => "player_ticked",
             Sound::CrateBroke => "crate_broke",
+            Sound::GeyserSputter => "geyser_sputtered",
+            Sound::GeyserErupt => "geyser_erupted",
         }
     }
 }

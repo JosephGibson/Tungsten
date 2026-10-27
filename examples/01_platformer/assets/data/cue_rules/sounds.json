@@ -1325,5 +1325,37 @@
         }
       }
     ]
+  },
+  {
+    "on": "geyser_sputtered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_geyser_sputter_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "geyser_erupted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_geyser_erupt_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
   }
 ]

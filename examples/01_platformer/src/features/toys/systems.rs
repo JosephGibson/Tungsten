@@ -42,6 +42,7 @@ use crate::features::elements::{
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::{Doused, Hazard};
+use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
@@ -1096,10 +1097,26 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
         .collect()
 }
 
+/// The geysers a ray from `start` along `aim` crosses before `length`, by
+/// their vent boxes, which stand over the floor.
+fn geysers_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Entity> {
+    world
+        .query::<(Entity, &Geyser, &Transform)>()
+        .filter(|(_, _, at)| {
+            let shape = Shape::Aabb {
+                half_extents: geyser::VENT_HALF,
+            };
+            let centre = at.position + geyser::VENT_CENTRE;
+            ray_distance(start, aim, centre, shape, length).is_some_and(|t| t <= length)
+        })
+        .map(|(entity, ..)| entity)
+        .collect()
+}
+
 /// Holds `caster`'s spray of `element` for this step. In a cold cone, iron,
 /// balls, crates and kegs chill, a burning small ball bursts into steam, a
-/// burning crate or a lit keg steams and goes out, and a fire hazard goes
-/// out for a while; in a fire cone small balls, crates and kegs light,
+/// burning crate or a lit keg steams and goes out, a fire hazard goes out
+/// for a while and a geyser's vent chills toward its choke; in a fire cone small balls, crates and kegs light,
 /// credited to the caster, and a frozen body explodes. Every pulse of
 /// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
 /// ([`COLD_SPRAY_DPS`] or [`FIRE_SPRAY_DPS`] a second) from the caster,
@@ -1121,6 +1138,7 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let mut met: Vec<(Entity, Vec2)> = Vec::new();
     let mut fires: Vec<Entity> = Vec::new();
     let mut basins: Vec<Entity> = Vec::new();
+    let mut geysers: Vec<Entity> = Vec::new();
     // The nearest ray stop on a tile short of the reach.
     let mut wall: Option<Vec2> = None;
     let bodies = traced_near(world, caster, centre, reach(element));
@@ -1138,6 +1156,11 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             for fire in fires_crossed(world, centre, direction, centre.distance(at)) {
                 if !fires.contains(&fire) {
                     fires.push(fire);
+                }
+            }
+            for geyser in geysers_crossed(world, centre, direction, centre.distance(at)) {
+                if !geysers.contains(&geyser) {
+                    geysers.push(geyser);
                 }
             }
             // A cold ray that stops on lava's surface chills its basin.
@@ -1159,6 +1182,9 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     }
     for basin in basins {
         crate::features::level::lava::chill(world, basin);
+    }
+    for geyser in geysers {
+        geyser::chill(world, geyser);
     }
     let (pulses, bursts) = world
         .query_mut::<&mut Spray>()

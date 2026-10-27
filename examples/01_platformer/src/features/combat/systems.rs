@@ -7,22 +7,23 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    Collider, DataRegistry, Entity, EventCursor, EventQueue, ParticleConfigRegistry,
+    Collider, DataRef, DataRegistry, Entity, EventCursor, EventQueue, ParticleConfigRegistry,
     ParticleEmitter, ParticleEmitterState, Sprite, Transform, World,
 };
 use tungsten::kit::{
-    AilmentBuckets, AilmentThreshold, DamagedPart, EffectApplied, EffectExpired, Effects, Health,
-    ImmunePart, Modifier, Stats, Tags,
+    AilmentBuckets, AilmentThreshold, DamagedPart, EffectApplied, EffectExpired, EffectRequest,
+    Effects, Health, ImmunePart, Modifier, Stats, Tags,
 };
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    BURNING, CHILL_NEEDS, CHILLED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED,
+    BURNING, CHILL_NEEDS, CHILLED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED,
     has_status,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
+use crate::features::level::geyser::Geyser;
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Moves;
 use crate::features::player::systems::HURT_SECS;
@@ -76,7 +77,9 @@ pub fn states(world: &mut World) {
 /// target or the courier spurts blood where it landed, once a target a
 /// step, and `bleeding` applied spurts again; a target frozen this step
 /// (frozen now, not as the resolve began), in place too, sounds its freeze
-/// with its frost burst.
+/// with its frost burst. A geyser's fire part on a target neither burning,
+/// frozen nor doused sets it burning from the geyser, once a target a step,
+/// since its 12 fire alone falls short of the player's ladder (e01hollow).
 pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
@@ -96,6 +99,7 @@ pub fn reactions(
     };
     let mut queued: Vec<(CascadeKind, Entity, f32, Option<u64>)> = Vec::new();
     let mut blows: Vec<(Entity, Option<Vec2>)> = Vec::new();
+    let mut burns: Vec<(Entity, Entity)> = Vec::new();
     if let Some(events) = world.get_resource::<EventQueue<DamagedPart>>() {
         for part in parts.read(events) {
             if part.periodic {
@@ -109,6 +113,13 @@ pub fn reactions(
             }
             if cold && states.burning.contains(&part.entity) {
                 queued.push((CascadeKind::Steam, part.entity, STEAM_REACH, source));
+            }
+            if let Some(geyser) = part.source.filter(|&s| world.has::<Geyser>(s))
+                && fire
+                && part.amount > 0.0
+                && !burns.iter().any(|(target, _)| *target == part.entity)
+            {
+                burns.push((part.entity, geyser));
             }
             let bleeds = Some(part.entity) == player || has_status(world, part.entity, FLESH);
             if bleeds
@@ -141,6 +152,16 @@ pub fn reactions(
                 Some("bleeding") => spurts.push(effect.entity),
                 _ => {}
             }
+        }
+    }
+    for (target, geyser) in burns {
+        let lit = [BURNING, FROZEN, DOUSED]
+            .into_iter()
+            .any(|status| has_status(world, target, status));
+        if !lit && world.is_alive(target) {
+            EffectRequest::new(target, DataRef::by_id("burning"))
+                .with_source(geyser)
+                .apply(world);
         }
     }
     for (target, at) in blows {

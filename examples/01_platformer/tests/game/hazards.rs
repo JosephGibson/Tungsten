@@ -3,8 +3,10 @@
 //! starting the death screen; an enemy that falls in, bitten and thrown the
 //! same way; its crust's freeze and thaw, one front down through the basin
 //! each way with a sound and bursts at each change; what falls into lava,
-//! taken or set off; a hit's flash, shake and sound; and the fire hazards
-//! the level's data may place, which burst fast balls they sweep.
+//! taken or set off; a hit's flash, shake and sound; the fire hazards the
+//! level's data may place, which burst fast balls they sweep; and the fire
+//! geysers' cycle, their eruption's burn and throw, and the ice spray's
+//! choke.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::BURNING;
@@ -31,12 +33,16 @@ use example_01_platformer::features::toys::RING_CAP;
 use example_01_platformer::features::toys::components::{Ball, Ring, ShockRing};
 use example_01_platformer::shared::{BURST_CAP, Burst, despawn_tree};
 
+use example_01_platformer::features::level::geyser::{
+    self, Geyser, GeyserPhase, VENT_CENTRE, VENT_HEIGHT,
+};
 use example_01_platformer::features::level::lava::Lava;
 use tungsten::core::RigidBody;
+use tungsten::kit::ImmunePart;
 
 use super::{
-    aim_at, ball, body, bursts, calm, centre, choose, fall_dead, pin_camera, run, stand, teleport,
-    top,
+    aim_at, ball, body, bursts, calm, centre, choose, fall_dead, ground, pin_camera, run, stand,
+    teleport, top,
 };
 
 const DT: f32 = 1.0 / 60.0;
@@ -881,4 +887,175 @@ fn explosion_bursts_and_rings_stay_bounded_under_dense_ball_contact() {
     assert_eq!(harness.world().query::<&Ball>().count(), 0);
     assert_eq!(ball_rings(&harness), RING_CAP);
     assert_eq!(bursts(&harness, "ex10_ball_explosion"), BURST_CAP);
+}
+
+/// The tests' floor for a geyser, its top, and the mouth's column on it.
+const GEYSER_TOP: f32 = 1000.0;
+const GEYSER_X: f32 = 1200.0;
+
+/// A geyser from its prefab, its mouth over `x` on a floor whose top is
+/// `top`, `offset` seconds into its cycle: it begins on its first step.
+fn geyser_at(harness: &mut UiHarness, x: f32, top: f32, offset: f32) -> Entity {
+    let point = Vec2::new(x - VENT_CENTRE.x, top - VENT_HEIGHT);
+    let world = harness.world_mut();
+    let geyser = world.spawn_prefab("geyser", point).unwrap();
+    world.get_mut::<Geyser>(geyser).unwrap().offset = offset;
+    world.insert(geyser, SceneEntity { state_id: GAMEPLAY });
+    geyser
+}
+
+/// Whether `geyser`'s touch is on.
+fn erupting(harness: &UiHarness, geyser: Entity) -> bool {
+    harness.world().has::<ContactDamage>(geyser)
+}
+
+fn state(harness: &UiHarness, geyser: Entity) -> Geyser {
+    harness.world().get::<Geyser>(geyser).unwrap().clone()
+}
+
+#[test]
+fn a_geysers_touch_is_off_through_its_idle_and_sputter_and_on_for_its_eruption() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    ground(&mut harness, GEYSER_TOP);
+    let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 0.0);
+    // 2.5 s idle and 0.6 s sputter, 186 steps, then 0.8 s erupting, 48.
+    let mut on = Vec::new();
+    for step in 1..=260 {
+        harness.step(1);
+        if erupting(&harness, geyser) {
+            on.push(step);
+        }
+    }
+    assert_eq!(on.len(), 48, "{on:?}");
+    assert!((185..=187).contains(&on[0]), "{on:?}");
+    assert!(
+        on.windows(2).all(|w| w[1] == w[0] + 1),
+        "one eruption: {on:?}"
+    );
+}
+
+#[test]
+fn a_geysers_eruption_burns_the_player_standing_on_it_and_throws_them_up() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    ground(&mut harness, GEYSER_TOP);
+    harness.step(1);
+    stand(&mut harness, player, GEYSER_X, GEYSER_TOP);
+    harness.step(20);
+    // 2.6 s in, it erupts within its sputter's 0.6 s.
+    let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 2.6);
+    let mut hit = Vec::new();
+    let mut steps = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        steps += 1;
+        hit = blows(&harness, player);
+        if !hit.is_empty() {
+            break;
+        }
+    }
+    assert!(erupting(&harness, geyser), "erupting");
+    assert!(steps <= 36, "within the sputter: {steps} steps");
+    assert_eq!(hit, [12.0], "12 fire");
+    let tags = harness.world().get::<Tags>(player).unwrap();
+    assert!(tags.has(BURNING), "it burns");
+    let mut fastest = 0.0_f32;
+    let mut last = centre(&harness, player);
+    for _ in 0..4 {
+        harness.step(1);
+        let at = centre(&harness, player);
+        fastest = fastest.max((last.y - at.y) / DT);
+        last = at;
+    }
+    assert!(fastest > 500.0, "thrown up at {fastest} px/s");
+}
+
+#[test]
+fn a_wisp_over_an_erupting_geyser_takes_no_fire_and_does_not_burn() {
+    let (mut harness, _) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    ground(&mut harness, GEYSER_TOP);
+    let at = Vec2::new(GEYSER_X, GEYSER_TOP - 80.0);
+    let wisp = enemies::summon(harness.world_mut(), EnemyKind::Wisp, at).unwrap();
+    let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 2.6);
+    let (mut met, mut erupted) = (0, false);
+    for _ in 0..90 {
+        harness.step(1);
+        erupted |= erupting(&harness, geyser);
+        met += harness
+            .harness()
+            .events::<ImmunePart>()
+            .filter(|part| part.entity == wisp)
+            .count();
+        assert!(
+            harness
+                .harness()
+                .events::<Damaged>()
+                .all(|hit| hit.entity != wisp),
+            "no damage"
+        );
+        let tags = harness.world().get::<Tags>(wisp).unwrap();
+        assert!(!tags.has(BURNING), "no burn");
+    }
+    assert!(erupted && met > 0, "it stood in the plume: {met} parts");
+}
+
+#[test]
+fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    harness.harness_mut().set_dt(DT);
+    ground(&mut harness, GEYSER_TOP);
+    harness.step(1);
+    let geyser = geyser_at(&mut harness, GEYSER_X, GEYSER_TOP, 0.0);
+    stand(&mut harness, player, GEYSER_X - 160.0, GEYSER_TOP);
+    harness.step(2);
+    pin_camera(
+        &mut harness,
+        Vec2::new(GEYSER_X - 600.0, GEYSER_TOP - 400.0),
+    );
+    choose(&mut harness, 2);
+    let mouth = geyser::mouth(harness.world(), geyser).unwrap();
+    harness.harness_mut().press_action("cast");
+    let mut held = 0;
+    for _ in 0..60 {
+        aim_at(&mut harness, mouth);
+        harness.step(1);
+        held += 1;
+        if state(&harness, geyser).choked > 0.0 {
+            break;
+        }
+    }
+    harness.harness_mut().release_action("cast");
+    assert!(state(&harness, geyser).choked > 0.0, "choked");
+    assert!(held <= 36, "within 0.6 s: {held} steps");
+    // Six seconds without an eruption, then its idle's 2.5 s to its sputter.
+    let mut choked = 0;
+    for _ in 0..400 {
+        harness.step(1);
+        choked += 1;
+        assert!(!erupting(&harness, geyser), "no eruption while choked");
+        assert_eq!(state(&harness, geyser).phase, GeyserPhase::Idle);
+        if state(&harness, geyser).choked <= 0.0 {
+            break;
+        }
+    }
+    assert!((358..=362).contains(&choked), "six seconds: {choked} steps");
+    let mut idle = 0;
+    for _ in 0..200 {
+        harness.step(1);
+        idle += 1;
+        if state(&harness, geyser).phase == GeyserPhase::Sputter {
+            break;
+        }
+        assert!(!erupting(&harness, geyser), "idle");
+    }
+    assert!(
+        (149..=151).contains(&idle),
+        "then idles 2.5 s: {idle} steps"
+    );
 }

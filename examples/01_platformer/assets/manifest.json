@@ -2081,6 +2081,9 @@
     "fire_missile": {
       "path": "prefabs/fire_missile.json"
     },
+    "geyser": {
+      "path": "prefabs/geyser.json"
+    },
     "goblin": {
       "path": "prefabs/goblin.json"
     },
