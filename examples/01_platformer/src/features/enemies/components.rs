@@ -100,8 +100,8 @@ fn is_none_left(left: &f32) -> bool {
     *left <= 0.0
 }
 
-/// The attack an enemy's tell chose: a goblin's rock, bomb or stab, a
-/// troll's slam, swipe or throw, a crawler's snowball.
+/// The attack an enemy's tell chose: a goblin's rock, bomb, stab or
+/// dash-in, a troll's slam, swipe or throw, a crawler's snowball.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Strike {
@@ -112,6 +112,7 @@ pub enum Strike {
     Throw,
     Stab,
     Snowball,
+    Dash,
 }
 
 /// An enemy's sight: the seconds to its next check and whether its last
@@ -144,6 +145,9 @@ pub enum EnemyState {
     Search,
     /// Back to its home.
     Return,
+    /// A goblin's flight while it burns (e01foes): it runs from the player,
+    /// flailing.
+    Panic,
 }
 
 /// A frozen flyer's own mover, set aside while it falls on a borrowed

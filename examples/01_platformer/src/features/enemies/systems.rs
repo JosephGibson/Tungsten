@@ -45,6 +45,8 @@ pub fn machine() -> StateMachinePlugin<EnemyState> {
         .on_enter(EnemyState::Search, enter_search)
         .on_update(EnemyState::Search, search)
         .on_update(EnemyState::Return, home)
+        .on_enter(EnemyState::Panic, enter_panic)
+        .on_update(EnemyState::Panic, panic)
 }
 
 /// `enemy`'s kind.
@@ -380,6 +382,21 @@ fn search(world: &mut World, enemy: Entity) {
     }
 }
 
+/// A goblin's panic while it burns: its yelp and its startled skip away
+/// from the player; then its flight. No other kind panics.
+fn enter_panic(world: &mut World, enemy: Entity) {
+    if kind(world, enemy) == Some(EnemyKind::Goblin) {
+        goblin::enter_panic(world, enemy);
+    }
+}
+
+fn panic(world: &mut World, enemy: Entity) {
+    match kind(world, enemy) {
+        Some(EnemyKind::Goblin) => goblin::panic(world, enemy),
+        _ => go(world, enemy, EnemyState::Search),
+    }
+}
+
 /// Back home, then on patrol.
 fn home(world: &mut World, enemy: Entity) {
     let Some(home) = world.get::<Enemy>(enemy).map(Enemy::home) else {
@@ -549,7 +566,8 @@ pub fn sight(world: &mut World) {
     }
 }
 
-/// Whether `state` is the chase or the attack it leads to.
+/// Whether `state` is the chase or the attack it leads to, or a goblin's
+/// panic, which an alert does not cut short.
 fn chasing(state: EnemyState) -> bool {
     matches!(
         state,
@@ -558,6 +576,7 @@ fn chasing(state: EnemyState) -> bool {
             | EnemyState::WindUp
             | EnemyState::Attack
             | EnemyState::Recover
+            | EnemyState::Panic
     )
 }
 

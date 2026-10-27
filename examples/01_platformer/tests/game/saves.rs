@@ -1269,6 +1269,57 @@ fn a_save_with_a_pending_transition_enters_it_once_after_the_load() {
     assert_eq!(state(&loaded, crawler), EnemyState::Attack);
 }
 
+#[test]
+fn a_cooling_a_dashing_and_a_panicking_goblin_save_and_load_back_the_same() {
+    use example_01_platformer::features::enemies::components::{Brain, Strike};
+    let (mut harness, _) = grounded();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let goblin = |harness: &mut UiHarness, x: f32| {
+        enemy(harness, EnemyKind::Goblin, Vec2::new(x, TOP - 20.5))
+    };
+    // Within 1,200 px of the player at x 600, awake.
+    let (cooling, dashing, panicking) = (
+        goblin(&mut harness, 1000.0),
+        goblin(&mut harness, 1300.0),
+        goblin(&mut harness, 1600.0),
+    );
+    harness.step(2);
+    let world = harness.world_mut();
+    world.get_mut::<Brain>(cooling).unwrap().cooldown = 1.5;
+    world.get_mut::<Brain>(dashing).unwrap().strike = Some(Strike::Dash);
+    world.insert(dashing, StateMachine::new(EnemyState::Attack));
+    tungsten::kit::EffectRequest::new(panicking, tungsten::core::DataRef::by_id("burning"))
+        .apply(world);
+    harness.step(3);
+    let ids = [cooling, dashing, panicking].map(|goblin| id_of(&harness, goblin));
+    let saved = capture(&harness);
+    let entry = |save: &SaveGame, id: u64| {
+        save.enemies
+            .iter()
+            .find(|enemy| enemy.id == id)
+            .cloned()
+            .expect("the goblin saved")
+    };
+    assert!(entry(&saved, ids[0]).brain.cooldown > 0.0, "cooling");
+    let dash = entry(&saved, ids[1]);
+    assert_eq!(
+        (dash.machine.state(), dash.brain.strike),
+        (EnemyState::Attack, Some(Strike::Dash)),
+        "dashing"
+    );
+    assert_eq!(entry(&saved, ids[2]).machine.state(), EnemyState::Panic);
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
+    let loaded = reloaded(read, false);
+    let again = capture(&loaded);
+    for id in ids {
+        assert_eq!(
+            serde_json::to_value(entry(&again, id)).unwrap(),
+            serde_json::to_value(entry(&saved, id)).unwrap(),
+            "{id} back the same"
+        );
+    }
+}
+
 /// Steps `harness` until a snowball bursts, at most 120 frames: the fixed
 /// steps that took and where it burst.
 fn snowball_landing(harness: &mut UiHarness) -> Option<(u32, Vec2)> {

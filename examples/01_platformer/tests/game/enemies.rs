@@ -41,7 +41,7 @@ use example_01_platformer::features::enemies::drops::{
     self, ORB_CENTRE, ORB_HALF, ORB_SECS, Orb, OrbKind, PlacedOrbs,
 };
 use example_01_platformer::features::enemies::goblin::{
-    BOMB_CHANCE, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
+    BOMB_CHANCE, COOLDOWN, DASH_CHANCE, DASH_SPEED, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
 use example_01_platformer::features::enemies::snowball::{self, SNOWBALL_COLD};
 use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
@@ -3270,14 +3270,45 @@ fn thrown(harness: &UiHarness) -> Vec<(u64, Entity, bool)> {
     thrown
 }
 
-/// A seed whose stream's first draw is a rock's and whose next `bombs`
-/// draws hold a bomb's, when `bombs` is more than 0.
+/// What a goblin's approach drew.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Approach {
+    Dash,
+    Rock,
+    Bomb,
+}
+
+/// The first `count` approaches the kit's stream of `seed` draws for a
+/// goblin, in turn: one draw each, a dash-in under 1/3, else a throw whose
+/// tell's draw makes it a bomb under 0.2.
+fn approaches(seed: u64, count: usize) -> Vec<Approach> {
+    let mut rng = KitRng::seeded(seed);
+    (0..count)
+        .map(|_| {
+            if rng.unit() < DASH_CHANCE {
+                Approach::Dash
+            } else if rng.unit() < BOMB_CHANCE {
+                Approach::Bomb
+            } else {
+                Approach::Rock
+            }
+        })
+        .collect()
+}
+
+/// A seed whose stream's first approach throws a rock and whose next
+/// `bombs` throws hold a bomb, when `bombs` is more than 0.
 fn goblin_seed(bombs: usize) -> u64 {
     (0..10_000)
         .find(|&seed| {
-            let mut rng = KitRng::seeded(seed);
-            let draws: Vec<bool> = (0..=bombs).map(|_| rng.unit() < BOMB_CHANCE).collect();
-            !draws[0] && (bombs == 0 || draws[1..].contains(&true))
+            let drawn = approaches(seed, 64);
+            let throws: Vec<Approach> = drawn
+                .iter()
+                .copied()
+                .filter(|&approach| approach != Approach::Dash)
+                .take(bombs + 1)
+                .collect();
+            drawn[0] == Approach::Rock && (bombs == 0 || throws[1..].contains(&Approach::Bomb))
         })
         .expect("a seed")
 }
@@ -3328,7 +3359,7 @@ fn a_goblin_lobs_rocks_on_their_arc_and_one_throw_in_five_is_a_bomb() {
     let mut throws: Vec<(u64, bool)> = Vec::new();
     let (mut rock_arc, mut bomb_arc): (Option<Arc>, Option<Arc>) = (None, None);
     let (mut rock_hit, mut blast) = (false, false);
-    for _ in 0..3200 {
+    for _ in 0..8000 {
         stand(&mut harness, player, 300.0, TOP);
         tungsten::kit::heal(harness.world_mut(), player, 100.0);
         harness.step(1);
@@ -3363,19 +3394,24 @@ fn a_goblin_lobs_rocks_on_their_arc_and_one_throw_in_five_is_a_bomb() {
                 part.entity == player && physical && (part.amount - ROCK_DAMAGE).abs() < 1e-3;
             blast |= part.entity == player && part.kinds.has(world, "damage.fire");
         }
-        if throws.len() >= 25 && blast {
+        if throws.len() >= 12 && blast {
             break;
         }
     }
-    assert!(throws.len() >= 25, "25 throws: {}", throws.len());
+    assert!(throws.len() >= 12, "12 throws: {}", throws.len());
     let checked = |arc: &Option<Arc>| arc.as_ref().map_or(0, |arc| arc.steps);
     assert_eq!(checked(&rock_arc), 12, "a rock on its arc");
     assert_eq!(checked(&bomb_arc), 12, "a bomb on its arc");
     assert!(rock_hit, "8 physical on the courier, from the goblin");
     assert!(blast, "a bomb's detonation credited to the goblin");
-    let mut rng = KitRng::seeded(seed);
-    let drawn: Vec<bool> = (0..25).map(|_| rng.unit() < BOMB_CHANCE).collect();
-    let bombs: Vec<bool> = throws.iter().take(25).map(|&(_, bomb)| bomb).collect();
+    // Each approach draws its dash-in, each throw's tell its bomb.
+    let drawn: Vec<bool> = approaches(seed, 64)
+        .into_iter()
+        .filter(|&approach| approach != Approach::Dash)
+        .take(12)
+        .map(|approach| approach == Approach::Bomb)
+        .collect();
+    let bombs: Vec<bool> = throws.iter().take(12).map(|&(_, bomb)| bomb).collect();
     assert_eq!(bombs, drawn, "the bombs are the stream's draws under 0.2");
 }
 
@@ -3504,6 +3540,239 @@ fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
         rock[0].0
     );
     assert_eq!(rock[0].1, None, "from nobody");
+}
+
+/// A seed whose stream's first approaches go as `first` does.
+fn seed_opening(first: &[Approach]) -> u64 {
+    (0..10_000)
+        .find(|&seed| approaches(seed, first.len()) == first)
+        .expect("a seed")
+}
+
+/// A goblin at x 620 on the sky's ground, the kit's stream at `seed`, the
+/// courier 320 px off at x 300, in its band.
+fn goblin_in_band(seed: u64) -> (UiHarness, Entity, Entity) {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().insert_resource(KitRng::seeded(seed));
+    let goblin = walker(&mut harness, EnemyKind::Goblin, 620.0, TOP);
+    harness.step(1);
+    (harness, player, goblin)
+}
+
+/// Holds the courier at x 300, whole, and steps a frame.
+fn held_step(harness: &mut UiHarness, player: Entity) {
+    stand(harness, player, 300.0, TOP);
+    tungsten::kit::heal(harness.world_mut(), player, 100.0);
+    harness.step(1);
+}
+
+fn strike_of(harness: &UiHarness, enemy: Entity) -> Option<Strike> {
+    harness
+        .world()
+        .get::<Brain>(enemy)
+        .and_then(|brain| brain.strike)
+}
+
+#[test]
+fn a_goblins_throws_come_at_least_its_cooldown_apart_with_no_tell_between() {
+    let seed = seed_opening(&[Approach::Rock, Approach::Rock, Approach::Rock]);
+    let (mut harness, player, goblin) = goblin_in_band(seed);
+    let (mut throws, mut tells, mut was) = (Vec::new(), Vec::new(), state(&harness, goblin));
+    for frame in 0..900 {
+        held_step(&mut harness, player);
+        if heard(&harness, Sound::RockThrown) > 0 {
+            throws.push(frame);
+        }
+        let now = state(&harness, goblin);
+        if now == EnemyState::WindUp && was != EnemyState::WindUp {
+            tells.push(frame);
+        }
+        was = now;
+        if throws.len() >= 3 {
+            break;
+        }
+    }
+    assert_eq!(throws.len(), 3, "three throws: {throws:?}");
+    for pair in throws.windows(2) {
+        let apart = (pair[1] - pair[0]) as f32 / 60.0;
+        assert!(apart >= COOLDOWN, "{apart} s apart");
+        let between = tells
+            .iter()
+            .filter(|&&tell| tell > pair[0] && tell < pair[1]);
+        let early: Vec<&u32> = between
+            .filter(|&&tell| ((tell - pair[0]) as f32 / 60.0) < COOLDOWN)
+            .collect();
+        assert!(early.is_empty(), "a tell while it cools: {early:?}");
+    }
+}
+
+#[test]
+fn a_goblins_dash_in_crouches_sprints_and_stabs_then_leaps_back() {
+    let (mut harness, player, goblin) = goblin_in_band(seed_opening(&[Approach::Dash]));
+    let (mut crouches, mut dashing, mut fastest) = (0, false, 0.0_f32);
+    let mut stabbed = None;
+    for frame in 0..240 {
+        held_step(&mut harness, player);
+        crouches += heard(&harness, Sound::GoblinCrouched);
+        if state(&harness, goblin) == EnemyState::WindUp {
+            assert_eq!(
+                strike_of(&harness, goblin),
+                Some(Strike::Dash),
+                "a dash-in's tell"
+            );
+        }
+        if state(&harness, goblin) == EnemyState::Attack
+            && strike_of(&harness, goblin) == Some(Strike::Dash)
+        {
+            dashing = true;
+            fastest = fastest.max(-speed(&harness, goblin).x);
+        }
+        let hit = took(&harness, player, Some(goblin))
+            .into_iter()
+            .any(|amount| (amount - STAB_DAMAGE).abs() < 1e-3);
+        if hit {
+            stabbed = Some(frame);
+            break;
+        }
+    }
+    assert_eq!(crouches, 1, "one crouch");
+    assert!(dashing, "it dashes");
+    assert!((fastest - DASH_SPEED).abs() < 10.0, "at {fastest} px/s");
+    assert!(stabbed.is_some(), "a stab of {STAB_DAMAGE} that reaches");
+    // Then the leap back, away from the courier.
+    let from = at(&harness, goblin).x;
+    let mut airborne = false;
+    for _ in 0..40 {
+        held_step(&mut harness, player);
+        airborne |= !harness
+            .world()
+            .get::<PlatformerController>(goblin)
+            .unwrap()
+            .grounded();
+    }
+    assert!(airborne, "it leapt");
+    assert!(at(&harness, goblin).x - from > 0.1 * LEAP_BACK.x, "back");
+}
+
+#[test]
+fn a_goblins_dash_ins_are_the_streams_draws_under_a_third() {
+    let seed = goblin_seed(3);
+    let (mut harness, player, goblin) = goblin_in_band(seed);
+    let (mut seen, mut was) = (Vec::new(), state(&harness, goblin));
+    for _ in 0..12_000 {
+        held_step(&mut harness, player);
+        let now = state(&harness, goblin);
+        if now == EnemyState::WindUp && was != EnemyState::WindUp {
+            match strike_of(&harness, goblin) {
+                Some(Strike::Dash) => seen.push(true),
+                Some(Strike::Rock | Strike::Bomb) => seen.push(false),
+                _ => {}
+            }
+        }
+        was = now;
+        if seen.len() >= 12 {
+            break;
+        }
+    }
+    assert_eq!(seen.len(), 12, "twelve approaches");
+    let drawn: Vec<bool> = approaches(seed, 12)
+        .into_iter()
+        .map(|approach| approach == Approach::Dash)
+        .collect();
+    assert_eq!(seen, drawn, "the dash-ins are the stream's draws under 1/3");
+    assert!(seen.contains(&true) && seen.contains(&false), "{seen:?}");
+}
+
+#[test]
+fn a_goblin_set_burning_mid_tell_panics_from_the_courier_on_either_side() {
+    for side in [1.0, -1.0] {
+        let (mut harness, player) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        harness
+            .world_mut()
+            .insert_resource(KitRng::seeded(goblin_seed(0)));
+        let courier = 1200.0 - side * 320.0;
+        let goblin = walker(&mut harness, EnemyKind::Goblin, 1200.0, TOP);
+        let hold = |harness: &mut UiHarness| {
+            stand(harness, player, courier, TOP);
+            tungsten::kit::heal(harness.world_mut(), player, 100.0);
+            harness.step(1);
+        };
+        let told = (0..300).any(|_| {
+            hold(&mut harness);
+            state(&harness, goblin) == EnemyState::WindUp
+        });
+        assert!(told, "{side}: its throw's tell");
+        apply(&mut harness, goblin, "burning", None);
+        let start = (at(&harness, goblin).x - courier).abs();
+        let (mut yelps, mut clips, mut panicked) = (0, Vec::new(), false);
+        for _ in 0..60 {
+            hold(&mut harness);
+            yelps += heard(&harness, Sound::GoblinYelped);
+            panicked |= state(&harness, goblin) == EnemyState::Panic;
+            clips.push(
+                harness
+                    .world()
+                    .get::<AnimationState>(goblin)
+                    .unwrap()
+                    .animation_id
+                    .clone(),
+            );
+        }
+        assert!(panicked, "{side}: it panics");
+        assert_eq!(
+            strike_of(&harness, goblin),
+            None,
+            "{side}: its strike spent"
+        );
+        assert_eq!(yelps, 1, "{side}: one yelp");
+        assert!(
+            clips
+                .iter()
+                .any(|clip| clip.starts_with("ex10_goblin_panic")),
+            "{side}: {clips:?}"
+        );
+        let now = (at(&harness, goblin).x - courier).abs();
+        assert!(now > start + 60.0, "{side}: it ran from {start} to {now}");
+        // The fire out, it chases or searches.
+        let ended = (0..300).any(|_| {
+            hold(&mut harness);
+            matches!(
+                state(&harness, goblin),
+                EnemyState::Chase | EnemyState::Search | EnemyState::WindUp
+            )
+        });
+        assert!(ended, "{side}: past its panic once the fire is out");
+    }
+}
+
+#[test]
+fn a_goblin_set_burning_mid_dash_turns_away_at_once_and_stabs_no_one() {
+    let (mut harness, player, goblin) = goblin_in_band(seed_opening(&[Approach::Dash]));
+    let dashing = (0..240).any(|_| {
+        held_step(&mut harness, player);
+        state(&harness, goblin) == EnemyState::Attack
+            && strike_of(&harness, goblin) == Some(Strike::Dash)
+    });
+    assert!(dashing, "its dash-in");
+    held_step(&mut harness, player);
+    assert!(speed(&harness, goblin).x < -100.0, "at the courier");
+    apply(&mut harness, goblin, "burning", None);
+    let mut away = false;
+    for _ in 0..2 {
+        held_step(&mut harness, player);
+        away |= speed(&harness, goblin).x > 0.0;
+    }
+    assert!(away, "away from the courier within two steps");
+    let stabs: Vec<f32> = (0..60)
+        .flat_map(|_| {
+            held_step(&mut harness, player);
+            took(&harness, player, Some(goblin))
+        })
+        .filter(|&amount| (amount - STAB_DAMAGE).abs() < 1e-3)
+        .collect();
+    assert!(stabs.is_empty(), "no stab: {stabs:?}");
 }
 
 /// Steps until `troll` enters its attack, at most `frames`: the steps from

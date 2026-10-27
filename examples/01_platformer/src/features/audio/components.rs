@@ -200,11 +200,16 @@ pub enum Sound {
     /// A crawler's snowball thrown, and its burst (e01foes).
     SnowballThrown,
     SnowballBurst,
+    /// A goblin's crouch for its dash-in, the dash, and its yelp as it
+    /// panics, burning (e01foes).
+    GoblinCrouched,
+    GoblinDashed,
+    GoblinYelped,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 78] = [
+    pub const ALL: [Sound; 81] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -283,6 +288,9 @@ impl Sound {
         Sound::CrawlerHopped,
         Sound::SnowballThrown,
         Sound::SnowballBurst,
+        Sound::GoblinCrouched,
+        Sound::GoblinDashed,
+        Sound::GoblinYelped,
     ];
 
     /// Its cue event's name.
@@ -367,6 +375,9 @@ impl Sound {
             Sound::CrawlerHopped => "crawler_hopped",
             Sound::SnowballThrown => "snowball_thrown",
             Sound::SnowballBurst => "snowball_burst",
+            Sound::GoblinCrouched => "goblin_crouched",
+            Sound::GoblinDashed => "goblin_dashed",
+            Sound::GoblinYelped => "goblin_yelped",
         }
     }
 }

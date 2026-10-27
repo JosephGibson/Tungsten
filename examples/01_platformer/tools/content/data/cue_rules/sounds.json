@@ -1229,5 +1229,53 @@
         }
       }
     ]
+  },
+  {
+    "on": "goblin_crouched",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_crouch_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_dashed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_dash_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_yelped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_yelp_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
   }
 ]

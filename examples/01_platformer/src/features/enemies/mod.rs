@@ -273,8 +273,9 @@ impl EnemyKind {
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
 /// name; the throws in flight; in the intent phase the sight, the alerts,
-/// the marks' and the enemies' cooldowns and the hold before the state
-/// machine, whose hooks run each kind's rules; in the move phase the
+/// the marks' and the enemies' cooldowns, the hold and then a burning
+/// goblin's panic before the state machine, whose hooks run each kind's
+/// rules; in the move phase the
 /// trolls' holds after the movers and the dropped orbs' fall after the
 /// kit's magnet; in the overlap phase the orbs collected and the
 /// crawlers' snowballs ([`snowball::snowballs`]); in the react
@@ -310,7 +311,10 @@ impl Plugin for EnemiesPlugin {
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
         let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
         let cooldowns = system("enemy_cooldowns", systems::cooldowns).before(ENEMY_STATES);
-        for desc in [sight, alerts, hold, fire, chill, marks, cooldowns] {
+        let panics = system("goblin_panic", goblin::panics)
+            .after("enemy_hold")
+            .before(ENEMY_STATES);
+        for desc in [sight, alerts, hold, fire, chill, marks, cooldowns, panics] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
         let holds = system("troll_holds", troll::holds)

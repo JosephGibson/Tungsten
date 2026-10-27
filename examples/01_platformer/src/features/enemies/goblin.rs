@@ -6,16 +6,21 @@
 //! [`HOP_CLEAR`], and steps down a drop no deeper than [`STEP_DOWN`]. It
 //! cackles on sight. It keeps its distance: closer than
 //! [`KEEP_OFF`] across it backs away, hopping what it can, farther than
-//! [`CLOSE_IN`] it closes, and between them, seeing the player within
-//! [`THROW_RISE`] up or down, it winds up a throw for [`TELL_SECS`]. The
-//! tell's one `KitRng` draw picks a bomb under [`BOMB_CHANCE`], else a
-//! rock, which its brain keeps as its strike; its attack throws that from
-//! its hand at the courier's centre on a ballistic arc, then it recovers
-//! for [`RECOVER`]. A courier within [`STAB_REACH`] across and
-//! [`STAB_RISE`] up or down gets its knife instead: a [`STAB_TELL`] tell, a
-//! stab of [`STAB_DAMAGE`] in a box ahead of it, and a leap back. Below
-//! [`FLEE_SHARE`] of its health it runs from a courier within
-//! [`FLEE_REACH`] across rather than throw.
+//! [`CLOSE_IN`] it closes, and between them it rests facing the player
+//! while its [`COOLDOWN`] runs; then, the player within [`THROW_RISE`] up
+//! or down, it approaches. One `KitRng` draw picks a dash-in under
+//! [`DASH_CHANCE`]: a crouch for [`DASH_TELL`], then a sprint at
+//! [`DASH_SPEED`] for at most [`DASH_MOST`] that ends in its stab once
+//! within the stab's reach. Else it winds up a throw for [`TELL_SECS`]: the
+//! tell's draw picks a bomb under [`BOMB_CHANCE`], else a rock, which its
+//! brain keeps as its strike; its attack throws that from its hand at the
+//! courier's centre on a ballistic arc, then it recovers for [`RECOVER`].
+//! A courier within [`STAB_REACH`] across and [`STAB_RISE`] up or down
+//! gets its knife at once: a [`STAB_TELL`] tell, a stab of [`STAB_DAMAGE`]
+//! in a box ahead of it, and a leap back. Below [`FLEE_SHARE`] of its
+//! health it runs from a courier within [`FLEE_REACH`] across rather than
+//! throw; burning, it panics, running from the player, flailing, until the
+//! fire is out ([`panics`]).
 //!
 //! A rock is a stone body (`props`, a `PropKind::Rock`) on the world's
 //! gravity, credited to the goblin through `Throws`: its first blow on a
@@ -27,16 +32,16 @@
 
 use glam::Vec2;
 use tungsten::core::{Collider, Entity, PhysicsConfig, Position, Time, Velocity, World};
-use tungsten::kit::{Health, KitRng, PlatformerController, Stats, Tags};
+use tungsten::kit::{Health, KitRng, PlatformerController, StateMachine, Stats, Tags};
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike, Throw, Throws};
 use super::hop::{self, Hops, grounded};
 use super::systems::{elapsed, face, go, player, rest, sees};
 use super::{ARRIVED, centre, troll};
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{Hit, Kind};
+use crate::features::combat::{BURNING, Hit, Kind, has_status};
 use crate::features::props;
-use crate::shared::SaveId;
+use crate::shared::{SaveId, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.6;
@@ -105,6 +110,19 @@ pub const SKIP: f32 = 420.0;
 /// [`FLEE_REACH`] across rather than throw.
 pub const FLEE_SHARE: f32 = 0.3;
 pub const FLEE_REACH: f32 = 260.0;
+/// The seconds after a throw's release or a dash-in's end before it may
+/// approach again (V26), and the share of its approaches that are a
+/// dash-in: one draw at each.
+pub const COOLDOWN: f32 = 2.5;
+pub const DASH_CHANCE: f32 = 1.0 / 3.0;
+/// Its dash-in: its crouch, seconds; its sprint's speed, px/s, and the most
+/// seconds it runs, its input locked; the scuff of dust at its heels.
+pub const DASH_TELL: f32 = 0.3;
+pub const DASH_SPEED: f32 = 560.0;
+pub const DASH_MOST: f32 = 0.6;
+pub const DASH_DUST: &str = "ex10_dash_dust";
+/// Its panic's startled skip, px/s up.
+pub const PANIC_HOP: f32 = 300.0;
 
 /// On patrol it walks its ground, turning at each end, at walls, at kegs
 /// and at its leash and hopping what it can; every so often it fidgets,
@@ -202,9 +220,11 @@ fn hurt(world: &World, goblin: Entity) -> bool {
 /// The chase: a courier within [`STAB_REACH`] across and [`STAB_RISE`] up
 /// or down gets its stab's tell; badly hurt, it runs from one within
 /// [`FLEE_REACH`]; closer than [`KEEP_OFF`] across it backs away, farther
-/// than [`CLOSE_IN`] it closes, each hopping what it can; else, the player
-/// within [`THROW_RISE`] up or down, it faces the player and winds up a
-/// throw. It searches once it loses sight.
+/// than [`CLOSE_IN`] it closes, each hopping what it can; else it rests
+/// facing the player, and with its [`COOLDOWN`] spent and the player within
+/// [`THROW_RISE`] up or down it approaches: one draw of the kit's stream, a
+/// dash-in's tell under [`DASH_CHANCE`], else a throw's. It searches once
+/// it loses sight.
 pub fn chase(world: &mut World, goblin: Entity) {
     if !sees(world, goblin) {
         go(world, goblin, EnemyState::Search);
@@ -240,10 +260,20 @@ pub fn chase(world: &mut World, goblin: Entity) {
         return;
     }
     rest(world, goblin);
-    if rise.abs() <= THROW_RISE {
-        face(world, goblin, target.x);
-        go(world, goblin, EnemyState::WindUp);
+    face(world, goblin, target.x);
+    let cooling = world
+        .get::<Brain>(goblin)
+        .is_some_and(|brain| brain.cooldown > 0.0);
+    if cooling || rise.abs() > THROW_RISE {
+        return;
     }
+    let dash = world
+        .get_resource_mut::<KitRng>()
+        .is_some_and(|rng| rng.unit() < DASH_CHANCE);
+    if let Some(brain) = world.get_mut::<Brain>(goblin) {
+        brain.strike = dash.then_some(Strike::Dash);
+    }
+    go(world, goblin, EnemyState::WindUp);
 }
 
 /// The strike its brain keeps.
@@ -251,15 +281,22 @@ fn strike(world: &World, goblin: Entity) -> Option<Strike> {
     world.get::<Brain>(goblin).and_then(|brain| brain.strike)
 }
 
-/// Its tell: it faces the player; a stab its chase chose stays, else one
-/// draw of the kit's stream picks its strike, a bomb under
-/// [`BOMB_CHANCE`], else a rock.
+/// Its tell: it faces the player; a stab its chase chose stays, a dash-in
+/// crouches with a snicker, else one draw of the kit's stream picks its
+/// throw, a bomb under [`BOMB_CHANCE`], else a rock.
 pub fn enter_windup(world: &mut World, goblin: Entity) {
     if let Some((_, target)) = player(world) {
         face(world, goblin, target.x);
     }
-    if strike(world, goblin) == Some(Strike::Stab) {
-        return;
+    match strike(world, goblin) {
+        Some(Strike::Stab) => return,
+        Some(Strike::Dash) => {
+            if let Some(at) = centre(world, goblin) {
+                audio::play(world, Sound::GoblinCrouched, at);
+            }
+            return;
+        }
+        _ => {}
     }
     let bomb = world
         .get_resource_mut::<KitRng>()
@@ -269,34 +306,87 @@ pub fn enter_windup(world: &mut World, goblin: Entity) {
     }
 }
 
-/// The tell lasts [`STAB_TELL`] for a stab, else [`TELL_SECS`], then the
-/// attack.
+/// The tell lasts [`STAB_TELL`] for a stab, [`DASH_TELL`] for a dash-in,
+/// else [`TELL_SECS`], then the attack.
 pub fn windup(world: &mut World, goblin: Entity) {
     rest(world, goblin);
-    let tell = if strike(world, goblin) == Some(Strike::Stab) {
-        STAB_TELL
-    } else {
-        TELL_SECS
+    let tell = match strike(world, goblin) {
+        Some(Strike::Stab) => STAB_TELL,
+        Some(Strike::Dash) => DASH_TELL,
+        _ => TELL_SECS,
     };
     if elapsed(world, goblin) >= tell - 1e-4 {
         go(world, goblin, EnemyState::Attack);
     }
 }
 
-/// The attack: its stab, or its throw.
+/// The attack: its stab, its dash-in's sprint, or its throw.
 pub fn enter_attack(world: &mut World, goblin: Entity) {
-    if strike(world, goblin) == Some(Strike::Stab) {
-        stab(world, goblin);
-    } else {
-        throw(world, goblin);
+    match strike(world, goblin) {
+        Some(Strike::Stab) => stab(world, goblin),
+        Some(Strike::Dash) => dash(world, goblin),
+        _ => {
+            throw(world, goblin);
+        }
     }
 }
 
-/// The stab's clip runs [`STAB_SECS`], then it spends its strike and leaps
-/// back into its recovery; the throw's runs [`THROW_SECS`], then the
-/// recovery.
+/// The dash-in's sprint along its heading at [`DASH_SPEED`], its input
+/// locked for [`DASH_MOST`], with its dust at its heels and its sound; a
+/// body stops it dead.
+fn dash(world: &mut World, goblin: Entity) {
+    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
+        controller.launch(Vec2::new(heading * DASH_SPEED, 0.0));
+        controller.lock_input(DASH_MOST);
+    }
+    if let Some(at) = centre(world, goblin) {
+        let heels = at + Vec2::new(0.0, EnemyKind::Goblin.info().half.y);
+        spawn_burst(world, DASH_DUST, heels);
+        audio::play(world, Sound::GoblinDashed, at);
+    }
+}
+
+/// Ends its dash-in with `next` as its strike, `None` for its recovery, a
+/// stab for its attack entered again; its [`COOLDOWN`] starts.
+fn end_dash(world: &mut World, goblin: Entity, next: Option<Strike>) {
+    if let Some(brain) = world.get_mut::<Brain>(goblin) {
+        brain.strike = next;
+        brain.cooldown = COOLDOWN;
+    }
+    let state = if next.is_some() {
+        EnemyState::Attack
+    } else {
+        EnemyState::Recover
+    };
+    go(world, goblin, state);
+}
+
+/// The dash-in runs until a courier is within [`STAB_REACH`] across and
+/// [`STAB_RISE`] up or down, where it stops and its attack starts again as
+/// the stab, or for [`DASH_MOST`], then the recovery. The stab's clip runs
+/// [`STAB_SECS`], then it spends its strike and leaps back into its
+/// recovery; the throw's runs [`THROW_SECS`], then the recovery.
 pub fn attack(world: &mut World, goblin: Entity) {
     rest(world, goblin);
+    if strike(world, goblin) == Some(Strike::Dash) {
+        let reached = match (player(world), centre(world, goblin)) {
+            (Some((_, target)), Some(at)) => {
+                (target.x - at.x).abs() <= STAB_REACH && (target.y - at.y).abs() <= STAB_RISE
+            }
+            _ => false,
+        };
+        if reached {
+            // It stops where it reached, for the stab to land there.
+            if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
+                controller.launch(Vec2::ZERO);
+            }
+            end_dash(world, goblin, Some(Strike::Stab));
+        } else if elapsed(world, goblin) >= DASH_MOST - 1e-4 {
+            end_dash(world, goblin, None);
+        }
+        return;
+    }
     let stabbing = strike(world, goblin) == Some(Strike::Stab);
     let clip = if stabbing { STAB_SECS } else { THROW_SECS };
     if elapsed(world, goblin) < clip - 1e-4 {
@@ -423,6 +513,9 @@ pub fn throw(world: &mut World, goblin: Entity) -> Option<Entity> {
         }
         rock
     };
+    if let Some(brain) = world.get_mut::<Brain>(goblin) {
+        brain.cooldown = COOLDOWN;
+    }
     audio::play(world, Sound::RockThrown, from);
     Some(thrown)
 }
@@ -445,19 +538,23 @@ pub fn seek(world: &mut World, goblin: Entity, point: Option<Vec2>) -> bool {
     !scurry(world, goblin, across.signum(), SEARCH_PACE)
 }
 
-/// Its clip for `state`: its stab's or its throw's tell, a rock or a lit
-/// bomb, by the strike its brain keeps; the stab or the throw through its
-/// attack; a hop while it is in the air; standing while alert or
-/// recovering; else walking or standing as it moves.
+/// Its clip for `state`: its panic, in the air too; its stab's, its
+/// dash-in's or its throw's tell, a rock or a lit bomb, by the strike its
+/// brain keeps; the stab, the dash or the throw through its attack; a hop
+/// while it is in the air; standing while alert or recovering; else
+/// walking or standing as it moves.
 #[must_use]
 pub fn clip(world: &World, goblin: Entity, state: EnemyState) -> &'static str {
     match state {
+        EnemyState::Panic => "goblin_panic",
         EnemyState::WindUp => match strike(world, goblin) {
             Some(Strike::Bomb) => "goblin_windup_bomb",
             Some(Strike::Stab) => "goblin_stab_windup",
+            Some(Strike::Dash) => "goblin_dash_windup",
             _ => "goblin_windup",
         },
         EnemyState::Attack if strike(world, goblin) == Some(Strike::Stab) => "goblin_stab",
+        EnemyState::Attack if strike(world, goblin) == Some(Strike::Dash) => "goblin_dash",
         EnemyState::Attack => "goblin_throw",
         _ if !grounded(world, goblin) => "goblin_hop",
         EnemyState::Alert | EnemyState::Recover => "goblin_idle",
@@ -467,5 +564,86 @@ pub fn clip(world: &World, goblin: Entity, state: EnemyState) -> &'static str {
                 .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
             if moving { "goblin_walk" } else { "goblin_idle" }
         }
+    }
+}
+
+/// `goblin_panic`, in the intent phase after the hold and before the
+/// machine: each goblin whose machine is not held, burning, neither in nor
+/// bound for its panic, spends its strike and panics (V26).
+pub fn panics(world: &mut World) {
+    let burning: Vec<Entity> = world
+        .query::<(Entity, &Enemy, &StateMachine<EnemyState>)>()
+        .filter(|(_, enemy, machine)| {
+            enemy.kind == EnemyKind::Goblin
+                && !machine.is_held()
+                && machine.state() != EnemyState::Panic
+                && machine.pending() != Some(EnemyState::Panic)
+        })
+        .map(|(entity, ..)| entity)
+        .filter(|&entity| has_status(world, entity, BURNING))
+        .collect();
+    for goblin in burning {
+        if let Some(brain) = world.get_mut::<Brain>(goblin) {
+            brain.strike = None;
+        }
+        go(world, goblin, EnemyState::Panic);
+    }
+}
+
+/// The way from the player across, else its heading.
+fn away(world: &World, goblin: Entity) -> f32 {
+    let heading = world.get::<Enemy>(goblin).map_or(1.0, |mine| mine.heading);
+    match (player(world), centre(world, goblin)) {
+        (Some((_, target)), Some(at)) if (at.x - target.x).abs() > 1.0 => {
+            (at.x - target.x).signum()
+        }
+        _ => heading,
+    }
+}
+
+/// Its panic's start: a yelp and, from the ground, a startled skip away
+/// from the player at its run speed and [`PANIC_HOP`] up, which a dash-in's
+/// lock does not hold off, the lock then keeping it; in the air it keeps
+/// its flight.
+pub fn enter_panic(world: &mut World, goblin: Entity) {
+    if let Some(at) = centre(world, goblin) {
+        audio::play(world, Sound::GoblinYelped, at);
+    }
+    if !grounded(world, goblin) {
+        return;
+    }
+    let away = away(world, goblin);
+    if let Some(mine) = world.get_mut::<Enemy>(goblin) {
+        mine.heading = away;
+    }
+    let run = world
+        .get::<Stats>(goblin)
+        .and_then(|stats| stats.get(Stats::MOVE_SPEED))
+        .unwrap_or(0.0);
+    if let Some(controller) = world.get_mut::<PlatformerController>(goblin) {
+        controller.launch(Vec2::new(away * run, -PANIC_HOP));
+    }
+}
+
+/// Its panic: while it burns it runs from the player at its full run,
+/// hopping what it can, the other way once that stops, else it stands
+/// flailing; in the air it keeps its run. The fire out, it chases on sight,
+/// else searches.
+pub fn panic(world: &mut World, goblin: Entity) {
+    if !has_status(world, goblin, BURNING) {
+        let next = if sees(world, goblin) {
+            EnemyState::Chase
+        } else {
+            EnemyState::Search
+        };
+        go(world, goblin, next);
+        return;
+    }
+    if !grounded(world, goblin) {
+        return;
+    }
+    let away = away(world, goblin);
+    if !scurry(world, goblin, away, 1.0) && !scurry(world, goblin, -away, 1.0) {
+        rest(world, goblin);
     }
 }
