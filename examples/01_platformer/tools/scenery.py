@@ -11,8 +11,9 @@ import math
 from PIL import Image
 
 from art import PALETTE, rng_for
-from pixels import Part, compose, despeckle, dither, outline, shade, to_image, unit
-from terrain import BREAK_LIPS, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image, line, rect, tinted
+from pixels import Part, compose, despeckle, dither, grade, outline, packed_stones, shade, to_image, unit
+from terrain import (BREAK_LIPS, COPING_TOP, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image,
+                     line, rect, tinted)
 
 STONE = dict(base='~', light=':', shadow='-', back='=')
 PALE_STONE = dict(base=':', light=';', shadow='=', back='~')
@@ -831,6 +832,142 @@ def gargoyle(frame):
     return to_image(c)
 
 
+# The x the second gargoyle's water falls at, where its pour stands.
+DRAKE_MOUTH = 56
+
+
+def gargoyle_drake(frame):
+    """The channel's second gargoyle (e01hollow), frame `frame` of 4: apart
+    from the first in pose, a winged drake in profile crouched on a stepped
+    corbel and leaning out to the right, its haunch and tail curled over
+    the corbel's side, a foreleg's claws on its edge, a bat wing raised
+    behind (its tip broken off), its neck stretched forward to a horned
+    head whose jaws gape and spill the channel's water in an arc that falls
+    to the tile's foot; the same pale weathered limestone as the first,
+    mossed on its upper surfaces, lichened, cracked, its shadow cast on the
+    wall."""
+    def mask(draw):
+        part = Part()
+        draw(part)
+        return part.pixels()
+    corbel = mask(lambda q: q.polygon([(3, 43), (32, 43), (30, 47), (26, 47), (24, 52), (11, 52), (9, 47), (3, 47)]))
+    # The wing raised up and back: its arm from the shoulder to the wrist,
+    # three fingers fanning back and down, the membrane scalloped between.
+    WRIST, FINGERS = (19, 3), ((4, 9), (4, 19), (11, 25))
+    arm = mask(lambda q: q.limb([(26, 22), (22, 12), WRIST], 4))
+    web = Part()
+    web.polygon([(26, 22), WRIST, *FINGERS, (20, 25)])
+    for a, b in zip((WRIST, *FINGERS), FINGERS):
+        mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        web.draw.ellipse((round(mx - 5), round(my - 5), round(mx + 4), round(my + 4)), fill=0)
+    wing = web.pixels() | arm
+    tail = mask(lambda q: (q.limb([(8, 38), (3, 44), (4, 51), (9, 56)], 4),
+                           q.polygon([(8, 55), (14, 54), (12, 60)])))
+    haunch = mask(lambda q: q.ellipse((14, 35), 8, 7))
+    body = mask(lambda q: q.polygon([(8, 30), (16, 23), (27, 21), (34, 25), (35, 31), (29, 37), (19, 41), (10, 41)]))
+    neck = mask(lambda q: q.limb([(29, 27), (35, 23), (40, 23)], 7))
+    leg = mask(lambda q: q.limb([(29, 32), (31, 38), (28, 42)], 5))
+    horn_far = mask(lambda q: (q.limb([(46, 18), (45, 12), (42, 8)], 3), q.limb([(42, 8), (40, 7)], 2)))
+    horn = mask(lambda q: (q.limb([(42, 18), (38, 12), (33, 10)], 4), q.limb([(33, 10), (30, 11)], 2)))
+    head = mask(lambda q: q.polygon([(38, 18), (44, 15), (50, 17), (55, 22), (56, 26), (52, 27), (45, 28), (40, 27),
+                                     (37, 23)]))
+    jaw = mask(lambda q: q.polygon([(41, 30), (51, 30), (54, 32), (48, 35), (41, 34)]))
+    c = compose([
+        (limestone(corbel, 'τ', 'σ', 'S', 's'), 'o'),
+        ({p: 's' if dither(*p, 0.75) else 'S' for p in wing - arm}, 'o'),
+        (limestone(arm, 'τ', 'σ', 'S', 's'), None),
+        (limestone(horn_far, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(tail, 'τ', 'σ', 'S', 's'), 'o'),
+        (limestone(body), 'o'),
+        (limestone(haunch), None),
+        (limestone(neck), 'o'),
+        (limestone(leg), 'o'),
+        (limestone(jaw, 'S', 'τ', 's', 's'), 'o'),
+        (limestone(head), 'o'),
+        (limestone(horn), 'o'),
+    ])
+    # The wing's fingers, lit bones over the shadowed membrane, the last
+    # one's tip broken off; a claw at the wrist.
+    for tip in FINGERS:
+        for t in range(1, 14):
+            q = (round(WRIST[0] + (tip[0] - WRIST[0]) * t / 14), round(WRIST[1] + (tip[1] - WRIST[1]) * t / 14))
+            if q in c and c[q] != 'o':
+                c[q] = 'w' if t < 5 else 'σ' if t < 10 else 'τ'
+    for q in ((11, 25), (12, 25), (11, 24), (12, 24), (13, 25)):
+        c.pop(q, None)
+    c[(WRIST[0], WRIST[1] - 1)], c[(WRIST[0] + 1, WRIST[1] - 2)] = 'w', 'I'
+    # Claws on the corbel's edge and the hind foot on its top.
+    for x0 in (27, 30, 33):
+        c[(x0, 43)], c[(x0, 44)], c[(x0 + 1, 45)] = 'w', 'σ', 'o'
+    for x0 in (9, 12, 15, 18):
+        c[(x0, 42)], c[(x0 + 1, 43)] = 'w', 'o'
+    # The head: a heavy brow over a deep socket with a faint green glint,
+    # a nostril at the snout's tip, fangs over the gaping jaw, the throat
+    # dark.
+    for x in range(44, 52):
+        if (x, 19) in c:
+            c[(x, 19)] = 'I' if x > 47 else 'w'
+            c[(x, 20)] = 'S'
+    for dx, dy in ((0, 0), (1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (1, 2)):
+        c[(47 + dx, 21 + dy)] = '■'
+    c[(48, 21)] = 'c'
+    c[(54, 23)], c[(54, 24)] = 's', 'o'
+    for y in range(28, 31):
+        for x in range(41, 55):
+            if (x, y) not in c or c[(x, y)] in ('S', 's', 'o'):
+                c[(x, y)] = '■' if 43 <= x <= 52 and y >= 28 else 'o'
+    for x, length in ((44, 2), (47, 1), (50, 2), (53, 2)):
+        for d in range(length):
+            c[(x, 28 + d)] = 'I' if d == 0 else 'w'
+    for x in (45, 49):
+        c[(x, 30)] = 'w'
+    for x in range(41, 52):
+        c[(x, 31)] = 'τ' if 43 <= x <= 50 else c.get((x, 31), 'S')
+    # Moss on the upper surfaces, lichen, a crack down the haunch.
+    for x in range(8, 52):
+        ys = sorted(y for (xx, y) in c if xx == x and c[(xx, y)] not in ('o', '■'))
+        if ys and unit('dm', x // 2) < 0.55:
+            for y in ys[:1 + int(unit('dml', x) * 2)]:
+                c[(x, y)] = 'T' if y == ys[0] else 'g'
+    for n in range(12):
+        q = (6 + int(unit('dl', n) * 48), 14 + int(unit('dly', n) * 30))
+        if c.get(q) in ('σ', 'τ', 'w'):
+            c[q] = 'G' if n % 3 else 'm'
+    for d in range(8):
+        q = (15 + d // 3, 30 + d)
+        if c.get(q) in ('σ', 'w', 'τ', 'I'):
+            c[q] = 's'
+    # The haunch's crease where it folds against the body.
+    for a in range(0, 14):
+        q = (round(14 + 8 * math.cos(math.radians(200 + a * 9))), round(35 + 7 * math.sin(math.radians(200 + a * 9))))
+        if c.get(q) in ('σ', 'w', 'τ', 'I'):
+            c[q] = 'S'
+    outline(c, 'o')
+    # Its shadow on the wall, down and to the left.
+    for (x, y) in list(c):
+        q = (x - 3, y + 4)
+        if q not in c and 0 <= q[0] < TILE and 0 <= q[1] < TILE:
+            c[q] = 'λ'
+    # The water: out of the jaws in an arc, then falling plumb to the foot.
+    for y in range(29, TILE):
+        t = min(1.0, (y - 29) / 9)
+        centre = 52 + (DRAKE_MOUTH - 52) * math.sin(t * math.pi / 2)
+        half = 1.5 + 1.5 * t + max(0, y - 38) / 12
+        for x in range(round(centre - half) - 1, round(centre + half) + 2):
+            if not 0 <= x < TILE or (y < 36 and c.get((x, y)) not in (None, 'λ', '■', 'o', 's', 'S', 'τ')):
+                continue
+            d = abs(x - centre)
+            v = (y - 16 * frame + x * 5) % 32
+            if d > half:
+                if dither(x, y + 4 * frame, 0.35):
+                    c[(x, y)] = 'ϰ'
+            elif d > half - 1:
+                c[(x, y)] = 'ς'
+            else:
+                c[(x, y)] = '`' if v < 2 else '_' if (v + x) % 7 == 0 else '}' if (x + y) % 3 else ')'
+    return to_image(c)
+
+
 def splash_rocks(i):
     """Boulders at the falls' foot in the ravine's wet stone, glistening on
     top, mossed, foam lapping their feet."""
@@ -1553,35 +1690,645 @@ def reeds(i):
     return finish(c)
 
 
+# The statue's pale stone, dark to light: its shading ramp (e01hollow).
+MARBLE = ('s', 'S', 'τ', 'σ', 'w')
+
+
 def statue(i):
-    """A weathered robed figure on a plinth, two tiles tall: its head long
-    gone, an arm raised and broken, moss down its shadowed side."""
-    size = (TILE, 2 * TILE)
-    robe, arm, neck, plinth = Part(size), Part(size), Part(size), Part(size)
-    robe.polygon([(17, 104), (21, 70), (24, 48), (27, 40), (37, 40), (40, 48), (43, 70), (47, 104)])
-    arm.limb([(38, 50), (46, 38), (49, 30)], 6)
-    neck.polygon([(28, 40), (29, 33), (35, 32), (36, 40)])
-    plinth.rectangle((11, 104, 53, 124))
-    c = compose([
-        (blocks(plinth.pixels(), course=10, seed='statue-plinth', offset=104), None),
-        (shaded(robe, PALE_STONE), 'o'),
-        (shaded(arm, PALE_STONE), 'o'),
-        (shaded(neck, PALE_STONE), 'o'),
+    """The aqueduct's statue (e01hollow, fully redrawn), 2 x 3 tiles: a
+    water-bearer in pale weathered stone on a moulded pedestal. She stands
+    in contrapposto, her weight on her right leg, her left knee pressing
+    through the drapery; a chiton girdled under the bust falls in an
+    overfold, a himation wraps her hips and flares to a scalloped hem, one
+    sandalled foot showing. Her left arm is raised to steady an urn on her
+    shoulder, its mouth tipped; her right arm is broken off below the
+    elbow, its forearm lying at the pedestal's foot. Her head, bun behind,
+    is bowed away from the urn, the nose worn off. The fountain she was
+    left lime streaks from the urn down her shoulder and folds and onto
+    the pedestal: a cornice, a die with a carved tablet, a torus base and a
+    coursed plinth; moss on every upper surface, lichen, a crack, ivy."""
+    w, h = 2 * TILE, 3 * TILE
+    size = (w, h)
+
+    def mask(draw):
+        part = Part(size)
+        draw(part)
+        return part.pixels()
+
+    def lit(pts, **kw):
+        return grade(pts, MARBLE, light=(0.5, -0.8, 0.55), spread=0.35, **kw)
+
+    # The pedestal, in the arcade's grey stone.
+    plinth = mask(lambda q: q.rectangle((30, 177, 96, 191)))
+    torus = mask(lambda q: q.rectangle((33, 171, 93, 176)))
+    die = mask(lambda q: q.rectangle((38, 137, 88, 170)))
+    cornice = mask(lambda q: q.polygon([(34, 128), (92, 128), (92, 131), (90, 134), (88, 136), (38, 136),
+                                        (36, 134), (34, 131)]))
+    ped = compose([
+        (blocks(plinth, course=7, seed='statue-plinth', offset=177), None),
+        ({p: ';' if p[1] == 171 else ':' if p[1] == 172 else '~' if p[1] < 175 else '-' for p in torus}, 'o'),
+        ({p: (';' if p[0] > 84 else ':') if p[1] < 139 else '-' if p[0] < 41 else
+          '~' if unit('die', p[0] // 6, p[1] // 5) < 0.7 else '=' for p in die}, 'o'),
+        ({p: ';' if p[1] < 130 else ':' if p[1] < 132 else '~' if p[1] < 134 else '-' for p in cornice}, 'o'),
     ])
+    # The tablet, sunk in the die, its lines of worn letters.
+    for y in range(143, 163):
+        for x in range(45, 82):
+            edge = y in (143, 162) or x in (45, 81)
+            ped[(x, y)] = '<' if edge and (y == 143 or x == 45) else ':' if edge else '=' if dither(x, y, 0.4) else '~'
+    for row, (x0, x1) in enumerate(((49, 77), (51, 75), (54, 72))):
+        for x in range(x0, x1):
+            if unit('glyph', row, x // 3) < 0.72 and x % 3 != 2:
+                ped[(x, 147 + row * 5)] = '<'
+                ped[(x, 148 + row * 5)] = '-' if unit('glyph2', row, x) < 0.5 else '<'
+    # The figure, on a skeleton about 7.5 heads tall (a head 15 px): the
+    # pit of her neck over the weight foot, the hips tilted up on the
+    # weight side and the shoulders the other way, elbows at the waist,
+    # wrists at the hip; limbs taper from shoulder to wrist.
+    def tapered(a, b, wa, wb):
+        """A limb from joint `a` to `b`, `wa` px wide at `a`, `wb` at `b`."""
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        n = math.hypot(dx, dy) or 1
+        px, py = -dy / n, dx / n
+        return mask(lambda q: (q.polygon([(a[0] + px * wa / 2, a[1] + py * wa / 2),
+                                          (b[0] + px * wb / 2, b[1] + py * wb / 2),
+                                          (b[0] - px * wb / 2, b[1] - py * wb / 2),
+                                          (a[0] - px * wa / 2, a[1] - py * wa / 2)]),
+                               q.ellipse(b, wb / 2, wb / 2)))
+
+    SHOULDER_R, SHOULDER_L = (48, 41), (74, 39)
+    ELBOW_R, ELBOW_L = (43, 60), (81, 57)
+    WRIST_L = (77, 71)
+    KNEE_FREE = (73, 98)
+    # Her head, bowed toward the urn at her left hip: the skull, the jaw
+    # and chin turned to the right, the nose on the silhouette.
+    skull = mask(lambda q: q.ellipse((60, 21), 7, 8))
+    face = mask(lambda q: q.polygon([(62, 20), (67, 19), (69, 22), (70, 24), (68, 25), (68, 27), (66, 29),
+                                     (62, 30), (59, 28)]))
+    head = skull | face
+    hair = {(x, y) for (x, y) in skull if y < 17 + max(0, 64 - x) * 0.85 and y < 26} | mask(
+        lambda q: q.ellipse((53, 16), 4, 4))
+    # The neck: as wide as most of the head, its back running down from the
+    # skull's base into the shoulders' slope, its front from under the jaw
+    # to the pit of the neck, leaning forward as she bows.
+    neck = mask(lambda q: q.polygon([(55, 24), (61, 27), (64, 30), (64, 33), (68, 37), (51, 39), (54, 34),
+                                     (54, 28)]))
+    torso = mask(lambda q: q.polygon([(47, 45), (49, 41), (54, 38), (60, 37), (66, 36), (71, 37), (75, 40),
+                                      (77, 44), (75, 49), (72, 57), (73, 66), (49, 66), (50, 57), (48, 50)]))
+    delt_r = mask(lambda q: q.ellipse((SHOULDER_R[0], SHOULDER_R[1] + 1), 3.5, 4))
+    delt_l = mask(lambda q: q.ellipse((SHOULDER_L[0], SHOULDER_L[1] + 1), 3.5, 4))
+    arm_r = tapered(SHOULDER_R, ELBOW_R, 7, 5) | tapered(ELBOW_R, (44, 65), 5, 4.5)
+    arm_l = tapered(SHOULDER_L, ELBOW_L, 7, 5) | tapered(ELBOW_L, WRIST_L, 5, 4)
+    hand = mask(lambda q: q.polygon([(74, 71), (79, 70), (82, 73), (80, 76), (75, 75)]))
+    # The mantle wrapped from her hips to her ankles, falling straight down
+    # the weight leg and spreading round the bent knee; the roll of it
+    # slanting across her hips.
+    skirt = mask(lambda q: q.polygon([(48, 64), (74, 64), (77, 72), (79, 84), (81, 98), (83, 110), (85, 121),
+                                      (82, 124), (47, 124), (46, 112), (48, 98), (47, 84), (46, 72)]))
+    knee = mask(lambda q: q.ellipse(KNEE_FREE, 6, 9))
+    roll = mask(lambda q: q.polygon([(46, 63), (51, 61), (79, 70), (78, 75), (49, 68), (45, 67)]))
+    foot_w = mask(lambda q: q.polygon([(52, 122), (61, 122), (62, 127), (50, 127)]))
+    foot_f = mask(lambda q: q.polygon([(74, 123), (80, 123), (82, 127), (73, 127)]))
+    # The urn held against her left hip, tipped down to the right as if
+    # pouring, her forearm over it and her hand under its shoulder.
+    tilt = math.radians(40)
+    u, v = (math.sin(tilt), math.cos(tilt)), (math.cos(tilt), -math.sin(tilt))
+    ucx, ucy = 86, 74
+
+    def along(a, b):
+        return ucx + u[0] * a + v[0] * b, ucy + u[1] * a + v[1] * b
+
+    urn = mask(lambda q: (q.polygon([along(10 * math.cos(t / 12 * math.tau), 7 * math.sin(t / 12 * math.tau))
+                                     for t in range(12)]),
+                          q.polygon([along(7, -2.5), along(7, 2.5), along(14, 2), along(14, -2)]),
+                          q.polygon([along(14, -3.5), along(14, 3.5), along(16, 3.5), along(16, -3.5)])))
+    handle = mask(lambda q: (q.limb([along(4, 7), along(8, 9), along(11, 2.5)], 2),
+                             q.limb([along(4, -7), along(8, -9), along(11, -2.5)], 2)))
+    figure = compose([
+        (lit(foot_w), 'o'),
+        (lit(foot_f), 'o'),
+        (lit(skirt, fall=0.3), 'o'),
+        (lit(knee, bias=0.14), None),
+        (lit(arm_r, depth=3), 'o'),
+        (lit(delt_r, bias=0.05), None),
+        (lit(torso, fall=0.12), 'o'),
+        (lit(roll, depth=2, bias=0.05), 'o'),
+        (lit(neck, depth=3, bias=-0.05), 'o'),
+        (lit(head, depth=3, bias=0.08), 'o'),
+        (grade(hair, ('s', 'S', 'S', 'τ', 'σ'), light=(0.5, -0.8, 0.55), depth=3, spread=0.35), None),
+        (lit(handle, depth=1), None),
+        (lit(urn, bias=-0.05), 'o'),
+        (lit(arm_l, depth=3), 'o'),
+        (lit(delt_l, bias=0.08), None),
+        (lit(hand, depth=2, bias=0.05), 'o'),
+    ])
+
+    def stroke(points, sym, ridge=None, skip=()):
+        """A fold's trough along `points` in `sym`, its lit ridge beside it
+        to the right in `ridge`; never over an outline or `skip`."""
+        for (x0, y0), (x1, y1) in zip(points, points[1:]):
+            n = max(round(abs(x1 - x0)), round(abs(y1 - y0)), 1)
+            for t in range(n + 1):
+                q = (round(x0 + (x1 - x0) * t / n), round(y0 + (y1 - y0) * t / n))
+                if figure.get(q) not in (None, 'o') and q not in skip:
+                    figure[q] = sym
+                    r = (q[0] + 1, q[1])
+                    if ridge and figure.get(r) not in (None, 'o') and r not in skip:
+                        figure[r] = ridge
+
+    front = urn | arm_l | hand | handle
+    # The chiton's folds from its shoulder pins to the cord under the bust,
+    # the cord, and the fall of it to the mantle's roll.
+    for pts in (((53, 38), (56, 46), (57, 51)), ((55, 37), (60, 45), (61, 51)), ((69, 37), (66, 45), (65, 51)),
+                ((71, 38), (70, 46), (69, 51)), ((58, 52), (57, 62)), ((63, 52), (64, 62)), ((68, 52), (69, 62))):
+        stroke(pts, 'S', 'σ', front)
+    for x in range(50, 74):
+        q = (x, 51 + round(0.6 * math.sin(x * 0.4)))
+        if figure.get(q) not in (None, 'o') and q not in front and dither(x, q[1], 0.7):
+            figure[q] = 'S'
+            if figure.get((x, q[1] + 1)) not in (None, 'o') and (x, q[1] + 1) not in front:
+                figure[(x, q[1] + 1)] = 'σ'
+    for (cx0, cy0) in ((55, 47), (67, 46)):
+        for (x, y) in list(figure):
+            if ((x - cx0) / 4.5) ** 2 + ((y - cy0) / 3.5) ** 2 <= 1 and figure[(x, y)] in MARBLE and (x, y) not in front:
+                k = MARBLE.index(figure[(x, y)])
+                figure[(x, y)] = MARBLE[min(4, k + 1)] if y < cy0 else MARBLE[max(0, k - 1)] if y > cy0 + 1 else figure[(x, y)]
+    # The mantle's folds: straight down the weight leg, fanning from the
+    # roll, curving round the bent knee and swinging between the legs; its
+    # hem scalloped over the feet.
+    for pts in (((50, 70), (51, 84), (49, 100), (50, 121)), ((55, 70), (54, 88), (56, 106), (55, 121)),
+                ((74, 74), (66, 88), (60, 104), (58, 121)), ((62, 71), (64, 84)), ((69, 74), (76, 86)),
+                ((80, 106), (81, 121)), ((75, 109), (76, 121)), ((68, 110), (69, 121))):
+        stroke(pts, 'S', 'w', front)
+    for k in range(3):
+        stroke([(59, 99 + k * 5), (64, 102 + k * 5), (69, 104 + k * 4)], 's', None, front)
+    for x in range(46, 86):
+        q = (x, 121 + round(1.2 * math.sin(x * 0.7)))
+        if figure.get(q) not in (None, 'o'):
+            figure[q] = 'S'
+    # The roll's twist, its folds slanting across it.
     for k in range(5):
-        x = 24 + k * 4
-        for y in range(56, 102):
-            if c.get((x, y)) == PALE_STONE['base'] and (y + k) % 3:
-                c[(x, y)] = '~'
-    line(c, 28, 33, 35, 32, '<')
-    for y in range(44, 102):
-        x = 20 + round(2 * math.sin(y * 0.3))
-        if unit('smoss', i, y // 2) < 0.5 and (x, y) in c:
-            c[(x, y)] = 'T' if y % 3 else 't'
-    for x in range(11, 53):
-        if unit('plmoss', x) < 0.35:
-            c[(x, 104)], c[(x, 103)] = 'T', 'g'
+        x0 = 50 + k * 6
+        stroke([(x0, 62 + k * 1.6), (x0 + 3, 68 + k * 1.4)], 'S', None, front)
+    # Her face: the brow lit over the blank eye's shadowed slot, the nose,
+    # the lips, the chin, the jaw's line under the ear; the hair's waves,
+    # parted and drawn back to the bun, its band.
+    for x, y, sym in ((65, 19, 'w'), (66, 19, 'w'), (67, 20, 'σ'), (65, 20, 's'), (66, 20, 's'), (69, 22, 'σ'),
+                      (70, 23, 'τ'), (68, 26, 'S'), (67, 26, 'S'), (67, 27, 'σ'), (65, 29, 'S'), (64, 29, 'S'),
+                      (61, 27, 'S'), (60, 26, 'S')):
+        if figure.get((x, y)) not in (None, 'o'):
+            figure[(x, y)] = sym
+    # The ear, under the hair at the jaw's hinge.
+    for q, sym in (((58, 22), 'σ'), ((57, 23), 'S'), ((57, 24), 'S'), ((58, 25), 'τ'), ((59, 24), 's')):
+        figure[q] = sym
+    for k in range(3):
+        for (x, y) in hair:
+            if y == 14 + k * 3 + round(abs(x - 60) * 0.25) and (x + k) % 3 and figure.get((x, y)) not in (None, 'o'):
+                figure[(x, y)] = 'S' if k % 2 else 'τ'
+    for x in range(55, 67):
+        q = (x, 16 + round(max(0, 64 - x) * 0.85))
+        if q in hair and figure.get(q) not in (None, 'o'):
+            figure[q] = 'σ' if x % 2 else 'S'
+    figure[(53, 16)], figure[(54, 15)] = 's', 'σ'
+    # The neck's shadow under the jaw and the pit between the collarbones;
+    # the trapezius lit on the shoulders' slope.
+    for x in range(58, 64):
+        if figure.get((x, 31)) not in (None, 'o'):
+            figure[(x, 31)] = 'S'
+    for q in ((61, 36), (62, 36), (60, 37), (63, 37)):
+        figure[q] = 'S'
+    for x in range(50, 56):
+        figure[(x, 40 - (x - 50) * 2 // 5)] = 'w'
+    for x in range(66, 73):
+        figure[(x, 36 + (x - 66) // 2)] = 'w'
+    # The right forearm broken off below the elbow, its break pale and
+    # rough, its shadow on the mantle.
+    for x in range(41, 48):
+        y = 64 + (unit('stump', x) < 0.5)
+        if (x, y) in arm_r:
+            figure[(x, y)] = 'w' if dither(x, y, 0.6) else 'σ'
+            figure[(x, y + 1)] = 'o'
+    # The urn's ridges and dark mouth; her fingers along its shoulder.
+    for a0 in (-4, 3):
+        for b0 in range(-7, 8):
+            q = tuple(round(c0) for c0 in along(a0, b0))
+            if q in urn and q not in hand | arm_l and figure.get(q) not in (None, 'o'):
+                figure[q] = 'S'
+    for b0 in range(-2, 3):
+        figure[tuple(round(c0) for c0 in along(16, b0))] = 's'
+    for q in ((75, 74), (77, 75), (79, 75)):
+        figure[q] = 'S'
+    # The lime the fountain left: streaks down the urn from its mouth, and a
+    # crust on the cornice and down the die where its water fell.
+    mx, my = (round(c0) for c0 in along(16, 0))
+    for k in range(3):
+        for t in range(4, 13):
+            q = tuple(round(c0) for c0 in along(16 - t, (k - 1) * 3))
+            if q in urn and q not in hand | arm_l and figure.get(q) not in (None, 'o') and dither(*q, 0.6):
+                figure[q] = 'S'
+    for k, x0 in enumerate((mx - 2, mx, mx + 1)):
+        for y in range(128, 176):
+            q = (x0, y)
+            if q in ped and dither(x0, y, 0.85 - (y - 128) / 60):
+                ped[q] = 'σ' if y < 132 else 'τ' if k != 1 else 'S'
+    c = compose([(ped, None), (figure, 'o')])
+    # The fallen forearm at the foot: thick at its snapped elbow, tapering
+    # to the wrist, the hand curled with its fingers in.
+    arm = mask(lambda q: (q.polygon([(99, 184), (103, 183), (112, 186), (112, 189), (103, 191), (99, 191)]),
+                          q.ellipse((115, 187), 3, 3), q.limb([(116, 190), (119, 190)], 2)))
+    c = compose([(c, None), (lit(arm), 'o')])
+    for y in range(184, 191):
+        c[(99, y)] = 'w' if y % 2 else 'σ'
+        c[(100, y)] = 'τ' if y % 3 else 'σ'
+    for x in (114, 116, 118):
+        c[(x, 189)] = 'S'
+    # A crack across her skirt and down the die; moss on every upper
+    # surface; lichen; ivy up the pedestal's shaded corner.
+    x = 47
+    for d in range(30):
+        q = (x + d, 84 + round(math.sin(d * 0.6) * 1.5) + d // 10)
+        if c.get(q) not in (None, 'o'):
+            c[q] = 's'
+    for d in range(22):
+        q = (60 + round(math.sin(d * 0.5)), 137 + d)
+        if c.get(q) not in (None, 'o'):
+            c[q] = '<'
+    for x in range(30, 97):
+        col = sorted(y for (xx, y) in c if xx == x and c[(xx, y)] != 'o')
+        for y in col:
+            if y > 34 and ((x, y - 1) not in c or c[(x, y - 1)] == 'o'):
+                if unit('smoss', x // 2, y // 3) < (0.55 if y > 120 else 0.35):
+                    c[(x, y)] = 'T' if unit('smoss2', x, y) < 0.6 else 'g'
+                    if unit('smoss3', x, y) < 0.4 and (x, y + 1) in c:
+                        c[(x, y + 1)] = 't'
+    for n in range(16):
+        q = (40 + int(unit('slich', n) * 48), 20 + int(unit('slichy', n) * 150))
+        if c.get(q) in ('σ', 'τ', 'w', '~', ':'):
+            c[q] = 'm' if n % 3 else 'G'
+    for d in range(44):
+        y = 190 - d
+        x = 39 + round(1.5 * math.sin(d * 0.3))
+        if (x, y) in c:
+            c[(x, y)] = 't'
+            if d % 5 == 0:
+                for k in range(3):
+                    c[(x - 1 - k, y - k // 2)] = 'G' if k == 0 else 'g'
     return finish(c, size)
+
+
+def broken_pillar():
+    """The aqueduct's broken pillar (e01hollow), 2 x 4 tiles, standing at
+    the area's start: a fluted column of four drums and the stump of a
+    fifth, snapped on a slant, its break rough and mossed, on an Attic
+    base (two tori round a scotia) over a coursed plinth; its fluting lit
+    toward the moon, the drums' joints curving with the shaft, a crack
+    down one drum, ivy climbing its shadowed side and the fallen drum
+    lying on its end beside the plinth, flutes scalloping its rim."""
+    w, h = 2 * TILE, 4 * TILE
+    cx, foot = 62, h - 1
+    ramp = ('<', '-', '=', '~', ':', ';')
+    plinth, mould, shaft = Part((w, h)), {}, Part((w, h))
+    plinth.polygon([(30, foot), (94, foot), (94, foot - 23), (91, foot - 26), (33, foot - 26), (30, foot - 23)])
+
+    def radius(y):
+        """The shaft's half width at row `y`, swelling a little low down."""
+        return 21 + 1.6 * math.sin(math.pi * min(1.0, max(0.0, (y - 30) / 190))) - (219 - y) * 0.012
+
+    def broken(x):
+        """The break's top at column `x`: low on the left, high on the right,
+        jagged."""
+        u = (x - (cx - 22)) / 44
+        return 70 - 46 * u ** 1.3 + (unit('pbreak', x // 3) - 0.5) * 7 + 5 * math.sin(u * 9)
+
+    top = foot - 26
+    # The Attic base: a broad torus, the scotia, a narrower torus.
+    for y, half, sym in ((top - 1, 31, None), (top - 2, 31, None), (top - 3, 30, None), (top - 4, 30, None),
+                         (top - 5, 29, None), (top - 6, 27, '<'), (top - 7, 27, '<'), (top - 8, 27, None),
+                         (top - 9, 26, None), (top - 10, 26, None), (top - 11, 25, None)):
+        for x in range(cx - half, cx + half + 1):
+            u = (x - cx) / half
+            if sym:
+                mould[(x, y)] = sym
+                continue
+            band = (top - 1, top - 2, top - 3, top - 4, top - 5) if y >= top - 5 else (top - 8, top - 9, top - 10, top - 11)
+            v = band.index(y) / (len(band) - 1)
+            mould[(x, y)] = ramp_at(ramp, 0.3 + 0.35 * u + 0.45 * (v if y >= top - 5 else v) - 0.1, x, y)
+    shaft_foot = top - 12
+    for y in range(0, shaft_foot + 1):
+        r = radius(y)
+        for x in range(round(cx - r), round(cx + r) + 1):
+            if y >= broken(x):
+                shaft.draw.point((x, y), fill=255)
+    pts = shaft.pixels()
+    c = {}
+    for (x, y) in pts:
+        r = radius(y)
+        u = (x - cx) / r
+        # Nine flutes across the front, each a groove: its left wall lit,
+        # its right in shade, a fillet between them.
+        phase = (math.asin(max(-1.0, min(1.0, u))) / math.pi + 0.5) * 12
+        f = phase % 1
+        fillet = f < 0.14
+        groove = -0.25 * math.cos(f * math.pi) if not fillet else 0.18
+        value = 0.4 + 0.5 * u + groove - 0.3 * (1 - math.sqrt(max(0.0, 1 - u * u)))
+        c[(x, y)] = ramp_at(ramp, value, x, y)
+    # The drums' joints, curving with the shaft, and the break's rough top.
+    for j in range(1, 6):
+        y0 = shaft_foot - j * 38
+        for x in range(round(cx - 23), round(cx + 24)):
+            u = (x - cx) / radius(y0)
+            if abs(u) < 1:
+                q = (x, y0 + round(2 * math.sqrt(1 - u * u)))
+                if q in c:
+                    c[q] = '<'
+                    if (x, q[1] + 1) in c:
+                        c[(x, q[1] + 1)] = ramp_at(ramp, 0.75 + 0.3 * u, x, q[1] + 1)
+    rough = {(x, y) for (x, y) in pts if y < broken(x) + 5}
+    c.update(packed_stones(rough, ('<', '=', '~', ':', ';', ';'), size=3, seed='pillar-break'))
+    for (x, y) in rough:
+        if (x, y - 1) not in pts and unit('pbm', x // 2) < 0.5:
+            c[(x, y)] = 'T' if unit('pbm2', x) < 0.6 else 'g'
+            if (x, y + 1) in c and unit('pbm3', x) < 0.5:
+                c[(x, y + 1)] = 't'
+    for d in range(30):
+        q = (cx + 9 + round(math.sin(d * 0.5) * 1.5) + d // 12, shaft_foot - 120 + d)
+        if q in c:
+            c[q] = '<'
+    # The plinth: coursed blocks, lit along the top.
+    c = compose([(blocks(plinth.pixels(), course=9, seed='pillar-plinth', offset=top), None), (c, 'o'),
+                 (mould, 'o')])
+    for x in range(30, 95):
+        if unit('plm', x // 3) < 0.45:
+            c[(x, top)] = 'T'
+            c[(x, top - 1)] = 'g' if unit('plm2', x) < 0.6 else 'G'
+    # Ivy up the column's shadowed side.
+    stem = cx - 18
+    for d in range(150):
+        y = shaft_foot - d
+        x = stem + round(3 * math.sin(d * 0.13)) - (1 if d > 90 else 0)
+        if (x, y) in c and y > broken(x) + 6:
+            c[(x, y)] = 't'
+            if d % 6 == 0:
+                side = 1 if (d // 6) % 2 else -1
+                for k in range(3):
+                    c[(x + side * (1 + k), y - k // 2)] = 'G' if k == 0 else 'g' if k == 1 else 'T'
+    # The fallen drum on its side along the wall: its fluted body lit
+    # along the top, its cut end an ellipse with the dowel's socket, its
+    # far end snapped; moss along its back.
+    drum, x0, x1, dr = {}, 101, 126, 11
+    dcy = foot - dr
+    for y in range(dcy - dr, foot + 1):
+        v = (y - dcy) / dr
+        for x in range(x0, x1 + 1):
+            if x > x1 - 3 - round(3 * unit('dsnap', y // 2)):
+                continue
+            f = ((math.asin(max(-1.0, min(1.0, v))) / math.pi + 0.5) * 9) % 1
+            groove = -0.22 * math.cos(f * math.pi) if f >= 0.15 else 0.15
+            drum[(x, y)] = ramp_at(ramp, 0.55 - 0.45 * v + groove, x, y)
+    for y in range(dcy - dr, foot + 1):
+        for x in range(x0 - 5, x0 + 4):
+            if ((x - x0) / 4.5) ** 2 + ((y - dcy) / dr) ** 2 <= 1:
+                drum[(x, y)] = '<' if abs(y - dcy) < 2 and abs(x - x0) < 2 else ramp_at(
+                    ramp, 0.62 - 0.25 * (y - dcy) / dr, x, y)
+    for x in range(x0 + 2, x1 - 4):
+        if unit('dmoss', x // 2) < 0.55:
+            drum[(x, dcy - dr)] = 'T'
+            if unit('dmoss2', x) < 0.4:
+                drum[(x, dcy - dr - 1)] = 'g'
+    c = compose([(c, None), (drum, 'o')])
+    return finish(c, (w, h))
+
+
+# The aqueduct floor's paving (e01hollow): its pieces lie in the floor's
+# turf band, their foot `PAVING_SINK` px into the floor's top, the most the
+# floating check lets a standing piece sink.
+PAVING_SINK = 6
+
+
+def aq_paving(k):
+    """The aqueduct floor's own family (e01hollow), variant `k` of 4, laid
+    in the turf band under the arcade where the old road ran: worn flags,
+    their moonlit tops crossing the band, joints slanting with the view and
+    mossed, one cracked (0); a flag heaved up on its edge over a gap of
+    gravel and a tuft (1); a carved gutter stone crossing the band with
+    water in its groove (2); gravel and pebbles with clover where the flags
+    are gone (3). Each is a tile wide and fades into the turf at its ends."""
+    c = {}
+    band = range(TILE - PAVING_SINK, TILE)
+    top = TILE - PAVING_SINK
+    if k in (0, 1):
+        joints = (4, 25, 46, 62) if k == 0 else (6, 30, 58)
+        for y in band:
+            v = y - top
+            for x in range(joints[0], joints[-1]):
+                shift = round(v * 0.6)
+                joint = any(x == j + shift for j in joints)
+                n = sum(1 for j in joints if j + shift <= x)
+                if joint:
+                    sym = 'o' if v > 0 else '<'
+                elif v == 0:
+                    sym = ';'
+                elif v == PAVING_SINK - 1:
+                    sym = '<'
+                else:
+                    t = unit('flag', k, n, x // 3, v)
+                    sym = ':' if t < 0.55 else ';' if t < 0.7 else '~'
+                c[(x, y)] = sym
+        if k == 0:
+            x = 33
+            for y in band:
+                x += 1 if unit('fcr', y) > 0.5 else 0
+                c[(x, y)] = '<'
+        else:
+            # The middle flag heaved up on its far edge, gravel in the gap.
+            for x in range(31, 56):
+                c[(x, top - 1)] = ';'
+                c[(x, top - 2)] = ':' if x < 54 else 'o'
+                c[(x, top)] = ':'
+            c.update(packed_stones({(x, y) for x in range(26, 32) for y in band}, ('o', '<', '-', '=', ':'), size=2,
+                                   seed='pave-gravel'))
+            for t in range(5):
+                c[(28 + t % 3, top - 1 - t // 2)] = 'g' if t % 2 else 'G'
+        for j in joints:
+            for t in range(2 + int(unit('fjm', k, j) * 3)):
+                q = (j + round((t % PAVING_SINK) * 0.6), top + t % PAVING_SINK)
+                if q in c:
+                    c[q] = 'T' if t % 2 else 't'
+    elif k == 2:
+        for y in band:
+            v = y - top
+            for x in range(2, 62):
+                shift = round(v * 0.6)
+                u = x - 20 - shift
+                if 0 <= u < 24:
+                    sym = '<' if u in (0, 23) else (':' if u < 4 or u > 19 else
+                                                     '}' if v < 2 and dither(x, y, 0.6) else '{' if v < 4 else '|')
+                    if 4 <= u <= 19 and v == 0:
+                        sym = '_' if dither(x, y, 0.5) else '}'
+                else:
+                    sym = ';' if v == 0 else '<' if v == PAVING_SINK - 1 else ':' if unit('gut', x // 4, v) < 0.6 else '~'
+                c[(x, y)] = sym
+        for x in range(2, 62):
+            if unit('gutm', x // 2) < 0.3:
+                c[(x, top)] = 'T'
+    else:
+        inside = {(x, y) for x in range(3, 61) for y in band}
+        c.update(packed_stones(inside, ('<', '-', '=', '~', ':', ';'), size=3, seed='pave-pebbles'))
+        for x in range(3, 61):
+            if unit('clover', x // 3) < 0.45:
+                for t in range(1 + int(unit('clh', x) * 3)):
+                    c[(x, top - 1 - t + (0 if t else 1))] = 'G' if t == 0 else 'g'
+    # The turf creeping over the paving's ends, a few blades standing up.
+    for x in list(range(0, 6)) + list(range(58, TILE)):
+        for y in band:
+            if (x, y) in c and dither(x, y, 0.75 - min(x, TILE - 1 - x) * 0.12):
+                c[(x, y)] = 'g' if y - top < 2 else 'T'
+    for n in range(4):
+        x = int(unit('pblade', k, n) * 60) + 2
+        for t in range(2 + n % 3):
+            c[(x + (t % 2), top - 1 - t)] = 'G' if t == 0 else 'g'
+    return to_image(c)
+
+
+def fallen_capital():
+    """A capital fallen from the arcade's lost span (e01hollow), lying
+    tilted on the floor: an abacus slab over a moulded echinus, a
+    fragment of the shaft still socketed under it, chipped corners, moss
+    along its top."""
+    slab, echinus, stub = Part(), Part(), Part()
+    slab.polygon([(8, 47), (52, 42), (54, 50), (10, 55)])
+    echinus.polygon([(14, 55), (49, 51), (46, 58), (18, 61)])
+    stub.polygon([(22, 61), (43, 58), (44, 63), (22, 63)])
+    c = compose([
+        (blocks(stub.pixels(), course=20, seed='cap-stub'), None),
+        (shade(echinus.pixels(), '~', light=':', shadow='-', back='='), 'o'),
+        (shade(slab.pixels(), ':', light=';', shadow='-', back='~'), 'o'),
+    ])
+    for x in range(10, 53):
+        y = 47 - round((x - 8) * 5 / 44)
+        if unit('capm', x // 3) < 0.5:
+            c[(x, y)] = 'T' if unit('capm2', x) < 0.6 else 'g'
+    for q in ((51, 43), (52, 43), (52, 44), (9, 54), (10, 54)):
+        c.pop(q, None)
+    for x in range(16, 47, 4):
+        y = 56 + (x - 16) // 12
+        if (x, y) in c:
+            c[(x, y)] = '<'
+    return finish(c)
+
+
+# Terracotta, dark to light (e01hollow's amphora).
+TERRACOTTA = ('а', 'п', 'ω', '(', '"', "'", 'a')
+
+
+def amphora_radius(t):
+    """The amphora's half width `t` px along its axis from the rim: a
+    collared rim, the long neck, a carinated shoulder, the body tapering to
+    a solid spike toe."""
+    if t < 2.5:
+        return 3.5
+    if t < 11:
+        return 2.5
+    if t < 16:
+        return 2.5 + (t - 11) * 0.95
+    if t < 40:
+        return 7.3 - (t - 16) * 0.11
+    if t < 48:
+        return 4.6 - (t - 40) * 0.38
+    return 1.6
+
+
+def amphora():
+    """A Roman amphora lying broken on the floor (e01hollow, fully
+    redrawn): long and slender, its collared rim and neck raised off the
+    ground on a handle, two handles looping from the carinated shoulder to
+    the neck, its body tapering to a spike toe in the dirt. A piece of its
+    upper belly is broken out, dark within, a pale broken lip below it and
+    its sherds lying round it. Wheel ridges ring the body, a weed grows out
+    of the break and moss creeps up from the ground."""
+    tilt = math.radians(5)
+    ax, ay = math.cos(tilt), math.sin(tilt)
+    nx, ny = -math.sin(tilt), math.cos(tilt)
+    ox, oy, length = 5.0, 54.0, 52
+    body = {}
+    for y in range(TILE):
+        for x in range(TILE):
+            dx, dy = x - ox, y - oy
+            t, v = dx * ax + dy * ay, dx * nx + dy * ny
+            if 0 <= t <= length:
+                r = amphora_radius(t)
+                if abs(v) <= r:
+                    body[(x, y)] = (t, v / r)
+    # Settle it so the belly's lowest pixel lies on the tile's floor.
+    drop = TILE - 1 - max(y for _, y in body)
+    body = {(x, y + drop): tv for (x, y), tv in body.items()}
+    c = {}
+    for (x, y), (t, v) in body.items():
+        value = 0.6 - 0.5 * v - (0.25 if t < 11 else 0)
+        if -0.75 < v < -0.45 and 14 < t < 40:
+            value += 0.25
+        if any(abs(t - ring) < 0.6 for ring in (18, 23, 29, 34)):
+            value -= 0.2
+        c[(x, y)] = ramp_at(TERRACOTTA, value, x, y, 0.3)
+
+    def at(t, v):
+        return round(ox + t * ax + v * nx), round(oy + t * ay + v * ny) + drop
+
+    # The smashed hole on the upper belly: dark within, the far wall lit
+    # through it, a pale broken lip along its lower edge.
+    hole = {p for p, (t, v) in body.items()
+            if 23 < t < 34 and v < -0.4 + 0.3 * math.sin((t - 23) / 11 * math.pi)
+            + (unit('ahole', round(t) // 2) - 0.5) * 0.25}
+    for p in hole:
+        t, v = body[p]
+        c[p] = '■' if v < -0.55 else 'а' if v < -0.3 else 'п'
+    for p in hole:
+        x, y = p
+        if (x, y + 1) in body and (x, y + 1) not in hole:
+            c[(x, y + 1)] = "'"
+    for p in [p for p in body if p not in hole]:
+        x, y = p
+        if (x, y + 1) in hole or (x + 1, y) in hole or (x - 1, y) in hole:
+            c[p] = 'ω'
+    # The handles: loops from the shoulder up to the neck's top.
+    handles = Part()
+    for side in (-1, 1):
+        handles.limb([at(13.5, side * 7.5), at(9, side * 9.5), at(4.5, side * 4.5)], 2)
+    for p in handles.pixels():
+        if p not in body or body[p][1] * (1 if p[1] > oy + drop else -1) < 0:
+            c.setdefault(p, ramp_at(TERRACOTTA, 0.55 if p[1] < oy + drop else 0.25, *p, 0.3))
+    # The rim's collar and mouth, the toe's knob.
+    for v in range(-3, 4):
+        c[at(0.5, v)] = "'" if v < 0 else '"'
+    c[at(0.5, 0)] = '■'
+    c[at(0.5, 1)] = 'а'
+    outline(c, 'o')
+    # Sherds round it, one leaning on its side, their broken edges lit.
+    for k, (sx, w0, h0) in enumerate(((22, 5, 2), (33, 4, 2), (47, 6, 3), (55, 3, 2), (60, 4, 2))):
+        sy = TILE - 1
+        for dx in range(w0):
+            for dy in range(h0 - (dx in (0, w0 - 1))):
+                q = (sx + dx, sy - dy)
+                if q not in c:
+                    c[q] = "'" if dy == h0 - 1 - (dx in (0, w0 - 1)) else '(' if k % 2 else '"'
+    # A weed out of the break; moss and dirt where it lies.
+    wx, wy = at(28.5, -4)
+    for k, (dx, hh) in enumerate(((0, 6), (2, 4), (-2, 3))):
+        for d in range(hh):
+            c[(wx + dx + (d // 4) * (1 if dx >= 0 else -1), wy - d)] = 'G' if d == hh - 1 else 'g' if d > 1 else 'T'
+    for x in range(8, 62):
+        if (x, TILE - 1) in c and unit('amoss', x // 2) < 0.45:
+            c[(x, TILE - 1)] = 'T' if unit('amoss2', x) < 0.6 else '>'
+            if unit('amoss3', x) < 0.3 and (x, TILE - 2) in c:
+                c[(x, TILE - 2)] = 't'
+    return to_image(c)
+
+
+def ramp_at(ramp, value, x, y, spread=0.35):
+    """`value` (0 to 1) through `ramp`, dark to light, by the ordered
+    dither."""
+    from pixels import ramp as pick
+    return pick(max(0.0, min(0.999, value)), ramp, x, y, spread)
 
 
 def pool_rocks(i):
@@ -2006,16 +2753,17 @@ def lift_cable():
 
 
 def water_frame(frame):
-    """The channel's water riding over its coping, frame `frame` of 8: the
-    surface wave and its glints move 8 px a frame."""
+    """The channel's water riding in its trough behind the coping's near
+    capstones (`terrain.coping`), frame `frame` of 8: the surface wave and
+    its glints move 8 px a frame; the capstones' top face hides the rest."""
     c = {}
     for x in range(TILE):
         u = (x - 8 * frame) % TILE
         surface = 2 + round(math.sin(math.tau * u / 32) * 0.8)
-        for y in range(surface, 11):
+        for y in range(surface, COPING_TOP):
             if y == surface:
                 c[(x, y)] = '`' if unit('glint', u // 3) < 0.3 else '_'
-            elif y < 7:
+            elif y < COPING_TOP - 1:
                 c[(x, y)] = '}' if dither(x, y, 0.55) else ')'
             else:
                 c[(x, y)] = '{' if dither(x, y, 0.5) else '|'
@@ -2191,6 +2939,109 @@ def pool_shore(frame):
             if (x, y) not in stones and dither(x + frame * 2, y, (0.95 - (y - top) * 0.24) * max(0.0, 1 - (edge - x) / 24)):
                 c[(x, y)] = '_' if unit('shore-lap', x, y, frame) < 0.6 else '`'
     return to_image(c, (w, h))
+
+
+# The aqueduct's pool (e01hollow): its canvas, 3 x 1 tiles, its water's
+# ends and its depth at the middle, front to back, in pixels.
+BASIN = (3 * TILE, TILE)
+BASIN_ENDS, BASIN_DEPTH = (10, 182), 10
+
+
+def basin_top(x):
+    """The far edge of the pool's water at column `x`, or None outside it:
+    a flattened half ellipse standing on the canvas's foot."""
+    left, right = BASIN_ENDS
+    u = (x - (left + right) / 2) / ((right - left) / 2)
+    if abs(u) >= 1:
+        return None
+    return BASIN[1] - 2 - round(BASIN_DEPTH * math.sqrt(1 - u * u) + 1.5 * math.sin(x * 0.11))
+
+
+def pool_basin(frame):
+    """A small pool on the aqueduct's floor (e01hollow), frame `frame` of
+    4, 3 x 1 tiles: the still water of a sunken flag's hollow seen from a
+    little above, lying behind the floor's turf, deep blue with the moon's
+    glints drifting on it and ripples spreading from the reeds; a muddy far
+    bank with pebbles and moss; reeds in clumps at both ends and a few
+    stems out of the water, their reflections dark under them; lily pads,
+    one flowering."""
+    w, h = BASIN
+    phase = math.tau * frame / 4
+    c = {}
+    for x in range(w):
+        t = basin_top(x)
+        if t is None:
+            continue
+        for y in range(t, h - 1):
+            depth = (y - t) / max(1, h - 2 - t)
+            ripple = math.sin(x * 0.35 + phase + y * 1.3) + 0.6 * math.sin(x * 0.13 - 2 * phase)
+            if y == t:
+                sym = '}' if dither(x, y, 0.6) else ')'
+            elif ripple > 1.25 and depth < 0.6:
+                sym = ')'
+            else:
+                sym = '{' if dither(x, y, 0.55 - 0.4 * depth) or ripple > 1.1 else '|'
+            c[(x, y)] = sym
+        c[(x, h - 1)] = 'O' if dither(x, h - 1, 0.6) else 'n'
+        # The far bank: wet mud, pebbles, moss over its lip.
+        for y in range(t - 3, t):
+            r = unit('bank', x // 2, y)
+            c[(x, y)] = ('T' if r < 0.3 else 'g' if r < 0.38 else 'd') if y == t - 3 else 'n' if r < 0.55 else 'd'
+        if unit('pebble', x // 3) < 0.25:
+            c[(x, t - 2)], c[(x, t - 3)] = ';', ':'
+    # The moon's glints, drifting a pixel a frame, and the ripple rings.
+    for k in range(9):
+        gx = int(unit('glint', k) * (BASIN_ENDS[1] - BASIN_ENDS[0] - 20)) + BASIN_ENDS[0] + 10 + frame * (1 + k % 2)
+        t = basin_top(gx)
+        if t is None:
+            continue
+        gy = t + 2 + int(unit('glinty', k) * max(1, h - 5 - t))
+        for d in range(1 + k % 3):
+            if (gx + d, gy) in c:
+                c[(gx + d, gy)] = '`' if d == 0 and (frame + k) % 3 else '_'
+    for cx0, k in ((52, 0), (130, 1)):
+        r = 3 + ((frame + 2 * k) % 4) * 3
+        cy = h - 6
+        for a in range(0, 360, 12):
+            q = (round(cx0 + math.cos(math.radians(a)) * r), round(cy + math.sin(math.radians(a)) * r * 0.25))
+            if q in c and c[q] in ('{', '|', ')') and dither(*q, 0.9 - r / 16):
+                c[q] = '}'
+    # Lily pads, one flowering.
+    for px, pw, flower in ((70, 7, False), (84, 5, True), (112, 6, False), (145, 4, False)):
+        t = basin_top(px)
+        py = t + 3 + (px % 3)
+        for dx in range(-pw, pw + 1):
+            for dy in (-1, 0):
+                if abs(dx) < pw - (1 if dy else 0) and (px + dx, py + dy) in c and not (dx in (1, 2) and dy == 0):
+                    c[(px + dx, py + dy)] = 'W' if dy < 0 and dx > 0 else 'U' if dy < 0 else 'Q'
+        if flower:
+            c[(px - 1, py - 2)], c[(px, py - 2)], c[(px + 1, py - 2)], c[(px, py - 3)] = 'w', 'I', 'w', 'I'
+    # Reeds: clumps at both ends, a few stems out of the water, their
+    # reflections dark in it.
+    stems, heads, blades = Part(BASIN), Part(BASIN), Part(BASIN)
+    for k, (x, base) in enumerate([(14 + 3 * j + int(unit('rl', j) * 3), 60) for j in range(6)]
+                                  + [(162 + 3 * j + int(unit('rr', j) * 3), 60) for j in range(6)]
+                                  + [(44, 58), (101, 57), (122, 58)]):
+        top = 6 + int(unit('rh', k) * 22)
+        lean = (unit('rlean', k) - 0.5) * 10 + math.sin(phase + k) * 0.6
+        stems.limb([(x, base), (x + lean * 0.4, (base + top) / 2), (x + lean, top)], 2)
+        if unit('rcat', k) < 0.55:
+            heads.limb([(x + lean, top - 6), (x + lean, top)], 3)
+        if unit('rblade', k) < 0.6:
+            d = 1 if k % 2 else -1
+            blades.limb([(x, base), (x + 5 * d, base - 10), (x + 9 * d + lean * 0.3, base - 17)], 2)
+        for y in range(base + 1, h - 1):
+            q = (round(x + lean * 0.1), y)
+            if q in c and dither(q[0], y, 0.7):
+                c[q] = 'O'
+    reeds_c = compose([
+        (shade(blades.pixels(), 'U', light='W', shadow='P'), None),
+        (shade(stems.pixels(), 'T', light='g', shadow='t', rim='G'), None),
+        (shade(heads.pixels(), 'ω', light='"', shadow='/', rim="'"), None),
+    ])
+    outline(reeds_c, 'o', size=BASIN)
+    c.update(reeds_c)
+    return to_image(c, BASIN)
 
 
 def lava_frame(frame, part='surface', i=0):
@@ -2744,6 +3595,10 @@ LEVEL_PROPS = (
     ('spoil_heap', lambda: spoil_heap(0)), ('cart_tipped', broken_cart),
     ('lift_gantry', lambda: lift_gantry(0)),
     *((f'fallen_voussoir_{k}', lambda k=k: fallen_voussoir(k)) for k in range(3)),
+    # e01hollow's aqueduct: the broken pillar at its start, its floor's
+    # paving, a fallen capital and a broken amphora.
+    ('broken_pillar', broken_pillar), *((f'aq_paving_{k}', lambda k=k: aq_paving(k)) for k in range(4)),
+    ('fallen_capital', fallen_capital), ('amphora', amphora),
 )
 HUNG_PROPS = (
     *((f'vine_{i}', lambda i=i, n=n: vine(n, 2 + i, i != 1)) for i, n in enumerate((110, 150, 84))),
@@ -2842,12 +3697,18 @@ def build_level_scenery(images, lit, animations):
             tiles = [im.crop((col * TILE, row * TILE, (col + 1) * TILE, (row + 1) * TILE)) for im in shore]
             if any(tile.getbbox() for tile in tiles):
                 lit.update(clip(images, animations, f'pool_shore_big_{row}_{col}', tiles, 160))
+    # The aqueduct's small pool (e01hollow), each tile a clip.
+    basin = [pool_basin(f) for f in range(4)]
+    for col in range(BASIN[0] // TILE):
+        tiles = [im.crop((col * TILE, 0, (col + 1) * TILE, TILE)) for im in basin]
+        lit.update(clip(images, animations, f'pool_basin_big_0_{col}', tiles, 160))
     falls = [dict(falls_tiles(f)) for f in range(4)]
     for name in falls[0]:
         lit.update(clip(images, animations, name, [frames[name] for frames in falls], 80))
     # The aqueduct's water (01 (k)): its pours and their splash feet, the
     # spill over each broken end's lip, the drips under the coping and the
-    # gargoyle with the water over its tongue.
+    # gargoyle with the water over its tongue; e01hollow's second gargoyle,
+    # the drake, with the water out of its jaws.
     lit.update(clip(images, animations, 'pour_wide', [pour_wide(f) for f in range(4)], 80))
     lit.update(clip(images, animations, 'pour_foot', [pour_foot(f) for f in range(4)], 80))
     for side in ('left', 'right'):
@@ -2855,6 +3716,7 @@ def build_level_scenery(images, lit, animations):
             lit.update(clip(images, animations, f'spill_{side}_{k}', [spill(f, side, k) for f in range(4)], 80))
     lit.update(clip(images, animations, 'channel_drips', [channel_drips(f) for f in range(6)], 120))
     lit.update(clip(images, animations, 'gargoyle', [gargoyle(f) for f in range(4)], 80))
+    lit.update(clip(images, animations, 'gargoyle_drake', [gargoyle_drake(f) for f in range(4)], 80))
     lit.update(clip(images, animations, 'lava_surface', [lava_frame(f) for f in range(4)], 220))
     lit.update(clip(images, animations, 'lava_deep', [lava_frame(f, 'deep') for f in range(4)], 220))
     lit.update(clip(images, animations, 'lavafall', [lavafall_frame(f) for f in range(4)], 100))

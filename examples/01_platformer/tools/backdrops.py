@@ -10,9 +10,9 @@ import math
 from PIL import Image, ImageDraw
 
 from art import rng_for
-from pixels import dither, to_image, unit, wave
-from terrain import (BREAK_LIPS, IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image, iron_clad,
-                     line, mine_rock, rect, rock_tiles, tinted, wet_rock)
+from pixels import Part, dither, packed_stones, shade, to_image, unit, wave
+from terrain import (BACK_DARK, BREAK_LIPS, IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image,
+                     iron_clad, line, mine_rock, rect, rock_tiles, tinted, wet_rock)
 
 WIDTH = 1024
 STRIP = (WIDTH, 256)
@@ -314,7 +314,8 @@ def arcade(bays=3, seed='arcade', stained=True, back=True):
     opening, coursed spandrels above, a moulded impost where each arch
     springs, lime and wet streaks where the channel leaks. Drawn whole and
     cut into tiles (`arcade_tiles`), so its pieces join; the bridge reuses
-    it in front, the aqueduct puts it behind, one step darker."""
+    it in front, the aqueduct puts it behind, one step darker, its streaks
+    thinned (e01hollow): fewer, shorter and sparser."""
     width, height = bays * BAY + TILE, 2 * TILE
     c = {}
     for y in range(height):
@@ -353,12 +354,13 @@ def arcade(bays=3, seed='arcade', stained=True, back=True):
             elif 6 <= u < 58:
                 c[(x, y)] = '<' if u == 6 else '-' if u == 7 else ';' if u == 56 else '<' if u == 57 else coursed(x, y, (seed, 'shaft'))
     if stained:
-        for k in range(bays * 9):
+        streaks, reach, start = (4, 34, 0.7) if back else (9, 60, 1.0)
+        for k in range(bays * streaks):
             x = int(unit(seed, 'lime', k) * width)
-            length = 10 + int(unit(seed, 'limel', k) * 60)
+            length = 10 + int(unit(seed, 'limel', k) * reach)
             wet = unit(seed, 'wet', k) < 0.4
             for d in range(length):
-                if (x, d) in c and dither(x, d, 1 - d / (length + 4)):
+                if (x, d) in c and dither(x, d, start - start * d / (length + 4)):
                     c[(x, d)] = ('<' if d % 4 else '-') if wet else ('w' if d < 3 else 'σ' if d % 3 else 'τ')
         for k in range(bays * 2):
             ivy_into(c, (seed, 'ivy', k), int(unit(seed, 'ivx', k) * width), 0, 18 + int(unit(seed, 'ivl', k) * 40))
@@ -446,8 +448,9 @@ def pier(i, part='shaft', back=True):
 
 def pier_wet(k):
     """A pier's shaft under a leak (01 (k)), `k` of 2: the back shaft with a
-    dark wet run down its middle, lime crusting its edges and moss pads on
-    the courses."""
+    damp run down its middle, lime crusting its edges and moss pads on the
+    courses. The run darkens the stone a step at about half the old dither
+    (e01hollow), so the courses show through it."""
     c = from_image(pier(k * 2 + 1, 'shaft', back=True))
     x0 = 18 + int(unit('wetx', k) * 16)
     w = 10 + int(unit('wetw', k) * 8)
@@ -457,9 +460,10 @@ def pier_wet(k):
             if (x, y) not in c:
                 continue
             if x in (x0 + sway, x0 + sway + w - 1):
-                c[(x, y)] = 'σ' if dither(x, y, 0.5) else 'τ'
-            elif dither(x, y, 0.8):
-                c[(x, y)] = '<' if (x + y) % 5 else 'o'
+                if dither(x, y, 0.3):
+                    c[(x, y)] = 'σ' if dither(x, y, 0.5) else 'τ'
+            elif dither(x, y, 0.4):
+                c[(x, y)] = BACK_DARK.get(c[(x, y)], c[(x, y)])
     for j in range(6):
         mx, my = 8 + int(unit('pmoss', k, j) * 46), 4 + j * 10 + int(unit('pmy', k, j) * 4)
         for dx in range(-3 - j % 2, 4):
@@ -467,6 +471,190 @@ def pier_wet(k):
                 if (mx + dx, my + dy) in c and dither(mx + dx, my + dy, 0.85):
                     c[(mx + dx, my + dy)] = 't' if dy else 'T'
     return to_image(c)
+
+
+# The second pier top's opening (e01hollow): a round relieving oculus
+# through the spandrel over a pier, its centre, its opening's radius, its
+# ring's depth and its voussoirs.
+OCULUS, OCULUS_R, OCULUS_RING, OCULUS_STONES = (32, 27), 11, 6, 11
+
+
+def pier_top_oculus():
+    """The aqueduct's second pier top (e01hollow), over every other pier:
+    the plain top's spandrel pierced by a round relieving oculus, a ring of
+    voussoirs with a proud keystone, the soffit's lower curve catching the
+    moon inside it, lime weeping from its foot and moss in its lower
+    joints; the night shows through. Only its middle changes, so its sides
+    meet the arches as the plain top's do."""
+    c = dict(arcade_tiles_canvas()['pier_top'])
+    cx, cy = OCULUS
+    step = math.tau / OCULUS_STONES
+    ring = {}
+    for y in range(TILE):
+        for x in range(TILE):
+            dx, dy = x - cx, y - cy
+            d = math.hypot(dx, dy)
+            theta = math.atan2(dx, -dy) % math.tau        # 0 at the top, clockwise
+            k = int((theta + step / 2) // step) % OCULUS_STONES
+            key = k == 0
+            outer = OCULUS_R + OCULUS_RING + (3 if key else 0)
+            if d < OCULUS_R:
+                c.pop((x, y), None)
+                # The soffit's lower curve, seen from a little above.
+                if dy > 0 and d > OCULUS_R - 3 + abs(dx) / OCULUS_R * 2.5:
+                    ring[(x, y)] = ';'
+                continue
+            if d >= outer:
+                continue
+            off = abs(((theta + step / 2) % step) - step / 2) * d
+            if off < 1.0 and not (key and d > OCULUS_R + OCULUS_RING):
+                sym = '<'
+            elif d - OCULUS_R < 1.5:
+                sym = '<' if dy < 0 else '-'
+            elif d > outer - 1.5:
+                sym = ';' if dx > 0 or dy < -6 else ':' if dy < 6 else '-'
+            else:
+                n = unit('oculus', k, round(d) // 3)
+                sym = ';' if key and n < 0.4 else ':' if n < 0.6 else '~'
+            ring[(x, y)] = sym
+    # The spandrel's courses close round the ring with a dark joint.
+    for (x, y) in list(ring):
+        for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+            if (nx, ny) in c and (nx, ny) not in ring and math.hypot(nx - cx, ny - cy) >= OCULUS_R:
+                c[(nx, ny)] = 'o'
+    c.update(darker(ring))
+    # Lime weeping from the ring's foot, and moss in its lower joints.
+    for n in range(3):
+        x = cx - 6 + n * 6 + int(unit('ocl', n) * 3)
+        y0 = cy + OCULUS_R + OCULUS_RING
+        for d in range(6 + int(unit('ocll', n) * 14)):
+            p = (x, y0 + d)
+            if p in c and dither(x, y0 + d, 0.75 - d / 24):
+                c[p] = 'σ' if d < 2 else 'τ' if d % 3 else 'S'
+    for k in (4, 5, 6, 7):
+        a = (k + 0.5) * step
+        for r in range(OCULUS_R + 1, OCULUS_R + OCULUS_RING):
+            p = (round(cx + math.sin(a) * r), round(cy - math.cos(a) * r))
+            if p in c and unit('ocm', k, r) < 0.6:
+                c[p] = 't' if r % 2 else 'T'
+    return to_image(c)
+
+
+def arcade_tiles_canvas():
+    """The aqueduct's arcade pieces (`arcade_tiles(back=True)`) as canvases,
+    by name without the prefix."""
+    return {name.removeprefix('arcade_'): from_image(im) for name, im in arcade_tiles(back=True)}
+
+
+def plinth_top(x):
+    """The base's chamfered top at column `x`: row 38 under the shaft,
+    falling a row a pixel out to row 43 at the tile's sides."""
+    return 37 + max(1, 6 - x, x - 57)
+
+
+def pier_base(k):
+    """A pier's base, variant `k` of 4 (e01hollow): today's chamfered plinth
+    (0); its left corner broken away, the rubble core showing in the break,
+    the chunk lying at its foot and a fern in the joint above it (1); a
+    rounded torus over the plinth, a lime tide-mark, and a drain arched
+    through its foot weeping a trickle onto wet stone (2); a block split by
+    a root, ivy climbing from the ground, a mason's mark and moss cushions
+    on the chamfer's shoulders (3). Each keeps the shaft's joints at its top
+    and its foot on the tile's floor, so it joins as the plain base does."""
+    if k == 0:
+        return pier(4, 'base')
+    c = from_image(pier(4 + k, 'base', back=False))
+    if k == 1:
+        # The facing stones of its left corner fallen: a notch out of its
+        # silhouette, the rubble core showing round it, in shadow under the
+        # stones still standing, and the largest stone lying at its foot.
+        notch, core = Part(), Part()
+        notch.polygon([(-1, 42), (-1, 54), (3, 55), (7, 51), (11, 49), (13, 45), (10, 42), (5, 40)])
+        core.polygon([(-1, 40), (-1, 57), (6, 57), (10, 54), (16, 51), (20, 46), (25, 43), (23, 39), (13, 38), (5, 39)])
+        hole, recess = notch.pixels(), core.pixels() - notch.pixels()
+        for p in hole:
+            c.pop(p, None)
+        recess = {p for p in recess if p in c}
+        c.update(packed_stones(recess, ('o', '<', '-', '=', '~'), size=4, seed='base-core'))
+        for (x, y) in recess:
+            if (x, y - 1) not in recess and (x, y - 1) in c or (x + 1, y) not in recess and (x + 1, y) in c:
+                c[(x, y)] = 'o'
+            elif (x - 1, y) in hole or (x, y + 1) in hole:
+                c[(x, y)] = ':'
+        chunk = Part()
+        chunk.polygon([(0, 63), (15, 63), (16, 58), (11, 55), (4, 56), (0, 58)])
+        pts = chunk.pixels()
+        c.update(shade(pts, '~', light=';', shadow='<', back='-', rim=':'))
+        for (x, y) in pts:
+            if unit('chunkm', x // 2) < 0.4 and (x, y - 1) not in pts:
+                c[(x, y)] = 'T'
+        for (x, y) in list(pts):
+            for nx, ny in ((x + 1, y), (x, y - 1)):
+                if (nx, ny) not in pts and 0 <= nx < TILE:
+                    c[(nx, ny)] = 'o'
+        for t in range(10):
+            fx, fy = 27 + round(math.sin(t * 0.6) * 1.5), 38 - t
+            c[(fx, fy)] = 'G' if t % 3 == 0 else 'g'
+            if t % 2 and t < 9:
+                for d in range(1, 3 + t // 3):
+                    c[(fx - d, fy + d // 2)] = 'T' if d > 1 else 'g'
+                    c[(fx + d, fy + d // 2)] = 'g' if d > 1 else 'G'
+    elif k == 2:
+        for x in range(0, TILE):
+            t = plinth_top(x)
+            for y, sym in ((44, ';'), (45, ':'), (46, '-'), (47, '<')):
+                if y > t and (x, y) in c:
+                    c[(x, y)] = sym
+            mark = 51 + round(math.sin(x * 0.4) * 0.6)
+            if unit('tide', x // 2) < 0.55 and (x, mark) in c:
+                c[(x, mark)] = 'τ' if unit('tidel', x) < 0.4 else 'S'
+        # The drain, arched through the plinth's foot, weeping onto the
+        # stone below its sill.
+        for y in range(53, TILE):
+            for x in range(25, 40):
+                dx, dy = x - 32, y - 57
+                inside = (dy >= 0 and abs(dx) <= 4) or (dy < 0 and dx * dx + dy * dy <= 16)
+                ring = (dy >= -1 and abs(dx) <= 6) or (dy < -1 and dx * dx + dy * dy <= 40)
+                if inside:
+                    c[(x, y)] = '■' if y < 62 else '<'
+                elif ring:
+                    c[(x, y)] = ';' if dy < -3 else ':' if dx > 0 else '-'
+                    if abs(abs(dx) - 5) < 1 or (dy < -1 and abs(dx * dx + dy * dy - 32) < 5 and dx % 3 == 0):
+                        c[(x, y)] = '<'
+        for y in range(59, TILE):
+            for x in range(29, 36):
+                if dither(x, y + 1, 0.85 - abs(x - 32) * 0.2):
+                    c[(x, y)] = '}' if (x + y) % 3 else '_'
+        for x in range(24, 41):
+            if (x, 63) in c and abs(x - 32) > 3 and dither(x, 63, 0.7):
+                c[(x, 63)] = '|' if dither(x, 63, 0.5) else '{'
+        for mx, h in ((49, 4), (53, 3), (56, 5)):
+            for y in range(TILE - h, TILE):
+                c[(mx, y)] = 'τ'
+            for dx in (-2, -1, 0, 1, 2):
+                c[(mx + dx, TILE - h)] = 'w' if dx < 1 else 'σ'
+            c[(mx - 1, TILE - 1 - h)], c[(mx, TILE - 1 - h)] = 'w', 'I'
+    elif k == 3:
+        x = 30
+        for y in range(39, TILE):
+            r = unit('root', y)
+            x += 1 if r > 0.72 else -1 if r < 0.24 else 0
+            c[(x, y)] = 'o'
+            c[(x + 1, y)] = '<' if unit('rootw', y) < 0.6 else c.get((x + 1, y), '<')
+        for t in range(7):
+            c[(31 + t // 2, 46 - t)] = 'G' if t % 2 else 'g'
+            c[(30 + t // 2, 46 - t)] = 'T'
+        ivy_into(c, ('bivy', 3), 52, 63, 30, down=False, spread=6)
+        for mx, my in ((11, 49), (12, 50), (13, 51), (14, 52), (15, 53), (15, 49), (14, 50), (12, 52), (11, 53)):
+            c[(mx, my)] = '<'
+        for x in list(range(0, 7)) + list(range(57, TILE)):
+            t = plinth_top(x)
+            if unit('cush', x) < 0.85:
+                c[(x, t - 1)] = 'G' if unit('cushg', x) < 0.3 else 'g'
+                c[(x, t)] = 'g'
+                for y in range(t + 1, t + 2 + int(unit('cushl', x) * 4)):
+                    c[(x, y)] = 'T'
+    return to_image(darker(c))
 
 
 def gap_strip(g):
@@ -1030,7 +1218,11 @@ def build_level_backs(images, lit):
     for i in range(4):
         images[f'pier_{i}'] = pier(i)
         images[f'pier_front_{i}'] = pier(i, back=False)
-    images['pier_base'] = pier(4, 'base')
+    # The piers' four bases and the second pier top, alternating over the
+    # aqueduct's piers (e01hollow).
+    for k in range(4):
+        images['pier_base' + (f'_{k}' if k else '')] = pier_base(k)
+    images['arcade_pier_top_1'] = pier_top_oculus()
     # The aqueduct's broken spans (01 (k)): the wet shafts beside each gap
     # and each gap's arcade tops.
     for k in range(2):

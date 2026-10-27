@@ -63,12 +63,12 @@ pixel) for any hand-authored sprite. The modules:
 
 | Module | Draws |
 | --- | --- |
-| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves |
+| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves, packed stones (`packed_stones`, a rubble core, gravel or scree; e01hollow) |
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
-| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
-| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue |
-| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
+| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel and its coping, `coping`, the bridge's deck) and the borders between them |
+| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, each tile a clip), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
+| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV); e01tomes' three pickups and the bound |
@@ -157,7 +157,11 @@ left `k + 1`; each variant's face is ragged under its lip
 (`terrain.BREAK_LIPS`), a right lip over its pier's shaft and a left one over
 the haunch beside its pier, and choosing it draws nothing from the random
 stream. A cell in `spouts` takes `channel_spout` after its weighted draw, so
-no other tile's variant moves.
+no other tile's variant moves (none since e01hollow, whose second gargoyle
+replaced the spouts). Every channel tile's top is its coping (e01hollow,
+`terrain.coping`): capstones drawn apart from the trough, their top face
+from `terrain.COPING_TOP`, the water riding behind them; the `water` clip stops
+at that row so the capstones show in front of it.
 Masonry keeps the rules above and adds `under_*` for a face open below and the
 pit's lining (`pit_rim_*`, `pit_wall_<kind>_*` drawn by `PIT_KINDS`' weights,
 `pit_floor_*`). Wet and mine rock take one of 16 masks by their open sides (up
@@ -247,7 +251,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
 | `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
-| `spouts` | The channel cells, `[col, row]`, that take `channel_spout`, each with a pour stack under it (01 (k)) |
+| `spouts` | The channel cells, `[col, row]`, that take `channel_spout`, each with a pour stack under it (01 (k)); empty since e01hollow |
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
 | `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
 | `stones` | The hollow's rubble stones (e01hollow), each over its `support` at column `x`, its body's centre, by `size` (`small`, `medium`, `large`). `placement.prepare` stands each half a pixel over its support by its size's prefab's half height and refuses one off its support; `level.py` writes a `stone_<size>` marker at each, which a fresh run sets down after the kegs |
@@ -395,7 +399,11 @@ ragged tops and undersides and a weathered deck's planks rather than the
 cell's edge. Composite `groups` preserve relative piece positions and
 validate both feet/trunk against the support width; each takes the pieces
 inside its box where `level.json` writes them, and `prepare` refuses a piece
-inside two groups' boxes. Wall roots remain attached to cliff faces.
+inside two groups' boxes. Wall roots remain attached to cliff faces. The
+aqueduct floor's paving (`aq_paving_<k>`, e01hollow) lies in the floor's turf
+band, so `level.json` gives each piece no `support` and writes its `y` with its
+foot `scenery.PAVING_SINK` (6) px into the floor's top, the most `SINK` lets a
+standing piece sink; its `anchor` `ground` has the check judge it.
 
 `placement.floating` (01 (k)) lists every piece of the built level that
 floats, sinks or states no way it stands, as lines `kind name x y detail`
@@ -423,7 +431,8 @@ a group that moves no piece and a non-exempt piece in no group fail. Each
 column of `timber_support` pieces ends on solid (it may run on into the
 ground behind it). Decorations are judged by their part in a structure: a
 pier column (pier top, capital, shafts) runs without a hole to a
-`pier_base` over terrain or a `pier_cutwater` over the river; a springing
+base (`pier_base` or `pier_base_<k>`) over terrain or a `pier_cutwater` over
+the river, the second pier top (`arcade_pier_top_1`) taking the first's part; a springing
 has a capital or pier top beside it, an arch top its springing under it and
 a keystone both arch tops beside it, a gap strip's pieces (`arcade_gap_*`)
 taking the parts they replace; a parapet stands as a `ground` prop does; a

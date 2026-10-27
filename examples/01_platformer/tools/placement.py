@@ -431,8 +431,10 @@ def floating(source, tiled, images):
         part = name.removeprefix('arcade_front_').removeprefix('arcade_')
         if strip and int(strip[1]) < len(GAP_STRIP) and int(strip[2]) < len(GAP_STRIP[0]):
             part = GAP_STRIP[int(strip[1])][int(strip[2])]
-        elif part in ('pier_base', 'pier_cutwater'):
-            part = part.removeprefix('pier_')
+        elif re.fullmatch(r'pier_top_\d+', part):
+            part = 'pier_top'
+        elif re.fullmatch(r'pier_base(_\d+)?|pier_cutwater', part):
+            part = 'base' if part.startswith('pier_base') else 'cutwater'
         elif re.fullmatch(r'pier_(front_|wet_)?\d+', part):
             part = 'shaft'
         elif part.startswith('parapet_'):

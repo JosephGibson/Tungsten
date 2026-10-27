@@ -125,6 +125,30 @@ def grade(inside, symbols, light=(-0.45, -0.8, 0.6), depth=None, spread=0.3, fal
     return colors
 
 
+def packed_stones(inside, symbols, size=5, seed='stones', mortar=None):
+    """`inside` packed with small stones about `size` px across (e01hollow):
+    each pixel joins the nearest of a jittered grid of centres, each stone
+    is lit toward the moon at its upper right and falls to shadow at its
+    lower left, through `symbols` dark to light, with `mortar` (else the
+    darkest symbol) in the joints between stones. A rubble core, gravel or
+    scree."""
+    def centre(gx, gy):
+        return (gx + 0.2 + 0.6 * unit(seed, gx, gy, 'x')) * size, (gy + 0.2 + 0.6 * unit(seed, gx, gy, 'y')) * size
+
+    colors = {}
+    for x, y in inside:
+        gx, gy = x // size, y // size
+        near = sorted((math.hypot(x - cx, y - cy), cx, cy, i, j)
+                      for i in (gx - 1, gx, gx + 1) for j in (gy - 1, gy, gy + 1) for cx, cy in (centre(i, j),))
+        (d1, cx, cy, i, j), (d2, *_) = near[0], near[1]
+        if d2 - d1 < 1.0:
+            colors[(x, y)] = mortar or symbols[0]
+            continue
+        lean = ((x - cx) - (y - cy)) / size + (unit(seed, i, j, 'tone') - 0.5) * 0.6
+        colors[(x, y)] = ramp(0.5 + lean * 0.7, symbols[1:] if mortar is None else symbols, x, y, 0.3)
+    return colors
+
+
 def compose(layers):
     """Paint parts back to front; each part rims what it overlaps."""
     canvas = {}

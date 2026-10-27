@@ -177,6 +177,9 @@
     "ex10_gargoyle": {
       "path": "animations/gargoyle.json"
     },
+    "ex10_gargoyle_drake": {
+      "path": "animations/gargoyle_drake.json"
+    },
     "ex10_goblin_dash": {
       "path": "animations/goblin_dash.json"
     },
@@ -383,6 +386,15 @@
     },
     "ex10_pool": {
       "path": "animations/pool.json"
+    },
+    "ex10_pool_basin_big_0_0": {
+      "path": "animations/pool_basin_big_0_0.json"
+    },
+    "ex10_pool_basin_big_0_1": {
+      "path": "animations/pool_basin_big_0_1.json"
+    },
+    "ex10_pool_basin_big_0_2": {
+      "path": "animations/pool_basin_big_0_2.json"
     },
     "ex10_pool_edge_left": {
       "path": "animations/pool_edge_left.json"
@@ -1235,6 +1247,21 @@
     "ex10_platform_4": {
       "path": "prefabs/ex10_platform_4.json"
     },
+    "ex10_prop_amphora_world": {
+      "path": "prefabs/ex10_prop_amphora_world.json"
+    },
+    "ex10_prop_aq_paving_0_back": {
+      "path": "prefabs/ex10_prop_aq_paving_0_back.json"
+    },
+    "ex10_prop_aq_paving_1_back": {
+      "path": "prefabs/ex10_prop_aq_paving_1_back.json"
+    },
+    "ex10_prop_aq_paving_2_back": {
+      "path": "prefabs/ex10_prop_aq_paving_2_back.json"
+    },
+    "ex10_prop_aq_paving_3_back": {
+      "path": "prefabs/ex10_prop_aq_paving_3_back.json"
+    },
     "ex10_prop_arch_big_0_0_world": {
       "path": "prefabs/ex10_prop_arch_big_0_0_world.json"
     },
@@ -1306,6 +1333,30 @@
     },
     "ex10_prop_boulder_2_world": {
       "path": "prefabs/ex10_prop_boulder_2_world.json"
+    },
+    "ex10_prop_broken_pillar_big_0_0_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_0_0_world.json"
+    },
+    "ex10_prop_broken_pillar_big_0_1_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_0_1_world.json"
+    },
+    "ex10_prop_broken_pillar_big_1_0_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_1_0_world.json"
+    },
+    "ex10_prop_broken_pillar_big_1_1_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_1_1_world.json"
+    },
+    "ex10_prop_broken_pillar_big_2_0_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_2_0_world.json"
+    },
+    "ex10_prop_broken_pillar_big_2_1_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_2_1_world.json"
+    },
+    "ex10_prop_broken_pillar_big_3_0_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_3_0_world.json"
+    },
+    "ex10_prop_broken_pillar_big_3_1_world": {
+      "path": "prefabs/ex10_prop_broken_pillar_big_3_1_world.json"
     },
     "ex10_prop_campfire_0_world": {
       "path": "prefabs/ex10_prop_campfire_0_world.json"
@@ -1381,6 +1432,9 @@
     },
     "ex10_prop_ember_pool_1_world": {
       "path": "prefabs/ex10_prop_ember_pool_1_world.json"
+    },
+    "ex10_prop_fallen_capital_world": {
+      "path": "prefabs/ex10_prop_fallen_capital_world.json"
     },
     "ex10_prop_fallen_voussoir_0_world": {
       "path": "prefabs/ex10_prop_fallen_voussoir_0_world.json"
@@ -1471,6 +1525,9 @@
     },
     "ex10_prop_gargoyle_0_world": {
       "path": "prefabs/ex10_prop_gargoyle_0_world.json"
+    },
+    "ex10_prop_gargoyle_drake_0_world": {
+      "path": "prefabs/ex10_prop_gargoyle_drake_0_world.json"
     },
     "ex10_prop_glowcaps_0_world": {
       "path": "prefabs/ex10_prop_glowcaps_0_world.json"
@@ -1787,6 +1844,15 @@
     "ex10_prop_pool_0_world": {
       "path": "prefabs/ex10_prop_pool_0_world.json"
     },
+    "ex10_prop_pool_basin_big_0_0_0_back": {
+      "path": "prefabs/ex10_prop_pool_basin_big_0_0_0_back.json"
+    },
+    "ex10_prop_pool_basin_big_0_1_0_back": {
+      "path": "prefabs/ex10_prop_pool_basin_big_0_1_0_back.json"
+    },
+    "ex10_prop_pool_basin_big_0_2_0_back": {
+      "path": "prefabs/ex10_prop_pool_basin_big_0_2_0_back.json"
+    },
     "ex10_prop_pool_edge_left_0_world": {
       "path": "prefabs/ex10_prop_pool_edge_left_0_world.json"
     },
@@ -1961,8 +2027,20 @@
     "ex10_prop_statue_big_0_0_world": {
       "path": "prefabs/ex10_prop_statue_big_0_0_world.json"
     },
+    "ex10_prop_statue_big_0_1_world": {
+      "path": "prefabs/ex10_prop_statue_big_0_1_world.json"
+    },
     "ex10_prop_statue_big_1_0_world": {
       "path": "prefabs/ex10_prop_statue_big_1_0_world.json"
+    },
+    "ex10_prop_statue_big_1_1_world": {
+      "path": "prefabs/ex10_prop_statue_big_1_1_world.json"
+    },
+    "ex10_prop_statue_big_2_0_world": {
+      "path": "prefabs/ex10_prop_statue_big_2_0_world.json"
+    },
+    "ex10_prop_statue_big_2_1_world": {
+      "path": "prefabs/ex10_prop_statue_big_2_1_world.json"
     },
     "ex10_prop_stump_world": {
       "path": "prefabs/ex10_prop_stump_world.json"
@@ -2752,6 +2830,36 @@
       "filter": "linear",
       "path": "sprites/accretion_disk.png"
     },
+    "ex10_amphora": {
+      "emissive_mask": "sprites/amphora_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/amphora_n.png",
+      "path": "sprites/amphora.png"
+    },
+    "ex10_aq_paving_0": {
+      "emissive_mask": "sprites/aq_paving_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/aq_paving_0_n.png",
+      "path": "sprites/aq_paving_0.png"
+    },
+    "ex10_aq_paving_1": {
+      "emissive_mask": "sprites/aq_paving_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/aq_paving_1_n.png",
+      "path": "sprites/aq_paving_1.png"
+    },
+    "ex10_aq_paving_2": {
+      "emissive_mask": "sprites/aq_paving_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/aq_paving_2_n.png",
+      "path": "sprites/aq_paving_2.png"
+    },
+    "ex10_aq_paving_3": {
+      "emissive_mask": "sprites/aq_paving_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/aq_paving_3_n.png",
+      "path": "sprites/aq_paving_3.png"
+    },
     "ex10_arcade_arch_key": {
       "emissive_mask": "sprites/arcade_arch_key_e.png",
       "filter": "nearest",
@@ -3039,6 +3147,12 @@
       "filter": "nearest",
       "normal_map": "sprites/arcade_pier_top_n.png",
       "path": "sprites/arcade_pier_top.png"
+    },
+    "ex10_arcade_pier_top_1": {
+      "emissive_mask": "sprites/arcade_pier_top_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/arcade_pier_top_1_n.png",
+      "path": "sprites/arcade_pier_top_1.png"
     },
     "ex10_arcade_spring_left": {
       "emissive_mask": "sprites/arcade_spring_left_e.png",
@@ -3877,6 +3991,54 @@
       "filter": "nearest",
       "normal_map": "sprites/bridge_weathered_n.png",
       "path": "sprites/bridge_weathered.png"
+    },
+    "ex10_broken_pillar_big_0_0": {
+      "emissive_mask": "sprites/broken_pillar_big_0_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_0_0_n.png",
+      "path": "sprites/broken_pillar_big_0_0.png"
+    },
+    "ex10_broken_pillar_big_0_1": {
+      "emissive_mask": "sprites/broken_pillar_big_0_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_0_1_n.png",
+      "path": "sprites/broken_pillar_big_0_1.png"
+    },
+    "ex10_broken_pillar_big_1_0": {
+      "emissive_mask": "sprites/broken_pillar_big_1_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_1_0_n.png",
+      "path": "sprites/broken_pillar_big_1_0.png"
+    },
+    "ex10_broken_pillar_big_1_1": {
+      "emissive_mask": "sprites/broken_pillar_big_1_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_1_1_n.png",
+      "path": "sprites/broken_pillar_big_1_1.png"
+    },
+    "ex10_broken_pillar_big_2_0": {
+      "emissive_mask": "sprites/broken_pillar_big_2_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_2_0_n.png",
+      "path": "sprites/broken_pillar_big_2_0.png"
+    },
+    "ex10_broken_pillar_big_2_1": {
+      "emissive_mask": "sprites/broken_pillar_big_2_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_2_1_n.png",
+      "path": "sprites/broken_pillar_big_2_1.png"
+    },
+    "ex10_broken_pillar_big_3_0": {
+      "emissive_mask": "sprites/broken_pillar_big_3_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_3_0_n.png",
+      "path": "sprites/broken_pillar_big_3_0.png"
+    },
+    "ex10_broken_pillar_big_3_1": {
+      "emissive_mask": "sprites/broken_pillar_big_3_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/broken_pillar_big_3_1_n.png",
+      "path": "sprites/broken_pillar_big_3_1.png"
     },
     "ex10_campfire_0": {
       "filter": "nearest",
@@ -5227,6 +5389,12 @@
       "filter": "nearest",
       "normal_map": "sprites/ember_pool_1_n.png",
       "path": "sprites/ember_pool_1.png"
+    },
+    "ex10_fallen_capital": {
+      "emissive_mask": "sprites/fallen_capital_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/fallen_capital_n.png",
+      "path": "sprites/fallen_capital.png"
     },
     "ex10_fallen_voussoir_0": {
       "emissive_mask": "sprites/fallen_voussoir_0_e.png",
@@ -6823,6 +6991,30 @@
       "filter": "nearest",
       "normal_map": "sprites/gargoyle_3_n.png",
       "path": "sprites/gargoyle_3.png"
+    },
+    "ex10_gargoyle_drake_0": {
+      "emissive_mask": "sprites/gargoyle_drake_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/gargoyle_drake_0_n.png",
+      "path": "sprites/gargoyle_drake_0.png"
+    },
+    "ex10_gargoyle_drake_1": {
+      "emissive_mask": "sprites/gargoyle_drake_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/gargoyle_drake_1_n.png",
+      "path": "sprites/gargoyle_drake_1.png"
+    },
+    "ex10_gargoyle_drake_2": {
+      "emissive_mask": "sprites/gargoyle_drake_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/gargoyle_drake_2_n.png",
+      "path": "sprites/gargoyle_drake_2.png"
+    },
+    "ex10_gargoyle_drake_3": {
+      "emissive_mask": "sprites/gargoyle_drake_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/gargoyle_drake_3_n.png",
+      "path": "sprites/gargoyle_drake_3.png"
     },
     "ex10_gate_big_0_0": {
       "emissive_mask": "sprites/gate_big_0_0_e.png",
@@ -9378,6 +9570,24 @@
       "normal_map": "sprites/pier_base_n.png",
       "path": "sprites/pier_base.png"
     },
+    "ex10_pier_base_1": {
+      "emissive_mask": "sprites/pier_base_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pier_base_1_n.png",
+      "path": "sprites/pier_base_1.png"
+    },
+    "ex10_pier_base_2": {
+      "emissive_mask": "sprites/pier_base_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pier_base_2_n.png",
+      "path": "sprites/pier_base_2.png"
+    },
+    "ex10_pier_base_3": {
+      "emissive_mask": "sprites/pier_base_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pier_base_3_n.png",
+      "path": "sprites/pier_base_3.png"
+    },
     "ex10_pier_cutwater": {
       "emissive_mask": "sprites/pier_cutwater_e.png",
       "filter": "nearest",
@@ -10776,6 +10986,78 @@
       "normal_map": "sprites/pool_3_n.png",
       "path": "sprites/pool_3.png"
     },
+    "ex10_pool_basin_big_0_0_0": {
+      "emissive_mask": "sprites/pool_basin_big_0_0_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_0_0_n.png",
+      "path": "sprites/pool_basin_big_0_0_0.png"
+    },
+    "ex10_pool_basin_big_0_0_1": {
+      "emissive_mask": "sprites/pool_basin_big_0_0_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_0_1_n.png",
+      "path": "sprites/pool_basin_big_0_0_1.png"
+    },
+    "ex10_pool_basin_big_0_0_2": {
+      "emissive_mask": "sprites/pool_basin_big_0_0_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_0_2_n.png",
+      "path": "sprites/pool_basin_big_0_0_2.png"
+    },
+    "ex10_pool_basin_big_0_0_3": {
+      "emissive_mask": "sprites/pool_basin_big_0_0_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_0_3_n.png",
+      "path": "sprites/pool_basin_big_0_0_3.png"
+    },
+    "ex10_pool_basin_big_0_1_0": {
+      "emissive_mask": "sprites/pool_basin_big_0_1_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_1_0_n.png",
+      "path": "sprites/pool_basin_big_0_1_0.png"
+    },
+    "ex10_pool_basin_big_0_1_1": {
+      "emissive_mask": "sprites/pool_basin_big_0_1_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_1_1_n.png",
+      "path": "sprites/pool_basin_big_0_1_1.png"
+    },
+    "ex10_pool_basin_big_0_1_2": {
+      "emissive_mask": "sprites/pool_basin_big_0_1_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_1_2_n.png",
+      "path": "sprites/pool_basin_big_0_1_2.png"
+    },
+    "ex10_pool_basin_big_0_1_3": {
+      "emissive_mask": "sprites/pool_basin_big_0_1_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_1_3_n.png",
+      "path": "sprites/pool_basin_big_0_1_3.png"
+    },
+    "ex10_pool_basin_big_0_2_0": {
+      "emissive_mask": "sprites/pool_basin_big_0_2_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_2_0_n.png",
+      "path": "sprites/pool_basin_big_0_2_0.png"
+    },
+    "ex10_pool_basin_big_0_2_1": {
+      "emissive_mask": "sprites/pool_basin_big_0_2_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_2_1_n.png",
+      "path": "sprites/pool_basin_big_0_2_1.png"
+    },
+    "ex10_pool_basin_big_0_2_2": {
+      "emissive_mask": "sprites/pool_basin_big_0_2_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_2_2_n.png",
+      "path": "sprites/pool_basin_big_0_2_2.png"
+    },
+    "ex10_pool_basin_big_0_2_3": {
+      "emissive_mask": "sprites/pool_basin_big_0_2_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/pool_basin_big_0_2_3_n.png",
+      "path": "sprites/pool_basin_big_0_2_3.png"
+    },
     "ex10_pool_edge_left_0": {
       "emissive_mask": "sprites/pool_edge_left_0_e.png",
       "filter": "nearest",
@@ -11796,11 +12078,35 @@
       "normal_map": "sprites/statue_big_0_0_n.png",
       "path": "sprites/statue_big_0_0.png"
     },
+    "ex10_statue_big_0_1": {
+      "emissive_mask": "sprites/statue_big_0_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/statue_big_0_1_n.png",
+      "path": "sprites/statue_big_0_1.png"
+    },
     "ex10_statue_big_1_0": {
       "emissive_mask": "sprites/statue_big_1_0_e.png",
       "filter": "nearest",
       "normal_map": "sprites/statue_big_1_0_n.png",
       "path": "sprites/statue_big_1_0.png"
+    },
+    "ex10_statue_big_1_1": {
+      "emissive_mask": "sprites/statue_big_1_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/statue_big_1_1_n.png",
+      "path": "sprites/statue_big_1_1.png"
+    },
+    "ex10_statue_big_2_0": {
+      "emissive_mask": "sprites/statue_big_2_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/statue_big_2_0_n.png",
+      "path": "sprites/statue_big_2_0.png"
+    },
+    "ex10_statue_big_2_1": {
+      "emissive_mask": "sprites/statue_big_2_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/statue_big_2_1_n.png",
+      "path": "sprites/statue_big_2_1.png"
     },
     "ex10_status_crackle_large_0": {
       "filter": "nearest",

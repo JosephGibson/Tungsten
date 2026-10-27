@@ -1038,10 +1038,10 @@
     },
     {
       "sprite": "ex10_statue",
-      "x": 154,
-      "y": 30,
-      "width": 1,
-      "height": 2,
+      "x": 153.5,
+      "y": 37,
+      "width": 2,
+      "height": 3,
       "support": "aqueduct_floor",
       "anchor": "ground"
     },
@@ -1475,6 +1475,15 @@
       "width": 3,
       "height": 3,
       "support": "mine_upper",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_broken_pillar",
+      "x": 93,
+      "y": 34,
+      "width": 2,
+      "height": 4,
+      "support": "aqueduct_step",
       "anchor": "ground"
     }
   ],
@@ -2644,20 +2653,6 @@
       "animation": null,
       "anchor": "ground",
       "support": "aqueduct_floor"
-    },
-    {
-      "sprite": "ex10_statue_big_0_0",
-      "x": 154,
-      "y": 30,
-      "depth": "world",
-      "animation": null
-    },
-    {
-      "sprite": "ex10_statue_big_1_0",
-      "x": 154,
-      "y": 31,
-      "depth": "world",
-      "animation": null
     },
     {
       "sprite": "ex10_lantern",
@@ -4953,15 +4948,6 @@
       "support": "aqueduct_floor"
     },
     {
-      "sprite": "ex10_rubble",
-      "x": 118.2,
-      "y": 0,
-      "depth": "world",
-      "animation": null,
-      "anchor": "ground",
-      "support": "aqueduct_floor"
-    },
-    {
       "sprite": "ex10_grass",
       "x": 122.0,
       "y": 0,
@@ -6883,232 +6869,86 @@
       "animation": "ex10_pour_foot"
     },
     {
+      "sprite": "ex10_gargoyle_drake_0",
+      "x": 137,
+      "y": 28.5,
+      "depth": "world",
+      "animation": "ex10_gargoyle_drake",
+      "anchor": "wall"
+    },
+    {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 29,
+      "x": 137.375,
+      "y": 29.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 30,
+      "x": 137.375,
+      "y": 30.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 31,
+      "x": 137.375,
+      "y": 31.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 32,
+      "x": 137.375,
+      "y": 32.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 33,
+      "x": 137.375,
+      "y": 33.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 34,
+      "x": 137.375,
+      "y": 34.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 35,
+      "x": 137.375,
+      "y": 35.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 36,
+      "x": 137.375,
+      "y": 36.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 37,
+      "x": 137.375,
+      "y": 37.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_wide_0",
-      "x": 101.0,
-      "y": 38,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_foot_0",
-      "x": 101.0,
-      "y": 39,
-      "depth": "world",
-      "animation": "ex10_pour_foot"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 29,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 30,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 31,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 32,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 33,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 34,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 35,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 36,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 37,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 137.0,
-      "y": 38,
+      "x": 137.375,
+      "y": 38.5,
       "depth": "world",
       "animation": "ex10_pour_wide"
     },
     {
       "sprite": "ex10_pour_foot_0",
-      "x": 137.0,
-      "y": 39,
-      "depth": "world",
-      "animation": "ex10_pour_foot"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 29,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 30,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 31,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 32,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 33,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 34,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 35,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 36,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 37,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_wide_0",
-      "x": 153.0,
-      "y": 38,
-      "depth": "world",
-      "animation": "ex10_pour_wide"
-    },
-    {
-      "sprite": "ex10_pour_foot_0",
-      "x": 153.0,
+      "x": 137.375,
       "y": 39,
       "depth": "world",
       "animation": "ex10_pour_foot"
@@ -7222,6 +7062,346 @@
       "animation": null,
       "anchor": "ground",
       "support": "aqueduct_floor"
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_0_0",
+      "x": 93,
+      "y": 34,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_0_1",
+      "x": 94,
+      "y": 34,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_1_0",
+      "x": 93,
+      "y": 35,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_1_1",
+      "x": 94,
+      "y": 35,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_2_0",
+      "x": 93,
+      "y": 36,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_2_1",
+      "x": 94,
+      "y": 36,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_3_0",
+      "x": 93,
+      "y": 37,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_broken_pillar_big_3_1",
+      "x": 94,
+      "y": 37,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_pool_basin_big_0_0_0",
+      "x": 116,
+      "y": 39,
+      "depth": "back",
+      "animation": "ex10_pool_basin_big_0_0"
+    },
+    {
+      "sprite": "ex10_pool_basin_big_0_1_0",
+      "x": 117,
+      "y": 39,
+      "depth": "back",
+      "animation": "ex10_pool_basin_big_0_1"
+    },
+    {
+      "sprite": "ex10_pool_basin_big_0_2_0",
+      "x": 118,
+      "y": 39,
+      "depth": "back",
+      "animation": "ex10_pool_basin_big_0_2"
+    },
+    {
+      "sprite": "ex10_pool_rocks_0",
+      "x": 115.55,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_pool_rocks_1",
+      "x": 118.55,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_fern",
+      "x": 114.95,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_grass_tuft_1",
+      "x": 119.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_3",
+      "x": 96,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_0",
+      "x": 99,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_1",
+      "x": 103,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_2",
+      "x": 105,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_0",
+      "x": 110,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_3",
+      "x": 120,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_1",
+      "x": 126,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_0",
+      "x": 130,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_2",
+      "x": 134,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_3",
+      "x": 139,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_0",
+      "x": 146,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_1",
+      "x": 152,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_aq_paving_2",
+      "x": 156,
+      "y": 39.09375,
+      "depth": "back",
+      "animation": null,
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_fallen_capital",
+      "x": 104.4,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_amphora",
+      "x": 122.85,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aq_rubble_2",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_fern_clump_1",
+      "x": 96.55,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_flowers",
+      "x": 98.2,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_mushrooms",
+      "x": 106.9,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_rubble",
+      "x": 152.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_fallen_voussoir_1",
+      "x": 156.0,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "aqueduct_floor",
+      "anchor": "ground"
+    },
+    {
+      "sprite": "ex10_hanging_moss",
+      "x": 102.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "channel_west",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_hanging_moss",
+      "x": 155.6,
+      "y": 0,
+      "depth": "world",
+      "animation": null,
+      "support": "channel_east_b",
+      "anchor": "under"
+    },
+    {
+      "sprite": "ex10_statue_big_0_0",
+      "x": 153.5,
+      "y": 37,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_statue_big_0_1",
+      "x": 154.5,
+      "y": 37,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_statue_big_1_0",
+      "x": 153.5,
+      "y": 38,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_statue_big_1_1",
+      "x": 154.5,
+      "y": 38,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_statue_big_2_0",
+      "x": 153.5,
+      "y": 39,
+      "depth": "world",
+      "animation": null
+    },
+    {
+      "sprite": "ex10_statue_big_2_1",
+      "x": 154.5,
+      "y": 39,
+      "depth": "world",
+      "animation": null
     }
   ],
   "decorations": [
@@ -7385,7 +7565,7 @@
       "col": 96,
       "row": 29,
       "layer": "background",
-      "sprite": "ex10_arcade_pier_top"
+      "sprite": "ex10_arcade_pier_top_1"
     },
     {
       "col": 96,
@@ -7475,7 +7655,7 @@
       "col": 96,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_2"
     },
     {
       "col": 100,
@@ -7571,13 +7751,13 @@
       "col": 100,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_1"
     },
     {
       "col": 104,
       "row": 29,
       "layer": "background",
-      "sprite": "ex10_arcade_pier_top"
+      "sprite": "ex10_arcade_pier_top_1"
     },
     {
       "col": 104,
@@ -7667,7 +7847,7 @@
       "col": 104,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_3"
     },
     {
       "col": 108,
@@ -7745,55 +7925,55 @@
       "col": 112,
       "row": 31,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 112,
       "row": 32,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 112,
       "row": 33,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 112,
       "row": 34,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 112,
       "row": 35,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 112,
       "row": 36,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 112,
       "row": 37,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 112,
       "row": 38,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 112,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_2"
     },
     {
       "col": 116,
@@ -7889,13 +8069,13 @@
       "col": 116,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_3"
     },
     {
       "col": 120,
       "row": 29,
       "layer": "background",
-      "sprite": "ex10_arcade_pier_top"
+      "sprite": "ex10_arcade_pier_top_1"
     },
     {
       "col": 120,
@@ -7985,7 +8165,7 @@
       "col": 120,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_1"
     },
     {
       "col": 124,
@@ -8087,55 +8267,55 @@
       "col": 128,
       "row": 31,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 128,
       "row": 32,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 128,
       "row": 33,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 128,
       "row": 34,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 128,
       "row": 35,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 128,
       "row": 36,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 128,
       "row": 37,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 128,
       "row": 38,
       "layer": "background",
-      "sprite": "ex10_pier_wet_1"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 128,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_3"
     },
     {
       "col": 134,
@@ -8159,61 +8339,61 @@
       "col": 132,
       "row": 31,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 132,
       "row": 32,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 132,
       "row": 33,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 132,
       "row": 34,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 132,
       "row": 35,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 132,
       "row": 36,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 132,
       "row": 37,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 132,
       "row": 38,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 132,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_2"
     },
     {
       "col": 136,
       "row": 29,
       "layer": "background",
-      "sprite": "ex10_arcade_pier_top"
+      "sprite": "ex10_arcade_pier_top_1"
     },
     {
       "col": 136,
@@ -8399,61 +8579,61 @@
       "col": 140,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_1"
     },
     {
       "col": 144,
       "row": 31,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 144,
       "row": 32,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 144,
       "row": 33,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 144,
       "row": 34,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 144,
       "row": 35,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_1"
     },
     {
       "col": 144,
       "row": 36,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_0"
     },
     {
       "col": 144,
       "row": 37,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_3"
     },
     {
       "col": 144,
       "row": 38,
       "layer": "background",
-      "sprite": "ex10_pier_wet_0"
+      "sprite": "ex10_pier_2"
     },
     {
       "col": 144,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_2"
     },
     {
       "col": 150,
@@ -8525,13 +8705,13 @@
       "col": 148,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_3"
     },
     {
       "col": 152,
       "row": 29,
       "layer": "background",
-      "sprite": "ex10_arcade_pier_top"
+      "sprite": "ex10_arcade_pier_top_1"
     },
     {
       "col": 152,
@@ -8621,7 +8801,7 @@
       "col": 152,
       "row": 39,
       "layer": "background",
-      "sprite": "ex10_pier_base"
+      "sprite": "ex10_pier_base_1"
     },
     {
       "col": 156,
@@ -10911,20 +11091,7 @@
       "from": "aqueduct_floor"
     }
   ],
-  "spouts": [
-    [
-      101,
-      28
-    ],
-    [
-      137,
-      28
-    ],
-    [
-      153,
-      28
-    ]
-  ],
+  "spouts": [],
   "geysers": [
     {
       "x": 225.0,

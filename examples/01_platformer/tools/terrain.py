@@ -775,48 +775,142 @@ def pit_floor(i):
     return to_image(c)
 
 
+# The channel's coping (e01hollow), drawn apart from the trough: the water
+# rides behind the near capstones from row 2 to `COPING_TOP` - 1; the
+# capstones' moonlit top face runs to `COPING_ARRIS`, their front face to
+# `COPING_LIP`, a bead moulding under it casts a shadow on the masonry.
+COPING_TOP, COPING_ARRIS, COPING_LIP = 6, 8, 16
+# Each variant's capstone joints, a joint at every tile's edge.
+COPING_JOINTS = ((0, 32), (0, 22, 43), (0, 27), (0, 19, 40), (0, 30), (0, 24, 45), (0, 34))
+
+
+def coping(c, i, kind='plain'):
+    """Variant `i`'s coping over channel canvas `c`: dressed capstones whose
+    top face catches the moon, their front faces tooled, joints dark with
+    moss in them, the arris chipped here and there and lichen on the
+    stone; a bead moulding under them and its shadow on the courses below.
+    `mossy` pads the top with moss that drapes over the face; `cracked`
+    splits a capstone and sinks its far piece, the leak darkening the wall
+    under it."""
+    joints = COPING_JOINTS[i % len(COPING_JOINTS)]
+
+    def stone_of(x):
+        return sum(1 for j in joints if j <= x)
+
+    for x in range(TILE):
+        joint = x in joints
+        n = stone_of(x)
+        for y in range(COPING_TOP, COPING_LIP + 5):
+            if y < COPING_ARRIS:
+                sym = '<' if joint else ';' if dither(x, y, 0.62 + 0.2 * unit('cop', i, n)) else ':'
+            elif y == COPING_ARRIS:
+                sym = '<' if joint else ';'
+            elif y < COPING_LIP:
+                if joint:
+                    sym = '<'
+                elif y == COPING_ARRIS + 1:
+                    sym = ':'
+                else:
+                    t = unit('copface', i, n, x // 3, y // 2)
+                    sym = '~' if t < 0.62 else ':' if t < 0.8 else '='
+                    if y >= COPING_LIP - 2 and dither(x, y, 0.5):
+                        sym = '='
+            elif y == COPING_LIP:
+                sym = ':' if not joint else '-'
+            elif y == COPING_LIP + 1:
+                sym = '-'
+            elif y == COPING_LIP + 2:
+                sym = '<'
+            else:
+                # The bead's shadow on the courses below, fading.
+                if (x, y) in c and dither(x, y, 0.8 - (y - COPING_LIP - 3) * 0.35):
+                    c[(x, y)] = DARKEN.get(c[(x, y)], c[(x, y)])
+                continue
+            c[(x, y)] = sym
+    # Wear: a chipped arris, hairline cracks, lichen, moss in the joints.
+    for n in range(len(joints)):
+        x0 = joints[n]
+        x1 = joints[n + 1] if n + 1 < len(joints) else TILE
+        if unit('chip', i, n) < 0.6:
+            cx = x0 + 3 + int(unit('chipx', i, n) * max(1, x1 - x0 - 8))
+            for dx in range(2 + int(unit('chipw', i, n) * 3)):
+                c[(cx + dx, COPING_ARRIS)] = '-'
+                c[(cx + dx, COPING_ARRIS + 1)] = '=' if dx % 2 else '-'
+        if unit('ccrack', i, n) < 0.45:
+            x = x0 + 4 + int(unit('ccx', i, n) * max(1, x1 - x0 - 8))
+            for y in range(COPING_ARRIS + 1, COPING_LIP):
+                x += 1 if unit('ccw', i, n, y) > 0.75 else 0
+                c[(x, y)] = '<'
+        for k in range(2):
+            q = (x0 + 2 + int(unit('lich', i, n, k) * max(1, x1 - x0 - 4)),
+                 COPING_ARRIS + 2 + int(unit('lichy', i, n, k) * 5))
+            if c.get(q) in ('~', ':', '=') and unit('lichon', i, n, k) < 0.5:
+                c[q] = 'g' if k % 2 else 's'
+    for j in joints:
+        if unit('jmoss', i, j) < 0.6:
+            for y in range(COPING_TOP, COPING_TOP + 2 + int(unit('jml', i, j) * 3)):
+                c[(j, y)] = 'T' if y == COPING_TOP else 't'
+    if kind == 'mossy':
+        for x in range(TILE):
+            if unit('lipmoss', i, x // 5) < 0.45 and x not in joints:
+                c[(x, COPING_TOP)] = 'G' if unit('lmg', i, x) < 0.25 else 'g'
+                c[(x, COPING_TOP + 1)] = 'g' if dither(x, 0, 0.7) else 'T'
+                c[(x, COPING_ARRIS)] = 'T'
+                if unit('lmd', i, x // 2) < 0.5:
+                    for y in range(COPING_ARRIS + 1, COPING_ARRIS + 2 + int(unit('lm', i, x) * 4)):
+                        c[(x, y)] = 'T' if y < COPING_ARRIS + 2 else 't'
+        for fx in (13, 41):
+            for t in range(5):
+                c[(fx + t - 2, COPING_TOP - 1 - abs(t - 2) // 2)] = 'G' if t == 2 else 'g'
+    elif kind == 'cracked':
+        # The first capstone split, its far piece sunk a pixel, the leak
+        # through the split running down the wall.
+        end = joints[1] if len(joints) > 1 else TILE
+        xs, x = [], 14
+        for y in range(COPING_TOP, COPING_LIP + 1):
+            x += 1 if unit('crk', y) > 0.6 else 0
+            xs.append(x)
+        for y, cx in zip(range(COPING_LIP, COPING_TOP, -1), reversed(xs[1:])):
+            for dx in range(cx + 1, end):
+                c[(dx, y)] = c[(dx, y - 1)]
+        for dx in range(xs[0] + 1, end):
+            c[(dx, COPING_TOP)] = '<'
+        for y, cx in zip(range(COPING_TOP, COPING_LIP + 1), xs):
+            c[(cx, y)] = 'o'
+        x = xs[-1]
+        for y in range(COPING_LIP + 3, TILE):
+            q = (x + round(math.sin(y * 0.3)), y)
+            if q in c and dither(q[0], y, 0.85 - (y - COPING_LIP) / 60):
+                c[q] = '|' if dither(q[0], y, 0.5) else 'o'
+            if (q[0] + 1, y) in c and dither(q[0] + 1, y, 0.4):
+                c[(q[0] + 1, y)] = DARKEN.get(c[(q[0] + 1, y)], c[(q[0] + 1, y)])
+    return c
+
+
 def channel(i, broken=None, kind='plain'):
+    """A channel tile, variant `i`: the trough's water riding behind the
+    coping (`coping`), the masonry under it."""
     c = rock_canvas(i + 3)
     for x in range(TILE):
         wave = math.sin(math.tau * (x / 32) + i) * 0.8
         surface = 2 + round(wave)
-        for y in range(0, 16):
+        for y in range(0, COPING_TOP):
             if y < surface:
                 c.pop((x, y), None)
             elif y == surface:
                 c[(x, y)] = '`' if unit('glint', i, x // 3) < 0.3 else '_'
-            elif y < 7:
+            elif y < COPING_TOP - 1:
                 c[(x, y)] = '}' if dither(x, y, 0.55) else ')'
-            elif y < 11:
-                c[(x, y)] = '{' if dither(x, y, 0.5) else '|'
-            elif y == 11:
-                c[(x, y)] = ';'
-            elif y == 12:
-                c[(x, y)] = ':'
             else:
-                c[(x, y)] = '<' if x % 32 == 0 else '-'
-    if kind == 'mossy':
-        for x in range(TILE):
-            if unit('lipmoss', i, x // 3) < 0.55:
-                for y in range(11, 13 + int(unit('lm', i, x) * 6)):
-                    c[(x, y)] = 'T' if y < 14 else 't'
-                if unit('fern', i, x // 7) < 0.2:
-                    for y in range(5, 11):
-                        c[(x, y)] = 'G' if y % 2 else 'g'
-    elif kind == 'spout':
-        for y in range(11, TILE):
+                c[(x, y)] = '{' if dither(x, y, 0.5) else '|'
+    coping(c, i, kind)
+    if kind == 'spout':
+        for y in range(COPING_TOP, TILE):
             for x in range(26, 38):
                 flow = math.sin((y * 0.7) + x * 0.9)
                 c[(x, y)] = '_' if (x in (26, 37) and dither(x, y, 0.4)) else '}' if flow > 0.4 else ')' if flow > -0.3 else '{'
         for x in range(24, 40):
-            c[(x, 11)] = '_'
-    elif kind == 'cracked':
-        for x in range(14, 30):
-            for y in range(11, 14):
-                c.pop((x, y), None)
-        for x in range(14, 30):
-            c[(x, 14)] = '<'
-        c[(31, 18)], c[(32, 19)], c[(33, 21)] = '<', '<', '<'
+            c[(x, COPING_TOP)] = '_'
     if broken:
         for y in range(0, TILE):
             for x in (range(48, TILE) if broken == 'right' else range(0, 16)):
@@ -839,7 +933,7 @@ def break_edge(side, k, y):
     """Variant `k`'s broken face at row `y`: the x of the last masonry pixel
     on a right break (the first on a left one). The trough ends at the lip
     and the face drops near-plumb under it, ragged every 3 px: chipped (0),
-    crumbling in small steps (1) or under a coping that juts 3 px (2);
+    crumbling in small steps (1) or under a capstone that juts 3 px (2);
     never a square cut. A left face recedes less, so its water runs down
     it."""
     lip = BREAK_LIPS[side][k]
@@ -850,7 +944,7 @@ def break_edge(side, k, y):
     elif k == 1:
         back = (max(0, y - 12) // 14) * 3 * soft + (unit('bs', side, y // 14) - 0.5) * 2
     else:
-        back = -3 if 10 <= y <= 15 else max(0, y - 15) * 0.08 * soft
+        back = -3 if COPING_TOP <= y <= COPING_LIP + 2 else max(0, y - 15) * 0.08 * soft
     return lip - back + jag if side == 'right' else lip + back - jag
 
 
@@ -869,7 +963,7 @@ def channel_break(side, k):
         e = round(break_edge(side, k, y))
         for d in range(0, 10):
             x = e - sign * d
-            if (x, y) in c and y >= 11:
+            if (x, y) in c and y >= COPING_TOP:
                 c[(x, y)] = 'o' if d == 0 else '<' if d < 3 or c[(x, y)] in ('-', '<') else c[(x, y)]
     for n in range(26):
         y0 = 13 + int(unit('bstone', side, k, n) * 50)
@@ -894,7 +988,7 @@ def channel_break(side, k):
             if p in c:
                 c[p] = 'T' if t else 'g'
     lip = BREAK_LIPS[side][k]
-    for y in range(2, 9):
+    for y in range(2, COPING_TOP):
         if (lip, y) in c:
             c[(lip, y)] = '`' if y % 3 == 0 else '_'
     return to_image(c)
