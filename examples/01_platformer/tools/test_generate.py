@@ -325,7 +325,7 @@ class FoeContractTests(unittest.TestCase):
             self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
 
 
-# e01sfx's contract (its plan's §3.1), the files its families own as the
+# e01sfx's contract, the files its families own as the
 # game reads them: each sprite's size, the shock overlay's four frames a
 # class, each particle config's cap, and each sound's shortest and longest
 # seconds, its quietest and loudest volume and whether it loops. Its
