@@ -1140,7 +1140,8 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// A block meeting a still body or a tile at [`IRON_LAND_SPEED`] or more
 /// lands hard, once a step (`toys::systems::iron_landed`). A keg that is
 /// not frozen meeting something hard enough for its mass ([`blows_keg`])
-/// goes off, credited to the thrower of what met it, else the player; a burning
+/// goes off, credited to its own throw's thrower (a troll's), else the
+/// thrower of what met it, else the player; a burning
 /// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
 /// meeting anything at [`SHATTER_SPEED`] or more clacks, at most
 /// [`IMPACT_BURSTS_PER_STEP`] a step.
@@ -1199,10 +1200,13 @@ pub fn body_impacts(world: &mut World) {
                 .filter(|&other| moves(world, other))
                 .map_or(f32::INFINITY, |other| mass(world, other));
             if world.has::<Keg>(this) && !world.has::<Frozen>(this) && blows_keg(weight, closing) {
-                let thrower = other
-                    .and_then(|other| throws.and_then(|throws| throws.of(other)))
-                    .map(|throw| throw.thrower);
-                let credit = thrower.or_else(|| cascade::player_credit(world));
+                let thrower = |body: Option<Entity>| {
+                    body.and_then(|body| throws.and_then(|throws| throws.of(body)))
+                        .map(|throw| throw.thrower)
+                };
+                let credit = thrower(Some(this))
+                    .or_else(|| thrower(other))
+                    .or_else(|| cascade::player_credit(world));
                 let id = world.get::<SaveId>(this).copied();
                 blown.entry(id).or_insert((this, credit));
             }

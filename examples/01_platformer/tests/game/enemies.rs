@@ -32,7 +32,7 @@ use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Shown, Sight, Strike,
+    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws,
 };
 use example_01_platformer::features::enemies::crawler::{
     self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
@@ -50,7 +50,7 @@ use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
-use example_01_platformer::features::props::components::{Bomb, PropKind, Rock};
+use example_01_platformer::features::props::components::{Bomb, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF};
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
@@ -2333,10 +2333,19 @@ fn a_throw_whose_troll_dies_in_flight_keeps_its_damage_through_a_load() {
     assert!((after[0].2 as i64 - hits[0].2 as i64).abs() <= 1);
 }
 
+/// Sets `troll` searching nowhere, standing, so it carries what it lifts:
+/// on patrol it would set it down.
+fn carrying(harness: &mut UiHarness, troll: Entity) {
+    harness
+        .world_mut()
+        .insert(troll, StateMachine::new(EnemyState::Search));
+}
+
 #[test]
 fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
     let (mut harness, _) = arena();
     let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    carrying(&mut harness, troll);
     let block = iron_at(&mut harness, 1460.0);
     harness.step(2);
     assert!(troll::pick_up(harness.world_mut(), troll, block));
@@ -2387,6 +2396,7 @@ fn killing_or_evicting_the_troll_drops_what_it_holds() {
     // Killed.
     let (mut harness, _) = arena();
     let troll = troll_at(&mut harness, 1300.0, Difficulty::Normal);
+    carrying(&mut harness, troll);
     let block = iron_at(&mut harness, 1460.0);
     harness.step(2);
     assert!(troll::pick_up(harness.world_mut(), troll, block));
@@ -2410,6 +2420,7 @@ fn killing_or_evicting_the_troll_drops_what_it_holds() {
         Vec2::new(1300.0, TOP - 56.0),
     );
     let troll = summoned.expect("a summoned troll");
+    carrying(&mut harness, troll);
     let block = iron_at(&mut harness, 1460.0);
     harness.step(2);
     assert!(troll::pick_up(harness.world_mut(), troll, block));
@@ -3624,6 +3635,202 @@ fn the_troll_swipes_what_is_close_and_slams_what_is_farther() {
     assert!(
         kicked.distance(expected) < 1e-3,
         "by its mass: {kicked} against {expected}"
+    );
+}
+
+/// A troll on the sky's ground at x 1400 and a prop or body before its
+/// left face, `gap` px off, both indexed, the player far behind, past its
+/// sight and short of its dormancy.
+fn troll_before(
+    harness: &mut UiHarness,
+    gap: f32,
+    body: impl FnOnce(&mut UiHarness, f32) -> Entity,
+) -> (Entity, Entity) {
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(harness, 1400.0, Difficulty::Normal);
+    let face = 1400.0 - EnemyKind::Troll.info().half.x;
+    let thing = body(harness, face - gap);
+    harness.step(2);
+    (troll, thing)
+}
+
+#[test]
+fn a_chasing_troll_lifts_an_unlit_keg_and_throws_it_but_leaves_a_lit_one() {
+    for lit in [false, true] {
+        let (mut harness, player) = arena();
+        harness.harness_mut().set_dt(1.0 / 60.0);
+        let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
+        let half = props::KEG_HALF;
+        let keg = props::spawn(
+            harness.world_mut(),
+            PropKind::Keg,
+            Vec2::new(1020.0, TOP - half.y - 0.5),
+        );
+        harness.step(2);
+        if lit {
+            assert!(props::light(harness.world_mut(), keg, None), "lit");
+        }
+        let start = body(&harness, keg);
+        let (mut last, mut lifted, mut thrown, mut lighted) = (start, false, false, false);
+        for _ in 0..120 {
+            stand(&mut harness, player, 300.0, TOP);
+            tungsten::kit::heal(harness.world_mut(), player, 100.0);
+            harness.step(1);
+            let world = harness.world();
+            if !world.is_alive(keg) {
+                break;
+            }
+            last = body(&harness, keg);
+            lifted |= world.get::<Held>(keg).is_some_and(|hold| hold.by == troll);
+            thrown |= world.resource::<Throws>().of(keg).is_some();
+            lighted |= !lit && world.get::<Keg>(keg).is_some_and(|own| own.fuse.is_some());
+        }
+        if lit {
+            assert!(!lifted, "it leaves a lit keg");
+        } else {
+            assert!(lifted && thrown, "it lifts the keg and throws it");
+            assert!(!lighted, "never lit");
+            assert!(last.x < start.x - 150.0, "at the player: {start} to {last}");
+        }
+    }
+}
+
+#[test]
+fn a_searching_troll_lifts_the_crate_in_its_way_and_carries_it_past() {
+    let (mut harness, player) = arena();
+    stand(&mut harness, player, 300.0, TOP);
+    let (troll, crate_) = troll_before(&mut harness, 60.0, |h, near| {
+        let centre = Vec2::new(near - CRATE_HALF.x, TOP - CRATE_HALF.y - 0.5);
+        props::spawn(h.world_mut(), PropKind::Crate, centre)
+    });
+    let start = body(&harness, crate_);
+    // It searches toward a point past the crate.
+    let world = harness.world_mut();
+    world.get_mut::<Brain>(troll).unwrap().last_seen = Some([900.0, TOP - 60.0]);
+    world.insert(troll, StateMachine::new(EnemyState::Search));
+    let mut lifted = false;
+    for _ in 0..300 {
+        harness.step(1);
+        lifted |= harness
+            .world()
+            .get::<Held>(crate_)
+            .is_some_and(|hold| hold.by == troll);
+        if at(&harness, troll).x < start.x - 20.0 {
+            break;
+        }
+    }
+    assert!(lifted, "it lifts the crate");
+    assert!(
+        at(&harness, troll).x < start.x,
+        "past where it stood: {}",
+        at(&harness, troll)
+    );
+}
+
+#[test]
+fn a_returning_troll_kicks_scrap_from_its_way_and_passes_it() {
+    let (mut harness, player) = arena();
+    stand(&mut harness, player, 300.0, TOP);
+    let (troll, scrap) = troll_before(&mut harness, 60.0, |h, near| {
+        let half = toys::SCRAP_HALF;
+        let tumble = ScrapTumble {
+            born_at: 0.0,
+            initial_angle: 0.0,
+            total_turn: 0.0,
+        };
+        let centre = Vec2::new(near - half.x, TOP - half.y - 0.5);
+        toys::spawn_scrap(h.world_mut(), centre, Vec2::ZERO, 0, tumble)
+    });
+    let start = body(&harness, scrap);
+    // It goes home, past the scrap.
+    let world = harness.world_mut();
+    world.get_mut::<Enemy>(troll).unwrap().home = [900.0, TOP - 55.5];
+    world.insert(troll, StateMachine::new(EnemyState::Return));
+    let mut kicks = 0;
+    for _ in 0..600 {
+        harness.step(1);
+        kicks += heard(&harness, Sound::TrollSwiped);
+        if at(&harness, troll).x < start.x - 20.0 {
+            break;
+        }
+    }
+    assert!(kicks >= 1, "it kicks the scrap");
+    assert!(
+        at(&harness, troll).x < start.x,
+        "past where it lay: {}",
+        at(&harness, troll)
+    );
+    assert!(harness.world().get::<Held>(scrap).is_none(), "never lifted");
+}
+
+#[test]
+fn a_troll_sets_down_what_it_holds_back_on_patrol() {
+    let (mut harness, player) = arena();
+    stand(&mut harness, player, 300.0, TOP);
+    let (troll, keg) = troll_before(&mut harness, 200.0, |h, near| {
+        let half = props::KEG_HALF;
+        let centre = Vec2::new(near - half.x, TOP - half.y - 0.5);
+        props::spawn(h.world_mut(), PropKind::Keg, centre)
+    });
+    assert!(
+        troll::pick_up(harness.world_mut(), troll, keg),
+        "it holds the keg"
+    );
+    let world = harness.world_mut();
+    world.get_mut::<Enemy>(troll).unwrap().home = [1300.0, TOP - 55.5];
+    world.insert(troll, StateMachine::new(EnemyState::Return));
+    let patrol = until(&mut harness, 300, |h| state(h, troll) == EnemyState::Patrol);
+    assert!(patrol, "home, on patrol");
+    let mut blasts = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        blasts += heard(&harness, Sound::KegBlasted);
+    }
+    assert!(harness.world().get::<Held>(keg).is_none(), "set down");
+    assert_eq!(blasts, 0, "a fall too short to set it off");
+    let half = props::KEG_HALF;
+    assert!(
+        (body(&harness, keg).y - (TOP - half.y)).abs() < 2.0,
+        "on the ground: {}",
+        body(&harness, keg)
+    );
+}
+
+#[test]
+fn a_keg_a_troll_threw_that_blows_credits_it() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = troll_at(&mut harness, 900.0, Difficulty::Normal);
+    still(&mut harness, troll);
+    let half = props::KEG_HALF;
+    let keg = props::spawn(
+        harness.world_mut(),
+        PropKind::Keg,
+        Vec2::new(1000.0, TOP - half.y - 0.5),
+    );
+    // A dummy within its blast's reach.
+    let dummy = dummy_at(&mut harness, 1020.0);
+    harness.step(2);
+    lift_and_throw(&mut harness, troll, keg);
+    // Driven down hard from its hands, past the speed that sets a keg off.
+    kick_at(&mut harness, keg, Vec2::new(0.0, 1500.0));
+    let (mut blasts, mut sources) = (0, Vec::new());
+    for _ in 0..30 {
+        harness.step(1);
+        blasts += heard(&harness, Sound::KegBlasted);
+        sources.extend(
+            harness
+                .harness()
+                .events::<tungsten::kit::DamagedPart>()
+                .filter(|part| part.entity == dummy && !part.periodic)
+                .map(|part| part.source),
+        );
+    }
+    assert_eq!(blasts, 1, "it blew");
+    assert!(!sources.is_empty(), "its blast reached the dummy");
+    assert!(
+        sources.iter().all(|&source| source == Some(troll)),
+        "credited to the troll: {sources:?}"
     );
 }
 
