@@ -14,8 +14,8 @@ use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
 use example_01_platformer::features::props::{
-    BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, ROCK_CENTRE,
-    ROCK_RADIUS,
+    BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, PLANK_CENTRE,
+    PLANK_HALF, ROCK_CENTRE, ROCK_RADIUS,
 };
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
@@ -190,6 +190,7 @@ fn every_restated_constant_matches_its_data() {
     // The props' bodies and a goblin's rock and bomb.
     assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));
+    assert_eq!(body("plank"), (PLANK_HALF, PLANK_CENTRE));
     assert_eq!(body("goblin_bomb"), (Vec2::splat(BOMB_RADIUS), BOMB_CENTRE));
     assert_eq!(body("goblin_rock"), (Vec2::splat(ROCK_RADIUS), ROCK_CENTRE));
     // A crawler's snowball's.

@@ -2099,6 +2099,9 @@
     "mana_orb": {
       "path": "prefabs/mana_orb.json"
     },
+    "plank": {
+      "path": "prefabs/plank.json"
+    },
     "player": {
       "path": "prefabs/player.json"
     },

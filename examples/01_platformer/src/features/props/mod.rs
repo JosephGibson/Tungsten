@@ -14,14 +14,19 @@
 //! gravity, it rolls, its fuse turning with it, blows at [`BOMB_BLAST`]
 //! after [`FUSE_SECS`], credited to its goblin, and fizzles out at once
 //! when snuffed. A goblin's rock is a stone body that bounces and rolls and
-//! stays, [`ROCK_CAP`] at most, the oldest crumbling.
+//! stays, [`ROCK_CAP`] at most, the oldest crumbling. A crate hit hard
+//! enough breaks into five planks ([`break_crate`], e01sfx), which burn as
+//! it does for at most [`PLANK_BURN_SECS`] and fall in quietly,
+//! [`PLANK_CAP`] at most, the oldest crumbling.
 
 pub mod components;
 pub mod draw;
 pub mod systems;
 
 use glam::Vec2;
-use tungsten::core::{BodyKind, Entity, RigidBody, Schedule, Shape, Stage, World, system};
+use tungsten::core::{
+    BodyKind, Entity, RigidBody, Schedule, Shape, Stage, Velocity, World, system,
+};
 use tungsten::kit::{Phase, ensure_phases};
 use tungsten::physics::{SpatialFilter, overlap};
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
@@ -32,16 +37,19 @@ use crate::features::elements::DOUSE_SECS;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::level;
+use crate::features::level::components::SceneTime;
 use crate::features::run::Run;
+use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
-use components::{Bomb, Crate, Fuel, Keg, PropKind, Rock};
+use components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock};
 
 /// The props' prefabs, by their manifest IDs.
 pub const CRATE_PREFAB: &str = "crate";
 pub const KEG_PREFAB: &str = "keg";
 pub const BOMB_PREFAB: &str = "goblin_bomb";
 pub const ROCK_PREFAB: &str = "goblin_rock";
+pub const PLANK_PREFAB: &str = "plank";
 /// A crate's half size and its centre from its sprite's top-left, as its
 /// prefab sets them, and a keg's.
 pub const CRATE_HALF: Vec2 = Vec2::splat(28.0);
@@ -54,6 +62,10 @@ pub const BOMB_RADIUS: f32 = 6.0;
 pub const BOMB_CENTRE: Vec2 = Vec2::splat(8.0);
 pub const ROCK_RADIUS: f32 = 5.0;
 pub const ROCK_CENTRE: Vec2 = Vec2::splat(8.0);
+/// A plank's half size and its centre from its 32 × 16 art's top-left, as
+/// its prefab sets them.
+pub const PLANK_HALF: Vec2 = Vec2::new(14.0, 4.0);
+pub const PLANK_CENTRE: Vec2 = Vec2::new(16.0, 8.0);
 /// Most summoned crates and most summoned kegs at once, the map's own
 /// besides (Q45): one placed past its cap replaces the oldest summoned,
 /// which poofs.
@@ -61,6 +73,19 @@ pub const CRATE_CAP: usize = 16;
 pub const KEG_CAP: usize = 8;
 /// Most rocks at once: a throw past it crumbles the oldest.
 pub const ROCK_CAP: usize = 24;
+/// Most planks at once: a break past it crumbles the oldest.
+pub const PLANK_CAP: usize = 40;
+/// A plank's fire at most, game seconds.
+pub const PLANK_BURN_SECS: f32 = 4.0;
+/// A broken crate's planks, one a row of its box from the top: each row's
+/// height from the crate's centre; the least and the most speed a row is
+/// kicked out at, away from the crate's centre; the lift each takes; and
+/// the share of the hitter's velocity each carries on.
+pub const PLANK_ROWS: [f32; 5] = [-20.0, -10.0, 0.0, 10.0, 20.0];
+pub const PLANK_KICK_LEAST: f32 = 260.0;
+pub const PLANK_KICK_MOST: f32 = 420.0;
+pub const PLANK_LIFT: f32 = 180.0;
+pub const PLANK_CARRY: f32 = 0.25;
 /// A crate's fire, game seconds; the seconds it burns before it lights the
 /// crates and kegs within [`SPREAD_REACH`] of its box; and how near its box
 /// a small ball lights from it, or a burning small ball lights it.
@@ -100,6 +125,7 @@ impl Plugin for PropsPlugin {
         world.register_component::<Keg>("keg");
         world.register_component::<Bomb>("goblin_bomb");
         world.register_component::<Rock>("rock");
+        world.register_component::<Plank>("plank");
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let tick = system("props_tick", systems::tick);
@@ -118,8 +144,8 @@ impl Plugin for PropsPlugin {
     }
 }
 
-/// What `entity` is, a crate, a keg, a bomb or a rock; None for anything
-/// else.
+/// What `entity` is, a crate, a keg, a bomb, a rock or a plank; None for
+/// anything else.
 #[must_use]
 pub fn kind(world: &World, entity: Entity) -> Option<PropKind> {
     if world.has::<Crate>(entity) {
@@ -130,19 +156,21 @@ pub fn kind(world: &World, entity: Entity) -> Option<PropKind> {
         Some(PropKind::Bomb)
     } else if world.has::<Rock>(entity) {
         Some(PropKind::Rock)
+    } else if world.has::<Plank>(entity) {
+        Some(PropKind::Plank)
     } else {
         None
     }
 }
 
-/// Whether `entity` is a crate, a keg, a bomb or a rock.
+/// Whether `entity` is a crate, a keg, a bomb, a rock or a plank.
 #[must_use]
 pub fn is_prop(world: &World, entity: Entity) -> bool {
     kind(world, entity).is_some()
 }
 
-/// Every crate, keg, bomb and rock, from their own columns: a pass over
-/// the props never walks the balls (P6).
+/// Every crate, keg, bomb, rock and plank, from their own columns: a pass
+/// over the props never walks the balls (P6).
 #[must_use]
 pub fn all(world: &World) -> Vec<Entity> {
     world
@@ -151,6 +179,7 @@ pub fn all(world: &World) -> Vec<Entity> {
         .chain(world.query::<(Entity, &Keg)>().map(|(entity, _)| entity))
         .chain(world.query::<(Entity, &Bomb)>().map(|(entity, _)| entity))
         .chain(world.query::<(Entity, &Rock)>().map(|(entity, _)| entity))
+        .chain(world.query::<(Entity, &Plank)>().map(|(entity, _)| entity))
         .collect()
 }
 
@@ -162,6 +191,7 @@ pub const fn half(kind: PropKind) -> Vec2 {
         PropKind::Keg => KEG_HALF,
         PropKind::Bomb => Vec2::splat(BOMB_RADIUS),
         PropKind::Rock => Vec2::splat(ROCK_RADIUS),
+        PropKind::Plank => PLANK_HALF,
     }
 }
 
@@ -173,6 +203,7 @@ pub const fn centre(kind: PropKind) -> Vec2 {
         PropKind::Keg => KEG_CENTRE,
         PropKind::Bomb => BOMB_CENTRE,
         PropKind::Rock => ROCK_CENTRE,
+        PropKind::Plank => PLANK_CENTRE,
     }
 }
 
@@ -184,6 +215,7 @@ pub const fn prefab(kind: PropKind) -> &'static str {
         PropKind::Keg => KEG_PREFAB,
         PropKind::Bomb => BOMB_PREFAB,
         PropKind::Rock => ROCK_PREFAB,
+        PropKind::Plank => PLANK_PREFAB,
     }
 }
 
@@ -195,6 +227,7 @@ pub const fn cap(kind: PropKind) -> usize {
         PropKind::Keg => KEG_CAP,
         PropKind::Bomb => usize::MAX,
         PropKind::Rock => ROCK_CAP,
+        PropKind::Plank => PLANK_CAP,
     }
 }
 
@@ -228,7 +261,8 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 
 /// Spawns a prop of `kind` with its body's centre at `at`, at once and
 /// quietly, with the run's next save ID: a crate's or a rock's art by the
-/// ID's parity, a crate's fuel whole.
+/// ID's parity, a crate's fuel whole; a plank its first art and its fuel
+/// whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
     if kind == PropKind::Rock {
@@ -254,6 +288,18 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
         );
         systems::show_variant(world, prop, variant);
     }
+    if kind == PropKind::Plank {
+        world.insert(prop, Plank { variant: 0 });
+        world.insert(
+            prop,
+            Fuel {
+                left: PLANK_BURN_SECS,
+                lit: false,
+                lighter: None,
+                doused: 0.0,
+            },
+        );
+    }
     prop
 }
 
@@ -272,9 +318,79 @@ pub fn restore(world: &mut World, kind: PropKind, at: Vec2, id: SaveId, variant:
             world.insert(prop, Rock { variant });
             systems::show_rock(world, prop, variant);
         }
+        PropKind::Plank => {
+            world.insert(prop, Plank { variant });
+            systems::show_plank(world, prop, variant);
+        }
         PropKind::Keg | PropKind::Bomb => {}
     }
     prop
+}
+
+/// Breaks `crate_` under a heavy hit (V33): it goes with its splinters, a
+/// key burst, and its crack, and five planks take its place, one a row of
+/// its box from the top ([`PLANK_ROWS`]), each at the crate's velocity
+/// plus a kick away from its centre, [`PLANK_KICK_LEAST`] to
+/// [`PLANK_KICK_MOST`] by row and to its side, less [`PLANK_LIFT`] up,
+/// plus [`PLANK_CARRY`] of `hitter`'s velocity, tumbling whole half-turns
+/// as it flies so it lies flat. A burning crate's planks burn with its fire
+/// left, at most [`PLANK_BURN_SECS`], crediting its lighter; a doused one's
+/// keep the douse. Past [`PLANK_CAP`] the oldest crumble first.
+pub fn break_crate(world: &mut World, crate_: Entity, hitter: Vec2) {
+    let Some(at) = body_centre(world, crate_) else {
+        return;
+    };
+    let velocity = world.get::<Velocity>(crate_).map_or(Vec2::ZERO, |v| v.0);
+    let fuel = world.get::<Fuel>(crate_).copied();
+    let born_at = world.get_resource::<SceneTime>().map_or(0.0, |time| time.0);
+    spawn_key_burst(world, "ex10_plank_splinters", at);
+    audio::play(world, Sound::CrateBroke, at);
+    despawn_tree(world, crate_);
+    let mut planks: Vec<(SaveId, Entity)> = world
+        .query::<(Entity, &Plank, &SaveId)>()
+        .map(|(entity, _, id)| (*id, entity))
+        .collect();
+    planks.sort_by_key(|(id, _)| *id);
+    let surplus = (planks.len() + PLANK_ROWS.len()).saturating_sub(PLANK_CAP);
+    for &(_, oldest) in planks.iter().take(surplus) {
+        crumble_plank(world, oldest);
+    }
+    let lowest = PLANK_ROWS[PLANK_ROWS.len() - 1];
+    for (row, &height) in PLANK_ROWS.iter().enumerate() {
+        let side = if row % 2 == 0 { -1.0 } else { 1.0 };
+        // Permutes the five kicks without the game's stream.
+        let share = (row * 3 % PLANK_ROWS.len()) as f32 / (PLANK_ROWS.len() - 1) as f32;
+        let speed = PLANK_KICK_LEAST + (PLANK_KICK_MOST - PLANK_KICK_LEAST) * share;
+        let away = Vec2::new(side, height / lowest).normalize();
+        let kick = away * speed - Vec2::Y * PLANK_LIFT;
+        let plank = spawn(world, PropKind::Plank, at + Vec2::new(0.0, height));
+        world.insert(plank, Plank { variant: row });
+        systems::show_plank(world, plank, row);
+        if let Some(own) = world.get_mut::<Velocity>(plank) {
+            own.0 = velocity + kick + hitter * PLANK_CARRY;
+        }
+        let tumble = ScrapTumble {
+            born_at,
+            initial_angle: 0.0,
+            total_turn: side * (1 + row % 2) as f32 * std::f32::consts::PI,
+        };
+        let burn = Fuel {
+            left: fuel.map_or(PLANK_BURN_SECS, |fuel| fuel.left.min(PLANK_BURN_SECS)),
+            lit: fuel.is_some_and(|fuel| fuel.lit),
+            lighter: fuel.and_then(|fuel| fuel.lighter),
+            doused: fuel.map_or(0.0, |fuel| fuel.doused),
+        };
+        world.insert_bundle(plank, (tumble, burn));
+    }
+}
+
+/// A plank past [`PLANK_CAP`] crumbling where it is, quietly: its
+/// splinters, a key burst.
+pub fn crumble_plank(world: &mut World, plank: Entity) {
+    if let Some(at) = body_centre(world, plank) {
+        spawn_key_burst(world, "ex10_plank_splinters", at);
+    }
+    despawn_tree(world, plank);
 }
 
 /// A goblin's rock with its centre at `at`, flying at `velocity`, at once,
@@ -462,6 +578,15 @@ pub fn put_out(world: &mut World, prop: Entity) -> bool {
         return burned;
     }
     false
+}
+
+/// A plank burnt out falls in where it is, quietly: its embers, a key
+/// burst.
+pub fn burn_down(world: &mut World, plank: Entity) {
+    if let Some(at) = body_centre(world, plank) {
+        spawn_key_burst(world, "ex10_collapse_embers", at);
+    }
+    despawn_tree(world, plank);
 }
 
 /// A crate burnt out falls in where it is, from a troll's hands too: its

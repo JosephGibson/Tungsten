@@ -1,0 +1,25 @@
+{
+  "sprite": {
+    "asset_id": "ex10_plank_0",
+    "z_order": 12
+  },
+  "components": {
+    "plank": {},
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          14,
+          4
+        ]
+      },
+      "offset": [
+        16,
+        8
+      ],
+      "mass": 2,
+      "restitution": 0.1
+    }
+  }
+}

@@ -6,7 +6,9 @@
 //! fire and never blows; a detonation's credit passes through the endings
 //! it sets off; two kegs blowing in one step blow once each; and a bomb
 //! rolls with its fuse turning on it, while a goblin's rock stays a body
-//! that rolls, the oldest crumbling past the cap.
+//! that rolls, the oldest crumbling past the cap; and a heavy blow or a
+//! troll's throw breaks a crate into five planks, which burn and fall in
+//! quietly, the oldest crumbling past theirs.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
@@ -548,4 +550,242 @@ fn the_map_s_own_crates_and_kegs_stay_outside_the_summon_s_caps() {
     );
     assert!(!world.is_alive(summoned[0]), "the oldest summoned went");
     assert!(summoned[1..].iter().all(|&prop| world.is_alive(prop)));
+}
+
+/// The planks alive.
+fn planks(harness: &UiHarness) -> Vec<Entity> {
+    use example_01_platformer::features::props::components::Plank;
+    harness
+        .world()
+        .query::<(Entity, &Plank)>()
+        .map(|(entity, _)| entity)
+        .collect()
+}
+
+/// Steps until `crate_` breaks or `frames` pass: the planks it left, the
+/// break's sounds, and the step's state before it broke as `watch` saw it.
+fn until_broken(
+    harness: &mut UiHarness,
+    crate_: Entity,
+    frames: u32,
+    mut watch: impl FnMut(&UiHarness),
+) -> (usize, usize) {
+    let mut broke = 0;
+    for _ in 0..frames {
+        harness.step(1);
+        broke += sounds(harness, Sound::CrateBroke);
+        if !alive(harness, crate_) {
+            break;
+        }
+        watch(harness);
+    }
+    (planks(harness).len(), broke)
+}
+
+#[test]
+fn a_tossed_bowling_ball_breaks_a_crate_into_five_planks() {
+    for side in [-1.0, 1.0] {
+        for gap in [4.0, 24.0, 48.0] {
+            let (mut harness, _) = sky(200.0);
+            let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
+            harness.step(1);
+            // From `gap` px off the crate's side, level with its centre.
+            let centre = body(&harness, crate_);
+            let start = centre + Vec2::X * side * (CRATE_HALF.x + toys::BALL_RADIUS + gap);
+            let aim = Vec2::X * -side;
+            let world = harness.world_mut();
+            toys::toss_bowling_ball(world, start - aim * toys::TOSS_OFFSET, aim).expect("a ball");
+            let (left, broke) = until_broken(&mut harness, crate_, 30, |_| {});
+            let case = format!("from the {side} side, {gap} px off");
+            assert!(!alive(&harness, crate_), "{case}: broken");
+            assert_eq!((left, broke), (5, 1), "{case}: five planks, one crack");
+            for plank in planks(&harness) {
+                let body = harness.world().get::<RigidBody>(plank).unwrap();
+                assert_eq!(body.inv_mass, 0.5, "{case}: a plank's mass 2");
+            }
+        }
+    }
+}
+
+#[test]
+fn heavy_blows_break_a_crate_and_light_or_resting_ones_do_not() {
+    use example_01_platformer::features::toys::IRON_HALF;
+    use example_01_platformer::features::toys::components::PreviousVelocity;
+    let top = TOP - 2.0 * CRATE_HALF.y;
+    // Iron dropped 16 px onto a crate, its speed the step before the touch
+    // between 300 and 600 px/s, with iron's weight (A32).
+    let (mut harness, _) = sky(200.0);
+    let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
+    let iron = toys::place_iron(
+        harness.world_mut(),
+        Vec2::new(1000.0, top - 16.0 - IRON_HALF.y),
+    );
+    let mut speed = 0.0;
+    let (left, _) = until_broken(&mut harness, crate_, 30, |h| {
+        speed = h.world().get::<Velocity>(iron).unwrap().0.y;
+    });
+    assert!(!alive(&harness, crate_) && left == 5, "the drop breaks it");
+    let before = harness.world().get::<PreviousVelocity>(iron).unwrap().0.y;
+    assert!(
+        (300.0..600.0).contains(&before) && (300.0..600.0).contains(&speed),
+        "{speed} then {before}"
+    );
+    // A keg slid into one at 400 px/s.
+    let (mut harness, _) = sky(200.0);
+    let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
+    let keg = prop(
+        &mut harness,
+        PropKind::Keg,
+        1000.0 - CRATE_HALF.x - KEG_HALF.x - 2.0,
+    );
+    harness.step(1);
+    harness.world_mut().get_mut::<Velocity>(keg).unwrap().0 = Vec2::new(400.0, 0.0);
+    let (left, _) = until_broken(&mut harness, crate_, 10, |_| {});
+    assert!(!alive(&harness, crate_) && left == 5, "the keg breaks it");
+    // A bowling ball at 500 px/s, iron resting against one, and iron
+    // falling at 400 px/s on one it touches, falling with it: all whole.
+    let (mut harness, _) = sky(200.0);
+    let struck = prop(&mut harness, PropKind::Crate, 1000.0);
+    let leaning = prop(&mut harness, PropKind::Crate, 1400.0);
+    let carried = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(1800.0, TOP - 600.0),
+    );
+    let world = harness.world_mut();
+    let ball = toys::spawn_ball(
+        world,
+        Vec2::new(
+            1000.0 - CRATE_HALF.x - toys::BALL_RADIUS - 4.0,
+            TOP - CRATE_HALF.y,
+        ),
+        false,
+    );
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(500.0, 0.0);
+    toys::place_iron(
+        world,
+        Vec2::new(1400.0 + CRATE_HALF.x + IRON_HALF.x + 0.5, TOP - IRON_HALF.y),
+    );
+    let rider = toys::place_iron(
+        world,
+        Vec2::new(1800.0, TOP - 600.0 - CRATE_HALF.y - IRON_HALF.y - 0.5),
+    );
+    for body in [carried, rider] {
+        world.get_mut::<Velocity>(body).unwrap().0 = Vec2::new(0.0, 400.0);
+    }
+    for _ in 0..10 {
+        harness.step(1);
+        assert_eq!(sounds(&harness, Sound::CrateBroke), 0);
+    }
+    for (crate_, case) in [
+        (struck, "the ball"),
+        (leaning, "resting iron"),
+        (carried, "carried"),
+    ] {
+        assert!(alive(&harness, crate_), "{case}: whole");
+    }
+    assert!(planks(&harness).is_empty());
+}
+
+#[test]
+fn a_thrown_crate_breaks_on_landing_and_a_dropped_one_stays_whole() {
+    use example_01_platformer::features::enemies::components::{Throw, Throws};
+    let (mut harness, _) = sky(200.0);
+    let thrown = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(1000.0, TOP - 200.0),
+    );
+    let dropped = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(1400.0, TOP - CRATE_HALF.y - 150.0),
+    );
+    let world = harness.world_mut();
+    world.get_mut::<Velocity>(thrown).unwrap().0 = Vec2::new(0.0, 700.0);
+    world.resource_mut::<Throws>().0.push(Throw {
+        body: thrown,
+        thrower: 0,
+        factor: 1.0,
+        left: 2.0,
+    });
+    let (left, broke) = until_broken(&mut harness, thrown, 30, |_| {});
+    assert!(!alive(&harness, thrown), "the throw breaks on landing");
+    assert_eq!((left, broke), (5, 1));
+    harness.step(30);
+    assert!(
+        alive(&harness, dropped),
+        "a crate dropped 150 px stays whole"
+    );
+    assert_eq!(planks(&harness).len(), 5);
+}
+
+#[test]
+fn a_frozen_crate_shatters_into_no_planks() {
+    let (mut harness, _) = sky(200.0);
+    let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
+    harness.step(2);
+    elements::freeze_iron(harness.world_mut(), crate_);
+    let world = harness.world_mut();
+    let ball = toys::spawn_ball(
+        world,
+        Vec2::new(
+            1000.0 - CRATE_HALF.x - toys::BALL_RADIUS - 40.0,
+            TOP - CRATE_HALF.y,
+        ),
+        false,
+    );
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(900.0, 0.0);
+    let (left, broke) = until_broken(&mut harness, crate_, 12, |_| {});
+    assert!(!alive(&harness, crate_), "it shatters");
+    assert_eq!((left, broke), (0, 0), "into no planks");
+}
+
+#[test]
+fn a_burning_crate_s_planks_burn_and_fall_in_quietly() {
+    use example_01_platformer::features::props::PLANK_BURN_SECS;
+    let (mut harness, _) = sky(200.0);
+    let crate_ = prop(&mut harness, PropKind::Crate, 1000.0);
+    harness.step(1);
+    assert!(props::light(harness.world_mut(), crate_, Some(7)));
+    harness.step(30);
+    props::break_crate(harness.world_mut(), crate_, Vec2::ZERO);
+    let lit = planks(&harness);
+    assert_eq!(lit.len(), 5);
+    for &plank in &lit {
+        let fuel = fuel(&harness, plank);
+        assert!(fuel.lit && fuel.left <= PLANK_BURN_SECS && fuel.lighter == Some(7));
+    }
+    let mut collapsed = 0;
+    for _ in 0..(PLANK_BURN_SECS * 60.0) as u32 + 4 {
+        harness.step(1);
+        collapsed += sounds(&harness, Sound::CrateCollapsed);
+    }
+    assert!(
+        lit.iter().all(|&plank| !alive(&harness, plank)),
+        "burnt down"
+    );
+    assert_eq!(collapsed, 0, "quietly");
+}
+
+#[test]
+fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
+    use example_01_platformer::features::props::PLANK_CAP;
+    let (mut harness, _) = sky(200.0);
+    let crates: Vec<Entity> = (0..9)
+        .map(|i| prop(&mut harness, PropKind::Crate, 400.0 + 200.0 * i as f32))
+        .collect();
+    harness.step(1);
+    let mut first = Vec::new();
+    for (i, crate_) in crates.into_iter().enumerate() {
+        props::break_crate(harness.world_mut(), crate_, Vec2::ZERO);
+        if i == 0 {
+            first = planks(&harness);
+        }
+    }
+    assert_eq!(planks(&harness).len(), PLANK_CAP);
+    assert!(
+        first.iter().all(|&plank| !alive(&harness, plank)),
+        "the oldest went"
+    );
 }

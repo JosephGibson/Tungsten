@@ -211,11 +211,13 @@ pub enum Sound {
     /// A tick of damage on the player that does not kill it, apart from a
     /// blow's hurt (e01sfx).
     PlayerTicked,
+    /// A crate breaking into its planks under a heavy hit (e01sfx).
+    CrateBroke,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 83] = [
+    pub const ALL: [Sound; 84] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -299,6 +301,7 @@ impl Sound {
         Sound::GoblinYelped,
         Sound::GroundStruck,
         Sound::PlayerTicked,
+        Sound::CrateBroke,
     ];
 
     /// Its cue event's name.
@@ -388,6 +391,7 @@ impl Sound {
             Sound::GoblinYelped => "goblin_yelped",
             Sound::GroundStruck => "ground_struck",
             Sound::PlayerTicked => "player_ticked",
+            Sound::CrateBroke => "crate_broke",
         }
     }
 }

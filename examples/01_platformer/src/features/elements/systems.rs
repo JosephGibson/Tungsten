@@ -11,16 +11,16 @@ use tungsten::core::{
     Transform, Velocity, With, World,
 };
 use tungsten::kit::{Children, ContactDamage, Health, Hit, Tags};
-use tungsten::physics::wake;
+use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::cascade::{self, CascadeKind};
 use super::components::{BallBurn, Chill, FireEmitter, Frozen, IcePulse};
 use super::{
-    BASE_SMASH, BODY_HIT_SPEED, BURN_SECS, CRUSH_HIT, CRUSH_SPEED, DOUSE_BURSTS_PER_STEP,
-    DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP, FIRE_HALF, FROZEN_SECS,
-    IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE, SHATTER_MASS,
-    SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE, blows_keg,
-    body_hit, freeze_amount,
+    BASE_SMASH, BODY_HIT_SPEED, BREAK_FLOOR, BREAK_SLACK, BURN_SECS, CRATE_BREAK, CRUSH_HIT,
+    CRUSH_SPEED, DOUSE_BURSTS_PER_STEP, DOUSE_SECS, EMITTER_DWELL, FIRE_CENTRE, FIRE_EMITTER_CAP,
+    FIRE_HALF, FROZEN_SECS, IMPACT_BURSTS_PER_STEP, IMPACT_COOLDOWN, IMPACT_SPEED, LANDING_SHARE,
+    SHATTER_MASS, SHATTER_SPEED, SMASH_CAP, SMASH_KEEP, SPEED_PER_BALL, SPEED_PER_HIT, THAW_RATE,
+    blows_keg, body_hit, freeze_amount,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, FLESH, FROZEN, Kind, has_status};
@@ -31,7 +31,7 @@ use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::props::{
     self, BURNING_IMPACT,
-    components::{Fuel, Keg, Rock},
+    components::{Crate, Fuel, Keg, Rock},
 };
 use crate::features::run::Run;
 use crate::features::toys::components::{
@@ -1104,6 +1104,116 @@ fn target_hits(world: &World, player: Option<Entity>) -> Vec<(Entity, Entity, f3
 /// speed.
 type Hurt = (Entity, Entity, f32);
 
+/// `shape` grown by `margin` on every side.
+fn grown(shape: Shape, margin: f32) -> Shape {
+    match shape {
+        Shape::Aabb { half_extents } => Shape::Aabb {
+            half_extents: half_extents + Vec2::splat(margin),
+        },
+        Shape::Circle { radius } => Shape::Circle {
+            radius: radius + margin,
+        },
+    }
+}
+
+/// Whether `entity`, a body of `shape` about `centre`, ends the step within
+/// [`TOUCH_MARGIN`](super::TOUCH_MARGIN) of a tile or of another body, but
+/// the one of save ID `spared`.
+fn touches(world: &World, entity: Entity, centre: Vec2, shape: Shape, spared: u64) -> bool {
+    let margin = super::TOUCH_MARGIN;
+    let mut met = Vec::new();
+    let tiles = SpatialFilter::new().with_bodies(false);
+    overlap(world, grown(shape, margin), centre, &tiles, &mut met);
+    if !met.is_empty() {
+        return true;
+    }
+    world
+        .query::<(Entity, &Position, &Collider, &RigidBody)>()
+        .any(|(other, at, collider, _)| {
+            other != entity
+                && world.get::<SaveId>(other).is_none_or(|id| id.0 != spared)
+                && gap(centre, shape, at.0 + collider.offset, collider.shape) <= margin
+        })
+}
+
+/// The crates a hit breaks this step (V33), in save-ID order, each with
+/// the velocity of what broke it, a share of which its planks carry on: a
+/// crate not frozen that ends the step within
+/// [`TOUCH_MARGIN`](super::TOUCH_MARGIN) of a dynamic body whose speed
+/// toward it along the line between their centres and the pair's closing
+/// speed on that line, from their speeds before the step, are each
+/// [`BREAK_FLOOR`] or more, so resting bodies and bodies moving together
+/// break nothing, and whose mass times its speed reaches [`CRATE_BREAK`];
+/// or a crate a troll threw, moving at [`SHATTER_SPEED`] or more before the
+/// step, that ends it touching a tile or a body, its thrower aside. A touch
+/// test as [`target_hits`]', since the solver stops a body at a crate's face
+/// in the step it arrives, before any contact reports it. Of the hitters on
+/// one crate, the lowest save ID's velocity counts.
+fn crate_hits(world: &World) -> Vec<(Entity, Vec2)> {
+    let mut crates: Vec<(Option<SaveId>, Entity, Vec2, Shape)> = world
+        .query::<(Entity, &Crate, &Position, &Collider, Option<&SaveId>)>()
+        .filter(|(entity, ..)| !world.has::<Frozen>(*entity))
+        .map(|(entity, _, at, collider, id)| {
+            (id.copied(), entity, at.0 + collider.offset, collider.shape)
+        })
+        .collect();
+    if crates.is_empty() {
+        return Vec::new();
+    }
+    crates.sort_by_key(|(id, ..)| *id);
+    // The movers fast and heavy enough to break one, the cheap checks first.
+    let mut movers: Vec<(Option<SaveId>, Entity, Vec2, Shape, Vec2)> = world
+        .query::<(
+            Entity,
+            &Position,
+            &Collider,
+            &RigidBody,
+            Option<&PreviousVelocity>,
+            Option<&Velocity>,
+        )>()
+        .filter(|(.., body, _, _)| body.kind == BodyKind::Dynamic && body.inv_mass > 0.0)
+        .filter_map(|(entity, at, collider, body, previous, velocity)| {
+            let before = previous
+                .map(|v| v.0)
+                .or_else(|| velocity.map(|v| v.0))
+                .unwrap_or(Vec2::ZERO);
+            let speed = before.length();
+            let heavy = speed / body.inv_mass >= CRATE_BREAK - BREAK_SLACK;
+            (speed >= BREAK_FLOOR && heavy).then(|| {
+                let id = world.get::<SaveId>(entity).copied();
+                (id, entity, at.0 + collider.offset, collider.shape, before)
+            })
+        })
+        .collect();
+    movers.sort_by_key(|(id, ..)| *id);
+    let throws = world.get_resource::<Throws>();
+    let mut broken = Vec::new();
+    for (_, crate_, centre, shape) in crates {
+        let own = before_step(world, crate_);
+        let hitter = movers.iter().find(|&&(_, body, at, body_shape, before)| {
+            if body == crate_ || gap(centre, shape, at, body_shape) > super::TOUCH_MARGIN {
+                return false;
+            }
+            let towards = (centre - at).normalize_or_zero();
+            before.dot(towards) >= BREAK_FLOOR && (before - own).dot(towards) >= BREAK_FLOOR
+        });
+        if let Some(&(.., before)) = hitter {
+            broken.push((crate_, before));
+            continue;
+        }
+        let thrower = throws
+            .and_then(|throws| throws.of(crate_))
+            .map(|throw| throw.thrower);
+        if let Some(thrower) = thrower
+            && own.length() >= SHATTER_SPEED
+            && touches(world, crate_, centre, shape, thrower)
+        {
+            broken.push((crate_, Vec2::ZERO));
+        }
+    }
+    broken
+}
+
 /// The targets an iron blow killed this step, which the enemies' and the
 /// dummy's ends burst in gore in place of a poof: the step's alone, written
 /// fresh by `body_impacts`, presentation, never saved.
@@ -1144,7 +1254,9 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// thrower of what met it, else the player; a burning
 /// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
 /// meeting anything at [`SHATTER_SPEED`] or more clacks, at most
-/// [`IMPACT_BURSTS_PER_STEP`] a step.
+/// [`IMPACT_BURSTS_PER_STEP`] a step. Last, each crate a hit breaks
+/// ([`crate_hits`]) breaks into its planks, once a step in save-ID order,
+/// after its own blows and landings.
 pub fn body_impacts(world: &mut World) {
     world.insert_resource(IronKills::default());
     let Some(events) = world.get_resource::<EventQueue<CollisionEvent>>() else {
@@ -1320,6 +1432,9 @@ pub fn body_impacts(world: &mut World) {
     for at in clacks.into_values().take(IMPACT_BURSTS_PER_STEP) {
         audio::play(world, Sound::RockHit, at);
     }
+    // Read while a thrown crate's throw stands, before the count down
+    // ends one that landed a blow.
+    let breaks = crate_hits(world);
     let dt = world.resource::<Time>().delta();
     let gone: Vec<Entity> = world
         .get_resource::<Throws>()
@@ -1343,6 +1458,9 @@ pub fn body_impacts(world: &mut World) {
         if amount > 0.0 {
             combat::Hit::new(target, [(Kind::Physical, amount)]).queue(world);
         }
+    }
+    for (crate_, hitter) in breaks {
+        props::break_crate(world, crate_, hitter);
     }
 }
 

@@ -61,7 +61,7 @@ use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::props::{
     self,
-    components::{Bomb, Crate, Fuel, Keg, PropKind, Rock},
+    components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock},
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
@@ -130,6 +130,11 @@ pub struct SaveGame {
     /// while none fly.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub snowballs: Vec<SnowballSave>,
+    /// The broken crates' planks (e01sfx), apart from `props` as the
+    /// snowballs are; none before schema 18, and none written while none
+    /// lie about.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planks: Vec<PlankSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
@@ -260,8 +265,9 @@ impl SaveData for SaveGame {
     /// start's new wall or past its boundary on the clearing's floor
     /// (`to_15`). Schema 16 keeps the tomes held and sets the bodies inside
     /// their supports on top (`to_16`). Schema 17 moves each crawler's run
-    /// to e01foes' (`to_17`).
-    const SCHEMA: u32 = 17;
+    /// to e01foes' (`to_17`). Schema 18 keeps a broken crate's planks
+    /// (`planks`), which an older save has none of.
+    const SCHEMA: u32 = 18;
 
     fn migrate(
         from: u32,
@@ -361,6 +367,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 Ok(data)
             }
+            17 => Ok(data),
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
         }
     }
@@ -1318,6 +1325,20 @@ pub struct SnowballSave {
     pub left: f32,
 }
 
+/// A broken crate's plank: its body, its art's variant, its frost and its
+/// fire, whole.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlankSave {
+    pub id: u64,
+    pub variant: usize,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub chill: Option<f32>,
+    pub frozen: Option<f32>,
+    pub fuel: Fuel,
+}
+
 /// The live run as a save; `None` with no run or a dead player.
 #[must_use]
 pub fn capture(world: &World) -> Option<SaveGame> {
@@ -1459,9 +1480,25 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     bullets.sort_by_key(|bullet| bullet.id);
     let mut props: Vec<PropSave> = props::all(world)
         .into_iter()
+        .filter(|&entity| !world.has::<Plank>(entity))
         .filter_map(|entity| capture_prop(world, entity))
         .collect();
     props.sort_by_key(|prop| prop.id);
+    let mut planks: Vec<PlankSave> = world
+        .query::<(Entity, &Plank, &SaveId, &Fuel)>()
+        .filter_map(|(entity, plank, id, fuel)| {
+            Some(PlankSave {
+                id: id.0,
+                variant: plank.variant,
+                position: world.get::<Position>(entity)?.0.to_array(),
+                velocity: world.get::<Velocity>(entity)?.0.to_array(),
+                chill: world.get::<Chill>(entity).map(|chill| chill.amount),
+                frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
+                fuel: *fuel,
+            })
+        })
+        .collect();
+    planks.sort_by_key(|plank| plank.id);
     let snowballs = snowball::flying(world)
         .into_iter()
         .filter_map(|(id, entity)| {
@@ -1555,6 +1592,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         elevators,
         props,
         snowballs,
+        planks,
     })
 }
 
@@ -1906,6 +1944,9 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     for prop in &save.props {
         restore_prop(world, prop);
     }
+    for plank in &save.planks {
+        restore_plank(world, plank);
+    }
     for saved in &save.snowballs {
         let ball = snowball::spawn(world, Vec2::from(saved.position));
         let flying = Snowball {
@@ -2030,7 +2071,7 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
         world.insert(entity, fuel);
     }
     match saved.kind {
-        PropKind::Crate | PropKind::Rock => {}
+        PropKind::Crate | PropKind::Rock | PropKind::Plank => {}
         PropKind::Keg => world.insert(
             entity,
             Keg {
@@ -2046,6 +2087,26 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
                 lighter: saved.lighter,
             },
         ),
+    }
+}
+
+/// A saved plank, spawned at once at its saved point with its state over
+/// its prefab's, at rest from its tumble.
+fn restore_plank(world: &mut World, saved: &PlankSave) {
+    let at = Vec2::from(saved.position);
+    let entity = props::restore(world, PropKind::Plank, at, SaveId(saved.id), saved.variant);
+    world.insert_bundle(entity, (Velocity(Vec2::from(saved.velocity)), saved.fuel));
+    if let Some(amount) = saved.chill {
+        world.insert(
+            entity,
+            Chill {
+                amount,
+                held: false,
+            },
+        );
+    }
+    if let Some(left) = saved.frozen {
+        world.insert(entity, Frozen { left });
     }
 }
 

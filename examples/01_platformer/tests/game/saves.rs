@@ -230,6 +230,13 @@ fn busy(harness: &mut UiHarness) {
         Some(0),
         1.0,
     );
+    // A crate broken into its planks (e01sfx).
+    let broken = props::spawn(
+        world,
+        PropKind::Crate,
+        Vec2::new(2050.0, TOP - CRATE_HALF.y - 0.5),
+    );
+    props::break_crate(world, broken, Vec2::new(-200.0, 0.0));
     harness.step(1);
 }
 
@@ -584,6 +591,30 @@ fn lists(kind: &str) -> Lists {
                 presentation: drawn.to_vec(),
             }
         }
+        // A broken crate's planks: its art, its fire and its frost, each
+        // saved whole; their tumble is presentation.
+        "plank" => {
+            use example_01_platformer::features::props::components::{Fuel, Plank};
+            Lists {
+                saved: [
+                    &at[..],
+                    &[
+                        name::<Velocity>(),
+                        name::<Plank>(),
+                        name::<Fuel>(),
+                        name::<Chill>(),
+                        name::<Frozen>(),
+                    ],
+                ]
+                .concat(),
+                rebuilt: [
+                    &body[..],
+                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                ]
+                .concat(),
+                presentation: [&drawn[..], &[name::<ScrapTumble>()]].concat(),
+            }
+        }
         "snowball" => {
             use example_01_platformer::features::enemies::components::Snowball;
             use tungsten::core::AnimationState;
@@ -732,6 +763,8 @@ fn kind(world: &World, entity: Entity) -> &'static str {
         "bomb"
     } else if world.has::<Rock>(entity) {
         "rock"
+    } else if world.has::<example_01_platformer::features::props::components::Plank>(entity) {
+        "plank"
     } else if world.has::<example_01_platformer::features::enemies::components::Snowball>(entity) {
         "snowball"
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
@@ -794,6 +827,7 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "keg",
             "missile",
             "orb",
+            "plank",
             "platform",
             "player",
             "rock",
@@ -3513,6 +3547,66 @@ fn a_schema_15_save_loads_with_no_tome_and_every_book_on_the_map() {
     let player = player_entity(&fresh);
     assert!(fresh.world().get::<Tomes>(player).is_none());
     assert_eq!(books(&fresh), TomeKind::ALL);
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn burning_planks_save_through_json_and_load_back() {
+    use example_01_platformer::features::props::components::{Fuel, Plank};
+    let (mut harness, _) = grounded();
+    let world = harness.world_mut();
+    let crate_ = props::spawn(
+        world,
+        PropKind::Crate,
+        Vec2::new(1500.0, TOP - CRATE_HALF.y - 0.5),
+    );
+    assert!(props::light(world, crate_, Some(5)));
+    props::break_crate(world, crate_, Vec2::ZERO);
+    harness.step(20);
+    let saved = capture(&harness);
+    assert_eq!(saved.planks.len(), 5, "the planks, apart from the props");
+    assert!(saved.props.iter().all(|prop| prop.kind != PropKind::Plank));
+    assert!(saved.planks.iter().all(|plank| plank.fuel.lit));
+    // Through JSON, as Continue reads a slot.
+    let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("a save loads");
+    let mut fresh = super::harness();
+    load(&mut fresh, loaded);
+    let mut back: Vec<(u64, usize, Fuel)> = fresh
+        .world()
+        .query::<(&SaveId, &Plank, &Fuel)>()
+        .map(|(id, plank, fuel)| (id.0, plank.variant, *fuel))
+        .collect();
+    back.sort_by_key(|(id, ..)| *id);
+    let kept: Vec<(u64, usize, Fuel)> = saved
+        .planks
+        .iter()
+        .map(|plank| (plank.id, plank.variant, plank.fuel))
+        .collect();
+    assert_eq!(back.len(), 5);
+    for ((id, variant, fuel), (want_id, want_variant, want)) in back.into_iter().zip(kept) {
+        assert_eq!((id, variant), (want_id, want_variant));
+        assert!(fuel.lit && fuel.lighter == Some(5));
+        assert!(
+            (fuel.left - want.left).abs() < 0.05,
+            "{} for {}",
+            fuel.left,
+            want.left
+        );
+    }
+}
+
+#[test]
+fn a_schema_17_save_loads() {
+    let (harness, _) = run();
+    // The 0.110 code's save: a capture without the planks, numbered 17.
+    let mut data = json(&capture(&harness));
+    if let Some(fields) = data.as_object_mut() {
+        fields.remove("planks");
+    }
+    let (migrated, dir) = migrate("schema-17", &as_envelope(&data, 17));
+    assert!(migrated.planks.is_empty());
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
     let _ = std::fs::remove_dir_all(dir);
 }
 

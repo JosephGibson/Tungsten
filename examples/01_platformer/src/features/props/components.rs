@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 use tungsten::core::Entity;
 
-/// What a prop is: a pine crate, a powder keg, or a goblin's bomb or rock.
+/// What a prop is: a pine crate, a powder keg, a goblin's bomb or rock, or
+/// a broken crate's plank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PropKind {
@@ -11,12 +12,22 @@ pub enum PropKind {
     Keg,
     Bomb,
     Rock,
+    Plank,
 }
 
 /// A pine crate, which catches fire, burns down and falls in: its art's
 /// variant, by its save ID's parity. Its prefab names it `crate`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub struct Crate {
+    #[serde(skip)]
+    pub variant: usize,
+}
+
+/// A plank of a broken crate (e01sfx), which burns as a crate does and
+/// falls in quietly: its art's variant, its row in the crate. Its prefab
+/// names it `plank`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub struct Plank {
     #[serde(skip)]
     pub variant: usize,
 }

@@ -72,6 +72,16 @@ pub const SHATTER_MASS: f32 = 8.0;
 /// The closing speed that sets a keg off ([`blows_keg`]): a keg dropped
 /// about 150 px onto the ground.
 pub const KEG_SPEED: f32 = 1050.0;
+/// A crate's break (V33, e01sfx): how near a body ends the step to touch
+/// it; the least speed toward it, and the least closing speed, a hit needs;
+/// and the hitter's mass times its speed that breaks it: a bowling ball at
+/// its 700 px/s toss, a crate at 467, a keg at 350, scrap and iron at the
+/// floor. A ball tossed at exactly 700 px/s stands a hair under it in
+/// floats, so the break takes a hundredth of slack.
+pub const TOUCH_MARGIN: f32 = 2.0;
+pub const BREAK_FLOOR: f32 = 300.0;
+pub const CRATE_BREAK: f32 = 5600.0;
+pub const BREAK_SLACK: f32 = 0.01;
 /// Seconds cold puts a fire hazard out for.
 pub const DOUSE_SECS: f32 = 4.0;
 /// Most emitters over a burning pile's surface: 64 pairs.

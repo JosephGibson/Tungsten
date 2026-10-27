@@ -1309,5 +1309,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "crate_broke",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crate_break_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
   }
 ]
