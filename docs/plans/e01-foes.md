@@ -170,7 +170,7 @@ Every §3.1 file comes from today's art at the contract's size, count and timing
 
 ### 3.5 The review sheet
 
-In `perf-runs/<date>-e01foes-art-review/` (machine-local), shown in the conversation:
+In `perf-runs/<date>-e01foes-art-review/` (machine-local), linked in the conversation at each round, the contact sheet's link first, as the owner asked on 2026-10-26:
 
 - A contact sheet at 4×: every §3.1 frame, both facings, today's crawler beside the redrawn one, the snowball and its burst, the streaks.
 - Animated previews of each clip.
@@ -188,7 +188,7 @@ On acceptance, Step 7 writes one `sha256sum` line per file §3.1's families own 
 
 A run session that reaches Step 7 without its evidence row ends with this, for a new session on Opus 5.5 at max:
 
-`Use the tungsten-milestone skill. Read docs/plans/e01-foes.md and run Step 7 alone, the asset session: draw §3.1's families in place of Step 1's placeholders as §3.2 directs, within the contract, with the generator's own toolkit; regenerate; show me §3.5's review sheet with in-game loops and take my notes in rounds. On my acceptance write §3.6's lock and the evidence row, delete the scratch driver and the venv, commit and push under docs/operating-rules.md. Leave src/ and tests/ alone; end with the run prompt for Step 8.`
+`Use the tungsten-milestone skill. Read docs/plans/e01-foes.md and run Step 7 alone, the asset session: draw §3.1's families in place of Step 1's placeholders as §3.2 directs, within the contract, with the generator's own toolkit; regenerate; link me §3.5's review sheet with in-game loops and take my notes in rounds. On my acceptance write §3.6's lock and the evidence row, delete the scratch driver and the venv, commit and push under docs/operating-rules.md. Leave src/ and tests/ alone; end with the run prompt for Step 8.`
 
 ## 4. Steps
 
