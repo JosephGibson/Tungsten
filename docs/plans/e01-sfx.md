@@ -180,6 +180,47 @@ In `perf-runs/<date>-e01sfx-art-review/` (machine-local), linked in the conversa
 On acceptance, Step 8 writes one `sha256sum` line per file §3.1's families own (sprites, particle configs, sounds), paths from the repository root, between these fences. The check, `sed -n '/^```sha256$/,/^```$/p' docs/plans/e01-sfx.md | sed '1d;$d' | sha256sum -c --quiet`, exits 0 only when every file is unchanged, and 1 while the block is empty.
 
 ```sha256
+78892f3b226e7a3c1880699ad395d10655501272b197138964da83d98e48557b  examples/01_platformer/assets/sprites/status_crackle_small_0.png
+4dab9ca711abcd79ddc66b1a979381213656f78266abd99b6303bc038fa311a4  examples/01_platformer/assets/sprites/status_crackle_small_1.png
+9b049613cc702c51c13974739f1850e464d55ca34109f8f7d9427d43e7552b0c  examples/01_platformer/assets/sprites/status_crackle_small_2.png
+c58c86fde4f239bc948a520590d247fc72cc514adff8b5ca3dd77384912aa326  examples/01_platformer/assets/sprites/status_crackle_small_3.png
+5ba6dcedcf566dca51869efd104c373676f663657a786471c171bf10bdcf7c65  examples/01_platformer/assets/sprites/status_crackle_medium_0.png
+704d13a9aeb319a23d25aea1ba46116182f49a5037fa0ccf0767bff9f9259e6f  examples/01_platformer/assets/sprites/status_crackle_medium_1.png
+7ef4e19e19ac1b691cfc352262621523345dade9f2be5875bc5cbdb65767d6f7  examples/01_platformer/assets/sprites/status_crackle_medium_2.png
+623606d6c6d84215fae7196d324fdc130d1e6afb41e0262ae0cba684af41a184  examples/01_platformer/assets/sprites/status_crackle_medium_3.png
+822ced3f74f99446e6a6a8b44bae66314d15d59be989e51360cedfa467db74fb  examples/01_platformer/assets/sprites/status_crackle_large_0.png
+38518d14148c34ff7c507863b831cb99eeeea3cf39deda08e3529f0f549b9311  examples/01_platformer/assets/sprites/status_crackle_large_1.png
+186241d611988833b6d46d999b24424de37fcd74267438a5ede5270e71b33648  examples/01_platformer/assets/sprites/status_crackle_large_2.png
+a05ebfbb5f2e3e2e3d4d733b2459e37672580d0623c4958ea83c3ea1a9679de1  examples/01_platformer/assets/sprites/status_crackle_large_3.png
+dfbb05f662e85c9a72de8b7d601fa4c89edee6dc57d3adfa0d9e0cd5b80fda9e  examples/01_platformer/assets/sprites/scorch.png
+d604ef7c97e3a668e816f0bb1bce4bc5a2416ed4befb06d123c6dd6102fdddb7  examples/01_platformer/assets/sprites/scorch_n.png
+1f5fe704d7ef3dd58246cec5dc22e945ce1dd64b6fd2a0672eb62c16937cf611  examples/01_platformer/assets/sprites/scorch_e.png
+2dfc0b935a96db515f6e73c3087ff97c5abf86a6d9777048e41bea05ea379800  examples/01_platformer/assets/sprites/hurt_edge.png
+9186153a0dca590643bd8e52cac4bdd1baf0aa9dc4959e004325cb63794da9f4  examples/01_platformer/assets/sprites/plank_0.png
+6903e7a9d5907920671648c06ac60b3e3bbe7eef604490cfb663006e5604167d  examples/01_platformer/assets/sprites/plank_0_n.png
+6941cfd2681ba2f2426d7fc79151e819d96a9e9e41ebc71f0aab24f64a89e4a6  examples/01_platformer/assets/sprites/plank_0_e.png
+8efe50817975e4c142d8725fdef2ffd04314bfe2d9f290db81ad4d5edf22d48f  examples/01_platformer/assets/sprites/plank_1.png
+5f3db1c9d7da50881712f7e1fa6ee7767f7fd74d5f0a8dcb5c15826dbc81ce6a  examples/01_platformer/assets/sprites/plank_1_n.png
+6941cfd2681ba2f2426d7fc79151e819d96a9e9e41ebc71f0aab24f64a89e4a6  examples/01_platformer/assets/sprites/plank_1_e.png
+638153c9d4b442a70dae85ca2aff57f4babed01678f43f86ffd9bf47dd614508  examples/01_platformer/assets/sprites/plank_2.png
+5f3db1c9d7da50881712f7e1fa6ee7767f7fd74d5f0a8dcb5c15826dbc81ce6a  examples/01_platformer/assets/sprites/plank_2_n.png
+6941cfd2681ba2f2426d7fc79151e819d96a9e9e41ebc71f0aab24f64a89e4a6  examples/01_platformer/assets/sprites/plank_2_e.png
+896d36ae4d18487a34771763cd625c05a93c70c24c99625b289b75daa36aba40  examples/01_platformer/assets/sprites/plank_3.png
+4b4cede0aea1756a0b46e4892712bae69011b29051c1385091ce38ffd5dd7b1d  examples/01_platformer/assets/sprites/plank_3_n.png
+6941cfd2681ba2f2426d7fc79151e819d96a9e9e41ebc71f0aab24f64a89e4a6  examples/01_platformer/assets/sprites/plank_3_e.png
+b95bda754fa707c2d5bbcd25e030b1ca062f8a58b9d7abcd8be6cde5b641dfd6  examples/01_platformer/assets/sprites/plank_4.png
+e35608cae5c4cda1483abcea891098dbdd5aeafdf9430806340774283042b548  examples/01_platformer/assets/sprites/plank_4_n.png
+6941cfd2681ba2f2426d7fc79151e819d96a9e9e41ebc71f0aab24f64a89e4a6  examples/01_platformer/assets/sprites/plank_4_e.png
+34139ed56930702c41eb5c3a46e985f6808d9a5e31c730c7b9cf399750c3203c  examples/01_platformer/assets/particles/shock_sparks.json
+2cdab0665813d4d8375a60cde07c5a0d1017fa13e9351407b3f5bb09fab547a2  examples/01_platformer/assets/particles/ground_sparks.json
+a4c20ecd0bc0c448bc0c0c14564104a6c3e96e9c383d6dd2018811961b33d3fe  examples/01_platformer/assets/particles/plank_splinters.json
+858985e3e5804f986ce98a590d28f2ce82054091b6bdad1b1fe3c9f3b95f35ed  examples/01_platformer/assets/particles/frost_wall_hit.json
+978bcc66fcec628627b01158e49132669a1aace5ec6596a1d520c78d765e001b  examples/01_platformer/assets/particles/flame_wall_hit.json
+3a430f3e78e97cd3ee810f708ea81b59c734083ca42c371e03c500263e55f839  examples/01_platformer/assets/sounds/ground_strike.wav
+557700bdf439e56fade4065d294ec2550e1be9002d9a75dd091f7547be93237a  examples/01_platformer/assets/sounds/player_tick.wav
+f2b4a1784c0207aa1006a08fcfbb663151c838392a1f8130f717124a698d24cc  examples/01_platformer/assets/sounds/crate_break.wav
+07c9324ff2c7b2f9248132a17bfd0c0c697843c8ed24e4bd6ccdc2c563610f11  examples/01_platformer/assets/sounds/thunder.wav
+c164eb62673fe85d82615dfabbc762ccbcea67e822769828f927324767a271d0  examples/01_platformer/assets/sounds/fire_crackle.wav
 ```
 
 ### 3.7 The asset session's prompt
@@ -330,6 +371,7 @@ Round 1 changed mechanisms (the break's floor, the rollback, two done-when check
 | 5 | 2026-10-27 | Passed | `--test game -- player:: data::`: 20 passed, among them the new `player::a_burning_tick_pulses_the_hurt_edge_half_with_a_soft_tick` (one `PlayerTicked`, no `PlayerHurt`, `ex10_hurt_edge` over the view at the edge's alpha) and `player::a_blow_fills_the_hurt_edge_with_its_hurt_and_it_is_gone_after_0_4_s` (one `PlayerHurt`, no `PlayerTicked`, 0 and undrawn 25 frames on); `a_blow_tints_the_courier_red_for_a_moment` unchanged and passing; `level-check` 5,048 outputs, 31 tests OK; fmt and clippy exit 0 (clippy asked for a range's `contains`); 01's suite 390 passed, 1 ignored. `Sound::ALL` 82 → 83. `player_clips` falls the edge in the present phase after the fixed step sets it, so a frame's read is a frame's fall under what was set: the tests allow that one frame | `src/features/{player,combat,audio}/`, `tools/content/data/cue_rules/sounds.json`, `tests/game/player.rs`, 01's `README.md`, the generated `assets/` |
 | 6 | 2026-10-27 | Passed, one deviation | `--test game -- props:: saves:: data::`: 64 passed, among them the new `props::a_tossed_bowling_ball_breaks_a_crate_into_five_planks` (each side, 4, 24 and 48 px off: five planks of mass 2, one `CrateBroke`), `props::heavy_blows_break_a_crate_and_light_or_resting_ones_do_not` (iron dropped 16 px, its speed before the touch in 300–600; a keg slid at 400; a ball at 500, resting iron and iron carried at 400 whole), `props::a_thrown_crate_breaks_on_landing_and_a_dropped_one_stays_whole`, `props::a_frozen_crate_shatters_into_no_planks`, `props::a_burning_crate_s_planks_burn_and_fall_in_quietly`, `props::nine_crates_broken_leave_forty_planks_the_oldest_gone`, `saves::burning_planks_save_through_json_and_load_back` and `saves::a_schema_17_save_loads`; the coverage test with `plank` saved and `busy()` breaking a crate; `pit_full: 12000 balls, 26 enemies, 1789806 bytes (1.71 MiB)`; `level-check` 5,049 outputs, 31 tests OK; fmt and clippy exit 0; 01's suite 398 passed, 1 ignored. Schema 17 → 18, `Sound::ALL` 83 → 84. Deviation: `CRATE_BREAK` reads the hitter's whole speed before the step, its speed toward the crate and the closing speed each held to `BREAK_FLOOR`; along the line of centres alone a toss bends under the crate's centre within a few pixels, so its 700 px/s fell short of 5,600 from every gap the done-when names, and a hundredth of slack (`BREAK_SLACK`) keeps a ball tossed at exactly 700. The break list is read before the throws count down, which end a thrown crate's throw at its first blow. Each row's kick is to alternate sides, its direction (side, row ÷ 20) | `src/features/{props,elements,audio}/`, `src/save.rs`, `tools/content/{prefabs/plank.json,data/cue_rules/sounds.json}`, `tests/game/{props,saves,data}.rs`, 01's `README.md`, the generated `assets/` |
 | 7 | 2026-10-27 | Passed | `--test game -- spells::`: 18 passed, among them `the_sprays_reach_further_and_burst_on_what_they_hit` with its wall half reversed (each spray's `ex10_flame_wall_hit` or `ex10_frost_wall_hit` within 24 px of the wall's face line inside 18 frames, no target hit) and the new `a_spray_bursts_its_surface_hit_on_a_crate` (both sprays, within 24 px of the crate's face line inside its height, no target hit); the dummy keeps its hit in that test's unchanged first half; fmt and clippy exit 0; 01's suite 399 passed, 1 ignored. A 24 px circle about a face's middle missed the crate's first contact, at its upper corner, so both checks measure from the face's line | `src/features/toys/systems.rs`, `tests/game/spells.rs`, 01's `README.md` |
+| 8 | 2026-10-27 | Passed, accepted in round 2 | The owner: "accepted" (round 2), after round 1's "Make the hurt edge more subtle, Make the shock effects look more electric". `level-check`: `OK: 5049 owned outputs match`, `Ran 31 tests … OK`, `EffectsContractTests` among them; 01's suite 399 passed, 1 ignored; `repo-check` exit 0; §3.6's check exit 0 over its 41 lines (the 31 sprites with the planks' and the scorch's normal and emissive maps, 5 configs, 5 sounds); the index held Step 8's paths alone. §3.3: the scorch's bottom row (15) spans x 2–46, its middle 24.0 on the anchor (24, 15), its ember's pixel there; `ground_strike` 0.750 s at 0.5, `player_tick` 0.140 s at 0.3, `crate_break` 0.700 s at 0.55, `thunder` 3.200 s at 0.7, `fire_crackle` a 2.000 s loop at 0.35. No contract change. No new sprite, since one would shift every tile ID in `level.tmj`: the particle configs draw existing sprites tinted (`shock_sparks` over `ice_glint`, `ground_sparks` `title_star`, `plank_splinters` `ice_chip`, `frost_wall_hit` `flame_glow`, `flame_wall_hit` `dust`). The palette gains `Ѻ` (the crackle's haze), `Ѱ` (the scorch's ember, in `art.GLOW`) and the edge's nine reds `Ѧ`–`Ѯ`. The game's sRGB target blends in linear light, where a faint red over the dark reads several times its alpha, so the edge ships at 22 and 40 of 255. Review sheet in `perf-runs/20261027-e01sfx-art-review/` (machine-local: seven in-game loops, the shock, strike and edge re-captured for round 2); the scratch driver, its run folder and its build units (11,376 paths, 2.8 GB, by fingerprint hash) and the venv deleted | 01's `tools/{art,effects,generate,props,sfx}.py`, `tools/{sounds,palette}.json`, `tools/README.md`, the generated `assets/` (36 files and the manifest's two volumes), this plan's §3.6 |
 
 ## Follow-ups
 

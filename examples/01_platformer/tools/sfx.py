@@ -461,22 +461,28 @@ def ricochet():
 
 
 def thunder():
-    """A strike overhead: a splitting crack, then a low roll that rumbles on
-    and fades."""
-    duration = 1.8
-    noise, rumble, crack_low, low2 = Noise(0x7D0E), Noise(0x0B11), LowPass(), LowPass()
-    roll_low = LowPass()
+    """A strike overhead (e01sfx, V27): a sharp splitting crack into a long,
+    deep roll that wobbles as it fades, and a distant rumble swelling again
+    about 1.5 s in, over 3.2 s."""
+    duration = 3.2
+    noise, rumble, far = Noise(0x7D0E), Noise(0x0B11), Noise(0x0B12)
+    crack_low, mid_low, mid_high, roll_a, roll_b, far_a, far_b = (LowPass() for _ in range(7))
     samples = []
     for i in range(int(duration * RATE)):
         t = i / RATE
         n = noise()
-        crack = (n - crack_low(n, 1200)) * math.exp(-t / 0.03)
-        # The roll swells after the crack and wobbles as it fades.
-        swell = min(1.0, t / 0.12) * math.exp(-t / 0.55)
-        wobble = 0.7 + 0.3 * math.sin(math.tau * 3.2 * t) * math.sin(math.tau * 1.3 * t + 1)
-        roll = roll_low(low2(rumble(), 260), 120) * 6.0 * swell * wobble
-        samples.append(math.tanh(1.8 * crack + roll))
-    return finish(samples, fade_in=0.0005, fade_out=0.2)
+        crack = (n - crack_low(n, 1400)) * math.exp(-t / 0.022)
+        split = (mid_low(n, 3200) - mid_high(n, 500)) * 0.6 * math.exp(-t / 0.09)
+        swell = min(1.0, t / 0.16) * math.exp(-t / 0.95)
+        wobble = 0.68 + 0.32 * math.sin(math.tau * 2.6 * t) * math.sin(math.tau * 0.9 * t + 1)
+        roll = roll_b(roll_a(rumble(), 190), 85) * 9.0 * swell * wobble
+        u = t - 1.15
+        distant = 0.0
+        if u > 0:
+            rise = min(1.0, u / 0.5) ** 2 * math.exp(-max(0.0, u - 0.5) / 0.6)
+            distant = far_b(far_a(far(), 140), 62) * 11.0 * rise * (0.75 + 0.25 * math.sin(math.tau * 1.7 * t))
+        samples.append(math.tanh(1.8 * crack + split + roll + distant))
+    return finish(samples, fade_in=0.0005, fade_out=0.35)
 
 
 def crackle():
@@ -1978,28 +1984,30 @@ def crate_ignite():
 
 
 def fire_crackle():
-    """A burning crate's fire, one voice by the nearest: a low roar
-    breathing under a wood fire's crackle and the pops of its sap, every
-    swing whole over the 2 s loop."""
+    """Anything alight (e01sfx, V31), one voice by the nearest: a fire's
+    hiss breathing over a soft low flutter, its crackle and the pops of its
+    sap, every swing whole over the 2 s loop."""
     duration, overlap = 2.0, int(.12 * RATE)
-    noise, crackles, low, high, crisp = Noise(0x16B1), Noise(0x16B2), LowPass(), LowPass(), LowPass()
+    noise, crackles = Noise(0x16B1), Noise(0x16B2)
+    low, high, hiss_low, hiss_high, crisp = (LowPass() for _ in range(5))
     count = int(duration * RATE)
     samples, crack, pop_at, pop_freq = [], 0.0, -1.0, 300.0
     for i in range(count + overlap):
         t = i / RATE
         n = noise()
-        breath = .75 + .25 * math.sin(math.tau * 1.5 * t) * math.sin(math.tau * 0.5 * t + 1)
-        roar = (low(n, 420) - high(n, 70)) * breath
+        breath = .72 + .28 * math.sin(math.tau * 1.5 * t) * math.sin(math.tau * 0.5 * t + 1)
+        flutter = (low(n, 320) - high(n, 60)) * (.8 + .2 * math.sin(math.tau * 6 * t))
+        hiss = (hiss_low(n, 4800) - hiss_high(n, 1400)) * breath
         c = crackles()
-        if c > .9985:
-            crack = .8 if c > .9996 else .45
-        crack *= .9
-        snap = crack * (c - crisp(c, 2600))
+        if c > .9982:
+            crack = .85 if c > .9995 else .5
+        crack *= .88
+        snap = crack * (c - crisp(c, 2400))
         if c < -.99975:
-            pop_at, pop_freq = t, 280 + 340 * (c + 1) * 4000
+            pop_at, pop_freq = t, 260 + 640 * (c + 1) * 4000
         u = t - pop_at
-        pop = .6 * math.sin(math.tau * pop_freq * u) * math.exp(-u / .012) if u >= 0 else 0.0
-        samples.append(2.2 * roar + snap + pop)
+        pop = .7 * math.sin(math.tau * pop_freq * u) * math.exp(-u / .01) if u >= 0 else 0.0
+        samples.append(1.5 * flutter + 0.75 * hiss + snap + pop)
     return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
@@ -2477,6 +2485,83 @@ def goblin_yelp():
     return finish(samples, fade_out=0.06)
 
 
+# e01sfx's sounds: a strike on the ground, a damage tick on the player and a
+# crate breaking into planks; `thunder` and `fire_crackle` are redrawn in
+# place.
+
+
+def ground_strike():
+    """A bolt meeting the ground: a buzzing snap, the electric crackle of
+    its sparks and a sizzle hissing away over 0.75 s."""
+    duration = 0.75
+    noise, sparks, flutter = Noise(0x6511), Noise(0x6512), Noise(0x6513)
+    snap_high, hiss_high, hiss_low, buzz_low, tone_low = LowPass(), LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase, spark, sizzle = [], 0.0, 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        snap = (n - snap_high(n, 2600)) * math.exp(-t / 0.005)
+        phase += math.tau * glide(170, 72, min(1.0, t / 0.3)) / RATE
+        gate = 0.5 + 0.5 * math.copysign(1.0, math.sin(phase))
+        buzz = (buzz_low(n, 3200) * gate * 0.8 + tone_low(math.copysign(1.0, math.sin(phase)), 900) * 0.35) \
+            * min(1.0, t / 0.004) * math.exp(-t / 0.11)
+        s = sparks()
+        if s > 1 - 0.012 * math.exp(-t / 0.16):
+            spark = 0.9 if s > 1 - 0.004 else 0.55
+        spark *= 0.86
+        if i % 400 == 0:
+            sizzle = 0.55 + 0.45 * flutter()
+        hiss = (hiss_low(n, 7000) - hiss_high(n, 2800)) * sizzle * min(1.0, t / 0.04) * math.exp(-t / 0.24)
+        samples.append(math.tanh(2.2 * snap + buzz + spark * s + 1.3 * hiss))
+    return finish(samples, fade_in=0.0003, fade_out=0.08)
+
+
+def player_tick():
+    """A damage tick on the courier: a soft, muted thud, low and short, under
+    a hurt's crack, falling tone and yelp."""
+    duration = 0.14
+    noise, low = Noise(0x71C4), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(165, 92, min(1.0, t / 0.08)) / RATE
+        body = math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.034)
+        knock = low(noise(), 480) * 2.4 * math.exp(-t / 0.009)
+        samples.append(math.tanh(1.2 * (body + knock)))
+    return finish(samples, fade_in=0.001, fade_out=0.03)
+
+
+def crate_break():
+    """A crate breaking under a blow: a sharp wooden crack, a splintering
+    crunch, then its planks clattering down and knocking about."""
+    duration = 0.7
+    noise, grit = Noise(0x6B71), Noise(0x6B72)
+    crack_high, crunch_high, crunch_low, click_high = LowPass(), LowPass(), LowPass(), LowPass()
+    knocks = ((0.17, 236, 0.9), (0.24, 318, 0.6), (0.31, 196, 0.75), (0.4, 282, 0.5), (0.52, 214, 0.45),
+              (0.6, 300, 0.3))
+    samples, phase, splinter = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (n - crack_high(n, 2200)) * math.exp(-t / 0.007)
+        phase += math.tau * glide(540, 300, min(1.0, t / 0.05)) / RATE
+        snap = 0.8 * math.sin(phase) * math.exp(-t / 0.035)
+        u = t - 0.012
+        crunch = (crunch_low(n, 3000) - crunch_high(n, 650)) * 1.3 * math.exp(-u / 0.06) if u >= 0 else 0.0
+        g = grit()
+        if 0.02 < t < 0.4 and g > 1 - 0.01 * math.exp(-t / 0.12):
+            splinter = 0.8
+        splinter *= 0.85
+        clatter = 0.0
+        for start, freq, level in knocks:
+            d = t - start
+            if d >= 0:
+                clatter += level * (math.sin(math.tau * freq * d) * math.exp(-d / 0.028)
+                                    + (n - click_high(n, 1500)) * 0.6 * math.exp(-d / 0.004))
+        samples.append(math.tanh(1.8 * crack + snap + crunch + splinter * g + clatter))
+    return finish(samples, fade_in=0.0003, fade_out=0.06)
+
+
 AMBIENCE = {
     'ambience_clearing.wav': ambience_clearing,
     'ambience_aqueduct.wav': ambience_aqueduct,
@@ -2624,11 +2709,8 @@ def build_sounds():
         'goblin_crouch.wav': goblin_crouch(),
         'goblin_dash.wav': goblin_dash(),
         'goblin_yelp.wav': goblin_yelp(),
-        # e01sfx's sounds, each one of today's within its length until its
-        # asset session draws them: the ground strike the fizzle, the tick
-        # the gun's click and the break a crate's falling in.
-        'ground_strike.wav': fizzle(),
-        'player_tick.wav': gun_click(),
-        'crate_break.wav': crate_collapse(),
+        'ground_strike.wav': ground_strike(),
+        'player_tick.wav': player_tick(),
+        'crate_break.wav': crate_break(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

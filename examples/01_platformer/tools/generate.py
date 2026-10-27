@@ -320,12 +320,18 @@ def particle_configs():
         gravity=[0, 40], drag_per_sec=.8, angular_velocity=dict(min=-3, max=3),
         lifetime=dict(min=.8, max=1.4), start_scale=dict(min=.06, max=.12),
         alpha_over_life=[[0, 0], [.15, .9], [.7, .7], [1, 0]], color_over_life=frost_ramp)
+    # e01sfx (V30): shock's sparks over the crisp glint, white-hot at birth
+    # and fading through lilac to violet, darting out and stopping short,
+    # flickering on and off as they go, quicker and twice as many.
     configs['shock_sparks'] = dict(
-        config('spark', 12, 14, .25, 260, .1, spread=360),
-        initial_velocity=dict(kind='radial', speed=dict(min=80, max=260)),
-        lifetime=dict(min=.1, max=.25), gravity=[0, 0], drag_per_sec=3,
-        angular_velocity=dict(min=-12, max=12), alpha_over_life=[[0, 1], [.6, .9], [1, 0]],
-        color_over_life=[[0, [1, .95, 1, 1]], [.3, [.75, .55, 1, 1]], [1, [.45, .25, .85, 0]]])
+        config('ice_glint', 24, 90, .22, 540, 1.2, spread=360),
+        initial_velocity=dict(kind='radial', speed=dict(min=220, max=540)),
+        lifetime=dict(min=.1, max=.22), gravity=[0, 0], drag_per_sec=7,
+        angular_velocity=dict(min=-20, max=20), start_scale=dict(min=.7, max=1.2),
+        scale_over_life=[[0, 1], [.5, .85], [1, .4]],
+        alpha_over_life=[[0, 1], [.18, .25], [.32, 1], [.5, .2], [.64, 1], [.82, .3], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.4, [.92, .86, 1, 1]], [.7, [.7, .46, 1, 1]],
+                         [1, [.46, .24, .92, 1]]])
     configs['burn_out'] = dict(
         config('dust', 16, 16, 1.4, 160, .6, spread=120, burst=True),
         lifetime=dict(min=.8, max=1.4), gravity=[0, -140], drag_per_sec=1.4,
@@ -586,13 +592,35 @@ def particle_configs():
         'ice_chip', 16, burst(16), (.35, .75), dict(kind='radial', speed=dict(min=110, max=260)), (0, 520), 1.4,
         (.12, .26), [[0, 1], [1, .6]], [[0, 1], [.7, .9], [1, 0]],
         [[0, [1, 1, 1, 1]], [.5, [.86, .94, 1, 1]], [1, [.7, .84, .96, 0]]], (-10, 10))
-    # e01sfx, until its asset session: the ground strike's sparks the
-    # strike's, the planks' splinters a crate's falling in, and the sprays'
-    # surface hits their hits on a target.
-    configs['ground_sparks'] = dict(configs['strike_sparks'])
-    configs['plank_splinters'] = dict(configs['crate_collapse'])
-    configs['frost_wall_hit'] = dict(configs['frost_hit'])
-    configs['flame_wall_hit'] = dict(configs['flame_hit'])
+    # e01sfx (V27): a strike on the ground, its sparks bursting low and wide
+    # along it over the white star, a few rising, white to violet; heavy
+    # gravity flattens their hops and they fade as they come down.
+    configs['ground_sparks'] = full(
+        'title_star', 32, burst(32), (.18, .4), cone((0, -1), 176, 240, 700), (0, 2400), 1.4, (.6, 1.2),
+        [[0, 1], [.6, .75], [1, .3]], [[0, 1], [.4, .95], [.75, .3], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.2, [.92, .86, 1, 1]], [.55, [.68, .46, 1, 1]], [1, [.42, .22, .88, 1]]], (-10, 10))
+    # e01sfx (V33): a crate breaking, splinters of its fresh pale pine flung
+    # up and out over the faceted chip, which turns their faces light to
+    # dark as they spin, browning as they fall.
+    configs['plank_splinters'] = full(
+        'ice_chip', 20, burst(20), (.45, .9), cone((0, -1), 200, 160, 480), (0, 900), .8, (.09, .19),
+        [[0, 1], [1, .85]], [[0, 1], [.75, .9], [1, 0]],
+        [[0, [.93, .74, .47, 1]], [.6, [.86, .66, .4, 1]], [1, [.58, .42, .27, 1]]], (-14, 14))
+    # e01sfx (V37): the sprays on stone, wood and whatever else is not alive,
+    # each bit thrown up and out small and bright, then slowing and
+    # swelling. The frost's chips white and fast over the soft glow, its
+    # steam pale blue and faint, as subtle as the chill's frost; the fire's
+    # sparks white-hot to orange over the puff, its soot a dark puff that
+    # hangs on the stone and fades.
+    configs['frost_wall_hit'] = full(
+        'flame_glow', 14, burst(10), (.35, .7), cone((0, -1), 220, 90, 300), (0, -40), 5.0,
+        (.12, .22), [[0, .4], [.25, 1], [1, 2.6]], [[0, 1], [.2, .75], [.6, .35], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.3, [.9, .96, 1, 1]], [1, [.74, .86, 1, 1]]], (-2, 2))
+    configs['flame_wall_hit'] = full(
+        'dust', 16, burst(11), (.55, .95), cone((0, -1), 220, 160, 520), (0, -50), 4.6,
+        (.08, .15), [[0, .7], [.3, .9], [1, 3.6]], [[0, 1], [.3, .9], [.65, .42], [1, 0]],
+        [[0, [1, 1, .85, 1]], [.22, [1, .72, .28, 1]], [.38, [.5, .28, .16, 1]], [.55, [.14, .12, .11, 1]],
+         [1, [.09, .08, .08, 1]]], (-3, 3))
     return configs
 
 

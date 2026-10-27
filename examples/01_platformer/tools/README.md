@@ -1072,17 +1072,45 @@ draw under it, each take's sparks (`tome_<kind>_take_sparks`, 24) and the bound'
 
 ## Sounds and effects
 
-e01sfx's families are placeholders until its asset session draws them: today's art
-copied, cycled or resized to the sizes, counts and caps the game reads, never drawn.
-The shock overlay's frames 2 and 3 (`status_crackle_<class>_<f>`) are copies of 0
-and 1; `effects.build_sfx_art` resizes a burning crate's last char stage to the
-48 × 16 `scorch` (lit) and the shock ring to the 320 × 180 `hurt_edge` (unlit);
-`props.build_planks` shrinks each crate variant in turn to the 28 × 8 board in the
-middle of `plank_0`–`plank_4`'s 32 × 16 frames (lit). The particles `ground_sparks`,
-`plank_splinters`, `frost_wall_hit` and `flame_wall_hit` copy `strike_sparks`,
-`crate_collapse`, `frost_hit` and `flame_hit`, and `shock_sparks` stands as it is.
-The sounds `ground_strike` (the fizzle), `player_tick` (the gun's click) and
-`crate_break` (a crate's falling in) are copies; `thunder` and `fire_crackle` stand
-until they are redrawn. `test_generate.py`'s `EffectsContractTests` holds the
-generated files to the contract the game reads: each sprite's size, four crackle
-frames a class, the particles' caps and the sounds' lengths, volumes and loops.
+e01sfx's families, drawn by its asset session within the contract the game reads.
+`effects.py`: the shock overlay's four frames a class (`status_crackle_<class>_<f>`,
+32, 64 and 128 pixels, unlit, which the game steps through at 16 Hz with its violet
+tint on the even ones): sparks leaping between points on the body's outline, short
+hops bowed out past it and each frame's last a leap across the body, each a
+discharge's jagged path (`bolt`: its midpoint pushed aside by up to `CRACKLE_ROUGH` of
+its length, then each half's, two to four times over) with a fork (`crackle_fork`); on
+the even frames bright, a white spine in a lilac glow (`Σ`, violet `Λ` about it on the
+large class) with a faint dithered haze (`Ѻ`) and a bright node where each lands
+(`crackle_node`), on the odd ones fewer, thinner and fainter, so the overlay flickers
+(`CRACKLE_LOOK`, `crackle_path`). `build_sfx_art` draws the 48 × 16 `scorch` (lit): a
+low charred patch spread wide from its heart on the anchor's pixel (24, 15)
+(`SCORCH_HEART`), a fan of soot rays longest along the ground and breaking up toward
+their tips, black cracks running out through it and a faint violet ember at its heart
+in `Ѱ`, an emissive violet only it uses (`art.GLOW`), its char ramp black through soot
+to ash grey (`CHAR`) and its bottom row's ends trimmed even about the heart; and the
+320 × 180 `hurt_edge` (unlit): a red glow round the view's edges, deeper and darker at
+the corners, clear from a quarter in (`EDGE_REACH`), dithered between the palette's
+red alpha steps `Ѧ`–`Ѭ` and `ѭ Ѯ` with a little grain, faint (22 of 255 at the edges'
+middles, 40 at the corners), since the game blends in linear light, where a faint red
+over the dark reads several times stronger than its alpha. `props.py`: the crates'
+five planks (`plank_0`–`plank_4`, 32 × 16, lit, the board in the box's rows 4–11 with
+the crates' outline): rows 0, 2 and 4 the planked crate's top board snapped at its end
+(`break_end`), its middle board with half its brand and a bent nail (`bent_nail`), its
+darker batten split; rows 1 and 3 the slatted crate's rail split along with its nails
+in and its slat snapped, each in the crates' grain, nails, nail holes (`nail_hole`)
+and knots. `generate.particle_configs`: `shock_sparks` over the crisp `ice_glint`,
+white-hot to violet, darting out, stopping short and flickering (24 alive, 90 a
+second); `ground_sparks`, a strike's burst on the ground, low and wide under heavy
+gravity, white to violet (32); `plank_splinters`, fresh pale pine browning as it falls
+over the faceted `ice_chip` (20); `frost_wall_hit` over the soft glow and
+`flame_wall_hit` over the puff, each bit thrown up and out small and bright, then
+swelling into faint steam or a dark puff of soot (14 and 16). No new sprite: one would
+shift every tile ID in `level.tmj`. `sfx.py` adds `ground_strike` (0.75 s: a buzzing
+snap, the sparks' crackle and a sizzle hissing away), `player_tick` (0.14 s: a soft,
+muted thud) and `crate_break` (0.7 s: a wooden crack, a splintering crunch and the
+planks clattering down), and redraws `thunder` (3.2 s: a sharp crack into a long, deep
+roll, a distant rumble swelling about 1.5 s in) and `fire_crackle` (the 2 s loop: a
+fire's hiss over a soft flutter, its crackle and sap pops, for anything alight).
+`test_generate.py`'s `EffectsContractTests` holds the generated files to the contract
+the game reads: each sprite's size, four crackle frames a class, the particles' caps
+and the sounds' lengths, volumes and loops.

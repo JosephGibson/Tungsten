@@ -110,9 +110,9 @@ def validate_palette(palette):
 
 PALETTE = validate_palette(json.loads((TOOLS / 'palette.json').read_text()))
 # The symbols a lit sprite's emissive map takes, matched by colour: the warm
-# lights and the glowing greens, and e01tomes' ember, pale cyan and violet
-# over white, which no other art uses.
-GLOW = 'yYCcЪЧЯЭЫ'
+# lights and the glowing greens, e01tomes' ember, pale cyan and violet over
+# white, which no other art uses, and e01sfx's dim violet, the scorch's ember.
+GLOW = 'yYCcЪЧЯЭЫѰ'
 
 
 def rng_for(name):

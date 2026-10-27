@@ -926,23 +926,123 @@ def status_outline(size):
                   if any((p[0] + dx, p[1] + dy) not in inside for dx, dy in NEIGHBOURS))
 
 
+# Shocked (e01sfx, V30): four frames a class, which 01 steps through at
+# 16 Hz with its violet tint on the even ones: each even frame a strike of
+# bright arcs, each odd one a fainter flicker of fewer and thinner ones, so
+# the overlay crackles. Per class: the arcs a strike and a flicker, their
+# strokes from the haze in to the spine, how often each arc's halves split,
+# and a node's arm.
+CRACKLE_FRAMES = 4
+CRACKLE_LOOK = {
+    32: dict(arcs=(3, 2), bright=((3, 'Σ'), (1, 'Ψ')), faint=((1, 'Σ'),), splits=2, arm=1),
+    64: dict(arcs=(4, 3), bright=((5, 'Ѻ'), (3, 'Σ'), (1, 'Ψ')), faint=((3, 'Ѻ'), (1, 'Σ')), splits=3, arm=1),
+    128: dict(arcs=(6, 4), bright=((7, 'Ѻ'), (5, 'Λ'), (3, 'Σ'), (1, 'Ψ')), faint=((5, 'Ѻ'), (3, 'Λ'), (1, 'ϕ')),
+              splits=4, arm=2),
+}
+CRACKLE_ROUGH = 0.42  # how far a half's midpoint strays, a share of its length
+
+
+def bolt(a, b, splits, seed, rough=CRACKLE_ROUGH):
+    """A spark's jagged path from `a` to `b`: its midpoint pushed aside by up
+    to `rough` of its length, then each half's, `splits` times over, so its
+    kinks run from long to short, as a discharge's do."""
+    if splits == 0:
+        return [a, b]
+    (x0, y0), (x1, y1) = a, b
+    length = math.hypot(x1 - x0, y1 - y0) or 1.0
+    side = (unit('bolt', seed) - 0.5) * 2 * rough * length
+    mid = ((x0 + x1) / 2 - (y1 - y0) / length * side, (y0 + y1) / 2 + (x1 - x0) / length * side)
+    return bolt(a, mid, splits - 1, (seed, 0), rough)[:-1] + bolt(mid, b, splits - 1, (seed, 1), rough)
+
+
+def crackle_path(size, frame, i):
+    """Arc `i` of a frame: a spark leaping from a point on the body's
+    outline to another a short hop round it, bowed out past the edge, or
+    each frame's last a leap across the body; jagged by `bolt`, its ends
+    the outline's, kept inside the frame."""
+    cx, cy, rx, ry = size / 2, size * 0.55, size * 0.34, size * 0.42
+    look = CRACKLE_LOOK[size]
+    count = look['arcs'][frame % 2]
+    turn = math.tau * (i + 0.8 * unit('crackle-at', size, frame, i)) / count + 1.7 * frame
+    across = i == count - 1
+    way = 1 if unit('crackle-way', size, frame, i) < 0.5 else -1
+    span = (2.0 + 0.9 * unit('crackle-span', size, frame, i) if across
+            else 0.5 + 0.55 * unit('crackle-span', size, frame, i)) * way
+    margin = look['bright'][0][0] // 2 + look['arm'] + 1
+
+    def inside(p):
+        return (min(size - 1 - margin, max(margin, p[0])), min(size - 1 - margin, max(margin, p[1])))
+    start = (cx + rx * math.cos(turn), cy + ry * math.sin(turn))
+    end = (cx + rx * math.cos(turn + span), cy + ry * math.sin(turn + span))
+    if not across:  # a hop leaps out past the edge between its ends
+        bow = 1.25 + 0.2 * unit('crackle-bow', size, frame, i)
+        top = (cx + rx * bow * math.cos(turn + span / 2), cy + ry * min(bow, 1.08) * math.sin(turn + span / 2))
+        path = bolt(start, top, look['splits'] - 1, ('crackle', size, frame, i, 0))[:-1] \
+            + bolt(top, end, look['splits'] - 1, ('crackle', size, frame, i, 1))
+    else:
+        path = bolt(start, end, look['splits'], ('crackle', size, frame, i))
+    return [inside(p) for p in path]
+
+
+def crackle_fork(size, frame, i, path):
+    """A fork off arc `i`'s path: from a kink in its middle half, turned off
+    its way by 25 to 55 degrees, a third to half its length, jagged."""
+    k = len(path) // 4 + int(unit('fork-at', size, frame, i) * (len(path) // 2))
+    (x0, y0), (x1, y1) = path[max(0, k - 1)], path[min(len(path) - 1, k + 1)]
+    turn = math.atan2(y1 - y0, x1 - x0) + math.radians(25 + 30 * unit('fork-turn', size, frame, i)) \
+        * (1 if unit('fork-way', size, frame, i) < 0.5 else -1)
+    reach = math.dist(path[0], path[-1]) * (0.3 + 0.2 * unit('fork-reach', size, frame, i))
+    tip = (path[k][0] + reach * math.cos(turn), path[k][1] + reach * math.sin(turn))
+    margin = CRACKLE_LOOK[size]['arm'] + 1
+    tip = (min(size - 1 - margin, max(margin, tip[0])), min(size - 1 - margin, max(margin, tip[1])))
+    return bolt(path[k], tip, max(1, CRACKLE_LOOK[size]['splits'] - 2), ('fork', size, frame, i))
+
+
+def crackle_node(pixels, p, arm):
+    """A bright node where an arc lands: a white point, light arms and a
+    violet glow about them."""
+    x, y = round(p[0]), round(p[1])
+    for d in range(1, arm + 2):
+        for dx, dy in NEIGHBOURS:
+            pixels[(x + dx * d, y + dy * d)] = 'ϕ' if d <= arm else 'Λ'
+    for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        pixels.setdefault((x + dx, y + dy), 'Λ')
+    pixels[(x, y)] = 'Ψ'
+
+
 def status_crackle(size, frame):
-    """Shocked: violet arcs along the body's outline with a near-white spine,
-    in two frames the game flickers between."""
-    edge = status_outline(size)
-    pixels = {}
-    for i in range(3 + size // 32):
-        a = edge[int(unit('arc', size, frame, i) * len(edge))]
-        b = edge[int(unit('arc-b', size, frame, i) * len(edge))]
-        if math.dist(a, b) > size * 0.45:
-            b = (a[0] + (b[0] - a[0]) * 0.4, a[1] + (b[1] - a[1]) * 0.4)
-        path = zigzag(a, b, 4, ('arc', size, frame, i), max(2, size // 16))
-        glow, spine = Part((size, size)), Part((size, size))
-        glow.limb(path, 3 if size >= 64 else 2)
-        spine.limb(path, 1)
-        pixels.update({p: 'Λ' for p in glow.pixels()})
-        pixels.update({p: 'Σ' if (p[0] + p[1] + frame) % 3 else 'ϕ' for p in spine.pixels()})
-    return to_image(pixels, (size, size))
+    """Shocked: sparks leaping between points on the body's outline, a new
+    path each frame: on the even frames bright, white-cored in a lilac glow
+    (violet about it on the large class) with a faint violet haze, each
+    forking and landing on a bright node; on the odd ones fewer, thinner and
+    fainter, the flicker between."""
+    look = CRACKLE_LOOK[size]
+    strike = frame % 2 == 0
+    strokes = look['bright'] if strike else look['faint']
+    layers = {symbol: set() for _, symbol in strokes}
+    forks = set()
+    ends = []
+    for i in range(look['arcs'][frame % 2]):
+        path = crackle_path(size, frame, i)
+        ends += [path[0], path[-1]]
+        fork = Part((size, size))
+        fork.limb(crackle_fork(size, frame, i, path), 1)
+        forks |= fork.pixels()
+        for width, symbol in strokes:
+            part = Part((size, size))
+            part.limb(path, width)
+            layers[symbol] |= part.pixels()
+    pixels = {p: 'Λ' for p in forks} if strike else {}
+    for _, symbol in strokes:
+        pixels.update({p: symbol for p in layers[symbol]
+                       if symbol != 'Ѻ' or (p[0] + p[1] + frame) % 2 == 0})
+    if strike:
+        pixels.update({p: 'Σ' for p in forks if pixels[p] in ('Λ', 'Ѻ')})
+        for n, p in enumerate(ends[::2] if size < 64 else ends):
+            crackle_node(pixels, p, max(1, look['arm'] - n % 2))
+    else:
+        pixels.update({p: 'Λ' for p in forks if p not in pixels})
+    return to_image({p: s for p, s in pixels.items() if 0 <= p[0] < size and 0 <= p[1] < size}, (size, size))
 
 
 def status_halo(size):
@@ -1045,10 +1145,8 @@ def build_element_art(images):
         images[f'status_ice_{name}'] = status_ice(size)
         images[f'status_ice_{name}_cracked'] = status_ice(size, cracked=True)
         images[f'status_halo_{name}'] = status_halo(size)
-        # Four frames; until e01sfx's asset session draws them, 2 and 3 are
-        # copies of 0 and 1.
-        for frame in range(4):
-            images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame % 2)
+        for frame in range(CRACKLE_FRAMES):
+            images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
     for kind in HURTBOXES:
         for suffix, cracked in (('', False), ('_cracked', True)):
             images[f'status_ice_{kind}{suffix}'] = ice_cube(
@@ -2414,16 +2512,116 @@ def build_foe_art(images):
             images[f'{name}_{f}'] = draw(f)
 
 
+# e01sfx (V27): the ground strike's scorch, its bottom row's middle on the
+# landing; the char ramp black through soot to ash grey, and its ember in
+# the dim violet `Ѱ` that only it uses, an emissive one (`art.GLOW`).
+SCORCH_SIZE = ELEMENT_SIZES['scorch']
+SCORCH_HEART = (24, 15.5)  # the anchor's pixel (24, 15), the landing
+CHAR = ('щ', 'i', 'ь', 'b', 'Φ')
+SCORCH_RAYS = 9
+
+
+def scorch():
+    """A strike's scorch on the ground's top: a charred patch spread low and
+    wide from the landing, a starburst of soot rays fanning up and out of
+    it, longest along the ground, cracks running out through the char with
+    a faint violet ember at its heart, flecks of ash on the rays and a dull
+    edge where the moon catches the char's top. The game fades it."""
+    w, h = SCORCH_SIZE
+    cx, cy = SCORCH_HEART
+    c = {}
+    for y in range(h):  # the patch, a low half-ellipse with a ragged rim
+        for x in range(w):
+            r = math.hypot((x - cx) / 22.5, (y - cy) / 6.5) + (unit('scorch-rag', x // 2, y) - 0.5) * 0.24
+            if r < 1:
+                c[(x, y)] = CHAR[min(4, 1 + int(r * r * 3.6))]
+    for k in range(SCORCH_RAYS):  # the starburst, over the ground's top
+        a = math.pi * (1 + (k + 0.5 + (unit('scorch-ray', k) - 0.5) * 0.6) / SCORCH_RAYS)
+        reach = (6 + 17 * abs(math.cos(a)) ** 1.4) * (0.8 + 0.3 * unit('scorch-reach', k))
+        for s in range(1, round(reach * 2) + 1):
+            s /= 2
+            half = 1.5 * (1 - s / reach) + 0.25
+            px, py = cx + math.cos(a) * s, cy + math.sin(a) * s * 0.8
+            for x in range(round(px - half - 1), round(px + half + 2)):
+                for y in range(round(py - half - 1), round(py + half + 2)):
+                    off = abs((x - px) * math.sin(a) - (y - py) * math.cos(a))
+                    if not (0 <= x < w and 0 <= y < h and off <= half):
+                        continue
+                    depth = 1 if s < reach * 0.4 else (2 if s < reach * 0.7 else 3)
+                    if depth == 3 and unit('scorch-soot', x, y) < 0.35:
+                        continue  # the soot breaks up toward a ray's tip
+                    if (x, y) not in c or CHAR.index(c[(x, y)]) > depth:
+                        c[(x, y)] = CHAR[depth]
+    for k, (a, length) in enumerate(((math.pi * 1.04, 20), (math.pi * 1.2, 13), (math.pi * 1.62, 8),
+                                     (math.pi * 1.8, 14), (math.pi * 1.97, 21))):
+        tip = (cx + math.cos(a) * length, cy + math.sin(a) * length * 0.55)
+        crack = Part(SCORCH_SIZE)
+        crack.limb(zigzag((cx, cy), tip, 4, ('scorch-crack', k), 1.6), 1)
+        for p in crack.pixels():
+            if p in c:
+                c[p] = 'щ'
+                if math.dist(p, (cx, cy)) < 6 and unit('scorch-ember', *p) < 0.35:
+                    c[p] = 'Ѱ'
+    for p in ((23, 15), (24, 15), (24, 14), (22, 15), (25, 15), (23, 14), (24, 13)):
+        c[p] = 'Ѱ'
+    for p in sorted(c):  # ash on the rays, a dull edge along the char's top
+        if c[p] in ('ь', 'b') and unit('scorch-ash', *p) < 0.05:
+            c[p] = 'Ω'
+        elif c[p] in ('b', 'Φ') and (p[0], p[1] - 1) not in c and unit('scorch-rim', *p) < 0.6:
+            c[p] = 'B'
+    # The bottom row's middle on the anchor's pixel: its farther end trimmed
+    # to the nearer's reach.
+    row = sorted(x for x, y in c if y == h - 1)
+    reach = min(cx - row[0], row[-1] - cx)
+    for x in row:
+        if abs(x - cx) > reach:
+            del c[(x, h - 1)]
+    return to_image(c, SCORCH_SIZE)
+
+
+# e01sfx (V31): the hurt edge, stretched over the view, unlit: the red's
+# alpha steps from the palette's `Ѧ`–`Ѭ`, deepening to `ѭ Ѯ` at the corners.
+EDGE_SIZE = ELEMENT_SIZES['hurt_edge']
+EDGE_REDS = (('Ѧ', 'ѧ', 'Ѩ', 'ѩ', 'Ѫ', 'ѫ', 'Ѭ'), ('ѭ', 'Ѯ'))
+EDGE_REACH = 0.25  # clear from a quarter of the view in
+
+
+def hurt_edge():
+    """A soft red glow round the view's edges, deeper and darker at the
+    corners, clear from a quarter of the view in, dithered between the red's
+    alpha steps with a little grain so it reads as pixel art."""
+    w, h = EDGE_SIZE
+    steps = [(PALETTE[s][3], s) for s in EDGE_REDS[0] + EDGE_REDS[1]]
+    # Low: the game blends in linear light, where a faint red over the dark
+    # reads several times stronger than its alpha.
+    edge_peak, corner_peak = 22, 40
+    c = {}
+    for y in range(h):
+        for x in range(w):
+            u = 1 - min(x + 0.5, w - x - 0.5) / (w * EDGE_REACH)
+            v = 1 - min(y + 0.5, h - y - 0.5) / (h * EDGE_REACH)
+            eu, ev = smoothstep(u) ** 3, smoothstep(v) ** 3
+            alpha = edge_peak * (1 - (1 - eu) * (1 - ev)) + (corner_peak - edge_peak) * eu * ev
+            alpha *= 1 + (unit('edge-grain', x, y) - 0.5) * 0.3
+            low_alpha, low = 0, None
+            for high_alpha, high in steps:
+                if alpha <= high_alpha:
+                    pick = high if dither(x, y, (alpha - low_alpha) / (high_alpha - low_alpha)) else low
+                    break
+                low_alpha, low = high_alpha, high
+            else:
+                pick = steps[-1][1]
+            if pick:
+                c[(x, y)] = pick
+    return to_image(c, EDGE_SIZE)
+
+
 def build_sfx_art(images, lit):
     """e01sfx's effects: the ground strike's scorch, lit as the crates are,
-    and the hurt edge over the view, unlit. Today's art stands in at each
-    one's size until its asset session draws them: a burning crate's last
-    char stage and the shock ring, resized. After `polish_art.enrich_art`,
-    which draws the ring."""
-    from PIL import Image
-    for name, source in (('scorch', 'pine_crate_char_2'), ('hurt_edge', 'shock_ring')):
-        images[name] = images[source].resize(ELEMENT_SIZES[name], Image.Resampling.NEAREST)
+    and the hurt edge over the view, unlit."""
+    images['scorch'] = scorch()
     lit.add('scorch')
+    images['hurt_edge'] = hurt_edge()
 
 
 def build_effects(images):

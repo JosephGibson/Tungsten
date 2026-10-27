@@ -6,7 +6,8 @@ decor; a powder keg in red-painted staves with riveted hoops, a skull and a
 fuse, and its four lit frames, the cord shorter in each; a burning crate's
 char overlay in three stages; and the particles of a crate falling in, a keg
 blowing and a rock breaking. The crates and the kegs are lit; the overlay and
-the particles draw unlit over the lit world.
+the particles draw unlit over the lit world. e01sfx adds the five planks a
+crate breaks into, from its own boards, lit as it is.
 """
 import math
 
@@ -314,25 +315,124 @@ def rock_chip():
     return to_image(outline(c))
 
 
-# e01sfx: a broken crate's five planks, each a board of 28 x 8 about the
-# middle of its 32 x 16 frame, its body's box.
+# e01sfx (V33): a broken crate's five planks, each a board of 28 x 8 about
+# the middle of its 32 x 16 frame, its body's box, outlined as the crates
+# are; the game shows a crate's row `i` from the top as `plank_i`.
 PLANKS = 5
 PLANK_FRAME = (32, 16)
 PLANK_BOARD = (2, 4, 30, 12)
 
 
-def build_planks(images, lit):
-    """The planks, lit as the crates are. Until e01sfx's asset session draws
-    them, each is a crate shrunk to the board, its two variants in turn."""
-    from PIL import Image
-
-    from art import canvas
+def board(ends=None):
+    """A plank's board: the box's rows, each cut at its `ends` (left, right)
+    when given, a broken end's jag."""
     x0, y0, x1, y1 = PLANK_BOARD
+    inside = set()
+    for y in range(y0, y1):
+        left, right = ends[y - y0] if ends else (x0, x1 - 1)
+        inside |= {(x, y) for x in range(left, right + 1)}
+    return inside
+
+
+def break_end(c, inside, side, seed, depth=5):
+    """A board's broken end at `side` (1 right, -1 left): each row snapped
+    short by its own reach, the fresh pale wood showing along the break and
+    a splinter or two left standing past it."""
+    x0, y0, x1, y1 = PLANK_BOARD
+    edge = x1 - 1 if side > 0 else x0
+    for y in range(y0, y1):
+        cut = round(unit(seed, 'snap', y) ** 1.6 * depth)
+        if unit(seed, 'splinter', y) < 0.18 and 0 < y - y0 < y1 - y0 - 1:
+            cut = 0  # a splinter stands past the break
+        for t in range(cut):
+            p = (edge - side * t, y)
+            inside.discard(p)
+            c.pop(p, None)
+        end = (edge - side * cut, y)
+        if end in c:
+            c[end] = 'Л'
+            nxt = (end[0] - side, y)
+            if nxt in c and c[nxt] == 'П' and unit(seed, 'fresh', y) < 0.6:
+                c[nxt] = 'Л'
+
+
+def nail_hole(c, x, y):
+    """Where a nail pulled out: a dark hole with a bruised rim."""
+    c[(x, y)] = 'ь'
+    c[(x + 1, y)] = '"'
+    c[(x, y + 1)] = '"'
+
+
+def bent_nail(c, x, y):
+    """A nail driven in and bent over flat along the board: its head, a
+    crooked shank lit along its top, its shadow on the wood beneath."""
+    nail(c, x, y)
+    for t, (dx, dy) in enumerate(((2, 1), (3, 1), (4, 2), (5, 2))):
+        c[(x + dx, y + dy)] = 'ψ' if t % 2 == 0 else 'Φ'
+        if c.get((x + dx, y + dy + 1)) in ('П', 'Л', 'У'):
+            c[(x + dx, y + dy + 1)] = '"'
+
+
+def planked_grooves(c, inside):
+    """Each board shaded as its own: the top row lit, the bottom row in
+    shadow."""
+    x0, y0, x1, y1 = PLANK_BOARD
+    for (x, y) in inside:
+        if y == y0 and c.get((x, y)) == 'П':
+            c[(x, y)] = 'Л'
+        if y == y1 - 1 and c.get((x, y)) == 'П':
+            c[(x, y)] = 'У'
+
+
+def plank(i):
+    """A crate's plank `i`: rows 0, 2 and 4 the planked crate's boards and
+    its batten, 1 and 3 the slatted crate's rail and slat, each broken its
+    own way."""
+    x0, y0, x1, y1 = PLANK_BOARD
+    inside = board()
+    wood = PINE_DARK if i == 4 else PINE
+    c = shade(inside, **wood)
+    if i != 4:
+        planked_grooves(c, inside)
+    grain(c, inside, f'plank-{i}', True, (0.26, 0.3, 0.26, 0.18, 0.22)[i])
+    if i == 0:  # the planked crate's top board: snapped at its right end
+        break_end(c, inside, 1, 'plank-0', 6)
+        nail_hole(c, 10, 6)
+        nail_hole(c, 10, 9)
+        knot(c, 19, 7)
+    elif i == 1:  # the slatted crate's rail: its nails still in, split along
+        nail(c, 5, 6)
+        nail(c, 25, 6)
+        for t in range(13):
+            c[(x0 + 1 + t, 8 + (t > 4) - (t > 9))] = '"'
+        c[(x0, 8)] = 'ь'
+    elif i == 2:  # the planked crate's middle board: half its brand, a bent nail
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                r = math.hypot(x - 15, y - 13)
+                if 5.2 <= r <= 6.4 or (x == 15 and y > 6):
+                    if c.get((x, y)) in ('П', 'Л', 'У'):
+                        c[(x, y)] = '"' if unit('plank-brand', x, y) < 0.8 else 'У'
+        bent_nail(c, 21, 5)
+        knot(c, 6, 8)
+    elif i == 3:  # the slatted crate's slat: snapped at its left end
+        break_end(c, inside, -1, 'plank-3', 7)
+        knot(c, 16, 8)
+        nail_hole(c, 21, 6)
+        nail_hole(c, 26, 9)
+    else:  # the planked crate's batten, darker: nailed, split at its end
+        nail(c, 7, 6)
+        nail(c, 21, 6)
+        for t in range(7):
+            c[(x1 - 1 - t, 7 + (t > 3))] = '"'
+        break_end(c, inside, 1, 'plank-4', 3)
+    return to_image(outline(c, 'o', PLANK_FRAME), PLANK_FRAME)
+
+
+def build_planks(images, lit):
+    """The planks, lit as the crates are."""
     for i in range(PLANKS):
-        crate = images[f'pine_crate_{i % 2}'].crop((LO, LO, HI + 1, HI + 1))
-        im, _ = canvas(PLANK_FRAME)
-        im.paste(crate.resize((x1 - x0, y1 - y0), Image.Resampling.NEAREST), (x0, y0))
-        images[f'plank_{i}'] = im
+        images[f'plank_{i}'] = plank(i)
         lit.add(f'plank_{i}')
 
 

@@ -150,7 +150,7 @@
   "ex10_thunder_sfx": {
     "looping": false,
     "path": "sounds/thunder.wav",
-    "volume": 0.75
+    "volume": 0.7
   },
   "ex10_crackle_sfx": {
     "looping": false,
@@ -552,7 +552,7 @@
   "ex10_ground_strike_sfx": {
     "looping": false,
     "path": "sounds/ground_strike.wav",
-    "volume": 0.45
+    "volume": 0.5
   },
   "ex10_player_tick_sfx": {
     "looping": false,
