@@ -61,7 +61,7 @@ use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::props::{
     self,
-    components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock},
+    components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone, StoneSize},
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
@@ -135,6 +135,10 @@ pub struct SaveGame {
     /// lie about.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub planks: Vec<PlankSave>,
+    /// The hollow's rubble stones (e01hollow), apart from `props` as the
+    /// planks are; none written while none lie about.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stones: Vec<StoneSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
@@ -1339,6 +1343,17 @@ pub struct PlankSave {
     pub fuel: Fuel,
 }
 
+/// A rubble stone: its size, its art's variant and its body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoneSave {
+    pub id: u64,
+    pub size: StoneSize,
+    pub variant: usize,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+}
+
 /// The live run as a save; `None` with no run or a dead player.
 #[must_use]
 pub fn capture(world: &World) -> Option<SaveGame> {
@@ -1480,7 +1495,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     bullets.sort_by_key(|bullet| bullet.id);
     let mut props: Vec<PropSave> = props::all(world)
         .into_iter()
-        .filter(|&entity| !world.has::<Plank>(entity))
+        .filter(|&entity| !world.has::<Plank>(entity) && !world.has::<Stone>(entity))
         .filter_map(|entity| capture_prop(world, entity))
         .collect();
     props.sort_by_key(|prop| prop.id);
@@ -1499,6 +1514,17 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     planks.sort_by_key(|plank| plank.id);
+    let mut stones: Vec<StoneSave> = world
+        .query::<(Entity, &Stone, &SaveId, &Position, &Velocity)>()
+        .map(|(_, stone, id, at, velocity)| StoneSave {
+            id: id.0,
+            size: stone.size,
+            variant: stone.variant,
+            position: at.0.to_array(),
+            velocity: velocity.0.to_array(),
+        })
+        .collect();
+    stones.sort_by_key(|stone| stone.id);
     let snowballs = snowball::flying(world)
         .into_iter()
         .filter_map(|(id, entity)| {
@@ -1593,6 +1619,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         props,
         snowballs,
         planks,
+        stones,
     })
 }
 
@@ -1947,6 +1974,12 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     for plank in &save.planks {
         restore_plank(world, plank);
     }
+    for stone in &save.stones {
+        let at = Vec2::from(stone.position);
+        let kind = PropKind::Stone(stone.size);
+        let entity = props::restore(world, kind, at, SaveId(stone.id), stone.variant);
+        world.insert(entity, Velocity(Vec2::from(stone.velocity)));
+    }
     for saved in &save.snowballs {
         let ball = snowball::spawn(world, Vec2::from(saved.position));
         let flying = Snowball {
@@ -2071,7 +2104,7 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
         world.insert(entity, fuel);
     }
     match saved.kind {
-        PropKind::Crate | PropKind::Rock | PropKind::Plank => {}
+        PropKind::Crate | PropKind::Rock | PropKind::Plank | PropKind::Stone(_) => {}
         PropKind::Keg => world.insert(
             entity,
             Keg {

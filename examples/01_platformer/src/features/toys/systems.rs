@@ -840,9 +840,9 @@ pub fn bounds(world: &mut World) {
 }
 
 /// `iron_friction`, in the overlap phase after the physics step: the solver
-/// has no friction, so iron, a prop (a crate or a keg as wood, a bomb or a
-/// rock rolling) or a dummy resting on something loses horizontal speed, a
-/// frozen one less, a scrap a sixteenth.
+/// has no friction, so iron, a prop (a crate, a keg or a stone as wood, a
+/// bomb or a rock rolling) or a dummy resting on something loses horizontal
+/// speed, a frozen one less, a scrap a sixteenth.
 pub fn friction(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let Some(events) = world.get_resource::<EventQueue<tungsten::core::CollisionEvent>>() else {

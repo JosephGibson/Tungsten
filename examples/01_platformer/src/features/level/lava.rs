@@ -14,8 +14,8 @@
 //!
 //! An uncrusted basin takes the bodies that fall into its burn ([`take`]):
 //! a keg or a goblin's bomb goes off, a frozen prop is left to the heat's
-//! thermal shock, and every other ball, block, scrap, crate or rock goes in
-//! steam and embers, with one sizzle a basin a step.
+//! thermal shock, and every other ball, block, scrap, crate, rock or stone
+//! goes in steam and embers, with one sizzle a basin a step.
 
 use glam::Vec2;
 use tungsten::SceneEntity;

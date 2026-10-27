@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use tungsten::core::Entity;
 
-/// What a prop is: a pine crate, a powder keg, a goblin's bomb or rock, or
-/// a broken crate's plank.
+/// What a prop is: a pine crate, a powder keg, a goblin's bomb or rock, a
+/// broken crate's plank, or a rubble stone of its size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PropKind {
@@ -13,6 +13,31 @@ pub enum PropKind {
     Bomb,
     Rock,
     Plank,
+    Stone(StoneSize),
+}
+
+/// A rubble stone's size (e01hollow).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StoneSize {
+    Small,
+    Medium,
+    Large,
+}
+
+impl StoneSize {
+    /// Every size, smallest first.
+    pub const ALL: [StoneSize; 3] = [StoneSize::Small, StoneSize::Medium, StoneSize::Large];
+
+    /// Its name in its prefab's and its art's IDs.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            StoneSize::Small => "small",
+            StoneSize::Medium => "medium",
+            StoneSize::Large => "large",
+        }
+    }
 }
 
 /// A pine crate, which catches fire, burns down and falls in: its art's
@@ -74,6 +99,18 @@ pub struct Bomb {
 /// prefab names it `rock`; its throw's credit is a `Throws` entry.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub struct Rock {
+    #[serde(skip)]
+    pub variant: usize,
+}
+
+/// A rubble stone of the hollow's basalt (e01hollow), which the map sets
+/// down in heaps: pushed, thrown and blasted as a goblin's rock is, it
+/// slides as a crate does and never burns or freezes. Its size, its
+/// prefab's, and its art's variant, by its save ID's parity. Its prefab
+/// names it `stone`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub struct Stone {
+    pub size: StoneSize,
     #[serde(skip)]
     pub variant: usize,
 }

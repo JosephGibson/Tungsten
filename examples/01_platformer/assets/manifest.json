@@ -2120,6 +2120,15 @@
     "snowball": {
       "path": "prefabs/snowball.json"
     },
+    "stone_large": {
+      "path": "prefabs/stone_large.json"
+    },
+    "stone_medium": {
+      "path": "prefabs/stone_medium.json"
+    },
+    "stone_small": {
+      "path": "prefabs/stone_small.json"
+    },
     "tome_arcane": {
       "path": "prefabs/tome_arcane.json"
     },

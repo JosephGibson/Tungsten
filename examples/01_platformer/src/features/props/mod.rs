@@ -17,7 +17,10 @@
 //! stays, [`ROCK_CAP`] at most, the oldest crumbling. A crate hit hard
 //! enough breaks into five planks ([`break_crate`], e01sfx), which burn as
 //! it does for at most [`PLANK_BURN_SECS`] and fall in quietly,
-//! [`PLANK_CAP`] at most, the oldest crumbling.
+//! [`PLANK_CAP`] at most, the oldest crumbling. The hollow's rubble stones
+//! (e01hollow), three sizes the map sets down in heaps, are bodies as a
+//! rock is that slide as a crate does, never burning or freezing, with no
+//! cap, since none is summoned.
 
 pub mod components;
 pub mod draw;
@@ -42,7 +45,7 @@ use crate::features::run::Run;
 use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
-use components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock};
+use components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone};
 
 /// The props' prefabs, by their manifest IDs.
 pub const CRATE_PREFAB: &str = "crate";
@@ -50,6 +53,7 @@ pub const KEG_PREFAB: &str = "keg";
 pub const BOMB_PREFAB: &str = "goblin_bomb";
 pub const ROCK_PREFAB: &str = "goblin_rock";
 pub const PLANK_PREFAB: &str = "plank";
+pub const STONE_PREFABS: [&str; 3] = ["stone_small", "stone_medium", "stone_large"];
 /// A crate's half size and its centre from its sprite's top-left, as its
 /// prefab sets them, and a keg's.
 pub const CRATE_HALF: Vec2 = Vec2::splat(28.0);
@@ -66,6 +70,19 @@ pub const ROCK_CENTRE: Vec2 = Vec2::splat(8.0);
 /// its prefab sets them.
 pub const PLANK_HALF: Vec2 = Vec2::new(14.0, 4.0);
 pub const PLANK_CENTRE: Vec2 = Vec2::new(16.0, 8.0);
+/// Each stone size's half size and its centre from its art's top-left, as
+/// its prefab sets them: a small and a medium stone on 32 px art, a large
+/// one on 64, each box's bottom the art's lowest opaque row.
+pub const STONE_HALVES: [Vec2; 3] = [
+    Vec2::new(9.0, 7.0),
+    Vec2::new(13.0, 10.0),
+    Vec2::new(20.0, 15.0),
+];
+pub const STONE_CENTRES: [Vec2; 3] = [
+    Vec2::new(16.0, 25.0),
+    Vec2::new(16.0, 22.0),
+    Vec2::new(32.0, 49.0),
+];
 /// Most summoned crates and most summoned kegs at once, the map's own
 /// besides (Q45): one placed past its cap replaces the oldest summoned,
 /// which poofs.
@@ -126,6 +143,7 @@ impl Plugin for PropsPlugin {
         world.register_component::<Bomb>("goblin_bomb");
         world.register_component::<Rock>("rock");
         world.register_component::<Plank>("plank");
+        world.register_component::<Stone>("stone");
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
         ensure_phases(schedule);
         let tick = system("props_tick", systems::tick);
@@ -144,8 +162,8 @@ impl Plugin for PropsPlugin {
     }
 }
 
-/// What `entity` is, a crate, a keg, a bomb, a rock or a plank; None for
-/// anything else.
+/// What `entity` is, a crate, a keg, a bomb, a rock, a plank or a stone;
+/// None for anything else.
 #[must_use]
 pub fn kind(world: &World, entity: Entity) -> Option<PropKind> {
     if world.has::<Crate>(entity) {
@@ -159,18 +177,20 @@ pub fn kind(world: &World, entity: Entity) -> Option<PropKind> {
     } else if world.has::<Plank>(entity) {
         Some(PropKind::Plank)
     } else {
-        None
+        world
+            .get::<Stone>(entity)
+            .map(|stone| PropKind::Stone(stone.size))
     }
 }
 
-/// Whether `entity` is a crate, a keg, a bomb, a rock or a plank.
+/// Whether `entity` is a crate, a keg, a bomb, a rock, a plank or a stone.
 #[must_use]
 pub fn is_prop(world: &World, entity: Entity) -> bool {
     kind(world, entity).is_some()
 }
 
-/// Every crate, keg, bomb, rock and plank, from their own columns: a pass
-/// over the props never walks the balls (P6).
+/// Every crate, keg, bomb, rock, plank and stone, from their own columns:
+/// a pass over the props never walks the balls (P6).
 #[must_use]
 pub fn all(world: &World) -> Vec<Entity> {
     world
@@ -180,6 +200,7 @@ pub fn all(world: &World) -> Vec<Entity> {
         .chain(world.query::<(Entity, &Bomb)>().map(|(entity, _)| entity))
         .chain(world.query::<(Entity, &Rock)>().map(|(entity, _)| entity))
         .chain(world.query::<(Entity, &Plank)>().map(|(entity, _)| entity))
+        .chain(world.query::<(Entity, &Stone)>().map(|(entity, _)| entity))
         .collect()
 }
 
@@ -192,6 +213,7 @@ pub const fn half(kind: PropKind) -> Vec2 {
         PropKind::Bomb => Vec2::splat(BOMB_RADIUS),
         PropKind::Rock => Vec2::splat(ROCK_RADIUS),
         PropKind::Plank => PLANK_HALF,
+        PropKind::Stone(size) => STONE_HALVES[size as usize],
     }
 }
 
@@ -204,6 +226,7 @@ pub const fn centre(kind: PropKind) -> Vec2 {
         PropKind::Bomb => BOMB_CENTRE,
         PropKind::Rock => ROCK_CENTRE,
         PropKind::Plank => PLANK_CENTRE,
+        PropKind::Stone(size) => STONE_CENTRES[size as usize],
     }
 }
 
@@ -216,10 +239,12 @@ pub const fn prefab(kind: PropKind) -> &'static str {
         PropKind::Bomb => BOMB_PREFAB,
         PropKind::Rock => ROCK_PREFAB,
         PropKind::Plank => PLANK_PREFAB,
+        PropKind::Stone(size) => STONE_PREFABS[size as usize],
     }
 }
 
-/// A kind's cap: bombs have none, bounded by the goblins' pace.
+/// A kind's cap: bombs have none, bounded by the goblins' pace, and stones
+/// none, the map's own and never summoned.
 #[must_use]
 pub const fn cap(kind: PropKind) -> usize {
     match kind {
@@ -228,6 +253,7 @@ pub const fn cap(kind: PropKind) -> usize {
         PropKind::Bomb => usize::MAX,
         PropKind::Rock => ROCK_CAP,
         PropKind::Plank => PLANK_CAP,
+        PropKind::Stone(_) => usize::MAX,
     }
 }
 
@@ -260,9 +286,9 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 }
 
 /// Spawns a prop of `kind` with its body's centre at `at`, at once and
-/// quietly, with the run's next save ID: a crate's or a rock's art by the
-/// ID's parity, a crate's fuel whole; a plank its first art and its fuel
-/// whole, which a break sets.
+/// quietly, with the run's next save ID: a crate's, a rock's or a stone's
+/// art by the ID's parity, a crate's fuel whole; a plank its first art and
+/// its fuel whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
     if kind == PropKind::Rock {
@@ -288,6 +314,13 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
         );
         systems::show_variant(world, prop, variant);
     }
+    if let PropKind::Stone(size) = kind {
+        let variant = world
+            .get::<SaveId>(prop)
+            .map_or(0, |id| (id.0 % 2) as usize);
+        world.insert(prop, Stone { size, variant });
+        systems::show_stone(world, prop, size, variant);
+    }
     if kind == PropKind::Plank {
         world.insert(prop, Plank { variant: 0 });
         world.insert(
@@ -305,7 +338,8 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
 
 /// A saved prop of `kind` set back with its point at `at`, the top-left of
 /// its art, under its save `id`, at once and quietly: a load's, which puts
-/// its state over it. A crate or a rock takes its art's `variant`.
+/// its state over it. A crate, a rock, a plank or a stone takes its art's
+/// `variant`.
 pub fn restore(world: &mut World, kind: PropKind, at: Vec2, id: SaveId, variant: usize) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at, 1.0);
     world.insert(prop, id);
@@ -321,6 +355,10 @@ pub fn restore(world: &mut World, kind: PropKind, at: Vec2, id: SaveId, variant:
         PropKind::Plank => {
             world.insert(prop, Plank { variant });
             systems::show_plank(world, prop, variant);
+        }
+        PropKind::Stone(size) => {
+            world.insert(prop, Stone { size, variant });
+            systems::show_stone(world, prop, size, variant);
         }
         PropKind::Keg | PropKind::Bomb => {}
     }

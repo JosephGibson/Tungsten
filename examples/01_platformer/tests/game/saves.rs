@@ -44,8 +44,10 @@ use example_01_platformer::features::player::components::{Player, StaffGlow};
 use example_01_platformer::features::player::{
     BODY_OFFSET, MAX_HEALTH, PICKUP_RADIUS, PLAYER_HALF,
 };
-use example_01_platformer::features::props::components::{Bomb, Crate, Keg, PropKind, Rock};
-use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF};
+use example_01_platformer::features::props::components::{
+    Bomb, Crate, Keg, PropKind, Rock, Stone, StoneSize,
+};
+use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF, STONE_HALVES};
 use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
@@ -237,6 +239,12 @@ fn busy(harness: &mut UiHarness) {
         Vec2::new(2050.0, TOP - CRATE_HALF.y - 0.5),
     );
     props::break_crate(world, broken, Vec2::new(-200.0, 0.0));
+    // A rubble stone (e01hollow) at the ground's east end.
+    props::spawn(
+        world,
+        PropKind::Stone(StoneSize::Medium),
+        Vec2::new(2380.0, TOP - STONE_HALVES[1].y - 0.5),
+    );
     harness.step(1);
 }
 
@@ -591,6 +599,16 @@ fn lists(kind: &str) -> Lists {
                 presentation: drawn.to_vec(),
             }
         }
+        // A rubble stone: its size and art, saved whole; it takes no frost.
+        "stone" => Lists {
+            saved: [&at[..], &[name::<Velocity>(), name::<Stone>()]].concat(),
+            rebuilt: [
+                &body[..],
+                &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+            ]
+            .concat(),
+            presentation: drawn.to_vec(),
+        },
         // A broken crate's planks: its art, its fire and its frost, each
         // saved whole; their tumble is presentation.
         "plank" => {
@@ -765,6 +783,8 @@ fn kind(world: &World, entity: Entity) -> &'static str {
         "rock"
     } else if world.has::<example_01_platformer::features::props::components::Plank>(entity) {
         "plank"
+    } else if world.has::<Stone>(entity) {
+        "stone"
     } else if world.has::<example_01_platformer::features::enemies::components::Snowball>(entity) {
         "snowball"
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
@@ -833,6 +853,7 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "rock",
             "scrap",
             "snowball",
+            "stone",
             "troll",
             "wisp"
         ]
@@ -3593,6 +3614,51 @@ fn burning_planks_save_through_json_and_load_back() {
             want.left
         );
     }
+}
+
+#[test]
+fn three_stones_of_three_sizes_save_through_json_and_load_back() {
+    let (mut harness, _) = grounded();
+    let world = harness.world_mut();
+    for (size, x) in StoneSize::ALL.into_iter().zip([1500.0, 1600.0, 1700.0]) {
+        let half = STONE_HALVES[size as usize];
+        props::spawn(
+            world,
+            PropKind::Stone(size),
+            Vec2::new(x, TOP - half.y - 0.5),
+        );
+    }
+    harness.step(30);
+    let saved = capture(&harness);
+    assert_eq!(saved.stones.len(), 3, "the stones, apart from the props");
+    assert!(
+        saved
+            .props
+            .iter()
+            .all(|prop| !matches!(prop.kind, PropKind::Stone(_)))
+    );
+    let sizes: Vec<StoneSize> = saved.stones.iter().map(|stone| stone.size).collect();
+    assert_eq!(sizes, StoneSize::ALL);
+    let variants: BTreeSet<usize> = saved.stones.iter().map(|stone| stone.variant).collect();
+    assert_eq!(variants.len(), 2, "both looks, by the IDs' parity");
+    // Through JSON, as Continue reads a slot.
+    let loaded: SaveGame = serde_json::from_value(json(&saved)).expect("a save loads");
+    let mut fresh = super::harness();
+    load(&mut fresh, loaded);
+    let mut back: Vec<(u64, StoneSize, usize, [f32; 2])> = fresh
+        .world()
+        .query::<(Entity, &SaveId, &Stone, &Position)>()
+        .map(|(_, id, stone, at)| (id.0, stone.size, stone.variant, at.0.to_array()))
+        .collect();
+    back.sort_by_key(|(id, ..)| *id);
+    let kept: Vec<(u64, StoneSize, usize, [f32; 2])> = saved
+        .stones
+        .iter()
+        .map(|stone| (stone.id, stone.size, stone.variant, stone.position))
+        .collect();
+    assert_eq!(back, kept, "each at its place, size and look");
+    let resaved = capture(&fresh);
+    assert_eq!(resaved.stones, saved.stones, "and saved again the same");
 }
 
 #[test]

@@ -8,9 +8,12 @@
 //! rolls with its fuse turning on it, while a goblin's rock stays a body
 //! that rolls, the oldest crumbling past the cap; and a heavy blow or a
 //! troll's throw breaks a crate into five planks, which burn and fall in
-//! quietly, the oldest crumbling past theirs.
+//! quietly, the oldest crumbling past theirs; and the hollow's stones rest
+//! at their sizes, knock as they land, never light and hurt what a push
+//! drops them on.
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
 use example_01_platformer::features::elements::{self};
@@ -18,22 +21,22 @@ use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::lightning;
-use example_01_platformer::features::props::components::{Fuel, FuseEmitter, PropKind};
+use example_01_platformer::features::props::components::{Fuel, FuseEmitter, PropKind, StoneSize};
 use example_01_platformer::features::props::systems::bomb_tip;
 use example_01_platformer::features::props::{
     self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
-    SPREAD_AFTER,
+    SPREAD_AFTER, STONE_HALVES,
 };
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
-use tungsten::core::{Entity, Position, RigidBody, Transform, Velocity, World};
+use tungsten::core::{Collider, Entity, Position, RigidBody, Shape, Transform, Velocity, World};
 use tungsten::kit::{DamagedPart, ImmunePart, Stats};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, apply, dummy_at};
-use super::{aim_at, ball, body, bursts, choose, ground, pin_camera, run, stand};
+use super::{aim_at, ball, body, bursts, choose, floor, ground, pin_camera, run, stand};
 
 /// A run on the sky's ground at one step a frame, the courier at `x`, the
 /// camera held over it, with mana to spare.
@@ -787,5 +790,128 @@ fn nine_crates_broken_leave_forty_planks_the_oldest_gone() {
     assert!(
         first.iter().all(|&plank| !alive(&harness, plank)),
         "the oldest went"
+    );
+}
+
+/// A stone of `size` resting on the sky's ground, its centre at `x`.
+fn stone(harness: &mut UiHarness, size: StoneSize, x: f32) -> Entity {
+    prop(harness, PropKind::Stone(size), x)
+}
+
+#[test]
+fn each_stone_size_spawns_at_its_mass_and_box_and_rests_on_the_ground() {
+    let (mut harness, _) = sky(300.0);
+    let stones: Vec<(StoneSize, Entity)> = StoneSize::ALL
+        .into_iter()
+        .zip([800.0, 1000.0, 1200.0])
+        .map(|(size, x)| (size, stone(&mut harness, size, x)))
+        .collect();
+    harness.step(60);
+    let world = harness.world();
+    let wanted = [10.0, 15.0, 20.0].into_iter().zip(STONE_HALVES);
+    for ((size, stone), (mass, half)) in stones.into_iter().zip(wanted) {
+        let body = world.get::<RigidBody>(stone).unwrap();
+        assert!(
+            (1.0 / body.inv_mass - mass).abs() < 1e-3,
+            "{size:?}: mass {mass}"
+        );
+        let collider = world.get::<Collider>(stone).unwrap();
+        assert_eq!(
+            collider.shape,
+            Shape::Aabb { half_extents: half },
+            "{size:?}: its box"
+        );
+        assert_eq!(props::kind(world, stone), Some(PropKind::Stone(size)));
+        let at = world.get::<Position>(stone).unwrap().0 + collider.offset;
+        assert!(
+            (at.y + half.y - TOP).abs() < 1.0,
+            "{size:?} rests on the ground: {at}"
+        );
+        assert!(
+            world.get::<Velocity>(stone).unwrap().0.length() < 1.0,
+            "{size:?} at rest"
+        );
+    }
+}
+
+#[test]
+fn the_force_push_throws_a_large_stone_off_a_ledge_onto_the_dummy() {
+    // A heavy stone pushed along the floor slides too slowly to hurt
+    // (2,700 / 20 px/s); off a ledge 300 px over the floor, it lands hard.
+    let (mut harness, player) = sky(300.0);
+    let ledge = TOP - 300.0;
+    floor(
+        &mut harness,
+        Vec2::new(800.0, ledge + 50.0),
+        Vec2::new(100.0, 50.0),
+    );
+    harness.step(1);
+    stand(&mut harness, player, 760.0, ledge);
+    harness.step(10);
+    // Over the ledge's east end but 5 px of it, which the push's few px
+    // slide clears, and the dummy under it.
+    let half = STONE_HALVES[2];
+    let at = Vec2::new(900.0 + half.x - 5.0, ledge - half.y - 0.5);
+    let large = props::spawn(harness.world_mut(), PropKind::Stone(StoneSize::Large), at);
+    let dummy = dummy_at(&mut harness, 935.0);
+    harness.step(10);
+    pin_camera(&mut harness, Vec2::new(400.0, 400.0));
+    let aim = body(&harness, large);
+    aim_at(&mut harness, aim);
+    choose(&mut harness, 4);
+    harness.harness_mut().press_action("cast");
+    let mut struck = 0.0;
+    for _ in 0..90 {
+        harness.step(1);
+        harness.harness_mut().release_action("cast");
+        let world = harness.world();
+        struck += harness
+            .harness()
+            .events::<DamagedPart>()
+            .filter(|part| part.entity == dummy && part.kinds.has(world, Kind::Physical.tag()))
+            .map(|part| part.amount)
+            .sum::<f32>();
+        if struck > 0.0 {
+            break;
+        }
+    }
+    assert!(struck > 0.0, "the dummy takes the stone's blow");
+}
+
+#[test]
+fn the_flamethrower_held_on_a_stone_lights_nothing() {
+    let (mut harness, _) = sky(730.0);
+    let rubble = stone(&mut harness, StoneSize::Medium, 900.0);
+    harness.step(2);
+    let at = body(&harness, rubble);
+    let mut lit = 0;
+    let came = spray_until(&mut harness, 1, at, 90, |h| {
+        lit += sounds(h, Sound::CrateIgnited);
+        false
+    });
+    assert!(!came && lit == 0, "nothing catches");
+    let world = harness.world();
+    assert!(world.is_alive(rubble), "the stone stays");
+    assert!(!world.has::<Fuel>(rubble) && !world.has::<Frozen>(rubble));
+}
+
+#[test]
+fn a_stone_landing_from_three_hundred_pixels_knocks() {
+    let (mut harness, _) = sky(300.0);
+    let half = STONE_HALVES[0];
+    let at = Vec2::new(900.0, TOP - 300.0 - half.y);
+    let rubble = props::spawn(harness.world_mut(), PropKind::Stone(StoneSize::Small), at);
+    let mut knocks = 0;
+    for _ in 0..60 {
+        harness.step(1);
+        knocks += sounds(&harness, Sound::StoneKnock);
+        if knocks > 0 {
+            break;
+        }
+    }
+    assert_eq!(knocks, 1, "one knock as it lands");
+    assert!(
+        body(&harness, rubble).y > TOP - 2.0 * half.y,
+        "on the ground"
     );
 }

@@ -31,7 +31,7 @@ use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::props::{
     self, BURNING_IMPACT,
-    components::{Crate, Fuel, Keg, Rock},
+    components::{Crate, Fuel, Keg, Rock, Stone},
 };
 use crate::features::run::Run;
 use crate::features::toys::components::{
@@ -861,6 +861,11 @@ fn is_body(world: &World, entity: Entity) -> bool {
     is_iron(world, entity) || world.has::<Ball>(entity) || props::is_prop(world, entity)
 }
 
+/// Whether a body takes frost: every body but a stone, the hollow's rock.
+fn freezes(world: &World, entity: Entity) -> bool {
+    is_body(world, entity) && !world.has::<Stone>(entity)
+}
+
 /// Whether a body burns: a small ball on fire, a crate on fire or a keg's
 /// lit fuse, which take no frost.
 fn burns(world: &World, entity: Entity) -> bool {
@@ -872,9 +877,9 @@ fn burns(world: &World, entity: Entity) -> bool {
 
 /// Chills a body, iron, a ball, a crate or a keg, by `amount` this step,
 /// frozen at a full coating with its frost burst at `contact` and its cue;
-/// a burning one takes no frost.
+/// a burning one and a stone take no frost.
 pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
-    if !is_body(world, iron) || world.has::<Frozen>(iron) || burns(world, iron) {
+    if !freezes(world, iron) || world.has::<Frozen>(iron) || burns(world, iron) {
         return;
     }
     let total = freeze_amount(world, iron) + amount;
@@ -905,9 +910,9 @@ pub fn chill(world: &mut World, iron: Entity, amount: f32, contact: Vec2) {
 }
 
 /// Freezes a body through: its chill gives way to [`Frozen`] for
-/// [`FROZEN_SECS`] and it wakes. A burning body does not freeze.
+/// [`FROZEN_SECS`] and it wakes. A burning body and a stone do not freeze.
 pub fn freeze_iron(world: &mut World, iron: Entity) {
-    if is_body(world, iron) && !world.has::<Frozen>(iron) && !burns(world, iron) {
+    if freezes(world, iron) && !world.has::<Frozen>(iron) && !burns(world, iron) {
         world.insert(iron, Frozen { left: FROZEN_SECS });
         world.remove_component::<Chill>(iron);
         wake(world, iron);
@@ -1253,8 +1258,8 @@ pub fn iron_killed(world: &World, target: Entity) -> bool {
 /// goes off, credited to its own throw's thrower (a troll's), else the
 /// thrower of what met it, else the player; a burning
 /// crate's hit on a target adds [`BURNING_IMPACT`] fire; and a goblin's rock
-/// meeting anything at [`SHATTER_SPEED`] or more clacks, at most
-/// [`IMPACT_BURSTS_PER_STEP`] a step. Last, each crate a hit breaks
+/// meeting anything at [`SHATTER_SPEED`] or more clacks, and a stone knocks,
+/// each at most [`IMPACT_BURSTS_PER_STEP`] a step. Last, each crate a hit breaks
 /// ([`crate_hits`]) breaks into its planks, once a step in save-ID order,
 /// after its own blows and landings.
 pub fn body_impacts(world: &mut World) {
@@ -1269,6 +1274,7 @@ pub fn body_impacts(world: &mut World) {
     let mut hard: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let mut blown: BTreeMap<Option<SaveId>, (Entity, Option<u64>)> = BTreeMap::new();
     let mut clacks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
+    let mut knocks: BTreeMap<Option<SaveId>, Vec2> = BTreeMap::new();
     let throws = world.get_resource::<Throws>();
     for event in events.iter_current() {
         let va = before_step(world, event.a);
@@ -1304,6 +1310,13 @@ pub fn body_impacts(world: &mut World) {
                 && let Some(centre) = body_centre(world, this)
             {
                 clacks
+                    .entry(world.get::<SaveId>(this).copied())
+                    .or_insert(centre);
+            }
+            if world.has::<Stone>(this)
+                && let Some(centre) = body_centre(world, this)
+            {
+                knocks
                     .entry(world.get::<SaveId>(this).copied())
                     .or_insert(centre);
             }
@@ -1431,6 +1444,10 @@ pub fn body_impacts(world: &mut World) {
     // A rock meeting anything that hard clacks, a few a step.
     for at in clacks.into_values().take(IMPACT_BURSTS_PER_STEP) {
         audio::play(world, Sound::RockHit, at);
+    }
+    // A stone, heavier, knocks.
+    for at in knocks.into_values().take(IMPACT_BURSTS_PER_STEP) {
+        audio::play(world, Sound::StoneKnock, at);
     }
     // Read while a thrown crate's throw stands, before the count down
     // ends one that landed a blow.

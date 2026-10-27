@@ -11,7 +11,7 @@ use tungsten::core::{
 use tungsten::kit::ContactDamage;
 use tungsten::physics::{SpatialFilter, overlap};
 
-use super::components::{Bomb, Crate, Fuel, FuseEmitter, Keg, Plank, Rock};
+use super::components::{Bomb, Crate, Fuel, FuseEmitter, Keg, Plank, Rock, StoneSize};
 use super::{
     BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, FUSE_SECS, PLANK_BURN_SECS, ROCK_RADIUS, SPREAD_AFTER,
     SPREAD_REACH, TOUCH_REACH, burn_down, burning, collapse, light, set_off,
@@ -289,6 +289,16 @@ pub fn show_rock(world: &mut World, rock: Entity, variant: usize) {
         .resource_mut::<AssetRegistry>()
         .intern_sprite(&format!("ex10_goblin_rock_{}", variant % 2));
     if let Some(sprite) = world.get_mut::<Sprite>(rock) {
+        sprite.asset_id = id;
+    }
+}
+
+/// Shows a stone's art of its `size` and `variant`.
+pub fn show_stone(world: &mut World, stone: Entity, size: StoneSize, variant: usize) {
+    let id = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(&format!("ex10_stone_{}_{}", size.name(), variant % 2));
+    if let Some(sprite) = world.get_mut::<Sprite>(stone) {
         sprite.asset_id = id;
     }
 }

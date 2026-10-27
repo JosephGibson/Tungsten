@@ -1357,5 +1357,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "stone_knocked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_stone_knock_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
   }
 ]
