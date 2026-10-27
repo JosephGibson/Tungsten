@@ -11,7 +11,9 @@ use std::f32::consts::TAU;
 
 use glam::Vec2;
 use tungsten::PhysicsDebugOverlay;
-use tungsten::core::{AssetRegistry, DebugDraw, Entity, SpriteAsset, Transform, World};
+use tungsten::core::{
+    AssetRegistry, DebugDraw, Entity, Position, PrevPosition, SpriteAsset, Time, Transform, World,
+};
 use tungsten::kit::{Health, KitDebug, StateMachine};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
@@ -287,6 +289,8 @@ fn blow(world: &World, enemy: Entity) -> Option<Strike> {
 /// slam's reach about its fist and each live beetle's plough box draw in
 /// [`HIT_COLOR`], as the kit draws an armed hitbox, while that blow's
 /// attack runs: 01's blows are box tests of its own, not kit hitboxes.
+/// Each box is drawn where its enemy's sprite is ([`lag`]), not a step
+/// ahead at the point its test reads.
 pub fn debug_boxes(world: &mut World) {
     let on = world
         .get_resource::<PhysicsDebugOverlay>()
@@ -304,7 +308,9 @@ pub fn debug_boxes(world: &mut World) {
         if health.is_dead() {
             continue;
         }
+        let lag = lag(world, enemy);
         let mut outline = |at: Vec2, half: Vec2| {
+            let at = at + lag;
             draw.draw_aabb(at - half, at + half, HIT_COLOR, HIT_THICKNESS);
         };
         let charging = world
@@ -329,11 +335,29 @@ pub fn debug_boxes(world: &mut World) {
             }
             Some(Strike::Slam) => {
                 if let Some(fist) = troll::fist(world, enemy) {
-                    draw.draw_circle(fist, SLAM_REACH, HIT_COLOR, HIT_THICKNESS);
+                    draw.draw_circle(fist + lag, SLAM_REACH, HIT_COLOR, HIT_THICKNESS);
                 }
             }
             _ => {}
         }
     }
     world.insert_resource(draw);
+}
+
+/// How far `enemy` is drawn from its `Position`: back toward its
+/// [`PrevPosition`] by `1 - alpha` of its last step while
+/// [`Time::interpolate`] is on, where `physics_sync` puts its sprite.
+fn lag(world: &World, enemy: Entity) -> Vec2 {
+    let alpha = world
+        .get_resource::<Time>()
+        .filter(|time| time.interpolate())
+        .map(Time::alpha);
+    match (
+        alpha,
+        world.get::<Position>(enemy),
+        world.get::<PrevPosition>(enemy),
+    ) {
+        (Some(alpha), Some(at), Some(prev)) => (prev.0 - at.0) * (1.0 - alpha),
+        _ => Vec2::ZERO,
+    }
 }
