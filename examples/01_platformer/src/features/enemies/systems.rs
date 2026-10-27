@@ -7,8 +7,8 @@ use tungsten::core::{
     RigidBody, Sprite, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Health, Hitbox, PlatformerController, StateMachine, StateMachinePlugin,
-    TopDownMover,
+    ContactDamage, Damaged, Health, Hitbox, PathFollower, PlatformerController, StateMachine,
+    StateMachinePlugin, TopDownMover,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
@@ -23,6 +23,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
+use crate::features::level::elevator::Elevator;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
@@ -117,7 +118,8 @@ pub fn rest(world: &mut World, enemy: Entity) {
 const PAST_BODIES: usize = 4;
 
 /// Whether a cast from `from` along `direction` meets ground within
-/// `distance`: a solid tile or a static body, never an enemy or the player.
+/// `distance`: a solid tile, a static body or a moving platform, never an
+/// enemy or the player.
 /// It looks past a ball, a rock, a crate or any dynamic body, its ray
 /// going on from inside the body it met, which it then passes, so a body
 /// hides no wall or ground behind it.
@@ -133,6 +135,12 @@ pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, m
         };
         match world.get::<RigidBody>(entity).map(|body| body.kind) {
             Some(BodyKind::Static) => return true,
+            // A moving platform or the elevator's deck, not a character.
+            Some(BodyKind::Kinematic)
+                if world.has::<PathFollower>(entity) || world.has::<Elevator>(entity) =>
+            {
+                return true;
+            }
             Some(BodyKind::Dynamic) => {
                 // A hair inside its edge, where the ray passes it.
                 let into = hit.distance + 0.01;
