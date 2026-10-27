@@ -162,8 +162,10 @@
 //! - **React.** [`Cues`], [`CueAction`], [`CueEvent`], [`CuesOnEvent`] and
 //!   [`CuesPlugin`]: the one way to react to events in data, an entity's
 //!   `cues` and the shared `cue_rules` kind, whose `effect` action applies
-//!   an effect to the subject or the other entity. [`WeightedTable`]: the
-//!   `loot_tables` kind that a cue's `roll` draws drops from. [`Counters`],
+//!   an effect to the subject or the other entity; [`CueListener`], an
+//!   opt-in resource that quiets the cues' sounds by their distance from
+//!   it. [`WeightedTable`]: the `loot_tables` kind that a cue's `roll`
+//!   draws drops from. [`Counters`],
 //!   [`Flags`] and [`CountersPlugin`]: named counts and switches, an
 //!   entity's or the game's, that cues write. [`Level`], [`Offers`],
 //!   [`LevelUp`] and [`LevelPlugin`]: a counter climbed along a curve,
@@ -293,7 +295,7 @@ pub use present::facing::{FACING, Facing, FacingPlugin};
 pub use present::labels::{LABEL_TICK, LabelStyle, float_label};
 pub use present::sound::SoundOnEvent;
 pub use react::counters::{Counters, CountersPlugin, Flags};
-pub use react::cues::{CUES, CueAction, CueEvent, Cues, CuesOnEvent, CuesPlugin};
+pub use react::cues::{CUES, CueAction, CueEvent, CueListener, Cues, CuesOnEvent, CuesPlugin};
 pub use react::level::{LEVEL_TICK, Level, LevelPlugin, LevelUp, Offer, Offers};
 pub use react::loot::WeightedTable;
 pub use transform::hierarchy::{
@@ -311,16 +313,16 @@ pub mod prelude {
         AnimationPlugin, Applied, CameraTarget, CameraTargetPlugin, CharacterAnimator,
         CharacterAnimatorPlugin, Children, Clips, ContactDamage, ContactDamagePlugin, Conversion,
         Cooldown, CooldownElapsed, CooldownPlugin, Counters, CountersPlugin, CueAction, CueEvent,
-        Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest, Damaged,
-        DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin, Effect,
-        EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects, EffectsPlugin,
-        Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest, Healed, Health,
-        HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox, Hurtbox,
-        ImmunePart, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace, Knockback,
-        KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime, LifetimePlugin,
-        LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers, Orbit, OrbitPlugin,
-        Oscillator, OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin, Payload,
-        Penetration, Phase, PickedUp, Pickup, PickupPlugin, PlatformerController,
+        CueListener, Cues, CuesOnEvent, CuesPlugin, Curve, DamageKinds, DamagePart, DamageRequest,
+        Damaged, DamagedPart, DepthSort, DepthSortPlugin, DespawnOutside, DespawnOutsidePlugin,
+        Effect, EffectApplied, EffectExpired, EffectInstance, EffectRequest, Effects,
+        EffectsPlugin, Expire, Facing, FacingPlugin, Flags, Follow, FollowPlugin, HealRequest,
+        Healed, Health, HealthPlugin, HierarchyPlugin, Hit, HitFlash, HitPlugin, HitShape, Hitbox,
+        Hurtbox, ImmunePart, Intent, KitDebug, KitDebugPlugin, KitPlugins, KitRng, KitTrace,
+        Knockback, KnockbackPlugin, LabelStyle, Level, LevelPlugin, LevelUp, Lifetime,
+        LifetimePlugin, LinearMotion, LinearMotionPlugin, LocalOffset, Modifier, Offer, Offers,
+        Orbit, OrbitPlugin, Oscillator, OscillatorPlugin, Parent, PathFollower, PathFollowerPlugin,
+        Payload, Penetration, Phase, PickedUp, Pickup, PickupPlugin, PlatformerController,
         PlatformerControllerPlugin, Projectile, ProjectileBounced, ProjectileExpired,
         ProjectilePassed, ProjectilePlugin, Refresh, Resist, Scaled, Shield, SoundOnEvent, Source,
         SourcePlugin, SpawnChildren, SpawnChildrenPlugin, Spawner, SpawnerPlugin, SpeedLimit,

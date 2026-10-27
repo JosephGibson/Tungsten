@@ -280,6 +280,42 @@ fn a_negative_shake_panics() {
 }
 
 #[test]
+fn a_listener_hears_in_full_within_full_then_falls_to_silence_at_silent() {
+    let listener = CueListener::new(100.0, 300.0).at(Vec2::new(10.0, 0.0));
+    assert_eq!((listener.full(), listener.silent()), (100.0, 300.0));
+    assert_eq!(listener.position(), Vec2::new(10.0, 0.0));
+    let gain = |x: f32| listener.gain(Vec2::new(10.0 + x, 0.0));
+    assert_eq!(gain(0.0), 1.0);
+    assert_eq!(gain(100.0), 1.0);
+    let falling: Vec<f32> = (0..=100).map(|i| gain(100.0 + 2.0 * i as f32)).collect();
+    assert!(
+        falling.windows(2).all(|pair| pair[1] < pair[0]),
+        "{falling:?}"
+    );
+    assert_eq!(gain(300.0), 0.0);
+    assert_eq!(gain(-900.0), 0.0);
+    assert_eq!(listener.gain(Vec2::NAN), 0.0);
+}
+
+#[test]
+#[should_panic(expected = "0 <= full < silent")]
+fn a_listener_whose_full_reaches_its_silent_panics() {
+    let _ = CueListener::new(300.0, 300.0);
+}
+
+#[test]
+#[should_panic(expected = "0 <= full < silent")]
+fn a_listener_with_a_negative_distance_panics() {
+    let _ = CueListener::new(-1.0, 300.0);
+}
+
+#[test]
+#[should_panic(expected = "0 <= full < silent")]
+fn a_listener_with_a_nan_distance_panics() {
+    let _ = CueListener::new(100.0, f32::NAN);
+}
+
+#[test]
 fn cues_merge_their_lists_and_read_none_for_an_absent_event() {
     let cues = Cues::new()
         .on("damaged", [CueAction::flash()])
@@ -742,6 +778,92 @@ mod running {
             flush(&mut world);
         }
         assert_eq!(played, [0, 6, 12], "a hit every step, a sound every 0.1 s");
+    }
+
+    /// The volumes of the one-shots played since the last drain.
+    fn volumes(world: &mut World) -> Vec<f32> {
+        world
+            .resource_mut::<AudioCommands>()
+            .drain()
+            .into_iter()
+            .filter_map(|command| match command {
+                AudioCommand::Play {
+                    volume,
+                    looping: false,
+                    ..
+                } => Some(volume),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A target at `x` on the axis whose hits play `blip` at most every
+    /// `interval` seconds.
+    fn sounding(world: &mut World, x: f32, interval: f32) -> Entity {
+        world.spawn_with((
+            Health::new(1000.0),
+            Position(Vec2::new(x, 0.0)),
+            Cues::new().on(
+                "damaged",
+                [CueAction::sound("blip").with_min_interval(interval)],
+            ),
+        ))
+    }
+
+    #[test]
+    fn a_listener_quiets_cue_sounds_by_distance_and_skips_those_past_its_hearing() {
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(100.0, 300.0));
+        let mut heard = Vec::new();
+        for x in [50.0, 200.0, 300.0, 500.0] {
+            let target = sounding(&mut world, x, 0.0);
+            damage(&mut world, target, 1.0);
+            step(&mut world, &mut schedule);
+            let sounds: Vec<String> = traced(&world, target)
+                .into_iter()
+                .filter(|line| line.contains("sound"))
+                .collect();
+            heard.push((volumes(&mut world), sounds));
+            flush(&mut world);
+        }
+        let unheard = "damaged: sound skipped, the cue's position is past the listener's hearing";
+        assert_eq!(
+            heard,
+            [
+                (vec![1.0], vec!["damaged: sound (own cue)".to_owned()]),
+                (vec![0.25], vec!["damaged: sound (own cue)".to_owned()]),
+                (vec![], vec![unheard.to_owned()]),
+                (vec![], vec![unheard.to_owned()]),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_unheard_cue_leaves_its_interval_to_a_nearer_one_and_a_moved_listener_hears_anew() {
+        let (mut world, mut schedule) = rig();
+        world.insert_resource(CueListener::new(100.0, 300.0));
+        let (far, near) = (
+            sounding(&mut world, 500.0, 0.1),
+            sounding(&mut world, 50.0, 0.1),
+        );
+        damage(&mut world, far, 1.0);
+        step(&mut world, &mut schedule);
+        assert_eq!(volumes(&mut world), [] as [f32; 0]);
+        flush(&mut world);
+        damage(&mut world, near, 1.0);
+        step(&mut world, &mut schedule);
+        assert_eq!(volumes(&mut world), [1.0], "within the far one's 0.1 s");
+        flush(&mut world);
+        for _ in 0..6 {
+            step(&mut world, &mut schedule);
+            flush(&mut world);
+        }
+        world
+            .resource_mut::<CueListener>()
+            .set_position(Vec2::new(450.0, 0.0));
+        damage(&mut world, far, 1.0);
+        step(&mut world, &mut schedule);
+        assert_eq!(volumes(&mut world), [1.0], "50 px from the moved listener");
     }
 
     #[test]
