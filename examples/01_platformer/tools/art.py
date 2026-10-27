@@ -26,7 +26,7 @@ ELEMENT_SIZES = {
     **{f'bolt_{i}': (24, 64) for i in range(8)},
     **{f'status_{look}_{name}{frame}': (size, size)
        for name, size in STATUS_CLASSES.items() if size != 64
-       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1')))
+       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1', '_2', '_3')))
        for frame in frames},
     **{f'muzzle_{i}': (16, 16) for i in range(3)},
     'tracer': (32, 3),
@@ -72,6 +72,11 @@ ELEMENT_SIZES = {
     **{f'snowball_{i}': (16, 16) for i in range(4)},
     **{f'snowball_burst_{i}': (48, 48) for i in range(6)},
     **{f'charge_streak_{i}{facing}': (64, 24) for i in range(4) for facing in ('', '_left')},
+    # e01sfx: the ground strike's scorch, the crate's five planks and the
+    # hurt edge over the view.
+    'scorch': (48, 16),
+    **{f'plank_{i}': (32, 16) for i in range(5)},
+    'hurt_edge': (320, 180),
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat
@@ -217,6 +222,8 @@ def build_art():
     build_tome_art(images, lit)
     from polish_art import enrich_art
     enrich_art(images,lit,animations)
+    from effects import build_sfx_art
+    build_sfx_art(images,lit)
     return images,lit,animations,anchors
 
 

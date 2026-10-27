@@ -314,9 +314,32 @@ def rock_chip():
     return to_image(outline(c))
 
 
+# e01sfx: a broken crate's five planks, each a board of 28 x 8 about the
+# middle of its 32 x 16 frame, its body's box.
+PLANKS = 5
+PLANK_FRAME = (32, 16)
+PLANK_BOARD = (2, 4, 30, 12)
+
+
+def build_planks(images, lit):
+    """The planks, lit as the crates are. Until e01sfx's asset session draws
+    them, each is a crate shrunk to the board, its two variants in turn."""
+    from PIL import Image
+
+    from art import canvas
+    x0, y0, x1, y1 = PLANK_BOARD
+    for i in range(PLANKS):
+        crate = images[f'pine_crate_{i % 2}'].crop((LO, LO, HI + 1, HI + 1))
+        im, _ = canvas(PLANK_FRAME)
+        im.paste(crate.resize((x1 - x0, y1 - y0), Image.Resampling.NEAREST), (x0, y0))
+        images[f'plank_{i}'] = im
+        lit.add(f'plank_{i}')
+
+
 def build_props(images, lit):
     """The crates and the keg, lit; the keg's lit frames by quarter of its
-    fuse; the char overlay's three stages and the particles, unlit."""
+    fuse; the char overlay's three stages and the particles, unlit; and the
+    crates' planks (`build_planks`), lit."""
     for name, canvas in (('pine_crate_0', crate_slatted()), ('pine_crate_1', crate_planked()),
                          ('powder_keg', keg_canvas())):
         images[name] = to_image(canvas)
@@ -327,6 +350,7 @@ def build_props(images, lit):
         lit.add(name)
     for stage in range(3):
         images[f'pine_crate_char_{stage}'] = crate_char(stage)
+    build_planks(images, lit)
     images['char_splinter'] = char_splinter()
     images['keg_stave'] = keg_stave()
     images['rock_chip'] = rock_chip()

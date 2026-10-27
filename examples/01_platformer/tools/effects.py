@@ -1045,8 +1045,10 @@ def build_element_art(images):
         images[f'status_ice_{name}'] = status_ice(size)
         images[f'status_ice_{name}_cracked'] = status_ice(size, cracked=True)
         images[f'status_halo_{name}'] = status_halo(size)
-        for frame in range(2):
-            images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
+        # Four frames; until e01sfx's asset session draws them, 2 and 3 are
+        # copies of 0 and 1.
+        for frame in range(4):
+            images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame % 2)
     for kind in HURTBOXES:
         for suffix, cracked in (('', False), ('_cracked', True)):
             images[f'status_ice_{kind}{suffix}'] = ice_cube(
@@ -2410,6 +2412,18 @@ def build_foe_art(images):
     for name, draw in (('snowball', snowball), ('snowball_burst', snowball_burst), ('charge_streak', charge_streak)):
         for f in range(FOE_CLIPS[name][1]):
             images[f'{name}_{f}'] = draw(f)
+
+
+def build_sfx_art(images, lit):
+    """e01sfx's effects: the ground strike's scorch, lit as the crates are,
+    and the hurt edge over the view, unlit. Today's art stands in at each
+    one's size until its asset session draws them: a burning crate's last
+    char stage and the shock ring, resized. After `polish_art.enrich_art`,
+    which draws the ring."""
+    from PIL import Image
+    for name, source in (('scorch', 'pine_crate_char_2'), ('hurt_edge', 'shock_ring')):
+        images[name] = images[source].resize(ELEMENT_SIZES[name], Image.Resampling.NEAREST)
+    lit.add('scorch')
 
 
 def build_effects(images):

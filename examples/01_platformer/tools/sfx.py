@@ -2624,5 +2624,11 @@ def build_sounds():
         'goblin_crouch.wav': goblin_crouch(),
         'goblin_dash.wav': goblin_dash(),
         'goblin_yelp.wav': goblin_yelp(),
+        # e01sfx's sounds, each one of today's within its length until its
+        # asset session draws them: the ground strike the fizzle, the tick
+        # the gun's click and the break a crate's falling in.
+        'ground_strike.wav': fizzle(),
+        'player_tick.wav': gun_click(),
+        'crate_break.wav': crate_collapse(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

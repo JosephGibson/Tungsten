@@ -6,7 +6,7 @@ import tempfile
 import unittest
 import wave
 
-from art import TOOLS, build_art, read_grid, validate_art, validate_palette
+from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import generate
 from level import FAMILIES, build_level, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
@@ -320,6 +320,58 @@ class FoeContractTests(unittest.TestCase):
             self.assertEqual(sound['path'], f'sounds/{name}.wav')
             self.assertFalse(sound['looping'], name)
             self.assertTrue(.4 <= sound['volume'] <= .75, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
+
+
+# e01sfx's contract (its plan's §3.1), the files its families own as the
+# game reads them: each sprite's size, the shock overlay's four frames a
+# class, each particle config's cap, and each sound's shortest and longest
+# seconds, its quietest and loudest volume and whether it loops. Its
+# placeholders pass it, and so must its art.
+SFX_SPRITES = {
+    **{f'status_crackle_{name}_{f}': (size, size) for name, size in STATUS_CLASSES.items() for f in range(4)},
+    'scorch': (48, 16),
+    **{f'plank_{i}': (32, 16) for i in range(5)},
+    'hurt_edge': (320, 180),
+}
+SFX_PARTICLES = {'shock_sparks': 24, 'ground_sparks': 32, 'plank_splinters': 20,
+                 'frost_wall_hit': 18, 'flame_wall_hit': 18}
+SFX_SOUNDS = {
+    'ground_strike': (.3, 1.0, .35, .8, False),
+    'player_tick': (0, .2, .2, .4, False),
+    'crate_break': (.25, .9, .35, .8, False),
+    'thunder': (1.6, 3.6, .35, .8, False),
+    'fire_crackle': (2.0, 2.0, .35, .8, True),
+}
+
+
+class EffectsContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def test_sprites_keep_their_sizes_and_the_overlay_four_frames(self):
+        from PIL import Image
+        for name, size in SFX_SPRITES.items():
+            with Image.open(ASSETS / self.manifest['sprites']['ex10_' + name]['path']) as im:
+                self.assertEqual(im.size, size, name)
+        for name in STATUS_CLASSES:
+            self.assertNotIn(f'ex10_status_crackle_{name}_4', self.manifest['sprites'], name)
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in SFX_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_volumes_and_loops(self):
+        for name, (shortest, longest, quietest, loudest, looping) in SFX_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertEqual(sound['looping'], looping, name)
+            self.assertTrue(quietest <= sound['volume'] <= loudest, name)
             with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
                 seconds = wav.getnframes() / wav.getframerate()
             self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')

@@ -1,6 +1,6 @@
 # Example 01: sounds and effects (`e01sfx`) — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01 (n) ([feedback](1.0/example-01-feedback.md) §3.10, V27, V30, V31, V33, V37, V38): the kit's cue sounds gain an opt-in listener with a falloff by distance (K29), and 01 hears its one-shots and held loops from the player; lightning says what it met, rolls deeper and strikes the ground with a crackle, sparks and a scorch; shock crackles with arcs over the body, brighter sparks, a stronger flicker and longer chain arcs; one crackle voice follows the nearest burning thing, and every damage tick on the player pulses the screen's edge red with a soft tick; a crate hit hard enough breaks into five burnable planks, capped and saved (schema 18); both sprays burst on whatever they meet. The art and sound come from a redo [§6 asset session](roadmap-redo.md#6-asset-sessions) on §3's brief, after the code steps, which build on placeholders until the art is accepted.
 - **non-goals:** Stereo pan, looping cue voices, bus ducking and sound hot reload (redo 7.9, P7-13). A listener on `SoundOnEvent`, whose events carry no position. K1 in the kit (the tick's sound is 01's code). Placed area ambience, music or combat layer. Planks from blasts, burning or blows on kinematic bodies; snowballs that douse fire (Later). Any map, route, light or level change. Any core, render or template change. A release, a changelog section or a decision entry (§4 Q19): a release is cut separately (`D-215`).
 - **files to touch:** paths under `examples/01_platformer/` (01's) unless rooted; "the generated `assets/`" is the generator's output with `tools/outputs.json`.
@@ -323,6 +323,7 @@ Round 1 changed mechanisms (the break's floor, the rollback, two done-when check
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-27 | Passed | `level-check`: `OK: 5048 owned outputs match`, `Ran 31 tests … OK`, the three `EffectsContractTests` among them; 01's suite 379 passed, 1 ignored; `repo-check` exit 0; the index held Step 1's paths alone. 25 sprites (six crackle frames; five planks and the scorch, each with its two maps; the edge), 4 particle configs and 3 sounds added. The planks are each crate shrunk to the 28 × 8 board inside its 32 × 16 frame, so the placeholders keep §3.1's anchor too; `art.build_art` runs `effects.build_sfx_art` after `enrich_art`, which draws the shock ring | `examples/01_platformer/tools/`, its `assets/` |
 
 ## Follow-ups
 

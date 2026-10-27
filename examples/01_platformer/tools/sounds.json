@@ -548,5 +548,20 @@
     "looping": false,
     "path": "sounds/goblin_yelp.wav",
     "volume": 0.55
+  },
+  "ex10_ground_strike_sfx": {
+    "looping": false,
+    "path": "sounds/ground_strike.wav",
+    "volume": 0.45
+  },
+  "ex10_player_tick_sfx": {
+    "looping": false,
+    "path": "sounds/player_tick.wav",
+    "volume": 0.3
+  },
+  "ex10_crate_break_sfx": {
+    "looping": false,
+    "path": "sounds/crate_break.wav",
+    "volume": 0.55
   }
 }

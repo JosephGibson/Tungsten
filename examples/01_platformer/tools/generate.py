@@ -586,6 +586,13 @@ def particle_configs():
         'ice_chip', 16, burst(16), (.35, .75), dict(kind='radial', speed=dict(min=110, max=260)), (0, 520), 1.4,
         (.12, .26), [[0, 1], [1, .6]], [[0, 1], [.7, .9], [1, 0]],
         [[0, [1, 1, 1, 1]], [.5, [.86, .94, 1, 1]], [1, [.7, .84, .96, 0]]], (-10, 10))
+    # e01sfx, until its asset session: the ground strike's sparks the
+    # strike's, the planks' splinters a crate's falling in, and the sprays'
+    # surface hits their hits on a target.
+    configs['ground_sparks'] = dict(configs['strike_sparks'])
+    configs['plank_splinters'] = dict(configs['crate_collapse'])
+    configs['frost_wall_hit'] = dict(configs['frost_hit'])
+    configs['flame_wall_hit'] = dict(configs['flame_hit'])
     return configs
 
 

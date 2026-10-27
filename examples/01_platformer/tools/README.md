@@ -1069,3 +1069,20 @@ cool blue strip. `generate.particle_configs` adds each book's motes
 draw under it, each take's sparks (`tome_<kind>_take_sparks`, 24) and the bound's
 (`bound_sparks`, 20; `bound_trail`, 12). `sfx.py` adds `tome_pact`, `tome_bounding`,
 `tome_arcane` and `bound`, registered as `ex10_<name>_sfx`.
+
+## Sounds and effects
+
+e01sfx's families are placeholders until its asset session draws them: today's art
+copied, cycled or resized to the sizes, counts and caps the game reads, never drawn.
+The shock overlay's frames 2 and 3 (`status_crackle_<class>_<f>`) are copies of 0
+and 1; `effects.build_sfx_art` resizes a burning crate's last char stage to the
+48 × 16 `scorch` (lit) and the shock ring to the 320 × 180 `hurt_edge` (unlit);
+`props.build_planks` shrinks each crate variant in turn to the 28 × 8 board in the
+middle of `plank_0`–`plank_4`'s 32 × 16 frames (lit). The particles `ground_sparks`,
+`plank_splinters`, `frost_wall_hit` and `flame_wall_hit` copy `strike_sparks`,
+`crate_collapse`, `frost_hit` and `flame_hit`, and `shock_sparks` stands as it is.
+The sounds `ground_strike` (the fizzle), `player_tick` (the gun's click) and
+`crate_break` (a crate's falling in) are copies; `thunder` and `fire_crackle` stand
+until they are redrawn. `test_generate.py`'s `EffectsContractTests` holds the
+generated files to the contract the game reads: each sprite's size, four crackle
+frames a class, the particles' caps and the sounds' lengths, volumes and loops.

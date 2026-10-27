@@ -939,6 +939,9 @@
     "ex10_flame_spray": {
       "path": "particles/flame_spray.json"
     },
+    "ex10_flame_wall_hit": {
+      "path": "particles/flame_wall_hit.json"
+    },
     "ex10_frost_blast": {
       "path": "particles/frost_blast.json"
     },
@@ -947,6 +950,9 @@
     },
     "ex10_frost_hit": {
       "path": "particles/frost_hit.json"
+    },
+    "ex10_frost_wall_hit": {
+      "path": "particles/frost_wall_hit.json"
     },
     "ex10_frozen_glints": {
       "path": "particles/frozen_glints.json"
@@ -959,6 +965,9 @@
     },
     "ex10_gore_burst": {
       "path": "particles/gore_burst.json"
+    },
+    "ex10_ground_sparks": {
+      "path": "particles/ground_sparks.json"
     },
     "ex10_hole_open": {
       "path": "particles/hole_open.json"
@@ -1013,6 +1022,9 @@
     },
     "ex10_paw_dust": {
       "path": "particles/paw_dust.json"
+    },
+    "ex10_plank_splinters": {
+      "path": "particles/plank_splinters.json"
     },
     "ex10_poof": {
       "path": "particles/poof.json"
@@ -2229,6 +2241,11 @@
       "path": "sounds/crackle.wav",
       "volume": 0.4
     },
+    "ex10_crate_break_sfx": {
+      "looping": false,
+      "path": "sounds/crate_break.wav",
+      "volume": 0.55
+    },
     "ex10_crate_collapse_sfx": {
       "looping": false,
       "path": "sounds/crate_collapse.wav",
@@ -2369,6 +2386,11 @@
       "path": "sounds/goblin_yelp.wav",
       "volume": 0.55
     },
+    "ex10_ground_strike_sfx": {
+      "looping": false,
+      "path": "sounds/ground_strike.wav",
+      "volume": 0.45
+    },
     "ex10_gun_click_sfx": {
       "looping": false,
       "path": "sounds/gun_click.wav",
@@ -2503,6 +2525,11 @@
       "looping": false,
       "path": "sounds/player_hit.wav",
       "volume": 0.6
+    },
+    "ex10_player_tick_sfx": {
+      "looping": false,
+      "path": "sounds/player_tick.wav",
+      "volume": 0.3
     },
     "ex10_ricochet_sfx": {
       "looping": false,
@@ -7383,6 +7410,10 @@
       "filter": "nearest",
       "path": "sprites/hud_liquid_shield.png"
     },
+    "ex10_hurt_edge": {
+      "filter": "nearest",
+      "path": "sprites/hurt_edge.png"
+    },
     "ex10_ice_chip": {
       "filter": "nearest",
       "path": "sprites/ice_chip.png"
@@ -9433,6 +9464,36 @@
       "normal_map": "sprites/pit_wall_ring_right_n.png",
       "path": "sprites/pit_wall_ring_right.png"
     },
+    "ex10_plank_0": {
+      "emissive_mask": "sprites/plank_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/plank_0_n.png",
+      "path": "sprites/plank_0.png"
+    },
+    "ex10_plank_1": {
+      "emissive_mask": "sprites/plank_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/plank_1_n.png",
+      "path": "sprites/plank_1.png"
+    },
+    "ex10_plank_2": {
+      "emissive_mask": "sprites/plank_2_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/plank_2_n.png",
+      "path": "sprites/plank_2.png"
+    },
+    "ex10_plank_3": {
+      "emissive_mask": "sprites/plank_3_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/plank_3_n.png",
+      "path": "sprites/plank_3.png"
+    },
+    "ex10_plank_4": {
+      "emissive_mask": "sprites/plank_4_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/plank_4_n.png",
+      "path": "sprites/plank_4.png"
+    },
     "ex10_platform": {
       "emissive_mask": "sprites/platform_e.png",
       "filter": "nearest",
@@ -11327,6 +11388,12 @@
       "normal_map": "sprites/rubble_pile_1_big_0_1_n.png",
       "path": "sprites/rubble_pile_1_big_0_1.png"
     },
+    "ex10_scorch": {
+      "emissive_mask": "sprites/scorch_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/scorch_n.png",
+      "path": "sprites/scorch.png"
+    },
     "ex10_shock_ring": {
       "filter": "nearest",
       "path": "sprites/shock_ring.png"
@@ -11655,6 +11722,14 @@
       "filter": "nearest",
       "path": "sprites/status_crackle_large_1.png"
     },
+    "ex10_status_crackle_large_2": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_large_2.png"
+    },
+    "ex10_status_crackle_large_3": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_large_3.png"
+    },
     "ex10_status_crackle_medium_0": {
       "filter": "nearest",
       "path": "sprites/status_crackle_medium_0.png"
@@ -11663,6 +11738,14 @@
       "filter": "nearest",
       "path": "sprites/status_crackle_medium_1.png"
     },
+    "ex10_status_crackle_medium_2": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_medium_2.png"
+    },
+    "ex10_status_crackle_medium_3": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_medium_3.png"
+    },
     "ex10_status_crackle_small_0": {
       "filter": "nearest",
       "path": "sprites/status_crackle_small_0.png"
@@ -11670,6 +11753,14 @@
     "ex10_status_crackle_small_1": {
       "filter": "nearest",
       "path": "sprites/status_crackle_small_1.png"
+    },
+    "ex10_status_crackle_small_2": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_small_2.png"
+    },
+    "ex10_status_crackle_small_3": {
+      "filter": "nearest",
+      "path": "sprites/status_crackle_small_3.png"
     },
     "ex10_status_halo_large": {
       "filter": "nearest",
