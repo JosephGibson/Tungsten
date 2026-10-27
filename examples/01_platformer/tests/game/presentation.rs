@@ -25,8 +25,8 @@ use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, DataRegistry, Entity,
     InputState, Light, MaterialRegistry, Particle, ParticleBudget, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, Sprite, TilemapInstance, TilemapRegistry,
-    Transform, Visibility,
+    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
+    TilemapRegistry, Transform, Visibility,
 };
 use tungsten::kit::{Facing, PlatformerController, damage};
 use tungsten::testing::UiHarness;
@@ -1155,8 +1155,20 @@ fn f1_outlines_a_charging_beetles_plough_box() {
         .resource_mut::<PhysicsDebugOverlay>()
         .enabled = true;
     harness.step(2);
+    // Drawn where the beetle is drawn, back toward its last step's place by
+    // `1 - alpha` of the step.
     let plough_quad = |harness: &UiHarness| {
-        let corner = beetle::plough_box(harness.world(), beetle).unwrap() - PLOUGH_HALF;
+        let world = harness.world();
+        let time = world.resource::<Time>();
+        let alpha = if time.interpolate() {
+            time.alpha()
+        } else {
+            1.0
+        };
+        let lag = (world.get::<PrevPosition>(beetle).unwrap().0
+            - world.get::<Position>(beetle).unwrap().0)
+            * (1.0 - alpha);
+        let corner = beetle::plough_box(world, beetle).unwrap() - PLOUGH_HALF + lag;
         let draw = harness.harness().draw().expect("a frame drew");
         draw.debug_quads
             .iter()
