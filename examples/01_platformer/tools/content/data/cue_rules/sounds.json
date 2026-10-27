@@ -1277,5 +1277,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "ground_struck",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ground_strike_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
   }
 ]

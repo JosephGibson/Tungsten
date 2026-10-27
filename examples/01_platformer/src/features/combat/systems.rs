@@ -179,22 +179,30 @@ pub fn reactions(
 /// colours: frozen's cold; chilled's frost, a freezable creature's turning
 /// toward it from the first point of cold and, chilled, deeper toward
 /// [`CHILL_DEEP`] by the chill's grade, white and gentle (01 (j)); shocked's
-/// violet, which flickers, and burning's two embers, which flicker too; and
-/// the courier's red for a moment after a blow.
+/// violet on its crackle's even frames, and burning's two embers, which
+/// flicker; and the courier's red for a moment after a blow.
 pub const COLD_TINT: [u8; 4] = [158, 219, 255, 255];
 pub const FROST_TINT: [u8; 4] = [222, 241, 255, 255];
 pub const CHILL_DEEP: [u8; 4] = [194, 229, 255, 255];
-pub const SHOCK_TINT: [u8; 4] = [219, 199, 255, 255];
+pub const SHOCK_TINT: [u8; 4] = [196, 168, 255, 255];
 pub const EMBER_TINTS: [[u8; 4]; 2] = [[255, 178, 128, 255], [255, 140, 92, 255]];
 pub const HURT_TINT: [u8; 4] = [255, 72, 72, 255];
-/// How fast shocked's tint and crackle and burning's tint flicker, frames
-/// a second.
+/// How fast burning's tint flickers and shocked's crackle steps through
+/// its four frames, frames a second.
 pub const FLICKER_HZ: f32 = 12.0;
+pub const SHOCK_HZ: f32 = 16.0;
 
-/// Shocked's frame at level time `time`, 0 or 1.
+/// Burning's ember at level time `time`, 0 or 1.
 #[must_use]
 pub fn flicker(time: f32) -> usize {
     (time * FLICKER_HZ) as usize % 2
+}
+
+/// Shocked's crackle frame at level time `time`, 0 to 3; its tint shows on
+/// the even ones.
+#[must_use]
+pub fn shock_frame(time: f32) -> usize {
+    (time * SHOCK_HZ) as usize % 4
 }
 
 /// `a` toward `b` by `share`, 0 to 1.
@@ -212,7 +220,7 @@ fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
 pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     if tags.has(FROZEN) {
         COLD_TINT
-    } else if tags.has(SHOCKED) && flicker(time) == 0 {
+    } else if tags.has(SHOCKED) && shock_frame(time).is_multiple_of(2) {
         SHOCK_TINT
     } else if tags.has(BURNING) {
         EMBER_TINTS[flicker(time)]

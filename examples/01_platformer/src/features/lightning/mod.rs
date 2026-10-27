@@ -8,7 +8,9 @@
 //! yet in the chain, each jump weaker, at most six, and none past a frozen
 //! receiver or one that takes no shock. Conductive things are iron, its
 //! scraps, a keg's hoops, every live enemy and the targets tagged
-//! `conductive`; a strike or a jump that reaches a keg sets it off.
+//! `conductive`; a strike or a jump that reaches a keg sets it off. A
+//! strike says what it met: a body snaps, while the ground and a deck
+//! spark and crackle low, and the ground keeps a scorch that fades.
 
 pub mod components;
 pub mod draw;
@@ -16,8 +18,8 @@ pub mod systems;
 
 use glam::{Vec2, Vec3};
 use tungsten::core::{
-    BodyKind, Collider, Entity, EventQueue, Light, Position, RigidBody, Schedule, ShakeEvent,
-    Shape, Stage, Transform, World, system,
+    AssetRegistry, BodyKind, Collider, Entity, EventQueue, Light, Position, RigidBody, Schedule,
+    ShakeEvent, Shape, Sprite, Stage, Transform, Visibility, World, system,
 };
 use tungsten::kit::{Health, Phase, Resist, Tags, ensure_phases};
 use tungsten::physics::{SpatialFilter, cast_ray};
@@ -34,7 +36,7 @@ use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
 use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, body_centre, spawn_burst, surface_distance};
-use components::{Arc, Bolt, StrikeLight};
+use components::{Arc, Bolt, Scorch, StrikeLight};
 
 /// A strike's shock and its reach from where it lands.
 pub const STRIKE_SHOCK: f32 = 40.0;
@@ -48,14 +50,26 @@ pub const MAX_JUMPS: u32 = 6;
 /// bottom, as the art draws them.
 pub const SEGMENT: Vec2 = Vec2::new(24.0, 64.0);
 pub const EXITS: [f32; 8] = [-8.0, -4.0, 0.0, 4.0, 8.0, -6.0, 6.0, 2.0];
-/// How long a bolt and an arc show, the strike's light, its reach, its
-/// colour and the seconds it fades over, and the strike's shake.
+/// How long a bolt shows, the strike's light, its reach, its colour and
+/// the seconds it fades over, and the strike's shake.
 pub const BOLT_SECS: f32 = 0.15;
 pub const STRIKE_LIGHT: f32 = 3.0;
 pub const LIGHT_REACH: f32 = 320.0;
 pub const LIGHT_COLOR: Vec3 = Vec3::new(0.82, 0.72, 1.0);
 pub const LIGHT_SECS: f32 = 0.2;
 pub const STRIKE_SHAKE: f32 = 0.5;
+/// How long a jump's arc shows, fading over its last third, and the
+/// seconds its zigzag holds before it takes a new path, so it crackles.
+pub const ARC_SECS: f32 = 0.35;
+pub const ARC_JITTER: f32 = 0.05;
+/// The scorch a strike leaves on the ground: its sprite, the point of it
+/// on the landing (its bottom row's middle), its z under the bodies, the
+/// seconds it fades over and the most that stay, the oldest going.
+pub const SCORCH: &str = "ex10_scorch";
+pub const SCORCH_ANCHOR: Vec2 = Vec2::new(24.0, 15.0);
+pub const SCORCH_Z: i32 = 1;
+pub const SCORCH_SECS: f32 = 5.0;
+pub const SCORCH_CAP: usize = 6;
 
 /// Lightning as a plugin: the presentation's ages in the present phase
 /// and the bolts, arcs and veil drawn after the sprites.
@@ -157,22 +171,60 @@ pub fn nearest_conductor(
         .map(|(entity, centre, _)| (entity, centre))
 }
 
-/// Where a bolt falling from the top of the level at `point.x` stops: the
-/// first solid tile or body its line meets, `caster`'s body aside, the top
-/// of a live enemy's body within its kind's strike width of its centre
+/// What a bolt met where it landed (Q7).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Met {
+    /// A tile, a static collider's top or the level's foot.
+    Ground,
+    /// A body neither dynamic nor an enemy, which moves: a deck, the
+    /// elevator.
+    Deck(Entity),
+    /// A live enemy within its strike width, or a dynamic body.
+    Body(Entity),
+}
+
+/// Where a bolt lands, and what it met there.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Landing {
+    pub at: Vec2,
+    pub met: Met,
+}
+
+/// What a bolt's ray met in `entity`: a tile or a static body is the
+/// ground, a dynamic body or an enemy a body, any other body a deck.
+fn met(world: &World, entity: Option<Entity>) -> Met {
+    let Some(entity) = entity else {
+        return Met::Ground;
+    };
+    match world.get::<RigidBody>(entity).map(|body| body.kind) {
+        Some(BodyKind::Dynamic) => Met::Body(entity),
+        Some(BodyKind::Kinematic) if world.has::<Enemy>(entity) => Met::Body(entity),
+        Some(BodyKind::Kinematic) => Met::Deck(entity),
+        _ => Met::Ground,
+    }
+}
+
+/// Where a bolt falling from the top of the level at `point.x` stops, and
+/// what it met: the first solid tile or body its line meets, `caster`'s
+/// body aside, the top of a live enemy's body within its kind's strike
+/// width of its centre
 /// ([`KindInfo::strike`](crate::features::enemies::KindInfo::strike)),
 /// its art being wider than its body, or the top of the first static
 /// collider it crosses, else the level's foot. The aim point's height does
 /// not stop it.
 #[must_use]
-pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
+pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
     let top = Vec2::new(point.x, WORLD_MIN.y);
     let mut stop = WORLD_MAX.y - top.y;
+    let mut what = Met::Ground;
     let filter = caster.map_or_else(SpatialFilter::new, |caster| {
         SpatialFilter::new().excluding(caster)
     });
-    if let Some(hit) = cast_ray(world, top, Vec2::Y, stop, &filter) {
-        stop = stop.min(hit.distance);
+    if let Some(hit) = cast_ray(world, top, Vec2::Y, stop, &filter)
+        && hit.distance <= stop
+    {
+        stop = hit.distance;
+        what = met(world, hit.entity);
     }
     for (at, collider, body) in world.query::<(&Position, &Collider, &RigidBody)>() {
         if body.kind != BodyKind::Static {
@@ -185,6 +237,7 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
         let face = centre.y - half_extents.y - top.y;
         if (point.x - centre.x).abs() <= half_extents.x && (0.0..stop).contains(&face) {
             stop = face;
+            what = Met::Ground;
         }
     }
     for (entity, enemy, health) in world.query::<(Entity, &Enemy, &Health)>() {
@@ -198,9 +251,13 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
         let face = centre.y - info.half.y - top.y;
         if (point.x - centre.x).abs() <= info.strike && (0.0..stop).contains(&face) {
             stop = face;
+            what = Met::Body(entity);
         }
     }
-    top + Vec2::Y * stop
+    Landing {
+        at: top + Vec2::Y * stop,
+        met: what,
+    }
 }
 
 /// Strikes from `caster` at the aim point `aim`: the bolt falls at the
@@ -209,7 +266,7 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Vec2 {
 /// and sets off the kegs there, credited to `caster`; and one chain of
 /// conduction starts, its first jump due the step after. Where it landed.
 pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
-    let landing = bolt_end(world, aim, Some(caster));
+    let Landing { at: landing, met } = bolt_end(world, aim, Some(caster));
     let mut struck: Vec<(Option<SaveId>, Entity)> = world
         .query::<(Entity, &Collider)>()
         .filter(|&(entity, _)| entity != caster)
@@ -273,14 +330,16 @@ pub fn strike(world: &mut World, caster: Entity, aim: Vec2) -> Vec2 {
             );
         }
     }
-    show(world, landing, number);
+    show(world, landing, met, number);
     landing
 }
 
 /// A strike's look at `landing`: its bolt from the sky with its veil, its
-/// light, the shake, the sparks where it lands and the snap under the
-/// thunder. The strike's number picks the bolt's five to eight pieces.
-fn show(world: &mut World, landing: Vec2, number: u64) {
+/// light and the shake; where it met a body the strike's sparks and the
+/// snap, where it met the ground or a deck the ground's sparks and their
+/// crackle, with a scorch on the ground alone; then the thunder. The
+/// strike's number picks the bolt's five to eight pieces.
+fn show(world: &mut World, landing: Vec2, met: Met, number: u64) {
     let count = 5 + (number % 4) as usize;
     let pieces: Vec<usize> = (0..count)
         .map(|k| ((number as usize).wrapping_mul(7) + k * 3) % EXITS.len())
@@ -307,9 +366,43 @@ fn show(world: &mut World, landing: Vec2, number: u64) {
             trauma_add: STRIKE_SHAKE,
         });
     }
-    spawn_burst(world, "ex10_strike_sparks", landing);
-    audio::play(world, Sound::Snapped, landing);
+    if let Met::Body(_) = met {
+        spawn_burst(world, "ex10_strike_sparks", landing);
+        audio::play(world, Sound::Snapped, landing);
+    } else {
+        spawn_burst(world, "ex10_ground_sparks", landing);
+        audio::play(world, Sound::GroundStruck, landing);
+    }
+    if met == Met::Ground {
+        scorch(world, landing);
+    }
     audio::play(world, Sound::Thundered, landing);
+}
+
+/// A scorch where a strike met the ground, its bottom row's middle on
+/// `landing`, under the bodies; past [`SCORCH_CAP`] the oldest goes.
+fn scorch(world: &mut World, landing: Vec2) {
+    let mut marks: Vec<(Entity, f32)> = world
+        .query::<(Entity, &Scorch)>()
+        .map(|(entity, scorch)| (entity, scorch.age))
+        .collect();
+    marks.sort_by(|a, b| b.1.total_cmp(&a.1));
+    let over = (marks.len() + 1).saturating_sub(SCORCH_CAP);
+    for &(entity, _) in &marks[..over] {
+        world.despawn(entity);
+    }
+    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+        return;
+    };
+    let mut sprite = Sprite::new(assets.intern_sprite(SCORCH));
+    sprite.z_order = SCORCH_Z;
+    world.spawn_with((
+        Transform::from_position(landing - SCORCH_ANCHOR),
+        sprite,
+        Visibility { visible: true },
+        Scorch { age: 0.0 },
+        SceneEntity { state_id: GAMEPLAY },
+    ));
 }
 
 /// A jump's run, from its cascade entry: its arc from `from` to `at` and a

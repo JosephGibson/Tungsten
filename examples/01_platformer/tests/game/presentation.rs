@@ -605,6 +605,49 @@ fn the_wizards_overlays_sit_on_his_body() {
 }
 
 #[test]
+fn a_shocked_dummy_crackles_through_four_frames_and_flickers_violet() {
+    use example_01_platformer::features::combat::systems::SHOCK_TINT;
+    use example_01_platformer::features::dummy;
+    let (mut harness, player) = run();
+    harness.step(10);
+    let at = centre(&harness, player) + Vec2::new(120.0, -140.0);
+    let target = dummy::spawn(harness.world_mut(), at);
+    super::combat::apply(&mut harness, target, "shocked", None);
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for f in 0..4 {
+        let name = format!("ex10_status_crackle_medium_{f}");
+        mock_sprite(assets, &name, 960 + f, false);
+    }
+    let mut frames = Vec::new();
+    // Four frames at 16 Hz, 0.25 s.
+    for _ in 0..15 {
+        harness.step(1);
+        let world = harness.world();
+        let shown: Vec<u32> = overlays(world)
+            .iter()
+            .map(|batch| batch.texture.0)
+            .filter(|handle| (960..964).contains(handle))
+            .map(|handle| handle - 960)
+            .collect();
+        let tinted = world.get::<Sprite>(target).unwrap().color == SHOCK_TINT;
+        frames.push((shown, tinted));
+    }
+    let seen: std::collections::BTreeSet<u32> =
+        frames.iter().flat_map(|(shown, _)| shown.clone()).collect();
+    assert_eq!(
+        seen.into_iter().collect::<Vec<_>>(),
+        [0, 1, 2, 3],
+        "{frames:?}"
+    );
+    assert!(
+        frames
+            .iter()
+            .all(|(shown, tinted)| shown.len() == 1 && *tinted == shown[0].is_multiple_of(2)),
+        "the tint on the even frames: {frames:?}"
+    );
+}
+
+#[test]
 fn bloom_and_vignette_survive_game_over_and_retry() {
     let (mut harness, player) = run();
     let stack = |harness: &UiHarness| harness.world().resource::<PostStack>().0.clone();

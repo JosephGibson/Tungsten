@@ -12,7 +12,9 @@ use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
 use tungsten::kit::{Health, StateMachine, Tags};
 use tungsten::render::SpriteBatch;
 
-use super::systems::{THAW_FLICKER_HZ, THAW_WARN, flicker, frost_level, frost_stage, frozen_left};
+use super::systems::{
+    THAW_FLICKER_HZ, THAW_WARN, frost_level, frost_stage, frozen_left, shock_frame,
+};
 use super::{BURNING, FROZEN, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
@@ -188,7 +190,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             );
         }
         if tags.has(SHOCKED) {
-            let name = format!("ex10_status_crackle_{class}_{}", flicker(time));
+            let name = format!("ex10_status_crackle_{class}_{}", shock_frame(time));
             quad(&mut batches, assets, &name, origin, size);
         }
         if tags.has(STUNNED) {

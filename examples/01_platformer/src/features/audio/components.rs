@@ -205,11 +205,14 @@ pub enum Sound {
     GoblinCrouched,
     GoblinDashed,
     GoblinYelped,
+    /// Lightning striking the ground or a deck, in place of the snap a
+    /// body takes (e01sfx).
+    GroundStruck,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 81] = [
+    pub const ALL: [Sound; 82] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -291,6 +294,7 @@ impl Sound {
         Sound::GoblinCrouched,
         Sound::GoblinDashed,
         Sound::GoblinYelped,
+        Sound::GroundStruck,
     ];
 
     /// Its cue event's name.
@@ -378,6 +382,7 @@ impl Sound {
             Sound::GoblinCrouched => "goblin_crouched",
             Sound::GoblinDashed => "goblin_dashed",
             Sound::GoblinYelped => "goblin_yelped",
+            Sound::GroundStruck => "ground_struck",
         }
     }
 }
