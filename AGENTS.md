@@ -16,7 +16,7 @@ Native Rust 2D game engine: `winit` + `wgpu` + `glam` + hand-rolled ECS + manife
 
 ## Commands
 
-Run from the repo root. `just --list` lists wrappers for the raw commands; [validation](docs/validation.md) selects them. Examples use `cargo run -p example-NN-name` and need a GPU/display. Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
+Run from the repo root. `just --list` lists wrappers for the raw commands; [validation](docs/validation.md) selects them. Examples use `cargo run -p example-NN-name` and need a GPU/display; example 01 runs from its folder (`cd examples/01_platformer && cargo run`, `D-197`). Wrong backend: `WGPU_BACKEND=vulkan|metal|dx12`.
 
 ## Tests
 
