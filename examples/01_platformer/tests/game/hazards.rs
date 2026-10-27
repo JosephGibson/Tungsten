@@ -10,7 +10,10 @@
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::BURNING;
-use example_01_platformer::features::enemies::{self, components::EnemyKind};
+use example_01_platformer::features::enemies::{
+    self,
+    components::{Enemy, EnemyKind},
+};
 use example_01_platformer::features::level::components::{Doused, Hazard};
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::props::{self, components::PropKind};
@@ -1058,4 +1061,45 @@ fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
         (149..=151).contains(&idle),
         "then idles 2.5 s: {idle} steps"
     );
+}
+
+#[test]
+fn the_ice_spray_aimed_at_the_first_floors_map_geyser_chokes_it() {
+    let (mut harness, player) = run();
+    // The map's enemies off, its geysers kept.
+    let world = harness.world_mut();
+    let enemies: Vec<Entity> = world
+        .query::<(Entity, &Enemy)>()
+        .map(|(entity, _)| entity)
+        .collect();
+    for enemy in enemies {
+        despawn_tree(world, enemy);
+    }
+    harness.harness_mut().set_dt(DT);
+    // `hollow_floor_1`'s, at column 225 on row 63.
+    let geyser = harness
+        .world()
+        .query::<(Entity, &Geyser, &Transform)>()
+        .min_by(|a, b| a.2.position.x.total_cmp(&b.2.position.x))
+        .map(|(entity, ..)| entity)
+        .unwrap();
+    let mouth = geyser::mouth(harness.world(), geyser).unwrap();
+    assert_eq!(mouth.x, 225.0 * 64.0, "the first floor's geyser");
+    stand(&mut harness, player, mouth.x - 160.0, 63.0 * 64.0);
+    harness.step(2);
+    pin_camera(&mut harness, mouth - Vec2::new(600.0, 400.0));
+    choose(&mut harness, 2);
+    harness.harness_mut().press_action("cast");
+    let mut held = 0;
+    for _ in 0..60 {
+        aim_at(&mut harness, mouth);
+        harness.step(1);
+        held += 1;
+        if state(&harness, geyser).choked > 0.0 {
+            break;
+        }
+    }
+    harness.harness_mut().release_action("cast");
+    assert!(state(&harness, geyser).choked > 0.0, "choked");
+    assert!(held <= 36, "within 0.6 s: {held} steps");
 }

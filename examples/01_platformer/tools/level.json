@@ -442,7 +442,7 @@
       "left": 203,
       "right": 216,
       "row": 30,
-      "bottom": 57,
+      "bottom": 58,
       "style": "wet"
     },
     {
@@ -10686,7 +10686,7 @@
       "kind": "bat",
       "name": "ravine bat c",
       "x": 209.5,
-      "y": 57
+      "y": 58
     },
     {
       "kind": "wisp",
@@ -10814,6 +10814,25 @@
       "x": 412.46875,
       "y": 35.046875,
       "leash": 4
+    },
+    {
+      "kind": "goblin",
+      "name": "hollow goblin",
+      "x": 265.46875,
+      "y": 56.046875,
+      "leash": 1.5
+    },
+    {
+      "kind": "bat",
+      "name": "hollow bat",
+      "x": 250.5,
+      "y": 53
+    },
+    {
+      "kind": "wisp",
+      "name": "hollow wisp d",
+      "x": 261.5,
+      "y": 54.0
     }
   ],
   "pickups": [
@@ -10905,5 +10924,69 @@
       153,
       28
     ]
+  ],
+  "geysers": [
+    {
+      "x": 225.0,
+      "support": "hollow_floor_1",
+      "offset": 0.0
+    },
+    {
+      "x": 243.5,
+      "support": "hollow_floor_2",
+      "offset": 1.3
+    },
+    {
+      "x": 257.0,
+      "support": "hollow_shelf_a",
+      "offset": 2.6
+    }
+  ],
+  "stones": [
+    {
+      "x": 211.0,
+      "support": "cleft",
+      "size": "large"
+    },
+    {
+      "x": 211.75,
+      "support": "cleft",
+      "size": "medium"
+    },
+    {
+      "x": 212.5,
+      "support": "cleft",
+      "size": "small"
+    },
+    {
+      "x": 219.0,
+      "support": "hollow_floor_1",
+      "size": "large"
+    },
+    {
+      "x": 219.75,
+      "support": "hollow_floor_1",
+      "size": "medium"
+    },
+    {
+      "x": 220.5,
+      "support": "hollow_floor_1",
+      "size": "small"
+    },
+    {
+      "x": 246.5,
+      "support": "hollow_floor_2",
+      "size": "large"
+    },
+    {
+      "x": 247.25,
+      "support": "hollow_floor_2",
+      "size": "medium"
+    },
+    {
+      "x": 248.0,
+      "support": "hollow_floor_2",
+      "size": "small"
+    }
   ]
 }

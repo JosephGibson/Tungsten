@@ -80,8 +80,9 @@ pub const SHAKE_DECAY: f32 = 2.2;
 pub const AMBIENT: Vec3 = Vec3::new(0.62, 0.62, 0.57);
 pub const MOONLIGHT: Vec3 = Vec3::new(0.85, 0.85, 0.72);
 pub const MOONLIGHT_INTENSITY: f32 = 0.1;
-/// Indoors, a cave: the ambient the lit sprites take there, the moon out.
-pub const AMBIENT_INDOOR: Vec3 = Vec3::new(0.30, 0.28, 0.32);
+/// Indoors, a cave: the ambient the lit sprites take there, the moon out;
+/// e01hollow's darker cave, 0.30's hue at 0.22.
+pub const AMBIENT_INDOOR: Vec3 = Vec3::new(0.22, 0.205, 0.235);
 /// The real seconds an area's light takes to ease from outdoors to indoors
 /// or back.
 pub const LIGHT_EASE: f32 = 1.0;
@@ -259,9 +260,9 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
 }
 
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, a dummy, an enemy or a placed orb. Props,
-/// slabs, iron, areas, emitters and markers take none, so an art change
-/// moves no save (schema 10).
+/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser.
+/// Props, slabs, iron, areas, emitters and markers take none, so an art
+/// change moves no save (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
     world.has::<components::Hazard>(entity)
         || world.has::<PathFollower>(entity)
@@ -269,6 +270,7 @@ fn saved(world: &World, entity: Entity) -> bool {
         || world.has::<Dummy>(entity)
         || world.has::<Enemy>(entity)
         || world.has::<Orb>(entity)
+        || world.has::<geyser::Geyser>(entity)
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with
@@ -334,3 +336,6 @@ pub const IRON_MARKER: &str = "iron";
 /// down: each a box's centre.
 pub const CRATE_MARKER: &str = "crate";
 pub const KEG_MARKER: &str = "keg";
+/// The map's markers where a fresh run sets the hollow's rubble stones
+/// down (e01hollow), by size, smallest first: each a stone's centre.
+pub const STONE_MARKERS: [&str; 3] = ["stone_small", "stone_medium", "stone_large"];

@@ -122,6 +122,16 @@ def prepare(source, images, tiles):
             for corner in (p['x'] - hx, p['x'] + hx):
                 if p.get('tier', 0) and not any(abs(corner - q['x']) <= hx for q in under):
                     raise ValueError(f"{kind} stacked over nothing: {p['x']} on {p['support']}")
+    # The hollow's stones (e01hollow), each body's centre `y` as a crate's
+    # is, from its size's prefab, refused with any of its box off its
+    # support.
+    for p in source.get('stones', []):
+        prefab = json.loads((TOOLS / 'content' / 'prefabs' / f"stone_{p['size']}.json").read_text())
+        hx, hy = (v / tile for v in prefab['components']['rigid_body']['shape']['half_extents'])
+        support = platforms[p['support']]
+        if not support['left'] <= p['x'] - hx <= p['x'] + hx <= support['right']:
+            raise ValueError(f"stone outside support: {p['x']} on {support['name']}")
+        p['y'] = support['row'] - hy - 0.5 / tile
     # Each group's own pieces: those inside its box where they are written,
     # none inside two groups' boxes.
     owners={}

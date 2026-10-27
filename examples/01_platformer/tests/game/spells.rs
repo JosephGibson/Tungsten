@@ -140,6 +140,8 @@ fn a_blast_pushes_dynamic_bodies_away_by_distance_and_mass() {
 #[test]
 fn fireball_blast_layers_emit_particles_and_drain_within_the_shared_budget() {
     let (mut harness, _) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     let o = Vec2::new(1200.0, 600.0);
     toys::explode(harness.world_mut(), o);
     let layers: Vec<Entity> = harness

@@ -54,7 +54,9 @@ use tungsten::core::Shape;
 use tungsten::core::{AudioCommand, SoundRegistry, Time};
 use tungsten::kit::{Hitbox, KitDebug, StateMachine};
 
-use super::{aim_at, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport};
+use super::{
+    aim_at, calm, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport,
+};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -133,6 +135,8 @@ fn animation_transitions_hold_finish_face_and_interrupt_landing() {
 #[test]
 fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let (mut harness, player) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     harness.step(5);
     let takeoff = centre(&harness, player) + Vec2::new(0.0, PLAYER_HALF.y);
     harness.harness_mut().press_action("jump");
@@ -186,6 +190,8 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
 #[test]
 fn particle_caps_and_ambient_placements_remain_bounded() {
     let (mut harness, _) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     let world = harness.world();
     let registry = world.resource::<ParticleConfigRegistry>();
     // The map's emitters: each object at its place, with its config and seed.

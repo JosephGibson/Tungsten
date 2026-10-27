@@ -1930,7 +1930,7 @@ fn the_maps_bats_hang_at_their_roosts_from_the_start() {
         .filter(|(_, enemy)| enemy.kind == EnemyKind::Bat)
         .map(|(entity, enemy)| (entity, enemy.home()))
         .collect();
-    assert_eq!(bats.len(), 7, "the map's bats");
+    assert_eq!(bats.len(), 8, "the map's bats");
     let mut farthest: f32 = 0.0;
     for (bat, home) in bats {
         let hangs = at(&harness, bat);

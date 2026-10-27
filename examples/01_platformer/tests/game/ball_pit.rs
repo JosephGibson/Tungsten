@@ -18,7 +18,7 @@ use tungsten::testing::UiHarness;
 use example_01_platformer::features::player::components::Lantern;
 
 use super::{
-    aim_at, ball, body, bursts, choose, contact, kick, mana, pin_camera, player_entity, run,
+    aim_at, ball, body, bursts, calm, choose, contact, kick, mana, pin_camera, player_entity, run,
 };
 
 /// A run with slot 9, the small balls, selected, aimed at the empty sky.
@@ -82,6 +82,8 @@ fn impacts_require_small_ball_and_closing_speed_strictly_above_threshold() {
 #[test]
 fn relative_body_impacts_work_on_b_side_and_dense_contacts_remain_bounded() {
     let (mut harness, _) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     let a = ball(&mut harness, Vec2::new(800.0, 400.0), false);
     let b = ball(&mut harness, Vec2::new(830.0, 400.0), true);
     kick(&mut harness, a, Vec2::X * 300.0);
