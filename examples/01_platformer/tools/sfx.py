@@ -2562,6 +2562,17 @@ def crate_break():
     return finish(samples, fade_in=0.0003, fade_out=0.06)
 
 
+def recut(data, seconds):
+    """A one-shot's WAV `data` cropped, or cycled from its start, to
+    `seconds`, faded and normalized again: e01hollow's placeholders until
+    its asset step makes their sounds."""
+    with wave.open(io.BytesIO(data), 'rb') as wav:
+        frames = wav.readframes(wav.getnframes())
+    source = [int.from_bytes(frames[i:i + 2], 'little', signed=True) / 32767
+              for i in range(0, len(frames), 2)]
+    return finish([source[i % len(source)] for i in range(int(seconds * RATE))], fade_out=0.04)
+
+
 AMBIENCE = {
     'ambience_clearing.wav': ambience_clearing,
     'ambience_aqueduct.wav': ambience_aqueduct,
@@ -2712,5 +2723,8 @@ def build_sounds():
         'ground_strike.wav': ground_strike(),
         'player_tick.wav': player_tick(),
         'crate_break.wav': crate_break(),
+        'geyser_sputter.wav': recut(fuse_hiss(), 0.6),
+        'geyser_erupt.wav': recut(flame_start(), 0.8),
+        'stone_knock.wav': recut(iron_thud(), 0.3),
         **{name: make() for name, make in AMBIENCE.items()},
     }

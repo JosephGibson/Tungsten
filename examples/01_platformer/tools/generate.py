@@ -621,6 +621,13 @@ def particle_configs():
         (.08, .15), [[0, .7], [.3, .9], [1, 3.6]], [[0, 1], [.3, .9], [.65, .42], [1, 0]],
         [[0, [1, 1, .85, 1]], [.22, [1, .72, .28, 1]], [.38, [.5, .28, .16, 1]], [.55, [.14, .12, .11, 1]],
          [1, [.09, .08, .08, 1]]], (-3, 3))
+    # e01hollow's geyser, placeholders until its asset step draws them: the
+    # embers over its sputter and eruption the fire trail's, its eruption's
+    # burst the blast's embers, each under its cap.
+    configs['geyser_embers'] = dict(configs['fire_trail'], max_alive=16,
+                                    emission=dict(kind='continuous', rate_hz=20))
+    configs['geyser_burst'] = dict(configs['blast_embers'], max_alive=24,
+                                   emission=dict(kind='burst', count=24, once=True))
     return configs
 
 

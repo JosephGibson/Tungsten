@@ -80,8 +80,10 @@ ELEMENT_SIZES = {
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat
-# and his staff about the courier's body.
-SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96)}
+# and his staff about the courier's body; e01hollow's geyser vent (its
+# choked twin too) and plume, and its small and medium stones.
+SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96), 'geyser_vent': (64, 32), 'geyser_plume_': (64, 176),
+                 'stone_small_': (32, 32), 'stone_medium_': (32, 32)}
 # The wizard's frames keep their lowest pixel on his feet's row, 93, the
 # outline's row under his soles (`actors.WIZARD_FEET`), the lying ones too.
 PLAYER_FEET = 93
@@ -201,6 +203,7 @@ def build_art():
     frame's staff light anchor (`actors.build_player`)."""
     from actors import (
         build_balls, build_dummy, build_enemies, build_fire_missile, build_fireball, build_player,
+        build_stones,
     )
     from backdrops import build_backdrops
     from effects import build_effects, build_tome_art
@@ -214,6 +217,7 @@ def build_art():
     build_balls(images, lit, animations)
     build_dummy(images)
     build_enemies(images, animations)
+    build_stones(images, lit)
     build_scenery(images, lit, animations)
     build_props(images, lit)
     build_terrain(images, lit)

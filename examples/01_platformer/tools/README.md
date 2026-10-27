@@ -1114,3 +1114,22 @@ fire's hiss over a soft flutter, its crackle and sap pops, for anything alight).
 `test_generate.py`'s `EffectsContractTests` holds the generated files to the contract
 the game reads: each sprite's size, four crackle frames a class, the particles' caps
 and the sounds' lengths, volumes and loops.
+
+## The hollow
+
+e01hollow's families are placeholders until its hollow asset step draws them, each
+made from today's art at the contract's size, frames and cap, never drawn. In
+`scenery.py`, beside the lavafall's clip: `geyser_vent` (64 × 32, lit), the ember
+pool's lower half, and `geyser_vent_choked` the same darkened to the nearest palette
+colours (`darkened`); `geyser_sputter_0`–`_3` (64 pixels, unlit), the lavafall's four
+frames, and `geyser_plume_0`–`_5` (64 × 176, unlit), them stacked to the plume's
+height and cycled. In `actors.py`, `build_stones` (lit): `stone_small_<i>` and
+`stone_medium_<i>` (32 pixels) and `stone_large_<i>` (64), the goblin's rock's two
+turns stretched nearest-neighbour over each size's body box (`STONE_BOXES`), its
+bottom on the box's. `generate.particle_configs`: `geyser_embers`, the fire trail's
+under a cap of 16, and `geyser_burst`, the blast's embers as a burst of 24. `sfx.py`'s
+`recut` crops or cycles a one-shot: `geyser_sputter` (0.6 s of `fuse_hiss`),
+`geyser_erupt` (0.8 s of `flame_start`) and `stone_knock` (0.3 s of `iron_thud`).
+`test_generate.py`'s `HollowContractTests` holds the generated files to the contract
+the game reads: each sprite's size and count, each stone's lowest opaque row on its
+box's bottom (31, 31, 63), the particles' caps and the sounds' lengths and volumes.

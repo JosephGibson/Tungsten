@@ -3078,3 +3078,24 @@ def build_enemies(images, animations):
     for i in range(2):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)
+
+
+# e01hollow's stones by size: the frame's side, then the body box's centre
+# and half extents in the frame (the prefabs' `offset` and `half_extents`),
+# so each stone's lowest opaque row is its box's bottom.
+STONE_BOXES = {'small': (32, (16, 25), (9, 7)), 'medium': (32, (16, 22), (13, 10)),
+               'large': (64, (32, 49), (20, 15))}
+
+
+def build_stones(images, lit):
+    """e01hollow's rubble stones, two looks a size, lit as the crates are:
+    placeholders until its asset step draws them, the goblin's rock's two
+    turns stretched nearest-neighbour over each size's body box."""
+    for size, (side, (cx, cy), (hx, hy)) in STONE_BOXES.items():
+        for i in range(2):
+            rock = goblin_rock(i)
+            body = rock.crop(rock.getbbox()).resize((2 * hx, 2 * hy), Image.NEAREST)
+            im = Image.new('RGBA', (side, side))
+            im.alpha_composite(body, (cx - hx, cy - hy))
+            images[f'stone_{size}_{i}'] = im
+            lit.add(f'stone_{size}_{i}')

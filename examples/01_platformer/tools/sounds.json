@@ -563,5 +563,20 @@
     "looping": false,
     "path": "sounds/crate_break.wav",
     "volume": 0.55
+  },
+  "ex10_geyser_sputter_sfx": {
+    "looping": false,
+    "path": "sounds/geyser_sputter.wav",
+    "volume": 0.45
+  },
+  "ex10_geyser_erupt_sfx": {
+    "looping": false,
+    "path": "sounds/geyser_erupt.wav",
+    "volume": 0.45
+  },
+  "ex10_stone_knock_sfx": {
+    "looping": false,
+    "path": "sounds/stone_knock.wav",
+    "volume": 0.5
   }
 }

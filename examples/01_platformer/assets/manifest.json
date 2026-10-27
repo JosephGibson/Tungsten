@@ -963,6 +963,12 @@
     "ex10_fuse_sparks": {
       "path": "particles/fuse_sparks.json"
     },
+    "ex10_geyser_burst": {
+      "path": "particles/geyser_burst.json"
+    },
+    "ex10_geyser_embers": {
+      "path": "particles/geyser_embers.json"
+    },
     "ex10_gore_burst": {
       "path": "particles/gore_burst.json"
     },
@@ -2364,6 +2370,16 @@
       "path": "sounds/fuse_hiss.wav",
       "volume": 0.45
     },
+    "ex10_geyser_erupt_sfx": {
+      "looping": false,
+      "path": "sounds/geyser_erupt.wav",
+      "volume": 0.45
+    },
+    "ex10_geyser_sputter_sfx": {
+      "looping": false,
+      "path": "sounds/geyser_sputter.wav",
+      "volume": 0.45
+    },
     "ex10_goblin_cackle_sfx": {
       "looping": false,
       "path": "sounds/goblin_cackle.wav",
@@ -2582,6 +2598,11 @@
     "ex10_steam_burst_sfx": {
       "looping": false,
       "path": "sounds/steam_burst.wav",
+      "volume": 0.5
+    },
+    "ex10_stone_knock_sfx": {
+      "looping": false,
+      "path": "sounds/stone_knock.wav",
       "volume": 0.5
     },
     "ex10_summon_sfx": {
@@ -6844,6 +6865,58 @@
       "filter": "nearest",
       "normal_map": "sprites/gate_big_2_2_n.png",
       "path": "sprites/gate_big_2_2.png"
+    },
+    "ex10_geyser_plume_0": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_0.png"
+    },
+    "ex10_geyser_plume_1": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_1.png"
+    },
+    "ex10_geyser_plume_2": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_2.png"
+    },
+    "ex10_geyser_plume_3": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_3.png"
+    },
+    "ex10_geyser_plume_4": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_4.png"
+    },
+    "ex10_geyser_plume_5": {
+      "filter": "nearest",
+      "path": "sprites/geyser_plume_5.png"
+    },
+    "ex10_geyser_sputter_0": {
+      "filter": "nearest",
+      "path": "sprites/geyser_sputter_0.png"
+    },
+    "ex10_geyser_sputter_1": {
+      "filter": "nearest",
+      "path": "sprites/geyser_sputter_1.png"
+    },
+    "ex10_geyser_sputter_2": {
+      "filter": "nearest",
+      "path": "sprites/geyser_sputter_2.png"
+    },
+    "ex10_geyser_sputter_3": {
+      "filter": "nearest",
+      "path": "sprites/geyser_sputter_3.png"
+    },
+    "ex10_geyser_vent": {
+      "emissive_mask": "sprites/geyser_vent_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/geyser_vent_n.png",
+      "path": "sprites/geyser_vent.png"
+    },
+    "ex10_geyser_vent_choked": {
+      "emissive_mask": "sprites/geyser_vent_choked_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/geyser_vent_choked_n.png",
+      "path": "sprites/geyser_vent_choked.png"
     },
     "ex10_glowcaps_0": {
       "emissive_mask": "sprites/glowcaps_0_e.png",
@@ -11865,11 +11938,47 @@
       "filter": "nearest",
       "path": "sprites/status_ice_wisp_cracked.png"
     },
+    "ex10_stone_large_0": {
+      "emissive_mask": "sprites/stone_large_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_large_0_n.png",
+      "path": "sprites/stone_large_0.png"
+    },
+    "ex10_stone_large_1": {
+      "emissive_mask": "sprites/stone_large_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_large_1_n.png",
+      "path": "sprites/stone_large_1.png"
+    },
+    "ex10_stone_medium_0": {
+      "emissive_mask": "sprites/stone_medium_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_medium_0_n.png",
+      "path": "sprites/stone_medium_0.png"
+    },
+    "ex10_stone_medium_1": {
+      "emissive_mask": "sprites/stone_medium_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_medium_1_n.png",
+      "path": "sprites/stone_medium_1.png"
+    },
     "ex10_stone_platform": {
       "emissive_mask": "sprites/stone_platform_e.png",
       "filter": "nearest",
       "normal_map": "sprites/stone_platform_n.png",
       "path": "sprites/stone_platform.png"
+    },
+    "ex10_stone_small_0": {
+      "emissive_mask": "sprites/stone_small_0_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_small_0_n.png",
+      "path": "sprites/stone_small_0.png"
+    },
+    "ex10_stone_small_1": {
+      "emissive_mask": "sprites/stone_small_1_e.png",
+      "filter": "nearest",
+      "normal_map": "sprites/stone_small_1_n.png",
+      "path": "sprites/stone_small_1.png"
     },
     "ex10_stone_wall": {
       "emissive_mask": "sprites/stone_wall_e.png",

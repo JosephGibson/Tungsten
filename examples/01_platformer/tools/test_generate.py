@@ -377,4 +377,65 @@ class EffectsContractTests(unittest.TestCase):
             self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
 
 
+# e01hollow's contract, the files its families own as the game reads them:
+# each sprite's size and how many a family has, each stone's lowest opaque
+# row on its body box's bottom, each particle config's cap, and each sound's
+# shortest and longest seconds and its quietest and loudest volume. Its
+# placeholders pass it, and so must its art.
+HOLLOW_FAMILIES = {
+    'geyser_vent': ((64, 32), 1),
+    'geyser_vent_choked': ((64, 32), 1),
+    'geyser_sputter_': ((64, 64), 4),
+    'geyser_plume_': ((64, 176), 6),
+    'stone_small_': ((32, 32), 2),
+    'stone_medium_': ((32, 32), 2),
+    'stone_large_': ((64, 64), 2),
+}
+HOLLOW_STONE_FEET = {'small': 31, 'medium': 31, 'large': 63}
+HOLLOW_PARTICLES = {'geyser_embers': 16, 'geyser_burst': 24}
+HOLLOW_SOUNDS = {
+    'geyser_sputter': (.4, .7, .3, .7),
+    'geyser_erupt': (.6, 1.0, .3, .7),
+    'stone_knock': (.08, .4, .3, .7),
+}
+
+
+class HollowContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def sprite(self, name):
+        from PIL import Image
+        with Image.open(ASSETS / self.manifest['sprites']['ex10_' + name]['path']) as im:
+            return im.convert('RGBA')
+
+    def test_sprites_keep_their_sizes_counts_and_the_stones_feet(self):
+        for family, (size, count) in HOLLOW_FAMILIES.items():
+            names = [family] if count == 1 else [f'{family}{i}' for i in range(count)]
+            for name in names:
+                self.assertEqual(self.sprite(name).size, size, name)
+            if count > 1:
+                self.assertNotIn(f'ex10_{family}{count}', self.manifest['sprites'], family)
+        for size, feet in HOLLOW_STONE_FEET.items():
+            for i in range(2):
+                self.assertEqual(self.sprite(f'stone_{size}_{i}').getbbox()[3] - 1, feet, f'stone_{size}_{i}')
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in HOLLOW_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_and_volumes(self):
+        for name, (shortest, longest, quietest, loudest) in HOLLOW_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertFalse(sound['looping'], name)
+            self.assertTrue(quietest <= sound['volume'] <= loudest, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
+
+
 if __name__=='__main__':unittest.main()

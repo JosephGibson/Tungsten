@@ -10,7 +10,7 @@ import math
 
 from PIL import Image
 
-from art import rng_for
+from art import PALETTE, rng_for
 from pixels import Part, compose, despeckle, dither, outline, shade, to_image, unit
 from terrain import BREAK_LIPS, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image, line, rect, tinted
 
@@ -2660,6 +2660,22 @@ def lavafall_frame(frame):
     return to_image(c)
 
 
+def darkened(im, factor):
+    """`im` with each pixel's colour scaled by `factor`, snapped to the
+    nearest palette colour of the same alpha."""
+    by_alpha = {}
+    for rgba in PALETTE.values():
+        by_alpha.setdefault(rgba[3], []).append(rgba)
+    out = im.copy()
+    for y in range(im.height):
+        for x in range(im.width):
+            r, g, b, a = im.getpixel((x, y))
+            if a:
+                want = (r * factor, g * factor, b * factor)
+                out.putpixel((x, y), min(by_alpha[a], key=lambda p: sum((p[k] - want[k]) ** 2 for k in range(3))))
+    return out
+
+
 def rails_worn():
     """A run of rails with a sleeper gone."""
     c = from_image(rails())
@@ -2842,6 +2858,22 @@ def build_level_scenery(images, lit, animations):
     lit.update(clip(images, animations, 'lava_surface', [lava_frame(f) for f in range(4)], 220))
     lit.update(clip(images, animations, 'lava_deep', [lava_frame(f, 'deep') for f in range(4)], 220))
     lit.update(clip(images, animations, 'lavafall', [lavafall_frame(f) for f in range(4)], 100))
+    # e01hollow's geyser, placeholders until its asset step draws them: the
+    # vent the ember pool's lower half (lit), choked the same darkened; the
+    # sputter's four frames the lavafall's, the plume's six them stacked to
+    # its height (unlit). The game picks each frame by the phase's time.
+    vent = ember_pool(0).crop((0, TILE // 2, TILE, TILE))
+    images['geyser_vent'] = vent
+    images['geyser_vent_choked'] = darkened(vent, 0.45)
+    lit.update({'geyser_vent', 'geyser_vent_choked'})
+    streams = [lavafall_frame(f) for f in range(4)]
+    for f, im in enumerate(streams):
+        images[f'geyser_sputter_{f}'] = im
+    for f in range(6):
+        plume = Image.new('RGBA', (TILE, 176))
+        for y in range(176 - TILE, -TILE, -TILE):
+            plume.alpha_composite(streams[f % 4], (0, y))
+        images[f'geyser_plume_{f}'] = plume
     # The elevator's cage and cable, which the game draws (M79).
     images['lift_deck_elevator'] = elevator_cage()
     images['lift_cable'] = lift_cable()

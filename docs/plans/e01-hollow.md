@@ -1,6 +1,6 @@
-# Example 01: the aqueduct and the hollow (`e01hollow`) — draft
+# Example 01: the aqueduct and the hollow (`e01hollow`) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01 (o) ([feedback](1.0/example-01-feedback.md) §3.11, V1–V16, V23, Q61–Q67): the aqueduct gets more scenery and a small pool, loses its three spouts for a second gargoyle (8 streams from 10), and gains a second pier top, more pier-base and floor variants, a coping tile along the channel's top, a broken pillar at its start, and fainter, sparser stains; the hollow's mouth is redrawn with its lintel a row lower, fewer props and rubble of its own; three fire geysers, a new hazard on a 3.9 s cycle that the ice spray chokes; a goblin, a bat and a fourth wisp; rubble stones in three sizes as bodies; a deep look pass on the cave, a darker ambient and a wider lavafall. Save schema 19 holds the geysers and the stones and moves the save IDs past the new map objects. The art and sound come from two redo [§6 asset sessions](roadmap-redo.md#6-asset-sessions) on §3's brief, after the code steps, which build on placeholders until the art is accepted.
 - **non-goals:** A geyser lighting, throwing or chilling props and balls (Later); the troll lifting stones; stones in a run loaded from a save older than schema 19 (a fresh run sets them down, as a schema 11 save's run has no crates); any route, tome, support, lava, deck or elevator change; a light past the budget; the ravine's, the mine's or the clearing's look (beyond a floor family the aqueduct shares, §3.2); any kit, core, render or template change; a release, a changelog section or a decision entry (§5 Q16): a release is cut separately (`D-215`).
 - **files to touch:** paths under `examples/01_platformer/` (01's) unless rooted; "the generated `assets/`" is the generator's output with `tools/outputs.json`.
@@ -264,6 +264,7 @@ Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-27,
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-27 | pass | `just level-check`: `OK: 5088 owned outputs match; art, level, references and budgets validated`, `Ran 34 tests … OK` (`HollowContractTests`' 3 among them); `cargo test -p example-01-platformer --locked`: 399 passed, 1 ignored; `just repo-check` → exit 0; `git status --porcelain` → Step 1's paths only. Before it, two fixes the gates needed, each its own commit: HEAD's `just level-check` failed, since `593bcdd` changed only the generated `assets/prefabs/fire_missile.json`, so `491cdb8` set its source in `tools/content/` to the same (8, 8); and two tests failed at HEAD on `593bcdd` and `1664bec`, which `59bcef8` follows (`fixed_step`'s trail offset, `presentation`'s plough box at the beetle's drawn point). The stones are lit, as the contract's "normal and emissive maps" and the crates are, not unlit as the goblin's rock | the generated `assets/`; `tools/{art,scenery,actors,generate,sfx}.py`, `tools/sounds.json`, `tools/test_generate.py`, `tools/README.md` |
 
 ## Follow-ups
 
