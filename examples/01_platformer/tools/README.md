@@ -63,7 +63,7 @@ pixel) for any hand-authored sprite. The modules:
 
 | Module | Draws |
 | --- | --- |
-| `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
+| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves |
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
@@ -994,11 +994,11 @@ and the beetle's lowest pixel on row 60, the troll's on row 124 of its 128 frame
 | Enemy | Rig | Clips |
 | --- | --- | --- |
 | Wisp | A round flame with a face, self-lit like the fireball hazards; its tongues stream up and behind | `wisp_float` (8, flickering, a pixel's bob), `wisp_flare` (6, its alert: wider, eyes and mouth open) |
-| Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open), `crawler_scared` (4, looping: recoiled over its planted feet, front low, plates raised, feelers laid flat, jaws shut, eyes a slit, sting raised, a pixel's tremble) |
-| Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (8 × 100 ms, once: a front foot scraping, dust; its four poses twice), `beetle_charge` (4: head down, horn levelled, dust behind) |
+| Crawler | Redrawn by e01foes on a pose (`CrawlerPose`): five frost-blue plates, each graded from a moonlit top-left to a dark underside by `pixels.grade` (`FROST_PLATE`, two tones of its own between `}` and `_`), a pale ridge along its top and a dark seam behind it with the cold glow showing through; faceted ice crystals, a lit and a shadowed facet each, one catching a glint that steps along them through the walk; eight jointed legs fanned out under the plates, the end pairs arching higher, their upper segments lit along the top; a crested wedge head with four glowing eyes in dark sockets and ice pincers; jointed feelers; an ice sting curling up over its tail to a barb | `crawler_walk` (6), `crawler_windup` (4: coiled low at the front, knees high, sting curled up, jaws parting), `crawler_lunge` (3: stretched and raised, forelegs flung ahead), `crawler_recover` (3), `crawler_scared` (4, looping: recoiled, front low, plates raised, feelers flat, eyes a slit, a pixel's tremble), `crawler_retreat` (6 × 80 ms, looping: backing away in the scare's posture, feet stepping back in two sets of four, trembling), `crawler_hop` (70 90 240 ms: a spring off straightened legs, aloft with legs tucked, unfolding for the landing; it may rise off row 60), `crawler_snowball_windup` (4 × 90 ms: the head dipping as its jaws pack a clump of snow, then cocked back with it), `crawler_snowball_throw` (50 80 120 ms: the head jerked up and ahead, jaws open at the snowball's (66, 40), loose snow shaken off, settling) |
+| Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (8 × 100 ms, once, e01foes: rearing, its front and horn rising over its planted hind feet by a column shear (`sheared`, `BEETLE_REAR`) as its shell tilts, a foreleg raking the ground twice (`RAKE`) and throwing clods back, a star of moonlight swelling at the horn's tip (`horn_glint`)), `beetle_charge` (4, e01foes: head down and dropped, the horn levelled, its legs smeared in the translucent iron `ѐ ё`, dust behind) |
 | Bat | A near-black furred body, dark purple wings with their finger bones showing, red eyes, fangs | `bat_roost` (4: hanging by its feet, swaying), `bat_fly` (6: the wings turned about their roots, folding a little on the downstroke), `bat_windup` (4: wings raised, the outline flashing white), `bat_dive` (2: wings swept back) |
 | Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3, 133 200 467 ms, 0.8 seconds in all: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_swipe_windup` (2, 120 180 ms: the arm drawn back), `troll_swipe` (3, 60 70 200 ms: the arm raked under and up in front of it, streaks along the hand's arc), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
-| Goblin | A sapper on a joint skeleton (01 (g)): a skull with a hooked nose, a slit-pupilled yellow eye and fangs, notched leaf ears with a ring, a goggled leather cap, a laced jerkin over a pot belly, a pouch of rocks and a bomb at the belt, clawed feet; its outline's lowest row on 60, its collider's foot | `goblin_idle` (4, 240 200 160 120 ms, looping), `goblin_walk` (6 × 85 ms), `goblin_windup` and `goblin_windup_bomb` (3, 110 140 200 ms: a rock or a lit bomb drawn back), `goblin_throw` (3, 60 70 170 ms), `goblin_stab_windup` (1, 200 ms: its knife drawn back low at its hip), `goblin_stab` (2, 80 140 ms: the knife thrust ahead off a lunging foot, then drawn halfway back), `goblin_hop` (2 × 110 ms, looping: knees tucked, arms flung up). Its rock (`goblin_rock_0`, `_1`) and bomb (`goblin_bomb_0`, `_1`) are 16 pixels, each centred on its frame, which it rolls about |
+| Goblin | A sapper on a joint skeleton (01 (g)): a skull with a hooked nose, a slit-pupilled yellow eye and fangs, notched leaf ears with a ring, a goggled leather cap, a laced jerkin over a pot belly, a pouch of rocks and a bomb at the belt, clawed feet; its outline's lowest row on 60, its collider's foot | `goblin_idle` (4, 240 200 160 120 ms, looping), `goblin_walk` (6 × 85 ms), `goblin_windup` and `goblin_windup_bomb` (3, 110 140 200 ms: a rock or a lit bomb drawn back), `goblin_throw` (3, 60 70 170 ms), `goblin_stab_windup` (1, 200 ms: its knife drawn back low at its hip), `goblin_stab` (2, 80 140 ms: the knife thrust ahead off a lunging foot, then drawn halfway back), `goblin_hop` (2 × 110 ms, looping: knees tucked, arms flung up); e01foes' `goblin_dash_windup` (2, 120 180 ms: sinking low and coiled, the knife drawn back past its hip, a sly half-lidded eye and a smirk), `goblin_dash` (4 × 70 ms, looping: a low sprint, the knife thrust ahead inside its stab box) and `goblin_panic` (6 × 70 ms, looping: running flat out, arms flailing over its head, a scream, a wild eye; `GoblinPose`'s `eye` and its `smirk` and `scream` mouths). Its rock (`goblin_rock_0`, `_1`) and bomb (`goblin_bomb_0`, `_1`) are 16 pixels, each centred on its frame, which it rolls about |
 
 The frozen look (`effects.py`) is a frosty cube of ice in three-quarter view: a snow
 cap, a side in shade, frost thick at the edges, a drift at the foot, frost ferns,
@@ -1024,25 +1024,27 @@ an enemy sees the wizard: toms on every beat, an eighth-note low pulse, string s
 on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
 seam.
 
-e01foes' families are placeholders until its asset session draws them: today's art
-copied, cycled or resized to the counts and timings the game reads, never drawn.
-The crawler's `crawler_retreat` (6 × 80 ms, looping: the walk reversed),
-`crawler_hop` (70 90 240 ms: the lunge's), `crawler_snowball_windup` (4 × 90 ms: the
-coil) and `crawler_snowball_throw` (50 80 120 ms: the landing); the beetle's
-eight-frame `beetle_paw`; the goblin's `goblin_dash_windup` (120 180 ms: the stab's
-tell), `goblin_dash` (4 × 70 ms) and `goblin_panic` (6 × 70 ms), from its walk; and
-in `effects.py` (`FOE_CLIPS`) the 16-pixel `snowball` (4 × 60 ms: the goblin's rock),
-the 48-pixel `snowball_burst` (6 × 50 ms: the frost puff's first six) and the 64 × 24
-`charge_streak` (4 × 50 ms: the tracer drawn out), which `mirror_facing` twins. The
-particles `paw_dust` and `dash_dust` are the charge's dust, `snowball_burst` the ice's
-shatter held to 24. The sounds `beetle_plough`, `crawler_hop`, `snowball_throw` (the
-rock's throw), `crawler_retreat` (the crawler's hiss), `snowball_burst` (its lunge),
-`goblin_crouch`, `goblin_dash` (the stab) and `goblin_yelp` (the cackle) are copies,
-and `beetle_paw.wav` is the charge's 0.8 s. `art.py` lets the crawler's hop rise off
-row 60 (`AIRBORNE`). `test_generate.py`'s `FoeContractTests` holds the generated
-files to the contract the game reads: each clip's size, durations, looping and twin,
-row 60 under every grounded frame, the crawler's walk reaching 30 pixels or more each
-side of x 32, the particles' caps and the sounds' lengths and volumes.
+e01foes' families, drawn by its asset session on the clips above: in `effects.py`
+(`FOE_CLIPS`) the 16-pixel `snowball` (4 × 60 ms: a lumpy sphere of packed snow in the
+palette's white-blue ramp `Ѣ ѣ Ѳ Ѵ`, lit from the top-left, grains turning with its spin,
+within 6 pixels of its centre), the 48-pixel `snowball_burst` (6 × 50 ms: a puff of
+powder in the white alpha steps blooming, sinking and thinning with no dark rim,
+chips flung out and falling, flakes riding it) and the 64 × 24 `charge_streak`
+(4 × 50 ms: white-grey speed lines over darker iron ones, tapering and broken into
+dashes away from the beetle, flickering), which `mirror_facing` twins. The particles:
+`paw_dust`, earth-brown puffs off the raking foot; `dash_dust`, a scuff off the
+goblin's heels; `snowball_burst`, white ice chips flung out and falling (16 at most).
+`sfx.py` adds `beetle_paw` (0.8 s: grit raked twice, each scrape higher and louder,
+over a growl climbing into the charge), `beetle_plough` (a heavy wooden thud),
+`crawler_retreat` (a long breathy hiss sinking as it withdraws, over chittering legs),
+`crawler_hop` (a chitter and a click), `snowball_throw` (a packed crunch and a flick),
+`snowball_burst` (a soft crump and ice tinkling down), `goblin_crouch` (a sly
+snicker), `goblin_dash` (a scuffle and a whoosh) and `goblin_yelp` (a squeal breaking
+into panicked gabble) on `goblin_voice`. `art.py` lets the crawler's hop rise off row
+60 (`AIRBORNE`). `test_generate.py`'s `FoeContractTests` holds the generated files to
+the contract the game reads: each clip's size, durations, looping and twin, row 60
+under every grounded frame, the crawler's walk reaching 30 pixels or more each side
+of x 32, the particles' caps and the sounds' lengths and volumes.
 
 ## The tomes
 

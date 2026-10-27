@@ -87,6 +87,44 @@ def shade(inside, base, light=None, shadow=None, back=None, trim=None, rim=None,
     return colors
 
 
+def grade(inside, symbols, light=(-0.45, -0.8, 0.6), depth=None, spread=0.3, fall=0.0, bias=0.0):
+    """Graded shading for a part, a few dithered steps from dark to light:
+    its height rises as a rounded dome `depth` pixels in from its edge (by
+    default all the way to its middle), so each pixel's slope turns it
+    toward or away from `light` (screen x and y toward the light, then out
+    of the picture), lit top-left to a shadowed underside; `fall` darkens it
+    further toward its foot, `bias` lifts the whole. `symbols` run dark to
+    light, picked by the ordered dither."""
+    if not inside:
+        return {}
+    far = 10 ** 6
+    order = sorted(inside, key=lambda p: (p[1], p[0]))
+    dist = dict.fromkeys(inside, far)
+    for pixels, steps in ((order, ((-1, 0, 3), (0, -1, 3), (-1, -1, 4), (1, -1, 4))),
+                          (order[::-1], ((1, 0, 3), (0, 1, 3), (1, 1, 4), (-1, 1, 4)))):
+        for x, y in pixels:  # a chamfer distance in from the edge, in thirds of a pixel
+            dist[(x, y)] = min([dist[(x, y)]] + [dist.get((x + dx, y + dy), 0) + w for dx, dy, w in steps])
+    depth = depth or max(1.0, max(dist.values()) / 3 - 0.5)
+
+    def height(p):
+        u = min(1.0, max(0.0, (dist.get(p, 0) / 3 - 0.5) / depth))
+        return depth * math.sqrt(1 - (1 - u) ** 2)
+
+    length = math.sqrt(sum(c * c for c in light))
+    lx, ly, lz = (c / length for c in light)
+    top = min(y for _, y in inside)
+    tall = max(1, max(y for _, y in inside) - top)
+    colors = {}
+    for x, y in order:
+        nx = (height((x - 1, y)) - height((x + 1, y))) / 2
+        ny = (height((x, y - 1)) - height((x, y + 1))) / 2
+        norm = math.sqrt(nx * nx + ny * ny + 1)
+        facing = (nx * lx + ny * ly + lz) / norm
+        value = 0.5 + 0.5 * (facing - lz) / (1 - lz) + bias - fall * (y - top) / tall
+        colors[(x, y)] = ramp(value, symbols, x, y, spread)
+    return colors
+
+
 def compose(layers):
     """Paint parts back to front; each part rims what it overlaps."""
     canvas = {}

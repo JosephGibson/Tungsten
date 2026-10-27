@@ -2283,36 +2283,133 @@ def build_tome_art(images, lit):
 
 # e01foes' effects: the crawler's snowball turning and its burst, and the
 # beetle's charge streaks drawn behind its rear, which `generate.mirror_facing`
-# twins for a beetle facing left (`FACING_CLIPS`). Today's art stands in at
-# each clip's size, count and timing until its asset session draws them: the
-# goblin's rock, the frost puff's first six frames and the tracer drawn out
-# to the streak's width. A clip: its frame size, its frames, the
-# milliseconds a frame and whether it loops.
+# twins for a beetle facing left (`FACING_CLIPS`). A clip: its frame size,
+# its frames, the milliseconds a frame and whether it loops.
 FOE_CLIPS = {
     'snowball': ((16, 16), 4, 60, True),
     'snowball_burst': ((48, 48), 6, 50, False),
     'charge_streak': ((64, 24), 4, 50, True),
 }
 FACING_CLIPS = ('charge_streak',)
+# The snow's white-blue ramp, shadow to light (the crawler's clump's too).
+SNOW_RAMP = ('Ѣ', 'ѣ', 'Ѳ', 'Ѵ', 'Ψ')
+# The powder's whites by alpha, faint to opaque.
+POWDER = ('#', '%', '&', 'l', 'p', 'q', 'u', 'x', 'Ѵ', 'Ψ')
+
+
+def snowball(f):
+    """The snowball, a quarter turn of its spin a frame: a lumpy sphere of
+    packed snow, white-blue, lit from the top-left, ice grains glinting and
+    pits of shadow turning with it, a pale blue rim; its centre (8, 8),
+    within 6 pixels of it."""
+    size = FOE_CLIPS['snowball'][0]
+    spin = f * math.pi / 4  # its lumps and grains repeat each half turn
+    px = {}
+    for y in range(size[1]):
+        for x in range(size[0]):
+            dx, dy = x + 0.5 - 8, y + 0.5 - 8
+            r, theta = math.hypot(dx, dy), math.atan2(dy, dx)
+            edge = 4.3 + 0.45 * math.sin(2 * (theta - spin) + 0.7) + 0.25 * math.sin(4 * (theta - spin) + 1.9)
+            if r > edge:
+                continue
+            nz = math.sqrt(max(0.0, 1 - (r / edge) ** 2))
+            lit = (-0.55 * dx / edge - 0.65 * dy / edge + 0.55 * nz) * 0.75 + 0.3
+            px[(x, y)] = SNOW_RAMP[min(len(SNOW_RAMP) - 1, max(0, int(lit * len(SNOW_RAMP) + ordered(x, y) * 0.5)))]
+    for k in range(6):  # grains and pits on its surface, turning with it
+        a = unit('snowball-grain', k) * math.pi + spin + (math.pi if k % 2 else 0)
+        rr = 1.2 + 2.6 * unit('snowball-grain-r', k)
+        q = (round(8 + math.cos(a) * rr - 0.5), round(8 + math.sin(a) * rr - 0.5))
+        if q in px:
+            px[q] = 'Ψ' if k % 3 == 0 else ('ѣ' if k % 3 == 1 else 'Ѳ')
+    for q in [(x + dx, y + dy) for x, y in px for dx, dy in NEIGHBOURS]:
+        if q not in px and 0 <= q[0] < size[0] and 0 <= q[1] < size[1]:
+            px[q] = 'ϰ' if q[1] < 8 else 'Ѣ'
+    px[(6, 5)] = 'Ψ'
+    return to_image(px, size)
+
+
+def snowball_burst(f):
+    """The snowball bursting where it met something: a bright puff of
+    powder blooming and settling, chips of packed snow flying out and
+    falling, a few flakes riding the puff; white and frosty, translucent at
+    its edge, with no dark rim. Its centre (24, 24) on the contact."""
+    size = FOE_CLIPS['snowball_burst'][0]
+    n = FOE_CLIPS['snowball_burst'][1]
+    t = f / (n - 1)
+    cx, cy = 24.0, 24.0 + 5.0 * t * t  # the powder sinking as it settles
+    r0 = 4.5 + 13.0 * t ** 0.55
+    px = {}
+    for y in range(size[1]):
+        for x in range(size[0]):
+            dx, dy = x + 0.5 - cx, y + 0.5 - cy
+            theta = math.atan2(dy, dx)
+            edge = r0 * (1 + wobble('snowburst', theta, f, ((5, 0.12, 1.3), (8, 0.08, -2.1), (13, 0.05, 2.7))))
+            # Squashed as it settles: flatter and wider at its foot.
+            d = math.hypot(dx / (1 + 0.25 * t), dy / (1 - 0.3 * t * (dy > 0) - 0.1 * t))
+            q = d / max(edge, 0.5)
+            if q > 1:
+                continue
+            v = (1 - q) * (1.25 - 0.9 * t) + ordered(x, y) * 0.12
+            if t > 0.35 and unit('snowburst-thin', x, y, f) < (t - 0.35) * 1.3 - (1 - q) * 0.4:
+                continue
+            level = min(len(POWDER) - 1, int(v * len(POWDER) * 1.05))
+            if level >= 1:
+                px[(x, y)] = POWDER[level]
+    for k in range(9):  # chips of packed snow flung out, falling as they fly
+        a = (k / 9) * math.tau + unit('snowchip', k) * 0.6
+        speed = 14 + 12 * unit('snowchip-v', k)
+        tt = t + 0.12
+        x = cx + math.cos(a) * speed * tt * 1.6
+        y = 24 + math.sin(a) * speed * tt * 1.3 + 30 * tt * tt
+        q = (round(x), round(y))
+        if 1 <= q[0] < size[0] - 2 and 1 <= q[1] < size[1] - 2 and t < 0.92:
+            px[q] = 'Ψ' if t < 0.5 else 'Ѵ'
+            if k % 3 == 0 and t < 0.7:
+                px[(q[0] + 1, q[1])] = 'Ѳ'
+                px[(q[0], q[1] + 1)] = 'ѣ'
+    for k in range(5):  # flakes riding the puff out
+        a = unit('snowflake', k) * math.tau + t * 0.9
+        rr = r0 * (0.5 + 0.6 * unit('snowflake-r', k))
+        q = (round(cx + math.cos(a) * rr), round(cy + math.sin(a) * rr * 0.85 - 2 * t))
+        if 3 <= q[0] < size[0] - 3 and 3 <= q[1] < size[1] - 3 and 0.15 < t < 0.95:
+            flake(px, q[0], q[1], big=k % 2 == 0 and t < 0.7, bright=t < 0.55 or k % 2 == 0)
+    return to_image(px, size)
+
+
+def charge_streak(f):
+    """A charge's streaks, flickering a frame at a time: bold speed lines
+    tapering away behind the beetle, white-grey cores over darker iron
+    lines, broken into dashes toward their tails; its right edge's middle
+    (64, 12) on the beetle's rear."""
+    w, h = FOE_CLIPS['charge_streak'][0]
+    px = {}
+    # Each line: its row from the middle, its length, its weight and its tone.
+    lines = ((-8, 34, 1, 'dark'), (-5, 52, 2, 'light'), (-1, 60, 2, 'dark'), (2, 46, 2, 'light'),
+             (6, 56, 1, 'dark'), (9, 30, 1, 'light'))
+    for k, (row, length, weight, tone) in enumerate(lines):
+        length *= 0.75 + 0.35 * unit('streak', k, f)
+        jitter = round(2 * unit('streak-j', k, f)) - 1 if k % 2 else 0
+        y0 = h // 2 + row + jitter
+        for x in range(w - 1, max(-1, round(w - length)), -1):
+            u = (w - 1 - x) / length  # 0 at the beetle, 1 at the tail
+            if u > 0.45 and unit('streak-dash', k, f, x // 3) < (u - 0.45) * 1.6:
+                continue  # broken into dashes toward its tail
+            thick = weight if u < 0.55 else 1
+            for dy in range(thick):
+                if tone == 'light':
+                    s = 'Ψ' if u < 0.12 else 'φ' if u < 0.3 else 'x' if u < 0.55 else 'u' if u < 0.8 else 'p'
+                else:
+                    s = 'ψ' if u < 0.18 else 'Ω' if u < 0.4 else 'ѐ' if u < 0.7 else 'ё'
+                if 0 <= y0 + dy < h:
+                    px[(x, y0 + dy)] = s
+    return to_image(px, (w, h))
 
 
 def build_foe_art(images):
-    """The foes' effects' frames, unlit: `<clip>_<f>`; after the sprays',
-    since the burst copies the frost puff's."""
-    from PIL import Image
-
-    from actors import goblin_rock
-    for f in range(FOE_CLIPS['snowball'][1]):
-        images[f'snowball_{f}'] = goblin_rock(f % 2)
-    for f in range(FOE_CLIPS['snowball_burst'][1]):
-        images[f'snowball_burst_{f}'] = images[f'frost_puff_{f}'].copy()
-    (w, h), frames, _, _ = FOE_CLIPS['charge_streak']
-    trail = tracer()
-    trail = trail.resize((w, 2 * trail.height), Image.Resampling.NEAREST)
-    for f in range(frames):
-        im, _ = canvas((w, h))
-        im.paste(trail, (0, (h - trail.height) // 2))
-        images[f'charge_streak_{f}'] = im
+    """The foes' effects' frames, unlit: `<clip>_<f>`."""
+    for name, draw in (('snowball', snowball), ('snowball_burst', snowball_burst), ('charge_streak', charge_streak)):
+        for f in range(FOE_CLIPS[name][1]):
+            images[f'{name}_{f}'] = draw(f)
 
 
 def build_effects(images):

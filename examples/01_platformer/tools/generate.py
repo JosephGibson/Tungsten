@@ -568,13 +568,24 @@ def particle_configs():
     configs['bound_trail'] = full(
         'mote', 12, burst(12), (.4, .75), dict(kind='radial', speed=dict(min=6, max=34)), (0, 40), 1.4,
         (.3, .45), [[0, 1], [1, .4]], [[0, 0], [.1, 1], [.6, .7], [1, 0]], sky)
-    # e01foes, until its asset session: the beetle's paw dust and the
-    # goblin's dash dust, the charge's; the snowball's burst, the ice's
-    # shatter held to 24.
-    configs['paw_dust'] = dict(configs['charge_dust'])
-    configs['dash_dust'] = dict(configs['charge_dust'])
-    configs['snowball_burst'] = dict(
-        configs['ice_shatter'], max_alive=24, emission=dict(kind='burst', count=24, once=True))
+    # e01foes: the beetle's paw dust, kicked up from its raking foot every
+    # 0.15 s of its tell and drifting back, earth-brown, the clods its frames
+    # throw; the goblin's dash, a scuff of dust off its heels skidding out
+    # low along the ground; the snowball's burst, chips of packed snow flung
+    # out and falling with a few flakes, white. Particles draw under the
+    # sprites, so each launches clear of the body or the burst first.
+    earth = [[0, [.62, .5, .38, 1]], [.6, [.5, .42, .34, 1]], [1, [.38, .33, .29, 0]]]
+    configs['paw_dust'] = full(
+        'dust', 12, burst(4), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
+        [[0, .6], [.3, 1], [1, 1.4]], [[0, 0], [.12, .85], [.6, .6], [1, 0]], earth, (-2, 2))
+    configs['dash_dust'] = full(
+        'dust', 10, burst(8), (.3, .55), cone((0, -1), 170, 60, 170), (0, 220), 3.0, (.2, .34),
+        [[0, .5], [.3, 1], [1, 1.5]], [[0, 0], [.1, .8], [.55, .55], [1, 0]],
+        [[0, [.7, .66, .6, 1]], [1, [.45, .43, .4, 0]]], (-2, 2))
+    configs['snowball_burst'] = full(
+        'ice_chip', 16, burst(16), (.35, .75), dict(kind='radial', speed=dict(min=110, max=260)), (0, 520), 1.4,
+        (.12, .26), [[0, 1], [1, .6]], [[0, 1], [.7, .9], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.5, [.86, .94, 1, 1]], [1, [.7, .84, .96, 0]]], (-10, 10))
     return configs
 
 

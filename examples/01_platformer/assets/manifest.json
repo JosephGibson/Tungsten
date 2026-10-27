@@ -2197,12 +2197,12 @@
     "ex10_beetle_paw_sfx": {
       "looping": false,
       "path": "sounds/beetle_paw.wav",
-      "volume": 0.45
+      "volume": 0.55
     },
     "ex10_beetle_plough_sfx": {
       "looping": false,
       "path": "sounds/beetle_plough.wav",
-      "volume": 0.5
+      "volume": 0.6
     },
     "ex10_black_hole_collapse_sfx": {
       "looping": false,
@@ -2352,12 +2352,12 @@
     "ex10_goblin_crouch_sfx": {
       "looping": false,
       "path": "sounds/goblin_crouch.wav",
-      "volume": 0.4
+      "volume": 0.45
     },
     "ex10_goblin_dash_sfx": {
       "looping": false,
       "path": "sounds/goblin_dash.wav",
-      "volume": 0.45
+      "volume": 0.5
     },
     "ex10_goblin_stab_sfx": {
       "looping": false,
@@ -2367,7 +2367,7 @@
     "ex10_goblin_yelp_sfx": {
       "looping": false,
       "path": "sounds/goblin_yelp.wav",
-      "volume": 0.45
+      "volume": 0.55
     },
     "ex10_gun_click_sfx": {
       "looping": false,
@@ -2527,12 +2527,12 @@
     "ex10_snowball_burst_sfx": {
       "looping": false,
       "path": "sounds/snowball_burst.wav",
-      "volume": 0.45
+      "volume": 0.5
     },
     "ex10_snowball_throw_sfx": {
       "looping": false,
       "path": "sounds/snowball_throw.wav",
-      "volume": 0.4
+      "volume": 0.45
     },
     "ex10_spell_switch_sfx": {
       "looping": false,
