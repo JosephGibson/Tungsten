@@ -655,6 +655,26 @@ fn spray_range(tiles: Option<f32>) -> (UiHarness, Entity, Option<Entity>) {
     (harness, player, dummy)
 }
 
+/// Whether a burst of `name` lies within 24 px of the face at x `face`,
+/// within `half` px of `middle`'s height: a surface's hit on it.
+fn bursts_on_face(harness: &UiHarness, name: &str, face: f32, middle: f32, half: f32) -> bool {
+    let world = harness.world();
+    let config = world
+        .resource::<tungsten::core::ParticleConfigRegistry>()
+        .id_for_name(name);
+    world
+        .query::<(
+            &Burst,
+            &tungsten::core::ParticleEmitter,
+            &tungsten::core::Transform,
+        )>()
+        .any(|(_, emitter, at)| {
+            Some(emitter.config) == config
+                && (at.position.x - face).abs() <= 24.0
+                && (at.position.y - middle).abs() <= half
+        })
+}
+
 /// The bursts of `name` within `reach` of `at`.
 fn bursts_near(harness: &UiHarness, name: &str, at: Vec2, reach: f32) -> usize {
     let world = harness.world();
@@ -703,28 +723,64 @@ fn the_sprays_reach_further_and_burst_on_what_they_hit() {
         assert!(left < full, "{hit}: the dummy took the spray's damage");
         let _ = player;
     }
-    // On a bare wall, neither: a splash, but no burst.
-    for slot in [FLAMETHROWER, ICE_SPRAY] {
+    // On a bare wall, its surface hit at the face and no target's (e01sfx).
+    for (slot, surface) in [
+        (FLAMETHROWER, "ex10_flame_wall_hit"),
+        (ICE_SPRAY, "ex10_frost_wall_hit"),
+    ] {
         let (mut harness, player, _) = spray_range(None);
         let me = centre(&harness, player);
-        floor(
-            &mut harness,
-            me + Vec2::new(150.0, -100.0),
-            Vec2::new(10.0, 100.0),
-        );
+        let wall = me + Vec2::new(150.0, -100.0);
+        floor(&mut harness, wall, Vec2::new(10.0, 100.0));
         harness.step(1);
         choose(&mut harness, slot);
         aim_at(&mut harness, me + Vec2::new(400.0, 0.0));
         harness.harness_mut().press_action("cast");
-        harness.step(18);
+        let face = wall.x - 10.0;
+        let burst = until(&mut harness, 18, |h| {
+            bursts_on_face(h, surface, face, wall.y, 100.0)
+        });
         assert!(
             harness.world().query::<&Spray>().count() == 1,
             "slot {slot}: it sprays"
         );
         harness.harness_mut().release_action("cast");
+        assert!(
+            burst,
+            "slot {slot}: {surface} at the wall's face within 0.3 s"
+        );
         let none =
             super::bursts(&harness, "ex10_flame_hit") + super::bursts(&harness, "ex10_frost_hit");
-        assert_eq!(none, 0, "slot {slot}: a wall bursts nothing");
+        assert_eq!(none, 0, "slot {slot}: no target's hit on a wall");
+    }
+}
+
+#[test]
+fn a_spray_bursts_its_surface_hit_on_a_crate() {
+    use example_01_platformer::features::props::components::PropKind;
+    use example_01_platformer::features::props::{self, CRATE_HALF};
+    for (slot, surface) in [
+        (FLAMETHROWER, "ex10_flame_wall_hit"),
+        (ICE_SPRAY, "ex10_frost_wall_hit"),
+    ] {
+        let (mut harness, player, _) = spray_range(None);
+        let me = centre(&harness, player);
+        let at = Vec2::new(me.x + 180.0, SKY - CRATE_HALF.y - 0.5);
+        let crate_ = props::spawn(harness.world_mut(), PropKind::Crate, at);
+        harness.step(1);
+        choose(&mut harness, slot);
+        let middle = body(&harness, crate_);
+        aim_at(&mut harness, middle);
+        harness.harness_mut().press_action("cast");
+        let face = middle.x - CRATE_HALF.x;
+        let burst = until(&mut harness, 18, |h| {
+            bursts_on_face(h, surface, face, middle.y, CRATE_HALF.y)
+        });
+        harness.harness_mut().release_action("cast");
+        assert!(burst, "slot {slot}: {surface} at the crate within 0.3 s");
+        let none =
+            super::bursts(&harness, "ex10_flame_hit") + super::bursts(&harness, "ex10_frost_hit");
+        assert_eq!(none, 0, "slot {slot}: a crate takes no target's hit");
     }
 }
 

@@ -69,8 +69,8 @@ The HUD shows the tomes held under the bars, in the order taken; a save keeps th
 | Slot | Spell | Use | Mana | Cooldown |
 | --- | --- | --- | --- | --- |
 | 1 | Fire missile: a projectile that banks once off the mine's iron, blasts what else it meets, lights small balls and shatters frozen iron | Press | 4 | 0.25 s |
-| 2 | Flamethrower: a short cone, 5.9 tiles, that lights small balls | Held | 10/s | |
-| 3 | Ice spray: a cone, 9.1 tiles, that chills balls and iron, freezing them in 1.5 s, and puts fire out with steam; its cold, half the flamethrower's fire, freezes a creature as fast | Held | 9/s | |
+| 2 | Flamethrower: a short cone, 5.9 tiles, that lights small balls and bursts on whatever it meets, a target in its hit and any other surface, a wall, a crate or the floor, in its surface hit | Held | 10/s | |
+| 3 | Ice spray: a cone, 9.1 tiles, that chills balls and iron, freezing them in 1.5 s, and puts fire out with steam; its cold, half the flamethrower's fire, freezes a creature as fast; it bursts on whatever it meets as the flamethrower does | Held | 9/s | |
 | 4 | Lightning from the sky straight down at the cursor, onto the first body or solid below it, meeting an enemy anywhere across its art, and its shock jumps from conductor to conductor, every enemy one, six times at most, ending at ice or at what takes no shock | Press | 15 | 0.8 s |
 | 5 | Force push: a wave of bent air from the wizard's hand toward the cursor, crossing about 7.6 tiles in 0.3 s and throwing what its front meets along the aim, less with distance: a body by its mass, an enemy by its kind, the troll a little; it raises dust where it scrapes the floor | Press | 12.5 | 1 s |
 | 6 | Black hole at the cursor for 6 s, three at most, a fourth collapsing the oldest: it tears open over 0.3 s with a closing ring and a rush of sparks, pulls bodies and walkers, lifts bowling balls near its core, holds bats and wisps circling about it, puts out burning small balls and sweeps up the small balls that reach its core, and hums while open | Press | 15 | 0.5 s |

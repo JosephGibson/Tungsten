@@ -70,9 +70,12 @@ const FREEZE_TIME: f32 = elements::FREEZE_TIME;
 /// the mist and the contact.
 const COLD_EMITTERS: [&str; 3] = ["ex10_ice_beam", "ex10_ice_mist", "ex10_ice_contact"];
 const FIRE_EMITTERS: [&str; 3] = ["ex10_flame_spray", "ex10_flame_mist", "ex10_ball_burn"];
-/// The bursts on a target a spray damages, every second pulse (01 (h)).
+/// The bursts on a target a spray damages, every second pulse (01 (h)),
+/// and on every other surface it meets (e01sfx).
 const FROST_HIT: &str = "ex10_frost_hit";
 const FLAME_HIT: &str = "ex10_flame_hit";
+pub const FROST_WALL_HIT: &str = "ex10_frost_wall_hit";
+pub const FLAME_WALL_HIT: &str = "ex10_flame_wall_hit";
 /// A spray's loop, by its element.
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
@@ -1101,8 +1104,11 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
 /// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
 /// ([`COLD_SPRAY_DPS`] or [`FIRE_SPRAY_DPS`] a second) from the caster,
 /// and every second pulse, from the first, each bursts at
-/// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), a
-/// cosmetic burst the cap may drop.
+/// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), every
+/// other body met (props, balls, iron, frozen bodies, a lava basin) and the
+/// nearest ray stop on a tile short of the reach in its surface hit
+/// ([`FROST_WALL_HIT`], [`FLAME_WALL_HIT`]): cosmetic bursts the cap may
+/// drop.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let Some((centre, aim)) = hold_spray(world, caster, aim, element) else {
         return;
@@ -1115,10 +1121,19 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let mut met: Vec<(Entity, Vec2)> = Vec::new();
     let mut fires: Vec<Entity> = Vec::new();
     let mut basins: Vec<Entity> = Vec::new();
+    // The nearest ray stop on a tile short of the reach.
+    let mut wall: Option<Vec2> = None;
     let bodies = traced_near(world, caster, centre, reach(element));
     let tiles = SolidTiles::of(world);
     for direction in rays(aim) {
         let (at, hit) = trace_among(&bodies, &tiles, centre, direction, reach(element));
+        let short = centre.distance(at) < reach(element) - 0.01;
+        if hit.is_none()
+            && short
+            && wall.is_none_or(|w| centre.distance_squared(at) < centre.distance_squared(w))
+        {
+            wall = Some(at);
+        }
         if element == Element::Cold {
             for fire in fires_crossed(world, centre, direction, centre.distance(at)) {
                 if !fires.contains(&fire) {
@@ -1159,15 +1174,26 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             }
             (pulses, bursts)
         });
-    let (kind, hit, dps) = match element {
-        Element::Cold => (Kind::Cold, FROST_HIT, COLD_SPRAY_DPS),
-        Element::Fire => (Kind::Fire, FLAME_HIT, FIRE_SPRAY_DPS),
+    let (kind, hit, surface, dps) = match element {
+        Element::Cold => (Kind::Cold, FROST_HIT, FROST_WALL_HIT, COLD_SPRAY_DPS),
+        Element::Fire => (Kind::Fire, FLAME_HIT, FLAME_WALL_HIT, FIRE_SPRAY_DPS),
     };
+    for _ in 0..bursts {
+        if let Some(at) = wall {
+            spawn_burst(world, surface, at);
+        }
+    }
     for &(target, contact) in &met {
         let live = world
             .get::<tungsten::kit::Health>(target)
             .is_some_and(|health| !health.is_dead());
-        if !live || target == caster {
+        if target == caster {
+            continue;
+        }
+        if !live {
+            for _ in 0..bursts {
+                spawn_burst(world, surface, contact);
+            }
             continue;
         }
         for _ in 0..pulses {
