@@ -1293,5 +1293,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "player_ticked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_player_tick_sfx",
+          "min_interval": 0.15
+        }
+      }
+    ]
   }
 ]

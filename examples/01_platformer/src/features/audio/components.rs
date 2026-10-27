@@ -208,11 +208,14 @@ pub enum Sound {
     /// Lightning striking the ground or a deck, in place of the snap a
     /// body takes (e01sfx).
     GroundStruck,
+    /// A tick of damage on the player that does not kill it, apart from a
+    /// blow's hurt (e01sfx).
+    PlayerTicked,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 82] = [
+    pub const ALL: [Sound; 83] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -295,6 +298,7 @@ impl Sound {
         Sound::GoblinDashed,
         Sound::GoblinYelped,
         Sound::GroundStruck,
+        Sound::PlayerTicked,
     ];
 
     /// Its cue event's name.
@@ -383,6 +387,7 @@ impl Sound {
             Sound::GoblinDashed => "goblin_dashed",
             Sound::GoblinYelped => "goblin_yelped",
             Sound::GroundStruck => "ground_struck",
+            Sound::PlayerTicked => "player_ticked",
         }
     }
 }
