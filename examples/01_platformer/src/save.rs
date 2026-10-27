@@ -48,10 +48,10 @@ use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::{BallBurn, Chill, Frozen};
 use crate::features::enemies::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Throw, Throws,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Snowball, Throw, Throws,
 };
 use crate::features::enemies::drops::{self, Orb, OrbKind};
-use crate::features::enemies::{self, crawler, troll};
+use crate::features::enemies::{self, crawler, snowball, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
@@ -125,6 +125,11 @@ pub struct SaveGame {
     /// adds none to an older save's run.
     #[serde(default)]
     pub props: Vec<PropSave>,
+    /// The crawlers' snowballs in flight, apart from `props`, whose bodies
+    /// a migration reads by kind; none in an older save, and none written
+    /// while none fly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snowballs: Vec<SnowballSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
@@ -1300,6 +1305,19 @@ pub struct PropSave {
     pub doused: f32,
 }
 
+/// A crawler's snowball in flight: its body and its [`Snowball`]: its
+/// thrower's save ID, the thrower's damage factor and its seconds left.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SnowballSave {
+    pub id: u64,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub thrower: Option<u64>,
+    pub factor: f32,
+    pub left: f32,
+}
+
 /// The live run as a save; `None` with no run or a dead player.
 #[must_use]
 pub fn capture(world: &World) -> Option<SaveGame> {
@@ -1444,6 +1462,20 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         .filter_map(|entity| capture_prop(world, entity))
         .collect();
     props.sort_by_key(|prop| prop.id);
+    let snowballs = snowball::flying(world)
+        .into_iter()
+        .filter_map(|(id, entity)| {
+            let ball = world.get::<Snowball>(entity)?;
+            Some(SnowballSave {
+                id,
+                position: world.get::<Position>(entity)?.0.to_array(),
+                velocity: world.get::<Velocity>(entity)?.0.to_array(),
+                thrower: ball.thrower,
+                factor: ball.factor,
+                left: ball.left,
+            })
+        })
+        .collect();
     let dummies = dummy::live(world)
         .into_iter()
         .filter_map(|(id, entity)| capture_dummy(world, id, entity))
@@ -1522,6 +1554,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         basins,
         elevators,
         props,
+        snowballs,
     })
 }
 
@@ -1872,6 +1905,22 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     }
     for prop in &save.props {
         restore_prop(world, prop);
+    }
+    for saved in &save.snowballs {
+        let ball = snowball::spawn(world, Vec2::from(saved.position));
+        let flying = Snowball {
+            thrower: saved.thrower,
+            factor: saved.factor,
+            left: saved.left,
+        };
+        world.insert_bundle(
+            ball,
+            (
+                SaveId(saved.id),
+                Velocity(Vec2::from(saved.velocity)),
+                flying,
+            ),
+        );
     }
     for orb in &save.orbs {
         drops::spawn(

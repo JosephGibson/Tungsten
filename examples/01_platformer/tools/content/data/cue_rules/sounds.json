@@ -1197,5 +1197,37 @@
         }
       }
     ]
+  },
+  {
+    "on": "snowball_thrown",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_snowball_throw_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "snowball_burst",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_snowball_burst_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
   }
 ]

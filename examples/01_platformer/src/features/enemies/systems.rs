@@ -615,6 +615,17 @@ pub fn marks(world: &mut World) {
     }
 }
 
+/// `enemy_cooldowns`, in the intent phase before the machine: each enemy's
+/// cooldowns run down by the step, a troll's slam's and the next
+/// snowball's, throw's or dash-in's.
+pub fn cooldowns(world: &mut World) {
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    for brain in world.query_mut::<&mut Brain>() {
+        brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
+        brain.cooldown = (brain.cooldown - dt).max(0.0);
+    }
+}
+
 /// `enemy_hold`, in the intent phase before the machine: each enemy that
 /// thinks nothing this step is held (dead, dormant, frozen or stunned) and
 /// its mover put at rest, the others let go. A stun replaces a wind-up's

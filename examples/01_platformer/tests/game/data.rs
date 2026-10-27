@@ -9,7 +9,7 @@ use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::enemies::drops::ORB_SECS;
-use example_01_platformer::features::enemies::{crawler, troll};
+use example_01_platformer::features::enemies::{crawler, snowball, troll};
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
@@ -192,6 +192,14 @@ fn every_restated_constant_matches_its_data() {
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));
     assert_eq!(body("goblin_bomb"), (Vec2::splat(BOMB_RADIUS), BOMB_CENTRE));
     assert_eq!(body("goblin_rock"), (Vec2::splat(ROCK_RADIUS), ROCK_CENTRE));
+    // A crawler's snowball's.
+    assert_eq!(
+        body(snowball::SNOWBALL_PREFAB),
+        (
+            Vec2::splat(snowball::SNOWBALL_RADIUS),
+            snowball::SNOWBALL_CENTRE
+        )
+    );
 }
 
 #[test]

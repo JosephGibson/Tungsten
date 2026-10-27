@@ -5,20 +5,22 @@
 //! never steps over that edge, holding there facing the player, scared;
 //! caught inside it, it backs out ([`retreat`]); it lunges only at a player
 //! whose light is out. Chasing, searching or going home it hops bodies and
-//! steps and leaps gaps by its [`HOPS`].
+//! steps and leaps gaps by its [`HOPS`]. Not afraid, with the player in its
+//! band and its cooldown spent, it flicks a snowball at it after a short
+//! silent tell ([`super::snowball`]), the light burning or not.
 
 use glam::Vec2;
-use tungsten::core::{Entity, Position, Time, Velocity, World};
+use tungsten::core::{Entity, PhysicsConfig, Position, Time, Velocity, World};
 use tungsten::kit::PlatformerController;
 
-use super::components::{Brain, Enemy, EnemyState, Scared};
+use super::components::{Brain, Enemy, EnemyKind, EnemyState, Scared, Strike};
 use super::hop::{self, Ahead, Hops, Leap, grounded};
 use super::systems::{blocked, elapsed, face, go, player, rest, sees, stride};
-use super::{ARRIVED, centre};
+use super::{ARRIVED, centre, snowball, troll};
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::Glow;
 use crate::features::player::components::Lantern;
-use crate::shared::spawn_burst;
+use crate::shared::{SaveId, spawn_burst};
 
 /// Its patrol's and its search's share of its run speed.
 pub const PATROL_PACE: f32 = 0.5;
@@ -68,6 +70,23 @@ pub const HOPS: Hops = Hops {
         lock: 0.35,
     }),
 };
+/// Its snowball (V22): the player's band, from [`SNOWBALL_NEAR`] to
+/// [`SNOWBALL_FAR`] across and no more than [`SNOWBALL_RISE`] above or
+/// below; its silent tell and its throw's clip, seconds; the seconds
+/// before it may throw again; where it lets go from its sprite's top-left
+/// facing right, just ahead of its mouth and clear of its body; and its
+/// flight's seconds a pixel to the player, at least and at most, on the
+/// world's gravity.
+pub const SNOWBALL_NEAR: f32 = 140.0;
+pub const SNOWBALL_FAR: f32 = 360.0;
+pub const SNOWBALL_RISE: f32 = 200.0;
+pub const SNOWBALL_TELL: f32 = 0.36;
+pub const SNOWBALL_SECS: f32 = 0.25;
+pub const SNOWBALL_COOLDOWN: f32 = 4.0;
+pub const SNOWBALL_FROM: Vec2 = Vec2::new(66.0, 40.0);
+pub const SNOWBALL_PACE: f32 = 1.0 / 650.0;
+pub const SNOWBALL_LEAST: f32 = 0.3;
+pub const SNOWBALL_MOST: f32 = 0.7;
 
 /// The staff light's drawn glow, its centre and its reach, while the
 /// player lives and the light burns: the glow on the flame of the frame
@@ -233,11 +252,13 @@ pub fn patrol(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The chase: afraid, it backs out first; else toward the player while it
-/// sees it, hopping and leaping on its way, winding up a lunge once within
-/// [`LUNGE_RANGE`] across and no more than [`LUNGE_RISE`] above it, unless
-/// the staff light burns, whose fear's edge it keeps behind; it searches
-/// once it loses sight. In the air it keeps its run.
+/// The chase: afraid, it backs out first; else, while it sees the player
+/// and stands, its snowball's tell with the player in its band and its
+/// cooldown spent; else a lunge's once within [`LUNGE_RANGE`] across and
+/// no more than [`LUNGE_RISE`] above it, unless the staff light burns;
+/// else toward the player, hopping and leaping on its way, the fear's edge
+/// holding it. It searches once it loses sight; in the air it keeps its
+/// run.
 pub fn chase(world: &mut World, crawler: Entity) {
     if afraid(world, crawler) {
         retreat(world, crawler);
@@ -256,6 +277,19 @@ pub fn chase(world: &mut World, crawler: Entity) {
     let across = target.x - at.x;
     let lit = light(world).is_some();
     let rise = at.y - target.y;
+    let cooling = world
+        .get::<Brain>(crawler)
+        .is_some_and(|brain| brain.cooldown > 0.0);
+    let band = (SNOWBALL_NEAR..=SNOWBALL_FAR).contains(&across.abs());
+    if !cooling && band && rise.abs() <= SNOWBALL_RISE {
+        face(world, crawler, target.x);
+        if let Some(brain) = world.get_mut::<Brain>(crawler) {
+            brain.strike = Some(Strike::Snowball);
+        }
+        go(world, crawler, EnemyState::WindUp);
+        rest(world, crawler);
+        return;
+    }
     if !lit && across.abs() <= LUNGE_RANGE && rise <= LUNGE_RISE && -rise <= 2.0 * LUNGE_RANGE {
         face(world, crawler, target.x);
         go(world, crawler, EnemyState::WindUp);
@@ -265,18 +299,29 @@ pub fn chase(world: &mut World, crawler: Entity) {
     scuttle(world, crawler, across.signum(), 1.0);
 }
 
-/// Its tell: it rears and hisses.
+/// Whether its brain keeps a snowball's strike.
+fn snowballing(world: &World, crawler: Entity) -> bool {
+    world
+        .get::<Brain>(crawler)
+        .is_some_and(|brain| brain.strike == Some(Strike::Snowball))
+}
+
+/// Its tell: it faces the player and rears, hissing before a lunge, silent
+/// before a snowball.
 pub fn enter_windup(world: &mut World, crawler: Entity) {
     if let Some((_, target)) = player(world) {
         face(world, crawler, target.x);
     }
-    if let Some(at) = centre(world, crawler) {
+    if !snowballing(world, crawler)
+        && let Some(at) = centre(world, crawler)
+    {
         audio::play(world, Sound::CrawlerHiss, at);
     }
 }
 
-/// The tell lasts [`TELL_SECS`], then the lunge; afraid, it spends its
-/// strike and chases again, so it backs out.
+/// The tell lasts [`SNOWBALL_TELL`] before a snowball, else [`TELL_SECS`],
+/// then the attack; afraid, it spends its strike and chases again, so it
+/// backs out.
 pub fn windup(world: &mut World, crawler: Entity) {
     rest(world, crawler);
     if afraid(world, crawler) {
@@ -286,14 +331,53 @@ pub fn windup(world: &mut World, crawler: Entity) {
         go(world, crawler, EnemyState::Chase);
         return;
     }
-    if elapsed(world, crawler) >= TELL_SECS - 1e-4 {
+    let tell = if snowballing(world, crawler) {
+        SNOWBALL_TELL
+    } else {
+        TELL_SECS
+    };
+    if elapsed(world, crawler) >= tell - 1e-4 {
         go(world, crawler, EnemyState::Attack);
     }
 }
 
-/// The lunge: a leap at the player at [`LUNGE_SPEED`], its input locked
-/// while it flies; its touch is what hurts.
+/// Its snowball, at its attack's start: from [`SNOWBALL_FROM`], mirrored
+/// as it faces, at the player's centre on the world's gravity, a flight of
+/// its distance at [`SNOWBALL_PACE`] held to
+/// [`SNOWBALL_LEAST`]–[`SNOWBALL_MOST`], at its damage factor now; its
+/// cooldown starts, with its sound.
+fn flick(world: &mut World, crawler: Entity) {
+    let (Some((_, target)), Some(at)) = (player(world), centre(world, crawler)) else {
+        return;
+    };
+    let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
+    let info = EnemyKind::Crawler.info();
+    let from = at
+        + Vec2::new(
+            (SNOWBALL_FROM.x - info.centre.x) * heading,
+            SNOWBALL_FROM.y - info.centre.y,
+        );
+    let gravity = world
+        .get_resource::<PhysicsConfig>()
+        .map_or(Vec2::ZERO, |config| config.gravity);
+    let time = (from.distance(target) * SNOWBALL_PACE).clamp(SNOWBALL_LEAST, SNOWBALL_MOST);
+    let velocity = troll::ballistic(from, target, time, gravity);
+    let thrower = world.get::<SaveId>(crawler).map(|id| id.0);
+    let factor = troll::factor(world, crawler);
+    snowball::throw(world, from, velocity, thrower, factor);
+    if let Some(brain) = world.get_mut::<Brain>(crawler) {
+        brain.cooldown = SNOWBALL_COOLDOWN;
+    }
+    audio::play(world, Sound::SnowballThrown, from);
+}
+
+/// The attack: its snowball's flick, or the lunge, a leap at the player at
+/// [`LUNGE_SPEED`], its input locked while it flies, its touch what hurts.
 pub fn enter_attack(world: &mut World, crawler: Entity) {
+    if snowballing(world, crawler) {
+        flick(world, crawler);
+        return;
+    }
     let Some(heading) = world.get::<Enemy>(crawler).map(|mine| mine.heading) else {
         return;
     };
@@ -306,9 +390,20 @@ pub fn enter_attack(world: &mut World, crawler: Entity) {
     }
 }
 
-/// The lunge ends when it lands, or after [`LUNGE_MOST`].
+/// The throw's clip runs [`SNOWBALL_SECS`], then it spends its strike and
+/// recovers; the lunge ends when it lands, or after [`LUNGE_MOST`].
 pub fn attack(world: &mut World, crawler: Entity) {
     let t = elapsed(world, crawler);
+    if snowballing(world, crawler) {
+        rest(world, crawler);
+        if t >= SNOWBALL_SECS - 1e-4 {
+            if let Some(brain) = world.get_mut::<Brain>(crawler) {
+                brain.strike = None;
+            }
+            go(world, crawler, EnemyState::Recover);
+        }
+        return;
+    }
     if (t > 0.15 && grounded(world, crawler)) || t >= LUNGE_MOST {
         go(world, crawler, EnemyState::Recover);
     }
@@ -338,7 +433,8 @@ pub fn seek(world: &mut World, crawler: Entity, point: Option<Vec2>) -> bool {
         && !into_light(world, crawler, across.signum())
 }
 
-/// Its clip for `state`: the lunge's three, its coil through the tell, its
+/// Its clip for `state`: its snowball's tell and throw by the strike its
+/// brain keeps, else the lunge's three, its coil through the tell, its
 /// stretch through the leap and its landing through the recovery; a hop in
 /// the air; its retreat while it backs out of its fear, its scare while it
 /// holds at the edge or stands cornered; else its walk.
@@ -347,8 +443,11 @@ pub fn clip(world: &World, crawler: Entity, state: EnemyState) -> &'static str {
     let moving = world
         .get::<Velocity>(crawler)
         .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
+    let snowball = snowballing(world, crawler);
     match state {
+        EnemyState::WindUp if snowball => "crawler_snowball_windup",
         EnemyState::WindUp => "crawler_windup",
+        EnemyState::Attack if snowball => "crawler_snowball_throw",
         EnemyState::Attack => "crawler_lunge",
         EnemyState::Recover => "crawler_recover",
         _ if !grounded(world, crawler) => "crawler_hop",

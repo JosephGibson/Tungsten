@@ -29,7 +29,7 @@
 use glam::Vec2;
 use tungsten::core::{
     BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
-    ShakeEvent, Shape, Time, Velocity, World,
+    ShakeEvent, Shape, Velocity, World,
 };
 use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
@@ -619,17 +619,6 @@ pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'s
                 .get::<Velocity>(troll)
                 .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
             if moving { "troll_walk" } else { "troll_idle" }
-        }
-    }
-}
-
-/// `troll_cooldowns`, in the intent phase before the enemies' states: each
-/// troll's slam cooldown runs down by the step.
-pub fn cooldowns(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for (enemy, brain) in world.query_mut::<(&Enemy, &mut Brain)>() {
-        if enemy.kind == EnemyKind::Troll && brain.slam_cooldown > 0.0 {
-            brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
         }
     }
 }

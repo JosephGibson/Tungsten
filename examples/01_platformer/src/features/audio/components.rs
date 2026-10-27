@@ -197,11 +197,14 @@ pub enum Sound {
     /// leap (e01foes).
     CrawlerRetreated,
     CrawlerHopped,
+    /// A crawler's snowball thrown, and its burst (e01foes).
+    SnowballThrown,
+    SnowballBurst,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 76] = [
+    pub const ALL: [Sound; 78] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -278,6 +281,8 @@ impl Sound {
         Sound::BeetlePloughed,
         Sound::CrawlerRetreated,
         Sound::CrawlerHopped,
+        Sound::SnowballThrown,
+        Sound::SnowballBurst,
     ];
 
     /// Its cue event's name.
@@ -360,6 +365,8 @@ impl Sound {
             Sound::BeetlePloughed => "beetle_ploughed",
             Sound::CrawlerRetreated => "crawler_retreated",
             Sound::CrawlerHopped => "crawler_hopped",
+            Sound::SnowballThrown => "snowball_thrown",
+            Sound::SnowballBurst => "snowball_burst",
         }
     }
 }

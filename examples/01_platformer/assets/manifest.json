@@ -2093,6 +2093,9 @@
     "small_ball": {
       "path": "prefabs/small_ball.json"
     },
+    "snowball": {
+      "path": "prefabs/snowball.json"
+    },
     "tome_arcane": {
       "path": "prefabs/tome_arcane.json"
     },

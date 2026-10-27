@@ -76,9 +76,10 @@ impl Enemy {
 /// searches, the point a neighbour's alert passed it, the attack its tell
 /// chose, so a load swings the same one and its clip comes from saved
 /// state, the seconds a fresh alert's "!" has left, which no state of its
-/// machine can hold (Alert ends sooner), and the seconds before a troll may
-/// slam again. Saved; an older save's brains chose none, show none and wait
-/// for nothing.
+/// machine can hold (Alert ends sooner), the seconds before a troll may
+/// slam again, and the seconds before a crawler's snowball or a goblin's
+/// throw or dash-in may come again. Saved; an older save's brains chose
+/// none, show none and wait for nothing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Brain {
@@ -91,6 +92,8 @@ pub struct Brain {
     pub alerted: f32,
     #[serde(default, skip_serializing_if = "is_none_left")]
     pub slam_cooldown: f32,
+    #[serde(default, skip_serializing_if = "is_none_left")]
+    pub cooldown: f32,
 }
 
 fn is_none_left(left: &f32) -> bool {
@@ -98,7 +101,7 @@ fn is_none_left(left: &f32) -> bool {
 }
 
 /// The attack an enemy's tell chose: a goblin's rock, bomb or stab, a
-/// troll's slam, swipe or throw.
+/// troll's slam, swipe or throw, a crawler's snowball.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Strike {
@@ -108,6 +111,7 @@ pub enum Strike {
     Swipe,
     Throw,
     Stab,
+    Snowball,
 }
 
 /// An enemy's sight: the seconds to its next check and whether its last
@@ -177,6 +181,17 @@ pub struct Throw {
 /// The throws in flight, in throw order: a World resource. Saved.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Throws(pub Vec<Throw>);
+
+/// A crawler's snowball in flight (e01foes): its thrower's save ID, the
+/// thrower's damage factor at the throw, and the seconds before it bursts
+/// in the air. Inserted at the throw, so its prefab names no 01 component.
+/// Saved.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Snowball {
+    pub thrower: Option<u64>,
+    pub factor: f32,
+    pub left: f32,
+}
 
 impl Throws {
     /// `body`'s throw, while it flies.

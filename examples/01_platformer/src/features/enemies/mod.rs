@@ -15,8 +15,9 @@
 //! machine and sets a frozen one's touch aside, the difficulty's factor on
 //! health and damage, a frozen flyer's
 //! fall, a bat's roost, a troll's hold and throws, a goblin's throws, its
-//! stab, its fidgets and its flight, a crawler's fear of the light and its
-//! retreat, the walkers' hops and leaps ([`hop`]), the deaths' bursts,
+//! stab, its fidgets and its flight, a crawler's fear of the light, its
+//! retreat and its snowball ([`snowball`]), the walkers' hops and leaps
+//! ([`hop`]), the deaths' bursts,
 //! their clips and the troll's bar. A run keeps its placed
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
 //! places more, [`SUMMON_CAP`] at most, the oldest going.
@@ -29,6 +30,7 @@ pub mod draw;
 pub mod drops;
 pub mod goblin;
 pub mod hop;
+pub mod snowball;
 pub mod systems;
 pub mod troll;
 pub mod wisp;
@@ -271,10 +273,11 @@ impl EnemyKind {
 
 /// The enemies as a plugin: the `enemy` and `orb` components their prefabs
 /// name; the throws in flight; in the intent phase the sight, the alerts,
-/// the marks' and the trolls' slam clocks and the hold before the state
+/// the marks' and the enemies' cooldowns and the hold before the state
 /// machine, whose hooks run each kind's rules; in the move phase the
 /// trolls' holds after the movers and the dropped orbs' fall after the
-/// kit's magnet; in the overlap phase the orbs collected; in the react
+/// kit's magnet; in the overlap phase the orbs collected and the
+/// crawlers' snowballs ([`snowball::snowballs`]); in the react
 /// phase the deaths and where the dead fell; in `PreUpdate` the orbs'
 /// adoption; in the present phase the clips after the kit's animation tick,
 /// the beetles' dust, the dropped orbs' blink and, under F1, their hit
@@ -306,7 +309,7 @@ impl Plugin for EnemiesPlugin {
         let fire = system("wisp_fire", wisp::fire).after(ENEMY_STATES);
         let chill = system("chill_grades", combat::systems::chill_grades).before(ENEMY_STATES);
         let marks = system("enemy_marks", systems::marks).before(ENEMY_STATES);
-        let cooldowns = system("troll_cooldowns", troll::cooldowns).before(ENEMY_STATES);
+        let cooldowns = system("enemy_cooldowns", systems::cooldowns).before(ENEMY_STATES);
         for desc in [sight, alerts, hold, fire, chill, marks, cooldowns] {
             schedule.add(Stage::FixedUpdate, Phase::Intent.join(desc));
         }
@@ -323,6 +326,8 @@ impl Plugin for EnemiesPlugin {
         })
         .after(PICKUP_TICK);
         schedule.add(Stage::FixedUpdate, Phase::Overlap.join(collect));
+        let snowballs = system("snowballs", snowball::snowballs);
+        schedule.add(Stage::FixedUpdate, Phase::Overlap.join(snowballs));
         // Before the shell's save captures them, so a save holds them whole.
         let adopt = system("orb_adopt", drops::adopt).before("shell_save");
         schedule.add(Stage::PreUpdate, adopt);

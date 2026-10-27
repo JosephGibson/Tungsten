@@ -34,7 +34,7 @@ use example_01_platformer::features::enemies::components::{
     Enemy, EnemyKind, EnemyState, Throw, Throws,
 };
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
-use example_01_platformer::features::enemies::{self, crawler, troll};
+use example_01_platformer::features::enemies::{self, crawler, snowball, troll};
 use example_01_platformer::features::gun::components::{Bullet, Reload};
 use example_01_platformer::features::gun::{self};
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
@@ -222,6 +222,14 @@ fn busy(harness: &mut UiHarness) {
         factor: 1.0,
         left: 2.0,
     });
+    // And a crawler's snowball high over the sky's ground.
+    snowball::throw(
+        world,
+        Vec2::new(2350.0, 400.0),
+        Vec2::new(-100.0, -200.0),
+        Some(0),
+        1.0,
+    );
     harness.step(1);
 }
 
@@ -576,6 +584,19 @@ fn lists(kind: &str) -> Lists {
                 presentation: drawn.to_vec(),
             }
         }
+        "snowball" => {
+            use example_01_platformer::features::enemies::components::Snowball;
+            use tungsten::core::AnimationState;
+            Lists {
+                saved: [&at[..], &[name::<Velocity>(), name::<Snowball>()]].concat(),
+                rebuilt: [
+                    &body[..],
+                    &[name::<SceneEntity>(), name::<PreviousVelocity>()],
+                ]
+                .concat(),
+                presentation: [&drawn[..], &[name::<AnimationState>()]].concat(),
+            }
+        }
         "wisp" | "crawler" | "beetle" | "bat" | "troll" | "goblin" => {
             use example_01_platformer::features::enemies::components::{
                 Brain, Displaced, EnemyState, HeldTouch, Scared, Shown, Sight,
@@ -711,6 +732,8 @@ fn kind(world: &World, entity: Entity) -> &'static str {
         "bomb"
     } else if world.has::<Rock>(entity) {
         "rock"
+    } else if world.has::<example_01_platformer::features::enemies::components::Snowball>(entity) {
+        "snowball"
     } else if let Some(enemy) = world.get::<Enemy>(entity) {
         match enemy.kind {
             EnemyKind::Wisp => "wisp",
@@ -775,6 +798,7 @@ fn every_component_on_a_saved_entity_is_saved_rebuilt_or_presentation() {
             "player",
             "rock",
             "scrap",
+            "snowball",
             "troll",
             "wisp"
         ]
@@ -1207,6 +1231,12 @@ fn a_save_with_a_pending_transition_enters_it_once_after_the_load() {
         Vec2::new(800.0, TOP - 10.5),
     );
     let crawler_id = id_of(&harness, crawler);
+    // Its snowball cooling a minute, so its tell is the lunge's.
+    harness
+        .world_mut()
+        .get_mut::<example_01_platformer::features::enemies::components::Brain>(crawler)
+        .unwrap()
+        .cooldown = 60.0;
     let asked = until(&mut harness, 400, |h| {
         h.world()
             .get::<StateMachine<EnemyState>>(crawler)
@@ -1237,6 +1267,83 @@ fn a_save_with_a_pending_transition_enters_it_once_after_the_load() {
     );
     let crawler = by_id(&loaded, crawler_id);
     assert_eq!(state(&loaded, crawler), EnemyState::Attack);
+}
+
+/// Steps `harness` until a snowball bursts, at most 120 frames: the fixed
+/// steps that took and where it burst.
+fn snowball_landing(harness: &mut UiHarness) -> Option<(u32, Vec2)> {
+    let mut steps = 0;
+    for _ in 0..120 {
+        harness.step(1);
+        steps += steps_this_frame(harness);
+        let burst = harness
+            .harness()
+            .events::<Sounded>()
+            .find(|sounded| sounded.sound == Sound::SnowballBurst)
+            .map(|sounded| sounded.at);
+        if let Some(at) = burst {
+            return Some((steps, at));
+        }
+    }
+    None
+}
+
+#[test]
+fn a_snowball_in_flight_and_a_cooling_crawler_save_and_load_and_it_lands_as_it_would_have() {
+    let (mut harness, player) = grounded();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness
+        .world_mut()
+        .get_mut::<example_01_platformer::features::player::components::Lantern>(player)
+        .unwrap()
+        .on = false;
+    let crawler = enemy(
+        &mut harness,
+        EnemyKind::Crawler,
+        Vec2::new(600.0 + 260.0, TOP - 10.5),
+    );
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = -1.0;
+    let crawler_id = id_of(&harness, crawler);
+    let thrown = until(&mut harness, 240, |h| {
+        !snowball::flying(h.world()).is_empty()
+    });
+    assert!(thrown, "its snowball flies");
+    harness.step(3);
+    let saved = capture(&harness);
+    assert_eq!(saved.snowballs.len(), 1, "the snowball saved");
+    let cooling = saved
+        .enemies
+        .iter()
+        .find(|enemy| enemy.id == crawler_id)
+        .expect("the crawler saved")
+        .brain
+        .cooldown;
+    assert!(cooling > 0.0, "its cooldown saved: {cooling}");
+    let read: SaveGame = serde_json::from_value(json(&saved)).expect("the save reads");
+    let mut loaded = reloaded(read, false);
+    loaded.harness_mut().set_dt(1.0 / 60.0);
+    let again = capture(&loaded);
+    assert_eq!(again.snowballs, saved.snowballs, "the snowball back");
+    let brain = loaded
+        .world()
+        .get::<example_01_platformer::features::enemies::components::Brain>(by_id(
+            &loaded, crawler_id,
+        ))
+        .copied()
+        .unwrap();
+    assert_eq!(brain.cooldown, cooling, "its cooldown back");
+    let (before, after) = (
+        snowball_landing(&mut harness),
+        snowball_landing(&mut loaded),
+    );
+    let (steps, at) = before.expect("it lands");
+    let (loaded_steps, loaded_at) = after.expect("it lands after the load");
+    assert_eq!(loaded_steps, steps, "as soon");
+    assert!(at.distance(loaded_at) < 0.5, "{at} and {loaded_at}");
 }
 
 #[test]

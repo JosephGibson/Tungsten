@@ -34,13 +34,16 @@ use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Shown, Sight, Strike,
 };
-use example_01_platformer::features::enemies::crawler::{self, FROST_BREATH, LUNGE_SPEED};
+use example_01_platformer::features::enemies::crawler::{
+    self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
+};
 use example_01_platformer::features::enemies::drops::{
     self, ORB_CENTRE, ORB_HALF, ORB_SECS, Orb, OrbKind, PlacedOrbs,
 };
 use example_01_platformer::features::enemies::goblin::{
     BOMB_CHANCE, KEEP_OFF, LEAP_BACK, ROCK_DAMAGE, STAB_DAMAGE,
 };
+use example_01_platformer::features::enemies::snowball::{self, SNOWBALL_COLD};
 use example_01_platformer::features::enemies::{self, ARRIVED, DORMANT_PAST, SUMMON_CAP, troll};
 use example_01_platformer::features::gun::components::Bullet;
 use example_01_platformer::features::gun::{self, SHOT_DAMAGE};
@@ -855,6 +858,8 @@ fn a_crawler_is_scared_at_the_drawn_light() {
         stand(&mut harness, player, 900.0, TOP);
         harness.step(2);
         let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0 + side * 340.0, TOP);
+        // Its snowball cooling, so it holds at the edge.
+        cool(&mut harness, crawler);
         let light = |h: &UiHarness| crawler::light(h.world()).expect("the light burns");
         // It keeps out of its fear's edge, 1.3 times the drawn glow's.
         let fear = |h: &UiHarness| crawler::fear(h.world()).expect("the light burns");
@@ -925,6 +930,8 @@ fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
     let y = TOP - EnemyKind::Crawler.info().half.y - 0.5;
     let x = light.x + (120.0_f32.powi(2) - (y - light.y).powi(2)).sqrt();
     let crawler = walker(&mut harness, EnemyKind::Crawler, x, TOP);
+    // Its snowball cooling, so it holds once out.
+    cool(&mut harness, crawler);
     let (mut out, mut retreats, mut clips) = (None, 0, Vec::new());
     for frame in 1..=90 {
         harness.step(1);
@@ -1090,12 +1097,22 @@ fn the_crawler_takes_double_fire_no_cold_and_bleeds() {
 }
 
 /// A crawler 260 px to the player's right on the sky's ground, the
-/// player's lantern out, so it lunges.
+/// player's lantern out and its snowball cooling a minute, so it lunges.
 fn stalker() -> (UiHarness, Entity, Entity) {
     let (mut harness, player) = arena();
     harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
     let crawler = walker(&mut harness, EnemyKind::Crawler, 560.0, TOP);
+    cool(&mut harness, crawler);
     (harness, player, crawler)
+}
+
+/// Sets `enemy`'s snowball, throw or dash-in cooling for a minute.
+fn cool(harness: &mut UiHarness, enemy: Entity) {
+    harness
+        .world_mut()
+        .get_mut::<Brain>(enemy)
+        .unwrap()
+        .cooldown = 60.0;
 }
 
 #[test]
@@ -1282,6 +1299,249 @@ fn a_freeze_mid_tell_holds_the_lunge_until_the_thaw() {
         (resumed - (0.4 - elapsed)).abs() <= 2.5 / 60.0,
         "the tell's rest: {resumed} after {elapsed}"
     );
+}
+
+/// The snowballs in flight, in save-ID order.
+fn snowballs(harness: &UiHarness) -> Vec<Entity> {
+    snowball::flying(harness.world())
+        .into_iter()
+        .map(|(_, ball)| ball)
+        .collect()
+}
+
+#[test]
+fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let x = 1540.0;
+    stand(&mut harness, player, x, TOP);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, x + 260.0, TOP);
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = -1.0;
+    let gravity = harness
+        .world()
+        .resource::<tungsten::core::PhysicsConfig>()
+        .gravity;
+    let mut arc: Option<Arc> = None;
+    let (mut throws, mut hits, mut chilled) = (Vec::new(), Vec::new(), false);
+    for frame in 0..900 {
+        // Still until the first snowball lands; then 330 px ahead of the
+        // crawler, in its band and past its lunge's reach.
+        let lead = if hits.is_empty() {
+            x
+        } else {
+            at(&harness, crawler).x - 330.0
+        };
+        stand(&mut harness, player, lead, TOP);
+        tungsten::kit::heal(harness.world_mut(), player, 100.0);
+        harness.step(1);
+        if let Some(arc) = arc.as_mut() {
+            arc.check(&harness);
+        }
+        if heard(&harness, Sound::SnowballThrown) > 0 {
+            throws.push(frame);
+        }
+        if arc.is_none()
+            && let Some(&ball) = snowballs(&harness).first()
+        {
+            arc = Some(Arc {
+                what: "a snowball",
+                entity: ball,
+                from: body(&harness, ball),
+                launch: speed(&harness, ball),
+                gravity,
+                steps: 0,
+            });
+        }
+        hits.extend(took(&harness, player, Some(crawler)));
+        chilled |= tagged(&harness, player, "status.chilled");
+        if throws.len() >= 2 {
+            break;
+        }
+    }
+    assert_eq!(arc.map(|arc| arc.steps), Some(12), "on its arc");
+    assert_eq!(hits.first(), Some(&SNOWBALL_COLD), "12 cold from it");
+    assert!(chilled, "it chills the player");
+    assert!(throws.len() >= 2, "it throws again: {throws:?}");
+    let after = (throws[1] - throws[0]) as f32 / 60.0;
+    assert!(
+        after >= SNOWBALL_COOLDOWN - 1e-3,
+        "again {after} s after, not sooner than 4"
+    );
+}
+
+#[test]
+fn a_cooling_crawler_closes_in_and_lunges() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 300.0 + 350.0, TOP);
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = -1.0;
+    cool(&mut harness, crawler);
+    let start = at(&harness, crawler).x;
+    let (mut lunged, mut thrown) = (false, 0);
+    for _ in 0..240 {
+        harness.step(1);
+        lunged |= heard(&harness, Sound::CrawlerLunge) > 0;
+        thrown += heard(&harness, Sound::SnowballThrown);
+        if lunged {
+            break;
+        }
+    }
+    assert!(lunged, "it lunges");
+    assert_eq!(thrown, 0, "no snowball while it cools");
+    assert!(at(&harness, crawler).x < start - 40.0, "it closed in");
+}
+
+#[test]
+fn a_crawler_held_at_the_fear_edge_snowballs_a_lit_player_and_never_lunges() {
+    let (mut harness, player, _) = lit_arena();
+    let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0 + 340.0, TOP);
+    harness
+        .world_mut()
+        .get_mut::<Enemy>(crawler)
+        .unwrap()
+        .heading = -1.0;
+    let (mut thrown, mut lunges, mut hits, mut deepest) = (0, 0, Vec::new(), f32::MAX);
+    for _ in 0..360 {
+        stand(&mut harness, player, 900.0, TOP);
+        tungsten::kit::heal(harness.world_mut(), player, 100.0);
+        harness.step(1);
+        thrown += heard(&harness, Sound::SnowballThrown);
+        lunges += heard(&harness, Sound::CrawlerLunge);
+        hits.extend(took(&harness, player, Some(crawler)));
+        let (centre, reach) = crawler::fear(harness.world()).unwrap();
+        deepest = deepest.min(at(&harness, crawler).distance(centre) - reach);
+    }
+    // The staff's orb sways with the wizard's idle frames, its light a few
+    // px with it, which the crawler backs out of at once.
+    assert!(deepest >= -12.0, "at its fear's edge: {deepest}");
+    assert!(thrown >= 1, "it snowballs from the edge");
+    assert_eq!(lunges, 0, "never a lunge while the light burns");
+    assert!(hits.contains(&SNOWBALL_COLD), "{hits:?}");
+}
+
+#[test]
+fn an_afraid_crawler_throws_nothing() {
+    let (mut harness, player, _) = lit_arena();
+    // Cornered inside its fear, a wall at its back, the player in its band.
+    let half = EnemyKind::Crawler.info().half;
+    let x = 900.0 + 150.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(x + half.x + 11.0, TOP - 60.0),
+        Vec2::new(10.0, 60.0),
+    );
+    harness.step(1);
+    let crawler = walker(&mut harness, EnemyKind::Crawler, x, TOP);
+    let mut thrown = 0;
+    for _ in 0..240 {
+        stand(&mut harness, player, 900.0, TOP);
+        harness.step(1);
+        assert!(crawler::afraid(harness.world(), crawler), "afraid");
+        assert_ne!(state(&harness, crawler), EnemyState::WindUp, "no tell");
+        thrown += heard(&harness, Sound::SnowballThrown);
+    }
+    assert_eq!(thrown, 0, "nothing thrown");
+    assert!(snowballs(&harness).is_empty());
+}
+
+/// A snowball thrown from `from` at `velocity` in the arena: where its
+/// centre was as it burst, within 120 steps, and every hit meanwhile.
+fn burst_of(harness: &mut UiHarness, from: Vec2, velocity: Vec2) -> (Option<Vec2>, Vec<f32>) {
+    let ball = snowball::throw(harness.world_mut(), from, velocity, None, 1.0);
+    let (mut burst, mut hits) = (None, Vec::new());
+    for _ in 0..120 {
+        harness.step(1);
+        hits.extend(harness.harness().events::<Damaged>().map(|hit| hit.amount));
+        let at = harness
+            .harness()
+            .events::<Sounded>()
+            .find(|sounded| sounded.sound == Sound::SnowballBurst)
+            .map(|sounded| sounded.at);
+        burst = burst.or(at);
+        if !harness.world().is_alive(ball) {
+            break;
+        }
+    }
+    assert!(!harness.world().is_alive(ball), "it is gone");
+    (burst, hits)
+}
+
+#[test]
+fn a_snowball_bursts_at_its_first_touch_of_the_ground_a_wall_and_a_crate_hurting_nothing() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let reach = snowball::SNOWBALL_RADIUS + snowball::SNOWBALL_MARGIN;
+    // Straight down onto the ground.
+    let (burst, hits) = burst_of(&mut harness, Vec2::new(1200.0, TOP - 200.0), Vec2::ZERO);
+    let at = burst.expect("it bursts on the ground");
+    assert!(TOP - at.y <= reach + 1.0, "at its first touch: {at}");
+    assert!(hits.is_empty(), "{hits:?}");
+    // Across into a wall.
+    let face = 1600.0;
+    super::floor(
+        &mut harness,
+        Vec2::new(face + 20.0, TOP - 200.0),
+        Vec2::new(20.0, 200.0),
+    );
+    harness.step(1);
+    let from = Vec2::new(face - 200.0, TOP - 300.0);
+    let (burst, hits) = burst_of(&mut harness, from, Vec2::new(700.0, 0.0));
+    let at = burst.expect("it bursts on the wall");
+    assert!(face - at.x <= reach + 1.0, "at its first touch: {at}");
+    assert!(
+        at.y < TOP - 100.0,
+        "on the wall's face, not off the ground: {at}"
+    );
+    assert!(hits.is_empty(), "{hits:?}");
+    // Down onto a crate.
+    let crate_ = props::spawn(
+        harness.world_mut(),
+        PropKind::Crate,
+        Vec2::new(2000.0, TOP - CRATE_HALF.y - 0.5),
+    );
+    harness.step(2);
+    let lid = body(&harness, crate_).y - CRATE_HALF.y;
+    let (burst, hits) = burst_of(&mut harness, Vec2::new(2000.0, lid - 150.0), Vec2::ZERO);
+    let at = burst.expect("it bursts on the crate");
+    assert!(lid - at.y <= reach + 1.0, "at its first touch: {at}");
+    assert!(hits.is_empty(), "{hits:?}");
+    assert!(harness.world().is_alive(crate_), "the crate stands");
+}
+
+#[test]
+fn a_snowball_on_a_dummy_chilled_near_its_freeze_rung_freezes_it() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let dummy = dummy_at(&mut harness, 1400.0);
+    harness.step(2);
+    // Chilled, which empties its cold, then 10 of the 20 cold its freeze
+    // rung needs.
+    for _ in 0..2 {
+        assert!(Hit::new(dummy, [(Kind::Cold, 10.0)]).queue(harness.world_mut()));
+        harness.step(1);
+    }
+    assert!(tagged(&harness, dummy, "status.chilled"), "chilled");
+    assert!(!tagged(&harness, dummy, "status.frozen"));
+    let centre = body(&harness, dummy);
+    let from = centre - Vec2::new(120.0, 20.0);
+    let gravity = harness
+        .world()
+        .resource::<tungsten::core::PhysicsConfig>()
+        .gravity;
+    let velocity = troll::ballistic(from, centre, 0.25, gravity);
+    snowball::throw(harness.world_mut(), from, velocity, None, 1.0);
+    let frozen = until(&mut harness, 60, |h| tagged(h, dummy, "status.frozen"));
+    assert!(frozen, "its 12 cold freezes it");
 }
 
 #[test]
