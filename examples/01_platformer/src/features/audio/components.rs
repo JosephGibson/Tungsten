@@ -6,9 +6,9 @@ use tungsten::core::{Entity, Voice};
 /// The music playing: the exploration loop, which plays on at 0 under
 /// pause and game over, and pause's loop while pause is on top; the wisps'
 /// shared hum, whose volume follows the nearest wisp, the black holes', the
-/// nearest open hole, and the burning crates' crackle, the nearest burning
-/// crate; and the combat layer over the exploration while an enemy sees
-/// the player.
+/// nearest open hole, and the fires' crackle, the nearest burning thing,
+/// each by the listener's gain; and the combat layer over the exploration
+/// while an enemy sees the player.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,

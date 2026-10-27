@@ -17,7 +17,7 @@ use tungsten::extract_sprites_default;
 use tungsten::kit::Children;
 use tungsten::testing::UiHarness;
 
-use super::{aim_at, ball, choose, mock_sprite, pin_camera, run};
+use super::{aim_at, ball, choose, mock_sprite, pin_camera, run, teleport};
 
 /// A plain dynamic body of unit mass about `centre`.
 fn body(harness: &mut UiHarness, centre: Vec2) -> Entity {
@@ -177,9 +177,11 @@ fn rainbow_rgba_keeps_primary_hues_fully_saturated() {
 #[test]
 fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     // `cast` on slot 6 for the right click: placed for its life, not dragged.
-    let (mut harness, _) = run();
+    let (mut harness, player) = run();
     pin_camera(&mut harness, Vec2::new(200.0, 200.0));
     let at = Vec2::new(520.0, 480.0);
+    // Within the listener's full hearing, so its sound plays at its volume.
+    teleport(&mut harness, player, at + Vec2::new(0.0, 200.0));
     aim_at(&mut harness, at);
     choose(&mut harness, 5);
     harness.harness_mut().press_action("cast");

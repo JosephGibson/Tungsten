@@ -6,6 +6,7 @@
 //! what draws, `regime` the step's events, `areas` the banners and
 //! autosaves; `ball_pit`, `spawning`, `burning`, `brick`, `ice` and
 //! `spells` the toys, their element rules and the spells that cast them;
+//! `audio` the listener's falloff;
 //! `combat` the damage model, `data` the constants that restate the data,
 //! `cascades` the endings and their chains, `lightning` the strike and its
 //! conduction, `gun` the gun and its shots, `dummy` the training dummy,
@@ -14,6 +15,7 @@
 //! template, on the same bytes, which `just repo-check` holds.
 
 mod areas;
+mod audio;
 mod ball_pit;
 mod brick;
 mod burning;
