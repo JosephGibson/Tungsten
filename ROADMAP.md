@@ -8,6 +8,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Next
 
+- `arpg-design`: the ARPG paper design (redo 7.19, §7.3), paper only, in its own worktree beside `qa6` and 7.1–7.5; done before 7.7.
+
 ## Later
 
 - The platformer controller's free air-jump count set at run time, and an unlimited free count (K25's rest): a game that wants them.
@@ -18,6 +20,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
 - Sequence capture: one run writes every Nth frame from M to N, amending `D-142`'s one-frame capture, so an asset review's in-game loops take seconds rather than a game launch a frame; with redo 7.2's review sheets, or sooner before an art-heavy stop.
-- Phase 7, Seams (redo §3): quick wins, agent tooling, the benchmark runner, H2, the analysis pass, the Phase 7 plan, terrain and physics, saves, the kit pass, the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
+- Phase 7, Seams (redo §3): quick wins, agent tooling, the benchmark runner, H2, the analysis pass, the Phase 7 plan, terrain and physics, saves, the kit pass, the UI pass (7.17), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
+- An ARPG framework on `arpg-design`'s register, after 1.0 by default (redo Q18); rows a 1.0 genre needs go to 7.10, 8.1 or 8.2 instead.

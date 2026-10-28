@@ -125,14 +125,19 @@ Ordered by what pays back soonest. The first items in Phase 7 cut the cost of ev
 | 7.14 | Performance pass: CPU (§5.8) | With 01 on the new systems as the workload, the measured top CPU costs that Phase 8 will build on: the ECS's `has` and query paths (K12), per-entity kit systems (K13), the spatial index after 7.8, chemistry spread, the save snapshot, the extract. Each is fixed only for a measured cost on a row, with no budgets yet; the whole-frame row and the GPU rows stay not regressed |
 | 7.15 | Performance pass: GPU (§5.8) | The same for the GPU, on 7.3's non-stalling timestamps: the lit-sprite path, the light cull past 16 lights by importance, pinning the player's light and skipping dark ones (P7-11), bloom and the post stack, particle quads, sprite batching and upload bytes, tile layers. The CPU frame, the extract included, stays not regressed |
 | 7.16 | Agent guidance: research and decision | How engines and repositories guide agents (task guides, `AGENTS.md`, shipped skills) researched against 7.13's evaluation; what the template ships, decided |
+| 7.17 | UI pass (§5.9): after 7.2, before 7.11 and 8.1; beside 7.8–7.10 in its own worktree | The template's widgets become the engine's: tree-only builders in core (the screen card, text styles, choice, slider and toggle rows, the tab rail, `Menu`, a layout-only group, a meter), and confirm, toast and a modal screen helper (cancel pops, focus restored on resume, idle during transitions) in the umbrella; the shell, 01's byte copy (`D-197`) and the fixtures delete their copies. Styles edited in place, a typed key per widget carried in `UiEvent`, buttons named by their captions, shrink-to-fit text; named text styles and spacing in the theme file. `UiHarness` gains the template's queries and `assert_fits`, and both games' copied test helpers go. A UI tree dump, a named screen rendered on 7.2's path, `tungsten new screen`. A counter guard: an idle screen lays out no root (`LayoutStats`). Measured: the shell's `tokei` count against `D-199`'s 2,900, and no shell handler finds a widget by its position or caption |
+| 7.18 | Camera rigs (§5.10): after 7.10, before 7.13 and 8.1 | `CameraState` is the camera's output alone, so the base inference and its zoom-squared trap go. Rigs as data on prefabs and scenes: follow (an anchor offset, a dead zone, per-axis damping, a capped lead along velocity or aim), fixed and scripted, each with optional bounds, a view height in place of a hand-computed zoom, and a priority; the highest live rig wins, and a switch blends position and view over its time (0 cuts). A camera zone on the kit's `zone`, a cue action and a game state raise and release rigs. `wrap`, `stay_in_view` and `despawn_outside` judge one view. A debug overlay, and `describe` of the live rigs. 01's level and title cameras and the template's camera are data, with recipes for SF29's lead and an interior's zone; a switch never jumps, at 30, 60 or 144 Hz (`D-100`) |
+| 7.19 | ARPG paper design (§7.3): on paper, beside `qa6` and 7.1–7.5 in its own worktree; before 7.7 | `docs/plans/arpg-design.md`, self-contained: architecture, data models, modifier applicability and stacking, order of operations, item generation, worked examples, trade-offs and a minimal implementation scope, with build sheets against the API snapshots and a register in the analysis pass's shape. Citations checked by a fresh-context verifier; one critique round at xhigh; the owner's triage sends each row to 7.10, 8.1, 8.2 or the ARPG step after 1.0 (Q18) |
 
-Every system step from 7.8 on adds its own benchmark row and counter guard as it lands (§5.8).
+Every system step from 7.8 on adds its own benchmark row and counter guard as it lands (§5.8); 7.18 adds no row, since it updates one resource a frame.
+
+7.17–7.19 joined on 2026-10-28 (§5.9, §5.10, §7.3). They take the numbers after 7.16 so the cited numbers hold, and each names where it runs. Two run beside other work: 7.19 is paper only, and 7.17 touches the UI, the state stack and the template's shell, where 7.8–7.10 touch physics and the kit; its one shared file set is the template's saves (7.9), so whichever lands second rebases. Three orders are fixed: 7.17 before 7.11, whose boot screen needs the meter and room in the shell's budget, and before 8.1's screens; 7.18 after 7.10 settles the cue vocabulary and zones, and before 8.1's cutscenes; 7.19 before 7.7, which assigns its rows. Neither 7.17 nor 7.18 waits for 7.19 (Q20).
 
 ### Phase 8: Genres
 
 | # | Step | Done when (sketch) |
 | --- | --- | --- |
-| 8.1 | Story systems | A condition vocabulary for data; dialogue with reachability, speaker and reference checks, a dialogue box and a `say` cue action, beside P7-3's `Interactable` (P8-1); quests and a journal on its conditions (P8-2); items, inventory with drag and drop between widgets, and shops, with equipment staying statuses (P8-3, Q17); cutscenes and timelines (P8-4); text input from the window's characters, IME later (P8-5); a world clock with phase events and schedules resolved by time, so an NPC is placed while its area is unloaded (P8-6); loading between areas as spawning and persistence on 7.9's saves of many areas, sliced on the main thread (P8-7); a cone light kind, occlusion optional (P8-17). Recipes for each, sketches where feel matters, a benchmark row each |
+| 8.1 | Story systems | A condition vocabulary for data; dialogue with reachability, speaker and reference checks, a dialogue box and a `say` cue action, beside P7-3's `Interactable` (P8-1); quests and a journal on its conditions (P8-2); items, inventory with drag and drop between widgets, and shops, with equipment staying statuses (P8-3, Q17); the dialogue box, inventory and shops on 7.17's widgets; cutscenes and timelines on 7.18's rigs and blends (P8-4); text input from the window's characters, IME later (P8-5); a world clock with phase events and schedules resolved by time, so an NPC is placed while its area is unloaded (P8-6); loading between areas as spawning and persistence on 7.9's saves of many areas, sliced on the main thread (P8-7); a cone light kind, occlusion optional (P8-17). Recipes for each, sketches where feel matters, a benchmark row each |
 | 8.2 | Shooter and AI systems | Navigation: grid A\* and flow fields with door links and local repaths on 7.8's terrain (P8-8), and on platforms (jump links and ledges, which 8.4's goblins need; no paper design covers them); AI structure, hierarchical states or utility scoring, with squads and a cover query on the terrain (P8-10); perception with throttled sight, hearing as noise stimuli, memory that decays, sharing within reach, and reading smoke and light (P8-9); hit-stop that leaves game-time windows intact (P8-12); weapons as data: spread, pellets, bursts, recoil, a timed reload, spin-up and charge (P8-11); bullet density with a pattern payload, and waves (P8-13). Rumble stays out (P8-14, G5) and aim assist stays the game's (P8-16). Recipes, sketches, a benchmark row each |
 | 8.3 | Tooling for hand-made content | Aseprite import (tags to animations, slices to anchors and hitboxes); `asset add` for a drawn file or sheet, which Lantern Ward's 66 portraits need (P8-15); the Tiled loader's place beside our own format (Q16). A drawn sheet and an Aseprite file each enter a `tungsten new` game with one command |
 | 8.4 | 01 refreshed on Phase 8's systems | Not a rewrite: 7.13 already moved 01 onto Phase 7's systems. Its enemies move onto the AI structure, perception and navigation, and it gains hit-stop. A few additions demo Phase 8 in a platformer sandbox: an NPC with a few lines, one choice and a small fetch quest across two areas; a short intro cutscene; a satchel inventory with drag and drop; goblins that path around terrain, take cover and flank as a pack; one or two hand-made sprites through Aseprite import; areas streamed in. Each art need goes through §6. Done when 01's own gameplay Rust shrinks again, each addition is mostly data with any Rust counted, 01's tests pass, and the owner plays it through |
@@ -266,6 +271,84 @@ The rewrite's §2.2 is the starting list; the owner's answer of 2026-10-23 split
   - **C1:** the measured frame timeline, budgets by category (frame, operation, scaling; R-Q13 and criteria Q12) and a dated baseline on every row.
   - **Then:** 9.2.
 
+### 5.9 UI pass (7.17)
+
+From the review of 2026-10-28 at `46fd24f`, whose fresh-context survey read `core/ui/`, the template's shell, 01's copy, the fixtures and the CLI. The retained tree (`D-125`) holds up. The cost sits above it: each consumer hand-builds the same parts, and an agent cannot see a screen without a GPU and a scratch crate.
+
+- **Measured:**
+  - The shell is 2,790 of `D-199`'s 2,900 lines (`tokei`), so 7.11's boot screen and 8.5's polish fit only if parts leave it.
+  - `shell/widgets.rs` is 339 lines; the fixtures rewrite eight of its helpers (`examples/03_fixtures/src/ui/widgets.rs`).
+  - Styles change by read-modify-write at 23 sites, and `set_overrides` replaces the whole set, so `widgets::fill` drops text overrides (`core/ui/tree.rs:1221`).
+  - Handlers identify a widget by list position or caption (`keybindings.rs:243-248`, `settings.rs:619`, `shell/mod.rs:906`).
+  - Tests walk the tree by hand: the template's `find`, `shown_modal`, `named` and `shows` (`tests/game/main.rs:112`) are copied into 01's tests, and `UiHarness::find` has one caller. `fit.rs`'s fit rules (about 110 lines) are general geometry.
+  - Nothing reads the theme's spacing tokens, and 45 constants keep the shell's styling in Rust (`shell/theme.rs`).
+- **Framework.** These move into the engine:
+  - Core (`tungsten-core::ui`) takes the tree-only builders:
+    - the screen card and the heading, note, small, mono and danger text;
+    - the choice, slider and toggle rows, the tab rail and `Menu`;
+    - a layout-only group, since today's panel paints a surface and border by default;
+    - a meter, for 7.11's bar and the HUDs.
+  - The umbrella (`tungsten`) takes the parts that need the state stack and `Time`: confirm, toast, and a modal screen helper on `own_root` and `RootCover` (`D-163`).
+  - Core also gains:
+    - `edit_layout` and `edit_overrides`;
+    - a typed key per widget, carried in `UiEvent`, named so it doesn't collide with the kit's `Tags`;
+    - buttons named by their captions;
+    - shrink-to-fit text, or the wrap fix that `title.rs`'s `one_line` works around;
+    - an option to snap layout to whole pixels (01's HUD snaps by hand);
+    - named text styles and spacing in the theme file, which `D-148` already reloads.
+  - The harness: `UiHarness` queries (the front-most shown modal, by name, by key, focusable only) and `assert_fits`.
+- **Application.** These stay the game's: what each screen holds (the settings, the save slots, the binding rows from `BINDABLE_ACTIONS`), HUD bindings that read the world each frame, the title's art, and the game's options. The shell's `ui_*` string literals become core's `UI_*` constants, a fix in the template.
+- **Agent surface:**
+  - a tree dump as JSON (ID, kind, key, accessible name, text, rect, focus, shown), from the harness and from `tungsten describe`;
+  - a named screen rendered to PNG on 7.2's `render` path, reached by `run --script`;
+  - `tungsten new screen <name>`;
+  - `assert_fits`, which any game's tests can call.
+- **Waits:**
+  - data-declared screens (Q22) and a schema for theme files (§8's schema export);
+  - tooltips, popups and bars beyond the meter, which 8.1 takes as its inventory and shops need them; text input and drag and drop (8.1);
+  - grid layout (`D-124`), localisation and accessibility.
+- **Constraints:**
+  - `D-125`'s closed kinds and text-only inheritance stand. Named styles are applied, not cascaded, and keys and named styles take one entry amending `D-125` (Q21).
+  - Core stays free of `wgpu` (`D-007`), and 01's shell stays a byte copy (`D-197`).
+  - The harness measures text at a fixed advance (`testing/ui.rs:1-4`), so `assert_fits` approximates glyph widths; the visual tests remain the local check.
+
+### 5.10 Camera rigs (7.18)
+
+- **Today.** One `CameraController` resource follows one entity with a centred dead zone and one smoothing rate (`D-100`), clamps to one rectangle and adds trauma shake (`D-073`).
+  - `CameraState` is both what a game writes and what the camera outputs. The camera tells them apart by comparing against the previous frame's output (`core/camera.rs:136-167`); that is how a shot driver that wrote both the zoom and its multiplier drew at base².
+  - Follow tracks the entity's point, which is its sprite's top-left, not its centre.
+  - 01 snaps its camera (dead zone 0, smoothing 1, `features/level/mod.rs:121-123`), takes the camera over each frame for its title view (`level/title.rs:208-224`), and computes its zoom from the window by hand, as the template does (`level/systems.rs:32-39`, `sample/mod.rs:254-255`).
+  - Static Front's lead is about 40 lines of game Rust (SF29); Lantern Ward's interiors and cutscenes need a scripted camera (LW21, P8-4).
+- **Patterns from established engines:**
+  - A rendered camera kept apart from the shots that describe it: the highest-priority live shot wins, a switch blends, and a cut is a zero-time blend (Cinemachine's brain and cameras; Godot's Phantom Camera).
+  - Follow as a dead zone with per-axis damping and an offset (Cinemachine's Position Composer, Godot's drag margins and smoothing, HaxeFlixel's follow styles), with a lerp per 1/60 s that `D-100` already matches.
+  - Confiners per area, smoothed at their edges.
+  - Region anchors, forward focus and cue focus in side-scrollers (Keren's "Scroll Back", GDC 2015).
+  - The step takes the 2D core of these, not a cinematic toolkit.
+- **Shape:**
+  - **Output apart from input:** only the camera system writes `CameraState`; a game writes rigs.
+  - **A rig** is one of:
+    - `follow`: a target, an anchor offset, a dead zone, per-axis damping, and a lead along velocity or aim with a cap and its own damping;
+    - `fixed`: a point or a rect;
+    - `scripted`: a game, or a later timeline, writes its point.
+
+    Each rig has optional bounds, a view height in world units (the zoom follows the window) and a priority. It is a component in prefabs and scenes (Q23). The `CameraController`'s fields become the base rig, and `camera_target` stays as the follow rig's shorthand.
+  - **Selection and blends:** the highest-priority live rig wins, and a tie goes to the latest raised. A switch blends position and view height over the incoming rig's time and ease; a time of 0 cuts. A change of bounds rides the blend instead of snapping.
+  - **Triggers:**
+    - a `camera_zone` on the kit's `zone` raises its rig while a target is inside;
+    - a cue action raises or releases a rig by ID, beside today's `shake`;
+    - a game state raises one, as 01's title does.
+
+    Shake stays an additive layer after selection.
+  - **One view:** `wrap`, `stay_in_view` and `despawn_outside` judge the same unshaken view (known issues, the kit's motion).
+  - **Surface:** a debug overlay of the dead zone, bounds, zones and lead point; `describe` of the live rigs and the winner; inspector rows.
+- **Waits:**
+  - several targets framed at once;
+  - split screen and viewports;
+  - cameras that render to textures;
+  - rails and paths;
+  - pixel snapping of the output, whose fix route is W12b's atlas shimmer (known issues).
+
 ## 6. Asset sessions
 
 | Stage | Who | Output |
@@ -327,6 +410,63 @@ In-game captures stay lean (the owner, 2026-10-28): loops only of what moves or 
   - **Phase 8 additions** no sketch listed: the clock and schedules, the cone light, waves, a cover query, dialogue checks and a `say` cue action.
   - **Confirmed:** joints are 1.x (Q2), the two-thread rule stands for loading between areas (P8-7), rumble stays out (G5), aim assist stays the game's (P8-16).
 
+### 7.3 ARPG paper design (7.19)
+
+Added 2026-10-28. This is the brief; the design itself is 7.19's session.
+
+- **Goal:** a self-contained design for a gameplay framework inspired by Path of Exile's systems. It covers:
+  - skills with modifiable properties and tag-scoped modifiers;
+  - equipment from procedural item generation, on the same modifiers;
+  - one rule set for players and enemies.
+
+  It finds what the engine and kit lack and proposes a minimal implementation scope. It implements nothing.
+- **Why on paper, and why before 7.7:** 7.10 builds the statuses, stats and ability fixes an ARPG would stand on, 8.1 the items and equipment, and 8.2 the projectile payloads. A register that 7.7 reads can steer those shapes cheaply. The same finding after 7.10 lands is a rework.
+  - The kit's survey of 2026-10-28 found:
+    - the `Modifier` formula already matches flat, increased and more: `(base + Σflat) × (1 + Σincreased) × Πmore`, removed by source (`foundation/stats.rs:96-123`);
+    - modifiers attach to a stat name, never to a tag or a skill;
+    - a spawned bolt and a damage-over-time payload take none of the caster's stats;
+    - abilities and hits carry no tags beyond damage types;
+    - crit is a flag, with no chance or multiplier;
+    - there is no cast time, attack or cast speed, repeat, projectile count, chain or fork;
+    - the declared `AREA` and `PROJECTILE_SPEED` stats are read by nothing;
+    - loot tables hold no item level, affix pool, tier or rarity.
+- **Begins on:** nothing in code. These provisional assumptions are stated in the document, and 7.7 rechecks them:
+  - §5.2's statuses, and Q17's merge;
+  - P8-3's equipment as statuses;
+  - the `Modifier` formula, which no step changes;
+  - P8-11's and P8-13's payloads;
+  - §5.5's saves and P7-16's seeds;
+  - Q11's names.
+
+  Q18 and Q19 are settled first, by their defaults unless the owner answers.
+- **Implementation needs:** 7.10; 8.1's items, equipment, condition vocabulary and inventory on 7.17's widgets; 8.2's payloads; 7.9's saves; 7.12's seeds. Nothing else waits for it (Q20).
+- **Coverage:**
+  - **Skills:**
+    - The modifiable properties and behaviours: area; projectile speed, count, chaining, piercing and forking; resistance penetration; crit chance and multiplier; damage conversion and extra damage; attack and cast speed; repeated casts; damage over time; buffs and debuffs.
+    - Tags or applicability rules that choose which modifiers reach a skill.
+    - Supports, equipment, passive trees and other sources share one modifier definition and one resolution.
+  - **Items:**
+    - bases; affixes in pools by tag and item level; tiers; rarity; uniques;
+    - rolls seeded and saved;
+    - new items as data and composed effects, with named extension points for genuinely new mechanics.
+  - **Shared rules:** attributes, skills, damage and modifiers alike for players and enemies, each exception deliberate and justified. 01's player-only crit (`D-200`), its halved blasts on the player and its enemy-only difficulty modifiers (`D-212`) are the cases to test the rule against.
+- **Research inside the phase**, kept targeted:
+  - the public documentation of Path of Exile's modifier, damage and item rules;
+  - one other ARPG's affix and stacking rules, for contrast;
+  - the API snapshots (`api/*.txt`) for the engine's side.
+
+  The games are studied for mechanics only: their names, items, content and tree layout stay out, and the worked examples are original. Unlike §7.2's games, this designs systems, not a game.
+- **Output:** `docs/plans/arpg-design.md`.
+  - Its sections: architecture; data models; modifier applicability and stacking; order of operations; item generation; worked examples (a skill with three supports, a rolled rare item and a unique, a monster on the same rules); trade-offs; a minimal implementation scope.
+  - Build sheets and a register as in §7.2, with rows tagged `PA-`. Each verdict cites `api/*.txt` or a search that finds nothing.
+  - The agent surface: `explain` of a resolved stat or hit, as §8 gives chemistry.
+- **Checks and stop:**
+  - a fresh-context verifier on every citation;
+  - one `/critique` round at xhigh, on the resolution and the order of operations;
+  - the owner's triage;
+  - one design, with no second rounds.
+- **Triage:** a row enters 7.10, 8.1 or 8.2 only when a 1.0 genre needs it (§5.3) and the owner accepts it. The rest is the ARPG step after 1.0 (Q18).
+
 ## 8. Agent surface and evaluations
 
 Tools before docs: a command cannot drift. 7.2 builds the foundations every later surface stands on; each system then ships its own surface in the step that builds it.
@@ -342,6 +482,9 @@ Tools before docs: a command cannot drift. 7.2 builds the foundations every late
 | Saves | `save dump`, `save diff`, a round trip per registered component, and a restore into a world with different entity allocations (§5.5) |
 | AI and story | `explain` for a decision; dialogue and quest checks |
 | Schemas | `describe` and a JSON Schema export |
+| UI (7.17) | A tree dump with keys, names and text; a named screen rendered to PNG; `new screen`; `assert_fits` |
+| Camera (7.18) | `describe` of the live rigs and the winner; a debug overlay of dead zones, bounds, zones and leads |
+| ARPG (after 1.0) | `explain` of a resolved stat or hit: each modifier, its source and why it applied, designed in 7.19 |
 
 **Evaluations** extend the release checklist's RC-A9 (a fresh session in a template copy adds a scripted feature). §8's five tasks are: add an enemy, a room, a sound, a status with an interaction; fix a broken prefab. Each run is a fresh agent, and counts turns, errors, files touched and wrong turns; each friction point is a seam, and the run is repeated after the fixes.
 
@@ -387,6 +530,12 @@ The transition session takes the default unless the owner answers first (`D-150`
 - **Q15. H1 before or after the next example stop.** **Answered 2026-10-25: H1 before `e01tomes`**, so it and every later example stop run under H1. `@bb1e4c0`: `e01quick2` now precedes `e01tomes`, so H1 comes before `e01quick2`. (The draft asked about `e01h`, which landed as M82 under the old flow.)
 - **Q16. Tiled after our own format.** `D-157`'s Tiled object classes and the `.tmj` loader exist, and 01 leaves them at 7.12. *Default: the loader stays as an import path for games that author in Tiled, gaining no new features; 8.3 decides whether it needs more.*
 - **Q17. Effects and statuses.** Today's effects (casting, regeneration, an orb's heal) are timed buffs with periods, damage, granted tags and stat modifiers. A status with intensity is a superset: an effect is a status at a fixed intensity on a timer. *Default: effects merge into statuses in 7.10, so one model serves buffs, ailments and chemistry, and agents have one thing to reach for.*
+- **Q18. The ARPG and 1.0.** 1.0 promises four genres (§5.7); a framework inspired by Path of Exile goes deeper than any of them. *Default: not a 1.0 genre. 7.19 designs it on paper before 7.7; a row a 1.0 genre needs enters 7.10, 8.1 or 8.2 by §5.3 and the owner's triage; the framework itself is the first step after 1.0, a line in `ROADMAP.md`'s Later.*
+- **Q19. Where an ARPG framework lives.** *Default: 7.19 proposes. Kit domains where rows pass §5.3; otherwise a crate of its own, which needs an entry amending `D-006`'s crate split.*
+- **Q20. What waits for 7.19.** *Default: nothing. 7.10's, 8.1's and 8.2's plans read 7.19's register when it exists; if 7.19 slips past 7.7, its rows go to the step after 1.0. The UI pass and camera rigs never read it.*
+- **Q21. UI keys and named styles.** Both add to `D-125`'s tree. *Default: one entry at 7.17 amending `D-125`; inheritance stays text-only, and named styles are applied, not cascaded.*
+- **Q22. Data-declared screens.** The 1.x backlog holds them. *Default: they stay there. 7.17 makes the Rust terse and the styling data; 8.5's evaluation reopens them if agents' screen tasks keep failing.*
+- **Q23. How camera rigs are authored.** *Default: a `camera_rig` component in prefabs and scenes and a `camera_zone` on the kit's `zone`; a data kind only once two prefabs share a rig.*
 
 ## 11. Review and critique
 
@@ -458,6 +607,8 @@ No further round: these fixes are local to their sections, and none changes a me
 - Parallel sessions in one tree once agents commit: one session's commit could take another's files. H1's rule is that agents stage only their own paths, and a parallel session works in its own worktree.
 - `@be16369` facts drift as M81 and M82 land; ordered step 3 rechecks them. Rechecked at `bb1e4c0`: the seams grew by about 5.6k lines of 01's Rust in five stops, all in 01, so each stop before Phase 7 enlarges 7.10 and 7.13.
 - Example stops planned ahead of H1 keep the old shape: `e01quick2`–`e01flask` were written to the register and catalog on 2026-10-25. H1 carries them into `ROADMAP.md` as items, re-cut after play, rather than re-planning them.
+- The ARPG design's register becomes Phase 8 scope through §5.3's paper-design door. Q18's default and §7.3's triage rule answer it: a row enters only when a 1.0 genre needs it.
+- The UI pass changes every shell screen at once, so 01's byte copy, the fit tests and the title's goldens break together. The step keeps the shell's tests green, copies the shell into 01 in the same change, and retakes the goldens locally only for intended changes.
 
 ## Session log
 
@@ -479,3 +630,15 @@ No further round: these fixes are local to their sections, and none changes a me
   - 8.5, the template final pass, added; proof moved to 8.6; `tungsten new --genre` noted for the 1.x backlog.
   - The owner's agile gradient of 2026-10-23 added to §2 and as H1's habits.
   - One artifact-only critique round at xhigh on the updated draft; five findings, all accepted (§11).
+- **2026-10-28, three additions reviewed** at `46fd24f` (0.111), at the owner's prompt: a UI framework refinement, a small camera step and an ARPG paper-design phase.
+  - Evidence:
+    - two fresh-context read-only surveys: the UI framework against the template, 01 and the fixtures; the kit against an ARPG checklist;
+    - a read of the camera code;
+    - targeted research: Cinemachine, Godot's Camera2D and Phantom Camera, HaxeFlixel, and Keren's "Scroll Back".
+  - Added:
+    - 7.17 (the UI pass), 7.18 (camera rigs) and 7.19 (the ARPG paper design);
+    - §5.9, §5.10 and §7.3;
+    - Q18–Q23, two risks, and three rows in §8;
+    - in 8.1's row, the steps it builds on.
+
+  Not critiqued.
