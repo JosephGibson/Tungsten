@@ -40,7 +40,8 @@ pub fn tween_tick_system(world: &mut World) {
         } else {
             dt
         };
-        let new_elapsed = (t.elapsed + signed_dt).clamp(0.0, t.duration);
+        let raw_elapsed = t.elapsed + signed_dt;
+        let new_elapsed = raw_elapsed.clamp(0.0, t.duration);
         let u = (new_elapsed / t.duration).clamp(0.0, 1.0);
         let k = t.easing.apply(u);
 
@@ -53,6 +54,19 @@ pub fn tween_tick_system(world: &mut World) {
         if !(forward_done || backward_done) {
             continue;
         }
+        // A restarted cycle starts as far in as this frame ran past its end,
+        // so a loop keeps its period instead of losing up to a dt a cycle.
+        let overshoot = if forward_done {
+            raw_elapsed - t.duration
+        } else {
+            -raw_elapsed
+        };
+        let carry = overshoot.rem_euclid(t.duration);
+        let restart = if forward_done {
+            carry
+        } else {
+            t.duration - carry
+        };
 
         match t.repeat {
             TweenRepeat::Once => {
@@ -74,11 +88,11 @@ pub fn tween_tick_system(world: &mut World) {
                     t.pending_remove = true;
                 } else {
                     t.completed_cycles = next_cycles;
-                    t.elapsed = 0.0;
+                    t.elapsed = restart;
                 }
             }
             TweenRepeat::Loop => {
-                t.elapsed = 0.0;
+                t.elapsed = restart;
             }
             TweenRepeat::PingPong => {
                 t.direction = if direction == TweenDirection::Forward {

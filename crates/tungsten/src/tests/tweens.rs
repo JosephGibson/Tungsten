@@ -93,6 +93,54 @@ fn tween_loop_never_completes() {
 }
 
 #[test]
+fn a_loop_carries_its_overshoot_so_its_period_holds() {
+    // 0.375 and 1.0 are exact in binary: eight frames are three whole cycles.
+    let mut world = make_world(0.375);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel(TweenChannel::ColorA { from: 0, to: 255 })
+        .with_repeat(TweenRepeat::Loop);
+    let entity = spawn_fading_sprite(&mut world, tween);
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        tween_tick_system(&mut world);
+        seen.push(world.get::<Tween>(entity).unwrap().elapsed);
+    }
+    assert_eq!(seen, [0.375, 0.75, 0.125, 0.5, 0.875, 0.25, 0.625, 0.0]);
+}
+
+#[test]
+fn times_completes_on_the_frame_its_cycles_add_up() {
+    let mut world = make_world(0.375);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel(TweenChannel::ColorA { from: 0, to: 255 })
+        .with_repeat(TweenRepeat::Times(3));
+    let entity = spawn_fading_sprite(&mut world, tween);
+    for frame in 1..=8 {
+        tween_tick_system(&mut world);
+        let done = world.get::<Tween>(entity).unwrap().pending_remove;
+        assert_eq!(done, frame == 8, "frame {frame}");
+    }
+}
+
+#[test]
+fn a_backward_loop_restarts_from_its_end() {
+    let mut world = make_world(0.375);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel(TweenChannel::ColorA { from: 0, to: 255 })
+        .with_repeat(TweenRepeat::Loop);
+    let entity = spawn_fading_sprite(&mut world, tween);
+    let state = world.get_mut::<Tween>(entity).unwrap();
+    state.direction = TweenDirection::Backward;
+    state.elapsed = 1.0;
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        tween_tick_system(&mut world);
+        seen.push(world.get::<Tween>(entity).unwrap().elapsed);
+    }
+    assert_eq!(seen, [0.625, 0.25, 0.875]);
+}
+
+#[test]
 fn tween_pingpong_reverses_at_boundary() {
     let mut world = make_world(0.12);
     let tween = Tween::new(0.1, Easing::Linear)
