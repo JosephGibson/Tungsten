@@ -178,6 +178,35 @@ fn a_platformer_is_launched_with_its_input_locked() {
 }
 
 #[test]
+fn a_whole_resist_neither_launches_nor_locks_a_platformer() {
+    let (mut world, mut schedule) = rig();
+    world.insert_resource(PhysicsConfig {
+        gravity: Vec2::new(0.0, 1000.0),
+        ..PhysicsConfig::default()
+    });
+    let troll = world.spawn_with(
+        RigidBodyBundle::kinematic(Position(Vec2::ZERO), Collider::aabb(Vec2::new(10.0, 20.0)))
+            .with((
+                PlatformerController::new(200.0, 600.0),
+                Knockback::new(0.25).with_resist(1.0),
+            )),
+    );
+    steps(&mut world, &mut schedule, 1);
+    assert!(knock_back(&mut world, troll, Vec2::new(-300.0, -200.0)));
+    let knockback = world.get::<Knockback>(troll).unwrap();
+    assert!(!knockback.is_active(), "no push stored");
+    world
+        .get_mut::<PlatformerController>(troll)
+        .unwrap()
+        .set_run(1.0);
+    steps(&mut world, &mut schedule, 1);
+    assert!(
+        world.get::<Velocity>(troll).unwrap().0.x > 0.0,
+        "the run at once: no launch, no lock"
+    );
+}
+
+#[test]
 fn a_dynamic_body_takes_the_push_once_and_a_child_none() {
     let (mut world, mut schedule) = rig();
     let ball = world.spawn_with(

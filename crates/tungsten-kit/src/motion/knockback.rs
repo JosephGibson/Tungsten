@@ -225,9 +225,10 @@ impl Knockback {
 /// that runs. On a [`PlatformerController`] it launches the controller and
 /// locks its input for the knockback's seconds; on a dynamic body it adds
 /// the push to the body's `Velocity` at once; otherwise the knockback's
-/// system adds the push to the entity's motion over its seconds. False,
-/// pushing nothing, for an entity without a `Knockback`, a dead one (its
-/// [`Health`] at 0) or a velocity that is not finite.
+/// system adds the push to the entity's motion over its seconds. A whole
+/// resist (`resist` 1) stands firm: true, with no push, launch or lock.
+/// False, pushing nothing, for an entity without a `Knockback`, a dead one
+/// (its [`Health`] at 0) or a velocity that is not finite.
 pub fn knock_back(world: &mut World, entity: Entity, velocity: Vec2) -> bool {
     if !velocity.is_finite() || world.get::<Health>(entity).is_some_and(Health::is_dead) {
         return false;
@@ -235,6 +236,9 @@ pub fn knock_back(world: &mut World, entity: Entity, velocity: Vec2) -> bool {
     let Some(knockback) = world.get_mut::<Knockback>(entity) else {
         return false;
     };
+    if knockback.resist >= 1.0 {
+        return true;
+    }
     let push = velocity * (1.0 - knockback.resist);
     let seconds = knockback.seconds;
     knockback.push = push;
