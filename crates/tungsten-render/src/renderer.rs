@@ -993,7 +993,11 @@ impl Renderer {
         )
     }
 
-    fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
+    /// The ID of shader `name`, minted on first use. The renderer is the one
+    /// allocator of shader IDs, as of texture handles (`D-048`); the umbrella
+    /// records each in core's `ShaderRegistry`, so both sides key a shader by
+    /// the same ID.
+    pub fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
         if let Some(&id) = self.shader_ids.get(name) {
             return id;
         }
