@@ -723,8 +723,7 @@
       "right": 2,
       "row": 21,
       "bottom": 72,
-      "style": "ground",
-      "variants": "own"
+      "style": "ground"
     },
     {
       "name": "pact_shelf",

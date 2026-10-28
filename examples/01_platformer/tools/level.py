@@ -365,10 +365,13 @@ def terrain_cells(source):
     return cells
 
 
-def terrain_tiles(source, cells, stream):
-    """Each occupied cell's sprite, and the cells drawn as iron cladding. A
-    platform with `"variants": "own"` (01 (k)'s start wall) draws its cells'
-    variants from a stream of its own, so adding it moves no other tile's."""
+def terrain_tiles(source, cells):
+    """Each occupied cell's sprite, and the cells drawn as iron cladding.
+    Each cell draws its variant from a stream seeded by its place, so a
+    change to a platform re-rolls only the cells it covers and those whose
+    open sides it changes. A stream per platform would not do: a cell's
+    draws depend on its neighbours, and a platform widened into the next
+    takes cells from that one's stream."""
     cols, rows = source['cols'], source['rows']
     pit = source.get('pit')
     inside = set()
@@ -389,12 +392,11 @@ def terrain_tiles(source, cells, stream):
         x, y = c
         return family(c) == 'mine' and (not closed((x - 1, y)) or not closed((x + 1, y)))
 
-    own = {p['name']: rng_for('terrain-variation-' + p['name']) for p in source['platforms'] if p.get('variants') == 'own'}
     runs = [p['name'] for p in sorted(source['platforms'], key=lambda p: p['left']) if p['style'] == 'channel']
     tiles, iron = {}, set()
     for x, y in sorted(cells, key=lambda c: (c[1], c[0])):
         p = cells[(x, y)]
-        rng = own.get(p['name'], stream)
+        rng = rng_for(f'terrain-variation-{x}-{y}')
         fam = FAMILIES.get(p['style'])
         if fam is None:
             tiles[(x, y)] = p['style']
@@ -454,10 +456,13 @@ def terrain_tiles(source, cells, stream):
     return tiles, iron
 
 
-def background_tiles(source, cells, props, rng):
+def background_tiles(source, cells, props):
     """The background layer: the caves' backs under an indoor area's roof,
     the miners' shoring in its `shoring` columns, the tunnel mouths, the
-    outdoor `backs` spans and the river's depths."""
+    outdoor `backs` spans and the river's depths. Which cells draw follows
+    the terrain's occupancy and roofs, so each draws from a stream seeded
+    by its place, and a terrain change re-rolls only the backs it
+    touches."""
     cols, rows = source['cols'], source['rows']
     ground = {c for c, p in cells.items() if p['style'] in FAMILIES}
     out = {}
@@ -474,11 +479,11 @@ def background_tiles(source, cells, props, rng):
                     continue
                 if not roofed or (x, y) in cells:
                     continue
+                rng = rng_for(f'background-{x}-{y}')
                 if (x, y - 1) in ground:
                     # Behind the roof's lowest cell, whose underside the art
                     # cuts away, the back runs on up, so the cut shows the
-                    # cave's wall and never the sky; a plain tile, outside
-                    # the random stream.
+                    # cave's wall and never the sky; a plain tile, no draw.
                     out[(x, y - 1)] = f'cave_back_rock_{x % 4}'
                 if shoring[0] <= x <= shoring[1]:
                     kind = weighted(rng, (('timber_0', 3), ('timber_1', 3), ('xbrace_0', 2), ('ore_0', 1), ('ore_1', 1), ('rock_0', 2)))
@@ -512,6 +517,7 @@ def background_tiles(source, cells, props, rng):
 
     for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
         mask = open_((x, y - 1)) * 1 + open_((x + 1, y)) * 2 + open_((x, y + 1)) * 4 + open_((x - 1, y)) * 8
+        rng = rng_for(f'background-{x}-{y}')
         if family == 'wet_back':
             variant = 2 if x in falls else rng.randrange(2)
             out[(x, y)] = f'wet_back_{mask}_{variant}'
@@ -520,7 +526,7 @@ def background_tiles(source, cells, props, rng):
         else:
             out[(x, y)] = f'cut_back_{mask}_{rng.randrange(2)}'
     # The same behind each ceiling's or ledge's lowest cell over a wall:
-    # plain inner tiles, after the walls' own, outside the random stream.
+    # plain inner tiles, after the walls' own, with no draw.
     for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
         if (x, y - 1) in ground and (x, y - 1) not in out:
             out[(x, y - 1)] = f'{family}_0_{x % 2}'
@@ -573,7 +579,6 @@ def build_level(images, lit, source=None, check=True):
     from backdrops import BACKDROPS
     sprite_ids={'ex10_'+s for s in images if s not in BACKDROPS}
     layers={name:[None]*(cols*rows) for name in ['background','decorations','terrain','foreground','collision']}
-    rng=rng_for('terrain-variation')
     def put(layer,x,y,sprite):
         if not 0<=x<cols or not 0<=y<rows:raise ValueError('placement outside map')
         if sprite not in sprite_ids:raise ValueError('unknown tile sprite '+sprite)
@@ -581,7 +586,7 @@ def build_level(images, lit, source=None, check=True):
     # The terrain first, which reads only the platforms: props stand and
     # hang on what its tiles draw.
     cells=terrain_cells(source)
-    tiles,iron=terrain_tiles(source,cells,rng)
+    tiles,iron=terrain_tiles(source,cells)
     source=prepare(source,images,tiles)
     for (x,y),sprite in sorted(tiles.items(),key=lambda c:(c[0][1],c[0][0])):
         put('terrain',x,y,'ex10_'+sprite)
@@ -590,7 +595,7 @@ def build_level(images, lit, source=None, check=True):
     source['iron_cells']=sorted(iron)
     source['iron_boxes']=[[x*tile,y*tile,w*tile,h*tile] for x,y,w,h in boxes(iron)]
     source['props']+=water_props(source,cells)
-    for (x,y),sprite in sorted(background_tiles(source,cells,source['props'],rng).items(),key=lambda c:(c[0][1],c[0][0])):
+    for (x,y),sprite in sorted(background_tiles(source,cells,source['props']).items(),key=lambda c:(c[0][1],c[0][0])):
         put('background',x,y,'ex10_'+sprite)
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
     # The far mist: each band's tiles across its columns in the decorations

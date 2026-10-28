@@ -123,6 +123,52 @@ class AuthoringTests(unittest.TestCase):
             tiled, source, _ = build_level(images, self.lit)
             self.assertEqual(files(tiled, source, images), before, list(change))
 
+    def layout(self, tiled, source, name):
+        """`tiled`'s tile layers as `{layer: {cell: sprite}}`, its object
+        layers without Tiled IDs, and the pixel points of what `prepare`
+        sets on platform `name`: its props and groups' pieces, orbs, tomes,
+        crates, kegs and stones."""
+        tileset = tiled['tilesets'][0]
+        catalog = {tileset['firstgid'] + t['id']: t['properties'][0]['value'] for t in tileset['tiles']}
+        cols, tile = tiled['width'], source['tile']
+        cells = {l['name']: {(i % cols, i // cols): catalog[g] for i, g in enumerate(l['data']) if g}
+                 for l in tiled['layers'] if l['type'] == 'tilelayer'}
+        objects = [(l['name'], [{k: v for k, v in o.items() if k != 'id'} for o in l['objects']])
+                   for l in tiled['layers'] if l['type'] == 'objectgroup']
+        props = [p for p in source['props'] if p.get('support') == name]
+        props += [source['props'][i] for g in source['groups'] if g['support'] == name for i in g['pieces']]
+        spots = [(p['x'], p['y']) for p in props]
+        spots += [(p['left'], p['top']) for k in ('pickups', 'tomes') for p in source.get(k, []) if p['support'] == name]
+        spots += [(p['x'], p['y']) for k in ('crates', 'kegs', 'stones') for p in source.get(k, []) if p['support'] == name]
+        return cells, objects, {(round(x * tile), round(y * tile)) for x, y in spots}
+
+    def test_a_terrain_change_moves_only_its_props(self):
+        # A platform a tile wider, in the open (the ravine's first step, into
+        # the second's column under the gorge's wall) and indoors (the
+        # hollow's pact shelf, under the roof): tile cells change only within
+        # its bounds and a cell around them, in every layer, both times in
+        # the background too, and no object moves but what `prepare` sets on
+        # it.
+        for name, side in (('ravine_step_1', 'right'), ('pact_shelf', 'right')):
+            source = json.loads((TOOLS / 'level.json').read_text())
+            platform = next(p for p in source['platforms'] if p['name'] == name)
+            platform[side] += 1 if side == 'right' else -1
+            tiled, prepared, _ = build_level(self.images, self.lit, source)
+            before, after = self.layout(self.tiled, self.source, name), self.layout(tiled, prepared, name)
+            near = lambda c: platform['left'] - 1 <= c[0] <= platform['right'] and platform['row'] - 1 <= c[1] <= platform['bottom']
+            for layer, cells in after[0].items():
+                changed = {c for c in cells.keys() | before[0][layer].keys() if cells.get(c) != before[0][layer].get(c)}
+                self.assertEqual(sorted(c for c in changed if not near(c)), [], f'{name}: {layer}')
+                if layer in ('terrain', 'background'):
+                    self.assertTrue(changed, f'{name}: {layer}')
+            for (layer, old), (_, new) in zip(before[1], after[1]):
+                self.assertEqual(len(old), len(new), f'{name}: {layer}')
+                for a, b in zip(old, new):
+                    if a != b:
+                        self.assertEqual(dict(a, x=0, y=0), dict(b, x=0, y=0), f'{name}: {layer}')
+                        self.assertIn((round(a['x']), round(a['y'])), before[2], f'{name}: {layer} {a}')
+                        self.assertIn((round(b['x']), round(b['y'])), after[2], f'{name}: {layer} {b}')
+
     def test_open_starting_courtyard_has_unobstructed_launch_space(self):
         clearing=next(p for p in self.source['platforms'] if p['name']=='clearing')
         self.assertEqual(clearing['right']-clearing['left'],16)

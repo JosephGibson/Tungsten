@@ -97,6 +97,8 @@
     "ex10_cave_back_ember_3": 94,
     "ex10_cave_back_ladder": 95,
     "ex10_cave_back_ore_0": 96,
+    "ex10_cave_back_ore_1": 676,
+    "ex10_cave_back_pillar_0": 677,
     "ex10_cave_back_rock_0": 97,
     "ex10_cave_back_rock_1": 98,
     "ex10_cave_back_rock_2": 99,
@@ -349,6 +351,7 @@
     "ex10_cut_back_1_0": 346,
     "ex10_cut_back_1_1": 347,
     "ex10_cut_back_3_0": 348,
+    "ex10_cut_back_3_1": 678,
     "ex10_cut_back_9_0": 349,
     "ex10_cut_back_9_1": 350,
     "ex10_cut_back_iron_0_0": 351,
@@ -546,6 +549,7 @@
     "ex10_iron_clad_4_1": 543,
     "ex10_iron_clad_4_2": 544,
     "ex10_iron_clad_4_3": 545,
+    "ex10_iron_clad_6_0": 679,
     "ex10_iron_clad_6_1": 546,
     "ex10_iron_clad_8_0": 547,
     "ex10_iron_clad_8_1": 548,
@@ -622,9 +626,11 @@
     "ex10_wet_back_0_2": 619,
     "ex10_wet_back_10_1": 620,
     "ex10_wet_back_1_0": 621,
+    "ex10_wet_back_1_1": 680,
     "ex10_wet_back_1_2": 622,
     "ex10_wet_back_2_0": 623,
     "ex10_wet_back_2_1": 624,
+    "ex10_wet_back_3_0": 681,
     "ex10_wet_back_3_1": 625,
     "ex10_wet_back_8_0": 626,
     "ex10_wet_back_8_1": 627,
@@ -677,5 +683,5 @@
     "ex10_wet_rock_9_2": 674,
     "ex10_wet_rock_9_3": 675
   },
-  "next": 676
+  "next": 682
 }

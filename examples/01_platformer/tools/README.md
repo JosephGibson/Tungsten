@@ -141,8 +141,12 @@ Terrain is one masonry texture that repeats exactly every 64 pixels:
 - **Depth.** Fill below the surface is one tone darker; surface tiles fade into
   it by dither from row 18.
 - **Edges.** `level.py` gives exposed wall faces `cliff_left`/`cliff_right`: the
-  left face is in shadow, the right is moonlit. It still draws the variant for
-  those tiles, so every other tile keeps its variant.
+  left face is in shadow, the right is moonlit.
+- **Variation.** Each terrain cell draws its variant from a stream seeded by
+  its place (`terrain-variation-<x>-<y>`), as each background cell does
+  (`background-<x>-<y>`), so a change to a platform re-rolls only the cells it
+  covers and those whose open sides or roof it changes, and moves only the props
+  settled on them (`test_a_terrain_change_moves_only_its_props`).
 - **Decks.** Slab, bridge and lift decks span the full tile at exactly 23 pixels
   deep, their collision depth.
 - **Legacy names.** The older unplaced terrain names are copies of the new
@@ -155,10 +159,8 @@ A channel run's ends are broken (01 (k)): each takes `channel_break_<side>_<k>`,
 `k` the run's place along the aqueduct modulo 3, so a gap pairs right `k` with
 left `k + 1`; each variant's face is ragged under its lip
 (`terrain.BREAK_LIPS`), a right lip over its pier's shaft and a left one over
-the haunch beside its pier, and choosing it draws nothing from the random
-stream. A cell in `spouts` takes `channel_spout` after its weighted draw, so
-no other tile's variant moves (none since e01hollow, whose second gargoyle
-replaced the spouts). Every channel tile's top is its coping (e01hollow,
+the haunch beside its pier. A cell in `spouts` takes `channel_spout` (none since
+e01hollow, whose second gargoyle replaced the spouts). Every channel tile's top is its coping (e01hollow,
 `terrain.coping`): capstones drawn apart from the trough, their top face
 from `terrain.COPING_TOP`, the water riding behind them; the `water` clip stops
 at that row so the capstones show in front of it.
