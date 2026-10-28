@@ -3346,3 +3346,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - What read the save ID as a number keeps its result: a crate's, rock's or stone's art takes the parity of the ID plus one (`props::art`), so a fresh run's map props keep the art schema 22's IDs gave them; a glow's pulse takes its phase from the ID's low ten bits, which an authored ID's size would push past an `f32`'s precision.
 - Tests: `an_enemy_added_to_the_map_needs_no_schema_bump` and `a_migrated_schema_22_capture_keeps_its_maps_crates_outside_the_summons_caps` (`tests/game/saves.rs`), `schema_9_saves_migrate_to_the_new_save_ids` (holds `S22_NAMES` to the map), every schema fixture test through `schema_23_id`, `the_map_s_own_crates_and_kegs_stay_outside_the_summon_s_caps` (`tests/game/props.rs`); the relabel tests start from a capture taken back to schema 22 (`as_schema_22_capture`).
 - Open: Tiled object `id`s stay generator-numbered and unused; 7.9's generic saves.
+
+## D-223 — Example 01's accepted asset families are locked by each file's SHA-256 in `tools/locks.json`, which the generator enforces; an unlock is the owner's
+**Date:** 2026-10-28
+**Decision:** `tools/generate.py`'s `FAMILIES` splits 01's generated outputs into families: the player, the projectiles, the balls, the dummy, each enemy, the stones, scenery, props, terrain, backdrops, effects, tomes, sounds and music, which lock, and the level and `content` (the shell's copies, `content/`, shaders, materials, particle configs), which are source-driven and never lock. `tools/locks.json` holds, for each locked family, the date it was locked and every one of its files' SHA-256. A run, whole or by family, that would change a locked family's files (a byte changed, a file gained or lost) fails before it writes, naming the family and the files; `--check` also holds every locked file in the tree to its hash. `--lock NAME` records a family's hashes and refuses while the tree's files differ from what the family makes; `--unlock NAME` drops the entry, the owner's call. Every lockable family is locked at landing (the plan's Q1: each of 01's stops closed with the owner's acceptance).
+
+**Why:** The roadmap redo's asset sessions (§6, `docs/operating-rules.md`'s Assets): accepted files are locked and code sessions leave `tools/` art alone. A hash per file makes a code session's accidental change to accepted art, through a shared helper, the palette or a relief prefix, fail at the run that makes it, naming each file, instead of reaching a review sheet.
+
+**Consequences:**
+- An asset session that redraws a family starts from the owner's `--unlock` and ends with `--lock` after the acceptance; a code session never unlocks, so a change to shared drawing code that moves a locked file waits for the owner.
+- A new output in a locked family is a gained file: generated data beside an actor's sprites, such as its body, hurtbox and anchors, takes a family of its own.
+- `locks.json` is source: only `--lock` and `--unlock` write it, and `just level-check` reads it.
+- Tests: `test_a_locked_files_change_fails_the_run` (`tools/test_generate.py`).

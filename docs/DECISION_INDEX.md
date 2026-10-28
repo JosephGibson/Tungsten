@@ -243,6 +243,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-220` | Gamepads: `gilrs` (`D-015` rule 1) behind the default `gamepad` feature, its backend thread the third background thread (force feedback off), libudev on Linux; pad buttons, sticks and edges in `InputState`; `gamepad_button`/`gamepad_axis` bindings and `ActionMap::value`; pads navigate the UI. Amends `D-045`, `D-131`, `D-144`, `D-149`. Amended by `D-221`: sticks read through a radial dead zone; gilrs's own filters off. |
 | `D-221` | Sticks read through a radial dead zone and a sensitivity (`StickResponse` in `InputState`, passed to `RoutedInput` at each routing; the player's `stick_dead_zone` and `stick_sensitivity` in `Settings`); the digital presses stay raw; gilrs's per-axis dead zone off. Amends `D-159`, `D-220`. |
 | `D-222` | Example 01's saved map objects take save IDs from unique authored names (`SaveId::authored`, FNV-1a with bit 31 set; the player's `player`), runtime IDs counting below bit 31; the map's crates and kegs carry `MapProp`; save schema 23 maps schema 22's spawn-order IDs through a frozen name table. Supersedes `D-208`'s layer order. |
+| `D-223` | Example 01's accepted asset families locked by each file's SHA-256 in `tools/locks.json` (all 19 art and sound families at landing; the level and `content` never), held by every run, whole or `--family`, and by `--check`; `--lock` records a family once the tree holds what it makes, `--unlock` is the owner's. |
 
 ## When To Open a Decision
 

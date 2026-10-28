@@ -6,8 +6,8 @@ import tempfile
 import unittest
 import wave
 
-from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
-from generate import FAMILIES as ASSET_FAMILIES, generate, users
+from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
+from generate import FAMILIES as ASSET_FAMILIES, generate, hashed, lock_breaks, users
 from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
 
@@ -347,6 +347,44 @@ class FamilyTests(unittest.TestCase):
                 self.assertLessEqual(everything, set(self.paths['troll']))
         finally:
             actors.troll_canvas = original
+
+    def test_a_locked_files_change_fails_the_run(self):
+        # The stones locked as the full run made them: built again they
+        # hold; with one pixel of a stone drawn otherwise in memory the run
+        # fails, naming the family and the stone's files; and a locked file
+        # changed in a tree fails that tree's check.
+        import actors
+        locks = {'stones': dict(date='2026-10-28', files=hashed(self.full, {'stones': self.paths['stones']})['stones'])}
+
+        def breaks():
+            with tempfile.TemporaryDirectory() as temp:
+                dest = Path(temp)
+                return lock_breaks(locks, hashed(dest, generate(dest, {'stones'}, self.full)))
+        self.assertEqual(breaks(), [])
+        original = actors.stone
+
+        def chipped(size, look):
+            im = original(size, look)
+            if (size, look) == ('small', 0):
+                im.putpixel((0, 0), PALETTE['o'])
+            return im
+        actors.stone = chipped
+        try:
+            broken = breaks()
+        finally:
+            actors.stone = original
+        self.assertEqual(len(broken), 1)
+        self.assertIn('stones is locked (2026-10-28) and would change assets/sprites/stone_small_0.png', broken[0])
+        self.assertNotIn('stone_small_1', broken[0])
+        with tempfile.TemporaryDirectory() as temp:
+            tree = Path(temp)
+            for path in self.paths['stones']:
+                (tree / path).parent.mkdir(parents=True, exist_ok=True)
+                (tree / path).write_bytes((self.full / path).read_bytes())
+            (tree / 'assets/sprites/stone_large_1.png').write_bytes(b'')
+            broken = lock_breaks(locks, hashed(tree, {'stones': list(locks['stones']['files'])}), 'changed in the tree')
+        self.assertEqual(broken, ["stones is locked (2026-10-28) and changed in the tree assets/sprites/stone_large_1.png; "
+                                  "unlocking it is the owner's call (--unlock stones)"])
 
 
 # e01foes' contract, the files its families own as the game reads them: each

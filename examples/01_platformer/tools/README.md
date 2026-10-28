@@ -67,6 +67,18 @@ normals) needs a full run. A family run removes nothing: an output a family
 stops making stays listed until a full run, and `--check`, which stays whole,
 fails on it until then.
 
+Accepted families are locked (`D-223`): `locks.json` holds each locked
+family's date and every one of its files' SHA-256. A run that would change a
+locked family's files, a byte changed or a file gained or lost, fails before
+it writes anything, naming the family and the files, and `--check` also holds
+every locked file in the tree to its hash. Every art and sound family is
+locked; the level and `content` are source-driven and never are. Unlocking is
+the owner's call: `--unlock NAME` drops a family's lock before an asset
+session redraws it, and `--lock NAME`, once the owner accepts the new art,
+records its hashes again, refusing while the tree's files differ from what
+the family makes. A code session never unlocks; a change to shared code that
+moves a locked file waits for the owner's unlock of each family it moves.
+
 The shell's assets come with its code: Inter and Source Serif 4 with their
 licence files, and the `damage_flash` shader and material are copied byte for
 byte from `templates/basic/assets/`, with their manifest entries, so `--check`

@@ -2,6 +2,8 @@
 """Deterministic offline authoring; never invoked by Cargo or the engine."""
 import argparse
 from dataclasses import dataclass
+from datetime import date
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -58,6 +60,9 @@ SERIF_BOLD=ROOT.parent.parent/'assets'/'fonts'/'SourceSerif4'/'static'/'SourceSe
 # Prefab and data sources, copied verbatim under assets/ and listed by file:
 # `prefabs/<id>.json`, `data/<kind>/<id>.json`.
 CONTENT=TOOLS/'content'
+# The accepted families' files' hashes (`D-223`): `--lock` and `--unlock` write
+# it; every run and `--check` hold the locked families to it.
+LOCKS=TOOLS/'locks.json'
 
 
 def particle_configs():
@@ -1065,6 +1070,57 @@ def generate(dest,families=None,base=ROOT):
     return {name:sorted(m.files) for name,m in made.items()}
 
 
+def read_locks():
+    """`tools/locks.json`: each locked family's date and its files' SHA-256s."""
+    locks=json.loads(LOCKS.read_text()) if LOCKS.exists() else {}
+    if unknown:=sorted(set(locks)-set(FAMILIES)):raise SystemExit(f'{LOCKS.name}: no family {", ".join(unknown)}')
+    return locks
+
+
+def sha256(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def lock_breaks(locks,files,verb='would change'):
+    """A line for each locked family whose files, `{family: {path: SHA-256}}`,
+    are not its lock's: a file changed, gained or lost."""
+    breaks=[]
+    for name,hashes in files.items():
+        if name not in locks:continue
+        held=locks[name]['files']
+        if changed:=sorted(p for p in hashes.keys()|held.keys() if hashes.get(p)!=held.get(p)):
+            more=f' and {len(changed)-12} more' if len(changed)>12 else ''
+            breaks.append(f"{name} is locked ({locks[name]['date']}) and {verb} {', '.join(changed[:12])}{more}; "
+                          f"unlocking it is the owner's call (--unlock {name})")
+    return breaks
+
+
+def hashed(root,paths):
+    """`{family: {path: SHA-256}}` of `paths`' files under `root`, a file
+    that is missing left out."""
+    return {name:{p:sha256((root/p).read_bytes()) for p in files if (root/p).is_file()} for name,files in paths.items()}
+
+
+def lock(names,unlock):
+    """`--lock` and `--unlock`: record each named family's files' hashes,
+    once the tree holds what the family makes, or drop its lock."""
+    locks=read_locks()
+    for name in unlock:
+        if locks.pop(name,None) is None:raise SystemExit(f'{name} is not locked')
+    if refused:=[name for name in names if not FAMILIES[name].lockable]:
+        raise SystemExit(f'{", ".join(refused)}: source-driven, never locked')
+    if names:
+        with tempfile.TemporaryDirectory(prefix='platformer-lock-') as temp:
+            dest=Path(temp);paths=generate(dest,set(names))
+            for name in names:
+                if stale:=[p for p in paths[name] if not (ROOT/p).is_file() or (ROOT/p).read_bytes()!=(dest/p).read_bytes()]:
+                    raise SystemExit(f'{name}: {len(stale)} files differ from what it makes ({", ".join(stale[:5])}); '
+                                     f'generate it first')
+                locks[name]=dict(date=date.today().isoformat(),files=hashed(dest,{name:paths[name]})[name])
+    write_json(LOCKS,locks)
+    print(f'Locked {", ".join(names) or "none"}; unlocked {", ".join(unlock) or "none"}')
+
+
 def validate_references(manifest,animations,configs,source):
     # 01 loads its manifest as its only root, so IDs need only be unique in
     # it; the art's keep their `ex10_` prefix, the shell's take theirs.
@@ -1102,12 +1158,20 @@ def main():
     parser.add_argument('--floating',action='store_true',help='list the scenery that floats and exit 1 on any')
     parser.add_argument('--family',action='append',choices=FAMILIES,metavar='NAME',
                         help='build only this family and every family that uses it (repeatable): '+', '.join(FAMILIES))
+    parser.add_argument('--lock',action='append',choices=FAMILIES,metavar='NAME',
+                        help="record this family's files' hashes in locks.json, once the tree holds what it makes (repeatable)")
+    parser.add_argument('--unlock',action='append',choices=FAMILIES,metavar='NAME',
+                        help="drop this family's lock, the owner's call (repeatable)")
     args=parser.parse_args()
     if args.floating:floating_report()
+    if args.lock or args.unlock:return lock(args.lock or [],args.unlock or [])
     if args.check and args.family:parser.error('--check is whole: drop --family')
     run=None if args.family is None else users(args.family)
+    locks=read_locks()
     with tempfile.TemporaryDirectory(prefix='platformer-generate-') as temp:
         dest=Path(temp);paths=generate(dest,run)
+        # Before anything is written: no locked family's files may change.
+        breaks=lock_breaks(locks,hashed(dest,paths))
         owned=json.loads((dest/'tools/outputs.json').read_text())
         previous=json.loads((TOOLS/'outputs.json').read_text()) if (TOOLS/'outputs.json').exists() else json.loads((TOOLS/'legacy_outputs.json').read_text())
         obsolete=sorted(set(previous)-set(owned))
@@ -1117,9 +1181,13 @@ def main():
             # No uncovered stray PNGs or configs may silently evade the inventory.
             expected=set(owned)|{'assets/'+path for path in HAND_AUTHORED_SOUNDS}
             changed += [str(p.relative_to(ROOT)) for p in (ROOT/'assets').rglob('*') if p.is_file() and str(p.relative_to(ROOT)) not in expected]
-            if changed:raise SystemExit('Generated outputs differ: '+', '.join(sorted(set(changed))))
-            print(f'OK: {len(owned)} owned outputs match; art, level, references and budgets validated')
+            # And every locked file in the tree holds its hash.
+            breaks+=lock_breaks(locks,hashed(ROOT,{name:list(held['files']) for name,held in locks.items()}),'changed in the tree')
+            if changed or breaks:
+                raise SystemExit('\n'.join([*(['Generated outputs differ: '+', '.join(sorted(set(changed)))] if changed else []),*breaks]))
+            print(f'OK: {len(owned)} owned outputs match and {len(locks)} locked families hold; art, level, references and budgets validated')
         else:
+            if breaks:raise SystemExit('\n'.join(breaks))
             for path in obsolete:
                 # Only the explicit previous inventory authorizes deletion.
                 (ROOT/path).unlink(missing_ok=True)
