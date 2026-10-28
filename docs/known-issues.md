@@ -90,7 +90,6 @@ Carried findings from the dated passes listed above; later entries name their mi
 - The perf runner's background-load scan (`D-095`, `D-141`) covers preflight and measured runs of `run`, `suite` and `--sweep` only: capacity probes, `just smoke` timings and `just visual` still rely on the manual `pgrep` checks.
 - `scripts/bench.py` run from a tree export under `target/` (a parent or reference build) records the enclosing repository's commit and dirty-tree hash as the capture's provenance, not the export's; label such captures by hand, as the 0.40 QA evidence folders under `perf-runs/` do.
 - Measure CI's wall time on the 0.44 release pull request: building the benchmarks in the bench profile took 148–193 s of a run of about 5 min before `D-112` moved it to the dev profile.
-- Test temp directories pile up in `/tmp`: the manifest tests' helper (`core/tests/assets/manifest.rs`) never removes its directories; each test could remove its directory at its end.
 - Bloom's shader ids 4..=7 must follow sprite (0) and SMAA (1..=3) or `Renderer::reload_shader` routing breaks; only a bloom test 0.44 deleted said so. Put the note beside the seeding at `render/renderer.rs:338`.
 - `D-041` lacks an `**Amended by D-096:**` marker line above `D-111`'s.
 - The launcher's errors are invisible on Windows now that it opens no console (`tools/launcher/src/main.rs`, `D-119`): a missing level or a failed start needs an error dialog or a log line, with W7b.

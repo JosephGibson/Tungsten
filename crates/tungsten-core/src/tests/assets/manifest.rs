@@ -615,15 +615,17 @@ fn invalid_particle_mesh_is_rejected() {
 #[test]
 fn duplicate_particle_mesh_id_across_manifests_is_fatal() {
     let content = r#"{"particle_meshes": {"tri": {"vertices": [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]], "indices": [0, 1, 2]}}}"#;
-    let a = write_manifest(&tempdir(), content);
-    let b = write_manifest(&tempdir(), content);
+    let (dir_a, dir_b) = (tempdir(), tempdir());
+    let a = write_manifest(&dir_a, content);
+    let b = write_manifest(&dir_b, content);
     let err = ResolvedManifest::load_and_merge_many(&[a, b]).unwrap_err();
     assert!(matches!(err, ManifestError::DuplicateId { id } if id == "tri"));
 }
 
 /// A manifest in a fresh directory declaring `faces` as fonts, with `rest`
-/// appended to its top-level object.
-fn font_manifest(faces: &[&str], rest: &str) -> PathBuf {
+/// appended to its top-level object, with the guard that keeps the
+/// directory.
+fn font_manifest(faces: &[&str], rest: &str) -> (TempDir, PathBuf) {
     let tmp = tempdir();
     let fonts: Vec<String> = faces
         .iter()
@@ -633,15 +635,16 @@ fn font_manifest(faces: &[&str], rest: &str) -> PathBuf {
         })
         .collect();
     let separator = if rest.is_empty() { "" } else { ", " };
-    write_manifest(
+    let path = write_manifest(
         &tmp,
         &format!(r#"{{"fonts": {{{}}}{separator}{rest}}}"#, fonts.join(", ")),
-    )
+    );
+    (tmp, path)
 }
 
 #[test]
 fn font_families_and_chain_load() {
-    let path = font_manifest(
+    let (_dir, path) = font_manifest(
         &["sans", "sans_bold", "mono"],
         r#""font_families": {"sans": {"faces": ["sans", "sans_bold"]}, "mono": {"faces": ["mono"]}},
            "font_fallback": ["sans", "mono"]"#,
@@ -656,7 +659,7 @@ fn font_families_and_chain_load() {
 
 #[test]
 fn font_family_with_missing_face_is_error() {
-    let path = font_manifest(
+    let (_dir, path) = font_manifest(
         &["sans"],
         r#""font_families": {"sans": {"faces": ["sans", "sans_bold"]}, "a_first": {"faces": ["zz"]}}"#,
     );
@@ -669,7 +672,7 @@ fn font_family_with_missing_face_is_error() {
 
 #[test]
 fn unknown_fallback_family_is_error() {
-    let path = font_manifest(
+    let (_dir, path) = font_manifest(
         &["sans"],
         r#""font_families": {"sans": {"faces": ["sans"]}}, "font_fallback": ["sans", "serif", "mono"]"#,
     );
@@ -682,8 +685,8 @@ fn unknown_fallback_family_is_error() {
 
 #[test]
 fn duplicate_font_family_across_roots_is_fatal() {
-    let a = font_manifest(&["a"], r#""font_families": {"sans": {"faces": ["a"]}}"#);
-    let b = font_manifest(&["b"], r#""font_families": {"sans": {"faces": ["b"]}}"#);
+    let (_a, a) = font_manifest(&["a"], r#""font_families": {"sans": {"faces": ["a"]}}"#);
+    let (_b, b) = font_manifest(&["b"], r#""font_families": {"sans": {"faces": ["b"]}}"#);
     let err = ResolvedManifest::load_and_merge_many(&[a, b]).unwrap_err();
     assert!(matches!(err, ManifestError::DuplicateId { id } if id == "sans"));
 }
@@ -691,11 +694,12 @@ fn duplicate_font_family_across_roots_is_fatal() {
 #[test]
 fn font_family_faces_may_come_from_another_root() {
     // The family's root loads first; its faces arrive with the second root.
+    let families_dir = tempdir();
     let families = write_manifest(
-        &tempdir(),
+        &families_dir,
         r#"{"font_families": {"sans": {"faces": ["sans", "sans_bold"]}}, "font_fallback": ["sans"]}"#,
     );
-    let faces = font_manifest(&["sans", "sans_bold"], "");
+    let (_faces, faces) = font_manifest(&["sans", "sans_bold"], "");
     let merged = ResolvedManifest::load_and_merge_many(&[families.clone(), faces]).unwrap();
     assert_eq!(merged.font_families["sans"].faces, ["sans", "sans_bold"]);
     // Alone, the family's root names faces nobody declares.
@@ -705,11 +709,11 @@ fn font_family_faces_may_come_from_another_root() {
 
 #[test]
 fn fallback_chains_concatenate_in_root_order() {
-    let a = font_manifest(
+    let (_a, a) = font_manifest(
         &["a"],
         r#""font_families": {"a": {"faces": ["a"]}}, "font_fallback": ["a"]"#,
     );
-    let b = font_manifest(
+    let (_b, b) = font_manifest(
         &["b"],
         r#""font_families": {"b": {"faces": ["b"]}}, "font_fallback": ["b", "a"]"#,
     );
@@ -744,12 +748,39 @@ fn default_filter_is_nearest() {
 use std::sync::atomic::{AtomicU32, Ordering};
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-fn tempdir() -> PathBuf {
+/// A fresh folder under the system temp folder, removed when dropped.
+struct TempDir(PathBuf);
+
+impl std::ops::Deref for TempDir {
+    type Target = PathBuf;
+
+    fn deref(&self) -> &PathBuf {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn tempdir() -> TempDir {
     let n = COUNTER.fetch_add(1, Ordering::SeqCst);
     let dir = std::env::temp_dir().join(format!("tungsten_test_{}_{n}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    dir
+    TempDir(dir)
+}
+
+#[test]
+fn the_temp_dir_helper_removes_its_folder_when_dropped() {
+    let tmp = tempdir();
+    write_file(&tmp, "hero.png");
+    let path = tmp.to_path_buf();
+    assert!(path.join("hero.png").exists());
+    drop(tmp);
+    assert!(!path.exists());
 }
 
 #[test]
