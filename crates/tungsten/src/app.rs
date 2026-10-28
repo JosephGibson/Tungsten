@@ -287,9 +287,12 @@ impl App {
         if let Some(text_scale) = settings.text_scale() {
             ui_tree.set_text_scale(text_scale);
         }
+        // The player's stick response from the start (P7-12).
+        let mut input = InputState::new();
+        input.set_stick_response(settings.stick_response());
         let mut world = World::new();
         world.insert_resource(time_from_config(&config.time));
-        world.insert_resource(InputState::new());
+        world.insert_resource(input);
         world.insert_resource(action_map);
         world.insert_resource(WindowSize {
             width: resolved_display.resolution.width,

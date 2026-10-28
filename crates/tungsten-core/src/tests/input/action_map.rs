@@ -1,7 +1,7 @@
 use super::*;
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::input::GamepadId;
+use crate::input::{GamepadId, StickResponse};
 
 const SAMPLE_JSON: &str = r#"{
     "actions": {
@@ -710,7 +710,7 @@ fn gamepad_bindings_round_trip_through_json() {
 }
 
 #[test]
-fn value_reads_a_sticks_magnitude() {
+fn value_reads_a_sticks_reach_past_the_dead_zone() {
     let mut map = ActionMap::new();
     map.replace_bindings(
         "move_right",
@@ -728,10 +728,11 @@ fn value_reads_a_sticks_magnitude() {
     let mut input = InputState::new();
     let value = |input: &InputState| map.value(input, "move_right");
     assert_eq!(value(&input), 0.0);
+    // The default response: a 0.15 dead zone at sensitivity 1.
     for (tilt, expected) in [
-        (0.2, 0.0),
-        (0.35, 0.0),
-        (0.675, 0.5),
+        (0.1, 0.0),
+        (0.15, 0.0),
+        (0.575, 0.5),
         (1.0, 1.0),
         (-1.0, 0.0),
     ] {
@@ -749,7 +750,7 @@ fn value_reads_a_sticks_magnitude() {
     input.key_up(KeyCode::KeyD);
     // The farthest pad that way counts.
     input.set_gamepad_axis(GamepadId::new(1), GamepadAxis::LeftStickX, -1.0);
-    assert!((value(&input) - 0.15 / 0.65).abs() < 1e-6);
+    assert!((value(&input) - 0.35 / 0.85).abs() < 1e-6);
     assert_eq!(map.value(&input, "unknown"), 0.0);
 }
 
@@ -806,4 +807,111 @@ fn default_map_binds_ui_actions_on_a_gamepad() {
     input.set_gamepad_axis(GamepadId::new(2), GamepadAxis::LeftStickY, -0.8);
     assert!(map.just_pressed(&input, UI_DOWN));
     assert!(!map.is_pressed(&input, UI_UP));
+}
+
+/// `right`, `left`, `up` and `down` on the left stick.
+fn stick_map() -> ActionMap {
+    let mut map = ActionMap::new();
+    for (action, axis, direction) in [
+        ("right", GamepadAxis::LeftStickX, AxisDirection::Positive),
+        ("left", GamepadAxis::LeftStickX, AxisDirection::Negative),
+        ("up", GamepadAxis::LeftStickY, AxisDirection::Positive),
+        ("down", GamepadAxis::LeftStickY, AxisDirection::Negative),
+    ] {
+        map.replace_bindings(action, vec![Binding::GamepadAxis { axis, direction }]);
+    }
+    map
+}
+
+/// Pad 0's left stick held at `(x, y)`, read back through `map` as
+/// `(right - left, up - down)`.
+fn read_stick(map: &ActionMap, input: &mut InputState, x: f32, y: f32) -> (f32, f32) {
+    let pad = GamepadId::new(0);
+    input.set_gamepad_axis(pad, GamepadAxis::LeftStickX, x);
+    input.set_gamepad_axis(pad, GamepadAxis::LeftStickY, y);
+    (
+        map.value(input, "right") - map.value(input, "left"),
+        map.value(input, "up") - map.value(input, "down"),
+    )
+}
+
+fn near(got: (f32, f32), want: (f32, f32)) -> bool {
+    (got.0 - want.0).abs() < 1e-5 && (got.1 - want.1).abs() < 1e-5
+}
+
+#[test]
+fn a_diagonal_under_the_dead_zone_reads_zero_on_both_axes() {
+    let map = stick_map();
+    let mut input = InputState::new();
+    // 0.1 on each axis is 0.141 from the centre, inside the 0.15 zone.
+    assert_eq!(read_stick(&map, &mut input, 0.1, 0.1), (0.0, 0.0));
+    assert_eq!(read_stick(&map, &mut input, -0.1, 0.1), (0.0, 0.0));
+}
+
+#[test]
+fn a_stick_past_the_dead_zone_rescales_along_its_own_direction() {
+    let map = stick_map();
+    let mut input = InputState::new();
+    // 0.12 on each axis is under a per-axis zone of 0.15, but 0.17 from the
+    // centre, past the radial one: both axes read, equally.
+    let length = 0.12f32.hypot(0.12);
+    let each = (length - 0.15) / 0.85 / std::f32::consts::SQRT_2;
+    let (x, y) = read_stick(&map, &mut input, 0.12, -0.12);
+    assert!(x > 0.0 && near((x, y), (each, -each)), "{x}, {y}");
+    // Off the diagonal the direction holds, where a per-axis zone would
+    // rescale each axis on its own and bend it.
+    let length = 0.6f32.hypot(0.1);
+    let reach = (length - 0.15) / 0.85;
+    let got = read_stick(&map, &mut input, 0.6, 0.1);
+    assert!(
+        near(got, (0.6 / length * reach, 0.1 / length * reach)),
+        "{got:?}"
+    );
+    assert!((got.1 / got.0 - 1.0 / 6.0).abs() < 1e-5);
+}
+
+#[test]
+fn sensitivity_two_clamps_the_length_to_one() {
+    let map = stick_map();
+    let mut input = InputState::new();
+    input.set_stick_response(StickResponse {
+        dead_zone: 0.15,
+        sensitivity: 2.0,
+    });
+    // 0.75 from the centre doubles past 1, so it reads full tilt its way.
+    assert!(near(read_stick(&map, &mut input, 0.6, 0.45), (0.8, 0.6)));
+    // 0.3 from the centre reads 2 * 0.15 / 0.85 of the way.
+    let reach = 2.0 * 0.15 / 0.85;
+    assert!(near(
+        read_stick(&map, &mut input, 0.24, -0.18),
+        (0.8 * reach, -0.6 * reach)
+    ));
+}
+
+#[test]
+fn the_stick_response_clamps_holds_across_frames_and_leaves_the_presses_raw() {
+    let mut input = InputState::new();
+    assert_eq!(input.stick_response(), StickResponse::DEFAULT);
+    input.set_stick_response(StickResponse {
+        dead_zone: 5.0,
+        sensitivity: 0.0,
+    });
+    let wide = StickResponse {
+        dead_zone: 0.9,
+        sensitivity: 0.25,
+    };
+    assert_eq!(input.stick_response(), wide);
+    input.begin_frame();
+    input.set_focused(false);
+    input.set_focused(true);
+    assert_eq!(input.stick_response(), wide, "kept");
+    // The presses read the raw value: half tilt presses inside a 0.9 zone.
+    let map = stick_map();
+    assert_eq!(read_stick(&map, &mut input, 0.5, 0.0), (0.0, 0.0));
+    assert!(input.is_stick_pressed(GamepadAxis::LeftStickX, AxisDirection::Positive));
+    input.set_stick_response(StickResponse {
+        dead_zone: f32::NAN,
+        sensitivity: f32::INFINITY,
+    });
+    assert_eq!(input.stick_response(), StickResponse::DEFAULT);
 }

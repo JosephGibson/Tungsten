@@ -334,9 +334,15 @@ impl GamepadBackend {
     /// second thread, and reports the pads connected now, except in smoke
     /// mode. A failed build logs one warning and gives `None`: the game runs
     /// without pads.
+    ///
+    /// gilrs's default filters are off, so its per-axis dead zone does not
+    /// stack on core's radial one (`StickResponse`, P7-12); [`drain`](Self::drain)
+    /// runs the other two, and so updates gilrs's state itself.
     pub(crate) fn start(input: &mut InputState, smoke: bool) -> Option<Self> {
         let gilrs = match gilrs::GilrsBuilder::new()
             .with_force_feedback(false)
+            .with_default_filters(false)
+            .set_update_state(false)
             .build()
         {
             Ok(gilrs) => gilrs,
@@ -355,10 +361,26 @@ impl GamepadBackend {
         Some(Self { gilrs })
     }
 
-    /// Applies every pending event in arrival order (`apply_pad_events`).
+    /// Applies every pending event in arrival order (`apply_pad_events`),
+    /// each through gilrs's d-pad filter (its axes to buttons) and jitter
+    /// filter, then into gilrs's state, as its default filters do without
+    /// the dead zone; a filtered event comes back `Dropped`, which
+    /// [`translate_pad_event`] skips.
     pub(crate) fn drain(&mut self, input: &mut InputState, smoke: bool) {
+        use gilrs::Filter;
+        use gilrs::ev::filter::{Jitter, axis_dpad_to_button};
+
         let gilrs = &mut self.gilrs;
-        let events = std::iter::from_fn(|| gilrs.next_event()).filter_map(|event| {
+        let jitter = Jitter::new();
+        let events = std::iter::from_fn(|| {
+            let event = gilrs
+                .next_event()
+                .filter_ev(&axis_dpad_to_button, gilrs)
+                .filter_ev(&jitter, gilrs)?;
+            gilrs.update(&event);
+            Some(event)
+        })
+        .filter_map(|event| {
             translate_pad_event(event.event).map(|translated| (pad_id(event.id), translated))
         });
         apply_pad_events(input, events, smoke);

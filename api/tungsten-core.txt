@@ -6512,8 +6512,10 @@ pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::set_stick_response(&mut self, tungsten_core::input::StickResponse)
 pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -6599,6 +6601,30 @@ impl core::marker::Unpin for tungsten_core::input::RoutedInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RoutedInput
+pub struct tungsten_core::input::StickResponse
+pub tungsten_core::input::StickResponse::dead_zone: f32
+pub tungsten_core::input::StickResponse::sensitivity: f32
+impl tungsten_core::input::StickResponse
+pub const tungsten_core::input::StickResponse::DEAD_ZONE_RANGE: core::ops::range::RangeInclusive<f32>
+pub const tungsten_core::input::StickResponse::DEFAULT: Self
+pub const tungsten_core::input::StickResponse::SENSITIVITY_RANGE: core::ops::range::RangeInclusive<f32>
+impl core::clone::Clone for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::clone(&self) -> tungsten_core::input::StickResponse
+impl core::cmp::PartialEq for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::eq(&self, &tungsten_core::input::StickResponse) -> bool
+impl core::default::Default for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::default() -> Self
+impl core::fmt::Debug for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::StickResponse
+impl core::marker::StructuralPartialEq for tungsten_core::input::StickResponse
+impl core::marker::Freeze for tungsten_core::input::StickResponse
+impl core::marker::Send for tungsten_core::input::StickResponse
+impl core::marker::Sync for tungsten_core::input::StickResponse
+impl core::marker::Unpin for tungsten_core::input::StickResponse
+impl core::marker::UnsafeUnpin for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::StickResponse
 pub const tungsten_core::input::STICK_PRESS: f32
 pub const tungsten_core::input::STICK_RELEASE: f32
 pub mod tungsten_core::inspect
@@ -8349,9 +8375,14 @@ pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::opti
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::stick_dead_zone(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::stick_response(&self) -> tungsten_core::input::StickResponse
+pub fn tungsten_core::settings::Settings::stick_sensitivity(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::settings::Settings::text_scale(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
@@ -15335,8 +15366,10 @@ pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::set_stick_response(&mut self, tungsten_core::input::StickResponse)
 pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -16758,9 +16791,14 @@ pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::opti
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::stick_dead_zone(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::stick_response(&self) -> tungsten_core::input::StickResponse
+pub fn tungsten_core::settings::Settings::stick_sensitivity(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::settings::Settings::text_scale(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
@@ -17054,6 +17092,30 @@ impl core::marker::Unpin for tungsten_core::assets::data::StagedLoad
 impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoad
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoad
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoad
+pub struct tungsten_core::StickResponse
+pub tungsten_core::StickResponse::dead_zone: f32
+pub tungsten_core::StickResponse::sensitivity: f32
+impl tungsten_core::input::StickResponse
+pub const tungsten_core::input::StickResponse::DEAD_ZONE_RANGE: core::ops::range::RangeInclusive<f32>
+pub const tungsten_core::input::StickResponse::DEFAULT: Self
+pub const tungsten_core::input::StickResponse::SENSITIVITY_RANGE: core::ops::range::RangeInclusive<f32>
+impl core::clone::Clone for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::clone(&self) -> tungsten_core::input::StickResponse
+impl core::cmp::PartialEq for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::eq(&self, &tungsten_core::input::StickResponse) -> bool
+impl core::default::Default for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::default() -> Self
+impl core::fmt::Debug for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::StickResponse
+impl core::marker::StructuralPartialEq for tungsten_core::input::StickResponse
+impl core::marker::Freeze for tungsten_core::input::StickResponse
+impl core::marker::Send for tungsten_core::input::StickResponse
+impl core::marker::Sync for tungsten_core::input::StickResponse
+impl core::marker::Unpin for tungsten_core::input::StickResponse
+impl core::marker::UnsafeUnpin for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::StickResponse
 pub struct tungsten_core::StyledText
 pub tungsten_core::StyledText::spans: alloc::vec::Vec<tungsten_core::text::TextSpan>
 impl core::clone::Clone for tungsten_core::text::StyledText

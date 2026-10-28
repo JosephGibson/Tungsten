@@ -1,5 +1,5 @@
 use super::*;
-use crate::input::Modifiers;
+use crate::input::{Modifiers, StickResponse};
 use crate::ui::{
     Anchor, FixedAdvanceMeasure, LayoutStyle, Rect, Sizing, SliderRange, UiLayer, Visibility,
 };
@@ -1694,4 +1694,20 @@ fn a_primary_press_raises_a_window_root_but_not_another_role_or_a_frozen_one() {
     );
     rig.click_px(Vec2::new(350.0, 30.0));
     assert_eq!(rig.tree().roots(), [game, a, b], "a miss changes nothing");
+}
+
+#[test]
+fn each_routing_gives_the_routed_view_the_raw_inputs_stick_response() {
+    let mut world = World::new();
+    world.insert_resource(InputState::new());
+    world.insert_resource(RoutedInput::default());
+    let response = StickResponse {
+        dead_zone: 0.3,
+        sensitivity: 2.0,
+    };
+    world
+        .resource_mut::<InputState>()
+        .set_stick_response(response);
+    ui_route_system(&mut world);
+    assert_eq!(world.resource::<RoutedInput>().stick_response(), response);
 }

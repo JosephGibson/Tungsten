@@ -349,8 +349,10 @@ impl UiRouter {
             .is_some_and(|debug| debug.hide_game_layers);
         let mut stream = std::mem::take(&mut self.stream);
         stream.clear();
+        let mut stick_response = None;
         if let Some(input) = world.get_resource::<InputState>() {
             stream.extend_from_slice(input.raw_events());
+            stick_response = Some(input.stick_response());
         }
         let mut nav_actions = std::mem::take(&mut self.nav_actions);
         nav_actions.clear();
@@ -384,6 +386,10 @@ impl UiRouter {
         self.resolve_prompts(world);
         if let Some(routed) = world.get_resource_mut::<RoutedInput>() {
             routed.begin_frame();
+            // The raw input's stick response holds in the routed view too.
+            if let Some(response) = stick_response {
+                routed.set_stick_response(response);
+            }
             for input in &self.routed {
                 feed(routed, *input);
             }

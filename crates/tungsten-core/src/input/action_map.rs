@@ -9,8 +9,7 @@ use thiserror::Error;
 
 use crate::input::key_serde::{self, keycode_to_str};
 use crate::input::{
-    AxisDirection, GamepadAxis, GamepadButton, InputState, KeyCode, MouseButton, STICK_RELEASE,
-    ScrollDirection,
+    AxisDirection, GamepadAxis, GamepadButton, InputState, KeyCode, MouseButton, ScrollDirection,
 };
 use crate::persist::{quarantine, write_atomic};
 use crate::ui::{UI_ACCEPT, UI_CANCEL, UI_DOWN, UI_LEFT, UI_NEXT, UI_PREV, UI_RIGHT, UI_UP};
@@ -554,18 +553,16 @@ impl ActionMap {
 
     /// How far `action` is held, 0 to 1: the largest of its bindings. A held
     /// key, button or scroll binding gives 1. A stick binding gives how far
-    /// the stick goes its way on any pad, rescaled from [`STICK_RELEASE`]..1
-    /// to 0..1, and 0 below; so a stick moves in proportion and a key at
-    /// full speed (M54).
+    /// the stick goes its way on any pad after the input's
+    /// [`StickResponse`](crate::input::StickResponse), a radial dead zone and
+    /// a sensitivity over both of the stick's axes; so a stick moves in
+    /// proportion and a key at full speed.
     #[must_use]
     pub fn value(&self, input: &InputState, action: &str) -> f32 {
         self.bindings(action)
             .iter()
             .map(|binding| match *binding {
-                Binding::GamepadAxis { axis, direction } => {
-                    let reach = input.stick_reach(axis, direction);
-                    ((reach - STICK_RELEASE) / (1.0 - STICK_RELEASE)).clamp(0.0, 1.0)
-                }
+                Binding::GamepadAxis { axis, direction } => input.stick_value(axis, direction),
                 Binding::Key { code } => f32::from(u8::from(input.is_pressed(code))),
                 Binding::Mouse { button } => f32::from(u8::from(input.is_mouse_pressed(button))),
                 Binding::Scroll { direction } => {
