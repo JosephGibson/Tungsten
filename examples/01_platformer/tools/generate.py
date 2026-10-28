@@ -9,7 +9,7 @@ import tempfile
 from PIL import __version__ as pillow_version
 from art import TOOLS, auxiliary, build_art, relief, validate_art
 from effects import LINEAR_FILTER
-from level import build_level, tiled_text
+from level import build_level, opaque_tiles, tiled_text
 from placement import floating
 from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
 
@@ -825,12 +825,11 @@ def generate(dest):
         if sound['path'] not in authored:
             raise ValueError(f"sound {sound['path']} is neither synthesized nor hand-authored")
     output('assets/tilemaps/level.tmj').write_text(tiled_text(tiled))
-    # The sprites every pixel of which is opaque: a backdrop quad the map's
-    # tiles of them cover is never seen, so the level skips it (level/draw.rs).
+    # The map's tile IDs, read back by the next run, so `--check` fails on a
+    # tileset change.
+    write_json(output('tools/tileset.json'),source['tileset'])
     path='data/opaque_tiles/level.json'
-    opaque=sorted('ex10_'+name for name,image in images.items()
-        if image.mode!='RGBA' or image.getchannel('A').getextrema()==(255,255))
-    write_json(output('assets/'+path),{'sprites':opaque})
+    write_json(output('assets/'+path),opaque_tiles(images,tiled))
     manifest.setdefault('data',{}).setdefault('opaque_tiles',{})['level']=dict(path=path)
     # Where each wizard frame's staff orb sits, which the staff light's glow follows.
     path='data/lantern_anchors/player.json'

@@ -6282,5 +6282,6 @@
   "assets/sprites/wisp_float_7_left.png",
   "assets/tilemaps/level.tmj",
   "assets/ui/themes/shell.json",
-  "tools/outputs.json"
+  "tools/outputs.json",
+  "tools/tileset.json"
 ]

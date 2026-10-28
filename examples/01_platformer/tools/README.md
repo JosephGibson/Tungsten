@@ -280,9 +280,16 @@ real generated map, searching launch positions without changing gravity or
 colliders. Run those tests after any layout change; geometric jump estimates
 alone do not prove clearance beneath the solid platforms.
 
-`level.py` emits the embedded Tiled catalog (`firstgid=1`, contiguous local IDs,
-zero for empty, no flip bits) and the map's object layers, with the prefabs their
-classes name. Edit their source instead of the generated output. `level.tmj` is
+`level.py` emits the embedded Tiled catalog (`firstgid=1`, zero for empty, no flip
+bits) and the map's object layers, with the prefabs their classes name. Edit their
+source instead of the generated output. The catalog holds only the sprites the
+map's tile layers use, each under the local ID `tileset.json` keeps for it; a
+sprite the map newly uses takes `next`, new ones in name order, and no ID moves or
+is reused, so a sprite added or redrawn outside the map's tiles, or one the map
+stops using, changes no level file. The generator writes `tileset.json` back with
+the new IDs, and `--check` fails when it would change. `data/opaque_tiles/level.json`
+lists the wholly opaque sprites among the map's tiles and the backdrops
+(`level.opaque_tiles`). `level.tmj` is
 written with sorted keys, a tile layer a map row a line and an object a line
 (`level.tiled_text`), so a change's diff shows the rows and objects it moves. The object layers
 sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
@@ -1123,8 +1130,8 @@ second); `ground_sparks`, a strike's burst on the ground, low and wide under hea
 gravity, white to violet (32); `plank_splinters`, fresh pale pine browning as it falls
 over the faceted `ice_chip` (20); `frost_wall_hit` over the soft glow and
 `flame_wall_hit` over the puff, each bit thrown up and out small and bright, then
-swelling into faint steam or a dark puff of soot (14 and 16). No new sprite: one would
-shift every tile ID in `level.tmj`. `sfx.py` adds `ground_strike` (0.75 s: a buzzing
+swelling into faint steam or a dark puff of soot (14 and 16). No new sprite: one then
+shifted every tile ID in `level.tmj`. `sfx.py` adds `ground_strike` (0.75 s: a buzzing
 snap, the sparks' crackle and a sizzle hissing away), `player_tick` (0.14 s: a soft,
 muted thud) and `crate_break` (0.7 s: a wooden crack, a splintering crunch and the
 planks clattering down), and redraws `thunder` (3.2 s: a sharp crack into a long, deep

@@ -8,7 +8,7 @@ import wave
 
 from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import generate
-from level import FAMILIES, build_level, validate_level
+from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
 
 
@@ -47,7 +47,8 @@ class AuthoringTests(unittest.TestCase):
             self.assertEqual(ImageChops.offset(frame, 0, 8).tobytes(), following.tobytes())
 
     def test_reject_invalid_gid_and_unknown_sprite(self):
-        for gid in [-1,2**31,len(self.tiled['tilesets'][0]['tiles'])+1]:
+        tileset=self.tiled['tilesets'][0]
+        for gid in [-1,2**31,tileset['firstgid']+max(t['id'] for t in tileset['tiles'])+1]:
             tiled=copy.deepcopy(self.tiled);tiled['layers'][0]['data'][0]=gid
             with self.assertRaisesRegex(ValueError,'GID'):validate_level(self.source,tiled,self.ids)
         tiled=copy.deepcopy(self.tiled);tiled['tilesets'][0]['tiles'][0]['properties'][0]['value']='missing'
@@ -77,7 +78,8 @@ class AuthoringTests(unittest.TestCase):
     def test_grounded_props_and_hanging_vegetation_meet_their_support(self):
         # Each supported prop on its support's drawn edge, what the terrain
         # tiles draw, not the cell's edge (01 (k)).
-        catalog={t['id']+1:t['properties'][0]['value'].removeprefix('ex10_') for t in self.tiled['tilesets'][0]['tiles']}
+        tileset=self.tiled['tilesets'][0]
+        catalog={tileset['firstgid']+t['id']:t['properties'][0]['value'].removeprefix('ex10_') for t in tileset['tiles']}
         terrain=next(l['data'] for l in self.tiled['layers'] if l['name']=='terrain')
         drawn=Placed(self.images,64);cols=self.source['cols']
         for i,g in enumerate(terrain):
@@ -105,6 +107,21 @@ class AuthoringTests(unittest.TestCase):
         for p in self.source['platforms']:
             if p['style'] not in FAMILIES:self.assertEqual(self.images[p['style']].getbbox(),(0,0,64,23))
         self.assertEqual(self.source['deck_depth'],23)
+
+    def test_a_sprite_outside_the_terrain_touches_no_level_file(self):
+        # A wholly opaque sprite no tile uses, first by name, and an enemy
+        # frame's pixels made opaque: neither moves a tile ID, the map's
+        # bytes or the opaque tiles' list.
+        from PIL import Image
+        def files(tiled, source, images):
+            return tiled_text(tiled), opaque_tiles(images, tiled), source['tileset']
+        before = files(self.tiled, self.source, self.images)
+        frame = self.images['crawler_walk_0']
+        for change in ({'aaa_unused': Image.new('RGBA', (64, 64), (9, 9, 9, 255))},
+                       {'crawler_walk_0': Image.new('RGBA', frame.size, (200, 40, 40, 255))}):
+            images = dict(self.images, **change)
+            tiled, source, _ = build_level(images, self.lit)
+            self.assertEqual(files(tiled, source, images), before, list(change))
 
     def test_open_starting_courtyard_has_unobstructed_launch_space(self):
         clearing=next(p for p in self.source['platforms'] if p['name']=='clearing')
