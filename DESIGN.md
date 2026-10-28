@@ -298,7 +298,7 @@ A state change can run behind a screen transition (M31, `D-093`): `request_push_
 
 ### Materials and Post-Stack — M26
 
-Manifest `materials` bind a shader ID to a 256-byte `MaterialUniformDefaults` block (`D-058`). `Sprite.material_id` selects a material pipeline; `None` uses the built-in sprite pipeline. `UniformOverrideBlock` and `TweenChannel::Uniform*` provide entity-local animated overrides alongside authored defaults, preserving the one-`Tween`-per-entity rule.
+Manifest `materials` bind a shader ID to a 256-byte `MaterialUniformDefaults` block (`D-058`). `Sprite.material_id` selects a material pipeline; `None` uses the built-in sprite pipeline. A material shader writes the instance's `z_norm` (location 8) as clip depth, `clip_position.z = z_norm`, as the stock sprite shader does, never through `view_proj`, so under `gpu_depth` it sorts with stock sprites in painter order. `UniformOverrideBlock` and `TweenChannel::Uniform*` provide entity-local animated overrides alongside authored defaults, preserving the one-`Tween`-per-entity rule.
 
 Core owns the reorderable `PostStack`/`PostPass` data. Render records 17 ordinary stock effects plus bloom, using pooled ping-pong targets as needed; an empty stack applies no effects. SMAA is a fixed tail, outside the reorderable stack. Since `D-087`, the last full-screen stage writes the swapchain directly, except on screenshot frames. GPU objects are cached by target generation (`D-085`). Each post-stack slot owns its stock-effect parameters, so one effect can repeat with different values (`D-090`). Distinct material override batches currently share uniform storage; per-batch parameter independence needs a renderer fix.
 

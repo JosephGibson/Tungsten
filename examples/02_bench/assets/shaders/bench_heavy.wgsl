@@ -59,7 +59,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     );
     let world = rotated + in.instance_position + in.instance_size * 0.5;
     var out: VertexOutput;
-    out.clip_position = camera.view_proj * vec4<f32>(world, in.z_norm, 1.0);
+    out.clip_position = camera.view_proj * vec4<f32>(world, 0.0, 1.0);
+    // Painter-order depth as clip depth, as the stock sprite shader writes it.
+    out.clip_position.z = in.z_norm;
     out.uv = in.uv_min + in.uv * in.uv_size;
     out.color = in.instance_color;
     out.local = in.position;
