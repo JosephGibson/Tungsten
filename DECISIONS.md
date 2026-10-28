@@ -2331,6 +2331,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 **Amended by D-177:** the set and the phase table's members only; `KitPlugins::set()` adds the effects, abilities and level plugins after the pickup plugin and before the debug drawing; the phases hold E's members (`effect_tick` and `ailment_tick` in `Tick` after `stats_apply`, `ability_tick` in `Intent` after `action_input` and `aim`, `ailment_feed` and `effect_resolve` in `Resolve` after `damage_resolve`, `level_tick` in `React` before the cues); the rest stands.
 **Amended by D-185:** the `top_down_mover` scene component and the mover's step only; the component takes optional `acceleration` and `deceleration` (each above 0), and with either set the mover keeps a velocity it moves toward its target at that rate, its inspector rows gaining `acceleration`, `deceleration` and `velocity`; the rest stands.
 **Amended by D-215:** the admission rule only; a Phase 7 item enters when example 01 or the template uses it and a recipe exists in the other genre, an item whose job is one genre's on that use alone, and a Phase 8 item on a paper design's or 01's need with recipes and sketches; the reference genres become `platformer`, `top_down`, `rpg` and `shooter` at step 7.10; the rest stands.
+**Amended by D-218:** the reference genres only; `arpg` joins `platformer`, `top_down`, `rpg` and `shooter` at step 7.10; the rest stands.
 **Date:** 2026-10-16
 **Decision:** The kit's foundations, so that the catalogue's later milestones add items and nothing else:
 
@@ -3222,6 +3223,7 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 
 ## D-215 — The roadmap redo replaces the 1.0 roadmap after Phase 6: example 01 is the acceptance game, 1.0 promises a fully featured engine in four genres, and H1 freezes the 1.0 records behind `ROADMAP.md`
 **Amended by D-216:** the Git bullet's push only; agents push the version branch after each commit, while tags, merges and every other push stay the owner's; the rest stands.
+**Amended by D-218:** the genre promise only; 1.0 also promises action RPGs, a fifth genre beside platformer, top-down, story-driven RPG and shooter games; the rest stands.
 **Date:** 2026-10-25
 **Decision:** [docs/plans/roadmap-redo.md](docs/plans/roadmap-redo.md) is the plan of record from Phase 6's tail to 1.0: Phase 7 Seams, Phase 8 Genres and Phase 9 Release (its §3), with health in two parts, H1 now and H2 at step 7.4. 1.0 promises a fully featured engine, tooling and kit for platformer, top-down, story-driven RPG and shooter games, with no API stability promise at 1.0 (§5.7; the policy after it is step 9.3). Example 01 is the acceptance game, accepted when the owner says it is. H1 lands in this change, with its rules in [docs/operating-rules.md](docs/operating-rules.md), each naming the failure it prevents:
 
@@ -3264,3 +3266,28 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 - Amends `D-046` and `D-093` as their marker lines say; `D-039`'s flush stands.
 - `tests/state.rs` pins a push then a pop, two replaces then a push, a pop then a push (both apply) and a boundary pop after a plain push.
 - Two instances of one state ID still share cleanup: either's exit despawns both's entities. Per-instance ownership would change `SceneEntity` at every construction site; it is a recorded limit.
+
+## D-218 — 1.0 promises a fifth genre, action RPGs
+**Date:** 2026-10-28
+**Decision:** 1.0 promises a fully featured engine, tooling and kit for action RPGs, beside platformer, top-down, story-driven RPG and shooter games (the roadmap redo's §5.7 and its Q18). An action RPG here has three parts:
+- skills whose properties tag-scoped modifiers change;
+- equipment from procedurally generated items, on the same modifiers;
+- one rule set for players and enemies.
+
+The kit's reference genres become `platformer`, `top_down`, `rpg`, `shooter` and `arpg` at step 7.10. Step 7.19's paper design scopes the work, and 7.7 waits for it. Step 8.7 builds what 7.10, 8.1 and 8.2 leave.
+
+**Why:** The owner's answer of 2026-10-28 to the redo's Q18. The kit's survey that day found that the stat formula already matches flat, increased and more (`crates/tungsten-kit/src/foundation/stats.rs:96-123`). It also found what the kit lacks:
+- modifiers scoped by tag;
+- a caster's stats on its projectiles and its damage over time;
+- tags on abilities and hits;
+- crit chance and cast speed;
+- chain and fork;
+- affix data.
+
+Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them before 7.7 assigns those steps' rows saves reworking the steps later.
+
+**Consequences:**
+- Amends `D-215` and `D-172` as their marker lines say.
+- 8.6's proof adds 7.19's weekly agent tasks and the `arpg` recipes and sketch. 9.1 adds 7.19's stress numbers.
+- 1.0 moves later by 7.19 and 8.7, and by what the owner's triage of 7.19's register adds to 7.10, 8.1 and 8.2.
+- The UI and camera steps (7.17, 7.18, 7.20) do not wait for 7.19.
