@@ -53,6 +53,11 @@ PIT_KINDS = (('plain', 10), ('mossy', 3), ('cracked', 2), ('ring', 1), ('niche',
 # any such window may hold, so the player's lantern, a strike and three fire
 # missiles stay under the renderer's 16.
 LIGHT_WINDOW, LIGHT_BUDGET = (92, 52), 10
+# A geyser's vent and plume (e01hollow): its sprite's top-left from its
+# column's middle and its support's row, in px, so the vent's bottom row
+# stands on the floor; and how far its plume reaches up over the floor and
+# its half width, which no wall may stand inside.
+GEYSER_POINT, GEYSER_PLUME, GEYSER_HALF = (-32, -32), 176, 20
 # The tests' sky: columns and rows of the map that hold nothing.
 TEST_SKY = (38, 20)
 # Draw order among the level's sprites, every tile layer under them: props
@@ -293,6 +298,8 @@ def build_objects(source, images, lit):
           + [obj('', block['x'] * tile, block['y'] * tile, name='iron') for block in source.get('iron', [])]
           + [obj('', box['x'] * tile, box['y'] * tile, name=kind) for kind in ('crate', 'keg')
              for box in source.get(kind + 's', [])]
+          + [obj('', stone['x'] * tile, stone['y'] * tile, name='stone_' + stone['size'])
+             for stone in source.get('stones', [])]
           + sheaves)
     # The training dummies; each placement's tags set the `dummy` prefab's, one
     # by one.
@@ -314,6 +321,13 @@ def build_objects(source, images, lit):
     # the book's top-left.
     layer('tomes', [obj('tome_' + t['kind'], t['left'] * tile, t['top'] * tile, name=t['name'])
         for t in source.get('tomes', [])])
+    # The geysers (e01hollow), the map's last saved layer, after the tomes,
+    # so every earlier object keeps its save ID; each its vent sprite's
+    # top-left, its `offset` the seconds into its cycle a run starts it at.
+    rows = {p['name']: p['row'] for p in source['platforms']}
+    layer('geysers', [obj('geyser', g['x'] * tile + GEYSER_POINT[0], rows[g['support']] * tile + GEYSER_POINT[1],
+        properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
+        for g in source.get('geysers', [])])
     return layers, prefabs
 
 
@@ -693,6 +707,17 @@ def validate_layout(source, tiled, iron, shallow):
         col, top = int(e['x'] + 0.5), e['y']
         if top != int(top) or (col, int(top) - 1) not in walls:
             raise ValueError(f"bat {e['name']}: not flush under a roof")
+    # Each geyser's vent on its support, and no wall in its plume.
+    platforms = {p['name']: p for p in source['platforms']}
+    for g in source.get('geysers', []):
+        support = platforms[g['support']]
+        if not support['left'] <= g['x'] - 0.5 <= g['x'] + 0.5 <= support['right']:
+            raise ValueError(f"geyser at {g['x']}: off {support['name']}")
+        half, reach = GEYSER_HALF / tile, GEYSER_PLUME / tile
+        for x in range(int(g['x'] - half), int(g['x'] + half) + 1):
+            for y in range(int(support['row'] - reach), support['row']):
+                if (x, y) in walls:
+                    raise ValueError(f"geyser at {g['x']}: a wall in its plume at {x},{y}")
     for i, h in enumerate(source['hazards']):
         if not h['fire']:
             continue

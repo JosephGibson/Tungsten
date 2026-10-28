@@ -19,7 +19,9 @@
 //! (01 (k)) and sets a saved body from the wall, or from left of the map,
 //! on the clearing's floor. Schema 16 keeps the tomes the player holds
 //! (01 (l)) and sets a saved body from inside one of the books' three new
-//! supports on its top.
+//! supports on its top. Schema 19 (e01hollow) keeps the hollow's geysers
+//! and stones, moves the save IDs past its three new enemies and its
+//! geysers, and sets what the mouth's lowered lintel holds under it.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -48,20 +50,21 @@ use crate::features::dummy::{self, components::Dummy};
 use crate::features::elements::cascade::Cascades;
 use crate::features::elements::components::{BallBurn, Chill, Frozen};
 use crate::features::enemies::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Throw, Throws,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Snowball, Throw, Throws,
 };
 use crate::features::enemies::drops::{self, Orb, OrbKind};
-use crate::features::enemies::{self, crawler, troll};
+use crate::features::enemies::{self, crawler, snowball, troll};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
 use crate::features::level::elevator::{Elevator, Stop};
+use crate::features::level::geyser::{self, Geyser, GeyserPhase};
 use crate::features::level::lava::{self, Lava};
 use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::props::{
     self,
-    components::{Bomb, Crate, Fuel, Keg, PropKind, Rock},
+    components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone, StoneSize},
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spellbook, Summon};
@@ -121,18 +124,38 @@ pub struct SaveGame {
     /// The mine's elevator; none before schema 10, which leaves it at rest.
     #[serde(default)]
     pub elevators: Vec<ElevatorSave>,
+    /// The hollow's geysers (e01hollow); none before schema 19, whose map
+    /// starts them at their offsets.
+    #[serde(default)]
+    pub geysers: Vec<GeyserSave>,
     /// The crates, kegs, bombs and rocks; none before schema 12, whose map
     /// adds none to an older save's run.
     #[serde(default)]
     pub props: Vec<PropSave>,
+    /// The crawlers' snowballs in flight, apart from `props`, whose bodies
+    /// a migration reads by kind; none in an older save, and none written
+    /// while none fly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub snowballs: Vec<SnowballSave>,
+    /// The broken crates' planks (e01sfx), apart from `props` as the
+    /// snowballs are; none before schema 18, and none written while none
+    /// lie about.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub planks: Vec<PlankSave>,
+    /// The hollow's rubble stones (e01hollow), apart from `props` as the
+    /// planks are; none written while none lie about.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stones: Vec<StoneSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
 pub const MAP_DUMMIES: u64 = 1;
 /// The enemies the map's `enemies` layer places, and the health orbs its
-/// `pickups` layer places after them, its last.
-pub const MAP_ENEMIES: u64 = 26;
+/// `pickups` layer places after them; and the geysers its `geysers` layer
+/// places, its last saved, after the tomes, which take none.
+pub const MAP_ENEMIES: u64 = 29;
 pub const MAP_PICKUPS: u64 = 8;
+pub const MAP_GEYSERS: u64 = 3;
 /// How far schema 9 moves every save ID at or above schema 8's player's:
 /// the thirteen map objects it added (five enemies and eight orbs), which
 /// take theirs before the player's.
@@ -220,6 +243,29 @@ const S15_PROPS: [(&str, [Vec2; 2]); 4] = [
     ("rock", [Vec2::splat(8.0), Vec2::splat(5.0)]),
 ];
 const S15_ORB: [Vec2; 2] = [Vec2::splat(12.0), Vec2::splat(12.0)];
+/// A plank's box as schema 18 has it, which schema 19 reads with the rest.
+const S19_PLANK: [Vec2; 2] = [Vec2::new(16.0, 8.0), Vec2::new(14.0, 4.0)];
+/// Schema 18's first placed orb's save ID and its player's, its layout
+/// kept; frozen for the migration, as schema 11's are.
+pub const S18_PICKUPS: u64 = 35;
+pub const S18_PLAYER: u64 = 43;
+/// How far schema 19 moves the save IDs: every one at or above schema
+/// 18's player's by the three enemies and three geysers it places before
+/// the player, and every one from the first placed orb's below it by the
+/// three enemies, which take theirs before the orbs.
+pub const SHIFT_19: u64 = 6;
+pub const SHIFT_19_PICKUPS: u64 = 3;
+/// The row schema 19's lintel lowers into the hollow's mouth (e01hollow):
+/// `east_wall`'s new bottom row, columns 203 to 215, its box's min and max.
+/// Frozen for the migration, as schema 15's wall is.
+pub const S19_LINTEL: [Vec2; 2] = [
+    Vec2::new(203.0 * 64.0, 57.0 * 64.0),
+    Vec2::new(216.0 * 64.0, 58.0 * 64.0),
+];
+/// The ravine's bat c, schema 18's save ID 14, which roosted under the
+/// lintel's old row, and its new roost under row 58, its body's centre.
+pub const S18_BAT_C: u64 = 14;
+pub const S19_BAT_C_HOME: Vec2 = Vec2::new(13440.0, 3740.0);
 /// The tomes' supports, which schema 16 adds (01 (l)): `pact_shelf`,
 /// `bound_shelf` and `arcane_ledge`, each its cells' box, min and max.
 /// Frozen for the migration, as schema 15's wall is.
@@ -254,8 +300,13 @@ impl SaveData for SaveGame {
     /// tuned that a save keeps (`to_14`). Schema 15 sets the bodies in the
     /// start's new wall or past its boundary on the clearing's floor
     /// (`to_15`). Schema 16 keeps the tomes held and sets the bodies inside
-    /// their supports on top (`to_16`).
-    const SCHEMA: u32 = 16;
+    /// their supports on top (`to_16`). Schema 17 moves each crawler's run
+    /// to e01foes' (`to_17`). Schema 18 keeps a broken crate's planks
+    /// (`planks`), which an older save has none of. Schema 19 keeps the
+    /// hollow's geysers and stones, moves the save IDs past its new enemies
+    /// and geysers and sets what its lowered lintel holds under it
+    /// (`to_19`).
+    const SCHEMA: u32 = 19;
 
     fn migrate(
         from: u32,
@@ -280,6 +331,8 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -291,6 +344,8 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             9 => {
@@ -301,6 +356,8 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             10 => {
@@ -310,6 +367,8 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             11 => {
@@ -318,6 +377,8 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             12 => {
@@ -325,21 +386,38 @@ impl SaveData for SaveGame {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             13 => {
                 to_14(&mut data)?;
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             14 => {
                 to_15(&mut data)?;
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
                 Ok(data)
             }
             15 => {
                 to_16(&mut data)?;
+                to_17(&mut data);
+                to_19(&mut data)?;
+                Ok(data)
+            }
+            16 => {
+                to_17(&mut data);
+                to_19(&mut data)?;
+                Ok(data)
+            }
+            17 | 18 => {
+                to_19(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -584,7 +662,9 @@ fn bodies(data: &Value) -> Result<Vec<Body>, Box<dyn std::error::Error + Send + 
         point: player,
         map: false,
     }];
-    for list in ["dummies", "enemies", "balls", "blocks", "props", "orbs"] {
+    for list in [
+        "dummies", "enemies", "balls", "blocks", "props", "orbs", "planks",
+    ] {
         for (index, entry) in data[list].as_array().into_iter().flatten().enumerate() {
             let named = |table: &[(&str, [Vec2; 2])], key: &str| {
                 table
@@ -611,6 +691,7 @@ fn bodies(data: &Value) -> Result<Vec<Body>, Box<dyn std::error::Error + Send + 
                     pair(entry.get("position")),
                 ),
                 "props" => (named(&S15_PROPS, "kind"), pair(entry.get("position"))),
+                "planks" => (Some(S19_PLANK), pair(entry.get("position"))),
                 _ => (Some(S15_ORB), pair(entry.get("position"))),
             };
             let (Some([offset, half]), Some(point)) = (sizes, point) else {
@@ -766,6 +847,115 @@ fn to_16(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     Ok(())
 }
 
+/// Schema 16 to 17 (e01foes): each saved crawler's `move_speed` base moves
+/// to [`crawler::MOVE_SPEED`], its modifiers kept, as [`to_14`] moved the
+/// troll's.
+fn to_17(data: &mut Value) {
+    for enemy in data["enemies"].as_array_mut().into_iter().flatten() {
+        if enemy["kind"] == "crawler" {
+            enemy["stats"]["move_speed"]["base"] = Value::from(f64::from(crawler::MOVE_SPEED));
+        }
+    }
+}
+
+/// Schema 18 to 19 (e01hollow): the map's three new enemies take the save
+/// IDs from schema 18's first placed orb's on and its three geysers those
+/// after the orbs, so every save ID at or above schema 18's player's moves
+/// up by [`SHIFT_19`] and every one from its first orb's below it by
+/// [`SHIFT_19_PICKUPS`]. The mouth's lintel comes down a row
+/// ([`S19_LINTEL`]): the ravine's bat c, which roosted under its old row,
+/// takes its new roost as its home ([`S19_BAT_C_HOME`]), and its body too
+/// when it meets the row, since a load puts both over the map's; every
+/// other saved body that meets the row is set at rest with its top 0.5 px
+/// under it, its x kept, where it meets no other saved body, a player with
+/// no room standing at the run's spawn and any other body dropped, as
+/// [`to_16`] drops one. A schema 18 save names no new enemy or geyser and
+/// holds no stone: the map's stand at home, the geysers start at their
+/// offsets and the hollow has no stones.
+fn to_19(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    map_ids(data, &|id| {
+        if id >= S18_PLAYER {
+            id + SHIFT_19
+        } else if id >= S18_PICKUPS {
+            id + SHIFT_19_PICKUPS
+        } else {
+            id
+        }
+    });
+    let [low, high] = S19_LINTEL;
+    let meets = |(min, max): (Vec2, Vec2), others: &[(Vec2, Vec2)]| {
+        let inside = |a: Vec2, b: Vec2| min.x < b.x && max.x > a.x && min.y < b.y && max.y > a.y;
+        others.iter().any(|&(a, b)| inside(a, b))
+    };
+    let lintel = [(low, high)];
+    let [offset, half] = S15_ENEMIES
+        .iter()
+        .find(|(kind, _)| *kind == "bat")
+        .map(|(_, sizes)| *sizes)
+        .ok_or("schema 18: no bat box")?;
+    for enemy in each(data, "/enemies") {
+        let bat_c = enemy["id"].as_u64() == Some(S18_BAT_C)
+            && enemy["kind"] == "bat"
+            && enemy["map"].as_bool() == Some(true);
+        if !bat_c {
+            continue;
+        }
+        enemy["enemy"]["home"] = Value::from(vec![S19_BAT_C_HOME.x, S19_BAT_C_HOME.y]);
+        let point = enemy["position"].as_array().and_then(|xy| {
+            Some(Vec2::new(
+                xy.first()?.as_f64()? as f32,
+                xy.get(1)?.as_f64()? as f32,
+            ))
+        });
+        if let Some(point) = point
+            && meets((point + offset - half, point + offset + half), &lintel)
+        {
+            let corner = S19_BAT_C_HOME - offset;
+            enemy["position"] = Value::from(vec![corner.x, corner.y]);
+            enemy["velocity"] = Value::from(vec![0.0_f32, 0.0]);
+        }
+    }
+    let mut bodies = bodies(data)?;
+    let bat_c = |body: &Body| body.list == "enemies" && body.id == S18_BAT_C && body.map;
+    let moving: Vec<usize> = (0..bodies.len())
+        .filter(|&i| !bat_c(&bodies[i]) && meets((bodies[i].min(), bodies[i].max()), &lintel))
+        .collect();
+    if moving.is_empty() {
+        return Ok(());
+    }
+    let mut placed = vec![true; bodies.len()];
+    for &i in &moving {
+        placed[i] = false;
+    }
+    let mut dropped = Vec::new();
+    for &i in &moving {
+        let (offset, half) = (bodies[i].offset, bodies[i].half);
+        let centre = Vec2::new(bodies[i].point.x + offset.x, high.y + 0.5 + half.y);
+        let others: Vec<(Vec2, Vec2)> = (0..bodies.len())
+            .filter(|&j| j != i && placed[j])
+            .map(|j| (bodies[j].min(), bodies[j].max()))
+            .collect();
+        let clear = !meets((centre - half, centre + half), &others);
+        let centre = match (clear, bodies[i].list) {
+            (true, _) => centre,
+            (false, "player") => S15_SPAWN - Vec2::new(0.0, half.y + 0.5),
+            (false, _) => {
+                dropped.push(i);
+                continue;
+            }
+        };
+        bodies[i].point = centre - offset;
+        placed[i] = true;
+    }
+    write_bodies(data, &bodies, &moving, &dropped);
+    let ids: Vec<u64> = dropped.iter().map(|&i| bodies[i].id).collect();
+    log::info!(
+        "schema 19: saved bodies set under the hollow's lowered lintel: {}; dropped with no room: {ids:?}",
+        moving.len() - dropped.len()
+    );
+    Ok(())
+}
+
 /// Writes the points [`to_15`] or [`to_16`] gave the `moving` bodies into
 /// `data`, at rest, and takes the `dropped` off their lists, a map dummy
 /// or enemy taking its save ID into `gone` so the load takes the map's off
@@ -824,9 +1014,10 @@ fn halve_cold(buckets: &mut Value) {
     }
 }
 
-/// Every save ID field of `data` through `to`; a field it lacks stays
-/// lacking.
-fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
+/// Every save ID field of `data`, a save's JSON, through `to`; a field it
+/// lacks stays lacking. The migrations' walk, which the tests also take
+/// back to an older numbering.
+pub fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
     map_id(data.get_mut("next_id"), to);
     map_id(data.pointer_mut("/player/id"), to);
     map_id(data.pointer_mut("/black_hole/id"), to);
@@ -841,6 +1032,8 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
         "/orbs",
         "/basins",
         "/elevators",
+        "/geysers",
+        "/stones",
     ] {
         for entry in each(data, list) {
             map_id(entry.get_mut("id"), to);
@@ -877,6 +1070,14 @@ fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
     for throw in each(data, "/throws") {
         map_id(throw.get_mut("body"), to);
         map_id(throw.get_mut("thrower"), to);
+    }
+    for snowball in each(data, "/snowballs") {
+        map_id(snowball.get_mut("id"), to);
+        map_id(snowball.get_mut("thrower"), to);
+    }
+    for plank in each(data, "/planks") {
+        map_id(plank.get_mut("id"), to);
+        map_id(plank.pointer_mut("/fuel/lighter"), to);
     }
     for ball in each(data, "/balls") {
         map_id(ball.get_mut(0), to);
@@ -1021,6 +1222,18 @@ pub struct BasinSave {
     pub id: u64,
     pub cold: f32,
     pub crust: Option<f32>,
+}
+
+/// A geyser: its phase, the phase's seconds left, the cold spray's seconds
+/// on it and its choke's seconds left (e01hollow).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeyserSave {
+    pub id: u64,
+    pub phase: GeyserPhase,
+    pub left: f32,
+    pub cold: f32,
+    pub choked: f32,
 }
 
 /// The mine's elevator: its deck's point, its stop, a boarding's seconds
@@ -1275,6 +1488,44 @@ pub struct PropSave {
     pub doused: f32,
 }
 
+/// A crawler's snowball in flight: its body and its [`Snowball`]: its
+/// thrower's save ID, the thrower's damage factor and its seconds left.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SnowballSave {
+    pub id: u64,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub thrower: Option<u64>,
+    pub factor: f32,
+    pub left: f32,
+}
+
+/// A broken crate's plank: its body, its art's variant, its frost and its
+/// fire, whole.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlankSave {
+    pub id: u64,
+    pub variant: usize,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+    pub chill: Option<f32>,
+    pub frozen: Option<f32>,
+    pub fuel: Fuel,
+}
+
+/// A rubble stone: its size, its art's variant and its body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StoneSave {
+    pub id: u64,
+    pub size: StoneSize,
+    pub variant: usize,
+    pub position: [f32; 2],
+    pub velocity: [f32; 2],
+}
+
 /// The live run as a save; `None` with no run or a dead player.
 #[must_use]
 pub fn capture(world: &World) -> Option<SaveGame> {
@@ -1300,6 +1551,17 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     basins.sort_by_key(|basin| basin.id);
+    let mut geysers: Vec<GeyserSave> = world
+        .query::<(&SaveId, &Geyser)>()
+        .map(|(id, state)| GeyserSave {
+            id: id.0,
+            phase: state.phase,
+            left: state.left,
+            cold: state.cold,
+            choked: state.choked,
+        })
+        .collect();
+    geysers.sort_by_key(|geyser| geyser.id);
     let mut elevators: Vec<ElevatorSave> = world
         .query::<(&SaveId, &Position, &Elevator, Option<&PathFollower>)>()
         .map(|(id, at, lift, follower)| ElevatorSave {
@@ -1416,9 +1678,50 @@ pub fn capture(world: &World) -> Option<SaveGame> {
     bullets.sort_by_key(|bullet| bullet.id);
     let mut props: Vec<PropSave> = props::all(world)
         .into_iter()
+        .filter(|&entity| !world.has::<Plank>(entity) && !world.has::<Stone>(entity))
         .filter_map(|entity| capture_prop(world, entity))
         .collect();
     props.sort_by_key(|prop| prop.id);
+    let mut planks: Vec<PlankSave> = world
+        .query::<(Entity, &Plank, &SaveId, &Fuel)>()
+        .filter_map(|(entity, plank, id, fuel)| {
+            Some(PlankSave {
+                id: id.0,
+                variant: plank.variant,
+                position: world.get::<Position>(entity)?.0.to_array(),
+                velocity: world.get::<Velocity>(entity)?.0.to_array(),
+                chill: world.get::<Chill>(entity).map(|chill| chill.amount),
+                frozen: world.get::<Frozen>(entity).map(|frozen| frozen.left),
+                fuel: *fuel,
+            })
+        })
+        .collect();
+    planks.sort_by_key(|plank| plank.id);
+    let mut stones: Vec<StoneSave> = world
+        .query::<(Entity, &Stone, &SaveId, &Position, &Velocity)>()
+        .map(|(_, stone, id, at, velocity)| StoneSave {
+            id: id.0,
+            size: stone.size,
+            variant: stone.variant,
+            position: at.0.to_array(),
+            velocity: velocity.0.to_array(),
+        })
+        .collect();
+    stones.sort_by_key(|stone| stone.id);
+    let snowballs = snowball::flying(world)
+        .into_iter()
+        .filter_map(|(id, entity)| {
+            let ball = world.get::<Snowball>(entity)?;
+            Some(SnowballSave {
+                id,
+                position: world.get::<Position>(entity)?.0.to_array(),
+                velocity: world.get::<Velocity>(entity)?.0.to_array(),
+                thrower: ball.thrower,
+                factor: ball.factor,
+                left: ball.left,
+            })
+        })
+        .collect();
     let dummies = dummy::live(world)
         .into_iter()
         .filter_map(|(id, entity)| capture_dummy(world, id, entity))
@@ -1496,7 +1799,11 @@ pub fn capture(world: &World) -> Option<SaveGame> {
             .map_or(0, |summon| summon.selected),
         basins,
         elevators,
+        geysers,
         props,
+        snowballs,
+        planks,
+        stones,
     })
 }
 
@@ -1742,6 +2049,14 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             }
         }
     }
+    for saved in &save.geysers {
+        if let Some(&entity) = by_id.get(&saved.id) {
+            geyser::set(world, entity, saved.phase, saved.left, saved.choked);
+            if let Some(state) = world.get_mut::<Geyser>(entity) {
+                state.cold = saved.cold;
+            }
+        }
+    }
     for saved in &save.elevators {
         let Some(&entity) = by_id.get(&saved.id) else {
             continue;
@@ -1847,6 +2162,31 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
     }
     for prop in &save.props {
         restore_prop(world, prop);
+    }
+    for plank in &save.planks {
+        restore_plank(world, plank);
+    }
+    for stone in &save.stones {
+        let at = Vec2::from(stone.position);
+        let kind = PropKind::Stone(stone.size);
+        let entity = props::restore(world, kind, at, SaveId(stone.id), stone.variant);
+        world.insert(entity, Velocity(Vec2::from(stone.velocity)));
+    }
+    for saved in &save.snowballs {
+        let ball = snowball::spawn(world, Vec2::from(saved.position));
+        let flying = Snowball {
+            thrower: saved.thrower,
+            factor: saved.factor,
+            left: saved.left,
+        };
+        world.insert_bundle(
+            ball,
+            (
+                SaveId(saved.id),
+                Velocity(Vec2::from(saved.velocity)),
+                flying,
+            ),
+        );
     }
     for orb in &save.orbs {
         drops::spawn(
@@ -1956,7 +2296,7 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
         world.insert(entity, fuel);
     }
     match saved.kind {
-        PropKind::Crate | PropKind::Rock => {}
+        PropKind::Crate | PropKind::Rock | PropKind::Plank | PropKind::Stone(_) => {}
         PropKind::Keg => world.insert(
             entity,
             Keg {
@@ -1972,6 +2312,26 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
                 lighter: saved.lighter,
             },
         ),
+    }
+}
+
+/// A saved plank, spawned at once at its saved point with its state over
+/// its prefab's, at rest from its tumble.
+fn restore_plank(world: &mut World, saved: &PlankSave) {
+    let at = Vec2::from(saved.position);
+    let entity = props::restore(world, PropKind::Plank, at, SaveId(saved.id), saved.variant);
+    world.insert_bundle(entity, (Velocity(Vec2::from(saved.velocity)), saved.fuel));
+    if let Some(amount) = saved.chill {
+        world.insert(
+            entity,
+            Chill {
+                amount,
+                held: false,
+            },
+        );
+    }
+    if let Some(left) = saved.frozen {
+        world.insert(entity, Frozen { left });
     }
 }
 

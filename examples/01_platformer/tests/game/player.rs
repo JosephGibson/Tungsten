@@ -475,6 +475,96 @@ fn a_blow_tints_the_courier_red_for_a_moment() {
     assert!(!clip(&harness, player).starts_with(HURT_CLIP));
 }
 
+/// The player's hurt edge, the share `Moves` holds and the alpha its quad
+/// over the view draws at, the edge's art mocked as texture 970; and the
+/// frame's ticks and hurts.
+fn edge(harness: &UiHarness, player: Entity) -> (f32, Option<u8>, usize, usize) {
+    use example_01_platformer::features::audio::components::{Sound, Sounded};
+    use example_01_platformer::features::combat::draw;
+    use example_01_platformer::features::level::draw::view;
+    let world = harness.world();
+    let (min, max) = view(world);
+    let drawn: Vec<u8> = draw::edge(world)
+        .iter()
+        .filter(|batch| batch.texture.0 == 970)
+        .flat_map(|batch| &batch.instances)
+        .filter(|quad| quad.position == min.to_array() && quad.size == (max - min).to_array())
+        .map(|quad| quad.color[3])
+        .collect();
+    assert!(drawn.len() <= 1, "{drawn:?}");
+    let count = |sound: Sound| {
+        harness
+            .harness()
+            .events::<Sounded>()
+            .filter(|sounded| sounded.sound == sound)
+            .count()
+    };
+    (
+        world.get::<Moves>(player).unwrap().edge,
+        drawn.first().copied(),
+        count(Sound::PlayerTicked),
+        count(Sound::PlayerHurt),
+    )
+}
+
+fn mock_edge(harness: &mut UiHarness) {
+    use example_01_platformer::features::combat::draw::HURT_EDGE;
+    let assets = harness
+        .world_mut()
+        .resource_mut::<tungsten::core::AssetRegistry>();
+    super::mock_sprite(assets, HURT_EDGE, 970, false);
+}
+
+#[test]
+fn a_burning_tick_pulses_the_hurt_edge_half_with_a_soft_tick() {
+    use example_01_platformer::features::player::systems::{EDGE_SECS, TICK_EDGE};
+    let (mut harness, player) = run();
+    harness.harness_mut().set_dt(DT);
+    harness.step(2);
+    mock_edge(&mut harness);
+    assert_eq!(edge(&harness, player), (0.0, None, 0, 0));
+    super::combat::apply(&mut harness, player, "burning", None);
+    let mut first = None;
+    for _ in 0..120 {
+        harness.step(1);
+        let seen = edge(&harness, player);
+        if seen.0 > 0.0 {
+            first = Some(seen);
+            break;
+        }
+    }
+    let (share, drawn, ticks, hurts) = first.expect("a tick within 2 s");
+    // Set to TICK_EDGE at least in the fixed step, less this frame's fall.
+    assert!(
+        (TICK_EDGE - DT / EDGE_SECS - 1e-4..1.0).contains(&share),
+        "{share}"
+    );
+    assert_eq!(drawn, Some((share * 255.0).round() as u8), "over the view");
+    assert_eq!((ticks, hurts), (1, 0), "a tick, not a hurt");
+}
+
+#[test]
+fn a_blow_fills_the_hurt_edge_with_its_hurt_and_it_is_gone_after_0_4_s() {
+    use example_01_platformer::features::combat::{Hit, Kind};
+    use example_01_platformer::features::player::systems::EDGE_SECS;
+    let (mut harness, player) = run();
+    harness.harness_mut().set_dt(DT);
+    harness.step(2);
+    mock_edge(&mut harness);
+    assert!(Hit::new(player, [(Kind::Physical, 5.0)]).queue(harness.world_mut()));
+    harness.step(1);
+    let (share, drawn, ticks, hurts) = edge(&harness, player);
+    assert!(
+        (share - (1.0 - DT / EDGE_SECS)).abs() < 1e-4,
+        "full, less a frame: {share}"
+    );
+    assert_eq!(drawn, Some((share * 255.0).round() as u8));
+    assert_eq!((ticks, hurts), (0, 1), "a hurt, not a tick");
+    // Gone 0.4 s after the blow, a frame's slack.
+    harness.step(24);
+    assert_eq!(edge(&harness, player), (0.0, None, 0, 0));
+}
+
 #[test]
 fn each_gesture_shows_its_clip_and_the_staff_flares() {
     use example_01_platformer::features::gun;

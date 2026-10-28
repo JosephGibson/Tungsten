@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_snowball_0"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_snowball_1"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_snowball_2"
+    },
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_snowball_3"
+    }
+  ],
+  "looping": true
+}

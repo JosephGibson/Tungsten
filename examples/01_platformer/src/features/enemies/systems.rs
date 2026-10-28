@@ -7,8 +7,8 @@ use tungsten::core::{
     RigidBody, Sprite, Time, Transform, Visibility, World,
 };
 use tungsten::kit::{
-    ContactDamage, Damaged, Health, Hitbox, PlatformerController, StateMachine, StateMachinePlugin,
-    TopDownMover,
+    ContactDamage, Damaged, Health, Hitbox, PathFollower, PlatformerController, StateMachine,
+    StateMachinePlugin, TopDownMover,
 };
 use tungsten::physics::{SpatialFilter, cast_ray};
 
@@ -23,6 +23,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
+use crate::features::level::elevator::Elevator;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::run::Run;
 use crate::features::toys::components::{IronBlock, IronScrap};
@@ -45,6 +46,8 @@ pub fn machine() -> StateMachinePlugin<EnemyState> {
         .on_enter(EnemyState::Search, enter_search)
         .on_update(EnemyState::Search, search)
         .on_update(EnemyState::Return, home)
+        .on_enter(EnemyState::Panic, enter_panic)
+        .on_update(EnemyState::Panic, panic)
 }
 
 /// `enemy`'s kind.
@@ -115,7 +118,8 @@ pub fn rest(world: &mut World, enemy: Entity) {
 const PAST_BODIES: usize = 4;
 
 /// Whether a cast from `from` along `direction` meets ground within
-/// `distance`: a solid tile or a static body, never an enemy or the player.
+/// `distance`: a solid tile, a static body or a moving platform, never an
+/// enemy or the player.
 /// It looks past a ball, a rock, a crate or any dynamic body, its ray
 /// going on from inside the body it met, which it then passes, so a body
 /// hides no wall or ground behind it.
@@ -131,6 +135,12 @@ pub(crate) fn solid(world: &World, from: Vec2, direction: Vec2, distance: f32, m
         };
         match world.get::<RigidBody>(entity).map(|body| body.kind) {
             Some(BodyKind::Static) => return true,
+            // A moving platform or the elevator's deck, not a character.
+            Some(BodyKind::Kinematic)
+                if world.has::<PathFollower>(entity) || world.has::<Elevator>(entity) =>
+            {
+                return true;
+            }
             Some(BodyKind::Dynamic) => {
                 // A hair inside its edge, where the ray passes it.
                 let into = hit.distance + 0.01;
@@ -380,6 +390,21 @@ fn search(world: &mut World, enemy: Entity) {
     }
 }
 
+/// A goblin's panic while it burns: its yelp and its startled skip away
+/// from the player; then its flight. No other kind panics.
+fn enter_panic(world: &mut World, enemy: Entity) {
+    if kind(world, enemy) == Some(EnemyKind::Goblin) {
+        goblin::enter_panic(world, enemy);
+    }
+}
+
+fn panic(world: &mut World, enemy: Entity) {
+    match kind(world, enemy) {
+        Some(EnemyKind::Goblin) => goblin::panic(world, enemy),
+        _ => go(world, enemy, EnemyState::Search),
+    }
+}
+
 /// Back home, then on patrol.
 fn home(world: &mut World, enemy: Entity) {
     let Some(home) = world.get::<Enemy>(enemy).map(Enemy::home) else {
@@ -549,7 +574,8 @@ pub fn sight(world: &mut World) {
     }
 }
 
-/// Whether `state` is the chase or the attack it leads to.
+/// Whether `state` is the chase or the attack it leads to, or a goblin's
+/// panic, which an alert does not cut short.
 fn chasing(state: EnemyState) -> bool {
     matches!(
         state,
@@ -558,6 +584,7 @@ fn chasing(state: EnemyState) -> bool {
             | EnemyState::WindUp
             | EnemyState::Attack
             | EnemyState::Recover
+            | EnemyState::Panic
     )
 }
 
@@ -612,6 +639,17 @@ pub fn marks(world: &mut World) {
         if brain.alerted > 0.0 {
             brain.alerted = (brain.alerted - dt).max(0.0);
         }
+    }
+}
+
+/// `enemy_cooldowns`, in the intent phase before the machine: each enemy's
+/// cooldowns run down by the step, a troll's slam's and the next
+/// snowball's, throw's or dash-in's.
+pub fn cooldowns(world: &mut World) {
+    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
+    for brain in world.query_mut::<&mut Brain>() {
+        brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
+        brain.cooldown = (brain.cooldown - dt).max(0.0);
     }
 }
 
@@ -732,7 +770,7 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
     let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
     let clip = match mine.kind {
         EnemyKind::Wisp => wisp::clip(state),
-        EnemyKind::Crawler => crawler::clip(state, crawler::scared(world, enemy)),
+        EnemyKind::Crawler => crawler::clip(world, enemy, state),
         EnemyKind::Beetle => beetle::clip(state),
         EnemyKind::Bat => bat::clip(world, enemy, state),
         EnemyKind::Troll => {

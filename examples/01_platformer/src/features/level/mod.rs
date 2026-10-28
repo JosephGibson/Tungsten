@@ -10,6 +10,7 @@
 pub mod components;
 pub mod draw;
 pub mod elevator;
+pub mod geyser;
 pub mod lava;
 pub mod systems;
 pub mod title;
@@ -22,7 +23,7 @@ use tungsten::core::{
     TilemapRegistry, Transform, World, system,
 };
 use tungsten::kit::{PathFollower, Phase, ensure_phases};
-use tungsten::plugins::CAMERA_UPDATE;
+use tungsten::plugins::{CAMERA_UPDATE, PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin, SceneEntity};
 
 use crate::features::dummy::components::Dummy;
@@ -79,8 +80,9 @@ pub const SHAKE_DECAY: f32 = 2.2;
 pub const AMBIENT: Vec3 = Vec3::new(0.62, 0.62, 0.57);
 pub const MOONLIGHT: Vec3 = Vec3::new(0.85, 0.85, 0.72);
 pub const MOONLIGHT_INTENSITY: f32 = 0.1;
-/// Indoors, a cave: the ambient the lit sprites take there, the moon out.
-pub const AMBIENT_INDOOR: Vec3 = Vec3::new(0.30, 0.28, 0.32);
+/// Indoors, a cave: the ambient the lit sprites take there, the moon out;
+/// e01hollow's darker cave, 0.30's hue at 0.22.
+pub const AMBIENT_INDOOR: Vec3 = Vec3::new(0.22, 0.205, 0.235);
 /// The real seconds an area's light takes to ease from outdoors to indoors
 /// or back.
 pub const LIGHT_EASE: f32 = 1.0;
@@ -95,9 +97,9 @@ pub const PARTICLE_CAP: u32 = 2048;
 /// The level as a plugin: the components its prefabs name, the world's
 /// gravity and its broadphase cells of one tile, which cap a dense pile's
 /// pair candidates, the particle budget, the camera's follow and shake, the
-/// level's clock on the
+/// level's clock and the geysers' cycles on the
 /// step, `level_zoom` before the camera's update, the glows in the present
-/// phase, the bursts' cleanup and the title's sky in `Update`, the title's
+/// phase, the geysers' look before the frame's particles, the bursts' cleanup and the title's sky in `Update`, the title's
 /// view before the camera's update, and the backdrop under the engine's
 /// default drawing.
 pub struct LevelPlugin;
@@ -110,6 +112,7 @@ impl Plugin for LevelPlugin {
         world.register_component::<components::Area>("area");
         world.register_component::<components::Glow>("glow");
         world.register_component::<elevator::ElevatorDef>("elevator");
+        world.register_component::<geyser::Geyser>("geyser");
         world.register_data_kind::<components::OpaqueTiles>("opaque_tiles");
         if let Some(physics) = world.get_resource_mut::<PhysicsConfig>() {
             physics.gravity = Vec2::new(0.0, GRAVITY);
@@ -136,6 +139,10 @@ impl Plugin for LevelPlugin {
         schedule.add(
             Stage::FixedUpdate,
             Phase::Tick.join(system("lava_tick", lava::tick)),
+        );
+        schedule.add(
+            Stage::FixedUpdate,
+            Phase::Tick.join(system("geyser_tick", geyser::tick)),
         );
         schedule.add(
             Stage::FixedUpdate,
@@ -169,6 +176,11 @@ impl Plugin for LevelPlugin {
             Phase::Present.join(system("level_light", systems::light)),
         );
         schedule.add(Stage::Update, system("burst_cleanup", burst_cleanup));
+        // Before the frame's emission, whose embers it starts and stops.
+        let geysers = system("geyser_look", geyser::look)
+            .after(PHYSICS_SYNC)
+            .before(PARTICLE_COUNT_REFRESH);
+        schedule.add(Stage::PostUpdate, geysers);
     }
 }
 
@@ -184,7 +196,8 @@ impl Plugin for CursorPlugin {
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
 /// each one a save names ([`saved`]) taking the next of the run's
-/// [`SaveIds`] in layer and file order, the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the elevator at rest
+/// [`SaveIds`] in layer and file order, the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
+/// ([`geyser::start`]), the elevator at rest
 /// ([`elevator::start`]), the moon's light, the
 /// level's clock, the midnight ambient and the post stack, and bounds the
 /// camera to the map. Returns the objects in that order.
@@ -211,6 +224,7 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
         .with((SceneEntity { state_id: GAMEPLAY },)),
     );
     lava::start(world);
+    geyser::start(world);
     elevator::start(world);
     let mut moon = Light::directional(MOONLIGHT, -std::f32::consts::FRAC_PI_4);
     moon.intensity = MOONLIGHT_INTENSITY;
@@ -246,9 +260,9 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
 }
 
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, a dummy, an enemy or a placed orb. Props,
-/// slabs, iron, areas, emitters and markers take none, so an art change
-/// moves no save (schema 10).
+/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser.
+/// Props, slabs, iron, areas, emitters and markers take none, so an art
+/// change moves no save (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
     world.has::<components::Hazard>(entity)
         || world.has::<PathFollower>(entity)
@@ -256,6 +270,7 @@ fn saved(world: &World, entity: Entity) -> bool {
         || world.has::<Dummy>(entity)
         || world.has::<Enemy>(entity)
         || world.has::<Orb>(entity)
+        || world.has::<geyser::Geyser>(entity)
 }
 
 /// Undoes what [`spawn`] set beyond its entities, which leave with
@@ -321,3 +336,6 @@ pub const IRON_MARKER: &str = "iron";
 /// down: each a box's centre.
 pub const CRATE_MARKER: &str = "crate";
 pub const KEG_MARKER: &str = "keg";
+/// The map's markers where a fresh run sets the hollow's rubble stones
+/// down (e01hollow), by size, smallest first: each a stone's centre.
+pub const STONE_MARKERS: [&str; 3] = ["stone_small", "stone_medium", "stone_large"];

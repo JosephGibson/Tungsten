@@ -6,9 +6,9 @@ use tungsten::core::{Entity, Voice};
 /// The music playing: the exploration loop, which plays on at 0 under
 /// pause and game over, and pause's loop while pause is on top; the wisps'
 /// shared hum, whose volume follows the nearest wisp, the black holes', the
-/// nearest open hole, and the burning crates' crackle, the nearest burning
-/// crate; and the combat layer over the exploration while an enemy sees
-/// the player.
+/// nearest open hole, and the fires' crackle, the nearest burning thing,
+/// each by the listener's gain; and the combat layer over the exploration
+/// while an enemy sees the player.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Music {
     pub explore: Option<Voice>,
@@ -191,11 +191,38 @@ pub enum Sound {
     TomeArcaneTaken,
     /// An air jump paid for in mana under the tome of bounding.
     Bounded,
+    /// A beetle's charge setting a body moving out of its way (e01foes).
+    BeetlePloughed,
+    /// A crawler backing out of the staff light's fear, and its hop or
+    /// leap (e01foes).
+    CrawlerRetreated,
+    CrawlerHopped,
+    /// A crawler's snowball thrown, and its burst (e01foes).
+    SnowballThrown,
+    SnowballBurst,
+    /// A goblin's crouch for its dash-in, the dash, and its yelp as it
+    /// panics, burning (e01foes).
+    GoblinCrouched,
+    GoblinDashed,
+    GoblinYelped,
+    /// Lightning striking the ground or a deck, in place of the snap a
+    /// body takes (e01sfx).
+    GroundStruck,
+    /// A tick of damage on the player that does not kill it, apart from a
+    /// blow's hurt (e01sfx).
+    PlayerTicked,
+    /// A crate breaking into its planks under a heavy hit (e01sfx).
+    CrateBroke,
+    /// A geyser's sputter starting, and its eruption (e01hollow).
+    GeyserSputter,
+    GeyserErupt,
+    /// A rubble stone meeting something hard (e01hollow).
+    StoneKnock,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 73] = [
+    pub const ALL: [Sound; 87] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -269,6 +296,20 @@ impl Sound {
         Sound::TomeBoundingTaken,
         Sound::TomeArcaneTaken,
         Sound::Bounded,
+        Sound::BeetlePloughed,
+        Sound::CrawlerRetreated,
+        Sound::CrawlerHopped,
+        Sound::SnowballThrown,
+        Sound::SnowballBurst,
+        Sound::GoblinCrouched,
+        Sound::GoblinDashed,
+        Sound::GoblinYelped,
+        Sound::GroundStruck,
+        Sound::PlayerTicked,
+        Sound::CrateBroke,
+        Sound::GeyserSputter,
+        Sound::GeyserErupt,
+        Sound::StoneKnock,
     ];
 
     /// Its cue event's name.
@@ -348,6 +389,20 @@ impl Sound {
             Sound::TomeBoundingTaken => "tome_bounding_taken",
             Sound::TomeArcaneTaken => "tome_arcane_taken",
             Sound::Bounded => "bounded",
+            Sound::BeetlePloughed => "beetle_ploughed",
+            Sound::CrawlerRetreated => "crawler_retreated",
+            Sound::CrawlerHopped => "crawler_hopped",
+            Sound::SnowballThrown => "snowball_thrown",
+            Sound::SnowballBurst => "snowball_burst",
+            Sound::GoblinCrouched => "goblin_crouched",
+            Sound::GoblinDashed => "goblin_dashed",
+            Sound::GoblinYelped => "goblin_yelped",
+            Sound::GroundStruck => "ground_struck",
+            Sound::PlayerTicked => "player_ticked",
+            Sound::CrateBroke => "crate_broke",
+            Sound::GeyserSputter => "geyser_sputtered",
+            Sound::GeyserErupt => "geyser_erupted",
+            Sound::StoneKnock => "stone_knocked",
         }
     }
 }

@@ -1,0 +1,27 @@
+{
+  "sprite": {
+    "asset_id": "ex10_stone_small_0",
+    "z_order": 12
+  },
+  "components": {
+    "stone": {
+      "size": "small"
+    },
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          9,
+          7
+        ]
+      },
+      "offset": [
+        16,
+        25
+      ],
+      "mass": 10,
+      "restitution": 0.1
+    }
+  }
+}

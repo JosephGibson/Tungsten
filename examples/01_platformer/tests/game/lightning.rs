@@ -2,7 +2,9 @@
 //! an enemy across its art; it falls on the nearest rod; its chain jumps one
 //! conductor at a time, every enemy one, weaker each jump, at most six and
 //! never past ice or what takes no shock; a strike lights nothing; and it
-//! shows its bolt, its veil for one frame, its light and its shake.
+//! shows its bolt, its veil for one frame, its light and its shake, and
+//! says what it met: a body snaps, the ground and a deck crackle, the
+//! ground keeps a scorch; a jump's arc crackles for its life.
 
 use std::collections::BTreeSet;
 
@@ -15,21 +17,27 @@ use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::draw::view;
-use example_01_platformer::features::lightning::components::{Arc, Bolt, StrikeLight};
+use example_01_platformer::features::lightning::components::{Arc, Bolt, Scorch, StrikeLight};
 use example_01_platformer::features::lightning::{
-    self, JUMP_KEEP, MAX_JUMPS, STRIKE_LIGHT, STRIKE_SHOCK, draw,
+    self, ARC_SECS, JUMP_KEEP, MAX_JUMPS, Met, SCORCH_ANCHOR, SCORCH_CAP, STRIKE_LIGHT,
+    STRIKE_SHOCK, draw,
 };
 use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::toys::{self, IRON_HALF};
+use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{SaveId, SaveIds};
 use glam::Vec2;
-use tungsten::core::{AssetRegistry, CameraController, Entity, Light, TextureHandle, Transform};
+use tungsten::SceneEntity;
+use tungsten::core::{
+    AssetRegistry, Bundle, CameraController, Collider, Entity, Light, Position, RigidBodyBundle,
+    Sprite, TextureHandle, Transform,
+};
 use tungsten::kit::{Health, Resist, StateMachine};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, dummy_at, health};
 use super::{
-    aim_at, ball, body, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
+    aim_at, ball, body, bursts, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
 };
 use super::{stand, steps_this_frame};
 
@@ -158,7 +166,7 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
     harness.step(30);
     let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
     let aim = feet + Vec2::Y * 3.0 * TILE;
-    let landing = lightning::bolt_end(harness.world(), aim, Some(player));
+    let landing = lightning::bolt_end(harness.world(), aim, Some(player)).at;
     assert!(
         landing.y <= feet.y + 1.0 && (landing.x - aim.x).abs() < 1e-3,
         "{landing} over the feet at {feet}"
@@ -405,8 +413,171 @@ fn a_strike_shows_its_bolt_flash_light_and_shake() {
     harness.step(14);
     let world = harness.world();
     assert_eq!(world.query::<&Bolt>().count(), 0, "gone after 0.15 s");
-    assert_eq!(world.query::<&Arc>().count(), 0);
+    assert_eq!(world.query::<&Arc>().count(), 1, "the arc shows on");
     assert!(glow(&harness).is_none(), "the light faded out");
+    harness.step(9);
+    assert_eq!(
+        harness.world().query::<&Arc>().count(),
+        0,
+        "gone after 0.35 s"
+    );
+}
+
+/// The sounds sent this frame.
+fn sounded(harness: &UiHarness) -> Vec<Sound> {
+    harness
+        .harness()
+        .events::<Sounded>()
+        .map(|sounded| sounded.sound)
+        .collect()
+}
+
+/// Each scorch's corner and its alpha.
+fn scorches(harness: &UiHarness) -> Vec<(Vec2, u8)> {
+    harness
+        .world()
+        .query::<(&Scorch, &Transform, &Sprite)>()
+        .map(|(_, at, sprite)| (at.position, sprite.color[3]))
+        .collect()
+}
+
+/// Asserts the strike this frame sounded and sparked as the ground's.
+fn struck_ground(harness: &UiHarness) {
+    let sounds = sounded(harness);
+    assert!(
+        sounds.contains(&Sound::GroundStruck) && sounds.contains(&Sound::Thundered),
+        "{sounds:?}"
+    );
+    assert!(!sounds.contains(&Sound::Snapped), "{sounds:?}");
+    assert_eq!(bursts(harness, "ex10_ground_sparks"), 1);
+    assert_eq!(bursts(harness, "ex10_strike_sparks"), 0);
+}
+
+#[test]
+fn a_strike_on_the_ground_crackles_sparks_and_leaves_a_scorch_that_fades() {
+    let (mut harness, player) = sky();
+    let open = Vec2::new(400.0, TOP - 200.0);
+    let landing = lightning::bolt_end(harness.world(), open, Some(player));
+    assert_eq!(landing.met, Met::Ground);
+    lightning::strike(harness.world_mut(), player, open);
+    harness.step(1);
+    struck_ground(&harness);
+    let marks = scorches(&harness);
+    assert_eq!(marks.len(), 1);
+    assert_eq!(
+        marks[0].0 + SCORCH_ANCHOR,
+        landing.at,
+        "its bottom row's middle"
+    );
+    harness.step(150);
+    let half = scorches(&harness)[0].1;
+    assert!((100..160).contains(&half), "half faded at 2.5 s: {half}");
+    harness.step(155);
+    assert!(scorches(&harness).is_empty(), "faded out by 5 s");
+    for i in 0..8 {
+        let aim = Vec2::new(300.0 + 120.0 * i as f32, TOP - 200.0);
+        lightning::strike(harness.world_mut(), player, aim);
+        harness.step(1);
+    }
+    assert_eq!(scorches(&harness).len(), SCORCH_CAP, "the oldest go");
+}
+
+#[test]
+fn a_strike_on_an_enemy_or_iron_meets_a_body_and_snaps() {
+    for case in ["a goblin", "iron"] {
+        let (mut harness, player) = sky();
+        let target = if case == "iron" {
+            toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y))
+        } else {
+            let half = EnemyKind::Goblin.info().half.y;
+            still_enemy(
+                &mut harness,
+                EnemyKind::Goblin,
+                Vec2::new(900.0, TOP - half - 0.5),
+            )
+        };
+        harness.step(1);
+        let aim = Vec2::new(900.0, TOP - 400.0);
+        let landing = lightning::bolt_end(harness.world(), aim, Some(player));
+        assert_eq!(landing.met, Met::Body(target), "{case}");
+        lightning::strike(harness.world_mut(), player, aim);
+        harness.step(1);
+        let sounds = sounded(&harness);
+        assert!(
+            sounds.contains(&Sound::Snapped) && !sounds.contains(&Sound::GroundStruck),
+            "{case}: {sounds:?}"
+        );
+        assert_eq!(bursts(&harness, "ex10_strike_sparks"), 1, "{case}");
+        assert!(scorches(&harness).is_empty(), "{case}");
+    }
+}
+
+#[test]
+fn a_strike_on_a_deck_sparks_as_the_ground_does_and_leaves_no_scorch() {
+    let (mut harness, player) = sky();
+    let centre = Vec2::new(900.0, TOP - 300.0);
+    let deck = harness.world_mut().spawn_with(
+        RigidBodyBundle::kinematic(Position(centre), Collider::aabb(Vec2::new(96.0, 12.0)))
+            .with((SceneEntity { state_id: GAMEPLAY },)),
+    );
+    harness.step(1);
+    let aim = centre - Vec2::Y * 100.0;
+    let landing = lightning::bolt_end(harness.world(), aim, Some(player));
+    assert_eq!(landing.met, Met::Deck(deck));
+    assert!(
+        (landing.at.y - (centre.y - 12.0)).abs() < 1e-3,
+        "{landing:?}"
+    );
+    lightning::strike(harness.world_mut(), player, aim);
+    harness.step(1);
+    struck_ground(&harness);
+    assert!(
+        scorches(&harness).is_empty(),
+        "a mark would hang in the air"
+    );
+}
+
+#[test]
+fn a_jumps_arc_crackles_on_new_paths_and_goes_after_its_life() {
+    let (mut harness, player) = sky();
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    mock_sprite(assets, draw::TRACER, 920, false);
+    let line = irons(&mut harness, 2);
+    harness.step(2);
+    strike_on(&mut harness, player, line[0]);
+    let (min, max) = view(harness.world());
+    // The arc's quads: the tracer's, the veil's aside.
+    let path = |harness: &UiHarness| -> Vec<[f32; 2]> {
+        draw::bolts(harness.world())
+            .iter()
+            .filter(|batch| batch.texture == TextureHandle(920))
+            .flat_map(|batch| &batch.instances)
+            .filter(|quad| quad.size != (max - min).to_array())
+            .map(|quad| quad.position)
+            .collect()
+    };
+    let age = |harness: &UiHarness| harness.world().query::<&Arc>().map(|arc| arc.age).next();
+    for _ in 0..3 {
+        harness.step(1);
+        if age(&harness).is_some() {
+            break;
+        }
+    }
+    assert_eq!(age(&harness), Some(0.0), "the jump's arc");
+    let first = path(&harness);
+    assert!(!first.is_empty());
+    for _ in 0..30 {
+        if age(&harness).is_some_and(|age| age >= 0.3) {
+            break;
+        }
+        harness.step(1);
+    }
+    let late = age(&harness).expect("shows at 0.3 s");
+    assert!((0.3..ARC_SECS).contains(&late), "{late}");
+    let later = path(&harness);
+    assert!(!later.is_empty() && later != first, "a new path");
+    harness.step(4);
+    assert!(age(&harness).is_none(), "gone after 0.35 s");
 }
 
 /// An enemy of `kind`, its mind taken away, its body's centre at `centre`.

@@ -255,6 +255,7 @@ pub struct CombatPlugin;
 impl Plugin for CombatPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.resource_mut::<Extracts>().add_sprites(draw::overlays);
+        world.resource_mut::<Extracts>().add_sprites(draw::edge);
         ensure_phases(schedule);
         let states = system("combat_states", systems::states).before(DAMAGE_RESOLVE);
         schedule.add(Stage::FixedUpdate, Phase::Resolve.join(states));

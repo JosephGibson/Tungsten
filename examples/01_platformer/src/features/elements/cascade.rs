@@ -40,7 +40,7 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{self, BURNING, Kind, has_status};
-use crate::features::props::components::{Bomb, Crate, Keg, Rock};
+use crate::features::props::components::{Bomb, Crate, Keg, Rock, Stone};
 use crate::features::props::{self, PROP_BLAST};
 use crate::features::run::Run;
 use crate::features::toys::components::{Ball, IronBlock, IronScrap, SmallBall};
@@ -400,6 +400,7 @@ enum What {
     Keg,
     Bomb,
     Rock,
+    Stone,
     Target,
 }
 
@@ -459,6 +460,8 @@ impl Bin {
                 What::Bomb
             } else if world.has::<Rock>(entity) {
                 What::Rock
+            } else if world.has::<Stone>(entity) {
+                What::Stone
             } else if world
                 .get::<Health>(entity)
                 .is_some_and(|health| !health.is_dead())

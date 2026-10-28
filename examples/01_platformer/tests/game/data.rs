@@ -9,13 +9,13 @@ use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::enemies::drops::ORB_SECS;
-use example_01_platformer::features::enemies::{crawler, troll};
+use example_01_platformer::features::enemies::{crawler, snowball, troll};
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
 use example_01_platformer::features::props::{
-    BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, ROCK_CENTRE,
-    ROCK_RADIUS,
+    BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, PLANK_CENTRE,
+    PLANK_HALF, ROCK_CENTRE, ROCK_RADIUS,
 };
 use example_01_platformer::features::spells::hud::ROUNDS;
 use example_01_platformer::features::toys::{
@@ -118,6 +118,13 @@ fn every_restated_constant_matches_its_data() {
     ] {
         assert_eq!(number(&frost, pointer), crawler::DAMAGE, "{pointer}");
     }
+    // And its run, its `move_speed` stat and its run speed, likewise.
+    for pointer in [
+        "/components/stats/move_speed",
+        "/components/platformer_controller/run_speed",
+    ] {
+        assert_eq!(number(&frost, pointer), crawler::MOVE_SPEED, "{pointer}");
+    }
     assert_eq!(body("iron_scrap").0, SCRAP_HALF);
     assert_eq!(body("bowling_ball").0, Vec2::splat(BALL_RADIUS));
     assert_eq!(body("small_ball").0, Vec2::splat(SMALL_BALL_RADIUS));
@@ -183,8 +190,17 @@ fn every_restated_constant_matches_its_data() {
     // The props' bodies and a goblin's rock and bomb.
     assert_eq!(body("crate"), (CRATE_HALF, CRATE_CENTRE));
     assert_eq!(body("keg"), (KEG_HALF, KEG_CENTRE));
+    assert_eq!(body("plank"), (PLANK_HALF, PLANK_CENTRE));
     assert_eq!(body("goblin_bomb"), (Vec2::splat(BOMB_RADIUS), BOMB_CENTRE));
     assert_eq!(body("goblin_rock"), (Vec2::splat(ROCK_RADIUS), ROCK_CENTRE));
+    // A crawler's snowball's.
+    assert_eq!(
+        body(snowball::SNOWBALL_PREFAB),
+        (
+            Vec2::splat(snowball::SNOWBALL_RADIUS),
+            snowball::SNOWBALL_CENTRE
+        )
+    );
 }
 
 #[test]

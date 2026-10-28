@@ -14,7 +14,8 @@ pub struct Bolt {
 }
 
 /// A conduction jump's arc from one conductive thing to the next: its
-/// zigzag's seed, its age and the frames that showed it.
+/// zigzag's seed, which its age steps every
+/// [`ARC_JITTER`](super::ARC_JITTER), its age and the frames that showed it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Arc {
     pub from: Vec2,
@@ -27,5 +28,12 @@ pub struct Arc {
 /// A strike's point light, fading.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct StrikeLight {
+    pub age: f32,
+}
+
+/// A strike's scorch on the ground, fading over
+/// [`SCORCH_SECS`](super::SCORCH_SECS).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Scorch {
     pub age: f32,
 }

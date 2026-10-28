@@ -1,14 +1,15 @@
 //! The lightning's systems: its presentation's clocks.
 
-use tungsten::core::{Entity, Light, Time, World};
+use tungsten::core::{Entity, Light, Sprite, Time, World};
 
-use super::components::{Arc, Bolt, StrikeLight};
-use super::{BOLT_SECS, LIGHT_SECS, STRIKE_LIGHT};
+use super::components::{Arc, Bolt, Scorch, StrikeLight};
+use super::{ARC_SECS, BOLT_SECS, LIGHT_SECS, SCORCH_SECS, STRIKE_LIGHT};
 
 /// `lightning_age`, in the present phase: a bolt or an arc counts the
 /// frames that show it and ages from its second, so its first always
-/// shows, and goes after [`BOLT_SECS`]; a strike's light fades to nothing
-/// over [`LIGHT_SECS`].
+/// shows, a bolt going after [`BOLT_SECS`] and an arc after [`ARC_SECS`];
+/// a strike's light fades to nothing over [`LIGHT_SECS`], and a scorch
+/// over [`SCORCH_SECS`].
 pub fn age(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let mut done = Vec::new();
@@ -26,9 +27,17 @@ pub fn age(world: &mut World) {
         if arc.frames > 1 {
             arc.age += dt;
         }
-        if arc.age >= BOLT_SECS {
+        if arc.age >= ARC_SECS {
             done.push(entity);
         }
+    }
+    for (entity, scorch, sprite) in world.query_mut::<(Entity, &mut Scorch, &mut Sprite)>() {
+        scorch.age += dt;
+        if scorch.age >= SCORCH_SECS {
+            done.push(entity);
+            continue;
+        }
+        sprite.color[3] = (255.0 * (1.0 - scorch.age / SCORCH_SECS)).round() as u8;
     }
     for (entity, flash, light) in world.query_mut::<(Entity, &mut StrikeLight, &mut Light)>() {
         flash.age += dt;

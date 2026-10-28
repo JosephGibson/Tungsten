@@ -122,6 +122,16 @@ def prepare(source, images, tiles):
             for corner in (p['x'] - hx, p['x'] + hx):
                 if p.get('tier', 0) and not any(abs(corner - q['x']) <= hx for q in under):
                     raise ValueError(f"{kind} stacked over nothing: {p['x']} on {p['support']}")
+    # The hollow's stones (e01hollow), each body's centre `y` as a crate's
+    # is, from its size's prefab, refused with any of its box off its
+    # support.
+    for p in source.get('stones', []):
+        prefab = json.loads((TOOLS / 'content' / 'prefabs' / f"stone_{p['size']}.json").read_text())
+        hx, hy = (v / tile for v in prefab['components']['rigid_body']['shape']['half_extents'])
+        support = platforms[p['support']]
+        if not support['left'] <= p['x'] - hx <= p['x'] + hx <= support['right']:
+            raise ValueError(f"stone outside support: {p['x']} on {support['name']}")
+        p['y'] = support['row'] - hy - 0.5 / tile
     # Each group's own pieces: those inside its box where they are written,
     # none inside two groups' boxes.
     owners={}
@@ -181,8 +191,9 @@ SOURCES = ('gargoyle', 'fissure', 'spill_')
 GAP_STRIP = (('pier_top', 'arch_left', 'arch_key', 'arch_right', 'pier_top', 'arch_left'),
              ('capital', 'spring_left', 'opening', 'spring_right', 'capital', 'spring_left'))
 # The background structures drawn whole and cut into tiles, which terrain
-# draws over: the cave mouth.
-STRUCTURES = ('cave_mouth',)
+# draws over: the cave mouth and the hollow's deep recesses, pillars and the
+# wall by its ember tunnel (e01hollow).
+STRUCTURES = ('cave_mouth', 'cave_deep_0', 'cave_deep_1', *(f'cave_pillar_{k}' for k in range(5)), 'cave_wall_0')
 
 
 def stream_kind(name):
@@ -421,8 +432,10 @@ def floating(source, tiled, images):
         part = name.removeprefix('arcade_front_').removeprefix('arcade_')
         if strip and int(strip[1]) < len(GAP_STRIP) and int(strip[2]) < len(GAP_STRIP[0]):
             part = GAP_STRIP[int(strip[1])][int(strip[2])]
-        elif part in ('pier_base', 'pier_cutwater'):
-            part = part.removeprefix('pier_')
+        elif re.fullmatch(r'pier_top_\d+', part):
+            part = 'pier_top'
+        elif re.fullmatch(r'pier_base(_\d+)?|pier_cutwater', part):
+            part = 'base' if part.startswith('pier_base') else 'cutwater'
         elif re.fullmatch(r'pier_(front_|wet_)?\d+', part):
             part = 'shaft'
         elif part.startswith('parapet_'):

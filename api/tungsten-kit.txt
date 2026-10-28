@@ -990,6 +990,30 @@ impl core::marker::Unpin for tungsten_kit::CueEvent
 impl core::marker::UnsafeUnpin for tungsten_kit::CueEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
+pub struct tungsten_kit::prelude::CueListener
+impl tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueListener::full(&self) -> f32
+pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_kit::CueListener::new(f32, f32) -> Self
+pub fn tungsten_kit::CueListener::position(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::CueListener::set_position(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::CueListener::silent(&self) -> f32
+impl core::clone::Clone for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::clone(&self) -> tungsten_kit::CueListener
+impl core::cmp::PartialEq for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::eq(&self, &tungsten_kit::CueListener) -> bool
+impl core::fmt::Debug for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CueListener
+impl core::marker::StructuralPartialEq for tungsten_kit::CueListener
+impl core::marker::Freeze for tungsten_kit::CueListener
+impl core::marker::Send for tungsten_kit::CueListener
+impl core::marker::Sync for tungsten_kit::CueListener
+impl core::marker::Unpin for tungsten_kit::CueListener
+impl core::marker::UnsafeUnpin for tungsten_kit::CueListener
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueListener
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueListener
 pub struct tungsten_kit::prelude::Cues
 impl tungsten_kit::Cues
 pub fn tungsten_kit::Cues::actions(&self, &str) -> &[tungsten_kit::CueAction]
@@ -4745,6 +4769,30 @@ impl core::marker::Unpin for tungsten_kit::CueEvent
 impl core::marker::UnsafeUnpin for tungsten_kit::CueEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueEvent
+pub struct tungsten_kit::CueListener
+impl tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::at(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_kit::CueListener::full(&self) -> f32
+pub fn tungsten_kit::CueListener::gain(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_kit::CueListener::new(f32, f32) -> Self
+pub fn tungsten_kit::CueListener::position(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_kit::CueListener::set_position(&mut self, glam::f32::vec2::Vec2)
+pub fn tungsten_kit::CueListener::silent(&self) -> f32
+impl core::clone::Clone for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::clone(&self) -> tungsten_kit::CueListener
+impl core::cmp::PartialEq for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::eq(&self, &tungsten_kit::CueListener) -> bool
+impl core::fmt::Debug for tungsten_kit::CueListener
+pub fn tungsten_kit::CueListener::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_kit::CueListener
+impl core::marker::StructuralPartialEq for tungsten_kit::CueListener
+impl core::marker::Freeze for tungsten_kit::CueListener
+impl core::marker::Send for tungsten_kit::CueListener
+impl core::marker::Sync for tungsten_kit::CueListener
+impl core::marker::Unpin for tungsten_kit::CueListener
+impl core::marker::UnsafeUnpin for tungsten_kit::CueListener
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_kit::CueListener
+impl core::panic::unwind_safe::UnwindSafe for tungsten_kit::CueListener
 pub struct tungsten_kit::Cues
 impl tungsten_kit::Cues
 pub fn tungsten_kit::Cues::actions(&self, &str) -> &[tungsten_kit::CueAction]

@@ -1,0 +1,35 @@
+{
+  "sprite": {
+    "asset_id": "ex10_geyser_vent",
+    "z_order": -5
+  },
+  "components": {
+    "geyser": {
+      "offset": 0
+    },
+    "contact_damage": {
+      "damage": {
+        "damage.fire": 12
+      },
+      "filter": {
+        "any": [
+          "team.enemy",
+          "team.player"
+        ]
+      },
+      "interval": 0.5,
+      "knockback": 1000,
+      "push_always": true,
+      "shape": {
+        "aabb": [
+          20,
+          176
+        ]
+      },
+      "offset": [
+        32,
+        32
+      ]
+    }
+  }
+}

@@ -1,14 +1,15 @@
 //! What the props draw over the sprites: a burning crate's warm glow, its
 //! char by thirds of its burn, which stays once it is put out, and its
-//! flames, three, four past a third and five past two thirds; and a frozen
-//! crate's or keg's ice cube, fitted to its box.
+//! flames, three, four past a third and five past two thirds; a burning
+//! plank's small glow and one flame; and a frozen crate's or keg's ice
+//! cube, fitted to its box.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Transform, World};
 use tungsten::render::SpriteBatch;
 
-use super::BURN_SECS;
-use super::components::{Crate, Fuel, Keg};
+use super::components::{Crate, Fuel, Keg, Plank};
+use super::{BURN_SECS, PLANK_CENTRE};
 use crate::features::elements::components::Frozen;
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::level::draw::{instance, material, push_quad, view};
@@ -33,6 +34,10 @@ const FLAME_SPOTS: [Vec2; 5] = [
 ];
 const FLAME_SIDE: f32 = 0.5;
 const FLAME_GROWTH: f32 = 0.12;
+/// A burning plank's glow's side and its one flame's, px, the flame's foot
+/// a third of its side under the plank's middle.
+const PLANK_GLOW: f32 = 72.0;
+const PLANK_FLAME: f32 = 24.0;
 /// The props' cubes.
 const CRATE_ICE: &str = "ex10_status_ice_crate";
 const KEG_ICE: &str = "ex10_status_ice_keg";
@@ -54,6 +59,11 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
         .filter(|(_, _, at)| shown(at.position, FRAME))
         .map(|(_, fuel, at)| (at.position, *fuel))
         .collect();
+    let planks: Vec<Vec2> = world
+        .query::<(&Plank, &Fuel, &Transform)>()
+        .filter(|(_, fuel, at)| fuel.lit && shown(at.position, PLANK_GLOW))
+        .map(|(_, _, at)| at.position + PLANK_CENTRE)
+        .collect();
     let mut batches = Vec::new();
     if let Some(halo) = assets.get_sprite(HALO) {
         let glow = material(world, HALO_MATERIAL);
@@ -66,6 +76,11 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
                 Vec2::splat(side),
                 GLOW_COLOR,
             );
+            push_quad(&mut batches, halo, quad, glow);
+        }
+        for &centre in &planks {
+            let corner = centre - Vec2::splat(PLANK_GLOW * 0.5);
+            let quad = instance(halo, corner, Vec2::splat(PLANK_GLOW), GLOW_COLOR);
             push_quad(&mut batches, halo, quad, glow);
         }
     }
@@ -91,6 +106,14 @@ pub fn effects(world: &World) -> Vec<SpriteBatch> {
                 let quad = instance(asset, origin + spot * FRAME, Vec2::splat(side), [255; 4]);
                 push_quad(&mut batches, asset, quad, None);
             }
+        }
+    }
+    for (i, &centre) in planks.iter().enumerate() {
+        let frame = ((time * FLAME_FPS) as usize + 3 * i) % FLAME_FRAMES.len();
+        if let Some(asset) = assets.get_sprite(FLAME_FRAMES[frame]) {
+            let corner = centre - Vec2::new(PLANK_FLAME * 0.5, PLANK_FLAME * (2.0 / 3.0));
+            let quad = instance(asset, corner, Vec2::splat(PLANK_FLAME), [255; 4]);
+            push_quad(&mut batches, asset, quad, None);
         }
     }
     let cubes = world

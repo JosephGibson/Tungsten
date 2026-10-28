@@ -1,22 +1,23 @@
 //! What the enemies draw over the sprites: each live troll's health bar
-//! over its head, its fill the share of health left; a beetle's tell and
-//! charge: a glint swelling at its horn while it paws, three streaks behind
-//! it while it charges; a troll's slam's dust ring growing on the ground
-//! over its tell; each flat colour, one white texel of a particle sprite,
-//! tinted. And each enemy's mark over its frame: "!" after a fresh alert,
-//! "?" through a search. Under F1, the colliders' overlay, the kit's debug
-//! shapes draw too, with 01's own blows beside its armed hitboxes while
-//! they land ([`debug_boxes`]).
+//! over its head, its fill the share of health left; a troll's slam's dust
+//! ring growing on the ground over its tell; each flat colour, one white
+//! texel of a particle sprite, tinted. A charging beetle's streaks behind
+//! it, their own clip's frames. And each enemy's mark over its frame: "!"
+//! after a fresh alert, "?" through a search. Under F1, the colliders'
+//! overlay, the kit's debug shapes draw too, with 01's own blows beside its
+//! armed hitboxes while they land ([`debug_boxes`]).
 
 use std::f32::consts::TAU;
 
 use glam::Vec2;
 use tungsten::PhysicsDebugOverlay;
-use tungsten::core::{AssetRegistry, DebugDraw, Entity, SpriteAsset, Transform, World};
+use tungsten::core::{
+    AssetRegistry, DebugDraw, Entity, Position, PrevPosition, SpriteAsset, Time, Transform, World,
+};
 use tungsten::kit::{Health, KitDebug, StateMachine};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
-use super::beetle::PAW_SECS;
+use super::beetle::{self, PLOUGH_HALF};
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::goblin::{self, STAB_HALF};
 use super::troll::{self, FIST, SLAM_REACH, SLAM_TELL, SWIPE_HALF};
@@ -96,70 +97,48 @@ pub fn bars(world: &World) -> Vec<SpriteBatch> {
     batches
 }
 
-/// A pawing beetle's glint: a square at its horn swelling to
-/// [`GLINT_SIZE`] over its tell; a charging one's streaks behind it.
-pub const GLINT_SIZE: f32 = 9.0;
-pub const GLINT: [u8; 4] = [255, 214, 150, 255];
-pub const STREAK: [u8; 4] = [226, 196, 150, 150];
+/// A charging beetle's streaks: [`STREAK_FRAMES`] frames of `<STREAK>_<f>`
+/// (`_<f>_left` facing left), each [`STREAK_FRAME_SECS`] by the drawn time,
+/// their edge nearest it centred on its rear's point, [`STREAK_BEHIND`]
+/// past its body.
+pub const STREAK: &str = "ex10_charge_streak";
+pub const STREAK_FRAMES: usize = 4;
+pub const STREAK_FRAME_SECS: f32 = 0.05;
+pub const STREAK_BEHIND: f32 = 4.0;
 
-/// Every pawing or charging beetle's marks in view: the glint at its horn's
-/// tip, a little ahead and over its centre, and three streaks trailing its
-/// rear at three heights, the middle one longest.
+/// Every charging beetle's streaks in view, behind its rear.
 #[must_use]
 pub fn charges(world: &World) -> Vec<SpriteBatch> {
-    let Some(asset) = world
-        .get_resource::<AssetRegistry>()
-        .and_then(|assets| assets.get_sprite(FLAT))
-    else {
+    let Some(assets) = world.get_resource::<AssetRegistry>() else {
         return Vec::new();
     };
     let (min, max) = view(world);
     let half = EnemyKind::Beetle.info().half;
+    let frame = (drawn_time(world) / STREAK_FRAME_SECS) as usize % STREAK_FRAMES;
     let mut batches = Vec::new();
     for (enemy, machine, at) in world.query::<(&Enemy, &StateMachine<EnemyState>, &Transform)>() {
-        if enemy.kind != EnemyKind::Beetle {
+        if enemy.kind != EnemyKind::Beetle || machine.state() != EnemyState::Attack {
             continue;
         }
-        let info = enemy.kind.info();
-        let body = if enemy.heading < 0.0 {
-            info.frame - info.centre.x
-        } else {
-            info.centre.x
+        let side = if enemy.heading < 0.0 { "_left" } else { "" };
+        let Some(asset) = assets.get_sprite(&format!("{STREAK}_{frame}{side}")) else {
+            continue;
         };
-        let centre = at.position + Vec2::new(body, info.centre.y);
-        if (centre + half * 4.0).cmplt(min).any() || (centre - half * 4.0).cmpgt(max).any() {
+        let info = enemy.kind.info();
+        let centre = at.position + Vec2::new(body_x(info, enemy.heading), info.centre.y);
+        let size = Vec2::new(asset.width as f32, asset.height as f32);
+        let rear = centre.x - enemy.heading * (half.x + STREAK_BEHIND);
+        let left = if enemy.heading > 0.0 {
+            rear - size.x
+        } else {
+            rear
+        };
+        let origin = Vec2::new(left, centre.y - size.y / 2.0);
+        if (origin + size).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
         }
-        match machine.state() {
-            EnemyState::WindUp => {
-                let grown = (machine.elapsed() / PAW_SECS).clamp(0.0, 1.0);
-                let side = 2.0 + (GLINT_SIZE - 2.0) * grown;
-                let tip = centre + Vec2::new(enemy.heading * (half.x + 2.0), -half.y * 0.45);
-                let mut color = GLINT;
-                color[3] = (90.0 + 165.0 * grown) as u8;
-                let quad = flat(
-                    asset,
-                    tip - Vec2::splat(side / 2.0),
-                    Vec2::splat(side),
-                    color,
-                );
-                push_quad(&mut batches, asset, quad, None);
-            }
-            EnemyState::Attack => {
-                for (rise, length) in [(-0.35, 26.0), (0.0, 40.0), (0.35, 22.0)] {
-                    let rear = centre.x - enemy.heading * (half.x + 4.0);
-                    let x0 = if enemy.heading > 0.0 {
-                        rear - length
-                    } else {
-                        rear
-                    };
-                    let origin = Vec2::new(x0, centre.y + rise * half.y);
-                    let quad = flat(asset, origin, Vec2::new(length, 2.0), STREAK);
-                    push_quad(&mut batches, asset, quad, None);
-                }
-            }
-            _ => {}
-        }
+        let quad = instance(asset, origin, size, [255; 4]);
+        push_quad(&mut batches, asset, quad, None);
     }
     batches
 }
@@ -306,10 +285,12 @@ fn blow(world: &World, enemy: Entity) -> Option<Strike> {
 
 /// `enemy_debug_boxes`, in the present phase before the kit's debug draw:
 /// the kit's debug shapes follow the colliders' overlay (F1), and while it
-/// is on each live goblin's stab box and each live troll's swipe box or its
-/// slam's reach about its fist draw in [`HIT_COLOR`], as the kit draws an
-/// armed hitbox, while that blow's attack runs: 01's blows are box tests of
-/// its own, not kit hitboxes.
+/// is on each live goblin's stab box, each live troll's swipe box or its
+/// slam's reach about its fist and each live beetle's plough box draw in
+/// [`HIT_COLOR`], as the kit draws an armed hitbox, while that blow's
+/// attack runs: 01's blows are box tests of its own, not kit hitboxes.
+/// Each box is drawn where its enemy's sprite is ([`lag`]), not a step
+/// ahead at the point its test reads.
 pub fn debug_boxes(world: &mut World) {
     let on = world
         .get_resource::<PhysicsDebugOverlay>()
@@ -323,13 +304,24 @@ pub fn debug_boxes(world: &mut World) {
     let Some(mut draw) = world.remove_resource::<DebugDraw>() else {
         return;
     };
-    for (enemy, _, health) in world.query::<(Entity, &Enemy, &Health)>() {
+    for (enemy, mine, health) in world.query::<(Entity, &Enemy, &Health)>() {
         if health.is_dead() {
             continue;
         }
+        let lag = lag(world, enemy);
         let mut outline = |at: Vec2, half: Vec2| {
+            let at = at + lag;
             draw.draw_aabb(at - half, at + half, HIT_COLOR, HIT_THICKNESS);
         };
+        let charging = world
+            .get::<StateMachine<EnemyState>>(enemy)
+            .is_some_and(|machine| machine.state() == EnemyState::Attack);
+        if mine.kind == EnemyKind::Beetle
+            && charging
+            && let Some(at) = beetle::plough_box(world, enemy)
+        {
+            outline(at, PLOUGH_HALF);
+        }
         match blow(world, enemy) {
             Some(Strike::Stab) => {
                 if let Some(at) = goblin::stab_box(world, enemy) {
@@ -343,11 +335,29 @@ pub fn debug_boxes(world: &mut World) {
             }
             Some(Strike::Slam) => {
                 if let Some(fist) = troll::fist(world, enemy) {
-                    draw.draw_circle(fist, SLAM_REACH, HIT_COLOR, HIT_THICKNESS);
+                    draw.draw_circle(fist + lag, SLAM_REACH, HIT_COLOR, HIT_THICKNESS);
                 }
             }
             _ => {}
         }
     }
     world.insert_resource(draw);
+}
+
+/// How far `enemy` is drawn from its `Position`: back toward its
+/// [`PrevPosition`] by `1 - alpha` of its last step while
+/// [`Time::interpolate`] is on, where `physics_sync` puts its sprite.
+fn lag(world: &World, enemy: Entity) -> Vec2 {
+    let alpha = world
+        .get_resource::<Time>()
+        .filter(|time| time.interpolate())
+        .map(Time::alpha);
+    match (
+        alpha,
+        world.get::<Position>(enemy),
+        world.get::<PrevPosition>(enemy),
+    ) {
+        (Some(alpha), Some(at), Some(prev)) => (prev.0 - at.0) * (1.0 - alpha),
+        _ => Vec2::ZERO,
+    }
 }

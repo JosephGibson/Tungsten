@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_crawler_hop_0_left"
+    },
+    {
+      "duration_ms": 90,
+      "sprite": "ex10_crawler_hop_1_left"
+    },
+    {
+      "duration_ms": 240,
+      "sprite": "ex10_crawler_hop_2_left"
+    }
+  ],
+  "looping": false
+}

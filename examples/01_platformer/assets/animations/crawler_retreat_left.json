@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_0_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_1_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_2_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_3_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_4_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_retreat_5_left"
+    }
+  ],
+  "looping": true
+}

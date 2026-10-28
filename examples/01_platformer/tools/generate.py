@@ -320,12 +320,18 @@ def particle_configs():
         gravity=[0, 40], drag_per_sec=.8, angular_velocity=dict(min=-3, max=3),
         lifetime=dict(min=.8, max=1.4), start_scale=dict(min=.06, max=.12),
         alpha_over_life=[[0, 0], [.15, .9], [.7, .7], [1, 0]], color_over_life=frost_ramp)
+    # e01sfx (V30): shock's sparks over the crisp glint, white-hot at birth
+    # and fading through lilac to violet, darting out and stopping short,
+    # flickering on and off as they go, quicker and twice as many.
     configs['shock_sparks'] = dict(
-        config('spark', 12, 14, .25, 260, .1, spread=360),
-        initial_velocity=dict(kind='radial', speed=dict(min=80, max=260)),
-        lifetime=dict(min=.1, max=.25), gravity=[0, 0], drag_per_sec=3,
-        angular_velocity=dict(min=-12, max=12), alpha_over_life=[[0, 1], [.6, .9], [1, 0]],
-        color_over_life=[[0, [1, .95, 1, 1]], [.3, [.75, .55, 1, 1]], [1, [.45, .25, .85, 0]]])
+        config('ice_glint', 24, 90, .22, 540, 1.2, spread=360),
+        initial_velocity=dict(kind='radial', speed=dict(min=220, max=540)),
+        lifetime=dict(min=.1, max=.22), gravity=[0, 0], drag_per_sec=7,
+        angular_velocity=dict(min=-20, max=20), start_scale=dict(min=.7, max=1.2),
+        scale_over_life=[[0, 1], [.5, .85], [1, .4]],
+        alpha_over_life=[[0, 1], [.18, .25], [.32, 1], [.5, .2], [.64, 1], [.82, .3], [1, 0]],
+        color_over_life=[[0, [1, 1, 1, 1]], [.4, [.92, .86, 1, 1]], [.7, [.7, .46, 1, 1]],
+                         [1, [.46, .24, .92, 1]]])
     configs['burn_out'] = dict(
         config('dust', 16, 16, 1.4, 160, .6, spread=120, burst=True),
         lifetime=dict(min=.8, max=1.4), gravity=[0, -140], drag_per_sec=1.4,
@@ -568,6 +574,71 @@ def particle_configs():
     configs['bound_trail'] = full(
         'mote', 12, burst(12), (.4, .75), dict(kind='radial', speed=dict(min=6, max=34)), (0, 40), 1.4,
         (.3, .45), [[0, 1], [1, .4]], [[0, 0], [.1, 1], [.6, .7], [1, 0]], sky)
+    # e01foes: the beetle's paw dust, kicked up from its raking foot every
+    # 0.15 s of its tell and drifting back, earth-brown, the clods its frames
+    # throw; the goblin's dash, a scuff of dust off its heels skidding out
+    # low along the ground; the snowball's burst, chips of packed snow flung
+    # out and falling with a few flakes, white. Particles draw under the
+    # sprites, so each launches clear of the body or the burst first.
+    earth = [[0, [.62, .5, .38, 1]], [.6, [.5, .42, .34, 1]], [1, [.38, .33, .29, 0]]]
+    configs['paw_dust'] = full(
+        'dust', 12, burst(4), (.35, .6), cone((0, -1), 120, 50, 120), (0, 160), 2.2, (.18, .32),
+        [[0, .6], [.3, 1], [1, 1.4]], [[0, 0], [.12, .85], [.6, .6], [1, 0]], earth, (-2, 2))
+    configs['dash_dust'] = full(
+        'dust', 10, burst(8), (.3, .55), cone((0, -1), 170, 60, 170), (0, 220), 3.0, (.2, .34),
+        [[0, .5], [.3, 1], [1, 1.5]], [[0, 0], [.1, .8], [.55, .55], [1, 0]],
+        [[0, [.7, .66, .6, 1]], [1, [.45, .43, .4, 0]]], (-2, 2))
+    configs['snowball_burst'] = full(
+        'ice_chip', 16, burst(16), (.35, .75), dict(kind='radial', speed=dict(min=110, max=260)), (0, 520), 1.4,
+        (.12, .26), [[0, 1], [1, .6]], [[0, 1], [.7, .9], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.5, [.86, .94, 1, 1]], [1, [.7, .84, .96, 0]]], (-10, 10))
+    # e01sfx (V27): a strike on the ground, its sparks bursting low and wide
+    # along it over the white star, a few rising, white to violet; heavy
+    # gravity flattens their hops and they fade as they come down.
+    configs['ground_sparks'] = full(
+        'title_star', 32, burst(32), (.18, .4), cone((0, -1), 176, 240, 700), (0, 2400), 1.4, (.6, 1.2),
+        [[0, 1], [.6, .75], [1, .3]], [[0, 1], [.4, .95], [.75, .3], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.2, [.92, .86, 1, 1]], [.55, [.68, .46, 1, 1]], [1, [.42, .22, .88, 1]]], (-10, 10))
+    # e01sfx (V33): a crate breaking, splinters of its fresh pale pine flung
+    # up and out over the faceted chip, which turns their faces light to
+    # dark as they spin, browning as they fall.
+    configs['plank_splinters'] = full(
+        'ice_chip', 20, burst(20), (.45, .9), cone((0, -1), 200, 160, 480), (0, 900), .8, (.09, .19),
+        [[0, 1], [1, .85]], [[0, 1], [.75, .9], [1, 0]],
+        [[0, [.93, .74, .47, 1]], [.6, [.86, .66, .4, 1]], [1, [.58, .42, .27, 1]]], (-14, 14))
+    # e01sfx (V37): the sprays on stone, wood and whatever else is not alive,
+    # each bit thrown up and out small and bright, then slowing and
+    # swelling. The frost's chips white and fast over the soft glow, its
+    # steam pale blue and faint, as subtle as the chill's frost; the fire's
+    # sparks white-hot to orange over the puff, its soot a dark puff that
+    # hangs on the stone and fades.
+    configs['frost_wall_hit'] = full(
+        'flame_glow', 14, burst(10), (.35, .7), cone((0, -1), 220, 90, 300), (0, -40), 5.0,
+        (.12, .22), [[0, .4], [.25, 1], [1, 2.6]], [[0, 1], [.2, .75], [.6, .35], [1, 0]],
+        [[0, [1, 1, 1, 1]], [.3, [.9, .96, 1, 1]], [1, [.74, .86, 1, 1]]], (-2, 2))
+    configs['flame_wall_hit'] = full(
+        'dust', 16, burst(11), (.55, .95), cone((0, -1), 220, 160, 520), (0, -50), 4.6,
+        (.08, .15), [[0, .7], [.3, .9], [1, 3.6]], [[0, 1], [.3, .9], [.65, .42], [1, 0]],
+        [[0, [1, 1, .85, 1]], [.22, [1, .72, .28, 1]], [.38, [.5, .28, .16, 1]], [.55, [.14, .12, .11, 1]],
+         [1, [.09, .08, .08, 1]]], (-3, 3))
+    # e01hollow's geyser: embers spat from its mouth while it sputters and
+    # erupts, thrown high, arcing out and falling back as they cool; at an
+    # eruption's start a burst of them flung up and out of the plume, fast
+    # enough to clear it within a fifth of a second.
+    geyser_ramp = [[0, [1, 1, .9, 1]], [.25, [1, .84, .36, 1]], [.6, [1, .45, .1, 1]],
+                   [.85, [.6, .12, .05, 1]], [1, [.25, .05, .04, 0]]]
+    configs['geyser_embers'] = dict(
+        config('spark', 16, 18, 1.3, 330, .2, spread=50),
+        initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=50, speed=dict(min=150, max=330)),
+        lifetime=dict(min=.6, max=1.3), start_scale=dict(min=.07, max=.2), gravity=[0, 420], drag_per_sec=.5,
+        angular_velocity=dict(min=-6, max=6), color_over_life=geyser_ramp,
+        scale_over_life=[[0, .8], [.2, 1], [1, .3]], alpha_over_life=[[0, 0], [.05, 1], [.7, .9], [1, 0]])
+    configs['geyser_burst'] = dict(
+        config('spark', 24, 24, 1.1, 620, .24, spread=110, burst=True),
+        initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=110, speed=dict(min=260, max=620)),
+        lifetime=dict(min=.5, max=1.1), start_scale=dict(min=.08, max=.24), gravity=[0, 700], drag_per_sec=1.1,
+        angular_velocity=dict(min=-9, max=9), color_over_life=geyser_ramp,
+        scale_over_life=[[0, 1], [.5, .7], [1, .2]], alpha_over_life=[[0, 1], [.6, .95], [1, 0]])
     return configs
 
 
@@ -578,13 +649,15 @@ MATERIALS={'soft_halo':('soft_glow',[1.8,0.0,1.0,0.1]),'soft_flame':('soft_glow'
 
 def mirror_facing(images,lit,animations):
     """Left-facing copies of the wizard's frames and clips, the fireball's, the
-    fire missile's and the enemies': nothing flips a sprite in place, so the kit's
-    animator, and 01's fireballs, missiles and enemies, show mirrored art by
-    facing. Their maps derive from the mirrored silhouettes."""
+    fire missile's, the enemies' and the beetle's charge streaks: nothing flips
+    a sprite in place, so the kit's animator, and 01's fireballs, missiles and
+    enemies, show mirrored art by facing. Their maps derive from the mirrored
+    silhouettes. After `spray_clips`, which makes the streaks' clip."""
     from PIL import ImageOps
     from actors import ENEMY_CLIPS
+    from effects import FACING_CLIPS
     flying=('fireball','fire_missile')
-    for clip in sorted(c for c in animations if c.startswith('player') or c in flying or c in ENEMY_CLIPS):
+    for clip in sorted(c for c in animations if c.startswith('player') or c in flying or c in ENEMY_CLIPS or c in FACING_CLIPS):
         frames=[]
         for frame in animations[clip]['frames']:
             name=frame['sprite'].removeprefix('ex10_');left=name+'_left'
@@ -599,9 +672,11 @@ def spray_clips(animations):
     dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
     flips it top to bottom when the aim faces left, and mirrors the dust.
     And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
-    and the bound's ring, which nothing turns."""
-    from effects import PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS}.items():
+    and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
+    the snowball's, its burst's and the beetle's streaks, which
+    `mirror_facing` then twins."""
+    from effects import FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
@@ -657,8 +732,8 @@ def write_json(path,data):
 
 def generate(dest):
     if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
-    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
-    spray_clips(animations)
+    images,lit,animations,anchors=build_art();spray_clips(animations)
+    mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
     tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images);check_frost_fits(images)
     configs=particle_configs()
     manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
@@ -769,7 +844,7 @@ def validate_references(manifest,animations,configs,source):
 def floating_report():
     """`--floating`: the level built in memory, every piece that floats
     (`placement.floating`) and a total; exit 1 on any."""
-    images,lit,animations,anchors=build_art();mirror_facing(images,lit,animations);spray_clips(animations)
+    images,lit,animations,anchors=build_art();spray_clips(animations);mirror_facing(images,lit,animations)
     tiled,source,_=build_level(images,lit,check=False)
     lines=floating(source,tiled,images)
     for line in lines:print(line)

@@ -63,12 +63,12 @@ pixel) for any hand-authored sprite. The modules:
 
 | Module | Draws |
 | --- | --- |
-| `pixels.py` | Shared toolkit: masks, silhouette shading, overlap rims, outlines, dithering, whole-period waves |
+| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves, packed stones (`packed_stones`, a rubble core, gravel or scree; e01hollow) and smooth value noise (`fbm`: a flame's tongues, a crater's glow, rock's soft masses; e01hollow) |
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
-| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel, the bridge's deck) and the borders between them |
-| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue |
-| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
+| `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel and its coping, `coping`, the bridge's deck) and the borders between them |
+| `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, each tile a clip), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
+| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`, 8 × 6 since e01hollow), deep recesses (`cave_deep_0`, `cave_deep_1`), pillars drawn whole (`cave_pillar_<k>`) and the wall by its ember tunnel (`cave_wall_0`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV); e01tomes' three pickups and the bound |
@@ -157,13 +157,19 @@ left `k + 1`; each variant's face is ragged under its lip
 (`terrain.BREAK_LIPS`), a right lip over its pier's shaft and a left one over
 the haunch beside its pier, and choosing it draws nothing from the random
 stream. A cell in `spouts` takes `channel_spout` after its weighted draw, so
-no other tile's variant moves.
+no other tile's variant moves (none since e01hollow, whose second gargoyle
+replaced the spouts). Every channel tile's top is its coping (e01hollow,
+`terrain.coping`): capstones drawn apart from the trough, their top face
+from `terrain.COPING_TOP`, the water riding behind them; the `water` clip stops
+at that row so the capstones show in front of it.
 Masonry keeps the rules above and adds `under_*` for a face open below and the
 pit's lining (`pit_rim_*`, `pit_wall_<kind>_*` drawn by `PIT_KINDS`' weights,
 `pit_floor_*`). Wet and mine rock take one of 16 masks by their open sides (up
 1, right 2, down 4, left 8) and four variants each, `wet_rock_<mask>_<v>` and
 `mine_rock_<mask>_<v>`; basalt takes tops, undersides, cliffs and sixteen fill
-variants. In the mine, a cell under cover on an open face, or the cell behind
+variants (e01hollow: columns of three or four widths a variant, eight plain,
+three with cooled flow lines, one cooled to black glass, an ember crack, an
+ember nodule, gas holes and ash in the joints, `terrain.BASALT_KINDS`). In the mine, a cell under cover on an open face, or the cell behind
 one, is iron cladding, `iron_clad_<mask>_<v>`, never under open air; those
 cells become the `iron` layer's boxes. Where two families meet left to right,
 `level.BORDER_PAIRS` draws the left cell as `border_<pair>`, or
@@ -199,10 +205,11 @@ step darker, `far_boulder_0`, `far_boulder_1`, `far_rubble` and the lantern's
 speck, `far_lantern`) take the same tint (`scenery.FAR_PROPS`). The far mist,
 `far_mist_<band>_big_<row>_<col>`, cuts `backdrops.FAR_MISTS`' bands into
 tiles for the decorations layer, over the far walls and under the terrain. The
-lava's heat haze (`haze`, `haze_small`) is the plume in the palette's warm
-translucents (`э` to `Д`), and the river darkens below its first rows
-(`river_dark_1`, `river_dark_2`). The rising mist is animated
-(`scenery.RISING`): the falls' `plume`, drawn at six phases of one loop,
+river darkens below its first rows (`river_dark_1`, `river_dark_2`). The
+rising mist is animated (`scenery.RISING`): the falls' `plume` and, since
+e01hollow, the lava's heat (`haze` over the lake, `haze_small` over the
+shelf's lava), thin curling wisps in the palette's warm translucents (`э` to
+`Б`), thickest over the surface, each drawn at six phases of one loop,
 150 ms a frame, each tile of its cut its own clip (`<name>_big_<row>_<col>`,
 frames `_0` to `_5`). The ravine's pool runs out against fallen stones at its
 east end, `pool_shore`: four frames of 3 × 2 tiles, each tile with art a clip
@@ -247,9 +254,11 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
 | `mists` | A far mist band (`band`, an index into `backdrops.FAR_MISTS`) from its `row` across `left` to `right`, in the decorations layer where no terrain is |
-| `spouts` | The channel cells, `[col, row]`, that take `channel_spout`, each with a pour stack under it (01 (k)) |
+| `spouts` | The channel cells, `[col, row]`, that take `channel_spout`, each with a pour stack under it (01 (k)); empty since e01hollow |
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
 | `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
+| `stones` | The hollow's rubble stones (e01hollow), each over its `support` at column `x`, its body's centre, by `size` (`small`, `medium`, `large`). `placement.prepare` stands each half a pixel over its support by its size's prefab's half height and refuses one off its support; `level.py` writes a `stone_<size>` marker at each, which a fresh run sets down after the kegs |
+| `geysers` | The hollow's fire geysers (e01hollow), each over its `support` at column `x`, its vent's middle, `offset` seconds into its cycle at a run's start; the layout check refuses one off its support or with a wall within its plume, 176 px up and 20 px each side |
 | `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
 | `tomes` | Each book (01 (l)) by `name` and `kind` (`pact`, `bounding`, `arcane`), placed as an orb is over its `support` at column `x`, sized by its idle frame, and the route platform its double jump starts `from`, which the route test reads; each book's glow counts in the light budget |
 
@@ -288,11 +297,12 @@ orbs, `D-208`), so a prop or a slab moves none:
 | `platforms` | The moving platforms, and the mine's elevator | `ex10_platform_<n>`, each its own: a kinematic deck on the kit's `path_follower`, ping-ponging between its sine's two ends with a sine easing, half a period a leg, drawn by `lift_deck_<n>`, three deck tiles across its width; deck 4 the elevator (`elevator { rise, speed }`), a cage drawn by `lift_deck_elevator` that the game moves, with the gantry's `lift_sheave` marker for its cable |
 | `areas` | `landmarks`, a zone across each one's columns | `ex10_area_<n>`: a sensor body, the kit's `zone` for the player and its `area`: its name, `indoor`, `ambience`, `backdrop`, `night`, `horizon`, `ridges` and `woodland` |
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
-| `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, and the elevator's `lift_sheave` | None: the game reads them by name |
+| `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 26 enemies, after every other object layer but `pickups` and `tomes`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `enemies` | The 29 enemies, after every other object layer but `pickups`, `tomes` and `geysers`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
 | `pickups` | The eight placed health orbs, after the enemies | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
-| `tomes` | The three books, the map's last object layer; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
+| `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
+| `geysers` | The three geysers, the map's last object layer, after the tomes, so every earlier object keeps its save ID; theirs follow the orbs' | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would
@@ -392,7 +402,11 @@ ragged tops and undersides and a weathered deck's planks rather than the
 cell's edge. Composite `groups` preserve relative piece positions and
 validate both feet/trunk against the support width; each takes the pieces
 inside its box where `level.json` writes them, and `prepare` refuses a piece
-inside two groups' boxes. Wall roots remain attached to cliff faces.
+inside two groups' boxes. Wall roots remain attached to cliff faces. The
+aqueduct floor's paving (`aq_paving_<k>`, e01hollow) lies in the floor's turf
+band, so `level.json` gives each piece no `support` and writes its `y` with its
+foot `scenery.PAVING_SINK` (6) px into the floor's top, the most `SINK` lets a
+standing piece sink; its `anchor` `ground` has the check judge it.
 
 `placement.floating` (01 (k)) lists every piece of the built level that
 floats, sinks or states no way it stands, as lines `kind name x y detail`
@@ -420,11 +434,12 @@ a group that moves no piece and a non-exempt piece in no group fail. Each
 column of `timber_support` pieces ends on solid (it may run on into the
 ground behind it). Decorations are judged by their part in a structure: a
 pier column (pier top, capital, shafts) runs without a hole to a
-`pier_base` over terrain or a `pier_cutwater` over the river; a springing
+base (`pier_base` or `pier_base_<k>`) over terrain or a `pier_cutwater` over
+the river, the second pier top (`arcade_pier_top_1`) taking the first's part; a springing
 has a capital or pier top beside it, an arch top its springing under it and
 a keystone both arch tops beside it, a gap strip's pieces (`arcade_gap_*`)
 taking the parts they replace; a parapet stands as a `ground` prop does; a
-background structure over terrain (the cave mouth) fills its bottom row to
+background structure over terrain (the cave mouth, the hollow's deep recesses, pillars and wall) fills its bottom row to
 its tile's foot; any other decoration fails as `unjudged`.
 
 `SLAB_COLLIDERS` and `DECK_DEPTH` derive from the art's opaque bounds. Current
@@ -994,11 +1009,11 @@ and the beetle's lowest pixel on row 60, the troll's on row 124 of its 128 frame
 | Enemy | Rig | Clips |
 | --- | --- | --- |
 | Wisp | A round flame with a face, self-lit like the fireball hazards; its tongues stream up and behind | `wisp_float` (8, flickering, a pixel's bob), `wisp_flare` (6, its alert: wider, eyes and mouth open) |
-| Crawler | Five frost-blue plates with a cold glow between, eight high-kneed legs stepping in two sets of four, a wedge head with four glowing eyes, mandibles, swept feelers, ice crystals on its back, a crystal sting | `crawler_walk` (6), `crawler_lunge` (4: rearing, the front leg raised, jaws open), `crawler_scared` (4, looping: recoiled over its planted feet, front low, plates raised, feelers laid flat, jaws shut, eyes a slit, sting raised, a pixel's tremble) |
-| Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (4: a front foot scraping, dust), `beetle_charge` (4: head down, horn levelled, dust behind) |
+| Crawler | Redrawn by e01foes on a pose (`CrawlerPose`): five frost-blue plates, each graded from a moonlit top-left to a dark underside by `pixels.grade` (`FROST_PLATE`, two tones of its own between `}` and `_`), a pale ridge along its top and a dark seam behind it with the cold glow showing through; faceted ice crystals, a lit and a shadowed facet each, one catching a glint that steps along them through the walk; eight jointed legs fanned out under the plates, the end pairs arching higher, their upper segments lit along the top; a crested wedge head with four glowing eyes in dark sockets and ice pincers; jointed feelers; an ice sting curling up over its tail to a barb | `crawler_walk` (6), `crawler_windup` (4: coiled low at the front, knees high, sting curled up, jaws parting), `crawler_lunge` (3: stretched and raised, forelegs flung ahead), `crawler_recover` (3), `crawler_scared` (4, looping: recoiled, front low, plates raised, feelers flat, eyes a slit, a pixel's tremble), `crawler_retreat` (6 × 80 ms, looping: backing away in the scare's posture, feet stepping back in two sets of four, trembling), `crawler_hop` (70 90 240 ms: a spring off straightened legs, aloft with legs tucked, unfolding for the landing; it may rise off row 60), `crawler_snowball_windup` (4 × 90 ms: the head dipping as its jaws pack a clump of snow, then cocked back with it), `crawler_snowball_throw` (50 80 120 ms: the head jerked up and ahead, jaws open at the snowball's (66, 40), loose snow shaken off, settling) |
+| Beetle | A rhinoceros beetle of riveted iron: banded wing cases with punctures, a riveted shield and short horn, the long ridged horn, red eyes, spined legs stepping in sets of three, rust along its seams and rivets | `beetle_walk` (6), `beetle_paw` (8 × 100 ms, once, e01foes: rearing, its front and horn rising over its planted hind feet by a column shear (`sheared`, `BEETLE_REAR`) as its shell tilts, a foreleg raking the ground twice (`RAKE`) and throwing clods back, a star of moonlight swelling at the horn's tip (`horn_glint`)), `beetle_charge` (4, e01foes: head down and dropped, the horn levelled, its legs smeared in the translucent iron `ѐ ё`, dust behind) |
 | Bat | A near-black furred body, dark purple wings with their finger bones showing, red eyes, fangs | `bat_roost` (4: hanging by its feet, swaying), `bat_fly` (6: the wings turned about their roots, folding a little on the downstroke), `bat_windup` (4: wings raised, the outline flashing white), `bat_dive` (2: wings swept back) |
 | Troll | Lanky on a 128 frame, no hump, on a skeleton (`TrollPose`): hips and knees by `two_bone`, the pose's own elbows and wrists, each hand turned with its forearm (open, a fist, or both clasped overhead); a thick neck into the skull, a hooked nose, tusks, an ember eye, an ear with a ring, mossy hair, a hide loincloth on a strap, a scar, ribs, warts, nails | `troll_idle` (4, breathing), `troll_walk` (8: a heavy stride, the arms swinging against the legs), `troll_windup` (3, 133 200 467 ms, 0.8 seconds in all: the arms rising to lock overhead), `troll_slam` (3: fists down to the ground, a crouch, dust), `troll_swipe_windup` (2, 120 180 ms: the arm drawn back), `troll_swipe` (3, 60 70 200 ms: the arm raked under and up in front of it, streaks along the hand's arc), `troll_pickup` (3: bending, then lifting overhead), `troll_throw` (3: flung forward, following through) |
-| Goblin | A sapper on a joint skeleton (01 (g)): a skull with a hooked nose, a slit-pupilled yellow eye and fangs, notched leaf ears with a ring, a goggled leather cap, a laced jerkin over a pot belly, a pouch of rocks and a bomb at the belt, clawed feet; its outline's lowest row on 60, its collider's foot | `goblin_idle` (4, 240 200 160 120 ms, looping), `goblin_walk` (6 × 85 ms), `goblin_windup` and `goblin_windup_bomb` (3, 110 140 200 ms: a rock or a lit bomb drawn back), `goblin_throw` (3, 60 70 170 ms), `goblin_stab_windup` (1, 200 ms: its knife drawn back low at its hip), `goblin_stab` (2, 80 140 ms: the knife thrust ahead off a lunging foot, then drawn halfway back), `goblin_hop` (2 × 110 ms, looping: knees tucked, arms flung up). Its rock (`goblin_rock_0`, `_1`) and bomb (`goblin_bomb_0`, `_1`) are 16 pixels, each centred on its frame, which it rolls about |
+| Goblin | A sapper on a joint skeleton (01 (g)): a skull with a hooked nose, a slit-pupilled yellow eye and fangs, notched leaf ears with a ring, a goggled leather cap, a laced jerkin over a pot belly, a pouch of rocks and a bomb at the belt, clawed feet; its outline's lowest row on 60, its collider's foot | `goblin_idle` (4, 240 200 160 120 ms, looping), `goblin_walk` (6 × 85 ms), `goblin_windup` and `goblin_windup_bomb` (3, 110 140 200 ms: a rock or a lit bomb drawn back), `goblin_throw` (3, 60 70 170 ms), `goblin_stab_windup` (1, 200 ms: its knife drawn back low at its hip), `goblin_stab` (2, 80 140 ms: the knife thrust ahead off a lunging foot, then drawn halfway back), `goblin_hop` (2 × 110 ms, looping: knees tucked, arms flung up); e01foes' `goblin_dash_windup` (2, 120 180 ms: sinking low and coiled, the knife drawn back past its hip, a sly half-lidded eye and a smirk), `goblin_dash` (4 × 70 ms, looping: a low sprint, the knife thrust ahead inside its stab box) and `goblin_panic` (6 × 70 ms, looping: running flat out, arms flailing over its head, a scream, a wild eye; `GoblinPose`'s `eye` and its `smirk` and `scream` mouths). Its rock (`goblin_rock_0`, `_1`) and bomb (`goblin_bomb_0`, `_1`) are 16 pixels, each centred on its frame, which it rolls about |
 
 The frozen look (`effects.py`) is a frosty cube of ice in three-quarter view: a snow
 cap, a side in shade, frost thick at the edges, a drift at the foot, frost ferns,
@@ -1024,6 +1039,28 @@ an enemy sees the wizard: toms on every beat, an eighth-note low pulse, string s
 on the off-beats and a bell figure in its second half; `LOOPS` holds its length and
 seam.
 
+e01foes' families, drawn by its asset session on the clips above: in `effects.py`
+(`FOE_CLIPS`) the 16-pixel `snowball` (4 × 60 ms: a lumpy sphere of packed snow in the
+palette's white-blue ramp `Ѣ ѣ Ѳ Ѵ`, lit from the top-left, grains turning with its spin,
+within 6 pixels of its centre), the 48-pixel `snowball_burst` (6 × 50 ms: a puff of
+powder in the white alpha steps blooming, sinking and thinning with no dark rim,
+chips flung out and falling, flakes riding it) and the 64 × 24 `charge_streak`
+(4 × 50 ms: white-grey speed lines over darker iron ones, tapering and broken into
+dashes away from the beetle, flickering), which `mirror_facing` twins. The particles:
+`paw_dust`, earth-brown puffs off the raking foot; `dash_dust`, a scuff off the
+goblin's heels; `snowball_burst`, white ice chips flung out and falling (16 at most).
+`sfx.py` adds `beetle_paw` (0.8 s: grit raked twice, each scrape higher and louder,
+over a growl climbing into the charge), `beetle_plough` (a heavy wooden thud),
+`crawler_retreat` (a long breathy hiss sinking as it withdraws, over chittering legs),
+`crawler_hop` (a chitter and a click), `snowball_throw` (a packed crunch and a flick),
+`snowball_burst` (a soft crump and ice tinkling down), `goblin_crouch` (a sly
+snicker), `goblin_dash` (a scuffle and a whoosh) and `goblin_yelp` (a squeal breaking
+into panicked gabble) on `goblin_voice`. `art.py` lets the crawler's hop rise off row
+60 (`AIRBORNE`). `test_generate.py`'s `FoeContractTests` holds the generated files to
+the contract the game reads: each clip's size, durations, looping and twin, row 60
+under every grounded frame, the crawler's walk reaching 30 pixels or more each side
+of x 32, the particles' caps and the sounds' lengths and volumes.
+
 ## The tomes
 
 e01tomes' families (`effects.py`), drawn from the review sheet the owner
@@ -1047,3 +1084,97 @@ cool blue strip. `generate.particle_configs` adds each book's motes
 draw under it, each take's sparks (`tome_<kind>_take_sparks`, 24) and the bound's
 (`bound_sparks`, 20; `bound_trail`, 12). `sfx.py` adds `tome_pact`, `tome_bounding`,
 `tome_arcane` and `bound`, registered as `ex10_<name>_sfx`.
+
+## Sounds and effects
+
+e01sfx's families, drawn by its asset session within the contract the game reads.
+`effects.py`: the shock overlay's four frames a class (`status_crackle_<class>_<f>`,
+32, 64 and 128 pixels, unlit, which the game steps through at 16 Hz with its violet
+tint on the even ones): sparks leaping between points on the body's outline, short
+hops bowed out past it and each frame's last a leap across the body, each a
+discharge's jagged path (`bolt`: its midpoint pushed aside by up to `CRACKLE_ROUGH` of
+its length, then each half's, two to four times over) with a fork (`crackle_fork`); on
+the even frames bright, a white spine in a lilac glow (`Σ`, violet `Λ` about it on the
+large class) with a faint dithered haze (`Ѻ`) and a bright node where each lands
+(`crackle_node`), on the odd ones fewer, thinner and fainter, so the overlay flickers
+(`CRACKLE_LOOK`, `crackle_path`). `build_sfx_art` draws the 48 × 16 `scorch` (lit): a
+low charred patch spread wide from its heart on the anchor's pixel (24, 15)
+(`SCORCH_HEART`), a fan of soot rays longest along the ground and breaking up toward
+their tips, black cracks running out through it and a faint violet ember at its heart
+in `Ѱ`, an emissive violet only it uses (`art.GLOW`), its char ramp black through soot
+to ash grey (`CHAR`) and its bottom row's ends trimmed even about the heart; and the
+320 × 180 `hurt_edge` (unlit): a red glow round the view's edges, deeper and darker at
+the corners, clear from a quarter in (`EDGE_REACH`), dithered between the palette's
+red alpha steps `Ѧ`–`Ѭ` and `ѭ Ѯ` with a little grain, faint (22 of 255 at the edges'
+middles, 40 at the corners), since the game blends in linear light, where a faint red
+over the dark reads several times stronger than its alpha. `props.py`: the crates'
+five planks (`plank_0`–`plank_4`, 32 × 16, lit, the board in the box's rows 4–11 with
+the crates' outline): rows 0, 2 and 4 the planked crate's top board snapped at its end
+(`break_end`), its middle board with half its brand and a bent nail (`bent_nail`), its
+darker batten split; rows 1 and 3 the slatted crate's rail split along with its nails
+in and its slat snapped, each in the crates' grain, nails, nail holes (`nail_hole`)
+and knots. `generate.particle_configs`: `shock_sparks` over the crisp `ice_glint`,
+white-hot to violet, darting out, stopping short and flickering (24 alive, 90 a
+second); `ground_sparks`, a strike's burst on the ground, low and wide under heavy
+gravity, white to violet (32); `plank_splinters`, fresh pale pine browning as it falls
+over the faceted `ice_chip` (20); `frost_wall_hit` over the soft glow and
+`flame_wall_hit` over the puff, each bit thrown up and out small and bright, then
+swelling into faint steam or a dark puff of soot (14 and 16). No new sprite: one would
+shift every tile ID in `level.tmj`. `sfx.py` adds `ground_strike` (0.75 s: a buzzing
+snap, the sparks' crackle and a sizzle hissing away), `player_tick` (0.14 s: a soft,
+muted thud) and `crate_break` (0.7 s: a wooden crack, a splintering crunch and the
+planks clattering down), and redraws `thunder` (3.2 s: a sharp crack into a long, deep
+roll, a distant rumble swelling about 1.5 s in) and `fire_crackle` (the 2 s loop: a
+fire's hiss over a soft flutter, its crackle and sap pops, for anything alight).
+`test_generate.py`'s `EffectsContractTests` holds the generated files to the contract
+the game reads: each sprite's size, four crackle frames a class, the particles' caps
+and the sounds' lengths, volumes and loops.
+
+## The hollow
+
+e01hollow's hollow, drawn in its second asset step. In `scenery.py`, beside the
+lavafall's clip: `geyser_vent` (64 × 32, lit), a low dome of cooled basalt crazed
+by long cracks, a collar of black glaze round its crater, the crater's far wall
+lit from below by the throat's slit of glow (`vent_throat`), the cracks hot near
+the collar; `geyser_vent_choked` the same under a crust of grey-white rime, the
+cracks cold (`vent_rime`). `geyser_sputter_0`–`_3` (64 pixels, unlit) are licks of
+flame and puffs of smoke rising higher each frame, and `geyser_plume_0`–`_5` (64 ×
+176, unlit) the eruption: a column of flame from noise that climbs with the frame
+(`flame`), white-yellow at its core, red and smoky at its edges, embers flung out
+(`embers`), bursting up in its first frame and guttering in its last; each frame's
+flame keeps its root behind the vent's near lip (`near_lip`). The lavafall is 23
+px wide with crust plates on its edges, glowing where they part
+(`lavafall_frame`), out of a wider `fissure`, and `lava_splash_0`–`_3` (lit) is a
+looping crown and spatter at its foot in the basin. The small lava pools are
+clips (`ember_pool_<i>_<f>`, `EMBER_POOLS`, four frames at 180 ms): lava in a
+lip of cooled basalt, its veins drifting, crust rafts on it, a bubble
+swelling and bursting; the fire crystals glow from within, their cores in the
+emissive oranges. The hollow's rubble, standing props:
+`basalt_rubble_0`–`_2` and `obsidian_rubble`, chunks of the stones' material
+(`chunk`, `heap`), `scree_left` and `scree_right` heaped against a wall on that
+side, and `fallen_slab`. In `actors.py`, `stone(size, look)` (lit): `stone_small_<i>`
+and `stone_medium_<i>` (32 pixels) and `stone_large_<i>` (64), look 0 a piece of a
+basalt column lying on its side, its hexagonal end showing, look 1 a slab of a
+flow's crust, ropy on top with a glassy rind, each filling its body box
+(`STONE_BOXES`), its bottom on the box's. In `backdrops.py`: the cave's back,
+basalt columns receding (`cave_back`), its ember seam in one variant; the mouth
+(`cave_mouth`), the hollow's back in shadow behind a jamb and lintel of
+rough-dressed wet stone (`mouth_block`) with roots and moss from the ravine's
+side; two deep recesses (`cave_deep`), ridges of rock against a far glow of
+embers; and its pillars (`cave_pillar`, `PILLARS`), each drawn whole from the
+roof's lowest row to the floor, three tiles wide, fluted rock flaring unevenly
+into the roof and the floor, its shadow on the back, the one over the lake lit
+from below by the lava; all placed as decorations, the pillars over
+`level.py`'s pillar columns and a plain stretch of back (`cave_wall`) where the
+ember tunnel breaks one, so `cave_back_pillar_<n>` (a pillar's shaft) shows
+nowhere today. The roof's stalactites take eight shapes (`STALACTITES`): a
+point with lesser ones, needles, a stub, a curtain, a spear, one snapped off, a
+forked pair and nubs, and the back's stalactite tiles five to seven points of
+several shapes. `generate.particle_configs`: `geyser_embers`,
+embers spat from the mouth that arc and fall back (cap 16), and `geyser_burst`, a
+burst of 24 flung up and out. `sfx.py`: `geyser_sputter` (0.6 s, a hissing gurgle
+with pops), `geyser_erupt` (0.95 s, a whoosh into a roar that drops off) and
+`stone_knock` (0.26 s, a dull stone thud). `test_generate.py`'s
+`HollowContractTests` holds the generated files to the contract the game reads:
+each sprite's size and count, each stone's lowest opaque row on its box's bottom
+(31, 31, 63), the particles' caps and the sounds' lengths and volumes.

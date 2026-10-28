@@ -26,7 +26,7 @@ ELEMENT_SIZES = {
     **{f'bolt_{i}': (24, 64) for i in range(8)},
     **{f'status_{look}_{name}{frame}': (size, size)
        for name, size in STATUS_CLASSES.items() if size != 64
-       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1')))
+       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1', '_2', '_3')))
        for frame in frames},
     **{f'muzzle_{i}': (16, 16) for i in range(3)},
     'tracer': (32, 3),
@@ -67,19 +67,33 @@ ELEMENT_SIZES = {
        for clip, (size, frames) in (('idle', ((32, 32), 4)), ('take', ((64, 64), 6))) for i in range(frames)},
     **{f'bound_ring_{i}': (64, 32) for i in range(6)},
     'hud_liquid_shield': (128, 10),
+    # e01foes: the crawler's snowball and its burst, and the beetle's
+    # charge streaks with their left-facing twins.
+    **{f'snowball_{i}': (16, 16) for i in range(4)},
+    **{f'snowball_burst_{i}': (48, 48) for i in range(6)},
+    **{f'charge_streak_{i}{facing}': (64, 24) for i in range(4) for facing in ('', '_left')},
+    # e01sfx: the ground strike's scorch, the crate's five planks and the
+    # hurt edge over the view.
+    'scorch': (48, 16),
+    **{f'plank_{i}': (32, 16) for i in range(5)},
+    'hurt_edge': (320, 180),
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat
-# and his staff about the courier's body.
-SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96)}
+# and his staff about the courier's body; e01hollow's geyser vent (its
+# choked twin too) and plume, and its small and medium stones.
+SIZE_PREFIXES = {'troll_': (128, 128), 'player': (96, 96), 'geyser_vent': (64, 32), 'geyser_plume_': (64, 176),
+                 'stone_small_': (32, 32), 'stone_medium_': (32, 32)}
 # The wizard's frames keep their lowest pixel on his feet's row, 93, the
 # outline's row under his soles (`actors.WIZARD_FEET`), the lying ones too.
 PLAYER_FEET = 93
 # A walker's frames keep their lowest pixel on its feet's row: the outline's
 # row under its soles (`actors.SOLE` and `BIG_SOLE`); the goblin's by its
-# clips, apart from its rock and bomb.
+# clips, apart from its rock and bomb; the crawler's but its hop's, which
+# may rise off it (e01foes, `AIRBORNE`).
 WALKER_FEET = {'crawler_': 61, 'beetle_': 61, 'troll_': 125,
                **{f'goblin_{clip}_': 61 for clip in ('idle', 'walk', 'windup', 'throw')}}
+AIRBORNE = ('crawler_hop_',)
 
 
 def expected_size(name):
@@ -98,9 +112,9 @@ def validate_palette(palette):
 
 PALETTE = validate_palette(json.loads((TOOLS / 'palette.json').read_text()))
 # The symbols a lit sprite's emissive map takes, matched by colour: the warm
-# lights and the glowing greens, and e01tomes' ember, pale cyan and violet
-# over white, which no other art uses.
-GLOW = 'yYCcЪЧЯЭЫ'
+# lights and the glowing greens, e01tomes' ember, pale cyan and violet over
+# white, which no other art uses, and e01sfx's dim violet, the scorch's ember.
+GLOW = 'yYCcЪЧЯЭЫѰ'
 
 
 def rng_for(name):
@@ -189,6 +203,7 @@ def build_art():
     frame's staff light anchor (`actors.build_player`)."""
     from actors import (
         build_balls, build_dummy, build_enemies, build_fire_missile, build_fireball, build_player,
+        build_stones,
     )
     from backdrops import build_backdrops
     from effects import build_effects, build_tome_art
@@ -202,6 +217,7 @@ def build_art():
     build_balls(images, lit, animations)
     build_dummy(images)
     build_enemies(images, animations)
+    build_stones(images, lit)
     build_scenery(images, lit, animations)
     build_props(images, lit)
     build_terrain(images, lit)
@@ -210,6 +226,8 @@ def build_art():
     build_tome_art(images, lit)
     from polish_art import enrich_art
     enrich_art(images,lit,animations)
+    from effects import build_sfx_art
+    build_sfx_art(images,lit)
     return images,lit,animations,anchors
 
 
@@ -226,7 +244,7 @@ def validate_art(images,lit):
             if not box or box[0]<1 or box[1]<1 or box[2]>im.width-1 or box[3]>im.height-1:raise ValueError(f'{name}: clipped frame')
             if name.startswith('player') and box[3]!=PLAYER_FEET:raise ValueError(f'{name}: unstable foot anchor')
         for prefix,feet in WALKER_FEET.items():
-            if name.startswith(prefix) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
+            if name.startswith(prefix) and not name.startswith(AIRBORNE) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
     for name in ('ground_1','ground_2','ground_3'):
         if images[name].crop((0,0,64,6)).tobytes()!=images['ground'].crop((0,0,64,6)).tobytes():raise ValueError('terrain seam')
     from backdrops import validate_backdrops

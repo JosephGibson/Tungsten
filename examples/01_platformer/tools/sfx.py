@@ -461,22 +461,28 @@ def ricochet():
 
 
 def thunder():
-    """A strike overhead: a splitting crack, then a low roll that rumbles on
-    and fades."""
-    duration = 1.8
-    noise, rumble, crack_low, low2 = Noise(0x7D0E), Noise(0x0B11), LowPass(), LowPass()
-    roll_low = LowPass()
+    """A strike overhead (e01sfx, V27): a sharp splitting crack into a long,
+    deep roll that wobbles as it fades, and a distant rumble swelling again
+    about 1.5 s in, over 3.2 s."""
+    duration = 3.2
+    noise, rumble, far = Noise(0x7D0E), Noise(0x0B11), Noise(0x0B12)
+    crack_low, mid_low, mid_high, roll_a, roll_b, far_a, far_b = (LowPass() for _ in range(7))
     samples = []
     for i in range(int(duration * RATE)):
         t = i / RATE
         n = noise()
-        crack = (n - crack_low(n, 1200)) * math.exp(-t / 0.03)
-        # The roll swells after the crack and wobbles as it fades.
-        swell = min(1.0, t / 0.12) * math.exp(-t / 0.55)
-        wobble = 0.7 + 0.3 * math.sin(math.tau * 3.2 * t) * math.sin(math.tau * 1.3 * t + 1)
-        roll = roll_low(low2(rumble(), 260), 120) * 6.0 * swell * wobble
-        samples.append(math.tanh(1.8 * crack + roll))
-    return finish(samples, fade_in=0.0005, fade_out=0.2)
+        crack = (n - crack_low(n, 1400)) * math.exp(-t / 0.022)
+        split = (mid_low(n, 3200) - mid_high(n, 500)) * 0.6 * math.exp(-t / 0.09)
+        swell = min(1.0, t / 0.16) * math.exp(-t / 0.95)
+        wobble = 0.68 + 0.32 * math.sin(math.tau * 2.6 * t) * math.sin(math.tau * 0.9 * t + 1)
+        roll = roll_b(roll_a(rumble(), 190), 85) * 9.0 * swell * wobble
+        u = t - 1.15
+        distant = 0.0
+        if u > 0:
+            rise = min(1.0, u / 0.5) ** 2 * math.exp(-max(0.0, u - 0.5) / 0.6)
+            distant = far_b(far_a(far(), 140), 62) * 11.0 * rise * (0.75 + 0.25 * math.sin(math.tau * 1.7 * t))
+        samples.append(math.tanh(1.8 * crack + split + roll + distant))
+    return finish(samples, fade_in=0.0005, fade_out=0.35)
 
 
 def crackle():
@@ -837,25 +843,6 @@ def staff_gutter():
         crackle = pop * (n - high(n, 2500))
         envelope = min(1.0, t / 0.01) * math.exp(-t / .16)
         samples.append((1.6 * breath * flutter + crackle) * envelope)
-    return finish(samples)
-
-
-def beetle_paw():
-    """The beetle's tell: an iron claw scraping stone, grit and a rasp."""
-    duration = 0.42
-    noise, grit, low, high = Noise(0xBE71), Noise(0xBE72), LowPass(), LowPass()
-    samples, chip = [], 0.0
-    for i in range(int(duration * RATE)):
-        t = i / RATE
-        p = t / duration
-        n = noise()
-        scrape = low(n, glide(2600, 1400, p)) - high(n, 500)
-        rasp = .6 + .4 * math.sin(math.tau * 46 * t) * math.sin(math.tau * 7 * t)
-        if grit() > .996:
-            chip = .5
-        chip *= .9
-        envelope = min(1.0, t / 0.03) * (1 - p) ** 0.8
-        samples.append((1.6 * scrape * rasp + chip * grit()) * envelope)
     return finish(samples)
 
 
@@ -1997,28 +1984,30 @@ def crate_ignite():
 
 
 def fire_crackle():
-    """A burning crate's fire, one voice by the nearest: a low roar
-    breathing under a wood fire's crackle and the pops of its sap, every
-    swing whole over the 2 s loop."""
+    """Anything alight (e01sfx, V31), one voice by the nearest: a fire's
+    hiss breathing over a soft low flutter, its crackle and the pops of its
+    sap, every swing whole over the 2 s loop."""
     duration, overlap = 2.0, int(.12 * RATE)
-    noise, crackles, low, high, crisp = Noise(0x16B1), Noise(0x16B2), LowPass(), LowPass(), LowPass()
+    noise, crackles = Noise(0x16B1), Noise(0x16B2)
+    low, high, hiss_low, hiss_high, crisp = (LowPass() for _ in range(5))
     count = int(duration * RATE)
     samples, crack, pop_at, pop_freq = [], 0.0, -1.0, 300.0
     for i in range(count + overlap):
         t = i / RATE
         n = noise()
-        breath = .75 + .25 * math.sin(math.tau * 1.5 * t) * math.sin(math.tau * 0.5 * t + 1)
-        roar = (low(n, 420) - high(n, 70)) * breath
+        breath = .72 + .28 * math.sin(math.tau * 1.5 * t) * math.sin(math.tau * 0.5 * t + 1)
+        flutter = (low(n, 320) - high(n, 60)) * (.8 + .2 * math.sin(math.tau * 6 * t))
+        hiss = (hiss_low(n, 4800) - hiss_high(n, 1400)) * breath
         c = crackles()
-        if c > .9985:
-            crack = .8 if c > .9996 else .45
-        crack *= .9
-        snap = crack * (c - crisp(c, 2600))
+        if c > .9982:
+            crack = .85 if c > .9995 else .5
+        crack *= .88
+        snap = crack * (c - crisp(c, 2400))
         if c < -.99975:
-            pop_at, pop_freq = t, 280 + 340 * (c + 1) * 4000
+            pop_at, pop_freq = t, 260 + 640 * (c + 1) * 4000
         u = t - pop_at
-        pop = .6 * math.sin(math.tau * pop_freq * u) * math.exp(-u / .012) if u >= 0 else 0.0
-        samples.append(2.2 * roar + snap + pop)
+        pop = .7 * math.sin(math.tau * pop_freq * u) * math.exp(-u / .01) if u >= 0 else 0.0
+        samples.append(1.5 * flutter + 0.75 * hiss + snap + pop)
     return finish(crossfaded(samples, count, overlap), fade_in=0, fade_out=0)
 
 
@@ -2292,6 +2281,375 @@ def bound():
     return finish(samples, fade_in=0.001, fade_out=0.05)
 
 
+# e01foes' sounds: the beetle's rising paw and its plough through a body,
+# the crawler's backing hiss and its hop, the snowball's throw and burst,
+# and the goblin's snicker, dash and panicked yelp.
+
+
+def beetle_paw():
+    """The charge's tell, its 0.8 s: a foot raking grit twice, each scrape
+    longer, higher and louder, over an iron growl that climbs into the
+    charge."""
+    duration = 0.8
+    noise, grit, band, floor, growl = Noise(0xBE91), Noise(0xBE92), LowPass(), LowPass(), LowPass()
+    samples, phase, crack = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        scrape = 0.0
+        for start, length, level in ((0.17, 0.2, 0.65), (0.57, 0.22, 1.0)):
+            u = (t - start) / length
+            if 0 <= u <= 1:
+                centre = glide(500, 2400, (start + u * length) / duration)
+                rasp = band(n, centre * 1.8) - floor(n, centre * 0.5)
+                g = grit()
+                if g > 0.96:
+                    crack = 0.9
+                crack *= 0.9
+                scrape += level * (rasp * (0.6 + 0.4 * abs(math.sin(math.tau * 46 * t))) + 0.5 * crack * g) \
+                    * math.sin(math.pi * u) ** 0.7
+        phase += glide(42, 96, p ** 1.4) / RATE
+        saw = 2 * (phase % 1.0) - 1
+        roar = growl(saw, 260 + 520 * p) * (0.1 + 0.9 * p ** 2.2)
+        samples.append(math.tanh(2.2 * scrape + 0.7 * roar))
+    return finish(samples, fade_out=0.03)
+
+
+def beetle_plough():
+    """A charge ploughing into a crate or a keg: a heavy wooden thud, a
+    hollow knock under it and a rattle of staves."""
+    duration = 0.32
+    noise, high, low = Noise(0xBE95), LowPass(), LowPass()
+    body = thud(70, duration, 1.0, 0xBE96)
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        phase += math.tau * glide(260, 170, min(1.0, t / 0.08)) / RATE
+        knock = 0.9 * math.sin(phase) * math.exp(-t / 0.04)
+        crack = (n - high(n, 1500)) * 0.7 * math.exp(-t / 0.01)
+        rattle = low(n, 2200) * 0.35 * math.exp(-max(0.0, t - 0.03) / 0.07) * (0.5 + 0.5 * math.sin(math.tau * 29 * t))
+        samples.append(math.tanh(1.3 * body[i] + knock + crack + rattle))
+    return finish(samples, fade_in=0.0005, fade_out=0.04)
+
+
+def crawler_retreat():
+    """The crawler backing out of the light: a long, breathy hiss that sinks
+    and fades as it withdraws, over its legs chittering backwards; lower
+    and slower than its scare's startled hiss."""
+    duration = 0.6
+    noise, ticks, low, floor = Noise(0xC4B1), Noise(0xC4B2), LowPass(), LowPass()
+    samples, tick = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = low(n, glide(3000, 1300, p)) - floor(n, 500)
+        sway = 0.75 + 0.25 * math.sin(math.tau * 7 * t)
+        if ticks() > 0.997 - 0.002 * math.sin(math.tau * 9 * t):
+            tick = 1.0
+        tick *= 0.8
+        chitter = tick * math.sin(math.tau * (3100 + 600 * math.sin(math.tau * 13 * t)) * t)
+        envelope = min(1.0, t / 0.04) * (1 - p) ** 0.8
+        samples.append((1.1 * hiss * sway + 1.4 * chitter) * envelope)
+    return finish(samples, fade_out=0.05)
+
+
+def crawler_hop():
+    """A crawler's hop: a quick chitter of its legs bunching, then the click
+    of its spring."""
+    duration = 0.2
+    noise, high = Noise(0xC4B5), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        chitter = 0.0
+        for k, start in enumerate((0.0, 0.018, 0.034, 0.052, 0.068)):
+            u = t - start
+            if u >= 0:
+                chitter += math.sin(math.tau * (2900 + 260 * k) * u) * math.exp(-u / 0.006)
+        u = t - 0.095
+        click = 0.0
+        if u >= 0:
+            click = ((n - high(n, 2500)) * 1.2 + math.sin(math.tau * 1700 * u)) * math.exp(-u / 0.012)
+        samples.append(0.6 * chitter + click)
+    return finish(samples, fade_in=0.0005, fade_out=0.02)
+
+
+def snowball_throw():
+    """A snowball packed and thrown: a crunch of snow squeezed tight, then
+    the flick of the head and a short whoosh."""
+    duration = 0.28
+    noise, grain, high, band, floor = Noise(0x5B01), Noise(0x5B02), LowPass(), LowPass(), LowPass()
+    samples, crunch = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        g = grain()
+        if t < 0.1 and g > 0.93:
+            crunch = 0.9
+        crunch *= 0.86
+        packed = crunch * (n - high(n, 1400)) * min(1.0, t / 0.01) * math.exp(-t / 0.07)
+        u = (t - 0.11) / 0.15
+        whoosh = 0.0
+        if 0 <= u <= 1:
+            whoosh = (band(n, glide(900, 5200, u)) - floor(n, 600)) * math.sin(math.pi * u) ** 1.4
+        samples.append(1.5 * packed + 1.6 * whoosh)
+    return finish(samples, fade_out=0.03)
+
+
+def snowball_burst():
+    """A snowball bursting: a soft crump of powder and a scatter of ice
+    tinkling down after it."""
+    duration = 0.42
+    noise, low, mid = Noise(0x5B05), LowPass(), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crump = (low(n, 420) * 2.6 + (mid(n, 1600) - low(n, 420)) * 0.5) * min(1.0, t / 0.004) * math.exp(-t / 0.05)
+        powder = (n - mid(n, 2500)) * 0.18 * math.exp(-t / 0.12)
+        samples.append(math.tanh(1.4 * crump) + powder)
+    ice = [(1.0, 1.0, 1.0), (2.4, 0.4, 0.5), (4.1, 0.2, 0.3)]
+    for start, name, level in ((0.03, 'F#7', 0.32), (0.07, 'C#8', 0.22), (0.12, 'A7', 0.26), (0.19, 'E8', 0.16),
+                               (0.27, 'B7', 0.14)):
+        place(samples, int(start * RATE), chime(note(name), 0.14, level, decay=0.03, partials=ice))
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
+
+
+def goblin_voice(freqs, starts, lengths, seconds, seed, breath=0.25, nasal=0.35):
+    """A goblin's voice: nasal syllables at `freqs`, each from its start for
+    its length, through the cackle's throat."""
+    noise, low, high, nose = Noise(seed), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(seconds * RATE)):
+        t = i / RATE
+        k = max((j for j, s in enumerate(starts) if t >= s), default=0)
+        u = t - starts[k]
+        f0, f1 = freqs[k]
+        freq = glide(f0, f1, min(1.0, u / lengths[k])) * (1 + .03 * math.sin(math.tau * 26 * t))
+        phase += freq / RATE
+        saw = 2 * (phase % 1.0) - 1
+        voice = low(saw, 2800) - high(saw, 650)
+        twang = (saw - nose(saw, 3900)) * nasal
+        on = min(1.0, u / .006) * math.exp(-max(0.0, u - lengths[k] * 0.6) / (lengths[k] * 0.35))
+        samples.append((1.4 * voice + twang + breath * noise()) * on)
+    return samples
+
+
+def goblin_crouch():
+    """The dash-in's crouch: a sly, breathy snicker under its breath, three
+    quick nasal syllables, the last turned up."""
+    samples = goblin_voice(((430, 410), (420, 395), (440, 520)), (0.0, 0.07, 0.14), (0.05, 0.05, 0.11), 0.3,
+                           0x1751, breath=0.45, nasal=0.3)
+    return finish([0.8 * s for s in samples], fade_out=0.04)
+
+
+def goblin_dash():
+    """The dash-in: a scuffle of feet on grit, then a whoosh as it darts
+    ahead."""
+    duration = 0.3
+    noise, grit, low, floor, band = Noise(0x1755), Noise(0x1756), LowPass(), LowPass(), LowPass()
+    samples, scrape = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        g = grit()
+        scuff = 0.0
+        for start in (0.0, 0.045, 0.085):
+            u = t - start
+            if 0 <= u < 0.04:
+                scuff += (low(n, 1800) - floor(n, 250)) * math.sin(math.pi * u / 0.04)
+        if t < 0.12 and g > 0.95:
+            scrape = 0.7
+        scrape *= 0.85
+        u = (t - 0.09) / 0.2
+        whoosh = 0.0
+        if 0 <= u <= 1:
+            whoosh = (band(n, glide(700, 3800, u)) - floor(n, 300)) * math.sin(math.pi * u) ** 1.2
+        samples.append(1.3 * scuff + 0.5 * scrape * g + 1.5 * whoosh)
+    return finish(samples, fade_out=0.03)
+
+
+def goblin_yelp():
+    """A goblin catching fire: a high squeal that breaks into panicked
+    gabble, quick syllables tumbling over each other; higher and faster
+    than its cackle."""
+    squeal = [(720, 1350)]
+    gabble = [(980, 860), (840, 940), (1010, 820), (880, 980), (950, 800), (820, 900), (900, 760)]
+    starts = [0.0] + [0.2 + 0.055 * k for k in range(len(gabble))]
+    lengths = [0.19] + [0.045] * len(gabble)
+    samples = goblin_voice(squeal + gabble, starts, lengths, 0.62, 0x1759, breath=0.3, nasal=0.45)
+    return finish(samples, fade_out=0.06)
+
+
+# e01sfx's sounds: a strike on the ground, a damage tick on the player and a
+# crate breaking into planks; `thunder` and `fire_crackle` are redrawn in
+# place.
+
+
+def ground_strike():
+    """A bolt meeting the ground: a buzzing snap, the electric crackle of
+    its sparks and a sizzle hissing away over 0.75 s."""
+    duration = 0.75
+    noise, sparks, flutter = Noise(0x6511), Noise(0x6512), Noise(0x6513)
+    snap_high, hiss_high, hiss_low, buzz_low, tone_low = LowPass(), LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase, spark, sizzle = [], 0.0, 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        snap = (n - snap_high(n, 2600)) * math.exp(-t / 0.005)
+        phase += math.tau * glide(170, 72, min(1.0, t / 0.3)) / RATE
+        gate = 0.5 + 0.5 * math.copysign(1.0, math.sin(phase))
+        buzz = (buzz_low(n, 3200) * gate * 0.8 + tone_low(math.copysign(1.0, math.sin(phase)), 900) * 0.35) \
+            * min(1.0, t / 0.004) * math.exp(-t / 0.11)
+        s = sparks()
+        if s > 1 - 0.012 * math.exp(-t / 0.16):
+            spark = 0.9 if s > 1 - 0.004 else 0.55
+        spark *= 0.86
+        if i % 400 == 0:
+            sizzle = 0.55 + 0.45 * flutter()
+        hiss = (hiss_low(n, 7000) - hiss_high(n, 2800)) * sizzle * min(1.0, t / 0.04) * math.exp(-t / 0.24)
+        samples.append(math.tanh(2.2 * snap + buzz + spark * s + 1.3 * hiss))
+    return finish(samples, fade_in=0.0003, fade_out=0.08)
+
+
+def player_tick():
+    """A damage tick on the courier: a soft, muted thud, low and short, under
+    a hurt's crack, falling tone and yelp."""
+    duration = 0.14
+    noise, low = Noise(0x71C4), LowPass()
+    samples, phase = [], 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        phase += math.tau * glide(165, 92, min(1.0, t / 0.08)) / RATE
+        body = math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.034)
+        knock = low(noise(), 480) * 2.4 * math.exp(-t / 0.009)
+        samples.append(math.tanh(1.2 * (body + knock)))
+    return finish(samples, fade_in=0.001, fade_out=0.03)
+
+
+def crate_break():
+    """A crate breaking under a blow: a sharp wooden crack, a splintering
+    crunch, then its planks clattering down and knocking about."""
+    duration = 0.7
+    noise, grit = Noise(0x6B71), Noise(0x6B72)
+    crack_high, crunch_high, crunch_low, click_high = LowPass(), LowPass(), LowPass(), LowPass()
+    knocks = ((0.17, 236, 0.9), (0.24, 318, 0.6), (0.31, 196, 0.75), (0.4, 282, 0.5), (0.52, 214, 0.45),
+              (0.6, 300, 0.3))
+    samples, phase, splinter = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        crack = (n - crack_high(n, 2200)) * math.exp(-t / 0.007)
+        phase += math.tau * glide(540, 300, min(1.0, t / 0.05)) / RATE
+        snap = 0.8 * math.sin(phase) * math.exp(-t / 0.035)
+        u = t - 0.012
+        crunch = (crunch_low(n, 3000) - crunch_high(n, 650)) * 1.3 * math.exp(-u / 0.06) if u >= 0 else 0.0
+        g = grit()
+        if 0.02 < t < 0.4 and g > 1 - 0.01 * math.exp(-t / 0.12):
+            splinter = 0.8
+        splinter *= 0.85
+        clatter = 0.0
+        for start, freq, level in knocks:
+            d = t - start
+            if d >= 0:
+                clatter += level * (math.sin(math.tau * freq * d) * math.exp(-d / 0.028)
+                                    + (n - click_high(n, 1500)) * 0.6 * math.exp(-d / 0.004))
+        samples.append(math.tanh(1.8 * crack + snap + crunch + splinter * g + clatter))
+    return finish(samples, fade_in=0.0003, fade_out=0.06)
+
+
+def geyser_sputter():
+    """A geyser's sputter (e01hollow), as long as its 0.6 s: a hiss rising
+    out of the vent over a thick gurgle of bubbling, lava popping through
+    it faster as the eruption nears."""
+    duration = 0.6
+    noise, bubbles, pops = Noise(0x6E51), Noise(0x6E52), Noise(0x6E53)
+    low, high, glug = LowPass(), LowPass(), LowPass()
+    samples, pop, phase, bubble, burble = [], 0.0, 0.0, 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = (low(n, glide(1800, 6500, p)) - high(n, glide(700, 1600, p))) * (0.35 + 0.65 * p)
+        # The gurgle: low bubbles bursting at random, each a falling blip.
+        if bubbles() > 1 - 0.0011 * (1 + 2 * p):
+            bubble, burble = 1.0, 0.0
+        # Each bubble a blip falling from 400 Hz as it bursts and dies.
+        burble += math.tau * (140 + 260 * bubble) / RATE
+        bubble *= 0.9993
+        gurgle = glug(math.sin(burble) * bubble, 900) * 1.6
+        phase += math.tau * glide(55, 80, p) / RATE
+        rumble = math.sin(phase) * 0.1 * (0.4 + 0.6 * p) * (0.6 + 0.4 * bubble)
+        if pops() > 1 - 0.0016 * (0.5 + p):
+            pop = 0.9
+        pop *= 0.93
+        envelope = min(1.0, t / 0.04) * (0.75 + 0.25 * p)
+        samples.append(math.tanh((1.5 * hiss + gurgle + rumble) * envelope + pop * pops()))
+    return finish(samples, fade_out=0.05)
+
+
+def geyser_erupt():
+    """A geyser's eruption (e01hollow): a deep whoosh of the column leaving
+    the vent, a heavy thump under it, then a roar of fire with crackle
+    through it that drops off as the plume gutters."""
+    duration = 0.95
+    noise, crackle = Noise(0x6E61), Noise(0x6E62)
+    low, high, roar_lp, rumble = LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase, spit = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        # The whoosh: noise swept up fast through a low-pass.
+        whoosh = (low(n, glide(180, 3600, min(1.0, t / 0.16))) - high(n, 120)) \
+            * math.exp(-max(0.0, t - 0.1) / 0.12)
+        phase += math.tau * glide(70, 34, min(1.0, t / 0.3)) / RATE
+        thump = math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.16)
+        # The roar: a dark rush with a wavering body, dropping off at the end.
+        cutoff = glide(2400, 380, max(0.0, (p - 0.55) / 0.45)) if p > 0.55 else 2400
+        body = roar_lp(n, cutoff) - rumble(n, 90) * 0.3
+        waver = 0.75 + 0.25 * math.sin(math.tau * 11 * t) * math.sin(math.tau * 3.3 * t)
+        swell = min(1.0, t / 0.12) * (1 - smooth_drop(p, 0.6, 1.0))
+        if crackle() > 1 - 0.004 * swell:
+            spit = 0.8
+        spit *= 0.9
+        samples.append(math.tanh(1.4 * whoosh + 1.1 * thump + 2.2 * body * waver * swell + spit * crackle()))
+    return finish(samples, fade_in=0.002, fade_out=0.08)
+
+
+def smooth_drop(p, start, end):
+    """0 before `start`, easing to 1 at `end`: a sound's tail falling off."""
+    u = min(1.0, max(0.0, (p - start) / (end - start)))
+    return u * u * (3 - 2 * u)
+
+
+def stone_knock():
+    """A rubble stone landing (e01hollow): a dull, heavy thud of stone on
+    stone, deeper and softer than the goblin's rock's clack, a short knock
+    in it and grit settling."""
+    noise, grit, knock_lp, high = Noise(0x6E71), Noise(0x6E72), LowPass(), LowPass()
+    samples, phase, chip = [], 0.0, 0.0
+    for i in range(int(0.26 * RATE)):
+        t = i / RATE
+        n = noise()
+        phase += math.tau * glide(150, 82, min(1.0, t / 0.08)) / RATE
+        thud = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.045)
+        body = sum(math.sin(math.tau * f * t) * w for f, w in ((310, .35), (520, .2), (790, .1))) \
+            * math.exp(-t / 0.03)
+        knock = knock_lp(n, 900) * 1.8 * math.exp(-t / 0.014)
+        g = grit()
+        if t > 0.03 and g > 1 - 0.004 * math.exp(-t / 0.08):
+            chip = 0.35
+        chip *= 0.85
+        settle = chip * (g - high(g, 2500))
+        samples.append(math.tanh(1.6 * (thud + body + knock)) + settle)
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
+
+
 AMBIENCE = {
     'ambience_clearing.wav': ambience_clearing,
     'ambience_aqueduct.wav': ambience_aqueduct,
@@ -2431,5 +2789,19 @@ def build_sounds():
         'tome_bounding.wav': tome_bounding(),
         'tome_arcane.wav': tome_arcane(),
         'bound.wav': bound(),
+        'beetle_plough.wav': beetle_plough(),
+        'crawler_retreat.wav': crawler_retreat(),
+        'crawler_hop.wav': crawler_hop(),
+        'snowball_throw.wav': snowball_throw(),
+        'snowball_burst.wav': snowball_burst(),
+        'goblin_crouch.wav': goblin_crouch(),
+        'goblin_dash.wav': goblin_dash(),
+        'goblin_yelp.wav': goblin_yelp(),
+        'ground_strike.wav': ground_strike(),
+        'player_tick.wav': player_tick(),
+        'crate_break.wav': crate_break(),
+        'geyser_sputter.wav': geyser_sputter(),
+        'geyser_erupt.wav': geyser_erupt(),
+        'stone_knock.wav': stone_knock(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

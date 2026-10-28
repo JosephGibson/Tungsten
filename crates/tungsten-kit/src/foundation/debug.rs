@@ -2,8 +2,8 @@
 //! `DebugDraw` while [`KitDebug`] is on.
 
 use glam::Vec2;
-use tungsten_core::physics::{Collider, Position, Shape};
-use tungsten_core::{DebugDraw, Entity, Plugin, Schedule, Transform, World, system};
+use tungsten_core::physics::{Collider, Position, PrevPosition, Shape};
+use tungsten_core::{DebugDraw, Entity, Plugin, Schedule, Time, Transform, World, system};
 
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::trace::{KIT_TRACE_STEP, KitTrace};
@@ -170,12 +170,23 @@ fn kit_trace_step(world: &mut World) {
     }
 }
 
-/// Where `entity` is: its `Position`, else its `Transform.position`.
+/// Where `entity` is drawn: its `Position`, at `prev + (cur - prev) * alpha`
+/// with a [`PrevPosition`] while [`Time::interpolate`] is on, as
+/// `physics_sync` and the colliders' overlay place it, so a shape does not
+/// lead its sprite and collider outline by up to a step; else its
+/// `Transform.position`.
 fn point_of(world: &World, entity: Entity) -> Option<Vec2> {
-    world
-        .get::<Position>(entity)
-        .map(|position| position.0)
-        .or_else(|| world.get::<Transform>(entity).map(|t| t.position))
+    let Some(position) = world.get::<Position>(entity) else {
+        return world.get::<Transform>(entity).map(|t| t.position);
+    };
+    let alpha = world
+        .get_resource::<Time>()
+        .filter(|time| time.interpolate())
+        .map(Time::alpha);
+    Some(match (alpha, world.get::<PrevPosition>(entity)) {
+        (Some(alpha), Some(prev)) => prev.0 + (position.0 - prev.0) * alpha,
+        _ => position.0,
+    })
 }
 
 fn cross(draw: &mut DebugDraw, at: Vec2, half: f32, color: [f32; 4]) {

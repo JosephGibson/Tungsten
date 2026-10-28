@@ -1,13 +1,16 @@
 //! The audio's systems.
 
-use tungsten::core::{AudioCommands, SoundRegistry, World};
-use tungsten::kit::{Health, StateMachine};
+use glam::Vec2;
+use tungsten::core::{AudioCommands, Entity, SoundRegistry, World};
+use tungsten::kit::{CueListener, Health, StateMachine, Tags};
 
 use super::components::{Ambience, Music};
 use super::{
-    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, CRACKLE_REACH, FIRE_CRACKLE, HOLE_HUM, HOLE_HUM_REACH,
-    HUM_FADE, HUM_REACH, MUSIC_COMBAT, MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
+    AMBIENCE_FADE, COMBAT_IN, COMBAT_OUT, FIRE_CRACKLE, HOLE_HUM, HUM_FADE, MUSIC_COMBAT,
+    MUSIC_EXPLORE, MUSIC_PAUSE, PAUSE_FADE, WISP_HUM,
 };
+use crate::features::combat::BURNING;
+use crate::features::elements::components::BallBurn;
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, EnemyState, Sight};
 use crate::features::level::systems::current_area;
@@ -75,9 +78,32 @@ pub fn duck(world: &mut World) {
     });
 }
 
+/// `audio_listen`, in the react phase before the kit's cues: the listener
+/// follows the live player's centre, so the step's sounds are placed by
+/// it; a dead player's stays where it fell.
+pub fn listen(world: &mut World) {
+    let Some((_, at)) = enemies::systems::player(world) else {
+        return;
+    };
+    if let Some(listener) = world.get_resource_mut::<CueListener>() {
+        listener.set_position(at);
+    }
+}
+
+/// The listener's gain at the nearest of `sources`, the one it hears
+/// loudest: 0 with no listener or no source.
+fn nearest_gain(world: &World, sources: impl IntoIterator<Item = Vec2>) -> f32 {
+    world.get_resource::<CueListener>().map_or(0.0, |listener| {
+        sources
+            .into_iter()
+            .map(|at| listener.gain(at))
+            .fold(0.0, f32::max)
+    })
+}
+
 /// `audio_hum`, after the duck: while gameplay is on top, the wisps' hum
-/// sounds at its level by the nearest live, thinking wisp, falling to 0 at
-/// [`HUM_REACH`] from the player.
+/// sounds at its level times the listener's gain at the nearest live,
+/// thinking wisp.
 pub fn hum(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -85,29 +111,18 @@ pub fn hum(world: &mut World) {
     let Some(voice) = music.hum.filter(|_| !music.ducked) else {
         return;
     };
-    let player = enemies::systems::player(world).map(|(_, at)| at);
-    let nearest = player.and_then(|player| {
-        world
-            .query::<(
-                tungsten::core::Entity,
-                &Enemy,
-                &Health,
-                &StateMachine<EnemyState>,
-            )>()
-            .filter(|(_, enemy, health, machine)| {
-                enemy.kind == EnemyKind::Wisp && !health.is_dead() && !machine.is_held()
-            })
-            .filter_map(|(entity, ..)| enemies::centre(world, entity))
-            .map(|at| at.distance(player))
-            .min_by(f32::total_cmp)
-    });
+    let wisps = world
+        .query::<(Entity, &Enemy, &Health, &StateMachine<EnemyState>)>()
+        .filter(|(_, enemy, health, machine)| {
+            enemy.kind == EnemyKind::Wisp && !health.is_dead() && !machine.is_held()
+        })
+        .filter_map(|(entity, ..)| enemies::centre(world, entity));
+    let gain = nearest_gain(world, wisps);
     let registry = world.resource::<SoundRegistry>();
     let level = registry
         .get_by_id(WISP_HUM)
         .map_or(0.0, |handle| registry.get_volume(handle));
-    let volume = nearest.map_or(0.0, |distance| {
-        level * (1.0 - distance / HUM_REACH).clamp(0.0, 1.0)
-    });
+    let volume = level * gain;
     if (volume - music.hum_level).abs() < 0.01 {
         return;
     }
@@ -121,8 +136,8 @@ pub fn hum(world: &mut World) {
 }
 
 /// `audio_holes`, after the duck: while gameplay is on top, the holes' hum
-/// sounds at its level by the nearest open hole, falling to 0 at
-/// [`HOLE_HUM_REACH`] from the player and when the last hole closes.
+/// sounds at its level times the listener's gain at the nearest open hole,
+/// falling to 0 when the last hole closes.
 pub fn holes(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -130,20 +145,12 @@ pub fn holes(world: &mut World) {
     let Some(voice) = music.holes.filter(|_| !music.ducked) else {
         return;
     };
-    let player = enemies::systems::player(world).map(|(_, at)| at);
-    let nearest = player.and_then(|player| {
-        toys::systems::holes(world)
-            .into_iter()
-            .map(|at| at.distance(player))
-            .min_by(f32::total_cmp)
-    });
+    let gain = nearest_gain(world, toys::systems::holes(world));
     let registry = world.resource::<SoundRegistry>();
     let level = registry
         .get_by_id(HOLE_HUM)
         .map_or(0.0, |handle| registry.get_volume(handle));
-    let volume = nearest.map_or(0.0, |distance| {
-        level * (1.0 - distance / HOLE_HUM_REACH).clamp(0.0, 1.0)
-    });
+    let volume = level * gain;
     if (volume - music.holes_level).abs() < 0.01 && (volume > 0.0 || music.holes_level == 0.0) {
         return;
     }
@@ -156,10 +163,30 @@ pub fn holes(world: &mut World) {
     });
 }
 
+/// Every burning thing's centre: lit fuel (the crates), the small balls
+/// with fire left, and the live targets tagged burning (the player, the
+/// dummy and the enemies).
+fn fires(world: &World) -> impl Iterator<Item = Vec2> + '_ {
+    let fuel = world
+        .query::<(Entity, &Fuel)>()
+        .filter(|(_, fuel)| fuel.lit)
+        .map(|(entity, _)| entity);
+    let balls = world
+        .query::<(Entity, &BallBurn)>()
+        .filter(|(_, burn)| burn.remaining > 0.0)
+        .map(|(entity, _)| entity);
+    let targets = world
+        .query::<(Entity, &Health, &Tags)>()
+        .filter(|(_, health, tags)| !health.is_dead() && tags.has(BURNING))
+        .map(|(entity, ..)| entity);
+    fuel.chain(balls)
+        .chain(targets)
+        .filter_map(|entity| enemies::centre(world, entity).or_else(|| body_centre(world, entity)))
+}
+
 /// `audio_crackle`, after the duck: while gameplay is on top, the fires'
-/// crackle sounds at its level by the nearest burning crate, falling to 0
-/// at [`CRACKLE_REACH`] from the player and when the last fire falls in or
-/// goes out.
+/// crackle sounds at its level times the listener's gain at the nearest
+/// burning thing, falling to 0 when the last fire falls in or goes out.
 pub fn crackle(world: &mut World) {
     let Some(music) = world.get_resource::<Music>().copied() else {
         return;
@@ -167,22 +194,12 @@ pub fn crackle(world: &mut World) {
     let Some(voice) = music.crackle.filter(|_| !music.ducked) else {
         return;
     };
-    let player = enemies::systems::player(world).map(|(_, at)| at);
-    let nearest = player.and_then(|player| {
-        world
-            .query::<(tungsten::core::Entity, &Fuel)>()
-            .filter(|(_, fuel)| fuel.lit)
-            .filter_map(|(entity, _)| body_centre(world, entity))
-            .map(|at| at.distance(player))
-            .min_by(f32::total_cmp)
-    });
+    let gain = nearest_gain(world, fires(world));
     let registry = world.resource::<SoundRegistry>();
     let level = registry
         .get_by_id(FIRE_CRACKLE)
         .map_or(0.0, |handle| registry.get_volume(handle));
-    let volume = nearest.map_or(0.0, |distance| {
-        level * (1.0 - distance / CRACKLE_REACH).clamp(0.0, 1.0)
-    });
+    let volume = level * gain;
     if (volume - music.crackle_level).abs() < 0.01 && (volume > 0.0 || music.crackle_level == 0.0) {
         return;
     }

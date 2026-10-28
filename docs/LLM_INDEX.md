@@ -71,7 +71,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 
 ## Examples
 
-Run with `cargo run -p example-NN-name`.
+Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd examples/01_platformer && cargo run` (`D-197`).
 
 | Task | Open |
 | --- | --- |

@@ -56,6 +56,10 @@ pub const ANCHORS: &str = "player";
 /// hurt clip.
 pub const HURT_SECS: f32 = 0.12;
 pub const HURT_CLIP_SECS: f32 = 0.2;
+/// The hurt edge a tick raises at least, and the seconds the edge falls
+/// from full to nothing over.
+pub const TICK_EDGE: f32 = 0.5;
+pub const EDGE_SECS: f32 = 0.4;
 
 /// The player.
 fn player(world: &World) -> Option<Entity> {
@@ -316,10 +320,11 @@ pub fn staff_light(world: &mut World) {
 }
 
 /// `player_hurt`, in the react phase: a blow on the player plays its hurt
-/// sound, shake, tint and clip, and the hit that kills it, a blow or a
-/// tick, its death sound and a harder shake in their place; a tick of
-/// burning or bleeding shows in the flash alone (X1). `cursor` reads each
-/// hit once.
+/// sound, shake, tint and clip and fills the hurt edge, and the hit that
+/// kills it, a blow or a tick, its death sound and a harder shake in their
+/// place; a tick of burning or bleeding that does not kill raises the edge
+/// to [`TICK_EDGE`] at least and plays its soft tick, once a step however
+/// many land (K1 stays). `cursor` reads each hit once.
 pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(player) = player(world) else {
         return;
@@ -327,21 +332,29 @@ pub fn hurt(world: &mut World, cursor: &mut EventCursor<Damaged>) {
     let Some(events) = world.get_resource::<EventQueue<Damaged>>() else {
         return;
     };
-    let (mut hurt, mut killed) = (false, false);
+    let (mut hurt, mut ticked, mut killed) = (false, false, false);
     for hit in cursor.read(events).filter(|hit| hit.entity == player) {
         hurt |= !hit.periodic;
+        ticked |= hit.periodic && !hit.killed;
         killed |= hit.killed;
     }
-    if hurt && let Some(moves) = world.get_mut::<Moves>(player) {
-        moves.hurt = HURT_SECS;
-        moves.hurt_clip = HURT_CLIP_SECS;
+    if let Some(moves) = world.get_mut::<Moves>(player) {
+        if hurt {
+            moves.hurt = HURT_SECS;
+            moves.hurt_clip = HURT_CLIP_SECS;
+            moves.edge = 1.0;
+        } else if ticked && !killed {
+            moves.edge = moves.edge.max(TICK_EDGE);
+        }
     }
     let sound = if killed {
         Sound::PlayerDied
-    } else {
+    } else if hurt {
         Sound::PlayerHurt
+    } else {
+        Sound::PlayerTicked
     };
-    if (hurt || killed)
+    if (hurt || ticked || killed)
         && let Some(at) = body_centre(world, player)
     {
         audio::play(world, sound, at);
@@ -469,6 +482,7 @@ pub fn clips(world: &mut World) {
     ] {
         *timer = (*timer - dt).max(0.0);
     }
+    moves.edge = (moves.edge - dt / EDGE_SECS).max(0.0);
     let aim = moves.aim;
     let gesture = moves.gesture.filter(|_| moves.cast > 0.0);
     let clip = if moves.dead {

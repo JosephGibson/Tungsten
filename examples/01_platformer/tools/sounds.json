@@ -150,7 +150,7 @@
   "ex10_thunder_sfx": {
     "looping": false,
     "path": "sounds/thunder.wav",
-    "volume": 0.75
+    "volume": 0.7
   },
   "ex10_crackle_sfx": {
     "looping": false,
@@ -245,7 +245,7 @@
   "ex10_beetle_paw_sfx": {
     "looping": false,
     "path": "sounds/beetle_paw.wav",
-    "volume": 0.45
+    "volume": 0.55
   },
   "ex10_beetle_charge_sfx": {
     "looping": false,
@@ -508,5 +508,75 @@
     "looping": false,
     "path": "sounds/bound.wav",
     "volume": 0.4
+  },
+  "ex10_beetle_plough_sfx": {
+    "looping": false,
+    "path": "sounds/beetle_plough.wav",
+    "volume": 0.6
+  },
+  "ex10_crawler_retreat_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_retreat.wav",
+    "volume": 0.45
+  },
+  "ex10_crawler_hop_sfx": {
+    "looping": false,
+    "path": "sounds/crawler_hop.wav",
+    "volume": 0.4
+  },
+  "ex10_snowball_throw_sfx": {
+    "looping": false,
+    "path": "sounds/snowball_throw.wav",
+    "volume": 0.45
+  },
+  "ex10_snowball_burst_sfx": {
+    "looping": false,
+    "path": "sounds/snowball_burst.wav",
+    "volume": 0.5
+  },
+  "ex10_goblin_crouch_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_crouch.wav",
+    "volume": 0.45
+  },
+  "ex10_goblin_dash_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_dash.wav",
+    "volume": 0.5
+  },
+  "ex10_goblin_yelp_sfx": {
+    "looping": false,
+    "path": "sounds/goblin_yelp.wav",
+    "volume": 0.55
+  },
+  "ex10_ground_strike_sfx": {
+    "looping": false,
+    "path": "sounds/ground_strike.wav",
+    "volume": 0.5
+  },
+  "ex10_player_tick_sfx": {
+    "looping": false,
+    "path": "sounds/player_tick.wav",
+    "volume": 0.3
+  },
+  "ex10_crate_break_sfx": {
+    "looping": false,
+    "path": "sounds/crate_break.wav",
+    "volume": 0.55
+  },
+  "ex10_geyser_sputter_sfx": {
+    "looping": false,
+    "path": "sounds/geyser_sputter.wav",
+    "volume": 0.45
+  },
+  "ex10_geyser_erupt_sfx": {
+    "looping": false,
+    "path": "sounds/geyser_erupt.wav",
+    "volume": 0.45
+  },
+  "ex10_stone_knock_sfx": {
+    "looping": false,
+    "path": "sounds/stone_knock.wav",
+    "volume": 0.5
   }
 }

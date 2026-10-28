@@ -4,8 +4,9 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import wave
 
-from art import TOOLS, build_art, read_grid, validate_art, validate_palette
+from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
 from generate import generate
 from level import FAMILIES, build_level, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
@@ -231,6 +232,210 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+
+# e01foes' contract, the files its families own as the game reads them: each
+# clip's frame size, durations and looping, then whether it has a left-facing
+# twin and whether its frames stand on row 60; each particle config's cap;
+# each sound's seconds. Its placeholders pass it, and so must its art.
+ASSETS = TOOLS.parent / 'assets'
+FOE_CLIPS = {
+    'crawler_walk': ((64, 64), [90] * 6, True, True, True),
+    'crawler_windup': ((64, 64), [100] * 4, False, True, True),
+    'crawler_lunge': ((64, 64), [60, 80, 400], False, True, True),
+    'crawler_recover': ((64, 64), [100, 120, 140], False, True, True),
+    'crawler_scared': ((64, 64), [90, 70, 90, 70], True, True, True),
+    'crawler_retreat': ((64, 64), [80] * 6, True, True, True),
+    'crawler_hop': ((64, 64), [70, 90, 240], False, True, False),
+    'crawler_snowball_windup': ((64, 64), [90] * 4, False, True, True),
+    'crawler_snowball_throw': ((64, 64), [50, 80, 120], False, True, True),
+    'snowball': ((16, 16), [60] * 4, True, False, False),
+    'snowball_burst': ((48, 48), [50] * 6, False, False, False),
+    'beetle_paw': ((64, 64), [100] * 8, False, True, True),
+    'beetle_charge': ((64, 64), [60] * 4, True, True, True),
+    'charge_streak': ((64, 24), [50] * 4, True, True, False),
+    'goblin_dash_windup': ((64, 64), [120, 180], False, True, True),
+    'goblin_dash': ((64, 64), [70] * 4, True, True, True),
+    'goblin_panic': ((64, 64), [70] * 6, True, True, True),
+}
+FOE_PARTICLES = {'snowball_burst': 24, 'paw_dust': 12, 'dash_dust': 10}
+FOE_SOUNDS = {
+    'beetle_paw': (.75, .85), 'beetle_plough': (0, .35), 'crawler_retreat': (.4, .7),
+    'crawler_hop': (0, .35), 'snowball_throw': (0, .35), 'snowball_burst': (0, .45),
+    'goblin_crouch': (0, .35), 'goblin_dash': (0, .35), 'goblin_yelp': (.4, .8),
+}
+
+
+class FoeContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def sprite(self, name):
+        from PIL import Image
+        with Image.open(ASSETS / self.manifest['sprites'][name]['path']) as im:
+            return im.convert('RGBA')
+
+    def clip(self, name):
+        return json.loads((ASSETS / self.manifest['animations'][name]['path']).read_text())
+
+    def test_every_clip_keeps_its_size_timing_twin_and_feet(self):
+        from PIL import ImageOps
+        for clip, (size, durations, looping, twinned, grounded) in FOE_CLIPS.items():
+            data = self.clip('ex10_' + clip)
+            self.assertEqual(data['looping'], looping, clip)
+            self.assertEqual([f['duration_ms'] for f in data['frames']], durations, clip)
+            sprites = [f['sprite'] for f in data['frames']]
+            self.assertEqual(sprites, [f'ex10_{clip}_{i}' for i in range(len(durations))], clip)
+            self.assertEqual('ex10_' + clip + '_left' in self.manifest['animations'], twinned, clip)
+            if twinned:
+                left = self.clip('ex10_' + clip + '_left')
+                self.assertEqual([f['duration_ms'] for f in left['frames']], durations, clip)
+                self.assertEqual([f['sprite'] for f in left['frames']], [s + '_left' for s in sprites], clip)
+            for name in sprites:
+                im = self.sprite(name)
+                self.assertEqual(im.size, size, name)
+                if twinned:
+                    self.assertEqual(self.sprite(name + '_left').tobytes(), ImageOps.mirror(im).tobytes(), name)
+                if grounded:
+                    self.assertEqual(im.getbbox()[3] - 1, 60, f'{name}: its lowest opaque row')
+
+    def test_the_crawler_walk_reaches_thirty_to_thirty_two_pixels_each_side(self):
+        # Lightning meets a crawler within 32 px of its centre, x 32 on its
+        # 64 px frame, which bounds the reach (`KindInfo::strike`).
+        boxes = [self.sprite(f'ex10_crawler_walk_{i}').getbbox() for i in range(6)]
+        self.assertGreaterEqual(32 - min(b[0] for b in boxes), 30)
+        self.assertGreaterEqual(max(b[2] for b in boxes) - 32, 30)
+        self.assertEqual(self.sprite('ex10_icon_crawler').size, (36, 36))
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in FOE_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_and_volumes(self):
+        for name, (shortest, longest) in FOE_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertFalse(sound['looping'], name)
+            self.assertTrue(.4 <= sound['volume'] <= .75, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
+
+
+# e01sfx's contract, the files its families own as the
+# game reads them: each sprite's size, the shock overlay's four frames a
+# class, each particle config's cap, and each sound's shortest and longest
+# seconds, its quietest and loudest volume and whether it loops. Its
+# placeholders pass it, and so must its art.
+SFX_SPRITES = {
+    **{f'status_crackle_{name}_{f}': (size, size) for name, size in STATUS_CLASSES.items() for f in range(4)},
+    'scorch': (48, 16),
+    **{f'plank_{i}': (32, 16) for i in range(5)},
+    'hurt_edge': (320, 180),
+}
+SFX_PARTICLES = {'shock_sparks': 24, 'ground_sparks': 32, 'plank_splinters': 20,
+                 'frost_wall_hit': 18, 'flame_wall_hit': 18}
+SFX_SOUNDS = {
+    'ground_strike': (.3, 1.0, .35, .8, False),
+    'player_tick': (0, .2, .2, .4, False),
+    'crate_break': (.25, .9, .35, .8, False),
+    'thunder': (1.6, 3.6, .35, .8, False),
+    'fire_crackle': (2.0, 2.0, .35, .8, True),
+}
+
+
+class EffectsContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def test_sprites_keep_their_sizes_and_the_overlay_four_frames(self):
+        from PIL import Image
+        for name, size in SFX_SPRITES.items():
+            with Image.open(ASSETS / self.manifest['sprites']['ex10_' + name]['path']) as im:
+                self.assertEqual(im.size, size, name)
+        for name in STATUS_CLASSES:
+            self.assertNotIn(f'ex10_status_crackle_{name}_4', self.manifest['sprites'], name)
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in SFX_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_volumes_and_loops(self):
+        for name, (shortest, longest, quietest, loudest, looping) in SFX_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertEqual(sound['looping'], looping, name)
+            self.assertTrue(quietest <= sound['volume'] <= loudest, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
+
+
+# e01hollow's contract, the files its families own as the game reads them:
+# each sprite's size and how many a family has, each stone's lowest opaque
+# row on its body box's bottom, each particle config's cap, and each sound's
+# shortest and longest seconds and its quietest and loudest volume. Its
+# placeholders pass it, and so must its art.
+HOLLOW_FAMILIES = {
+    'geyser_vent': ((64, 32), 1),
+    'geyser_vent_choked': ((64, 32), 1),
+    'geyser_sputter_': ((64, 64), 4),
+    'geyser_plume_': ((64, 176), 6),
+    'stone_small_': ((32, 32), 2),
+    'stone_medium_': ((32, 32), 2),
+    'stone_large_': ((64, 64), 2),
+}
+HOLLOW_STONE_FEET = {'small': 31, 'medium': 31, 'large': 63}
+HOLLOW_PARTICLES = {'geyser_embers': 16, 'geyser_burst': 24}
+HOLLOW_SOUNDS = {
+    'geyser_sputter': (.4, .7, .3, .7),
+    'geyser_erupt': (.6, 1.0, .3, .7),
+    'stone_knock': (.08, .4, .3, .7),
+}
+
+
+class HollowContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def sprite(self, name):
+        from PIL import Image
+        with Image.open(ASSETS / self.manifest['sprites']['ex10_' + name]['path']) as im:
+            return im.convert('RGBA')
+
+    def test_sprites_keep_their_sizes_counts_and_the_stones_feet(self):
+        for family, (size, count) in HOLLOW_FAMILIES.items():
+            names = [family] if count == 1 else [f'{family}{i}' for i in range(count)]
+            for name in names:
+                self.assertEqual(self.sprite(name).size, size, name)
+            if count > 1:
+                self.assertNotIn(f'ex10_{family}{count}', self.manifest['sprites'], family)
+        for size, feet in HOLLOW_STONE_FEET.items():
+            for i in range(2):
+                self.assertEqual(self.sprite(f'stone_{size}_{i}').getbbox()[3] - 1, feet, f'stone_{size}_{i}')
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in HOLLOW_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_and_volumes(self):
+        for name, (shortest, longest, quietest, loudest) in HOLLOW_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertFalse(sound['looping'], name)
+            self.assertTrue(quietest <= sound['volume'] <= loudest, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
 
 
 if __name__=='__main__':unittest.main()

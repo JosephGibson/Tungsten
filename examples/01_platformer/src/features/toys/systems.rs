@@ -42,6 +42,7 @@ use crate::features::elements::{
 use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyKind, Held, Throws};
 use crate::features::level::components::{Doused, Hazard};
+use crate::features::level::geyser::{self, Geyser};
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Player;
 use crate::features::player::systems::escaped;
@@ -70,9 +71,12 @@ const FREEZE_TIME: f32 = elements::FREEZE_TIME;
 /// the mist and the contact.
 const COLD_EMITTERS: [&str; 3] = ["ex10_ice_beam", "ex10_ice_mist", "ex10_ice_contact"];
 const FIRE_EMITTERS: [&str; 3] = ["ex10_flame_spray", "ex10_flame_mist", "ex10_ball_burn"];
-/// The bursts on a target a spray damages, every second pulse (01 (h)).
+/// The bursts on a target a spray damages, every second pulse (01 (h)),
+/// and on every other surface it meets (e01sfx).
 const FROST_HIT: &str = "ex10_frost_hit";
 const FLAME_HIT: &str = "ex10_flame_hit";
+pub const FROST_WALL_HIT: &str = "ex10_frost_wall_hit";
+pub const FLAME_WALL_HIT: &str = "ex10_flame_wall_hit";
 /// A spray's loop, by its element.
 const COLD_LOOP: &str = "ex10_ice_spray_sfx";
 const FIRE_LOOP: &str = "ex10_flame_spray_sfx";
@@ -836,9 +840,9 @@ pub fn bounds(world: &mut World) {
 }
 
 /// `iron_friction`, in the overlap phase after the physics step: the solver
-/// has no friction, so iron, a prop (a crate or a keg as wood, a bomb or a
-/// rock rolling) or a dummy resting on something loses horizontal speed, a
-/// frozen one less, a scrap a sixteenth.
+/// has no friction, so iron, a prop (a crate, a keg or a stone as wood, a
+/// bomb or a rock rolling) or a dummy resting on something loses horizontal
+/// speed, a frozen one less, a scrap a sixteenth.
 pub fn friction(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     let Some(events) = world.get_resource::<EventQueue<tungsten::core::CollisionEvent>>() else {
@@ -1093,16 +1097,35 @@ fn fires_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Enti
         .collect()
 }
 
+/// The geysers a ray from `start` along `aim` crosses before `length`, by
+/// their vent boxes, which stand over the floor.
+fn geysers_crossed(world: &World, start: Vec2, aim: Vec2, length: f32) -> Vec<Entity> {
+    world
+        .query::<(Entity, &Geyser, &Transform)>()
+        .filter(|(_, _, at)| {
+            let shape = Shape::Aabb {
+                half_extents: geyser::VENT_HALF,
+            };
+            let centre = at.position + geyser::VENT_CENTRE;
+            ray_distance(start, aim, centre, shape, length).is_some_and(|t| t <= length)
+        })
+        .map(|(entity, ..)| entity)
+        .collect()
+}
+
 /// Holds `caster`'s spray of `element` for this step. In a cold cone, iron,
 /// balls, crates and kegs chill, a burning small ball bursts into steam, a
-/// burning crate or a lit keg steams and goes out, and a fire hazard goes
-/// out for a while; in a fire cone small balls, crates and kegs light,
+/// burning crate or a lit keg steams and goes out, a fire hazard goes out
+/// for a while and a geyser's vent chills toward its choke; in a fire cone small balls, crates and kegs light,
 /// credited to the caster, and a frozen body explodes. Every pulse of
 /// [`SPRAY_PULSE`] the live targets its rays meet take the element's damage
 /// ([`COLD_SPRAY_DPS`] or [`FIRE_SPRAY_DPS`] a second) from the caster,
 /// and every second pulse, from the first, each bursts at
-/// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), a
-/// cosmetic burst the cap may drop.
+/// its contact in the element's hit ([`FROST_HIT`], [`FLAME_HIT`]), every
+/// other body met (props, balls, iron, frozen bodies, a lava basin) and the
+/// nearest ray stop on a tile short of the reach in its surface hit
+/// ([`FROST_WALL_HIT`], [`FLAME_WALL_HIT`]): cosmetic bursts the cap may
+/// drop.
 pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let Some((centre, aim)) = hold_spray(world, caster, aim, element) else {
         return;
@@ -1115,14 +1138,29 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     let mut met: Vec<(Entity, Vec2)> = Vec::new();
     let mut fires: Vec<Entity> = Vec::new();
     let mut basins: Vec<Entity> = Vec::new();
+    let mut geysers: Vec<Entity> = Vec::new();
+    // The nearest ray stop on a tile short of the reach.
+    let mut wall: Option<Vec2> = None;
     let bodies = traced_near(world, caster, centre, reach(element));
     let tiles = SolidTiles::of(world);
     for direction in rays(aim) {
         let (at, hit) = trace_among(&bodies, &tiles, centre, direction, reach(element));
+        let short = centre.distance(at) < reach(element) - 0.01;
+        if hit.is_none()
+            && short
+            && wall.is_none_or(|w| centre.distance_squared(at) < centre.distance_squared(w))
+        {
+            wall = Some(at);
+        }
         if element == Element::Cold {
             for fire in fires_crossed(world, centre, direction, centre.distance(at)) {
                 if !fires.contains(&fire) {
                     fires.push(fire);
+                }
+            }
+            for geyser in geysers_crossed(world, centre, direction, centre.distance(at)) {
+                if !geysers.contains(&geyser) {
+                    geysers.push(geyser);
                 }
             }
             // A cold ray that stops on lava's surface chills its basin.
@@ -1145,6 +1183,9 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
     for basin in basins {
         crate::features::level::lava::chill(world, basin);
     }
+    for geyser in geysers {
+        geyser::chill(world, geyser);
+    }
     let (pulses, bursts) = world
         .query_mut::<&mut Spray>()
         .find(|spray| spray.caster == caster && spray.element == element)
@@ -1159,15 +1200,26 @@ pub fn spray(world: &mut World, caster: Entity, aim: Vec2, element: Element) {
             }
             (pulses, bursts)
         });
-    let (kind, hit, dps) = match element {
-        Element::Cold => (Kind::Cold, FROST_HIT, COLD_SPRAY_DPS),
-        Element::Fire => (Kind::Fire, FLAME_HIT, FIRE_SPRAY_DPS),
+    let (kind, hit, surface, dps) = match element {
+        Element::Cold => (Kind::Cold, FROST_HIT, FROST_WALL_HIT, COLD_SPRAY_DPS),
+        Element::Fire => (Kind::Fire, FLAME_HIT, FLAME_WALL_HIT, FIRE_SPRAY_DPS),
     };
+    for _ in 0..bursts {
+        if let Some(at) = wall {
+            spawn_burst(world, surface, at);
+        }
+    }
     for &(target, contact) in &met {
         let live = world
             .get::<tungsten::kit::Health>(target)
             .is_some_and(|health| !health.is_dead());
-        if !live || target == caster {
+        if target == caster {
+            continue;
+        }
+        if !live {
+            for _ in 0..bursts {
+                spawn_burst(world, surface, contact);
+            }
             continue;
         }
         for _ in 0..pulses {

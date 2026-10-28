@@ -67,6 +67,10 @@ pub struct Moves {
     /// Game seconds a blow's hurt clip still holds
     /// (`systems::HURT_CLIP_SECS`).
     pub hurt_clip: f32,
+    /// The hurt edge's share over the view, 0 to 1: a blow's full, a
+    /// tick's at least `systems::TICK_EDGE`, falling to 0 over
+    /// `systems::EDGE_SECS`.
+    pub edge: f32,
     /// The last cast's aim, which its gesture faces.
     pub aim: Vec2,
     /// The one-shot clip shown over the animator's.

@@ -7,11 +7,14 @@
 //! hurting every target within [`SLAM_REACH`] of its fist, shaking the
 //! camera, kicking the bodies by their mass and shattering frozen things.
 //! Its brain keeps the attack its tell chose. Farther off,
-//! with an iron block, a bowling ball, a crate (burning ones too), or a
-//! frozen enemy or dummy within [`PICKUP_REACH`], it lifts it over its head
-//! and throws it at the player on a ballistic arc; [`Throws`] credits it
-//! with the body's impacts. A crate that falls in while held leaves its
-//! hands empty.
+//! with an iron block, a bowling ball, a crate (burning ones too), a keg
+//! whose fuse is unlit, or a frozen enemy or dummy within [`PICKUP_REACH`],
+//! it lifts it over its head and throws it at the player on a ballistic
+//! arc; [`Throws`] credits it with the body's impacts. A crate that falls
+//! in while held leaves its hands empty. Its way clear ([`clear_way`]):
+//! chasing, searching or going home it lifts what lies ahead and kicks
+//! what it may not lift; it carries what it lifts until it throws it in a
+//! chase or sets it down back on patrol.
 //!
 //! A held object keeps its entity and save ID: its body turns a sensor,
 //! which [`holds`] puts at the troll's hands before each step at the
@@ -29,21 +32,21 @@
 use glam::Vec2;
 use tungsten::core::{
     BodyKind, Collider, Entity, EventQueue, PhysicsConfig, Position, PrevPosition, RigidBody,
-    ShakeEvent, Shape, Time, Velocity, World,
+    ShakeEvent, Shape, Velocity, World,
 };
 use tungsten::kit::{Health, PlatformerController, Stats};
 use tungsten::physics::wake;
 
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Held, Strike, Throw, Throws};
 use super::systems::{elapsed, face, go, pace, player, rest, sees, stride};
-use super::{ARRIVED, centre};
+use super::{ARRIVED, WALK_SHOVE_MOST, centre, hop};
 use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::player::PLAYER_HALF;
-use crate::features::props::components::Crate;
+use crate::features::props::components::{Crate, Keg};
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
 use crate::shared::{SaveId, body_centre, spawn_burst};
@@ -125,8 +128,8 @@ pub fn held(world: &World, troll: Entity) -> Option<Entity> {
 }
 
 /// Whether a troll may lift `entity`: an iron block, a bowling ball, a
-/// crate, burning or not, or a live frozen enemy or dummy, not a troll,
-/// held or in flight; never a keg.
+/// crate, burning or not, a keg whose fuse is unlit (a lit one it kicks),
+/// or a live frozen enemy or dummy, not a troll, held or in flight.
 fn liftable(world: &World, entity: Entity) -> bool {
     let target = world.has::<Dummy>(entity)
         || world
@@ -137,9 +140,13 @@ fn liftable(world: &World, entity: Entity) -> bool {
         && world
             .get::<Health>(entity)
             .is_some_and(|health| !health.is_dead());
+    let unlit = world
+        .get::<Keg>(entity)
+        .is_some_and(|keg| keg.fuse.is_none());
     let thing = world.has::<IronBlock>(entity)
         || world.has::<BowlingBall>(entity)
-        || world.has::<Crate>(entity);
+        || world.has::<Crate>(entity)
+        || unlit;
     (thing || frozen_target)
         && !world.has::<Held>(entity)
         && world
@@ -458,9 +465,71 @@ pub fn holds(world: &mut World) {
     }
 }
 
-/// On patrol it walks its ground, turning at each end and at walls.
+/// On patrol it walks its ground, turning at each end and at walls,
+/// having set down what it carried home ([`set_down`]).
 pub fn patrol(world: &mut World, troll: Entity) {
+    if let Some(object) = held(world, troll) {
+        set_down(world, troll, object);
+    }
     pace(world, troll, PATROL_PACE);
+}
+
+/// Sets `object` down out of `troll`'s hands: from their height but behind
+/// its back, at rest, so it falls to the ground where its patrol walks
+/// away from it, not onto its head, too short a way to set a keg off.
+fn set_down(world: &mut World, troll: Entity, object: Entity) {
+    let heading = world.get::<Enemy>(troll).map_or(1.0, |mine| mine.heading);
+    if let (Some(at), Some(collider), Some(point)) = (
+        centre(world, troll),
+        world.get::<Collider>(object).copied(),
+        world.get::<Position>(object).map(|position| position.0),
+    ) {
+        let behind = EnemyKind::Troll.info().half.x + half(collider.shape).x + 4.0;
+        let moved = Vec2::new(at.x - heading * behind - collider.offset.x, point.y);
+        if let Some(position) = world.get_mut::<Position>(object) {
+            position.0 = moved;
+        }
+        if let Some(prev) = world.get_mut::<PrevPosition>(object) {
+            prev.0 = moved;
+        }
+    }
+    drop_held(world, object);
+}
+
+/// Clears its way along `heading` (V25): holding nothing, it lifts what it
+/// may lift just ahead of it ([`hop::body_ahead`]); a body ahead it may not
+/// lift, too heavy for a walker's shove ([`WALK_SHOVE_MOST`]), it kicks
+/// along its heading by its blow's kick, [`KICK`] over its mass at most
+/// [`KICK_MOST`] and [`KICK_RISE`] of it up, unless the body already moves
+/// away faster, with its swipe's sound. Whether it lifted something.
+fn clear_way(world: &mut World, troll: Entity, heading: f32) -> bool {
+    let Some(body) = hop::body_ahead(world, troll, heading) else {
+        return false;
+    };
+    if held(world, troll).is_none() && liftable(world, body) && pick_up(world, troll, body) {
+        return true;
+    }
+    let Some(inv_mass) = world
+        .get::<RigidBody>(body)
+        .filter(|_| !world.has::<Held>(body))
+        .map(|own| own.inv_mass)
+    else {
+        return false;
+    };
+    let kick = (KICK * inv_mass).min(KICK_MOST);
+    let Some(velocity) = world.get_mut::<Velocity>(body) else {
+        return false;
+    };
+    if inv_mass * WALK_SHOVE_MOST >= 1.0 || velocity.0.x * heading >= kick {
+        return false;
+    }
+    velocity.0.x = heading * kick;
+    velocity.0.y = velocity.0.y.min(-KICK_RISE * kick);
+    wake(world, body);
+    if let Some(at) = body_centre(world, body) {
+        audio::play(world, Sound::TrollSwiped, at);
+    }
+    false
 }
 
 /// Its alert: it roars.
@@ -484,8 +553,8 @@ fn tell(world: &mut World, troll: Entity, x: f32, strike: Strike) {
 /// The chase: holding something, it throws; within [`SWIPE_RANGE`] it
 /// swipes and within [`SLAM_RANGE`] it slams, once its [`SLAM_COOLDOWN`]
 /// has run; else with something to lift within [`PICKUP_REACH`] it lifts
-/// it and throws; else it walks at the player. It searches once it loses
-/// sight.
+/// it and throws; else it walks at the player, clearing its way. It
+/// searches once it loses sight.
 pub fn chase(world: &mut World, troll: Entity) {
     if !sees(world, troll) {
         go(world, troll, EnemyState::Search);
@@ -516,7 +585,11 @@ pub fn chase(world: &mut World, troll: Entity) {
     {
         return tell(world, troll, target.x, Strike::Throw);
     }
-    stride(world, troll, (target.x - at.x).signum(), 1.0);
+    let heading = (target.x - at.x).signum();
+    if grounded && clear_way(world, troll, heading) {
+        return tell(world, troll, target.x, Strike::Throw);
+    }
+    stride(world, troll, heading, 1.0);
 }
 
 /// The strike `troll`'s tell chose: its brain's, else, for an older save's
@@ -578,8 +651,9 @@ pub fn attack(world: &mut World, troll: Entity) {
     }
 }
 
-/// Walks toward `point`'s column: its search's or its home's. Whether it is
-/// there, or can go no nearer.
+/// Walks toward `point`'s column, clearing its way and carrying on with
+/// what it lifts: its search's or its home's. Whether it is there, or can
+/// go no nearer.
 pub fn seek(world: &mut World, troll: Entity, point: Option<Vec2>) -> bool {
     let (Some(point), Some(at)) = (point, centre(world, troll)) else {
         rest(world, troll);
@@ -590,6 +664,7 @@ pub fn seek(world: &mut World, troll: Entity, point: Option<Vec2>) -> bool {
         rest(world, troll);
         return true;
     }
+    clear_way(world, troll, across.signum());
     !stride(world, troll, across.signum(), SEARCH_PACE)
 }
 
@@ -619,17 +694,6 @@ pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'s
                 .get::<Velocity>(troll)
                 .is_some_and(|velocity| velocity.0.x.abs() > 1.0);
             if moving { "troll_walk" } else { "troll_idle" }
-        }
-    }
-}
-
-/// `troll_cooldowns`, in the intent phase before the enemies' states: each
-/// troll's slam cooldown runs down by the step.
-pub fn cooldowns(world: &mut World) {
-    let dt = world.get_resource::<Time>().map_or(0.0, Time::delta);
-    for (enemy, brain) in world.query_mut::<(&Enemy, &mut Brain)>() {
-        if enemy.kind == EnemyKind::Troll && brain.slam_cooldown > 0.0 {
-            brain.slam_cooldown = (brain.slam_cooldown - dt).max(0.0);
         }
     }
 }

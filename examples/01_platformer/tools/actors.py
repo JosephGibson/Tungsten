@@ -18,7 +18,7 @@ from PIL import Image
 
 from art import PALETTE
 from pixels import (
-    BAYER, NEIGHBOURS, Part, add, compose, despeckle, outline, point, shade, smoothstep,
+    BAYER, NEIGHBOURS, Part, add, compose, despeckle, grade, outline, point, ramp, shade, smoothstep,
     to_image, unit,
 )
 
@@ -1435,138 +1435,376 @@ def wisp_flare_frames():
     return [to_image(wisp_canvas(i / 6, flare=True)) for i in range(6)], [60] * 6
 
 
-# The crawler: alien and low, its plates and crystals frost-blue.
+# The crawler (e01foes' redraw, V19): alien, low and many-legged, its five
+# frost-blue plates graded from a moonlit top-left to a dark underside.
 
 CRAWLER_FRAMES = 6
+CRAWLER_LIGHT = (-0.6, -0.7, 0.5)
+# Its ramps, dark to light: the carapace and head; a leg's upper segment,
+# lit along its top, and its shin; the far side's legs; the crystals' lit
+# and shadowed facets; the snow it packs (`Ѣ ѣ Ѳ Ѵ`, white-blue).
+FROST_PLATE = ('|', '{', ')', '}', 'ѳ', 'ѵ', '_')
+FROST_FEMUR = ('|', '{', ')', '}', 'ѳ')
+FROST_SHIN = ('х', '|', '{')
+FROST_FAR = ('х', 'х', '|', '{')
+ICE_LIT = ('ѵ', '_', '`', 'Ψ')
+ICE_DARK = ('{', ')', '}', 'ѳ')
+SNOW = ('Ѣ', 'ѣ', 'Ѳ', 'Ѵ', 'Ψ')
+# Its plates, tail to head: centre and radii.
+CRAWLER_PLATES = ((12.0, 50.5, 6.0, 5.0), (19.5, 49.0, 6.5, 6.0), (28.0, 48.0, 7.0, 6.5),
+                  (36.5, 48.0, 7.0, 6.0), (44.5, 49.0, 6.5, 5.5))
+# Its crystals, on the plates they grow from: the plate, its offset along
+# it, its height, its width and its lean.
+CRAWLER_CRYSTALS = ((1, 0.0, 7, 4, -1.5), (2, -1.0, 11, 5, -0.5), (2, 3.5, 5, 3, 2.0), (3, 0.5, 8, 4, 1.0),
+                    (4, -1.0, 4, 3, 1.5))
+# Each leg under its body, tail to head: its hip, how far out its knee and
+# foot reach and how high its knee rises over the hip; the end pairs arch
+# higher and wider, so the legs fan out below the plates.
+CRAWLER_LEGS = ((13, 5, 8, 5.5), (22, 4, 7, 2.5), (31, 4, 7, 2.5), (40, 6, 10, 5.5))
+CRAWLER_HIP = 54.5
+CRAWLER_FEMUR = (2.3, 2.0, 1.7)
+CRAWLER_SHIN = (1.6, 1.2, 1.0)
 
 
-def crawler_canvas(phase=0.0, scared=0.0, shiver=0, coil=0.0, stretch=0.0, squash=0.0):
-    """Five carapace plates, eight high-kneed jointed legs, a wedge head with
-    a cluster of four glowing eyes, mandibles and swept feelers, faceted ice
-    crystals growing from its back and a crystal sting; a faint cold glow
-    between its plates. `phase` steps its legs in two alternating sets of
-    four; `scared` (0 to 1) recoils it from the light: its body drawn back
-    over its planted feet and low at the front, its plates raised, its
-    feelers swept back flat, its jaws shut and its eyes squinting; `shiver`
-    draws its body a pixel further back, a tremble. The lunge in three
-    parts: `coil` (0 to 1) winds it up, drawn back and pressed low at the
-    front, knees high, sting raised, jaws parting, every eye lit; `stretch`
-    (0 to 1) is the leap, the body long and raised, the forelegs reaching
-    and the hind legs trailing, jaws wide, feelers swept back, its feet on
-    the anchor row like every walker frame's;
-    `squash` (0 to 1) is the landing, low and splayed, jaws shut."""
-    far_legs, near_legs, plates, head, crystals, feelers = (Part() for _ in range(6))
-    posed = scared or coil or stretch or squash
-    bob = round(0.6 * abs(math.sin(math.tau * phase))) if not posed else 0
-    back = round(3 * scared) + shiver + round(4 * coil) - round(2 * stretch)
-    # The body raised in the leap and pressed in a coil and a landing, its
-    # plates raised in a scare besides.
-    raised = round(3 * stretch) - round(coil) - round(3 * squash)
-    lifted = round(2 * scared) + raised
-    spread = 2.0 * stretch  # each plate further from the middle: the leap's length
+@dataclass
+class CrawlerPose:
+    """One frame of the crawler, facing right; pixels unless named."""
+    phase: float = 0.0  # its legs' stride through a cycle
+    gait: float = 1.0  # its feet swing forward (1), back (-1) or stay planted (0)
+    back: float = 0.0  # its body drawn back over its feet
+    rise: float = 0.0  # its body raised, pressed low when negative
+    tilt: float = 0.0  # its front dropped, raised when negative
+    flare: float = 0.0  # its plates raised off each other
+    spread: float = 0.0  # its plates drawn apart, the leap's length
+    legs: str = 'stand'  # stand, coil, reach, splay, spring, tuck or land
+    knees: float = 0.0  # its knees raised
+    head: tuple = (0.0, 0.0)  # its head moved
+    pitch: float = 0.0  # its head turned, up when negative (radians)
+    gape: float = 0.0  # its jaws parted
+    eyes: str = 'calm'  # calm, lit or slit
+    feelers: float = 0.0  # swept back flat at 1, forward when negative
+    sting: float = 0.0  # its sting raised
+    shiver: int = 0  # a pixel's tremble, back
+    glint: int = 0  # the walk's step, which moves its crystals' glint
+    clump: float = 0.0  # a clump of snow in its jaws, its radius
+    flecks: int = 0  # snow flung from its jaws, how far it has flown
 
-    def tilt(x):  # the front drops in a scare and a coil, rises in the leap
-        return (x - 30) * (0.05 * stretch - 0.07 * scared - 0.09 * coil)
 
-    def stride(k):  # (forward offset, lift) of leg set k's foot
-        angle = math.tau * (phase + 0.5 * k)
-        return 3.0 * math.sin(angle), 2.5 * max(0.0, math.cos(angle))
+def crawler_leg(pose, i, near, at):
+    """Leg `i` (tail to head) on the near or far side: its hip, knee and
+    foot. `at(x)` is the body's rise at column x."""
+    hip_x, reach, stride, high = CRAWLER_LEGS[i]
+    hip_x -= 0 if near else 2
+    out = -1 if i < 2 else 1  # the hind pair's knees and feet point back
+    hip = (hip_x - pose.back - pose.shiver + pose.spread * (i - 1.5), CRAWLER_HIP - at(hip_x) - (0 if near else 1.5))
+    ground = SOLE if near else SOLE - 1
+    k = (i + (0 if near else 1)) % 2  # two alternating sets of four
+    angle = math.tau * (pose.phase + 0.5 * k)
+    swing = 3.0 * pose.gait * math.sin(angle)
+    lift = 2.5 * max(0.0, math.cos(angle)) if pose.gait else 0.0
+    x, y = hip
+    if pose.legs == 'stand':
+        knee = (x + out * reach + swing * 0.5, y - high - lift * 0.6 - pose.knees)
+        foot = (x + out * stride + swing, ground - lift)
+    elif pose.legs == 'coil':  # bunched under it, knees high
+        knee = (x + out * 3.5, y - high - 2 - pose.knees)
+        foot = (x + out * 5, ground)
+    elif pose.legs == 'reach':  # forelegs flung ahead, hind legs trailing on the ground
+        if out > 0:
+            knee = (x + 6, y - high)
+            foot = (x + 12 + 2 * (i - 2), ground - 5 - 2 * (i - 2))
+        else:
+            knee = (x - 5, y - high + 1)
+            foot = (x - 12, ground)
+    elif pose.legs == 'splay':  # low and spread, landing
+        knee = (x + out * 7, y - high * 0.5)
+        foot = (x + out * 12, ground)
+    elif pose.legs == 'spring':  # pushed off: legs straight down and back
+        knee = (x + out * 2 - 2, y + 1)
+        foot = (x + out * 2 - 5, ground)
+    elif pose.legs == 'tuck':  # folded up under it, aloft
+        knee = (x + out * 5, y - 2)
+        foot = (x + out * 2, y + 3)
+    else:  # land: unfolding for the landing, forelegs ahead
+        knee = (x + out * 6, y - high * 0.5)
+        foot = (x + out * 8 + (1 if out > 0 else -1), y + 5)
+    # Every knee and foot inside the frame, its outline too.
+    knee, foot = ((min(60.5, max(2.5, q[0])), q[1]) for q in (knee, foot))
+    return hip, knee, foot
 
-    still = posed
-    centres = [(11 - back - 2 * spread, 51 - bob - lifted), (19 - back - spread, 49 - bob - lifted),
-               (28 - back, 48 - bob - lifted), (37 - back + spread, 48 - bob - lifted),
-               (45 - back + 2 * spread, 49 - bob - lifted)]
-    for i, x in enumerate((10, 20, 30, 40)):
-        ahead, lift = stride((i + 1) % 2) if not still else (0.0, 0.0)
-        y0 = 50 - bob - tilt(x) - raised
-        hip = x - back + spread * (i - 1.5)
-        reach = (6 * stretch + 5 * squash) * (1 if i >= 2 else -1)  # forelegs ahead, hind legs back
-        knee = ((hip - 4 if i < 2 else hip + 4) + ahead * 0.5 + reach * 0.5,
-                39 - bob - tilt(x) - lift * 0.6 - 5 * coil - raised)
-        foot = ((x - 8 if i < 2 else x + 7) + ahead + reach, SOLE - 1 - lift)
-        far_legs.limb([(hip + 2, y0), (knee[0] + 2, knee[1]), (foot[0] + 2, foot[1])], 2)
-    for i, x in enumerate((13, 23, 33, 43)):
-        ahead, lift = stride(i % 2) if not still else (0.0, 0.0)
-        y0 = 52 - bob - tilt(x) - raised
-        hip = x - back + spread * (i - 1.5)
-        reach = (7 * stretch + 5 * squash) * (1 if i >= 2 else -1)
-        knee = ((hip - 5 if i < 2 else hip + 5) + ahead * 0.5 + reach * 0.5,
-                40 - bob - tilt(x) - lift * 0.6 - 5 * coil - raised)
-        foot = ((x - 9 if i < 2 else x + 9) + ahead + reach, SOLE - lift)
-        near_legs.limb([(hip, y0), knee, foot], 2)
-    for cx, cy in centres:
-        plates.ellipse((cx, cy - tilt(cx)), 7 + round(squash), 6 + round(scared) - round(squash))
-    hx = 53 - round(5 * scared) - shiver - round(2 * coil) + round(4 * stretch)
-    hy = round(49 - bob - tilt(53) + scared - raised - 2 * stretch + squash)
-    head.polygon([(hx - 6, hy - 5), (hx + 4, hy - 4), (hx + 9, hy), (hx + 4, hy + 4), (hx - 6, hy + 5)])
-    gape = 1 - (1 if scared >= 0.5 else 0) + round(coil) + round(3 * stretch) - round(squash)
-    for side in (-1, 1):  # mandibles
-        head.limb([(hx + 7, hy + side * 2), (hx + 10, hy + side * (2 + gape)), (hx + 9, hy + side * (4 + gape))], 2)
-    sweep = round(2 * coil) - round(5 * scared) - round(6 * stretch)
-    flat = round(3 * scared) + round(4 * stretch)  # the feelers laid back, or swept by the leap
-    feelers.limb([(hx - 1, hy - 4), (hx + 2 + sweep, hy - 12 + flat), (hx - 4 + 2 * sweep, hy - 19 + 2 * flat)], 1)
-    feelers.limb([(hx + 2, hy - 4), (hx + 7 + sweep, hy - 11 + flat), (hx + 6 + 2 * sweep, hy - 18 + 2 * flat)], 1)
-    for i, (cx, cy) in enumerate(centres[1:4]):
-        top = cy - tilt(cx) - 6
-        h = 9 if i == 1 else 7
-        crystals.polygon([(cx - 3, top + 2), (cx + 2, top + 2), (cx + 1, top - h)])
-        crystals.polygon([(cx + 2, top + 2), (cx + 5, top + 1), (cx + 4, top - h + 4)])
-    sting = round(4 * scared) + round(7 * coil) - round(2 * stretch)  # raised in a scare and a coil
-    crystals.polygon([(6 - back, 50 - bob - tilt(6)), (2 - back + sting // 2, 46 - bob - tilt(2) - sting),
-                      (max(0, sting - back), 41 - bob - sting), (4 - back + sting // 2, 47 - bob - tilt(4) - sting // 2)])
-    canvas = compose([
-        (shade(far_legs.pixels(), '{', shadow='|'), None),
-        (shade(feelers.pixels(), '}', light='_'), None),
-        (shade(plates.pixels(), '}', light='_', shadow='{', back='|', rim='`'), None),
-        (shade(head.pixels(), ')', light='_', shadow='{', back='|', rim='`'), 'o'),
-        (shade(near_legs.pixels(), ')', light='}', shadow='{'), 'o'),
-    ])
-    for (ax, ay), (bx, _) in zip(centres, centres[1:]):  # the cold glow between plates
-        sx = (ax + bx) // 2 + 3
-        base = round(ay - tilt(ax))
-        for y in range(base - 5, base + 5):
-            if (sx, y) in canvas and canvas[(sx, y)] != 'o':
-                canvas[(sx, y)] = '|' if y % 3 else ','
-    for (x, y) in sorted(crystals.pixels()):
-        lit = (x + y) % 2 == 0 and unit('facet', x // 2, y // 3) < 0.6
-        canvas[(x, y)] = 'Ψ' if lit and unit('glint', x, y) < 0.25 else ('ϱ' if lit else '`')
-    if scared >= 0.5:  # the four eyes squinting to a dim slit
+
+def crawler_head(pose, at):
+    """Its head's points, turned by its pitch about its neck: the wedge, its
+    two mandibles, its eyes, the jaws' point and its crest; and its centre."""
+    hx = 52 - pose.back - pose.shiver + pose.head[0] + 0.5 * pose.spread
+    hy = 49 - at(52) + pose.head[1]
+    neck = (hx - 5, hy)
+
+    def place(points):
+        return turned([(hx + x, hy + y) for x, y in points], neck, pose.pitch)
+
+    wedge = place([(-6, -5), (-4, -6), (-2, -8.5), (0, -6), (2, -7), (3.5, -4.5), (8.5, -0.5), (8, 1), (4, 4),
+                   (-6, 5)])
+    g = pose.gape
+    # Pincers: each mandible reaching ahead and hooking in at its tip.
+    jaws = [place([(6, side * 1.5), (8.2, side * (2 + g)), (9.3, side * (1.2 + g)), (9.6, side * (0.4 + g * 0.7))])
+            for side in (-1, 1)]
+    eyes = {(dx, dy): point(place([(dx, dy)])[0]) for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1))}
+    mouth = place([(10, 0)])[0]
+    crest = place([(-2, -8), (2, -6.5), (-4, -5.5)])
+    return wedge, jaws, eyes, mouth, crest, (hx, hy)
+
+
+def crawler_canvas(pose=None):
+    """Five carapace plates, each graded from its moonlit top-left to its
+    shadowed underside in a few dithered steps, a pale ridge along its top
+    and a dark seam behind it with the cold glow showing through; faceted
+    ice crystals on its back, a lit and a shadowed facet each, one catching
+    a glint; eight jointed legs stepping in two sets of four, the end pairs
+    high-kneed, their upper segments lit along the top and their shins dark;
+    a wedge head with a crest, four glowing eyes and ice pincers; long
+    jointed feelers; a crystal sting. `CrawlerPose` poses it."""
+    p = pose or CrawlerPose()
+    bob = round(0.6 * abs(math.sin(math.tau * p.phase))) if p.gait and p.legs == 'stand' else 0
+
+    def at(x):  # the body's rise at column x: raised, its front dropped by the tilt
+        return bob + p.rise - p.tilt * (x - 30) / 24
+
+    shift = p.back + p.shiver
+    far = [crawler_leg(p, i, False, at) for i in range(4)]
+    near = [crawler_leg(p, i, True, at) for i in range(4)]
+    far_part = Part()
+    for hip, knee, foot in far:
+        far_part.polygon(strand([hip, lerp(hip, knee, 0.5), knee], [2.0, 1.8, 1.6]))
+        far_part.polygon(strand([knee, lerp(knee, foot, 0.5), foot], [1.4, 1.2, 1.0]))
+    layers = [(grade(far_part.pixels(), FROST_FAR, CRAWLER_LIGHT, depth=0.8), None)]
+    # The sting: an ice tail curling up over its rear to a barb that points
+    # ahead, curled higher in a scare and a coil.
+    tx, ty = 9 - shift - 2 * p.spread, 51.5 - at(8)
+    r = p.sting
+    back = min(tx - 3.6, 6.0)  # held inside the frame when the body draws back
+    curl = [(tx, ty), (tx - 0.7 * back, ty - 2), (tx - back, ty - 6.5 - 0.4 * r), (tx - 0.75 * back, ty - 10.5 - r),
+            (tx - 0.2 * back, ty - 12.5 - r), (tx + 1.5, ty - 12 - r)]
+    sting = Part()
+    sting.polygon(strand(curl, [4.6, 3.8, 3.0, 2.4, 1.6, 0.6]))
+    layers.append((grade(sting.pixels(), ICE_DARK + ICE_LIT[1:3], CRAWLER_LIGHT, bias=0.15), 'х'))
+    canvas = compose(layers)
+    plates = []
+    for i, (cx, cy, rx, ry) in enumerate(CRAWLER_PLATES):
+        x = cx - shift + p.spread * (i - 2)
+        low = 1.0 if p.legs == 'splay' else 0.0
+        plates.append((x, cy - at(cx) - 0.8 * p.flare + low, rx + low * 0.5, ry + 0.6 * p.flare - low))
+    for i, (x, y, rx, ry) in enumerate(plates):
+        part = Part()
+        part.ellipse((x, y), rx, ry)
+        inside = part.pixels()
+        colors = grade(inside, FROST_PLATE, CRAWLER_LIGHT, fall=0.3, bias=0.08)
+        for (px, py) in inside:  # a pale ridge along its top, brightest toward the back
+            if (px, py - 1) not in inside:
+                colors[(px, py)] = '_' if px < x - rx * 0.2 else 'ѵ' if px < x + rx * 0.5 else colors[(px, py)]
+        for (px, py), symbol in colors.items():  # rime catching here and there on its back
+            if py < y - 2 and symbol in ('}', 'ѳ') and unit('crawler-rime', i, round(px - x), round(py - y)) < 0.05:
+                colors[(px, py)] = 'ѵ'
+        if i:  # its seam: two dark pixels over the plate behind, the cold glow showing through
+            edge = [(px, py) for px, py in inside if (px - 1, py) not in inside]
+            for px, py in edge:
+                for k in (1, 2):
+                    if (px - k, py) in canvas and canvas[(px - k, py)] != 'o':
+                        glow = k == 2 and y - 2 <= py <= y + 3
+                        canvas[(px - k, py)] = ',' if glow else 'х'
+        canvas = compose([(canvas, None), (colors, None)])
+    # Its crystals: each a pointed prism, a lit facet and a shadowed one.
+    shards = []
+    for k, (plate, along, h, w, lean) in enumerate(CRAWLER_CRYSTALS):
+        x, y, rx, ry = plates[plate]
+        bx = x + along
+        top = y - ry * math.sqrt(max(0.0, 1 - (along / rx) ** 2)) + 2
+        h += 0.6 * p.flare
+        tip = (bx + lean, top - h)
+        mid = (bx + lean * 0.35, top + 1)
+        lit, dark = Part(), Part()
+        lit.polygon([(bx - w / 2, top + 1), (bx - w / 2 + 0.3, top - h * 0.5), tip, mid])
+        dark.polygon([tip, (bx + w / 2 - 0.2, top - h * 0.45), (bx + w / 2, top + 1), mid])
+        lit_px = lit.pixels() - dark.pixels()
+        colors = grade(dark.pixels(), ICE_DARK, CRAWLER_LIGHT, depth=1.0, bias=0.05)
+        colors.update(grade(lit_px, ICE_LIT, CRAWLER_LIGHT, depth=1.0, bias=0.1))
+        for (cx, cy) in colors:  # a dark edge along its sides, none under its foot
+            for dx, dy in NEIGHBOURS:
+                q = (cx + dx, cy + dy)
+                if q in canvas and q not in colors and q[1] < top:
+                    canvas[q] = 'х'
+        canvas.update(colors)
+        shards.append((point(tip), lit_px))
+    wedge, jaws, eyes, mouth, crest, (hx, hy) = crawler_head(p, at)
+    # The feelers: jointed, from the crown, swept up and back, or laid flat.
+    feelers = []
+    for base, reach in (((-1, -5), (1, -13, -5, -20)), ((2, -5), (6, -12, 4, -19))):
+        b = (hx + base[0], hy + base[1])
+        up = ((hx + reach[0], hy + reach[1]), (hx + reach[2], hy + reach[3]))
+        flat = ((hx - 6 + base[0], hy - 9), (hx - 17 + base[0], hy - 8.5 - 0.5 * base[0]))
+        u = max(0.0, p.feelers)
+        mid, end = lerp(up[0], flat[0], u), lerp(up[1], flat[1], u)
+        if p.feelers < 0:  # quivering forward, alert
+            mid, end = (mid[0] - 2 * p.feelers, mid[1]), (end[0] - 5 * p.feelers, end[1] - p.feelers)
+        feelers.append(turned([b, mid, end], (hx - 5, hy), p.pitch * 0.5))
+    feeler_part = Part()
+    for points in feelers:
+        feeler_part.limb(points, 1)
+    head, jaw = Part(), Part()
+    head.polygon(wedge)
+    for points in jaws:
+        jaw.polygon(strand(points, [1.8, 1.6, 1.2, 0.8]))
+    layers = [(canvas, None), ({q: '{' for q in feeler_part.pixels()}, None),
+              (grade(head.pixels(), FROST_PLATE, CRAWLER_LIGHT, fall=0.2, bias=0.05), 'х')]
+    if p.clump:  # packed snow held between its jaws
+        ball = Part()
+        ball.ellipse(mouth, p.clump, p.clump * 0.9)
+        layers.append((grade(ball.pixels(), SNOW, CRAWLER_LIGHT, bias=0.15), 'х'))
+    layers.append((grade(jaw.pixels(), ('{', ')', 'ѳ', '_', '`'), CRAWLER_LIGHT, depth=0.8, bias=0.1), 'х'))
+    femurs, shins, knees = Part(), Part(), Part()
+    for hip, knee, foot in near:
+        femurs.polygon(strand([hip, lerp(hip, knee, 0.5), knee], CRAWLER_FEMUR))
+        shins.polygon(strand([knee, lerp(knee, foot, 0.55), foot], CRAWLER_SHIN))
+        knees.ellipse(knee, 1.0, 1.0)
+    layers += [(grade(shins.pixels(), FROST_SHIN, CRAWLER_LIGHT, depth=0.8), 'х'),
+               (grade(femurs.pixels(), FROST_FEMUR, CRAWLER_LIGHT, depth=0.8, bias=-0.05), 'х'),
+               (grade(knees.pixels(), FROST_FEMUR, CRAWLER_LIGHT, depth=0.8, bias=0.15), None)]
+    canvas = compose(layers)
+    for hip, knee, foot in near + far:  # a foot on the ground stands on the sole
+        fx, fy = point(foot)
+        if fy >= SOLE - 1:
+            canvas.setdefault((fx, fy), 'х')
+    for points in feelers:  # a joint every few pixels, a pale tip
+        canvas[point(points[-1])] = '`'
+        for t in (0.45, 0.75):
+            q = point(lerp(points[1], points[2], t))
+            if q in canvas:
+                canvas[q] = '}'
+    for q in (point(c) for c in crest):  # the crest's pale ridge
+        if q in canvas:
+            canvas[q] = '_'
+    if p.eyes == 'slit':  # squinting to a dim slit
         for dx in (1, 2, 3, 4):
-            canvas[(hx + dx, hy - 1)] = '`'
+            canvas[point(turned([(hx + dx, hy - 1)], (hx - 5, hy), p.pitch)[0])] = '`'
     else:
-        fierce = coil >= 0.5 or stretch > 0  # every eye lit for the lunge
-        for dx, dy in ((2, -2), (4, -1), (1, 0), (3, 1)):  # four glowing eyes
-            canvas[(hx + dx, hy + dy)] = 'Ψ' if fierce or (dx, dy) == (4, -1) else '`'
-    speckle(canvas, plates.pixels(), 'pore', ['{'], 0.05)
-    return outline(canvas)
+        for q in eyes.values():  # dark sockets, then the eyes glowing in them
+            for nx, ny in NEIGHBOURS:
+                n = (q[0] + nx, q[1] + ny)
+                if canvas.get(n) in FROST_PLATE[1:]:
+                    canvas[n] = '|'
+        for (dx, dy), q in eyes.items():
+            canvas[q] = 'Ψ' if p.eyes == 'lit' or (dx, dy) == (4, -1) else '`'
+    # The glint: a crystal catches the moon, a step along the crystals each
+    # pair of frames, flickering between two of its pixels.
+    tip, lit = shards[(1, 3, 0)[(p.glint // 2) % 3]]
+    edge = sorted((q for q in lit if (q[0] + 1, q[1]) not in lit), key=lambda q: (q[1], q[0]))
+    if edge:
+        canvas[edge[min(len(edge) - 1, 1 + 2 * (p.glint % 2))]] = 'Ψ'
+    canvas[tip] = 'Ψ'
+    if p.flecks:  # loose snow shaken from its jaws as the head jerks
+        mx, my = mouth
+        for j, (dx, dy) in enumerate(((0.5, -2), (-1.5, -3), (1, 2), (-2.5, -1.5))):
+            q = point((min(62, mx + dx * p.flecks), my + dy * p.flecks))
+            if j < 2 + p.flecks:
+                canvas[q] = 'Ψ' if j % 2 == 0 else 'Ѳ'
+    return outline({q: s for q, s in canvas.items() if 0 <= q[0] < SIZE and 0 <= q[1] <= SOLE})
+
+
+def crawler_frames(poses, durations):
+    return [to_image(crawler_canvas(p)) for p in poses], durations
 
 
 def crawler_walk_frames():
-    """Its legs stepping in two sets of four, its body rising between."""
-    frames = [to_image(crawler_canvas(i / CRAWLER_FRAMES)) for i in range(CRAWLER_FRAMES)]
-    return frames, [90] * CRAWLER_FRAMES
+    """Its legs stepping in two sets of four, its body rising between, a
+    crystal's glint stepping along its back."""
+    return crawler_frames([CrawlerPose(phase=i / CRAWLER_FRAMES, glint=i) for i in range(CRAWLER_FRAMES)],
+                          [90] * CRAWLER_FRAMES)
+
+
+SCARED = dict(gait=0.0, back=3, tilt=2.5, flare=1.0, legs='coil', knees=1, head=(-2, 1), feelers=1.0,
+              eyes='slit', sting=4)
 
 
 def crawler_windup_frames():
-    """The lunge's tell: it coils over its 0.4 s, then trembles, set."""
-    frames = [crawler_canvas(coil=t, shiver=s) for t, s in ((0.35, 0), (0.7, 0), (1.0, 0), (1.0, 1))]
-    return [to_image(c) for c in frames], [100, 100, 100, 100]
+    """The lunge's tell: it coils over its 0.4 s, drawn back and pressed low
+    at the front, knees high, sting raised, jaws parting, every eye lit; then
+    trembles, set."""
+    poses = [CrawlerPose(gait=0.0, back=round(4 * t), tilt=3 * t, rise=-t, legs='coil', knees=4 * t,
+                         head=(-2 * t, 0), gape=t, eyes='lit' if t >= 0.5 else 'calm', feelers=-0.5 * t,
+                         sting=7 * t, shiver=s, glint=2)
+             for t, s in ((0.35, 0), (0.7, 0), (1.0, 0), (1.0, 1))]
+    return crawler_frames(poses, [100, 100, 100, 100])
 
 
 def crawler_lunge_frames():
-    """The leap: it stretches out long and flies, the last frame held."""
-    return [to_image(crawler_canvas(stretch=t)) for t in (0.6, 1.0, 1.0)], [60, 80, 400]
+    """The leap: it stretches out long and raised, forelegs flung ahead,
+    hind legs trailing, jaws wide, feelers swept back; the last held."""
+    poses = [CrawlerPose(gait=0.0, spread=2 * t, rise=3 * t, tilt=-2 * t, legs='reach', head=(-1.5 * t, -t),
+                         pitch=-0.12 * t, gape=3 * t, eyes='lit', feelers=1.0, sting=-1, glint=4)
+             for t in (0.6, 1.0, 1.0)]
+    return crawler_frames(poses, [60, 80, 400])
 
 
 def crawler_recover_frames():
     """The landing: low and splayed, then gathering itself."""
-    return [to_image(crawler_canvas(squash=t)) for t in (1.0, 0.55, 0.2)], [100, 120, 140]
+    poses = [CrawlerPose(gait=0.0, rise=-3 * t, legs='splay' if t > 0.5 else 'stand', head=(0, 1 * t),
+                         feelers=0.3 * t, glint=1)
+             for t in (1.0, 0.55, 0.2)]
+    return crawler_frames(poses, [100, 120, 140])
 
 
 def crawler_scared_frames():
-    """Its scare at the light's edge: recoiled, plates raised, eyes
-    squinting, trembling a pixel."""
-    return [to_image(crawler_canvas(scared=1.0, shiver=s)) for s in (0, 1, 0, 1)], [90, 70, 90, 70]
+    """Its scare at the light's edge: recoiled over its planted feet, low at
+    the front, plates raised, feelers laid flat, jaws shut, its eyes a slit,
+    its sting raised, trembling a pixel."""
+    return crawler_frames([CrawlerPose(shiver=s, glint=g, **SCARED) for s, g in ((0, 0), (1, 1), (0, 2), (1, 3))],
+                          [90, 70, 90, 70])
+
+
+def crawler_retreat_frames():
+    """Backing out of the light, facing what it fears: its feet stepping
+    back in two sets of four, the body leaning back over its hind legs, low
+    at the front, plates raised, feelers laid flat, its eyes a slit and its
+    sting raised, trembling as it goes."""
+    poses = [CrawlerPose(phase=i / CRAWLER_FRAMES, gait=-1.0, back=2, tilt=2.0, flare=1.0, head=(-2, 1),
+                         feelers=1.0, eyes='slit', sting=5, shiver=i % 2, glint=i)
+             for i in range(CRAWLER_FRAMES)]
+    return crawler_frames(poses, [80] * CRAWLER_FRAMES)
+
+
+def crawler_hop_frames():
+    """A hop or a leap: a spring off its bunched legs; aloft, legs tucked
+    under it and feelers swept back; then held tucked, its legs unfolding
+    for the landing."""
+    poses = [CrawlerPose(gait=0.0, rise=3, tilt=-1.5, legs='spring', feelers=0.6, eyes='lit', sting=1, glint=1),
+             CrawlerPose(gait=0.0, rise=1, tilt=-1, spread=-0.5, legs='tuck', feelers=1.0, eyes='lit', sting=-1,
+                         glint=3),
+             CrawlerPose(gait=0.0, rise=0, tilt=0.5, legs='land', feelers=0.8, eyes='lit', glint=3)]
+    return crawler_frames(poses, [70, 90, 240])
+
+
+def crawler_snowball_windup_frames():
+    """The snowball's tell, 0.36 s: its head dips and its jaws gather frost
+    into a clump, packed tighter each frame, then the head cocks back with
+    the clump clamped, set to flick."""
+    poses = [CrawlerPose(gait=0.0, tilt=1.0, legs='coil', head=(-1, 2), pitch=0.25, gape=2, clump=1.0, glint=0),
+             CrawlerPose(gait=0.0, tilt=1.2, legs='coil', head=(-1.5, 2), pitch=0.2, gape=2, clump=2.0, glint=1),
+             CrawlerPose(gait=0.0, tilt=0.6, legs='coil', knees=1, head=(-2.5, 0), pitch=0.0, gape=1.5, clump=2.8,
+                         eyes='lit', glint=2),
+             CrawlerPose(gait=0.0, back=1, tilt=0.0, legs='coil', knees=2, head=(-3, -1), pitch=-0.25, gape=1.5,
+                         clump=3.2, eyes='lit', sting=2, glint=3)]
+    return crawler_frames(poses, [90] * 4)
+
+
+def crawler_snowball_throw_frames():
+    """The snowball's flick, 0.25 s: the head jerked up and ahead, jaws
+    open, the snow leaving them at (66, 40); the follow-through; settling."""
+    poses = [CrawlerPose(gait=0.0, tilt=-1.0, legs='stand', head=(0, -3.3), pitch=-0.35, gape=2.5, eyes='lit',
+                         flecks=1, glint=4),
+             CrawlerPose(gait=0.0, tilt=-0.6, legs='stand', head=(-1, -4), pitch=-0.5, gape=3, eyes='lit',
+                         flecks=2, glint=5),
+             CrawlerPose(gait=0.0, tilt=0.0, legs='stand', head=(-1, -1), pitch=-0.15, gape=1, glint=0)]
+    return crawler_frames(poses, [50, 80, 120])
 
 
 # The beetle: a rhinoceros beetle of riveted iron, rusting.
@@ -1574,18 +1812,80 @@ def crawler_scared_frames():
 BEETLE_FRAMES = 6
 BEETLE_IRON = dict(base='Ω', light='χ', shadow='Φ', rim='ψ', back='B')
 IRON_TONES = ('Ω', 'χ', 'Φ', 'ψ', 'B', 'b', 'φ')
+# e01foes: how far its front rises at the height of its rear (pixels at its
+# head), from column `BEETLE_PIVOT` over its planted hind feet, and how far a
+# charge drops it; its raking foot's reach and lift through the tell's eight
+# frames, a scrape twice; the earth its scrapes throw; its legs' blur.
+BEETLE_REAR = 10.0
+BEETLE_LEAN = 2.0
+BEETLE_PIVOT = 14
+RAKE = ((5, 6), (7, 1), (3, 0), (-3, 0), (5, 7), (7, 1), (3, 0), (-4, 0))
+CLODS = ('ω', '"', "'")
+SMEAR = ('ѐ', 'ё', 'ι')
 
 
-def beetle_canvas(pose='walk', phase=0.0):
+def sheared(part, lift):
+    """`part` with each column raised `lift(x)` whole pixels: a tilt that
+    keeps its pixels crisp."""
+    out = Part(part.size)
+    for x in range(part.size[0]):
+        rise = lift(x)
+        column = part.mask.crop((x, 0, x + 1, part.size[1]))
+        out.mask.paste(column, (x, -rise))
+    return out
+
+
+def horn_glint(canvas, tip, size):
+    """A star of moonlight on the horn's tip, `size` 0 to 1: a white core,
+    its arms reaching further and fading, a sparkle across them at its
+    fullest; drawn over the outline, where nothing rims it."""
+    reach = round(1 + 4 * size)
+    x, y = tip
+    canvas[(x, y)] = 'Ψ'
+    fade = ('Ψ', 'φ', 'x', 'u', 'q')
+    over = {'x': 'φ', 'u': 'χ', 'q': 'ψ'}  # over the horn itself, opaque
+
+    def put(q, tone):
+        if 0 <= q[0] < SIZE and 0 <= q[1] < SIZE:
+            canvas[q] = over.get(tone, tone) if q in canvas and canvas[q] != 'o' else tone
+
+    for k in range(1, reach + 1):
+        tone = fade[min(len(fade) - 1, k - 1 + (0 if size > 0.5 else 1))]
+        for dx, dy in NEIGHBOURS:
+            put((x + dx * k, y + dy * k), tone)
+    if size > 0.45:
+        for dx, dy in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
+            put((x + dx, y + dy), 'x' if size > 0.75 else 'u')
+    if size > 0.8:
+        for dx, dy in ((2, 2), (-2, -2), (2, -2), (-2, 2)):
+            if (x + dx, y + dy) not in canvas:
+                put((x + dx, y + dy), 'q')
+
+
+def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
     """A dome of banded wing cases with rows of punctures, a riveted shield
     with a short horn, the long ridged horn of its head, red eyes, a fanned
     antenna and mouthparts, legs with spines and hooked claws, belly plates,
     scratches, and rust flaking along its seams, rim and rivets. `pose` is
-    `walk`, `paw` (a front foot scraping the ground before a charge) or
-    `charge` (head down, running); `phase` steps its legs."""
-    dip = 3 if pose == 'charge' else 0
-    amp = 4.0 if pose == 'charge' else 2.5
+    `walk`, `paw` (the charge's tell: rearing by `rear`, 0 to 1, its front
+    and horn rising over its planted hind feet as its shell tilts, a foreleg
+    raking the ground through `phase` and throwing clods back, a glint
+    swelling at its horn's tip by `glint`) or `charge` (head down and
+    dropped, the horn levelled, its legs a blur, dust behind); `phase` steps
+    its legs."""
+    dip = 4 if pose == 'charge' else 0
+    amp = 4.5 if pose == 'charge' else 2.5
     far, near, dome, plate, head, horn, horn2, belly = (Part() for _ in range(8))
+    span = SIZE - 6 - BEETLE_PIVOT
+
+    def lift(x):  # its rise at column x: rearing, or dropped at the front in a charge
+        u = min(1.0, max(0.0, (x - BEETLE_PIVOT) / span))
+        if pose == 'charge':
+            return -round(BEETLE_LEAN * u)
+        return round(rear * BEETLE_REAR * u)
+
+    def at(x, y):
+        return (x, y - lift(x))
 
     def stride(k):  # (forward offset, lift) of leg set k's foot
         angle = math.tau * (phase + 0.5 * k)
@@ -1593,21 +1893,21 @@ def beetle_canvas(pose='walk', phase=0.0):
 
     bob = round(0.6 * abs(math.sin(math.tau * phase))) if pose != 'paw' else 0
     for i, x in enumerate((17, 31, 43)):  # the far legs: sets B, A, B
-        ahead, lift = stride((i + 1) % 2) if pose != 'paw' else (0.0, 0.0)
-        far.limb([(x + 2, 52 - bob), (x - 2 + ahead * 0.5, 55 - bob - lift * 0.5),
-                  (x - 1 + ahead, SOLE - 2 - lift)], 3)
+        ahead, up = stride((i + 1) % 2) if pose != 'paw' else (0.0, 0.0)
+        far.limb([at(x + 2, 52 - bob), (x - 2 + ahead * 0.5, 55 - bob - up * 0.5 - lift(x) * 0.5),
+                  (x - 1 + ahead, SOLE - 2 - up)], 3)
     legs = []
     # A width-3 limb reaches a row past its points, so its feet sit a row up.
     for i, (hip, knee, foot) in enumerate((((21, 52), (15, 55), (16, SOLE - 1)),
                                           ((33, 53), (31, 56), (34, SOLE - 1)),
                                           ((45, 52), (50, 55), (51, SOLE - 1)))):
-        if pose == 'paw' and i == 2:  # the scraping foot: raised, forward, down, back
-            reach, lift = ((4, 7), (6, 4), (2, 0), (-3, 0))[int(phase * 4) % 4]
-            legs.append([(45, 51), (50 + reach // 2, 50 - lift // 2), (51 + reach, SOLE - 1 - lift)])
+        if pose == 'paw' and i == 2:  # the raking foot: raised ahead, set down, dragged back
+            reach, up = RAKE[int(phase * len(RAKE)) % len(RAKE)]
+            legs.append([at(45, 51), (50 + reach // 2, 50 - up // 2 - lift(48) * 0.6), (51 + reach, SOLE - 1 - up)])
             continue
-        ahead, lift = stride(i % 2) if pose != 'paw' else (0.0, 0.0)
-        legs.append([(hip[0], hip[1] - bob), (knee[0] + ahead * 0.5, knee[1] - bob - lift * 0.5),
-                     (foot[0] + ahead, foot[1] - lift)])
+        ahead, up = stride(i % 2) if pose != 'paw' else (0.0, 0.0)
+        legs.append([at(hip[0], hip[1] - bob), (knee[0] + ahead * 0.5, knee[1] - bob - up * 0.5 - lift(knee[0]) * 0.5),
+                     (foot[0] + ahead, foot[1] - up)])
     for leg in legs:
         near.limb(leg, 3)
     dome.ellipse((25, 47 - bob), 20, 17)
@@ -1620,9 +1920,13 @@ def beetle_canvas(pose='walk', phase=0.0):
     hx, hy = 56, 47 + dip - bob
     head.ellipse((hx, hy), 5, 5)
     horn_path = [(hx + 1, hy - 3), (hx + 4, hy - 9), (hx + 6, hy - 16), (hx + 5, hy - 21), (hx + 3, hy - 23)]
-    if pose == 'charge':  # the horn levelled at what it charges
-        horn_path = [(hx + 2, hy - 2), (hx + 6, hy - 6), (hx + 7, hy - 12), (hx + 7, hy - 17), (hx + 5, hy - 20)]
+    if pose == 'charge':  # the horn levelled at what it charges, leaning ahead
+        horn_path = [(hx + 2, hy - 2), (hx + 5, hy - 6), (hx + 6.5, hy - 11), (hx + 6.5, hy - 16), (hx + 5, hy - 19)]
+    elif pose == 'paw':  # the horn swept back as the front rises
+        horn_path = turned(horn_path, horn_path[0], -0.18 * rear)
     horn.polygon(strand(horn_path, [5, 4, 3, 2, 1]))
+    if pose != 'walk':
+        dome, belly, plate, horn2, head, horn = (sheared(p, lift) for p in (dome, belly, plate, horn2, head, horn))
     canvas = compose([
         (shade(far.pixels(), 'b', shadow='o'), None),
         (shade(belly.pixels(), 'b', light='B', shadow='o'), None),
@@ -1638,41 +1942,42 @@ def beetle_canvas(pose='walk', phase=0.0):
     for bx in (14, 25, 35):  # bands across the wing cases, rivets along them
         for y in range(top, 53 - bob):
             x = bx + round((y - top) * 0.18)
-            if canvas.get((x, y)) in ('Ω', 'χ', 'Φ', 'ψ'):
-                canvas[(x, y)] = 'Φ'
+            if canvas.get(at(x, y)) in ('Ω', 'χ', 'Φ', 'ψ'):
+                canvas[at(x, y)] = 'Φ'
                 if (y - top) % 6 == 3:
-                    canvas[(x + 1, y)] = 'χ'
-                    rivets.append((x + 1, y))
+                    canvas[at(x + 1, y)] = 'χ'
+                    rivets.append(at(x + 1, y))
     for bx in (19, 30):  # rows of punctures between the bands
         for y in range(top + 3, 50 - bob, 3):
             x = bx + round((y - top) * 0.18)
-            if canvas.get((x, y)) == 'Ω':
-                canvas[(x, y)] = 'Φ'
+            if canvas.get(at(x, y)) == 'Ω':
+                canvas[at(x, y)] = 'Φ'
     for x in range(8, 44):  # the cases' lower rim
-        if canvas.get((x, 50 - bob), 'o') != 'o':
-            canvas[(x, 50 - bob)] = 'ψ' if x % 2 else 'Φ'
+        if canvas.get(at(x, 50 - bob), 'o') != 'o':
+            canvas[at(x, 50 - bob)] = 'ψ' if x % 2 else 'Φ'
     for x in range(12, 43, 5):  # belly plates
         for y in (53 - bob, 54 - bob):
-            if canvas.get((x, y)) in ('b', 'B'):
-                canvas[(x, y)] = 'o'
+            if canvas.get(at(x, y)) in ('b', 'B'):
+                canvas[at(x, y)] = 'o'
     for x, y in ((44, 39 + dip - bob), (48, 37 + dip - bob), (50, 43 + dip - bob)):  # the shield's rivets
-        if (x, y) in canvas:
-            canvas[(x, y)] = 'χ'
+        if at(x, y) in canvas:
+            canvas[at(x, y)] = 'χ'
     for x, y in horn_path[1:4]:  # ridges along the horn
-        if (x, y) in canvas:
-            canvas[(x, y)] = 'Φ'
+        if at(*point((x, y))) in canvas:
+            canvas[at(*point((x, y)))] = 'Φ'
     for x0, y0 in ((12, 38 - bob), (22, 35 - bob), (33, 41 - bob)):  # scratches
         for t in range(3):
-            if canvas.get((x0 + t, y0 + t)) in IRON_TONES:
-                canvas[(x0 + t, y0 + t)] = 'ψ'
+            if canvas.get(at(x0 + t, y0 + t)) in IRON_TONES:
+                canvas[at(x0 + t, y0 + t)] = 'ψ'
     seams = {(bx + round((y - top) * 0.18), y) for bx in (14, 25, 35) for y in range(top, 53 - bob)}
     for (x, y), symbol in sorted(canvas.items()):  # rust along the seams and the rim
         if symbol not in IRON_TONES:
             continue
-        noise = (unit('rust-a', x // 3, (y + bob) // 3) + unit('rust-b', x // 2, (y + bob) // 2)) / 2
-        near_seam = any((x + dx, y) in seams for dx in (-1, 0, 1)) or 47 - bob <= y <= 51 - bob
+        y0 = y + lift(x)
+        noise = (unit('rust-a', x // 3, (y0 + bob) // 3) + unit('rust-b', x // 2, (y0 + bob) // 2)) / 2
+        near_seam = any((x + dx, y0) in seams for dx in (-1, 0, 1)) or 47 - bob <= y0 <= 51 - bob
         if noise + (0.22 if near_seam else 0.0) > 0.8:
-            canvas[(x, y)] = 'a' if noise > 0.86 else ('(' if (x + y + bob) % 2 else '"')
+            canvas[(x, y)] = 'a' if noise > 0.86 else ('(' if (x + y0 + bob) % 2 else '"')
     for x, y in rivets[::2]:  # streaks running down from rivets
         for t in range(1, 4):
             if canvas.get((x, y + t), 'o') != 'o':
@@ -1682,23 +1987,60 @@ def beetle_canvas(pose='walk', phase=0.0):
         for t in (0.35, 0.65):
             canvas[(round(kx + (fx - kx) * t) + 2, round(ky + (fy - ky) * t))] = 'ψ'
         canvas[(round(fx) + 2, round(fy))] = 'B'
-    canvas[(hx + 6, hy + 1)] = 'b'  # mouthparts
-    canvas[(hx + 6, hy + 2)] = 'B'
+    canvas[at(hx + 6, hy + 1)] = 'b'  # mouthparts
+    canvas[at(hx + 6, hy + 2)] = 'B'
     for x, y in ((hx + 4, hy - 1), (hx + 6, hy - 2), (hx + 7, hy - 3), (hx + 7, hy - 1), (hx + 8, hy - 2)):
-        canvas[(x, y)] = 'Φ' if x < hx + 7 else 'ψ'  # a fanned antenna
+        canvas[at(x, y)] = 'Φ' if x < hx + 7 else 'ψ'  # a fanned antenna
     for (ex, ey), tone in (((hx + 1, hy - 2), 'z'), ((hx + 2, hy - 2), 'F'), ((hx + 1, hy - 1), 'F'),
                            ((hx + 2, hy - 1), 'F'), ((hx + 1, hy), 'E'), ((hx + 2, hy), 'z')):
-        canvas[(ex, ey)] = tone  # red eyes, glowing
-    canvas[(hx + 2, hy - 2)] = 'Ψ'
-    canvas[(hx + 3, hy - 1)] = 'E'
+        canvas[at(ex, ey)] = tone  # red eyes, glowing
+    canvas[at(hx + 2, hy - 2)] = 'Ψ'
+    canvas[at(hx + 3, hy - 1)] = 'E'
     if pose == 'charge':  # dust kicked up behind
         for k, (dx, dy) in enumerate(((-2, 0), (-5, -2), (-8, 1), (-4, -3), (-11, -1))):
             if (k + int(phase * 4)) % 2 == 0 or k < 2:
                 canvas[(6 + dx, SOLE - 1 + dy)] = 'σ'
-    elif pose == 'paw' and int(phase * 4) % 4 >= 2:  # dust from the scrape
-        for dx, dy in ((-1, -1), (-4, -2), (-6, 0)):
-            canvas[(50 + dx, SOLE - 1 + dy)] = 'σ'
-    return outline(canvas)
+    elif pose == 'paw':  # clods the scrape throws back, flying and falling
+        f = int(phase * len(RAKE)) % len(RAKE)
+        for start, speed, rise, size in ((2, 5.0, 5.0, 3), (3, 6.5, 3.5, 2), (3, 3.5, 6.0, 2), (6, 5.5, 5.5, 3),
+                                         (7, 7.0, 3.0, 2), (7, 4.0, 6.5, 2)):
+            age = f - start + 0.7
+            if not 0 < age <= 2.7:
+                continue
+            cx = 50 - speed * age
+            cy = SOLE - 2 - rise * age + 2.4 * age ** 2
+            if cy > SOLE - 1:
+                continue
+            for dx in range(size):
+                for dy in range(min(size, 2)):
+                    if size == 3 and (dx, dy) in ((0, 1), (2, 1)):
+                        continue  # a lumpy clod, not a block
+                    canvas[point((cx + dx, cy + dy))] = CLODS[2] if dy == 0 and dx < 2 else CLODS[(dx + start) % 2]
+    if pose == 'walk':
+        return outline(canvas)
+    canvas = outline({q: s for q, s in canvas.items() if 0 <= q[1] <= SOLE})
+    if pose == 'paw' and glint > 0:
+        horn_glint(canvas, at(*point(horn_path[-1])), glint)
+    if pose == 'charge':  # its near legs a blur: their last two places smeared behind them
+        for back, tone in ((0.08, SMEAR[0]), (0.16, SMEAR[1]), (0.24, SMEAR[2])):
+            ghosts = Part()
+            for i, (hip, knee, foot) in enumerate((((21, 52), (15, 55), (16, SOLE - 1)),
+                                                  ((33, 53), (31, 56), (34, SOLE - 1)),
+                                                  ((45, 52), (50, 55), (51, SOLE - 1)))):
+                angle = math.tau * (phase - back + 0.5 * (i % 2))
+                ahead, up = amp * math.sin(angle), 2.0 * max(0.0, math.cos(angle))
+                ghosts.limb([at(hip[0], hip[1] - bob),
+                             (knee[0] + ahead * 0.5, knee[1] - bob - up * 0.5 - lift(knee[0]) * 0.5),
+                             (foot[0] + ahead, foot[1] - up)], 2)
+            for i, x in enumerate((17, 31, 43)):
+                angle = math.tau * (phase - back + 0.5 * ((i + 1) % 2))
+                ahead, up = amp * math.sin(angle), 2.0 * max(0.0, math.cos(angle))
+                ghosts.limb([at(x + 2, 52 - bob), (x - 2 + ahead * 0.5, 55 - bob - up * 0.5 - lift(x) * 0.5),
+                             (x - 1 + ahead, SOLE - 2 - up)], 2)
+            for q in ghosts.pixels():
+                if q not in canvas and q[1] <= SOLE:
+                    canvas[q] = tone
+    return canvas
 
 
 def beetle_walk_frames():
@@ -1708,12 +2050,18 @@ def beetle_walk_frames():
 
 
 def beetle_paw_frames():
-    """The charge's tell: a front foot pawing the ground, raising dust."""
-    return [to_image(beetle_canvas('paw', i / 4)) for i in range(4)], [100] * 4
+    """The charge's tell, 0.8 s: rearing, its front and horn rising over its
+    planted hind feet and its shell tilting, a foreleg raking the ground
+    twice and throwing clods back, a glint swelling at its horn's tip."""
+    n = len(RAKE)
+    frames = [to_image(beetle_canvas('paw', f / n, rear=min(1.0, 0.2 + 0.8 * f / (n - 2)), glint=(f + 1) / n))
+              for f in range(n)]
+    return frames, [100] * n
 
 
 def beetle_charge_frames():
-    """The charge: head down, horn levelled, legs churning, dust behind."""
+    """The charge: head down and dropped, horn levelled, legs a blur, dust
+    behind."""
     return [to_image(beetle_canvas('charge', i / 4)) for i in range(4)], [60] * 4
 
 
@@ -2219,8 +2567,9 @@ class GoblinPose:
     near_hand: str = 'open'  # open, fist, rock, bomb or knife
     far_hand: str = 'open'
     ears: float = 0.0  # the tips rise (alert) or droop
-    mouth: str = 'grin'  # grin or open
+    mouth: str = 'grin'  # grin, open, smirk (sly) or scream
     blink: bool = False
+    eye: str = 'mean'  # mean, sly (half-lidded) or wild (wide, a pinprick pupil)
     spark: int = 0  # a held bomb's fuse frame
 
 
@@ -2271,8 +2620,12 @@ def goblin_canvas(pose=None):
     hx, hy = 37.5 + lean, 25.5 + c - pose.breath * 0.6
     P['neck'].polygon([chest(31, 34.5), (hx - 4, hy + 3), (hx + 1, hy + 5.5), chest(36, 34.5)])
     P['head'].ellipse((hx, hy), 7.5, 7)
-    P['jaw'].polygon([(hx - 1, hy + 3), (hx + 7.5, hy + 2.5), (hx + 8.5, hy + 5.5), (hx + 5, hy + 8),
-                      (hx - 2, hy + 7)])
+    if pose.mouth == 'scream':  # the jaw dropped wide
+        P['jaw'].polygon([(hx - 1, hy + 3), (hx + 7.5, hy + 3), (hx + 8.5, hy + 8), (hx + 4.5, hy + 10.5),
+                          (hx - 2, hy + 8.5)])
+    else:
+        P['jaw'].polygon([(hx - 1, hy + 3), (hx + 7.5, hy + 2.5), (hx + 8.5, hy + 5.5), (hx + 5, hy + 8),
+                          (hx - 2, hy + 7)])
     P['nose'].polygon([(hx + 6, hy - 2), (hx + 10.5, hy + 0.5), (hx + 14, hy + 3.8), (hx + 13.5, hy + 5.4),
                        (hx + 11, hy + 4.4), (hx + 7, hy + 2.8)])
     P['cap'].polygon([(hx - 8, hy - 1), (hx - 7.5, hy - 5), (hx - 4.5, hy - 8.6), (hx + 0.5, hy - 9.8),
@@ -2347,6 +2700,24 @@ def goblin_canvas(pose=None):
     if pose.blink:
         for x in (hx + 1, hx + 2, hx + 3, hx + 4, hx + 5):
             canvas[(x, hy - 1)] = 'T'
+    elif pose.eye == 'sly':  # the lid drawn down, the slit pupil slid ahead to its mark
+        for x in range(hx, hx + 6):
+            canvas[(x, hy - 2)] = 'T'
+        canvas.update({(hx + 2, hy - 1): 'y', (hx + 3, hy - 1): 'Y', (hx + 4, hy - 1): 'o',
+                       (hx + 2, hy): 'J', (hx + 3, hy): 'y', (hx + 4, hy): 'o'})
+        for q in ((hx + 1, hy - 1), (hx + 1, hy), (hx + 5, hy - 1), (hx + 5, hy), (hx + 2, hy + 1),
+                  (hx + 3, hy + 1), (hx + 4, hy + 1)):
+            canvas[q] = 'N' if q[1] <= hy else 'g'
+    elif pose.eye == 'wild':  # the brow flung up, the eye wide, its pupil a pinprick
+        for x, y in ((hx, hy - 3), (hx + 1, hy - 4), (hx + 2, hy - 5), (hx + 3, hy - 5), (hx + 4, hy - 4),
+                     (hx + 5, hy - 3)):
+            canvas[(x, y)] = 'T'
+        for x in range(hx + 1, hx + 6):
+            for y in range(hy - 3, hy + 2):
+                edge = x in (hx + 1, hx + 5) or y in (hy - 3, hy + 1)
+                canvas[(x, y)] = 'N' if edge and (x, y) not in ((hx + 1, hy - 3), (hx + 5, hy - 3)) else 'Y'
+        canvas[(hx + 3, hy - 1)] = 'o'
+        canvas[(hx + 2, hy - 2)] = 'Ψ'
     else:
         canvas.update(eye)
         for q in ((hx + 1, hy - 2), (hx + 1, hy - 1), (hx + 1, hy), (hx + 5, hy - 1), (hx + 5, hy),
@@ -2360,6 +2731,18 @@ def goblin_canvas(pose=None):
     for p in ((hx - 1, hy + 3), (hx, hy + 4), (hx + 1, hy + 4), (hx + 2, hy + 4), (hx + 3, hy + 4),
               (hx + 4, hy + 4), (hx + 5, hy + 4), (hx + 6, hy + 4), (hx + 7, hy + 3)):
         canvas[p] = 'N'
+    if pose.mouth == 'scream':  # wide open: a dark maw, the tongue, fangs above and below
+        for x in range(hx, hx + 8):
+            for y in range(hy + 4, hy + 9):
+                if (x, y) in canvas and not (y == hy + 8 and x in (hx, hx + 7)):
+                    canvas[(x, y)] = 'N' if y in (hy + 4, hy + 8) or x in (hx, hx + 7) else 'M'
+        for x in (hx + 3, hx + 4, hx + 5):
+            canvas[(x, hy + 7)] = 'E'
+        for x in (hx + 2, hx + 6):
+            canvas[(x, hy + 8)] = 'w'
+    elif pose.mouth == 'smirk':  # one corner pulled up, a single fang
+        canvas[(hx - 1, hy + 2)] = 'N'
+        canvas[(hx - 2, hy + 1)] = 'N'
     if pose.mouth == 'open':
         for x in range(hx + 1, hx + 7):
             canvas[(x, hy + 5)] = 'M'
@@ -2369,7 +2752,7 @@ def goblin_canvas(pose=None):
         canvas[(hx + 4, hy + 6)] = 'E'
         for x in (hx + 1, hx + 6):
             canvas[(x, hy + 6)] = 'w'
-    for x in (hx + 1, hx + 3, hx + 5):
+    for x in ((hx + 5,) if pose.mouth == 'smirk' else (hx + 1, hx + 3, hx + 5)):
         canvas[(x, hy + 5)] = 'w'  # fangs from the upper jaw
     canvas[(hx + 7, hy + 2)] = 'w'  # a tusk of the underbite
     # The ears: dark insides along the middle, a notch, a brass ring.
@@ -2548,6 +2931,54 @@ def goblin_hop_frames():
     return [to_image(goblin_canvas(p)) for p in poses], [110, 110]
 
 
+# e01foes: the dash-in and the panic.
+def goblin_dash_windup_frames():
+    """The dash-in's crouch, 0.3 s: sinking low and coiled on spread feet,
+    the knife drawn back past its hip, the free hand out ahead, ears laid
+    back, a sly half-lidded look and a smirk."""
+    poses = [GoblinPose(crouch=3, lean=1, near_ankle=(38.5, 57), far_ankle=(25.5, 57),
+                        near_elbow=(31.5, 43.5), near_wrist=(27, 47.5), near_hand='knife', far_elbow=(36.5, 41),
+                        far_wrist=(41.5, 44.5), ears=-1, eye='sly', mouth='smirk'),
+             GoblinPose(crouch=4.5, lean=2.5, near_ankle=(39, 57), far_ankle=(25, 57),
+                        near_elbow=(30.5, 44.5), near_wrist=(25.5, 47), near_hand='knife', far_elbow=(37.5, 42),
+                        far_wrist=(43, 45.5), ears=-1.6, eye='sly', mouth='smirk')]
+    return [to_image(goblin_canvas(p)) for p in poses], [120, 180]
+
+
+def goblin_dash_frames():
+    """The dash-in: a low sprint, leaning hard into it, long strides with a
+    foot always down, the knife thrust out ahead, the free arm flung back,
+    ears streaming."""
+    # Each frame's near and far ankle: a foot down, the other swinging through.
+    strides = (((40.5, 57), (27, 54)), ((37, 54.5), (33, 57)), ((29, 57), (42, 55)), ((33, 54), (38, 57)))
+    poses = [GoblinPose(crouch=2.5 - (k % 2), lean=5, near_ankle=near, far_ankle=far,
+                        near_toe=0.12 * (57 - near[1]), far_toe=0.12 * (57 - far[1]),
+                        near_elbow=(43, 39.5 + (k % 2) * 0.5), near_wrist=(49.5, 39.5 + (k % 2)),
+                        near_hand='knife', far_elbow=(27, 40), far_wrist=(21.5, 42.5 - (k % 2)),
+                        ears=-1.8, mouth='open')
+             for k, (near, far) in enumerate(strides)]
+    return [to_image(goblin_canvas(p)) for p in poses], [70] * 4
+
+
+def goblin_panic_frames():
+    """Its panic while it burns: running flat out, arms flailing over its
+    head, mouth wide in a scream, eyes wild, ears flapping."""
+    poses = []
+    for i in range(6):
+        a = i * math.tau / 6
+        near_x, near_lift = 35 + 6 * math.sin(a), 4 * max(0.0, math.cos(a))
+        far_x, far_lift = 29 - 6 * math.sin(a), 4 * max(0.0, -math.cos(a))
+        wave = 3.0 * math.sin(2 * a)
+        poses.append(GoblinPose(
+            crouch=1 - round(abs(math.cos(a))), lean=1.5,
+            near_ankle=(near_x, 57 - near_lift), near_toe=0.12 * near_lift,
+            far_ankle=(far_x, 57 - far_lift), far_toe=0.12 * far_lift,
+            near_elbow=(41.5 + wave * 0.3, 29), near_wrist=(46.5 + wave, 21 - abs(wave) * 0.5),
+            far_elbow=(28 - wave * 0.3, 29), far_wrist=(22.5 - wave, 21 - abs(wave) * 0.5),
+            ears=1.5 if i % 2 else -0.5, eye='wild', mouth='scream'))
+    return [to_image(goblin_canvas(p)) for p in poses], [70] * 6
+
+
 def goblin_rock(i):
     """The thrown rock, two turns of it: a faceted stone, pale where the
     moon catches it."""
@@ -2602,8 +3033,12 @@ ENEMY_CLIPS = {
     'crawler_lunge': (crawler_lunge_frames, False),
     'crawler_recover': (crawler_recover_frames, False),
     'crawler_scared': (crawler_scared_frames, True),
+    'crawler_retreat': (crawler_retreat_frames, True),
+    'crawler_hop': (crawler_hop_frames, False),
+    'crawler_snowball_windup': (crawler_snowball_windup_frames, False),
+    'crawler_snowball_throw': (crawler_snowball_throw_frames, False),
     'beetle_walk': (beetle_walk_frames, True),
-    'beetle_paw': (beetle_paw_frames, True),
+    'beetle_paw': (beetle_paw_frames, False),
     'beetle_charge': (beetle_charge_frames, True),
     'bat_roost': (bat_roost_frames, True),
     'bat_fly': (bat_fly_frames, True),
@@ -2625,6 +3060,9 @@ ENEMY_CLIPS = {
     'goblin_stab_windup': (goblin_stab_windup_frames, False),
     'goblin_stab': (goblin_stab_frames, False),
     'goblin_hop': (goblin_hop_frames, True),
+    'goblin_dash_windup': (goblin_dash_windup_frames, False),
+    'goblin_dash': (goblin_dash_frames, True),
+    'goblin_panic': (goblin_panic_frames, True),
 }
 def build_enemies(images, animations):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no
@@ -2640,3 +3078,131 @@ def build_enemies(images, animations):
     for i in range(2):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)
+
+
+# e01hollow's stones by size: the frame's side, then the body box's centre
+# and half extents in the frame (the prefabs' `offset` and `half_extents`),
+# so each stone's lowest opaque row is its box's bottom.
+STONE_BOXES = {'small': (32, (16, 25), (9, 7)), 'medium': (32, (16, 22), (13, 10)),
+               'large': (64, (32, 49), (20, 15))}
+
+
+# The stones' basalt, dark to light, and each look's planes in its body
+# box's unit square: points, a name and how lit each is (0 dark to 1 lit
+# from the upper left). A piece of a basalt column lying on its side, its
+# hexagonal end to the west; a slab of a flow's crust, ropy on top.
+STONE_RAMP = 'ενγβαξδ'
+STONE_LOOKS = (
+    (((0.2, 0.04), (0.88, 0.0), (1.0, 0.2), (0.4, 0.22), 'top', 0.92),
+     ((0.4, 0.22), (1.0, 0.2), (0.96, 0.76), (0.4, 0.78), 'side', 0.53),
+     ((0.4, 0.78), (0.96, 0.76), (0.84, 1.0), (0.2, 1.0), 'under', 0.2),
+     ((0.2, 0.04), (0.4, 0.22), (0.4, 0.78), (0.2, 1.0), (0.0, 0.76), (0.0, 0.26), 'end', 0.79)),
+    (((0.04, 0.62), (0.24, 0.2), (0.46, 0.0), (0.58, 0.34), (0.32, 0.62), 'top', 0.9),
+     ((0.46, 0.0), (0.74, 0.1), (0.96, 0.46), (0.58, 0.34), 'right', 0.52),
+     ((0.0, 1.0), (0.04, 0.62), (0.32, 0.62), (0.42, 1.0), 'left', 0.62),
+     ((0.32, 0.62), (0.58, 0.34), (0.96, 0.46), (1.0, 1.0), (0.42, 1.0), 'front', 0.32)),
+)
+
+
+def stone(size, look):
+    """Stone `look` (0 or 1) of `size` (e01hollow): rubble of the hollow's
+    basalt, angular, its planes lit by how they face the upper left and
+    crisp at their ridges, filling its body box (`STONE_BOXES`) with its
+    lowest opaque row the box's bottom. Look 0 is a piece of a column, its
+    hexagon's rim lit and cooling cracks across its end; look 1 a slab of a
+    flow's crust, ropy on its top, black glass along its crest."""
+    side, (cx, cy), (hx, hy) = STONE_BOXES[size]
+    left, top = cx - hx, cy - hy
+    w, h = 2 * hx - 1, 2 * hy - 1
+    seed = (size, look)
+
+    def at(u, v):
+        ju = (unit('ju', seed, u, v) - 0.5) * 0.06 if 0 < u < 1 else 0
+        jv = (unit('jv', seed, u, v) - 0.5) * 0.06 if 0 < v < 1 else 0
+        return left + (u + ju) * w, top + (v + jv) * h
+
+    c, owner = {}, {}
+    for *points, name, light in STONE_LOOKS[look]:
+        plane = Part((side, side))
+        plane.polygon([at(u, v) for u, v in points])
+        for (x, y) in plane.pixels():
+            owner[(x, y)] = name
+            grain = (unit('grain', seed, x // 2, y // 2) - 0.5) * 0.1
+            c[(x, y)] = ramp(light + grain - 0.06 * (y - top) / max(1, h), STONE_RAMP, x, y, 0.08)
+    # Ridges between the planes, lit along the upper plane's edge.
+    for (x, y), name in owner.items():
+        below, right = owner.get((x, y + 1)), owner.get((x + 1, y))
+        if below and below != name:
+            if below in ('under', 'front', 'left'):
+                c[(x, y + 1)] = 'ν'
+            if name in ('top', 'end'):
+                c[(x, y)] = 'ξ'
+        if right and right != name and name in ('end', 'left', 'top'):
+            c[(x, y)] = 'α' if name != 'left' else 'γ'
+    if look == 0:
+        # The column's end: its hexagon's upper rim lit, its lower dark,
+        # cooling cracks from its middle to three corners; a cross-joint.
+        end = [p for p, n in owner.items() if n == 'end']
+        for (x, y) in end:
+            if owner.get((x, y - 1)) != 'end' or owner.get((x - 1, y)) != 'end':
+                c[(x, y)] = 'δ' if owner.get((x, y - 1)) != 'end' else 'ξ'
+            elif owner.get((x, y + 1)) != 'end' or owner.get((x + 1, y)) != 'end':
+                c[(x, y)] = 'ν'
+        ex = sum(x for x, _ in end) / len(end)
+        ey = sum(y for _, y in end) / len(end)
+        for u, v in ((0.2, 0.04), (0.0, 0.76), (0.4, 0.78)):
+            tx, ty = at(u, v)
+            steps = max(2, round(math.hypot(tx - ex, ty - ey) * 0.75))
+            for d in range(steps):
+                p = (round(ex + (tx - ex) * d / steps), round(ey + (ty - ey) * d / steps))
+                if owner.get(p) == 'end':
+                    c[p] = 'γ'
+        jx = round(at(0.72, 0.5)[0])
+        for (x, y), name in owner.items():
+            if x == jx and name in ('side', 'top', 'under'):
+                c[(x, y)] = 'ν' if name != 'top' else 'β'
+    else:
+        # A slab of a flow's crust: ropy wrinkles across its top plane, a
+        # rind of black glass along its crest.
+        for (x, y), name in owner.items():
+            if name != 'top':
+                continue
+            u, v = (x - left) / max(1, w), (y - top) / max(1, h)
+            rope = math.sin((u * 2.2 + v * 3.4) * math.pi * (2.2 if size != 'small' else 1.4)
+                            + 0.6 * math.sin(v * 9 + look))
+            if rope > 0.72:
+                c[(x, y)] = 'β'
+            elif rope < -0.85:
+                c[(x, y)] = 'δ'
+        for (x, y), name in owner.items():
+            if name in ('top', 'right') and owner.get((x, y - 1)) is None:
+                c[(x, y)] = '2'
+                if owner.get((x, y + 1)) == name:
+                    c[(x, y + 1)] = 'ξ' if name == 'top' else 'α'
+        c[min((p for p, n in owner.items() if n == 'top'), key=lambda p: (p[1], p[0]))] = 'π'
+    # Gas holes, dark with a lit lower lip.
+    for k in range(2 + (size == 'large') * 4):
+        x = round(left + 2 + unit('ves', seed, k) * (w - 4))
+        y = round(top + 2 + unit('vesy', seed, k) * (h - 4))
+        if owner.get((x, y)) not in (None, 'end') and (x, y + 1) in owner and c[(x, y)] != '2':
+            c[(x, y)] = 'ε'
+            if c[(x, y + 1)] in 'βγ':
+                c[(x, y + 1)] = 'α'
+    canvas = outline(c, 'o', (side, side))
+    # Its own bottom row its lowest: no outline under its foot.
+    bottom = top + 2 * hy - 1
+    for p in [p for p in canvas if p[1] > bottom]:
+        del canvas[p]
+    for x in range(side):
+        if canvas.get((x, bottom)) not in (None, 'o') and (x, bottom - 1) in canvas:
+            canvas[(x, bottom)] = 'θ'
+    return to_image(canvas, (side, side))
+
+
+def build_stones(images, lit):
+    """e01hollow's rubble stones, two looks a size (`stone`), lit as the
+    crates are."""
+    for size in STONE_BOXES:
+        for i in range(2):
+            images[f'stone_{size}_{i}'] = stone(size, i)
+            lit.add(f'stone_{size}_{i}')

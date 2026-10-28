@@ -214,10 +214,7 @@ fn at_144_hz_sprites_and_drips_sit_at_their_bodies_drawn_points() {
         off[1] = off[1].max(away);
         let (drawn, away) = lerped(&harness, missile);
         let world = harness.world();
-        for (drip, offset) in drips
-            .iter()
-            .zip([Vec2::new(20.0, 20.0), Vec2::new(20.0, 26.0)])
-        {
+        for (drip, offset) in drips.iter().zip([Vec2::new(8.0, 8.0)]) {
             let emitter = world.get::<Transform>(*drip).unwrap().position;
             assert!(
                 emitter.distance(drawn + offset) <= 1e-3,

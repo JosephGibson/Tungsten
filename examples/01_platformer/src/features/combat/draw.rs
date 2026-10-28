@@ -5,21 +5,23 @@
 //! fitted to the body's hurtbox where its kind has one, a left-facing
 //! kind's taken back over its body), the cube flickering to its cracked
 //! twin as the freeze runs out, a crackle while shocked and a halo of
-//! stars while stunned.
+//! stars while stunned; and over the view the courier's hurt edge.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
 use tungsten::kit::{Health, StateMachine, Tags};
 use tungsten::render::SpriteBatch;
 
-use super::systems::{THAW_FLICKER_HZ, THAW_WARN, flicker, frost_level, frost_stage, frozen_left};
+use super::systems::{
+    THAW_FLICKER_HZ, THAW_WARN, frost_level, frost_stage, frozen_left, shock_frame,
+};
 use super::{BURNING, FROZEN, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::enemies::components::{Enemy, EnemyState};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
-use crate::features::player::components::Player;
+use crate::features::player::components::{Moves, Player};
 use crate::features::player::{BODY_OFFSET, OVERLAY_SIDE};
 
 /// A burning target's flames: frames a second, their side as a share of
@@ -35,6 +37,8 @@ const FLAME_SPOTS: [Vec2; 3] = [
 ];
 const BURN_GLOW: f32 = 2.2;
 const BURN_GLOW_COLOR: [u8; 4] = [255, 140, 60, 200];
+/// The hurt edge's art, stretched over the view.
+pub const HURT_EDGE: &str = "ex10_hurt_edge";
 
 /// The overlays' size class for a sprite `side` pixels across: small 32,
 /// medium 64, large 128.
@@ -188,7 +192,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
             );
         }
         if tags.has(SHOCKED) {
-            let name = format!("ex10_status_crackle_{class}_{}", flicker(time));
+            let name = format!("ex10_status_crackle_{class}_{}", shock_frame(time));
             quad(&mut batches, assets, &name, origin, size);
         }
         if tags.has(STUNNED) {
@@ -200,6 +204,33 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                 size,
             );
         }
+    }
+    batches
+}
+
+/// The courier's hurt edge over the view, as the lightning's veil is: its
+/// art stretched to the view at the alpha of [`Moves::edge`], a blow's full
+/// and a tick's half, fading; under the HUD, which the UI draws over the
+/// world.
+#[must_use]
+pub fn edge(world: &World) -> Vec<SpriteBatch> {
+    let mut batches = Vec::new();
+    let share = world
+        .query::<(&Player, &Moves)>()
+        .map(|(_, moves)| moves.edge)
+        .fold(0.0, f32::max);
+    let asset = world
+        .get_resource::<AssetRegistry>()
+        .and_then(|assets| assets.get_sprite(HURT_EDGE));
+    if let Some(asset) = asset.filter(|_| share > 0.0) {
+        let (min, max) = view(world);
+        let alpha = (share.min(1.0) * 255.0).round() as u8;
+        push_quad(
+            &mut batches,
+            asset,
+            instance(asset, min, max - min, [255, 255, 255, alpha]),
+            None,
+        );
     }
     batches
 }

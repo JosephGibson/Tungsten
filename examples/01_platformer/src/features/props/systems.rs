@@ -11,10 +11,10 @@ use tungsten::core::{
 use tungsten::kit::ContactDamage;
 use tungsten::physics::{SpatialFilter, overlap};
 
-use super::components::{Bomb, Crate, Fuel, FuseEmitter, Keg, Rock};
+use super::components::{Bomb, Crate, Fuel, FuseEmitter, Keg, Plank, Rock, StoneSize};
 use super::{
-    BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, FUSE_SECS, ROCK_RADIUS, SPREAD_AFTER, SPREAD_REACH,
-    TOUCH_REACH, burning, collapse, light, set_off,
+    BOMB_CENTRE, BOMB_RADIUS, BURN_SECS, FUSE_SECS, PLANK_BURN_SECS, ROCK_RADIUS, SPREAD_AFTER,
+    SPREAD_REACH, TOUCH_REACH, burn_down, burning, collapse, light, set_off,
 };
 use crate::features::combat::systems::{EMBER_TINTS, flicker};
 use crate::features::elements::cascade;
@@ -22,7 +22,7 @@ use crate::features::elements::components::{BallBurn, Chill, Frozen};
 use crate::features::elements::systems::ignite;
 use crate::features::level::lava::Lava;
 use crate::features::level::systems::drawn_time;
-use crate::features::toys::components::SmallBall;
+use crate::features::toys::components::{ScrapTumble, SmallBall};
 use crate::features::toys::systems::frost_tint;
 use crate::game::GAMEPLAY;
 use crate::shared::SaveId;
@@ -49,10 +49,11 @@ pub const BOMB_SPARK_HZ: f32 = 12.0;
 /// A lit fuse's emitters: its sparks and its smoke.
 const FUSE_CONFIGS: [&str; 2] = ["ex10_fuse_sparks", "ex10_fuse_smoke"];
 
-/// `props_tick`, in the tick phase: each crate's douse runs down and its
-/// fire by the step, and a crate burnt out falls in; each keg's douse runs
-/// down and its lit fuse, a bomb's fuse too, and a fuse at its end sets its
-/// keg or bomb off, credited to its lighter. Both in save-ID order.
+/// `props_tick`, in the tick phase: each crate's and plank's douse runs
+/// down and its fire by the step, and a crate burnt out falls in, a plank
+/// quietly; each keg's douse runs down and its lit fuse, a bomb's fuse too,
+/// and a fuse at its end sets its keg or bomb off, credited to its lighter.
+/// Both in save-ID order.
 pub fn tick(world: &mut World) {
     let dt = world.resource::<Time>().delta();
     if dt <= 0.0 {
@@ -88,7 +89,11 @@ pub fn tick(world: &mut World) {
     }
     fallen.sort_by_key(|(id, _)| *id);
     for (_, prop) in fallen {
-        collapse(world, prop);
+        if world.has::<Plank>(prop) {
+            burn_down(world, prop);
+        } else {
+            collapse(world, prop);
+        }
     }
     blown.sort_by_key(|(id, ..)| *id);
     for (_, keg, lighter) in blown {
@@ -132,7 +137,7 @@ struct Body {
     half: Vec2,
 }
 
-/// The crates and kegs, in save-ID order.
+/// The crates, kegs and planks, in save-ID order.
 fn bodies(world: &World) -> Vec<Body> {
     let body = |entity: Entity, at: &Position, collider: &Collider, id: Option<&SaveId>| {
         let half = match collider.shape {
@@ -154,9 +159,24 @@ fn bodies(world: &World) -> Vec<Body> {
                 .query::<(Entity, &Keg, &Position, &Collider, Option<&SaveId>)>()
                 .map(|(entity, _, at, collider, id)| body(entity, at, collider, id)),
         )
+        .chain(
+            world
+                .query::<(Entity, &Plank, &Position, &Collider, Option<&SaveId>)>()
+                .map(|(entity, _, at, collider, id)| body(entity, at, collider, id)),
+        )
         .collect();
     bodies.sort_by_key(|body| body.id);
     bodies
+}
+
+/// The seconds of fire `prop` starts with: a plank's [`PLANK_BURN_SECS`],
+/// a crate's [`BURN_SECS`].
+fn whole_burn(world: &World, prop: Entity) -> f32 {
+    if world.has::<Plank>(prop) {
+        PLANK_BURN_SECS
+    } else {
+        BURN_SECS
+    }
 }
 
 /// Whether two boxes overlap.
@@ -192,8 +212,8 @@ fn near(world: &World, centre: Vec2, half: Vec2, reach: f32) -> Vec<(Option<Save
 /// uncrusted lava basin's lights, a fire nobody lit, or explodes when
 /// frozen; one with a burning small ball within [`TOUCH_REACH`] of its box
 /// lights, crediting the player as the ball's fire does. Then each burning
-/// crate lights the small balls within [`TOUCH_REACH`] of its box, and once
-/// it has burned [`SPREAD_AFTER`] the crates and kegs within
+/// crate or plank lights the small balls within [`TOUCH_REACH`] of its box,
+/// and once it has burned [`SPREAD_AFTER`] of its fire the props within
 /// [`SPREAD_REACH`], passing its lighter on. Proximity runs per prop through
 /// the spatial index, never over the balls: resting bodies send no
 /// contacts.
@@ -252,7 +272,7 @@ pub fn heat(world: &mut World) {
                 ignite(world, ball);
             }
         }
-        if BURN_SECS - fuel.left < SPREAD_AFTER - 1e-4 {
+        if whole_burn(world, prop.entity) - fuel.left < SPREAD_AFTER - 1e-4 {
             continue;
         }
         for (_, other) in near(world, prop.centre, prop.half, SPREAD_REACH) {
@@ -269,6 +289,26 @@ pub fn show_rock(world: &mut World, rock: Entity, variant: usize) {
         .resource_mut::<AssetRegistry>()
         .intern_sprite(&format!("ex10_goblin_rock_{}", variant % 2));
     if let Some(sprite) = world.get_mut::<Sprite>(rock) {
+        sprite.asset_id = id;
+    }
+}
+
+/// Shows a stone's art of its `size` and `variant`.
+pub fn show_stone(world: &mut World, stone: Entity, size: StoneSize, variant: usize) {
+    let id = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(&format!("ex10_stone_{}_{}", size.name(), variant % 2));
+    if let Some(sprite) = world.get_mut::<Sprite>(stone) {
+        sprite.asset_id = id;
+    }
+}
+
+/// Shows a plank's art of `variant`, its row.
+pub fn show_plank(world: &mut World, plank: Entity, variant: usize) {
+    let id = world
+        .resource_mut::<AssetRegistry>()
+        .intern_sprite(&format!("ex10_plank_{}", variant % super::PLANK_ROWS.len()));
+    if let Some(sprite) = world.get_mut::<Sprite>(plank) {
         sprite.asset_id = id;
     }
 }
@@ -306,28 +346,48 @@ pub fn fuse_frame(left: f32) -> usize {
     (((FUSE_SECS - left) / (FUSE_SECS / 4.0)).max(0.0) as usize).min(3)
 }
 
+/// A crate's or a plank's tint: the frost's when frozen or chilled, else
+/// its fire's flicker (burning's two ember tints) toward char by its burnt
+/// share of `whole` to the 1.2, one put out its char alone.
+fn wood_tint(fuel: &Fuel, whole: f32, frost: f32, time: f32) -> [u8; 4] {
+    if frost > 0.0 {
+        return frost_tint(frost);
+    }
+    let burnt = (1.0 - fuel.left / whole).clamp(0.0, 1.0);
+    let base = if fuel.lit {
+        EMBER_TINTS[flicker(time)]
+    } else {
+        [255; 4]
+    };
+    mix(base, CHAR_TINT, burnt.powf(1.2))
+}
+
 /// `props_look`, in the present phase: a frozen or chilled prop takes the
 /// frost's tint; a burning crate its fire's flicker (burning's two ember
 /// tints) toward char by its burnt share to the 1.2, one put out its char
-/// alone; a keg its lit fuse's frame by the quarter burnt, pulsing red over
-/// the fuse's last half; a bomb its spark's two frames in turn.
+/// alone, and a plank so over [`PLANK_BURN_SECS`], turned by its tumble; a
+/// keg its lit fuse's frame by the quarter burnt, pulsing red over the
+/// fuse's last half; a bomb its spark's two frames in turn.
 pub fn look(world: &mut World) {
     let time = drawn_time(world);
     for (_, fuel, sprite, frozen, chill) in
         world.query_mut::<(&Crate, &Fuel, &mut Sprite, Option<&Frozen>, Option<&Chill>)>()
     {
-        let frost = frost(frozen, chill);
-        if frost > 0.0 {
-            sprite.color = frost_tint(frost);
-            continue;
+        sprite.color = wood_tint(fuel, BURN_SECS, frost(frozen, chill), time);
+    }
+    for (_, fuel, sprite, transform, tumble, frozen, chill) in world.query_mut::<(
+        &Plank,
+        &Fuel,
+        &mut Sprite,
+        &mut Transform,
+        Option<&ScrapTumble>,
+        Option<&Frozen>,
+        Option<&Chill>,
+    )>() {
+        sprite.color = wood_tint(fuel, PLANK_BURN_SECS, frost(frozen, chill), time);
+        if let Some(tumble) = tumble {
+            transform.rotation = tumble.rotation(time);
         }
-        let burnt = (1.0 - fuel.left / BURN_SECS).clamp(0.0, 1.0);
-        let base = if fuel.lit {
-            EMBER_TINTS[flicker(time)]
-        } else {
-            [255; 4]
-        };
-        sprite.color = mix(base, CHAR_TINT, burnt.powf(1.2));
     }
     let kegs: Vec<(Entity, Option<f32>, f32)> = world
         .query::<(Entity, &Keg, Option<&Frozen>, Option<&Chill>)>()

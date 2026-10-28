@@ -1149,5 +1149,229 @@
         }
       }
     ]
+  },
+  {
+    "on": "beetle_ploughed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_beetle_plough_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_retreated",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_retreat_sfx",
+          "min_interval": 0.2
+        }
+      }
+    ]
+  },
+  {
+    "on": "crawler_hopped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crawler_hop_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "snowball_thrown",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_snowball_throw_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "snowball_burst",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_snowball_burst_sfx",
+          "min_interval": 0.05
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_crouched",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_crouch_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_dashed",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_dash_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "goblin_yelped",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_goblin_yelp_sfx",
+          "min_interval": 0.3
+        }
+      }
+    ]
+  },
+  {
+    "on": "ground_struck",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_ground_strike_sfx",
+          "min_interval": 0.1
+        }
+      }
+    ]
+  },
+  {
+    "on": "player_ticked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_player_tick_sfx",
+          "min_interval": 0.15
+        }
+      }
+    ]
+  },
+  {
+    "on": "crate_broke",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_crate_break_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "geyser_sputtered",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_geyser_sputter_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "geyser_erupted",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_geyser_erupt_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
+  },
+  {
+    "on": "stone_knocked",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_stone_knock_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
   }
 ]

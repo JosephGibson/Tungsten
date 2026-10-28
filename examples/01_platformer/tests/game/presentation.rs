@@ -25,15 +25,18 @@ use tungsten::core::post::{PostPass, PostStack};
 use tungsten::core::{
     AnimationRegistry, AnimationState, AssetRegistry, CameraState, DataRegistry, Entity,
     InputState, Light, MaterialRegistry, Particle, ParticleBudget, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Position, Sprite, TilemapInstance, TilemapRegistry,
-    Transform, Visibility,
+    ParticleEmitter, ParticleEmitterState, Position, PrevPosition, Sprite, TilemapInstance,
+    TilemapRegistry, Transform, Visibility,
 };
 use tungsten::kit::{Facing, PlatformerController, damage};
 use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
-use example_01_platformer::features::enemies::components::{Brain, EnemyKind, EnemyState, Strike};
+use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
+use example_01_platformer::features::enemies::components::{
+    Brain, Enemy, EnemyKind, EnemyState, Strike,
+};
 use example_01_platformer::features::enemies::draw::{
     HIT_COLOR, HIT_THICKNESS, MARK_ALERT, MARK_SEARCH, mark,
 };
@@ -51,7 +54,9 @@ use tungsten::core::Shape;
 use tungsten::core::{AudioCommand, SoundRegistry, Time};
 use tungsten::kit::{Hitbox, KitDebug, StateMachine};
 
-use super::{aim_at, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport};
+use super::{
+    aim_at, calm, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport,
+};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -130,6 +135,8 @@ fn animation_transitions_hold_finish_face_and_interrupt_landing() {
 #[test]
 fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     let (mut harness, player) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     harness.step(5);
     let takeoff = centre(&harness, player) + Vec2::new(0.0, PLAYER_HALF.y);
     harness.harness_mut().press_action("jump");
@@ -183,6 +190,8 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
 #[test]
 fn particle_caps_and_ambient_placements_remain_bounded() {
     let (mut harness, _) = run();
+    // The geysers' bursts aside, which never drain (e01hollow).
+    calm(&mut harness);
     let world = harness.world();
     let registry = world.resource::<ParticleConfigRegistry>();
     // The map's emitters: each object at its place, with its config and seed.
@@ -598,6 +607,49 @@ fn the_wizards_overlays_sit_on_his_body() {
     assert!(
         halos.iter().any(|halo| halo.distance(body) < 0.5),
         "{halos:?} against his body at {body}"
+    );
+}
+
+#[test]
+fn a_shocked_dummy_crackles_through_four_frames_and_flickers_violet() {
+    use example_01_platformer::features::combat::systems::SHOCK_TINT;
+    use example_01_platformer::features::dummy;
+    let (mut harness, player) = run();
+    harness.step(10);
+    let at = centre(&harness, player) + Vec2::new(120.0, -140.0);
+    let target = dummy::spawn(harness.world_mut(), at);
+    super::combat::apply(&mut harness, target, "shocked", None);
+    let assets = harness.world_mut().resource_mut::<AssetRegistry>();
+    for f in 0..4 {
+        let name = format!("ex10_status_crackle_medium_{f}");
+        mock_sprite(assets, &name, 960 + f, false);
+    }
+    let mut frames = Vec::new();
+    // Four frames at 16 Hz, 0.25 s.
+    for _ in 0..15 {
+        harness.step(1);
+        let world = harness.world();
+        let shown: Vec<u32> = overlays(world)
+            .iter()
+            .map(|batch| batch.texture.0)
+            .filter(|handle| (960..964).contains(handle))
+            .map(|handle| handle - 960)
+            .collect();
+        let tinted = world.get::<Sprite>(target).unwrap().color == SHOCK_TINT;
+        frames.push((shown, tinted));
+    }
+    let seen: std::collections::BTreeSet<u32> =
+        frames.iter().flat_map(|(shown, _)| shown.clone()).collect();
+    assert_eq!(
+        seen.into_iter().collect::<Vec<_>>(),
+        [0, 1, 2, 3],
+        "{frames:?}"
+    );
+    assert!(
+        frames
+            .iter()
+            .all(|(shown, tinted)| shown.len() == 1 && *tinted == shown[0].is_multiple_of(2)),
+        "the tint on the even frames: {frames:?}"
     );
 }
 
@@ -1092,6 +1144,53 @@ fn f1_draws_the_hit_boxes_with_the_colliders_while_they_land() {
     harness.step(2);
     assert!(!harness.world().resource::<KitDebug>().enabled());
     assert_eq!(hit_shapes(&harness), 0, "no hit shape");
+}
+
+#[test]
+fn f1_outlines_a_charging_beetles_plough_box() {
+    let mut harness = super::harness();
+    super::start(&mut harness);
+    let player = super::player_entity(&harness);
+    super::calm(&mut harness);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    super::ground(&mut harness, SKY_TOP);
+    hold_step(&mut harness, player, 300.0);
+    let beetle = standing(&mut harness, EnemyKind::Beetle, 1200.0);
+    harness
+        .world_mut()
+        .resource_mut::<PhysicsDebugOverlay>()
+        .enabled = true;
+    harness.step(2);
+    // Drawn where the beetle is drawn, back toward its last step's place by
+    // `1 - alpha` of the step.
+    let plough_quad = |harness: &UiHarness| {
+        let world = harness.world();
+        let time = world.resource::<Time>();
+        let alpha = if time.interpolate() {
+            time.alpha()
+        } else {
+            1.0
+        };
+        let lag = (world.get::<PrevPosition>(beetle).unwrap().0
+            - world.get::<Position>(beetle).unwrap().0)
+            * (1.0 - alpha);
+        let corner = beetle::plough_box(world, beetle).unwrap() - PLOUGH_HALF + lag;
+        let draw = harness.harness().draw().expect("a frame drew");
+        draw.debug_quads
+            .iter()
+            .find(|quad| Vec2::from(quad.position).distance(corner) < 0.01)
+            .map(|quad| (quad.color, quad.size[1]))
+    };
+    assert_eq!(plough_quad(&harness), None, "it stands: no plough");
+    let world = harness.world_mut();
+    world.get_mut::<Enemy>(beetle).unwrap().heading = 1.0;
+    world.insert(beetle, StateMachine::new(EnemyState::Attack));
+    harness.step(2);
+    assert_eq!(
+        plough_quad(&harness),
+        Some((HIT_COLOR, HIT_THICKNESS)),
+        "the plough's box while it charges"
+    );
 }
 
 #[test]

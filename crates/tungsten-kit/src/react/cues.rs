@@ -1130,6 +1130,100 @@ impl CueEvent {
     }
 }
 
+/// Where cue sounds are heard from, an opt-in World resource. With one in
+/// the World, a `sound` action plays at its volume times
+/// [`gain`](Self::gain) at the occurrence's position, and skips a cue past
+/// the listener's hearing without marking its `min_interval`, so a nearer
+/// one may still play; without one, every cue sound plays at its volume.
+/// The game moves it, to its player or its camera, each step before
+/// [`CUES`].
+///
+/// ```
+/// use glam::Vec2;
+/// use tungsten_kit::CueListener;
+///
+/// let mut listener = CueListener::new(100.0, 300.0);
+/// assert_eq!(listener.gain(Vec2::new(50.0, 0.0)), 1.0);
+/// assert_eq!(listener.gain(Vec2::new(200.0, 0.0)), 0.25);
+/// assert_eq!(listener.gain(Vec2::new(300.0, 0.0)), 0.0);
+/// listener.set_position(Vec2::new(300.0, 0.0));
+/// assert_eq!(listener.gain(Vec2::new(300.0, 0.0)), 1.0);
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CueListener {
+    position: Vec2,
+    full: f32,
+    silent: f32,
+}
+
+impl CueListener {
+    /// A listener at the origin that hears a cue at its full volume within
+    /// `full` of it and nothing from `silent`.
+    ///
+    /// # Panics
+    ///
+    /// Unless both are finite and `0 <= full < silent`.
+    #[must_use]
+    pub fn new(full: f32, silent: f32) -> Self {
+        assert!(
+            full.is_finite() && silent.is_finite() && 0.0 <= full && full < silent,
+            "a cue listener needs finite distances with 0 <= full < silent, got {full} and {silent}"
+        );
+        Self {
+            position: Vec2::ZERO,
+            full,
+            silent,
+        }
+    }
+
+    /// The listener, at `position`.
+    #[must_use]
+    pub fn at(mut self, position: Vec2) -> Self {
+        self.position = position;
+        self
+    }
+
+    /// Where the listener hears from.
+    #[must_use]
+    pub fn position(&self) -> Vec2 {
+        self.position
+    }
+
+    /// Moves the listener to `position`.
+    pub fn set_position(&mut self, position: Vec2) {
+        self.position = position;
+    }
+
+    /// The distance within which a cue plays at its full volume.
+    #[must_use]
+    pub fn full(&self) -> f32 {
+        self.full
+    }
+
+    /// The distance from which a cue is not heard.
+    #[must_use]
+    pub fn silent(&self) -> f32 {
+        self.silent
+    }
+
+    /// The share of its volume a cue at `at` plays at: 1 within
+    /// [`full`](Self::full) of the listener, 0 from [`silent`](Self::silent)
+    /// or at a point that is not finite, and `(1 − t)²` between, `t` the
+    /// distance's share of the way from `full` to `silent`.
+    #[must_use]
+    pub fn gain(&self, at: Vec2) -> f32 {
+        let distance = self.position.distance(at);
+        if distance <= self.full {
+            return 1.0;
+        }
+        if distance.is_nan() || distance >= self.silent {
+            return 0.0;
+        }
+        let t = (distance - self.full) / (self.silent - self.full);
+        (1.0 - t) * (1.0 - t)
+    }
+}
+
 /// One event the cue system runs actions for, from any source.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Occurrence {
@@ -1699,6 +1793,7 @@ const NO_COMMANDS: &str = "the World has no CommandBuffer";
 const NO_QUEUE: &str = "the World has no queue for it";
 const NO_SOUND: &str = "the World has no sound or audio for it";
 const TOO_SOON: &str = "the sound played within its min_interval";
+const UNHEARD: &str = "the cue's position is past the listener's hearing";
 const NO_TABLE: &str = "the World has no such loot table";
 const NO_STYLE: &str = "the part's types set no label style";
 const NO_EFFECTS: &str = "the World has no EffectsPlugin queue";
@@ -1955,10 +2050,16 @@ impl Reactor {
                 else {
                     return skip(world, NO_SOUND);
                 };
+                let gain = world
+                    .get_resource::<CueListener>()
+                    .map_or(1.0, |listener| listener.gain(occurrence.position));
+                if gain <= 0.0 {
+                    return skip(world, UNHEARD);
+                }
                 let Some(commands) = world.get_resource_mut::<AudioCommands>() else {
                     return skip(world, NO_SOUND);
                 };
-                commands.play_with(handle, volume, false);
+                commands.play_with(handle, volume * gain, false);
                 self.played.insert(id.clone(), self.clock);
             }
             ActionKind::Shake(trauma) => {

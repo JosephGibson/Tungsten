@@ -87,6 +87,91 @@ def shade(inside, base, light=None, shadow=None, back=None, trim=None, rim=None,
     return colors
 
 
+def grade(inside, symbols, light=(-0.45, -0.8, 0.6), depth=None, spread=0.3, fall=0.0, bias=0.0):
+    """Graded shading for a part, a few dithered steps from dark to light:
+    its height rises as a rounded dome `depth` pixels in from its edge (by
+    default all the way to its middle), so each pixel's slope turns it
+    toward or away from `light` (screen x and y toward the light, then out
+    of the picture), lit top-left to a shadowed underside; `fall` darkens it
+    further toward its foot, `bias` lifts the whole. `symbols` run dark to
+    light, picked by the ordered dither."""
+    if not inside:
+        return {}
+    far = 10 ** 6
+    order = sorted(inside, key=lambda p: (p[1], p[0]))
+    dist = dict.fromkeys(inside, far)
+    for pixels, steps in ((order, ((-1, 0, 3), (0, -1, 3), (-1, -1, 4), (1, -1, 4))),
+                          (order[::-1], ((1, 0, 3), (0, 1, 3), (1, 1, 4), (-1, 1, 4)))):
+        for x, y in pixels:  # a chamfer distance in from the edge, in thirds of a pixel
+            dist[(x, y)] = min([dist[(x, y)]] + [dist.get((x + dx, y + dy), 0) + w for dx, dy, w in steps])
+    depth = depth or max(1.0, max(dist.values()) / 3 - 0.5)
+
+    def height(p):
+        u = min(1.0, max(0.0, (dist.get(p, 0) / 3 - 0.5) / depth))
+        return depth * math.sqrt(1 - (1 - u) ** 2)
+
+    length = math.sqrt(sum(c * c for c in light))
+    lx, ly, lz = (c / length for c in light)
+    top = min(y for _, y in inside)
+    tall = max(1, max(y for _, y in inside) - top)
+    colors = {}
+    for x, y in order:
+        nx = (height((x - 1, y)) - height((x + 1, y))) / 2
+        ny = (height((x, y - 1)) - height((x, y + 1))) / 2
+        norm = math.sqrt(nx * nx + ny * ny + 1)
+        facing = (nx * lx + ny * ly + lz) / norm
+        value = 0.5 + 0.5 * (facing - lz) / (1 - lz) + bias - fall * (y - top) / tall
+        colors[(x, y)] = ramp(value, symbols, x, y, spread)
+    return colors
+
+
+def packed_stones(inside, symbols, size=5, seed='stones', mortar=None):
+    """`inside` packed with small stones about `size` px across (e01hollow):
+    each pixel joins the nearest of a jittered grid of centres, each stone
+    is lit toward the moon at its upper right and falls to shadow at its
+    lower left, through `symbols` dark to light, with `mortar` (else the
+    darkest symbol) in the joints between stones. A rubble core, gravel or
+    scree."""
+    def centre(gx, gy):
+        return (gx + 0.2 + 0.6 * unit(seed, gx, gy, 'x')) * size, (gy + 0.2 + 0.6 * unit(seed, gx, gy, 'y')) * size
+
+    colors = {}
+    for x, y in inside:
+        gx, gy = x // size, y // size
+        near = sorted((math.hypot(x - cx, y - cy), cx, cy, i, j)
+                      for i in (gx - 1, gx, gx + 1) for j in (gy - 1, gy, gy + 1) for cx, cy in (centre(i, j),))
+        (d1, cx, cy, i, j), (d2, *_) = near[0], near[1]
+        if d2 - d1 < 1.0:
+            colors[(x, y)] = mortar or symbols[0]
+            continue
+        lean = ((x - cx) - (y - cy)) / size + (unit(seed, i, j, 'tone') - 0.5) * 0.6
+        colors[(x, y)] = ramp(0.5 + lean * 0.7, symbols[1:] if mortar is None else symbols, x, y, 0.3)
+    return colors
+
+
+def fbm(x, y, seed, octaves=3, _lattice={}):
+    """Smooth value noise in [0, 1) at (`x`, `y`), `octaves` of it summed at
+    doubling frequencies and halving weights (e01hollow): a flame's
+    tongues, a crater's glow, rock's soft masses."""
+    def corner(o, i, j):
+        key = (seed, o, i, j)
+        if key not in _lattice:
+            _lattice[key] = unit('lattice', seed, o, i, j)
+        return _lattice[key]
+
+    total = norm = 0.0
+    for o in range(octaves):
+        u, v = x * 2 ** o, y * 2 ** o
+        i, j = math.floor(u), math.floor(v)
+        fx, fy = u - i, v - j
+        sx, sy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+        top = corner(o, i, j) + (corner(o, i + 1, j) - corner(o, i, j)) * sx
+        low = corner(o, i, j + 1) + (corner(o, i + 1, j + 1) - corner(o, i, j + 1)) * sx
+        total += (top + (low - top) * sy) / 2 ** o
+        norm += 1 / 2 ** o
+    return total / norm
+
+
 def compose(layers):
     """Paint parts back to front; each part rims what it overlaps."""
     canvas = {}

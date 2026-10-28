@@ -6,6 +6,7 @@
 //! what draws, `regime` the step's events, `areas` the banners and
 //! autosaves; `ball_pit`, `spawning`, `burning`, `brick`, `ice` and
 //! `spells` the toys, their element rules and the spells that cast them;
+//! `audio` the listener's falloff;
 //! `combat` the damage model, `data` the constants that restate the data,
 //! `cascades` the endings and their chains, `lightning` the strike and its
 //! conduction, `gun` the gun and its shots, `dummy` the training dummy,
@@ -14,6 +15,7 @@
 //! template, on the same bytes, which `just repo-check` holds.
 
 mod areas;
+mod audio;
 mod ball_pit;
 mod brick;
 mod burning;
@@ -45,7 +47,9 @@ mod tomes;
 use std::path::PathBuf;
 
 use example_01_platformer::features::enemies::components::Enemy;
+use example_01_platformer::features::level::geyser::Geyser;
 use example_01_platformer::features::player as courier;
+use example_01_platformer::features::props::components::Stone;
 use example_01_platformer::features::run::{DEATH_SECS, Run};
 use example_01_platformer::features::spells as game_spells;
 use example_01_platformer::features::toys;
@@ -197,16 +201,18 @@ pub fn player_entity(harness: &UiHarness) -> Entity {
         .player
 }
 
-/// Takes the map's enemies off, with what hangs from them: a test that
-/// walks the level meets its terrain alone.
+/// Takes the map's enemies, geysers and stones off, with what hangs from
+/// them: a test that walks the level meets its terrain alone.
 pub fn calm(harness: &mut UiHarness) {
     let world = harness.world_mut();
-    let enemies: Vec<Entity> = world
+    let calmed: Vec<Entity> = world
         .query::<(Entity, &Enemy)>()
         .map(|(entity, _)| entity)
+        .chain(world.query::<(Entity, &Geyser)>().map(|(entity, _)| entity))
+        .chain(world.query::<(Entity, &Stone)>().map(|(entity, _)| entity))
         .collect();
-    for enemy in enemies {
-        despawn_tree(world, enemy);
+    for entity in calmed {
+        despawn_tree(world, entity);
     }
 }
 

@@ -15,7 +15,23 @@
     {
       "duration_ms": 100,
       "sprite": "ex10_beetle_paw_3_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_paw_4_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_paw_5_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_paw_6_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_paw_7_left"
     }
   ],
-  "looping": true
+  "looping": false
 }

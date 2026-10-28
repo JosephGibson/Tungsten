@@ -8,7 +8,7 @@ use tungsten::core::{AssetRegistry, SpriteAsset, World};
 use tungsten::render::{SpriteBatch, SpriteInstance};
 
 use super::components::{Arc, Bolt};
-use super::{BOLT_SECS, EXITS, SEGMENT};
+use super::{ARC_JITTER, ARC_SECS, EXITS, SEGMENT};
 use crate::features::level::draw::{instance, push_quad, view};
 
 /// The bolt's segments, by piece.
@@ -95,7 +95,8 @@ fn stack(batches: &mut Vec<SpriteBatch>, assets: &AssetRegistry, bolt: &Bolt, to
     }
 }
 
-/// An arc's zigzag, its glow then its core, fading over its life.
+/// An arc's zigzag, its glow then its core, its corners on a new path every
+/// [`ARC_JITTER`] and fading over its last third.
 fn zigzag(batches: &mut Vec<SpriteBatch>, solid: &SpriteAsset, arc: &Arc) {
     let span = arc.to - arc.from;
     let length = span.length();
@@ -104,14 +105,15 @@ fn zigzag(batches: &mut Vec<SpriteBatch>, solid: &SpriteAsset, arc: &Arc) {
     }
     let aside = (span / length).perp();
     let corners = ((length / 32.0) as usize).clamp(2, 10);
+    let seed = arc.seed.wrapping_add((arc.age / ARC_JITTER) as u64);
     let mut points = vec![arc.from];
     for k in 1..corners {
         let side = if k % 2 == 0 { 1.0 } else { -1.0 };
-        let swing = side * KINK * (0.5 + 0.5 * unit(arc.seed, k));
+        let swing = side * KINK * (0.5 + 0.5 * unit(seed, k));
         points.push(arc.from + span * (k as f32 / corners as f32) + aside * swing);
     }
     points.push(arc.to);
-    let left = (1.0 - arc.age / BOLT_SECS).clamp(0.0, 1.0);
+    let left = ((ARC_SECS - arc.age) / (ARC_SECS / 3.0)).clamp(0.0, 1.0);
     for (width, color) in [(GLOW_WIDTH, GLOW), (CORE_WIDTH, CORE)] {
         let mut color = color;
         color[3] = (f32::from(color[3]) * left).round() as u8;

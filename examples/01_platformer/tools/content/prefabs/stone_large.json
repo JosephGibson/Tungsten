@@ -1,0 +1,27 @@
+{
+  "sprite": {
+    "asset_id": "ex10_stone_large_0",
+    "z_order": 12
+  },
+  "components": {
+    "stone": {
+      "size": "large"
+    },
+    "rigid_body": {
+      "kind": "dynamic",
+      "shape": {
+        "kind": "aabb",
+        "half_extents": [
+          20,
+          15
+        ]
+      },
+      "offset": [
+        32,
+        49
+      ],
+      "mass": 20,
+      "restitution": 0.1
+    }
+  }
+}

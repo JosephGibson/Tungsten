@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_crawler_snowball_throw_0_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_crawler_snowball_throw_1_left"
+    },
+    {
+      "duration_ms": 120,
+      "sprite": "ex10_crawler_snowball_throw_2_left"
+    }
+  ],
+  "looping": false
+}

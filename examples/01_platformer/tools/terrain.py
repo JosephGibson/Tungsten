@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from PIL import Image
 
 from art import PALETTE, rng_for
-from pixels import dither, to_image, unit, wave
+from pixels import dither, fbm, ramp, to_image, unit, wave
 
 TILE = 64
 COURSES = ((0, 15), (15, 17), (32, 14), (46, 18))  # (top row, height); sums to 64
@@ -775,48 +775,142 @@ def pit_floor(i):
     return to_image(c)
 
 
+# The channel's coping (e01hollow), drawn apart from the trough: the water
+# rides behind the near capstones from row 2 to `COPING_TOP` - 1; the
+# capstones' moonlit top face runs to `COPING_ARRIS`, their front face to
+# `COPING_LIP`, a bead moulding under it casts a shadow on the masonry.
+COPING_TOP, COPING_ARRIS, COPING_LIP = 6, 8, 16
+# Each variant's capstone joints, a joint at every tile's edge.
+COPING_JOINTS = ((0, 32), (0, 22, 43), (0, 27), (0, 19, 40), (0, 30), (0, 24, 45), (0, 34))
+
+
+def coping(c, i, kind='plain'):
+    """Variant `i`'s coping over channel canvas `c`: dressed capstones whose
+    top face catches the moon, their front faces tooled, joints dark with
+    moss in them, the arris chipped here and there and lichen on the
+    stone; a bead moulding under them and its shadow on the courses below.
+    `mossy` pads the top with moss that drapes over the face; `cracked`
+    splits a capstone and sinks its far piece, the leak darkening the wall
+    under it."""
+    joints = COPING_JOINTS[i % len(COPING_JOINTS)]
+
+    def stone_of(x):
+        return sum(1 for j in joints if j <= x)
+
+    for x in range(TILE):
+        joint = x in joints
+        n = stone_of(x)
+        for y in range(COPING_TOP, COPING_LIP + 5):
+            if y < COPING_ARRIS:
+                sym = '<' if joint else ';' if dither(x, y, 0.62 + 0.2 * unit('cop', i, n)) else ':'
+            elif y == COPING_ARRIS:
+                sym = '<' if joint else ';'
+            elif y < COPING_LIP:
+                if joint:
+                    sym = '<'
+                elif y == COPING_ARRIS + 1:
+                    sym = ':'
+                else:
+                    t = unit('copface', i, n, x // 3, y // 2)
+                    sym = '~' if t < 0.62 else ':' if t < 0.8 else '='
+                    if y >= COPING_LIP - 2 and dither(x, y, 0.5):
+                        sym = '='
+            elif y == COPING_LIP:
+                sym = ':' if not joint else '-'
+            elif y == COPING_LIP + 1:
+                sym = '-'
+            elif y == COPING_LIP + 2:
+                sym = '<'
+            else:
+                # The bead's shadow on the courses below, fading.
+                if (x, y) in c and dither(x, y, 0.8 - (y - COPING_LIP - 3) * 0.35):
+                    c[(x, y)] = DARKEN.get(c[(x, y)], c[(x, y)])
+                continue
+            c[(x, y)] = sym
+    # Wear: a chipped arris, hairline cracks, lichen, moss in the joints.
+    for n in range(len(joints)):
+        x0 = joints[n]
+        x1 = joints[n + 1] if n + 1 < len(joints) else TILE
+        if unit('chip', i, n) < 0.6:
+            cx = x0 + 3 + int(unit('chipx', i, n) * max(1, x1 - x0 - 8))
+            for dx in range(2 + int(unit('chipw', i, n) * 3)):
+                c[(cx + dx, COPING_ARRIS)] = '-'
+                c[(cx + dx, COPING_ARRIS + 1)] = '=' if dx % 2 else '-'
+        if unit('ccrack', i, n) < 0.45:
+            x = x0 + 4 + int(unit('ccx', i, n) * max(1, x1 - x0 - 8))
+            for y in range(COPING_ARRIS + 1, COPING_LIP):
+                x += 1 if unit('ccw', i, n, y) > 0.75 else 0
+                c[(x, y)] = '<'
+        for k in range(2):
+            q = (x0 + 2 + int(unit('lich', i, n, k) * max(1, x1 - x0 - 4)),
+                 COPING_ARRIS + 2 + int(unit('lichy', i, n, k) * 5))
+            if c.get(q) in ('~', ':', '=') and unit('lichon', i, n, k) < 0.5:
+                c[q] = 'g' if k % 2 else 's'
+    for j in joints:
+        if unit('jmoss', i, j) < 0.6:
+            for y in range(COPING_TOP, COPING_TOP + 2 + int(unit('jml', i, j) * 3)):
+                c[(j, y)] = 'T' if y == COPING_TOP else 't'
+    if kind == 'mossy':
+        for x in range(TILE):
+            if unit('lipmoss', i, x // 5) < 0.45 and x not in joints:
+                c[(x, COPING_TOP)] = 'G' if unit('lmg', i, x) < 0.25 else 'g'
+                c[(x, COPING_TOP + 1)] = 'g' if dither(x, 0, 0.7) else 'T'
+                c[(x, COPING_ARRIS)] = 'T'
+                if unit('lmd', i, x // 2) < 0.5:
+                    for y in range(COPING_ARRIS + 1, COPING_ARRIS + 2 + int(unit('lm', i, x) * 4)):
+                        c[(x, y)] = 'T' if y < COPING_ARRIS + 2 else 't'
+        for fx in (13, 41):
+            for t in range(5):
+                c[(fx + t - 2, COPING_TOP - 1 - abs(t - 2) // 2)] = 'G' if t == 2 else 'g'
+    elif kind == 'cracked':
+        # The first capstone split, its far piece sunk a pixel, the leak
+        # through the split running down the wall.
+        end = joints[1] if len(joints) > 1 else TILE
+        xs, x = [], 14
+        for y in range(COPING_TOP, COPING_LIP + 1):
+            x += 1 if unit('crk', y) > 0.6 else 0
+            xs.append(x)
+        for y, cx in zip(range(COPING_LIP, COPING_TOP, -1), reversed(xs[1:])):
+            for dx in range(cx + 1, end):
+                c[(dx, y)] = c[(dx, y - 1)]
+        for dx in range(xs[0] + 1, end):
+            c[(dx, COPING_TOP)] = '<'
+        for y, cx in zip(range(COPING_TOP, COPING_LIP + 1), xs):
+            c[(cx, y)] = 'o'
+        x = xs[-1]
+        for y in range(COPING_LIP + 3, TILE):
+            q = (x + round(math.sin(y * 0.3)), y)
+            if q in c and dither(q[0], y, 0.85 - (y - COPING_LIP) / 60):
+                c[q] = '|' if dither(q[0], y, 0.5) else 'o'
+            if (q[0] + 1, y) in c and dither(q[0] + 1, y, 0.4):
+                c[(q[0] + 1, y)] = DARKEN.get(c[(q[0] + 1, y)], c[(q[0] + 1, y)])
+    return c
+
+
 def channel(i, broken=None, kind='plain'):
+    """A channel tile, variant `i`: the trough's water riding behind the
+    coping (`coping`), the masonry under it."""
     c = rock_canvas(i + 3)
     for x in range(TILE):
         wave = math.sin(math.tau * (x / 32) + i) * 0.8
         surface = 2 + round(wave)
-        for y in range(0, 16):
+        for y in range(0, COPING_TOP):
             if y < surface:
                 c.pop((x, y), None)
             elif y == surface:
                 c[(x, y)] = '`' if unit('glint', i, x // 3) < 0.3 else '_'
-            elif y < 7:
+            elif y < COPING_TOP - 1:
                 c[(x, y)] = '}' if dither(x, y, 0.55) else ')'
-            elif y < 11:
-                c[(x, y)] = '{' if dither(x, y, 0.5) else '|'
-            elif y == 11:
-                c[(x, y)] = ';'
-            elif y == 12:
-                c[(x, y)] = ':'
             else:
-                c[(x, y)] = '<' if x % 32 == 0 else '-'
-    if kind == 'mossy':
-        for x in range(TILE):
-            if unit('lipmoss', i, x // 3) < 0.55:
-                for y in range(11, 13 + int(unit('lm', i, x) * 6)):
-                    c[(x, y)] = 'T' if y < 14 else 't'
-                if unit('fern', i, x // 7) < 0.2:
-                    for y in range(5, 11):
-                        c[(x, y)] = 'G' if y % 2 else 'g'
-    elif kind == 'spout':
-        for y in range(11, TILE):
+                c[(x, y)] = '{' if dither(x, y, 0.5) else '|'
+    coping(c, i, kind)
+    if kind == 'spout':
+        for y in range(COPING_TOP, TILE):
             for x in range(26, 38):
                 flow = math.sin((y * 0.7) + x * 0.9)
                 c[(x, y)] = '_' if (x in (26, 37) and dither(x, y, 0.4)) else '}' if flow > 0.4 else ')' if flow > -0.3 else '{'
         for x in range(24, 40):
-            c[(x, 11)] = '_'
-    elif kind == 'cracked':
-        for x in range(14, 30):
-            for y in range(11, 14):
-                c.pop((x, y), None)
-        for x in range(14, 30):
-            c[(x, 14)] = '<'
-        c[(31, 18)], c[(32, 19)], c[(33, 21)] = '<', '<', '<'
+            c[(x, COPING_TOP)] = '_'
     if broken:
         for y in range(0, TILE):
             for x in (range(48, TILE) if broken == 'right' else range(0, 16)):
@@ -839,7 +933,7 @@ def break_edge(side, k, y):
     """Variant `k`'s broken face at row `y`: the x of the last masonry pixel
     on a right break (the first on a left one). The trough ends at the lip
     and the face drops near-plumb under it, ragged every 3 px: chipped (0),
-    crumbling in small steps (1) or under a coping that juts 3 px (2);
+    crumbling in small steps (1) or under a capstone that juts 3 px (2);
     never a square cut. A left face recedes less, so its water runs down
     it."""
     lip = BREAK_LIPS[side][k]
@@ -850,7 +944,7 @@ def break_edge(side, k, y):
     elif k == 1:
         back = (max(0, y - 12) // 14) * 3 * soft + (unit('bs', side, y // 14) - 0.5) * 2
     else:
-        back = -3 if 10 <= y <= 15 else max(0, y - 15) * 0.08 * soft
+        back = -3 if COPING_TOP <= y <= COPING_LIP + 2 else max(0, y - 15) * 0.08 * soft
     return lip - back + jag if side == 'right' else lip + back - jag
 
 
@@ -869,7 +963,7 @@ def channel_break(side, k):
         e = round(break_edge(side, k, y))
         for d in range(0, 10):
             x = e - sign * d
-            if (x, y) in c and y >= 11:
+            if (x, y) in c and y >= COPING_TOP:
                 c[(x, y)] = 'o' if d == 0 else '<' if d < 3 or c[(x, y)] in ('-', '<') else c[(x, y)]
     for n in range(26):
         y0 = 13 + int(unit('bstone', side, k, n) * 50)
@@ -894,83 +988,164 @@ def channel_break(side, k):
             if p in c:
                 c[p] = 'T' if t else 'g'
     lip = BREAK_LIPS[side][k]
-    for y in range(2, 9):
+    for y in range(2, COPING_TOP):
         if (lip, y) in c:
             c[(lip, y)] = '`' if y % 3 == 0 else '_'
     return to_image(c)
 
 
-WIDTHS = ((16, 16, 16, 16), (12, 20, 16, 16), (20, 12, 20, 12), (16, 12, 16, 20))
+# Columnar basalt (e01hollow's deep pass): each variant's column widths,
+# and its kind, 16 in all (`level.py` draws 16): plain columns, cooled flow
+# lines, black glass, an ember crack, an ember nodule, gas holes, ash.
+WIDTHS = ((22, 20, 22), (16, 26, 22), (20, 14, 30), (26, 18, 20), (18, 24, 22), (24, 22, 18),
+          (14, 20, 16, 14), (30, 16, 18))
+BASALT_KINDS = ('plain', 'plain', 'plain', 'plain', 'plain', 'plain', 'plain', 'plain', 'flow', 'flow', 'flow',
+                'glass', 'ember', 'nodule', 'vesicles', 'ash')
+BASALT_RAMP = 'νγβαξ'
 
 
 def basalt(i, part='body'):
-    """Columnar basalt: columns 12-20 px wide, staggered joints; a variant in
-    four: plain, an ember nodule, an obsidian streak, ash in the joints."""
+    """Columnar basalt: columns 14-30 px wide, each a prism lit along its
+    west face, its cross-joints staggered; a kind in each variant
+    (`BASALT_KINDS`): plain, cooled flow lines lapping across the columns,
+    a patch cooled to black glass with conchoidal sheens, an ember crack
+    forking down through it, an ember nodule, gas holes or ash in its
+    joints. `top` lays a cooled ash crust over it, `under` a dripping
+    underside, a `cliff_` side a face."""
+    kind = BASALT_KINDS[i % len(BASALT_KINDS)] if part == 'body' else ('plain', 'flow', 'plain', 'vesicles')[i % 4]
+    widths = WIDTHS[i % len(WIDTHS)]
     c = {}
-    x0 = 0
-    for col, width in enumerate(WIDTHS[i % 4]):
-        joints = sorted((int(unit('joint', i, col, k) * 22) + k * 32) % TILE for k in range(2))
-        for x in range(x0, x0 + width):
-            u = (x - x0) / max(1, width - 1)
+    start = 0
+    for k, width in enumerate(widths):
+        joints = sorted({(int(unit('joint', i, k, n) * 30) + n * 32 + k * 7) % TILE for n in range(2)})
+        for x in range(start, start + width):
+            u = (x - start) / max(1, width - 1)
             for y in range(TILE):
-                n = unit('bas', i, col, x // 2, y // 3)
-                if x == x0:
+                g = (fbm(x / 6, y / 9, ('basalt', i, k)) - 0.5) * 0.35
+                if x == start:
                     sym = 'θ'
-                elif u < 0.22:
-                    sym = 'α' if n < 0.7 else 'ξ'
-                elif u < 0.7:
-                    sym = 'β' if n < 0.6 else 'γ'
+                elif x == start + 1:
+                    sym = 'α' if dither(x, y, 0.7) else 'β'
                 else:
-                    sym = 'ν' if n < 0.7 else 'γ'
+                    sym = ramp(0.62 - u * 0.34 + g, BASALT_RAMP, x, y, 0.2)
                 if y in joints:
                     sym = 'ε'
-                elif (y - 1) % TILE in joints and u < 0.7:
-                    sym = 'ξ' if dither(x, y, 0.5) else 'α'
-                if (i // 4) % 4 == 3 and (y in joints or (y + 1) % TILE in joints) and unit('ash', i, x // 2) < 0.6:
-                    sym = 'Φ' if dither(x, y, 0.5) else 'Ω'
+                elif (y - 1) % TILE in joints and x > start:
+                    sym = 'α' if u < 0.6 else 'β'
                 c[(x, y)] = sym
-        x0 += width
-    v = (i // 4) % 4
-    if v == 1:
-        cx, cy = 14 + int(unit('nod', i) * 34), 14 + int(unit('nody', i) * 34)
-        ellipse(c, cx, cy, 5, 4, lambda dx, dy: 'M' if abs(dx) > 3 or abs(dy) > 2 else 'L')
-        ellipse(c, cx, cy, 3, 2, lambda dx, dy: 'K' if abs(dx) > 1 else 'J')
-        c[(cx, cy)], c[(cx - 1, cy)] = 'Y', 'y'
-    elif v == 2:
-        sx = 10 + int(unit('obs', i) * 40)
-        for y in range(8, 56):
-            sx += 1 if unit('obsx', i, y) > 0.8 else -1 if unit('obsx', i, y) < 0.15 else 0
-            c[(sx, y)], c[(sx + 1, y)] = '0', '2'
-            if y % 9 == 0:
-                c[(sx, y)] = 'π'
-    if unit('crack?', i) < 0.16:
-        crack(c, ('crack', i), (int(unit('cx', i) * 60), int(unit('cy', i) * 30)),
-              10 + int(unit('cl', i) * 16), hot=0.22)
+        start += width
+    if kind == 'flow':
+        # Cooled flow lines: two broad wrinkles of a flow's skin lapping
+        # over the columns, lit along their tops, fading before the sides.
+        y0 = 14 + int(unit('flow', i) * 30)
+        for x in range(3, TILE - 3):
+            fade = min(1.0, (x - 3) / 5, (TILE - 4 - x) / 5)
+            for band in range(2):
+                top = round(y0 + band * 14 + 3.0 * math.sin(x / 9.5 + band * 1.7 + i) + 1.2 * math.sin(x / 3.3 + band))
+                if not dither(x, top, fade):
+                    continue
+                c[(x, top)] = 'α'
+                for y in range(top + 1, top + 6):
+                    if c.get((x, y)) in ('β', 'α', 'ξ'):
+                        c[(x, y)] = 'γ'
+                    elif c.get((x, y)) == 'γ':
+                        c[(x, y)] = 'ν'
+                if (x + band) % 6 < 2:
+                    c[(x, top + 3)] = 'ν'
+    elif kind == 'glass':
+        # Part of the rock cooled to black glass: a soft-edged patch where
+        # the columns' faces deepen to glossy black, their lit edges turned
+        # to a hard sheen, their joints kept, conchoidal arcs of light on it.
+        cx, cy = 16 + unit('glass', i) * 32, 16 + unit('glassy', i) * 32
+        for (x, y), sym in list(c.items()):
+            if not (3 <= x < TILE - 3 and 3 <= y < TILE - 3) or sym in ('ε', 'θ'):
+                continue
+            g = (1 - math.hypot((x - cx) / 26, (y - cy) / 20)) + (fbm(x / 7, y / 7, ('glass', i)) - 0.5) * 0.9
+            if g <= 0.15:
+                continue
+            if sym == 'α':
+                c[(x, y)] = 'δ' if g > 0.35 and dither(x, y, 0.8) else 'ξ'
+            else:
+                c[(x, y)] = '0' if g > 0.5 else '2' if g > 0.3 else ('ν' if sym in ('β', 'γ') else sym)
+        for n in range(3):
+            ax, ay = cx + (unit('arc', i, n) - 0.5) * 18, cy + (unit('arcy', i, n) - 0.5) * 12
+            r = 3 + unit('arcr', i, n) * 3
+            for a in range(7):
+                t = math.pi * (1.05 + a / 9)
+                p = (round(ax + math.cos(t) * r), round(ay + math.sin(t) * r * 0.7))
+                if c.get(p) in ('0', '2'):
+                    c[p] = 'δ' if a in (2, 3, 4) else 'ξ'
+    elif kind == 'ember':
+        # An ember crack: a jagged seam forking down through the columns,
+        # white-hot in its middle, cooling to orange at its ends, red at its
+        # lips.
+        def seam(x, y, length, branch):
+            pts = []
+            for d in range(length):
+                if not (3 <= x < TILE - 3 and 2 <= y < TILE - 2):
+                    break
+                pts.append((x, y))
+                x += -1 if unit('ex', i, branch, d) < 0.33 else 1 if unit('ex', i, branch, d) > 0.7 else 0
+                y += 1
+            return pts
+        trunk = seam(14 + int(unit('ec', i) * 36), 3 + int(unit('ecy', i) * 8), 40, 0)
+        fork = trunk[len(trunk) // 2:]
+        for pts, middle in ((trunk, 0.45), (seam(*fork[0], 18, 1) if fork else [], 0.0)):
+            for d, (x, y) in enumerate(pts):
+                t = abs(d / max(1, len(pts) - 1) - middle)
+                c[(x, y)] = 'Y' if t < 0.12 else 'y' if t < 0.3 else 'Ъ' if t < 0.55 else 'K'
+                for dx in (-1, 1):
+                    if c.get((x + dx, y)) not in ('Y', 'y', 'Ъ', 'K'):
+                        c[(x + dx, y)] = 'L' if t < 0.4 else 'M'
+    elif kind == 'nodule':
+        cx, cy = 14 + int(unit('nod', i) * 36), 14 + int(unit('nody', i) * 36)
+        for y in range(cy - 5, cy + 6):
+            for x in range(cx - 6, cx + 7):
+                d = math.hypot((x - cx) / 6, (y - cy) / 5)
+                if d < 1:
+                    c[(x, y)] = 'Y' if d < 0.3 else 'y' if d < 0.55 else 'Ъ' if d < 0.75 else 'L' if d < 0.9 else 'M'
+    elif kind == 'vesicles':
+        for n in range(9):
+            x, y = 4 + int(unit('ves', i, n) * 56), 4 + int(unit('vesy', i, n) * 56)
+            r = 1 + int(unit('vr', i, n) * 2)
+            for dy in range(-r, r + 1):
+                for dx in range(-r, r + 1):
+                    if dx * dx + dy * dy <= r * r:
+                        c[(x + dx, y + dy)] = 'θ' if dy <= 0 else 'ε'
+            c[(x, y + r + 1)] = 'α'
+    elif kind == 'ash':
+        for (x, y), sym in list(c.items()):
+            if sym == 'ε' and unit('ash', i, x // 2) < 0.6:
+                c[(x, y)] = 'Φ' if dither(x, y, 0.5) else 'Ω'
+                if (x, y - 1) in c and unit('ash2', i, x) < 0.3:
+                    c[(x, y - 1)] = 'Φ'
     if part == 'top':
+        # A cooled crust on top: grey ash-skin over a dark seam, a hot
+        # pocket in it here and there.
         for x in range(TILE):
-            depth = 5 + round(taper(x, 1.5 * math.sin(math.tau * 3 * x / TILE + i)))
+            depth = 5 + round(taper(x, 1.4 * math.sin(math.tau * 3 * x / TILE + i) + 0.6 * math.sin(x * 0.9)))
             for y in range(depth):
-                c[(x, y)] = 'Ω' if y == 0 else 'Φ' if dither(x, y, 0.6) else 'Ω'
-            if i % 3 == 1:
-                ripple = round(1.2 * math.sin(x * 0.55 + i))
-                c[(x, depth + 1 + ripple)] = 'α'
-            if unit('ember-pocket', i, x // 5) < 0.12:
-                c[(x, depth)] = 'J'
-                c[(x, depth - 1)] = 'K'
+                c[(x, y)] = 'Ω' if y == 0 else 'ψ' if y == 1 and dither(x, y, 0.4) else 'Φ' if dither(x, y, 0.6) else 'Ω'
+            c[(x, depth)] = 'θ'
+            if dither(x, depth, 0.5):
+                c[(x, depth + 1)] = 'ε'
+            if unit('ember-pocket', i, x // 6) < 0.1:
+                c[(x, depth - 1)] = 'Ъ'
+                c[(x, depth)] = 'L'
     elif part == 'under':
         for x in range(TILE):
             edge = 54 + round(taper(x, 2 * math.sin(math.tau * 3 * x / TILE + i)))
             for y in range(edge, TILE):
                 c.pop((x, y), None)
             c[(x, edge - 1)] = 'θ'
-        for k in range(4):
-            x = int(unit('drip', i, k) * 56) + 4
-            length = 5 + int(unit('dl', i, k) * 8)
+        for n in range(4):
+            x = int(unit('drip', i, n) * 56) + 4
+            length = 5 + int(unit('dl', i, n) * 8)
             for y in range(52, 52 + length):
                 w = max(0, (length - (y - 52)) // 4)
                 for dx in range(-w, w + 1):
                     c[(x + dx, y)] = 'γ' if dx < 0 else 'ν'
-            c[(x, 52 + length)] = 'K' if k % 2 else 'ν'
+            c[(x, 52 + length)] = 'Ъ' if n % 2 else 'ν'
     elif part in ('cliff_left', 'cliff_right'):
         cols = ((0, 'θ'), (1, 'ν')) if part == 'cliff_left' else ((TILE - 1, 'ξ'), (TILE - 2, 'α'))
         for y in range(TILE):
