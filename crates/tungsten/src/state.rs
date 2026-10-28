@@ -60,6 +60,23 @@ pub(crate) enum StateCommand {
     Replace(Box<dyn GameState>),
 }
 
+impl StateCommand {
+    /// Whether the command exits the top state.
+    fn exits_top(&self) -> bool {
+        matches!(self, Self::Pop | Self::Replace(_))
+    }
+
+    /// How many states at the top of the stack the dispatch has entered once
+    /// this command applies, from `entered` before it; a pop applies only
+    /// when that is none.
+    fn entered_after(&self, entered: usize) -> usize {
+        match self {
+            Self::Push(_) | Self::Replace(_) => entered + 1,
+            Self::Pop => entered,
+        }
+    }
+}
+
 /// A transition requested this frame, waiting for the dispatcher.
 pub(crate) struct QueuedTransition {
     pub(crate) transition: Transition,
@@ -278,17 +295,32 @@ pub fn despawn_scene_entities(world: &mut World, id: StateId) {
 /// boundary frame; then the top state updates (the old state during `Out`,
 /// the new one during `In`); then the owned roots take this frame's freeze
 /// and fade (M56).
+///
+/// A command that would exit a state entered earlier in the same dispatch
+/// (a push then a pop, two replaces) waits for the next frame, with every
+/// command after it, so the entered state runs one frame and its spawns
+/// through the `CommandBuffer` are live when its exit despawns them.
 pub fn state_dispatcher_system(world: &mut World) {
     let pending: Vec<StateCommand> = match world.get_resource_mut::<StateStack>() {
         Some(stack) => std::mem::take(&mut stack.pending),
         None => return,
     };
 
+    let mut entered = 0;
+    let mut held = Vec::new();
     for cmd in pending {
-        apply_command(world, cmd);
+        apply_or_hold(world, cmd, &mut entered, &mut held);
     }
 
-    advance_transition(world);
+    advance_transition(world, &mut entered, &mut held);
+
+    if !held.is_empty()
+        && let Some(stack) = world.get_resource_mut::<StateStack>()
+    {
+        // Ahead of the requests this dispatch's hooks made.
+        held.append(&mut stack.pending);
+        stack.pending = held;
+    }
 
     if let Some(mut top) = pop_top(world) {
         top.update(world);
@@ -309,10 +341,27 @@ pub fn state_dispatcher_system(world: &mut World) {
     }
 }
 
+/// Applies `cmd`, or holds it for the next frame when a command is already
+/// held or it would exit a state this dispatch entered; `entered` counts the
+/// states at the top of the stack the dispatch has entered.
+fn apply_or_hold(
+    world: &mut World,
+    cmd: StateCommand,
+    entered: &mut usize,
+    held: &mut Vec<StateCommand>,
+) {
+    if !held.is_empty() || (*entered > 0 && cmd.exits_top()) {
+        held.push(cmd);
+        return;
+    }
+    *entered = cmd.entered_after(*entered);
+    apply_command(world, cmd);
+}
+
 /// Activate the queued transition when none is active, then advance the
-/// active one. The stored command runs through `apply_command` on the frame
+/// active one. The stored command runs through `apply_or_hold` on the frame
 /// `Out` completes, so hooks, scene despawn and order follow `D-046`.
-fn advance_transition(world: &mut World) {
+fn advance_transition(world: &mut World, entered: &mut usize, held: &mut Vec<StateCommand>) {
     let dt = world.get_resource::<Time>().map_or(0.0, Time::real_delta);
     let Some(stack) = world.get_resource_mut::<StateStack>() else {
         return;
@@ -340,7 +389,7 @@ fn advance_transition(world: &mut World) {
     }
 
     if let Some(command) = command {
-        apply_command(world, command);
+        apply_or_hold(world, command, entered, held);
     }
     if step == TransitionStep::Finished
         && let Some(stack) = world.get_resource_mut::<StateStack>()

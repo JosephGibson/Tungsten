@@ -305,6 +305,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 
 ## D-046 — M20 scene/state system
 **Amended by D-153:** choice 5 only; a scene entry also carries `components`, registered components by name, which `SceneData::load(path, world)` checks against the World's `ComponentRegistry`, and a scene file's unknown keys, repeated component names or keys, and transforms that are not finite or lie past ±2^24 fail the load; the rest stand.
+**Amended by D-217:** choice 2's drain only; a command that would exit a state entered earlier in the same dispatch waits for the next frame with every command after it; the rest stand.
 **Date:** 2026-04-20  
 **Decision:** Six coupled choices:
 
@@ -1045,6 +1046,7 @@ The forward sweep alone turns "the body through the gate" into "the pusher insid
 
 ## D-093 — M31 instanced mesh particles and screen transitions
 **Amended by D-129:** the transitions' clock only; a `Transition` advances on `Time::real_delta()`, so a fade runs over a paused game; the rest stands.
+**Amended by D-217:** the boundary clause only; a transition's command that would exit a state the same dispatch entered runs as a plain command on the next frame; the rest stand.
 **Date:** 2026-10-02
 **Decision:** Phase 4 closes with two features.
 
@@ -3251,3 +3253,14 @@ In all, 14 smoke rows beside the plain run every example gets, and three of `jus
 - `docs/operating-rules.md` (Git), `AGENTS.md`, `docs/plans/README.md`, `docs/releases.md` and the `tungsten-milestone` and `tungsten-next` skills say so. The release block still has the owner push the tag with the branch, open the pull request and merge it.
 - A refused push (the remote moved, while `git fetch` stays denied) is reported, never forced; the owner fetches and the session carries on.
 - The guard catches mistakes, not evasion: as with the other denies, a push is never hidden from it through another command or API. A Bash command whose text names a push, such as a commit message or a heredoc, trips it too; reword it, or write the file with the editing tools.
+
+## D-217 — A state command that would exit a state the same dispatch entered waits a frame
+**Date:** 2026-10-28
+**Decision:** `state_dispatcher_system` applies a frame's state commands in order, but a `Pop` or `Replace`, plain or a transition's boundary command, that would exit a state entered earlier in the same dispatch is held, with every command after it, and runs first on the next frame, ahead of the requests the hooks made. A push then a pop, or two replaces, in one frame give the entered state one frame of `update`.
+
+**Why:** A state's exit despawns the live entities carrying its `SceneEntity`; spawns its `on_enter` queued through the `CommandBuffer` are not live until the flush, so a state entered and exited in one dispatch left them behind (known issues, W8b's queued transitions). A sweep at the flush by state ID would also take the entities of a state that replaces itself, and a flush inside the dispatcher would break `D-039`'s rule that systems never see a frame's commands.
+
+**Consequences:**
+- Amends `D-046` and `D-093` as their marker lines say; `D-039`'s flush stands.
+- `tests/state.rs` pins a push then a pop, two replaces then a push, a pop then a push (both apply) and a boundary pop after a plain push.
+- Two instances of one state ID still share cleanup: either's exit despawns both's entities. Per-instance ownership would change `SceneEntity` at every construction site; it is a recorded limit.

@@ -564,6 +564,67 @@ fn zero_duration_transition_applies_on_first_dispatch() {
 }
 
 #[test]
+fn a_pop_after_a_push_in_one_frame_waits_and_takes_the_pushed_spawns() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), true));
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("pause"), "the pop waits");
+    assert_eq!(count(&hooks, "pause:update"), 1);
+    assert_eq!(scene_entity_count(&world, "pause"), 1);
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(count(&hooks, "pause:on_exit"), 1);
+    assert_eq!(scene_entity_count(&world, "pause"), 0, "no spawn outlives");
+}
+
+#[test]
+fn a_second_replace_in_one_frame_waits_with_the_commands_after_it() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_replace(TestState::new("gameplay", hooks.clone(), true));
+    stack_mut(&mut world).request_replace(TestState::new("pause", hooks.clone(), true));
+    stack_mut(&mut world).request_push(TestState::new("menu", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("gameplay"));
+    assert_eq!(stack(&world).depth(), 1);
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"), "order kept");
+    assert_eq!(stack(&world).depth(), 2);
+    assert_eq!(scene_entity_count(&world, "gameplay"), 0);
+    assert_eq!(scene_entity_count(&world, "pause"), 1);
+}
+
+#[test]
+fn a_pop_then_a_push_in_one_frame_both_apply() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_pop();
+    stack_mut(&mut world).request_push(TestState::new("gameplay", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("gameplay"));
+    assert_eq!(stack(&world).depth(), 1);
+}
+
+#[test]
+fn a_boundary_pop_after_a_plain_push_waits_a_frame() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    assert!(stack_mut(&mut world).request_pop_transition(fade(0.0)));
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), true));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("pause"));
+    assert!(!stack(&world).is_transitioning());
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(scene_entity_count(&world, "pause"), 0);
+}
+
+#[test]
 fn top_state_updates_during_transition() {
     let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
     let mut world = world_in_menu(&hooks);
