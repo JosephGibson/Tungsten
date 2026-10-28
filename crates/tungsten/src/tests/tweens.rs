@@ -109,6 +109,35 @@ fn a_loop_carries_its_overshoot_so_its_period_holds() {
 }
 
 #[test]
+fn a_ping_pong_reflects_its_overshoot_so_its_period_holds() {
+    // 0.375 and 1.0 are exact in binary: eight frames are a period and a half.
+    let mut world = make_world(0.375);
+    let tween = Tween::new(1.0, Easing::Linear)
+        .with_channel(TweenChannel::ColorA { from: 0, to: 255 })
+        .with_repeat(TweenRepeat::PingPong);
+    let entity = spawn_fading_sprite(&mut world, tween);
+    let mut seen = Vec::new();
+    for _ in 0..8 {
+        tween_tick_system(&mut world);
+        let state = world.get::<Tween>(entity).unwrap();
+        seen.push((state.elapsed, state.direction == TweenDirection::Forward));
+    }
+    assert_eq!(
+        seen,
+        [
+            (0.375, true),
+            (0.75, true),
+            (0.875, false),
+            (0.5, false),
+            (0.125, false),
+            (0.25, true),
+            (0.625, true),
+            (1.0, false),
+        ]
+    );
+}
+
+#[test]
 fn times_completes_on_the_frame_its_cycles_add_up() {
     let mut world = make_world(0.375);
     let tween = Tween::new(1.0, Easing::Linear)
@@ -152,7 +181,11 @@ fn tween_pingpong_reverses_at_boundary() {
 
     let state = world.get::<Tween>(entity).expect("tween retained");
     assert_eq!(state.direction, TweenDirection::Backward);
-    assert_eq!(state.elapsed, 0.1, "clamped to duration boundary");
+    assert!(
+        (state.elapsed - 0.08).abs() < 1e-6,
+        "the 0.02 s past the end reflected back: {}",
+        state.elapsed
+    );
     let events = world.get_resource::<EventQueue<TweenComplete>>().unwrap();
     assert_eq!(
         events.iter().filter(|e| e.entity == entity).count(),

@@ -100,10 +100,11 @@ pub fn tween_tick_system(world: &mut World) {
                 } else {
                     TweenDirection::Forward
                 };
-                t.elapsed = if direction == TweenDirection::Forward {
-                    t.duration
+                // The turn reflects the overshoot, so the period holds.
+                t.elapsed = if forward_done {
+                    t.duration - carry
                 } else {
-                    0.0
+                    carry
                 };
             }
         }
