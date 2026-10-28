@@ -734,6 +734,7 @@ pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::
 pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
+pub fn tungsten_render::renderer::Renderer::resolve_or_allocate_shader_id(&mut self, &str) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::set_font_families(&mut self, &std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>, &[alloc::string::String])
 pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)
@@ -1819,6 +1820,7 @@ pub fn tungsten_render::renderer::Renderer::render_frame_full(&mut self, &glam::
 pub fn tungsten_render::renderer::Renderer::render_frame_full_timed(&mut self, &glam::f32::sse2::mat4::Mat4, &[tungsten_render::quad::QuadInstance], &[tungsten_render::sprite::SpriteBatch], &[tungsten_render::quad::QuadInstance], &[tungsten_render::debug_line::DebugLineInstance], &[tungsten_render::text::TextSection], &tungsten_core::ui::paint::PaintList, &tungsten_core::post::PostStack) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::render_frame_with_quads(&mut self, &[tungsten_render::quad::QuadInstance]) -> core::result::Result<tungsten_render::renderer::RenderOutcome, tungsten_render::renderer::RenderError>
 pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
+pub fn tungsten_render::renderer::Renderer::resolve_or_allocate_shader_id(&mut self, &str) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::set_font_families(&mut self, &std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>, &[alloc::string::String])
 pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)

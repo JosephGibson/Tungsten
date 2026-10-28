@@ -492,6 +492,9 @@ pub tungsten_core::assets::manifest::ManifestError::OutsideFolder::path: alloc::
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::path: alloc::string::String
@@ -1057,7 +1060,6 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::material::M
 pub mod tungsten_core::assets::particle
 pub enum tungsten_core::assets::particle::BlendMode
 pub tungsten_core::assets::particle::BlendMode::Alpha
-pub tungsten_core::assets::particle::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -1808,13 +1810,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::shader::
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::shader::ShaderAssetId
 pub struct tungsten_core::assets::shader::ShaderRegistry
 impl tungsten_core::assets::shader::ShaderRegistry
-pub fn tungsten_core::assets::shader::ShaderRegistry::allocate(&mut self, &str, std::path::PathBuf) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_core::assets::shader::ShaderRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::shader::ShaderAssetId)>
 pub fn tungsten_core::assets::shader::ShaderRegistry::name_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::shader::ShaderRegistry::new() -> Self
 pub fn tungsten_core::assets::shader::ShaderRegistry::path_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::shader::ShaderRegistry::register(&mut self, &str, tungsten_core::assets::shader::ShaderAssetId, std::path::PathBuf)
 impl core::clone::Clone for tungsten_core::assets::shader::ShaderRegistry
 pub fn tungsten_core::assets::shader::ShaderRegistry::clone(&self) -> tungsten_core::assets::shader::ShaderRegistry
 impl core::default::Default for tungsten_core::assets::shader::ShaderRegistry
@@ -2067,7 +2069,6 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::AudioDecodeError
 pub enum tungsten_core::assets::BlendMode
 pub tungsten_core::assets::BlendMode::Alpha
-pub tungsten_core::assets::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -2276,6 +2277,9 @@ pub tungsten_core::assets::ManifestError::OutsideFolder::path: alloc::string::St
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::ManifestError::PathEscapes
+pub tungsten_core::assets::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile
 pub tungsten_core::assets::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile::path: alloc::string::String
@@ -3623,13 +3627,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ShaderEntry
 pub struct tungsten_core::assets::ShaderRegistry
 impl tungsten_core::assets::shader::ShaderRegistry
-pub fn tungsten_core::assets::shader::ShaderRegistry::allocate(&mut self, &str, std::path::PathBuf) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_core::assets::shader::ShaderRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::shader::ShaderAssetId)>
 pub fn tungsten_core::assets::shader::ShaderRegistry::name_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::shader::ShaderRegistry::new() -> Self
 pub fn tungsten_core::assets::shader::ShaderRegistry::path_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::shader::ShaderRegistry::register(&mut self, &str, tungsten_core::assets::shader::ShaderAssetId, std::path::PathBuf)
 impl core::clone::Clone for tungsten_core::assets::shader::ShaderRegistry
 pub fn tungsten_core::assets::shader::ShaderRegistry::clone(&self) -> tungsten_core::assets::shader::ShaderRegistry
 impl core::default::Default for tungsten_core::assets::shader::ShaderRegistry
@@ -5735,7 +5739,7 @@ impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> whe
 impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
 impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
 impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
-pub struct tungsten_core::ecs::PendingEntity(_)
+pub struct tungsten_core::ecs::PendingEntity
 impl core::clone::Clone for tungsten_core::PendingEntity
 pub fn tungsten_core::PendingEntity::clone(&self) -> tungsten_core::PendingEntity
 impl core::cmp::Eq for tungsten_core::PendingEntity
@@ -12449,7 +12453,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_ma
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
 pub enum tungsten_core::BlendMode
 pub tungsten_core::BlendMode::Alpha
-pub tungsten_core::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -13182,6 +13185,9 @@ pub tungsten_core::ManifestError::OutsideFolder::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::ManifestError::PathEscapes
+pub tungsten_core::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile
 pub tungsten_core::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile::path: alloc::string::String
@@ -16021,7 +16027,7 @@ impl core::marker::Unpin for tungsten_core::rng::Pcg32
 impl core::marker::UnsafeUnpin for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
-pub struct tungsten_core::PendingEntity(_)
+pub struct tungsten_core::PendingEntity
 impl core::clone::Clone for tungsten_core::PendingEntity
 pub fn tungsten_core::PendingEntity::clone(&self) -> tungsten_core::PendingEntity
 impl core::cmp::Eq for tungsten_core::PendingEntity
