@@ -180,6 +180,7 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::Poisoned => occurrence::<87>,
         Sound::FlaskThrown => occurrence::<88>,
         Sound::FlaskBurst => occurrence::<89>,
+        Sound::Corroded => occurrence::<90>,
     }
 }
 

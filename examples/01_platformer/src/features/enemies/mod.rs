@@ -22,6 +22,7 @@
 //! enemies' save IDs, so a save names the dead as gone; the summon slot
 //! places more, [`SUMMON_CAP`] at most, the oldest going.
 
+pub mod armour;
 pub mod bat;
 pub mod beetle;
 pub mod components;

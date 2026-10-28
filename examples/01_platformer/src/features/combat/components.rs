@@ -3,8 +3,9 @@
 use tungsten::core::Entity;
 
 /// A status's particles on the target `owner`: chilled's flakes,
-/// bleeding's drips, shocked's sparks, frozen's glints, burning's embers
-/// or poisoned's bubbles, which follow it while it carries the status. A freezable
+/// bleeding's drips, shocked's sparks, frozen's glints, burning's embers,
+/// poisoned's bubbles or corroded's fizz, which follow it while it carries
+/// the status. A freezable
 /// creature's flakes come from the first point of cold by its frost's
 /// `stage`, 1 to 4, each stage an emitter of its own; 0 for every other.
 /// Presentation, never saved.
@@ -24,17 +25,19 @@ pub enum StatusLook {
     Frozen,
     Burning,
     Poisoned,
+    Corroded,
 }
 
 impl StatusLook {
     /// Every status shown with particles.
-    pub const ALL: [StatusLook; 6] = [
+    pub const ALL: [StatusLook; 7] = [
         StatusLook::Chilled,
         StatusLook::Bleeding,
         StatusLook::Shocked,
         StatusLook::Frozen,
         StatusLook::Burning,
         StatusLook::Poisoned,
+        StatusLook::Corroded,
     ];
 
     /// The status tag it shows.
@@ -47,6 +50,7 @@ impl StatusLook {
             StatusLook::Frozen => super::FROZEN,
             StatusLook::Burning => super::BURNING,
             StatusLook::Poisoned => super::POISONED,
+            StatusLook::Corroded => super::CORRODED,
         }
     }
 
@@ -60,6 +64,7 @@ impl StatusLook {
             StatusLook::Frozen => "ex10_frozen_glints",
             StatusLook::Burning => "ex10_burn_embers",
             StatusLook::Poisoned => "ex10_poison_bubbles",
+            StatusLook::Corroded => "ex10_corrode_fizz",
         }
     }
 }

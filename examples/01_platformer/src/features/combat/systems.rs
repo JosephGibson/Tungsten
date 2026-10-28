@@ -1,8 +1,8 @@
 //! Combat's systems: the states the step's resolve begins with, the
 //! reactions to the parts that landed and to `shattered`, `frozen`,
 //! `shocked`, `bleeding` and `poisoned`, the blood a blow spills, the
-//! freezes and the thaws heard, the chill's grade, the statuses' tints on
-//! their targets' sprites and their particles.
+//! freezes and the thaws heard, Corrosive, the chill's grade, the
+//! statuses' tints on their targets' sprites and their particles.
 
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -17,8 +17,8 @@ use tungsten::kit::{
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    BURNING, CHILL_NEEDS, CHILLED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, POISONED,
-    SHOCKED, has_status,
+    ARMOURED, BURNING, CHILL_NEEDS, CHILLED, CORRODED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS,
+    FROZEN, Kind, POISONED, SHOCKED, has_status,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
@@ -81,6 +81,7 @@ pub fn states(world: &mut World) {
 /// with its frost burst. A geyser's fire part on a target neither burning,
 /// frozen nor doused sets it burning from the geyser, once a target a step,
 /// since its 12 fire alone falls short of the player's ladder (e01hollow).
+/// Last, Corrosive ([`corrode`]).
 pub fn reactions(
     world: &mut World,
     parts: &mut EventCursor<DamagedPart>,
@@ -201,6 +202,36 @@ pub fn reactions(
         };
         cascade::queue_from(world, kind, Some(target), at, at, strength, source);
     }
+    corrode(world);
+}
+
+/// Corrosive (e01flask, Q4, Q5, Q69): each live `armoured` target that
+/// carries poisoned and shocked at once and is not corroded, in save-ID
+/// order, takes `corroded` at once, from nobody, with its flakes and its
+/// sound at its centre: its armour's resistances overridden to 1 on every
+/// type for good, never on `damage`, so shocked's half again holds, and
+/// bullets no longer turn off its front. It reads the step's last tags, so
+/// either status landing second corrodes.
+pub fn corrode(world: &mut World) {
+    let mut corroding: Vec<(Option<SaveId>, Entity)> = world
+        .query::<(Entity, &Health, &Tags)>()
+        .filter(|(_, health, tags)| {
+            !health.is_dead()
+                && tags.has(ARMOURED)
+                && tags.has(POISONED)
+                && tags.has(SHOCKED)
+                && !tags.has(CORRODED)
+        })
+        .map(|(entity, ..)| (world.get::<SaveId>(entity).copied(), entity))
+        .collect();
+    corroding.sort_by_key(|(id, _)| *id);
+    for (_, target) in corroding {
+        EffectRequest::new(target, DataRef::by_id("corroded")).apply(world);
+        if let Some(at) = body_centre(world, target) {
+            spawn_burst(world, "ex10_corrode_burst", at);
+            audio::play(world, Sound::Corroded, at);
+        }
+    }
 }
 
 /// The tints a status gives its target's sprite, which multiply its
@@ -208,14 +239,15 @@ pub fn reactions(
 /// toward it from the first point of cold and, chilled, deeper toward
 /// [`CHILL_DEEP`] by the chill's grade, white and gentle (01 (j)); shocked's
 /// violet on its crackle's even frames, burning's two embers, which
-/// flicker, and poisoned's green (e01flask); and the courier's red for a
-/// moment after a blow.
+/// flicker, poisoned's green and, under every other, corroded's dull
+/// verdigris (e01flask); and the courier's red for a moment after a blow.
 pub const COLD_TINT: [u8; 4] = [158, 219, 255, 255];
 pub const FROST_TINT: [u8; 4] = [222, 241, 255, 255];
 pub const CHILL_DEEP: [u8; 4] = [194, 229, 255, 255];
 pub const SHOCK_TINT: [u8; 4] = [196, 168, 255, 255];
 pub const EMBER_TINTS: [[u8; 4]; 2] = [[255, 178, 128, 255], [255, 140, 92, 255]];
 pub const POISON_TINT: [u8; 4] = [176, 255, 140, 255];
+pub const CORRODE_TINT: [u8; 4] = [170, 214, 190, 255];
 pub const HURT_TINT: [u8; 4] = [255, 72, 72, 255];
 /// How fast burning's tint flickers, and shocked's crackle and poisoned's
 /// bubbles step through their four frames, frames a second.
@@ -252,8 +284,8 @@ fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
 
 /// The tint `tags` give a target at level time `time`, chilled to `grade`
 /// with its frost at `level` ([`frost_level`]): frozen over shocked over
-/// burning over poisoned over chilled over the frost before the chill, else
-/// none.
+/// burning over poisoned over chilled over the frost before the chill over
+/// corroded, else none.
 #[must_use]
 pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     if tags.has(FROZEN) {
@@ -268,6 +300,8 @@ pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
         mix(FROST_TINT, CHILL_DEEP, grade)
     } else if level > 0.0 {
         mix([255; 4], FROST_TINT, level / CHILL_SHARE)
+    } else if tags.has(CORRODED) {
+        CORRODE_TINT
     } else {
         [255; 4]
     }

@@ -223,11 +223,13 @@ pub enum Sound {
     /// The toxic flask tossed, and its burst (e01flask).
     FlaskThrown,
     FlaskBurst,
+    /// Corrosive taking a target's armour (e01flask).
+    Corroded,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 90] = [
+    pub const ALL: [Sound; 91] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -318,6 +320,7 @@ impl Sound {
         Sound::Poisoned,
         Sound::FlaskThrown,
         Sound::FlaskBurst,
+        Sound::Corroded,
     ];
 
     /// Its cue event's name.
@@ -414,6 +417,7 @@ impl Sound {
             Sound::Poisoned => "poisoned",
             Sound::FlaskThrown => "flask_thrown",
             Sound::FlaskBurst => "flask_burst",
+            Sound::Corroded => "corroded",
         }
     }
 }

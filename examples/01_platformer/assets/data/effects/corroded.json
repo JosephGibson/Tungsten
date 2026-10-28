@@ -1,0 +1,37 @@
+{
+  "resist": [
+    {
+      "tag": "damage.physical",
+      "modifier": {
+        "override": 1
+      }
+    },
+    {
+      "tag": "damage.fire",
+      "modifier": {
+        "override": 1
+      }
+    },
+    {
+      "tag": "damage.cold",
+      "modifier": {
+        "override": 1
+      }
+    },
+    {
+      "tag": "damage.shock",
+      "modifier": {
+        "override": 1
+      }
+    },
+    {
+      "tag": "damage.poison",
+      "modifier": {
+        "override": 1
+      }
+    }
+  ],
+  "grant": [
+    "status.corroded"
+  ]
+}

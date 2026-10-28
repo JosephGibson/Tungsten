@@ -798,6 +798,9 @@
       "chilled": {
         "path": "data/effects/chilled.json"
       },
+      "corroded": {
+        "path": "data/effects/corroded.json"
+      },
       "doused": {
         "path": "data/effects/doused.json"
       },

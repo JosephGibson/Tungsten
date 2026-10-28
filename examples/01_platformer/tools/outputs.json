@@ -262,6 +262,7 @@
   "assets/data/effects/burning.json",
   "assets/data/effects/casting.json",
   "assets/data/effects/chilled.json",
+  "assets/data/effects/corroded.json",
   "assets/data/effects/doused.json",
   "assets/data/effects/dummy_regen.json",
   "assets/data/effects/frozen.json",

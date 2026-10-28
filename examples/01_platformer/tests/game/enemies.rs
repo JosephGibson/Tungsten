@@ -4240,3 +4240,41 @@ fn a_bat_diving_through_a_hole_dives_on_its_own_way_after() {
         "on its dive's own way: {flight} against {dive}"
     );
 }
+
+#[test]
+fn a_shot_turns_off_a_beetles_front_and_hits_it_once_corroded() {
+    let (mut harness, player) = arena();
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
+    let face_left =
+        |h: &mut UiHarness| h.world_mut().get_mut::<Enemy>(beetle).unwrap().heading = -1.0;
+    face_left(&mut harness);
+    harness.step(2);
+    // Its front toward the shot turns it, unharmed.
+    let shot = |h: &mut UiHarness| -> (u32, Vec<f32>) {
+        let y = at(h, beetle).y;
+        let id = shoot(h, Vec2::new(1000.0, y), Vec2::X);
+        let (mut turned, mut landed) = (0, Vec::new());
+        for _ in 0..30 {
+            h.step(1);
+            landed.extend(took(h, beetle, Some(player)));
+            let Some(bullet) = bullet(h, id) else {
+                break;
+            };
+            turned = turned.max(h.world().get::<Bullet>(bullet).unwrap().ricochets);
+            if !landed.is_empty() {
+                break;
+            }
+        }
+        (turned, landed)
+    };
+    let (turned, landed) = shot(&mut harness);
+    assert_eq!((turned, landed.len()), (1, 0), "the front turns it");
+    // Corroded, the same front takes the shot as a hit, whole.
+    apply(&mut harness, beetle, "corroded", None);
+    face_left(&mut harness);
+    harness.step(1);
+    assert!(tagged(&harness, beetle, "status.corroded"));
+    let (turned, landed) = shot(&mut harness);
+    assert_eq!(turned, 0, "no turn off corroded armour");
+    assert_eq!(landed, [SHOT_DAMAGE], "the whole shot on its front");
+}

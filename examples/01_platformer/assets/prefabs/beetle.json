@@ -13,7 +13,8 @@
       "conductive",
       "brittle",
       "beetle",
-      "living"
+      "living",
+      "armoured"
     ],
     "rigid_body": {
       "kind": "kinematic",

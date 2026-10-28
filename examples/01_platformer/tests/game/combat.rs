@@ -668,3 +668,85 @@ fn poison_pauses_the_trolls_regeneration_while_it_lasts() {
     harness.step(60);
     assert!(health(&harness, troll) > out + 4.0, "healing again");
 }
+
+#[test]
+fn poison_then_shock_and_shock_then_poison_corrode_a_beetle_and_poison_alone_does_not() {
+    for order in [["poisoned", "shocked"], ["shocked", "poisoned"]] {
+        let (mut harness, _, _) = with_dummy();
+        let beetle = foe(&mut harness, EnemyKind::Beetle, 1300.0);
+        harness.step(1);
+        apply(&mut harness, beetle, order[0], None);
+        harness.step(1);
+        assert!(!has(&harness, beetle, "corroded"), "{order:?}: one alone");
+        let before = super::bursts(&harness, "ex10_corrode_burst");
+        apply(&mut harness, beetle, order[1], None);
+        harness.step(1);
+        assert!(has(&harness, beetle, "corroded"), "{order:?}: both");
+        assert_eq!(
+            super::bursts(&harness, "ex10_corrode_burst"),
+            before + 1,
+            "its flakes"
+        );
+    }
+    // Poison alone, its whole run, corrodes nothing; nor does a goblin,
+    // which wears no armour, poisoned and shocked.
+    let (mut harness, _, _) = with_dummy();
+    let beetle = foe(&mut harness, EnemyKind::Beetle, 1300.0);
+    let goblin = foe(&mut harness, EnemyKind::Goblin, 1100.0);
+    harness.step(1);
+    apply(&mut harness, beetle, "poisoned", None);
+    apply(&mut harness, goblin, "poisoned", None);
+    apply(&mut harness, goblin, "shocked", None);
+    for _ in 0..400 {
+        harness.step(1);
+        assert!(!has(&harness, beetle, "corroded"), "poison alone");
+        assert!(!has(&harness, goblin, "corroded"), "no armour");
+    }
+}
+
+#[test]
+fn a_corroded_beetle_takes_every_type_at_one_and_a_half_while_shocked_then_one_and_stays_corroded()
+{
+    let (mut harness, _, _) = with_dummy();
+    let beetle = foe(&mut harness, EnemyKind::Beetle, 1300.0);
+    harness.step(1);
+    apply(&mut harness, beetle, "poisoned", None);
+    apply(&mut harness, beetle, "shocked", None);
+    harness.step(1);
+    assert!(has(&harness, beetle, "corroded"));
+    let kinds = [
+        Kind::Physical,
+        Kind::Fire,
+        Kind::Cold,
+        Kind::Shock,
+        Kind::Poison,
+    ];
+    let taken = |harness: &mut UiHarness| -> Vec<f32> {
+        kinds
+            .iter()
+            .map(|&kind| {
+                let before = health(harness, beetle);
+                land(harness, beetle, kind, 2.0);
+                before - health(harness, beetle)
+            })
+            .collect()
+    };
+    // Shocked's half again on every type, its shell's 0.25, 0.5 and 2 gone.
+    let shocked = taken(&mut harness);
+    assert!(
+        shocked.iter().all(|&t| (t - 3.0).abs() < 1e-4),
+        "{shocked:?}"
+    );
+    for _ in 0..300 {
+        if !has(&harness, beetle, "shocked") {
+            break;
+        }
+        harness.step(1);
+    }
+    assert!(!has(&harness, beetle, "shocked"), "its shock ran out");
+    let plain = taken(&mut harness);
+    assert!(plain.iter().all(|&t| (t - 2.0).abs() < 1e-4), "{plain:?}");
+    harness.step(1200);
+    assert!(has(&harness, beetle, "corroded"), "20 s on, for good");
+    assert!(health(&harness, beetle) > 0.0);
+}
