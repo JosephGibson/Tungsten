@@ -1423,6 +1423,19 @@
       "assets/sprites/icon_beetle.png": "25b6001c6eee7ee86aad3fa2c338f7bc8f69fcba75d23bc8e238b5c97669294c"
     }
   },
+  "bodies": {
+    "date": "2026-10-28",
+    "files": {
+      "assets/data/bodies/bat.json": "df17b3d6a7b1126ab79bf286e2b037fa2c897427561c63b6ade7ff507020d464",
+      "assets/data/bodies/beetle.json": "164db68ec9af9bd53bc510f9308ac74e096bfa7bcb99253a3a3772163597715a",
+      "assets/data/bodies/crawler.json": "aee0659f61a09f343962084c190bc75e4541b97cf3cea770da75d13b5b3ddbaa",
+      "assets/data/bodies/dummy.json": "59a25436ce395472874b2fd26354bea51feba7c127c56949818a8222179b0a82",
+      "assets/data/bodies/goblin.json": "07d93d1a146d3ddaa1f1a6370afa05d36fd1ff82434c79ec24593fa79634889f",
+      "assets/data/bodies/player.json": "ad294c0fed274bbefc14c914f8ac3142aed76a857ac425461de44a1a3b480db8",
+      "assets/data/bodies/troll.json": "f1239d43ac1d7965888b488163d3484ec531c3eaf6dd52baea2d1749c1320713",
+      "assets/data/bodies/wisp.json": "e7048abef9775af44256bfe3653865cc41fbbd570b79993b66b9eccf93489282"
+    }
+  },
   "crawler": {
     "date": "2026-10-28",
     "files": {
