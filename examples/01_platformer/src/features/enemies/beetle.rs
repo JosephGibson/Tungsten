@@ -5,10 +5,10 @@
 //! `beetle_charge` ability arming its hitbox, which hurts whatever it
 //! meets, enemies too, and throws the player. Its charge ploughs the
 //! bodies lighter than it out of its way ([`PLOUGH_KICK`]) and presses on
-//! against what it can't. Its shell is its front, the half its heading
-//! faces: there a live beetle turns bullets as iron does, while its rear
-//! half takes every hit 01 builds whole (`combat::Hit`). Iron that drives
-//! into it at the crush speed kills it.
+//! against what it can't. Its shell is armour (`armour`, e01flask): its
+//! front, the half its heading faces, turns bullets as iron does, while
+//! its rear half takes every hit 01 builds whole (`combat::Hit`). Iron that
+//! drives into it at the crush speed kills it.
 
 use std::collections::HashMap;
 
@@ -68,23 +68,6 @@ pub fn is_beetle(world: &World, entity: Entity) -> bool {
     world
         .get::<Enemy>(entity)
         .is_some_and(|enemy| enemy.kind == EnemyKind::Beetle)
-}
-
-/// Whether `point` lies on `beetle`'s front half: past its centre on the
-/// side its heading faces.
-#[must_use]
-pub fn front(world: &World, beetle: Entity, point: Vec2) -> bool {
-    let (Some(mine), Some(at)) = (world.get::<Enemy>(beetle), centre(world, beetle)) else {
-        return false;
-    };
-    (point.x - at.x) * mine.heading > 0.0
-}
-
-/// Whether `target` is a beetle and `point` lies on its rear half, which
-/// takes a hit whole.
-#[must_use]
-pub fn rear(world: &World, target: Entity, point: Vec2) -> bool {
-    is_beetle(world, target) && !front(world, target, point)
 }
 
 /// On patrol it walks its ground, turning at each end and at walls.

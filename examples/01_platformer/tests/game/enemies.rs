@@ -32,7 +32,7 @@ use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws,
+    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws, Variant,
 };
 use example_01_platformer::features::enemies::crawler::{
     self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
@@ -52,6 +52,7 @@ use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::props::components::{Bomb, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF};
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
 use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapTumble};
@@ -544,10 +545,10 @@ fn each_difficulty_scales_enemy_health_and_damage_alone() {
             .find(|(_, enemy)| enemy.kind == EnemyKind::Wisp)
             .map(|(entity, _)| entity)
             .expect("the map's wisp");
-        assert_eq!(world.get::<Health>(wisp).unwrap().max(), 40.0 * factor);
+        assert_eq!(world.get::<Health>(wisp).unwrap().max(), 30.0 * factor);
         assert_eq!(
             world.get::<Health>(wisp).unwrap().current(),
-            40.0 * factor,
+            30.0 * factor,
             "full"
         );
         assert_eq!(
@@ -648,9 +649,9 @@ fn the_wisp_is_immune_to_fire_and_burning_balls_draw_and_heal_it() {
     let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1000.0, 850.0));
     harness.step(2);
     land(&mut harness, wisp, Kind::Fire, 30.0);
-    assert_eq!(health(&harness, wisp), 40.0, "fire is its own");
+    assert_eq!(health(&harness, wisp), 30.0, "fire is its own");
     land(&mut harness, wisp, Kind::Physical, 20.0);
-    assert_eq!(health(&harness, wisp), 20.0);
+    assert_eq!(health(&harness, wisp), 10.0);
     let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
     elements::ignite(harness.world_mut(), ball);
     let fire = super::body(&harness, ball);
@@ -661,7 +662,7 @@ fn the_wisp_is_immune_to_fire_and_burning_balls_draw_and_heal_it() {
         "drawn to it"
     );
     assert!(
-        health(&harness, wisp) > 24.0,
+        health(&harness, wisp) > 14.0,
         "healed: {}",
         health(&harness, wisp)
     );
@@ -688,7 +689,7 @@ fn a_frozen_wisp_blows_apart_under_a_fire_missile() {
     let before = bursts(&harness, "ex10_frost_blast");
     let aim = at(&harness, wisp);
     aim_at(&mut harness, aim);
-    choose(&mut harness, 0);
+    choose(&mut harness, Spell::FireMissile);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -700,7 +701,7 @@ fn a_frozen_wisp_blows_apart_under_a_fire_missile() {
     assert!(!tagged(&harness, wisp, "status.frozen"), "its ice ends");
     assert_eq!(
         health(&harness, wisp),
-        24.0,
+        14.0,
         "the blast's 16 physical alone"
     );
 }
@@ -728,7 +729,7 @@ fn a_frozen_wisp_blows_apart_in_the_lava() {
     assert!(!tagged(&harness, wisp, "status.frozen"));
     assert_eq!(
         health(&harness, wisp),
-        24.0,
+        14.0,
         "the blast's 16 physical alone"
     );
 }
@@ -738,7 +739,7 @@ fn cold_freezes_the_wisp() {
     let (mut harness, _) = arena();
     let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1000.0, 800.0));
     harness.step(2);
-    for amount in [10.0, 20.0] {
+    for amount in [10.0, 10.0] {
         assert!(Hit::new(wisp, [(Kind::Cold, amount)]).queue(harness.world_mut()));
         harness.step(1);
     }
@@ -1222,7 +1223,7 @@ fn a_crawler_lunge_landing_on_the_players_head_lands_its_touch() {
 }
 
 #[test]
-fn the_crawlers_lunge_leaps_about_220_px_and_53_up() {
+fn the_crawlers_lunge_leaps_about_270_px_and_80_up() {
     let (mut harness, _) = arena();
     let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0, TOP);
     still(&mut harness, crawler);
@@ -1249,9 +1250,9 @@ fn the_crawlers_lunge_leaps_about_220_px_and_53_up() {
         }
     }
     let rise = start.y - top;
-    assert!((rise - 53.0).abs() <= 3.0, "its apex: {rise}");
+    assert!((rise - 80.0).abs() <= 3.0, "its apex: {rise}");
     let landed = landed.expect("it lands");
-    assert!((landed - 220.0).abs() <= 8.0, "its landing: {landed}");
+    assert!((landed - 270.0).abs() <= 8.0, "its landing: {landed}");
     assert!(speed(&harness, crawler).x.abs() < 1.0, "it stops");
     let skid = at(&harness, crawler).x - start.x - landed;
     assert!((0.0..=90.0).contains(&skid), "its skid: {skid}");
@@ -1329,12 +1330,12 @@ fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
     let mut arc: Option<Arc> = None;
     let (mut throws, mut hits, mut chilled) = (Vec::new(), Vec::new(), false);
     for frame in 0..900 {
-        // Still until the first snowball lands; then 330 px ahead of the
-        // crawler, in its band and past its lunge's reach.
+        // Still until the first snowball lands; then 280 px ahead of the
+        // crawler, in its band, which its lunges while it cools never close.
         let lead = if hits.is_empty() {
             x
         } else {
-            at(&harness, crawler).x - 330.0
+            at(&harness, crawler).x - 280.0
         };
         stand(&mut harness, player, lead, TOP);
         tungsten::kit::heal(harness.world_mut(), player, 100.0);
@@ -2585,7 +2586,7 @@ fn a_steady_ice_spray_freezes_the_troll() {
     let troll = troll_at(&mut harness, 560.0, Difficulty::Normal);
     still(&mut harness, troll);
     harness.step(2);
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     let eye = super::centre(&harness, player);
     let target = Vec2::new(at(&harness, troll).x, eye.y);
     aim_at(&mut harness, target);
@@ -2966,7 +2967,7 @@ fn slot_zero_summons_each_enemy_after_the_dummy_capped() {
         .unwrap();
     stats.set_base("max_mana", 10_000.0);
     stats.set_base("mana", 10_000.0);
-    choose(&mut harness, 9);
+    choose(&mut harness, Spell::Summon);
     let summoned = |h: &UiHarness| -> Vec<(u64, Entity)> {
         enemies::live(h.world())
             .into_iter()
@@ -4237,5 +4238,271 @@ fn a_bat_diving_through_a_hole_dives_on_its_own_way_after() {
     assert!(
         flight.distance(dive) < 1e-3,
         "on its dive's own way: {flight} against {dive}"
+    );
+}
+
+#[test]
+fn a_shot_turns_off_a_beetles_front_and_hits_it_once_corroded() {
+    let (mut harness, player) = arena();
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
+    let face_left =
+        |h: &mut UiHarness| h.world_mut().get_mut::<Enemy>(beetle).unwrap().heading = -1.0;
+    face_left(&mut harness);
+    harness.step(2);
+    // Its front toward the shot turns it, unharmed.
+    let shot = |h: &mut UiHarness| -> (u32, Vec<f32>) {
+        let y = at(h, beetle).y;
+        let id = shoot(h, Vec2::new(1000.0, y), Vec2::X);
+        let (mut turned, mut landed) = (0, Vec::new());
+        for _ in 0..30 {
+            h.step(1);
+            landed.extend(took(h, beetle, Some(player)));
+            let Some(bullet) = bullet(h, id) else {
+                break;
+            };
+            turned = turned.max(h.world().get::<Bullet>(bullet).unwrap().ricochets);
+            if !landed.is_empty() {
+                break;
+            }
+        }
+        (turned, landed)
+    };
+    let (turned, landed) = shot(&mut harness);
+    assert_eq!((turned, landed.len()), (1, 0), "the front turns it");
+    // Corroded, the same front takes the shot as a hit, whole.
+    apply(&mut harness, beetle, "corroded", None);
+    face_left(&mut harness);
+    harness.step(1);
+    assert!(tagged(&harness, beetle, "status.corroded"));
+    let (turned, landed) = shot(&mut harness);
+    assert_eq!(turned, 0, "no turn off corroded armour");
+    assert_eq!(landed, [SHOT_DAMAGE], "the whole shot on its front");
+}
+
+/// An armoured troll standing on the sky's ground with its centre at `x`,
+/// at Normal, its save ID the run's next.
+fn armoured_troll_at(harness: &mut UiHarness, x: f32) -> Entity {
+    let kind = EnemyKind::Troll;
+    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let corner = centre - kind.info().centre;
+    let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner, id).expect("its prefab");
+    enemies::scale(world, troll, Difficulty::Normal);
+    troll
+}
+
+/// Whether `entity` wears the armoured troll's table: a quarter physical,
+/// three quarters of every other type.
+fn armour_table(harness: &UiHarness, entity: Entity) -> bool {
+    let resist = harness
+        .world()
+        .get::<tungsten::kit::Resist>(entity)
+        .unwrap();
+    let factor = |tag: &str| resist.factor(&tungsten::kit::Tags::new([tag]));
+    factor("damage.physical") == 0.25
+        && [
+            "damage.fire",
+            "damage.cold",
+            "damage.shock",
+            "damage.poison",
+        ]
+        .iter()
+        .all(|tag| factor(tag) == 0.75)
+}
+
+#[test]
+fn the_bridge_troll_is_the_armoured_troll() {
+    let (harness, _) = run();
+    let world = harness.world();
+    let mut trolls: Vec<(u64, Entity, Variant)> = world
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Troll)
+        .map(|(entity, enemy, id)| (id.0, entity, enemy.variant))
+        .collect();
+    trolls.sort_unstable_by_key(|&(id, ..)| id);
+    let armoured: Vec<u64> = trolls
+        .iter()
+        .filter(|&&(.., variant)| variant == Variant::Armoured)
+        .map(|&(id, ..)| id)
+        .collect();
+    assert_eq!(armoured, [21], "the bridge's troll, save ID 21: {trolls:?}");
+    let bridge = trolls.iter().find(|&&(id, ..)| id == 21).unwrap().1;
+    assert!(tagged(&harness, bridge, "armoured"));
+    assert!(armour_table(&harness, bridge), "armour's table");
+    assert!(
+        (at(&harness, bridge).x / 64.0 - 398.0).abs() < 2.0,
+        "on the bridge"
+    );
+}
+
+#[test]
+fn the_armoured_troll_walks_and_lifts_on_its_own_clips() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = armoured_troll_at(&mut harness, 1300.0);
+    let clip = |h: &UiHarness| h.world().get::<Shown>(troll).unwrap().clip.clone();
+    let (mut walked, mut stepped) = (false, false);
+    for _ in 0..300 {
+        harness.step(1);
+        walked |= clip(&harness).starts_with("ex10_troll_armoured_walk");
+        stepped |= harness
+            .harness()
+            .events::<Sounded>()
+            .any(|sounded| sounded.sound == Sound::TrollStep);
+        if walked && stepped {
+            break;
+        }
+    }
+    assert!(walked, "its walk: {}", clip(&harness));
+    assert!(stepped, "its steps heard");
+    // On patrol it sets down what it holds; once it has seen the courier it
+    // lifts.
+    let there = at(&harness, troll).x;
+    stand(&mut harness, player, there - 400.0, TOP);
+    let seen = until(&mut harness, 120, |h| state(h, troll) != EnemyState::Patrol);
+    assert!(seen, "it sees the courier");
+    let iron = iron_at(&mut harness, there + 90.0);
+    harness.step(1);
+    assert!(
+        troll::pick_up(harness.world_mut(), troll, iron),
+        "it lifts it"
+    );
+    harness.step(2);
+    assert!(
+        clip(&harness).starts_with("ex10_troll_armoured_pickup"),
+        "its lift: {}",
+        clip(&harness)
+    );
+}
+
+#[test]
+fn a_summoned_armoured_troll_the_last_summon_type_saves_and_loads_armoured() {
+    use example_01_platformer::features::spells::components::{Spell, Summon};
+    let (mut harness, player) = arena();
+    let last = SUMMONS.len() - 1;
+    assert_eq!(SUMMONS[last].name, "armoured troll");
+    let stats = harness
+        .world_mut()
+        .get_mut::<tungsten::kit::Stats>(player)
+        .unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    harness.world_mut().resource_mut::<Summon>().selected = last;
+    choose(&mut harness, Spell::Summon);
+    let point = Vec2::new(900.0, TOP - EnemyKind::Troll.info().half.y - 1.0);
+    aim_at(&mut harness, point);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    harness.step(2);
+    let (id, troll) = harness
+        .world()
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .find(|(_, enemy, _)| enemy.variant == Variant::Armoured && enemy.kind == EnemyKind::Troll)
+        .map(|(entity, _, id)| (id.0, entity))
+        .filter(|&(id, _)| id != 21)
+        .expect("an armoured troll summoned");
+    assert!(tagged(&harness, troll, "armoured") && armour_table(&harness, troll));
+    let saved = save::capture(harness.world()).unwrap();
+    let mine = saved.enemies.iter().find(|e| e.id == id).unwrap();
+    assert_eq!((mine.map, mine.enemy.variant), (false, Variant::Armoured));
+    let fresh = reload(saved);
+    let loaded = by_id(&fresh, id).expect("it loads");
+    let enemy = *fresh.world().get::<Enemy>(loaded).unwrap();
+    assert_eq!(
+        (enemy.kind, enemy.variant),
+        (EnemyKind::Troll, Variant::Armoured)
+    );
+    assert!(tagged(&fresh, loaded, "armoured") && armour_table(&fresh, loaded));
+}
+
+#[test]
+fn a_shot_turns_off_the_armoured_trolls_front() {
+    let (mut harness, player) = arena();
+    let troll = armoured_troll_at(&mut harness, 1300.0);
+    still(&mut harness, troll);
+    harness.world_mut().get_mut::<Enemy>(troll).unwrap().heading = -1.0;
+    harness.step(2);
+    let y = at(&harness, troll).y;
+    let id = shoot(&mut harness, Vec2::new(1000.0, y), Vec2::X);
+    let (mut turned, mut landed) = (0, Vec::new());
+    for _ in 0..30 {
+        harness.step(1);
+        landed.extend(took(&harness, troll, Some(player)));
+        let Some(shot) = bullet(&harness, id) else {
+            break;
+        };
+        turned = turned.max(harness.world().get::<Bullet>(shot).unwrap().ricochets);
+    }
+    assert_eq!(turned, 1, "its front turned the shot");
+    assert!(landed.is_empty(), "the front takes nothing: {landed:?}");
+}
+
+/// Corrosive strips its target (e01flask's round-2 note): poisoned and
+/// shocked, a beetle and an armoured troll show their stripped clips, each
+/// under one reaction, its body's size class's, that follows it and is
+/// gone after its 0.7 s.
+#[test]
+fn corroded_beetles_and_armoured_trolls_show_their_stripped_clips_under_the_reaction() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1100.0, TOP);
+    let troll = armoured_troll_at(&mut harness, 1500.0);
+    harness.step(2);
+    for foe in [beetle, troll] {
+        apply(&mut harness, foe, "poisoned", None);
+        apply(&mut harness, foe, "shocked", None);
+    }
+    harness.step(2);
+    let clip = |h: &UiHarness, foe| h.world().get::<Shown>(foe).unwrap().clip.clone();
+    assert!(
+        clip(&harness, beetle).starts_with("ex10_beetle_stripped_"),
+        "{}",
+        clip(&harness, beetle)
+    );
+    assert!(
+        clip(&harness, troll).starts_with("ex10_troll_stripped_"),
+        "{}",
+        clip(&harness, troll)
+    );
+    let reactions = |h: &UiHarness| -> Vec<(Entity, String, Vec2)> {
+        h.world()
+            .query::<(&tungsten::kit::Source, &AnimationState, &Position)>()
+            .filter(|(_, state, _)| state.animation_id.starts_with("ex10_corrode_reaction_"))
+            .map(|(source, state, p)| (source.entity(), state.animation_id.clone(), p.0))
+            .collect()
+    };
+    let mut found = reactions(&harness);
+    found.sort_by_key(|(source, ..)| *source == troll);
+    let names: Vec<(Entity, &str)> = found
+        .iter()
+        .map(|(e, name, _)| (*e, name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            (beetle, "ex10_corrode_reaction_medium"),
+            (troll, "ex10_corrode_reaction_large")
+        ]
+    );
+    // It rides the troll as the troll is moved.
+    let before = found[1].2 - at(&harness, troll);
+    let moved = at(&harness, troll) + Vec2::new(-30.0, 0.0);
+    harness.world_mut().get_mut::<Position>(troll).unwrap().0 = moved;
+    harness.step(2);
+    let riding = reactions(&harness)
+        .into_iter()
+        .find(|(source, ..)| *source == troll)
+        .map(|(.., p)| p - at(&harness, troll));
+    assert!(
+        riding.is_some_and(|offset| (offset - before).length() < 4.0),
+        "{riding:?} vs {before}"
+    );
+    harness.step(45);
+    assert!(reactions(&harness).is_empty(), "gone after its 0.7 s");
+    assert!(
+        clip(&harness, troll).starts_with("ex10_troll_stripped_"),
+        "stripped for good"
     );
 }

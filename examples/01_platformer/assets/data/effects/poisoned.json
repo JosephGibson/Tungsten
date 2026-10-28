@@ -1,0 +1,10 @@
+{
+  "duration": 6,
+  "period": 0.5,
+  "damage": {
+    "damage.poison": 3
+  },
+  "grant": [
+    "status.poisoned"
+  ]
+}

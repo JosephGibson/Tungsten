@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 140,
+      "sprite": "ex10_troll_stripped_throw_0_left"
+    },
+    {
+      "duration_ms": 80,
+      "sprite": "ex10_troll_stripped_throw_1_left"
+    },
+    {
+      "duration_ms": 260,
+      "sprite": "ex10_troll_stripped_throw_2_left"
+    }
+  ],
+  "looping": false
+}

@@ -7,8 +7,8 @@
     "shoot": [{ "kind": "mouse", "button": "left" }, { "kind": "gamepad_button", "button": "RightTrigger" }],
     "reload": [{ "kind": "key", "code": "KeyR" }, { "kind": "gamepad_button", "button": "West" }],
     "interact": [{ "kind": "key", "code": "KeyE" }, { "kind": "gamepad_button", "button": "East" }],
-    "spell_next": [{ "kind": "scroll", "direction": "down" }, { "kind": "gamepad_button", "button": "RightShoulder" }],
-    "spell_prev": [{ "kind": "scroll", "direction": "up" }, { "kind": "gamepad_button", "button": "LeftShoulder" }],
+    "spell_next": [{ "kind": "gamepad_button", "button": "RightShoulder" }],
+    "spell_prev": [{ "kind": "gamepad_button", "button": "LeftShoulder" }],
     "summon_next": [{ "kind": "key", "code": "ArrowDown" }, { "kind": "gamepad_button", "button": "DPadRight" }],
     "summon_prev": [{ "kind": "key", "code": "ArrowUp" }, { "kind": "gamepad_button", "button": "DPadLeft" }],
     "spell_1": [{ "kind": "key", "code": "Digit1" }],
@@ -21,9 +21,10 @@
     "spell_8": [{ "kind": "key", "code": "Digit8" }],
     "spell_9": [{ "kind": "key", "code": "Digit9" }],
     "spell_0": [{ "kind": "key", "code": "Digit0" }],
+    "spell_minus": [{ "kind": "key", "code": "Minus" }],
     "lantern": [{ "kind": "key", "code": "KeyL" }, { "kind": "gamepad_button", "button": "North" }],
-    "zoom_in": [{ "kind": "key", "code": "Equal" }],
-    "zoom_out": [{ "kind": "key", "code": "Minus" }],
+    "zoom_in": [{ "kind": "scroll", "direction": "up" }],
+    "zoom_out": [{ "kind": "scroll", "direction": "down" }],
     "state_pause": [{ "kind": "key", "code": "Escape" }, { "kind": "gamepad_button", "button": "Start" }]
   }
 }

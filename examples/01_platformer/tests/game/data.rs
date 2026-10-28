@@ -7,9 +7,9 @@ use example_01_platformer::features::audio::components::Sound;
 use example_01_platformer::features::combat::{CHILL_NEEDS, FREEZE_NEEDS};
 use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
-use example_01_platformer::features::enemies::components::EnemyKind;
+use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
 use example_01_platformer::features::enemies::drops::ORB_SECS;
-use example_01_platformer::features::enemies::{crawler, snowball, troll};
+use example_01_platformer::features::enemies::{self, crawler, snowball, troll};
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
@@ -79,6 +79,21 @@ fn every_restated_constant_matches_its_data() {
             .unwrap_or(0.0) as f32;
         assert_eq!(resist, info.resist, "{kind:?}");
     }
+    // The armoured troll's prefab (e01flask): the troll's body and its
+    // knockback's resist, its kind's table entry.
+    let info = EnemyKind::Troll.info();
+    let armoured = enemies::prefab(EnemyKind::Troll, Variant::Armoured);
+    assert_eq!(
+        body(armoured),
+        (info.half, info.centre),
+        "the armoured troll"
+    );
+    let prefab = json(&format!("prefabs/{armoured}.json"));
+    let resist = prefab
+        .pointer("/components/knockback/resist")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0) as f32;
+    assert_eq!(resist, info.resist, "the armoured troll's knockback");
     // The toys' sizes and the iron's and its scraps' masses.
     assert_eq!(body("iron_block").0, IRON_HALF);
     let iron = json("prefabs/iron_block.json");

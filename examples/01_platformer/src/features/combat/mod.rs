@@ -1,12 +1,13 @@
 //! Combat: 01's damage model on the kit's damage types, `damage` and under
 //! it `damage.physical` (with `damage.physical.bleed`), `damage.fire`,
-//! `damage.cold` and `damage.shock`, each with its colour and its ailment
-//! ladder (`data/damage_types/game.json`). A hit starts from its attack's
-//! base amounts, doubles on a crit, then takes the kit's pipeline: the
-//! target's resistances, with shocked's half again on every type, then its
-//! shield and its health. The ladders put burning, chilled, frozen,
-//! shocked, stunned and bleeding on whatever has health; 01 reads their
-//! `status.*` tags for its looks and its physics.
+//! `damage.cold`, `damage.shock` and `damage.poison`, each with its colour
+//! and its ailment ladder (`data/damage_types/game.json`). A hit starts
+//! from its attack's base amounts, doubles on a crit, then takes the kit's
+//! pipeline: the target's resistances, with shocked's half again on every
+//! type, then its shield and its health. The ladders put burning, chilled,
+//! frozen, shocked, stunned and bleeding on whatever has health, and
+//! poisoned on what is `living`; 01 reads their `status.*` tags for its
+//! looks and its physics.
 //!
 //! Combat also floats the damage numbers ([`numbers`]).
 //!
@@ -29,7 +30,7 @@ use tungsten::kit::{
 use tungsten::plugins::{PARTICLE_COUNT_REFRESH, PHYSICS_SYNC};
 use tungsten::{Extracts, Plugin};
 
-use crate::features::enemies::{self, beetle};
+use crate::features::enemies::{self, armour};
 use crate::features::run::Run;
 
 /// The share of the player's hits that crit, and a crit's factor on every
@@ -63,9 +64,15 @@ pub const FROZEN: &str = "status.frozen";
 pub const SHOCKED: &str = "status.shocked";
 pub const STUNNED: &str = "status.stunned";
 pub const DOUSED: &str = "status.doused";
-/// The kinds' tags 01 reads: what bleeds, and what freezes.
+pub const POISONED: &str = "status.poisoned";
+pub const CORRODED: &str = "status.corroded";
+/// The kinds' tags 01 reads: what bleeds, what freezes, what poison takes
+/// (every enemy but the wisp, and the dummy), and what wears armour (the
+/// beetle and the armoured troll).
 pub const FLESH: &str = "flesh";
 pub const FREEZABLE: &str = "freezable";
+pub const LIVING: &str = "living";
+pub const ARMOURED: &str = "armoured";
 
 /// One of 01's damage types, by its tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +82,7 @@ pub enum Kind {
     Fire,
     Cold,
     Shock,
+    Poison,
 }
 
 impl Kind {
@@ -87,6 +95,7 @@ impl Kind {
             Kind::Fire => "damage.fire",
             Kind::Cold => "damage.cold",
             Kind::Shock => "damage.shock",
+            Kind::Poison => "damage.poison",
         }
     }
 }
@@ -96,8 +105,8 @@ impl Kind {
 /// turns it into the kit's request: a hit from the player crits on one
 /// [`KitRng`] draw under [`CRIT_CHANCE`], doubling every part; a blast's or
 /// a steam burst's on the player takes [`PLAYER_BLAST_SHARE`]; one landing
-/// on a beetle's rear half, or one made whole, takes physical penetration
-/// 1, so its shell's physical resistance takes nothing; and one on a kind
+/// on an armoured creature's rear half, or one made whole, takes physical
+/// penetration 1, so its armour's physical resistance takes nothing; and one on a kind
 /// that resists knockback whole carries no push (`enemies::stands_firm`).
 /// A spell's own hit ([`Hit::spell`]) takes its source's [`SPELL_POWER`]
 /// too, which arcane power doubles; the build-up follows the damage.
@@ -162,7 +171,7 @@ impl Hit {
         self
     }
 
-    /// The hit, landing whole wherever it lands, as on a beetle's rear: an
+    /// The hit, landing whole wherever it lands, as on armour's rear: an
     /// iron crush.
     #[must_use]
     pub fn whole(mut self) -> Self {
@@ -182,7 +191,7 @@ impl Hit {
     /// The kit's request: the base amounts, doubled on a crit (one draw,
     /// for a hit from the run's player), a spell's times its source's
     /// [`SPELL_POWER`], halved on the player for a blast, with physical
-    /// penetration 1 when whole or on a beetle's rear half, and its push
+    /// penetration 1 when whole or on armour's rear half, and its push
     /// unless the target stands firm.
     pub fn request(&self, world: &mut World) -> DamageRequest {
         let player = world.get_resource::<Run>().map(|run| run.player);
@@ -216,7 +225,7 @@ impl Hit {
         }
         let rear = self
             .at
-            .is_some_and(|at| beetle::rear(world, self.target, at));
+            .is_some_and(|at| armour::rear(world, self.target, at));
         if self.whole || rear {
             let pen = Penetration::new().with_points(Kind::Physical.tag(), 1.0);
             request = request.with_penetration(pen);

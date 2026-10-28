@@ -9,7 +9,8 @@
     },
     "tags": [
       "team.enemy",
-      "flesh"
+      "flesh",
+      "living"
     ],
     "rigid_body": {
       "kind": "kinematic",

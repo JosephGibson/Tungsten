@@ -481,7 +481,7 @@ fn iron_is_not_set_inside_a_wall_or_a_body_and_costs_nothing() {
     let blocks = |h: &UiHarness| h.world().query::<&IronBlock>().count();
     let cast = |h: &mut UiHarness, at: Vec2| {
         aim_at(h, at);
-        choose(h, 6);
+        choose(h, Spell::IronBlock);
         h.harness_mut().press_action("cast");
         h.step(1);
         h.harness_mut().release_action("cast");

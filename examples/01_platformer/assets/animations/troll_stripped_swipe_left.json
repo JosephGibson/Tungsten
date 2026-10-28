@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 60,
+      "sprite": "ex10_troll_stripped_swipe_0_left"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_troll_stripped_swipe_1_left"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_troll_stripped_swipe_2_left"
+    }
+  ],
+  "looping": false
+}

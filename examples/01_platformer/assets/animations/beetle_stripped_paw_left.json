@@ -1,0 +1,37 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_0_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_1_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_2_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_3_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_4_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_5_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_6_left"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_beetle_stripped_paw_7_left"
+    }
+  ],
+  "looping": false
+}

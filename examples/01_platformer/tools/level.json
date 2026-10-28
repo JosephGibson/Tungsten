@@ -11983,7 +11983,7 @@
       "y": 49.046875
     },
     {
-      "kind": "troll",
+      "kind": "troll_armoured",
       "name": "bridge troll",
       "x": 398.0,
       "y": 34.046875
@@ -12091,6 +12091,50 @@
       "name": "hollow wisp d",
       "x": 261.5,
       "y": 54.0
+    },
+    {
+      "kind": "crawler",
+      "name": "aqueduct crawler d",
+      "x": 138.5,
+      "y": 27.046875
+    },
+    {
+      "kind": "crawler",
+      "name": "aqueduct crawler e",
+      "x": 150.0,
+      "y": 39.046875
+    },
+    {
+      "kind": "crawler",
+      "name": "channel crawler",
+      "x": 168.0,
+      "y": 27.046875
+    },
+    {
+      "kind": "crawler",
+      "name": "pool crawler",
+      "x": 195.0,
+      "y": 62.046875,
+      "leash": 4
+    },
+    {
+      "kind": "wisp",
+      "name": "hollow wisp e",
+      "x": 253.0,
+      "y": 57.0
+    },
+    {
+      "kind": "wisp",
+      "name": "hollow wisp f",
+      "x": 275.5,
+      "y": 54.5
+    },
+    {
+      "kind": "beetle",
+      "name": "cut top beetle",
+      "x": 285.5,
+      "y": 43.046875,
+      "leash": 2.5
     }
   ],
   "pickups": [

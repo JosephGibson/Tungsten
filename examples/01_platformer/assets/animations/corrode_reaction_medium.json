@@ -1,0 +1,45 @@
+{
+  "frames": [
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_0"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_1"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_2"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_3"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_4"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_5"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_6"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_7"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_8"
+    },
+    {
+      "duration_ms": 70,
+      "sprite": "ex10_corrode_reaction_medium_9"
+    }
+  ],
+  "looping": false
+}

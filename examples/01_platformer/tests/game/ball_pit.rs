@@ -16,6 +16,7 @@ use tungsten::core::{AnimationState, Collider, Entity, Particle, Shape, Transfor
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::player::components::Lantern;
+use example_01_platformer::features::spells::components::Spell;
 
 use super::{
     aim_at, ball, body, bursts, calm, choose, contact, kick, mana, pin_camera, player_entity, run,
@@ -26,7 +27,7 @@ fn pitcher() -> UiHarness {
     let (mut harness, _) = run();
     pin_camera(&mut harness, Vec2::new(600.0, 200.0));
     aim_at(&mut harness, Vec2::new(1200.0, 500.0));
-    choose(&mut harness, 8);
+    choose(&mut harness, Spell::SmallBalls);
     harness
 }
 

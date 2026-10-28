@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 260,
+      "sprite": "ex10_troll_stripped_idle_0"
+    },
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_troll_stripped_idle_1"
+    },
+    {
+      "duration_ms": 260,
+      "sprite": "ex10_troll_stripped_idle_2"
+    },
+    {
+      "duration_ms": 220,
+      "sprite": "ex10_troll_stripped_idle_3"
+    }
+  ],
+  "looping": true
+}

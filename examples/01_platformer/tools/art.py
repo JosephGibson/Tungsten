@@ -16,7 +16,7 @@ EFFECT_SIZES = {name: (96, 96) for name in (
 ICONS = ('fire_missile', 'flamethrower', 'ice_spray', 'force_push', 'black_hole',
          'iron_block', 'bowling_ball', 'small_balls', 'lightning', 'gun', 'dummy',
          'wisp', 'crawler', 'beetle', 'bat', 'troll', 'goblin', 'crate', 'keg',
-         'tome_pact', 'tome_bounding', 'tome_arcane')
+         'tome_pact', 'tome_bounding', 'tome_arcane', 'toxic_flask', 'troll_armoured')
 ICON_SIZES = {'icon_' + name: (36, 36) for name in ICONS}
 # The elements' and weapons' art off the 64 px grid: the bolt's segments, the
 # status overlays' small and large classes (the medium class is 64), the
@@ -26,7 +26,8 @@ ELEMENT_SIZES = {
     **{f'bolt_{i}': (24, 64) for i in range(8)},
     **{f'status_{look}_{name}{frame}': (size, size)
        for name, size in STATUS_CLASSES.items() if size != 64
-       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1', '_2', '_3')))
+       for look, frames in (('ice', ('', '_cracked')), ('halo', ('',)), ('crackle', ('_0', '_1', '_2', '_3')),
+                            ('poison', ('_0', '_1', '_2', '_3')))
        for frame in frames},
     **{f'muzzle_{i}': (16, 16) for i in range(3)},
     'tracer': (32, 3),
@@ -77,6 +78,12 @@ ELEMENT_SIZES = {
     'scorch': (48, 16),
     **{f'plank_{i}': (32, 16) for i in range(5)},
     'hurt_edge': (320, 180),
+    # e01flask: the toxic flask tumbling and its burst; Corrosive's
+    # reaction over a beetle's body and an armoured troll's.
+    **{f'toxic_flask_{i}': (16, 16) for i in range(4)},
+    **{f'toxic_flask_burst_{i}': (96, 96) for i in range(6)},
+    **{f'corrode_reaction_medium_{i}': (96, 96) for i in range(10)},
+    **{f'corrode_reaction_large_{i}': (160, 160) for i in range(10)},
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat

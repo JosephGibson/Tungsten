@@ -5,13 +5,19 @@
 //! layered bursts drain within the shared budget; three black holes open
 //! at once, a fourth collapsing the oldest, each sweeping small balls from
 //! its core, all humming on one voice; the sprays reach 30 % further and
-//! burst on what they hit, and draw their sprites while they run.
+//! burst on what they hit, and draw their sprites while they run; the toxic
+//! flask lobs through the cursor, passes through the wizard, bursts on the
+//! step it meets a floor, a ledge or a goblin and splashes poison on the
+//! living but him, three at most in flight.
 
 use example_01_platformer::features::audio::HOLE_HUM;
 use example_01_platformer::features::audio::components::Music;
+use example_01_platformer::features::combat::Kind;
 use example_01_platformer::features::elements::components::BallBurn;
 use example_01_platformer::features::elements::systems::douse;
 use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
+use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::systems::adopt;
 use example_01_platformer::features::spells::{
@@ -20,23 +26,26 @@ use example_01_platformer::features::spells::{
 use example_01_platformer::features::toys::components::{
     BlackHole, FireMissile, Ring, ShockRing, SmallBall, Spray, SprayLook, SprayPuff, Wave,
 };
+use example_01_platformer::features::toys::flask;
 use example_01_platformer::features::toys::{
     self, BALL_RADIUS, BROOM_MOST, HOLE_RADIUS, IRON_HALF, IRON_MASS, MISSILE_SPEED, PUSH_RADIUS,
     PUSH_SPEED, RING_CAP,
 };
-use example_01_platformer::shared::{BURST_CAP, Burst};
+use example_01_platformer::shared::{BURST_CAP, Burst, SaveIds};
+use example_01_platformer::shell::Difficulty;
 use glam::Vec2;
 use tungsten::core::{
     AudioCommand, Collider, Entity, Particle, ParticleBudget, Position, RigidBody, RigidBodyBundle,
     SoundRegistry, Velocity,
 };
-use tungsten::kit::{LinearMotion, Stats};
+use tungsten::kit::{DamagedPart, Health, LinearMotion, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::level::components::Glow;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::player::{GUTTER_PUFF, STAFF_LIT};
+use example_01_platformer::features::spells::components::Spell;
 use tungsten::kit::Tags;
 
 use super::{
@@ -185,7 +194,7 @@ fn mouse4_casts_a_fireball_toward_the_cursor() {
     let from = centre(&harness, player);
     let target = from + Vec2::new(300.0, -400.0);
     aim_at(&mut harness, target);
-    choose(&mut harness, 0);
+    choose(&mut harness, Spell::FireMissile);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -300,7 +309,7 @@ fn mana_regenerates_to_its_max_and_a_cast_pauses_it_for_about_a_second() {
         mana(&harness)
     );
     // Force push, 12.5; the step's regeneration may come before it.
-    choose(&mut harness, 4);
+    choose(&mut harness, Spell::ForcePush);
     let before = mana(&harness);
     harness.harness_mut().press_action("cast");
     harness.step(1);
@@ -460,7 +469,6 @@ fn cast_once(harness: &mut UiHarness) -> Vec<Sound> {
 
 #[test]
 fn a_refused_cast_says_why_and_spends_nothing() {
-    use example_01_platformer::features::spells::components::Spell;
     use tungsten::kit::Abilities;
     let (mut harness, player) = run();
     ground(&mut harness, 1000.0);
@@ -484,7 +492,7 @@ fn a_refused_cast_says_why_and_spends_nothing() {
     let count = |heard: &[Sound], sound: Sound| heard.iter().filter(|&&s| s == sound).count();
     // No mana: a missile at none says so, once.
     aim_at(&mut harness, Vec2::new(900.0, 500.0));
-    choose(&mut harness, 0);
+    choose(&mut harness, Spell::FireMissile);
     set_mana(&mut harness, 0.0);
     let before = spent(&harness, Spell::FireMissile);
     let heard = cast_once(&mut harness);
@@ -500,7 +508,7 @@ fn a_refused_cast_says_why_and_spends_nothing() {
     assert_eq!(spent(&harness, Spell::FireMissile), before, "nothing spent");
     // Iron in a wall fizzles at the cursor, once.
     aim_at(&mut harness, slab);
-    choose(&mut harness, 6);
+    choose(&mut harness, Spell::IronBlock);
     let before = spent(&harness, Spell::IronBlock);
     let fizzles = bursts(&harness);
     let heard = cast_once(&mut harness);
@@ -562,7 +570,7 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
     let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
     stats.set_base("max_mana", 10_000.0);
     stats.set_base("mana", 10_000.0);
-    choose(&mut harness, 9);
+    choose(&mut harness, Spell::Summon);
     // Past the dummy and the enemies, the crate, then the keg.
     let crate_at = SUMMONS
         .iter()
@@ -635,8 +643,8 @@ fn the_summon_slot_places_crates_and_kegs_where_they_fit() {
 /// The sky's ground for the spray tests, and the flamethrower's and the ice
 /// spray's slots.
 const SKY: f32 = 1000.0;
-const FLAMETHROWER: usize = 1;
-const ICE_SPRAY: usize = 2;
+const FLAMETHROWER: Spell = Spell::Flamethrower;
+const ICE_SPRAY: Spell = Spell::IceSpray;
 
 /// A run with the player on the sky's ground at x 300, the map's enemies
 /// gone, the camera held over it, and a dummy whose near face stands
@@ -744,16 +752,13 @@ fn the_sprays_reach_further_and_burst_on_what_they_hit() {
         });
         assert!(
             harness.world().query::<&Spray>().count() == 1,
-            "slot {slot}: it sprays"
+            "{slot:?}: it sprays"
         );
         harness.harness_mut().release_action("cast");
-        assert!(
-            burst,
-            "slot {slot}: {surface} at the wall's face within 0.3 s"
-        );
+        assert!(burst, "{slot:?}: {surface} at the wall's face within 0.3 s");
         let none =
             super::bursts(&harness, "ex10_flame_hit") + super::bursts(&harness, "ex10_frost_hit");
-        assert_eq!(none, 0, "slot {slot}: no target's hit on a wall");
+        assert_eq!(none, 0, "{slot:?}: no target's hit on a wall");
     }
 }
 
@@ -779,10 +784,10 @@ fn a_spray_bursts_its_surface_hit_on_a_crate() {
             bursts_on_face(h, surface, face, middle.y, CRATE_HALF.y)
         });
         harness.harness_mut().release_action("cast");
-        assert!(burst, "slot {slot}: {surface} at the crate within 0.3 s");
+        assert!(burst, "{slot:?}: {surface} at the crate within 0.3 s");
         let none =
             super::bursts(&harness, "ex10_flame_hit") + super::bursts(&harness, "ex10_frost_hit");
-        assert_eq!(none, 0, "slot {slot}: a crate takes no target's hit");
+        assert_eq!(none, 0, "{slot:?}: a crate takes no target's hit");
     }
 }
 
@@ -892,7 +897,7 @@ fn the_wave_meets_a_body_running_into_it() {
 fn a_wave_lives_three_tenths_of_a_second() {
     let (mut harness, _) = run();
     harness.harness_mut().set_dt(1.0 / 60.0);
-    choose(&mut harness, 4);
+    choose(&mut harness, Spell::ForcePush);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -939,4 +944,268 @@ fn a_hole_lifts_bowling_balls_within_200_px_and_leaves_iron() {
     assert!(rose > 60.0, "the near ball rose {rose} px");
     assert!(stirred[0] < 1.0, "the far ball stayed down: {}", stirred[0]);
     assert!(stirred[1] < 1.0, "the iron stayed down: {}", stirred[1]);
+}
+
+/// A run with the player at x 300 on the sky's ground, the map's enemies
+/// gone, a 60th of a second a frame and the camera held over it: the
+/// flask's range.
+fn flask_range() -> (UiHarness, Entity) {
+    let (mut harness, player) = run();
+    calm(&mut harness);
+    ground(&mut harness, SKY);
+    stand(&mut harness, player, 300.0, SKY);
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.step(1);
+    pin_camera(&mut harness, Vec2::new(0.0, SKY - 600.0));
+    harness.step(1);
+    (harness, player)
+}
+
+/// An enemy of `kind` with its body's centre at `centre`, at normal
+/// difficulty, still: its state machine taken off.
+fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let foe = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    enemies::scale(world, foe, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(foe);
+    foe
+}
+
+/// Tosses the flask at `at` with one press: the sounds those frames made.
+fn toss_flask(harness: &mut UiHarness, at: Vec2) -> Vec<Sound> {
+    aim_at(harness, at);
+    choose(harness, Spell::ToxicFlask);
+    cast_once(harness)
+}
+
+/// A flask's flight: where it first burst, each flying flask's centre a
+/// frame before it, and every hit part landed meanwhile: its target, its
+/// amount, its source and whether it was poison.
+struct Flight {
+    burst: Option<Vec2>,
+    path: Vec<Vec2>,
+    parts: Vec<(Entity, f32, Option<Entity>, bool)>,
+}
+
+impl Flight {
+    /// What `target` took in the flight.
+    fn took(&self, target: Entity) -> Vec<(f32, Option<Entity>, bool)> {
+        self.parts
+            .iter()
+            .filter(|part| part.0 == target)
+            .map(|&(_, amount, source, poison)| (amount, source, poison))
+            .collect()
+    }
+}
+
+/// Steps until the first flask burst, at most `frames` frames, then one
+/// more, so its splash has landed: the flight.
+fn flask_flight(harness: &mut UiHarness, frames: u32) -> Flight {
+    let mut flight = Flight {
+        burst: None,
+        path: Vec::new(),
+        parts: Vec::new(),
+    };
+    for _ in 0..=frames {
+        if let Some(&(_, flask)) = flask::flying(harness.world()).first() {
+            flight.path.push(body_point(harness, flask));
+        }
+        harness.step(1);
+        let world = harness.world();
+        flight.parts.extend(
+            harness
+                .harness()
+                .events::<DamagedPart>()
+                .filter(|part| !part.periodic)
+                .map(|part| {
+                    let poison = part.kinds.has(world, Kind::Poison.tag());
+                    (part.entity, part.amount, part.source, poison)
+                }),
+        );
+        if flight.burst.is_some() {
+            return flight;
+        }
+        let config = world
+            .resource::<tungsten::core::ParticleConfigRegistry>()
+            .id_for_name(flask::BURST_PARTICLES);
+        flight.burst = world
+            .query::<(
+                &Burst,
+                &tungsten::core::ParticleEmitter,
+                &tungsten::core::Transform,
+            )>()
+            .find(|(_, emitter, _)| Some(emitter.config) == config)
+            .map(|(.., at)| at.position);
+    }
+    flight
+}
+
+/// A flask's centre.
+fn body_point(harness: &UiHarness, flask: Entity) -> Vec2 {
+    harness.world().get::<Position>(flask).unwrap().0 + flask::FLASK_CENTRE
+}
+
+#[test]
+fn a_flask_at_a_cursor_on_the_floor_400_px_off_bursts_within_24_px_of_it() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let cursor = Vec2::new(me.x + 400.0, SKY);
+    let heard = toss_flask(&mut harness, cursor);
+    assert!(heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    let flight = flask_flight(&mut harness, 90);
+    let at = flight.burst.expect("it bursts");
+    assert!(at.distance(cursor) <= 24.0, "{at} for {cursor}");
+    let top = flight.path.iter().map(|p| p.y).fold(f32::MAX, f32::min);
+    assert!(top < me.y - 60.0, "a lob: its apex {top} over {}", me.y);
+}
+
+#[test]
+fn a_flask_lobbed_onto_a_ledge_at_a_shallow_angle_bursts_on_the_step_it_reaches_it() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    // A ledge 250 px over the wizard's centre from 330 px across: the lob
+    // clears its corner and comes down on its top some 20° from flat.
+    let top = me.y - 250.0;
+    let edge = me.x + 330.0;
+    floor(
+        &mut harness,
+        Vec2::new(edge + 185.0, top + 20.0),
+        Vec2::new(185.0, 20.0),
+    );
+    harness.step(1);
+    let cursor = Vec2::new(me.x + 400.0, top);
+    toss_flask(&mut harness, cursor);
+    let flight = flask_flight(&mut harness, 90);
+    let (at, path) = (flight.burst.expect("it bursts"), &flight.path);
+    let surface = top - flask::FLASK_RADIUS;
+    assert!(
+        path.iter()
+            .filter(|p| p.x >= edge - flask::FLASK_RADIUS)
+            .all(|p| p.y < surface),
+        "never inside: {path:?}"
+    );
+    let (last, before) = (path[path.len() - 1], path[path.len() - 2]);
+    let step = last - before;
+    assert!(
+        step.y > 0.0 && step.y < step.x * 0.5,
+        "a shallow fall: {step}"
+    );
+    assert!((at.y - surface).abs() <= 6.0, "on the ledge's top: {at}");
+    assert!(
+        at.x >= last.x && at.x <= last.x + 1.5 * step.x,
+        "on the step after {last}: {at}"
+    );
+}
+
+#[test]
+fn a_flask_tossed_100_px_straight_down_passes_through_the_wizard_and_bursts_at_the_cursor() {
+    let (mut harness, player) = flask_range();
+    // A slab 100 px under the wizard's centre in the air, his feet 72 px
+    // over it.
+    let me = Vec2::new(900.0, SKY - 400.0);
+    floor(
+        &mut harness,
+        me + Vec2::new(0.0, 120.0),
+        Vec2::new(150.0, 20.0),
+    );
+    harness.step(1);
+    super::teleport(&mut harness, player, me);
+    let full = harness.world().get::<Health>(player).unwrap().current();
+    let cursor = me + Vec2::new(0.0, 100.0);
+    toss_flask(&mut harness, cursor);
+    let flight = flask_flight(&mut harness, 60);
+    let at = flight.burst.expect("it bursts");
+    assert!(
+        at.distance(cursor) <= 8.0,
+        "at the cursor: {at} for {cursor}"
+    );
+    assert!(flight.took(player).is_empty(), "nothing on the wizard");
+    let health = harness.world().get::<Health>(player).unwrap().current();
+    assert_eq!(health, full, "the wizard takes none");
+}
+
+#[test]
+fn a_flask_lobbed_at_a_goblin_bursts_at_it_poisons_it_and_credits_the_wizard() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let kind = EnemyKind::Goblin;
+    let at = Vec2::new(me.x + 300.0, SKY - kind.info().half.y - 0.5);
+    let goblin = still_foe(&mut harness, kind, at);
+    harness.step(1);
+    toss_flask(&mut harness, at);
+    let flight = flask_flight(&mut harness, 60);
+    let burst = flight.burst.expect("it bursts");
+    let half = kind.info().half + Vec2::splat(flask::FLASK_RADIUS + 1.0);
+    assert!(
+        ((burst - at).abs() - half).max_element() <= 0.0,
+        "at the goblin: {burst} for {at}"
+    );
+    let took = flight.took(goblin);
+    assert_eq!(took.len(), 1, "one splash: {took:?}");
+    assert!(took[0].0 > 0.0 && took[0].2, "poison: {took:?}");
+    assert_eq!(took[0].1, Some(player), "the wizard's credit");
+    let tags = harness.world().get::<Tags>(goblin).unwrap();
+    assert!(tags.has("status.poisoned"), "poisoned");
+}
+
+#[test]
+fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let kind = EnemyKind::Goblin;
+    let at = Vec2::new(me.x + 80.0, SKY - kind.info().half.y - 0.5);
+    let goblin = still_foe(&mut harness, kind, at);
+    let wisp = still_foe(&mut harness, EnemyKind::Wisp, at + Vec2::new(50.0, -20.0));
+    harness.step(1);
+    let health = |h: &UiHarness, e: Entity| h.world().get::<Health>(e).unwrap().current();
+    let (wizard, spirit) = (health(&harness, player), health(&harness, wisp));
+    toss_flask(&mut harness, at);
+    let flight = flask_flight(&mut harness, 30);
+    let burst = flight.burst.expect("it bursts");
+    assert!(
+        burst.distance(me) <= flask::SPLASH_RADIUS,
+        "the wizard in reach"
+    );
+    assert!(
+        burst.distance(body(&harness, wisp)) <= flask::SPLASH_RADIUS,
+        "the wisp in reach"
+    );
+    assert_eq!(flight.took(goblin).len(), 1, "the goblin's splash");
+    assert!(flight.took(player).is_empty() && flight.took(wisp).is_empty());
+    harness.step(30);
+    assert_eq!(health(&harness, player), wizard, "the wizard takes none");
+    assert_eq!(health(&harness, wisp), spirit, "a wisp takes none");
+    let poisoned =
+        |h: &UiHarness, e: Entity| h.world().get::<Tags>(e).unwrap().has("status.poisoned");
+    assert!(!poisoned(&harness, player) && !poisoned(&harness, wisp));
+}
+
+#[test]
+fn a_fourth_flask_with_three_in_flight_is_refused_and_spends_nothing() {
+    use tungsten::kit::Abilities;
+    let (mut harness, player) = flask_range();
+    let me = centre(&harness, player);
+    let far = Vec2::new(me.x + 1400.0, SKY);
+    for _ in 0..flask::FLASK_CAP {
+        assert!(flask::throw(harness.world_mut(), player, me, far).is_some());
+    }
+    assert_eq!(flask::count(harness.world()), flask::FLASK_CAP);
+    aim_at(&mut harness, far);
+    choose(&mut harness, Spell::ToxicFlask);
+    let spent = |h: &UiHarness| {
+        let abilities = h.world().get::<Abilities>(player).unwrap();
+        (
+            mana(h),
+            abilities.cooldown_left(Spell::ToxicFlask.ability()),
+        )
+    };
+    let before = spent(&harness);
+    let heard = cast_once(&mut harness);
+    assert!(heard.contains(&Sound::Fizzled), "{heard:?}");
+    assert!(!heard.contains(&Sound::FlaskThrown), "{heard:?}");
+    let after = spent(&harness);
+    assert!(after.0 >= before.0, "no mana spent: {before:?} → {after:?}");
+    assert_eq!(after.1, before.1, "no cooldown");
+    assert!(flask::count(harness.world()) <= flask::FLASK_CAP);
 }

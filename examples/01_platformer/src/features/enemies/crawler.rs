@@ -28,16 +28,16 @@ pub const SEARCH_PACE: f32 = 0.7;
 /// How near the player, across, its chase winds up a lunge.
 pub const LUNGE_RANGE: f32 = 300.0;
 /// How far above its centre the player's may be for a lunge: the leap
-/// rises about 53 px, so at a player higher up it would only hop into the
+/// rises about 80 px, so at a player higher up it would only hop into the
 /// step below them.
 pub const LUNGE_RISE: f32 = 64.0;
 /// The lunge's tell, its launch and how long its input stays locked. At
-/// the level's gravity the leap flies 0.34 s, 53 px up and 220 px across;
-/// the lock holds its speed 0.1 s past the landing, about 70 px more, so
+/// the level's gravity the leap flies 0.42 s, 80 px up and 270 px across;
+/// the lock holds its speed just past the landing, about 20 px more, so
 /// the lunge carries about 290 px, within its range.
 pub const TELL_SECS: f32 = 0.4;
 pub const LUNGE_SPEED: f32 = 640.0;
-pub const LUNGE_LIFT: f32 = 620.0;
+pub const LUNGE_LIFT: f32 = 760.0;
 pub const LUNGE_LOCK: f32 = 0.45;
 /// The longest a lunge runs before the recovery, landed or not.
 pub const LUNGE_MOST: f32 = 1.0;
@@ -56,17 +56,17 @@ pub const FROST_BREATH: &str = "ex10_frost_breath";
 pub const FEAR_SHARE: f32 = 1.3;
 /// Its retreat's share of its run speed as it backs out of the fear.
 pub const RETREAT_PACE: f32 = 0.8;
-/// Its hops (V21): a hop of 720 px/s up over a body or a step no higher
-/// than 64 px, a step down a drop no deeper than 96 px, and a leap over a
-/// gap of 420 px/s across and 600 up, its input locked 0.35 s, which rises
-/// 50 px and carries it about 140 px to level ground.
+/// Its hops (V21): a hop of 840 px/s up, about 98 px high, over a body or
+/// a step no higher than 64 px, a step down a drop no deeper than 96 px,
+/// and a leap over a gap of 420 px/s across and 740 up, its input locked
+/// 0.35 s, which rises 76 px and carries it about 160 px to level ground.
 pub const HOPS: Hops = Hops {
-    rise: 720.0,
+    rise: 840.0,
     clear: 64.0,
     step_down: 96.0,
     leap: Some(Leap {
         across: 420.0,
-        lift: 600.0,
+        lift: 740.0,
         lock: 0.35,
     }),
 };
@@ -78,8 +78,8 @@ pub const HOPS: Hops = Hops {
 /// flight's seconds a pixel to the player, at least and at most, on the
 /// world's gravity.
 pub const SNOWBALL_NEAR: f32 = 140.0;
-pub const SNOWBALL_FAR: f32 = 360.0;
-pub const SNOWBALL_RISE: f32 = 200.0;
+pub const SNOWBALL_FAR: f32 = 290.0;
+pub const SNOWBALL_RISE: f32 = 160.0;
 pub const SNOWBALL_TELL: f32 = 0.36;
 pub const SNOWBALL_SECS: f32 = 0.25;
 pub const SNOWBALL_COOLDOWN: f32 = 4.0;

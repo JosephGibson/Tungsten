@@ -183,5 +183,30 @@
         ]
       }
     ]
+  },
+  "damage.poison": {
+    "label_style": {
+      "font": "sans",
+      "size": 16,
+      "color": [
+        0.231,
+        0.672,
+        0.051,
+        1
+      ]
+    },
+    "ailments": [
+      {
+        "effect": "poisoned",
+        "needs": 0.1,
+        "window": 3,
+        "requires": [
+          "living"
+        ],
+        "blocked_by": [
+          "status.frozen"
+        ]
+      }
+    ]
   }
 }

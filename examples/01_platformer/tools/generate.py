@@ -639,6 +639,28 @@ def particle_configs():
         lifetime=dict(min=.5, max=1.1), start_scale=dict(min=.08, max=.24), gravity=[0, 700], drag_per_sec=1.1,
         angular_velocity=dict(min=-9, max=9), color_over_life=geyser_ramp,
         scale_over_life=[[0, 1], [.5, .7], [1, .2]], alpha_over_life=[[0, 1], [.6, .95], [1, 0]])
+    # e01flask: the flask's splash, drops flung out past the burst's ring to
+    # the splash's reach and falling, bright first; poison's bubbles welling
+    # off a body, launched fast enough to clear it, then drifting up as they
+    # swell and pop; Corroded's sparse fizz, white glints darting off the
+    # plates; its burst as it takes, drops of the molten melt spat up and
+    # falling, white-hot green flashing violet as they cool.
+    toxic = [[0, [.9, 1, .62, 1]], [.35, [.6, .9, .3, 1]], [1, [.3, .6, .12, 0]]]
+    configs['flask_splash'] = full(
+        'droplet', 28, burst(28), (.4, .75), dict(kind='radial', speed=dict(min=160, max=380)), (0, 760), 1.5,
+        (.1, .2), [[0, 1], [.6, .9], [1, .6]], [[0, 1], [.7, .9], [1, 0]], toxic, (-6, 6))
+    configs['poison_bubbles'] = full(
+        'mote', 14, dict(kind='continuous', rate_hz=7), (.9, 1.4), cone((0, -1), 70, 70, 140), (0, -30), 2.0,
+        (.14, .22), [[0, .55], [.7, 1], [.9, 1.25], [1, .4]], [[0, 0], [.1, .95], [.85, .8], [1, 0]],
+        [[0, [.8, 1, .55, 1]], [.6, [.55, .88, .28, 1]], [1, [.4, .75, .2, 0]]])
+    verdigris = [[0, [.78, .95, .86, 1]], [.5, [.48, .74, .62, 1]], [1, [.3, .5, .42, 0]]]
+    configs['corrode_fizz'] = full(
+        'ice_glint', 8, dict(kind='continuous', rate_hz=5), (.25, .5), dict(kind='radial', speed=dict(min=70, max=140)),
+        (0, -40), 4.5, (.28, .45), [[0, .6], [.3, 1], [1, .3]], [[0, 0], [.1, 1], [.6, .8], [1, 0]], verdigris, (-4, 4))
+    configs['corrode_burst'] = full(
+        'droplet', 22, burst(22), (.5, .9), cone((0, -1), 210, 150, 360), (0, 1000), 1.1, (.1, .19),
+        [[0, 1], [.5, .9], [1, .6]], [[0, 1], [.75, .95], [1, 0]],
+        [[0, [.92, 1, .7, 1]], [.25, [.62, .92, .3, 1]], [.6, [.66, .5, 1, 1]], [1, [.3, .55, .15, 0]]], (-6, 6))
     return configs
 
 
@@ -674,9 +696,12 @@ def spray_clips(animations):
     And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
     and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
     the snowball's, its burst's and the beetle's streaks, which
-    `mirror_facing` then twins."""
-    from effects import FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS}.items():
+    `mirror_facing` then twins; e01flask's (`effects.FLASK_CLIPS`,
+    `effects.CORRODE_CLIPS`): the flask's tumble and its burst, and
+    Corrosive's reaction."""
+    from effects import CORRODE_CLIPS, FLASK_CLIPS, FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS,**FLASK_CLIPS,
+                                       **CORRODE_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 

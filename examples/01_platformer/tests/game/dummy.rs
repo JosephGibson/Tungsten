@@ -6,6 +6,7 @@ use example_01_platformer::features::combat::{Hit, Kind};
 use example_01_platformer::features::dummy::components::Dummy;
 use example_01_platformer::features::dummy::{self, DUMMY_CENTRE, SUMMON_CAP};
 use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
 use example_01_platformer::save::{MAP_ENEMIES, MAP_GEYSERS, MAP_PICKUPS};
 use example_01_platformer::shared::SaveId;
@@ -147,7 +148,7 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     let stats = harness.world_mut().get_mut::<Stats>(player).unwrap();
     stats.set_base("max_mana", 1000.0);
     stats.set_base("mana", 1000.0);
-    choose(&mut harness, 9);
+    choose(&mut harness, Spell::Summon);
     let placed: Vec<(u64, Entity)> = dummy::live(harness.world());
     let before = mana(&harness);
     let at = Vec2::new(800.0, 700.0);
@@ -174,7 +175,7 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     // Over a solid tile it is refused before it spends anything.
     let (mut harness, player) = run();
     harness.step(30);
-    choose(&mut harness, 9);
+    choose(&mut harness, Spell::Summon);
     harness.step(61);
     let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
     let before = mana(&harness);

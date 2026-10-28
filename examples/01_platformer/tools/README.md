@@ -299,7 +299,7 @@ orbs, `D-208`), so a prop or a slab moves none:
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 29 enemies, after every other object layer but `pickups`, `tomes` and `geysers`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `enemies` | The 36 enemies, after every other object layer but `pickups`, `tomes` and `geysers`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
 | `pickups` | The eight placed health orbs, after the enemies | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
 | `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
 | `geysers` | The three geysers, the map's last object layer, after the tomes, so every earlier object keeps its save ID; theirs follow the orbs' | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
@@ -1178,3 +1178,73 @@ with pops), `geyser_erupt` (0.95 s, a whoosh into a roar that drops off) and
 `HollowContractTests` holds the generated files to the contract the game reads:
 each sprite's size and count, each stone's lowest opaque row on its box's bottom
 (31, 31, 63), the particles' caps and the sounds' lengths and volumes.
+
+## The flask, poison and armour
+
+e01flask's families. The palette's poison green runs `ա` to `ը` (`effects.TOXIC`,
+the damage label's colour `զ`) and its mist `թ` to `ծ` (`TOXIC_MIST`, the label's
+green and its light at rising alpha); its verdigris, `կ` to `ճ`
+(`actors.VERDIGRIS`), crusts what Corrosive leaves of armour. In `effects.py`: the
+toxic flask's tumble (`toxic_flask_0`–`_3`, 16 pixels, 60 ms a frame, looping,
+turning a quarter a frame about (8, 8)): a round-bellied glass flask (`flask_part`),
+its cork tied down with twine, its poison sloshing to whichever side is down, the
+fumes over it, a pale glass rim and a glint kept top left; its burst
+(`toxic_flask_burst_0`–`_5`, 96 pixels, 50 ms, once, centred at (48, 48)): a
+white-green flash of liquid jets, a splash ring crowned with tongues thrown out to
+the sprite's edge and breaking into drops that fly on and fall (`toxic_drop`),
+slivers of glass glinting ahead of it (`glass_shard`), a toxic mist billowing from
+the middle by `fbm`, no dark rim; both clips in `FLASK_CLIPS`. Poisoned's overlay
+(`status_poison_<class>_<f>`, four frames a class at 32, 64 and 128 pixels, unlit,
+which the game steps through at 8 Hz, `status_poison`): bubbles welling up over the
+body in their own phases, swelling, lifting off and popping into specks
+(`poison_bubble`), and a few drips gathering and falling, in poison's greens with no
+rim, over each class's body (`POISON_LOOK`: the large class's is the troll's
+hurtbox). The flask's icon (`icon_toxic_flask`, the flask upright two thirds full,
+bubbles, twine, fumes) in the `poison` style of `ICON_ELEMENTS`, its frame and rim
+from `TOXIC`; Corrosive's reaction (`corrode_reaction_medium_0`–`_9`, 96 pixels,
+over a beetle's body, and `corrode_reaction_large_0`–`_9`, 160, over an armoured
+troll's, 70 ms, once, each canvas's middle on the body's middle, `CORRODE_CLIPS`,
+`corrode_reaction`): the poison and the shock reacting into a melt charged with
+lightning. Big arcs leap across the plates first; the poison runs molten over them
+in a glowing sheet (`melt_sheet`), violet veins crawling through it and its edge
+crackling on the bright frames, then sags and slides off (`SAG`), its top ragged
+with tongues and its lobes drawn into viscous drips that thin and waver to the
+ground, a spark at each tip and small arcs jumping between them, pooling at the feet
+in a puddle that sizzles and sinks away, fumes rising off it all. It covers the
+armour as the game swaps in the stripped frames; the armoured troll's summon icon
+(`icon_troll_armoured`): its head and shoulders at half its frame, risen from the
+ring. In `actors.py`, `TrollPose.armoured` puts the armoured troll's iron over the
+troll's own skeleton (`troll_armour`), so every plate rides its joint: a dented helm
+with a riveted rim, a nasal and a cheek guard, the ear pressed back under it;
+pauldrons of a domed cap over two lames that follow the upper arm; a breastplate of
+overlapping lames, shadowed under the one above and lit on its rolled edge, its
+fauld over the loincloth's top; bracers and greaves with knee cops; iron in `IRON`
+(a step darker on the far side, `IRON_FAR`) lit as tubes and domes toward the moon
+(`iron_tube`, `iron_dome`, `moonlit`), rust in patches along the seams and run from
+the rivets (`rust_seam`, `rivet`). `ENEMY_CLIPS` gives the armoured troll the
+troll's eight clips with `armoured=True` (29 frames, 128 pixels, feet on row 124,
+unlit, each with its `_left` twin), and the stripped troll the same with
+`stripped=True` (`troll_stripped_*`, `strip_armour`): each plate eaten in its own
+frame (`eaten`), so the remnants ride their joints, the breastplate to its collar
+and a few torn bands thinning down the trunk, the helm to a holed cap, ragged rings
+of the bracers and greaves, the knee cops gone, the torn edges crusted in verdigris
+with runs dried down them over the skin, specks and pinholes cleaned away
+(`regions`). The stripped beetle (`beetle_stripped_*`, its walk, paw and charge,
+`strip_shell`) has its wing cases eaten through, the rim kept, to a pale banded body
+(`SOFT_BODY`), the holes crusted and run with verdigris, the rest pitted and dulled.
+The game shows a stripped clip on a beetle or an armoured troll while it is
+corroded. `generate.particle_configs`: `flask_splash`, drops flung out past the ring
+and falling (28); `poison_bubbles`, bubbles welling off a body fast enough to clear
+it, then drifting up as they swell and pop (14); `corrode_fizz`, sparse white glints
+darting off the plates (8); and `corrode_burst`, drops of the melt spat up and
+falling, white-hot green flashing violet as they cool (22). `sfx.py`: `flask_throw`
+(a whoosh, the liquid sloshing, a glass clink), `flask_burst` (glass snapping and
+its shards ringing, a wet slap, a gurgle, a hiss), `poisoned` (a short thick gurgle
+over a murky throb) and `corroded` (the shock crackling into the poison, an acid
+sizzle over iron groaning, ticks of the melt dripping off). `test_generate.py`'s
+`FlaskContractTests` holds the generated files to the contract the game reads
+(`CorrodedContractTests` the reaction's sizes and timing, and each stripped clip
+frame for frame its plain clip's, with mirrored twins): each family's size and
+count, the flask's clips' timing, the armoured troll's clips frame for frame the
+troll's, the particles' caps (32, 16, 10, 24) and the sounds' longest seconds (0.4,
+0.8, 0.6, 1.0) and volumes.

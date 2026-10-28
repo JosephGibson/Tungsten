@@ -8,8 +8,10 @@ tinted at extraction; each fades to transparent before its canvas edge.
 """
 import math
 
+from PIL import Image
+
 from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
-from pixels import BAYER, NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
+from pixels import BAYER, NEIGHBOURS, Part, compose, dither, fbm, outline, point, shade, smoothstep, to_image, unit
 
 HALO_STEPS = '!@#$%^&*'  # white at alpha 1, 2, 3, 5, 8, 12, 17, 24
 FLAME_STEPS = 'ejklpqux'  # white at alpha 4, 8, 16, 28, 44, 68, 104, 160
@@ -209,6 +211,9 @@ ICON_ELEMENTS = {
     'pact': dict(frame=('ψ', 'Ω', 'Φ'), back=('θ', 'д', 'ь', 'Θ', 'M', 'L'), rim='Ъ', corners=('χ', 'B')),
     'bounding': dict(frame=('φ', 'χ', 'ψ'), back=('θ', 'х', 'И', 'Й', 'З', 'Ч'), rim='Я', corners=('Ψ', 'Ω')),
     'arcane': dict(frame=('J', 'A', 'У'), back=('θ', 'Ж', 'Δ', 'Ф', 'Λ', 'Э'), rim='Ы', corners=('Z', 'a')),
+    # e01flask: poison's own green, its frame and rim from the damage
+    # label's colour (`զ`).
+    'poison': dict(frame=('է', 'ե', 'գ'), back=('θ', 'ա', 'բ', 'գ', 'դ', 'ե'), rim='ը'),
 }
 ICON_ELEMENT = {
     'icon_fire_missile': 'fire', 'icon_flamethrower': 'fire', 'icon_ice_spray': 'cold',
@@ -218,6 +223,7 @@ ICON_ELEMENT = {
     'icon_beetle': 'mana', 'icon_bat': 'mana', 'icon_troll': 'mana', 'icon_goblin': 'mana',
     'icon_crate': 'mana', 'icon_keg': 'mana',
     'icon_tome_pact': 'pact', 'icon_tome_bounding': 'bounding', 'icon_tome_arcane': 'arcane',
+    'icon_toxic_flask': 'poison', 'icon_troll_armoured': 'mana',
 }
 # The summons' ring, drawn in indigo, recoloured to mana's blue.
 SUMMON_RING = {'Ξ': 'З', 'Π': 'Й'}
@@ -473,6 +479,54 @@ def icon_lightning():
     return pixels
 
 
+def icon_toxic_flask():
+    """The toxic flask upright and large: a round glass belly two thirds
+    full of glowing poison, bubbles rising through it, its surface bright;
+    a cork tied down with twine, its loose end hanging; fumes curling from
+    the cork's edge; the glass's rim pale, a glint at its top left."""
+    belly, neck = Part((ICON, ICON)), Part((ICON, ICON))
+    belly.ellipse((16, 20.5), 10.5, 10)
+    neck.rectangle((12, 6, 19, 12))
+    lip, cork = Part((ICON, ICON)), Part((ICON, ICON))
+    lip.rectangle((11, 6, 20, 7))
+    cork.polygon([(12, 1), (19, 1), (18.5, 5), (12.5, 5)])
+    glass = belly.pixels() | neck.pixels()
+    pixels = {}
+    for x, y in glass:
+        if y >= 15 + 0.6 * math.sin(x * 0.7):  # the liquid, lit from its surface down
+            depth = (y - 15) / 16
+            pixels[(x, y)] = TOXIC[max(2, 6 - int(depth * 4.5 + ordered(x, y) * 0.6))]
+        else:
+            pixels[(x, y)] = TOXIC_MIST[3] if y > 8 else TOXIC_MIST[2]
+    for (x, y), s in list(pixels.items()):  # the surface's bright line
+        if s not in TOXIC_MIST and pixels.get((x, y - 1)) in TOXIC_MIST:
+            pixels[(x, y)] = 'ը'
+    for x, y, r in ((12, 25, 1.4), (19, 21, 1.0), (15, 18, 0.8), (21, 27, 0.8)):  # bubbles
+        for oy in range(-2, 3):
+            for ox in range(-2, 3):
+                d = math.hypot(ox, oy)
+                if r - 0.6 <= d <= r + 0.5 and (x + ox, y + oy) in pixels:
+                    pixels[(x + ox, y + oy)] = 'ը' if ox + oy < 0 else 'է'
+    for x, y in glass:  # the glass's rim: pale above, darker under the liquid
+        if any((x + dx, y + dy) not in glass for dx, dy in NEIGHBOURS):
+            pixels[(x, y)] = 'Ѳ' if y < 15 else ('է' if x < 16 else 'դ')
+    for q in lip.pixels():
+        pixels[q] = 'Ѵ' if q[1] == 6 else 'ѣ'
+    for x, y in cork.pixels():
+        pixels[(x, y)] = 'У' if x < 17 and y < 4 else ('a' if x < 18 else '"')
+    for x in range(12, 20):  # the twine round the neck, its knot and its end
+        pixels[(x, 9)] = 'w' if x % 2 else 'σ'
+    for q in ((20, 9), (21, 10), (21, 11), (22, 12)):
+        pixels[q] = 'σ'
+    for x, y in ((8, 14), (9, 13), (9, 15), (10, 14)):  # the glint
+        pixels[(x, y)] = 'Ψ' if (x, y) == (9, 14) else 'Ѵ'
+    pixels[(11, 13)] = 'Ѵ'
+    for k, (x, y) in enumerate(((21, 2), (23, 0), (9, 3), (8, 0))):  # fumes from the cork
+        pixels[(x, y)] = 'խ' if k % 2 else 'լ'
+        pixels[(x + 1, y + 1)] = 'լ'
+    return pixels
+
+
 def icon_gun():
     """A semi-automatic pistol, three-quarter lit, tilted 14 degrees up at
     the muzzle: a steel slide with its serrations, ejection port, sights
@@ -586,6 +640,15 @@ def icon_troll():
     return icon_of(troll_canvas(TrollPose()), 4, 2)
 
 
+def icon_troll_armoured():
+    """The armoured troll's head and shoulders at half its 128 frame: the
+    dented helm, its nasal and cheek guard, the ember eye under the rim, a
+    pauldron and the breastplate's top bands, risen from the ring."""
+    from actors import TrollPose, troll_canvas
+    canvas = troll_canvas(TrollPose(armoured=True))
+    return icon_of({(x - 57, y - 1): s for (x, y), s in canvas.items()}, 2, 0)
+
+
 def icon_goblin():
     from actors import goblin_canvas
     return icon_of(goblin_canvas(), 2, 2)
@@ -641,6 +704,8 @@ ICON_ART = {
     'icon_tome_pact': lambda: tome_pact(0, outlined=False),
     'icon_tome_bounding': lambda: tome_bounding(0, outlined=False),
     'icon_tome_arcane': lambda: tome_arcane(0, outlined=False),
+    'icon_toxic_flask': icon_toxic_flask,
+    'icon_troll_armoured': icon_troll_armoured,
 }
 
 
@@ -1045,6 +1110,81 @@ def status_crackle(size, frame):
     return to_image({p: s for p, s in pixels.items() if 0 <= p[0] < size and 0 <= p[1] < size}, (size, size))
 
 
+# Each class's bubbles and drips over the body it covers, (x, y, rx, ry) in
+# its frame: the middle of the 64 px bodies (the goblin's, the beetle's and
+# the dummy's meet there), and the troll's hurtbox, the large class's only
+# body, which stands right of its frame's middle.
+POISON_LOOK = {32: dict(bubbles=4, drips=1, body=(16, 19, 7, 9)),
+               64: dict(bubbles=7, drips=2, body=(33, 42, 12, 15)),
+               128: dict(bubbles=12, drips=3, body=(74, 66, 22, 44))}
+
+
+def poison_bubble(px, x, y, stage, big):
+    """One of poisoned's bubbles at a stage of its rise: a bead swelling on
+    the skin, a bead lifting off it, a hollow bubble lit at its top left,
+    then its pop, a few faint specks."""
+    if stage == 0:
+        px[(x, y)] = 'ե'
+    elif stage == 1:
+        px[(x, y)] = 'է'
+        px[(x + 1, y)] = 'զ'
+        px[(x, y + 1)] = 'զ'
+        px[(x + 1, y + 1)] = 'ե'
+    elif stage == 2:
+        r = 2 if big else 1
+        for oy in range(-r, r + 1):
+            for ox in range(-r, r + 1):
+                d = math.hypot(ox, oy)
+                if d > r + 0.4:
+                    continue
+                if d >= r - 0.5:
+                    px[(x + ox, y + oy)] = 'ը' if ox + oy < -r + 0.5 else ('զ' if ox + oy < r else 'ե')
+                else:
+                    px[(x + ox, y + oy)] = 'ի'
+    else:
+        r = 3 if big else 2
+        for ox, oy in ((-r, 0), (r, 0), (0, -r), (-1, r - 1), (1, -r + 1)):
+            px.setdefault((x + ox, y + oy), 'խ')
+
+
+def status_poison(size, frame):
+    """Poisoned, at 8 Hz: small green bubbles welling up over the body,
+    each in its own phase, swelling, lifting off and popping into specks,
+    and a few drips gathering low on it and falling away; poison's greens
+    with no rim, sparse, so the green tint carries the status and these
+    the movement."""
+    look = POISON_LOOK[size]
+    k = size / 64
+    cx, cy, rx, ry = look['body']
+    px = {}
+    for i in range(look['bubbles']):
+        a = (i + 0.7 * unit('poison-at', size, i)) / look['bubbles'] * math.tau
+        rr = 0.35 + 0.6 * unit('poison-r', size, i)
+        sx, sy = cx + rx * rr * math.cos(a), cy + ry * rr * math.sin(a) * 0.9
+        stage = (frame + i) % 4
+        rise = (0, 2, 5, 8)[stage] * max(0.75, k ** 0.7)
+        big = size >= 64 and i % 3 != 1
+        poison_bubble(px, round(sx), round(sy - rise), stage, big)
+    for i in range(look['drips']):
+        x = round(cx + rx * (unit('drip-x', size, i) * 1.4 - 0.7))
+        y0 = round(cy + ry * (0.15 + 0.35 * unit('drip-y', size, i)))
+        stage = (frame + 2 * i) % 4
+        if stage == 0:  # a drop gathering
+            px[(x, y0)] = 'զ'
+        elif stage == 1:  # hanging, drawn out
+            px[(x, y0)] = 'զ'
+            px[(x, y0 + 1)] = 'է'
+        elif stage == 2:  # letting go
+            px[(x, y0)] = 'ե'
+            px[(x, y0 + 2)] = 'է'
+            px[(x, y0 + 3)] = 'զ'
+        else:  # falling away
+            fall = round(6 * max(1.0, k))
+            px[(x, y0 + fall)] = 'է'
+            px[(x, y0 + fall + 1)] = 'ե'
+    return to_image({p: s for p, s in px.items() if 0 <= p[0] < size and 0 <= p[1] < size}, (size, size))
+
+
 def status_halo(size):
     """Stunned: small stars in a ring above the head."""
     pixels = {}
@@ -1147,6 +1287,7 @@ def build_element_art(images):
         images[f'status_halo_{name}'] = status_halo(size)
         for frame in range(CRACKLE_FRAMES):
             images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
+            images[f'status_poison_{name}_{frame}'] = status_poison(size, frame)
     for kind in HURTBOXES:
         for suffix, cracked in (('', False), ('_cracked', True)):
             images[f'status_ice_{kind}{suffix}'] = ice_cube(
@@ -2512,6 +2653,449 @@ def build_foe_art(images):
             images[f'{name}_{f}'] = draw(f)
 
 
+# e01flask's effects: the toxic flask tumbling through its flight and its
+# burst, centred on the flask's point and the burst's; clips as `FOE_CLIPS`.
+FLASK_CLIPS = {
+    'toxic_flask': ((16, 16), 4, 60, True),
+    'toxic_flask_burst': ((96, 96), 6, 50, False),
+}
+
+
+# Poison's green, dark to light (the damage label's is `զ`), and its mist
+# by alpha, faint to dense.
+TOXIC = ('ա', 'բ', 'գ', 'դ', 'ե', 'զ', 'է', 'ը')
+TOXIC_MIST = ('թ', 'ժ', 'ի', 'լ', 'խ', 'ծ')
+FLASK_TURN = math.pi / 8  # the first frame's tilt off upright
+
+
+def flask_part(lx, ly):
+    """What of the flask lies at (`lx`, `ly`) in its own frame, upright, the
+    belly's middle 1.3 below the turning point: 'belly', 'neck', 'lip',
+    'cork', 'twine' or None."""
+    if lx * lx + (ly - 1.3) ** 2 <= 4.9 ** 2:
+        return 'belly'
+    if abs(lx) <= 1.4 and -7.4 <= ly < -5.4:
+        return 'cork'
+    if abs(lx) <= 2.0 and -5.4 <= ly < -4.5:
+        return 'lip'
+    if abs(lx) <= 1.6 and -4.5 <= ly < -3.6:
+        return 'twine'
+    if abs(lx) <= 1.3 and -3.6 <= ly < -2.5:
+        return 'neck'
+    return None
+
+
+def toxic_flask(f):
+    """The toxic flask tumbling, a quarter turn a frame: a round-bellied
+    glass flask, a cork in its neck tied down with twine, its poison green
+    liquid sloshing to whichever side is down, bright against the night
+    with a pale glass rim and a glint lit from the top left; its turning
+    point (8, 8)."""
+    size = FLASK_CLIPS['toxic_flask'][0]
+    turn = FLASK_TURN + f * math.pi / 2
+    cos, sin = math.cos(turn), math.sin(turn)
+    parts = {}
+    for y in range(size[1]):
+        for x in range(size[0]):
+            dx, dy = x + 0.5 - 8, y + 0.5 - 8
+            part = flask_part(dx * cos + dy * sin, -dx * sin + dy * cos)
+            if part:
+                parts[(x, y)] = part
+    glass = {p for p, part in parts.items() if part in ('belly', 'neck')}
+    # The liquid fills half the glass from whichever side is down, its
+    # surface tilted against the turn as it sloshes.
+    tilt = 0.45 * math.sin(turn * 2 + 0.6)
+    def depth(p):
+        return p[1] + 0.5 + tilt * (p[0] + 0.5 - 8)
+    level = sorted(depth(p) for p in glass)[len(glass) * 2 // 5]
+    liquid = {p for p in glass if depth(p) >= level}
+    px = {}
+    for p, part in parts.items():
+        x, y = p
+        if part == 'cork':
+            px[p] = 'У' if (x + 1, y) in parts and (x, y - 1) in parts else 'a'
+        elif part == 'twine':
+            px[p] = 'w' if (x + y) % 2 else 'σ'
+        elif part == 'lip':
+            px[p] = 'Ѵ'
+        elif p in liquid:
+            surface = (x, y - 1) not in liquid or depth((x, y - 1)) < level
+            low = depth(p) - level
+            px[p] = 'ը' if surface and (x, y - 1) in glass else ('է' if surface else ('զ' if low < 2.5 else 'ե'))
+        else:
+            px[p] = 'լ'  # the fumes over it
+    # The glass's rim: pale where it meets the air above, dark below.
+    for p in glass:
+        x, y = p
+        if (x, y - 1) not in parts or (x - 1, y) not in parts:
+            px[p] = 'Ѳ' if p not in liquid else 'է'
+        elif (x, y + 1) not in parts or (x + 1, y) not in parts:
+            px[p] = 'Ѣ' if p not in liquid else 'դ'
+    for k in range(2):  # a bubble or two rising through it
+        inner = sorted(p for p in liquid if all((p[0] + dx, p[1] + dy) in liquid for dx, dy in NEIGHBOURS))
+        if inner:
+            q = inner[int(unit('flask-bubble', f, k) * len(inner))]
+            px[q] = 'է'
+    belly = [p for p, part in parts.items() if part == 'belly']
+    top = min(belly, key=lambda p: (p[0] + p[1], p[1]))
+    px[(top[0] + 1, top[1] + 1)] = 'Ψ'  # the glint, always top left
+    if (top[0] + 2, top[1] + 1) in glass:
+        px[(top[0] + 2, top[1] + 1)] = 'Ѵ'
+    return to_image(outline(px, 'o', size), size)
+
+
+def toxic_drop(px, x, y, r, vx, vy):
+    """A drop of poison at (`x`, `y`), `r` across, drawn out along its
+    flight (`vx`, `vy`): bright on its upper left, darker beneath."""
+    speed = math.hypot(vx, vy) or 1.0
+    ux, uy = vx / speed, vy / speed
+    stretch = min(2.2, speed / 70)
+    for oy in range(-3, 4):
+        for ox in range(-3, 4):
+            along = ox * ux + oy * uy
+            across = -ox * uy + oy * ux
+            if (along / (r + stretch)) ** 2 + (across / r) ** 2 > 1:
+                continue
+            q = (round(x + ox), round(y + oy))
+            px[q] = 'ը' if ox + oy < -r * 0.6 else ('դ' if ox + oy > r * 0.9 else 'զ')
+
+
+def glass_shard(px, x, y, spin, length):
+    """A sliver of the flask's glass at (`x`, `y`), turned by `spin`: a
+    white glint along a pale edge, a cyan shadow under it."""
+    for s in range(length):
+        q = (round(x + math.cos(spin) * (s - length / 2)), round(y + math.sin(spin) * (s - length / 2)))
+        px[q] = 'Ψ' if s in (length // 2, length // 2 - 1) else 'Ѵ'
+        under = (q[0], q[1] + 1)
+        if under not in px and s % 2:
+            px[under] = 'ѣ'
+
+
+def toxic_flask_burst(f):
+    """The flask bursting where it met something, 0.3 s from first touch:
+    a white-green flash of liquid jets, then a splash ring thrown out to
+    the sprite's edge, ragged with crowned tongues, breaking into drops
+    that fly on and fall; slivers of glass glinting ahead of it; a toxic
+    mist billowing from the middle, rising and thinning. Bright greens with
+    no dark rim, so it reads against the night; its centre (48, 48)."""
+    size = FLASK_CLIPS['toxic_flask_burst'][0]
+    n = FLASK_CLIPS['toxic_flask_burst'][1]
+    u = f / (n - 1)
+    cx, cy = 48.0, 48.0
+    reach = 6 + 39 * (1 - (1 - u) ** 1.8)  # the ring's radius
+    sag = 9 * u * u  # the ring and its drops fall as they fly
+    px = {}
+    # The mist, from the second frame: a billow from the middle, rising,
+    # its edge ragged, thinning as it spreads.
+    if f > 0:
+        mx, my = cx, cy - 7 * u
+        spread = 9 + 23 * u ** 0.6
+        for y in range(size[1]):
+            for x in range(size[0]):
+                dx, dy = x + 0.5 - mx, y + 0.5 - my
+                d = math.hypot(dx, dy * 1.15) / spread
+                if d >= 1.15:
+                    continue
+                billow = fbm(x / 8 + f * 0.35, y / 8 - f * 0.5, 'flask-mist')
+                v = (1.15 - d) * (1.05 - 0.7 * u) * max(0.0, 1.6 * billow - 0.25)
+                level = int(v * len(TOXIC_MIST) + ordered(x, y) * 0.9)
+                if level >= 1:
+                    px[(x, y)] = TOXIC_MIST[min(len(TOXIC_MIST) - 2, level - 1)]
+    # The flash: a bright core and its jets on the first frame, a splat
+    # left behind on the second.
+    if f < 2:
+        core = 9.5 if f == 0 else 5.0
+        for y in range(size[1]):
+            for x in range(size[0]):
+                dx, dy = x + 0.5 - cx, y + 0.5 - cy
+                theta = math.atan2(dy, dx)
+                jets = core * (1 + (0.8 if f == 0 else 0.3) * max(0.0, math.sin(6 * theta + 1.3)) ** 4
+                               + (0.4 if f == 0 else 0.0) * max(0.0, math.sin(11 * theta + 0.2)) ** 10
+                               + 0.12 * math.sin(3 * theta + 0.4))
+                d = math.hypot(dx, dy) / jets
+                if d > 1:
+                    continue
+                if f == 0:
+                    px[(x, y)] = 'ը' if d < 0.45 else ('է' if d < 0.75 else 'զ')
+                else:
+                    px[(x, y)] = 'է' if d < 0.4 else ('զ' if d < 0.75 else 'ե')
+    # The ring, crowned with tongues, thinning and breaking into blobs.
+    if f > 0:
+        width = 7.0 * (1 - u) + 1.6
+        for y in range(size[1]):
+            for x in range(size[0]):
+                dx, dy = x + 0.5 - cx, y + 0.5 - cy - sag * max(0.0, (y + 0.5 - cy) / reach + 0.4)
+                theta = math.atan2(dy, dx)
+                r = reach * (1 + 0.07 * math.sin(5 * theta + 0.8) + 0.05 * math.sin(9 * theta + 2.2))
+                tongue = max(0.0, math.sin(7 * theta + 0.5 + f * 0.3)) ** 10 * (8 * (1 - u) + 3)
+                thick = width * (0.45 + 0.9 * fbm(theta * 1.6 + 3, f * 0.4, 'flask-thick'))
+                d = math.hypot(dx, dy)
+                inner, outer = r - thick / 2, r + thick / 2 + tongue
+                if not inner <= d <= outer:
+                    continue
+                # Breaking up: whole arcs drop out as it stretches.
+                if fbm(theta * 2.2 + 7, u * 1.6, 'flask-ring') < 0.18 + 0.62 * u ** 1.3:
+                    continue
+                across = (d - inner) / max(0.5, outer - inner)
+                top = -dy / max(1.0, d)
+                if across > 0.72 and top > -0.2:
+                    s = 'ը' if top > 0.35 else 'է'
+                elif across < 0.3:
+                    s = 'ե' if top > 0 else 'դ'
+                else:
+                    s = 'զ' if top > -0.5 else 'ե'
+                px[(x, y)] = s
+    # Drops flung out with the ring, flying on past it and falling.
+    for k in range(18):
+        a = (k + unit('flask-drop', k) * 0.8) / 18 * math.tau
+        out = reach * (0.75 + 0.5 * unit('flask-drop-v', k))
+        fall = sag * (1.4 + unit('flask-drop-g', k))
+        x, y = cx + math.cos(a) * out, cy + math.sin(a) * out + fall
+        if f == 0 or not (3 <= x < size[0] - 3 and 3 <= y < size[1] - 3):
+            continue
+        vx, vy = math.cos(a) * 160 * (1 - u * 0.6), math.sin(a) * 160 * (1 - u * 0.6) + 260 * u
+        toxic_drop(px, x, y, 1.0 if k % 3 else 1.5, vx, vy)
+    # Glass slivers, light and fast, glinting ahead of the ring.
+    for k in range(8):
+        a = (k + 0.5 + unit('flask-shard', k) * 0.6) / 8 * math.tau
+        out = 9 + 58 * u ** 0.6 * (0.85 + 0.3 * unit('flask-shard-v', k))
+        x, y = cx + math.cos(a) * out, cy + math.sin(a) * out + 6 * u * u
+        if 2 <= x < size[0] - 2 and 2 <= y < size[1] - 2 and u < 0.95:
+            glass_shard(px, x, y, unit('flask-shard-s', k) * math.pi + f * (1.1 + k % 3), 3 + k % 2)
+    return to_image(px, size)
+
+
+# e01flask: Corrosive's reaction, once over the body it takes, by size
+# class: the medium's fitted to the beetle's shell and the large's to the
+# armoured troll's plates, each canvas centred on the body's middle. Each
+# class's armour patch (x, y offset from the middle, rx, ry) the melt
+# coats, its feet below the middle, the reach of its first arcs (rx, ry)
+# and how many leap, its drips and how wide they run, and its arcs' strokes.
+CORRODE_CLIPS = {
+    'corrode_reaction_medium': ((96, 96), 10, 70, False),
+    'corrode_reaction_large': ((160, 160), 10, 70, False),
+}
+REACTION_LOOK = {
+    'medium': dict(foam=(-4, -3, 21, 11), ground=12, reach=(26, 15), arcs=3, splits=3, drips=5, width=1,
+                   bright=((3, 'Ѻ'), (1, 'Ψ')), faint=((1, 'Σ'),)),
+    'large': dict(foam=(-1, -10, 18, 30), ground=57, reach=(30, 52), arcs=5, splits=4, drips=8, width=2,
+                  bright=((5, 'Ѻ'), (3, 'Λ'), (1, 'Ψ')), faint=((3, 'Ѻ'), (1, 'Σ'))),
+}
+# How far the melt has slid off the armour by frame, in its patch's
+# heights: clinging, sagging, then sliding off below the plates.
+SAG = (0.0, 0.04, 0.1, 0.2, 0.34, 0.52, 0.74, 1.0, 1.3, 1.65)
+
+
+def melt_sheet(name, f):
+    """The melt's sheet at frame `f`: the armour's patch below a top line
+    sliding down as it sags, its lower edge drooping in lobes."""
+    size = CORRODE_CLIPS[f'corrode_reaction_{name}'][0]
+    look = REACTION_LOOK[name]
+    fx, fy, frx, fry = look['foam']
+    fx, fy = size[0] / 2 + fx, size[1] / 2 + fy
+    droop = min(1.0, f / 4) * fry * 0.35
+    sheet = set()
+    for y in range(size[1]):
+        for x in range(size[0]):
+            # The top edge ragged with tongues of melt running down ahead of it.
+            top = fy - fry + SAG[f] * 2 * fry + 1.2 * math.sin(x * 0.45 + f * 0.8) \
+                + (fry * 0.35) * max(0.0, fbm(x / 3.5, f * 0.6, ('melt-tongue', name)) - 0.45) * min(1.0, f / 3)
+            lobe = droop * max(0.0, math.sin(x * 0.38 + unit('melt-lobe', name) * 6)) ** 2
+            dx = (x + 0.5 - fx) / (frx * 1.05)
+            if abs(dx) >= 1 or y < top:
+                continue
+            bottom = fy + fry * math.sqrt(1 - dx * dx) + lobe
+            if y <= bottom and y >= fy - fry * math.sqrt(1 - dx * dx):
+                sheet.add((x, y))
+    return sheet, (fx, fy, frx, fry)
+
+
+def corrode_reaction(name, f):
+    """Corrosive taking a target, frame `f` of its 0.7 s: the poison and
+    the shock reacting on the armour into a melt charged with lightning.
+    Big arcs leap across the plates first; the poison runs molten over them
+    in a glowing sheet, violet veins crawling through it and its edge
+    crackling, then sags and slides off, its lobes drawn into viscous drips
+    that stretch to the ground with sparks at their tips, small arcs
+    jumping between them, and pool at the feet in a puddle that sizzles and
+    sinks away; fumes rise off it all. Unlit, no rim; the canvas's middle
+    on the body's."""
+    size = CORRODE_CLIPS[f'corrode_reaction_{name}'][0]
+    look = REACTION_LOOK[name]
+    bright = f % 2 == 0
+    sheet, (fx, fy, frx, fry) = melt_sheet(name, f)
+    ground = size[1] / 2 + look['ground']
+    px = {}
+    # Fumes off the melt and the puddle, thickest as it slides.
+    if f >= 1:
+        strength = min(1.0, f / 3) * (1.0 - max(0.0, (f - 6) / 4))
+        source = min([y for _, y in sheet], default=round(ground))
+        for y in range(size[1]):
+            for x in range(size[0]):
+                rise = (source - y) / (fry + 16)
+                dx = (x + 0.5 - fx) / (frx * (0.9 + 0.5 * max(0.0, rise)))
+                if rise < -0.4 or abs(dx) > 1.1:
+                    continue
+                billow = fbm(x / 7, y / 7 + f * 0.55, ('melt-fumes', name))
+                v = strength * (1.1 - abs(dx)) * (1.0 - abs(rise - 0.3) * 0.9) * max(0.0, 1.7 * billow - 0.4)
+                level = int(v * len(TOXIC_MIST) + ordered(x, y) * 0.8)
+                if level >= 1:
+                    px[(x, y)] = TOXIC_MIST[min(len(TOXIC_MIST) - 2, level - 1)]
+    # The puddle at the feet: from the fourth frame, spreading, then sinking.
+    puddle = set()
+    if f >= 3:
+        reach = frx * min(1.7, 0.35 + 0.28 * (f - 3)) * (1.0 if f < 8 else (0.75 if f == 8 else 0.5))
+        deep = 2 if name == 'medium' else 3
+        for x in range(round(fx - reach), round(fx + reach) + 1):
+            u = (x + 0.5 - fx) / max(1.0, reach)
+            height = deep * math.sqrt(max(0.0, 1 - u * u)) + 0.4
+            for y in range(round(ground - height), round(ground) + 1):
+                puddle.add((x, y))
+        for x, y in puddle:
+            if (x, y - 1) not in puddle:
+                px[(x, y)] = 'ը' if unit('puddle-glint', name, f, x) < 0.35 else 'է'
+            elif (x, y + 1) not in puddle:
+                px[(x, y)] = 'գ'
+            else:
+                px[(x, y)] = 'զ' if (x + f) % 3 else 'ե'
+        for k in range(4 if name == 'medium' else 7):  # bubbles popping, charged sparks crawling
+            q = (round(fx + reach * (unit('puddle-pop', name, f, k) * 2 - 1)), round(ground - 1 - (k % 2)))
+            if q in puddle:
+                px[q] = ('ϕ' if bright else 'Λ') if k % 3 == 0 else 'ը'
+    # The sheet: molten poison over the plates, lit along its top, flowing
+    # in streaks, dark at its lower rim, its edge crackling violet.
+    top = min([y for _, y in sheet], default=0)
+    tall = max(1, max([y for _, y in sheet], default=1) - top)
+    for x, y in sheet:
+        if (x, y - 1) not in sheet:
+            s = 'ը' if bright or unit('melt-top', name, f, x) < 0.5 else 'է'
+        elif (x, y - 2) not in sheet:
+            s = 'է'
+        elif (x, y + 1) not in sheet:
+            s = 'գ'
+        else:
+            flow = fbm(x / 2.5, y / 9 - f * 0.7, ('melt-flow', name))
+            v = 0.62 + 0.9 * (flow - 0.5) - 0.4 * (y - top) / tall
+            s = ('դ', 'ե', 'զ', 'է')[max(0, min(3, int(v * 4)))]
+        px[(x, y)] = s
+    if bright:
+        for x, y in sheet:
+            side = (x - 1, y) not in sheet or (x + 1, y) not in sheet
+            if side and (x, y - 1) in sheet and unit('melt-rim', name, f, x, y) < 0.6:
+                px[(x, y)] = 'Λ'
+    # Veins of lightning crawling down through the melt.
+    if sheet:
+        xs = sorted({x for x, _ in sheet})
+        for i in range((2 if name == 'medium' else 4) + (1 if 2 <= f <= 6 else 0)):
+            x0 = xs[int(unit('vein-x', name, f, i) * len(xs))]
+            column = sorted(y for qx, y in sheet if qx == x0)
+            if len(column) < 4:
+                continue
+            a = (x0, column[0] + 1)
+            b = (x0 + (unit('vein-dx', name, f, i) - 0.5) * frx, column[-1] - 1)
+            path = bolt(a, b, look['splits'] - 1, ('melt-vein', name, f, i), rough=0.5)
+            for width, symbol in (((3, 'Λ'), (1, 'ϕ')) if bright else ((1, 'Λ'),)):
+                part = Part(size)
+                part.limb(path, width)
+                for q in part.pixels():
+                    if q in sheet:
+                        px[q] = symbol
+            if bright:
+                px[point(b)] = 'Ψ'
+    # The drips: the sheet's lobes drawn down to the ground, a bulb and a
+    # spark at each tip, letting go of the melt as it slides off.
+    tips = []
+    width = look['width']
+    for k in range(look['drips']):
+        x = round(fx + frx * (unit('drip-x', name, k) * 1.7 - 0.85))
+        born = 1 + int(unit('drip-born', name, k) * 3)
+        if f < born:
+            continue
+        root = max([y for qx, y in sheet if qx == x], default=None)
+        if root is None:
+            root = round(fy + fry * 0.6)
+        reach = ground - root
+        if reach < 3:
+            continue
+        length = min(reach, (f - born + 1) * reach / (2.5 + 2 * unit('drip-speed', name, k)))
+        gone = max(0.0, (f - 6) * reach / 3) if f >= 7 else 0.0
+        sway = 1.2 * unit('drip-sway', name, k) + 0.4
+        for i in range(round(gone), round(length)):
+            y = root + 1 + i
+            # Viscous: thick at its root, thinning as it stretches, wavering.
+            wide = width + (1 if i < 3 else 0) - (1 if width > 1 and i > length * 0.6 else 0)
+            dx = round(sway * math.sin(i * 0.35 + k))
+            for w in range(wide):
+                px[(x + dx + w, y)] = 'է' if w == 0 else ('զ' if w < wide - 1 else 'դ')
+            if wide == 1:
+                px[(x + dx, y)] = 'զ' if i % 3 else 'է'
+        x += round(sway * math.sin(length * 0.35 + k))
+        tip = (x, round(root + length))
+        for dx, dy, s in ((-1, 0, 'է'), (0, 0, 'զ'), (width, 0, 'դ'), (0, 1, 'ե'), (width - 1, 1, 'ե')):
+            px[(tip[0] + dx, tip[1] + dy)] = s
+        if bright:
+            px[(tip[0], tip[1] + 2)] = 'Ψ' if k % 2 else 'ϕ'
+        tips.append(tip)
+    # The arcs: big leaps across the plates as the shock meets the poison,
+    # then small ones jumping between the drips' tips.
+    rx, ry = look['reach']
+    strokes = look['bright'] if bright else look['faint']
+    paths = []
+    if f < 3:
+        for i in range(look['arcs'] - f):
+            a = math.tau * unit('reaction-at', name, f, i)
+            b = a + (1.6 + 1.6 * unit('reaction-span', name, f, i)) * (1 if i % 2 else -1)
+            ra, rb = 0.45 + 0.5 * unit('reaction-ra', name, f, i), 0.45 + 0.5 * unit('reaction-rb', name, f, i)
+            start = (fx + rx * ra * math.cos(a), fy + ry * ra * math.sin(a))
+            end = (fx + rx * rb * math.cos(b), fy + ry * rb * math.sin(b))
+            paths.append((bolt(start, end, look['splits'], ('reaction-arc', name, f, i)), True))
+    elif len(tips) > 1 and f < 9:
+        tips.sort()
+        for i in range(min(len(tips) - 1, 1 if name == 'medium' else 2)):
+            j = int(unit('drip-arc', name, f, i) * (len(tips) - 1))
+            (x0, y0), (x1, y1) = tips[j], tips[j + 1]
+            lift = (y0 + y1) / 2 - (3 + 6 * unit('drip-arc-up', name, f, i))
+            paths.append((bolt((x0, lift), (x1, lift + 2), max(1, look['splits'] - 2), ('drip-arc', name, f, i)),
+                          False))
+    for path, big in paths:
+        for width_, symbol in (strokes if big else strokes[-2:]):
+            part = Part(size)
+            part.limb(path, width_)
+            for q in part.pixels():
+                if symbol != 'Ѻ' or (q[0] + q[1] + f) % 2 == 0:
+                    px[q] = symbol
+        if big and f < 2:
+            for ex, ey in (path[0], path[-1]):
+                x, y = round(ex), round(ey)
+                for d in range(1, 3 if name == 'medium' else 4):
+                    for dx, dy in NEIGHBOURS:
+                        px[(x + dx * d, y + dy * d)] = 'ը' if d < 2 else 'է'
+                px[(x, y)] = 'Ψ'
+    for k in range(10 if name == 'medium' else 16):  # sparks spat off the melt
+        born = 1 + int(unit('melt-spark-born', name, k) * 6)
+        age = f - born
+        if not 0 < age <= 3:
+            continue
+        a = -math.pi / 2 + (unit('melt-spark-a', name, k) - 0.5) * 2.4
+        x0 = fx + frx * (unit('melt-spark-x', name, k) * 1.6 - 0.8)
+        y0 = fy - fry + SAG[born] * 2 * fry
+        x = x0 + math.cos(a) * age * 5
+        y = y0 + math.sin(a) * age * 5 + age * age * 1.2
+        px[(round(x), round(y))] = 'Ψ' if age < 2 else ('ϕ' if k % 2 else 'է')
+    return to_image({q: s for q, s in px.items() if 0 <= q[0] < size[0] and 0 <= q[1] < size[1]}, size)
+
+
+def build_flask_art(images):
+    """The flask's frames and its burst's, unlit; Corrosive's reaction's."""
+    for f in range(FLASK_CLIPS['toxic_flask'][1]):
+        images[f'toxic_flask_{f}'] = toxic_flask(f)
+    for f in range(FLASK_CLIPS['toxic_flask_burst'][1]):
+        images[f'toxic_flask_burst_{f}'] = toxic_flask_burst(f)
+    for name in ('medium', 'large'):
+        for f in range(CORRODE_CLIPS[f'corrode_reaction_{name}'][1]):
+            images[f'corrode_reaction_{name}_{f}'] = corrode_reaction(name, f)
+
+
 # e01sfx (V27): the ground strike's scorch, its bottom row's middle on the
 # landing; the char ramp black through soot to ash grey, and its ember in
 # the dim violet `Ѱ` that only it uses, an emissive one (`art.GLOW`).
@@ -2639,3 +3223,4 @@ def build_effects(images):
     build_spray_art(images)
     build_push_art(images)
     build_foe_art(images)
+    build_flask_art(images)

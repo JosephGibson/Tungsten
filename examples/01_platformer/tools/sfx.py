@@ -2693,6 +2693,107 @@ def seam_problem(name, data):
     return None
 
 
+def glass_ping(t, start, freq, level):
+    """A shard of glass ringing from `start`: three bright inharmonic
+    partials that die within a few hundredths of a second."""
+    if t < start:
+        return 0.0
+    u = t - start
+    return level * math.exp(-u / 0.022) * sum(
+        math.sin(math.tau * freq * ratio * u) * weight for ratio, weight in ((1, 1), (1.53, .55), (2.31, .3)))
+
+
+def flask_throw():
+    """The toxic flask leaving the hand: a rising whoosh, the liquid
+    sloshing inside, and the glass clinking against the cork as it turns."""
+    duration = 0.36
+    noise, slosh_noise, low, high, slosh = Noise(0xF1A5), Noise(0x5105), LowPass(), LowPass(), LowPass()
+    samples = []
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        whoosh = (low(n, glide(700, 3800, p)) - high(n, glide(250, 1400, p))) * math.sin(math.pi * min(1.0, p * 1.1)) ** 2
+        wet = slosh(slosh_noise(), 420) * (0.5 + 0.5 * math.sin(math.tau * 9 * t)) * math.exp(-t / 0.14) * 2.2
+        clink = glass_ping(t, 0.012, 2650, 0.32) + glass_ping(t, 0.17, 3180, 0.16)
+        samples.append(whoosh + wet + clink)
+    return finish(samples, fade_in=.002, fade_out=.03)
+
+
+def flask_burst():
+    """The flask bursting: glass snapping and its shards ringing as they
+    scatter, a wet slap of poison with a gurgle under it, and a hiss as it
+    fumes away."""
+    duration = 0.74
+    noise, shards, wet_noise, hiss_noise = Noise(0xB057), Noise(0x54A2), Noise(0x3E77), Noise(0x4155)
+    snap_low, wet_low, hiss_low, hiss_high = LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase = [], 0.0
+    pings = [(0.004 + 0.16 * (k / 7) ** 1.6, 2300 + 470 * ((k * 5) % 7), 0.5 - 0.05 * k) for k in range(8)]
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        n = noise()
+        snap = (n - snap_low(n, 1800)) * math.exp(-t / 0.016)
+        ring = sum(glass_ping(t, start, freq, level) for start, freq, level in pings)
+        chips = shards() * 0.25 * math.exp(-t / 0.06) if shards() > 0.6 else 0.0
+        phase += math.tau * glide(140, 60, min(1.0, t / 0.12)) / RATE
+        slap = 0.9 * math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.07)
+        wet = wet_low(wet_noise(), glide(2600, 500, min(1.0, t / 0.25))) * math.exp(-t / 0.12) * 2.4
+        h = hiss_noise()
+        hiss = (hiss_low(h, 4800) - hiss_high(h, 1900)) * min(1.0, max(0.0, t - 0.06) / 0.1) * math.exp(-max(0.0, t - 0.16) / 0.2)
+        samples.append(math.tanh(1.4 * snap) + ring + chips + slap + wet + 0.55 * hiss)
+    for start, freq, seconds, level in ((0.05, 230, 0.09, 0.45), (0.12, 330, 0.07, 0.35), (0.2, 270, 0.08, 0.3)):
+        place(samples, int(start * RATE), gulp(freq, seconds, level))  # the poison gurgling as it spreads
+    return finish(samples, fade_in=.001, fade_out=.06)
+
+
+def poisoned():
+    """Poison taking hold: a short thick gurgle, bubbles welling up through
+    something viscous and popping, over a murky low throb."""
+    duration = 0.52
+    out = [0.0] * int(duration * RATE)
+    for k, (start, freq, seconds, level) in enumerate(((0.0, 210, 0.11, 0.8), (0.06, 300, 0.09, 0.6),
+                                                       (0.13, 250, 0.1, 0.75), (0.2, 360, 0.08, 0.5),
+                                                       (0.27, 190, 0.12, 0.7), (0.36, 420, 0.07, 0.4))):
+        place(out, int(start * RATE), gulp(freq, seconds, level))
+        place(out, int((start + seconds * 0.8) * RATE), drip(freq * 4.5, 0.03, level * 0.35))
+    noise, low = Noise(0x9015), LowPass()
+    for i in range(len(out)):
+        t = i / RATE
+        throb = low(noise(), 180) * 3.0 * (0.6 + 0.4 * math.sin(math.tau * 11 * t)) * math.exp(-t / 0.25)
+        out[i] += throb * min(1.0, t / 0.02)
+    return finish(out, fade_in=.004, fade_out=.05)
+
+
+def corroded():
+    """Armour corroding: the shock crackling into the poison at the
+    start, an acid sizzle that flares and eats on, over iron groaning as it
+    gives, a slow inharmonic bend downward that creaks, and a few small
+    ticks of the melt dripping off."""
+    duration = 0.95
+    noise, ticks, low, high = Noise(0xC022), Noise(0x71C4), LowPass(), LowPass()
+    zaps, zap_low = Noise(0x2A95), LowPass()
+    bursts = [(0.0, 0.03), (0.045, 0.018), (0.085, 0.026), (0.14, 0.014), (0.19, 0.02), (0.26, 0.012)]
+    samples, phase, tick = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        flicker = 0.6 + 0.4 * math.sin(math.tau * 31 * t) * math.sin(math.tau * 7 * t)
+        sizzle = (low(n, glide(8000, 4200, p)) - high(n, 1700)) * flicker * min(1.0, t / 0.015) * math.exp(-t / 0.45)
+        phase += math.tau * glide(96, 64, p) / RATE
+        creak = 0.75 + 0.25 * math.sin(math.tau * glide(13, 7, p) * t)
+        groan = sum(math.sin(phase * ratio + ratio) * weight for ratio, weight in ((1, 0.6), (2.76, 0.35), (5.4, 0.18)))
+        groan *= creak * min(1.0, t / 0.08) * math.exp(-max(0.0, t - 0.35) / 0.3)
+        if ticks() > 1 - 0.0012 * (1 - p):
+            tick = 0.6
+        tick *= 0.93
+        z = zaps()
+        zap = sum(math.exp(-(t - start) / (length * 0.5)) for start, length in bursts if start <= t < start + length)
+        crackle = (z - zap_low(z, 2600)) * zap * (0.6 + 0.4 * math.sin(math.tau * 120 * t))
+        samples.append(1.1 * sizzle + 0.8 * groan + tick * ticks() + 1.3 * crackle)
+    return finish(samples, fade_in=.002, fade_out=.08)
+
+
 def build_sounds():
     """Return `{file name: WAV bytes}` for every synthesized sound."""
     return {
@@ -2803,5 +2904,11 @@ def build_sounds():
         'geyser_sputter.wav': geyser_sputter(),
         'geyser_erupt.wav': geyser_erupt(),
         'stone_knock.wav': stone_knock(),
+        # e01flask: the flask's throw and burst, poison taking hold and
+        # armour corroding.
+        'flask_throw.wav': flask_throw(),
+        'flask_burst.wav': flask_burst(),
+        'poisoned.wav': poisoned(),
+        'corroded.wav': corroded(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

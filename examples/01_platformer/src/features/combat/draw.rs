@@ -4,8 +4,9 @@
 //! stages from the first point of cold, an ice cube while frozen (both
 //! fitted to the body's hurtbox where its kind has one, a left-facing
 //! kind's taken back over its body), the cube flickering to its cracked
-//! twin as the freeze runs out, a crackle while shocked and a halo of
-//! stars while stunned; and over the view the courier's hurt edge.
+//! twin as the freeze runs out, bubbles while poisoned, a crackle while
+//! shocked and a halo of stars while stunned; and over the view the
+//! courier's hurt edge.
 
 use glam::Vec2;
 use tungsten::core::{AssetRegistry, Collider, Entity, Sprite, Transform, World};
@@ -13,9 +14,9 @@ use tungsten::kit::{Health, StateMachine, Tags};
 use tungsten::render::SpriteBatch;
 
 use super::systems::{
-    THAW_FLICKER_HZ, THAW_WARN, frost_level, frost_stage, frozen_left, shock_frame,
+    THAW_FLICKER_HZ, THAW_WARN, frost_level, frost_stage, frozen_left, poison_frame, shock_frame,
 };
-use super::{BURNING, FROZEN, SHOCKED, STUNNED};
+use super::{BURNING, FROZEN, POISONED, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
 use crate::features::enemies::components::{Enemy, EnemyState};
@@ -190,6 +191,10 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                 origin,
                 size,
             );
+        }
+        if tags.has(POISONED) {
+            let name = format!("ex10_status_poison_{class}_{}", poison_frame(time));
+            quad(&mut batches, assets, &name, origin, size);
         }
         if tags.has(SHOCKED) {
             let name = format!("ex10_status_crackle_{class}_{}", shock_frame(time));

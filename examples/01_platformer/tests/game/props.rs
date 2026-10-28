@@ -27,6 +27,7 @@ use example_01_platformer::features::props::{
     self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
     SPREAD_AFTER, STONE_HALVES,
 };
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, SMALL_BALL_RADIUS};
 use example_01_platformer::shared::{SaveId, SaveIds};
 use example_01_platformer::shell::Difficulty;
@@ -84,13 +85,13 @@ fn sounds(harness: &UiHarness, sound: Sound) -> usize {
 /// `frames`, until `done`; whether it came.
 fn spray_until(
     harness: &mut UiHarness,
-    slot: usize,
+    spell: Spell,
     at: Vec2,
     frames: u32,
     mut done: impl FnMut(&UiHarness) -> bool,
 ) -> bool {
     aim_at(harness, at);
-    choose(harness, slot);
+    choose(harness, spell);
     harness.harness_mut().press_action("cast");
     let mut came = false;
     for _ in 0..frames {
@@ -119,7 +120,10 @@ fn a_crate_set_alight_burns_down_and_falls_in() {
     harness.step(2);
     let face = Vec2::new(600.0 + CRATE_HALF.x, TOP - 50.0);
     assert!(
-        spray_until(&mut harness, 1, face, 60, |h| fuel(h, lit).lit),
+        spray_until(&mut harness, Spell::Flamethrower, face, 60, |h| fuel(
+            h, lit
+        )
+        .lit),
         "the flamethrower lights it"
     );
     assert!(
@@ -159,7 +163,7 @@ fn cold_and_a_hole_put_a_crate_out_with_its_fuel_kept() {
     let at = body(&harness, wet);
     let steam = bursts(&harness, "ex10_steam_burst");
     assert!(
-        spray_until(&mut harness, 2, at, 30, |h| !fuel(h, wet).lit),
+        spray_until(&mut harness, Spell::IceSpray, at, 30, |h| !fuel(h, wet).lit),
         "the ice spray puts it out"
     );
     assert!(bursts(&harness, "ex10_steam_burst") > steam, "with steam");
@@ -344,7 +348,7 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
     );
     let at = body(&harness, keg);
     let mut blasts = (0, 0);
-    let gone = spray_until(&mut harness, 1, at, 30, |h| {
+    let gone = spray_until(&mut harness, Spell::Flamethrower, at, 30, |h| {
         blasts.0 += sounds(h, Sound::FrostBlasted);
         blasts.1 += sounds(h, Sound::KegBlasted);
         !alive(h, keg)
@@ -858,7 +862,7 @@ fn the_force_push_throws_a_large_stone_off_a_ledge_onto_the_dummy() {
     pin_camera(&mut harness, Vec2::new(400.0, 400.0));
     let aim = body(&harness, large);
     aim_at(&mut harness, aim);
-    choose(&mut harness, 4);
+    choose(&mut harness, Spell::ForcePush);
     harness.harness_mut().press_action("cast");
     let mut struck = 0.0;
     for _ in 0..90 {
@@ -885,7 +889,7 @@ fn the_flamethrower_held_on_a_stone_lights_nothing() {
     harness.step(2);
     let at = body(&harness, rubble);
     let mut lit = 0;
-    let came = spray_until(&mut harness, 1, at, 90, |h| {
+    let came = spray_until(&mut harness, Spell::Flamethrower, at, 90, |h| {
         lit += sounds(h, Sound::CrateIgnited);
         false
     });

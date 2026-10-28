@@ -20,10 +20,10 @@ use super::{
     SHOOT, SHOT_DAMAGE, SHOT_PUSH, heading, rounds,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{FROZEN, Hit, Kind, has_status};
+use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
-use crate::features::enemies::beetle;
+use crate::features::enemies::armour;
 use crate::features::player::{self, BODY_OFFSET, Gesture};
 use crate::features::props::{
     self,
@@ -182,15 +182,15 @@ pub fn paths(world: &mut World) {
 }
 
 /// What a bullet's step can meet beside the kit's hurtboxes: a ball, an
-/// iron block, a crate, a keg, or a live beetle's hurtbox, which the
-/// bullets' filter skips.
+/// iron block, a crate, a keg, or a live armoured creature's hurtbox, which
+/// the bullets' filter skips.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum What {
     Ball,
     Iron,
     Crate,
     Keg,
-    Beetle,
+    Armour,
 }
 
 /// A body a bullet's step met: when, as a fraction of the step, the body,
@@ -233,7 +233,7 @@ fn half_of(shape: Shape) -> Vec2 {
 
 /// The step's balls, iron blocks, crates and kegs whose sweep, from
 /// `PrevPosition` to `Position`, meets the box `low` to `high` about every
-/// bullet's path, and its live beetles' hurtboxes: a body outside it meets
+/// bullet's path, and its live armoured creatures' hurtboxes: a body outside it meets
 /// no bullet (P6). The balls and iron come from the query's columns; the
 /// few other rows are looked up.
 fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
@@ -281,14 +281,14 @@ fn bodies(world: &World, (low, high): (Vec2, Vec2)) -> Vec<Swept> {
         &Health,
         &SaveId,
     )>() {
-        if health.is_dead() || !beetle::is_beetle(world, body) {
+        if health.is_dead() || !armour::armoured(world, body) {
             continue;
         }
         let start = prev.map_or(at.0, |prev| prev.0);
         swept.push(Swept {
             body,
             id: id.0,
-            what: What::Beetle,
+            what: What::Armour,
             start: start + hurtbox.offset(),
             end: at.0 + hurtbox.offset(),
             shape: hurtbox.shape().shape(),
@@ -458,14 +458,14 @@ fn bullet_walls<E: 'static>(
 /// `gun_hits`, in the overlap phase after the kit's projectile pass: one
 /// decision a bullet, by what its step met first, each a fraction of the
 /// path `bullet_paths` recorded: the kit's hurtbox hit, its turn off iron,
-/// its wall or range end, or a ball, an iron block or a beetle, swept with
+/// its wall or range end, or a ball, an iron block or armour, swept with
 /// its own motion. A hit deals [`SHOT_DAMAGE`] physical with its push,
 /// from the shooter, so it can crit; a ball takes [`BALL_KICK`] over its
 /// mass, a frozen one shatters, and the shot ends; an iron block, and a
-/// live beetle's front, turn the shot about the face it met, at most
+/// live armoured front, turn the shot about the face it met, at most
 /// [`MAX_RICOCHETS`] times, when the pass left it alive, else end it there;
-/// a beetle's rear, or a frozen beetle anywhere, takes the shot as a hit,
-/// which its rear takes whole. A `Struck` the decision passes over deals
+/// armour's rear, or frozen or corroded armour anywhere, takes the shot as
+/// a hit, which its rear takes whole. A `Struck` the decision passes over deals
 /// nothing. The walls' answers: the kit's turn off an iron wall throws
 /// sparks with the ricochet's sound, a wooden deck passed throws splinters
 /// with theirs, and a shot ending at a wall puffs dust.
@@ -562,7 +562,7 @@ pub fn hits(world: &mut World, cursors: &mut ShotCursors) {
             Some(contact) if contact.what == What::Iron => {
                 ricochet(world, bullet, contact, along_shot, spent);
             }
-            Some(contact) if contact.what == What::Beetle => {
+            Some(contact) if contact.what == What::Armour => {
                 shell(world, bullet, contact, along_shot, spent);
             }
             Some(contact) if contact.what == What::Keg => {
@@ -613,16 +613,18 @@ fn strike(world: &mut World, bullet: Entity, target: Entity, at: Vec2, along: Ve
     shot.queue(world);
 }
 
-/// A shot's beetle, its contact moved on with the beetle to the step's
-/// end: a live beetle's front turns the shot as iron does; its rear, or a
-/// frozen beetle anywhere, takes the shot as a hit and ends it.
+/// A shot's armour, its contact moved on with its wearer to the step's
+/// end: a live armoured front turns the shot as iron does; its rear, or
+/// frozen or corroded armour anywhere, takes the shot as a hit and ends
+/// it.
 fn shell(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent: bool) {
     let contact = Contact {
         point: contact.point + contact.moved,
         ..contact
     };
-    let frozen = has_status(world, contact.body, FROZEN);
-    if !frozen && beetle::front(world, contact.body, contact.point) {
+    let stripped =
+        has_status(world, contact.body, FROZEN) || has_status(world, contact.body, CORRODED);
+    if !stripped && armour::front(world, contact.body, contact.point) {
         return ricochet(world, bullet, contact, along, spent);
     }
     strike(world, bullet, contact.body, contact.point, along);
@@ -702,7 +704,7 @@ fn kick(world: &mut World, bullet: Entity, contact: Contact, along: Vec2, spent:
     end_at(world, bullet, contact.point, spent);
 }
 
-/// A shot's iron or beetle's front: while the kit's pass left it alive and
+/// A shot's iron or armour's front: while the kit's pass left it alive and
 /// it has turned fewer than [`MAX_RICOCHETS`] times, it turns about the
 /// face it met from where it met it, flying in `along`, at its speed (the
 /// kit's turn off a wall later in the step undone), with sparks and their

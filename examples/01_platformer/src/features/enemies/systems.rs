@@ -13,14 +13,14 @@ use tungsten::kit::{
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted, Variant,
 };
 use super::{
     ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
     WALL_LAYERS, bat, beetle, centre, crawler, goblin, troll, wisp,
 };
 use crate::features::audio::{self, components::Sound};
-use crate::features::combat::{BURNING, FROZEN, STUNNED, has_status};
+use crate::features::combat::{BURNING, CORRODED, FROZEN, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements;
 use crate::features::level::elevator::Elevator;
@@ -764,7 +764,9 @@ fn end(world: &mut World, enemy: Entity) {
 }
 
 /// The clip `enemy` shows now: its kind's clip for its state, facing its
-/// heading.
+/// heading; the armoured troll's its own, and once Corrosive has taken it
+/// a beetle's and an armoured troll's their stripped clips, the iron eaten
+/// away (e01flask).
 fn clip(world: &World, enemy: Entity) -> Option<String> {
     let mine = world.get::<Enemy>(enemy)?;
     let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
@@ -780,7 +782,23 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
         EnemyKind::Goblin => goblin::clip(world, enemy, state),
     };
     let side = if mine.heading < 0.0 { "_left" } else { "" };
-    Some(format!("ex10_{clip}{side}"))
+    let stripped = has_status(world, enemy, CORRODED);
+    match (mine.kind, mine.variant) {
+        (EnemyKind::Troll, Variant::Armoured) => {
+            let part = clip.trim_start_matches("troll_");
+            let stem = if stripped {
+                "troll_stripped"
+            } else {
+                "troll_armoured"
+            };
+            Some(format!("ex10_{stem}_{part}{side}"))
+        }
+        (EnemyKind::Beetle, _) if stripped => {
+            let part = clip.trim_start_matches("beetle_");
+            Some(format!("ex10_beetle_stripped_{part}{side}"))
+        }
+        _ => Some(format!("ex10_{clip}{side}")),
+    }
 }
 
 /// The troll's walk frames its feet land on, where its steps sound.
@@ -839,7 +857,13 @@ fn steps(world: &mut World, enemy: Entity, wanted: &str) {
     if let Some(shown) = world.get_mut::<Shown>(enemy) {
         shown.frame = frame;
     }
-    let walking = wanted.starts_with("ex10_troll_walk");
+    let walking = [
+        "ex10_troll_walk",
+        "ex10_troll_armoured_walk",
+        "ex10_troll_stripped_walk",
+    ]
+    .iter()
+    .any(|walk| wanted.starts_with(walk));
     let landed = last.is_some_and(|(was, same)| !same || was != frame);
     if walking
         && landed

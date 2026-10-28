@@ -438,4 +438,126 @@ class HollowContractTests(unittest.TestCase):
             self.assertTrue(shortest <= seconds <= longest, f'{name}: {seconds} s')
 
 
+# e01flask's contract, the files its families own as the game reads them:
+# each sprite family's size and count, each clip's durations and looping,
+# the armoured troll's clips frame for frame the troll's, 128 px with their
+# feet on row 124 and twinned, each particle config's cap, and each sound's
+# longest seconds and its quietest and loudest volume. Its placeholders pass
+# it, and so must its art.
+FLASK_FAMILIES = {
+    'toxic_flask_': ((16, 16), 4),
+    'toxic_flask_burst_': ((96, 96), 6),
+    **{f'status_poison_{name}_': ((size, size), 4) for name, size in STATUS_CLASSES.items()},
+    'icon_toxic_flask': ((36, 36), 1),
+    'icon_troll_armoured': ((36, 36), 1),
+}
+FLASK_CLIPS = {'toxic_flask': ([60] * 4, True), 'toxic_flask_burst': ([50] * 6, False)}
+TROLL_CLIPS = ('idle', 'walk', 'windup', 'slam', 'pickup', 'throw', 'swipe_windup', 'swipe')
+FLASK_PARTICLES = {'flask_splash': 32, 'poison_bubbles': 16, 'corrode_fizz': 10, 'corrode_burst': 24}
+FLASK_SOUNDS = {'flask_throw': .4, 'flask_burst': .8, 'poisoned': .6, 'corroded': 1.0}
+
+
+class FlaskContractTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.manifest = json.loads((ASSETS / 'manifest.json').read_text())
+
+    def sprite(self, name):
+        from PIL import Image
+        with Image.open(ASSETS / self.manifest['sprites']['ex10_' + name]['path']) as im:
+            return im.convert('RGBA')
+
+    def clip(self, name):
+        return json.loads((ASSETS / self.manifest['animations']['ex10_' + name]['path']).read_text())
+
+    def test_sprites_keep_their_sizes_and_counts(self):
+        for family, (size, count) in FLASK_FAMILIES.items():
+            names = [family] if count == 1 else [f'{family}{i}' for i in range(count)]
+            for name in names:
+                self.assertEqual(self.sprite(name).size, size, name)
+            if count > 1:
+                self.assertNotIn(f'ex10_{family}{count}', self.manifest['sprites'], family)
+
+    def test_the_flask_clips_keep_their_timing(self):
+        for clip, (durations, looping) in FLASK_CLIPS.items():
+            data = self.clip(clip)
+            self.assertEqual(data['looping'], looping, clip)
+            self.assertEqual([f['duration_ms'] for f in data['frames']], durations, clip)
+            self.assertEqual([f['sprite'] for f in data['frames']],
+                             [f'ex10_{clip}_{i}' for i in range(len(durations))], clip)
+            self.assertNotIn(f'ex10_{clip}_left', self.manifest['animations'], clip)
+
+    def test_the_armoured_troll_clips_match_the_trolls(self):
+        from PIL import ImageOps
+        for clip in TROLL_CLIPS:
+            plain, armoured = self.clip(f'troll_{clip}'), self.clip(f'troll_armoured_{clip}')
+            self.assertEqual(armoured['looping'], plain['looping'], clip)
+            self.assertEqual([f['duration_ms'] for f in armoured['frames']],
+                             [f['duration_ms'] for f in plain['frames']], clip)
+            left = self.clip(f'troll_armoured_{clip}_left')
+            for i, frame in enumerate(armoured['frames']):
+                name = f'troll_armoured_{clip}_{i}'
+                self.assertEqual(frame['sprite'], 'ex10_' + name)
+                self.assertEqual(left['frames'][i]['sprite'], f'ex10_{name}_left')
+                im = self.sprite(name)
+                self.assertEqual(im.size, (128, 128), name)
+                self.assertEqual(im.getbbox()[3] - 1, 124, f'{name}: its lowest opaque row')
+                self.assertEqual(self.sprite(name + '_left').tobytes(), ImageOps.mirror(im).tobytes(), name)
+
+    def test_particles_keep_their_caps(self):
+        for name, cap in FLASK_PARTICLES.items():
+            config = json.loads((ASSETS / self.manifest['particles']['ex10_' + name]['path']).read_text())
+            self.assertLessEqual(config['max_alive'], cap, name)
+            self.assertIn(config['sprite'], self.manifest['sprites'], name)
+
+    def test_sounds_keep_their_lengths_and_volumes(self):
+        for name, longest in FLASK_SOUNDS.items():
+            sound = self.manifest['sounds'][f'ex10_{name}_sfx']
+            self.assertEqual(sound['path'], f'sounds/{name}.wav')
+            self.assertFalse(sound['looping'], name)
+            self.assertTrue(.3 <= sound['volume'] <= .8, name)
+            with wave.open(str(ASSETS / sound['path']), 'rb') as wav:
+                seconds = wav.getnframes() / wav.getframerate()
+            self.assertTrue(0 < seconds <= longest, f'{name}: {seconds} s')
+
+
+
+# e01flask's round 2: Corrosive's reaction by the body it covers, and the
+# stripped clips the game shows once it has taken a beetle or an armoured
+# troll, each frame for frame its plain clip's.
+REACTION_CLIPS = {'corrode_reaction_medium': (96, 10, 70), 'corrode_reaction_large': (160, 10, 70)}
+STRIPPED_CLIPS = {'beetle': ('walk', 'paw', 'charge'), 'troll': TROLL_CLIPS}
+
+
+class CorrodedContractTests(unittest.TestCase):
+    setUpClass = classmethod(FlaskContractTests.setUpClass.__func__)
+    sprite = FlaskContractTests.sprite
+    clip = FlaskContractTests.clip
+
+    def test_the_reaction_clips_keep_their_sizes_and_timing(self):
+        for clip, (side, count, ms) in REACTION_CLIPS.items():
+            data = self.clip(clip)
+            self.assertFalse(data['looping'], clip)
+            self.assertEqual([f['duration_ms'] for f in data['frames']], [ms] * count, clip)
+            for i, frame in enumerate(data['frames']):
+                self.assertEqual(frame['sprite'], f'ex10_{clip}_{i}')
+                self.assertEqual(self.sprite(f'{clip}_{i}').size, (side, side), clip)
+            self.assertNotIn(f'ex10_{clip}_left', self.manifest['animations'], clip)
+
+    def test_the_stripped_clips_match_their_plain_clips(self):
+        from PIL import ImageOps
+        for kind, clips in STRIPPED_CLIPS.items():
+            for clip in clips:
+                plain, stripped = self.clip(f'{kind}_{clip}'), self.clip(f'{kind}_stripped_{clip}')
+                self.assertEqual(stripped['looping'], plain['looping'], clip)
+                self.assertEqual([f['duration_ms'] for f in stripped['frames']],
+                                 [f['duration_ms'] for f in plain['frames']], clip)
+                for i, frame in enumerate(stripped['frames']):
+                    name = f'{kind}_stripped_{clip}_{i}'
+                    self.assertEqual(frame['sprite'], 'ex10_' + name)
+                    im, twin = self.sprite(name), self.sprite(name + '_left')
+                    self.assertEqual(im.size, self.sprite(f'{kind}_{clip}_{i}').size, name)
+                    self.assertEqual(twin.tobytes(), ImageOps.mirror(im).tobytes(), name)
+
+
 if __name__=='__main__':unittest.main()
