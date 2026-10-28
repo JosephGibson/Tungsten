@@ -1,4 +1,5 @@
 use super::*;
+use crate::WindowSize;
 use glam::Vec2;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -322,6 +323,24 @@ fn scratch_reuse_leaves_output_unchanged() {
     world.remove_resource::<ExtractScratch>();
     assert_eq!(moved, batches_text(&extract_tilemaps(&world)));
     assert_ne!(moved, expected);
+}
+
+#[test]
+fn tiles_cull_at_the_surface_size_not_a_pending_window_size() {
+    let mut world = single_page_world(Vec2::new(640.0, 360.0));
+    let full = batches_text(&extract_tilemaps(&world));
+    world.insert_resource(WindowSize {
+        width: 320,
+        height: 180,
+    });
+    let shrunk = batches_text(&extract_tilemaps(&world));
+    assert_ne!(shrunk, full, "a smaller view culls tiles");
+
+    // A pending shrink: `WindowSize` is ahead, the surface still 1280 x 720.
+    let scratch = ExtractScratch::default();
+    scratch.set_viewport(1280, 720);
+    world.insert_resource(scratch);
+    assert_eq!(batches_text(&extract_tilemaps(&world)), full);
 }
 
 /// Two instances of one 4 x 2 map, the second 160 px below the first. Its

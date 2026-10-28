@@ -6,8 +6,7 @@ use tungsten_core::{
 };
 use tungsten_render::{SpriteBatch, SpriteInstance};
 
-use crate::WindowSize;
-use crate::sprite_extract::ExtractScratch;
+use crate::sprite_extract::{ExtractScratch, render_viewport};
 
 /// What a tile instance needs from its sprite asset.
 #[derive(Clone, Copy)]
@@ -106,15 +105,10 @@ fn extract_layers(world: &World, names: Option<&[&str]>) -> Vec<SpriteBatch> {
         .get_resource::<CameraState>()
         .copied()
         .unwrap_or_default();
-    let window = world
-        .get_resource::<WindowSize>()
-        .copied()
-        .unwrap_or(WindowSize {
-            width: 1280,
-            height: 720,
-        });
+    // Culls at the size render projects with, as the sprite extract does.
+    let (width, height) = render_viewport(world).unwrap_or((1280, 720));
 
-    let (view_min, view_max) = camera.visible_world_aabb(window.width as f32, window.height as f32);
+    let (view_min, view_max) = camera.visible_world_aabb(width as f32, height as f32);
 
     ExtractScratch::with(world, |buffers| {
         let tileset = &mut buffers.tileset;

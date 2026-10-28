@@ -305,19 +305,25 @@ pub fn extract_sprites_default(world: &World) -> Vec<SpriteBatch> {
     ExtractScratch::with(world, |buffers| extract_into(world, assets, view, buffers))
 }
 
-/// The world-space box render shows: the camera's visible box at the surface
-/// size the app passed, else at `WindowSize`. `None`, which culls nothing,
-/// without a camera or a size.
-fn view_bounds(world: &World) -> Option<(Vec2, Vec2)> {
-    let camera = world.get_resource::<CameraState>()?;
-    let (width, height) = world
+/// The size render projects with: the surface size the app passed, else
+/// `WindowSize`, which a pending resize leaves ahead of the surface (`D-114`).
+pub(crate) fn render_viewport(world: &World) -> Option<(u32, u32)> {
+    world
         .get_resource::<ExtractScratch>()
         .and_then(ExtractScratch::viewport)
         .or_else(|| {
             world
                 .get_resource::<WindowSize>()
                 .map(|size| (size.width, size.height))
-        })?;
+        })
+}
+
+/// The world-space box render shows: the camera's visible box at
+/// [`render_viewport`]. `None`, which culls nothing, without a camera or a
+/// size.
+fn view_bounds(world: &World) -> Option<(Vec2, Vec2)> {
+    let camera = world.get_resource::<CameraState>()?;
+    let (width, height) = render_viewport(world)?;
     Some(camera.visible_world_aabb(width as f32, height as f32))
 }
 

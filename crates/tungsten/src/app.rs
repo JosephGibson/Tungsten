@@ -1459,8 +1459,9 @@ impl App {
         // M56: a pending prewarm's runs.
         let ui_prewarm = self.paint_prewarm();
 
-        // M54: the world labels, projected onto the size render draws at.
-        let label_viewport = match &self.renderer {
+        // M54: the world labels and the lights, projected onto the size
+        // render draws at; a pending resize leaves `WindowSize` ahead of it.
+        let viewport = match &self.renderer {
             Some(renderer) => {
                 let cfg = &renderer.surface_config;
                 (cfg.width as f32, cfg.height as f32)
@@ -1471,7 +1472,7 @@ impl App {
                 .map_or((0.0, 0.0), |w| (w.width as f32, w.height as f32)),
         };
         let (world_labels, label_counts) =
-            crate::extract::extract_world_labels(&mut self.world, label_viewport);
+            crate::extract::extract_world_labels(&mut self.world, viewport);
 
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
@@ -1492,11 +1493,6 @@ impl App {
         // AABBs -> quads; angled lines/circles -> debug-line pipeline.
         let (debug_quads, debug_lines) = drain_debug_draw(&mut self.world);
 
-        let viewport = self
-            .world
-            .get_resource::<WindowSize>()
-            .map_or((0, 0), |w| (w.width, w.height));
-
         // M29: pull lights into a UBO every frame regardless of presence so
         // the lit pipeline (when active) reads coherent ambient + count = 0.
         let camera = self
@@ -1504,8 +1500,8 @@ impl App {
             .get_resource::<CameraState>()
             .copied()
             .unwrap_or_default();
-        let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
-        let light_ubo = crate::light_extract::extract_lights(&self.world, &camera, vw, vh);
+        let light_ubo =
+            crate::light_extract::extract_lights(&self.world, &camera, viewport.0, viewport.1);
 
         let mesh_particles = crate::particles::extract_mesh_particles(&self.world);
 
