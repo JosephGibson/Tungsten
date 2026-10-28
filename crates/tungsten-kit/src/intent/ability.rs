@@ -1473,7 +1473,12 @@ fn use_with(world: &mut World, entity: Entity, name: &str, scratch: &mut Scratch
         if let (Some(left), Some(c)) = (charges, ability.charges) {
             let left = left - 1;
             entry.charges = Some(left);
-            if entry.refill_left <= 0.0 && (!c.all || left == 0) {
+            // `all` counts from the last charge spent, whatever was left.
+            if c.all {
+                if left == 0 {
+                    entry.refill_left = c.refill;
+                }
+            } else if entry.refill_left <= 0.0 {
                 entry.refill_left = c.refill;
             }
         }
@@ -1605,7 +1610,7 @@ impl Ticker {
                 entry.cooldown_left = count_down(entry.cooldown_left, dt * rate);
                 if let Some(c) = ability.charges {
                     let left = entry.charges.get_or_insert(c.max);
-                    if *left < c.max {
+                    if *left < c.max && (!c.all || *left == 0) {
                         if entry.refill_left <= 0.0 {
                             entry.refill_left = c.refill;
                         }

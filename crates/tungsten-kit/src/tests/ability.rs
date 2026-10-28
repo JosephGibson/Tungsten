@@ -396,6 +396,45 @@ fn a_cooldown_counts_at_the_cooldown_rate() {
 }
 
 #[test]
+fn an_all_refill_waits_for_the_last_charge_spent_in_another_step() {
+    let (mut world, mut schedule) = rig();
+    let all = insert(
+        &mut world,
+        "all",
+        Ability::new()
+            .with_charges(3, 2.0 * STEP, true)
+            .with_payload(Payload::Hitbox(0.1)),
+    );
+    let hero = at(&mut world, 0.0, 0.0, (Abilities::new().with(all),));
+    steps(&mut world, &mut schedule, 1);
+    let charges = |world: &World| world.get::<Abilities>(hero).unwrap().charges("all");
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        assert_eq!(use_ability(&mut world, hero, "all"), Used::Used);
+        // Three steps between uses, longer than the two-step refill.
+        for _ in 0..3 {
+            steps(&mut world, &mut schedule, 1);
+            seen.push(charges(&world));
+        }
+    }
+    assert_eq!(
+        seen,
+        [
+            Some(2),
+            Some(2),
+            Some(2),
+            Some(1),
+            Some(1),
+            Some(1),
+            Some(0),
+            Some(3),
+            Some(3),
+        ],
+        "none back while one is left; all back two steps after the last"
+    );
+}
+
+#[test]
 fn charges_are_spent_and_refilled_one_by_one_or_all_at_once() {
     let (mut world, mut schedule) = rig();
     let each = insert(
