@@ -61,13 +61,6 @@ impl Default for LightUbo {
     }
 }
 
-impl LightUbo {
-    #[must_use]
-    pub fn byte_size() -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
-
 /// Pack `lights` (already sorted + capped) plus `ambient` into a `LightUbo`.
 #[must_use]
 pub fn pack_lights(lights: &[GpuLight], ambient: Vec3) -> LightUbo {

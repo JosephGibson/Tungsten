@@ -200,3 +200,4 @@ All at xhigh (code; no art is drawn). Each session reads this file whole, then o
 
 | Step | Verdict | Numbers, paths |
 | --- | --- | --- |
+| 1 | Done | 11 queries, `DeltaTime`, 3 `InspectorState` functions (and its own rows, so it is now `Send`/`Sync`), `LightUbo::byte_size`, `ScaleMode` and `display.scale_mode` gone; 18 old-query tests deleted (`tests/ecs/query.rs` covers every shape); dead helpers removed or `#[cfg(test)]`; `tuple_query_bench` keeps its 3 slice pairs. No `#[deprecated]` or `allow(deprecated)` left. Core 1,145 + umbrella 715 unit tests and every integration binary pass; clippy `-D warnings` clean; `api/` 128 lines out, 8 in (auto-trait flips); `missing_docs` 880/219/66 → 875/218/65, baseline lowered |

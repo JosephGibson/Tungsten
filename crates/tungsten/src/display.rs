@@ -17,7 +17,6 @@ pub(crate) struct DisplayDelta {
     pub(crate) resize: bool,
     pub(crate) display_mode_changed: bool,
     pub(crate) surface_pacing_changed: bool,
-    pub(crate) scale_mode_changed: bool,
     pub(crate) frame_rate_cap_changed: bool,
 }
 
@@ -32,7 +31,6 @@ impl DisplayDelta {
             surface_pacing_changed: current.vsync != requested.vsync
                 || current.present_mode != requested.present_mode
                 || current.max_frame_latency != requested.max_frame_latency,
-            scale_mode_changed: current.scale_mode != requested.scale_mode,
             frame_rate_cap_changed: current.frame_rate_cap != requested.frame_rate_cap,
         }
     }

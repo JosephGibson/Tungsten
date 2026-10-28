@@ -8,7 +8,7 @@
 //! The emitters move on Lissajous paths and `ParticleBudget` is raised to
 //! `budget`.
 //! `animated` sprites play `clips` generated 8-frame clips; `animate_sprites`
-//! walks `query2_mut::<AnimationState, Sprite>`, calls `advance` and
+//! walks `query_mut::<(Entity, &mut AnimationState, &mut Sprite)>`, calls `advance` and
 //! restarts finished one-shots.
 //!
 //! The particle stage is three named `post_update` systems since M38

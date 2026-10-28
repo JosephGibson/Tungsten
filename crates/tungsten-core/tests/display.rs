@@ -5,7 +5,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tungsten_core::config::PresentModeConfig;
-use tungsten_core::{Config, DisplayMode, Resolution, ScaleMode};
+use tungsten_core::{Config, DisplayMode, Resolution};
 
 static NEXT_TEMP_ID: AtomicUsize = AtomicUsize::new(0);
 static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -66,7 +66,6 @@ fn full_config_parse_with_display_section() {
                 "vsync": true,
                 "present_mode": "fifo",
                 "max_frame_latency": 3,
-                "scale_mode": "integer",
                 "frame_rate_cap": 144
             }
         }"#,
@@ -85,7 +84,6 @@ fn full_config_parse_with_display_section() {
     assert!(resolved.vsync);
     assert_eq!(resolved.present_mode, Some(PresentModeConfig::Fifo));
     assert_eq!(resolved.max_frame_latency, Some(3));
-    assert_eq!(resolved.scale_mode, ScaleMode::Integer);
     assert_eq!(resolved.frame_rate_cap, Some(144));
 }
 
@@ -95,7 +93,7 @@ fn partial_display_section_falls_back_to_legacy_values() {
         r#"{
             "window": { "width": 1920, "height": 1080, "vsync": true },
             "render": { "present_mode": "auto_no_vsync", "max_frame_latency": 2 },
-            "display": { "scale_mode": "integer" }
+            "display": { "frame_rate_cap": 90 }
         }"#,
     )
     .unwrap();
@@ -112,8 +110,7 @@ fn partial_display_section_falls_back_to_legacy_values() {
     assert!(resolved.vsync);
     assert_eq!(resolved.present_mode, Some(PresentModeConfig::AutoNoVsync));
     assert_eq!(resolved.max_frame_latency, Some(2));
-    assert_eq!(resolved.scale_mode, ScaleMode::Integer);
-    assert_eq!(resolved.frame_rate_cap, None);
+    assert_eq!(resolved.frame_rate_cap, Some(90));
 }
 
 #[test]
@@ -138,7 +135,6 @@ fn legacy_only_config_still_resolves_correctly() {
     assert!(resolved.vsync);
     assert_eq!(resolved.present_mode, Some(PresentModeConfig::Mailbox));
     assert_eq!(resolved.max_frame_latency, Some(4));
-    assert_eq!(resolved.scale_mode, ScaleMode::Stretch);
     assert_eq!(resolved.frame_rate_cap, None);
 }
 

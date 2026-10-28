@@ -1,6 +1,6 @@
 //! CPU frame-stage telemetry; timings are wall-clock milliseconds.
 
-use tungsten_core::{DisplayMode, DisplayState, ScaleMode};
+use tungsten_core::{DisplayMode, DisplayState};
 
 /// Per-frame stage timings.
 #[derive(Debug, Clone, Default)]
@@ -66,7 +66,6 @@ pub struct DisplayTelemetry {
     pub vsync: bool,
     pub actual_present_mode: Option<String>,
     pub max_frame_latency: Option<u32>,
-    pub scale_mode: ScaleMode,
     pub frame_rate_cap: Option<u32>,
 }
 
@@ -79,7 +78,6 @@ impl DisplayTelemetry {
             vsync: state.vsync,
             actual_present_mode,
             max_frame_latency: state.max_frame_latency,
-            scale_mode: state.scale_mode,
             frame_rate_cap: state.frame_rate_cap,
         }
     }

@@ -648,10 +648,7 @@ fn a_display_fallback_comes_back_from_take_load_warnings() {
     let (_, loaded) = load_json("display-fallback", json);
     let mut config = loaded.unwrap();
     assert!(config.display.display_mode.is_none());
-    assert_eq!(
-        config.display.scale_mode,
-        Some(crate::display::ScaleMode::Integer)
-    );
+    // `scale_mode` left with 7.1: a stale key is ignored, with no warning.
     let warnings = config.take_load_warnings();
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(

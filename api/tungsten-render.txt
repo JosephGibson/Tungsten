@@ -105,8 +105,6 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::GpuLigh
 pub tungsten_render::lighting::LightUbo::ambient: [f32; 4]
 pub tungsten_render::lighting::LightUbo::count_pad: [u32; 4]
 pub tungsten_render::lighting::LightUbo::lights: [tungsten_render::lighting::GpuLight; 16]
-impl tungsten_render::lighting::LightUbo
-pub fn tungsten_render::lighting::LightUbo::byte_size() -> usize
 impl bytemuck::pod::Pod for tungsten_render::lighting::LightUbo
 impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::LightUbo
 impl core::clone::Clone for tungsten_render::lighting::LightUbo
@@ -1586,8 +1584,6 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_render::lighting::GpuLigh
 pub tungsten_render::LightUbo::ambient: [f32; 4]
 pub tungsten_render::LightUbo::count_pad: [u32; 4]
 pub tungsten_render::LightUbo::lights: [tungsten_render::lighting::GpuLight; 16]
-impl tungsten_render::lighting::LightUbo
-pub fn tungsten_render::lighting::LightUbo::byte_size() -> usize
 impl bytemuck::pod::Pod for tungsten_render::lighting::LightUbo
 impl bytemuck::zeroable::Zeroable for tungsten_render::lighting::LightUbo
 impl core::clone::Clone for tungsten_render::lighting::LightUbo

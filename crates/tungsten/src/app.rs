@@ -38,9 +38,6 @@ use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
-// `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
-#[allow(deprecated)]
-use tungsten_core::DeltaTime;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
@@ -289,8 +286,6 @@ impl App {
         }
         let mut world = World::new();
         world.insert_resource(time_from_config(&config.time));
-        #[allow(deprecated)]
-        world.insert_resource(DeltaTime::new());
         world.insert_resource(InputState::new());
         world.insert_resource(action_map);
         world.insert_resource(WindowSize {
@@ -923,10 +918,6 @@ impl App {
             }
         }
 
-        if delta.scale_mode_changed {
-            effective.scale_mode = requested.scale_mode;
-        }
-
         if delta.frame_rate_cap_changed {
             effective.frame_rate_cap = requested.frame_rate_cap;
             self.frame_budget = frame_budget_for(requested.frame_rate_cap);
@@ -1113,7 +1104,6 @@ impl App {
 
     /// Advances [`Time`] by the frame's real dt: the pinned dt as given, or a
     /// wall frame's capped elapsed time, zero with no previous frame time.
-    /// `DeltaTime` gets the game dt, or the real dt if a game removed `Time`.
     #[inline(always)]
     fn stage_time(&mut self, clock: FrameClock) {
         let real_dt = match clock {
@@ -1130,16 +1120,8 @@ impl App {
                 dt
             }
         };
-        let game_dt = match self.world.get_resource_mut::<Time>() {
-            Some(time) => {
-                time.advance_frame(real_dt);
-                time.game_delta()
-            }
-            None => real_dt,
-        };
-        #[allow(deprecated)]
-        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-            delta.dt = game_dt;
+        if let Some(time) = self.world.get_resource_mut::<Time>() {
+            time.advance_frame(real_dt);
         }
     }
 
@@ -1155,7 +1137,7 @@ impl App {
 
     /// `FixedUpdate` once per fixed step the frame's [`Time`] owes, zero or
     /// more times (`D-129`), and returns the steps run. Inside the steps
-    /// `Time::delta()` and `DeltaTime` read the step, and input edges and
+    /// `Time::delta()` reads the step, and input edges and
     /// event queues their step views; after the last, the game dt and the
     /// frame views again. Each system's runs are summed under its name, and
     /// a frame with no step lists each at 0 ms and, while the game clock
@@ -1165,10 +1147,10 @@ impl App {
     /// before the accumulator.
     #[inline(always)]
     fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
-        let Some((steps, step)) = self
+        let Some(steps) = self
             .world
             .get_resource::<Time>()
-            .map(|time| (time.fixed_steps_this_frame(), time.fixed_step()))
+            .map(Time::fixed_steps_this_frame)
         else {
             self.run_stage(Stage::FixedUpdate, system_timings);
             return 1;
@@ -1203,7 +1185,7 @@ impl App {
             if let Some(time) = self.world.get_resource_mut::<Time>() {
                 time.enter_fixed_step();
             }
-            self.set_step_views(true, step);
+            self.set_step_views(true);
             if k == 0 {
                 self.run_stage(Stage::FixedUpdate, system_timings);
             } else {
@@ -1218,23 +1200,17 @@ impl App {
             self.end_input_steps();
             self.world.end_fixed_step_events();
         }
-        let game_dt = self.world.get_resource_mut::<Time>().map(|time| {
+        if let Some(time) = self.world.get_resource_mut::<Time>() {
             time.leave_fixed_steps();
-            time.game_delta()
-        });
-        self.set_step_views(false, game_dt.unwrap_or(step));
+        }
+        self.set_step_views(false);
         steps
     }
 
     /// Turns the input and event step views on or off, the routed input's
-    /// with the raw (`D-149`), and writes `dt` to `DeltaTime`: the step
-    /// inside the steps, the game dt after them.
+    /// with the raw (`D-149`).
     #[inline(always)]
-    fn set_step_views(&mut self, on: bool, dt: f32) {
-        #[allow(deprecated)]
-        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-            delta.dt = dt;
-        }
+    fn set_step_views(&mut self, on: bool) {
         if let Some(input) = self.world.get_resource_mut::<InputState>() {
             input.set_fixed_view(on);
         }

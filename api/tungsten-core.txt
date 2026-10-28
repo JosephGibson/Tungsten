@@ -4981,35 +4981,12 @@ impl core::marker::Unpin for tungsten_core::display::DisplayValidationError
 impl core::marker::UnsafeUnpin for tungsten_core::display::DisplayValidationError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::DisplayValidationError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::DisplayValidationError
-pub enum tungsten_core::display::ScaleMode
-pub tungsten_core::display::ScaleMode::Integer
-pub tungsten_core::display::ScaleMode::Stretch
-impl tungsten_core::display::ScaleMode
-pub const fn tungsten_core::display::ScaleMode::as_str(self) -> &'static str
-pub fn tungsten_core::display::ScaleMode::from_str_name(&str) -> core::option::Option<Self>
-impl core::clone::Clone for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::clone(&self) -> tungsten_core::display::ScaleMode
-impl core::cmp::Eq for tungsten_core::display::ScaleMode
-impl core::cmp::PartialEq for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::eq(&self, &tungsten_core::display::ScaleMode) -> bool
-impl core::fmt::Debug for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::display::ScaleMode
-impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleMode
-impl core::marker::Freeze for tungsten_core::display::ScaleMode
-impl core::marker::Send for tungsten_core::display::ScaleMode
-impl core::marker::Sync for tungsten_core::display::ScaleMode
-impl core::marker::Unpin for tungsten_core::display::ScaleMode
-impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleMode
 pub struct tungsten_core::display::DisplayConfig
 pub tungsten_core::display::DisplayConfig::display_mode: core::option::Option<tungsten_core::display::DisplayMode>
 pub tungsten_core::display::DisplayConfig::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::display::DisplayConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::display::DisplayConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::display::DisplayConfig::resolution: core::option::Option<tungsten_core::display::Resolution>
-pub tungsten_core::display::DisplayConfig::scale_mode: core::option::Option<tungsten_core::display::ScaleMode>
 pub tungsten_core::display::DisplayConfig::vsync: core::option::Option<bool>
 impl tungsten_core::display::DisplayConfig
 pub fn tungsten_core::display::DisplayConfig::resolve(&self, &tungsten_core::config::WindowConfig, &tungsten_core::config::RenderConfig) -> tungsten_core::display::DisplayState
@@ -5038,7 +5015,6 @@ pub tungsten_core::display::DisplayState::frame_rate_cap: core::option::Option<u
 pub tungsten_core::display::DisplayState::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::display::DisplayState::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::display::DisplayState::resolution: tungsten_core::display::Resolution
-pub tungsten_core::display::DisplayState::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten_core::display::DisplayState::vsync: bool
 impl tungsten_core::display::DisplayState
 pub fn tungsten_core::display::DisplayState::validate(&self) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
@@ -5848,17 +5824,6 @@ pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
 pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
-pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
-pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
-pub fn tungsten_core::World::query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, core::option::Option<&C>, core::option::Option<&D>)>
-pub fn tungsten_core::World::query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &mut B, core::option::Option<&C>, core::option::Option<&mut D>)>
-pub fn tungsten_core::World::query3<A: 'static, B: 'static, C: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C)>
-pub fn tungsten_core::World::query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
-pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
@@ -8869,25 +8834,6 @@ impl core::marker::Unpin for tungsten_core::time::TimerMode
 impl core::marker::UnsafeUnpin for tungsten_core::time::TimerMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::TimerMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::TimerMode
-pub struct tungsten_core::time::DeltaTime
-pub tungsten_core::time::DeltaTime::dt: f32
-impl tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::new() -> Self
-pub fn tungsten_core::time::DeltaTime::seconds(&self) -> f32
-impl core::clone::Clone for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::clone(&self) -> tungsten_core::time::DeltaTime
-impl core::default::Default for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::default() -> Self
-impl core::fmt::Debug for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::time::DeltaTime
-impl core::marker::Freeze for tungsten_core::time::DeltaTime
-impl core::marker::Send for tungsten_core::time::DeltaTime
-impl core::marker::Sync for tungsten_core::time::DeltaTime
-impl core::marker::Unpin for tungsten_core::time::DeltaTime
-impl core::marker::UnsafeUnpin for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
 pub struct tungsten_core::time::Time
 impl tungsten_core::time::Time
 pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
@@ -13489,28 +13435,6 @@ impl core::marker::Unpin for tungsten_core::tween::ScalarSlot
 impl core::marker::UnsafeUnpin for tungsten_core::tween::ScalarSlot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::ScalarSlot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::ScalarSlot
-pub enum tungsten_core::ScaleMode
-pub tungsten_core::ScaleMode::Integer
-pub tungsten_core::ScaleMode::Stretch
-impl tungsten_core::display::ScaleMode
-pub const fn tungsten_core::display::ScaleMode::as_str(self) -> &'static str
-pub fn tungsten_core::display::ScaleMode::from_str_name(&str) -> core::option::Option<Self>
-impl core::clone::Clone for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::clone(&self) -> tungsten_core::display::ScaleMode
-impl core::cmp::Eq for tungsten_core::display::ScaleMode
-impl core::cmp::PartialEq for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::eq(&self, &tungsten_core::display::ScaleMode) -> bool
-impl core::fmt::Debug for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::display::ScaleMode
-impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleMode
-impl core::marker::Freeze for tungsten_core::display::ScaleMode
-impl core::marker::Send for tungsten_core::display::ScaleMode
-impl core::marker::Sync for tungsten_core::display::ScaleMode
-impl core::marker::Unpin for tungsten_core::display::ScaleMode
-impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleMode
 pub enum tungsten_core::SceneError
 pub tungsten_core::SceneError::Io
 pub tungsten_core::SceneError::Io::path: alloc::string::String
@@ -14866,32 +14790,12 @@ impl core::marker::Unpin for tungsten_core::debug_draw::DebugDraw
 impl core::marker::UnsafeUnpin for tungsten_core::debug_draw::DebugDraw
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::debug_draw::DebugDraw
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::debug_draw::DebugDraw
-pub struct tungsten_core::DeltaTime
-pub tungsten_core::DeltaTime::dt: f32
-impl tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::new() -> Self
-pub fn tungsten_core::time::DeltaTime::seconds(&self) -> f32
-impl core::clone::Clone for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::clone(&self) -> tungsten_core::time::DeltaTime
-impl core::default::Default for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::default() -> Self
-impl core::fmt::Debug for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::time::DeltaTime
-impl core::marker::Freeze for tungsten_core::time::DeltaTime
-impl core::marker::Send for tungsten_core::time::DeltaTime
-impl core::marker::Sync for tungsten_core::time::DeltaTime
-impl core::marker::Unpin for tungsten_core::time::DeltaTime
-impl core::marker::UnsafeUnpin for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
 pub struct tungsten_core::DisplayConfig
 pub tungsten_core::DisplayConfig::display_mode: core::option::Option<tungsten_core::display::DisplayMode>
 pub tungsten_core::DisplayConfig::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::DisplayConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::DisplayConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::DisplayConfig::resolution: core::option::Option<tungsten_core::display::Resolution>
-pub tungsten_core::DisplayConfig::scale_mode: core::option::Option<tungsten_core::display::ScaleMode>
 pub tungsten_core::DisplayConfig::vsync: core::option::Option<bool>
 impl tungsten_core::display::DisplayConfig
 pub fn tungsten_core::display::DisplayConfig::resolve(&self, &tungsten_core::config::WindowConfig, &tungsten_core::config::RenderConfig) -> tungsten_core::display::DisplayState
@@ -14920,7 +14824,6 @@ pub tungsten_core::DisplayState::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::DisplayState::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::DisplayState::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::DisplayState::resolution: tungsten_core::display::Resolution
-pub tungsten_core::DisplayState::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten_core::DisplayState::vsync: bool
 impl tungsten_core::display::DisplayState
 pub fn tungsten_core::display::DisplayState::validate(&self) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
@@ -18160,17 +18063,6 @@ pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
 pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
-pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
-pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
-pub fn tungsten_core::World::query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, core::option::Option<&C>, core::option::Option<&D>)>
-pub fn tungsten_core::World::query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &mut B, core::option::Option<&C>, core::option::Option<&mut D>)>
-pub fn tungsten_core::World::query3<A: 'static, B: 'static, C: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C)>
-pub fn tungsten_core::World::query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
-pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>

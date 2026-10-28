@@ -1,6 +1,5 @@
 //! Frame time: the [`Time`] resource with the real and game clocks and the
-//! fixed-step accumulator, the [`Timer`] countdown, and [`DeltaTime`], the
-//! single dt `Time` replaces (`D-129`).
+//! fixed-step accumulator, and the [`Timer`] countdown (`D-129`).
 //!
 //! The app advances `Time` once a frame, before any stage runs. The real
 //! clock takes the dt the loop gives it: elapsed wall time capped at 0.1 s
@@ -26,46 +25,6 @@
 //!
 //! A [`Timer`] is a plain value that a component or resource owns and ticks
 //! with whichever clock its owner picks; there is no timer system.
-
-/// Elapsed seconds between frames: the frame's single dt before [`Time`].
-///
-/// Systems read [`Time::delta`], or [`Time::real_delta`] for real time. The
-/// app still writes the dt here, the step inside `fixed_update` and the game
-/// dt everywhere else, so a game that reads it keeps working until W4b
-/// removes the type; a world built by hand inserts and advances `Time`
-/// instead, since engine systems no longer read this.
-#[deprecated(
-    since = "0.53.0",
-    note = "read `Time::delta()`, or `Time::real_delta()` for real time; \
-            App still writes the game dt here each frame. Removed at W4b"
-)]
-#[derive(Debug, Clone, Copy)]
-pub struct DeltaTime {
-    /// This frame's dt in seconds.
-    pub dt: f32,
-}
-
-#[allow(deprecated)]
-impl DeltaTime {
-    /// A zero dt.
-    #[must_use]
-    pub fn new() -> Self {
-        Self { dt: 0.0 }
-    }
-
-    /// This frame's dt in seconds, [`dt`](Self::dt).
-    #[must_use]
-    pub fn seconds(&self) -> f32 {
-        self.dt
-    }
-}
-
-#[allow(deprecated)]
-impl Default for DeltaTime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// The frame's clocks and the fixed-step accumulator: a `World` resource the
 /// app inserts and advances once a frame, before any stage runs.

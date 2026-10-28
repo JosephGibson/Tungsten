@@ -7,9 +7,6 @@ use super::{
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use tungsten_core::post::{FadeParams, PostPass, PostStack};
-// The clock tests pin the app's write to the deprecated `DeltaTime`.
-#[allow(deprecated)]
-use tungsten_core::DeltaTime;
 use tungsten_core::{
     AudioCommand, AudioCommands, CollisionEvent, CommandBuffer, Config, DisplayMode, DisplayState,
     Entity, EventQueue, InputState, KeyCode, ShakeEvent, SquashEvent, Stage, Time, World, system,
@@ -353,8 +350,7 @@ fn clock_a_wall_frame_after_a_stall_reads_the_capped_real_dt() {
 }
 
 #[test]
-#[allow(deprecated)]
-fn clock_a_pinned_frame_reads_its_dt_on_both_clocks_and_in_delta_time() {
+fn clock_a_pinned_frame_reads_its_dt_on_both_clocks() {
     // `D-110`: a pinned dt is taken as given, above the window loop's cap.
     let mut app = App::new(Config::default()).unwrap();
     let end = app.run_frame(Instant::now(), FrameClock::Pinned(0.25), |_| {});
@@ -363,11 +359,9 @@ fn clock_a_pinned_frame_reads_its_dt_on_both_clocks_and_in_delta_time() {
     assert_eq!(time.real_delta(), 0.25);
     assert_eq!(time.game_delta(), 0.25);
     assert_eq!(time.delta(), 0.25);
-    assert_eq!(app.world.get_resource::<DeltaTime>().unwrap().dt, 0.25);
 }
 
 #[test]
-#[allow(deprecated)]
 fn clock_a_paused_pinned_frame_reads_real_time_and_zero_game_time() {
     let mut app = App::new(Config::default()).unwrap();
     app.world.get_resource_mut::<Time>().unwrap().pause();
@@ -377,7 +371,6 @@ fn clock_a_paused_pinned_frame_reads_real_time_and_zero_game_time() {
     assert_eq!(time.real_delta(), 0.25);
     assert_eq!(time.game_delta(), 0.0);
     assert_eq!(time.delta(), 0.0);
-    assert_eq!(app.world.get_resource::<DeltaTime>().unwrap().dt, 0.0);
 }
 
 #[test]

@@ -52,13 +52,6 @@ fn press_mouse3_at(world: &mut World, x: f32, y: f32) {
 }
 
 #[test]
-#[allow(deprecated)]
-fn default_registers_canonical_components() {
-    let state = InspectorState::new_with_defaults();
-    assert_eq!(state.registered_len(), 6);
-}
-
-#[test]
 fn default_inspect_registry_registers_canonical_components() {
     assert_eq!(default_inspect_registry().len(), 6);
 }
@@ -366,14 +359,12 @@ fn the_window_says_middle_click_to_pick_with_nothing_selected() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     let mut world = make_world();
     let e = world.spawn();
     world.insert(e, Tag::new("hero"));
     world.insert(e, Transform::from_position(Vec2::new(3.0, 5.0)));
     let mut state = InspectorState::new();
-    state.register::<Tag>("Again");
     state.enabled = true;
     state.selected = Some(e);
     world.insert_resource(state);
@@ -385,11 +376,6 @@ fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     assert_eq!(rows[1], ["name", "hero"], "its field below it");
     let transform = rows.iter().position(|row| row[0] == "Transform").unwrap();
     assert_eq!(rows[transform + 1][0], "pos");
-    assert_eq!(
-        rows[rows.len() - 2][0],
-        "Again",
-        "the registry's rows first, then the state's own"
-    );
 
     let bare = world.spawn();
     world.resource_mut::<InspectorState>().selected = Some(bare);
