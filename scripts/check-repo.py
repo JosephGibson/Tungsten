@@ -560,6 +560,8 @@ def select_checks(root, paths):
             require("just repo-check", "CPU", "template assets and toolchain pins")
             require("just template-check", "Hardware", "outside-copy new/check/build/test/smoke/package; local GPU/display and disk floor")
             require("just smoke", "Hardware", "template startup integration")
+            if path.startswith("templates/basic/tools/") and path.endswith(".py"):
+                require("just script-test", "CPU", "runs the template's generators' --check")
         if path.startswith("tools/cli/"):
             require("cargo test -p tungsten-cli --locked", "Edit loop", "the command line's parser, check, package and new")
             require("just template-check", "Hardware", "new, check and package on an outside game; local GPU/display and disk floor")
