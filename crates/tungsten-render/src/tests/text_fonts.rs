@@ -361,6 +361,10 @@ fn an_unknown_font_id_warns_once_and_draws_from_the_chains_head() {
         let glyphs = shaped(&mut engine, "ghost", content);
         assert!(glyphs.iter().all(|&(face, _)| face == sans), "{content}");
     }
-    let warned: Vec<&String> = engine.logged.iter().filter(|m| m.starts_with("font ")).collect();
+    let warned: Vec<&String> = engine
+        .logged
+        .iter()
+        .filter(|m| m.starts_with("font "))
+        .collect();
     assert_eq!(warned, vec!["font ghost"]);
 }

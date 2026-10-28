@@ -71,7 +71,10 @@ fn config_refuses_the_retired_premultiplied_blend() {
         "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 20.0 } }
     }"#;
     let err = serde_json::from_str::<ParticleConfig>(src).unwrap_err();
-    assert!(err.to_string().contains("unknown variant `premultiplied`"), "{err}");
+    assert!(
+        err.to_string().contains("unknown variant `premultiplied`"),
+        "{err}"
+    );
 }
 
 #[test]
