@@ -120,9 +120,9 @@ pub struct StateStack {
     pub(crate) active_transition: Option<ActiveTransition>,
     /// The roots states own (M56).
     pub(crate) owned_roots: Vec<OwnedRoot>,
-    /// The stack index of the state whose hook or `update` runs, off the
-    /// stack; `None` outside the dispatcher.
-    pub(crate) dispatching: Option<usize>,
+    /// The stack index and ID of the state whose hook or `update` runs, off
+    /// the stack; `None` outside the dispatcher.
+    pub(crate) dispatching: Option<(usize, StateId)>,
 }
 
 impl StateStack {
@@ -151,7 +151,7 @@ impl StateStack {
     /// is dropped.
     pub fn own_root(&mut self, root: WidgetId, cover: RootCover) {
         let owner = match self.dispatching {
-            Some(index) => index,
+            Some((index, _)) => index,
             None if self.stack.is_empty() => {
                 log::warn!("StateStack::own_root({root:?}): no state to own it; ignored");
                 return;
@@ -250,16 +250,24 @@ impl StateStack {
             .map(|active| active.transition.pass(active.state))
     }
 
-    /// Active state ID.
+    /// Active state ID: inside a state's hook or `update`, which run with
+    /// the state off the stack, that state's.
     #[must_use]
     pub fn active_id(&self) -> Option<StateId> {
-        self.stack.last().map(|s| s.id())
+        match self.dispatching {
+            Some((_, id)) => Some(id),
+            None => self.stack.last().map(|s| s.id()),
+        }
     }
 
-    /// Stack depth.
+    /// Stack depth: inside a state's hook or `update`, that state's depth
+    /// with it on the stack.
     #[must_use]
     pub fn depth(&self) -> usize {
-        self.stack.len()
+        match self.dispatching {
+            Some((index, _)) => index + 1,
+            None => self.stack.len(),
+        }
     }
 }
 
@@ -485,14 +493,13 @@ fn release_roots(world: &mut World, index: usize) {
     }
 }
 
-/// Marks the state about to enter at the top as the one being dispatched.
-fn dispatch_next(world: &mut World) -> usize {
+/// Marks the state `id`, about to enter at the top, as the one being
+/// dispatched.
+fn dispatch_next(world: &mut World, id: StateId) {
     let stack = world
         .get_resource_mut::<StateStack>()
         .expect("StateStack removed mid-dispatch");
-    let index = stack.stack.len();
-    stack.dispatching = Some(index);
-    index
+    stack.dispatching = Some((stack.stack.len(), id));
 }
 
 fn apply_command(world: &mut World, cmd: StateCommand) {
@@ -508,7 +515,7 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                 sync_state_roots(world, 1);
             }
             let new_id = new_state.id();
-            dispatch_next(world);
+            dispatch_next(world, new_id);
             new_state.on_enter(&mut StateContext {
                 world,
                 state_id: new_id,
@@ -552,7 +559,7 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
                 release_roots(world, index);
             }
             let new_id = new_state.id();
-            dispatch_next(world);
+            dispatch_next(world, new_id);
             new_state.on_enter(&mut StateContext {
                 world,
                 state_id: new_id,
@@ -567,7 +574,7 @@ fn apply_command(world: &mut World, cmd: StateCommand) {
 fn pop_top(world: &mut World) -> Option<Box<dyn GameState>> {
     let stack = world.get_resource_mut::<StateStack>()?;
     let top = stack.stack.pop()?;
-    stack.dispatching = Some(stack.stack.len());
+    stack.dispatching = Some((stack.stack.len(), top.id()));
     Some(top)
 }
 
