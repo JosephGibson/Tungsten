@@ -137788,6 +137788,109 @@
           "width": 0,
           "x": 16736.0,
           "y": 3456.0
+        },
+        {
+          "height": 0,
+          "id": 1050,
+          "name": "aqueduct crawler d",
+          "point": true,
+          "properties": [],
+          "rotation": 0,
+          "type": "crawler",
+          "visible": true,
+          "width": 0,
+          "x": 8864.0,
+          "y": 1731.0
+        },
+        {
+          "height": 0,
+          "id": 1051,
+          "name": "aqueduct crawler e",
+          "point": true,
+          "properties": [],
+          "rotation": 0,
+          "type": "crawler",
+          "visible": true,
+          "width": 0,
+          "x": 9600.0,
+          "y": 2499.0
+        },
+        {
+          "height": 0,
+          "id": 1052,
+          "name": "channel crawler",
+          "point": true,
+          "properties": [],
+          "rotation": 0,
+          "type": "crawler",
+          "visible": true,
+          "width": 0,
+          "x": 10752.0,
+          "y": 1731.0
+        },
+        {
+          "height": 0,
+          "id": 1053,
+          "name": "pool crawler",
+          "point": true,
+          "properties": [
+            {
+              "name": "enemy.leash",
+              "type": "float",
+              "value": 256
+            }
+          ],
+          "rotation": 0,
+          "type": "crawler",
+          "visible": true,
+          "width": 0,
+          "x": 12480.0,
+          "y": 3971.0
+        },
+        {
+          "height": 0,
+          "id": 1054,
+          "name": "hollow wisp e",
+          "point": true,
+          "properties": [],
+          "rotation": 0,
+          "type": "wisp",
+          "visible": true,
+          "width": 0,
+          "x": 16192.0,
+          "y": 3648.0
+        },
+        {
+          "height": 0,
+          "id": 1055,
+          "name": "hollow wisp f",
+          "point": true,
+          "properties": [],
+          "rotation": 0,
+          "type": "wisp",
+          "visible": true,
+          "width": 0,
+          "x": 17632.0,
+          "y": 3488.0
+        },
+        {
+          "height": 0,
+          "id": 1056,
+          "name": "cut top beetle",
+          "point": true,
+          "properties": [
+            {
+              "name": "enemy.leash",
+              "type": "float",
+              "value": 160.0
+            }
+          ],
+          "rotation": 0,
+          "type": "beetle",
+          "visible": true,
+          "width": 0,
+          "x": 18272.0,
+          "y": 2755.0
         }
       ],
       "opacity": 1,
@@ -137803,7 +137906,7 @@
       "objects": [
         {
           "height": 0,
-          "id": 1050,
+          "id": 1057,
           "name": "pit shelf orb",
           "point": true,
           "properties": [],
@@ -137816,7 +137919,7 @@
         },
         {
           "height": 0,
-          "id": 1051,
+          "id": 1058,
           "name": "channel orb",
           "point": true,
           "properties": [],
@@ -137829,7 +137932,7 @@
         },
         {
           "height": 0,
-          "id": 1052,
+          "id": 1059,
           "name": "rubble orb",
           "point": true,
           "properties": [],
@@ -137842,7 +137945,7 @@
         },
         {
           "height": 0,
-          "id": 1053,
+          "id": 1060,
           "name": "falls orb",
           "point": true,
           "properties": [],
@@ -137855,7 +137958,7 @@
         },
         {
           "height": 0,
-          "id": 1054,
+          "id": 1061,
           "name": "lake orb",
           "point": true,
           "properties": [],
@@ -137868,7 +137971,7 @@
         },
         {
           "height": 0,
-          "id": 1055,
+          "id": 1062,
           "name": "shelf orb",
           "point": true,
           "properties": [],
@@ -137881,7 +137984,7 @@
         },
         {
           "height": 0,
-          "id": 1056,
+          "id": 1063,
           "name": "bench orb",
           "point": true,
           "properties": [],
@@ -137894,7 +137997,7 @@
         },
         {
           "height": 0,
-          "id": 1057,
+          "id": 1064,
           "name": "bridge orb",
           "point": true,
           "properties": [],
@@ -137919,7 +138022,7 @@
       "objects": [
         {
           "height": 0,
-          "id": 1058,
+          "id": 1065,
           "name": "pact tome",
           "point": true,
           "properties": [],
@@ -137932,7 +138035,7 @@
         },
         {
           "height": 0,
-          "id": 1059,
+          "id": 1066,
           "name": "bounding tome",
           "point": true,
           "properties": [],
@@ -137945,7 +138048,7 @@
         },
         {
           "height": 0,
-          "id": 1060,
+          "id": 1067,
           "name": "arcane tome",
           "point": true,
           "properties": [],
@@ -137970,7 +138073,7 @@
       "objects": [
         {
           "height": 0,
-          "id": 1061,
+          "id": 1068,
           "name": "",
           "point": true,
           "properties": [
@@ -137989,7 +138092,7 @@
         },
         {
           "height": 0,
-          "id": 1062,
+          "id": 1069,
           "name": "",
           "point": true,
           "properties": [
@@ -138008,7 +138111,7 @@
         },
         {
           "height": 0,
-          "id": 1063,
+          "id": 1070,
           "name": "",
           "point": true,
           "properties": [
@@ -169013,7 +169116,7 @@
       "y": 0
     }
   ],
-  "nextobjectid": 1064,
+  "nextobjectid": 1071,
   "orientation": "orthogonal",
   "renderorder": "right-down",
   "tileheight": 64,

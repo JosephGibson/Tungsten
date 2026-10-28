@@ -545,10 +545,10 @@ fn each_difficulty_scales_enemy_health_and_damage_alone() {
             .find(|(_, enemy)| enemy.kind == EnemyKind::Wisp)
             .map(|(entity, _)| entity)
             .expect("the map's wisp");
-        assert_eq!(world.get::<Health>(wisp).unwrap().max(), 40.0 * factor);
+        assert_eq!(world.get::<Health>(wisp).unwrap().max(), 30.0 * factor);
         assert_eq!(
             world.get::<Health>(wisp).unwrap().current(),
-            40.0 * factor,
+            30.0 * factor,
             "full"
         );
         assert_eq!(
@@ -649,9 +649,9 @@ fn the_wisp_is_immune_to_fire_and_burning_balls_draw_and_heal_it() {
     let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1000.0, 850.0));
     harness.step(2);
     land(&mut harness, wisp, Kind::Fire, 30.0);
-    assert_eq!(health(&harness, wisp), 40.0, "fire is its own");
+    assert_eq!(health(&harness, wisp), 30.0, "fire is its own");
     land(&mut harness, wisp, Kind::Physical, 20.0);
-    assert_eq!(health(&harness, wisp), 20.0);
+    assert_eq!(health(&harness, wisp), 10.0);
     let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(1200.0, TOP - 8.0), true);
     elements::ignite(harness.world_mut(), ball);
     let fire = super::body(&harness, ball);
@@ -662,7 +662,7 @@ fn the_wisp_is_immune_to_fire_and_burning_balls_draw_and_heal_it() {
         "drawn to it"
     );
     assert!(
-        health(&harness, wisp) > 24.0,
+        health(&harness, wisp) > 14.0,
         "healed: {}",
         health(&harness, wisp)
     );
@@ -701,7 +701,7 @@ fn a_frozen_wisp_blows_apart_under_a_fire_missile() {
     assert!(!tagged(&harness, wisp, "status.frozen"), "its ice ends");
     assert_eq!(
         health(&harness, wisp),
-        24.0,
+        14.0,
         "the blast's 16 physical alone"
     );
 }
@@ -729,7 +729,7 @@ fn a_frozen_wisp_blows_apart_in_the_lava() {
     assert!(!tagged(&harness, wisp, "status.frozen"));
     assert_eq!(
         health(&harness, wisp),
-        24.0,
+        14.0,
         "the blast's 16 physical alone"
     );
 }
@@ -739,7 +739,7 @@ fn cold_freezes_the_wisp() {
     let (mut harness, _) = arena();
     let wisp = enemy(&mut harness, EnemyKind::Wisp, Vec2::new(1000.0, 800.0));
     harness.step(2);
-    for amount in [10.0, 20.0] {
+    for amount in [10.0, 10.0] {
         assert!(Hit::new(wisp, [(Kind::Cold, amount)]).queue(harness.world_mut()));
         harness.step(1);
     }
@@ -1223,7 +1223,7 @@ fn a_crawler_lunge_landing_on_the_players_head_lands_its_touch() {
 }
 
 #[test]
-fn the_crawlers_lunge_leaps_about_220_px_and_53_up() {
+fn the_crawlers_lunge_leaps_about_270_px_and_80_up() {
     let (mut harness, _) = arena();
     let crawler = walker(&mut harness, EnemyKind::Crawler, 900.0, TOP);
     still(&mut harness, crawler);
@@ -1250,9 +1250,9 @@ fn the_crawlers_lunge_leaps_about_220_px_and_53_up() {
         }
     }
     let rise = start.y - top;
-    assert!((rise - 53.0).abs() <= 3.0, "its apex: {rise}");
+    assert!((rise - 80.0).abs() <= 3.0, "its apex: {rise}");
     let landed = landed.expect("it lands");
-    assert!((landed - 220.0).abs() <= 8.0, "its landing: {landed}");
+    assert!((landed - 270.0).abs() <= 8.0, "its landing: {landed}");
     assert!(speed(&harness, crawler).x.abs() < 1.0, "it stops");
     let skid = at(&harness, crawler).x - start.x - landed;
     assert!((0.0..=90.0).contains(&skid), "its skid: {skid}");
@@ -1330,12 +1330,12 @@ fn a_dark_crawler_snowballs_the_player_on_its_arc_then_cools_four_seconds() {
     let mut arc: Option<Arc> = None;
     let (mut throws, mut hits, mut chilled) = (Vec::new(), Vec::new(), false);
     for frame in 0..900 {
-        // Still until the first snowball lands; then 330 px ahead of the
-        // crawler, in its band and past its lunge's reach.
+        // Still until the first snowball lands; then 280 px ahead of the
+        // crawler, in its band, which its lunges while it cools never close.
         let lead = if hits.is_empty() {
             x
         } else {
-            at(&harness, crawler).x - 330.0
+            at(&harness, crawler).x - 280.0
         };
         stand(&mut harness, player, lead, TOP);
         tungsten::kit::heal(harness.world_mut(), player, 100.0);

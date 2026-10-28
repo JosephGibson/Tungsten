@@ -30,6 +30,9 @@ pub const HEAL_REACH: f32 = 96.0;
 /// What each burning ball in reach heals a second, and the most a second.
 pub const HEAL_EACH: f32 = 4.0;
 pub const HEAL_MOST: f32 = 12.0;
+/// Its health, its prefab's `max_health` stat and maximum: restated so a
+/// save can move an older wisp's to it.
+pub const MAX_HEALTH: f32 = 30.0;
 
 /// Sets `wisp`'s flight toward `point` at `pace` of its speed, easing in
 /// over its last 20 px; at rest with no point. Whether it is there.

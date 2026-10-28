@@ -22,6 +22,8 @@
 //! supports on its top. Schema 19 (e01hollow) keeps the hollow's geysers
 //! and stones, moves the save IDs past its three new enemies and its
 //! geysers, and sets what the mouth's lowered lintel holds under it.
+//! Schema 22 moves the save IDs past the map's seven new enemies and
+//! lowers each wisp's health.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
 //! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
@@ -53,7 +55,7 @@ use crate::features::enemies::components::{
     Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Sight, Snowball, Throw, Throws,
 };
 use crate::features::enemies::drops::{self, Orb, OrbKind};
-use crate::features::enemies::{self, crawler, snowball, troll};
+use crate::features::enemies::{self, crawler, snowball, troll, wisp};
 use crate::features::gun::components::{Bullet, Reload};
 use crate::features::gun::{self, BULLET_CENTRE, BulletShot};
 use crate::features::level::components::Doused;
@@ -157,7 +159,7 @@ pub const MAP_DUMMIES: u64 = 1;
 /// The enemies the map's `enemies` layer places, and the health orbs its
 /// `pickups` layer places after them; and the geysers its `geysers` layer
 /// places, its last saved, after the tomes, which take none.
-pub const MAP_ENEMIES: u64 = 29;
+pub const MAP_ENEMIES: u64 = 36;
 pub const MAP_PICKUPS: u64 = 8;
 pub const MAP_GEYSERS: u64 = 3;
 /// How far schema 9 moves every save ID at or above schema 8's player's:
@@ -312,8 +314,10 @@ impl SaveData for SaveGame {
     /// (`to_19`). Schema 20 puts the toxic flask fifth on the bar and gives
     /// the player its ability (`to_20`). Schema 21 keeps the flasks in
     /// flight and gives the living, the armoured and the bridge's armoured
-    /// troll their tags and table (`to_21`).
-    const SCHEMA: u32 = 21;
+    /// troll their tags and table (`to_21`). Schema 22 moves the save IDs
+    /// past the map's seven new enemies and each wisp's health to its new
+    /// maximum (`to_22`).
+    const SCHEMA: u32 = 22;
 
     fn migrate(
         from: u32,
@@ -342,6 +346,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             8 => {
@@ -357,6 +362,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             9 => {
@@ -371,6 +377,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             10 => {
@@ -384,6 +391,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             11 => {
@@ -396,6 +404,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             12 => {
@@ -407,6 +416,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             13 => {
@@ -417,6 +427,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             14 => {
@@ -426,6 +437,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             15 => {
@@ -434,6 +446,7 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             16 => {
@@ -441,21 +454,29 @@ impl SaveData for SaveGame {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             17 | 18 => {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             19 => {
                 to_20(&mut data)?;
                 to_21(&mut data);
+                to_22(&mut data);
                 Ok(data)
             }
             20 => {
                 to_21(&mut data);
+                to_22(&mut data);
+                Ok(data)
+            }
+            21 => {
+                to_22(&mut data);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -547,6 +568,42 @@ fn to_21(data: &mut Value) {
                 }
             }
         }
+    }
+}
+
+/// Schema 21's first placed orb's save ID, its layout kept, and how far
+/// schema 22 moves every save ID from it on: past the map's seven new
+/// enemies (four crawlers, two wisps and a beetle), which take theirs
+/// before the orbs. Frozen for the migration, as schema 11's are.
+pub const S21_PICKUPS: u64 = 38;
+pub const SHIFT_22: u64 = 7;
+
+/// Schema 21 to 22: the map's seven new enemies take the save IDs from
+/// schema 21's first placed orb's on, so every one from it moves up by
+/// [`SHIFT_22`]; and each wisp's `max_health` base moves to
+/// [`wisp::MAX_HEALTH`], its maximum with it and its health keeping its
+/// share, its modifiers kept. A schema 21 save names no new enemy: the
+/// map's stand at home.
+fn to_22(data: &mut Value) {
+    map_ids(data, &|id| {
+        if id >= S21_PICKUPS { id + SHIFT_22 } else { id }
+    });
+    let full = f64::from(wisp::MAX_HEALTH);
+    for enemy in each(data, "/enemies") {
+        if enemy["kind"] != "wisp" {
+            continue;
+        }
+        let Some(base) = enemy["stats"]["max_health"]["base"].as_f64() else {
+            continue;
+        };
+        if base > 0.0 {
+            for key in ["current", "max"] {
+                if let Some(value) = enemy["health"][key].as_f64() {
+                    enemy["health"][key] = Value::from(value * full / base);
+                }
+            }
+        }
+        enemy["stats"]["max_health"]["base"] = Value::from(full);
     }
 }
 

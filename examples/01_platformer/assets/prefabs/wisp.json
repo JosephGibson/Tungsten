@@ -29,12 +29,12 @@
       "speed": 140
     },
     "health": {
-      "max": 40,
+      "max": 30,
       "invulnerability": 0,
       "despawn_on_death": 0
     },
     "stats": {
-      "max_health": 40,
+      "max_health": 30,
       "damage": 10,
       "move_speed": 140
     },
