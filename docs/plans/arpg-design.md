@@ -120,7 +120,7 @@ Every line belongs to a source, a string key, as `Stats` keys modifiers today (`
 
 ### 3.5 Snapshot
 
-A use resolves the skill's sheet once and copies what its deliveries need into a `Delivery` component on each spawned projectile, area or armed hitbox: per damage part its range, types and history and its use-time sums; the crit, penetration and damage-over-time sums; counts left; the context tags; the holder's tags; the deferred lines (§5.4); the holder's entity for credit. The payload adds it to the spawn as it adds the `linear_motion` today; core's `derive_from_source` (`crates/tungsten-core/src/ecs/world.rs:174-178`) is no fit, since it knows the source but not which skill spawned. A delivery never reads its user again, so a user who dies, swaps a weapon or loses a buff mid-flight changes nothing in flight (§17, T1).
+A use resolves the skill's sheet once and copies what its deliveries need into a `Delivery` component on each spawned projectile, area or armed hitbox: per damage part its range, type and history, its use-time sums on both tracks and its penetration; the crit sums, each with its winning override if any; the counts; the context tags; the holder's tags; the deferred lines with their `per` coefficients frozen (§5.4); the holder's entity for credit. The payload adds it to the spawn as it adds the `linear_motion` today; core's `derive_from_source` (`crates/tungsten-core/src/ecs/world.rs:174-178`) is no fit, since it knows the source but not which skill spawned. A delivery never reads its user again, so a user who dies, swaps a weapon or loses a buff mid-flight changes nothing in flight (§17, T1).
 
 ### 3.6 Extension points
 
@@ -290,7 +290,7 @@ A support applies to a skill when its `supports` filter passes the skill's own `
 Per read, the applying lines combine as today's `modified` does (`crates/tungsten-kit/src/foundation/stats.rs:96`): `value = (base + Σadd) × (1 + Σpct) × Πmul`, then clamped to the stat's bounds.
 
 - `per` lines multiply their value by `floor(primary / step)` first. A primary stat (declared `primary` in the `stats` kind) resolves before the rest, with its own lines and none of `per`, so no read waits on itself.
-- **Override:** unscoped overrides keep today's last-added rule; a scoped line may not override, and the load refuses one (§17, T9).
+- **Override:** unscoped overrides keep today's last-added rule; a scoped line may not override, and the load refuses one (§17, T9). A read finished at the hit applies the winning override after the deferred terms, as `modified` does, so a snapshot keeps it beside the sums (§5.4).
 - **Counts** (`projectile_count`, `pierce`, `chain`, `fork`, `repeats`) are floored after clamping.
 - **Damage:** a part's factor is `(1 + Σpct) × Πmul` over the lines that apply to that part, and a factor below 0 counts as 0. `added` lines give parts, not factors (§6.2, step 5).
 - **Penetration** sums per type and caps at 1. **Conversion** shares sum per `from`, and a total past 1 normalizes, as today (`comp: a share never converted again`). **Extra** shares sum per `(from, to)`.
@@ -300,7 +300,7 @@ Per read, the applying lines combine as today's `modified` does (`crates/tungste
 
 - **At use (the snapshot):** every line that has no `against` filter and whose `with` names no state tag, in the sheet's `C`, with `while` read against the holder's tags at the use.
 - **Deferred to the hit:** a line with an `against` filter, or whose `with` names a state tag in `all`, `any` or `none`. Only `damage`, `crit_chance`, `crit_multiplier` and `pen` lines may be deferred; the load refuses a deferred line on any other stat, since counts, area and speeds are spent at the spawn.
-- The snapshot keeps the use-time partial sums `(base + Σadd, Σpct, Πmul)` for each deferred-capable read, and the deferred lines themselves; the hit adds the deferred lines' terms to the sums and finishes the formula. Increased lines therefore add into the same sum whether they were read at use or at the hit.
+- The snapshot keeps the use-time partial sums `(base + Σadd, Σpct, Πmul)` and the winning override, if any, for each deferred-capable read, and the deferred lines themselves, each `per` coefficient resolved at use and frozen into its copy, so a hit never reads its user (§3.5). The hit adds the deferred lines' terms to the sums and finishes the formula, an override still winning. Increased lines therefore add into the same sum whether they were read at use or at the hit.
 - **The defender's lines** (`resist`, `damage_taken`) are read live at the hit.
 
 ### 5.5 Caching
@@ -325,13 +325,13 @@ An ability caches its sheet under the holder's line revision, the holder's tag r
 6. **Conversion,** one pass: for each part, its type's conversion shares (the `from` that is its type or its nearest ancestor with lines; shares normalized at 1) make new parts of type `to` with history = the part's history ∪ its type; the remainder stays. No converted share converts again.
 7. **Extra damage,** one pass over the parts step 6 left: for each `extra` line `(from, to, pct)` and each part whose type or history carries `from`, a new part of `to`, `pct` × that part, with history = that part's history ∪ its type. Extra parts make no extra.
 8. **Merge** parts of equal type and equal history, in first-appearance order.
-9. **Use-time sums,** per part, per track: Σpct and Πmul of the `damage` lines that apply in `C` ∪ the track tag ∪ the part's type and history; and the penetration per type in `C` ∪ `delivery.hit`.
+9. **Use-time sums,** per part, per track: Σpct and Πmul of the `damage` lines that apply in `C` ∪ the track tag ∪ the part's type and history; and per part the penetration of its type, read in `C` ∪ `delivery.hit` ∪ its type and history, so a cold part converted from fire and a native one may penetrate differently.
 10. **Snapshot** (§3.5) at the wind-up's end; the payload spawns `projectile_count` deliveries in an arc, or one area of radius × √`area`, or arms the user's hitbox with it; `repeats` more payloads follow at `repeat_interval`, each with `delivery.repeated`.
 
 ### 6.3 A delivery meets a hurtbox (`Overlap`)
 
 1. The hit is queued as a request carrying the delivery's snapshot and its state tags; a family of deliveries hits one target once, as `Hitbox::set_hit_targets` keeps a hitbox's targets (`kit: tungsten_kit::Hitbox::set_hit_targets`).
-2. One behaviour, in this order: **pierce** if any left (the delivery goes on, `pierced` +1); else **fork** if any left (two children at ±`fork_angle`, each with one fork fewer and the family's hit list, tagged `delivery.forked`; the parent ends); else **chain** if any left and a target the family has not hit is within `chain_range` (turn toward it, `chain` −1, tagged `delivery.chained`); else end.
+2. One behaviour, in this order: **pierce** while `pierced` is below the snapshot's `pierce` (the delivery goes on, `pierced` +1, tagged `delivery.pierced` from then on); else **fork** if any left (two children at ±`fork_angle`, each with one fork fewer and the family's hit list, tagged `delivery.forked`; the parent ends); else **chain** if any left and a target the family has not hit is within `chain_range` (turn toward it, `chain` −1, tagged `delivery.chained`); else end.
 3. A family holds at most 64 deliveries alive; a fork past it ends the parent without children, counted in the trace.
 
 ### 6.4 The request resolves (`Resolve`, in the pipeline's sorted order: target, then source)
@@ -339,7 +339,7 @@ An ability caches its sheet under the holder's line revision, the holder's tag r
 1. **Deferred lines** fold into each part's sums, with the target's tags for `against` and the state tags for `with`.
 2. **Range draw:** one draw `u` from the kit's stream (`kit: tungsten_kit::KitRng::unit`); each part's amount = `min + u × (max − min)`, times `(1 + Σpct) × Πmul`.
 3. **Crit draw:** a second draw; below `crit_chance` (clamped to 1), every part times `crit_multiplier`, and the request is a crit (`kit: tungsten_kit::DamageRequest::with_crit`). A request with no sheet takes the source's entity-level `crit_chance` and `crit_multiplier`, and draws only when the chance is above 0.
-4. **The kit's pipeline,** amended: parts, then no conversion (the request was built converted), then per part: the target's matching factors' product `f` (`kit: tungsten_kit::Resist::add_modifier`); 0 stays immunity; else `f` = max(`f`, the type's floor); if `f` < 1, `f` = min(`f` + penetration, 1) (`crates/tungsten-kit/src/damage/pipeline.rs:126-133`); the part × `f`.
+4. **The kit's pipeline,** amended: parts; conversion only for a request not built from a sheet, as today's step 2, since a sheet's request was converted at use (§6.2); then per part, each of the target's matching factors as today (`kit: tungsten_kit::Resist::add_modifier`, `crates/tungsten-kit/src/damage/pipeline.rs:126-133`), with one step first: 0 stays immunity; a factor above 0 rises to its tag's floor; a factor below 1 then gains the part's penetration, capped at 1; the factors multiply the part. With no floor this is today's arithmetic, and the floor comes before penetration, so penetration works past a capped resistance.
 5. **Damage taken:** the target's `damage_taken` read in `C` ∪ the track and state tags ∪ the part's type and history, `against` the attacker's tags from the snapshot; the part × it.
 6. **Shield, health, events,** as today's steps 5–8 (`crates/tungsten-kit/src/damage/pipeline.rs:134-148`).
 7. **Statuses from the hit,** in the chemistry phase after the damage: each landed part is a stimulus of its type. A rule whose output is a damage-over-time status gives it, per second, a share of the part's rolled amount from step 2 *before* the factor and crit, times the snapshot's `delivery.dot` sums with their deferred lines, times the status's `status_effect`. That rate is fixed at the application (§17, T1).
@@ -601,8 +601,8 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | PA-3 | Area and projectile speed read | AR5, AR6 | 90 | `area` and `projectile_speed` read by nothing | Read from the sheet: radius × √area, the spawn's speed | intent | PA-2 | 7.10 `+` |
 | PA-4 | Use time | AR14 (AR33) | 250 | Abilities fire at once; one speed for cooldowns only | Wind-up and recovery from `use_time` and `use_speed`; with P7-6's held trigger | intent | PA-2 | 7.10 `+` |
 | PA-5 | Crit | AR13 | 60 | A flag only; kit hits never crit | `crit_chance` and `crit_multiplier`, drawn in the resolve's order for every request whose source has a chance (§6.4) | damage | PA-1 | 7.10 `+` |
-| PA-6 | Conversion and extra | AR11, AR12 | 300 | Conversion after scaling, with no history; no extra damage | Conversion and extra where the request is built, before scaling, with history per part; merge by type and history (§6.2) | damage | PA-2 | 7.10 `+` |
-| PA-7 | Defender's side | AR18, AR19 | 120 | No damage taken by context; no floor; penetration on periodic hits | `damage_taken` by context; a floor per type on `resist`; no penetration on periodic requests (§6.4, §6.5) | damage | PA-1 | 7.10 `+` |
+| PA-6 | Conversion and extra | AR11, AR12 | 300 | Conversion after scaling, with no history; no extra damage | For a sheet, conversion and extra at use, before scaling, with history per part, merged by type and history (§6.2); other requests keep today's conversion step | damage | PA-2 | 7.10 `+` |
+| PA-7 | Defender's side | AR18, AR19 | 120 | No damage taken by context; no floor; penetration on periodic hits | `damage_taken` by context; a floor per factor's tag on `resist`, before penetration; no penetration on periodic requests (§6.4, §6.5) | damage | PA-1 | 7.10 `+` |
 | PA-8 | Statuses from their user | AR16, AR17 | 210 | A DoT's rate is its own; a status's strength ignores its user | A DoT's rate from the hit's part and the snapshot's DoT sums, fixed at application; `status_effect` as the status's scale; statuses applied with instance lines (P8-3 needs them too) | damage, chemistry | PA-2 | 7.10 `+` |
 | PA-9 | Primary stats | AR20 | 120 | No ordered stats; no line per point of another | `primary` stats resolved first; `per` lines on them only | foundation | PA-1 | 7.10 `+` `defer` |
 | PA-10 | World sources | AR29 | 60 | A scaling per kind of entity is each game's spawn code | A resource of named sources with a tag filter and lines, applied at spawn and to the living, live; 01's difficulty on it | foundation | PA-1 | 7.10 `+` |
@@ -660,7 +660,20 @@ If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 
 
 ## 19. Verification
 
-Not run yet.
+**Mechanical checks,** run in the session's scratchpad on each revision: every `core:`, `kit:`, `umb:`, `comp:` and `cli:` span searched for verbatim in its file, every `none:` pattern run over `api/*.txt` (93 distinct, none missing, each search 0 hits), every file and line reference inside its file (19), and `just repo-check`'s header, decision, link and fragment rules (0 errors). §9's arithmetic came from a script, then the checks below.
+
+**Critique,** one round at xhigh on §3.5, §4.1–§4.3, §5 and §6, sent as one extract with the kit's formula and pipeline order quoted for reference (artifact only, 467 s). Six findings, all held and applied:
+
+| # | Finding | Applied |
+| --- | --- | --- |
+| 1 (high) | Skipping conversion in the pipeline would drop it for requests built without a sheet | Conversion is skipped only for a sheet's request; others keep today's step 2 (§6.4, PA-6) |
+| 2 | Partial sums cannot carry an unscoped override past deferred lines | The snapshot keeps the winning override, applied last at the hit (§5.3, §5.4, §3.5) |
+| 3 | Penetration resolved per type cannot honour a filter on a part's history | Penetration is resolved and snapshotted per part (§6.2, step 9) |
+| 4 | A deferred line with `per` would need the user's primary stat at the hit | Its coefficient is frozen at use (§5.4) |
+| 5 | Floor and penetration on the factors' product changed today's per-factor penetration | Per factor, as today, with the floor first (§6.4, step 4; PA-7) |
+| 6 | Pierce was counted up but never spent | Pierce while `pierced` is below the snapshot's `pierce` (§6.3) |
+
+**Fresh-context verifier:** running.
 
 ## Session log
 
