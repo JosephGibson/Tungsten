@@ -208,6 +208,12 @@ struct Repeat {
 
 /// The routing state: a `World` resource that [`ui_route_system`] updates
 /// once a frame, in `pre_update`, and the game reads (`D-149`).
+///
+/// It keeps widget IDs across frames (the press, hover and focus), and IDs
+/// are the `UiTree`'s: a game that replaces the `UiTree` resource while a
+/// press is held can send `Released` and `Activated` to the new tree's
+/// widget in that slot. Replace the tree between presses, or insert a fresh
+/// router with it, carrying over [`UiRouter::settings`].
 #[derive(Debug, Default)]
 pub struct UiRouter {
     settings: UiRouteSettings,
