@@ -108,7 +108,6 @@ Carried findings from the dated passes listed above; later entries name their mi
 - `LightUbo::byte_size()` (`render/lighting.rs:66`) has had no caller since 0.44 removed its test; it is public API, so removing it needs a break-ledger row.
 - Bloom's shader ids 4..=7 must follow sprite (0) and SMAA (1..=3) or `Renderer::reload_shader` routing breaks; only a bloom test 0.44 deleted said so. Put the note beside the seeding at `render/renderer.rs:338`.
 - `D-041` lacks an `**Amended by D-096:**` marker line above `D-111`'s.
-- A particle emitter whose config names an unregistered mesh warns at every emit (`tungsten/particles.rs`); a once-per-name warning, as an unknown font ID's, is qa6's.
 - The launcher's errors are invisible on Windows now that it opens no console (`tools/launcher/src/main.rs`, `D-119`): a missing level or a failed start needs an error dialog or a log line, with W7b.
 - A `Config::load` error before `App::new` (an invalid `tungsten.json`) reaches only stderr, which a Windows release build lacks: the examples' `main` returns it before any logger or user folder exists.
 - The bench's `knobs::unless_env` warning, an environment variable overriding a knob (`examples/02_bench/src/knobs.rs`), is logged before `App::new` installs the logger, so it is dropped; before M35 it reached stderr only with `RUST_LOG` set.

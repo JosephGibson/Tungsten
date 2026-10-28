@@ -6,6 +6,7 @@
 //! in place of `Sprite`; `extract_mesh_particles` batches those entities per
 //! mesh for the renderer's instanced draw.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use glam::Vec2;
@@ -172,9 +173,11 @@ pub fn particle_emit_system(world: &mut World) {
                     .get_resource::<ParticleMeshRegistry>()
                     .and_then(|registry| registry.id_for_name(mesh));
                 let Some(id) = id else {
-                    log::warn!(
-                        "particle emitter {emitter_ent:?}: particle mesh '{mesh}' is not registered; nothing emitted"
-                    );
+                    if first_unknown_mesh(world, mesh) {
+                        log::warn!(
+                            "particle emitter {emitter_ent:?}: particle mesh '{mesh}' is not registered; emitters naming it emit nothing (warned once)"
+                        );
+                    }
                     maybe_emit_drained(world, emitter_ent);
                     continue;
                 };
@@ -381,6 +384,20 @@ fn maybe_emit_drained(world: &mut World, emitter_ent: Entity) {
             emitter: emitter_ent,
         });
     }
+}
+
+/// The particle mesh names emitters named unregistered, each warned once.
+#[derive(Default)]
+struct UnknownParticleMeshes(HashSet<String>);
+
+/// Whether `mesh` is the first miss of its name, recording it.
+fn first_unknown_mesh(world: &mut World, mesh: &str) -> bool {
+    if world.get_resource::<UnknownParticleMeshes>().is_none() {
+        world.insert_resource(UnknownParticleMeshes::default());
+    }
+    world
+        .get_resource_mut::<UnknownParticleMeshes>()
+        .is_some_and(|seen| seen.0.insert(mesh.to_string()))
 }
 
 /// The world's sprite registry. A world without one (a bare test world) gets an
@@ -619,3 +636,7 @@ pub fn extract_mesh_particles(world: &World) -> Vec<MeshParticleBatch> {
     }
     batches
 }
+
+#[cfg(test)]
+#[path = "tests/particles.rs"]
+mod tests;
