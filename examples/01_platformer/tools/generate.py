@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
 """Deterministic offline authoring; never invoked by Cargo or the engine."""
 import argparse
+from dataclasses import dataclass
+import io
 import json
 from pathlib import Path
 import re
 import tempfile
+from typing import Callable
 
 from PIL import __version__ as pillow_version
-from art import TOOLS, auxiliary, build_art, relief, validate_art
+from art import TOOLS, art_families, auxiliary, build_art, relief, validate_sets, validate_sprites
 from effects import LINEAR_FILTER
 from level import build_level, opaque_tiles, tiled_text
 from placement import floating
-from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
+from sfx import HAND_AUTHORED_SOUNDS, LOOPS, MUSIC, SOUNDS, build_sounds, seam_problem
 
 ROOT=TOOLS.parent
 # The template whose shell 01 copies: its fonts and damage-flash material
@@ -689,7 +692,7 @@ def mirror_facing(images,lit,animations):
         animations[clip+'_left']=dict(animations[clip],frames=frames)
 
 
-def spray_clips(animations):
+def spray_clips(animations,families=('effects','tomes')):
     """The sprays' clips (`effects.SPRAY_CLIPS`) and the force push's wave and
     dust (`effects.PUSH_CLIPS`), unmirrored: `toys` turns each to its aim and
     flips it top to bottom when the aim faces left, and mirrors the dust.
@@ -698,11 +701,13 @@ def spray_clips(animations):
     the snowball's, its burst's and the beetle's streaks, which
     `mirror_facing` then twins; e01flask's (`effects.FLASK_CLIPS`,
     `effects.CORRODE_CLIPS`): the flask's tumble and its burst, and
-    Corrosive's reaction."""
+    Corrosive's reaction. The tomes' are the tomes family's, the rest the
+    effects'; `families` names whose."""
     from effects import CORRODE_CLIPS, FLASK_CLIPS, FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS,**FLASK_CLIPS,
-                                       **CORRODE_CLIPS}.items():
-        animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
+    tables={'effects':{**SPRAY_CLIPS,**PUSH_CLIPS,**FOE_CLIPS,**FLASK_CLIPS,**CORRODE_CLIPS},'tomes':TOME_CLIPS}
+    for family in families:
+        for clip,(_,frames,ms,looping) in tables[family].items():
+            animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
 def mirror_anchors(anchors,images):
@@ -752,98 +757,312 @@ def check_frost_fits(images):
 
 def write_json(path,data):
     path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(json.dumps(data,indent=2,sort_keys=True)+'\n')
+    path.write_bytes(json_bytes(data))
 
 
-def generate(dest):
-    if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
-    images,lit,animations,anchors=build_art();spray_clips(animations)
-    mirror_facing(images,lit,animations);mirror_anchors(anchors,images)
-    tiled,source,level_prefabs=build_level(images,lit);validate_art(images,lit);check_ice_fits(images);check_frost_fits(images)
-    configs=particle_configs()
-    manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs']}
-    manifest['sounds']=json.loads((TOOLS/'sounds.json').read_text())
+def json_bytes(data):
+    return (json.dumps(data,indent=2,sort_keys=True)+'\n').encode()
+
+
+def png(im):
+    out=io.BytesIO();im.save(out,format='PNG',compress_level=9,optimize=False);return out.getvalue()
+
+
+class Made:
+    """What one family makes: its sprites, lit names and clips, the
+    wizard's anchors, the level's prepared source and what it read, the
+    particle configs, then every file by path and its manifest entries by
+    place (`entries_of`)."""
+
+    def __init__(self):
+        self.images,self.lit,self.animations,self.anchors={},set(),{},{}
+        self.source,self.read,self.configs,self.files,self.entries=None,set(),{},{},{}
+
+
+class Watched(dict):
+    """Sprites by name that record the names read from and written to them."""
+
+    def __init__(self,*args):
+        super().__init__(*args);self.read,self.written=set(),set()
+
+    def __getitem__(self,name):
+        self.read.add(name);return super().__getitem__(name)
+
+    def __setitem__(self,name,im):
+        self.written.add(name);super().__setitem__(name,im)
+
+
+def art(family):
+    """Art family `family`'s builder: its drawing (`art.art_families`), then
+    its sprays' clips (`spray_clips`), its left-facing twins and the staff
+    light's anchors."""
+    def build(made,sprites,lit):
+        made.anchors=art_families()[family](made.images,made.lit,made.animations) or {}
+        if family in ('effects','tomes'):spray_clips(made.animations,(family,))
+        mirror_facing(made.images,made.lit,made.animations);mirror_anchors(made.anchors,made.images)
+    return build
+
+
+def level_family(made,sprites,lit):
+    """The map, its tileset record, opaque tiles and prefabs, and the
+    moving platforms' decks it draws from the deck tile, all from
+    `sprites`, every family's."""
+    watched=Watched(sprites);tiled,source,prefabs=build_level(watched,lit)
+    made.images={name:dict.__getitem__(watched,name) for name in watched.written}
+    made.lit={name for name in made.images if name in lit}
+    made.files['assets/tilemaps/level.tmj']=tiled_text(tiled).encode()
+    made.entries[('tilemaps','ex10_level')]=dict(path='tilemaps/level.tmj')
+    # The map's tile IDs, read back by the next run, so `--check` fails on a
+    # tileset change.
+    made.files['tools/tileset.json']=json_bytes(source['tileset'])
+    path='data/opaque_tiles/level.json'
+    made.files['assets/'+path]=json_bytes(opaque_tiles(watched,tiled))
+    made.entries[('data','opaque_tiles','level')]=dict(path=path)
+    # The prefabs the map's object layers name, one per class.
+    for name,prefab in sorted(prefabs.items()):
+        path=f'prefabs/{name}.json';made.files['assets/'+path]=json_bytes(prefab)
+        made.entries[('prefabs',name)]=dict(path=path)
+    made.source=source
+    made.read=watched.read|{s.removeprefix('ex10_') for s in strings(tiled,prefabs,source['props']) if s.startswith('ex10_')}
+
+
+def strings(*data):
+    """Every string inside `data`."""
+    for item in data:
+        if isinstance(item,str):yield item
+        elif isinstance(item,dict):yield from strings(*item.values())
+        elif isinstance(item,list):yield from strings(*item)
+
+
+def content_family(made,sprites,lit):
+    """The shell's fonts, theme and damage-flash material, copied from the
+    template, 01's serif face, the content's prefabs and data, the glow
+    shader and materials, the ambient emitter's prefab and the particle
+    configs: sources copied or written from this file."""
     template=json.loads((TEMPLATE/'assets/manifest.json').read_text())
-    for section in SHELL_SECTIONS:manifest[section]=json.loads(json.dumps(template[section]))
-    manifest['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
-    manifest['font_families']['serif']['faces'].append('serif_bold')
-    manifest['shaders']['damage_flash']=template['shaders']['damage_flash']
-    manifest['materials']['damage_flash']=template['materials']['damage_flash']
-    owned=[]
-    def output(path):
-        owned.append(path);out=dest/path;out.parent.mkdir(parents=True,exist_ok=True);return out
-    for name,im in sorted(images.items()):
-        path=f'sprites/{name}.png'
-        im.save(output('assets/'+path),compress_level=9,optimize=False)
-        # Glow gradients are sampled smoothly; everything else stays crisp pixel art.
-        entry=dict(path=path,filter='linear' if name in LINEAR_FILTER else 'nearest')
-        if name in lit:
-            normal,emissive=auxiliary(im,relief(name))
-            for key,suffix,img in [('normal_map','n',normal),('emissive_mask','e',emissive)]:
-                path=f'sprites/{name}_{suffix}.png';entry[key]=path
-                img.save(output('assets/'+path),compress_level=9,optimize=False)
-        manifest['sprites']['ex10_'+name]=entry
-    for section,records in [('animations',animations),('particles',configs)]:
-        for name,data in sorted(records.items()):
-            path=f'{section}/{name}.json';write_json(output('assets/'+path),data)
-            manifest[section]['ex10_'+name]=dict(path=path)
-    manifest['tilemaps']['ex10_level']=dict(path='tilemaps/level.tmj')
-    # The class of the level's `emitters` objects: each object's properties
-    # set its emitter's config and seed over this prefab's.
-    write_json(output('assets/prefabs/ambient_emitter.json'),dict(components=dict(
-        ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
-    manifest['prefabs']['ex10_ambient_emitter']=dict(path='prefabs/ambient_emitter.json')
+    shell={section:json.loads(json.dumps(template[section])) for section in SHELL_SECTIONS}
+    shell['fonts']['serif_bold']=dict(path='fonts/SourceSerif4/SourceSerif4-Bold.ttf')
+    shell['font_families']['serif']['faces'].append('serif_bold')
+    shell['shaders']=dict(damage_flash=template['shaders']['damage_flash'])
+    shell['materials']=dict(damage_flash=template['materials']['damage_flash'])
+    made.entries.update(entries_of(shell))
     for path in SHELL_ASSETS:
-        output('assets/'+path).write_bytes((TEMPLATE/'assets'/path).read_bytes())
-    output('assets/'+THEME).write_text(themed((TEMPLATE/'assets'/THEME).read_text()))
-    output('assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf').write_bytes(SERIF_BOLD.read_bytes())
+        made.files['assets/'+path]=(TEMPLATE/'assets'/path).read_bytes()
+    made.files['assets/'+THEME]=themed((TEMPLATE/'assets'/THEME).read_text()).encode()
+    made.files['assets/fonts/SourceSerif4/SourceSerif4-Bold.ttf']=SERIF_BOLD.read_bytes()
     for item in sorted(CONTENT.rglob('*')):
         if not item.is_file():continue
         path=item.relative_to(CONTENT).as_posix()
-        output('assets/'+path).write_bytes(item.read_bytes())
+        made.files['assets/'+path]=item.read_bytes()
         parts=path.removesuffix('.json').split('/')
-        if parts[0]=='prefabs' and len(parts)==2:manifest['prefabs'][parts[1]]=dict(path=path)
-        elif parts[0]=='data' and len(parts)==3:manifest.setdefault('data',{}).setdefault(parts[1],{})[parts[2]]=dict(path=path)
+        if parts[0]=='prefabs' and len(parts)==2:made.entries[('prefabs',parts[1])]=dict(path=path)
+        elif parts[0]=='data' and len(parts)==3:made.entries[('data',parts[1],parts[2])]=dict(path=path)
         else:raise ValueError('content outside prefabs/ and data/<kind>/: '+path)
     # The soft-glow shader is authored in tools/shaders and owned like any output.
     for name in SHADERS:
         path=f'shaders/{name}.wgsl'
-        output('assets/'+path).write_bytes((TOOLS/path).read_bytes())
-        manifest['shaders']['ex10_'+name]=dict(path=path)
+        made.files['assets/'+path]=(TOOLS/path).read_bytes()
+        made.entries[('shaders','ex10_'+name)]=dict(path=path)
     for name,(shader,f32s) in MATERIALS.items():
-        manifest['materials']['ex10_'+name]=dict(shader='ex10_'+shader,uniform_defaults=dict(
+        made.entries[('materials','ex10_'+name)]=dict(shader='ex10_'+shader,uniform_defaults=dict(
             vec4=[[0.0]*4 for _ in range(4)],f32s=f32s,i32s=[0]*4))
-    # Synthesized WAVs are owned outputs; every registered sound must be one of
-    # them or an explicitly hand-authored file.
-    sounds = build_sounds()
-    for name, data in sorted(sounds.items()):
-        if name in LOOPS and (problem := seam_problem(name, data)):
-            raise ValueError(f'loop {name}: {problem}')
-        output('assets/sounds/' + name).write_bytes(data)
-    authored = {'sounds/' + name for name in sounds} | set(HAND_AUTHORED_SOUNDS)
-    for sound in manifest['sounds'].values():
-        if sound['path'] not in authored:
+    # The class of the level's `emitters` objects: each object's properties
+    # set its emitter's config and seed over this prefab's.
+    made.files['assets/prefabs/ambient_emitter.json']=json_bytes(dict(components=dict(
+        ambient_emitter=None,particle_emitter=dict(config='ex10_torch_embers'))))
+    made.entries[('prefabs','ex10_ambient_emitter')]=dict(path='prefabs/ambient_emitter.json')
+    made.configs=particle_configs()
+    for name,data in sorted(made.configs.items()):
+        path=f'particles/{name}.json';made.files['assets/'+path]=json_bytes(data)
+        made.entries[('particles','ex10_'+name)]=dict(path=path)
+    # The hand-authored sounds' registrations.
+    made.entries.update(registered(lambda name:name not in SOUNDS))
+
+
+def registered(chosen):
+    """The `sounds.json` registrations of the files `chosen` picks, by
+    place. Every registered sound must be synthesized (`sfx.SOUNDS`) or
+    explicitly hand-authored."""
+    entries={}
+    for key,sound in json.loads((TOOLS/'sounds.json').read_text()).items():
+        name=sound['path'].removeprefix('sounds/')
+        if name not in SOUNDS and sound['path'] not in HAND_AUTHORED_SOUNDS:
             raise ValueError(f"sound {sound['path']} is neither synthesized nor hand-authored")
-    output('assets/tilemaps/level.tmj').write_text(tiled_text(tiled))
-    # The map's tile IDs, read back by the next run, so `--check` fails on a
-    # tileset change.
-    write_json(output('tools/tileset.json'),source['tileset'])
-    path='data/opaque_tiles/level.json'
-    write_json(output('assets/'+path),opaque_tiles(images,tiled))
-    manifest.setdefault('data',{}).setdefault('opaque_tiles',{})['level']=dict(path=path)
-    # Where each wizard frame's staff orb sits, which the staff light's glow follows.
-    path='data/lantern_anchors/player.json'
-    write_json(output('assets/'+path),{'ex10_'+name:anchor for name,anchor in sorted(anchors.items())})
-    manifest.setdefault('data',{}).setdefault('lantern_anchors',{})['player']=dict(path=path)
-    # The prefabs the map's object layers name, one per class.
-    for name,prefab in sorted(level_prefabs.items()):
-        path=f'prefabs/{name}.json';write_json(output('assets/'+path),prefab)
-        manifest['prefabs'][name]=dict(path=path)
-    validate_references(manifest,animations,configs,source)
-    write_json(output('assets/manifest.json'),manifest)
-    owned.append('tools/outputs.json')
-    write_json(dest/'tools/outputs.json',sorted(owned))
-    return sorted(owned)
+        if chosen(name):entries[('sounds',key)]=sound
+    return entries
+
+
+def wavs(music):
+    """The music and the areas' ambience loops' builder when `music`
+    (`sfx.MUSIC`), the sound effects' otherwise: their WAVs and
+    registrations."""
+    def build(made,sprites,lit):
+        names={name for name in SOUNDS if (name in MUSIC)==music}
+        for name,data in sorted(build_sounds(names).items()):
+            if name in LOOPS and (problem:=seam_problem(name,data)):
+                raise ValueError(f'loop {name}: {problem}')
+            made.files['assets/sounds/'+name]=data
+        made.entries.update(registered(names.__contains__))
+    return build
+
+
+@dataclass(frozen=True)
+class Family:
+    """A family's builder, `build(made, sprites, lit)`, and `uses`, the
+    families whose code or art its outputs draw on: `--family` rebuilds a
+    family with every family it uses. A source-driven family is never
+    locked."""
+    build:Callable
+    uses:tuple=()
+    lockable:bool=True
+
+
+# Every output's family, in build order: the art's, whose sprites the level
+# then reads, then the sources' and the sounds'. An output drawn from
+# another family's art is that family's, as each summon's icon is its
+# enemy's (`effects.ICON_FAMILIES`), and draws on the code of the families
+# its family uses: the icons' tiles are the effects', and scenery and the
+# backdrops draw with the terrain's masonry and rock. The level declares
+# every family whose art it reads, which a full run checks. A change to
+# shared code (`pixels.py`, `art.py`, `palette.json`, `actors.py`'s rig
+# helpers, `terrain.RELIEF_PREFIXES`) needs a full run.
+FAMILIES={
+    'player':Family(art('player')),
+    'projectiles':Family(art('projectiles'),uses=('effects',)),
+    'balls':Family(art('balls')),
+    'dummy':Family(art('dummy'),uses=('effects',)),
+    **{enemy:Family(art(enemy),uses=('effects',)) for enemy in ('wisp','crawler','beetle','bat','troll','goblin')},
+    'stones':Family(art('stones')),
+    'scenery':Family(art('scenery'),uses=('terrain',)),
+    'props':Family(art('props'),uses=('effects',)),
+    'terrain':Family(art('terrain')),
+    'backdrops':Family(art('backdrops'),uses=('terrain',)),
+    'effects':Family(art('effects')),
+    'tomes':Family(art('tomes'),uses=('effects',)),
+    # The tiles and scenery, the pickups' orbs and the tomes' books.
+    'level':Family(level_family,uses=('terrain','scenery','backdrops','effects','tomes'),lockable=False),
+    'content':Family(content_family,lockable=False),
+    'sounds':Family(wavs(False)),
+    'music':Family(wavs(True)),
+}
+
+
+def users(names):
+    """`names` and every family that uses any of them, through every use."""
+    run=set(names)
+    while grown:={name for name,family in FAMILIES.items() if name not in run and run.intersection(family.uses)}:
+        run|=grown
+    return run
+
+
+def entries_of(manifest):
+    """Each manifest entry by its place: `(section, key)`, `(section,
+    kind, key)` under `data`, and a list, the fallback chain, whole as
+    `(section,)`."""
+    entries={}
+    for section,value in manifest.items():
+        if isinstance(value,list):entries[(section,)]=value
+        elif section=='data':entries.update({(section,kind,key):entry for kind,group in value.items() for key,entry in group.items()})
+        else:entries.update({(section,key):entry for key,entry in value.items()})
+    return entries
+
+
+def manifest_of(entries):
+    manifest={section:{} for section in ['sprites','animations','tilemaps','particles','shaders','materials','prefabs','sounds']}
+    for place,entry in entries.items():
+        *path,key=place;group=manifest
+        if not path:manifest[key]=entry;continue
+        for part in path:group=group.setdefault(part,{})
+        group[key]=entry
+    return manifest
+
+
+def kept(base,manifest):
+    """The sprites, lit names, clips and particle configs `manifest` lists
+    under `base`, by name, which a family run reads for the families it
+    leaves out."""
+    from PIL import Image
+    sprites,lit,animations,configs={},set(),{},{}
+    for key,entry in manifest.get('sprites',{}).items():
+        name=key.removeprefix('ex10_')
+        with Image.open(base/'assets'/entry['path']) as im:sprites[name]=im.copy()
+        if 'normal_map' in entry:lit.add(name)
+    for section,into in (('animations',animations),('particles',configs)):
+        for key,entry in manifest.get(section,{}).items():
+            into[key.removeprefix('ex10_')]=json.loads((base/'assets'/entry['path']).read_text())
+    return sprites,lit,animations,configs
+
+
+def sprite_files(made):
+    """`made`'s sprites, the lit ones' normal and emissive maps, its clips
+    and the wizard's anchors as files, with their manifest entries."""
+    for name,im in sorted(made.images.items()):
+        path=f'sprites/{name}.png'
+        made.files['assets/'+path]=png(im)
+        # Glow gradients are sampled smoothly; everything else stays crisp pixel art.
+        entry=dict(path=path,filter='linear' if name in LINEAR_FILTER else 'nearest')
+        if name in made.lit:
+            normal,emissive=auxiliary(im,relief(name))
+            for key,suffix,img in [('normal_map','n',normal),('emissive_mask','e',emissive)]:
+                path=f'sprites/{name}_{suffix}.png';entry[key]=path
+                made.files['assets/'+path]=png(img)
+        made.entries[('sprites','ex10_'+name)]=entry
+    for name,data in sorted(made.animations.items()):
+        path=f'animations/{name}.json';made.files['assets/'+path]=json_bytes(data)
+        made.entries[('animations','ex10_'+name)]=dict(path=path)
+    if made.anchors:
+        # Where each wizard frame's staff orb sits, which the staff light's glow follows.
+        path='data/lantern_anchors/player.json'
+        made.files['assets/'+path]=json_bytes({'ex10_'+name:anchor for name,anchor in sorted(made.anchors.items())})
+        made.entries[('data','lantern_anchors','player')]=dict(path=path)
+
+
+def check_level_uses(made):
+    """The level's art comes only from the families it declares it uses."""
+    owners={name:family for family,m in made.items() for records in (m.images,m.animations) for name in records}
+    read={owners[name] for name in made['level'].read if name in owners}-{'level'}
+    if undeclared:=sorted(read-set(FAMILIES['level'].uses)):
+        raise ValueError(f"the level reads the art of {', '.join(undeclared)}: add it to FAMILIES['level'].uses")
+
+
+def generate(dest,families=None,base=ROOT):
+    """Builds `families`, every family when None, into `dest` and returns
+    each built family's owned paths. A family run writes its families'
+    files, and `assets/manifest.json` and `tools/outputs.json` with the
+    entries and paths of the families it leaves out kept from `base`,
+    whose sprites, clips and configs its checks and the level read. It
+    removes nothing: an output a family stops making stays listed until a
+    full run, and `--check` fails on it until then."""
+    if pillow_version!='12.3.0':raise RuntimeError('Use tools/requirements.txt: Pillow==12.3.0')
+    if families is not None and (unknown:=set(families)-set(FAMILIES)):raise ValueError(f'no family {sorted(unknown)}')
+    run=[name for name in FAMILIES if families is None or name in families]
+    manifest=previous={} if families is None else None
+    if families is not None:
+        manifest=json.loads((base/'assets/manifest.json').read_text())
+        previous=json.loads((base/'tools/outputs.json').read_text())
+    sprites,lit,animations,configs=kept(base,manifest)
+    made={}
+    for name in run:
+        made[name]=m=Made();FAMILIES[name].build(m,sprites,lit)
+        sprites.update(m.images);lit.difference_update(m.images);lit.update(m.lit)
+        animations.update(m.animations);configs.update(m.configs)
+    validate_sets(sprites);check_ice_fits(sprites);check_frost_fits(sprites)
+    entries=entries_of(manifest);fresh={}
+    for name,m in made.items():
+        validate_sprites(m.images,m.lit);sprite_files(m)
+        for path in m.files:
+            if path in fresh:raise ValueError(f'{path}: made by {fresh[path]} and {name}')
+            fresh[path]=name
+        entries.update(m.entries)
+    if families is None:check_level_uses(made)
+    manifest=manifest_of(entries)
+    validate_references(manifest,animations,configs,made['level'].source if 'level' in made else None)
+    for m in made.values():
+        for path,data in m.files.items():
+            out=dest/path;out.parent.mkdir(parents=True,exist_ok=True);out.write_bytes(data)
+    write_json(dest/'assets/manifest.json',manifest)
+    write_json(dest/'tools/outputs.json',sorted({*previous,*fresh,'assets/manifest.json','tools/outputs.json'}))
+    return {name:sorted(m.files) for name,m in made.items()}
 
 
 def validate_references(manifest,animations,configs,source):
@@ -859,6 +1078,8 @@ def validate_references(manifest,animations,configs,source):
         if cfg['sprite'] not in sprites:raise ValueError('unknown particle sprite')
     for material in manifest['materials'].values():
         if material['shader'] not in manifest['shaders']:raise ValueError('unknown material shader')
+    # The level's own, when it is built.
+    if source is None:return
     for p in source['props']:
         if p['animation'] and p['animation'] not in manifest['animations']:raise ValueError('unknown prop animation')
     if sum(configs[p['config'].removeprefix('ex10_')]['max_alive'] for p in source['emitters'])>256:raise ValueError('ambient cap exceeds 256')
@@ -878,10 +1099,16 @@ def floating_report():
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--check',action='store_true')
-    parser.add_argument('--floating',action='store_true',help='list the scenery that floats and exit 1 on any');args=parser.parse_args()
+    parser.add_argument('--floating',action='store_true',help='list the scenery that floats and exit 1 on any')
+    parser.add_argument('--family',action='append',choices=FAMILIES,metavar='NAME',
+                        help='build only this family and every family that uses it (repeatable): '+', '.join(FAMILIES))
+    args=parser.parse_args()
     if args.floating:floating_report()
+    if args.check and args.family:parser.error('--check is whole: drop --family')
+    run=None if args.family is None else users(args.family)
     with tempfile.TemporaryDirectory(prefix='platformer-generate-') as temp:
-        dest=Path(temp);owned=generate(dest)
+        dest=Path(temp);paths=generate(dest,run)
+        owned=json.loads((dest/'tools/outputs.json').read_text())
         previous=json.loads((TOOLS/'outputs.json').read_text()) if (TOOLS/'outputs.json').exists() else json.loads((TOOLS/'legacy_outputs.json').read_text())
         obsolete=sorted(set(previous)-set(owned))
         if args.check:
@@ -897,13 +1124,16 @@ def main():
                 # Only the explicit previous inventory authorizes deletion.
                 (ROOT/path).unlink(missing_ok=True)
             # A file whose bytes are unchanged stays untouched, so the hot-reload
-            # watcher and `git status` see only real changes.
+            # watcher and `git status` see only real changes. A family run
+            # writes its families' files and the two shared ones.
+            mine=owned if run is None else [*(p for ps in paths.values() for p in ps),'assets/manifest.json','tools/outputs.json']
             written=0
-            for path in owned:
+            for path in mine:
                 target,data=ROOT/path,(dest/path).read_bytes()
                 if target.is_file() and target.read_bytes()==data:continue
                 target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);written+=1
-            print(f'Wrote {written} of {len(owned)} outputs, the rest unchanged; removed {len(obsolete)} obsolete owned files')
+            built='' if run is None else ' of '+', '.join(name for name in FAMILIES if name in run)
+            print(f'Wrote {written} of {len(mine)} outputs{built}, the rest unchanged; removed {len(obsolete)} obsolete owned files')
 
 
 if __name__=='__main__':main()

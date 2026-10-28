@@ -34,10 +34,38 @@ is fixed with no timestamps, and JSON is sorted.
 All generated files must accompany their sources in a change. `outputs.json` is
 the exact ownership inventory. Normal generation removes only files explicitly
 listed by the previous inventory (or `legacy_outputs.json` on the first migration).
-It never sweeps unrelated files from the assets directory. `sounds.json` is the
+It never sweeps unrelated files from the assets directory, and it writes only
+the files whose bytes change, so the hot-reload watcher and `git status` see
+only real changes. `sounds.json` is the
 sound registration; synthesized WAVs are owned outputs, every registered sound
 among them since 01 (j) made the black hole's opening (see "Fireball spell,
 extinguishing and sound effects").
+
+`generate.FAMILIES` splits the outputs into families, each with its builder:
+the player, the projectiles (the fireball and the fire missile), the balls, the
+dummy, each enemy by its `ENEMY_CLIPS` prefix (`wisp`, `crawler`, `beetle`,
+`bat`, `troll`, `goblin`), the stones, scenery, props, terrain, backdrops, the
+effects (with `polish_art.py`'s art), the tomes, the level (the map, its tileset
+record, opaque tiles, prefabs and moving decks), `content` (the shell's copies,
+`content/`, the glow shader and materials, the particle configs), the sounds
+and the music (with the areas' ambience loops, `sfx.MUSIC`). From the
+repository root, `python3 -B examples/01_platformer/tools/generate.py --family
+troll` (repeatable) builds only that family and every family that uses it,
+through every use, and writes their files, rewriting `manifest.json` and
+`outputs.json` only when their entries change; its checks and the level read
+the other families' sprites and clips back from `assets/`. An output drawn
+from another family's art is that family's: each summon's icon is its enemy's,
+the dummy's or the props', the missile's the projectiles' and each tome's the
+tomes' (`effects.ICON_FAMILIES`). A family whose outputs draw on another's
+code or art declares it in `uses`: the icons' families use the effects (the
+icon tile), scenery and the backdrops the terrain (its masonry and rock), and
+the level every family whose art it reads (the terrain, scenery, backdrops, the
+pickups' orbs in the effects and the tomes' books), which a full run checks. A
+change to shared code (`pixels.py`, `art.py`, `palette.json`, `actors.py`'s rig
+helpers, the terrain's `RELIEF_PREFIXES`, which pick every family's relief
+normals) needs a full run. A family run removes nothing: an output a family
+stops making stays listed until a full run, and `--check`, which stays whole,
+fails on it until then.
 
 The shell's assets come with its code: Inter and Source Serif 4 with their
 licence files, and the `damage_flash` shader and material are copied byte for
@@ -65,7 +93,7 @@ pixel) for any hand-authored sprite. The modules:
 | --- | --- |
 | `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves, packed stones (`packed_stones`, a rubble core, gravel or scree; e01hollow) and smooth value noise (`fbm`: a flame's tongues, a crater's glow, rock's soft masses; e01hollow) |
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
-| `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
+| `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.art_families`' props builder calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel and its coping, `coping`, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, each tile a clip), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
 | `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`, 8 × 6 since e01hollow), deep recesses (`cave_deep_0`, `cave_deep_1`), pillars drawn whole (`cave_pillar_<k>`) and the wall by its ember tunnel (`cave_wall_0`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
@@ -721,7 +749,7 @@ and exponential envelopes, normalized to a −2 dBFS peak with short fades (or a
 crossfaded seam for the sustained ice spray), and
 written as 44.1 kHz mono 16-bit PCM WAV with the standard-library `wave` module.
 Regeneration is byte-identical, so `--check` covers the WAVs like any other
-output. To add a sound: write its function, add it to `build_sounds()`, register
+output. To add a sound: write its function, add it to `sfx.SOUNDS`, register
 its ID, path and volume in `sounds.json`, and regenerate. Generation rejects a
 `sounds.json` path that is neither synthesized nor listed in
 `HAND_AUTHORED_SOUNDS` (none since 01 (j)). The one-shot sounds play

@@ -205,40 +205,83 @@ def auxiliary(im, relief=False):
     return normal, emissive
 
 
-def build_art():
-    """Every sprite by name, the lit ones, the clips, and each wizard
-    frame's staff light anchor (`actors.build_player`)."""
+def art_families():
+    """Each art family's drawing by name (`generate.FAMILIES`): each adds
+    its sprites, lit names and clips to the three it is given, the
+    player's returning each frame's staff light anchor. An icon drawn from
+    a family's own art is that family's (`effects.ICON_FAMILIES`)."""
     from actors import (
-        build_balls, build_dummy, build_enemies, build_fire_missile, build_fireball, build_player,
+        ENEMY_CLIPS, build_balls, build_dummy, build_enemies, build_fire_missile, build_fireball, build_player,
         build_stones,
     )
     from backdrops import build_backdrops
-    from effects import build_effects, build_tome_art
+    from effects import build_effects, build_icons, build_sfx_art, build_tome_art
+    from polish_art import enrich_art
     from props import build_props
     from scenery import build_scenery
     from terrain import build_terrain
-    images={}; lit=set(); animations={}
-    anchors=build_player(images, lit, animations)
-    build_fireball(images, animations)
-    build_fire_missile(images, animations)
-    build_balls(images, lit, animations)
-    build_dummy(images)
-    build_enemies(images, animations)
-    build_stones(images, lit)
-    build_scenery(images, lit, animations)
-    build_props(images, lit)
-    build_terrain(images, lit)
-    build_backdrops(images, lit)
-    build_effects(images)
-    build_tome_art(images, lit)
-    from polish_art import enrich_art
-    enrich_art(images,lit,animations)
-    from effects import build_sfx_art
-    build_sfx_art(images,lit)
+
+    def projectiles(images, lit, animations):
+        build_fireball(images, animations)
+        build_fire_missile(images, animations)
+        build_icons(images, 'projectiles')
+
+    def dummy(images, lit, animations):
+        build_dummy(images)
+        build_icons(images, 'dummy')
+
+    def enemy(name):
+        def build(images, lit, animations):
+            build_enemies(images, animations, name)
+            build_icons(images, name)
+        return build
+
+    def props(images, lit, animations):
+        build_props(images, lit)
+        build_icons(images, 'props')
+
+    def effects(images, lit, animations):
+        build_effects(images)
+        enrich_art(images, lit, animations)
+        build_sfx_art(images, lit)
+
+    def tomes(images, lit, animations):
+        build_tome_art(images, lit)
+        build_icons(images, 'tomes')
+
+    return {
+        'player': build_player,
+        'projectiles': projectiles,
+        'balls': build_balls,
+        'dummy': dummy,
+        **{name: enemy(name) for name in dict.fromkeys(clip.split('_')[0] for clip in ENEMY_CLIPS)},
+        'stones': lambda images, lit, animations: build_stones(images, lit),
+        'scenery': build_scenery,
+        'props': props,
+        'terrain': lambda images, lit, animations: build_terrain(images, lit),
+        'backdrops': lambda images, lit, animations: build_backdrops(images, lit),
+        'effects': effects,
+        'tomes': tomes,
+    }
+
+
+def build_art():
+    """Every sprite by name, the lit ones, the clips, and each wizard
+    frame's staff light anchor (`actors.build_player`): every art family's
+    (`art_families`)."""
+    images={}; lit=set(); animations={}; anchors={}
+    for build in art_families().values():
+        anchors.update(build(images, lit, animations) or {})
     return images,lit,animations,anchors
 
 
 def validate_art(images,lit):
+    validate_sprites(images,lit)
+    validate_sets(images)
+
+
+def validate_sprites(images,lit):
+    """Each sprite's size, palette, frame and feet, and each lit one's maps."""
     from backdrops import BACKDROPS
     allowed=set(PALETTE.values())
     for name,im in images.items():
@@ -252,13 +295,18 @@ def validate_art(images,lit):
             if name.startswith('player') and box[3]!=PLAYER_FEET:raise ValueError(f'{name}: unstable foot anchor')
         for prefix,feet in WALKER_FEET.items():
             if name.startswith(prefix) and not name.startswith(AIRBORNE) and (im.getbbox() or (0,0,0,0))[3]!=feet:raise ValueError(f'{name}: feet off row {feet - 1}')
+    for name in lit:
+        n,e=auxiliary(images[name],relief(name))
+        if n.size!=images[name].size or e.size!=images[name].size:raise ValueError('auxiliary size')
+        if n.getchannel('A').tobytes()!=images[name].getchannel('A').tobytes():raise ValueError('normal mask mismatch')
+
+
+def validate_sets(images):
+    """The checks across sprites, of every family's: the ground's seams,
+    the terrain's and the backdrops'."""
     for name in ('ground_1','ground_2','ground_3'):
         if images[name].crop((0,0,64,6)).tobytes()!=images['ground'].crop((0,0,64,6)).tobytes():raise ValueError('terrain seam')
     from backdrops import validate_backdrops
     from terrain import validate_terrain
     validate_terrain(images)
     validate_backdrops(images)
-    for name in lit:
-        n,e=auxiliary(images[name],relief(name))
-        if n.size!=images[name].size or e.size!=images[name].size:raise ValueError('auxiliary size')
-        if n.getchannel('A').tobytes()!=images[name].getchannel('A').tobytes():raise ValueError('normal mask mismatch')

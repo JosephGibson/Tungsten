@@ -3481,10 +3481,13 @@ ENEMY_CLIPS = {
         ('pickup', troll_pickup_frames, False), ('throw', troll_throw_frames, False),
         ('swipe_windup', troll_swipe_windup_frames, False), ('swipe', troll_swipe_frames, False))},
 }
-def build_enemies(images, animations):
+def build_enemies(images, animations, enemy=None):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no
-    normal or emissive map."""
+    normal or emissive map; or only `enemy`'s, its clips those its name
+    prefixes."""
     for clip, (frames_for, looping) in ENEMY_CLIPS.items():
+        if enemy and clip.split('_')[0] != enemy:
+            continue
         rendered, durations = frames_for()
         frames = []
         for i, (im, duration) in enumerate(zip(rendered, durations, strict=True)):
@@ -3492,7 +3495,7 @@ def build_enemies(images, animations):
             images[name] = im
             frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
         animations[clip] = {'looping': looping, 'frames': frames}
-    for i in range(2):
+    for i in range(2 if enemy in (None, 'goblin') else 0):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)
 

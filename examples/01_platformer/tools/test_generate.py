@@ -7,7 +7,7 @@ import unittest
 import wave
 
 from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
-from generate import generate
+from generate import FAMILIES as ASSET_FAMILIES, generate, users
 from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
 
@@ -189,11 +189,6 @@ class AuthoringTests(unittest.TestCase):
         self.assertEqual(moon.getbbox(),(7,7,57,57))
         self.assertNotEqual(self.images['heart_full'].tobytes(),self.images['heart_empty'].tobytes())
 
-    def test_all_owned_outputs_are_deterministic(self):
-        with tempfile.TemporaryDirectory() as a,tempfile.TemporaryDirectory() as b:
-            first=generate(Path(a));second=generate(Path(b));self.assertEqual(first,second)
-            for path in first:self.assertEqual((Path(a)/path).read_bytes(),(Path(b)/path).read_bytes(),path)
-
     def test_small_ball_has_six_distinct_lit_frames(self):
         frames=self.animations['ball_small_spin']['frames']
         names=[f['sprite'].removeprefix('ex10_') for f in frames]
@@ -295,6 +290,63 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+
+class FamilyTests(unittest.TestCase):
+    """The generator's families (`generate.FAMILIES`) against one full run
+    into a temporary directory."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory(prefix='platformer-full-');cls.full=Path(cls.temp.name)
+        cls.paths=generate(cls.full)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    @staticmethod
+    def written(dest):
+        return {p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()}
+
+    def changed(self, dest):
+        return {p for p in self.written(dest) if (dest / p).read_bytes() != (self.full / p).read_bytes()}
+
+    def test_each_family_alone_writes_only_its_paths_with_a_full_runs_bytes(self):
+        # Each family built on its own writes exactly the files the full run
+        # gave it and the two shared ones, byte for byte, so every output is
+        # also made twice and compared: the generator's determinism.
+        self.assertEqual(set(self.paths), set(ASSET_FAMILIES))
+        for family in ASSET_FAMILIES:
+            with self.subTest(family), tempfile.TemporaryDirectory() as temp:
+                dest = Path(temp)
+                self.assertEqual(generate(dest, {family}, self.full), {family: self.paths[family]})
+                self.assertEqual(self.written(dest), {*self.paths[family], 'assets/manifest.json', 'tools/outputs.json'})
+                self.assertEqual(self.changed(dest), set())
+
+    def test_a_troll_drawn_otherwise_changes_with_its_family_what_a_full_run_changes(self):
+        # One pixel of the troll's canvas changed in memory: `--family
+        # troll` changes exactly what a full run does, its icons included.
+        import actors
+        original = actors.troll_canvas
+
+        def patched(pose):
+            canvas = original(pose)
+            canvas[(66, 50)] = 'Ψ' if canvas.get((66, 50)) != 'Ψ' else 'o'
+            return canvas
+        actors.troll_canvas = patched
+        try:
+            with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+                generate(Path(a))
+                self.assertEqual(generate(Path(b), users({'troll'}), self.full), {'troll': self.paths['troll']})
+                everything = self.changed(Path(a))
+                self.assertEqual(self.changed(Path(b)), everything)
+                self.assertLessEqual({'assets/sprites/icon_troll.png', 'assets/sprites/icon_troll_armoured.png',
+                                      'assets/sprites/troll_idle_0.png', 'assets/sprites/troll_idle_0_left.png'},
+                                     everything)
+                self.assertLessEqual(everything, set(self.paths['troll']))
+        finally:
+            actors.troll_canvas = original
 
 
 # e01foes' contract, the files its families own as the game reads them: each
