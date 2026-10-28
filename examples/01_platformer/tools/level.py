@@ -74,6 +74,10 @@ LAVA_GLOW = dict(radius=220, color=[255, 120, 40, 230], light=1.3)
 FIRE_GLOW = dict(offset=FIRE_CENTRE, radius=175, color=[255, 125, 45, 255], light=1.6, core=62)
 # Molten drips leak from each fireball's underside, a child emitter.
 FIRE_DRIPS = 'ex10_fire_drips'
+# The object layers a save names (P7-9): 01 derives each object's save ID
+# from its name, so each needs one, unique, and none the player's.
+SAVED_LAYERS = ('hazards', 'platforms', 'dummies', 'enemies', 'pickups', 'geysers')
+PLAYER_NAME = 'player'
 
 
 def slab_runs(slabs):
@@ -171,7 +175,8 @@ def build_objects(source, images, lit):
         if not h['fire']:
             prefabs['ex10_spikes'] = dict(sprite=dict(asset_id='ex10_spikes', z_order=Z_SPIKES), components=dict(
                 hazard=dict(fire=False), contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
-            hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1]))
+            hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1],
+                               name=h.get('name', '')))
             continue
         # Today's sine motion, centre + travel * sin(2 pi t / period + phase), on the
         # kit's oscillator: it starts where the sine stands at t 0.
@@ -199,7 +204,7 @@ def build_objects(source, images, lit):
             components['oscillator'] = dict(position=dict(amplitude=[t * tile for t in h['travel']],
                 period=h['period']), phase=phase)
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_fireball_0', z_order=Z_FIRE), components=components)
-        hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1]))
+        hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1], name=h.get('name', '')))
     # The lava basins after the fires: a surface the player stands on, a
     # touch from just over it to the bed that burns and throws, a sizzle at
     # each touch, and the lake's light. A child of each touches what is
@@ -224,7 +229,7 @@ def build_objects(source, images, lit):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
         cls = f'ex10_lava_{i}'
         prefabs[cls] = dict(components=components)
-        hazards.append(obj(cls, basin['left'] * tile, basin['row'] * tile))
+        hazards.append(obj(cls, basin['left'] * tile, basin['row'] * tile, name=basin.get('name', '')))
     layer('hazards', hazards)
 
     platforms = []
@@ -243,7 +248,8 @@ def build_objects(source, images, lit):
                 rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half),
                                 offset=[half[0], floor + half[1]]),
                 elevator=dict(rise=lift['rise'] * tile, speed=lift['speed'])))
-            platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor))
+            platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor,
+                                 name=m.get('name', '')))
             continue
         half = [m['half_width'] * tile, source['deck_depth'] / 2]
         # Three deck tiles across its width, as today's deck draws.
@@ -264,7 +270,8 @@ def build_objects(source, images, lit):
             rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half), offset=half),
             path_follower=dict(points=[[0, 0], [2 * travel[0], 2 * travel[1]]],
                 speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out')))
-        platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1]))
+        platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1],
+                             name=m.get('name', '')))
     layer('platforms', platforms)
 
     areas = []
@@ -326,7 +333,7 @@ def build_objects(source, images, lit):
     # top-left, its `offset` the seconds into its cycle a run starts it at.
     rows = {p['name']: p['row'] for p in source['platforms']}
     layer('geysers', [obj('geyser', g['x'] * tile + GEYSER_POINT[0], rows[g['support']] * tile + GEYSER_POINT[1],
-        properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
+        name=g.get('name', ''), properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
         for g in source.get('geysers', [])])
     return layers, prefabs
 
@@ -659,6 +666,9 @@ def validate_level(source,tiled,sprite_ids):
         if all(abs(center-safe)<abs(travel)+1 for center,safe,travel in zip(p['position'],spawn,p['travel'])):raise ValueError('hazard at spawn')
     for p in source['props']+source['decorations']:
         if p['sprite'] not in sprite_ids:raise ValueError('unknown prop reference')
+    names=[o['name'] for layer in tiled['layers'] if layer['name'] in SAVED_LAYERS for o in layer['objects']]
+    bad=sorted({n for n in names if not n or n==PLAYER_NAME or names.count(n)>1})
+    if bad:raise ValueError(f'saved objects need unique names, none {PLAYER_NAME!r}: {bad}')
 
 
 

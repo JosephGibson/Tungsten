@@ -249,7 +249,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | Field | What it places |
 | --- | --- |
 | `pit` | The ball pit's interior, `left` to `right` and `rim` to `floor`, lined by the pit's tiles |
-| `lava` | Each basin, `left` to `right` from its surface `row` down to the terrain: lava props, a static surface body at its skin in physics layer 4 (`LAVA_LAYER`) that only the player's controller meets, a `ContactDamage` touch from 4 px over the skin to the bed (`lava_bed`: 16 fire, a 1,500 push that passes the window, every 0.1 s), a child `ex10_lava_frost_<i>` on the same box whose fire touches only what is frozen and, with `light`, its glow and light |
+| `lava` | Each basin by `name`, `left` to `right` from its surface `row` down to the terrain: lava props, a static surface body at its skin in physics layer 4 (`LAVA_LAYER`) that only the player's controller meets, a `ContactDamage` touch from 4 px over the skin to the bed (`lava_bed`: 16 fire, a 1,500 push that passes the window, every 0.1 s), a child `ex10_lava_frost_<i>` on the same box whose fire touches only what is frozen and, with `light`, its glow and light |
 | `river` | The bridge's river: its surface row, its `rapids` and `rocks` columns, and its depths in the background layer |
 | `tunnels` | A 2 × 2 tunnel mouth in the background layer, by `kind` |
 | `backs` | Background spans outdoors, a family from a `top` row down to the ground: the ravine's `wet_back` behind the falls and the mine's `cut_back`, with iron on its open faces. A wall's edges follow the outline of all its spans together, so one-column spans give it a jagged top |
@@ -258,7 +258,7 @@ drops both, the mine and the bridge the woodland). The level's other fields:
 | `iron` | Markers where a fresh run sets a loose iron block down, its centre |
 | `crates`, `kegs` | Each placed pine crate and powder keg (01 (g)), over its `support` platform at column `x`, the box's centre; a `tier` stacks it that many boxes up, each bottom corner over a box of its kind on the tier under it. `placement.prepare` stands each box half a pixel over its support's surface, by its prefab's half height, refuses one with any of its box off its support and lets a solid stair over the support take its place; `level.py` writes a `crate` or `keg` marker at each box's centre, which a fresh run sets down after the iron |
 | `stones` | The hollow's rubble stones (e01hollow), each over its `support` at column `x`, its body's centre, by `size` (`small`, `medium`, `large`). `placement.prepare` stands each half a pixel over its support by its size's prefab's half height and refuses one off its support; `level.py` writes a `stone_<size>` marker at each, which a fresh run sets down after the kegs |
-| `geysers` | The hollow's fire geysers (e01hollow), each over its `support` at column `x`, its vent's middle, `offset` seconds into its cycle at a run's start; the layout check refuses one off its support or with a wall within its plume, 176 px up and 20 px each side |
+| `geysers` | The hollow's fire geysers (e01hollow), each by `name` over its `support` at column `x`, its vent's middle, `offset` seconds into its cycle at a run's start; the layout check refuses one off its support or with a wall within its plume, 176 px up and 20 px each side |
 | `pickups` | Each placed health orb by `name`, over its `support` platform at column `x`, its centre `float` tiles above the surface; `placement.prepare` refuses one off its support |
 | `tomes` | Each book (01 (l)) by `name` and `kind` (`pact`, `bounding`, `arcane`), placed as an orb is over its `support` at column `x`, sized by its idle frame, and the route platform its double jump starts `from`, which the route test reads; each book's glow counts in the light budget |
 
@@ -370,8 +370,8 @@ Game over is the shell's, and its Retry loads the run's last good save. A fireba
 bursts a bowling ball with a short particle burst and an expanding ring; both
 burst and ring counts are capped at 16. The HUD's bars show the health and the mana.
 
-`hazards` and `moving_platforms` in `level.json` use tile-space center `position`
-and `travel` amplitudes, a `period` in seconds, and a `phase` in radians, which the
+`hazards` and `moving_platforms` in `level.json`, each by `name`, use tile-space
+center `position` and `travel` amplitudes, a `period` in seconds, and a `phase` in radians, which the
 kit's `oscillator` and `path_follower` take. The kit's controller rides a moving
 deck and leaves it on a jump. Static main routes remain available. Route tests run
 on the map without hazards or moving platforms; the playthrough test walks `main`

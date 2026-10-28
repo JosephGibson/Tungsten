@@ -136539,7 +136539,7 @@
         {
           "height": 0,
           "id": 970,
-          "name": "",
+          "name": "lava_lake_west",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136552,7 +136552,7 @@
         {
           "height": 0,
           "id": 971,
-          "name": "",
+          "name": "lava_lake_east",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136565,7 +136565,7 @@
         {
           "height": 0,
           "id": 972,
-          "name": "",
+          "name": "lava_shelf",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136590,7 +136590,7 @@
         {
           "height": 0,
           "id": 973,
-          "name": "",
+          "name": "deck_clearing",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136603,7 +136603,7 @@
         {
           "height": 0,
           "id": 974,
-          "name": "",
+          "name": "deck_aqueduct_west",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136616,7 +136616,7 @@
         {
           "height": 0,
           "id": 975,
-          "name": "",
+          "name": "deck_aqueduct_east",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136629,7 +136629,7 @@
         {
           "height": 0,
           "id": 976,
-          "name": "",
+          "name": "deck_ravine",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -136642,7 +136642,7 @@
         {
           "height": 0,
           "id": 977,
-          "name": "",
+          "name": "deck_elevator",
           "point": true,
           "properties": [],
           "rotation": 0,
@@ -138074,7 +138074,7 @@
         {
           "height": 0,
           "id": 1068,
-          "name": "",
+          "name": "geyser_floor_west",
           "point": true,
           "properties": [
             {
@@ -138093,7 +138093,7 @@
         {
           "height": 0,
           "id": 1069,
-          "name": "",
+          "name": "geyser_floor_east",
           "point": true,
           "properties": [
             {
@@ -138112,7 +138112,7 @@
         {
           "height": 0,
           "id": 1070,
-          "name": "",
+          "name": "geyser_shelf",
           "point": true,
           "properties": [
             {
