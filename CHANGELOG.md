@@ -6,6 +6,26 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Summary: one example 01 stop from the owner's notes (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.12) and a follow-up on the map's foes, with no engine, kit, template or shell change: `e01flask`, the toxic flask (an eleventh spell whose splash poisons living things, poison as a fifth damage type, armour on the beetle and the bridge's troll, and Corrosive, poison and shock together melting that armour away for good); then seven more enemies on the map and a crawler that leaps higher; save schemas 20 to 22.
+
+### Added
+
+- **The toxic flask** (feedback §3.12, `features/toys/flask.rs`, `toxic_flask` prefab, `data/abilities/toxic_flask.json`): an eleventh spell on 5 at 12 mana and 0.6 s, a glass flask lobbed through the cursor on an arc under the world's gravity, three in flight at most; it bursts on the first tile or body it meets but the wizard, or in the air at the end of its 3,000 px, into a splash that poisons every living thing within 96 px but the wizard, 16 at its centre to 8 at its reach, 01's sixth hand-rolled radial hit (K10). The tome of arcane power doubles its cost and its splash.
+- **Poison** (`damage.poison`, `data/effects/poisoned.json`): a fifth damage type, in green, for targets tagged `living`, every creature but the wisp, and the dummy, never the wizard; its rung poisons for 3 every 0.5 s over 6 s, bubbling green, and holds the troll's and the dummy's regeneration.
+- **Armour and Corrosive** (`features/enemies/armour.rs`, `data/effects/corroded.json`): the `armoured` tag, the beetle's and the bridge troll's in place of the beetle-only checks, turns bullets off the front; the armoured troll takes a quarter of physical and three quarters of every other type. A target poisoned and shocked at once is corroded for good, consuming both: every type whole and no bullet turned, a melt charged with lightning over it and stripped frames from then on, the troll's plates eaten to verdigris-crusted remnants and the beetle's shell eaten through.
+- **The armoured troll** (`troll_armoured` prefab): the bridge's troll in iron plates, its variant a saved field on `Enemy`, and the summon slot's tenth type.
+- **The stop's art and sounds** (`tools/`): the flask in flight and bursting, the poisoned look, the corroded melt and stripped frames, the armoured troll and the flask's icon, and four sounds (`Sound::ALL` 87 → 91), from an asset session the owner reviewed remotely as an artifact and accepted in its third round.
+
+### Changed
+
+- **The slots** (`SLOTS`, `SLOT_ACTIONS`): eleven, the bar eleven tiles wide; the force push, the hole, iron, the bowling ball and the small balls one key right, the summon on −, and zoom on the wheel (was = and −).
+- **More foes**: seven more enemies, the map at 36: two more crawlers in the aqueduct, two in the ravine (one on its channel, one more by the falls' pool), two more wisps in the hollow and a fifth beetle in the mine.
+- **The frost crawler** (`enemies/crawler.rs`): its leap rises about 80 px and carries 270 px (lift 620 → 760), its lock ending just past the landing; it hops at 840 px/s, about 98 px, and leaps a gap at 740 up; its snowball reaches 290 px (was 360), rising 160.
+- **The wisp**: 30 health, from 40.
+- **Example 01's save** (`save.rs`): schema 20 moves a saved selected slot past the flask's and gives the flask's ability; 21 keeps the tags, the bridge troll's armour and the flasks in flight; 22 moves the save IDs from the orbs on by 7, past the new enemies, and each wisp's health to its new maximum, keeping its share; each tested on older saves.
+- **Lean asset-review captures** (`docs/plans/roadmap-redo.md`, the owner's of 2026-10-28): loops only of what moves, one to two seconds a beat at 20 fps, stills for static art, each round re-shooting only what changed and the close nothing; sequence capture waits in `ROADMAP.md`'s Later.
+- **Records**: the feedback plan's §3.12 landing, the design's spell, type and colour rows, example 01's READMEs, DESIGN's status line and `ROADMAP.md`; the flask's plan, deleted when done.
+
 ## [0.110.0] - 2026-10-28
 
 Summary: three example 01 stops from the owner's fourth playtest (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.9 to §3.11), shipped together, with one opt-in kit addition, a kit debug fix and no engine, template or shell change: `e01foes`, the foes (a beetle's charge that ploughs through props, frost crawlers that back out of the light, hop and throw snowballs, a troll that lifts kegs and clears its way, goblins that dash in and panic while they burn); `e01sfx`, sounds and effects (sound by distance on the kit's cue listener, lightning's ground strike, crackling shock, a pulse at the screen's edge for each hit, crates that break into planks, sprays that burst on whatever they meet); `e01hollow`, the aqueduct and the hollow (a second gargoyle and new scenery, the hollow's mouth and cave redrawn, fire geysers, rubble stones and three more foes); save schemas 17 to 19.
