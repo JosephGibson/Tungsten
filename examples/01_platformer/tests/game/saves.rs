@@ -26,7 +26,6 @@ use std::time::Instant;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::dummy::components::Dummy;
-use example_01_platformer::features::dummy::{DUMMY_CENTRE, DUMMY_HALF};
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{self, CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
@@ -35,17 +34,15 @@ use example_01_platformer::features::enemies::components::{
 };
 use example_01_platformer::features::enemies::drops::{self, ORB_SECS, Orb, OrbKind};
 use example_01_platformer::features::enemies::{self, crawler, snowball, troll, wisp};
+use example_01_platformer::features::gun;
 use example_01_platformer::features::gun::components::{Bullet, Reload};
-use example_01_platformer::features::gun::{self};
+use example_01_platformer::features::level;
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::geyser::{self, Geyser, GeyserPhase};
 use example_01_platformer::features::level::lava::{self, Lava};
-use example_01_platformer::features::level::{self};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::{Player, StaffGlow};
-use example_01_platformer::features::player::{
-    BODY_OFFSET, MAX_HEALTH, PICKUP_RADIUS, PLAYER_HALF,
-};
+use example_01_platformer::features::player::{MAX_HEALTH, PICKUP_RADIUS};
 use example_01_platformer::features::props::components::{
     Bomb, Crate, Keg, PropKind, Rock, Stone, StoneSize,
 };
@@ -73,6 +70,7 @@ use tungsten::kit::{
 };
 use tungsten::testing::UiHarness;
 
+use super::{actor_body, body_offset, kind_body, player_half};
 use super::{
     aim_at, calm, centre, choose, floor, ground, harness, harness_with, mana, pin_camera,
     player_entity, run, settle, stand, start, steps_this_frame, teleport, top, user_folder,
@@ -1224,7 +1222,8 @@ fn a_loaded_run_keeps_with_the_uninterrupted_one_in_a_churned_world() {
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let entity = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let entity =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -2391,7 +2390,7 @@ fn as_schema_13(old: &mut Value) {
         at[0].as_f64().unwrap() as f32,
         at[1].as_f64().unwrap() as f32,
     ) + save::S12_BODY_OFFSET
-        - BODY_OFFSET;
+        - body_offset();
     *at = Value::from(vec![corner.x, corner.y]);
 }
 
@@ -2446,7 +2445,7 @@ fn as_schema_17(old: &mut Value) {
 fn as_schema_19(old: &mut Value) {
     let [low, high] = save::S19_LINTEL;
     let roost = save::S19_BAT_C_HOME;
-    let info = EnemyKind::Bat.info();
+    let info = kind_body(EnemyKind::Bat);
     for enemy in old["enemies"].as_array_mut().unwrap() {
         let bat_c = enemy["kind"] == "bat"
             && enemy["enemy"]["home"][0].as_f64() == Some(f64::from(roost.x));
@@ -2688,7 +2687,7 @@ fn as_schema_18(data: &mut Value) {
     save::map_ids(data, &schema_18_id);
     let roost = save::S19_BAT_C_HOME;
     let row = Vec2::new(0.0, 64.0);
-    let corner = roost - EnemyKind::Bat.info().centre;
+    let corner = roost - kind_body(EnemyKind::Bat).centre;
     for enemy in data["enemies"].as_array_mut().unwrap() {
         if enemy["id"].as_u64() != Some(save::S18_BAT_C) || enemy["kind"] != "bat" {
             continue;
@@ -2736,15 +2735,23 @@ fn saved_boxes(save: &SaveGame) -> Vec<(u64, Vec2, Vec2)> {
         (id, middle - half, middle + half)
     };
     let player = &save.player;
-    let mut out = vec![boxed(player.id, player.position, BODY_OFFSET, PLAYER_HALF)];
-    out.extend(
-        save.dummies
-            .iter()
-            .map(|dummy| boxed(dummy.id, dummy.position, DUMMY_CENTRE, DUMMY_HALF)),
-    );
+    let mut out = vec![boxed(
+        player.id,
+        player.position,
+        body_offset(),
+        player_half(),
+    )];
+    out.extend(save.dummies.iter().map(|dummy| {
+        boxed(
+            dummy.id,
+            dummy.position,
+            actor_body("dummy").centre,
+            actor_body("dummy").half,
+        )
+    }));
     out.extend(save.enemies.iter().map(|enemy| {
-        let info = enemy.kind.info();
-        boxed(enemy.id, enemy.position, info.centre, info.half)
+        let body = kind_body(enemy.kind);
+        boxed(enemy.id, enemy.position, body.centre, body.half)
     }));
     out.extend(save.balls.iter().map(|ball| {
         if ball.small {
@@ -3319,7 +3326,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     while steps < 240 {
         fresh.step(1);
         steps += steps_this_frame(&fresh);
-        let feet = centre(&fresh, rider).y + PLAYER_HALF.y;
+        let feet = centre(&fresh, rider).y + player_half().y;
         let top = deck_top(&fresh, deck);
         assert!(
             (feet - top).abs() <= 1.0,
@@ -3357,13 +3364,13 @@ fn a_player_saved_under_a_new_lava_surface_loads_on_its_bank() {
     ];
     for (i, (column, feet, bank, row)) in cases.into_iter().enumerate() {
         let mut envelope: Value = serde_json::from_str(FIXTURE).unwrap();
-        let middle = Vec2::new(column * tile, feet * tile - PLAYER_HALF.y - 0.5);
+        let middle = Vec2::new(column * tile, feet * tile - player_half().y - 0.5);
         let corner = middle - save::S12_BODY_OFFSET;
         envelope["data"]["player"]["position"] = serde_json::json!([corner.x, corner.y]);
         let fixture = serde_json::to_string(&envelope).unwrap();
         let (migrated, dir) = migrate(&format!("under-lava-{i}"), &fixture);
-        let spot = Vec2::new(bank * tile, row * tile - PLAYER_HALF.y - 0.5);
-        let at = Vec2::from(migrated.player.position) + BODY_OFFSET;
+        let spot = Vec2::new(bank * tile, row * tile - player_half().y - 0.5);
+        let at = Vec2::from(migrated.player.position) + body_offset();
         assert!(at.distance(spot) < 0.01, "{column},{feet}: moved to {at}");
         // Loaded with the clock running, the player stands there a second,
         // unhurt (an orb its reach draws in may heal it).
@@ -3746,7 +3753,7 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     // A crate in mid-air inside the wall at row 25, a small ball past the
     // boundary and the player inside the wall: each on the floor, clear.
     let mut data = fresh.clone();
-    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), BODY_OFFSET);
+    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), body_offset());
     let id = data["next_id"].as_u64().unwrap();
     let mut flying = data["props"]
         .as_array()
@@ -3778,7 +3785,7 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     // Three iron blocks on the floor from x 132, 8 px apart: the player out
     // of the wall stands at the first clear spot past them.
     let mut data = fresh.clone();
-    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), BODY_OFFSET);
+    data["player"]["position"] = corner(Vec2::new(40.0, 30.0 * 64.0), body_offset());
     let id = data["next_id"].as_u64().unwrap();
     for (k, x) in [192.0_f32, 320.0, 448.0].into_iter().enumerate() {
         let at = corner(
@@ -3795,10 +3802,10 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     }
     data["next_id"] = Value::from(id + 3);
     let (migrated, dir) = migrate("schema-14-iron", &as_schema_14_envelope(&data));
-    let centre = Vec2::from(migrated.player.position) + BODY_OFFSET;
-    let past = 448.0 + IRON_HALF.x + PLAYER_HALF.x;
+    let centre = Vec2::from(migrated.player.position) + body_offset();
+    let past = 448.0 + IRON_HALF.x + player_half().x;
     assert!(
-        centre.distance(Vec2::new(past, save::S15_FLOOR - 0.5 - PLAYER_HALF.y)) < 1e-3,
+        centre.distance(Vec2::new(past, save::S15_FLOOR - 0.5 - player_half().y)) < 1e-3,
         "the player at {centre}"
     );
     on_the_floor_clear(&migrated, migrated.player.id).unwrap();
@@ -3807,7 +3814,7 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     // the wall have no room, so both go, the dummy's ID into `gone`, and
     // the loaded run has no dummy at the clearing's west end.
     let mut data = fresh;
-    data["player"]["position"] = corner(Vec2::new(2000.0, 900.0), BODY_OFFSET);
+    data["player"]["position"] = corner(Vec2::new(2000.0, 900.0), body_offset());
     let mut keg = data["props"]
         .as_array()
         .unwrap()
@@ -3849,7 +3856,8 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     data["next_id"] = Value::from(id + 14);
     let dummy = data["dummies"][0]["id"].as_u64().unwrap();
     assert_eq!(data["dummies"][0]["map"], true, "the map's dummy");
-    data["dummies"][0]["position"] = corner(Vec2::new(64.0, 26.0 * 64.0), DUMMY_CENTRE);
+    data["dummies"][0]["position"] =
+        corner(Vec2::new(64.0, 26.0 * 64.0), actor_body("dummy").centre);
     let (migrated, dir) = migrate("schema-14-full", &as_schema_14_envelope(&data));
     let dummy = schema_23_from_18(dummy);
     assert!(
@@ -3870,7 +3878,7 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     let west: Vec<Vec2> = run
         .world()
         .query::<(&Dummy, &Position)>()
-        .map(|(_, at)| at.0 + DUMMY_CENTRE)
+        .map(|(_, at)| at.0 + actor_body("dummy").centre)
         .filter(|at| at.x < 20.0 * 64.0)
         .collect();
     assert!(
@@ -3990,7 +3998,7 @@ fn a_wizard_loaded_from_an_older_save_still_shoves() {
     let at = centre(&loaded, player);
     let ball = toys::spawn_ball(
         loaded.world_mut(),
-        Vec2::new(at.x + PLAYER_HALF.x + 40.0, TOP - 7.5),
+        Vec2::new(at.x + player_half().x + 40.0, TOP - 7.5),
         true,
     );
     loaded.step(2);
@@ -4239,7 +4247,7 @@ fn to_16_sets_bodies_inside_the_tomes_supports_on_their_tops() {
     let [pact, bound, arcane] = save::S16_SUPPORTS;
     // The player inside `pact_shelf`, a falling bowling ball inside
     // `bound_shelf` and a dropped orb inside `arcane_ledge`.
-    data["player"]["position"] = corner(middle(pact), BODY_OFFSET);
+    data["player"]["position"] = corner(middle(pact), body_offset());
     let id = data["next_id"].as_u64().unwrap();
     let at = corner(middle(bound), toys::BALL_CENTRE);
     data["balls"]

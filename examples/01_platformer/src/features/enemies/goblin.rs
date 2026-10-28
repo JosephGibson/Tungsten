@@ -58,9 +58,6 @@ pub const THROW_SECS: f32 = 0.25;
 pub const RECOVER: f32 = 0.9;
 /// The share of its throws that are bombs: one draw at each tell.
 pub const BOMB_CHANCE: f32 = 0.2;
-/// Where its throwing hand lets go, from its sprite's top-left facing
-/// right.
-pub const HAND: Vec2 = Vec2::new(50.0, 30.0);
 /// A rock's flight's seconds a pixel to the player, at least and at most,
 /// on the world's gravity.
 pub const ROCK_PACE: f32 = 1.0 / 650.0;
@@ -341,7 +338,7 @@ fn dash(world: &mut World, goblin: Entity) {
         controller.lock_input(DASH_MOST);
     }
     if let Some(at) = centre(world, goblin) {
-        let heels = at + Vec2::new(0.0, EnemyKind::Goblin.info().half.y);
+        let heels = at + Vec2::new(0.0, super::body(world, EnemyKind::Goblin).half.y);
         spawn_burst(world, DASH_DUST, heels);
         audio::play(world, Sound::GoblinDashed, at);
     }
@@ -411,13 +408,12 @@ fn leap_back(world: &mut World, goblin: Entity) {
     }
 }
 
-/// Where its throwing hand lets go: [`HAND`], mirrored as it faces.
+/// Where its throwing hand lets go: its body's `hand` point as it faces.
 #[must_use]
 pub fn hand(world: &World, goblin: Entity) -> Option<Vec2> {
-    let at = centre(world, goblin)?;
+    let at = world.get::<Position>(goblin)?.0;
     let heading = world.get::<Enemy>(goblin)?.heading;
-    let info = EnemyKind::Goblin.info();
-    Some(at + Vec2::new((HAND.x - info.centre.x) * heading, HAND.y - info.centre.y))
+    Some(at + super::body(world, EnemyKind::Goblin).point("hand", heading)?)
 }
 
 /// The stab's box: [`STAB_HALF`] about [`STAB_AT`] from its body's centre,

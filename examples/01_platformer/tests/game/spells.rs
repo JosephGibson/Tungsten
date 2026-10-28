@@ -13,11 +13,11 @@
 use example_01_platformer::features::audio::HOLE_HUM;
 use example_01_platformer::features::audio::components::Music;
 use example_01_platformer::features::combat::Kind;
+use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::components::BallBurn;
 use example_01_platformer::features::elements::systems::douse;
-use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::spells::systems::adopt;
 use example_01_platformer::features::spells::{
@@ -48,6 +48,7 @@ use example_01_platformer::features::player::{GUTTER_PUFF, STAFF_LIT};
 use example_01_platformer::features::spells::components::Spell;
 use tungsten::kit::Tags;
 
+use super::kind_body;
 use super::{
     aim_at, ball, body, calm, centre, choose, floor, ground, mana, pin_camera, run, stand,
 };
@@ -966,7 +967,7 @@ fn flask_range() -> (UiHarness, Entity) {
 fn still_foe(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let foe = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe
@@ -1130,13 +1131,13 @@ fn a_flask_lobbed_at_a_goblin_bursts_at_it_poisons_it_and_credits_the_wizard() {
     let (mut harness, player) = flask_range();
     let me = centre(&harness, player);
     let kind = EnemyKind::Goblin;
-    let at = Vec2::new(me.x + 300.0, SKY - kind.info().half.y - 0.5);
+    let at = Vec2::new(me.x + 300.0, SKY - kind_body(kind).half.y - 0.5);
     let goblin = still_foe(&mut harness, kind, at);
     harness.step(1);
     toss_flask(&mut harness, at);
     let flight = flask_flight(&mut harness, 60);
     let burst = flight.burst.expect("it bursts");
-    let half = kind.info().half + Vec2::splat(flask::FLASK_RADIUS + 1.0);
+    let half = kind_body(kind).half + Vec2::splat(flask::FLASK_RADIUS + 1.0);
     assert!(
         ((burst - at).abs() - half).max_element() <= 0.0,
         "at the goblin: {burst} for {at}"
@@ -1154,7 +1155,7 @@ fn the_flask_splash_spares_the_wizard_and_a_wisp_beside_the_goblin() {
     let (mut harness, player) = flask_range();
     let me = centre(&harness, player);
     let kind = EnemyKind::Goblin;
-    let at = Vec2::new(me.x + 80.0, SKY - kind.info().half.y - 0.5);
+    let at = Vec2::new(me.x + 80.0, SKY - kind_body(kind).half.y - 0.5);
     let goblin = still_foe(&mut harness, kind, at);
     let wisp = still_foe(&mut harness, EnemyKind::Wisp, at + Vec2::new(50.0, -20.0));
     harness.step(1);

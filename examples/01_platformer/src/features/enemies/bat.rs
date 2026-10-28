@@ -42,7 +42,7 @@ pub const DIVING: &str = "dive";
 /// deck); with none, `at`.
 #[must_use]
 pub fn roost(world: &World, at: Vec2) -> Vec2 {
-    let grip = EnemyKind::Bat.info().centre.y;
+    let grip = super::body(world, EnemyKind::Bat).centre.y;
     let tiles = SpatialFilter::new().with_bodies(false);
     let walls = SpatialFilter::new().with_mask(WALL_LAYERS);
     [tiles, walls]

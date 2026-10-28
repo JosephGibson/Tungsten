@@ -50,7 +50,7 @@ use crate::features::combat;
 use crate::features::level::LAVA_LAYER;
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
     Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws, Variant,
@@ -124,12 +124,10 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
     }
 }
 
-/// A kind's table entry: its prefab, its frame's side, its body's half
-/// size, how far either side of its body's centre a lightning bolt meets
-/// it (the opaque columns of its walk's or its flight's frames, mirrored
-/// as it faces; Q49), its body's centre from its sprite's top-left (the
-/// entity's point), its
-/// eye from there facing right, its mass for impacts and the walkers'
+/// A kind's table entry: its prefab, whose name its body's data takes
+/// ([`body`]), how far either side of its body's centre a lightning bolt
+/// meets it (the opaque columns of its walk's or its flight's frames,
+/// mirrored as it faces; Q49), its mass for impacts and the walkers'
 /// shove, its sight's reach, its alert's seconds, the black hole's hold on
 /// it, which a blast's push takes too, the force push's wave's weight on
 /// it (`toys::wave`), its knockback's resist as its prefab sets it (the
@@ -138,11 +136,7 @@ pub fn walk_on_rock(world: &mut World, enemy: Entity) {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct KindInfo {
     pub prefab: &'static str,
-    pub frame: f32,
-    pub half: Vec2,
     pub strike: f32,
-    pub centre: Vec2,
-    pub eye: Vec2,
     pub mass: f32,
     pub sight: f32,
     pub alert: f32,
@@ -162,11 +156,7 @@ impl EnemyKind {
         match self {
             EnemyKind::Wisp => KindInfo {
                 prefab: "wisp",
-                frame: 64.0,
-                half: Vec2::new(12.0, 12.0),
                 strike: 17.0,
-                centre: Vec2::new(32.0, 34.0),
-                eye: Vec2::new(40.0, 32.0),
                 mass: 3.0,
                 sight: 480.0,
                 alert: 0.5,
@@ -180,11 +170,7 @@ impl EnemyKind {
             },
             EnemyKind::Crawler => KindInfo {
                 prefab: "crawler",
-                frame: 64.0,
-                half: Vec2::new(24.0, 10.0),
                 strike: 32.0,
-                centre: Vec2::new(32.0, 51.0),
-                eye: Vec2::new(56.0, 48.0),
                 mass: 40.0,
                 sight: 400.0,
                 alert: 0.4,
@@ -198,11 +184,7 @@ impl EnemyKind {
             },
             EnemyKind::Beetle => KindInfo {
                 prefab: "beetle",
-                frame: 64.0,
-                half: Vec2::new(24.0, 13.0),
                 strike: 32.0,
-                centre: Vec2::new(32.0, 48.0),
-                eye: Vec2::new(57.0, 45.0),
                 mass: 120.0,
                 sight: 520.0,
                 alert: 0.5,
@@ -216,11 +198,7 @@ impl EnemyKind {
             },
             EnemyKind::Bat => KindInfo {
                 prefab: "bat",
-                frame: 64.0,
-                half: Vec2::new(10.0, 9.0),
                 strike: 31.0,
-                centre: Vec2::new(32.0, 28.0),
-                eye: Vec2::new(32.0, 21.0),
                 mass: 2.0,
                 sight: 440.0,
                 alert: 0.4,
@@ -234,11 +212,7 @@ impl EnemyKind {
             },
             EnemyKind::Troll => KindInfo {
                 prefab: "troll",
-                frame: 128.0,
-                half: Vec2::new(28.0, 55.0),
                 strike: 41.0,
-                centre: Vec2::new(74.0, 70.0),
-                eye: Vec2::new(95.0, 21.0),
                 mass: 600.0,
                 sight: 640.0,
                 alert: 0.8,
@@ -252,11 +226,7 @@ impl EnemyKind {
             },
             EnemyKind::Goblin => KindInfo {
                 prefab: "goblin",
-                frame: 64.0,
-                half: Vec2::new(9.0, 20.0),
                 strike: 22.0,
-                centre: Vec2::new(34.0, 41.0),
-                eye: Vec2::new(41.0, 24.0),
                 mass: 50.0,
                 sight: 520.0,
                 alert: 0.4,
@@ -292,6 +262,7 @@ impl Plugin for EnemiesPlugin {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Enemy>("enemy");
         world.register_component::<drops::Orb>("orb");
+        world.register_data_kind::<Body>(BODIES);
         world.register_event::<Spotted>();
         world.insert_resource(Throws::default());
         world.resource_mut::<Extracts>().add_sprites(draw::bars);
@@ -413,8 +384,9 @@ pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Op
 }
 
 /// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
-/// `corner`, owned by gameplay, with the save ID `id`, at once: a summon's
-/// or a load's. Its home is where it stands, a bat's the roost above.
+/// `corner`, owned by gameplay, with the save ID `id`, its body from its
+/// kind's data ([`shared::fit_body`]), at once: a summon's or a load's. Its
+/// home is where it stands, a bat's the roost above.
 pub fn spawn_as(
     world: &mut World,
     kind: EnemyKind,
@@ -435,8 +407,9 @@ pub fn spawn_as(
             SceneEntity { state_id: GAMEPLAY },
         ))
         .spawn(world);
+    shared::fit_body(world, enemy, kind.info().prefab);
     walk_on_rock(world, enemy);
-    let home = home(world, kind, corner + kind.info().centre);
+    let home = home(world, kind, corner + body(world, kind).centre);
     if let Some(mine) = world.get_mut::<Enemy>(enemy) {
         mine.home = home.to_array();
     }
@@ -460,7 +433,7 @@ pub fn home(world: &World, kind: EnemyKind, at: Vec2) -> Vec2 {
 pub fn fits(world: &World, kind: EnemyKind, at: Vec2) -> bool {
     let mut met = Vec::new();
     let shape = Shape::Aabb {
-        half_extents: kind.info().half,
+        half_extents: body(world, kind).half,
     };
     overlap(
         world,
@@ -485,7 +458,8 @@ pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2)
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = spawn_as(world, kind, variant, at - kind.info().centre, id)?;
+    let corner = at - body(world, kind).centre;
+    let enemy = spawn_as(world, kind, variant, corner, id)?;
     scale(world, enemy, difficulty);
     spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)
@@ -505,14 +479,15 @@ pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2)
 }
 
 /// For a run the map has just placed: keeps the save IDs of its enemies,
-/// sets each one's home ([`home`]) and its state machine, and gives each the
-/// difficulty's factor.
+/// gives each its kind's body ([`shared::fit_body`]), sets its home
+/// ([`home`]) and its state machine, and gives it the difficulty's factor.
 pub fn start(world: &mut World, difficulty: Difficulty) {
-    let placed: Vec<(Entity, u64)> = world
+    let placed: Vec<(Entity, u64, EnemyKind)> = world
         .query::<(Entity, &Enemy, &SaveId)>()
-        .map(|(entity, _, id)| (entity, id.0))
+        .map(|(entity, enemy, id)| (entity, id.0, enemy.kind))
         .collect();
-    for &(entity, _) in &placed {
+    for &(entity, _, kind) in &placed {
+        shared::fit_body(world, entity, kind.info().prefab);
         let at = centre(world, entity).unwrap_or_default();
         let home = world
             .get::<Enemy>(entity)
@@ -533,7 +508,7 @@ pub fn start(world: &mut World, difficulty: Difficulty) {
         scale(world, entity, difficulty);
         walk_on_rock(world, entity);
     }
-    let mut placed: Vec<u64> = placed.into_iter().map(|(_, id)| id).collect();
+    let mut placed: Vec<u64> = placed.into_iter().map(|(_, id, _)| id).collect();
     placed.sort_unstable();
     world.insert_resource(PlacedEnemies(placed));
     world.insert_resource(Throws::default());
@@ -593,5 +568,12 @@ pub fn stands_firm(world: &World, entity: Entity) -> bool {
 pub fn centre(world: &World, enemy: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(enemy)?.0;
     let kind = world.get::<Enemy>(enemy)?.kind;
-    Some(at + kind.info().centre)
+    Some(at + body(world, kind).centre)
+}
+
+/// `kind`'s body, as its data holds it now: its plain prefab's name's, the
+/// armoured troll's the troll's.
+#[must_use]
+pub fn body(world: &World, kind: EnemyKind) -> &Body {
+    shared::body(world, kind.info().prefab)
 }

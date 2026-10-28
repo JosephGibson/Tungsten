@@ -5,10 +5,9 @@
 //! render would draw. Ignored: a release build runs it in one sitting
 //! (`perf-runs/<UTC>-e01d-frame/README.md`).
 
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::TILE;
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::SaveIds;
@@ -20,6 +19,7 @@ use tungsten::core::Entity;
 use tungsten::kit::{Health, StateMachine, Stats};
 use tungsten::testing::UiHarness;
 
+use super::{kind_body, player_half};
 use super::{player_entity, run, teleport, top};
 
 const DT: f32 = 1.0 / 60.0;
@@ -60,7 +60,8 @@ struct Platform {
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let entity = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let entity =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -120,13 +121,13 @@ fn a_full_pit_with_enemies_awake() {
     // The player on the deck's middle, six enemies awake within 600 px.
     let middle = Vec2::new(
         f32::midpoint(deck.left, deck.right) * TILE,
-        deck.row * TILE - PLAYER_HALF.y - 0.5,
+        deck.row * TILE - player_half().y - 0.5,
     );
     teleport(&mut harness, player, middle);
     harness.step(1);
     let surface = deck.row * TILE;
     let walk =
-        |kind: EnemyKind, dx: f32| Vec2::new(middle.x + dx, surface - kind.info().half.y - 0.5);
+        |kind: EnemyKind, dx: f32| Vec2::new(middle.x + dx, surface - kind_body(kind).half.y - 0.5);
     // The walkers on the deck and the east rim beyond the chute, never over
     // the gap or a chute.
     let cast = [

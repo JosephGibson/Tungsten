@@ -213,6 +213,13 @@ pub const S11_PICKUPS: u64 = 28;
 /// migrations, which place a player by its body before schema 13 moves the
 /// point.
 pub const S12_BODY_OFFSET: Vec2 = Vec2::new(32.0, 33.0);
+/// Where schema 13's player's body centre sits from its sprite's corner,
+/// the wizard's 96 px frame's, which [`to_13`] moves a saved corner to;
+/// frozen, as the bodies' data may move the body since.
+pub const S13_BODY_OFFSET: Vec2 = Vec2::new(48.0, 65.0);
+/// Schema 10's player's body's half size, which [`to_10`] lifts a player
+/// out of a lake by; frozen likewise.
+pub const S10_PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
 /// Schema 14's start, which schema 15 walls (01 (k)): the wall's box over
 /// columns 0 and 1 from row 21 to the clearing's floor, min and max; the
 /// world left of the map, where the boundary stands, lies past its min x
@@ -817,7 +824,7 @@ fn to_10(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         return Err("schema 9: the player has no position".into());
     };
     let centre = Vec2::from(at) + S12_BODY_OFFSET;
-    let half = crate::features::player::PLAYER_HALF;
+    let half = S10_PLAYER_HALF;
     let tile = crate::features::level::TILE;
     for (left, right, bank, places) in S10_LAKES {
         let over = centre.x + half.x > left * tile && centre.x - half.x < right * tile;
@@ -876,8 +883,7 @@ fn to_12(data: &mut Value) {
 }
 
 /// Schema 12 to 13: the player is drawn on the wizard's 96 px frame, whose
-/// body centre sits at [`BODY_OFFSET`](crate::features::player::BODY_OFFSET)
-/// from its corner, so the saved corner moves by the two offsets'
+/// body centre sits at [`S13_BODY_OFFSET`] from its corner, so the saved corner moves by the two offsets'
 /// difference and the body stays where it stood. Nothing else saved names
 /// the frame.
 fn to_13(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -888,7 +894,7 @@ fn to_13(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
     else {
         return Err("schema 12: the player has no position".into());
     };
-    let corner = Vec2::from(at) + S12_BODY_OFFSET - crate::features::player::BODY_OFFSET;
+    let corner = Vec2::from(at) + S12_BODY_OFFSET - S13_BODY_OFFSET;
     data["player"]["position"] = Value::from(vec![corner.x, corner.y]);
     Ok(())
 }

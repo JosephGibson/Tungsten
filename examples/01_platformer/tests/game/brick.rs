@@ -14,7 +14,6 @@ use example_01_platformer::features::elements::{self, CRUSH_SPEED, SHATTER_SPEED
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
 use example_01_platformer::features::enemies::{self, troll};
 use example_01_platformer::features::level::GRAVITY;
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{
@@ -38,6 +37,7 @@ use super::{
     aim_at, ball, body, bursts, calm, cascades, choose, contact, floor, ground, kick, mana,
     pin_camera, player_entity, run, teleport,
 };
+use super::{kind_body, player_half};
 
 /// The sky's ground the iron tests stand things on.
 const TOP: f32 = 1000.0;
@@ -45,10 +45,11 @@ const TOP: f32 = 1000.0;
 /// An enemy of `kind` standing still on the sky's ground, its centre at
 /// `x`: no mind, so it stays.
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
-    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let enemy =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
@@ -255,7 +256,7 @@ fn a_fast_brick_hurts_the_player_and_smashes_a_ball_and_a_resting_one_does_neith
     let blocks = [
         block(
             &mut harness,
-            at - Vec2::new(0.0, PLAYER_HALF.y + IRON_HALF.y),
+            at - Vec2::new(0.0, player_half().y + IRON_HALF.y),
         ),
         block(
             &mut harness,

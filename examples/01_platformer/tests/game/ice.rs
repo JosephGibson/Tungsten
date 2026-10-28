@@ -20,8 +20,8 @@ use example_01_platformer::features::combat::{
 use example_01_platformer::features::elements::components::{Chill, Frozen, IcePulse};
 use example_01_platformer::features::elements::draw::effects;
 use example_01_platformer::features::elements::{self, FREEZE_TIME, freeze_amount};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::spells::components::Spell;
@@ -49,6 +49,7 @@ use tungsten::kit::{
 };
 use tungsten::testing::UiHarness;
 
+use super::kind_body;
 use super::{
     aim_at, body, cascades, centre, choose, contact, floor, ground, kick, mock_sprite, pin_camera,
     run, stand, steps_this_frame, teleport,
@@ -920,10 +921,11 @@ fn cold_arena() -> (UiHarness, Entity) {
 
 /// A creature of `kind` standing still on the ground at `x`: no mind.
 fn creature(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
-    let centre = Vec2::new(x, GROUND - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, GROUND - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let enemy =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     harness.step(1);
@@ -1290,11 +1292,11 @@ fn a_left_facing_troll_s_frost_and_cube_fit_its_hurtbox() {
     let drawn = |heading: f32| -> (Vec2, Vec2, Vec2, f32) {
         let (mut harness, _) = cold_arena();
         let kind = EnemyKind::Troll;
-        let centre = Vec2::new(1200.0, GROUND - kind.info().half.y - 0.5);
+        let centre = Vec2::new(1200.0, GROUND - kind_body(kind).half.y - 0.5);
         let world = harness.world_mut();
         let id = world.resource_mut::<SaveIds>().take();
         let troll =
-            enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+            enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
         enemies::scale(world, troll, Difficulty::Normal);
         world.get_mut::<Enemy>(troll).unwrap().heading = heading;
         world

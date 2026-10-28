@@ -15,7 +15,6 @@ use example_01_platformer::features::enemies::{
     components::{Enemy, EnemyKind},
 };
 use example_01_platformer::features::level::components::{Doused, Hazard};
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::props::{self, components::PropKind};
 use example_01_platformer::features::toys;
 use example_01_platformer::game::GAMEPLAY;
@@ -44,6 +43,7 @@ use example_01_platformer::features::spells::components::Spell;
 use tungsten::core::RigidBody;
 use tungsten::kit::ImmunePart;
 
+use super::player_half;
 use super::{
     aim_at, ball, body, bursts, calm, centre, choose, fall_dead, ground, pin_camera, run, stand,
     teleport, top,
@@ -203,7 +203,7 @@ fn lava_throws_the_player_up_and_out_and_never_lets_them_sink() {
         let top = skin(&harness, basin);
         for (x, bank) in [(left + 30.0, -1.0), (right - 30.0, 1.0)] {
             // On the near bank, out of the lava, until the window runs out.
-            let shore = Vec2::new(left - 96.0, top - 3.0 * PLAYER_HALF.y);
+            let shore = Vec2::new(left - 96.0, top - 3.0 * player_half().y);
             teleport(&mut harness, player, shore);
             heal(harness.world_mut(), player, 500.0);
             harness.step(70);
@@ -235,13 +235,13 @@ fn lava_throws_the_player_up_and_out_and_never_lets_them_sink() {
                 "{basin:?} at {x}: the window"
             );
             harness.step(6);
-            let again = centre(&harness, player).y + PLAYER_HALF.y;
+            let again = centre(&harness, player).y + player_half().y;
             assert!(again < top - 30.0, "{basin:?} at {x}: thrown again");
             // Never below the skin, whatever it lands on, for two seconds.
             for frame in 0..120 {
                 harness.step(1);
                 let at = centre(&harness, player);
-                let feet = at.y + PLAYER_HALF.y;
+                let feet = at.y + player_half().y;
                 let over = (left..right).contains(&at.x);
                 assert!(
                     !over || feet <= top + 1.0,
@@ -320,7 +320,7 @@ fn lava_bites_with_fire_and_the_fires_douse_leaves_it_hot() {
     assert_eq!(health(&harness, player), 84.0, "16 fire");
     harness.step(1);
     assert!(
-        centre(&harness, player).y < top - PLAYER_HALF.y,
+        centre(&harness, player).y < top - player_half().y,
         "the touch knocks the player up and away"
     );
     // The douse puts a fire out; lava stays hot (the spray crusts it).
@@ -389,7 +389,7 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
             "the crust bites nothing"
         );
     }
-    let feet = centre(&harness, player).y + PLAYER_HALF.y;
+    let feet = centre(&harness, player).y + player_half().y;
     assert!(
         (feet - surface).abs() < 2.0,
         "standing on the crust: {feet} on {surface}"
@@ -412,7 +412,7 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
     assert!(thrown, "the melt bites the player on it");
     harness.step(10);
     assert!(
-        centre(&harness, player).y + PLAYER_HALF.y < surface - 20.0,
+        centre(&harness, player).y + player_half().y < surface - 20.0,
         "thrown up"
     );
     // 14 frames past the melt: the lava takes the ball within 60.

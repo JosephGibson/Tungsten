@@ -26,7 +26,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 - `font_fallback` chains concatenate in root order, each family keeping its first position. A family's faces and a chain's families may come from another root: references are checked on the merged graph (`D-089`).
 - Font ID `engine_mono` is reserved for the engine font, `tungsten::ENGINE_FONT_ID`, which the HUD, the systems overlay and the inspector draw with (`D-123`), and `engine_mono_semibold` for its SemiBold face, the family's weight 600 for the debug views' titles and headers (`D-168`). A manifest `fonts` entry under `engine_mono` replaces the Regular face for engine text; beside another face of the same family, weight and style with other bytes, the earlier face draws and a warning names both. Manifests are not checked against the reservation.
 - Game code uses registry IDs; explicit scene loading follows `D-046`.
-- Example 01's `assets/` is generator output, built whole or by family (`examples/01_platformer/tools/generate.py --family NAME`). Its accepted families' files are locked by hash in `tools/locks.json` (`D-223`): a run that would change one fails, and only the owner unlocks a family.
+- Example 01's `assets/` is generator output, built whole or by family (`examples/01_platformer/tools/generate.py --family NAME`). Its accepted families' files are locked by hash in `tools/locks.json` (`D-223`): a run that would change one fails, and only the owner unlocks a family. Its actors' bodies, hurtboxes and named points are data beside their sprites (`assets/data/bodies/<actor>.json`, the `bodies` family), which 01 reads in place of restated constants and holds its prefabs to.
 
 ## Coverage exceptions
 

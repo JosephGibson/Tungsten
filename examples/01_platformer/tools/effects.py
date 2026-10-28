@@ -769,7 +769,8 @@ def status_box(size):
 # frozen body with no fitted one.
 #
 # Each kind's hurtbox in its frame, (left, top, right, bottom): the box its
-# prefab's hurtbox makes, which `generate.check_ice_fits` holds it to.
+# body file's hurtbox is made from (`generate.bodies`), which its prefabs are
+# held to (`generate.check_bodies`).
 HURTBOXES = {
     'wisp': (19, 21, 45, 47),  # a circle of 13 about (32, 34), as its box
     'crawler': (8, 41, 56, 59),  # aabb 24 x 9 about (32, 50)

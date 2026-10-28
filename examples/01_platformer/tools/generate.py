@@ -724,24 +724,69 @@ def mirror_anchors(anchors,images):
 
 
 def check_ice_fits(images):
-    """Each kind's fitted ice cube sits on the box its prefab's hurtbox makes,
-    wherever that prefab exists: the dummy's, and each enemy's once its prefab
-    lands, so a hurtbox the run tunes cannot leave its ice behind. Each cube's
-    cracked twin, which a thaw flickers to, covers what the whole one does."""
+    """Each cube's cracked twin, which a thaw flickers to, covers what the
+    whole one does. Each kind's cube is fitted to its hurtbox's box
+    (`effects.HURTBOXES`), which its body file's hurtbox is made from and
+    its prefabs are held to (`check_bodies`), so a hurtbox the run tunes
+    cannot leave its ice behind."""
     from art import STATUS_CLASSES
     from effects import HURTBOXES
-    for kind,box in HURTBOXES.items():
-        path=CONTENT/'prefabs'/f'{kind}.json'
-        if not path.exists():continue
-        hurtbox=json.loads(path.read_text())['components']['hurtbox']
-        (ox,oy),shape=hurtbox.get('offset',[0,0]),hurtbox['shape']
-        hx,hy=(shape['circle'],)*2 if 'circle' in shape else shape['aabb']
-        made=(ox-hx,oy-hy,ox+hx,oy+hy)
-        if made!=box:raise ValueError(f'status_ice_{kind}: its cube fits {box}; its prefab hurtbox makes {made}')
     for name in [*HURTBOXES,*STATUS_CLASSES]:
         whole,cracked=images[f'status_ice_{name}'],images[f'status_ice_{name}_cracked']
         if cracked.size!=whole.size or cracked.getbbox()!=whole.getbbox():
             raise ValueError(f'status_ice_{name}_cracked: covers {cracked.getbbox()}, not its cube\'s {whole.getbbox()}')
+
+
+# The prefabs each actor's body file holds (`check_bodies`): its own, and the
+# armoured troll's, drawn on the troll's rig.
+BODY_PREFABS={'troll':('troll','troll_armoured')}
+
+
+def bodies():
+    """Each actor's `bodies` data by name, from `actors.BODIES` and
+    `effects.HURTBOXES`: its frame, its body's centre and half size, its
+    hurtbox as a prefab writes one, and its points facing right and left,
+    the left mirrored about the body's centre, where 01 draws a left-facing
+    frame's body (as `mirror_anchors` mirrors the wizard's, whose body is his
+    frame's middle). A walker's body and the wizard's end on their frames'
+    feet row."""
+    from actors import BODIES
+    from art import PLAYER_FEET, WALKER_FEET
+    from effects import HURTBOXES
+    feet={'player':PLAYER_FEET,**{prefix.split('_')[0]:row for prefix,row in WALKER_FEET.items()}}
+    made={}
+    for actor,body in BODIES.items():
+        (cx,cy),(hx,hy)=body['centre'],body['half']
+        if actor in feet and cy+hy!=feet[actor]:raise ValueError(f"{actor}: its body ends on row {cy+hy}, its frames' feet on {feet[actor]}")
+        offset,half=[cx,cy],[hx,hy]
+        if actor in HURTBOXES:
+            x0,y0,x1,y1=HURTBOXES[actor];offset,half=[whole((x0+x1)/2),whole((y0+y1)/2)],[whole((x1-x0)/2),whole((y1-y0)/2)]
+        if body.get('hurtbox')=='circle' and half[0]!=half[1]:raise ValueError(f'{actor}: a circle hurtbox needs a square box, not {half}')
+        shape=dict(circle=half[0]) if body.get('hurtbox')=='circle' else dict(aabb=half)
+        points={name:dict(right=[x,y],left=[2*cx-x,y]) for name,(x,y) in body.get('points',{}).items()}
+        made[actor]=dict(frame=list(body['frame']),centre=[cx,cy],half=[hx,hy],hurtbox=dict(offset=offset,shape=shape),points=points)
+    return made
+
+
+def whole(value):
+    """`value` as an int when it is one, as the prefabs write it."""
+    return int(value) if value==int(value) else value
+
+
+def check_bodies(made):
+    """Each actor's prefabs (`BODY_PREFABS`) hold its body (`bodies`): the
+    rigid body's box and offset, the hurtbox, and an aim's origin at its
+    centre, so a prefab off its actor's body file fails the run."""
+    for actor,body in made.items():
+        for name in BODY_PREFABS.get(actor,(actor,)):
+            components=json.loads((CONTENT/'prefabs'/f'{name}.json').read_text())['components']
+            rigid=components['rigid_body']
+            held={'rigid body':[rigid['shape'],rigid.get('offset',[0,0])],'hurtbox':components['hurtbox']}
+            wanted={'rigid body':[dict(kind='aabb',half_extents=body['half']),body['centre']],'hurtbox':body['hurtbox']}
+            if 'aim' in components:held['aim']=components['aim'].get('offset',[0,0]);wanted['aim']=body['centre']
+            for part,value in held.items():
+                if value!=wanted[part]:
+                    raise ValueError(f"prefabs/{name}.json: its {part} {value} is not its body's {wanted[part]} (data/bodies/{actor}.json)")
 
 
 def check_frost_fits(images):
@@ -884,6 +929,14 @@ def content_family(made,sprites,lit):
     made.entries.update(registered(lambda name:name not in SOUNDS))
 
 
+def bodies_family(made,sprites,lit):
+    """Each actor's body (`bodies`) as `assets/data/bodies/<actor>.json`."""
+    for actor,data in sorted(bodies().items()):
+        path=f'data/bodies/{actor}.json'
+        made.files['assets/'+path]=json_bytes(data)
+        made.entries[('data','bodies',actor)]=dict(path=path)
+
+
 def registered(chosen):
     """The `sounds.json` registrations of the files `chosen` picks, by
     place. Every registered sound must be synthesized (`sfx.SOUNDS`) or
@@ -944,6 +997,9 @@ FAMILIES={
     'backdrops':Family(art('backdrops'),uses=('terrain',)),
     'effects':Family(art('effects')),
     'tomes':Family(art('tomes'),uses=('effects',)),
+    # The actors' bodies, from their rigs' table and the hurtboxes their ice
+    # is fitted to.
+    'bodies':Family(bodies_family,uses=('player','dummy','wisp','crawler','beetle','bat','troll','goblin','effects')),
     # The tiles and scenery, the pickups' orbs and the tomes' books.
     'level':Family(level_family,uses=('terrain','scenery','backdrops','effects','tomes'),lockable=False),
     'content':Family(content_family,lockable=False),
@@ -1051,7 +1107,7 @@ def generate(dest,families=None,base=ROOT):
         made[name]=m=Made();FAMILIES[name].build(m,sprites,lit)
         sprites.update(m.images);lit.difference_update(m.images);lit.update(m.lit)
         animations.update(m.animations);configs.update(m.configs)
-    validate_sets(sprites);check_ice_fits(sprites);check_frost_fits(sprites)
+    validate_sets(sprites);check_ice_fits(sprites);check_frost_fits(sprites);check_bodies(bodies())
     entries=entries_of(manifest);fresh={}
     for name,m in made.items():
         validate_sprites(m.images,m.lit);sprite_files(m)

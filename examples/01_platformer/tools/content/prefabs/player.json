@@ -25,6 +25,6 @@
     "abilities": ["fire_missile", "flamethrower", "ice_spray", "force_push", "black_hole", "iron_block", "bowling_ball", "small_balls", "lightning", "gun", "summon", "staff_light", "toxic_flask"],
     "spellbook": {},
     "camera_target": null,
-    "glow": { "offset": [65.0, 37.0], "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
+    "glow": { "radius": 125, "color": [255, 190, 100, 255], "light": 1.2, "core": 30 }
   }
 }

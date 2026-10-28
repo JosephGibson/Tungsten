@@ -293,7 +293,7 @@ fn slow_trolls(world: &mut World, holes: &[Vec2]) {
         .query::<(Entity, &Enemy, &Position, &Health)>()
         .filter(|(_, enemy, ..)| enemy.kind == EnemyKind::Troll)
         .map(|(entity, enemy, at, health)| {
-            let centre = at.0 + enemy.kind.info().centre;
+            let centre = at.0 + enemies::body(world, enemy.kind).centre;
             let inside = holes
                 .iter()
                 .any(|&hole| hole.distance(centre) < HOLE_RADIUS);
@@ -351,8 +351,8 @@ pub fn pull(world: &mut World) {
         .query::<(Entity, &Enemy, &Position, &Health)>()
         .filter(|(.., health)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _)| {
-            let info = enemy.kind.info();
-            let pull = hole_pull(&holes, at.0 + info.centre) * info.pull * ENEMY_PULL_SECS;
+            let centre = at.0 + enemies::body(world, enemy.kind).centre;
+            let pull = hole_pull(&holes, centre) * enemy.kind.info().pull * ENEMY_PULL_SECS;
             (pull != Vec2::ZERO).then_some((entity, pull))
         })
         .collect();
@@ -384,7 +384,7 @@ pub fn hold(world: &mut World) {
         .filter(|(.., health, _)| !health.is_dead())
         .filter_map(|(entity, enemy, at, _, mover)| {
             let info = enemy.kind.info();
-            let centre = at.0 + info.centre;
+            let centre = at.0 + enemies::body(world, enemy.kind).centre;
             let core = holes
                 .iter()
                 .copied()

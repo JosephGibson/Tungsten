@@ -186,10 +186,11 @@ pub fn flare_embers(world: &mut World, wisp: Entity) {
             };
             let seed = 0x3a_0000 + u64::from(wisp.id());
             // A child, so it follows the wisp and goes with it.
+            let centre = super::body(world, EnemyKind::Wisp).centre;
             let emitter = spawn_child(
                 world,
                 wisp,
-                EnemyKind::Wisp.info().centre,
+                centre,
                 (
                     ParticleEmitter::with_seed(config, seed),
                     ParticleEmitterState::default(),

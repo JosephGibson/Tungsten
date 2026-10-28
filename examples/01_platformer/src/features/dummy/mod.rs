@@ -21,15 +21,11 @@ use tungsten::{Plugin, SceneEntity};
 
 use crate::features::toys::components::PreviousVelocity;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_key_burst};
+use crate::shared::{self, BODIES, Body, SaveId, SaveIds, despawn_tree, spawn_key_burst};
 use components::{Dummy, PlacedDummies};
 
 /// The dummy's prefab, by its manifest ID.
 pub const DUMMY_PREFAB: &str = "dummy";
-/// The dummy's body: its half extents, and its centre from its sprite's
-/// top-left, as its prefab sets them.
-pub const DUMMY_HALF: Vec2 = Vec2::new(14.0, 28.0);
-pub const DUMMY_CENTRE: Vec2 = Vec2::new(32.0, 33.0);
 /// The most summoned dummies live at once (Q14, Q45).
 pub const SUMMON_CAP: usize = 8;
 
@@ -41,6 +37,7 @@ impl Plugin for DummyPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Dummy>("dummy");
+        world.register_data_kind::<Body>(BODIES);
         ensure_phases(schedule);
         let mut cursor = EventCursor::new();
         let deaths = system("dummy_deaths", move |world: &mut World| {
@@ -52,10 +49,11 @@ impl Plugin for DummyPlugin {
 }
 
 /// Spawns a dummy with its sprite's top-left at `at`, owned by gameplay,
-/// with the run's next save ID, at once: a summon's or a load's.
+/// with the run's next save ID and its body from its data
+/// ([`shared::fit_body`]), at once: a summon's or a load's.
 pub fn spawn(world: &mut World, at: Vec2) -> Entity {
     let id = world.resource_mut::<SaveIds>().take();
-    world
+    let dummy = world
         .prepare_prefab(DUMMY_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")
         .with((
@@ -63,7 +61,15 @@ pub fn spawn(world: &mut World, at: Vec2) -> Entity {
             PreviousVelocity::default(),
             SceneEntity { state_id: GAMEPLAY },
         ))
-        .spawn(world)
+        .spawn(world);
+    shared::fit_body(world, dummy, DUMMY_PREFAB);
+    dummy
+}
+
+/// The dummy's body, as its data holds it now: every dummy prefab's.
+#[must_use]
+pub fn body(world: &World) -> &Body {
+    shared::body(world, DUMMY_PREFAB)
 }
 
 /// Whether a dummy's body fits with its centre at `at`: no solid tile in
@@ -72,7 +78,7 @@ pub fn spawn(world: &mut World, at: Vec2) -> Entity {
 pub fn fits(world: &World, at: Vec2) -> bool {
     let mut met = Vec::new();
     let shape = Shape::Aabb {
-        half_extents: DUMMY_HALF,
+        half_extents: body(world).half,
     };
     overlap(
         world,
@@ -88,7 +94,7 @@ pub fn fits(world: &World, at: Vec2) -> bool {
 /// poof; past [`SUMMON_CAP`] summoned live, the oldest goes, with its own.
 pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
     let id = world.resource_mut::<SaveIds>().take();
-    let corner = at - DUMMY_CENTRE;
+    let corner = at - body(world).centre;
     let dummy = world
         .prepare_prefab(prefab, corner.to_array())
         .ok()?
@@ -98,6 +104,7 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
             SceneEntity { state_id: GAMEPLAY },
         ))
         .spawn(world);
+    shared::fit_body(world, dummy, DUMMY_PREFAB);
     spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)
         .into_iter()
@@ -109,7 +116,7 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
     {
         if let Some(centre) = world
             .get::<tungsten::core::Position>(oldest)
-            .map(|at| at.0 + DUMMY_CENTRE)
+            .map(|at| at.0 + body(world).centre)
         {
             spawn_key_burst(world, "ex10_poof", centre);
         }
@@ -119,13 +126,15 @@ pub fn summon(world: &mut World, prefab: &str, at: Vec2) -> Option<Entity> {
 }
 
 /// Keeps the save IDs of the dummies the map has just placed for a run,
-/// and gives each its velocity before a step, which an impact reads.
+/// and gives each its body from its data ([`shared::fit_body`]) and its
+/// velocity before a step, which an impact reads.
 pub fn start(world: &mut World) {
     let placed: Vec<(Entity, u64)> = world
         .query::<(Entity, &Dummy, &SaveId)>()
         .map(|(entity, _, id)| (entity, id.0))
         .collect();
     for &(entity, _) in &placed {
+        shared::fit_body(world, entity, DUMMY_PREFAB);
         world.insert(entity, PreviousVelocity::default());
     }
     let mut placed: Vec<u64> = placed.into_iter().map(|(_, id)| id).collect();

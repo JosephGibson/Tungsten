@@ -9,8 +9,8 @@ use example_01_platformer::features::combat::numbers::{
     CRIT_SIZE, FOLLOW_SECS, Numbers, TICK_SIZE,
 };
 use example_01_platformer::features::combat::{CRIT_CHANCE, Hit, Kind};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::spells::components::School;
 use example_01_platformer::features::{dummy, toys};
 use example_01_platformer::shared::{Burst, SaveIds};
@@ -25,6 +25,7 @@ use tungsten::kit::{
 };
 use tungsten::testing::UiHarness;
 
+use super::kind_body;
 use super::{ground, pin_camera, run, stand};
 
 /// The sky's ground.
@@ -551,10 +552,10 @@ fn a_blow_on_flesh_or_the_courier_spurts_blood_and_a_tick_does_not() {
 fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
     let (mut harness, _, _) = with_dummy();
     let kind = EnemyKind::Crawler;
-    let centre = Vec2::new(1300.0, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(1300.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let crawler = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    let crawler = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
     enemies::scale(world, crawler, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(crawler);
     harness.step(1);
@@ -577,10 +578,10 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
 /// An enemy of `kind` standing still on the sky's ground with its body's
 /// centre at `x`, at normal difficulty, its state machine taken off.
 fn foe(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
-    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let foe = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    let foe = enemies::spawn(world, kind, centre - kind_body(kind).centre, id).unwrap();
     enemies::scale(world, foe, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(foe);
     foe

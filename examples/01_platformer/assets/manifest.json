@@ -847,6 +847,32 @@
         "path": "data/abilities/toxic_flask.json"
       }
     },
+    "bodies": {
+      "bat": {
+        "path": "data/bodies/bat.json"
+      },
+      "beetle": {
+        "path": "data/bodies/beetle.json"
+      },
+      "crawler": {
+        "path": "data/bodies/crawler.json"
+      },
+      "dummy": {
+        "path": "data/bodies/dummy.json"
+      },
+      "goblin": {
+        "path": "data/bodies/goblin.json"
+      },
+      "player": {
+        "path": "data/bodies/player.json"
+      },
+      "troll": {
+        "path": "data/bodies/troll.json"
+      },
+      "wisp": {
+        "path": "data/bodies/wisp.json"
+      }
+    },
     "cue_rules": {
       "sounds": {
         "path": "data/cue_rules/sounds.json"

@@ -92,6 +92,9 @@ impl Default for Zoom {
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Glow {
+    /// Left out of the player's prefab, whose lantern's anchors set it
+    /// (`player::systems::anchor`).
+    #[serde(default)]
     pub offset: [f32; 2],
     /// The halo's radius, in world pixels, 0 for none.
     pub radius: f32,

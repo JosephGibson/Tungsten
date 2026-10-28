@@ -20,10 +20,11 @@ use tungsten::render::{SpriteBatch, SpriteInstance};
 use super::beetle::{self, PLOUGH_HALF};
 use super::components::{Brain, Enemy, EnemyKind, EnemyState, Strike};
 use super::goblin::{self, STAB_HALF};
-use super::troll::{self, FIST, SLAM_REACH, SLAM_TELL, SWIPE_HALF};
-use super::{KindInfo, SEARCH_MARK_AFTER};
+use super::troll::{self, SLAM_REACH, SLAM_TELL, SWIPE_HALF};
+use super::{SEARCH_MARK_AFTER, body};
 use crate::features::level::draw::{instance, push_quad, view};
 use crate::features::level::systems::drawn_time;
+use crate::shared::Body;
 
 /// The bar's size, its gap over the troll's frame, and its back's and its
 /// fill's colours.
@@ -37,11 +38,11 @@ const FLAT_TEXEL: Vec2 = Vec2::new(31.5, 31.5);
 
 /// The x of `enemy`'s body in its frame as it is drawn: a left frame is its
 /// right one mirrored, drawn shifted ([`super::systems::clips`]).
-fn body_x(info: KindInfo, heading: f32) -> f32 {
+fn body_x(body: &Body, heading: f32) -> f32 {
     if heading < 0.0 {
-        info.frame - info.centre.x
+        body.frame.x - body.centre.x
     } else {
-        info.centre.x
+        body.centre.x
     }
 }
 
@@ -71,7 +72,7 @@ pub fn bars(world: &World) -> Vec<SpriteBatch> {
         if enemy.kind != EnemyKind::Troll || health.is_dead() {
             continue;
         }
-        let body = body_x(enemy.kind.info(), enemy.heading);
+        let body = body_x(body(world, enemy.kind), enemy.heading);
         let origin = at.position + Vec2::new(body - BAR_SIZE.x / 2.0, -BAR_RISE - BAR_SIZE.y);
         if (origin + BAR_SIZE).cmplt(min).any() || origin.cmpgt(max).any() {
             continue;
@@ -113,7 +114,7 @@ pub fn charges(world: &World) -> Vec<SpriteBatch> {
         return Vec::new();
     };
     let (min, max) = view(world);
-    let half = EnemyKind::Beetle.info().half;
+    let half = body(world, EnemyKind::Beetle).half;
     let frame = (drawn_time(world) / STREAK_FRAME_SECS) as usize % STREAK_FRAMES;
     let mut batches = Vec::new();
     for (enemy, machine, at) in world.query::<(&Enemy, &StateMachine<EnemyState>, &Transform)>() {
@@ -124,8 +125,8 @@ pub fn charges(world: &World) -> Vec<SpriteBatch> {
         let Some(asset) = assets.get_sprite(&format!("{STREAK}_{frame}{side}")) else {
             continue;
         };
-        let info = enemy.kind.info();
-        let centre = at.position + Vec2::new(body_x(info, enemy.heading), info.centre.y);
+        let body = body(world, enemy.kind);
+        let centre = at.position + Vec2::new(body_x(body, enemy.heading), body.centre.y);
         let size = Vec2::new(asset.width as f32, asset.height as f32);
         let rear = centre.x - enemy.heading * (half.x + STREAK_BEHIND);
         let left = if enemy.heading > 0.0 {
@@ -178,9 +179,12 @@ pub fn rings(world: &World) -> Vec<SpriteBatch> {
         if reach < 2.0 {
             continue;
         }
-        let info = enemy.kind.info();
-        let centre = at.position + Vec2::new(body_x(info, enemy.heading), info.centre.y);
-        let fist = centre + Vec2::new(FIST.x * enemy.heading, FIST.y);
+        let body = body(world, enemy.kind);
+        let Some(fist) = body.point("fist", enemy.heading) else {
+            continue;
+        };
+        let centre = at.position + Vec2::new(body_x(body, enemy.heading), body.centre.y);
+        let fist = centre + fist - body.centre;
         let span = Vec2::new(reach, reach * RING_FLAT) + RING_DOT;
         if (fist + span).cmplt(min).any() || (fist - span).cmpgt(max).any() {
             continue;
@@ -255,7 +259,7 @@ pub fn marks(world: &World) -> Vec<SpriteBatch> {
         } else {
             0.0
         };
-        let body = body_x(enemy.kind.info(), enemy.heading);
+        let body = body_x(body(world, enemy.kind), enemy.heading);
         let rise = MARK_RISE + bar + MARK_SIDE + bob;
         let origin = at.position + Vec2::new(body - MARK_SIDE / 2.0, -rise);
         if (origin + Vec2::splat(MARK_SIDE)).cmplt(min).any() || origin.cmpgt(max).any() {

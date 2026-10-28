@@ -14,11 +14,11 @@
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::Kind;
+use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
-use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::EnemyKind;
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::gun;
 use example_01_platformer::features::level;
 use example_01_platformer::features::lightning;
@@ -40,6 +40,7 @@ use tungsten::kit::{DamagedPart, ImmunePart, Stats};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, apply, dummy_at};
+use super::kind_body;
 use super::{aim_at, ball, body, bursts, choose, floor, ground, pin_camera, run, stand};
 
 /// A run on the sky's ground at one step a frame, the courier at `x`, the
@@ -365,7 +366,8 @@ fn a_frozen_keg_shatters_in_fire_and_never_blows() {
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let entity = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let entity =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }

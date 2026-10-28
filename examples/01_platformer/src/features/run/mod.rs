@@ -80,10 +80,12 @@ impl GameState for GameplayState {
         enemies::drops::start(world);
         let feet = level::marker(world, level::SPAWN_MARKER).expect("the map marks the spawn");
         // Half a pixel above the turf, so its first steps find the ground.
-        let spawn = feet - Vec2::new(0.0, player::PLAYER_HALF.y + 0.5);
-        let centre = start.save.as_ref().map_or(spawn, |save| {
-            Vec2::from(save.player.position) + player::BODY_OFFSET
-        });
+        let body = player::body(world);
+        let spawn = feet - Vec2::new(0.0, body.half.y + 0.5);
+        let centre = start
+            .save
+            .as_ref()
+            .map_or(spawn, |save| Vec2::from(save.player.position) + body.centre);
         let player = player::spawn(world, centre);
         // A fresh run sets the mine's loose iron down, then the map's crates
         // and kegs (`MapProp`) and the hollow's stones, quietly, each taking

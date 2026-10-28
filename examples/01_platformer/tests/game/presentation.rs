@@ -15,7 +15,6 @@ use example_01_platformer::features::level::draw;
 use example_01_platformer::features::level::systems::{HALO, HALO_MATERIAL};
 use example_01_platformer::features::player::components::{Lantern, LanternAnchors, Moves};
 use example_01_platformer::features::player::systems::{JUMP_PUFF, LANDING_DUST};
-use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{BURST_CAP, Burst, spawn_burst};
 use example_01_platformer::shell::options::GameOptions;
@@ -33,6 +32,7 @@ use tungsten::testing::UiHarness;
 use tungsten::{SceneEntity, WindowSize, extract_sprites_default, extract_tilemap_layers};
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::beetle::{self, PLOUGH_HALF};
 use example_01_platformer::features::enemies::components::{
     Brain, Enemy, EnemyKind, EnemyState, Strike,
@@ -42,7 +42,6 @@ use example_01_platformer::features::enemies::draw::{
 };
 use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::components::SceneTime;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
@@ -58,6 +57,7 @@ use tungsten::kit::{Hitbox, KitDebug, StateMachine};
 use super::{
     aim_at, calm, centre, choose, fall_dead, mock_sprite, pin_camera, press, run, teleport,
 };
+use super::{body_offset, kind_body, player_half};
 
 fn clip(harness: &UiHarness, player: Entity) -> String {
     let state = harness.world().get::<AnimationState>(player).unwrap();
@@ -139,7 +139,7 @@ fn jump_landing_bursts_fire_once_stay_at_event_and_cleanup() {
     // The geysers' bursts aside, which never drain (e01hollow).
     calm(&mut harness);
     harness.step(5);
-    let takeoff = centre(&harness, player) + Vec2::new(0.0, PLAYER_HALF.y);
+    let takeoff = centre(&harness, player) + Vec2::new(0.0, player_half().y);
     harness.harness_mut().press_action("jump");
     harness.step(1);
     let world = harness.world();
@@ -408,7 +408,7 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
             true,
         );
     }
-    let feet = world.get::<Position>(player).unwrap().0 + BODY_OFFSET + Vec2::Y * PLAYER_HALF.y;
+    let feet = world.get::<Position>(player).unwrap().0 + body_offset() + Vec2::Y * player_half().y;
     for (i, name) in frames.iter().enumerate() {
         let id = world.resource::<AssetRegistry>().sprite_id(name).unwrap();
         world.get_mut::<Sprite>(player).unwrap().asset_id = id;
@@ -428,7 +428,7 @@ fn all_player_orb_frames_keep_lighting_material_facing_and_bottom_anchor() {
             "mirrored art, never a flipped quad"
         );
         // The art's feet, its row 93, stand on the body's bottom.
-        let row = BODY_OFFSET.y + PLAYER_HALF.y;
+        let row = body_offset().y + player_half().y;
         assert!((sprite.position[1] + row - feet.y).abs() < 1e-3, "{name}");
     }
 }
@@ -498,7 +498,7 @@ fn player_lantern_toggle_controls_halo_and_native_light_and_tracks_facing() {
     for (name, [x, y]) in &anchors.0 {
         if let Some([left, left_y]) = anchors.0.get(&format!("{name}_left")) {
             assert!(
-                (x + left - 2.0 * BODY_OFFSET.x).abs() < 1e-3 && y == left_y,
+                (x + left - 2.0 * body_offset().x).abs() < 1e-3 && y == left_y,
                 "{name}"
             );
         }
@@ -1001,10 +1001,11 @@ fn a_death_at_the_burst_cap_takes_a_cosmetic_bursts_slot() {
 /// A crawler on the sky's ground with its centre at `x`, at Normal.
 fn crawler(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Crawler;
-    let centre = Vec2::new(x, SKY_TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let crawler = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let crawler =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, crawler, Difficulty::Normal);
     crawler
 }
@@ -1044,10 +1045,11 @@ const SKY_TOP: f32 = 1000.0;
 /// An enemy of `kind` on the sky's ground at `x`, at Normal, its mind
 /// taken, so it stands.
 fn standing(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
-    let centre = Vec2::new(x, SKY_TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, SKY_TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let enemy =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, enemy, Difficulty::Normal);
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy

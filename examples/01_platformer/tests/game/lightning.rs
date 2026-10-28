@@ -10,11 +10,11 @@ use std::collections::BTreeSet;
 
 use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::combat::{BURNING, has_status};
+use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::cascade::{CascadeKind, Cascades, Entry};
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
-use example_01_platformer::features::elements::{self};
+use example_01_platformer::features::enemies;
 use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState};
-use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::draw::view;
 use example_01_platformer::features::lightning::components::{Arc, Bolt, Scorch, StrikeLight};
@@ -22,7 +22,6 @@ use example_01_platformer::features::lightning::{
     self, ARC_SECS, JUMP_KEEP, MAX_JUMPS, Met, SCORCH_ANCHOR, SCORCH_CAP, STRIKE_LIGHT,
     STRIKE_SHOCK, draw,
 };
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
@@ -40,6 +39,7 @@ use super::combat::{TOP, dummy_at, health};
 use super::{
     aim_at, ball, body, bursts, centre, choose, floor, ground, mana, mock_sprite, pin_camera, run,
 };
+use super::{kind_body, player_half};
 use super::{stand, steps_this_frame};
 
 /// An iron block's centre on the sky's ground.
@@ -165,7 +165,7 @@ fn a_strike_under_a_ceiling_hits_the_ceiling() {
     // stands on, it lands on that ground's top or above it.
     let (mut harness, player) = run();
     harness.step(30);
-    let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
+    let feet = centre(&harness, player) + Vec2::Y * player_half().y;
     let aim = feet + Vec2::Y * 3.0 * TILE;
     let landing = lightning::bolt_end(harness.world(), aim, Some(player)).at;
     assert!(
@@ -490,7 +490,7 @@ fn a_strike_on_an_enemy_or_iron_meets_a_body_and_snaps() {
         let target = if case == "iron" {
             toys::place_iron(harness.world_mut(), Vec2::new(900.0, IRON_Y))
         } else {
-            let half = EnemyKind::Goblin.info().half.y;
+            let half = kind_body(EnemyKind::Goblin).half.y;
             still_enemy(
                 &mut harness,
                 EnemyKind::Goblin,
@@ -585,7 +585,8 @@ fn a_jumps_arc_crackles_on_new_paths_and_goes_after_its_life() {
 fn still_enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let enemy =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     world.remove_component::<StateMachine<EnemyState>>(enemy);
     enemy
 }
@@ -597,14 +598,14 @@ fn a_bolt_through_an_enemy_s_art_meets_it() {
     // over it, which the bolt passed for the ground before.
     let mut missed = Vec::new();
     for kind in EnemyKind::ALL {
-        let info = kind.info();
-        assert!(info.strike > info.half.x, "{kind:?}'s art is wider");
+        let (info, half) = (kind.info(), kind_body(kind).half);
+        assert!(info.strike > half.x, "{kind:?}'s art is wider");
         for side in [-1.0, 1.0] {
             let (mut harness, player) = sky();
             let centre = if info.flyer {
                 Vec2::new(900.0, TOP - 200.0)
             } else {
-                Vec2::new(900.0, TOP - info.half.y - 0.5)
+                Vec2::new(900.0, TOP - half.y - 0.5)
             };
             let enemy = still_enemy(&mut harness, kind, centre);
             harness.step(1);
@@ -633,8 +634,8 @@ fn every_enemy_conducts_and_one_that_takes_no_shock_ends_the_chain() {
     // goblin past it, each within a jump of the next.
     let (mut harness, player) = sky();
     let rod = toys::place_iron(harness.world_mut(), Vec2::new(600.0, IRON_Y));
-    let goblin = EnemyKind::Goblin.info().half.y;
-    let crawler = EnemyKind::Crawler.info().half.y;
+    let goblin = kind_body(EnemyKind::Goblin).half.y;
+    let crawler = kind_body(EnemyKind::Crawler).half.y;
     let first = still_enemy(
         &mut harness,
         EnemyKind::Goblin,

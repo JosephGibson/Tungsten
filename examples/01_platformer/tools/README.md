@@ -45,8 +45,9 @@ extinguishing and sound effects").
 the player, the projectiles (the fireball and the fire missile), the balls, the
 dummy, each enemy by its `ENEMY_CLIPS` prefix (`wisp`, `crawler`, `beetle`,
 `bat`, `troll`, `goblin`), the stones, scenery, props, terrain, backdrops, the
-effects (with `polish_art.py`'s art), the tomes, the level (the map, its tileset
-record, opaque tiles, prefabs and moving decks), `content` (the shell's copies,
+effects (with `polish_art.py`'s art), the tomes, the actors' bodies
+(`bodies`), the level (the map, its tileset record, opaque tiles, prefabs and
+moving decks), `content` (the shell's copies,
 `content/`, the glow shader and materials, the particle configs), the sounds
 and the music (with the areas' ambience loops, `sfx.MUSIC`). From the
 repository root, `python3 -B examples/01_platformer/tools/generate.py --family
@@ -58,7 +59,8 @@ from another family's art is that family's: each summon's icon is its enemy's,
 the dummy's or the props', the missile's the projectiles' and each tome's the
 tomes' (`effects.ICON_FAMILIES`). A family whose outputs draw on another's
 code or art declares it in `uses`: the icons' families use the effects (the
-icon tile), scenery and the backdrops the terrain (its masonry and rock), and
+icon tile), scenery and the backdrops the terrain (its masonry and rock), the
+bodies the player, the dummy, each enemy and the effects (the hurtboxes), and
 the level every family whose art it reads (the terrain, scenery, backdrops, the
 pickups' orbs in the effects and the tomes' books), which a full run checks. A
 change to shared code (`pixels.py`, `art.py`, `palette.json`, `actors.py`'s rig
@@ -93,6 +95,22 @@ Regular and under its licence, as `serif_bold` in the `serif` family, which
 the area titles draw at weight 700. `content/` holds the prefab
 and data sources, copied verbatim: `content/prefabs/<id>.json` becomes the prefab
 `<id>`, and `content/data/<kind>/<id>.json` the `<kind>` entry `<id>`.
+
+The `bodies` family writes each actor's body as the `bodies` entry of its
+name, `data/bodies/<actor>.json` (the player, the dummy and the six enemies),
+from `actors.BODIES` and the hurtboxes the ice is fitted to
+(`effects.HURTBOXES`): its frame's size, its rigid body's centre and half
+size, its hurtbox as a prefab writes one, and its named points (each enemy's
+`eye`, the troll's `fist` and `hands`, the goblin's `hand`, the crawler's
+`snowball`, the beetle's `plough`), all from a frame's top-left, each point
+facing right and left, the left mirrored about the body's centre, where 01
+draws a left-facing frame's body. 01 reads them in place of restated
+constants, and each spawn takes its collider, hurtbox and aim's origin from
+them over its prefab's copies. Every run holds each actor's prefabs (the
+armoured troll's to the troll's) to its file (`check_bodies`), and a walker's
+body and the wizard's to their frames' feet row (`art.WALKER_FEET`,
+`art.PLAYER_FEET`). The player's prefab leaves its glow's offset out: its
+lantern's anchors set it.
 
 ## Editing art
 
@@ -1073,8 +1091,9 @@ cap, a side in shade, frost thick at the edges, a drift at the foot, frost ferns
 bubbles, cracks, a chipped corner and sparkles, the body showing through a clearer
 window. `status_ice_<kind>` fits each kind's hurtbox plus 2 pixels on a full frame
 (`HURTBOXES`: the wisp, the crawler, the beetle, the bat, the troll, the goblin and the dummy; `PROP_BOXES`: the crate and the keg),
-so what lies outside the hurtbox shows outside the ice; `generate.check_ice_fits`
-holds each box to its prefab's hurtbox wherever that prefab exists. The size
+so what lies outside the hurtbox shows outside the ice; each box is its
+kind's body file's hurtbox (`generate.bodies`), which `generate.check_bodies`
+holds its prefabs to. The size
 classes' `status_ice_<class>` and the ball's `ice_shell` are cubes too. A frozen
 target with health shows `frozen_glints` over the 16-pixel `ice_glint`; frozen balls
 and iron show none. The wisp's embers are `wisp_embers` over the spark. The drops are

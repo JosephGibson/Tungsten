@@ -46,7 +46,7 @@ mod tomes;
 
 use std::path::PathBuf;
 
-use example_01_platformer::features::enemies::components::Enemy;
+use example_01_platformer::features::enemies::components::{Enemy, EnemyKind};
 use example_01_platformer::features::level::geyser::Geyser;
 use example_01_platformer::features::player as courier;
 use example_01_platformer::features::props::components::Stone;
@@ -55,7 +55,7 @@ use example_01_platformer::features::spells as game_spells;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
 use example_01_platformer::game;
-use example_01_platformer::shared::{Burst, despawn_tree};
+use example_01_platformer::shared::{Body, Burst, despawn_tree};
 use example_01_platformer::shell::{self as game_shell, Difficulty, GameInfo, RunStart};
 use glam::Vec2;
 use tungsten::core::assets::UvRect;
@@ -229,7 +229,7 @@ pub fn run() -> (UiHarness, Entity) {
 /// drawn sliding there, and stops it.
 pub fn teleport(harness: &mut UiHarness, entity: Entity, centre: Vec2) {
     let world = harness.world_mut();
-    let at = centre - courier::BODY_OFFSET;
+    let at = centre - body_offset();
     world.get_mut::<Position>(entity).expect("a body").0 = at;
     world.get_mut::<PrevPosition>(entity).expect("a body").0 = at;
     if let Some(velocity) = world.get_mut::<Velocity>(entity) {
@@ -240,6 +240,28 @@ pub fn teleport(harness: &mut UiHarness, entity: Entity, centre: Vec2) {
 /// The player's body centre.
 pub fn centre(harness: &UiHarness, entity: Entity) -> Vec2 {
     courier::centre(harness.world(), entity).expect("the player has a body")
+}
+
+/// `actor`'s body as its data file holds it, which the game loads
+/// ([`Body`]): `player`, `dummy` or an enemy kind's prefab's.
+pub fn actor_body(actor: &str) -> Body {
+    let path = format!("assets/data/bodies/{actor}.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{path}: {error}"));
+    serde_json::from_str(&text).unwrap_or_else(|error| panic!("{path}: {error}"))
+}
+
+/// `kind`'s body ([`actor_body`]).
+pub fn kind_body(kind: EnemyKind) -> Body {
+    actor_body(kind.info().prefab)
+}
+
+/// The player's body's half size, and its centre from its sprite's corner.
+pub fn player_half() -> Vec2 {
+    actor_body("player").half
+}
+
+pub fn body_offset() -> Vec2 {
+    actor_body("player").centre
 }
 
 /// The fixed steps the last frame ran.
@@ -371,6 +393,6 @@ pub fn ground(harness: &mut UiHarness, top: f32) -> Entity {
 
 /// Stands `player` on a floor whose top is at `top`, its centre at `x`.
 pub fn stand(harness: &mut UiHarness, player: Entity, x: f32, top: f32) {
-    let centre = Vec2::new(x, top - courier::PLAYER_HALF.y - 0.5);
+    let centre = Vec2::new(x, top - player_half().y - 0.5);
     teleport(harness, player, centre);
 }

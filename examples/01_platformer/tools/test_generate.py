@@ -326,7 +326,8 @@ class FamilyTests(unittest.TestCase):
 
     def test_a_troll_drawn_otherwise_changes_with_its_family_what_a_full_run_changes(self):
         # One pixel of the troll's canvas changed in memory: `--family
-        # troll` changes exactly what a full run does, its icons included.
+        # troll` changes exactly what a full run does, its icons included,
+        # and builds the bodies, which use it, unchanged.
         import actors
         original = actors.troll_canvas
 
@@ -338,7 +339,9 @@ class FamilyTests(unittest.TestCase):
         try:
             with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
                 generate(Path(a))
-                self.assertEqual(generate(Path(b), users({'troll'}), self.full), {'troll': self.paths['troll']})
+                self.assertEqual(users({'troll'}), {'troll', 'bodies'})
+                self.assertEqual(generate(Path(b), users({'troll'}), self.full),
+                                 {name: self.paths[name] for name in ('troll', 'bodies')})
                 everything = self.changed(Path(a))
                 self.assertEqual(self.changed(Path(b)), everything)
                 self.assertLessEqual({'assets/sprites/icon_troll.png', 'assets/sprites/icon_troll_armoured.png',

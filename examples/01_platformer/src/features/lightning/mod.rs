@@ -29,7 +29,7 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::combat::{FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, Cascades, Entry, Jump};
 use crate::features::elements::components::Frozen;
-use crate::features::enemies::components::Enemy;
+use crate::features::enemies::{self, components::Enemy};
 use crate::features::level::{WORLD_MAX, WORLD_MIN};
 use crate::features::props::{self, components::Keg};
 use crate::features::run::Run;
@@ -248,7 +248,7 @@ pub fn bolt_end(world: &World, point: Vec2, caster: Option<Entity>) -> Landing {
             continue;
         };
         let info = enemy.kind.info();
-        let face = centre.y - info.half.y - top.y;
+        let face = centre.y - enemies::body(world, enemy.kind).half.y - top.y;
         if (point.x - centre.x).abs() <= info.strike && (0.0..stop).contains(&face) {
             stop = face;
             what = Met::Body(entity);

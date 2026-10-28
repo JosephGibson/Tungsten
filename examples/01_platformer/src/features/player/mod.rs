@@ -21,7 +21,7 @@ use tungsten::{Plugin, SceneEntity};
 use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
-use crate::shared::{Bursts, SaveId};
+use crate::shared::{self, BODIES, Body, Bursts, SaveId};
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
@@ -29,11 +29,6 @@ pub const PLAYER_PREFAB: &str = "player";
 /// The name the player's save ID derives from ([`SaveId::authored`]),
 /// which no map object takes.
 pub const SAVE_NAME: &str = "player";
-/// The body's half size and where its centre sits from the sprite's
-/// top-left corner, the entity's point: the wizard's 96 px art stands its
-/// feet on its row 93.
-pub const PLAYER_HALF: Vec2 = Vec2::new(20.0, 28.0);
-pub const BODY_OFFSET: Vec2 = Vec2::new(48.0, 65.0);
 /// The side of the square the player's status overlays draw in, centred on
 /// his body: the courier's 64 px frame, which they were drawn for.
 pub const OVERLAY_SIDE: f32 = 64.0;
@@ -105,6 +100,7 @@ impl Plugin for PlayerPlugin {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<components::Player>("player");
         world.register_data_kind::<LanternAnchors>("lantern_anchors");
+        world.register_data_kind::<Body>(BODIES);
         ensure_phases(schedule);
         let mut cursor = EventCursor::new();
         // Before the kit's cues, which play its sound in the same step.
@@ -158,10 +154,12 @@ pub enum Gesture {
 }
 
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
-/// at its prefab's health, with the save ID of [`SAVE_NAME`], its staff
-/// light off, and its prefab's glow kept for the staff's flare.
+/// at its prefab's health, with the save ID of [`SAVE_NAME`], its body
+/// from its data ([`shared::fit_body`]), its staff light off, and its
+/// prefab's glow at its staff's orb ([`systems::anchor`]), kept for the
+/// staff's flare.
 pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
-    let at = centre - BODY_OFFSET;
+    let at = centre - body(world).centre;
     let id = SaveId::authored(SAVE_NAME);
     let player = world
         .prepare_prefab(PLAYER_PREFAB, at.to_array())
@@ -173,7 +171,11 @@ pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
             Moves::default(),
         ))
         .spawn(world);
-    if let Some(glow) = world.get::<Glow>(player).copied() {
+    shared::fit_body(world, player, PLAYER_PREFAB);
+    let anchor = systems::anchor(world, player);
+    if let Some(glow) = world.get_mut::<Glow>(player) {
+        glow.offset = anchor.unwrap_or(glow.offset);
+        let glow = *glow;
         world.insert(player, StaffGlow(glow));
     }
     shove_bodies(world, player);
@@ -202,6 +204,12 @@ pub fn cast(world: &mut World, player: Entity, aim: Vec2, gesture: Gesture) {
         moves.gesture = Some(gesture);
         moves.cast = CAST_SECS;
     }
+}
+
+/// The player's body, as its data holds it now.
+#[must_use]
+pub fn body(world: &World) -> &Body {
+    shared::body(world, PLAYER_PREFAB)
 }
 
 /// Where the player's body is: its centre.

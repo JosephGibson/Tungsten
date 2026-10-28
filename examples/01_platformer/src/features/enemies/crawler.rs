@@ -73,17 +73,16 @@ pub const HOPS: Hops = Hops {
 /// Its snowball (V22): the player's band, from [`SNOWBALL_NEAR`] to
 /// [`SNOWBALL_FAR`] across and no more than [`SNOWBALL_RISE`] above or
 /// below; its silent tell and its throw's clip, seconds; the seconds
-/// before it may throw again; where it lets go from its sprite's top-left
-/// facing right, just ahead of its mouth and clear of its body; and its
-/// flight's seconds a pixel to the player, at least and at most, on the
-/// world's gravity.
+/// before it may throw again; and its flight's seconds a pixel to the
+/// player, at least and at most, on the world's gravity. It lets go from
+/// its body's `snowball` point, just ahead of its mouth and clear of its
+/// body ([`flick`]).
 pub const SNOWBALL_NEAR: f32 = 140.0;
 pub const SNOWBALL_FAR: f32 = 290.0;
 pub const SNOWBALL_RISE: f32 = 160.0;
 pub const SNOWBALL_TELL: f32 = 0.36;
 pub const SNOWBALL_SECS: f32 = 0.25;
 pub const SNOWBALL_COOLDOWN: f32 = 4.0;
-pub const SNOWBALL_FROM: Vec2 = Vec2::new(66.0, 40.0);
 pub const SNOWBALL_PACE: f32 = 1.0 / 650.0;
 pub const SNOWBALL_LEAST: f32 = 0.3;
 pub const SNOWBALL_MOST: f32 = 0.7;
@@ -341,7 +340,7 @@ pub fn windup(world: &mut World, crawler: Entity) {
     }
 }
 
-/// Its snowball, at its attack's start: from [`SNOWBALL_FROM`], mirrored
+/// Its snowball, at its attack's start: from its body's `snowball` point
 /// as it faces, at the player's centre on the world's gravity, a flight of
 /// its distance at [`SNOWBALL_PACE`] held to
 /// [`SNOWBALL_LEAST`]–[`SNOWBALL_MOST`], at its damage factor now; its
@@ -351,12 +350,11 @@ fn flick(world: &mut World, crawler: Entity) {
         return;
     };
     let heading = world.get::<Enemy>(crawler).map_or(1.0, |mine| mine.heading);
-    let info = EnemyKind::Crawler.info();
-    let from = at
-        + Vec2::new(
-            (SNOWBALL_FROM.x - info.centre.x) * heading,
-            SNOWBALL_FROM.y - info.centre.y,
-        );
+    let body = super::body(world, EnemyKind::Crawler);
+    let Some(from) = body.point("snowball", heading) else {
+        return;
+    };
+    let from = at + from - body.centre;
     let gravity = world
         .get_resource::<PhysicsConfig>()
         .map_or(Vec2::ZERO, |config| config.gravity);

@@ -6,7 +6,7 @@
 
 use example_01_platformer::features::level::TILE;
 use example_01_platformer::features::level::components::Hazard;
-use example_01_platformer::features::player::{self, PLAYER_HALF};
+use example_01_platformer::features::player;
 use example_01_platformer::features::run::banner;
 use example_01_platformer::game;
 use example_01_platformer::save::SaveGame;
@@ -17,6 +17,7 @@ use tungsten::core::{Entity, SaveSlots, Transform, UserFolder};
 use tungsten::kit::{Health, PlatformerController};
 use tungsten::testing::UiHarness;
 
+use super::player_half;
 use super::{calm, harness_with, player_entity, start, top, user_folder};
 
 /// The areas the route crosses, in order.
@@ -189,12 +190,12 @@ impl Walker {
                 };
                 let centre = point.position + offset;
                 let ahead = (centre.x - at.x) * direction;
-                let near = ahead > -(half.x + PLAYER_HALF.x) && ahead < half.x + 1.4 * TILE;
+                let near = ahead > -(half.x + player_half().x) && ahead < half.x + 1.4 * TILE;
                 // In the way: from a little above the body's centre down past
                 // its feet, where spikes sit; a fire hovering higher passes over
                 // a walk, and a jump would meet it.
                 let dy = centre.y - at.y;
-                let level = dy > -(half.y + 16.0) && dy < PLAYER_HALF.y + TILE;
+                let level = dy > -(half.y + 16.0) && dy < player_half().y + TILE;
                 near && level
             })
     }
@@ -270,7 +271,7 @@ impl Walker {
             }
             self.step();
             let at = self.centre();
-            let on = (at.y + PLAYER_HALF.y - to.row * TILE).abs() < 1.0
+            let on = (at.y + player_half().y - to.row * TILE).abs() < 1.0
                 && at.x >= to.left * TILE
                 && at.x <= to.right * TILE;
             if tick > 3 && self.grounded() && on || self.health() <= 0.0 {
@@ -281,7 +282,7 @@ impl Walker {
             self.set(action, false);
         }
         let at = self.centre();
-        (at.y + PLAYER_HALF.y - to.row * TILE).abs() < 1.0 && self.grounded()
+        (at.y + player_half().y - to.row * TILE).abs() < 1.0 && self.grounded()
     }
 }
 
@@ -330,7 +331,7 @@ fn a_new_game_walks_the_main_route_to_the_troll_bridges_end() {
     let at = walker.centre();
     assert!(
         walker.grounded()
-            && (at.y + PLAYER_HALF.y - end.row * TILE).abs() < 1.0
+            && (at.y + player_half().y - end.row * TILE).abs() < 1.0
             && at.x > end.left * TILE,
         "at the bridge's end: {}",
         at / TILE

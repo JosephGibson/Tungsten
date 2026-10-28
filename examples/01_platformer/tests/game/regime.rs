@@ -3,7 +3,6 @@
 //! collider over its tiles' slabs, and every collision event reaching a
 //! fixed reader before and after `physics_step` exactly once.
 
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::game;
 use glam::Vec2;
 use tungsten::core::{CollisionEvent, Entity, EventQueue, UserFolder, World};
@@ -11,6 +10,7 @@ use tungsten::plugins::PHYSICS_STEP;
 use tungsten::testing::UiHarness;
 use tungsten::{Stage, system};
 
+use super::player_half;
 use super::{app, centre, player_entity, start, teleport};
 
 /// Frame dts: two steps a frame, one, and mostly none.
@@ -105,7 +105,7 @@ fn run(name: &str, dt: f32) -> (String, Vec<String>) {
     start(&mut harness);
     harness.harness_mut().set_dt(dt);
     let player = player_entity(&harness);
-    let rest_y = ROW_TOP - PLAYER_HALF.y;
+    let rest_y = ROW_TOP - player_half().y;
     teleport(&mut harness, player, Vec2::new(START_X, rest_y - 0.5));
     let frames = |secs: f32| (secs / dt).round() as u32;
     harness.step(frames(SETTLE_SECS));
