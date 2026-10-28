@@ -7,13 +7,16 @@ license.workspace = true
 description = "Umbrella crate and winit application loop for the Tungsten 2D engine"
 
 [features]
-default = ["kit"]
+default = ["kit", "gamepad"]
 # The kit, `tungsten::kit`: generic gameplay components and systems over core,
 # each behind an opt-in plugin.
 kit = ["dep:tungsten-kit"]
 # The headless test harness, `tungsten::testing` (`D-110`); games enable it as
 # a dev-dependency feature.
 testing = []
+# Gamepad input through gilrs (`D-220`): its backend thread and, on Linux,
+# libudev. Without it no pad is read.
+gamepad = ["dep:gilrs"]
 
 [dependencies]
 tungsten-core = { workspace = true }
@@ -29,6 +32,7 @@ anyhow = { workspace = true }
 cpal = { workspace = true }
 notify = { workspace = true }
 rtrb = { workspace = true }
+gilrs = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

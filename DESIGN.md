@@ -23,7 +23,7 @@ A dependency is acceptable only if at least one D-015 rule applies.
 
 | Rule | Applies To |
 | --- | --- |
-| 1. Platform API abstraction | `winit`, `wgpu`, `notify`, `cpal` |
+| 1. Platform API abstraction | `winit`, `wgpu`, `notify`, `cpal`, `gilrs` (`D-220`) |
 | 2. Well-specified data format | `serde_json`, `image`, `symphonia` |
 | 3. Math / primitive (solved problem) | `glam`, `bytemuck`, `pollster`, `rtrb`, `taffy` (`D-124`) |
 
@@ -55,7 +55,7 @@ Reject crates that would hand over work this project is supposed to build. Examp
 
 ### Frame Loop
 
-The app runs synchronously on the main thread; the audio callback and file watcher provide the two engine background paths. `crates/tungsten/src/app.rs` owns the order:
+The app runs synchronously on the main thread; the audio callback, the file watcher and the gamepad backend (`D-220`) provide the three engine background paths. `crates/tungsten/src/app.rs` owns the order:
 
 ```text
 setup:      parse config → construct App/World and resources

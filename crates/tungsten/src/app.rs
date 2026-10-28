@@ -105,6 +105,9 @@ pub struct App {
     hot_reload: Option<HotReloadWatcher>,
     /// Directories given to `enable_hot_reload`; `run` starts the watcher.
     hot_reload_dirs: Option<Vec<PathBuf>>,
+    /// The gamepad backend `run` starts (`D-220`); never in the harness.
+    #[cfg(feature = "gamepad")]
+    gamepads: Option<input_bridge::GamepadBackend>,
     manifest_path: Option<PathBuf>,
     // D-052: ordered manifest roots merged before user startup.
     manifest_roots: Vec<PathBuf>,
@@ -372,6 +375,8 @@ impl App {
             audio: None,
             hot_reload: None,
             hot_reload_dirs: None,
+            #[cfg(feature = "gamepad")]
+            gamepads: None,
             manifest_path: None,
             manifest_roots: Vec::new(),
             input_map_path,
@@ -602,6 +607,7 @@ impl App {
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
         self.start_hot_reload();
+        self.start_gamepads();
         let event_loop = EventLoop::new()
             .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
         event_loop
@@ -665,6 +671,33 @@ impl App {
             self.manifest_path.as_deref(),
         ));
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
+    }
+
+    /// Starts the gamepad backend (`D-220`), after the watcher: its thread
+    /// is the third background thread. Without the `gamepad` feature there
+    /// is none.
+    #[cfg_attr(not(feature = "gamepad"), allow(clippy::unused_self))]
+    fn start_gamepads(&mut self) {
+        #[cfg(feature = "gamepad")]
+        {
+            let smoke = self.smoke_frames_remaining.is_some();
+            if let Some(input) = self.world.get_resource_mut::<InputState>() {
+                self.gamepads = input_bridge::GamepadBackend::start(input, smoke);
+            }
+        }
+    }
+
+    /// Drains the gamepad backend's events into `InputState`, at the frame's
+    /// start, so they follow the window events that arrived before it.
+    #[inline(always)]
+    #[cfg_attr(not(feature = "gamepad"), allow(clippy::unused_self))]
+    fn stage_gamepads(&mut self) {
+        #[cfg(feature = "gamepad")]
+        if let Some(backend) = self.gamepads.as_mut()
+            && let Some(input) = self.world.get_resource_mut::<InputState>()
+        {
+            backend.drain(input, self.smoke_frames_remaining.is_some());
+        }
     }
 
     /// Whether `engine_exit` was just pressed (`D-149`). When the schedule
@@ -1714,6 +1747,7 @@ impl App {
     ) -> FrameEnd {
         let interval_ms =
             frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
+        self.stage_gamepads();
         self.apply_pending_display_request();
 
         self.stage_time(clock);

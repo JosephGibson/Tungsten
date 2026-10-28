@@ -41,6 +41,9 @@ wgpu = "30.0.1"
 winit = "0.30.12"
 cpal = "0.18"
 notify = { version = "8.2", default-features = false }
+# Gamepads (D-015 rule 1, D-220): default features, WGI on Windows; force
+# feedback stays off at build time in the backend, so one thread.
+gilrs = "0.11"
 
 # Data format parsing (D-015 rule 2)
 serde = { version = "1", features = ["derive"] }

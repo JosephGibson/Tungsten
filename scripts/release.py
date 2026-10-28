@@ -419,8 +419,8 @@ def readme(tag, target, members, suffix, levels, game=None, templates=()):
         needs = wrapped("They need a GPU with current DirectX 12 or Vulkan drivers.", keep)
     else:
         start = wrapped("Programs made with the Tungsten game engine. Start one from a terminal in this folder:")
-        needs = wrapped("They need a GPU with a current Vulkan driver, ALSA (libasound2), libxkbcommon and "
-                        "X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may lack "
+        needs = wrapped("They need a GPU with a current Vulkan driver, ALSA (libasound2), libudev, libxkbcommon "
+                        "and X11 or Wayland libraries. Built on Ubuntu 24.04; much older distributions may lack "
                         "a new enough glibc.", keep)
     # Windows builds open no console (D-119), so only Linux shows the launcher's line.
     logs = ["The programs open no console."] if suffix else []

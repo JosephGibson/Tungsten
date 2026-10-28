@@ -41,7 +41,7 @@ Asset files are listed in a `manifest.json` and named by registry ID. [`docs/ass
 ## Hard rules
 
 - No external ECS or engine crate (`bevy_ecs`, `hecs`, `specs`, `legion`, `amethyst`, `fyrox`, `ggez`, `macroquad`; `D-005`).
-- No async runtime (`tokio`, `async-std`). Only two background threads: the `cpal` callback (commands via `rtrb`, `D-034`) and the `notify` watcher (events via `std::sync::mpsc`).
+- No async runtime (`tokio`, `async-std`). Only three background threads: the `cpal` callback (commands via `rtrb`, `D-034`), the `notify` watcher and `gilrs`'s backend thread (events via `std::sync::mpsc`, `D-220`).
 - No global mutable state (`static mut`, `lazy_static`); state lives in `World` or is passed explicitly.
 - No new third-party runtime dependency without a `DECISIONS.md` entry citing its `D-015` rule.
 - No hardcoded asset paths in game code except explicit scene loading (`D-046`).

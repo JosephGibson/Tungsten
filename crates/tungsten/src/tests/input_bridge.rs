@@ -225,3 +225,185 @@ fn every_ui_cursor_maps_to_its_window_cursor() {
     let distinct: HashSet<Window> = pairs.iter().map(|(ui, _)| cursor_icon(*ui)).collect();
     assert_eq!(distinct.len(), pairs.len(), "no two share a window cursor");
 }
+
+// ---- gamepads (`D-220`) ----
+
+const PAD: GamepadId = GamepadId::new(1);
+
+fn pad_world() -> World {
+    let mut world = world();
+    apply_pad_event(
+        world.get_resource_mut::<InputState>().unwrap(),
+        PAD,
+        PadEvent::Connected,
+    );
+    world
+}
+
+fn pad(world: &mut World, event: PadEvent) {
+    apply_pad_event(world.get_resource_mut::<InputState>().unwrap(), PAD, event);
+}
+
+#[test]
+fn pad_events_reach_input_state() {
+    let mut world = pad_world();
+    pad(
+        &mut world,
+        PadEvent::Button {
+            button: GamepadButton::South,
+            pressed: true,
+        },
+    );
+    pad(
+        &mut world,
+        PadEvent::Axis {
+            axis: GamepadAxis::LeftStickY,
+            value: -0.8,
+        },
+    );
+    let state = input(&world);
+    assert_eq!(state.gamepads().collect::<Vec<_>>(), [PAD]);
+    assert!(state.is_gamepad_pressed_on(PAD, GamepadButton::South));
+    assert_eq!(state.gamepad_axis_on(PAD, GamepadAxis::LeftStickY), -0.8);
+    assert!(state.stick_just_pressed(
+        GamepadAxis::LeftStickY,
+        tungsten_core::input::AxisDirection::Negative
+    ));
+    pad(
+        &mut world,
+        PadEvent::Button {
+            button: GamepadButton::South,
+            pressed: false,
+        },
+    );
+    assert!(input(&world).gamepad_just_released(GamepadButton::South));
+    pad(&mut world, PadEvent::Disconnected);
+    assert_eq!(input(&world).gamepads().count(), 0);
+}
+
+#[test]
+fn pad_events_drop_while_unfocused() {
+    let mut world = pad_world();
+    apply_focus(&mut world, false);
+    pad(
+        &mut world,
+        PadEvent::Button {
+            button: GamepadButton::East,
+            pressed: true,
+        },
+    );
+    pad(
+        &mut world,
+        PadEvent::Axis {
+            axis: GamepadAxis::RightStickX,
+            value: 1.0,
+        },
+    );
+    let state = input(&world);
+    assert!(!state.is_gamepad_pressed(GamepadButton::East));
+    assert_eq!(state.gamepad_axis(GamepadAxis::RightStickX), 0.0);
+    assert_eq!(state.raw_events().len(), 2, "the connection and the focus");
+
+    // Connections still apply, so the list stays true across the focus.
+    let other = GamepadId::new(4);
+    let state = world.get_resource_mut::<InputState>().unwrap();
+    apply_pad_event(state, other, PadEvent::Connected);
+    apply_pad_event(state, PAD, PadEvent::Disconnected);
+    assert_eq!(state.gamepads().collect::<Vec<_>>(), [other]);
+
+    apply_focus(&mut world, true);
+    let state = world.get_resource_mut::<InputState>().unwrap();
+    apply_pad_event(
+        state,
+        other,
+        PadEvent::Button {
+            button: GamepadButton::East,
+            pressed: true,
+        },
+    );
+    assert!(state.is_gamepad_pressed_on(other, GamepadButton::East));
+}
+
+#[test]
+fn pad_events_drop_in_smoke_mode() {
+    let mut world = world();
+    let events = [
+        (PAD, PadEvent::Connected),
+        (
+            PAD,
+            PadEvent::Button {
+                button: GamepadButton::Start,
+                pressed: true,
+            },
+        ),
+        (
+            PAD,
+            PadEvent::Axis {
+                axis: GamepadAxis::LeftStickX,
+                value: 0.9,
+            },
+        ),
+    ];
+    let state = world.get_resource_mut::<InputState>().unwrap();
+    apply_pad_events(state, events, true);
+    assert_eq!(state.gamepads().count(), 0);
+    assert!(state.raw_events().is_empty(), "nothing reaches the stream");
+
+    apply_pad_events(state, events, false);
+    assert_eq!(state.gamepads().collect::<Vec<_>>(), [PAD]);
+    assert!(state.is_gamepad_pressed(GamepadButton::Start));
+    assert_eq!(state.gamepad_axis(GamepadAxis::LeftStickX), 0.9);
+}
+
+#[cfg(feature = "gamepad")]
+#[test]
+fn unmapped_pad_events_are_skipped() {
+    use gilrs::{Axis, Button};
+
+    for button in [Button::C, Button::Z, Button::Unknown] {
+        assert_eq!(translate_pad_button(button), None, "{button:?}");
+    }
+    for axis in [
+        Axis::LeftZ,
+        Axis::RightZ,
+        Axis::DPadX,
+        Axis::DPadY,
+        Axis::Unknown,
+    ] {
+        assert_eq!(translate_pad_axis(axis), None, "{axis:?}");
+    }
+    // Positional names; gilrs's first triggers are the shoulders.
+    assert_eq!(
+        translate_pad_button(Button::South),
+        Some(GamepadButton::South)
+    );
+    assert_eq!(
+        translate_pad_button(Button::LeftTrigger),
+        Some(GamepadButton::LeftShoulder)
+    );
+    assert_eq!(
+        translate_pad_button(Button::RightTrigger2),
+        Some(GamepadButton::RightTrigger)
+    );
+    assert_eq!(
+        translate_pad_button(Button::LeftThumb),
+        Some(GamepadButton::LeftStick)
+    );
+    assert_eq!(
+        translate_pad_axis(Axis::RightStickY),
+        Some(GamepadAxis::RightStickY)
+    );
+    assert_eq!(
+        translate_pad_event(gilrs::EventType::Connected),
+        Some(PadEvent::Connected)
+    );
+    assert_eq!(
+        translate_pad_event(gilrs::EventType::Disconnected),
+        Some(PadEvent::Disconnected)
+    );
+    assert_eq!(translate_pad_event(gilrs::EventType::Dropped), None);
+    assert_eq!(
+        translate_pad_event(gilrs::EventType::ForceFeedbackEffectCompleted),
+        None
+    );
+}

@@ -19,7 +19,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Logs, user folder, saves, crashes and target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save.rs`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap, monitor (`D-043`, `D-184`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
-| Input state, raw stream, gamepads, focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
+| Input state, raw stream, gamepads and their `gilrs` backend (`D-220`), focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
 | Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs` |
 | State stack, owned UI roots, scenes, components, `SceneEntity`, transitions (`D-046`, `D-093`, `D-153`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `core/component_registry.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_fixtures/src/transition/` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |

@@ -1,3 +1,5 @@
+#[cfg(any(feature = "gamepad", test))]
+use tungsten_core::input::{GamepadAxis, GamepadButton, GamepadId};
 use tungsten_core::input::{InputState, KeyCode, Modifiers, MouseButton};
 use tungsten_core::ui::CursorIcon;
 use tungsten_core::{ScaleFactor, World};
@@ -187,6 +189,179 @@ pub fn cursor_icon(icon: CursorIcon) -> winit::window::CursorIcon {
 pub fn apply_scale_factor(world: &mut World, scale_factor: f64) {
     if let Some(scale) = world.get_resource_mut::<ScaleFactor>() {
         scale.set_os(scale_factor as f32);
+    }
+}
+
+/// A gamepad event in the engine's terms, which the backend translates
+/// `gilrs`'s into (`D-220`), so applying it needs no device.
+#[cfg(any(feature = "gamepad", test))]
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum PadEvent {
+    /// The pad connected.
+    Connected,
+    /// The pad disconnected.
+    Disconnected,
+    /// A button press or release.
+    Button {
+        button: GamepadButton,
+        pressed: bool,
+    },
+    /// A stick axis moved.
+    Axis { axis: GamepadAxis, value: f32 },
+}
+
+/// Applies one pad event to `input` (`D-220`): a connection or
+/// disconnection always, a button or axis event only while the window has
+/// the focus, so an unfocused game reads no pad.
+#[cfg(any(feature = "gamepad", test))]
+pub(crate) fn apply_pad_event(input: &mut InputState, pad: GamepadId, event: PadEvent) {
+    match event {
+        PadEvent::Connected => input.gamepad_connected(pad),
+        PadEvent::Disconnected => input.gamepad_disconnected(pad),
+        _ if !input.focused() => {}
+        PadEvent::Button {
+            button,
+            pressed: true,
+        } => input.gamepad_button_down(pad, button),
+        PadEvent::Button {
+            button,
+            pressed: false,
+        } => input.gamepad_button_up(pad, button),
+        PadEvent::Axis { axis, value } => input.set_gamepad_axis(pad, axis, value),
+    }
+}
+
+/// Applies the frame's pad events in order; smoke mode drops every one, so
+/// captures never read a pad.
+#[cfg(any(feature = "gamepad", test))]
+pub(crate) fn apply_pad_events(
+    input: &mut InputState,
+    events: impl IntoIterator<Item = (GamepadId, PadEvent)>,
+    smoke: bool,
+) {
+    for (pad, event) in events {
+        if !smoke {
+            apply_pad_event(input, pad, event);
+        }
+    }
+}
+
+/// The engine's button for a `gilrs` one, by position; `None` for one the
+/// engine does not name (`C`, `Z`, unknown). gilrs's first triggers are the
+/// shoulders and its second the triggers.
+#[cfg(feature = "gamepad")]
+pub(crate) fn translate_pad_button(button: gilrs::Button) -> Option<GamepadButton> {
+    use gilrs::Button as B;
+    Some(match button {
+        B::South => GamepadButton::South,
+        B::East => GamepadButton::East,
+        B::North => GamepadButton::North,
+        B::West => GamepadButton::West,
+        B::LeftTrigger => GamepadButton::LeftShoulder,
+        B::RightTrigger => GamepadButton::RightShoulder,
+        B::LeftTrigger2 => GamepadButton::LeftTrigger,
+        B::RightTrigger2 => GamepadButton::RightTrigger,
+        B::Select => GamepadButton::Select,
+        B::Start => GamepadButton::Start,
+        B::Mode => GamepadButton::Mode,
+        B::LeftThumb => GamepadButton::LeftStick,
+        B::RightThumb => GamepadButton::RightStick,
+        B::DPadUp => GamepadButton::DPadUp,
+        B::DPadDown => GamepadButton::DPadDown,
+        B::DPadLeft => GamepadButton::DPadLeft,
+        B::DPadRight => GamepadButton::DPadRight,
+        B::C | B::Z | B::Unknown => return None,
+    })
+}
+
+/// The engine's axis for a `gilrs` stick axis; `None` for the trigger axes,
+/// the d-pad axes (gilrs's default filters turn those into buttons) and
+/// unknown ones.
+#[cfg(feature = "gamepad")]
+pub(crate) fn translate_pad_axis(axis: gilrs::Axis) -> Option<GamepadAxis> {
+    use gilrs::Axis as A;
+    match axis {
+        A::LeftStickX => Some(GamepadAxis::LeftStickX),
+        A::LeftStickY => Some(GamepadAxis::LeftStickY),
+        A::RightStickX => Some(GamepadAxis::RightStickX),
+        A::RightStickY => Some(GamepadAxis::RightStickY),
+        A::LeftZ | A::RightZ | A::DPadX | A::DPadY | A::Unknown => None,
+    }
+}
+
+/// A `gilrs` event in the engine's terms; `None` for one the engine skips:
+/// an unmapped button or axis, an analog button value, a repeat, a dropped
+/// event or a force feedback one.
+#[cfg(feature = "gamepad")]
+pub(crate) fn translate_pad_event(event: gilrs::EventType) -> Option<PadEvent> {
+    use gilrs::EventType as E;
+    match event {
+        E::ButtonPressed(button, _) => Some(PadEvent::Button {
+            button: translate_pad_button(button)?,
+            pressed: true,
+        }),
+        E::ButtonReleased(button, _) => Some(PadEvent::Button {
+            button: translate_pad_button(button)?,
+            pressed: false,
+        }),
+        E::AxisChanged(axis, value, _) => Some(PadEvent::Axis {
+            axis: translate_pad_axis(axis)?,
+            value,
+        }),
+        E::Connected => Some(PadEvent::Connected),
+        E::Disconnected => Some(PadEvent::Disconnected),
+        _ => None,
+    }
+}
+
+/// The engine's ID for a `gilrs` pad.
+#[cfg(feature = "gamepad")]
+fn pad_id(id: gilrs::GamepadId) -> GamepadId {
+    GamepadId::new(usize::from(id) as u32)
+}
+
+/// The gamepad backend (`D-220`): `gilrs` with force feedback off, whose
+/// one backend thread watches for hotplug; its events reach the main thread
+/// through `gilrs`'s own channel, and `run_frame` drains them first.
+#[cfg(feature = "gamepad")]
+pub(crate) struct GamepadBackend {
+    gilrs: gilrs::Gilrs,
+}
+
+#[cfg(feature = "gamepad")]
+impl GamepadBackend {
+    /// Builds `gilrs` with force feedback off, whose server would spawn a
+    /// second thread, and reports the pads connected now, except in smoke
+    /// mode. A failed build logs one warning and gives `None`: the game runs
+    /// without pads.
+    pub(crate) fn start(input: &mut InputState, smoke: bool) -> Option<Self> {
+        let gilrs = match gilrs::GilrsBuilder::new()
+            .with_force_feedback(false)
+            .build()
+        {
+            Ok(gilrs) => gilrs,
+            Err(error) => {
+                log::warn!("gamepad backend failed to start: {error}; running without gamepads");
+                return None;
+            }
+        };
+        let connected: Vec<GamepadId> = gilrs.gamepads().map(|(id, _)| pad_id(id)).collect();
+        log::info!("gamepad backend started: {} connected", connected.len());
+        apply_pad_events(
+            input,
+            connected.into_iter().map(|pad| (pad, PadEvent::Connected)),
+            smoke,
+        );
+        Some(Self { gilrs })
+    }
+
+    /// Applies every pending event in arrival order (`apply_pad_events`).
+    pub(crate) fn drain(&mut self, input: &mut InputState, smoke: bool) {
+        let gilrs = &mut self.gilrs;
+        let events = std::iter::from_fn(|| gilrs.next_event()).filter_map(|event| {
+            translate_pad_event(event.event).map(|translated| (pad_id(event.id), translated))
+        });
+        apply_pad_events(input, events, smoke);
     }
 }
 

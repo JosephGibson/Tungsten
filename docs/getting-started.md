@@ -6,7 +6,7 @@ Make a game with Tungsten from its template, `templates/basic`: a shell of the s
 
 - Rust through [rustup](https://rustup.rs). The template's `rust-toolchain.toml` pins the toolchain the engine is tested with, and rustup installs it on first use.
 - A GPU with a current driver: Vulkan on Linux, DX12 or Vulkan on Windows. Those two are the tested hosts; Metal on macOS is untested ([known issues](known-issues.md)).
-- On Linux, `pkg-config` and the ALSA headers (`libasound2-dev` on Debian and Ubuntu).
+- On Linux, `pkg-config`, the ALSA headers and libudev for gamepads (`libasound2-dev` and `libudev-dev` on Debian and Ubuntu).
 - Git.
 - To package a game, a Linux x86-64 host with GNU `tar` and binutils' `objcopy`.
 
