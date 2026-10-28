@@ -38,7 +38,7 @@ Start at the repo root on the version branch `0.NN`, with [branch documentation 
      --body 'Release vX.Y.Z. Merging this pull request publishes it.'
    ```
 
-4. **Human: approve and merge the pull request in GitHub, then paste the post-merge block.** Merge with a merge commit, not a squash, so the branch's commits and the tagged commit stay in `main`'s history (`D-215`; merge commits are enabled once in the repository's settings, which allowed only squashes through 0.108). The merge starts [release.yml](../.github/workflows/release.yml), which builds the tagged commit and publishes the GitHub Release. CI reports on the pull request beforehand (informational, `D-070`). The post-merge block, printed under step 3's, starts the [next branch](#handoff-and-next-branch), where `0.<NN+1>` is the next minor:
+4. **Human: approve and merge the pull request in GitHub, then paste the post-merge block.** Merge with a merge commit, not a squash, so the branch's commits and the tagged commit stay in `main`'s history (`D-215`; the repository's settings allow merge commits alone, where through 0.108 they allowed only squashes, and since 0.112 default the merge commit's message to the pull request's title: `merge_commit_title` `PR_TITLE`, `merge_commit_message` `BLANK`). The merge starts [release.yml](../.github/workflows/release.yml), which builds the tagged commit and publishes the GitHub Release. CI reports on the pull request beforehand (informational, `D-070`). The post-merge block, printed under step 3's, starts the [next branch](#handoff-and-next-branch), where `0.<NN+1>` is the next minor:
 
    ```bash
    git fetch origin
