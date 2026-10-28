@@ -1,4 +1,6 @@
-use super::{ParamSlots, PostStackRenderer, STOCK_SHADERS, source_slot, stock_index};
+use super::{
+    InertParam, ParamSlots, PostStackRenderer, STOCK_SHADERS, inert_param, source_slot, stock_index,
+};
 use crate::passes::TargetId;
 use tungsten_core::post::{
     BloomParams, ColorAdjustParams, CrtParams, DissolveParams, DitherParams, FadeParams,
@@ -207,4 +209,42 @@ fn stock_shader_table_covers_every_post_pass() {
     // Every row is used by exactly one variant.
     rows.sort_unstable();
     assert_eq!(rows, (0..STOCK_SHADERS.len()).collect::<Vec<_>>());
+}
+
+#[test]
+fn settings_that_draw_nothing_or_not_as_named_are_found() {
+    use tungsten_core::post::DitherMode;
+    let dither = |mode| {
+        PostPass::Dither(DitherParams {
+            mode,
+            ..DitherParams::default()
+        })
+    };
+    assert_eq!(inert_param(&dither(DitherMode::Bayer4), 1.0), None);
+    assert_eq!(
+        inert_param(&dither(DitherMode::Bayer8), 1.0),
+        Some(InertParam::DitherMode)
+    );
+    assert_eq!(
+        inert_param(&dither(DitherMode::BlueNoise), 1.0),
+        Some(InertParam::DitherMode)
+    );
+
+    assert_eq!(inert_param(&PostPass::Crt(CrtParams::default()), 1.0), None);
+    let bleeding = CrtParams {
+        bleed: 0.1,
+        ..CrtParams::default()
+    };
+    assert_eq!(
+        inert_param(&PostPass::Crt(bleeding), 1.0),
+        Some(InertParam::CrtBleed)
+    );
+
+    let outline = PostPass::PixelOutline(PixelOutlineParams::default());
+    assert_eq!(
+        inert_param(&outline, 1.0),
+        Some(InertParam::OutlineClearAlpha),
+        "the default clear's alpha"
+    );
+    assert_eq!(inert_param(&outline, 0.0), None);
 }

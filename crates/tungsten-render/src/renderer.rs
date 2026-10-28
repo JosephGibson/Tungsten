@@ -2031,6 +2031,8 @@ impl Renderer {
                 && let (Some(post_pass), Some(&(src, _dst))) =
                     (post_stack.0.get(pi), plan.post_targets.get(pi))
             {
+                self.post_stack
+                    .warn_inert(post_pass, self.clear_color.a as f32);
                 self.post_stack.record_pass(
                     &self.device,
                     &self.queue,
