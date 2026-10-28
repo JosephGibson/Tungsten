@@ -17,7 +17,7 @@ pub use components::Run;
 
 use crate::features::combat::numbers::Numbers;
 use crate::features::elements::cascade::Cascades;
-use crate::features::props::components::{PropKind, StoneSize};
+use crate::features::props::components::{MapProp, PropKind, StoneSize};
 use crate::features::spells::components::Summon;
 use crate::features::{audio, dummy, enemies, level, player, props, spells, toys};
 use crate::game::GAMEPLAY;
@@ -86,8 +86,8 @@ impl GameState for GameplayState {
         });
         let player = player::spawn(world, centre);
         // A fresh run sets the mine's loose iron down, then the map's crates
-        // and kegs and the hollow's stones, quietly, each taking the save
-        // IDs after the player's, before the run sounds; a load restores the
+        // and kegs (`MapProp`) and the hollow's stones, quietly, each taking
+        // the run's next save ID, before the run sounds; a load restores the
         // blocks, props and stones it saved, none from a save older than
         // schema 19.
         if start.save.is_none() {
@@ -99,7 +99,8 @@ impl GameState for GameplayState {
                 (level::KEG_MARKER, PropKind::Keg),
             ] {
                 for at in level::markers(world, marker) {
-                    props::spawn(world, kind, at);
+                    let prop = props::spawn(world, kind, at);
+                    world.insert(prop, MapProp);
                 }
             }
             for size in StoneSize::ALL {

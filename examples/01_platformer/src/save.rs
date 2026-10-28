@@ -23,13 +23,16 @@
 //! and stones, moves the save IDs past its three new enemies and its
 //! geysers, and sets what the mouth's lowered lintel holds under it.
 //! Schema 22 moves the save IDs past the map's seven new enemies and
-//! lowers each wisp's health.
+//! lowers each wisp's health. Schema 23 gives the map's objects and the
+//! player the save IDs their names derive, so a change to the map moves
+//! none, and marks the map's own crates and kegs.
 //!
 //! Every saved entity carries a [`SaveId`]: the map's objects a save names
-//! (its lava basins, decks, dummies, enemies and placed orbs) take theirs
-//! in the order the map spawns them, which a load repeats, and whatever
-//! spawns later takes the run's next, which the save keeps: a fresh run's
-//! iron, crates and kegs, set at the map's markers, the first. A save names
+//! (its lava basins, decks, dummies, enemies, placed orbs and geysers) and
+//! the player take theirs from their names, which a load derives again,
+//! and whatever spawns later takes the run's next, which the save keeps: a
+//! fresh run's iron, crates, kegs and stones, set at the map's markers, the
+//! first. A save names
 //! another entity by its save ID, never by its entity: an effect's source
 //! too, which a load names again once every entity is back. Presentation
 //! is not saved: particles, lights, glows, flames, overlays and tints,
@@ -66,7 +69,7 @@ use crate::features::player::STAFF_LIGHT;
 use crate::features::player::components::Lantern;
 use crate::features::props::{
     self,
-    components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone, StoneSize},
+    components::{Bomb, Crate, Fuel, Keg, MapProp, Plank, PropKind, Rock, Stone, StoneSize},
 };
 use crate::features::run::Run;
 use crate::features::spells::components::{Spell, Spellbook, Summon};
@@ -316,8 +319,10 @@ impl SaveData for SaveGame {
     /// flight and gives the living, the armoured and the bridge's armoured
     /// troll their tags and table (`to_21`). Schema 22 moves the save IDs
     /// past the map's seven new enemies and each wisp's health to its new
-    /// maximum (`to_22`).
-    const SCHEMA: u32 = 22;
+    /// maximum (`to_22`). Schema 23 gives the map's objects and the player
+    /// the save IDs their names derive and marks the map's crates and kegs
+    /// (`to_23`).
+    const SCHEMA: u32 = 23;
 
     fn migrate(
         from: u32,
@@ -347,6 +352,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             8 => {
@@ -363,6 +369,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             9 => {
@@ -378,6 +385,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             10 => {
@@ -392,6 +400,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             11 => {
@@ -405,6 +414,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             12 => {
@@ -417,6 +427,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             13 => {
@@ -428,6 +439,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             14 => {
@@ -438,6 +450,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             15 => {
@@ -447,6 +460,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             16 => {
@@ -455,6 +469,7 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             17 | 18 => {
@@ -462,21 +477,29 @@ impl SaveData for SaveGame {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             19 => {
                 to_20(&mut data)?;
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             20 => {
                 to_21(&mut data);
                 to_22(&mut data);
+                to_23(&mut data);
                 Ok(data)
             }
             21 => {
                 to_22(&mut data);
+                to_23(&mut data);
+                Ok(data)
+            }
+            22 => {
+                to_23(&mut data);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -604,6 +627,122 @@ fn to_22(data: &mut Value) {
             }
         }
         enemy["stats"]["max_health"]["base"] = Value::from(full);
+    }
+}
+
+/// Schema 22's map objects a save names, in the order they spawned, which
+/// numbered them 0 to 56 (three lava pools, five decks, the dummy, 36
+/// enemies, eight placed orbs and three geysers), and then the player:
+/// the names schema 23 derives their save IDs from. Frozen for the
+/// migration, as schema 10's layout is; `tests/game/saves.rs` holds it to
+/// the map.
+pub const S22_NAMES: [&str; 57] = [
+    "lava_lake_west",
+    "lava_lake_east",
+    "lava_shelf",
+    "deck_clearing",
+    "deck_aqueduct_west",
+    "deck_aqueduct_east",
+    "deck_ravine",
+    "deck_elevator",
+    "training dummy",
+    "aqueduct crawler a",
+    "aqueduct crawler b",
+    "aqueduct crawler c",
+    "ravine bat a",
+    "ravine bat b",
+    "ravine bat c",
+    "hollow wisp a",
+    "hollow wisp b",
+    "hollow wisp c",
+    "cut beetle a",
+    "cut beetle b",
+    "cut beetle c",
+    "bridge troll",
+    "aqueduct bat a",
+    "aqueduct bat b",
+    "ravine bat d",
+    "ravine bat e",
+    "falls crawler",
+    "upper beetle",
+    "aqueduct goblin",
+    "upper goblin",
+    "cut goblin",
+    "meadow goblin",
+    "cut floor goblin",
+    "bridge goblin a",
+    "bridge goblin b",
+    "hollow goblin",
+    "hollow bat",
+    "hollow wisp d",
+    "aqueduct crawler d",
+    "aqueduct crawler e",
+    "channel crawler",
+    "pool crawler",
+    "hollow wisp e",
+    "hollow wisp f",
+    "cut top beetle",
+    "pit shelf orb",
+    "channel orb",
+    "rubble orb",
+    "falls orb",
+    "lake orb",
+    "shelf orb",
+    "bench orb",
+    "bridge orb",
+    "geyser_floor_west",
+    "geyser_floor_east",
+    "geyser_shelf",
+    "player",
+];
+/// Schema 22's own crates and kegs, by save ID: a fresh run set its nine
+/// crates and five kegs down after the player and the mine's four loose
+/// iron blocks. Frozen for the migration.
+pub const S22_MAP_PROPS: std::ops::Range<u64> = 61..75;
+
+/// Schema 22 to 23 (P7-9): the map's objects and the player take the save
+/// IDs their names derive ([`SaveId::authored`]), so schema 22's 0 to 56
+/// map through [`S22_NAMES`]. Every later one is a runtime spawn's, a fresh
+/// run's iron, crates, kegs and stones or anything spawned since, and keeps
+/// its number, as `next_id` does. Each list a map object's ID can sit in
+/// goes back in save-ID order, as [`SaveGame`] keeps them. A crate or keg
+/// in [`S22_MAP_PROPS`] is the map's own (`map`), any other prop not; a
+/// save from before schema 12 has no crates or kegs.
+fn to_23(data: &mut Value) {
+    map_ids(data, &|id| {
+        usize::try_from(id)
+            .ok()
+            .and_then(|at| S22_NAMES.get(at))
+            .map_or(id, |name| SaveId::authored(name).0)
+    });
+    let lists = [
+        "/platforms",
+        "/hazards",
+        "/basins",
+        "/elevators",
+        "/geysers",
+        "/dummies",
+        "/enemies",
+    ];
+    for (list, key) in lists
+        .map(|list| (list, "id"))
+        .into_iter()
+        .chain([("/throws", "body")])
+    {
+        if let Some(entries) = data.pointer_mut(list).and_then(Value::as_array_mut) {
+            entries.sort_by_key(|entry| entry[key].as_u64());
+        }
+    }
+    if let Some(gone) = data.pointer_mut("/gone").and_then(Value::as_array_mut) {
+        gone.sort_by_key(Value::as_u64);
+    }
+    for prop in each(data, "/props") {
+        let own = prop["kind"] == "crate" || prop["kind"] == "keg";
+        let map = own
+            && prop["id"]
+                .as_u64()
+                .is_some_and(|id| S22_MAP_PROPS.contains(&id));
+        prop["map"] = Value::from(map);
     }
 }
 
@@ -1661,16 +1800,18 @@ pub struct BulletSave {
     pub source: Option<u64>,
 }
 
-/// A crate, a keg, or a goblin's bomb or rock: its kind, a crate's or a
-/// rock's art, its body, its frost and the seconds its freeze has left, a
-/// crate's fire, a keg's or a bomb's lit fuse and the save ID its fire or
-/// blast credits, and the seconds a douse keeps a keg from lighting. A
-/// thrown rock's credit is its throw's (`throws`).
+/// A crate, a keg, or a goblin's bomb or rock: its kind, whether the map
+/// set it down ([`MapProp`]), a crate's or a rock's art, its body, its
+/// frost and the seconds its freeze has left, a crate's fire, a keg's or a
+/// bomb's lit fuse and the save ID its fire or blast credits, and the
+/// seconds a douse keeps a keg from lighting. A thrown rock's credit is its
+/// throw's (`throws`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PropSave {
     pub id: u64,
     pub kind: PropKind,
+    pub map: bool,
     pub variant: usize,
     pub position: [f32; 2],
     pub velocity: [f32; 2],
@@ -2031,6 +2172,7 @@ fn capture_prop(world: &World, entity: Entity) -> Option<PropSave> {
     Some(PropSave {
         id: world.get::<SaveId>(entity)?.0,
         kind: props::kind(world, entity)?,
+        map: world.has::<MapProp>(entity),
         variant: variant.unwrap_or(0),
         position: world.get::<Position>(entity)?.0.to_array(),
         velocity: world.get::<Velocity>(entity)?.0.to_array(),
@@ -2497,6 +2639,9 @@ fn restore_prop(world: &mut World, saved: &PropSave) {
     let at = Vec2::from(saved.position);
     let entity = props::restore(world, saved.kind, at, SaveId(saved.id), saved.variant);
     world.insert(entity, Velocity(Vec2::from(saved.velocity)));
+    if saved.map {
+        world.insert(entity, MapProp);
+    }
     if let Some(amount) = saved.chill {
         world.insert(
             entity,

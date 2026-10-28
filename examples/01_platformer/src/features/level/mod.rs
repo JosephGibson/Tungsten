@@ -15,6 +15,8 @@ pub mod lava;
 pub mod systems;
 pub mod title;
 
+use std::collections::HashSet;
+
 use glam::{Vec2, Vec3};
 use tungsten::core::post::{BloomParams, PostPass, PostStack, VignetteParams};
 use tungsten::core::{
@@ -29,8 +31,9 @@ use tungsten::{Extracts, Plugin, SceneEntity};
 use crate::features::dummy::components::Dummy;
 use crate::features::enemies::components::Enemy;
 use crate::features::enemies::drops::Orb;
+use crate::features::player;
 use crate::game::GAMEPLAY;
-use crate::shared::{SaveIds, burst_cleanup};
+use crate::shared::{SaveId, burst_cleanup};
 use components::SceneTime;
 
 /// The level's tilemap, by its manifest ID.
@@ -195,21 +198,30 @@ impl Plugin for CursorPlugin {
 }
 
 /// Spawns the level for a run, owned by gameplay: the map and its objects,
-/// each one a save names ([`saved`]) taking the next of the run's
-/// [`SaveIds`] in layer and file order, the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
+/// each one a save names ([`saved`]) taking the save ID its name derives
+/// ([`SaveId::authored`]), the start's [`BOUNDARY`], the basins' chill and crust ([`lava::start`]), the geysers' cycles
 /// ([`geyser::start`]), the elevator at rest
 /// ([`elevator::start`]), the moon's light, the
 /// level's clock, the midnight ambient and the post stack, and bounds the
-/// camera to the map. Returns the objects in that order.
+/// camera to the map. Returns the objects in layer and file order.
+///
+/// # Panics
+///
+/// When the map's objects fail to spawn, or a saved one has no name or a
+/// name whose save ID another's, or the player's, takes.
 pub fn spawn(world: &mut World) -> Vec<Entity> {
     let map = TilemapInstance::new(MAP, Vec2::ZERO);
     world.spawn_with((map, SceneEntity { state_id: GAMEPLAY }));
+    let names = object_names(world);
     let objects = world
         .spawn_map_objects(MAP, Vec2::ZERO)
         .expect("the level's objects load with the manifest");
-    for &entity in &objects {
+    let mut taken = HashSet::from([SaveId::authored(player::SAVE_NAME)]);
+    for (&entity, name) in objects.iter().zip(&names) {
         if saved(world, entity) {
-            let id = world.resource_mut::<SaveIds>().take();
+            assert!(!name.is_empty(), "a saved map object has no name");
+            let id = SaveId::authored(name);
+            assert!(taken.insert(id), "the map's `{name}` takes a taken save ID");
             world.insert(entity, id);
         }
         world.insert(entity, SceneEntity { state_id: GAMEPLAY });
@@ -259,10 +271,28 @@ pub fn spawn(world: &mut World) -> Vec<Entity> {
     objects
 }
 
+/// The names of the map's objects that spawn a prefab, in the order
+/// `spawn_map_objects` spawns them.
+fn object_names(world: &World) -> Vec<String> {
+    world
+        .get_resource::<TilemapRegistry>()
+        .and_then(|maps| maps.get(MAP))
+        .map(|map| {
+            map.object_layers
+                .iter()
+                .flat_map(|layer| &layer.objects)
+                .filter(|object| !object.class.is_empty())
+                .map(|object| object.name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Whether a save names the map object `entity`, which then takes a save
-/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser.
-/// Props, slabs, iron, areas, emitters and markers take none, so an art
-/// change moves no save (schema 10).
+/// ID: a lava basin, a deck, a dummy, an enemy, a placed orb or a geyser,
+/// the layers `tools/level.py` holds to unique names. Props, slabs, iron,
+/// areas, emitters and markers take none, so an art change moves no save
+/// (schema 10).
 fn saved(world: &World, entity: Entity) -> bool {
     world.has::<components::Hazard>(entity)
         || world.has::<PathFollower>(entity)

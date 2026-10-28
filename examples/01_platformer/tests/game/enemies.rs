@@ -4326,8 +4326,9 @@ fn the_bridge_troll_is_the_armoured_troll() {
         .filter(|&&(.., variant)| variant == Variant::Armoured)
         .map(|&(id, ..)| id)
         .collect();
-    assert_eq!(armoured, [21], "the bridge's troll, save ID 21: {trolls:?}");
-    let bridge = trolls.iter().find(|&&(id, ..)| id == 21).unwrap().1;
+    let named = SaveId::authored("bridge troll").0;
+    assert_eq!(armoured, [named], "the bridge's troll: {trolls:?}");
+    let bridge = trolls.iter().find(|&&(id, ..)| id == named).unwrap().1;
     assert!(tagged(&harness, bridge, "armoured"));
     assert!(armour_table(&harness, bridge), "armour's table");
     assert!(

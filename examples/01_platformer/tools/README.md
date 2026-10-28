@@ -284,9 +284,11 @@ alone do not prove clearance beneath the solid platforms.
 zero for empty, no flip bits) and the map's object layers, with the prefabs their
 classes name. Edit their source instead of the generated output. The object layers
 sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
-when a run starts; only the objects a save names take the run's next save ID, in
-that order (the lava basins, the decks, the dummy, the enemies and the placed
-orbs, `D-208`), so a prop or a slab moves none:
+when a run starts. The objects a save names, those of the layers `SAVED_LAYERS`
+lists (the lava basins, the decks, the dummy, the enemies, the placed orbs and
+the geysers), take the save ID their `name` derives (`D-222`), which
+`validate_level` holds unique across those layers and never `player`, so no
+object's place or order moves a save; the rest take none:
 
 | Layer | Objects | Prefab class |
 | --- | --- | --- |
@@ -299,10 +301,10 @@ orbs, `D-208`), so a prop or a slab moves none:
 | `emitters` | The ambient emitters | `ex10_ambient_emitter`; each object's `particle_emitter.config` and `particle_emitter.seed` properties set its emitter |
 | `markers` | `spawn`, where a fresh run's player stands, an `iron` marker at each loose block's centre, a `crate` or `keg` marker at each placed prop's, a `stone_<size>` marker at each stone's, and the elevator's `lift_sheave` | None: the game reads them by name |
 | `dummies` | The training dummy in the Lantern clearing | `dummy`: each placement's `tags.<n>` properties set its tags (`flesh`, `freezable`, `conductive`) |
-| `enemies` | The 36 enemies, after every other object layer but `pickups`, `tomes` and `geysers`, so every earlier object keeps its save ID; a new one goes last, its ID before the orbs' (the save's schema moves theirs and the player's) | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
-| `pickups` | The eight placed health orbs, after the enemies | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
+| `enemies` | The 36 enemies, each by its `name`; a new one needs a name no saved object has, and moves no save ID | Each object's class names its kind's prefab (`wisp`, `crawler`, `beetle`, `bat`, `troll`, `goblin`), its point the sprite's top-left; a `leash` in tiles becomes the `enemy.leash` property, bounding its patrol about its home |
+| `pickups` | The eight placed health orbs, each by its `name` | `health_orb`, the drops' prefab; the run takes their `lifetime` off |
 | `tomes` | The three books; no save names a book, so none takes a save ID | `tome_<kind>`, its point the book's top-left |
-| `geysers` | The three geysers, the map's last object layer, after the tomes, so every earlier object keeps its save ID; theirs follow the orbs' | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
+| `geysers` | The three geysers, the map's last object layer, each by its `name` | `geyser`, its point the vent sprite's top-left, its column's middle less 32 px and its support's row less 32, so the vent's bottom row stands on the floor; its `geyser.offset` property |
 
 A parameter that lives in an array (a box's half extents, an oscillator's
 amplitude, a path's points) gives its object a prefab of its own; a scalar would

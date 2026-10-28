@@ -20,8 +20,11 @@ use example_01_platformer::features::elements::{self};
 use example_01_platformer::features::enemies::components::EnemyKind;
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::gun;
+use example_01_platformer::features::level;
 use example_01_platformer::features::lightning;
-use example_01_platformer::features::props::components::{Fuel, FuseEmitter, PropKind, StoneSize};
+use example_01_platformer::features::props::components::{
+    Fuel, FuseEmitter, MapProp, PropKind, StoneSize,
+};
 use example_01_platformer::features::props::systems::bomb_tip;
 use example_01_platformer::features::props::{
     self, BOMB_RADIUS, BURN_SECS, CRATE_HALF, KEG_BLAST, KEG_HALF, ROCK_CAP, ROCK_RADIUS,
@@ -523,28 +526,37 @@ fn a_bomb_rolls_with_its_fuse_and_a_rock_stays_a_body_that_rolls() {
 
 #[test]
 fn the_map_s_own_crates_and_kegs_stay_outside_the_summon_s_caps() {
-    // Q45: a fresh run's crates and kegs take the map's IDs, and the
+    // Q45: a fresh run's crates and kegs are the map's (`MapProp`), and the
     // summon's caps count only its own.
     let (mut harness, _) = sky(300.0);
+    summons_spare_the_maps_crates(&mut harness);
+}
+
+/// A cap's worth of crates and one more summoned along the sky's ground:
+/// the oldest summoned goes, and every crate and keg the map set down, one
+/// a marker, stays.
+pub fn summons_spare_the_maps_crates(harness: &mut UiHarness) {
     let world = harness.world();
-    let map = props::map_ids(world);
     let own: Vec<Entity> = props::all(world)
         .into_iter()
-        .filter(|&prop| {
-            matches!(
-                props::kind(world, prop),
-                Some(PropKind::Crate | PropKind::Keg)
-            )
-        })
+        .filter(|&prop| world.has::<MapProp>(prop))
         .collect();
-    assert_eq!(own.len() as u64, map.end - map.start, "one ID a marker");
-    assert!(own.iter().all(|&prop| map.contains(&id_of(world, prop))));
+    let markers = [level::CRATE_MARKER, level::KEG_MARKER]
+        .map(|marker| level::markers(world, marker).len())
+        .iter()
+        .sum::<usize>();
+    assert_eq!(own.len(), markers, "one a marker");
+    assert!(own.iter().all(|&prop| {
+        matches!(
+            props::kind(world, prop),
+            Some(PropKind::Crate | PropKind::Keg)
+        )
+    }));
     let crates = own
         .iter()
         .filter(|&&prop| props::kind(world, prop) == Some(PropKind::Crate))
         .count();
     assert!(crates > 0, "the map sets crates down");
-    // A cap's worth and one more, along the sky's ground.
     let mut summoned = Vec::new();
     for i in 0..=props::CRATE_CAP {
         let at = Vec2::new(700.0 + 80.0 * i as f32, TOP - CRATE_HALF.y);

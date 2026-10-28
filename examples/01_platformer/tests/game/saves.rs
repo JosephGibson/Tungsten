@@ -40,6 +40,7 @@ use example_01_platformer::features::gun::{self};
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::geyser::{self, Geyser, GeyserPhase};
 use example_01_platformer::features::level::lava::{self, Lava};
+use example_01_platformer::features::level::{self};
 use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::{Player, StaffGlow};
 use example_01_platformer::features::player::{
@@ -57,13 +58,14 @@ use example_01_platformer::features::toys::components::{
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game;
 use example_01_platformer::save::{self, HoleSave, MAP_ENEMIES, SaveGame};
-use example_01_platformer::shared::{SaveId, SaveIds};
+use example_01_platformer::shared::{AUTHORED, SaveId, SaveIds};
 use example_01_platformer::shell::toast::Toasts;
 use example_01_platformer::shell::{self as game_shell, Difficulty, RunStart, SlotState};
 use glam::Vec2;
 use tungsten::core::save::Value;
 use tungsten::core::{
-    Entity, Position, SaveData, SaveSlots, Time, Transform, UserFolder, Velocity, World,
+    Entity, Position, SaveData, SaveSlots, TilemapRegistry, Time, Transform, UserFolder, Velocity,
+    World,
 };
 use tungsten::kit::{
     Abilities, ContactDamage, DamageRequest, Damaged, Effects, Health, Hitbox, Modifier,
@@ -605,15 +607,16 @@ fn lists(kind: &str) -> Lists {
             presentation: drawn.to_vec(),
         },
         // The crates, kegs, bombs and rocks: a crate's or a rock's art, a
-        // crate's fire, a keg's or a bomb's fuse, each saved whole; a
-        // rock's throw is the throws'.
+        // crate's fire, a keg's or a bomb's fuse, each saved whole, and
+        // whether the map set it down; a rock's throw is the throws'.
         "crate" | "keg" | "bomb" | "rock" => {
-            use example_01_platformer::features::props::components::Fuel;
+            use example_01_platformer::features::props::components::{Fuel, MapProp};
             Lists {
                 saved: [
                     &at[..],
                     &[
                         name::<Velocity>(),
+                        name::<MapProp>(),
                         name::<Crate>(),
                         name::<Fuel>(),
                         name::<Keg>(),
@@ -2193,6 +2196,32 @@ fn moved_ids(
     }
 }
 
+/// Puts each list of `old` that holds a map object in the order its IDs
+/// take through `to`, as schema 23's migration leaves a save's lists, so
+/// [`moved_ids`] walks each entry beside its migrated self.
+fn sorted_as_23(old: &mut Value, to: &dyn Fn(u64) -> u64) {
+    let key = |entry: &Value, field: &str| entry[field].as_u64().map(to);
+    for list in [
+        "platforms",
+        "hazards",
+        "basins",
+        "elevators",
+        "geysers",
+        "dummies",
+        "enemies",
+    ] {
+        if let Some(entries) = old.get_mut(list).and_then(Value::as_array_mut) {
+            entries.sort_by_key(|entry| key(entry, "id"));
+        }
+    }
+    if let Some(throws) = old.get_mut("throws").and_then(Value::as_array_mut) {
+        throws.sort_by_key(|throw| key(throw, "body"));
+    }
+    if let Some(gone) = old.get_mut("gone").and_then(Value::as_array_mut) {
+        gone.sort_by_key(|id| id.as_u64().map(to));
+    }
+}
+
 /// A schema 9 save ID as schema 10 numbers it, written out: the lake's lava
 /// as its west pool's and the shelf's, the decks, the dummy, the enemies,
 /// and the placed orbs, the player's and every later one past the new
@@ -2259,6 +2288,23 @@ fn schema_22_id(id: u64) -> u64 {
 fn schema_22_from_18(id: u64) -> u64 {
     schema_22_id(schema_19_id(id))
 }
+
+/// A schema 22 save ID as schema 23 numbers it: the map's objects and the
+/// player, 0 to 56, at the IDs their names derive, every runtime one kept.
+fn schema_23_id(id: u64) -> u64 {
+    usize::try_from(id)
+        .ok()
+        .and_then(|at| save::S22_NAMES.get(at))
+        .map_or(id, |name| SaveId::authored(name).0)
+}
+
+/// A schema 18 save ID as schema 23 numbers it.
+fn schema_23_from_18(id: u64) -> u64 {
+    schema_23_id(schema_22_from_18(id))
+}
+
+/// Schema 22's first runtime save ID, the player's next.
+const S22_RUNTIME: u64 = save::S22_NAMES.len() as u64;
 
 /// `path` with every index starred: a tuple's place too, where only an ID
 /// can have moved.
@@ -2457,6 +2503,37 @@ fn as_schema_22(old: &mut Value) {
     }
 }
 
+/// A capture as the code before schema 23 wrote it, at schema 22: the
+/// map's objects and the player at their spawn order's save IDs, through
+/// [`save::S22_NAMES`], every runtime one after them, past schema 22's
+/// player's, and no prop marked the map's, so a relabel test still tests
+/// the migration it names.
+fn as_schema_22_capture(data: &mut Value) {
+    save::map_ids(data, &|id| {
+        let named = save::S22_NAMES
+            .iter()
+            .position(|name| SaveId::authored(name).0 == id);
+        match named {
+            Some(at) => at as u64,
+            None => {
+                assert!(id < AUTHORED, "{id}: no schema 22 name");
+                id + S22_RUNTIME
+            }
+        }
+    });
+    for prop in data["props"].as_array_mut().unwrap() {
+        prop.as_object_mut().unwrap().remove("map");
+    }
+}
+
+/// `data`, a capture, as [`as_schema_22_capture`] and the migration leave
+/// it: every runtime save ID past schema 22's player's.
+fn runtime_past_s22(data: &mut Value) {
+    save::map_ids(data, &|id| {
+        if id < AUTHORED { id + S22_RUNTIME } else { id }
+    });
+}
+
 /// A wisp's health before schema 22.
 const S21_WISP_HEALTH: f64 = 40.0;
 
@@ -2465,6 +2542,7 @@ const S21_WISP_HEALTH: f64 = 40.0;
 /// save ID back by [`save::SHIFT_22`] and each wisp at its old health, so a
 /// relabel test still tests the migration it names.
 fn as_schema_21_capture(data: &mut Value) {
+    as_schema_22_capture(data);
     let new = save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22;
     let named = |id: Option<u64>| id.is_some_and(|id| new.contains(&id));
     data["enemies"]
@@ -2751,7 +2829,7 @@ fn as_envelope(data: &Value, schema: u32) -> String {
 /// controllers at a load, which a save from before 0.105 has none of, and
 /// the geysers at their offsets, which a save from before schema 19 has
 /// none of, with no stones.
-fn without_new(save: &mut Value, added: &std::ops::Range<u64>) {
+fn without_new(save: &mut Value, added: &[u64]) {
     let unset = |controller: Option<&mut Value>| {
         if let Some(fields) = controller.and_then(Value::as_object_mut) {
             fields.remove("shove");
@@ -2774,7 +2852,8 @@ fn without_new(save: &mut Value, added: &std::ops::Range<u64>) {
         assert!(basin["crust"].is_null(), "uncrusted");
     }
     save["basins"] = Value::Array(Vec::new());
-    let geysers = save["geysers"].as_array().unwrap();
+    let mut geysers = save["geysers"].as_array().unwrap().clone();
+    geysers.sort_by_key(|saved| saved["id"].as_u64().and_then(map_order));
     let offsets: Vec<(GeyserPhase, f32)> = [0.0, 1.3, 2.6].map(geyser::at_offset).into();
     assert_eq!(geysers.len(), offsets.len(), "the map's geysers");
     for (saved, (phase, left)) in geysers.iter().zip(offsets) {
@@ -2888,16 +2967,18 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_17(&mut old);
     as_schema_19(&mut old);
     as_schema_20(&mut old);
-    let to = |id: u64| {
+    let to_22 = |id: u64| {
         schema_22_from_18(schema_12_id(schema_10_id(if id >= from {
             id + save::SHIFT_9
         } else {
             id
         })))
     };
+    let to = |id: u64| schema_23_id(to_22(id));
     let mut moved = Vec::new();
-    as_schema_21(&mut old, &to);
+    as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
+    sorted_as_23(&mut old, &to);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -2938,12 +3019,14 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     let world = run.world();
     assert_eq!(
         world.get::<SaveId>(player).unwrap().0,
-        schema_22_from_18(schema_12_id(save::S10_PLAYER))
+        schema_23_id(schema_22_from_18(schema_12_id(save::S10_PLAYER)))
     );
     let live: BTreeSet<u64> = enemies::live(world).into_iter().map(|(id, _)| id).collect();
-    let added = save::S10_ENEMIES + 13..save::S10_ENEMIES + MAP_ENEMIES;
-    assert_eq!(added.clone().count(), 23);
-    assert!(added.clone().all(|id| live.contains(&id)), "{live:?}");
+    let added: Vec<u64> = (save::S10_ENEMIES + 13..save::S10_ENEMIES + MAP_ENEMIES)
+        .map(schema_23_id)
+        .collect();
+    assert_eq!(added.len(), 23);
+    assert!(added.iter().all(|id| live.contains(id)), "{live:?}");
     assert!(!live.contains(&to(863)), "the gone bat");
     assert_eq!(
         placed_orbs(&run).len() as u64,
@@ -3040,15 +3123,20 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     let from = old["player"]["id"].as_u64().unwrap();
     assert_eq!((envelope["schema"].as_u64(), from), (Some(9), 886));
     // A new run numbers the map as the migrations' frozen layouts have it:
-    // schema 10's, its orbs and its player past schema 12's goblins.
+    // schema 10's, its orbs and its player past schema 12's goblins, each
+    // through schema 23's names.
     let (fresh, player) = run();
-    let span = |start: u64, count: u64| (start..start + count).collect::<Vec<u64>>();
+    let span = |start: u64, count: u64| {
+        let mut ids: Vec<u64> = (start..start + count).map(schema_23_id).collect();
+        ids.sort_unstable();
+        ids
+    };
     assert_eq!(
         map_ids(&fresh),
         [
-            vec![save::S10_LAKE, 1, save::S10_SHELF],
+            span(save::S10_LAKE, 3),
             span(save::S10_DECKS, 5),
-            vec![save::S10_DUMMY],
+            span(save::S10_DUMMY, 1),
             span(save::S10_ENEMIES, MAP_ENEMIES),
             span(
                 schema_22_from_18(schema_12_id(save::S10_PICKUPS)),
@@ -3058,12 +3146,12 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     );
     assert_eq!(
         id_of(&fresh, player),
-        schema_22_from_18(schema_12_id(save::S10_PLAYER))
+        schema_23_id(schema_22_from_18(schema_12_id(save::S10_PLAYER)))
     );
     let (lift, _) = elevator(&fresh);
     assert_eq!(
         id_of(&fresh, lift),
-        schema_10_id(845),
+        schema_23_id(schema_10_id(845)),
         "the elevator's deck"
     );
     let x = |id: u64| {
@@ -3075,7 +3163,10 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
             .x
     };
     assert_eq!(
-        [x(save::S10_LAKE), x(save::S10_SHELF)],
+        [
+            x(schema_23_id(save::S10_LAKE)),
+            x(schema_23_id(save::S10_SHELF))
+        ],
         [230.0 * 64.0, 260.0 * 64.0],
         "the lake's west pool and the shelf's"
     );
@@ -3091,10 +3182,12 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_17(&mut old);
     as_schema_19(&mut old);
     as_schema_20(&mut old);
-    let to = |id: u64| schema_22_from_18(schema_12_id(schema_10_id(id)));
+    let to_22 = |id: u64| schema_22_from_18(schema_12_id(schema_10_id(id)));
+    let to = |id: u64| schema_23_id(to_22(id));
     let mut moved = Vec::new();
-    as_schema_21(&mut old, &to);
+    as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
+    sorted_as_23(&mut old, &to);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
@@ -3123,13 +3216,16 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
         .into_iter()
         .map(|(id, _)| id)
         .collect();
-    let wisp = schema_10_id(866);
+    let wisp = schema_23_id(schema_10_id(866));
     assert!(!live.contains(&wisp), "the gone wisp");
     // Schema 10's last enemy; the goblins follow it.
     let beetle = save::S11_PICKUPS - 1;
     let world = run.world();
     assert_eq!(
-        world.get::<Enemy>(by_id(&run, beetle)).unwrap().kind,
+        world
+            .get::<Enemy>(by_id(&run, schema_23_id(beetle)))
+            .unwrap()
+            .kind,
         EnemyKind::Beetle,
         "the new beetle"
     );
@@ -3142,7 +3238,10 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
         )
     );
     let mut again = json(&capture(&run));
-    without_new(&mut again, &(beetle..save::S10_ENEMIES + MAP_ENEMIES));
+    let added: Vec<u64> = (beetle..save::S10_ENEMIES + MAP_ENEMIES)
+        .map(schema_23_id)
+        .collect();
+    without_new(&mut again, &added);
     let migrated = json(&migrated);
     again["meta"]["game_version"] = migrated["meta"]["game_version"].clone();
     let mut differ = Vec::new();
@@ -3159,7 +3258,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     let (mut harness, player) = run();
     calm(&mut harness);
     harness.harness_mut().set_dt(1.0 / 60.0);
-    let lake = basin(&harness, save::S10_LAKE);
+    let lake = basin(&harness, schema_23_id(save::S10_LAKE));
     lava::harden(harness.world_mut(), lake, 4.0);
     // The player boards the elevator; the save is taken halfway up.
     let (deck, lift) = elevator(&harness);
@@ -3174,16 +3273,16 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
         }
     }
     assert_eq!(elevator(&harness).1.stop, Stop::Rising, "halfway up");
-    let shelf = basin(&harness, save::S10_SHELF);
+    let shelf = basin(&harness, schema_23_id(save::S10_SHELF));
     harness.world_mut().get_mut::<Lava>(shelf).unwrap().cold = 0.2;
     let saved = capture(&harness);
     let crust = |id: u64| saved.basins.iter().find(|b| b.id == id).unwrap();
     assert!(
-        crust(save::S10_LAKE)
+        crust(schema_23_id(save::S10_LAKE))
             .crust
             .is_some_and(|left| left > 1.0 && left < 4.0)
     );
-    assert_eq!(crust(save::S10_SHELF).cold, 0.2);
+    assert_eq!(crust(schema_23_id(save::S10_SHELF)).cold, 0.2);
     assert_eq!(saved.elevators.len(), 1);
     assert!(saved.elevators[0].follower.is_some() && saved.elevators[0].ridden);
     // Loaded from its file, as Continue loads it, it captures back to
@@ -3195,7 +3294,7 @@ fn a_crusted_basin_and_a_riding_elevator_load_back_to_themselves() {
     // Calmed as the saved run was: the map's geysers, which it took off.
     calm(&mut fresh);
     assert_eq!(json(&capture(&fresh)), json(&saved));
-    let lake = basin(&fresh, save::S10_LAKE);
+    let lake = basin(&fresh, schema_23_id(save::S10_LAKE));
     let world = fresh.world();
     assert!(
         world.get::<tungsten::kit::ContactDamage>(lake).is_none(),
@@ -3385,15 +3484,22 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     // past the hollow's new enemies and geysers, every one under it kept,
     // and nothing else.
     let mut moved = Vec::new();
-    let to = |id: u64| schema_22_from_18(schema_12_id(id));
-    as_schema_21(&mut old, &to);
+    let to_22 = |id: u64| schema_22_from_18(schema_12_id(id));
+    let to = |id: u64| schema_23_id(to_22(id));
+    as_schema_21(&mut old, &to_22);
     as_schema_22(&mut old);
+    sorted_as_23(&mut old, &to);
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
     let fields: BTreeSet<String> = moved.iter().map(|path| starred(path)).collect();
     let expected = [
         "/next_id",
         "/player/id",
         "/player/sources/*/1",
+        "/platforms/*/id",
+        "/basins/*/id",
+        "/elevators/*/id",
+        "/dummies/*/id",
+        "/enemies/*/id",
         "/orbs/*/id",
         "/blocks/*/id",
         "/black_holes/*/id",
@@ -3407,7 +3513,9 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     ];
     assert_eq!(fields, expected.into_iter().map(starred).collect());
     assert_eq!(migrated.black_holes.len(), 2, "both holes");
-    let goblins = save::S11_PICKUPS..save::S11_PICKUPS + save::SHIFT_12;
+    let goblins: Vec<u64> = (save::S11_PICKUPS..save::S11_PICKUPS + save::SHIFT_12)
+        .map(schema_23_id)
+        .collect();
     assert!(
         !migrated.gone.iter().any(|id| goblins.contains(id)),
         "{:?}",
@@ -3420,6 +3528,12 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
             .all(|enemy| !goblins.contains(&enemy.id))
     );
     assert!(migrated.props.is_empty());
+    // Its iron, runtime spawns from its player's on, past every shift and
+    // kept by schema 23: iron 42 at 62 and iron 37 at 57, the first ID past
+    // schema 22's player's; with no props, nothing the map's.
+    let blocks: Vec<u64> = migrated.blocks.iter().map(|block| block.id).collect();
+    assert!(blocks.contains(&62), "{blocks:?}");
+    assert_eq!(blocks.first(), Some(&S22_RUNTIME));
     // Loaded, the map's goblins stand at their homes.
     let mut run = super::harness();
     load(&mut run, migrated);
@@ -3463,7 +3577,8 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     let mut moved = Vec::new();
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
-    moved_ids(&old, &json(&migrated), "", &schema_22_from_18, &mut moved);
+    sorted_as_23(&mut old, &schema_23_from_18);
+    moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the body stands where the courier's stood.
     let mut run = super::harness();
     load(&mut run, migrated);
@@ -3532,7 +3647,8 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     let mut moved = Vec::new();
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
-    moved_ids(&old, &new, "", &schema_22_from_18, &mut moved);
+    sorted_as_23(&mut old, &schema_23_from_18);
+    moved_ids(&old, &new, "", &schema_23_from_18, &mut moved);
     // Loaded, it plays on with the new values.
     let mut run = super::harness();
     load(&mut run, migrated);
@@ -3601,7 +3717,8 @@ fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
     let mut moved = Vec::new();
     as_schema_21(&mut old, &schema_22_from_18);
     as_schema_22(&mut old);
-    moved_ids(&old, &json(&migrated), "", &schema_22_from_18, &mut moved);
+    sorted_as_23(&mut old, &schema_23_from_18);
+    moved_ids(&old, &json(&migrated), "", &schema_23_from_18, &mut moved);
     // Loaded, the crates stand in the map a second on.
     let mut run = super::harness();
     load(&mut run, migrated);
@@ -3734,6 +3851,7 @@ fn to_15_sets_bodies_from_the_wall_and_the_boundary_on_the_floor() {
     assert_eq!(data["dummies"][0]["map"], true, "the map's dummy");
     data["dummies"][0]["position"] = corner(Vec2::new(64.0, 26.0 * 64.0), DUMMY_CENTRE);
     let (migrated, dir) = migrate("schema-14-full", &as_schema_14_envelope(&data));
+    let dummy = schema_23_from_18(dummy);
     assert!(
         migrated.dummies.iter().all(|saved| saved.id != dummy),
         "the dummy dropped"
@@ -3785,6 +3903,7 @@ fn a_schema_10_trolls_deep_chill_goes_at_its_first_step() {
     let (migrated, dir) = migrate("schema-10-deep-chill", &envelope.to_string());
     let mut fresh = super::harness();
     load(&mut fresh, migrated);
+    let id = schema_23_from_18(schema_12_id(id));
     let troll = fresh
         .world()
         .query::<(Entity, &Enemy, &SaveId)>()
@@ -4168,29 +4287,40 @@ fn to_16_sets_bodies_inside_the_tomes_supports_on_their_tops() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-/// The map's geysers, by save ID.
+/// The map's geysers, with their save IDs, in the map's order.
 fn geysers(harness: &UiHarness) -> Vec<(u64, Entity)> {
     let mut geysers: Vec<(u64, Entity)> = harness
         .world()
         .query::<(Entity, &Geyser, &SaveId)>()
         .map(|(entity, _, id)| (id.0, entity))
         .collect();
-    geysers.sort_unstable_by_key(|(id, _)| *id);
+    geysers.sort_unstable_by_key(|(id, _)| map_order(*id));
     geysers
 }
 
+/// Where the map object of save ID `id` stood in schema 22's spawn order,
+/// which is the map's.
+fn map_order(id: u64) -> Option<usize> {
+    save::S22_NAMES
+        .iter()
+        .position(|name| SaveId::authored(name).0 == id)
+}
+
 #[test]
-fn the_maps_geysers_take_the_save_ids_after_the_orbs() {
+fn the_maps_geysers_and_the_player_take_the_save_ids_their_names_derive() {
     let (harness, player) = run();
     let ids: Vec<u64> = geysers(&harness).into_iter().map(|(id, _)| id).collect();
     let placed = &harness.world().resource::<drops::PlacedOrbs>().0;
-    let last_orb = *placed.iter().max().expect("the map's orbs");
-    assert_eq!(
-        ids,
-        (last_orb + 1..last_orb + 1 + save::MAP_GEYSERS).collect::<Vec<u64>>()
-    );
-    assert_eq!(id_of(&harness, player), last_orb + 1 + save::MAP_GEYSERS);
-    assert_eq!(id_of(&harness, player), schema_22_from_18(save::S18_PLAYER));
+    let last_orb = save::S21_PICKUPS + save::SHIFT_22 + save::MAP_PICKUPS - 1;
+    assert!(placed.contains(&schema_23_id(last_orb)), "{placed:?}");
+    let named: Vec<u64> = (last_orb + 1..last_orb + 1 + save::MAP_GEYSERS)
+        .map(schema_23_id)
+        .collect();
+    assert_eq!(ids, named, "in the map's order");
+    let geyser = |name: &str| SaveId::authored(name).0;
+    assert!(ids.contains(&geyser("geyser_shelf")), "{ids:?}");
+    assert_eq!(id_of(&harness, player), SaveId::authored("player").0);
+    assert_eq!(id_of(&harness, player), schema_23_from_18(save::S18_PLAYER));
 }
 
 #[test]
@@ -4285,9 +4415,14 @@ fn a_schema_18_capture_migrates_to_itself_without_the_new_objects() {
     let mut old = data.clone();
     as_schema_18(&mut old);
     let (migrated, dir) = migrate("schema-18", &as_envelope(&old, 18));
-    let new = save::S18_PICKUPS..save::S18_PICKUPS + save::SHIFT_19_PICKUPS;
-    let added = save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22;
+    let new: Vec<u64> = (save::S18_PICKUPS..save::S18_PICKUPS + save::SHIFT_19_PICKUPS)
+        .map(schema_23_id)
+        .collect();
+    let added: Vec<u64> = (save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22)
+        .map(schema_23_id)
+        .collect();
     let mut want = data.clone();
+    runtime_past_s22(&mut want);
     want["enemies"].as_array_mut().unwrap().retain(|enemy| {
         let id = enemy["id"].as_u64().unwrap();
         !new.contains(&id) && !added.contains(&id)
@@ -4301,13 +4436,14 @@ fn a_schema_18_capture_migrates_to_itself_without_the_new_objects() {
     // roost and the geysers at their offsets.
     let mut fresh = super::harness();
     load(&mut fresh, migrated);
-    for id in new.chain(added).chain([save::S18_BAT_C]) {
+    let bat_c = schema_23_from_18(save::S18_BAT_C);
+    for id in new.into_iter().chain(added).chain([bat_c]) {
         let enemy = by_id(&fresh, id);
         let home = fresh.world().get::<Enemy>(enemy).unwrap().home();
         let at = super::body(&fresh, enemy);
         assert!(at.distance(home) < 1.0, "{id} at {at}, home {home}");
     }
-    let bat = by_id(&fresh, save::S18_BAT_C);
+    let bat = by_id(&fresh, bat_c);
     assert_eq!(
         fresh.world().get::<Enemy>(bat).unwrap().home(),
         save::S19_BAT_C_HOME
@@ -4327,7 +4463,7 @@ fn the_schema_11_fixtures_bat_c_migrates_to_its_new_roost() {
     let bat = migrated
         .enemies
         .iter()
-        .find(|enemy| enemy.id == save::S18_BAT_C)
+        .find(|enemy| enemy.id == schema_23_from_18(save::S18_BAT_C))
         .expect("bat c saved");
     assert_eq!(bat.kind, EnemyKind::Bat);
     assert_eq!(Vec2::from(bat.enemy.home), save::S19_BAT_C_HOME);
@@ -4461,7 +4597,8 @@ fn a_flask_in_flight_saves_loads_and_bursts_where_it_would_have() {
 fn a_schema_19_save_loads_living_armoured_and_an_armoured_bridge_troll() {
     let (mut harness, _) = run();
     harness.step(2);
-    let troll = by_id(&harness, save::S21_BRIDGE_TROLL);
+    let bridge_troll = schema_23_id(save::S21_BRIDGE_TROLL);
+    let troll = by_id(&harness, bridge_troll);
     tungsten::kit::damage(harness.world_mut(), troll, 100.0);
     harness.step(1);
     let mut data = json(&capture(&harness));
@@ -4478,7 +4615,7 @@ fn a_schema_19_save_loads_living_armoured_and_an_armoured_bridge_troll() {
             enemy.kind,
             enemy.id
         );
-        let armoured = enemy.kind == EnemyKind::Beetle || enemy.id == save::S21_BRIDGE_TROLL;
+        let armoured = enemy.kind == EnemyKind::Beetle || enemy.id == bridge_troll;
         assert_eq!(
             enemy.tags.has("armoured"),
             armoured,
@@ -4496,7 +4633,7 @@ fn a_schema_19_save_loads_living_armoured_and_an_armoured_bridge_troll() {
     let bridge = migrated
         .enemies
         .iter()
-        .find(|enemy| enemy.id == save::S21_BRIDGE_TROLL)
+        .find(|enemy| enemy.id == bridge_troll)
         .unwrap();
     assert_eq!(bridge.enemy.variant, Variant::Armoured);
     let saved_health = old["enemies"]
@@ -4510,7 +4647,7 @@ fn a_schema_19_save_loads_living_armoured_and_an_armoured_bridge_troll() {
     assert!(saved_health < 600.0, "hurt before the save");
     let mut fresh = super::harness();
     load(&mut fresh, migrated);
-    let loaded = by_id(&fresh, save::S21_BRIDGE_TROLL);
+    let loaded = by_id(&fresh, bridge_troll);
     let world = fresh.world();
     assert_eq!(
         world.get::<Enemy>(loaded).unwrap().variant,
@@ -4533,12 +4670,124 @@ fn a_schema_20_save_migrates_to_itself() {
     as_schema_21_capture(&mut old);
     let (migrated, dir) = migrate("schema-20-self", &as_envelope(&old, 20));
     let _ = std::fs::remove_dir_all(dir);
-    // The capture again but for schema 22's new enemies, which it lacks.
-    let added = save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22;
+    // The capture again but for schema 22's new enemies, which it lacks,
+    // its runtime IDs past schema 22's player's.
+    let added: Vec<u64> = (save::S21_PICKUPS..save::S21_PICKUPS + save::SHIFT_22)
+        .map(schema_23_id)
+        .collect();
     let mut want = data.clone();
+    runtime_past_s22(&mut want);
     want["enemies"]
         .as_array_mut()
         .unwrap()
         .retain(|enemy| !added.contains(&enemy["id"].as_u64().unwrap()));
     assert_eq!(json(&migrated), want, "unchanged");
+}
+
+/// Puts one more enemy on `harness`'s map before a run spawns it: a copy of
+/// the meadow goblin named `name`, four tiles east of it.
+fn with_one_more_enemy(harness: &mut UiHarness, name: &str) {
+    let world = harness.world_mut();
+    let mut map = world
+        .resource::<TilemapRegistry>()
+        .get(level::MAP)
+        .expect("the level's map")
+        .clone();
+    let next = map
+        .object_layers
+        .iter()
+        .flat_map(|layer| &layer.objects)
+        .map(|object| object.id)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let layer = map
+        .object_layers
+        .iter_mut()
+        .find(|layer| layer.name == "enemies")
+        .expect("the enemies' layer");
+    let mut added = layer
+        .objects
+        .iter()
+        .find(|object| object.name == "meadow goblin")
+        .expect("the meadow goblin")
+        .clone();
+    added.id = next;
+    added.name = name.to_owned();
+    added.position.x += 4.0 * level::TILE;
+    layer.objects.push(added);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert(level::MAP.to_owned(), map);
+}
+
+#[test]
+fn an_enemy_added_to_the_map_needs_no_schema_bump() {
+    // P7-9: a run on the shipped map, an enemy killed and one hurt, saved
+    // at today's schema, loads into a map with one more enemy as it is.
+    let (mut harness, _) = run();
+    harness.step(2);
+    let placed = enemies::live(harness.world());
+    let [(_, killed), (hurt_id, hurt), ..] = placed[..] else {
+        panic!("the map's enemies")
+    };
+    tungsten::kit::damage(harness.world_mut(), killed, 10_000.0);
+    tungsten::kit::damage(harness.world_mut(), hurt, 5.0);
+    harness.step(3);
+    assert!(!harness.world().is_alive(killed), "killed");
+    let saved = json(&capture(&harness));
+    let envelope = as_envelope(&saved, SaveGame::SCHEMA);
+    let (read, dir) = migrate("added-enemy", &envelope);
+    let _ = std::fs::remove_dir_all(dir);
+    let mut differ = Vec::new();
+    differences(&json(&read), &saved, "", &mut differ);
+    assert!(differ.is_empty(), "read as it was written: {differ:?}");
+    let mut fresh = super::harness();
+    with_one_more_enemy(&mut fresh, "added goblin");
+    load(&mut fresh, read);
+    // The new enemy stands at its home; every saved object came back by
+    // its ID, as it was saved.
+    let added = by_id(&fresh, SaveId::authored("added goblin").0);
+    let enemy = *fresh.world().get::<Enemy>(added).unwrap();
+    assert_eq!(enemy.kind, EnemyKind::Goblin);
+    assert!(super::body(&fresh, added).distance(enemy.home()) < 1.0);
+    let health = |h: &UiHarness| {
+        h.world()
+            .get::<Health>(by_id(h, hurt_id))
+            .unwrap()
+            .current()
+    };
+    assert_eq!(health(&fresh), health(&harness), "the hurt one");
+    let mut again = json(&capture(&fresh));
+    let enemies = again["enemies"].as_array_mut().unwrap();
+    let before = enemies.len();
+    enemies.retain(|saved| saved["id"] != SaveId::authored("added goblin").0);
+    assert_eq!(enemies.len() + 1, before, "the added goblin saved too");
+    let mut differ = Vec::new();
+    differences(&again, &saved, "", &mut differ);
+    assert!(differ.is_empty(), "the save, loaded whole: {differ:?}");
+}
+
+#[test]
+fn a_migrated_schema_22_capture_keeps_its_maps_crates_outside_the_summons_caps() {
+    let (harness, _) = run();
+    let mut data = json(&capture(&harness));
+    as_schema_22_capture(&mut data);
+    let map: Vec<u64> = data["props"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|prop| prop["kind"] == "crate" || prop["kind"] == "keg")
+        .map(|prop| prop["id"].as_u64().unwrap())
+        .collect();
+    assert_eq!(
+        map,
+        save::S22_MAP_PROPS.collect::<Vec<u64>>(),
+        "schema 22's"
+    );
+    let (migrated, dir) = migrate("schema-22-crates", &as_envelope(&data, 22));
+    let _ = std::fs::remove_dir_all(dir);
+    let mut fresh = super::harness();
+    load(&mut fresh, migrated);
+    super::props::summons_spare_the_maps_crates(&mut fresh);
 }

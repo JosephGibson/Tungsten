@@ -118,8 +118,9 @@ pub fn glows(world: &mut World) {
     }
 }
 
-/// A glow's parts for `owner`, owned by gameplay, phased by its save ID, or
-/// by its column when it has none.
+/// A glow's parts for `owner`, owned by gameplay, phased by its save ID's
+/// low bits, which keep the clock's in an `f32` at an authored ID's size,
+/// or by its column when it has none.
 fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
     let phase = world.get::<SaveId>(owner).map_or_else(
         || {
@@ -127,7 +128,7 @@ fn spawn_parts(world: &mut World, owner: Entity, glow: &Glow) -> GlowParts {
                 .get::<Transform>(owner)
                 .map_or(0.0, |transform| transform.position.x / TILE)
         },
-        |id| id.0 as f32,
+        |id| (id.0 % 1024) as f32,
     );
     let [r, g, b, _] = glow.color.map(|c| f32::from(c) / 255.0);
     let light = (glow.light > 0.0).then(|| {

@@ -21,11 +21,14 @@ use tungsten::{Plugin, SceneEntity};
 use crate::features::level::GLOWS;
 use crate::features::level::components::Glow;
 use crate::game::GAMEPLAY;
-use crate::shared::{Bursts, SaveIds};
+use crate::shared::{Bursts, SaveId};
 use components::{Lantern, LanternAnchors, Moves, StaffGlow};
 
 /// The player's prefab, by its manifest ID.
 pub const PLAYER_PREFAB: &str = "player";
+/// The name the player's save ID derives from ([`SaveId::authored`]),
+/// which no map object takes.
+pub const SAVE_NAME: &str = "player";
 /// The body's half size and where its centre sits from the sprite's
 /// top-left corner, the entity's point: the wizard's 96 px art stands its
 /// feet on its row 93.
@@ -155,11 +158,11 @@ pub enum Gesture {
 }
 
 /// Spawns the player with its body's centre at `centre`, owned by gameplay,
-/// at its prefab's health, with the run's next save ID, its staff light
-/// off, and its prefab's glow kept for the staff's flare.
+/// at its prefab's health, with the save ID of [`SAVE_NAME`], its staff
+/// light off, and its prefab's glow kept for the staff's flare.
 pub fn spawn(world: &mut World, centre: Vec2) -> Entity {
     let at = centre - BODY_OFFSET;
-    let id = world.resource_mut::<SaveIds>().take();
+    let id = SaveId::authored(SAVE_NAME);
     let player = world
         .prepare_prefab(PLAYER_PREFAB, at.to_array())
         .expect("the manifest's prefabs load with it")

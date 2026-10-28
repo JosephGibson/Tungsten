@@ -10,7 +10,7 @@
 //! (`CascadeKind::Detonation`), crediting whoever lit it. A frozen crate or
 //! keg never lights: fire on it is thermal shock. The summon slot places
 //! them, [`CRATE_CAP`] crates and [`KEG_CAP`] kegs at most, the map's own
-//! besides ([`map_ids`]). A goblin's bomb is a lit keg in small: thrown on the world's
+//! besides ([`MapProp`]). A goblin's bomb is a lit keg in small: thrown on the world's
 //! gravity, it rolls, its fuse turning with it, blows at [`BOMB_BLAST`]
 //! after [`FUSE_SECS`], credited to its goblin, and fizzles out at once
 //! when snuffed. A goblin's rock is a stone body that bounces and rolls and
@@ -39,13 +39,11 @@ use crate::features::audio::{self, components::Sound};
 use crate::features::elements::DOUSE_SECS;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
-use crate::features::level;
 use crate::features::level::components::SceneTime;
-use crate::features::run::Run;
 use crate::features::toys::components::ScrapTumble;
 use crate::features::toys::{self, components::IronBlock};
 use crate::shared::{SaveId, body_centre, despawn_tree, spawn_burst, spawn_key_burst};
-use components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone};
+use components::{Bomb, Crate, Fuel, Keg, MapProp, Plank, PropKind, Rock, Stone};
 
 /// The props' prefabs, by their manifest IDs.
 pub const CRATE_PREFAB: &str = "crate";
@@ -287,21 +285,16 @@ pub fn fits(world: &World, kind: PropKind, at: Vec2) -> bool {
 
 /// Spawns a prop of `kind` with its body's centre at `at`, at once and
 /// quietly, with the run's next save ID: a crate's, a rock's or a stone's
-/// art by the ID's parity, a crate's fuel whole; a plank its first art and
-/// its fuel whole, which a break sets.
+/// art by the ID's parity ([`art`]), a crate's fuel whole; a plank its
+/// first art and its fuel whole, which a break sets.
 pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
     let prop = toys::spawn_toy(world, prefab(kind), at - centre(kind), 1.0);
+    let variant = art(world.get::<SaveId>(prop));
     if kind == PropKind::Rock {
-        let variant = world
-            .get::<SaveId>(prop)
-            .map_or(0, |id| (id.0 % 2) as usize);
         world.insert(prop, Rock { variant });
         systems::show_rock(world, prop, variant);
     }
     if kind == PropKind::Crate {
-        let variant = world
-            .get::<SaveId>(prop)
-            .map_or(0, |id| (id.0 % 2) as usize);
         world.insert(prop, Crate { variant });
         world.insert(
             prop,
@@ -315,9 +308,6 @@ pub fn spawn(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
         systems::show_variant(world, prop, variant);
     }
     if let PropKind::Stone(size) = kind {
-        let variant = world
-            .get::<SaveId>(prop)
-            .map_or(0, |id| (id.0 % 2) as usize);
         world.insert(prop, Stone { size, variant });
         systems::show_stone(world, prop, size, variant);
     }
@@ -460,32 +450,24 @@ pub fn crumble(world: &mut World, rock: Entity) {
     despawn_tree(world, rock);
 }
 
-/// The save IDs of the map's own crates and kegs: a fresh run sets them
-/// down after the player and the mine's loose iron, one a marker, and a
-/// load keeps them (`run`). Empty outside a run.
+/// A crate's, a rock's or a stone's art by its save ID's parity, an odd
+/// ID's the first: a fresh run's runtime IDs count from 0 where schema 22's
+/// counted from 57, past the map's, so the map's crates and stones keep
+/// the art they were drawn and placed with.
 #[must_use]
-pub fn map_ids(world: &World) -> std::ops::Range<u64> {
-    let Some(player) = world
-        .get_resource::<Run>()
-        .and_then(|run| world.get::<SaveId>(run.player))
-    else {
-        return 0..0;
-    };
-    let count = |marker: &str| level::markers(world, marker).len() as u64;
-    let first = player.0 + 1 + count(level::IRON_MARKER);
-    first..first + count(level::CRATE_MARKER) + count(level::KEG_MARKER)
+pub fn art(id: Option<&SaveId>) -> usize {
+    id.map_or(0, |id| ((id.0 + 1) % 2) as usize)
 }
 
 /// Places a prop of `kind` with its centre at `at`, as the summon slot
-/// does: past its kind's cap, the map's own aside ([`map_ids`]), the
+/// does: past its kind's cap, the map's own aside ([`MapProp`]), the
 /// oldest, the lowest save ID, goes first in a poof.
 pub fn place(world: &mut World, kind: PropKind, at: Vec2) -> Entity {
-    let map = map_ids(world);
     let mut live: Vec<(SaveId, Entity)> = all(world)
         .into_iter()
         .filter(|&entity| self::kind(world, entity) == Some(kind))
+        .filter(|&entity| !world.has::<MapProp>(entity))
         .filter_map(|entity| Some((*world.get::<SaveId>(entity)?, entity)))
-        .filter(|(id, _)| !map.contains(&id.0))
         .collect();
     live.sort_by_key(|(id, _)| *id);
     let surplus = (live.len() + 1).saturating_sub(cap(kind));
