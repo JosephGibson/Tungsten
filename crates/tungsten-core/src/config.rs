@@ -395,7 +395,7 @@ fn is_valid_game_id(id: &str) -> bool {
             .iter()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
         // Windows drops a trailing dot, so `mygame.` would share `mygame`'s
-        // folder (`D-218`).
+        // folder (`D-219`).
         && bytes.last() != Some(&b'.')
         && !is_windows_device_name(id)
 }
