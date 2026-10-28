@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.111.0] - 2026-10-28
+
 Summary: one example 01 stop from the owner's notes (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.12) and a follow-up on the map's foes, with no engine, kit, template or shell change: `e01flask`, the toxic flask (an eleventh spell whose splash poisons living things, poison as a fifth damage type, armour on the beetle and the bridge's troll, and Corrosive, poison and shock together melting that armour away for good); then seven more enemies on the map and a crawler that leaps higher; save schemas 20 to 22.
 
 ### Added
