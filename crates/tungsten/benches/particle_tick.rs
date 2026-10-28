@@ -20,7 +20,7 @@ fn make_config() -> Arc<ParticleConfig> {
         render: ParticleRender::Quad,
         max_alive: 8_192,
         seed: Some(1),
-        blend: BlendMode::Premultiplied,
+        blend: BlendMode::Alpha,
         emission: EmissionKind::Continuous { rate_hz: 0.0 },
         lifetime: Range { min: 1.0, max: 2.0 },
         initial_velocity: InitialVelocity::Radial {
