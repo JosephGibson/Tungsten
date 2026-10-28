@@ -165,12 +165,13 @@ pub enum InitialVelocity {
     Vector { direction: [f32; 2], speed: Range },
 }
 
-/// CPU-side blend hint before shared sprite pipeline.
+/// How a particle blends: straight alpha, the shared sprite pipeline's. A
+/// premultiplied mode, which drew alpha twice through that pipeline, was
+/// retired with no config using it (qa6); a config naming it fails to parse.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum BlendMode {
     Alpha,
-    Premultiplied,
 }
 
 /// Piecewise-linear curve over `t in [0, 1]`.

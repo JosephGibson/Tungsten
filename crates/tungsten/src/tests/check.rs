@@ -98,7 +98,7 @@ fn particle(mesh: &str) -> String {
     format!(
         r#"{{
             "sprite": "hero", "render": {{"kind": "mesh", "mesh": "{mesh}"}},
-            "max_alive": 10, "seed": 1, "blend": "premultiplied",
+            "max_alive": 10, "seed": 1, "blend": "alpha",
             "emission": {{"kind": "continuous", "rate_hz": 10.0}},
             "lifetime": {{"min": 0.5, "max": 1.0}},
             "initial_velocity": {{"kind": "radial", "speed": {{"min": 10.0, "max": 20.0}}}},

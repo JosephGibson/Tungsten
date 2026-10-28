@@ -12,11 +12,11 @@ use std::sync::Arc;
 use glam::Vec2;
 
 use tungsten_core::{
-    AssetRegistry, BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue,
-    InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
-    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform,
-    Visibility, With, World, WorldRngSeed,
+    AssetRegistry, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity,
+    MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId, ParticleMeshRegistry,
+    ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform, Visibility, With, World,
+    WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
@@ -289,11 +289,6 @@ fn integrate_particle(p: &mut Particle, t: &mut Transform, dt: f32) -> Option<[u
     if let Some(alpha_curve) = p.config.alpha_over_life.as_ref() {
         rgba[3] *= alpha_curve.sample(u);
     }
-    if matches!(p.config.blend, BlendMode::Premultiplied) {
-        rgba[0] *= rgba[3];
-        rgba[1] *= rgba[3];
-        rgba[2] *= rgba[3];
-    }
     let final_rgba = [
         (rgba[0] * p.base_rgba[0]).clamp(0.0, 1.0),
         (rgba[1] * p.base_rgba[1]).clamp(0.0, 1.0),
@@ -430,11 +425,6 @@ fn build_particle(
     };
     if let Some(alpha_curve) = cfg.alpha_over_life.as_ref() {
         rgba[3] *= alpha_curve.sample(0.0);
-    }
-    if matches!(cfg.blend, BlendMode::Premultiplied) {
-        rgba[0] *= rgba[3];
-        rgba[1] *= rgba[3];
-        rgba[2] *= rgba[3];
     }
     let base_rgba = [cfg.tint[0], cfg.tint[1], cfg.tint[2], cfg.tint[3]];
     let initial_color = [

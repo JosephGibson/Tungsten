@@ -61,6 +61,20 @@ fn config_round_trip() {
 }
 
 #[test]
+fn config_refuses_the_retired_premultiplied_blend() {
+    let src = r#"{
+        "sprite": "spark",
+        "max_alive": 32,
+        "blend": "premultiplied",
+        "emission": { "kind": "burst", "count": 8 },
+        "lifetime": { "min": 0.5, "max": 1.0 },
+        "initial_velocity": { "kind": "radial", "speed": { "min": 10.0, "max": 20.0 } }
+    }"#;
+    let err = serde_json::from_str::<ParticleConfig>(src).unwrap_err();
+    assert!(err.to_string().contains("unknown variant `premultiplied`"), "{err}");
+}
+
+#[test]
 fn config_rejects_unsorted_curve() {
     let src = r#"{
         "sprite": "s",
