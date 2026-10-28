@@ -1259,8 +1259,6 @@ fn ctrl_tap(harness: &mut UiHarness, code: KeyCode) {
     harness.step(1);
 }
 
-/// A click at the centre of where `id` paints, in window pixels.
-
 /// A harness whose window is `width`×`height` at an OS scale of `os`.
 fn sized(app: App, width: u32, height: u32, os: f32) -> UiHarness {
     let mut harness = UiHarness::new(app);
