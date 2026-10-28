@@ -434,6 +434,9 @@ impl Renderer {
             )
             .expect("compile-time smaa_neighborhood_blend shader must validate");
 
+        // Bloom's ids 4..=7 follow the sprite's 0 and SMAA's 1..=3: the cache
+        // keys modules by id and `reload_shader` rebuilds the stage whose
+        // stored id matches, so a shared id would swap the wrong stage.
         let bloom_shader_ids = BloomShaderIds {
             threshold: ShaderAssetId(4),
             downsample: ShaderAssetId(5),
