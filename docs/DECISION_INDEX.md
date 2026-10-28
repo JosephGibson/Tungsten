@@ -1,6 +1,6 @@
 # Decision Index
 
-Navigation keys and short takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.md). `crates/tungsten-core/tests/decision_index.rs` fails if a heading is missing here or an unknown ID appears, so a new decision adds its row in the same change. Read only the matching rows for a task; each `D-NNN` points to its canonical heading and the measurements/edge rules there. Find it with `rg -n '^## D-NNN\b' DECISIONS.md`, then read that section through the next decision heading. Historical plan paths may now live under `docs/plans/archive/` with the same basename; agents never open the archive.
+Navigation keys and short takeaways for every decision heading in [`DECISIONS.md`](../DECISIONS.md). `crates/tungsten-core/tests/integration/decision_index.rs` fails if a heading is missing here or an unknown ID appears, so a new decision adds its row in the same change. Read only the matching rows for a task; each `D-NNN` points to its canonical heading and the measurements/edge rules there. Find it with `rg -n '^## D-NNN\b' DECISIONS.md`, then read that section through the next decision heading. Historical plan paths may now live under `docs/plans/archive/` with the same basename; agents never open the archive.
 
 ## Foundations
 

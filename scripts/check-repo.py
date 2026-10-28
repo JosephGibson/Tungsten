@@ -494,7 +494,7 @@ def select_checks(root, paths):
             review.add("Dependency/toolchain changes: review API snapshots and release/template requirements in docs/validation.md.")
         asset = "/assets/" in f"/{path}" or path.endswith("manifest.json")
         if asset:
-            require("cargo test -p tungsten-core --test manifests --locked", "Edit loop", "layer 1 manifest/asset graph")
+            require("cargo test -p tungsten-core --test integration --locked manifests::", "Edit loop", "layer 1 manifest/asset graph")
             require("just repo-check", "CPU", "asset coverage")
             require("just smoke", "Hardware", "layer 2 asset upload/runtime integration; local GPU/display")
         if re.match(r"examples/[^/]+/src/shell/", path):
@@ -504,7 +504,7 @@ def select_checks(root, paths):
             require("just level-check", "CPU", "generator source/inventory/output consistency and tests; Pillow required")
             require("cargo test -p example-01-platformer --locked", "Edit loop", "generated layout and real route/gameplay tests")
             require("just repo-check", "CPU", "generated asset coverage")
-            require("cargo test -p tungsten-core --test manifests --locked", "Edit loop", "generated manifest graph")
+            require("cargo test -p tungsten-core --test integration --locked manifests::", "Edit loop", "generated manifest graph")
             require("just smoke", "Hardware", "generated level/art runtime wiring; local GPU/display")
             review.add("Platformer art/layout/audio: run the authoring guide's applicable route, motion, resize and audible review; smoke is startup evidence only.")
         elif path.startswith(platformer + "assets/"):
@@ -535,7 +535,7 @@ def select_checks(root, paths):
         if (path.startswith(("crates/tungsten-core/src/assets/", "crates/tungsten/src/asset_loader/"))
                 or path in ("crates/tungsten-core/src/components.rs", "crates/tungsten-core/src/text.rs", "crates/tungsten/src/extract.rs")
                 or re.match(r"crates/tungsten/src/\w+_extract.rs$", path)):
-            require("cargo test -p tungsten-core --test manifests --locked", "Edit loop", "core/render asset and extraction seam")
+            require("cargo test -p tungsten-core --test integration --locked manifests::", "Edit loop", "core/render asset and extraction seam")
             require("just repo-check", "CPU", "seam/manifest consistency")
         if (path.startswith(("crates/tungsten-core/src/physics/", "crates/tungsten-core/src/ecs/"))
                 or path in ("crates/tungsten/src/app.rs", "crates/tungsten-core/src/time.rs", "crates/tungsten-core/src/schedule.rs")
@@ -582,9 +582,11 @@ def select_checks(root, paths):
             unknown.append(path)
     # A whole-crate edit-loop run includes its integration tests. Keep all the
     # reasons on the broader command instead of recommending duplicate runs.
-    for package, integration in (("tungsten-core", "manifests"), ("tungsten-render", "shader_coverage")):
+    for package, targeted in (
+        ("tungsten-core", "cargo test -p tungsten-core --test integration --locked manifests::"),
+        ("tungsten-render", "cargo test -p tungsten-render --test shader_coverage --locked"),
+    ):
         full = f"cargo test -p {package} --locked"
-        targeted = f"cargo test -p {package} --test {integration} --locked"
         if full in commands and targeted in commands:
             commands[full]["reasons"].update(commands.pop(targeted)["reasons"])
     return commands, sorted(review), unknown
