@@ -552,6 +552,7 @@ fn game_ids_that_fail_name_the_field_through_validate_and_load() {
         ".x",
         "a/b",
         "con.txt",
+        "mygame.",
     ];
     for (n, id) in bad.into_iter().enumerate() {
         match game_with_id(id).validate().unwrap_err() {
