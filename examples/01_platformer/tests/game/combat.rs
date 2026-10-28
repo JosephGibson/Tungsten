@@ -705,8 +705,7 @@ fn poison_then_shock_and_shock_then_poison_corrode_a_beetle_and_poison_alone_doe
 }
 
 #[test]
-fn a_corroded_beetle_takes_every_type_at_one_and_a_half_while_shocked_then_one_and_stays_corroded()
-{
+fn corrosive_consumes_the_poison_and_the_shock_and_the_beetle_takes_every_type_whole_for_good() {
     let (mut harness, _, _) = with_dummy();
     let beetle = foe(&mut harness, EnemyKind::Beetle, 1300.0);
     harness.step(1);
@@ -714,14 +713,10 @@ fn a_corroded_beetle_takes_every_type_at_one_and_a_half_while_shocked_then_one_a
     apply(&mut harness, beetle, "shocked", None);
     harness.step(1);
     assert!(has(&harness, beetle, "corroded"));
-    let kinds = [
-        Kind::Physical,
-        Kind::Fire,
-        Kind::Cold,
-        Kind::Shock,
-        Kind::Poison,
-    ];
-    let taken = |harness: &mut UiHarness| -> Vec<f32> {
+    // The proc consumes both (the owner's round-2 note).
+    assert!(!has(&harness, beetle, "poisoned"), "its poison consumed");
+    assert!(!has(&harness, beetle, "shocked"), "its shock consumed");
+    let taken = |harness: &mut UiHarness, kinds: &[Kind]| -> Vec<f32> {
         kinds
             .iter()
             .map(|&kind| {
@@ -731,21 +726,29 @@ fn a_corroded_beetle_takes_every_type_at_one_and_a_half_while_shocked_then_one_a
             })
             .collect()
     };
-    // Shocked's half again on every type, its shell's 0.25, 0.5 and 2 gone.
-    let shocked = taken(&mut harness);
+    // Its shell's 0.25, 0.5 and 2 gone, and no shock left: every type whole.
+    let plain = taken(
+        &mut harness,
+        &[
+            Kind::Physical,
+            Kind::Fire,
+            Kind::Cold,
+            Kind::Shock,
+            Kind::Poison,
+        ],
+    );
+    assert!(plain.iter().all(|&t| (t - 2.0).abs() < 1e-4), "{plain:?}");
+    // A later shock's half again holds: the overrides sit on the types.
+    apply(&mut harness, beetle, "shocked", None);
+    harness.step(1);
+    let shocked = taken(
+        &mut harness,
+        &[Kind::Physical, Kind::Fire, Kind::Cold, Kind::Shock],
+    );
     assert!(
         shocked.iter().all(|&t| (t - 3.0).abs() < 1e-4),
         "{shocked:?}"
     );
-    for _ in 0..300 {
-        if !has(&harness, beetle, "shocked") {
-            break;
-        }
-        harness.step(1);
-    }
-    assert!(!has(&harness, beetle, "shocked"), "its shock ran out");
-    let plain = taken(&mut harness);
-    assert!(plain.iter().all(|&t| (t - 2.0).abs() < 1e-4), "{plain:?}");
     harness.step(1200);
     assert!(has(&harness, beetle, "corroded"), "20 s on, for good");
     assert!(health(&harness, beetle) > 0.0);

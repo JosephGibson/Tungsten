@@ -78,9 +78,12 @@ ELEMENT_SIZES = {
     'scorch': (48, 16),
     **{f'plank_{i}': (32, 16) for i in range(5)},
     'hurt_edge': (320, 180),
-    # e01flask: the toxic flask tumbling and its burst.
+    # e01flask: the toxic flask tumbling and its burst; Corrosive's
+    # reaction over a beetle's body and an armoured troll's.
     **{f'toxic_flask_{i}': (16, 16) for i in range(4)},
     **{f'toxic_flask_burst_{i}': (96, 96) for i in range(6)},
+    **{f'corrode_reaction_medium_{i}': (96, 96) for i in range(10)},
+    **{f'corrode_reaction_large_{i}': (160, 160) for i in range(10)},
 }
 # Art sized by its name's prefix: the troll's frames are 128 px, the one
 # enemy drawn larger than a tile, and the wizard's 96 px, room for his hat

@@ -521,4 +521,43 @@ class FlaskContractTests(unittest.TestCase):
             self.assertTrue(0 < seconds <= longest, f'{name}: {seconds} s')
 
 
+
+# e01flask's round 2: Corrosive's reaction by the body it covers, and the
+# stripped clips the game shows once it has taken a beetle or an armoured
+# troll, each frame for frame its plain clip's.
+REACTION_CLIPS = {'corrode_reaction_medium': (96, 10, 70), 'corrode_reaction_large': (160, 10, 70)}
+STRIPPED_CLIPS = {'beetle': ('walk', 'paw', 'charge'), 'troll': TROLL_CLIPS}
+
+
+class CorrodedContractTests(unittest.TestCase):
+    setUpClass = classmethod(FlaskContractTests.setUpClass.__func__)
+    sprite = FlaskContractTests.sprite
+    clip = FlaskContractTests.clip
+
+    def test_the_reaction_clips_keep_their_sizes_and_timing(self):
+        for clip, (side, count, ms) in REACTION_CLIPS.items():
+            data = self.clip(clip)
+            self.assertFalse(data['looping'], clip)
+            self.assertEqual([f['duration_ms'] for f in data['frames']], [ms] * count, clip)
+            for i, frame in enumerate(data['frames']):
+                self.assertEqual(frame['sprite'], f'ex10_{clip}_{i}')
+                self.assertEqual(self.sprite(f'{clip}_{i}').size, (side, side), clip)
+            self.assertNotIn(f'ex10_{clip}_left', self.manifest['animations'], clip)
+
+    def test_the_stripped_clips_match_their_plain_clips(self):
+        from PIL import ImageOps
+        for kind, clips in STRIPPED_CLIPS.items():
+            for clip in clips:
+                plain, stripped = self.clip(f'{kind}_{clip}'), self.clip(f'{kind}_stripped_{clip}')
+                self.assertEqual(stripped['looping'], plain['looping'], clip)
+                self.assertEqual([f['duration_ms'] for f in stripped['frames']],
+                                 [f['duration_ms'] for f in plain['frames']], clip)
+                for i, frame in enumerate(stripped['frames']):
+                    name = f'{kind}_stripped_{clip}_{i}'
+                    self.assertEqual(frame['sprite'], 'ex10_' + name)
+                    im, twin = self.sprite(name), self.sprite(name + '_left')
+                    self.assertEqual(im.size, self.sprite(f'{kind}_{clip}_{i}').size, name)
+                    self.assertEqual(twin.tobytes(), ImageOps.mirror(im).tobytes(), name)
+
+
 if __name__=='__main__':unittest.main()

@@ -4438,3 +4438,71 @@ fn a_shot_turns_off_the_armoured_trolls_front() {
     assert_eq!(turned, 1, "its front turned the shot");
     assert!(landed.is_empty(), "the front takes nothing: {landed:?}");
 }
+
+/// Corrosive strips its target (e01flask's round-2 note): poisoned and
+/// shocked, a beetle and an armoured troll show their stripped clips, each
+/// under one reaction, its body's size class's, that follows it and is
+/// gone after its 0.7 s.
+#[test]
+fn corroded_beetles_and_armoured_trolls_show_their_stripped_clips_under_the_reaction() {
+    let (mut harness, _) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let beetle = walker(&mut harness, EnemyKind::Beetle, 1100.0, TOP);
+    let troll = armoured_troll_at(&mut harness, 1500.0);
+    harness.step(2);
+    for foe in [beetle, troll] {
+        apply(&mut harness, foe, "poisoned", None);
+        apply(&mut harness, foe, "shocked", None);
+    }
+    harness.step(2);
+    let clip = |h: &UiHarness, foe| h.world().get::<Shown>(foe).unwrap().clip.clone();
+    assert!(
+        clip(&harness, beetle).starts_with("ex10_beetle_stripped_"),
+        "{}",
+        clip(&harness, beetle)
+    );
+    assert!(
+        clip(&harness, troll).starts_with("ex10_troll_stripped_"),
+        "{}",
+        clip(&harness, troll)
+    );
+    let reactions = |h: &UiHarness| -> Vec<(Entity, String, Vec2)> {
+        h.world()
+            .query::<(&tungsten::kit::Source, &AnimationState, &Position)>()
+            .filter(|(_, state, _)| state.animation_id.starts_with("ex10_corrode_reaction_"))
+            .map(|(source, state, p)| (source.entity(), state.animation_id.clone(), p.0))
+            .collect()
+    };
+    let mut found = reactions(&harness);
+    found.sort_by_key(|(source, ..)| *source == troll);
+    let names: Vec<(Entity, &str)> = found
+        .iter()
+        .map(|(e, name, _)| (*e, name.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [
+            (beetle, "ex10_corrode_reaction_medium"),
+            (troll, "ex10_corrode_reaction_large")
+        ]
+    );
+    // It rides the troll as the troll is moved.
+    let before = found[1].2 - at(&harness, troll);
+    let moved = at(&harness, troll) + Vec2::new(-30.0, 0.0);
+    harness.world_mut().get_mut::<Position>(troll).unwrap().0 = moved;
+    harness.step(2);
+    let riding = reactions(&harness)
+        .into_iter()
+        .find(|(source, ..)| *source == troll)
+        .map(|(.., p)| p - at(&harness, troll));
+    assert!(
+        riding.is_some_and(|offset| (offset - before).length() < 4.0),
+        "{riding:?} vs {before}"
+    );
+    harness.step(45);
+    assert!(reactions(&harness).is_empty(), "gone after its 0.7 s");
+    assert!(
+        clip(&harness, troll).starts_with("ex10_troll_stripped_"),
+        "stripped for good"
+    );
+}

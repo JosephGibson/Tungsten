@@ -7,12 +7,14 @@
 use glam::Vec2;
 use tungsten::SceneEntity;
 use tungsten::core::{
-    Collider, DataRef, DataRegistry, Entity, EventCursor, EventQueue, ParticleConfigRegistry,
-    ParticleEmitter, ParticleEmitterState, Sprite, Transform, World,
+    AnimationState, AssetRegistry, Collider, DataRef, DataRegistry, Entity, EventCursor,
+    EventQueue, ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, Position,
+    PrevPosition, Sprite, Transform, Visibility, World,
 };
 use tungsten::kit::{
     AilmentBuckets, AilmentThreshold, DamagedPart, EffectApplied, EffectExpired, EffectRequest,
-    Effects, Health, ImmunePart, Modifier, Stats, Tags,
+    Effects, Follow, Health, ImmunePart, Lifetime, Modifier, Source, Stats, Tags, Target,
+    end_effect,
 };
 
 use super::components::{StatusEmitter, StatusLook};
@@ -23,6 +25,7 @@ use super::{
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::{STEAM_REACH, TARGET_BLAST};
+use crate::features::enemies::components::{Enemy, EnemyKind};
 use crate::features::level::geyser::Geyser;
 use crate::features::level::systems::drawn_time;
 use crate::features::player::components::Moves;
@@ -207,11 +210,13 @@ pub fn reactions(
 
 /// Corrosive (e01flask, Q4, Q5, Q69): each live `armoured` target that
 /// carries poisoned and shocked at once and is not corroded, in save-ID
-/// order, takes `corroded` at once, from nobody, with its flakes and its
-/// sound at its centre: its armour's resistances overridden to 1 on every
-/// type for good, never on `damage`, so shocked's half again holds, and
-/// bullets no longer turn off its front. It reads the step's last tags, so
-/// either status landing second corrodes.
+/// order, takes `corroded` at once, from nobody, and the proc consumes
+/// both (the owner's round-2 note): its poison and its shock end there.
+/// Its reaction plays over its body ([`reaction`]), its drops and its sound
+/// at its centre; its armour's resistances are overridden to 1 on every
+/// type for good, never on `damage`, so a later shock's half again holds,
+/// and bullets no longer turn off its front. It reads the step's last tags,
+/// so either status landing second corrodes.
 pub fn corrode(world: &mut World) {
     let mut corroding: Vec<(Option<SaveId>, Entity)> = world
         .query::<(Entity, &Health, &Tags)>()
@@ -227,11 +232,64 @@ pub fn corrode(world: &mut World) {
     corroding.sort_by_key(|(id, _)| *id);
     for (_, target) in corroding {
         EffectRequest::new(target, DataRef::by_id("corroded")).apply(world);
+        for spent in ["poisoned", "shocked"] {
+            end_effect(world, target, &DataRef::by_id(spent));
+        }
+        reaction(world, target);
         if let Some(at) = body_centre(world, target) {
             spawn_burst(world, "ex10_corrode_burst", at);
             audio::play(world, Sound::Corroded, at);
         }
     }
+}
+
+/// Corrosive's reaction clips by the body they cover, each with its
+/// canvas's side: the medium's over a beetle's shell, the large's over an
+/// armoured troll's plates.
+pub const REACTION_CLIPS: [(&str, f32); 2] = [
+    ("ex10_corrode_reaction_medium", 96.0),
+    ("ex10_corrode_reaction_large", 160.0),
+];
+/// How long Corrosive's reaction plays: its ten frames of 70 ms.
+pub const REACTION_SECS: f32 = 0.7;
+/// Its draw order, over the enemies' 8.
+const REACTION_Z: i32 = 14;
+
+/// Corrosive's reaction over `target`, once (e01flask's round-2 note):
+/// arcs leaping through the poison boiling up off its armour, the metal
+/// running off, fumes rising; its clip's middle on the body's, following
+/// the body by its `Position`, so a troll's turned frames move it nowhere.
+/// The stripped clips take the armour's place under it at once.
+pub fn reaction(world: &mut World, target: Entity) {
+    let Some(corner) = world.get::<Position>(target).map(|p| p.0) else {
+        return;
+    };
+    let middle = world
+        .get::<Collider>(target)
+        .map_or(Vec2::ZERO, |collider| collider.offset);
+    let large = world
+        .get::<Enemy>(target)
+        .is_some_and(|enemy| enemy.kind == EnemyKind::Troll);
+    let (clip, side) = REACTION_CLIPS[usize::from(large)];
+    let offset = middle - Vec2::splat(side * 0.5);
+    let Some(assets) = world.get_resource_mut::<AssetRegistry>() else {
+        return;
+    };
+    let mut sprite = Sprite::new(assets.intern_sprite(&format!("{clip}_0")));
+    sprite.z_order = REACTION_Z;
+    let at = corner + offset;
+    world.spawn_with((
+        Position(at),
+        PrevPosition(at),
+        Transform::from_position(at),
+        sprite,
+        Visibility { visible: true },
+        AnimationState::new(clip),
+        Lifetime::new(REACTION_SECS),
+        Source::new(target),
+        Follow::new(Target::source()).with_offset(offset),
+        SceneEntity { state_id: GAMEPLAY },
+    ));
 }
 
 /// The tints a status gives its target's sprite, which multiply its

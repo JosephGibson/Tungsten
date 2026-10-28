@@ -42,6 +42,24 @@
     "ex10_beetle_paw_left": {
       "path": "animations/beetle_paw_left.json"
     },
+    "ex10_beetle_stripped_charge": {
+      "path": "animations/beetle_stripped_charge.json"
+    },
+    "ex10_beetle_stripped_charge_left": {
+      "path": "animations/beetle_stripped_charge_left.json"
+    },
+    "ex10_beetle_stripped_paw": {
+      "path": "animations/beetle_stripped_paw.json"
+    },
+    "ex10_beetle_stripped_paw_left": {
+      "path": "animations/beetle_stripped_paw_left.json"
+    },
+    "ex10_beetle_stripped_walk": {
+      "path": "animations/beetle_stripped_walk.json"
+    },
+    "ex10_beetle_stripped_walk_left": {
+      "path": "animations/beetle_stripped_walk_left.json"
+    },
     "ex10_beetle_walk": {
       "path": "animations/beetle_walk.json"
     },
@@ -65,6 +83,12 @@
     },
     "ex10_charge_streak_left": {
       "path": "animations/charge_streak_left.json"
+    },
+    "ex10_corrode_reaction_large": {
+      "path": "animations/corrode_reaction_large.json"
+    },
+    "ex10_corrode_reaction_medium": {
+      "path": "animations/corrode_reaction_medium.json"
     },
     "ex10_crawler_hop": {
       "path": "animations/crawler_hop.json"
@@ -674,6 +698,54 @@
     },
     "ex10_troll_slam_left": {
       "path": "animations/troll_slam_left.json"
+    },
+    "ex10_troll_stripped_idle": {
+      "path": "animations/troll_stripped_idle.json"
+    },
+    "ex10_troll_stripped_idle_left": {
+      "path": "animations/troll_stripped_idle_left.json"
+    },
+    "ex10_troll_stripped_pickup": {
+      "path": "animations/troll_stripped_pickup.json"
+    },
+    "ex10_troll_stripped_pickup_left": {
+      "path": "animations/troll_stripped_pickup_left.json"
+    },
+    "ex10_troll_stripped_slam": {
+      "path": "animations/troll_stripped_slam.json"
+    },
+    "ex10_troll_stripped_slam_left": {
+      "path": "animations/troll_stripped_slam_left.json"
+    },
+    "ex10_troll_stripped_swipe": {
+      "path": "animations/troll_stripped_swipe.json"
+    },
+    "ex10_troll_stripped_swipe_left": {
+      "path": "animations/troll_stripped_swipe_left.json"
+    },
+    "ex10_troll_stripped_swipe_windup": {
+      "path": "animations/troll_stripped_swipe_windup.json"
+    },
+    "ex10_troll_stripped_swipe_windup_left": {
+      "path": "animations/troll_stripped_swipe_windup_left.json"
+    },
+    "ex10_troll_stripped_throw": {
+      "path": "animations/troll_stripped_throw.json"
+    },
+    "ex10_troll_stripped_throw_left": {
+      "path": "animations/troll_stripped_throw_left.json"
+    },
+    "ex10_troll_stripped_walk": {
+      "path": "animations/troll_stripped_walk.json"
+    },
+    "ex10_troll_stripped_walk_left": {
+      "path": "animations/troll_stripped_walk_left.json"
+    },
+    "ex10_troll_stripped_windup": {
+      "path": "animations/troll_stripped_windup.json"
+    },
+    "ex10_troll_stripped_windup_left": {
+      "path": "animations/troll_stripped_windup_left.json"
     },
     "ex10_troll_swipe": {
       "path": "animations/troll_swipe.json"
@@ -4046,6 +4118,150 @@
       "filter": "nearest",
       "path": "sprites/beetle_paw_7_left.png"
     },
+    "ex10_beetle_stripped_charge_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_0.png"
+    },
+    "ex10_beetle_stripped_charge_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_0_left.png"
+    },
+    "ex10_beetle_stripped_charge_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_1.png"
+    },
+    "ex10_beetle_stripped_charge_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_1_left.png"
+    },
+    "ex10_beetle_stripped_charge_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_2.png"
+    },
+    "ex10_beetle_stripped_charge_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_2_left.png"
+    },
+    "ex10_beetle_stripped_charge_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_3.png"
+    },
+    "ex10_beetle_stripped_charge_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_charge_3_left.png"
+    },
+    "ex10_beetle_stripped_paw_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_0.png"
+    },
+    "ex10_beetle_stripped_paw_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_0_left.png"
+    },
+    "ex10_beetle_stripped_paw_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_1.png"
+    },
+    "ex10_beetle_stripped_paw_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_1_left.png"
+    },
+    "ex10_beetle_stripped_paw_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_2.png"
+    },
+    "ex10_beetle_stripped_paw_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_2_left.png"
+    },
+    "ex10_beetle_stripped_paw_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_3.png"
+    },
+    "ex10_beetle_stripped_paw_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_3_left.png"
+    },
+    "ex10_beetle_stripped_paw_4": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_4.png"
+    },
+    "ex10_beetle_stripped_paw_4_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_4_left.png"
+    },
+    "ex10_beetle_stripped_paw_5": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_5.png"
+    },
+    "ex10_beetle_stripped_paw_5_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_5_left.png"
+    },
+    "ex10_beetle_stripped_paw_6": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_6.png"
+    },
+    "ex10_beetle_stripped_paw_6_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_6_left.png"
+    },
+    "ex10_beetle_stripped_paw_7": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_7.png"
+    },
+    "ex10_beetle_stripped_paw_7_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_paw_7_left.png"
+    },
+    "ex10_beetle_stripped_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_0.png"
+    },
+    "ex10_beetle_stripped_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_0_left.png"
+    },
+    "ex10_beetle_stripped_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_1.png"
+    },
+    "ex10_beetle_stripped_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_1_left.png"
+    },
+    "ex10_beetle_stripped_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_2.png"
+    },
+    "ex10_beetle_stripped_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_2_left.png"
+    },
+    "ex10_beetle_stripped_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_3.png"
+    },
+    "ex10_beetle_stripped_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_3_left.png"
+    },
+    "ex10_beetle_stripped_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_4.png"
+    },
+    "ex10_beetle_stripped_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_4_left.png"
+    },
+    "ex10_beetle_stripped_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_5.png"
+    },
+    "ex10_beetle_stripped_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/beetle_stripped_walk_5_left.png"
+    },
     "ex10_beetle_walk_0": {
       "filter": "nearest",
       "path": "sprites/beetle_walk_0.png"
@@ -6129,6 +6345,86 @@
       "filter": "nearest",
       "normal_map": "sprites/corner_convex_right_n.png",
       "path": "sprites/corner_convex_right.png"
+    },
+    "ex10_corrode_reaction_large_0": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_0.png"
+    },
+    "ex10_corrode_reaction_large_1": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_1.png"
+    },
+    "ex10_corrode_reaction_large_2": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_2.png"
+    },
+    "ex10_corrode_reaction_large_3": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_3.png"
+    },
+    "ex10_corrode_reaction_large_4": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_4.png"
+    },
+    "ex10_corrode_reaction_large_5": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_5.png"
+    },
+    "ex10_corrode_reaction_large_6": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_6.png"
+    },
+    "ex10_corrode_reaction_large_7": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_7.png"
+    },
+    "ex10_corrode_reaction_large_8": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_8.png"
+    },
+    "ex10_corrode_reaction_large_9": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_large_9.png"
+    },
+    "ex10_corrode_reaction_medium_0": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_0.png"
+    },
+    "ex10_corrode_reaction_medium_1": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_1.png"
+    },
+    "ex10_corrode_reaction_medium_2": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_2.png"
+    },
+    "ex10_corrode_reaction_medium_3": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_3.png"
+    },
+    "ex10_corrode_reaction_medium_4": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_4.png"
+    },
+    "ex10_corrode_reaction_medium_5": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_5.png"
+    },
+    "ex10_corrode_reaction_medium_6": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_6.png"
+    },
+    "ex10_corrode_reaction_medium_7": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_7.png"
+    },
+    "ex10_corrode_reaction_medium_8": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_8.png"
+    },
+    "ex10_corrode_reaction_medium_9": {
+      "filter": "nearest",
+      "path": "sprites/corrode_reaction_medium_9.png"
     },
     "ex10_crate_0": {
       "emissive_mask": "sprites/crate_0_e.png",
@@ -15091,6 +15387,238 @@
     "ex10_troll_slam_2_left": {
       "filter": "nearest",
       "path": "sprites/troll_slam_2_left.png"
+    },
+    "ex10_troll_stripped_idle_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_0.png"
+    },
+    "ex10_troll_stripped_idle_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_0_left.png"
+    },
+    "ex10_troll_stripped_idle_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_1.png"
+    },
+    "ex10_troll_stripped_idle_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_1_left.png"
+    },
+    "ex10_troll_stripped_idle_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_2.png"
+    },
+    "ex10_troll_stripped_idle_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_2_left.png"
+    },
+    "ex10_troll_stripped_idle_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_3.png"
+    },
+    "ex10_troll_stripped_idle_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_idle_3_left.png"
+    },
+    "ex10_troll_stripped_pickup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_0.png"
+    },
+    "ex10_troll_stripped_pickup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_0_left.png"
+    },
+    "ex10_troll_stripped_pickup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_1.png"
+    },
+    "ex10_troll_stripped_pickup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_1_left.png"
+    },
+    "ex10_troll_stripped_pickup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_2.png"
+    },
+    "ex10_troll_stripped_pickup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_pickup_2_left.png"
+    },
+    "ex10_troll_stripped_slam_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_0.png"
+    },
+    "ex10_troll_stripped_slam_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_0_left.png"
+    },
+    "ex10_troll_stripped_slam_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_1.png"
+    },
+    "ex10_troll_stripped_slam_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_1_left.png"
+    },
+    "ex10_troll_stripped_slam_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_2.png"
+    },
+    "ex10_troll_stripped_slam_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_slam_2_left.png"
+    },
+    "ex10_troll_stripped_swipe_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_0.png"
+    },
+    "ex10_troll_stripped_swipe_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_0_left.png"
+    },
+    "ex10_troll_stripped_swipe_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_1.png"
+    },
+    "ex10_troll_stripped_swipe_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_1_left.png"
+    },
+    "ex10_troll_stripped_swipe_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_2.png"
+    },
+    "ex10_troll_stripped_swipe_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_2_left.png"
+    },
+    "ex10_troll_stripped_swipe_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_windup_0.png"
+    },
+    "ex10_troll_stripped_swipe_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_windup_0_left.png"
+    },
+    "ex10_troll_stripped_swipe_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_windup_1.png"
+    },
+    "ex10_troll_stripped_swipe_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_swipe_windup_1_left.png"
+    },
+    "ex10_troll_stripped_throw_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_0.png"
+    },
+    "ex10_troll_stripped_throw_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_0_left.png"
+    },
+    "ex10_troll_stripped_throw_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_1.png"
+    },
+    "ex10_troll_stripped_throw_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_1_left.png"
+    },
+    "ex10_troll_stripped_throw_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_2.png"
+    },
+    "ex10_troll_stripped_throw_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_throw_2_left.png"
+    },
+    "ex10_troll_stripped_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_0.png"
+    },
+    "ex10_troll_stripped_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_0_left.png"
+    },
+    "ex10_troll_stripped_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_1.png"
+    },
+    "ex10_troll_stripped_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_1_left.png"
+    },
+    "ex10_troll_stripped_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_2.png"
+    },
+    "ex10_troll_stripped_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_2_left.png"
+    },
+    "ex10_troll_stripped_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_3.png"
+    },
+    "ex10_troll_stripped_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_3_left.png"
+    },
+    "ex10_troll_stripped_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_4.png"
+    },
+    "ex10_troll_stripped_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_4_left.png"
+    },
+    "ex10_troll_stripped_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_5.png"
+    },
+    "ex10_troll_stripped_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_5_left.png"
+    },
+    "ex10_troll_stripped_walk_6": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_6.png"
+    },
+    "ex10_troll_stripped_walk_6_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_6_left.png"
+    },
+    "ex10_troll_stripped_walk_7": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_7.png"
+    },
+    "ex10_troll_stripped_walk_7_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_walk_7_left.png"
+    },
+    "ex10_troll_stripped_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_0.png"
+    },
+    "ex10_troll_stripped_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_0_left.png"
+    },
+    "ex10_troll_stripped_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_1.png"
+    },
+    "ex10_troll_stripped_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_1_left.png"
+    },
+    "ex10_troll_stripped_windup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_2.png"
+    },
+    "ex10_troll_stripped_windup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_stripped_windup_2_left.png"
     },
     "ex10_troll_swipe_0": {
       "filter": "nearest",

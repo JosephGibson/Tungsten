@@ -1,0 +1,17 @@
+{
+  "frames": [
+    {
+      "duration_ms": 140,
+      "sprite": "ex10_troll_stripped_pickup_0_left"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_troll_stripped_pickup_1_left"
+    },
+    {
+      "duration_ms": 200,
+      "sprite": "ex10_troll_stripped_pickup_2_left"
+    }
+  ],
+  "looping": false
+}

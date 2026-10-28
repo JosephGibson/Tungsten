@@ -13,12 +13,13 @@ flame whose tongues stream up and behind; the fire missile a rocket of fire.
 """
 import math
 from dataclasses import dataclass, replace
+from functools import partial
 
 from PIL import Image
 
 from art import PALETTE
 from pixels import (
-    BAYER, NEIGHBOURS, Part, add, compose, despeckle, grade, outline, point, ramp, shade, smoothstep,
+    BAYER, NEIGHBOURS, Part, add, compose, despeckle, fbm, grade, outline, point, ramp, shade, smoothstep,
     to_image, unit,
 )
 
@@ -1862,7 +1863,7 @@ def horn_glint(canvas, tip, size):
                 put((x + dx, y + dy), 'q')
 
 
-def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
+def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0, stripped=False):
     """A dome of banded wing cases with rows of punctures, a riveted shield
     with a short horn, the long ridged horn of its head, red eyes, a fanned
     antenna and mouthparts, legs with spines and hooked claws, belly plates,
@@ -1872,7 +1873,8 @@ def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
     raking the ground through `phase` and throwing clods back, a glint
     swelling at its horn's tip by `glint`) or `charge` (head down and
     dropped, the horn levelled, its legs a blur, dust behind); `phase` steps
-    its legs."""
+    its legs. `stripped` (e01flask): Corrosive has eaten the wing cases
+    through to the soft body under them (`strip_shell`)."""
     dip = 4 if pose == 'charge' else 0
     amp = 4.5 if pose == 'charge' else 2.5
     far, near, dome, plate, head, horn, horn2, belly = (Part() for _ in range(8))
@@ -1927,6 +1929,7 @@ def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
     horn.polygon(strand(horn_path, [5, 4, 3, 2, 1]))
     if pose != 'walk':
         dome, belly, plate, horn2, head, horn = (sheared(p, lift) for p in (dome, belly, plate, horn2, head, horn))
+    shell = dome.pixels()
     canvas = compose([
         (shade(far.pixels(), 'b', shadow='o'), None),
         (shade(belly.pixels(), 'b', light='B', shadow='o'), None),
@@ -1982,6 +1985,8 @@ def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
         for t in range(1, 4):
             if canvas.get((x, y + t), 'o') != 'o':
                 canvas[(x, y + t)] = '(' if t < 3 else '"'
+    if stripped:
+        strip_shell(canvas, shell, lambda x, y: (x, y + lift(x) + bob))
     for leg in legs:  # spines along the shins, hooked claws
         (kx, ky), (fx, fy) = leg[1], leg[2]
         for t in (0.35, 0.65):
@@ -2043,26 +2048,69 @@ def beetle_canvas(pose='walk', phase=0.0, rear=0.0, glint=0.0):
     return canvas
 
 
-def beetle_walk_frames():
+# e01flask: what Corrosive leaves of a shell: the soft body under the
+# wing cases, pale as a grub's, banded where its segments meet; verdigris
+# crusting the torn edges and run down from them, dark to light.
+SOFT_BODY = ('τ', 'σ', 'w')
+VERDIGRIS = ('կ', 'հ', 'ձ', 'ղ', 'ճ')
+ACID_CRUST = ('հ', 'ձ')
+
+
+def strip_shell(canvas, shell, body):
+    """Eats the wing cases through: where a slow noise in the body's own
+    frame (`body` maps a pixel to it, so the holes ride every pose) runs
+    high, the soft body shows, lit from above and banded by its segments;
+    the shell round each hole is crusted green, the acid runs down from the
+    holes' lower edges, and what is left is pitted and dulled."""
+    inside = {q for q in shell if canvas.get(q, 'o') != 'o'}
+    top = min((y for _, y in inside), default=0)
+    tall = max(1, max((y for _, y in inside), default=1) - top)
+    rim = {(x, y) for x, y in inside
+           if any((x + dx, y + dy) not in inside for dx in (-2, 0, 2) for dy in (-2, 0, 2))}
+    holes = set()
+    for x, y in inside - rim:
+        bx, by = body(x, y)
+        if fbm(bx / 6.5, by / 5.0, 'beetle-eaten') > 0.58 and by < SOLE - 8:
+            holes.add((x, y))
+    for x, y in holes:
+        bx, by = body(x, y)
+        lit = 1.0 - (y - top) / tall + (0.3 if (x, y - 1) not in holes else 0.0)
+        canvas[(x, y)] = 'S' if by % 4 == 0 else ramp(0.2 + 0.6 * lit, SOFT_BODY)
+    for x, y in sorted(inside - holes):
+        if any((x + dx, y + dy) in holes for dx, dy in NEIGHBOURS):
+            canvas[(x, y)] = ACID_CRUST[(x + y) % 2]
+        elif unit('beetle-pit', x, y) < 0.06:
+            canvas[(x, y)] = 'Φ'
+        elif canvas[(x, y)] in ('χ', 'ψ') and fbm(x / 4, y / 4, 'beetle-dull') > 0.5:
+            canvas[(x, y)] = 'Ω'
+    for x, y in sorted(holes):  # the acid run down from each hole's lower edge
+        if (x, y + 1) in inside and (x, y + 1) not in holes and unit('beetle-drip', x, y) < 0.3:
+            for k in range(1, 2 + int(unit('beetle-drip-len', x, y) * 3)):
+                if (x, y + k) in inside and (x, y + k) not in holes:
+                    canvas[(x, y + k)] = ACID_CRUST[1] if k < 2 else ACID_CRUST[0]
+
+
+def beetle_walk_frames(stripped=False):
     """Its legs stepping in two alternating sets of three."""
-    frames = [to_image(beetle_canvas('walk', i / BEETLE_FRAMES)) for i in range(BEETLE_FRAMES)]
+    frames = [to_image(beetle_canvas('walk', i / BEETLE_FRAMES, stripped=stripped)) for i in range(BEETLE_FRAMES)]
     return frames, [110] * BEETLE_FRAMES
 
 
-def beetle_paw_frames():
+def beetle_paw_frames(stripped=False):
     """The charge's tell, 0.8 s: rearing, its front and horn rising over its
     planted hind feet and its shell tilting, a foreleg raking the ground
     twice and throwing clods back, a glint swelling at its horn's tip."""
     n = len(RAKE)
-    frames = [to_image(beetle_canvas('paw', f / n, rear=min(1.0, 0.2 + 0.8 * f / (n - 2)), glint=(f + 1) / n))
+    frames = [to_image(beetle_canvas('paw', f / n, rear=min(1.0, 0.2 + 0.8 * f / (n - 2)), glint=(f + 1) / n,
+                                     stripped=stripped))
               for f in range(n)]
     return frames, [100] * n
 
 
-def beetle_charge_frames():
+def beetle_charge_frames(stripped=False):
     """The charge: head down and dropped, horn levelled, legs a blur, dust
     behind."""
-    return [to_image(beetle_canvas('charge', i / 4)) for i in range(4)], [60] * 4
+    return [to_image(beetle_canvas('charge', i / 4, stripped=stripped)) for i in range(4)], [60] * 4
 
 
 # The bat: near-black fur, dark purple wings with their bones showing.
@@ -2220,6 +2268,325 @@ class TrollPose:
     hands: str = 'open'  # open, fists, or clasped overhead (both hands as one)
     sway: float = 0.0  # the hide's front flap swings this far
     dust: bool = False  # a slam's impact kicks up dust at the hands
+    armoured: bool = False  # e01flask: the armoured troll's iron over the same body
+    stripped: bool = False  # e01flask: an armoured troll's iron after Corrosive, eaten to remnants
+
+
+# e01flask: the armoured troll's iron, dark to light, a step darker on the
+# far side; rust along its seams and under its rivets.
+IRON = ('-', '~', ':', ';', 'Ω', 'ψ', 'χ')
+IRON_FAR = ('-', '-', '~', ':', ';', 'Ω')
+RUST = ('п', 'к', '"', 'У')
+MOON = (0.5, -0.62, 0.6)  # toward the moon, which lights the troll from its front and above
+
+
+def moonlit(nx, ny, nz):
+    """How brightly the moon lights a surface facing (`nx`, `ny`, `nz`): a
+    soft diffuse light and a hard sheen, as polished iron takes it."""
+    length = math.sqrt(nx * nx + ny * ny + nz * nz) or 1.0
+    lx, ly, lz = MOON
+    norm = math.sqrt(lx * lx + ly * ly + lz * lz)
+    d = max(0.0, (nx * lx + ny * ly + nz * lz) / (length * norm))
+    return 0.3 + 0.5 * d + 0.35 * d ** 6
+
+
+def iron_tube(inside, a, b, symbols, spread=0.05):
+    """A plate wrapped round a limb from `a` to `b`, lit as a cylinder about
+    that axis."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / length, dx / length
+    offsets = {(x, y): (x + 0.5 - a[0]) * nx + (y + 0.5 - a[1]) * ny for x, y in inside}
+    half = max([abs(o) for o in offsets.values()] + [1.0]) + 0.3
+    colors = {}
+    for (x, y), o in offsets.items():
+        s = max(-1.0, min(1.0, o / half))
+        colors[(x, y)] = ramp(moonlit(nx * s, ny * s, math.sqrt(1 - s * s)), symbols, x, y, spread)
+    return colors
+
+
+def iron_dome(inside, centre, rx, ry, symbols, spread=0.05):
+    """A domed plate (a helm's crown, a pauldron, a knee cop) about
+    `centre`, lit as a ball."""
+    colors = {}
+    for x, y in inside:
+        dx, dy = (x + 0.5 - centre[0]) / rx, (y + 0.5 - centre[1]) / ry
+        nz = math.sqrt(max(0.05, 1 - dx * dx - dy * dy))
+        colors[(x, y)] = ramp(moonlit(dx, dy, nz), symbols, x, y, spread)
+    return colors
+
+
+def rust_seam(colors, seam, keys, chance=0.4):
+    """Rust along a seam: the plate's pixels on `seam`'s near side, in
+    patches where a slow noise runs high, flecked in the rust ramp's dark
+    steps, the odd one bright."""
+    for x, y in sorted(seam):
+        patch = fbm(x / 5, y / 5, repr(keys))
+        if (x, y) in colors and unit(keys, x, y) < chance * 2.6 * max(0.0, patch - 0.42):
+            colors[(x, y)] = RUST[0] if unit(keys, 'tone', x, y) < 0.45 else (
+                RUST[1] if unit(keys, 'tone', x, y) < 0.85 else RUST[3])
+
+
+def rivet(colors, x, y, keys, drip=True):
+    """A rivet's head, its shadow under it and, now and then, a rust streak
+    run down from it."""
+    x, y = round(x), round(y)
+    if (x, y) not in colors:
+        return
+    colors[(x, y)] = 'ψ'
+    if (x - 1, y + 1) in colors:
+        colors[(x - 1, y + 1)] = '~'
+    if drip and unit(keys, x, y) < 0.5:
+        for k in range(1, 2 + int(unit(keys, 'len', x, y) * 3)):
+            if (x, y + 1 + k) in colors:
+                colors[(x, y + 1 + k)] = RUST[1] if k < 2 else RUST[0]
+
+
+def regions(pixels):
+    """`pixels` split into their 4-connected pieces."""
+    left, pieces = set(pixels), []
+    while left:
+        stack = [left.pop()]
+        piece = set(stack)
+        while stack:
+            x, y = stack.pop()
+            for dx, dy in NEIGHBOURS:
+                q = (x + dx, y + dy)
+                if q in left:
+                    left.discard(q)
+                    piece.add(q)
+                    stack.append(q)
+        pieces.append(piece)
+    return pieces
+
+
+def eaten(colors, local, seed, keep):
+    """What Corrosive leaves of a plate (e01flask): its pixels where a slow
+    noise in the plate's own frame (`local` maps a pixel to it, so the
+    remnant rides the joint it is strapped to) stays under `keep` (a
+    number, or a function of the frame's point); the torn edges crusted in
+    the acid's green, runs of it dried down from the lower ones over
+    whatever lies under, the rest pitted and dulled."""
+    def keeps(q):
+        u, v = local(q)
+        return fbm(u, v, seed) < (keep(u, v) if callable(keep) else keep)
+    kept = {q: s for q, s in colors.items() if keeps(q)}
+    for blob in regions(set(kept)):  # no specks of iron left floating
+        if len(blob) < 8:
+            for q in blob:
+                del kept[q]
+    for blob in regions(set(colors) - set(kept)):  # no pinholes: the acid eats in bites
+        if len(blob) < 6:
+            kept.update({q: colors[q] for q in blob})
+    gone = set(colors) - set(kept)
+    out = dict(kept)
+    for (x, y), s in kept.items():
+        if any((x + dx, y + dy) in gone for dx, dy in NEIGHBOURS):
+            out[(x, y)] = VERDIGRIS[3] if (x, y - 1) in gone else ACID_CRUST[(x + y) % 2]
+            if (x, y + 1) in gone and unit(seed, 'run', x, y) < 0.45:
+                for k in range(1, 3 + int(unit(seed, 'run-len', x, y) * 4)):
+                    out[(x, y + k)] = VERDIGRIS[2] if k < 3 else VERDIGRIS[1]
+        elif unit(seed, 'pit', x, y) < 0.07:
+            out[(x, y)] = '-'
+        elif s in ('χ', 'ψ') and fbm(x / 3, y / 3, (seed, 'dull')) > 0.45:
+            out[(x, y)] = 'Ω'
+    return out
+
+
+def troll_armour(pose, P, chest, hx, hy, joints):
+    """The armoured troll's iron over the troll's own skeleton, so every
+    plate rides the joint it is strapped to: a dented helm with a nasal and
+    cheek guards, its rim riveted; riveted pauldrons, a domed cap over two
+    lames that follow the upper arm; a breastplate of overlapping bands,
+    its fauld over the loincloth's top; bracers and greaves with knee cops;
+    rust on the seams and run from the rivets. Each piece's colours by its
+    layer's name, and the helm's pixels."""
+    size = (BIG, BIG)
+    c, up = pose.crouch, pose.breath
+    out = {}
+
+    def chest_frame(q):  # a screen pixel back in the trunk's own frame, before it leans and breathes
+        y = q[1] - c
+        for _ in range(2):
+            share = max(0.0, min(1.0, (76 - y) / 40))
+            y = q[1] - c + up * share
+        return (q[0] - pose.lean * share, y)
+    # Greaves and knee cops, from under the knee to the ankle.
+    for side, symbols, widths, cop in (('far', IRON_FAR, [9, 10, 8], (3.5, 3)),
+                                       ('near', IRON, [11, 12, 9], (4.5, 3.5))):
+        knee, ankle = joints[side + '_knee'], joints[side + '_ankle']
+        along = [add(knee, (ankle[0] - knee[0], ankle[1] - knee[1]), t) for t in (0.2, 0.55, 0.93)]
+        part = Part(size)
+        part.polygon(strand(along, widths))
+        colors = iron_tube(part.pixels(), along[0], along[-1], symbols)
+        seam = {(x, y) for x, y in colors if (x, y - 1) not in colors or (x, y + 1) not in colors}
+        rust_seam(colors, seam, ('greave', side), 0.3)
+        mid = along[1]
+        rivet(colors, mid[0] + 2, mid[1] - 4, ('greave-rivet', side))
+        rivet(colors, along[-1][0] + 2, along[-1][1] - 3, ('greave-rivet', side, 1), drip=False)
+        out[side + '_greave'] = colors
+        knob = Part(size)
+        knob.ellipse((knee[0] + 1, knee[1]), cop[0], cop[1])
+        colors = iron_dome(knob.pixels(), (knee[0] + 1, knee[1] - 1), cop[0] + 1, cop[1] + 1, symbols)
+        rivet(colors, knee[0] + 1, knee[1], ('cop', side), drip=False)
+        out[side + '_knee'] = colors
+    # Bracers over the forearms, from below the elbow to the wrist.
+    for side, symbols, widths in (('far', IRON_FAR, [8, 9, 8]), ('near', IRON, [10, 11, 10])):
+        elbow, wrist = joints[side + '_elbow'], joints[side + '_wrist']
+        along = [add(elbow, (wrist[0] - elbow[0], wrist[1] - elbow[1]), t) for t in (0.35, 0.65, 0.95)]
+        part = Part(size)
+        part.polygon(strand(along, widths))
+        colors = iron_tube(part.pixels(), along[0], along[-1], symbols)
+        band = Part(size)
+        band.limb([along[1], along[1]], 1)
+        seam = Part(size)
+        seam.polygon(strand([add(along[1], (wrist[0] - elbow[0], wrist[1] - elbow[1]), -0.03),
+                             add(along[1], (wrist[0] - elbow[0], wrist[1] - elbow[1]), 0.03)], [14, 14]))
+        lines = {q for q in seam.pixels() if q in colors}
+        for q in lines:
+            colors[q] = symbols[0]
+        rust_seam(colors, {(x, y + 1) for x, y in lines}, ('bracer', side), 0.45)
+        rivet(colors, *along[0], ('bracer-rivet', side), drip=False)
+        rivet(colors, *along[2], ('bracer-rivet', side, 1), drip=False)
+        out[side + '_bracer'] = colors
+    # Pauldrons: a domed cap on the shoulder over two lames that follow the
+    # upper arm, the lower lame first so each plate overlaps the next.
+    for side, symbols, cap, root in (('far', IRON_FAR, (6, 5), chest(65, 42)), ('near', IRON, (8, 6), chest(83, 45))):
+        elbow = joints[side + '_elbow']
+        arm = (elbow[0] - root[0], elbow[1] - root[1])
+        layers = []
+        for k, (t0, t1, w0, w1) in enumerate(((0.3, 0.48, cap[0] * 2 - 2, cap[0] * 2 - 4),
+                                              (0.12, 0.32, cap[0] * 2, cap[0] * 2 - 2))):
+            lame = Part(size)
+            lame.polygon(strand([add(root, arm, t0), add(root, arm, t1)], [w0, w1]))
+            colors = iron_tube(lame.pixels(), add(root, arm, t0), add(root, arm, t1), symbols)
+            lower = {(x, y) for x, y in colors if (x, y + 1) not in colors}
+            rust_seam(colors, lower, ('lame', side, k), 0.35)
+            mid = add(root, arm, (t0 + t1) / 2)
+            rivet(colors, mid[0] + arm[1] / math.hypot(*arm) * (w0 / 2 - 2),
+                  mid[1] - arm[0] / math.hypot(*arm) * (w0 / 2 - 2), ('lame-rivet', side, k))
+            layers.append(colors)
+        dome = Part(size)
+        top = (root[0], root[1] - 2)
+        dome.ellipse(top, cap[0], cap[1])
+        colors = iron_dome(dome.pixels(), (top[0] + 1, top[1] - 1), cap[0] + 1, cap[1] + 1, symbols)
+        rim = {(x, y) for x, y in colors if (x, y + 1) not in colors or (x + 1, y) not in colors}
+        rust_seam(colors, rim, ('pauldron', side), 0.3)
+        for i in range(3):
+            a = math.radians(200 + i * 55)
+            rivet(colors, top[0] + math.cos(a) * (cap[0] - 2), top[1] + math.sin(a) * (cap[1] - 2),
+                  ('pauldron-rivet', side, i), drip=i == 1)
+        out[side + '_pauldron'] = layers + [colors]
+    # The breastplate: a collar plate and four bands down the trunk, leaning
+    # and breathing with it, and the fauld, two more bands over the hips.
+    bounds = [39, 48, 56, 64, 72, 78, 84]
+    plate = Part(size)
+    plate.polygon([chest(61, 41), chest(68, 38), chest(85, 42), chest(88, 50), chest(87, 58), chest(83, 66),
+                   chest(80, 73), (81, 76 + c), (83, 84 + c), (58, 84 + c), (59, 76 + c), chest(58, 68),
+                   chest(57, 57), chest(59, 47)])
+    inside = plate.pixels()
+    rows = {}
+    for x, y in inside:
+        lo, hi = rows.get(y, (x, x))
+        rows[y] = (min(lo, x), max(hi, x))
+
+    def screen_y(yc):  # a chest row's screen row: the trunk breathes above the waist
+        return yc + c - up * max(0.0, min(1.0, (76 - yc) / 40))
+    edges = [screen_y(b) for b in bounds]
+    colors, seams = {}, set()
+    for x, y in inside:
+        k = max(0, min(len(edges) - 2, sum(1 for e in edges[1:-1] if y + 0.5 >= e)))
+        y0, y1 = edges[k], edges[k + 1]
+        lo, hi = rows[y]
+        s = max(-1.0, min(1.0, 2 * (x + 0.5 - lo) / max(1, hi - lo + 1) - 1))
+        v = (y + 0.5 - y0) / max(1.0, y1 - y0)
+        # Each lame lies under the one above: shadowed at its top, flat
+        # across its middle, its rolled lower edge catching the moon.
+        tilt = -0.25 if v > 0.82 else (0.45 if v < 0.22 and k > 0 else 0.05)
+        colors[(x, y)] = ramp(moonlit(s * 0.8, tilt, math.sqrt(max(0.05, 1 - s * s))), IRON, x, y, 0.05)
+        if k > 0 and y == math.floor(y0):
+            seams.add((x, y))
+    for q in seams:
+        colors[q] = '-'
+    rust_seam(colors, {(x, y + 1) for x, y in seams} | {(x, y + 2) for x, y in seams}, 'band-rust', 0.5)
+    for k in range(len(bounds) - 1):  # a rivet at each band's front and back
+        y = round((edges[k] + edges[k + 1]) / 2)
+        if y in rows:
+            lo, hi = rows[y]
+            rivet(colors, hi - 3, y, ('band-rivet', k))
+            rivet(colors, lo + 3, y, ('band-rivet', k, 'back'), drip=False)
+    for i in range(4):  # a dent in the second band: a dark crease, its lip lit below
+        x, y = point(chest(72 + i, 49 + i // 2))
+        if (x, y) in colors:
+            colors[(x, y)] = '~'
+            if (x, y + 1) in colors:
+                colors[(x, y + 1)] = 'ψ'
+    out['breastplate'] = colors
+    # The helm: a crown over the skull to a rim that falls from the brow to
+    # the nape, the rim's band riveted; a nasal down the nose's bridge and a
+    # cheek guard over the jaw, leaving the ember eye in the rim's shadow.
+    def rim_y(x):
+        return hy - 5 + (hx + 9 - x) * (6.0 / 21)
+    crown = Part(size)
+    crown.ellipse((hx - 1, hy - 2), 12, 11)
+    crown_px = {(x, y) for x, y in crown.pixels() if y < rim_y(x) and x <= hx + 10}
+    colors = iron_dome(crown_px, (hx + 1, hy - 5), 13, 12, IRON)
+    band = {(x, y) for x, y in crown_px if y >= rim_y(x) - 2.2}
+    for x, y in band:
+        colors[(x, y)] = ramp(0.35 + 0.35 * ((x, y - 1) not in band), IRON, x, y, 0.2)
+    rust_seam(colors, {(x, y) for x, y in band if (x, y + 1) not in crown_px}, 'helm-rim', 0.45)
+    for i in range(6):
+        rivet(colors, hx - 9 + i * 3.6, rim_y(hx - 9 + i * 3.6) - 1.4, ('helm-rivet', i), drip=i in (1, 4))
+    for i in range(4):  # a dent in the crown
+        x, y = round(hx - 4 + i), round(hy - 10 + (i % 2))
+        if (x, y) in colors and (x, y + 1) in colors:
+            colors[(x, y)] = '~'
+            colors[(x, y + 1)] = 'χ' if i == 1 else 'ψ'
+    out['helm'] = colors
+    nasal = Part(size)
+    nasal.polygon([(hx + 7, hy - 6), (hx + 10, hy - 6), (hx + 13, hy + 1), (hx + 11, hy + 2)])
+    out['nasal'] = iron_tube(nasal.pixels(), (hx + 8.5, hy - 6), (hx + 12, hy + 1.5), IRON)
+    cheek = Part(size)
+    cheek.polygon([(hx - 5, hy - 1), (hx + 2, hy - 3), (hx + 2, hy + 5), (hx, hy + 9), (hx - 4, hy + 7)])
+    colors = iron_tube(cheek.pixels(), (hx - 1.5, hy - 2), (hx - 1.5, hy + 9), IRON)
+    rust_seam(colors, {(x, y) for x, y in colors if (x, y + 1) not in colors}, 'cheek', 0.5)
+    rivet(colors, hx, hy + 1, 'cheek-rivet')
+    out['cheek'] = colors
+    if pose.stripped:
+        strip_armour(out, pose, joints, hx, hy, chest_frame)
+    return out
+
+
+def strip_armour(out, pose, joints, hx, hy, chest_frame):
+    """Corrosive's leavings of the armoured troll's iron (e01flask): each
+    piece eaten in its own frame (`eaten`), the breastplate to its collar
+    and a few torn bands, thinning down the trunk; the helm to a holed cap
+    and a stub of its nasal, the cheek guard to a scrap; the pauldrons to a
+    holed cap each, their lames nearly gone; ragged rings of the bracers
+    and the greaves, the knee cops gone."""
+    def along(a, b):  # a limb plate's frame: along its axis, across it
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length = math.hypot(dx, dy) or 1.0
+        return lambda q: (((q[0] - a[0]) * dx + (q[1] - a[1]) * dy) / length / 4,
+                          ((q[0] - a[0]) * -dy + (q[1] - a[1]) * dx) / length / 3)
+    out['breastplate'] = eaten(out['breastplate'], lambda q: tuple(v / 10 for v in chest_frame(q)), 'strip-breast',
+                               lambda u, v: 0.58 - 0.22 * min(1.0, max(0.0, (v * 10 - 39) / 45)))
+    head = lambda q: ((q[0] - hx) / 5, (q[1] - hy) / 5)
+    out['helm'] = eaten(out['helm'], head, 'strip-helm', 0.55)
+    out['nasal'] = {q: s for q, s in out['nasal'].items() if q[1] < hy - 3}
+    out['cheek'] = eaten(out['cheek'], head, 'strip-cheek', 0.42)
+    for side in ('far', 'near'):
+        knee, ankle = joints[side + '_knee'], joints[side + '_ankle']
+        elbow, wrist = joints[side + '_elbow'], joints[side + '_wrist']
+        out[side + '_greave'] = eaten(out[side + '_greave'], along(knee, ankle), ('strip-greave', side), 0.48)
+        out[side + '_bracer'] = eaten(out[side + '_bracer'], along(elbow, wrist), ('strip-bracer', side), 0.48)
+        out[side + '_knee'] = {}
+        lames = out[side + '_pauldron']
+        cap = lames[-1]
+        centre = (sum(x for x, _ in cap) / max(1, len(cap)), sum(y for _, y in cap) / max(1, len(cap)))
+        shoulder = lambda q, c=centre: ((q[0] - c[0]) / 3, (q[1] - c[1]) / 3)
+        out[side + '_pauldron'] = [eaten(lame, shoulder, ('strip-lame', side, k), 0.4) for k, lame in
+                                   enumerate(lames[:-1])] + [eaten(cap, shoulder, ('strip-cap', side), 0.54)]
 
 
 def in_hand(wrist, elbow, points):
@@ -2252,6 +2619,8 @@ def troll_canvas(pose):
 
     # Legs: thigh, a bony knee, a swelling calf, broad feet with toes.
     ankles = {}
+    joints = {'near_elbow': pose.near_elbow, 'near_wrist': pose.near_wrist,
+              'far_elbow': pose.far_elbow, 'far_wrist': pose.far_wrist}
     for side, hip, ankle, toe, foot, widths in (
             ('far', (59, 76 + c), pose.far_ankle, pose.far_toe, FAR_FOOT, ([13, 11, 8], [8, 9, 6], 4)),
             ('near', (69, 77 + c), pose.near_ankle, pose.near_toe, NEAR_FOOT, ([14, 12, 9], [9, 11, 7], 5))):
@@ -2262,6 +2631,7 @@ def troll_canvas(pose):
         P[side + '_leg'].polygon(strand([knee, ((knee[0] + end[0]) / 2, (knee[1] + end[1]) / 2), end], shin))
         P[side + '_foot'].polygon(turned([(end[0] + x, end[1] + y) for x, y in foot], end, toe))
         ankles[side] = end
+        joints[side + '_knee'], joints[side + '_ankle'] = knee, end
     # The trunk: a lean chest over a narrow waist, the glutes behind the hide.
     P['glute'].ellipse((63, 75 + c), 11, 6)
     P['torso'].polygon([chest(66, 36), chest(85, 43), chest(87, 52), chest(84, 60), chest(80, 68),
@@ -2281,7 +2651,10 @@ def troll_canvas(pose):
     P['jaw'].polygon([(hx - 6, hy + 4), (hx + 10, hy + 6), (hx + 9, hy + 11), (hx - 3, hy + 13)])
     P['tusks'].polygon([(hx + 3, hy + 6), (hx + 4, hy + 1), (hx + 6, hy + 6)])
     P['tusks'].polygon([(hx + 7, hy + 6), (hx + 8, hy + 2), (hx + 10, hy + 6)])
-    P['ear'].polygon([(hx - 6, hy - 6), (hx - 18, hy - 14), (hx - 8, hy + 3)])
+    if pose.armoured:  # the helm presses the ear down and back under its rim
+        P['ear'].polygon([(hx - 6, hy + 1), (hx - 20, hy - 1), (hx - 8, hy + 7)])
+    else:
+        P['ear'].polygon([(hx - 6, hy - 6), (hx - 18, hy - 14), (hx - 8, hy + 3)])
     # The hide: a strap along the waist, the front flap, the back flap.
     w = c
     P['strap'].polygon(strand([(53, 73 + w), (66, 75 + w), (81, 74 + w)], [3, 3, 3]))
@@ -2315,30 +2688,47 @@ def troll_canvas(pose):
     if pose.hands == 'clasped':  # both hands locked together over the head
         (nx, ny), (fx, fy) = pose.near_wrist, pose.far_wrist
         P['near_hand'].ellipse(((nx + fx) / 2, min(ny, fy) - 1), 10, 4)
+    armour = troll_armour(pose, P, chest, hx, hy, joints) if pose.armoured else {}
+
+    def iron(*names):  # the armour's layers, each rimmed dark where it overlaps
+        layers = []
+        for name in names:
+            piece = armour.get(name, [])
+            layers += [(colors, 'o') for colors in (piece if isinstance(piece, list) else [piece])]
+        return layers
     canvas = compose([
         (shade(P['far_arm'].pixels(), **TROLL_MOSS_FAR), None),
+        *iron('far_bracer'),
         (shade(P['far_hand'].pixels(), **TROLL_MOSS_FAR), None),
         (shade(P['far_leg'].pixels(), **TROLL_MOSS_FAR), 'o'),
+        *iron('far_greave', 'far_knee'),
         (shade(P['far_foot'].pixels(), **TROLL_MOSS_FAR), None),
         (shade(P['back_flap'].pixels(), '[', light='(', shadow='o'), None),
         (shade(P['glute'].pixels(), **TROLL_MOSS), None),
         (shade(P['far_shoulder'].pixels(), **TROLL_MOSS_FAR), None),
+        *iron('far_pauldron'),
         (shade(P['torso'].pixels(), **TROLL_MOSS), None),
         (shade(P['neck'].pixels(), **TROLL_MOSS), None),
         (shade(P['near_leg'].pixels(), **TROLL_MOSS), 'o'),
+        *iron('near_greave', 'near_knee'),
         (shade(P['near_foot'].pixels(), **TROLL_MOSS), 'o'),
         (shade(P['front_flap'].pixels(), **TROLL_HIDE), 'o'),
         (shade(P['strap'].pixels(), '"', light="'", shadow='('), None),
+        *iron('breastplate'),
         (shade(P['ear'].pixels(), **TROLL_MOSS), 'o'),
         (shade(P['head'].pixels(), **TROLL_MOSS), 'o'),
         (shade(P['jaw'].pixels(), **TROLL_MOSS), 'o'),
         (shade(P['brow'].pixels(), 'T', light='g', shadow='N', rim='G'), None),
         (shade(P['nose'].pixels(), 'G', light='W', shadow='T', rim='m'), 'o'),
         (shade(P['tusks'].pixels(), 'w', light='Z', shadow='σ'), None),
+        *iron('cheek', 'helm', 'nasal'),
         (shade(P['near_shoulder'].pixels(), **TROLL_MOSS), None),
         (shade(P['near_arm'].pixels(), **TROLL_MOSS), 'o'),
+        *iron('near_bracer'),
         (shade(P['near_hand'].pixels(), **TROLL_MOSS), 'o'),
+        *iron('near_pauldron'),
     ])
+    helm = set(armour.get('helm', {})) | set(armour.get('cheek', {})) | set(armour.get('breastplate', {}))
     skin = set().union(*(P[n].pixels() for n in ('torso', 'near_leg', 'near_arm', 'head', 'neck', 'near_shoulder')))
     speckle(canvas, skin, 'wart', ['T'], 0.025, only=('g',))
     hx, hy = round(hx), round(hy)
@@ -2348,19 +2738,28 @@ def troll_canvas(pose):
     canvas[(hx + 6, hy - 3)] = 'K'
     canvas[(hx + 12, hy + 4)] = 'N'  # a nostril
     canvas[(hx + 13, hy + 4)] = 'T'
-    for t in range(4):  # the ear's inside
-        canvas[(hx - 9 - t * 2, hy - 7 - t * 2)] = 'T'
-        canvas[(hx - 8 - t * 2, hy - 6 - t * 2)] = 'T'
+    if pose.armoured:  # the ear's inside, pressed back under the helm, and its ring
+        for t in range(5):
+            canvas[(hx - 9 - t * 2, hy + 2)] = 'T'
+            canvas[(hx - 10 - t * 2, hy + 3)] = 'T'
+        ring_at = (hx - 12, hy + 4)
+    else:
+        for t in range(4):  # the ear's inside
+            canvas[(hx - 9 - t * 2, hy - 7 - t * 2)] = 'T'
+            canvas[(hx - 8 - t * 2, hy - 6 - t * 2)] = 'T'
+        ring_at = (hx - 10, hy - 6)
     for x in range(hx - 2, hx + 9):  # the mouth's line under the tusks
         if canvas.get((x, hy + 6)) in ('g', 'W', 'm', 'T'):
             canvas[(x, hy + 6)] = 'N'
     for dx, dy in ((0, 0), (1, 1), (0, 2), (-1, 1)):  # a ring in the ear
-        canvas[(hx - 10 + dx, hy - 6 + dy)] = 'A'
+        canvas[(ring_at[0] + dx, ring_at[1] + dy)] = 'A'
     for i in range(8):  # mossy hair from the scalp down the back of the neck
         x, y = hx - 2 - i * 3, hy - 9 + i * 3 + (1 if i % 2 else 0)
         for t in range(4):
-            canvas[(x - t // 2, y - t)] = 'D' if t < 2 else ('Q' if t < 3 else 'U')
-            canvas[(x - t // 2 + 1, y - t)] = 'D' if t < 3 else 'Q'
+            for q, s in (((x - t // 2, y - t), 'D' if t < 2 else ('Q' if t < 3 else 'U')),
+                         ((x - t // 2 + 1, y - t), 'D' if t < 3 else 'Q')):
+                if q not in helm:
+                    canvas[q] = s
     trunk = P['torso'].pixels()
     for t in range(8):  # a scar across the chest, stitched
         x, y = point(chest(75 + t, 49 + t))
@@ -2394,10 +2793,11 @@ def troll_canvas(pose):
     for x in range(59, 81, 3):  # stitches along its top
         if canvas.get((x, round(76 + c))) in ('(', 'a', "'"):
             canvas[(x, round(76 + c))] = 'a'
-    for x in range(69, 75):  # a bone at the knot
-        canvas[(x, round(74 + c))] = 'w'
-    for x, y in ((68, 73), (68, 75), (75, 73), (75, 75)):
-        canvas[(x, round(y + c))] = 'w'
+    if not pose.armoured:  # a bone at the knot, under the fauld on the armoured troll
+        for x in range(69, 75):
+            canvas[(x, round(74 + c))] = 'w'
+        for x, y in ((68, 73), (68, 75), (75, 73), (75, 75)):
+            canvas[(x, round(y + c))] = 'w'
     for side, claws, toes in (('near', ((12, 4), (14, 5), (9, 5)), (7, 10)), ('far', ((8, 4), (10, 5)), ())):
         ankle = ankles[side]
         toe = pose.near_toe if side == 'near' else pose.far_toe
@@ -2417,14 +2817,14 @@ def troll_canvas(pose):
     return outline(canvas, 'o', size)
 
 
-def troll_idle_frames():
+def troll_idle_frames(armoured=False, stripped=False):
     """Breathing: the chest rising, its hands swaying with it."""
     poses = [TrollPose(breath=b, near_elbow=(91, 68 - b), near_wrist=(94 - b * 0.5, 91 - b),
                        far_elbow=(52, 67 - b), far_wrist=(52, 89 - b)) for b in (0, 1, 1, 0)]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [260, 220, 260, 220]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [260, 220, 260, 220]
 
 
-def troll_walk_frames():
+def troll_walk_frames(armoured=False, stripped=False):
     """A heavy stride: each foot lifting and reaching while the other plants,
     the arms swinging against the legs."""
     poses = []
@@ -2440,7 +2840,7 @@ def troll_walk_frames():
             near_elbow=(92 - swing * 0.4, 68), near_wrist=(95 - swing, 91 - abs(swing) * 0.25),
             far_elbow=(53 + swing * 0.4, 67), far_wrist=(53 + swing, 89 - abs(swing) * 0.25),
             sway=round(-1.5 * math.sin(a))))
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [120] * TROLL_WALK
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [120] * TROLL_WALK
 
 
 # The arms locked overhead, as the sheet's wind-up draws them: what the slam
@@ -2449,7 +2849,7 @@ OVERHEAD = dict(lean=-3, lift=4, near_elbow=(92, 20), near_wrist=(81, 7), far_el
                 far_wrist=(68, 7), hands='clasped')
 
 
-def troll_windup_frames():
+def troll_windup_frames(armoured=False, stripped=False):
     """The slam's wind-up, 0.8 s since 01 (g): its arms rising before it to
     lock overhead, leaning back."""
     poses = [TrollPose(lean=-1, lift=1, near_elbow=(96, 62), near_wrist=(110, 50), far_elbow=(80, 62),
@@ -2457,10 +2857,10 @@ def troll_windup_frames():
              TrollPose(lean=-2, lift=3, near_elbow=(100, 34), near_wrist=(98, 14), far_elbow=(86, 32),
                        far_wrist=(88, 12), hands='fists'),
              TrollPose(**OVERHEAD)]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [133, 200, 467]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [133, 200, 467]
 
 
-def troll_slam_frames():
+def troll_slam_frames(armoured=False, stripped=False):
     """The slam: its fists swinging down to the ground before it, a deep
     crouch, dust."""
     poses = [TrollPose(lean=3, lift=2, near_elbow=(98, 30), near_wrist=(110, 22), far_elbow=(90, 30),
@@ -2469,39 +2869,39 @@ def troll_slam_frames():
                        far_wrist=(108, 78), hands='fists'),
              TrollPose(lean=12, crouch=7, near_elbow=(104, 86), near_wrist=(110, 106), far_elbow=(98, 88),
                        far_wrist=(104, 106), hands='fists', dust=True)]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [60, 60, 260]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [60, 60, 260]
 
 
-def troll_pickup_frames():
+def troll_pickup_frames(armoured=False, stripped=False):
     """Lifting something: bending to the ground, then raising it overhead."""
     poses = [TrollPose(lean=7, crouch=4, near_elbow=(98, 78), near_wrist=(104, 96), far_elbow=(90, 78),
                        far_wrist=(98, 96)),
              TrollPose(lean=12, crouch=8, near_elbow=(102, 86), near_wrist=(108, 100), far_elbow=(96, 86),
                        far_wrist=(102, 100)),
              TrollPose(**dict(OVERHEAD, lean=-2, lift=3))]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [140, 200, 200]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [140, 200, 200]
 
 
-def troll_throw_frames():
+def troll_throw_frames(armoured=False, stripped=False):
     """A throw: locked overhead, flung forward, the arms following through."""
     poses = [TrollPose(**OVERHEAD),
              TrollPose(lean=5, lift=2, near_elbow=(96, 28), near_wrist=(110, 30), far_elbow=(88, 26),
                        far_wrist=(102, 26), hands='fists'),
              TrollPose(lean=9, crouch=2, near_elbow=(98, 62), near_wrist=(108, 80), far_elbow=(92, 62),
                        far_wrist=(102, 78))]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [140, 80, 260]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [140, 80, 260]
 
 
-def troll_swipe_windup_frames():
+def troll_swipe_windup_frames(armoured=False, stripped=False):
     """The swipe's tell: the near arm drawn back low behind the hip, coiled."""
     poses = [TrollPose(lean=-1, crouch=2, near_elbow=(80, 62), near_wrist=(68, 78), far_elbow=(60, 64),
                        far_wrist=(70, 86)),
              TrollPose(lean=-3, crouch=4, near_elbow=(72, 58), near_wrist=(54, 70), far_elbow=(62, 62),
                        far_wrist=(76, 80), sway=1)]
-    return [to_image(troll_canvas(p), (BIG, BIG)) for p in poses], [120, 180]
+    return [to_image(troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)), (BIG, BIG)) for p in poses], [120, 180]
 
 
-def troll_swipe_frames():
+def troll_swipe_frames(armoured=False, stripped=False):
     """The swipe: the near arm raked under and up in front of it, claws
     open, pale streaks along the hand's arc, then following through high."""
     poses = [TrollPose(lean=4, crouch=5, near_elbow=(94, 70), near_wrist=(102, 92), far_elbow=(54, 66),
@@ -2510,7 +2910,7 @@ def troll_swipe_frames():
                        far_wrist=(44, 80), sway=-2),
              TrollPose(lean=4, crouch=1, lift=1, near_elbow=(98, 42), near_wrist=(104, 26), far_elbow=(54, 66),
                        far_wrist=(50, 86), sway=-1)]
-    frames = [troll_canvas(p) for p in poses]
+    frames = [troll_canvas(replace(p, armoured=armoured or stripped, stripped=stripped)) for p in poses]
     centre = (88, 60)
     for f, (start_deg, end_deg) in ((frames[0], (150, 78)), (frames[1], (128, -8))):
         for radius, symbol in ((38, 'τ'), (43, 'σ'), (48, 'w'), (53, 'σ')):
@@ -3063,8 +3463,19 @@ ENEMY_CLIPS = {
     'goblin_dash_windup': (goblin_dash_windup_frames, False),
     'goblin_dash': (goblin_dash_frames, True),
     'goblin_panic': (goblin_panic_frames, True),
-    # e01flask: the armoured troll's clips, the troll's frames until drawn.
-    **{f'troll_armoured_{clip}': (frames_for, looping) for clip, frames_for, looping in (
+    # e01flask: the stripped beetle's, its shell eaten through, which
+    # Corrosive leaves it with.
+    'beetle_stripped_walk': (partial(beetle_walk_frames, stripped=True), True),
+    'beetle_stripped_paw': (partial(beetle_paw_frames, stripped=True), False),
+    'beetle_stripped_charge': (partial(beetle_charge_frames, stripped=True), True),
+    # e01flask: the armoured troll's clips, the troll's poses in its iron,
+    # and the stripped troll's, that iron eaten to remnants by Corrosive.
+    **{f'troll_stripped_{clip}': (partial(frames_for, stripped=True), looping) for clip, frames_for, looping in (
+        ('idle', troll_idle_frames, True), ('walk', troll_walk_frames, True),
+        ('windup', troll_windup_frames, False), ('slam', troll_slam_frames, False),
+        ('pickup', troll_pickup_frames, False), ('throw', troll_throw_frames, False),
+        ('swipe_windup', troll_swipe_windup_frames, False), ('swipe', troll_swipe_frames, False))},
+    **{f'troll_armoured_{clip}': (partial(frames_for, armoured=True), looping) for clip, frames_for, looping in (
         ('idle', troll_idle_frames, True), ('walk', troll_walk_frames, True),
         ('windup', troll_windup_frames, False), ('slam', troll_slam_frames, False),
         ('pickup', troll_pickup_frames, False), ('throw', troll_throw_frames, False),

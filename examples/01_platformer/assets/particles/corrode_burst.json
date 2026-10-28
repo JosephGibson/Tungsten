@@ -6,7 +6,7 @@
     ],
     [
       0.75,
-      0.9
+      0.95
     ],
     [
       1,
@@ -14,48 +14,57 @@
     ]
   ],
   "angular_velocity": {
-    "max": 12,
-    "min": -12
+    "max": 6,
+    "min": -6
   },
   "blend": "alpha",
   "color_over_life": [
     [
       0,
       [
-        0.62,
-        0.86,
-        0.74,
+        0.92,
+        1,
+        0.7,
         1
       ]
     ],
     [
-      0.5,
+      0.25,
       [
-        0.4,
+        0.62,
+        0.92,
+        0.3,
+        1
+      ]
+    ],
+    [
+      0.6,
+      [
         0.66,
-        0.56,
+        0.5,
+        1,
         1
       ]
     ],
     [
       1,
       [
-        0.26,
-        0.44,
-        0.38,
+        0.3,
+        0.55,
+        0.15,
         0
       ]
     ]
   ],
-  "drag_per_sec": 0.8,
+  "drag_per_sec": 1.1,
   "emission": {
-    "count": 20,
+    "count": 22,
     "kind": "burst",
     "once": true
   },
   "gravity": [
     0,
-    900
+    1000
   ],
   "initial_velocity": {
     "direction": [
@@ -65,29 +74,33 @@
     "kind": "cone",
     "speed": {
       "max": 360,
-      "min": 120
+      "min": 150
     },
-    "spread_deg": 200
+    "spread_deg": 210
   },
   "lifetime": {
     "max": 0.9,
-    "min": 0.45
+    "min": 0.5
   },
-  "max_alive": 20,
+  "max_alive": 22,
   "scale_over_life": [
     [
       0,
       1
     ],
     [
+      0.5,
+      0.9
+    ],
+    [
       1,
-      0.85
+      0.6
     ]
   ],
   "seed": 48657,
-  "sprite": "ex10_ice_chip",
+  "sprite": "ex10_droplet",
   "start_scale": {
-    "max": 0.18,
-    "min": 0.09
+    "max": 0.19,
+    "min": 0.1
   }
 }

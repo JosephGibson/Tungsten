@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_0_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_1_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_2_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_3_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_4_left"
+    },
+    {
+      "duration_ms": 110,
+      "sprite": "ex10_beetle_stripped_walk_5_left"
+    }
+  ],
+  "looping": true
+}
