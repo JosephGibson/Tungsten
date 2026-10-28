@@ -1260,13 +1260,6 @@ fn ctrl_tap(harness: &mut UiHarness, code: KeyCode) {
 }
 
 /// A click at the centre of where `id` paints, in window pixels.
-fn click_physical(harness: &mut UiHarness, id: WidgetId) {
-    let rect = physical(harness, id);
-    let at = (rect.min + rect.max) * 0.5;
-    harness.pointer_to(at.x, at.y);
-    harness.pointer_down();
-    harness.pointer_up();
-}
 
 /// A harness whose window is `width`×`height` at an OS scale of `os`.
 fn sized(app: App, width: u32, height: u32, os: f32) -> UiHarness {
@@ -1524,7 +1517,7 @@ fn docked_windows_never_overlap_through_a_collapse_an_expansion_and_a_growing_ro
             .as_ref()
             .unwrap()
             .collapse;
-        click_physical(&mut harness, collapse);
+        harness.click(collapse);
         for frame in 0..3 {
             harness.step(1);
             assert_docked(&harness, &format!("os {os}, collapsed, frame {frame}"));
@@ -1538,7 +1531,7 @@ fn docked_windows_never_overlap_through_a_collapse_an_expansion_and_a_growing_ro
                 .unwrap()
                 .collapsed
         );
-        click_physical(&mut harness, collapse);
+        harness.click(collapse);
         for frame in 0..3 {
             harness.step(1);
             assert_docked(&harness, &format!("os {os}, expanded, frame {frame}"));
@@ -1799,8 +1792,28 @@ fn console_controls(harness: &UiHarness) -> Vec<WidgetId> {
 /// Clicks a console control and runs the frame that takes it.
 fn press_control(harness: &mut UiHarness, i: usize) {
     let control = console_controls(harness)[i];
-    click_physical(harness, control);
+    harness.click(control);
     harness.step(1);
+}
+
+#[test]
+fn the_harness_clicks_a_debug_control_where_it_paints_under_a_debug_scale() {
+    let (sink, feed) = crate::logging::console_channel(1024);
+    let mut harness = sized(app(), 1280, 720, 1.75);
+    harness.world_mut().insert_resource(LogConsole {
+        enabled: true,
+        refresh_interval_ms: 0.0,
+        ..LogConsole::with_feed(Some(feed))
+    });
+    harness.step(2);
+    sink.send(record("INFO", "a", "m").as_bytes());
+    harness.step(1);
+    assert_eq!(harness.tree().debug_scale(), 0.75);
+    press_control(&mut harness, 5);
+    assert!(
+        harness.world().resource::<LogConsole>().paused.is_some(),
+        "the click lands on pause"
+    );
 }
 
 #[test]
