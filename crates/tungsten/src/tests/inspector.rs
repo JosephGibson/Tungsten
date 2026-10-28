@@ -92,6 +92,22 @@ fn pick_selects_sprite_under_cursor_on_mouse3_edge() {
 }
 
 #[test]
+fn pick_finds_a_flipped_sprite_where_it_draws() {
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    let flipped = spawn_sprite(&mut world, "flipped", Vec2::new(100.0, 100.0), 16);
+    world.get_mut::<Transform>(flipped).unwrap().scale = Vec2::new(-1.0, 1.0);
+
+    // Drawn over x 84..100, not 100..116.
+    for (x, picked) in [(92.0, Some(flipped)), (108.0, None)] {
+        press_mouse3_at(&mut world, x, 108.0);
+        inspector_pick_system(&mut world);
+        let selected = world.get_resource::<InspectorState>().unwrap().selected;
+        assert_eq!(selected, picked, "x {x}");
+    }
+}
+
+#[test]
 fn pick_clears_selection_when_cursor_is_in_empty_space() {
     // Regression: empty-space click clears instead of nearest-picking.
     let mut world = make_world();

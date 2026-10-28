@@ -368,11 +368,11 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
             let Some(asset) = registry.sprite(sprite.asset_id) else {
                 continue;
             };
-            let size = Vec2::new(
-                asset.width as f32 * transform.scale.x.abs(),
-                asset.height as f32 * transform.scale.y.abs(),
-            );
-            try_hit_aabb(&mut best, entity, world_cursor, transform.position, size);
+            // A negative scale spans the quad back from the point, as the
+            // sprite shader draws it.
+            let span = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
+            let min = transform.position + span.min(Vec2::ZERO);
+            try_hit_aabb(&mut best, entity, world_cursor, min, span.abs());
         }
     }
 
