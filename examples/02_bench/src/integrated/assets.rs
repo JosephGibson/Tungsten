@@ -206,7 +206,7 @@ pub(super) fn register_particles(
         render: ParticleRender::Quad,
         max_alive: FIRE_MAX_ALIVE,
         seed: None,
-        blend: BlendMode::Premultiplied,
+        blend: BlendMode::Alpha,
         emission: EmissionKind::Continuous { rate_hz: 30.0 },
         lifetime: Range { min: 0.4, max: 0.9 },
         initial_velocity: InitialVelocity::Cone {
