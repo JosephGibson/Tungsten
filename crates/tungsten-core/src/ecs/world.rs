@@ -784,6 +784,7 @@ impl World {
             pending_count,
             values,
             pending_entities,
+            epoch,
         } = buffer;
 
         pending_entities.clear();
@@ -862,6 +863,7 @@ impl World {
 
         commands.clear();
         *pending_count = 0;
+        *epoch = epoch.wrapping_add(1);
     }
 }
 
