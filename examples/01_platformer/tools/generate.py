@@ -9,7 +9,7 @@ import tempfile
 from PIL import __version__ as pillow_version
 from art import TOOLS, auxiliary, build_art, relief, validate_art
 from effects import LINEAR_FILTER
-from level import build_level
+from level import build_level, tiled_text
 from placement import floating
 from sfx import HAND_AUTHORED_SOUNDS, LOOPS, build_sounds, seam_problem
 
@@ -824,7 +824,7 @@ def generate(dest):
     for sound in manifest['sounds'].values():
         if sound['path'] not in authored:
             raise ValueError(f"sound {sound['path']} is neither synthesized nor hand-authored")
-    write_json(output('assets/tilemaps/level.tmj'),tiled)
+    output('assets/tilemaps/level.tmj').write_text(tiled_text(tiled))
     # The sprites every pixel of which is opaque: a backdrop quad the map's
     # tiles of them cover is never seen, so the level skips it (level/draw.rs).
     path='data/opaque_tiles/level.json'

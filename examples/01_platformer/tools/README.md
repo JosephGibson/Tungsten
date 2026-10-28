@@ -282,7 +282,9 @@ alone do not prove clearance beneath the solid platforms.
 
 `level.py` emits the embedded Tiled catalog (`firstgid=1`, contiguous local IDs,
 zero for empty, no flip bits) and the map's object layers, with the prefabs their
-classes name. Edit their source instead of the generated output. The object layers
+classes name. Edit their source instead of the generated output. `level.tmj` is
+written with sorted keys, a tile layer a map row a line and an object a line
+(`level.tiled_text`), so a change's diff shows the rows and objects it moves. The object layers
 sit before `collision`, in spawn order, and `World::spawn_map_objects` spawns them
 when a run starts. The objects a save names, those of the layers `SAVED_LAYERS`
 lists (the lava basins, the decks, the dummy, the enemies, the placed orbs and

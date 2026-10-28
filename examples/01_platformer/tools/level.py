@@ -618,6 +618,34 @@ def build_level(images, lit, source=None, check=True):
     return tiled,source,prefabs
 
 
+def tiled_text(tiled):
+    """`level.tmj`'s text: `tiled` with sorted keys and indented, but each
+    tile layer's data a map row a line and each object on one line, so a
+    change shows as the rows and objects it moves."""
+    import re
+    cols, pieces, layers = tiled['width'], {}, []
+
+    def piece(lines):
+        key = f'@{len(pieces)}@'
+        pieces[key] = lines
+        return key
+
+    for layer in tiled['layers']:
+        if layer['type'] == 'tilelayer':
+            data = layer['data']
+            layer = dict(layer, data=piece([','.join(map(str, data[i:i + cols])) for i in range(0, len(data), cols)]))
+        else:
+            layer = dict(layer, objects=piece([json.dumps(o, sort_keys=True) for o in layer['objects']]))
+        layers.append(layer)
+    text = json.dumps(dict(tiled, layers=layers), indent=2, sort_keys=True)
+
+    def expand(match):
+        indent, key, lines = match[1], match[2], pieces[match[3]]
+        inner = ',\n'.join(indent + '  ' + line for line in lines)
+        return f'{indent}{key}[\n{inner}\n{indent}]' if lines else f'{indent}{key}[]'
+    return re.sub(r'^( *)("\w+": )"(@\d+@)"', expand, text, flags=re.M) + '\n'
+
+
 def validate_level(source,tiled,sprite_ids):
     cols,rows=source['cols'],source['rows']; ts=tiled['tilesets'][0]
     if ts['firstgid']!=1 or [t['id'] for t in ts['tiles']]!=list(range(ts['tilecount'])):raise ValueError('non-contiguous tileset')
