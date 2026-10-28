@@ -675,7 +675,8 @@ pub fn seek(world: &mut World, troll: Entity, point: Option<Vec2>) -> bool {
 /// still; else its walk.
 #[must_use]
 pub fn clip(world: &World, troll: Entity, state: EnemyState, shown: &str) -> &'static str {
-    let lifting = shown.contains("troll_pickup") || shown.contains("troll_throw");
+    // By the stem-free part, so the armoured troll's clips read alike.
+    let lifting = shown.contains("_pickup") || shown.contains("_throw");
     let strike = world.get::<Brain>(troll).and_then(|brain| brain.strike);
     match state {
         EnemyState::Attack => match strike {

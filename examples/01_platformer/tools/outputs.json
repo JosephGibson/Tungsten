@@ -776,6 +776,7 @@
   "assets/prefabs/tome_pact.json",
   "assets/prefabs/toxic_flask.json",
   "assets/prefabs/troll.json",
+  "assets/prefabs/troll_armoured.json",
   "assets/prefabs/wisp.json",
   "assets/prefabs/wisp_embers.json",
   "assets/shaders/damage_flash.wgsl",

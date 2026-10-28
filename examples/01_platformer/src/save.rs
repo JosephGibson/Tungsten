@@ -2159,8 +2159,8 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             Some(&entity) if saved.map && world.has::<Enemy>(entity) => entity,
             _ => {
                 let corner = Vec2::from(saved.position);
-                let Some(entity) = enemies::spawn(world, saved.kind, corner, SaveId(saved.id))
-                else {
+                let (kind, variant, id) = (saved.kind, saved.enemy.variant, SaveId(saved.id));
+                let Some(entity) = enemies::spawn_as(world, kind, variant, corner, id) else {
                     continue;
                 };
                 by_id.insert(saved.id, entity);

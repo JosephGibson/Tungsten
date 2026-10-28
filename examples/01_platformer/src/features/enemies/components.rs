@@ -46,16 +46,38 @@ fn right() -> f32 {
     1.0
 }
 
+/// An enemy's variant of its kind (e01flask): the kind itself, or the
+/// armoured troll, the troll in iron plate, its own prefab, icon and clips
+/// on the troll's body, rules and ice.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Variant {
+    #[default]
+    Plain,
+    Armoured,
+}
+
+impl Variant {
+    /// Whether it is the kind itself, which a save leaves out.
+    #[must_use]
+    pub const fn is_plain(&self) -> bool {
+        matches!(self, Variant::Plain)
+    }
+}
+
 /// An enemy, which its prefab names `enemy` with its kind: where it patrols
 /// and returns to, its body's centre, which its spawn sets, its heading,
 /// 1 right or -1 left, which its hooks set and gameplay reads (the beetle's
 /// front), and how far from its home, across, a patrol may take it, which
-/// a map placement may set (the falls' crawler). Saved; a schema 8 save's
-/// enemies have no leash.
+/// a map placement may set (the falls' crawler), and its variant, which its
+/// prefab sets. Saved; a schema 8 save's enemies have no leash, and an
+/// older save's no variant: plain.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enemy {
     pub kind: EnemyKind,
+    #[serde(default, skip_serializing_if = "Variant::is_plain")]
+    pub variant: Variant,
     #[serde(default)]
     pub home: [f32; 2],
     #[serde(default = "right")]

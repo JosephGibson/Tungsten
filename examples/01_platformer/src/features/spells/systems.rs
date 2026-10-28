@@ -8,8 +8,8 @@ use tungsten::kit::{Aim, Health, Used, cursor_to_world, use_ability};
 
 use super::components::{Refusal, Refused, Spell, Spellbook, Summon};
 use super::{
-    CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, Summoned, cost, mana,
-    select, selected, summon_type,
+    CAST, NEXT, PREV, SLOT_ACTIONS, SLOTS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, cost, mana, select,
+    selected, summon_type,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::lightning;
@@ -236,9 +236,9 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         Spell::IronBlock => at.is_none_or(|at| !toys::iron_fits(world, at)),
         Spell::Summon => at.is_none_or(|at| {
             let summoned = summon_type(world).summoned;
-            let fits = match (summoned, summoned.prop()) {
+            let fits = match (summoned.enemy(), summoned.prop()) {
                 (_, Some(kind)) => props::fits(world, kind, at),
-                (Summoned::Enemy(kind), None) => enemies::fits(world, kind, at),
+                (Some((kind, _)), None) => enemies::fits(world, kind, at),
                 _ => dummy::fits(world, at),
             };
             !fits
@@ -288,12 +288,12 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::Summon => {
             let summoned = summon_type(world);
-            match (summoned.summoned, summoned.summoned.prop()) {
+            match (summoned.summoned.enemy(), summoned.summoned.prop()) {
                 (_, Some(kind)) => {
                     props::place(world, kind, at);
                 }
-                (Summoned::Enemy(kind), None) => {
-                    enemies::summon(world, kind, at);
+                (Some((kind, variant)), None) => {
+                    enemies::summon_as(world, kind, variant, at);
                 }
                 _ => {
                     dummy::summon(world, summoned.prefab, at);

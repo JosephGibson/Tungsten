@@ -17,7 +17,7 @@ use tungsten::kit::{ABILITY_TICK, Ability, Phase, Stats, ensure_phases};
 
 use components::{Spell, Spellbook};
 
-use crate::features::enemies::components::EnemyKind;
+use crate::features::enemies::components::{EnemyKind, Variant};
 use crate::features::props::components::PropKind;
 
 /// How many slots the spell bar has.
@@ -63,13 +63,14 @@ pub const SUMMON_NEXT: &str = "summon_next";
 pub const SUMMON_PREV: &str = "summon_prev";
 
 /// What the summon slot places: the training dummy, an enemy of a kind, a
-/// crate or a keg.
+/// crate, a keg, or a variant of an enemy's kind (the armoured troll).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Summoned {
     Dummy,
     Enemy(EnemyKind),
     Crate,
     Keg,
+    Variant(EnemyKind, Variant),
 }
 
 impl Summoned {
@@ -79,7 +80,18 @@ impl Summoned {
         match self {
             Summoned::Crate => Some(PropKind::Crate),
             Summoned::Keg => Some(PropKind::Keg),
-            Summoned::Dummy | Summoned::Enemy(_) => None,
+            Summoned::Dummy | Summoned::Enemy(_) | Summoned::Variant(..) => None,
+        }
+    }
+
+    /// The enemy it places, its kind and its variant; none for a dummy, a
+    /// crate or a keg.
+    #[must_use]
+    pub const fn enemy(self) -> Option<(EnemyKind, Variant)> {
+        match self {
+            Summoned::Enemy(kind) => Some((kind, Variant::Plain)),
+            Summoned::Variant(kind, variant) => Some((kind, variant)),
+            Summoned::Dummy | Summoned::Crate | Summoned::Keg => None,
         }
     }
 }
@@ -106,8 +118,9 @@ const fn enemy(kind: EnemyKind) -> SummonType {
 }
 
 /// The types the summon slot places: the training dummy, each enemy as its
-/// kind lands, then the crate and the keg.
-pub const SUMMONS: [SummonType; 9] = [
+/// kind lands, then the crate and the keg, then the armoured troll
+/// (e01flask), last so a saved type's place holds.
+pub const SUMMONS: [SummonType; 10] = [
     SummonType {
         name: "dummy",
         prefab: crate::features::dummy::DUMMY_PREFAB,
@@ -131,6 +144,12 @@ pub const SUMMONS: [SummonType; 9] = [
         prefab: crate::features::props::KEG_PREFAB,
         icon: "ex10_icon_keg",
         summoned: Summoned::Keg,
+    },
+    SummonType {
+        name: "armoured troll",
+        prefab: crate::features::enemies::prefab(EnemyKind::Troll, Variant::Armoured),
+        icon: crate::features::enemies::icon(EnemyKind::Troll, Variant::Armoured),
+        summoned: Summoned::Variant(EnemyKind::Troll, Variant::Armoured),
     },
 ];
 

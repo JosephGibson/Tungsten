@@ -53,7 +53,7 @@ use crate::game::GAMEPLAY;
 use crate::shared::{SaveId, SaveIds, despawn_tree, spawn_key_burst};
 use crate::shell::Difficulty;
 use components::{
-    Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws,
+    Brain, Enemy, EnemyKind, EnemyState, PlacedEnemies, Shown, Sight, Spotted, Throws, Variant,
 };
 
 /// The state machine's system, in the intent phase.
@@ -386,12 +386,44 @@ pub fn scale(world: &mut World, enemy: Entity, difficulty: Difficulty) {
     }
 }
 
-/// Spawns an enemy of `kind` with its sprite's top-left at `corner`, owned
-/// by gameplay, with the save ID `id`, at once: a summon's or a load's. Its
-/// home is where it stands, a bat's the roost above.
+/// The prefab of `kind`'s `variant`: the kind's own, or the armoured
+/// troll's.
+#[must_use]
+pub const fn prefab(kind: EnemyKind, variant: Variant) -> &'static str {
+    match (kind, variant) {
+        (EnemyKind::Troll, Variant::Armoured) => "troll_armoured",
+        _ => kind.info().prefab,
+    }
+}
+
+/// The summon icon of `kind`'s `variant`: the kind's own, or the armoured
+/// troll's.
+#[must_use]
+pub const fn icon(kind: EnemyKind, variant: Variant) -> &'static str {
+    match (kind, variant) {
+        (EnemyKind::Troll, Variant::Armoured) => "ex10_icon_troll_armoured",
+        _ => kind.info().icon,
+    }
+}
+
+/// Spawns a plain enemy of `kind` with its sprite's top-left at `corner`,
+/// owned by gameplay, with the save ID `id`, at once ([`spawn_as`]).
 pub fn spawn(world: &mut World, kind: EnemyKind, corner: Vec2, id: SaveId) -> Option<Entity> {
+    spawn_as(world, kind, Variant::Plain, corner, id)
+}
+
+/// Spawns an enemy of `kind`'s `variant` with its sprite's top-left at
+/// `corner`, owned by gameplay, with the save ID `id`, at once: a summon's
+/// or a load's. Its home is where it stands, a bat's the roost above.
+pub fn spawn_as(
+    world: &mut World,
+    kind: EnemyKind,
+    variant: Variant,
+    corner: Vec2,
+    id: SaveId,
+) -> Option<Entity> {
     let enemy = world
-        .prepare_prefab(kind.info().prefab, corner.to_array())
+        .prepare_prefab(prefab(kind, variant), corner.to_array())
         .ok()?
         .with((
             id,
@@ -440,14 +472,20 @@ pub fn fits(world: &World, kind: EnemyKind, at: Vec2) -> bool {
     met.is_empty()
 }
 
-/// Summons an enemy of `kind` with its body's centre at `at`, at the run's
-/// difficulty, with a poof; past [`SUMMON_CAP`] summoned live, the oldest
-/// goes, with its own.
+/// Summons a plain enemy of `kind` with its body's centre at `at`
+/// ([`summon_as`]).
 pub fn summon(world: &mut World, kind: EnemyKind, at: Vec2) -> Option<Entity> {
+    summon_as(world, kind, Variant::Plain, at)
+}
+
+/// Summons an enemy of `kind`'s `variant` with its body's centre at `at`,
+/// at the run's difficulty, with a poof; past [`SUMMON_CAP`] summoned live,
+/// the oldest goes, with its own.
+pub fn summon_as(world: &mut World, kind: EnemyKind, variant: Variant, at: Vec2) -> Option<Entity> {
     let difficulty =
         crate::shell::run_meta(world).map_or(Difficulty::Normal, |meta| meta.difficulty);
     let id = world.resource_mut::<SaveIds>().take();
-    let enemy = spawn(world, kind, at - kind.info().centre, id)?;
+    let enemy = spawn_as(world, kind, variant, at - kind.info().centre, id)?;
     scale(world, enemy, difficulty);
     spawn_key_burst(world, "ex10_poof", at);
     let summoned: Vec<(u64, Entity)> = live(world)

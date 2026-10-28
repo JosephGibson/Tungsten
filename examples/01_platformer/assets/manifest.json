@@ -2495,6 +2495,9 @@
     "troll": {
       "path": "prefabs/troll.json"
     },
+    "troll_armoured": {
+      "path": "prefabs/troll_armoured.json"
+    },
     "wisp": {
       "path": "prefabs/wisp.json"
     },

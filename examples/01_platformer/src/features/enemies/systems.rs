@@ -13,7 +13,7 @@ use tungsten::kit::{
 use tungsten::physics::{SpatialFilter, cast_ray};
 
 use super::components::{
-    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted,
+    Brain, Displaced, Enemy, EnemyKind, EnemyState, HeldTouch, Shown, Sight, Spotted, Variant,
 };
 use super::{
     ALERT_MARK_SECS, ALERT_REACH, DORMANT_PAST, ENEMY_STATES, SEARCH_SECS, SIGHT_EVERY, WALK_STEP,
@@ -764,7 +764,7 @@ fn end(world: &mut World, enemy: Entity) {
 }
 
 /// The clip `enemy` shows now: its kind's clip for its state, facing its
-/// heading.
+/// heading; the armoured troll's its own (e01flask).
 fn clip(world: &World, enemy: Entity) -> Option<String> {
     let mine = world.get::<Enemy>(enemy)?;
     let state = world.get::<StateMachine<EnemyState>>(enemy)?.state();
@@ -780,7 +780,13 @@ fn clip(world: &World, enemy: Entity) -> Option<String> {
         EnemyKind::Goblin => goblin::clip(world, enemy, state),
     };
     let side = if mine.heading < 0.0 { "_left" } else { "" };
-    Some(format!("ex10_{clip}{side}"))
+    match (mine.kind, mine.variant) {
+        (EnemyKind::Troll, Variant::Armoured) => {
+            let part = clip.trim_start_matches("troll_");
+            Some(format!("ex10_troll_armoured_{part}{side}"))
+        }
+        _ => Some(format!("ex10_{clip}{side}")),
+    }
 }
 
 /// The troll's walk frames its feet land on, where its steps sound.
@@ -839,7 +845,8 @@ fn steps(world: &mut World, enemy: Entity, wanted: &str) {
     if let Some(shown) = world.get_mut::<Shown>(enemy) {
         shown.frame = frame;
     }
-    let walking = wanted.starts_with("ex10_troll_walk");
+    let walking =
+        wanted.starts_with("ex10_troll_walk") || wanted.starts_with("ex10_troll_armoured_walk");
     let landed = last.is_some_and(|(was, same)| !same || was != frame);
     if walking
         && landed

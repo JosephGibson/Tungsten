@@ -32,7 +32,7 @@ use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body
 use example_01_platformer::features::enemies::bat::{DIVE_SECS, DIVE_SPEED, FLASH_SECS};
 use example_01_platformer::features::enemies::beetle::{CHARGE_SECS, CHARGE_SPEED, PAW_SECS};
 use example_01_platformer::features::enemies::components::{
-    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws,
+    Brain, Enemy, EnemyKind, EnemyState, Held, Shown, Sight, Strike, Throws, Variant,
 };
 use example_01_platformer::features::enemies::crawler::{
     self, FROST_BREATH, LUNGE_SPEED, SNOWBALL_COOLDOWN,
@@ -4277,4 +4277,164 @@ fn a_shot_turns_off_a_beetles_front_and_hits_it_once_corroded() {
     let (turned, landed) = shot(&mut harness);
     assert_eq!(turned, 0, "no turn off corroded armour");
     assert_eq!(landed, [SHOT_DAMAGE], "the whole shot on its front");
+}
+
+/// An armoured troll standing on the sky's ground with its centre at `x`,
+/// at Normal, its save ID the run's next.
+fn armoured_troll_at(harness: &mut UiHarness, x: f32) -> Entity {
+    let kind = EnemyKind::Troll;
+    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let corner = centre - kind.info().centre;
+    let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner, id).expect("its prefab");
+    enemies::scale(world, troll, Difficulty::Normal);
+    troll
+}
+
+/// Whether `entity` wears the armoured troll's table: a quarter physical,
+/// three quarters of every other type.
+fn armour_table(harness: &UiHarness, entity: Entity) -> bool {
+    let resist = harness
+        .world()
+        .get::<tungsten::kit::Resist>(entity)
+        .unwrap();
+    let factor = |tag: &str| resist.factor(&tungsten::kit::Tags::new([tag]));
+    factor("damage.physical") == 0.25
+        && [
+            "damage.fire",
+            "damage.cold",
+            "damage.shock",
+            "damage.poison",
+        ]
+        .iter()
+        .all(|tag| factor(tag) == 0.75)
+}
+
+#[test]
+fn the_bridge_troll_is_the_armoured_troll() {
+    let (harness, _) = run();
+    let world = harness.world();
+    let mut trolls: Vec<(u64, Entity, Variant)> = world
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .filter(|(_, enemy, _)| enemy.kind == EnemyKind::Troll)
+        .map(|(entity, enemy, id)| (id.0, entity, enemy.variant))
+        .collect();
+    trolls.sort_unstable_by_key(|&(id, ..)| id);
+    let armoured: Vec<u64> = trolls
+        .iter()
+        .filter(|&&(.., variant)| variant == Variant::Armoured)
+        .map(|&(id, ..)| id)
+        .collect();
+    assert_eq!(armoured, [21], "the bridge's troll, save ID 21: {trolls:?}");
+    let bridge = trolls.iter().find(|&&(id, ..)| id == 21).unwrap().1;
+    assert!(tagged(&harness, bridge, "armoured"));
+    assert!(armour_table(&harness, bridge), "armour's table");
+    assert!(
+        (at(&harness, bridge).x / 64.0 - 398.0).abs() < 2.0,
+        "on the bridge"
+    );
+}
+
+#[test]
+fn the_armoured_troll_walks_and_lifts_on_its_own_clips() {
+    let (mut harness, player) = arena();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    let troll = armoured_troll_at(&mut harness, 1300.0);
+    let clip = |h: &UiHarness| h.world().get::<Shown>(troll).unwrap().clip.clone();
+    let (mut walked, mut stepped) = (false, false);
+    for _ in 0..300 {
+        harness.step(1);
+        walked |= clip(&harness).starts_with("ex10_troll_armoured_walk");
+        stepped |= harness
+            .harness()
+            .events::<Sounded>()
+            .any(|sounded| sounded.sound == Sound::TrollStep);
+        if walked && stepped {
+            break;
+        }
+    }
+    assert!(walked, "its walk: {}", clip(&harness));
+    assert!(stepped, "its steps heard");
+    // On patrol it sets down what it holds; once it has seen the courier it
+    // lifts.
+    let there = at(&harness, troll).x;
+    stand(&mut harness, player, there - 400.0, TOP);
+    let seen = until(&mut harness, 120, |h| state(h, troll) != EnemyState::Patrol);
+    assert!(seen, "it sees the courier");
+    let iron = iron_at(&mut harness, there + 90.0);
+    harness.step(1);
+    assert!(
+        troll::pick_up(harness.world_mut(), troll, iron),
+        "it lifts it"
+    );
+    harness.step(2);
+    assert!(
+        clip(&harness).starts_with("ex10_troll_armoured_pickup"),
+        "its lift: {}",
+        clip(&harness)
+    );
+}
+
+#[test]
+fn a_summoned_armoured_troll_the_last_summon_type_saves_and_loads_armoured() {
+    use example_01_platformer::features::spells::components::{Spell, Summon};
+    let (mut harness, player) = arena();
+    let last = SUMMONS.len() - 1;
+    assert_eq!(SUMMONS[last].name, "armoured troll");
+    let stats = harness
+        .world_mut()
+        .get_mut::<tungsten::kit::Stats>(player)
+        .unwrap();
+    stats.set_base("max_mana", 1000.0);
+    stats.set_base("mana", 1000.0);
+    harness.world_mut().resource_mut::<Summon>().selected = last;
+    choose(&mut harness, Spell::Summon);
+    let point = Vec2::new(900.0, TOP - EnemyKind::Troll.info().half.y - 1.0);
+    aim_at(&mut harness, point);
+    harness.harness_mut().press_action("cast");
+    harness.step(1);
+    harness.harness_mut().release_action("cast");
+    harness.step(2);
+    let (id, troll) = harness
+        .world()
+        .query::<(Entity, &Enemy, &SaveId)>()
+        .find(|(_, enemy, _)| enemy.variant == Variant::Armoured && enemy.kind == EnemyKind::Troll)
+        .map(|(entity, _, id)| (id.0, entity))
+        .filter(|&(id, _)| id != 21)
+        .expect("an armoured troll summoned");
+    assert!(tagged(&harness, troll, "armoured") && armour_table(&harness, troll));
+    let saved = save::capture(harness.world()).unwrap();
+    let mine = saved.enemies.iter().find(|e| e.id == id).unwrap();
+    assert_eq!((mine.map, mine.enemy.variant), (false, Variant::Armoured));
+    let fresh = reload(saved);
+    let loaded = by_id(&fresh, id).expect("it loads");
+    let enemy = *fresh.world().get::<Enemy>(loaded).unwrap();
+    assert_eq!(
+        (enemy.kind, enemy.variant),
+        (EnemyKind::Troll, Variant::Armoured)
+    );
+    assert!(tagged(&fresh, loaded, "armoured") && armour_table(&fresh, loaded));
+}
+
+#[test]
+fn a_shot_turns_off_the_armoured_trolls_front() {
+    let (mut harness, player) = arena();
+    let troll = armoured_troll_at(&mut harness, 1300.0);
+    still(&mut harness, troll);
+    harness.world_mut().get_mut::<Enemy>(troll).unwrap().heading = -1.0;
+    harness.step(2);
+    let y = at(&harness, troll).y;
+    let id = shoot(&mut harness, Vec2::new(1000.0, y), Vec2::X);
+    let (mut turned, mut landed) = (0, Vec::new());
+    for _ in 0..30 {
+        harness.step(1);
+        landed.extend(took(&harness, troll, Some(player)));
+        let Some(shot) = bullet(&harness, id) else {
+            break;
+        };
+        turned = turned.max(harness.world().get::<Bullet>(shot).unwrap().ricochets);
+    }
+    assert_eq!(turned, 1, "its front turned the shot");
+    assert!(landed.is_empty(), "the front takes nothing: {landed:?}");
 }
