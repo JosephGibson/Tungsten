@@ -70,7 +70,7 @@ use crate::features::run::Run;
 use crate::features::spells::components::{Spell, Spellbook, Summon};
 use crate::features::tomes::{Tome, TomeKind, Tomes};
 use crate::features::toys::components::{
-    Ball, BallHue, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
+    Ball, BallHue, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall, ToxicFlask,
 };
 use crate::features::toys::{self, MISSILE_SIZE};
 use crate::game::GAMEPLAY;
@@ -146,6 +146,10 @@ pub struct SaveGame {
     /// planks are; none written while none lie about.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stones: Vec<StoneSave>,
+    /// The toxic flasks in flight (e01flask), as the missiles are; none
+    /// before schema 21, and none written while none fly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flasks: Vec<FlaskSave>,
 }
 
 /// The dummies the map's `dummies` layer places.
@@ -306,8 +310,10 @@ impl SaveData for SaveGame {
     /// hollow's geysers and stones, moves the save IDs past its new enemies
     /// and geysers and sets what its lowered lintel holds under it
     /// (`to_19`). Schema 20 puts the toxic flask fifth on the bar and gives
-    /// the player its ability (`to_20`).
-    const SCHEMA: u32 = 20;
+    /// the player its ability (`to_20`). Schema 21 keeps the flasks in
+    /// flight and gives the living, the armoured and the bridge's armoured
+    /// troll their tags and table (`to_21`).
+    const SCHEMA: u32 = 21;
 
     fn migrate(
         from: u32,
@@ -335,6 +341,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             8 => {
@@ -349,6 +356,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             9 => {
@@ -362,6 +370,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             10 => {
@@ -374,6 +383,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             11 => {
@@ -385,6 +395,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             12 => {
@@ -395,6 +406,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             13 => {
@@ -404,6 +416,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             14 => {
@@ -412,6 +425,7 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             15 => {
@@ -419,21 +433,29 @@ impl SaveData for SaveGame {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             16 => {
                 to_17(&mut data);
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             17 | 18 => {
                 to_19(&mut data)?;
                 to_20(&mut data)?;
+                to_21(&mut data);
                 Ok(data)
             }
             19 => {
                 to_20(&mut data)?;
+                to_21(&mut data);
+                Ok(data)
+            }
+            20 => {
+                to_21(&mut data);
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
@@ -469,6 +491,63 @@ fn to_20(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync
         entries.push(entry.parse()?);
     }
     Ok(())
+}
+
+/// The bridge troll's save ID, which schema 21 makes the armoured troll
+/// (e01flask, Q2), and armour's table, its bases. Frozen for the migration.
+pub const S21_BRIDGE_TROLL: u64 = 21;
+pub const S21_ARMOUR: [(&str, f64); 5] = [
+    ("damage.physical", 0.25),
+    ("damage.fire", 0.75),
+    ("damage.cold", 0.75),
+    ("damage.shock", 0.75),
+    ("damage.poison", 0.75),
+];
+
+/// Schema 20 to 21 (e01flask): every saved enemy but a wisp, and every
+/// dummy, takes `living`, which poison needs; every beetle `armoured`; and
+/// the map's troll of [`S21_BRIDGE_TROLL`] becomes the armoured troll: its
+/// variant, `armoured` and armour's table ([`S21_ARMOUR`]) as its bases,
+/// its saved modifiers kept. Each part holds when it already has, since a
+/// schema 20 save from e01flask's own steps may carry some of it. A schema
+/// 20 save holds no flask.
+fn to_21(data: &mut Value) {
+    let tag = |entry: &mut Value, tag: &str| {
+        if let Some(tags) = entry["tags"].as_array_mut()
+            && !tags.iter().any(|held| held == tag)
+        {
+            tags.push(Value::from(tag));
+        }
+    };
+    for dummy in each(data, "/dummies") {
+        tag(dummy, "living");
+    }
+    for enemy in each(data, "/enemies") {
+        if enemy["kind"] != "wisp" {
+            tag(enemy, "living");
+        }
+        if enemy["kind"] == "beetle" {
+            tag(enemy, "armoured");
+        }
+        let bridge = enemy["id"].as_u64() == Some(S21_BRIDGE_TROLL)
+            && enemy["kind"] == "troll"
+            && enemy["map"].as_bool() == Some(true);
+        if !bridge {
+            continue;
+        }
+        enemy["enemy"]["variant"] = Value::from("armoured");
+        tag(enemy, "armoured");
+        if let Some(resist) = enemy["resist"].as_object_mut() {
+            for (name, base) in S21_ARMOUR {
+                match resist.get_mut(name) {
+                    Some(factor) if factor.is_object() => factor["base"] = Value::from(base),
+                    _ => {
+                        resist.insert(name.to_string(), Value::from(base));
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Maps `id` through `to`, when it is a save ID.
@@ -1090,7 +1169,7 @@ pub fn map_ids(data: &mut Value, to: &impl Fn(u64) -> u64) {
         map_id(prop.get_mut("lighter"), to);
         map_id(prop.pointer_mut("/fuel/lighter"), to);
     }
-    for list in ["/missiles", "/bullets"] {
+    for list in ["/missiles", "/bullets", "/flasks"] {
         for entry in each(data, list) {
             map_id(entry.get_mut("id"), to);
             map_id(entry.get_mut("source"), to);
@@ -1500,6 +1579,18 @@ pub struct MissileSave {
     pub source: Option<u64>,
 }
 
+/// A toxic flask in flight (e01flask), as a missile is: its point, its
+/// flight and its range so far, and the save ID of what threw it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FlaskSave {
+    pub id: u64,
+    pub position: [f32; 2],
+    pub projectile: Projectile,
+    pub motion: LinearMotion,
+    pub source: Option<u64>,
+}
+
 /// A bullet in flight: its point, its flight and its range so far, the
 /// times it turned off iron, and the save ID of what fired it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1702,6 +1793,24 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         })
         .collect();
     missiles.sort_by_key(|missile| missile.id);
+    let mut flasks: Vec<FlaskSave> = world
+        .query::<(
+            &SaveId,
+            &ToxicFlask,
+            &Position,
+            &Projectile,
+            &LinearMotion,
+            Option<&Source>,
+        )>()
+        .map(|(id, _, at, projectile, motion, source)| FlaskSave {
+            id: id.0,
+            position: at.0.to_array(),
+            projectile: projectile.clone(),
+            motion: motion.clone(),
+            source: source.and_then(|source| id_of(source.entity())),
+        })
+        .collect();
+    flasks.sort_by_key(|flask| flask.id);
     let mut bullets: Vec<BulletSave> = world
         .query::<(
             &SaveId,
@@ -1850,6 +1959,7 @@ pub fn capture(world: &World) -> Option<SaveGame> {
         snowballs,
         planks,
         stones,
+        flasks,
     })
 }
 
@@ -2254,6 +2364,10 @@ pub fn restore(world: &mut World, player: Entity, save: &SaveGame) {
             missile.source.and_then(|id| by_id.get(&id).copied()),
         );
     }
+    for flask in &save.flasks {
+        let source = flask.source.and_then(|id| by_id.get(&id).copied());
+        restore_flask(world, flask, source);
+    }
     for bullet in &save.bullets {
         let shot = BulletShot {
             id: SaveId(bullet.id),
@@ -2490,6 +2604,34 @@ fn place(world: &mut World, entity: Entity, position: [f32; 2]) {
 /// the spell's payload spawned it, so its source and its emitter return:
 /// its save ID, flight and look are its own, so the spell's
 /// `missile_adopt` leaves it be.
+/// A saved flask set back in flight, from `source` when it lives, at the
+/// load's flush, as a missile is.
+fn restore_flask(world: &mut World, flask: &FlaskSave, source: Option<Entity>) {
+    let at = Vec2::from(flask.position);
+    let Ok(prepared) = world.prepare_prefab(toys::flask::FLASK_PREFAB, at.to_array()) else {
+        return;
+    };
+    let prepared = prepared.with((
+        Transform::from_position(at),
+        Position(at),
+        PrevPosition(at),
+        SaveId(flask.id),
+        flask.projectile.clone(),
+        flask.motion.clone(),
+        toys::components::PreviousVelocity::default(),
+        SceneEntity { state_id: GAMEPLAY },
+    ));
+    let commands = world.resource_mut::<CommandBuffer>();
+    match source {
+        Some(source) => {
+            commands.spawn_prefab_from(source, prepared);
+        }
+        None => {
+            commands.spawn_prefab(prepared);
+        }
+    }
+}
+
 fn restore_missile(world: &mut World, missile: &MissileSave, source: Option<Entity>) {
     let at = Vec2::from(missile.position);
     let Ok(prepared) = world.prepare_prefab(toys::FIRE_MISSILE_PREFAB, at.to_array()) else {
