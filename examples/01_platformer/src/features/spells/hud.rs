@@ -10,7 +10,7 @@
 //! icon tile, its live key on a corner plate, its cooldown's sweep and its
 //! charges, the selected slot ringed in the focus colour and one the player
 //! cannot pay for greyed, a white flash as a long cooldown ends and a red
-//! one on a press refused as not ready; slot 0 the summon's selected type,
+//! one on a press refused as not ready; the last the summon's selected type,
 //! its name over it a moment after a turn. Then, set apart past a divider,
 //! the gun: its tile, its rounds as cartridges and their count, and while a
 //! reload runs "reloading", the tile greyed under the reload's sweep and
@@ -36,7 +36,7 @@ use tungsten::core::{
 use tungsten::kit::{Abilities, Ability, Health, Shield, Stats};
 
 use super::components::{Spell, Spellbook};
-use super::{SLOT_ACTIONS, SLOTS, mana, summon_type};
+use super::{SLOT_ACTIONS, SLOT_COUNT, SLOTS, mana, slot_of, summon_type};
 use crate::features::gun::components::Reload;
 use crate::features::gun::{self, MAGAZINE, RELOAD_SECS};
 use crate::features::level::systems::drawn_time;
@@ -148,8 +148,8 @@ pub struct Hud {
     pub shield: ShieldBar,
     pub mana: Meter,
     pub strip: Strip,
-    pub slots: [Slot; 10],
-    /// The summon's name over slot 0, and its plate.
+    pub slots: [Slot; SLOT_COUNT],
+    /// The summon's name over its slot, and its plate.
     pub name_plate: WidgetId,
     pub name: WidgetId,
     pub magazine: Magazine,
@@ -160,11 +160,11 @@ pub struct Hud {
     pub scale: f32,
     /// Game seconds each slot's ready flash and refused flash still show,
     /// and the summon's name.
-    pub ready: [f32; 10],
-    pub refused: [f32; 10],
+    pub ready: [f32; SLOT_COUNT],
+    pub refused: [f32; SLOT_COUNT],
     pub named: f32,
     /// Each slot's cooldown share as last shown, so its end is seen.
-    pub cooling: [f32; 10],
+    pub cooling: [f32; SLOT_COUNT],
 }
 
 /// The bars' liquid, in its texels, and the frame and gap round it; the
@@ -226,7 +226,7 @@ const FLASH_SECS: f32 = 0.25;
 const FLASH_COOLDOWN: f32 = 0.5;
 const READY_ALPHA: f32 = 120.0;
 const REFUSED_ALPHA: f32 = 110.0;
-/// The summon's name over slot 0 after a turn: its seconds, the last of
+/// The summon's name over its slot after a turn: its seconds, the last of
 /// them fading, its plate's height, padding and background alpha.
 const NAMED_SECS: f32 = 1.2;
 const NAMED_FADE: f32 = 0.3;
@@ -334,7 +334,7 @@ pub fn refused(world: &mut World) {
     }
 }
 
-/// Notes a turn of the summon's type: its name shows over slot 0.
+/// Notes a turn of the summon's type: its name shows over its slot.
 pub fn summon_turned(world: &mut World) {
     if let Some(hud) = world.get_resource_mut::<Hud>() {
         hud.named = NAMED_SECS;
@@ -373,7 +373,7 @@ fn readout(tree: &mut UiTree, parent: WidgetId, [size, line]: [f32; 2], room: f3
 
 fn build(
     tree: &mut UiTree,
-    icons: [Option<(Spell, SpriteAssetId)>; 10],
+    icons: [Option<(Spell, SpriteAssetId)>; SLOT_COUNT],
     art: Art,
     scale: f32,
 ) -> Hud {
@@ -393,7 +393,8 @@ fn build(
     tree.set_hit_testable(bar, false);
     widgets::fill(tree, bar, CLEAR);
     let slots: Vec<Slot> = icons.into_iter().map(|art| slot(tree, bar, art)).collect();
-    let (name_plate, name) = name_plate(tree, slots[9].ring);
+    let summon = slot_of(Spell::Summon).unwrap_or(SLOT_COUNT - 1);
+    let (name_plate, name) = name_plate(tree, slots[summon].ring);
     divider(tree, bar);
     let magazine = magazine(tree, bar, art);
     let panel = book_panel(tree);
@@ -404,17 +405,17 @@ fn build(
         shield,
         mana,
         strip,
-        slots: slots.try_into().expect("ten slots"),
+        slots: slots.try_into().expect("a tile a slot"),
         name_plate,
         name,
         magazine,
         panel,
         art,
         scale,
-        ready: [0.0; 10],
-        refused: [0.0; 10],
+        ready: [0.0; SLOT_COUNT],
+        refused: [0.0; SLOT_COUNT],
         named: 0.0,
-        cooling: [0.0; 10],
+        cooling: [0.0; SLOT_COUNT],
     };
     size(tree, &hud, scale);
     hud
@@ -690,7 +691,7 @@ fn slot(tree: &mut UiTree, bar: WidgetId, art: Option<(Spell, SpriteAssetId)>) -
     }
 }
 
-/// The summon's name over slot 0's `ring`, on a dark plate, hidden.
+/// The summon's name over its slot's `ring`, on a dark plate, hidden.
 fn name_plate(tree: &mut UiTree, ring: WidgetId) -> (WidgetId, WidgetId) {
     let mut style =
         LayoutStyle::row().anchored(Anchor::TopCenter, Vec2::new(0.0, -(NAME_PLATE + BORDER)));

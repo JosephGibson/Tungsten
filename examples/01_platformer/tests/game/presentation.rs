@@ -44,6 +44,7 @@ use example_01_platformer::features::enemies::goblin::{self, STAB_HALF};
 use example_01_platformer::features::enemies::troll::{self, SLAM_REACH, SWIPE_HALF};
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::components::SceneTime;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{OpeningOf, Ring, ShockRing};
 use example_01_platformer::features::toys::{self, components::BlackHole};
 use example_01_platformer::save::{self, SaveGame};
@@ -913,7 +914,10 @@ fn the_backdrop_skips_quads_opaque_tiles_cover() {
 fn spray_particles_draw_over_the_enemies() {
     use example_01_platformer::features::toys::components::Spray;
     use example_01_platformer::features::toys::systems::SPRAY_Z;
-    for (slot, name) in [(1, "the flamethrower"), (2, "the ice spray")] {
+    for (slot, name) in [
+        (Spell::Flamethrower, "the flamethrower"),
+        (Spell::IceSpray, "the ice spray"),
+    ] {
         let (mut harness, player) = run();
         super::calm(&mut harness);
         super::ground(&mut harness, 1000.0);
@@ -1458,7 +1462,7 @@ fn a_hole_opens_over_three_tenths_of_a_second() {
     // Slot 6's press opens one at the cursor, in the sky.
     pin_camera(&mut harness, Vec2::new(200.0, 200.0));
     aim_at(&mut harness, Vec2::new(520.0, 480.0));
-    choose(&mut harness, 5);
+    choose(&mut harness, Spell::BlackHole);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");

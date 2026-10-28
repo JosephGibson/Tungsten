@@ -40,6 +40,7 @@ use example_01_platformer::features::level::geyser::{
     self, Geyser, GeyserPhase, VENT_CENTRE, VENT_HEIGHT,
 };
 use example_01_platformer::features::level::lava::Lava;
+use example_01_platformer::features::spells::components::Spell;
 use tungsten::core::RigidBody;
 use tungsten::kit::ImmunePart;
 
@@ -353,7 +354,7 @@ fn the_ice_spray_crusts_a_basin_that_holds_the_player_and_melts_to_throw_them() 
     stand(&mut harness, player, at.x - 40.0, at.y - 64.0);
     harness.step(2);
     pin_camera(&mut harness, at - Vec2::new(500.0, 400.0));
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     // The cursor held on the pool's surface each frame, as the camera
     // settles.
     let target = Vec2::new(at.x + 96.0, surface + 2.0);
@@ -512,7 +513,7 @@ fn the_lava_freezes_and_thaws_through_its_frames_with_a_sound_at_each_change() {
     stand(&mut harness, player, at.x - 40.0, at.y - 64.0);
     harness.step(2);
     pin_camera(&mut harness, at - Vec2::new(500.0, 400.0));
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     let target = Vec2::new(at.x + 96.0, surface + 2.0);
     let mut seen = std::collections::HashSet::new();
     let _ = new_bursts(&harness, &mut seen);
@@ -1021,7 +1022,7 @@ fn the_ice_spray_on_a_geysers_vent_chokes_it_for_six_seconds_then_it_idles() {
         &mut harness,
         Vec2::new(GEYSER_X - 600.0, GEYSER_TOP - 400.0),
     );
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     let mouth = geyser::mouth(harness.world(), geyser).unwrap();
     harness.harness_mut().press_action("cast");
     let mut held = 0;
@@ -1088,7 +1089,7 @@ fn the_ice_spray_aimed_at_the_first_floors_map_geyser_chokes_it() {
     stand(&mut harness, player, mouth.x - 160.0, 63.0 * 64.0);
     harness.step(2);
     pin_camera(&mut harness, mouth - Vec2::new(600.0, 400.0));
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     harness.harness_mut().press_action("cast");
     let mut held = 0;
     for _ in 0..60 {

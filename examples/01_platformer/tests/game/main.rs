@@ -52,6 +52,7 @@ use example_01_platformer::features::player as courier;
 use example_01_platformer::features::props::components::Stone;
 use example_01_platformer::features::run::{DEATH_SECS, Run};
 use example_01_platformer::features::spells as game_spells;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
 use example_01_platformer::game;
 use example_01_platformer::shared::{Burst, despawn_tree};
@@ -338,9 +339,10 @@ pub fn aim_at(harness: &mut UiHarness, at: Vec2) {
     harness.harness_mut().set_cursor(screen.x, screen.y);
 }
 
-/// Selects the spell slot `slot`, 0 for key 1 to 9 for key 0, as its key
-/// does: pressed until a fixed step has read it.
-pub fn choose(harness: &mut UiHarness, slot: usize) {
+/// Selects the slot that holds `spell`, as its key does: pressed until a
+/// fixed step has read it.
+pub fn choose(harness: &mut UiHarness, spell: Spell) {
+    let slot = game_spells::slot_of(spell).expect("a slot holds it");
     let action = game_spells::SLOT_ACTIONS[slot];
     harness.harness_mut().press_action(action);
     loop {

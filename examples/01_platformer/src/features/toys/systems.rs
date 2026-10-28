@@ -504,10 +504,11 @@ fn touches(centre: Vec2, shape: Shape, point: Vec2, margin: f32) -> bool {
 }
 
 /// The first sampled point on `start..end` that meets a solid tile or a
-/// body other than the player's or a sensor: balls, iron, decks, lifts.
-fn first_contact(world: &World, start: Vec2, end: Vec2) -> Option<Vec2> {
+/// body other than the player's or a sensor, for a flyer of `radius`:
+/// balls, iron, decks, lifts.
+pub(crate) fn first_contact(world: &World, start: Vec2, end: Vec2, radius: f32) -> Option<Vec2> {
     let travel = end - start;
-    let lead = travel.normalize_or_zero() * MISSILE_RADIUS;
+    let lead = travel.normalize_or_zero() * radius;
     let steps = (travel.length() / SAMPLE_STEP).ceil().max(1.0) as usize;
     let solids: Vec<(Vec2, Shape)> = world
         .query::<(Entity, &Collider, &Position, &RigidBody)>()
@@ -524,7 +525,7 @@ fn first_contact(world: &World, start: Vec2, end: Vec2) -> Option<Vec2> {
                 || tiles.contains(point + lead)
                 || solids
                     .iter()
-                    .any(|&(centre, shape)| touches(centre, shape, point, MISSILE_RADIUS))
+                    .any(|&(centre, shape)| touches(centre, shape, point, radius))
         })
 }
 
@@ -559,7 +560,7 @@ pub fn missile_contacts(world: &mut World) {
         .map(|(entity, _, at, prev)| (entity, prev.0 + centre, at.0 + centre))
         .collect();
     for (missile, start, end) in missiles {
-        if let Some(hit) = first_contact(world, start, end) {
+        if let Some(hit) = first_contact(world, start, end, MISSILE_RADIUS) {
             flare(world, hit, true);
             despawn_tree(world, missile);
             explode(world, hit);

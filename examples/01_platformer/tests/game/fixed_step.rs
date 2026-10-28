@@ -6,6 +6,7 @@
 use example_01_platformer::features::level::systems::drawn_time;
 use example_01_platformer::features::player::components::Moves;
 use example_01_platformer::features::player::systems::AIR_JUMP_BURST;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::Ball;
 use example_01_platformer::features::toys::{self, BALL_CAP};
 use example_01_platformer::shared::Burst;
@@ -233,7 +234,7 @@ fn at_30_hz_both_spawners_stop_at_the_cap_across_two_steps() {
     let (mut harness, _) = run();
     pin_camera(&mut harness, Vec2::new(600.0, 200.0));
     aim_at(&mut harness, Vec2::new(1200.0, 500.0));
-    choose(&mut harness, 8);
+    choose(&mut harness, Spell::SmallBalls);
     let live = toys::ball_count(harness.world());
     for _ in 0..BALL_CAP - live - 1 {
         harness.world_mut().spawn_with((Ball,));

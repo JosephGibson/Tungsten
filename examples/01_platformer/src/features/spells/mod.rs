@@ -1,10 +1,10 @@
-//! The spells: ten slots, each cast with `cast` through one of the
+//! The spells: eleven slots, each cast with `cast` through one of the
 //! player's kit abilities, whose data holds its cost in mana, its cooldown,
 //! its charges and the `casting` effect that pauses the mana's
-//! regeneration, over the toys' rules. The slot actions and the wheel
-//! choose one; the fire missile flies from the kit's spawn payload; slot 0
-//! summons the type `summon_next` and `summon_prev` pick, a dummy, an enemy,
-//! a crate or a keg. The HUD shows the health, the mana, the bar and the
+//! regeneration, over the toys' rules. The slot actions and the shoulder
+//! buttons choose one; the fire missile flies from the kit's spawn payload;
+//! the last slot summons the type `summon_next` and `summon_prev` pick, a
+//! dummy, an enemy, a crate or a keg. The HUD shows the health, the mana, the bar and the
 //! gun's magazine.
 
 pub mod components;
@@ -20,12 +20,16 @@ use components::{Spell, Spellbook};
 use crate::features::enemies::components::EnemyKind;
 use crate::features::props::components::PropKind;
 
-/// The spell bar's slots, keys 1 to 9 then 0.
-pub const SLOTS: [Option<Spell>; 10] = [
+/// How many slots the spell bar has.
+pub const SLOT_COUNT: usize = 11;
+/// The spell bar's slots, keys 1 to 9, 0, then minus: the toxic flask fifth
+/// (e01flask, Q43).
+pub const SLOTS: [Option<Spell>; SLOT_COUNT] = [
     Some(Spell::FireMissile),
     Some(Spell::Flamethrower),
     Some(Spell::IceSpray),
     Some(Spell::Lightning),
+    Some(Spell::ToxicFlask),
     Some(Spell::ForcePush),
     Some(Spell::BlackHole),
     Some(Spell::IronBlock),
@@ -35,9 +39,18 @@ pub const SLOTS: [Option<Spell>; 10] = [
 ];
 /// The action that selects each slot, whose first key or mouse binding the
 /// bar shows over the slot.
-pub const SLOT_ACTIONS: [&str; 10] = [
-    "spell_1", "spell_2", "spell_3", "spell_4", "spell_5", "spell_6", "spell_7", "spell_8",
-    "spell_9", "spell_0",
+pub const SLOT_ACTIONS: [&str; SLOT_COUNT] = [
+    "spell_1",
+    "spell_2",
+    "spell_3",
+    "spell_4",
+    "spell_5",
+    "spell_6",
+    "spell_7",
+    "spell_8",
+    "spell_9",
+    "spell_0",
+    "spell_minus",
 ];
 /// Casts the selected spell: once a press, or each fixed step it is held.
 pub const CAST: &str = "cast";
@@ -92,8 +105,8 @@ const fn enemy(kind: EnemyKind) -> SummonType {
     }
 }
 
-/// The types slot 0 summons: the training dummy, each enemy as its kind
-/// lands, then the crate and the keg.
+/// The types the summon slot places: the training dummy, each enemy as its
+/// kind lands, then the crate and the keg.
 pub const SUMMONS: [SummonType; 9] = [
     SummonType {
         name: "dummy",
@@ -160,7 +173,14 @@ pub fn selected(world: &World, player: Entity) -> Option<Spell> {
     SLOTS.get(slot).copied().flatten()
 }
 
-/// Selects `slot`, 0 for key 1 to 9 for key 0, when it holds a spell.
+/// The slot that holds `spell`, if one does.
+#[must_use]
+pub fn slot_of(spell: Spell) -> Option<usize> {
+    SLOTS.iter().position(|slot| *slot == Some(spell))
+}
+
+/// Selects `slot`, 0 for key 1 to 10 for the minus key, when it holds a
+/// spell.
 /// Whether it did.
 pub fn select(world: &mut World, player: Entity, slot: usize) -> bool {
     let filled = SLOTS.get(slot).is_some_and(Option::is_some);
@@ -171,7 +191,7 @@ pub fn select(world: &mut World, player: Entity, slot: usize) -> bool {
     false
 }
 
-/// The stat the ten slots' costs scale by, `player`'s: 1 without it, 2
+/// The stat the slots' costs scale by, `player`'s: 1 without it, 2
 /// under the tome of arcane power.
 pub const SPELL_COST: &str = "spell_cost";
 

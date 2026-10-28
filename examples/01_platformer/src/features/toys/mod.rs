@@ -1,12 +1,14 @@
 //! The physics toys: small balls set down at a point, bowling balls tossed,
 //! iron blocks placed, black holes opened, the force push's wave along an
-//! aim (`wave`), sprays of fire or cold along an aim, and the fire
-//! missile's flight, blast and bending, each a function the spells call. Their caps bound the pile:
+//! aim (`wave`), sprays of fire or cold along an aim, the fire missile's
+//! flight, blast and bending, and the toxic flask's lob and splash
+//! (`flask`), each a function the spells call. Their caps bound the pile:
 //! [`BALL_CAP`] balls, [`IRON_CAP`] blocks, [`MISSILE_CAP`] missiles and
 //! [`HOLE_CAP`] black holes.
 
 pub mod components;
 pub mod draw;
+pub mod flask;
 pub mod spray_look;
 pub mod systems;
 pub mod wave;
@@ -156,8 +158,9 @@ pub const FIRE_MISSILE_PREFAB: &str = "fire_missile";
 /// step, the holes' life, the balls' hues and cooldowns, the velocities
 /// before physics, the holes' pull, their hold on the flyers about the
 /// top-down mover, the force push's waves, the missiles' bending before
-/// their motion, their contacts before the kit's projectile step and their ends
-/// after it, so a blast's hits take the step's resolve, the escaped
+/// their motion, their contacts and the flasks' before the kit's projectile
+/// step and their ends after it, so a blast's or a splash's hits take the
+/// step's resolve, the escaped
 /// bodies' cull, the holes' broom and the sprays' end; in the present
 /// phase the toys' looks and the waves' crescents, and before the frame's
 /// particles the sprays' and
@@ -175,6 +178,7 @@ impl Plugin for ToysPlugin {
         world.register_component::<IronScrap>("iron_scrap");
         world.register_component::<BlackHole>("black_hole");
         world.register_component::<FireMissile>("fire_missile");
+        world.register_component::<components::ToxicFlask>("toxic_flask");
         world.insert_resource(BallSpawner::default());
         world.insert_resource(HoleHold::default());
         world.resource_mut::<Extracts>().add_sprites(draw::effects);
@@ -190,6 +194,14 @@ impl Plugin for ToysPlugin {
             Phase::Move.join(system("missile_bend", systems::bend).before(LINEAR_MOTION)),
             Phase::Overlap.join(
                 system("missile_contacts", systems::missile_contacts).before(PROJECTILE_TICK),
+            ),
+            Phase::Overlap.join(system("flask_contacts", flask::contacts).before(PROJECTILE_TICK)),
+            Phase::Overlap.join(
+                system("flask_ends", {
+                    let mut cursor = EventCursor::new();
+                    move |world: &mut World| flask::ends(world, &mut cursor)
+                })
+                .after(PROJECTILE_TICK),
             ),
             Phase::Overlap.join(system("toys_bounds", systems::bounds)),
             Phase::Overlap.join(system("hole_broom", systems::broom)),

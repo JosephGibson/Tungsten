@@ -52,6 +52,7 @@ use example_01_platformer::features::lightning;
 use example_01_platformer::features::player::components::Lantern;
 use example_01_platformer::features::props::components::{Bomb, Keg, PropKind, Rock};
 use example_01_platformer::features::props::{self, CRATE_HALF};
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::{SUMMON_NEXT, SUMMONS, Summoned};
 use example_01_platformer::features::toys::IRON_HALF;
 use example_01_platformer::features::toys::components::{PreviousVelocity, ScrapTumble};
@@ -688,7 +689,7 @@ fn a_frozen_wisp_blows_apart_under_a_fire_missile() {
     let before = bursts(&harness, "ex10_frost_blast");
     let aim = at(&harness, wisp);
     aim_at(&mut harness, aim);
-    choose(&mut harness, 0);
+    choose(&mut harness, Spell::FireMissile);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -2585,7 +2586,7 @@ fn a_steady_ice_spray_freezes_the_troll() {
     let troll = troll_at(&mut harness, 560.0, Difficulty::Normal);
     still(&mut harness, troll);
     harness.step(2);
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     let eye = super::centre(&harness, player);
     let target = Vec2::new(at(&harness, troll).x, eye.y);
     aim_at(&mut harness, target);
@@ -2966,7 +2967,7 @@ fn slot_zero_summons_each_enemy_after_the_dummy_capped() {
         .unwrap();
     stats.set_base("max_mana", 10_000.0);
     stats.set_base("mana", 10_000.0);
-    choose(&mut harness, 9);
+    choose(&mut harness, Spell::Summon);
     let summoned = |h: &UiHarness| -> Vec<(u64, Entity)> {
         enemies::live(h.world())
             .into_iter()

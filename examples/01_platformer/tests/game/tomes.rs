@@ -496,7 +496,7 @@ fn arcane_power_doubles_a_spells_own_hits_and_leaves_the_gun_and_a_ball_alone() 
         harness.step(1);
         let at = body(harness, dummy);
         aim_at(harness, at);
-        choose(harness, 1);
+        choose(harness, Spell::Flamethrower);
         harness.harness_mut().press_action("cast");
     });
     for (what, (arcane, plain)) in [
@@ -550,5 +550,28 @@ fn all_three_tomes_together_hold_their_own_changes() {
         controller.air_jump_cost(),
         Some(("mana", 25.0)),
         "a bound at 25"
+    );
+}
+
+#[test]
+fn arcane_power_doubles_the_flask_cost_and_its_splash() {
+    let (mut harness, player) = sky();
+    assert_eq!(
+        spells::cost(harness.world(), player, Spell::ToxicFlask),
+        Some(12.0)
+    );
+    take(&mut harness, player, TomeKind::Arcane);
+    assert_eq!(
+        spells::cost(harness.world(), player, Spell::ToxicFlask),
+        Some(24.0)
+    );
+    let (arcane, plain) = arcane_and_plain(|harness, player, dummy| {
+        let (from, to) = (centre(harness, player), body(harness, dummy));
+        toys::flask::throw(harness.world_mut(), player, from, to).expect("a flask");
+    });
+    assert!(plain > 0.0, "the splash lands");
+    assert!(
+        (arcane - 2.0 * plain).abs() < 1e-3,
+        "{arcane} for twice {plain}"
     );
 }

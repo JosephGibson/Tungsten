@@ -23,6 +23,7 @@ use example_01_platformer::features::lightning::{
     STRIKE_SHOCK, draw,
 };
 use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::{self, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
 use example_01_platformer::shared::{SaveId, SaveIds};
@@ -135,7 +136,7 @@ fn bolt(harness: &UiHarness) -> Bolt {
 /// Selects slot 4 and casts it at `at` with one press.
 fn cast_lightning(harness: &mut UiHarness, at: Vec2) {
     aim_at(harness, at);
-    choose(harness, 3);
+    choose(harness, Spell::Lightning);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");

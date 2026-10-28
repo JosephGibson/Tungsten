@@ -11,6 +11,7 @@ use example_01_platformer::features::elements::cascade::{self, CascadeKind, Casc
 use example_01_platformer::features::elements::components::{BallBurn, Frozen};
 use example_01_platformer::features::elements::{self, CASCADE_BOUND, CASCADE_CAP, FROZEN_SECS};
 use example_01_platformer::features::level::components::{Doused, Hazard};
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::IronScrap;
 use example_01_platformer::features::toys::{self, BALL_CAP, IRON_HALF};
 use example_01_platformer::game::GAMEPLAY;
@@ -303,7 +304,7 @@ fn cold_douses_a_fire_hazard_for_a_while() {
     let at = harness.world().get::<Position>(fire).unwrap().0 + elements::FIRE_CENTRE;
     let eye = super::centre(&harness, player);
     pin_camera(&mut harness, eye - Vec2::new(640.0, 360.0));
-    super::choose(&mut harness, 2);
+    super::choose(&mut harness, Spell::IceSpray);
     aim_at(&mut harness, at);
     harness.harness_mut().press_action("cast");
     harness.step(4);

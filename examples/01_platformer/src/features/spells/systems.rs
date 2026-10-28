@@ -16,6 +16,7 @@ use crate::features::lightning;
 use crate::features::player::{self, BODY_OFFSET};
 use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
+use crate::features::toys::flask::FLASK_CAP;
 use crate::features::toys::{self, BALL_CAP, MISSILE_CAP};
 use crate::features::{dummy, enemies, props};
 use crate::game::GAMEPLAY;
@@ -217,7 +218,8 @@ fn hold(world: &mut World, player: Entity, spell: Spell) -> Used {
 }
 
 /// A press of `spell`: refused before its ability spends anything while
-/// its toy is at its cap, it needs the cursor and has none, a summon's box
+/// its toy is at its cap (a flask's [`FLASK_CAP`] in flight), it needs the
+/// cursor and has none, a summon's box
 /// would overlap a solid tile there, or an iron block, a crate or a keg
 /// would not fit there (`toys::iron_fits`, `props::fits`); then its use,
 /// then its toy. A refusal says why, once ([`refuse_cast`]).
@@ -230,6 +232,7 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         Spell::FireMissile => toys::missile_count(world) >= MISSILE_CAP,
         Spell::BowlingBall => toys::ball_count(world) >= BALL_CAP,
         Spell::BlackHole | Spell::Lightning => at.is_none(),
+        Spell::ToxicFlask => at.is_none() || toys::flask::count(world) >= FLASK_CAP,
         Spell::IronBlock => at.is_none_or(|at| !toys::iron_fits(world, at)),
         Spell::Summon => at.is_none_or(|at| {
             let summoned = summon_type(world).summoned;
@@ -278,6 +281,10 @@ fn press(world: &mut World, player: Entity, spell: Spell) {
         }
         Spell::Lightning => {
             lightning::strike(world, player, at);
+        }
+        Spell::ToxicFlask => {
+            toys::flask::throw(world, player, centre, at);
+            audio::play(world, Sound::FlaskThrown, centre);
         }
         Spell::Summon => {
             let summoned = summon_type(world);

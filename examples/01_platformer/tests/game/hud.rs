@@ -6,16 +6,17 @@
 //! ends and red on a press refused as not ready.
 
 use example_01_platformer::features::level::components::Zoom;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::spells::components::Summon;
 use example_01_platformer::features::spells::hud::Hud;
 use example_01_platformer::features::spells::{
-    SLOT_ACTIONS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, summon_type,
+    SLOT_ACTIONS, SUMMON_NEXT, SUMMON_PREV, SUMMONS, slot_of, summon_type,
 };
 use example_01_platformer::shell::widgets::text_of;
 use glam::Vec2;
 use tungsten::core::ui::Visibility;
 use tungsten::core::ui::WidgetId;
-use tungsten::core::{ActionMap, AssetRegistry, Binding, MouseButton};
+use tungsten::core::{ActionMap, AssetRegistry, Binding, KeyCode, MouseButton};
 use tungsten::kit::{Health, Modifier, Shield, Stats, damage};
 use tungsten::testing::UiHarness;
 
@@ -76,7 +77,9 @@ fn turn(harness: &mut UiHarness, action: &str) {
 fn cycling_the_summon_type_names_the_slots_icon() {
     let (mut harness, _) = run();
     let hud = *harness.world().resource::<Hud>();
-    let icon = hud.slots[9].icon.expect("slot 0 summons");
+    let icon = hud.slots[slot_of(Spell::Summon).unwrap()]
+        .icon
+        .expect("the summon's slot");
     let sprite = |harness: &mut UiHarness, name: &str| {
         harness
             .world_mut()
@@ -147,7 +150,10 @@ fn each_slot_shows_its_live_key_and_a_rebind_at_once() {
         .iter()
         .map(|slot| text_of(harness.tree(), slot.key))
         .collect();
-    assert_eq!(keys, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]);
+    assert_eq!(
+        keys,
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "-"]
+    );
     let left = Binding::Mouse {
         button: MouseButton::Left,
     };
@@ -217,8 +223,10 @@ fn a_slot_flashes_when_ready_and_red_when_refused() {
     let hud = *harness.world().resource::<Hud>();
     let colors = harness.tree().theme().tokens.colors;
     // The force push, slot 5: a second's cooldown.
-    choose(&mut harness, 4);
-    let push = hud.slots[4].flash.expect("slot 5's flash");
+    choose(&mut harness, Spell::ForcePush);
+    let push = hud.slots[slot_of(Spell::ForcePush).unwrap()]
+        .flash
+        .expect("the force push's flash");
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -279,4 +287,39 @@ fn the_shield_reads_its_share_of_the_bar_and_its_plus_and_hides_at_zero() {
         tree.visibility(hud.shield.fill),
         Some(Visibility::Collapsed)
     );
+}
+
+#[test]
+fn the_flask_takes_key_5_the_summon_minus_and_the_wheel_zooms() {
+    let (mut harness, player) = run();
+    harness.harness_mut().set_dt(1.0 / 60.0);
+    harness.step(1);
+    let selected =
+        |h: &UiHarness| example_01_platformer::features::spells::selected(h.world(), player);
+    for (key, spell) in [
+        (KeyCode::Digit5, Spell::ToxicFlask),
+        (KeyCode::Minus, Spell::Summon),
+    ] {
+        harness.key_down(key);
+        for _ in 0..4 {
+            harness.step(1);
+            if steps_this_frame(&harness) > 0 {
+                break;
+            }
+        }
+        harness.key_up(key);
+        harness.step(1);
+        assert_eq!(selected(&harness), Some(spell), "{key:?}");
+    }
+    // The wheel down zooms out, up back in, and the spell stays chosen.
+    let zoom = |h: &UiHarness| h.world().resource::<Zoom>().0;
+    let before = zoom(&harness);
+    harness.wheel(-1.0);
+    harness.step(2);
+    let out = zoom(&harness);
+    assert!(out < before, "down zooms out: {before} → {out}");
+    harness.wheel(1.0);
+    harness.step(2);
+    assert_eq!(zoom(&harness), before, "up zooms back in");
+    assert_eq!(selected(&harness), Some(Spell::Summon), "no spell turned");
 }

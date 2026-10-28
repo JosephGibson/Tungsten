@@ -7,7 +7,8 @@ use crate::features::player::Gesture;
 use crate::features::toys::components::Element;
 
 /// The player's spellbook, which its prefab names `spellbook`: the slot
-/// selected, 0 for the first (key 1) to 9 for the tenth (key 0).
+/// selected, 0 for the first (key 1) to 10 for the eleventh (the minus
+/// key).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Spellbook {
@@ -27,6 +28,7 @@ pub enum Spell {
     BowlingBall,
     SmallBalls,
     Lightning,
+    ToxicFlask,
     Summon,
 }
 
@@ -44,6 +46,7 @@ impl Spell {
             Spell::BowlingBall => "bowling_ball",
             Spell::SmallBalls => "small_balls",
             Spell::Lightning => "lightning",
+            Spell::ToxicFlask => "toxic_flask",
             Spell::Summon => "summon",
         }
     }
@@ -62,6 +65,7 @@ impl Spell {
             Spell::BowlingBall => "ex10_icon_bowling_ball",
             Spell::SmallBalls => "ex10_icon_small_balls",
             Spell::Lightning => "ex10_icon_lightning",
+            Spell::ToxicFlask => "ex10_icon_toxic_flask",
             Spell::Summon => super::SUMMONS[0].icon,
         }
     }
@@ -72,7 +76,7 @@ impl Spell {
     #[must_use]
     pub const fn gesture(self) -> Gesture {
         match self {
-            Spell::BowlingBall => Gesture::Toss,
+            Spell::BowlingBall | Spell::ToxicFlask => Gesture::Toss,
             Spell::FireMissile | Spell::Lightning => Gesture::Bolt,
             Spell::ForcePush | Spell::BlackHole => Gesture::Push,
             Spell::IronBlock | Spell::Summon => Gesture::Conjure,

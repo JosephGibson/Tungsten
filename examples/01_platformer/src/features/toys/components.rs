@@ -99,6 +99,12 @@ pub struct BlackHole {
 #[derive(Debug, Clone, Copy, Default, Deserialize)]
 pub struct FireMissile;
 
+/// The toxic flask (e01flask), the fifth slot's toss: the kit's projectile
+/// on its linear motion under the world's gravity, which bursts into a
+/// poison splash on what it meets. Its prefab names it `toxic_flask`.
+#[derive(Debug, Clone, Copy, Default, Deserialize)]
+pub struct ToxicFlask;
+
 /// A blast's shock ring growing to `size` pixels across over its life: a
 /// fireball's, hot, a burst ball's, a force push's in the gravity purple,
 /// or a black hole's collapse, a small pale one that pushes nothing.

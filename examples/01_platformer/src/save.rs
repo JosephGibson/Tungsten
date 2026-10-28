@@ -67,7 +67,7 @@ use crate::features::props::{
     components::{Bomb, Crate, Fuel, Keg, Plank, PropKind, Rock, Stone, StoneSize},
 };
 use crate::features::run::Run;
-use crate::features::spells::components::{Spellbook, Summon};
+use crate::features::spells::components::{Spell, Spellbook, Summon};
 use crate::features::tomes::{Tome, TomeKind, Tomes};
 use crate::features::toys::components::{
     Ball, BallHue, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
@@ -305,8 +305,9 @@ impl SaveData for SaveGame {
     /// (`planks`), which an older save has none of. Schema 19 keeps the
     /// hollow's geysers and stones, moves the save IDs past its new enemies
     /// and geysers and sets what its lowered lintel holds under it
-    /// (`to_19`).
-    const SCHEMA: u32 = 19;
+    /// (`to_19`). Schema 20 puts the toxic flask fifth on the bar and gives
+    /// the player its ability (`to_20`).
+    const SCHEMA: u32 = 20;
 
     fn migrate(
         from: u32,
@@ -333,6 +334,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             8 => {
@@ -346,6 +348,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             9 => {
@@ -358,6 +361,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             10 => {
@@ -369,6 +373,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             11 => {
@@ -379,6 +384,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             12 => {
@@ -388,6 +394,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             13 => {
@@ -396,6 +403,7 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             14 => {
@@ -403,26 +411,64 @@ impl SaveData for SaveGame {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             15 => {
                 to_16(&mut data)?;
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             16 => {
                 to_17(&mut data);
                 to_19(&mut data)?;
+                to_20(&mut data)?;
                 Ok(data)
             }
             17 | 18 => {
                 to_19(&mut data)?;
+                to_20(&mut data)?;
+                Ok(data)
+            }
+            19 => {
+                to_20(&mut data)?;
                 Ok(data)
             }
             _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
         }
     }
+}
+
+/// The toxic flask's ability, which schema 20 gives the player.
+const TOXIC_FLASK: &str = Spell::ToxicFlask.ability();
+/// The bar's slot schema 20 puts the toxic flask in, the fifth (e01flask):
+/// a schema 19 save's from it on moved up one. Frozen for the migration.
+pub const S20_FLASK_SLOT: u64 = 4;
+
+/// Schema 19 to 20 (e01flask): the toxic flask takes the bar's fifth slot
+/// ([`S20_FLASK_SLOT`]), so a saved slot from it on moves up one, and the
+/// player's abilities take the flask's entry, ready, as a fresh run's, where
+/// it is absent; a duplicate would fail the load.
+fn to_20(data: &mut Value) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if let Some(spell) = data.pointer_mut("/spell")
+        && let Some(slot) = spell.as_u64()
+        && slot >= S20_FLASK_SLOT
+    {
+        *spell = Value::from(slot + 1);
+    }
+    let entries = data
+        .pointer_mut("/player/abilities/entries")
+        .and_then(Value::as_array_mut)
+        .ok_or("schema 19: the player has no abilities")?;
+    if !entries.iter().any(|entry| entry["name"] == TOXIC_FLASK) {
+        let entry = format!(
+            r#"{{"name": "{TOXIC_FLASK}", "ability": "{TOXIC_FLASK}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
+        );
+        entries.push(entry.parse()?);
+    }
+    Ok(())
 }
 
 /// Maps `id` through `to`, when it is a save ID.

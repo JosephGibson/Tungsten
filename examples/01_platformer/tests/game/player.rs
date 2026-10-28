@@ -10,6 +10,7 @@ use example_01_platformer::features::player::systems::{
 };
 use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::features::run::DEATH_SECS;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::shared::Burst;
 use example_01_platformer::shell::game_over::GAME_OVER;
 use glam::Vec2;
@@ -596,26 +597,26 @@ fn each_gesture_shows_its_clip_and_the_staff_flares() {
     // Each pressed spell's one-shot the frame after its press, the staff
     // flaring over it, its reach the prefab's, and 0.3 s on its flare done.
     for (slot, wanted) in [
-        (0, "ex10_player_bolt"),
-        (4, "ex10_player_push"),
-        (6, "ex10_player_conjure"),
-        (7, "ex10_player_toss"),
+        (Spell::FireMissile, "ex10_player_bolt"),
+        (Spell::ForcePush, "ex10_player_push"),
+        (Spell::IronBlock, "ex10_player_conjure"),
+        (Spell::BowlingBall, "ex10_player_toss"),
     ] {
         super::choose(&mut harness, slot);
         super::aim_at(&mut harness, ahead);
         harness.harness_mut().press_action("cast");
         harness.step(1);
         harness.harness_mut().release_action("cast");
-        assert_eq!(clip(&harness, player), wanted, "slot {slot}");
-        assert!(glow(&harness).radius > base.radius, "slot {slot}: a flare");
-        assert_eq!(glow(&harness).reach(), base.reach(), "slot {slot}");
+        assert_eq!(clip(&harness, player), wanted, "{slot:?}");
+        assert!(glow(&harness).radius > base.radius, "{slot:?}: a flare");
+        assert_eq!(glow(&harness).reach(), base.reach(), "{slot:?}");
         harness.step(20);
-        assert_eq!(glow(&harness).radius, base.radius, "slot {slot}: done");
-        assert_eq!(glow(&harness).reach(), base.reach(), "slot {slot}");
+        assert_eq!(glow(&harness).radius, base.radius, "{slot:?}: done");
+        assert_eq!(glow(&harness).reach(), base.reach(), "{slot:?}");
     }
     // Standing still, the held flamethrower levels the staff along the aim
     // and a shot raises the pistol, each over the idle clip.
-    super::choose(&mut harness, 1);
+    super::choose(&mut harness, Spell::Flamethrower);
     super::aim_at(&mut harness, ahead);
     harness.harness_mut().press_action("cast");
     harness.step(1);
@@ -675,9 +676,9 @@ fn an_air_jump_and_a_spell_switch_each_sound_once() {
     assert!(!controller(&harness, player).grounded());
     assert_eq!(jump(&mut harness, 3), 1, "the air jump sounds once");
     // A switch clicks once; choosing the chosen slot again, nothing.
-    super::choose(&mut harness, 3);
+    super::choose(&mut harness, Spell::Lightning);
     assert_eq!(heard(&harness, Sound::Switched), 1);
-    super::choose(&mut harness, 3);
+    super::choose(&mut harness, Spell::Lightning);
     assert_eq!(heard(&harness, Sound::Switched), 0);
 }
 

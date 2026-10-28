@@ -24,6 +24,7 @@ use example_01_platformer::features::enemies::components::{EnemyKind, EnemyState
 use example_01_platformer::features::enemies::{self};
 use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::level::components::SceneTime;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{IronBlock, IronScrap, Spray};
 use example_01_platformer::features::toys::systems::{bounds, friction, iron_look};
 use example_01_platformer::features::toys::{
@@ -320,7 +321,7 @@ fn sprayer(x: f32) -> (UiHarness, Entity) {
     stand(&mut harness, player, x, TOP);
     harness.step(1);
     pin_camera(&mut harness, Vec2::new(x - 600.0, TOP - 500.0));
-    choose(&mut harness, 2);
+    choose(&mut harness, Spell::IceSpray);
     (harness, player)
 }
 
@@ -1006,9 +1007,9 @@ fn a_chill_slows_and_frosts_more_as_its_bucket_fills() {
 fn the_cold_spray_lands_half_the_flames_damage() {
     // A still dummy in each spray's cone: the first pulse it takes from the
     // caster, on a seed that does not crit and on one that does.
-    let first = |slot: usize, seed: u64| -> (f32, bool) {
+    let first = |spell: Spell, seed: u64| -> (f32, bool) {
         let (mut harness, player) = sprayer(300.0);
-        choose(&mut harness, slot);
+        choose(&mut harness, spell);
         let dummy = super::combat::dummy_at(&mut harness, 500.0);
         harness.step(2);
         harness.world_mut().insert_resource(KitRng::seeded(seed));
@@ -1030,10 +1031,26 @@ fn the_cold_spray_lands_half_the_flames_damage() {
         hit.expect("a pulse lands")
     };
     let (plain, crit) = (super::combat::PLAIN_SEED, super::combat::CRIT_SEED);
-    assert_eq!(first(2, plain), (1.5, false), "the frost's pulse");
-    assert_eq!(first(2, crit), (3.0, true), "a crit, twice that");
-    assert_eq!(first(1, plain), (3.0, false), "the flame's pulse");
-    assert_eq!(first(1, crit), (6.0, true), "a crit, twice that");
+    assert_eq!(
+        first(Spell::IceSpray, plain),
+        (1.5, false),
+        "the frost's pulse"
+    );
+    assert_eq!(
+        first(Spell::IceSpray, crit),
+        (3.0, true),
+        "a crit, twice that"
+    );
+    assert_eq!(
+        first(Spell::Flamethrower, plain),
+        (3.0, false),
+        "the flame's pulse"
+    );
+    assert_eq!(
+        first(Spell::Flamethrower, crit),
+        (6.0, true),
+        "a crit, twice that"
+    );
 }
 
 #[test]

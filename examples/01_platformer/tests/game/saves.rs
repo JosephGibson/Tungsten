@@ -49,6 +49,7 @@ use example_01_platformer::features::props::components::{
     Bomb, Crate, Keg, PropKind, Rock, Stone, StoneSize,
 };
 use example_01_platformer::features::props::{self, CRATE_HALF, KEG_HALF, STONE_HALVES};
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::tomes::{Tome, TomeKind, Tomes};
 use example_01_platformer::features::toys::components::{
     Ball, BlackHole, FireMissile, IronBlock, IronScrap, SmallBall,
@@ -99,10 +100,10 @@ fn load(harness: &mut UiHarness, save: SaveGame) {
     assert_eq!(top(harness), Some(game::GAMEPLAY));
 }
 
-/// Casts slot `slot` at `at`, `cast` held `frames` frames.
-fn cast(harness: &mut UiHarness, slot: usize, at: Vec2, frames: u32) {
+/// Casts `spell` at `at`, `cast` held `frames` frames.
+fn cast(harness: &mut UiHarness, spell: Spell, at: Vec2, frames: u32) {
     aim_at(harness, at);
-    choose(harness, slot);
+    choose(harness, spell);
     harness.harness_mut().press_action("cast");
     harness.step(frames);
     harness.harness_mut().release_action("cast");
@@ -159,25 +160,35 @@ fn rich(harness: &mut UiHarness) {
 fn busy(harness: &mut UiHarness) {
     rich(harness);
     let iron = TOP - IRON_HALF.y - 10.0;
-    cast(harness, 6, Vec2::new(850.0, iron), 1);
+    cast(harness, Spell::IronBlock, Vec2::new(850.0, iron), 1);
     harness.step(30);
-    cast(harness, 6, Vec2::new(1150.0, iron), 1);
+    cast(harness, Spell::IronBlock, Vec2::new(1150.0, iron), 1);
     harness.step(60);
-    cast(harness, 2, Vec2::new(850.0, TOP - 60.0), 100);
-    cast(harness, 0, Vec2::new(850.0, TOP - 60.0), 1);
+    cast(harness, Spell::IceSpray, Vec2::new(850.0, TOP - 60.0), 100);
+    cast(harness, Spell::FireMissile, Vec2::new(850.0, TOP - 60.0), 1);
     harness.step(30);
-    cast(harness, 4, Vec2::new(900.0, TOP - 100.0), 1);
-    cast(harness, 8, Vec2::new(300.0, 500.0), 192);
+    cast(harness, Spell::ForcePush, Vec2::new(900.0, TOP - 100.0), 1);
+    cast(harness, Spell::SmallBalls, Vec2::new(300.0, 500.0), 192);
     harness.step(120);
     // The flamethrower lights what its short cone reaches; the crest, over
     // the pit's wall, catches by hand.
-    cast(harness, 1, Vec2::new(700.0, TOP - 20.0), 30);
+    cast(
+        harness,
+        Spell::Flamethrower,
+        Vec2::new(700.0, TOP - 20.0),
+        30,
+    );
     light(harness, 5);
-    cast(harness, 7, Vec2::new(900.0, TOP - 100.0), 1);
+    cast(
+        harness,
+        Spell::BowlingBall,
+        Vec2::new(900.0, TOP - 100.0),
+        1,
+    );
     harness.step(60);
-    cast(harness, 5, Vec2::new(1700.0, 700.0), 1);
+    cast(harness, Spell::BlackHole, Vec2::new(1700.0, 700.0), 1);
     harness.step(60);
-    cast(harness, 0, Vec2::new(700.0, 0.0), 1);
+    cast(harness, Spell::FireMissile, Vec2::new(700.0, 0.0), 1);
     harness.harness_mut().press_action(gun::SHOOT);
     harness.step(1);
     harness.harness_mut().release_action(gun::SHOOT);
@@ -896,7 +907,7 @@ fn a_cast_in_the_step_that_asks_for_an_autosave_saves_its_cost_and_its_missile()
     harness.step(1);
     pin_camera(&mut harness, Vec2::new(5400.0, CORNER.y));
     aim_at(&mut harness, Vec2::new(6200.0, 600.0));
-    choose(&mut harness, 0);
+    choose(&mut harness, Spell::FireMissile);
     assert_eq!(mana(&harness), 100.0);
     // One step casts and walks into the aqueduct, whose entry asks for an
     // autosave; the next frame's capture takes both.
@@ -926,7 +937,7 @@ fn a_save_during_casting_loads_with_the_mana_still_paused() {
         .get_mut::<example_01_platformer::features::player::components::Lantern>(player)
         .unwrap()
         .on = false;
-    cast(&mut harness, 4, Vec2::new(800.0, 400.0), 1);
+    cast(&mut harness, Spell::ForcePush, Vec2::new(800.0, 400.0), 1);
     let spent = mana(&harness);
     assert!(spent < 88.0, "a push's 12.5 spent: {spent}");
     let saved = capture(&harness);
@@ -1053,9 +1064,9 @@ fn script(harness: &mut UiHarness) {
     harness.step(2);
     input(harness, "jump", false);
     harness.step(40);
-    cast(harness, 2, Vec2::new(950.0, TOP - 60.0), 91);
+    cast(harness, Spell::IceSpray, Vec2::new(950.0, TOP - 60.0), 91);
     // Up, clear of the iron and the pile.
-    cast(harness, 0, Vec2::new(700.0, 200.0), 1);
+    cast(harness, Spell::FireMissile, Vec2::new(700.0, 200.0), 1);
     harness.step(30);
 }
 
@@ -1065,11 +1076,16 @@ fn divergence(churned: bool) {
     // in the pit to the left, its crest alight.
     cast(
         &mut uninterrupted,
-        6,
+        Spell::IronBlock,
         Vec2::new(950.0, TOP - IRON_HALF.y - 10.0),
         1,
     );
-    cast(&mut uninterrupted, 8, Vec2::new(300.0, 500.0), 90);
+    cast(
+        &mut uninterrupted,
+        Spell::SmallBalls,
+        Vec2::new(300.0, 500.0),
+        90,
+    );
     uninterrupted.step(180);
     light(&mut uninterrupted, 5);
     // A chain mid-run: a frozen pile to the right, its edge's thermal shock
@@ -2080,7 +2096,7 @@ fn schema_7_autosaves_migrate_and_rotate() {
     for slot in game_shell::AUTOSAVES {
         let migrated = slots.load::<SaveGame>(slot).expect("schema 7 migrates");
         let names: Vec<&str> = migrated.player.abilities.names().collect();
-        assert_eq!(names.last(), Some(&"staff_light"), "{slot}");
+        assert!(names.ends_with(&["staff_light", "toxic_flask"]), "{slot}");
     }
     let (states, _) = game_shell::read_slots(harness.world_mut());
     for slot in game_shell::AUTOSAVES {
@@ -2366,12 +2382,47 @@ fn as_schema_19(old: &mut Value) {
     }
 }
 
-/// A capture as the 0.110 code wrote it, at schema 18 (e01hollow): without
-/// the map's three new enemies, its geysers and its stones, wherever a list
-/// names them, every other save ID back by [`schema_18_id`], and bat c's
-/// home and body a row up at its 0.110 roost, so a relabel test still
-/// tests the migration it names.
+/// What schema 20 makes of an older save (e01flask): its slot from the
+/// flask's on one place up, and the flask's ability, ready, last.
+fn as_schema_20(old: &mut Value) {
+    let slot = old["spell"].as_u64().unwrap();
+    if slot >= save::S20_FLASK_SLOT {
+        old["spell"] = Value::from(slot + 1);
+    }
+    let entries = old["player"]["abilities"]["entries"]
+        .as_array_mut()
+        .unwrap();
+    if !entries.iter().any(|entry| entry["name"] == "toxic_flask") {
+        entries.push(serde_json::json!({
+            "name": "toxic_flask", "ability": "toxic_flask", "cooldown_left": 0.0,
+            "charges": null, "refill_left": 0.0, "interval_left": 0.0
+        }));
+    }
+}
+
+/// A capture as the 0.110 release wrote it, at schema 19 (e01flask): its
+/// slot one place back from the force push's on, which must not be the
+/// flask's, and no toxic flask among the player's abilities, so a relabel
+/// test still tests the migration it names.
+fn as_0_110(data: &mut Value) {
+    let slot = data["spell"].as_u64().unwrap();
+    assert_ne!(slot, save::S20_FLASK_SLOT, "a slot 0.110 had");
+    if slot > save::S20_FLASK_SLOT {
+        data["spell"] = Value::from(slot - 1);
+    }
+    data["player"]["abilities"]["entries"]
+        .as_array_mut()
+        .unwrap()
+        .retain(|entry| entry["name"] != "toxic_flask");
+}
+
+/// A capture as the 0.109 code wrote it, at schema 18 (e01hollow): as 0.110
+/// wrote it ([`as_0_110`]), then without the map's three new enemies, its
+/// geysers and its stones, wherever a list names them, every other save ID
+/// back by [`schema_18_id`], and bat c's home and body a row up at its
+/// 0.110 roost, so a relabel test still tests the migration it names.
 fn as_schema_18(data: &mut Value) {
+    as_0_110(data);
     let enemies = save::S18_PICKUPS..save::S18_PICKUPS + save::SHIFT_19_PICKUPS;
     let geysers = save::S18_PLAYER + save::SHIFT_19_PICKUPS..save::S18_PLAYER + save::SHIFT_19;
     let new = |id: Option<u64>| id.is_some_and(|id| enemies.contains(&id) || geysers.contains(&id));
@@ -2666,6 +2717,7 @@ fn schema_8_saves_migrate_with_the_new_map_objects_ids_moved() {
     as_schema_14(&mut old);
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     let to = |id: u64| {
         schema_19_id(schema_12_id(schema_10_id(if id >= from {
             id + save::SHIFT_9
@@ -2866,6 +2918,7 @@ fn schema_9_saves_migrate_to_the_new_save_ids() {
     as_schema_14(&mut old);
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     let to = |id: u64| schema_19_id(schema_12_id(schema_10_id(id)));
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &to, &mut moved);
@@ -3152,6 +3205,7 @@ fn schema_11_saves_move_their_ids_past_the_map_goblins() {
     as_schema_14(&mut old);
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     let (migrated, dir) = migrate("schema-11", FIXTURE);
     // Every ID from the first placed orb's on moved past the goblins, and
     // past the hollow's new enemies and geysers, every one under it kept,
@@ -3228,6 +3282,7 @@ fn a_schema_12_player_keeps_its_body_where_it_stood() {
     as_schema_15(&mut old, &json(&migrated));
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     // Only the save IDs schema 19 moves.
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &schema_19_id, &mut moved);
@@ -3295,6 +3350,7 @@ fn a_schema_13_save_drops_its_hints_and_keeps_its_health_share() {
     as_schema_15(&mut old, &new);
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &new, "", &schema_19_id, &mut moved);
     // Loaded, it plays on with the new values.
@@ -3361,6 +3417,7 @@ fn a_schema_13_save_moves_its_crates_out_of_the_start_wall() {
     as_schema_15(&mut old, &json(&migrated));
     as_schema_17(&mut old);
     as_schema_19(&mut old);
+    as_schema_20(&mut old);
     let mut moved = Vec::new();
     moved_ids(&old, &json(&migrated), "", &schema_19_id, &mut moved);
     // Loaded, the crates stand in the map a second on.
@@ -4120,4 +4177,41 @@ fn a_schema_18_save_with_a_ball_in_the_lintels_new_row_loads_it_under_the_row() 
     let body = super::body(&fresh, by_id(&fresh, schema_19_id(id)));
     assert!(body.y - toys::BALL_RADIUS > high.y, "under the row: {body}");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_schema_19_save_moves_its_slot_past_the_flask_and_casts_it() {
+    let (mut harness, _) = run();
+    harness.step(2);
+    let mut loaded = None;
+    for (now, then) in [(7_u64, 6_u64), (3, 3)] {
+        let mut data = json(&capture(&harness));
+        data["spell"] = Value::from(now);
+        as_0_110(&mut data);
+        assert_eq!(data["spell"], Value::from(then), "0.110's slot");
+        let tag = format!("schema-19-slot-{then}");
+        let (migrated, dir) = migrate(&tag, &as_envelope(&data, 19));
+        assert_eq!(migrated.spell as u64, now, "from {then}");
+        let names: Vec<&str> = migrated.player.abilities.names().collect();
+        assert_eq!(names.last(), Some(&"toxic_flask"), "{names:?}");
+        let _ = std::fs::remove_dir_all(dir);
+        loaded = Some(migrated);
+    }
+    assert_eq!(
+        example_01_platformer::features::spells::SLOTS[7],
+        Some(Spell::IronBlock)
+    );
+    let mut fresh = super::harness();
+    load(&mut fresh, loaded.unwrap());
+    fresh.world_mut().resource_mut::<Time>().resume();
+    fresh.step(2);
+    let player = player_entity(&fresh);
+    let at = super::centre(&fresh, player) + Vec2::new(300.0, 0.0);
+    pin_camera(&mut fresh, at - Vec2::new(640.0, 360.0));
+    aim_at(&mut fresh, at);
+    choose(&mut fresh, Spell::ToxicFlask);
+    fresh.harness_mut().press_action("cast");
+    fresh.step(1);
+    fresh.harness_mut().release_action("cast");
+    assert_eq!(toys::flask::count(fresh.world()), 1, "a flask flies");
 }

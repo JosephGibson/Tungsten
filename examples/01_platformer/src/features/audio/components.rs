@@ -220,11 +220,14 @@ pub enum Sound {
     StoneKnock,
     /// Poisoned taking a target (e01flask).
     Poisoned,
+    /// The toxic flask tossed, and its burst (e01flask).
+    FlaskThrown,
+    FlaskBurst,
 }
 
 impl Sound {
     /// Every sound, in order.
-    pub const ALL: [Sound; 88] = [
+    pub const ALL: [Sound; 90] = [
         Sound::Blasted,
         Sound::Crushed,
         Sound::Doused,
@@ -313,6 +316,8 @@ impl Sound {
         Sound::GeyserErupt,
         Sound::StoneKnock,
         Sound::Poisoned,
+        Sound::FlaskThrown,
+        Sound::FlaskBurst,
     ];
 
     /// Its cue event's name.
@@ -407,6 +412,8 @@ impl Sound {
             Sound::GeyserErupt => "geyser_erupted",
             Sound::StoneKnock => "stone_knocked",
             Sound::Poisoned => "poisoned",
+            Sound::FlaskThrown => "flask_thrown",
+            Sound::FlaskBurst => "flask_burst",
         }
     }
 }

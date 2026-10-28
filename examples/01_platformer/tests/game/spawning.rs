@@ -5,6 +5,7 @@
 
 use example_01_platformer::features::level::WORLD_MAX;
 use example_01_platformer::features::player::systems::escaped;
+use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys::components::{BallHue, BlackHole, SmallBall};
 use example_01_platformer::features::toys::systems::{ball_look, bounds, pull, rainbow_rgba, tick};
 use example_01_platformer::features::toys::{self, BALL_RADIUS, HOLE_RADIUS, HOLE_SECS};
@@ -183,7 +184,7 @@ fn spawn_black_hole_system_creates_attractor_at_cursor_on_right_click() {
     // Within the listener's full hearing, so its sound plays at its volume.
     teleport(&mut harness, player, at + Vec2::new(0.0, 200.0));
     aim_at(&mut harness, at);
-    choose(&mut harness, 5);
+    choose(&mut harness, Spell::BlackHole);
     harness.harness_mut().press_action("cast");
     harness.step(1);
     harness.harness_mut().release_action("cast");
@@ -266,7 +267,10 @@ fn sprays_and_small_balls_fade_out_at_the_release() {
     let (mut voices, mut heard): (Voices, Vec<Sound>) = (Vec::new(), Vec::new());
     // Each spray's loop fades out at the release; the flamethrower's tail
     // plays, as the cold spray's does.
-    for (slot, end) in [(1, Sound::FireEnded), (2, Sound::ColdEnded)] {
+    for (slot, end) in [
+        (Spell::Flamethrower, Sound::FireEnded),
+        (Spell::IceSpray, Sound::ColdEnded),
+    ] {
         choose(&mut harness, slot);
         voices.clear();
         heard.clear();
@@ -279,7 +283,7 @@ fn sprays_and_small_balls_fade_out_at_the_release() {
         assert_eq!(heard.iter().filter(|&&s| s == end).count(), 1, "its tail");
     }
     // Small balls pour on their loop, with no `placed`, and it fades too.
-    choose(&mut harness, 8);
+    choose(&mut harness, Spell::SmallBalls);
     voices.clear();
     heard.clear();
     harness.harness_mut().press_action("cast");
