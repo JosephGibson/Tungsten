@@ -78,6 +78,7 @@ Each stop draws the assets its own features need.
 | Bleed | Dark maroon |
 | Mana | Indigo; from (h) a deep bright blue (`И Й З Ю`) for the summons' tiles, the mana orb and the mana bar's liquid |
 | Gravity (the force push and the black hole, from (f)) | Deep purple, from magenta toward indigo, apart from shock's violet; from (h) the push's and the hole's icon tiles |
+| Poison (from (p)) | Poison green, sRGB (132, 214, 64), its ramp `ա`–`ը` and its mist `թ`–`ծ`; the flask's icon tile; Corroded's dull verdigris (`կ`–`ճ`) on what Corrosive leaves of armour |
 
 Saturated yellow is reserved for crits. The palette gains violet, maroon and indigo shades, and in (f) a gravity ramp.
 
@@ -97,6 +98,8 @@ Saturated yellow is reserved for crits. The palette gains violet, maroon and ind
 | Chilled | A frost tint and the existing snowflakes (`ice_crystal`); from (f) the frost and a second slow deepen as the cold bucket fills toward the freeze |
 | Bleeding | Drip particles; from (f) a spurt as it starts, and denser, larger, brighter drips |
 | Stunned | A spark halo |
+| Poisoned (from (p)) | Green bubbles welling, swelling and popping over the body at 8 Hz, a few drips, bubbles rising off it and a green tint |
+| Corroded (from (p)) | As Corrosive takes the target, a melt charged with lightning over its body, consuming its poison and shock; then, the one status drawn for each kind, the beetle's and the armoured troll's stripped frames for good, a sparse fizz and a dull verdigris tint |
 | Hurt, the courier (from (f)) | A red tint for 0.12 s after a blow, since its lit sprite shows no hit flash |
 
 Getting hit uses the kit's hit flash. Deaths use their element's burst (a shatter, a burn-out, a steam pop or a plain poof), so no enemy needs hurt or death frames. The courier has one death clip since the quick fixes (`D-207`).
@@ -118,7 +121,7 @@ Today the player draws unlit through `damage_flash` and never reads its maps, si
 
 **Icons, items and effects:**
 
-- icons for the 10 spells and the gun, shown at whole-number scale in the shell's theme, with the element's colour as the border; from (h) one family on 36 px tiles, the element's colour their bevelled frame;
+- icons for the 10 spells (11 from (p)) and the gun, shown at whole-number scale in the shell's theme, with the element's colour as the border; from (h) one family on 36 px tiles, the element's colour their bevelled frame;
 - a bowling ball distinct from today's ball (darker, with finger holes and an iron sheen); health orbs (red) and mana orbs (indigo); the training dummy;
 - 6–8 lightning segment sprites, combined differently on each strike;
 - particles, mostly as new JSON settings over today's dust, spark, droplet and mote sprites: a muzzle flash and tracer, ricochet sparks, steam puffs, the force push (the shock ring re-tinted), the troll's slam, bleed drips and orb sparkle.
@@ -178,7 +181,7 @@ Also needed:
   Removed: Mouse 4, the M music toggle, the S stop-all key and the 1, 2 and 3 volume keys; volume moves to the shell's settings. The engine's own keys (F4 HUD, F9 vsync, F11 fullscreen) stay as the engine binds them: F9 is the engine's `engine_toggle_vsync`, not 01's, and the shell keeps F9's and F11's changes in `Settings` (`D-192`). Today's tool buttons (LMB orbs, MMB small balls, RMB black hole, F ice spray, R iron brick, Enter to restart after death) give way to the spell bar and the shell's game over.
 
   Double jump is 01's own code today (`src/systems.rs`). The kit's controller has no air jump; it sits in the backlog's platformer row (air jump, wall jump and ledge grab). By the kit-first rule, (a)'s plan brings the air jump back as a level C kit step, or keeps the row and drops double jump.
-- **Spells**, all available from the start and all costing mana, on one bar. A slot appears when its stop lands: 1 fire missile, 2 flamethrower, 3 ice spray, 4 lightning (b), 5 force push, 6 black hole, 7 iron block, 8 bowling ball, 9 small balls, 0 summon (b). Today's fireball, ice spray, black hole, iron brick (`IronBrick`, "Iron block" on screen) and small balls become slots 1, 3, 6, 7 and 9; the flamethrower, force push and bowling ball are new, and today's bronze orbs get no slot.
+- **Spells**, all available from the start and all costing mana, on one bar. A slot appears when its stop lands: 1 fire missile, 2 flamethrower, 3 ice spray, 4 lightning (b), 5 force push, 6 black hole, 7 iron block, 8 bowling ball, 9 small balls, 0 summon (b). Today's fireball, ice spray, black hole, iron brick (`IronBrick`, "Iron block" on screen) and small balls become slots 1, 3, 6, 7 and 9; the flamethrower, force push and bowling ball are new, and today's bronze orbs get no slot. From (p) the toxic flask takes 5, the force push to the small balls move up one, to 6 to 0, and the summon goes to − (Minus), the mouse wheel zooming.
   - Every spell is a kit ability with its mana cost, cooldown and charges.
   - The flamethrower and the ice spray are one shared channelled spray with a short cone and a mana drain per second; only their data differs.
   - Force push is a wave that throws everything away from the player.
@@ -233,6 +236,8 @@ Enemy attacks also carry the difficulty multiplier, from (c).
   - Its top rung: a brief stun that interrupts a wind-up.
   - It jumps between things tagged `conductive` (iron blocks, iron beetles), losing strength each jump, with jumps capped.
   - Ice doesn't conduct: a frozen target takes a direct strike's damage but passes nothing on and starts no ending.
+- **Poison** (from (p), the toxic flask's splash): only targets tagged `living` take it, every creature but the wisp, and the dummy, never the wizard. Its rung, poisoned (0.1 of the meter within 3 s, blocked by frozen), deals 3 every 0.5 s for 6 s and holds the troll's and the dummy's regeneration as burning does.
+- **Armour and Corrosive** (from (p)): an `armoured` target, the beetle and the bridge's troll, turns bullets off its front; the troll's armour takes a quarter of physical and three quarters of every other type. Poisoned and shocked at once, an armoured target corrodes: `corroded` overrides its resists to 1 on each type, never on `damage`, so a later shock's half again holds, for good, its front no longer turns bullets, and the proc consumes the poison and the shock.
 
 **Frozen**: an effect that turns the target into an ice block, or a ball into an ice ball. It falls, can be pushed, and can be pulled and flung by the black hole. It thaws after a few seconds. A frozen target ends one of three ways:
 

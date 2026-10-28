@@ -4,11 +4,9 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `e01flask`: example 01 (p), the toxic flask ([feedback](docs/plans/1.0/example-01-feedback.md) §3.12).
+- `qa6`: the Phase 6 QA pass's correctness list as small tasks (redo Q10).
 
 ## Next
-
-- `qa6`: the Phase 6 QA pass's correctness list as small tasks (redo Q10).
 
 ## Later
 
