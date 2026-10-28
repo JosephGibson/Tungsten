@@ -1,6 +1,6 @@
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use thiserror::Error;
 
 use crate::assets::material::MaterialUniformDefaults;
@@ -79,6 +79,15 @@ pub enum ManifestError {
     FontFamilyFaceMissing { family: String, face: String },
     #[error("font_fallback names unknown font family '{family}'")]
     UnknownFallbackFamily { family: String },
+    /// An entry's path is absolute or climbs out of its manifest's folder
+    /// with `..`; every load refuses it, so a watcher never watches outside.
+    #[error("{id} names '{path}', which is absolute or leaves its manifest's folder")]
+    PathEscapes {
+        /// The entry, as [`ManifestError::OutsideFolder`] names it.
+        id: String,
+        /// The path as the manifest wrote it.
+        path: String,
+    },
     /// A root or an entry resolves outside the game's folder, which
     /// [`ResolvedManifest::load_for_check`] bounds every path by (M70).
     #[error("{id} resolves to '{path}', outside the game's folder")]
@@ -167,9 +176,28 @@ impl Sink<'_> {
     }
 }
 
+/// Whether `rel` stays inside the folder it is relative to: not absolute,
+/// and no `..` that climbs above where it starts.
+fn stays_inside(rel: &Path) -> bool {
+    let mut depth = 0_usize;
+    for component in rel.components() {
+        match component {
+            Component::Normal(_) => depth += 1,
+            Component::CurDir => {}
+            Component::ParentDir => match depth.checked_sub(1) {
+                Some(up) => depth = up,
+                None => return false,
+            },
+            Component::RootDir | Component::Prefix(_) => return false,
+        }
+    }
+    true
+}
+
 /// Resolves `rel` against `base_dir` to its canonical file, or reports it
-/// missing (`missing` builds that error from the path) or outside the
-/// sink's folder (`entry` names the entry) and gives `None`.
+/// escaping its manifest's folder, missing (`missing` builds that error from
+/// the path) or outside the sink's folder (`entry` names the entry) and
+/// gives `None`.
 fn resolve_file(
     base_dir: &Path,
     rel: &str,
@@ -177,6 +205,13 @@ fn resolve_file(
     entry: impl FnOnce() -> String,
     missing: impl FnOnce(String) -> ManifestError,
 ) -> Result<Option<PathBuf>, ManifestError> {
+    if !stays_inside(Path::new(rel)) {
+        sink.report(ManifestError::PathEscapes {
+            id: entry(),
+            path: rel.to_string(),
+        })?;
+        return Ok(None);
+    }
     let full_path = base_dir.join(rel);
     if !full_path.exists() {
         sink.report(missing(full_path.display().to_string()))?;

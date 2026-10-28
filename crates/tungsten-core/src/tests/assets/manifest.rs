@@ -993,20 +993,18 @@ fn one_file_backs_one_prefab_or_data_entry() {
         "backs both data.effects.acid and data.effects.ooze; a file backs one prefab or data entry"
     ));
 
-    // Across two roots, a prefab in one and a data entry in the other.
+    // Across two roots in one folder, a prefab in one and a data entry in
+    // the other.
     let one = tempdir();
-    let two = tempdir();
     write_file(&one, "shared.json");
     write_manifest(&one, r#"{"prefabs": {"slime": {"path": "shared.json"}}}"#);
-    // The sibling root names the same file through `..`.
-    let sibling = one.file_name().unwrap().to_str().unwrap();
-    write_manifest(
+    let two = one.join("other.json");
+    std::fs::write(
         &two,
-        &format!(
-            r#"{{"data": {{"effects": {{"ooze": {{"path": "../{sibling}/shared.json"}}}}}}}}"#
-        ),
-    );
-    let roots = [one.join("manifest.json"), two.join("manifest.json")];
+        r#"{"data": {"effects": {"ooze": {"path": "shared.json"}}}}"#,
+    )
+    .unwrap();
+    let roots = [one.join("manifest.json"), two];
     let err = ResolvedManifest::load_and_merge_many(&roots).unwrap_err();
     assert!(
         matches!(&err, ManifestError::SharedFile { first, second, .. }
@@ -1197,21 +1195,35 @@ fn load_for_check_bounds_every_root_and_entry_by_the_folder() {
     let ids: Vec<&str> = issues[1..]
         .iter()
         .map(|issue| match &issue.error {
-            ManifestError::OutsideFolder { id, path } => {
-                assert_eq!(*path, outside.canonicalize().unwrap().display().to_string());
-                id.as_str()
-            }
+            ManifestError::PathEscapes { id, .. } => id.as_str(),
             other => panic!("{other}"),
         })
         .collect();
     assert_eq!(ids, ["sprites.absolute", "sprites.up"]);
     assert!(
-        issues[1]
+        issues[2]
             .error
             .to_string()
-            .ends_with("outside the game's folder")
+            .ends_with("names '../outside.png', which is absolute or leaves its manifest's folder")
     );
     assert_eq!(graph.sprites.keys().collect::<Vec<_>>(), ["hero"]);
-    // Unbounded, the same root loads all three.
-    assert_eq!(ResolvedManifest::load(&root).unwrap().sprites.len(), 3);
+    // Unbounded, a runtime load refuses them too.
+    assert!(matches!(
+        ResolvedManifest::load(&root),
+        Err(ManifestError::PathEscapes { .. })
+    ));
+}
+
+#[test]
+fn a_path_may_climb_only_within_its_manifests_folder() {
+    for (rel, inside) in [
+        ("hero.png", true),
+        ("./sprites/hero.png", true),
+        ("sprites/../hero.png", true),
+        ("../hero.png", false),
+        ("sprites/../../hero.png", false),
+        ("/tmp/hero.png", false),
+    ] {
+        assert_eq!(stays_inside(Path::new(rel)), inside, "{rel}");
+    }
 }

@@ -165,7 +165,7 @@ Display config semantics: checked-in display settings live under `display.*`. `d
 
 **Interned sprite IDs (D-113):** files name sprites (manifest, scenes, animation files, particle configs); at run time a sprite is a dense `SpriteAssetId`. `AssetRegistry::intern_sprite` gives one name one ID, registered or not, append-only for the registry's life; `load_sprites` interns the manifest's names in sorted order, so a manifest gets the same IDs every run. Animation frames hold IDs, filled by `AnimationData::load`; scenes and particle emitters intern names at spawn, so a sprite a later manifest reload registers starts drawing then.
 
-**Multiple manifests compose by extension, never override (D-017):** IDs must be globally unique across the merged set, duplicates are fatal, each path resolves relative to its declaring manifest, and merge order is call-site order (`D-035`).
+**Multiple manifests compose by extension, never override (D-017):** IDs must be globally unique across the merged set, duplicates are fatal, each path resolves relative to its declaring manifest and stays inside its folder (an absolute path or a `..` that climbs out fails the load, so the watcher never watches outside), and merge order is call-site order (`D-035`).
 
 **Animation format (D-010):** frame-based, per-frame durations, one animation per file under `assets/animations/`.
 
