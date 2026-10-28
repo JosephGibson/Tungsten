@@ -85,7 +85,7 @@ To the review of the UI, camera and ARPG additions (§10's Q18–Q23).
 | Topic | Answer |
 | --- | --- |
 | 1.0 | Action RPGs are a fifth 1.0 genre (Q18, `D-218`): 7.19's paper design scopes them, and 8.7 builds them |
-| The ARPG's home | Unsure; Q19 keeps its default, the kit, until 7.19's register says otherwise |
+| The ARPG's home | The kit, as opt-in plugins in its domains (Q19), answered after Q19 was expanded |
 | UI keys and named styles | The recommendation: one entry at 7.17 amending `D-125` (Q21) |
 | Data-declared screens | Out of the 1.x backlog and into 1.0, as 7.20 (Q22) |
 | Camera rigs | The recommendation: a component in prefabs and scenes, and a zone on the kit's `zone` (Q23) |
@@ -164,7 +164,7 @@ Every system step from 7.8 on adds its own benchmark row and counter guard as it
 | 8.4 | 01 refreshed on Phase 8's systems | Not a rewrite: 7.13 already moved 01 onto Phase 7's systems. Its enemies move onto the AI structure, perception and navigation, and it gains hit-stop. A few additions demo Phase 8 in a platformer sandbox: an NPC with a few lines, one choice and a small fetch quest across two areas; a short intro cutscene; a satchel inventory with drag and drop; goblins that path around terrain, take cover and flank as a pack; one or two hand-made sprites through Aseprite import; areas streamed in. Each art need goes through §6. Done when 01's own gameplay Rust shrinks again, each addition is mostly data with any Rust counted, 01's tests pass, and the owner plays it through |
 | 8.5 | Template final pass | The template on Phase 8's systems, in a fresh `tungsten new` copy: the agent surface (§8) and the scaffolds (`new feature`, `new enemy`, `new status`) work there; 7.16's shipped guidance is in it; shell polish lands in the template and is carried into 01's byte copy of the shell. One sample, no genre demos (the genres' breadth is in recipes, Q6), within `D-181`'s budget. Done when a fresh agent on a `tungsten new` copy completes §8's five evaluation tasks with no engine patches. A starter per genre (`tungsten new --genre`) is a 1.x backlog note |
 | 8.6 | Proof | §8's 8.6 evaluation: tasks on 8.4's additions inside the refreshed 01, and the paper designs' ten weekly tasks and 7.19's five on a `tungsten new` copy; the owner accepts each genre's recipes and sketches |
-| 8.7 | ARPG systems (§7.3, `D-218`): after 8.1 and 8.2, beside 8.3 and 8.4; before 8.5 and 8.6 | 7.19's minimal implementation scope, less what 7.10, 8.1 and 8.2 took. Modifiers scoped by tag, and skill-local stats, resolved in one documented order. Skills whose properties resolve from those modifiers: area; projectile speed, count, chain, pierce and fork; penetration; crit chance and multiplier; conversion and extra damage; attack and cast speed; repeats; damage over time; with supports, passives and equipment as modifier sources. Item bases, affixes by tag and item level, tiers, rarity and uniques, rolled from saved seeds into 8.1's equipment. One rule set for players and enemies, each exception named. `explain` of a resolved stat or hit; recipes in `arpg` and one other genre; a sketch; a benchmark row (a crowd of monsters resolving modifiers). Measured: a new skill, support, affix or unique is data only |
+| 8.7 | ARPG systems (§7.3, `D-218`): after 8.1 and 8.2, beside 8.3 and 8.4; before 8.5 and 8.6 | 7.19's minimal implementation scope in the kit, as opt-in plugins (Q19), less what 7.10, 8.1 and 8.2 took. Modifiers scoped by tag, and skill-local stats, resolved in one documented order. Skills whose properties resolve from those modifiers: area; projectile speed, count, chain, pierce and fork; penetration; crit chance and multiplier; conversion and extra damage; attack and cast speed; repeats; damage over time; with supports, passives and equipment as modifier sources. Item bases, affixes by tag and item level, tiers, rarity and uniques, rolled from saved seeds into 8.1's equipment. One rule set for players and enemies, each exception named. `explain` of a resolved stat or hit; recipes in `arpg` and one other genre; a sketch; a benchmark row (a crowd of monsters resolving modifiers). Measured: a new skill, support, affix or unique is data only |
 
 This list was the paper designs' prediction; 7.6's registers (`paper-designs.md` §4) confirmed it: every 8.1 and 8.2 item but navigation on platforms has a row. The rows added the clock and schedules, the cone light, waves, the cover query, the dialogue checks and the `say` action. The `P8-` IDs name them.
 
@@ -488,7 +488,7 @@ Added 2026-10-28; action RPGs became a 1.0 genre the same day (`D-218`). This is
   - §5.5's saves and P7-16's seeds;
   - Q11's names.
 
-  Q18 is answered (`D-218`). Q19 holds its default, the kit, which the design may argue against.
+  Q18 is answered (`D-218`), and so is Q19: the kit, as opt-in plugins in its domains.
 - **Implementation needs:** 7.10; 8.1's items, equipment, condition vocabulary and inventory on 7.17's widgets; 8.2's payloads; 7.9's saves; 7.12's seeds. The framework itself is 8.7. 7.7 waits for 7.19, and nothing else does (Q20).
 - **Coverage:**
   - **Skills:**
@@ -585,7 +585,7 @@ The transition session takes the default unless the owner answers first (`D-150`
 - **Q16. Tiled after our own format.** `D-157`'s Tiled object classes and the `.tmj` loader exist, and 01 leaves them at 7.12. *Default: the loader stays as an import path for games that author in Tiled, gaining no new features; 8.3 decides whether it needs more.*
 - **Q17. Effects and statuses.** Today's effects (casting, regeneration, an orb's heal) are timed buffs with periods, damage, granted tags and stat modifiers. A status with intensity is a superset: an effect is a status at a fixed intensity on a timer. *Default: effects merge into statuses in 7.10, so one model serves buffs, ailments and chemistry, and agents have one thing to reach for.*
 - **Q18. The ARPG and 1.0.** **Answered 2026-10-28: action RPGs are a fifth 1.0 genre** (`D-218`). 7.19 designs them on paper, and 7.7 waits for it. Its rows go to 7.10, 8.1 and 8.2 where they change a system those steps build, and the rest to 8.7. The default had been a step after 1.0.
-- **Q19. Where an ARPG framework lives.** The owner was unsure on 2026-10-28. Three homes:
+- **Q19. Where an ARPG framework lives.** **Answered 2026-10-28: the kit**, as opt-in plugins in its domains, with a domain of its own only for the ARPG's own layers (supports, passives, affix generation). The owner was unsure at first, and these three homes were weighed:
   - **Kit domains.** Each piece joins the domain that holds its kind:
     - scoped modifiers in `foundation`, beside `Stats`;
     - skill properties and supports in `intent`, with abilities;
@@ -596,8 +596,6 @@ The transition session takes the default unless the owner answers first (`D-150`
     One stat and damage pipeline serves every genre, and players and enemies already share the kit's components. The kit's descriptions, inspector rows, recipes and admission rule apply as they stand, and opt-in plugins keep a platformer from running any of it.
   - **A crate of its own** (on core and the kit). A clear boundary and compile unit. But its hooks into the kit's stat resolution and damage order are the shared parts, so the boundary would cut through the pipeline. It needs an entry amending `D-006`'s crate split, plus its own API snapshot and docs.
   - **Game code.** Ruled out by `D-218`, since 1.0 promises the kit's support.
-
-  *Default: the kit, as opt-in plugins in its domains, with a domain of its own only for the ARPG's own layers (supports, passives, affix generation). A crate only if 7.19 finds a layer that needs no hook into the kit's pipeline.*
 - **Q20. What waits for 7.19.** *Default, revised 2026-10-28 for Q18's answer: 7.7 waits for 7.19, since 7.10 builds the stats, statuses and hits an action RPG stands on. 7.19 runs beside `qa6` and 7.1–7.5, so the wait costs nothing unless it slips. No UI or camera step reads it.*
 - **Q21. UI keys and named styles.** Both add to `D-125`'s tree. **Answered 2026-10-28: the recommendation.** One entry at 7.17 amends `D-125`; inheritance stays text-only, and named styles are applied, not cascaded.
 - **Q22. Data-declared screens.** **Answered 2026-10-28: out of the 1.x backlog and into 1.0**, as 7.20 (§5.11), after 7.17 and before 7.11 and 8.1. The default had kept them in the backlog.
@@ -713,7 +711,7 @@ No further round: these fixes are local to their sections, and none changes a me
   - Action RPGs became a fifth 1.0 genre (`D-218`, amending `D-215` and `D-172`). Added 8.7; 7.7 waits for 7.19 (Q20 revised); 7.10, 8.6, §5.3, §5.7, §5.8 and §8's tables updated.
   - Data-declared screens moved out of the 1.x backlog into 7.20, with §5.11.
   - Q21 and Q23 took the recommendations.
-  - Q19 was expanded, and its default is the kit.
+  - Q19 was expanded, then answered: the kit.
   - Two risks replaced the first ARPG risk.
 
   Not critiqued.
