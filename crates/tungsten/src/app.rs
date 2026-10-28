@@ -2383,9 +2383,6 @@ impl ApplicationHandler for App {
             startup(&mut self.world, renderer);
         }
 
-        // Startup time excluded from first-frame dt; prevents first-substep tunneling.
-        self.last_frame = Some(Instant::now());
-
         // Audio init after startup: SoundRegistry populated.
         if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
             match AudioSystem::init(sound_registry) {
@@ -2397,6 +2394,10 @@ impl ApplicationHandler for App {
                 }
             }
         }
+
+        // Startup time, audio init's resampling included, excluded from
+        // first-frame dt; prevents first-substep tunneling.
+        self.last_frame = Some(Instant::now());
     }
 
     fn window_event(
