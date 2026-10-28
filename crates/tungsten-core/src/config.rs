@@ -577,7 +577,8 @@ impl Config {
     /// Load config; missing file falls back to defaults.
     ///
     /// Warnings (a missing file, legacy fields that the display section
-    /// overrides, display values that fall back) are kept, not logged:
+    /// overrides, display values and a zero `render.max_frame_latency` that
+    /// fall back) are kept, not logged:
     /// [`Config::take_load_warnings`] returns them.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
@@ -601,6 +602,15 @@ impl Config {
                     })?;
                 if let Some(display) = display {
                     parsed.display = DisplayConfig::from_json_value(display, &mut warnings);
+                }
+                // As `display.max_frame_latency` does: the surface refuses 0.
+                if parsed.render.max_frame_latency == Some(0) {
+                    warnings.push(
+                        "Config render.max_frame_latency=0 is invalid; expected an integer >= 1; \
+                         falling back"
+                            .into(),
+                    );
+                    parsed.render.max_frame_latency = None;
                 }
                 parsed.load_warnings = warnings;
                 if !is_supported_msaa(parsed.render.msaa) {

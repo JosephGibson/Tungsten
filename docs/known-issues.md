@@ -86,7 +86,6 @@ Carried findings from the dated passes listed above; later entries name their mi
 - Drop the RUSTSEC-2026-0192 exception in `deny.toml` when cosmic-text/fontdb stop using `ttf-parser`.
 - The stock shaders exist twice (`crates/tungsten-render/src/shaders/stock/**` and `assets/shaders/stock/**`, `D-059`); including the asset copies as `sprite.wgsl` and `lit_sprite.wgsl` already do would halve every stock-shader edit. `D-123` keeps both copies until crate publication is settled (Q2, W9c).
 - `Renderer::new` spends about 390 lines seeding shader IDs (`renderer.rs:177-570`).
-- `render.max_frame_latency = 0` in the file passes `Config::load` and fails at renderer start (`render/surface.rs:118`), while `display.max_frame_latency = 0` warns and falls back (`core/display.rs:292-297`).
 - Perf: `env::var("TUNGSTEN_PERF_LOG")` every frame (`app.rs:1339`), the tween system cloning channel lists every frame (`tweens.rs:43`).
 - The perf runner's background-load scan (`D-095`, `D-141`) covers preflight and measured runs of `run`, `suite` and `--sweep` only: capacity probes, `just smoke` timings and `just visual` still rely on the manual `pgrep` checks.
 - `scripts/bench.py` run from a tree export under `target/` (a parent or reference build) records the enclosing repository's commit and dirty-tree hash as the capture's provenance, not the export's; label such captures by hand, as the 0.40 QA evidence folders under `perf-runs/` do.
