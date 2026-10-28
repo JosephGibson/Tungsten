@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.110.0] - 2026-10-28
+
 Summary: three example 01 stops from the owner's fourth playtest (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.9 to §3.11), shipped together, with one opt-in kit addition, a kit debug fix and no engine, template or shell change: `e01foes`, the foes (a beetle's charge that ploughs through props, frost crawlers that back out of the light, hop and throw snowballs, a troll that lifts kegs and clears its way, goblins that dash in and panic while they burn); `e01sfx`, sounds and effects (sound by distance on the kit's cue listener, lightning's ground strike, crackling shock, a pulse at the screen's edge for each hit, crates that break into planks, sprays that burst on whatever they meet); `e01hollow`, the aqueduct and the hollow (a second gargoyle and new scenery, the hollow's mouth and cave redrawn, fire geysers, rubble stones and three more foes); save schemas 17 to 19.
 
 ### Added
