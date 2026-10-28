@@ -896,9 +896,14 @@ def main():
             for path in obsolete:
                 # Only the explicit previous inventory authorizes deletion.
                 (ROOT/path).unlink(missing_ok=True)
+            # A file whose bytes are unchanged stays untouched, so the hot-reload
+            # watcher and `git status` see only real changes.
+            written=0
             for path in owned:
-                target=ROOT/path;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes((dest/path).read_bytes())
-            print(f'Wrote {len(owned)} outputs; removed {len(obsolete)} obsolete owned files')
+                target,data=ROOT/path,(dest/path).read_bytes()
+                if target.is_file() and target.read_bytes()==data:continue
+                target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(data);written+=1
+            print(f'Wrote {written} of {len(owned)} outputs, the rest unchanged; removed {len(obsolete)} obsolete owned files')
 
 
 if __name__=='__main__':main()
