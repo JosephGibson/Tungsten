@@ -191,8 +191,9 @@ SOURCES = ('gargoyle', 'fissure', 'spill_')
 GAP_STRIP = (('pier_top', 'arch_left', 'arch_key', 'arch_right', 'pier_top', 'arch_left'),
              ('capital', 'spring_left', 'opening', 'spring_right', 'capital', 'spring_left'))
 # The background structures drawn whole and cut into tiles, which terrain
-# draws over: the cave mouth.
-STRUCTURES = ('cave_mouth',)
+# draws over: the cave mouth and the hollow's deep recesses, pillars and the
+# wall by its ember tunnel (e01hollow).
+STRUCTURES = ('cave_mouth', 'cave_deep_0', 'cave_deep_1', *(f'cave_pillar_{k}' for k in range(5)), 'cave_wall_0')
 
 
 def stream_kind(name):

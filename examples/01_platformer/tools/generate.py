@@ -621,13 +621,24 @@ def particle_configs():
         (.08, .15), [[0, .7], [.3, .9], [1, 3.6]], [[0, 1], [.3, .9], [.65, .42], [1, 0]],
         [[0, [1, 1, .85, 1]], [.22, [1, .72, .28, 1]], [.38, [.5, .28, .16, 1]], [.55, [.14, .12, .11, 1]],
          [1, [.09, .08, .08, 1]]], (-3, 3))
-    # e01hollow's geyser, placeholders until its asset step draws them: the
-    # embers over its sputter and eruption the fire trail's, its eruption's
-    # burst the blast's embers, each under its cap.
-    configs['geyser_embers'] = dict(configs['fire_trail'], max_alive=16,
-                                    emission=dict(kind='continuous', rate_hz=20))
-    configs['geyser_burst'] = dict(configs['blast_embers'], max_alive=24,
-                                   emission=dict(kind='burst', count=24, once=True))
+    # e01hollow's geyser: embers spat from its mouth while it sputters and
+    # erupts, thrown high, arcing out and falling back as they cool; at an
+    # eruption's start a burst of them flung up and out of the plume, fast
+    # enough to clear it within a fifth of a second.
+    geyser_ramp = [[0, [1, 1, .9, 1]], [.25, [1, .84, .36, 1]], [.6, [1, .45, .1, 1]],
+                   [.85, [.6, .12, .05, 1]], [1, [.25, .05, .04, 0]]]
+    configs['geyser_embers'] = dict(
+        config('spark', 16, 18, 1.3, 330, .2, spread=50),
+        initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=50, speed=dict(min=150, max=330)),
+        lifetime=dict(min=.6, max=1.3), start_scale=dict(min=.07, max=.2), gravity=[0, 420], drag_per_sec=.5,
+        angular_velocity=dict(min=-6, max=6), color_over_life=geyser_ramp,
+        scale_over_life=[[0, .8], [.2, 1], [1, .3]], alpha_over_life=[[0, 0], [.05, 1], [.7, .9], [1, 0]])
+    configs['geyser_burst'] = dict(
+        config('spark', 24, 24, 1.1, 620, .24, spread=110, burst=True),
+        initial_velocity=dict(kind='cone', direction=[0, -1], spread_deg=110, speed=dict(min=260, max=620)),
+        lifetime=dict(min=.5, max=1.1), start_scale=dict(min=.08, max=.24), gravity=[0, 700], drag_per_sec=1.1,
+        angular_velocity=dict(min=-9, max=9), color_over_life=geyser_ramp,
+        scale_over_life=[[0, 1], [.5, .7], [1, .2]], alpha_over_life=[[0, 1], [.6, .95], [1, 0]])
     return configs
 
 

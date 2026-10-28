@@ -11,7 +11,8 @@ import math
 from PIL import Image
 
 from art import PALETTE, rng_for
-from pixels import Part, compose, despeckle, dither, grade, outline, packed_stones, shade, to_image, unit
+from pixels import (Part, compose, despeckle, dither, fbm, grade, outline, packed_stones, ramp, shade, to_image,
+                    unit)
 from terrain import (BREAK_LIPS, COPING_TOP, DECK, FROND, LEAF, TILE, coursed, darker, ellipse, from_image,
                      line, rect, tinted)
 
@@ -674,16 +675,33 @@ def plume(width, height, seed, strength=1.0, phase=0.0):
 
 
 def fissure(height, seed=0):
-    """A glowing crack in the back wall, where a lavafall comes out: a
-    jagged slot, red-hot at its lips, yellow in its throat."""
-    width = 18
+    """A glowing gash in the back wall, where the lavafall pours out
+    (e01hollow): an almond slot 30 px wide, white-hot in its throat, its
+    lips crusted dark and cracked red, its lower lip open where the stream
+    leaves."""
+    width = 32
     c = {}
     for y in range(height):
-        half = 1 + round(3 * math.sin(math.pi * y / height) + unit('fissure', seed, y // 3) * 1.5)
-        cx = width // 2 + round(math.sin(y * 0.4 + seed) * 1.5)
-        for x in range(cx - half - 2, cx + half + 3):
-            d = abs(x - cx)
-            c[(x, y)] = 'Y' if d < half * 0.4 else 'J' if d < half * 0.8 else 'K' if d <= half else 'L' if d <= half + 1 else 'M'
+        t = y / max(1, height - 1)
+        half = 2 + round(10 * math.sin(math.pi * min(1.0, t * 0.85 + 0.08)) + unit('fissure', seed, y // 3) * 2)
+        if t > 0.75:
+            half = max(half, 9)
+        cx = width // 2 + round(math.sin(y * 0.35 + seed) * 1.2)
+        for x in range(cx - half - 3, cx + half + 4):
+            d = abs(x + 0.5 - cx) / max(1, half)
+            if d < 0.35:
+                sym = 'Z' if t > 0.3 and d < 0.15 else 'Y'
+            elif d < 0.65:
+                sym = 'y'
+            elif d < 0.9:
+                sym = 'Ъ'
+            elif d <= 1.0:
+                sym = 'L'
+            elif d <= 1.0 + 1.5 / max(1, half):
+                sym = 'M' if unit('lip', seed, x, y // 2) < 0.6 else 'X'
+            else:
+                sym = 'θ' if unit('crust', seed, x, y // 2) < 0.7 else 'ν'
+            c[(x, y)] = sym
     return to_image(c, (width, height))
 
 
@@ -1325,27 +1343,51 @@ def rope_bucket(length):
 
 
 def fire_crystal(i, hanging=False):
-    """A cluster of amber crystals grown from the basalt, faceted, their tips
-    and moonward edges in the glowing yellows."""
+    """A cluster of fire crystals grown from a lump of basalt (e01hollow),
+    glowing from within: each a long prism, white-hot down its core, its
+    faces orange, its edges dark red, a glint at its tip; the rock about
+    their feet lit by them."""
     layers = []
-    for k, (dx, h, w, lean) in enumerate(((0, 30, 6, 0.1), (-10, 20, 5, -0.35), (9, 22, 5, 0.4), (-17, 12, 4, -0.6), (16, 13, 4, 0.7))):
+    rock = Part()
+    rock.ellipse((32, 59), 15 + i % 2 * 3, 5)
+    rock.ellipse((24 - i, 60), 7, 4)
+    base = grade(rock.pixels(), 'ενγβα', light=(-0.5, -0.9, 0.6), spread=0.3)
+    layers.append((base, None))
+    for k, (dx, h, w, lean) in enumerate(((0, 32, 5.5, 0.08), (-9, 22, 4.5, -0.38), (9, 25, 4.5, 0.42),
+                                          (-16, 13, 3.5, -0.7), (16, 15, 3.5, 0.75))):
         if k >= 3 + i % 3:
             break
+        h += (i * 7 + k * 3) % 5 - 2
         cx = 32 + dx
-        tipx, tipy = cx + math.sin(lean) * h, 61 - math.cos(lean) * h
+        tipx, tipy = cx + math.sin(lean) * h, 58 - math.cos(lean) * h
+        side = (math.cos(lean), math.sin(lean))
         crystal = Part()
-        crystal.polygon([(cx - w, 61), (cx + w, 61), (tipx + w * 0.7, tipy + h * 0.25), (tipx, tipy), (tipx - w * 0.7, tipy + h * 0.25)])
-        colors = shade(crystal.pixels(), 'K', light='J', shadow='L', back='M', rim='y')
-        for (x, y) in list(colors):
-            if abs(x - (cx + (tipx - cx) * (61 - y) / max(1, 61 - tipy))) < 0.8 and y < 58:
-                colors[(x, y)] = 'J'
-            if y < tipy + 3:
-                colors[(x, y)] = 'Y'
-        layers.append((colors, 'o'))
+        crystal.polygon([(cx - w, 59), (cx + w, 59), (tipx + side[0] * w * 0.8, tipy + h * 0.22),
+                         (tipx, tipy), (tipx - side[0] * w * 0.8, tipy + h * 0.22)])
+        pts = crystal.pixels()
+        colors = {}
+        for (x, y) in pts:
+            along = max(0.0, min(1.0, (59 - y) / max(1.0, 59 - tipy)))
+            axis = cx + (tipx - cx) * along
+            off = (x + 0.5 - axis) / max(1.0, w * (1 - along * 0.75))
+            if abs(off) < 0.22:
+                colors[(x, y)] = 'y' if along > 0.55 else 'Ъ'
+            elif off < -0.22:
+                colors[(x, y)] = 'Ъ' if off > -0.7 else 'J'
+            else:
+                colors[(x, y)] = 'K' if off < 0.75 else 'L'
+        for (x, y) in pts:
+            if (x + 1, y) not in pts or (x - 1, y) not in pts:
+                colors[(x, y)] = 'L' if (x + 1, y) not in pts else 'J'
+        tip = min(pts, key=lambda p: p[1])
+        colors[tip] = 'Y'
+        layers.append((colors, 'M'))
     c = compose(layers)
-    for x in range(14, 51):
-        if unit('crystal-base', i, x) < 0.5:
-            c[(x, 61)] = 'γ'
+    # The crystals' glow on the rock about their feet.
+    for (x, y) in list(c):
+        if c[(x, y)] in 'ενγβα' and y < 62 and any(c.get((x + dx, y - 1)) in ('Ъ', 'K', 'L', 'J', 'y', 'Y')
+                                                   for dx in (-1, 0, 1)):
+            c[(x, y)] = 'Ъ' if dither(x, y, 0.5) else 'K'
     im = finish(c)
     return im.transpose(Image.FLIP_TOP_BOTTOM) if hanging else im
 
@@ -2358,27 +2400,75 @@ def rope_ladder(i):
     return finish(c, size)
 
 
+# The hollow's stalactites (e01hollow, round 2), eight of them, each a
+# list of points hanging from the roof: x, length, half width at its root,
+# how it tapers (above 1 long and slender, below 1 stubby), a lean, and
+# its tip: `drip` a glowing drop, `snap` broken off, `fork` split in two.
+STALACTITES = (
+    ((32, 44, 12, 1.3, 0.0, 'drip'), (17, 24, 7, 1.2, -0.1, None), (46, 18, 6, 1.1, 0.1, None)),
+    ((14, 22, 2, 1.0, 0.0, None), (21, 38, 3, 1.0, 0.0, 'drip'), (27, 16, 2, 1.0, 0.0, None),
+     (33, 46, 3, 1.0, 0.05, None), (40, 28, 2, 1.0, 0.0, None), (47, 12, 2, 1.0, 0.0, None)),
+    ((32, 24, 16, 0.6, 0.0, 'drip'), (15, 10, 6, 0.7, 0.0, None)),
+    ((32, 40, 21, 0.0, 0.0, 'curtain'),),
+    ((31, 60, 9, 1.4, 0.03, 'drip'),),
+    ((32, 26, 14, 0.8, 0.0, 'snap'), (49, 14, 5, 1.0, 0.1, None)),
+    ((30, 40, 11, 1.1, 0.0, 'fork'), (12, 14, 4, 1.0, -0.1, None)),
+    ((18, 9, 4, 0.9, 0.0, None), (27, 14, 4, 1.0, 0.0, 'drip'), (37, 7, 3, 0.9, 0.0, None), (45, 11, 4, 1.0, 0.0, None)),
+)
+
+
 def stalactite(i):
-    """A cluster of basalt points hanging from the roof: a main point and
-    one or two lesser ones, ridged down their length, a drip at the tip
-    (an ember's glow on every other one)."""
+    """A stalactite of the hollow's basalt hanging from the roof (e01hollow,
+    round 2), `STALACTITES[i]`: a big point with lesser ones, a cluster of
+    needles, a fat stub, a fluted curtain, a long spear, one snapped off, a
+    forked pair, a row of nubs; each ridged down its length, lit along its
+    west face, a glowing drop at some tips."""
     layers = []
-    for k, (dx, length, width) in enumerate(((0, 40 + (i % 3) * 7, 13), (-15, 22 + (i % 2) * 6, 7), (14, 17 + (i % 3) * 3, 6))):
-        if k == 2 and i % 2:
-            continue
-        cx = 32 + dx
+    for x0, length, half, taper, lean, tip in STALACTITES[i]:
         p = Part()
-        p.polygon([(cx - width, 0), (cx + width, 0), (cx + width * 0.35, length * 0.6), (cx + 1, length), (cx - width * 0.3, length * 0.55)])
+        if tip == 'curtain':
+            # A fluted curtain: a sheet with a scalloped hem, folds down it.
+            pts = [(x0 - half, 0), (x0 + half, 0)]
+            for k in range(13):
+                x = x0 + half - k * 2 * half / 12
+                pts.append((x, length * (0.55 + 0.45 * abs(math.sin(k * 1.3 + 0.4)))))
+            p.polygon(pts)
+        else:
+            end = length * (0.62 if tip == 'snap' else 1.0)
+            pts = []
+            for k in range(9):
+                t = k / 8
+                w = half * (1 - t) ** taper if tip != 'snap' else half * (1 - 0.5 * t)
+                pts.append((x0 - w + lean * end * t, end * t))
+            for k in range(8, -1, -1):
+                t = k / 8
+                w = half * (1 - t) ** taper if tip != 'snap' else half * (1 - 0.5 * t)
+                pts.append((x0 + w + lean * end * t, end * t))
+            if tip == 'snap':
+                pts[8:10] = [(x0 - half * 0.5, end), (x0 - 2, end + 3), (x0 + 1, end - 1), (x0 + half * 0.5, end + 2)]
+            p.polygon(pts)
         colors = shaded(p, BASALT_SHADE)
         for (x, y) in list(colors):
-            ridge = (x - cx + round(y * 0.08)) % 5
+            ridge = (x - x0 - round(y * lean) + round(y * 0.07)) % (3 if tip == 'curtain' else 5)
             if colors[(x, y)] == BASALT_SHADE['base'] and ridge == 0:
                 colors[(x, y)] = 'ν'
             elif colors[(x, y)] == BASALT_SHADE['base'] and ridge == 2 and y < length * 0.5:
                 colors[(x, y)] = 'α'
-        colors[(cx + 1, length + 1)] = 'K' if (i + k) % 2 else 'ξ'
-        if (i + k) % 2:
-            colors[(cx + 1, length + 3)] = 'J'
+        if tip == 'snap':
+            # The break: a pale fresh face across its end.
+            bottom = max(y for _, y in colors)
+            for (x, y) in list(colors):
+                if y >= bottom - 2:
+                    colors[(x, y)] = 'ξ' if y == bottom - 2 else 'α'
+        if tip == 'fork':
+            twin = Part()
+            tx = x0 + 6
+            twin.polygon([(tx - 3, length * 0.4), (tx + 3, length * 0.38), (tx + 9, length * 0.95), (tx + 7, length * 0.98)])
+            colors.update(shaded(twin, BASALT_SHADE))
+        if tip == 'drip':
+            tx = round(x0 + lean * length)
+            colors[(tx, round(length) + 1)] = 'Ъ'
+            colors[(tx, round(length) + 3)] = 'y'
         layers.append((colors, 'o'))
     return finish(compose(layers))
 
@@ -2408,18 +2498,70 @@ def stalagmite(i):
     return finish(c)
 
 
-def ember_pool(i):
-    rim, pool = Part(), Part()
-    rim.ellipse((32, 55), 28, 7)
-    pool.ellipse((32, 54), 23, 4)
-    c = shaded(rim, BASALT_SHADE)
-    for (x, y) in pool.pixels():
-        heat = 0.5 + 0.5 * math.sin(x * 0.5 + y * 0.9 + i)
-        sym = 'y' if heat > 0.9 else 'J' if heat > 0.66 else 'K' if heat > 0.33 else 'L'
-        if unit('crust', i, x // 4, y // 2) < 0.2:
-            sym = 'M'
+# The hollow's small lava pools (e01hollow, round 3): each one's half
+# widths and its bubble's place, and its clip's frames and pace.
+EMBER_POOLS = ((21, 4.6, 0.3), (16, 4.0, -0.25))
+POOL_FRAMES, POOL_MS = 4, 180
+
+
+def ember_pool(i, frame=0):
+    """A small pool of lava in a lip of cooled basalt (e01hollow, round 3),
+    frame `frame` of `POOL_FRAMES`: its skin orange under meandering yellow
+    veins that drift, dark crust rafts on it, a bubble swelling, bursting
+    in a spray of drops and settling; the lip's far face lit from below by
+    it, the near lip's crest catching its glow, embers rising off it."""
+    rx, ry, spot = EMBER_POOLS[i]
+    cx, cy = 32, 54
+    drift = frame * 2.5
+    lip = ellipse_pixels((TILE, TILE), cx, cy + 0.5, rx + 5, ry + 4)
+    pool = ellipse_pixels((TILE, TILE), cx, cy, rx, ry)
+    c = grade(lip - pool, 'ενγβα', light=(-0.5, -0.9, 0.6), spread=0.3, depth=3, fall=0.2)
+    for (x, y) in lip - pool:
+        inner = any((x + dx, y + dy) in pool for dx, dy in ((0, 1), (0, -1), (1, 0), (-1, 0)))
+        if inner and y < cy:
+            c[(x, y)] = 'Ъ' if abs(x - cx) < rx * 0.75 else 'K'
+        elif inner:
+            c[(x, y)] = 'L'
+        elif (x, y - 1) not in lip and y > cy:
+            c[(x, y)] = 'M'
+    for (x, y) in pool:
+        r = math.hypot((x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry)
+        vein = abs(fbm((x - drift) / 6, y / 2.2, ('pool-vein', i)) - 0.5)
+        raft = fbm((x - drift * 0.6) / 7 + 9, y / 3, ('pool-raft', i))
+        heat = 1 - r * 0.6
+        if raft > 0.66 and r > 0.25:
+            sym = 'θ' if raft > 0.74 else 'M'
+        elif vein < 0.05:
+            sym = 'Y' if heat > 0.75 else 'y'
+        elif vein < 0.11:
+            sym = 'y' if heat > 0.6 else 'Ъ'
+        else:
+            sym = 'Ъ' if heat > 0.55 else 'K'
         c[(x, y)] = sym
-    return finish(c)
+    # The bubble: swelling, bursting, its ring settling.
+    bx, by = round(cx + spot * rx), round(cy)
+    if frame == 0:
+        c[(bx, by)], c[(bx + 1, by)] = 'y', 'Y'
+    elif frame == 1:
+        for dx in range(-2, 3):
+            c[(bx + dx, by - (1 if abs(dx) < 2 else 0))] = 'Y' if abs(dx) < 2 else 'y'
+        c[(bx - 1, by - 2)], c[(bx, by - 2)] = 'Z', 'Y'
+    elif frame == 2:
+        for dx, dy in ((-3, 0), (3, 0), (-2, -1), (2, -1)):
+            c[(bx + dx, by + dy)] = 'Ъ'
+        for dx, dy in ((-2, -4), (1, -6), (3, -3), (-1, -8)):
+            c[(bx + dx, by + dy)] = 'y'
+    else:
+        for dx in (-4, -3, 3, 4):
+            c[(bx + dx, by)] = 'K'
+        c[(bx, by - 10)] = 'Ъ'
+    # Embers rising off it.
+    for k in range(3 + i):
+        x = round(cx + (unit('mote', i, k) - 0.5) * rx * 1.4)
+        y = round(cy - 7 - ((unit('motey', i, k) * 14 + frame * 3.5) % 18))
+        c[(x, y)] = 'Y' if k % 2 else 'y'
+    bottom = max(y for _, y in c)
+    return finish({(x, y + 62 - bottom): sym for (x, y), sym in c.items()})
 
 
 def obsidian(i):
@@ -2434,6 +2576,108 @@ def obsidian(i):
         for (x, y) in list(colors):
             if colors[(x, y)] == '2' and unit('glint', i, k, y) < 0.05:
                 colors[(x, y)] = 'π'
+        layers.append((colors, 'o'))
+    return finish(compose(layers))
+
+
+def chunk(points, seed, glass=False, light=0.0):
+    """An angular chunk of the hollow's basalt (e01hollow's rubble, of the
+    stones' material): `points` its outline, split into planes from a
+    ridge point, each lit by how it faces the upper left, crisp at the
+    ridges; `glass` turns it to black obsidian with a hard sheen."""
+    xs, ys = [p[0] for p in points], [p[1] for p in points]
+    ridge = (min(xs) + (max(xs) - min(xs)) * (0.38 + 0.2 * unit('ridge', seed)), min(ys) + (max(ys) - min(ys)) * 0.45)
+    colors = {}
+    for k in range(len(points)):
+        a, b = points[k], points[(k + 1) % len(points)]
+        plane = Part()
+        plane.polygon([a, b, ridge])
+        mx, my = (a[0] + b[0]) / 2 - ridge[0], (a[1] + b[1]) / 2 - ridge[1]
+        norm = math.hypot(mx, my) or 1
+        level = 0.5 + 0.38 * (-0.6 * mx / norm - 0.8 * my / norm) + light + (unit('plane', seed, k) - 0.5) * 0.12
+        for (x, y) in plane.pixels():
+            if glass:
+                colors[(x, y)] = '0' if level < 0.55 else '2'
+            else:
+                colors[(x, y)] = ramp(level, 'ενγβαξ', x, y, 0.1)
+    # The ridges: a lit edge on the upper planes' side.
+    for (x, y), sym in list(colors.items()):
+        if (x, y - 1) not in colors:
+            colors[(x, y)] = ('δ' if glass else 'ξ') if colors[(x, y)] not in 'εν0' else ('2' if glass else 'γ')
+    if glass:
+        for k, (x, y) in enumerate(sorted(colors, key=lambda p: (p[1], p[0]))[:3]):
+            colors[(x, y)] = 'π'
+    return colors
+
+
+def heap(pieces, seed, size=(TILE, TILE), foot=61):
+    """Chunks piled back to front, each `(cx, width, height, lift, glass)`,
+    their feet on row `foot` less `lift`; outlined."""
+    layers = []
+    for k, (cx, w, h, lift, glass) in enumerate(pieces):
+        y0 = foot - lift
+        jag = [unit('jag', seed, k, n) for n in range(6)]
+        points = [(cx - w * 0.5, y0), (cx - w * (0.42 + 0.1 * jag[0]), y0 - h * (0.45 + 0.2 * jag[1])),
+                  (cx - w * (0.1 + 0.15 * jag[2]), y0 - h), (cx + w * (0.15 + 0.2 * jag[3]), y0 - h * (0.85 + 0.15 * jag[4])),
+                  (cx + w * 0.5, y0 - h * (0.3 + 0.25 * jag[5])), (cx + w * 0.47, y0)]
+        layers.append((chunk(points, (seed, k), glass, -0.06 * (k % 2)), 'o'))
+    return finish(compose(layers), size)
+
+
+# The hollow's rubble heaps (e01hollow): chunks `(cx, width, height, lift,
+# glass)`, back to front.
+RUBBLE_HEAPS = (
+    ((20, 14, 9, 0, False), (40, 18, 12, 0, False), (30, 22, 16, 0, False), (47, 9, 6, 0, True),
+     (14, 8, 5, 0, False)),
+    ((24, 26, 19, 0, False), (42, 14, 10, 0, False), (36, 10, 7, 0, True), (16, 11, 7, 0, False),
+     (50, 7, 5, 0, False)),
+    ((32, 12, 8, 0, False), (22, 9, 6, 0, True), (42, 10, 7, 0, False)),
+)
+OBSIDIAN_HEAP = ((26, 16, 14, 0, True), (40, 12, 10, 0, True), (33, 8, 6, 0, True), (17, 7, 5, 0, False),
+                 (48, 6, 4, 0, True))
+
+
+def scree(side, seed):
+    """Scree heaped against a wall on its `side`: a slope of small basalt
+    chips packed under a few larger chunks, tallest at the wall."""
+    slope = set()
+    for x in range(1, 62):
+        u = x / 61 if side == 'left' else 1 - x / 61
+        # A concave slope, steep at the wall, its surface lumpy with stones.
+        top = 22 + 39 * (1 - (1 - u) ** 1.8) + 2.2 * math.sin(x * 0.9 + seed) + 1.5 * math.sin(x * 0.37)
+        for y in range(round(top), 62):
+            slope.add((x, y))
+    pebbles = packed_stones(slope, 'θνγβαξ', size=6, seed=('scree', side, seed), mortar='ε')
+    for (x, y), sym in list(pebbles.items()):
+        if (x, y - 1) not in pebbles and sym not in 'εθ':
+            pebbles[(x, y)] = 'ξ' if dither(x, y, 0.6) else 'α'
+    layers = [(pebbles, None)]
+    for k, (fx, w, h) in enumerate(((12, 12, 8), (26, 9, 6), (44, 8, 5)) if side == 'left'
+                                   else ((52, 12, 8), (38, 9, 6), (20, 8, 5))):
+        foot = 61 - round((61 - 22) * (1 - fx / 62 if side == 'left' else fx / 62) * 0.55)
+        points = [(fx - w / 2, foot), (fx - w / 2 + 1, foot - h * 0.6), (fx - 1, foot - h), (fx + w / 2 - 1, foot - h * 0.7),
+                  (fx + w / 2, foot)]
+        layers.append((chunk(points, ('scree-chunk', side, seed, k)), 'o'))
+    return finish(compose(layers))
+
+
+def fallen_slab():
+    """A slab of basalt fallen from the roof: flat, broken across, its two
+    halves tilted where they lie, its underside dark, its top crazed."""
+    layers = []
+    for k, pts in enumerate((((3, 61), (5, 50), (33, 46), (35, 57), (34, 61)),
+                             ((32, 61), (36, 52), (60, 55), (61, 61)))):
+        piece = Part()
+        piece.polygon(pts)
+        px = piece.pixels()
+        colors = {}
+        for (x, y) in px:
+            top = (x, y - 3) not in px
+            colors[(x, y)] = ('ξ' if (x, y - 1) not in px else 'α') if top else ramp(
+                0.35 - 0.2 * k + (unit('slab', k, x // 4, y // 2) - 0.5) * 0.15, 'ενγβ', x, y, 0.1)
+        for (x, y) in px:
+            if (x * 3 + y * 7 + k) % 23 == 0 and colors[(x, y)] in 'γβ':
+                colors[(x, y)] = 'ν'
         layers.append((colors, 'o'))
     return finish(compose(layers))
 
@@ -3498,33 +3742,322 @@ def fallen_voussoir(k):
 
 
 def lavafall_frame(frame):
-    """A thin fall of lava from a crack, frame `frame` of 4: a glowing stream,
-    yellow at its core and red at its edges, its bright pulses moving 16 px
-    a frame; segments stack every 64 px."""
+    """A fall of lava from a crack, frame `frame` of 4 (e01hollow): a stream
+    23 px wide, yellow-hot at its core in streaks that run down 16 px a
+    frame, orange through its body, a crust darkening its edges in plates
+    that slide down with it, glowing where they part; segments stack every
+    64 px."""
     c = {}
-    cx, w = TILE // 2, 7
+    cx, half = TILE // 2, 11.5
     for y in range(TILE):
-        x0 = cx + round(math.sin(math.tau * y / TILE) * 1.5)
-        for x in range(x0 - w // 2, x0 + w // 2 + 1):
-            r = abs(x - x0) / (w / 2 + 0.5)
-            c[(x, y)] = 'Y' if r < 0.25 and (y - 16 * frame) % 16 < 9 else 'y' if r < 0.45 else 'J' if r < 0.75 else 'K' if r < 0.95 else 'L'
+        # Its pattern repeats every 64 px, so stacked segments join.
+        flow = (y - 16 * frame) % TILE
+        x0 = cx + 1.2 * math.sin(math.tau * y / TILE)
+        width = half + 0.8 * math.sin(math.tau * 2 * y / TILE + 1.0)
+        for x in range(round(x0 - width - 1), round(x0 + width + 2)):
+            r = abs(x + 0.5 - x0) / width
+            if r > 1.08:
+                continue
+            streak = math.sin(math.tau * (x - x0) / 7 + math.tau * flow / TILE * 3) * 0.5 + 0.5
+            # The crust: plates on each edge, a plate every 16 px of flow.
+            plate = (flow + (0 if x < x0 else 8)) % 16
+            crust = r > 0.62 - 0.12 * math.sin(math.tau * flow / 16 + (0 if x < x0 else 2))
+            if r > 0.98:
+                c[(x, y)] = 'θ' if plate else 'L'
+            elif crust:
+                # Plates of crust, the hot flow glowing in the seams between.
+                c[(x, y)] = 'Ъ' if plate in (0, 1) else ('ν' if r > 0.85 else 'X' if plate % 5 == 0 else 'M')
+            elif r < 0.08 + 0.1 * streak:
+                c[(x, y)] = 'Y' if streak > 0.85 else 'y'
+            elif r < 0.3:
+                c[(x, y)] = 'y' if streak > 0.7 else 'Ъ'
+            else:
+                c[(x, y)] = 'Ъ' if streak > 0.35 else 'K'
     return to_image(c)
 
 
-def darkened(im, factor):
-    """`im` with each pixel's colour scaled by `factor`, snapped to the
-    nearest palette colour of the same alpha."""
-    by_alpha = {}
-    for rgba in PALETTE.values():
-        by_alpha.setdefault(rgba[3], []).append(rgba)
-    out = im.copy()
-    for y in range(im.height):
-        for x in range(im.width):
-            r, g, b, a = im.getpixel((x, y))
-            if a:
-                want = (r * factor, g * factor, b * factor)
-                out.putpixel((x, y), min(by_alpha[a], key=lambda p: sum((p[k] - want[k]) ** 2 for k in range(3))))
-    return out
+def lava_splash(frame):
+    """The lavafall's foot in the basin, frame `frame` of 4 (e01hollow): a
+    crown of molten lava thrown up where the stream meets the surface, a
+    glowing ring spreading on it, spatter flung out and falling back,
+    dark crust bobbing; its bottom row on the lava's surface."""
+    c = {}
+    base = TILE - 6
+    turn = math.tau * frame / 4
+    # The ring on the surface, spreading and cooling.
+    for x in range(4, TILE - 4):
+        d = abs(x + 0.5 - 32) / 28
+        for y in range(base - 1, base + 4):
+            wave = 0.5 + 0.5 * math.sin(d * 9 - turn * 1.5)
+            if d < 1 and (y - base + 1) / 5 < 1 - d * 0.8:
+                c[(x, y)] = 'Y' if d < 0.18 else 'y' if d < 0.35 or wave > 0.8 else 'Ъ' if wave > 0.4 else 'K'
+    # The crown: tongues of lava thrown up about the stream's foot.
+    for k in range(5):
+        dx = (k - 2) * 6 + 2 * math.sin(turn + k)
+        height = 7 + 6 * (0.5 + 0.5 * math.sin(turn * 1 + k * 1.9))
+        for d in range(round(height)):
+            w = max(0, round(2.2 * (1 - d / height)))
+            for e in range(-w, w + 1):
+                x = round(32 + dx + e + d * (dx / 14))
+                c[(x, base - 1 - d)] = 'y' if abs(e) < w * 0.5 or d < 2 else 'Ъ' if d < height * 0.7 else 'L'
+    # Spatter: droplets flung out on arcs, cooling as they fall.
+    for k in range(10):
+        side = -1 if k % 2 else 1
+        t = (unit('spatter', k) + frame / 4) % 1.0
+        speed = 10 + unit('spv', k) * 14
+        x = round(32 + side * (4 + speed * t * 1.4))
+        y = round(base - 3 - speed * t * 1.8 + 30 * t * t)
+        if 0 <= x < TILE and 0 <= y < base:
+            c[(x, y)] = 'Y' if t < 0.3 else 'y' if t < 0.6 else 'K'
+            if t < 0.5:
+                c[(x - side, y + 1)] = 'Ъ'
+    # Crust bobbing on the surface either side.
+    for k in range(4):
+        x0 = round(10 + k * 13 + 2 * math.sin(turn + k * 2))
+        if abs(x0 - 32) < 8:
+            continue
+        for x in range(x0, x0 + 4 + k % 2):
+            c[(x, base - 1)] = 'M'
+            c[(x, base)] = 'θ'
+    return to_image(c)
+
+
+# e01hollow's geysers: the vent's frame and its mouth (the contract's (32,
+# 20)), the plume's and the sputter's frames, each with its bottom row on
+# the floor; the crater's opening about the mouth, the throat's glow low in
+# it; cooled basalt dark to light, and the flame's ramp from its dark red
+# edge in to its white core.
+GEYSER_VENT, GEYSER_MOUTH = (64, 32), (32, 20)
+GEYSER_PLUME, GEYSER_SPUTTER = (64, 176), (64, 64)
+CRATER, THROAT = (12.5, 4.0), (7.5, 2.2)
+VENT_RAMP = 'ενγβαξ'
+FLAME = 'XMEzL+KЪJyYZ'
+# The vent's cone: a low dome, a shoulder each side, chunks fallen at its
+# foot; its long cracks, a start and the steps each takes outward from the
+# collar, their first `HOT_STEPS` glowing while it runs.
+CONE = (((32, 24.5), 26, 9.5), ((14, 28), 11, 4.5), ((50, 28.5), 11, 4.2), ((32, 19.5), 15.5, 5.5))
+FALLEN = (((5, 30), 3.5, 2), ((59, 30.5), 3, 1.6), ((10, 30.5), 2.5, 1.5))
+VENT_CRACKS = ((17, 19, ((-1, 0), (-1, 1), (-1, 0), (-1, 1), (-1, 1), (0, 1), (-1, 1))),
+               (46, 19, ((1, 0), (1, 1), (1, 0), (1, 1), (0, 1), (1, 1), (1, 1))),
+               (22, 16, ((-1, 0), (-1, 0), (-1, 1), (-1, 0))),
+               (41, 16, ((1, 0), (1, 1), (1, 0), (1, 0))),
+               (12, 25, ((-1, 1), (-1, 0), (-1, 1), (0, 1))),
+               (52, 25, ((1, 1), (1, 0), (1, 1))))
+HOT_STEPS = 3
+
+
+def ellipse_pixels(size, cx, cy, rx, ry):
+    """The pixels of `size` inside the ellipse about (`cx`, `cy`)."""
+    return {(x, y) for y in range(size[1]) for x in range(size[0])
+            if ((x + 0.5 - cx) / rx) ** 2 + ((y + 0.5 - cy) / ry) ** 2 <= 1}
+
+
+def near_lip(x):
+    """The crater's near lip at column `x`, in the vent's rows: a flame's
+    root stays behind it."""
+    u = (x + 0.5 - GEYSER_MOUTH[0]) / CRATER[0]
+    return GEYSER_MOUTH[1] + CRATER[1] * math.sqrt(max(0.0, 1 - u * u)) if abs(u) < 1 else GEYSER_MOUTH[1]
+
+
+def collar_top(x):
+    """The top edge of the vent's glazed collar at column `x`."""
+    u = (x + 0.5 - GEYSER_MOUTH[0]) / (CRATER[0] + 3.5)
+    return math.ceil(GEYSER_MOUTH[1] - 0.5 - (CRATER[1] + 2.3) * math.sqrt(max(0.0, 1 - u * u)))
+
+
+def geyser_vent(choked=False):
+    """A vent of cracked, heat-glazed basalt round a glowing throat (64 x
+    32, its bottom row on the floor, its mouth's middle at (32, 20)): a low
+    dome of cooled basalt crazed by long cracks, a collar of black glaze
+    round the crater, the crater's far wall lit from below by the throat's
+    slit of glow, the cracks glowing near the collar; choked, a crust of
+    grey-white rime over the crater, frost on the collar, the cracks cold."""
+    mx, my = GEYSER_MOUTH
+    body = set()
+    for (cx, cy), rx, ry in CONE + FALLEN:
+        body |= {(x, y) for x, y in ellipse_pixels(GEYSER_VENT, cx, cy, rx, ry) if y < GEYSER_VENT[1]}
+    c = grade(body, VENT_RAMP, light=(-0.55, -0.85, 0.6), spread=0.3, fall=0.25)
+    for (cx, cy), rx, ry in FALLEN:
+        chunk = {(x, y) for x, y in ellipse_pixels(GEYSER_VENT, cx, cy, rx, ry) if y < GEYSER_VENT[1]}
+        c.update(grade(chunk, VENT_RAMP, light=(-0.55, -0.85, 0.6), spread=0.3))
+        for (x, y) in chunk:
+            if (x - 1, y) not in chunk and (x - 1, y) in body:
+                c[(x - 1, y)] = 'θ'
+    # Ropy wrinkles slanting down the flanks, a cooled flow's skin.
+    for (x, y) in body:
+        u = x - mx
+        ripple = math.sin(y * 1.9 - abs(u) * 0.55 + (0.8 if u < 0 else 2.1)) + 0.35 * math.sin(u * 0.3)
+        if ripple > 1.05 and c[(x, y)] in 'γβα' and abs(u) > 6:
+            c[(x, y)] = 'ν' if c[(x, y)] == 'γ' else 'γ'
+    # The long cracks: a dark seam, the crust's lit edge under it.
+    seams = []
+    for x0, y0, steps in VENT_CRACKS:
+        x, y = x0, y0
+        seam = []
+        for dx, dy in steps:
+            seam.append((x, y))
+            x, y = x + dx, y + dy
+        for p in seam:
+            if p in body:
+                c[p] = 'θ'
+                below = (p[0], p[1] + 1)
+                if below in body and below not in seam and c[below] in 'βγ':
+                    c[below] = 'α'
+        seams.append(seam)
+    # The collar: black glaze round the crater, a hard sheen on its far
+    # side where the light catches it.
+    collar = ellipse_pixels(GEYSER_VENT, mx, my - 0.5, CRATER[0] + 3.5, CRATER[1] + 2.3)
+    crater = ellipse_pixels(GEYSER_VENT, mx, my, *CRATER)
+    for (x, y) in collar - crater:
+        u = (x + 0.5 - mx) / (CRATER[0] + 3.5)
+        c[(x, y)] = '2' if dither(x, y, 0.45 + 0.3 * u) else '0'
+        if (x, y - 1) not in collar and u < 0.4:
+            c[(x, y)] = 'ш' if u > -0.2 else 'α'
+    for x in range(19, 31):
+        if (x, collar_top(x)) in c and x % 3:
+            c[(x, collar_top(x))] = 'π' if x in (22, 23) else 'δ'
+    if choked:
+        vent_rime(c, body)
+    else:
+        vent_throat(c, crater, body, seams)
+    return to_image(outline(c, 'o', GEYSER_VENT), GEYSER_VENT)
+
+
+def vent_throat(c, crater, body, seams):
+    """The crater's far wall lit from below in ragged tongues, the throat's
+    slit of glow, the near lip's edge catching it and the cracks hot near
+    the collar."""
+    mx, my = GEYSER_MOUTH
+    for (x, y) in crater:
+        r = math.hypot((x + 0.5 - mx) / THROAT[0], (y + 0.5 - my - 1.2) / THROAT[1])
+        if r < 1:
+            c[(x, y)] = 'Y' if r < 0.45 else 'y' if r < 0.78 else 'Ъ'
+            continue
+        below = (my + 1.2 - (y + 0.5)) / (CRATER[1] + 1.2)
+        side = abs(x + 0.5 - mx) / CRATER[0]
+        heat = 1.05 - below * 1.15 - side * 0.5 + (fbm(x / 2.5, y / 1.5, 'crater') - 0.5) * 0.55
+        c[(x, y)] = 'Ъ' if heat > 0.78 else 'K' if heat > 0.56 else 'L' if heat > 0.36 else 'M' if heat > 0.2 else 'θ'
+    for x in range(mx - 9, mx + 10):
+        y = math.floor(near_lip(x))
+        if (x, y) in c and (x, y) not in crater:
+            c[(x, y)] = 'Ъ' if abs(x - mx) < 6 else 'K'
+    for seam in seams:
+        for d, p in enumerate(seam[:HOT_STEPS]):
+            if p in body and p not in crater:
+                c[p] = 'Ъ' if d == 0 else 'K' if d == 1 else 'L'
+
+
+def vent_rime(c, body):
+    """A crust of grey-white rime bulging over the crater, lit from the
+    upper left, feathered, crazed between its plates, frost along the
+    collar's top; the cracks stay cold."""
+    mx, my = GEYSER_MOUTH
+    lid = ellipse_pixels(GEYSER_VENT, mx, my - 0.6, CRATER[0] + 1.4, CRATER[1] + 1.1)
+    for (x, y) in lid:
+        u = (x + 0.5 - mx) / (CRATER[0] + 1.4)
+        v = (y + 0.5 - my + 0.6) / (CRATER[1] + 1.1)
+        lit = 0.72 - 0.42 * v - 0.3 * u - 0.25 * (u * u + v * v) + (fbm(x / 2, y / 1.4, 'rime') - 0.5) * 0.5
+        c[(x, y)] = ramp(lit, 'ψχφѴ', x, y, 0.2)
+    for x0, y0, steps in ((22, 19, ((1, 0), (1, 1), (1, 0), (1, 0), (1, -1), (1, 0))),
+                          (32, 16, ((1, 1), (0, 1), (1, 1), (1, 0))),
+                          (37, 21, ((1, 0), (1, -1), (1, 0), (1, 0)))):
+        x, y = x0, y0
+        for dx, dy in steps:
+            if (x, y) in lid:
+                c[(x, y)] = 'ψ'
+            x, y = x + dx, y + dy
+    for p in ((25, 17), (29, 16), (35, 17), (40, 18)):
+        if p in lid:
+            c[p] = 'Ψ'
+    # Feathery rime standing up off the crust's far edge.
+    for x in range(mx - 11, mx + 12, 2):
+        top = min(y for (px, y) in lid if px == x)
+        if unit('feather', x) < 0.7:
+            c[(x, top - 1)] = 'χ'
+            if unit('feather2', x) < 0.4:
+                c[(x + 1, top - 2)] = 'φ'
+    for x in range(mx - 15, mx + 16):
+        y = collar_top(x)
+        if (x, y) in c and (x, y) not in lid and dither(x, y, 0.6):
+            c[(x, y)] = 'χ' if dither(x, y, 0.5) else 'ψ'
+
+
+def flame(c, size, mouth_y, height, phase, seed, width0, width1, power=1.0, smoke=0.0):
+    """A column of flame from (32, `mouth_y`) up `height` px into canvas
+    `c`: its heat a widening column times noise that climbs with `phase`
+    (px), so tongues lick off its edges and break from its head; banded
+    from a dark red edge to a white core; smoke where it cools over its
+    upper half. Its root stays behind the vent's near lip."""
+    w, h = size
+    for y in range(h):
+        rise = (mouth_y - y) / max(1.0, height)
+        if rise < -0.02 or rise > 1.6:
+            continue
+        hh = max(0.0, rise)
+        cx = 32 + 2.4 * math.sin(y / 17 + phase / 23 + seed) * hh + 0.9 * math.sin(y / 6 + phase / 9)
+        half = width0 + (width1 - width0) * min(1.0, hh) ** 0.6 + 3.0 * max(0.0, 1 - hh * 9)
+        for x in range(w):
+            if y > mouth_y - 3 and y > mouth_y - GEYSER_MOUTH[1] + near_lip(x) - 0.5:
+                continue
+            dx = (x + 0.5 - cx) / half
+            n = fbm((x - cx) / 7.5 + seed, (y + phase) / 9.0, ('flame', seed))
+            m = fbm((x - cx) / 3.5 - seed, (y + phase * 1.4) / 4.0, ('lick', seed))
+            body = max(0.0, 1 - dx * dx)
+            fade = 1 - max(0.0, min(1.0, (hh - 0.7) / 0.45))
+            heat = power * body ** 0.8 * fade * (0.28 + 1.0 * n + 0.3 * m) - 0.2 * hh
+            if heat > 0.16:
+                c[(x, y)] = ramp(min(0.999, (heat - 0.16) ** 1.3), FLAME, x, y, 0.12)
+            elif smoke and hh > 0.35 and abs(dx) < 1.5:
+                s = fbm((x - cx) / 6 - seed, (y + phase * 0.6) / 7, ('smoke', seed)) * smoke
+                s *= min(1.0, (hh - 0.35) * 2.5) * max(0.0, 1 - abs(dx) / 1.5) * 1.6
+                if s > 0.5:
+                    c.setdefault((x, y), 'ѐ' if s > 0.62 else 'ё')
+
+
+def embers(c, size, mouth_y, height, phase, seed, count, width):
+    """Embers flung out of a flame into canvas `c`: bright specks with a
+    cooling tail, climbing and spreading with `phase`."""
+    w, h = size
+    for k in range(count):
+        side = -1 if k % 2 else 1
+        life = (unit('ember', seed, k) + phase / 40) % 1.0
+        y = round(mouth_y - height * (0.15 + 0.85 * life))
+        x = round(32 + side * (width * (0.6 + 0.5 * life) + 2 + unit('emx', seed, k) * 6 + life * 10))
+        if 0 <= x < w and 1 <= y < h - 1 and (x, y) not in c:
+            c[(x, y)] = 'Y' if life < 0.5 else 'y'
+            c.setdefault((x - side, y + 1), 'K' if life < 0.6 else 'L')
+
+
+# The eruption's frames: its height, the root's and the head's half widths,
+# its power and its smoke.
+PLUME_SHAPES = ((118, 6.5, 13, 1.35, 0.0), (168, 7.5, 17.5, 1.35, 0.8), (174, 7.5, 18.5, 1.32, 1.0),
+                (174, 7.5, 18.5, 1.28, 1.1), (166, 7.0, 17.5, 1.15, 1.2), (150, 4.5, 17, 0.8, 1.4))
+
+
+def geyser_plume(frame):
+    """The eruption, frame `frame` of 6 over its 0.8 s (64 x 176, its bottom
+    row on the floor, over the vent's mouth): a roaring column of flame,
+    white-yellow at its core, red and smoky at its edges, embers flung out;
+    it bursts up, roars and gutters in its last frame."""
+    c = {}
+    mouth_y = GEYSER_PLUME[1] - GEYSER_VENT[1] + GEYSER_MOUTH[1]
+    height, w0, w1, power, smoke = PLUME_SHAPES[frame]
+    flame(c, GEYSER_PLUME, mouth_y, height, frame * 26.0, 3.1, w0, w1, power, smoke)
+    embers(c, GEYSER_PLUME, mouth_y, height, frame * 26.0, 5, 10 if frame else 5, w1 * 0.7)
+    return to_image(c, GEYSER_PLUME)
+
+
+def geyser_sputter(frame):
+    """The sputter, frame `frame` of 4 over its 0.6 s (64 x 64, its bottom
+    row on the floor, over the vent's mouth): licks of flame and puffs of
+    smoke, each higher than the last."""
+    c = {}
+    mouth_y = GEYSER_SPUTTER[1] - GEYSER_VENT[1] + GEYSER_MOUTH[1]
+    height = (12, 19, 27, 38)[frame]
+    flame(c, GEYSER_SPUTTER, mouth_y, height, frame * 13.0 + 40, 8.3 + frame, 3.5 + frame * 0.6, 2.5 + frame,
+          0.95 + 0.1 * frame, smoke=1.6)
+    embers(c, GEYSER_SPUTTER, mouth_y, height, frame * 13.0, 9, 1 + frame, 3)
+    return to_image(c, GEYSER_SPUTTER)
 
 
 def rails_worn():
@@ -3579,7 +4112,7 @@ LEVEL_PROPS = (
     ('splash_rocks_1', lambda: splash_rocks(1)), ('pool_rocks_0', lambda: pool_rocks(0)),
     ('pool_rocks_1', lambda: pool_rocks(1)),
     *((f'stalagmite_{i}', lambda i=i: stalagmite(i)) for i in range(3)),
-    ('ember_pool_0', lambda: ember_pool(0)), ('ember_pool_1', lambda: ember_pool(1)), ('obsidian', lambda: obsidian(0)),
+    ('obsidian', lambda: obsidian(0)),
     *((f'fire_crystal_{i}', lambda i=i: fire_crystal(i)) for i in range(3)),
     ('headframe', lambda: headframe(0)), ('trestle', lambda: trestle(105)), ('rail_0', rails), ('rail_1', rails_worn),
     ('rail_bumper', lambda: rail_bumper(0)), ('cart', cart), ('crate_0', lambda: crate(0)), ('crate_1', lambda: crate(1)),
@@ -3599,6 +4132,12 @@ LEVEL_PROPS = (
     # paving, a fallen capital and a broken amphora.
     ('broken_pillar', broken_pillar), *((f'aq_paving_{k}', lambda k=k: aq_paving(k)) for k in range(4)),
     ('fallen_capital', fallen_capital), ('amphora', amphora),
+    # e01hollow's rubble: basalt chunks in heaps, glassy obsidian, scree
+    # against a wall either side and a slab fallen from the roof.
+    *((f'basalt_rubble_{k}', lambda k=k: heap(RUBBLE_HEAPS[k], ('rubble', k))) for k in range(3)),
+    ('obsidian_rubble', lambda: heap(OBSIDIAN_HEAP, 'obsidian-rubble')),
+    ('scree_left', lambda: scree('left', 0)), ('scree_right', lambda: scree('right', 0)),
+    ('fallen_slab', fallen_slab),
 )
 HUNG_PROPS = (
     *((f'vine_{i}', lambda i=i, n=n: vine(n, 2 + i, i != 1)) for i, n in enumerate((110, 150, 84))),
@@ -3606,7 +4145,7 @@ HUNG_PROPS = (
         ((150, 96, 180), (70, 124, 92, 56), (100, 62, 136, 84), (52, 34)))),
     ('rope_ladder', lambda: rope_ladder(0)), ('rope_bucket', lambda: rope_bucket(100)),
     ('hanging_lantern', lambda: hanging_lantern(0)), ('chain', lambda: chain(0, links=10)),
-    *((f'stalactite_{i}', lambda i=i: stalactite(i)) for i in range(3)),
+    *((f'stalactite_{i}', lambda i=i: stalactite(i)) for i in range(len(STALACTITES))),
     *((f'fire_crystal_hanging_{i}', lambda i=i: fire_crystal(i + 3, hanging=True)) for i in range(2)),
     ('fissure', lambda: fissure(34, 2)),
 )
@@ -3615,20 +4154,50 @@ HUNG_PROPS = (
 HAZE = {'j': 'э', '^': 'ю', '&': 'я', '*': 'Б', 'p': 'Г', 'q': 'Д'}
 
 
-def haze(width, height, seed, strength):
-    """A plume of heat rising off the lava, in the warm translucents."""
-    return to_image({p: HAZE.get(s, s) for p, s in from_image(plume(width, height, seed, strength)).items()},
-                    (width, height))
+def haze(width, height, seed, strength, phase=0.0):
+    """Heat rising off the lava (e01hollow, round 3), at `phase` (0 to 1)
+    through one rising loop: thin wisps in the palette's warm translucents,
+    thickest just over the surface and fading as they climb, curling as
+    they go, the ends of the lava thinning them; frames at even phases
+    loop."""
+    c = {}
+    ramp_symbols = 'эюяБ'
+    for y in range(height):
+        rise = 1 - y / height
+        for x in range(width):
+            u = x / width
+            ends = min(1.0, u / 0.15, (1 - u) / 0.15)
+            # Each wisp climbs its own height, so the top edge is ragged.
+            reach = 0.45 + 0.55 * fbm(x / 46, 0.5, ('reach', seed))
+            base = ends * max(0.0, 1 - rise / reach) ** 1.6 * strength
+            if base < 0.02:
+                continue
+            curl = 5 * math.sin(y / 13 + x / 37 + seed)
+
+            def wisp(t):
+                n = fbm((x + curl) / 15, (y + t * 90) / 17, ('heat', seed))
+                return 1 - abs(2 * n - 1)
+
+            w = (1 - phase) * wisp(phase) + phase * wisp(phase - 1)
+            v = base * w ** 3.2 * len(ramp_symbols) * 1.7
+            level = int(v) + (1 if dither(x, y, v - int(v)) else 0)
+            if level > 0:
+                c[(x, y)] = ramp_symbols[min(level, len(ramp_symbols)) - 1]
+    return to_image(c, (width, height))
 
 
-# Unlit: mist and steam, which the night shows through, the lava's haze, and
-# the campfire's flames, which carry their own light.
-MISTS = (('haze', lambda: haze(330, 150, 4.2, 0.9)), ('haze_small', lambda: haze(150, 90, 5.1, 0.8)))
+# Unlit: mist and steam, which the night shows through, the lava's haze
+# (subtle since e01hollow), and the campfire's flames, which carry their own
+# light.
+MISTS = ()
 # The rising mist, unlit and animated: the falls' plume, drawn at a phase,
 # `MIST_FRAMES` frames through one cycle, each tile of its cut a clip of its
 # own.
 RISING = (
     ('plume', lambda t: plume(300, 170, 1.3, 1.5, t)),
+    # The heat off the lava lake and the shelf's lava (e01hollow, round 3).
+    ('haze', lambda t: haze(620, 150, 4.2, 0.55, t)),
+    ('haze_small', lambda t: haze(180, 100, 5.1, 0.5, t)),
 )
 MIST_FRAMES, MIST_MS = 6, 150
 
@@ -3720,22 +4289,20 @@ def build_level_scenery(images, lit, animations):
     lit.update(clip(images, animations, 'lava_surface', [lava_frame(f) for f in range(4)], 220))
     lit.update(clip(images, animations, 'lava_deep', [lava_frame(f, 'deep') for f in range(4)], 220))
     lit.update(clip(images, animations, 'lavafall', [lavafall_frame(f) for f in range(4)], 100))
-    # e01hollow's geyser, placeholders until its asset step draws them: the
-    # vent the ember pool's lower half (lit), choked the same darkened; the
-    # sputter's four frames the lavafall's, the plume's six them stacked to
-    # its height (unlit). The game picks each frame by the phase's time.
-    vent = ember_pool(0).crop((0, TILE // 2, TILE, TILE))
-    images['geyser_vent'] = vent
-    images['geyser_vent_choked'] = darkened(vent, 0.45)
+    # e01hollow: the lavafall's foot in the basin; the geysers' vent, lit,
+    # and its choked twin; the sputter's four frames and the eruption's six,
+    # unlit, which the game picks by the phase's time.
+    lit.update(clip(images, animations, 'lava_splash', [lava_splash(f) for f in range(4)], 100))
+    for i in range(len(EMBER_POOLS)):
+        lit.update(clip(images, animations, f'ember_pool_{i}', [ember_pool(i, f) for f in range(POOL_FRAMES)],
+                        POOL_MS))
+    images['geyser_vent'] = geyser_vent()
+    images['geyser_vent_choked'] = geyser_vent(choked=True)
     lit.update({'geyser_vent', 'geyser_vent_choked'})
-    streams = [lavafall_frame(f) for f in range(4)]
-    for f, im in enumerate(streams):
-        images[f'geyser_sputter_{f}'] = im
+    for f in range(4):
+        images[f'geyser_sputter_{f}'] = geyser_sputter(f)
     for f in range(6):
-        plume = Image.new('RGBA', (TILE, 176))
-        for y in range(176 - TILE, -TILE, -TILE):
-            plume.alpha_composite(streams[f % 4], (0, y))
-        images[f'geyser_plume_{f}'] = plume
+        images[f'geyser_plume_{f}'] = geyser_plume(f)
     # The elevator's cage and cable, which the game draws (M79).
     images['lift_deck_elevator'] = elevator_cage()
     images['lift_cable'] = lift_cable()

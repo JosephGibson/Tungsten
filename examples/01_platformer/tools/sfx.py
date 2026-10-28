@@ -2562,15 +2562,92 @@ def crate_break():
     return finish(samples, fade_in=0.0003, fade_out=0.06)
 
 
-def recut(data, seconds):
-    """A one-shot's WAV `data` cropped, or cycled from its start, to
-    `seconds`, faded and normalized again: e01hollow's placeholders until
-    its asset step makes their sounds."""
-    with wave.open(io.BytesIO(data), 'rb') as wav:
-        frames = wav.readframes(wav.getnframes())
-    source = [int.from_bytes(frames[i:i + 2], 'little', signed=True) / 32767
-              for i in range(0, len(frames), 2)]
-    return finish([source[i % len(source)] for i in range(int(seconds * RATE))], fade_out=0.04)
+def geyser_sputter():
+    """A geyser's sputter (e01hollow), as long as its 0.6 s: a hiss rising
+    out of the vent over a thick gurgle of bubbling, lava popping through
+    it faster as the eruption nears."""
+    duration = 0.6
+    noise, bubbles, pops = Noise(0x6E51), Noise(0x6E52), Noise(0x6E53)
+    low, high, glug = LowPass(), LowPass(), LowPass()
+    samples, pop, phase, bubble, burble = [], 0.0, 0.0, 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        hiss = (low(n, glide(1800, 6500, p)) - high(n, glide(700, 1600, p))) * (0.35 + 0.65 * p)
+        # The gurgle: low bubbles bursting at random, each a falling blip.
+        if bubbles() > 1 - 0.0011 * (1 + 2 * p):
+            bubble, burble = 1.0, 0.0
+        # Each bubble a blip falling from 400 Hz as it bursts and dies.
+        burble += math.tau * (140 + 260 * bubble) / RATE
+        bubble *= 0.9993
+        gurgle = glug(math.sin(burble) * bubble, 900) * 1.6
+        phase += math.tau * glide(55, 80, p) / RATE
+        rumble = math.sin(phase) * 0.1 * (0.4 + 0.6 * p) * (0.6 + 0.4 * bubble)
+        if pops() > 1 - 0.0016 * (0.5 + p):
+            pop = 0.9
+        pop *= 0.93
+        envelope = min(1.0, t / 0.04) * (0.75 + 0.25 * p)
+        samples.append(math.tanh((1.5 * hiss + gurgle + rumble) * envelope + pop * pops()))
+    return finish(samples, fade_out=0.05)
+
+
+def geyser_erupt():
+    """A geyser's eruption (e01hollow): a deep whoosh of the column leaving
+    the vent, a heavy thump under it, then a roar of fire with crackle
+    through it that drops off as the plume gutters."""
+    duration = 0.95
+    noise, crackle = Noise(0x6E61), Noise(0x6E62)
+    low, high, roar_lp, rumble = LowPass(), LowPass(), LowPass(), LowPass()
+    samples, phase, spit = [], 0.0, 0.0
+    for i in range(int(duration * RATE)):
+        t = i / RATE
+        p = t / duration
+        n = noise()
+        # The whoosh: noise swept up fast through a low-pass.
+        whoosh = (low(n, glide(180, 3600, min(1.0, t / 0.16))) - high(n, 120)) \
+            * math.exp(-max(0.0, t - 0.1) / 0.12)
+        phase += math.tau * glide(70, 34, min(1.0, t / 0.3)) / RATE
+        thump = math.sin(phase) * min(1.0, t / 0.004) * math.exp(-t / 0.16)
+        # The roar: a dark rush with a wavering body, dropping off at the end.
+        cutoff = glide(2400, 380, max(0.0, (p - 0.55) / 0.45)) if p > 0.55 else 2400
+        body = roar_lp(n, cutoff) - rumble(n, 90) * 0.3
+        waver = 0.75 + 0.25 * math.sin(math.tau * 11 * t) * math.sin(math.tau * 3.3 * t)
+        swell = min(1.0, t / 0.12) * (1 - smooth_drop(p, 0.6, 1.0))
+        if crackle() > 1 - 0.004 * swell:
+            spit = 0.8
+        spit *= 0.9
+        samples.append(math.tanh(1.4 * whoosh + 1.1 * thump + 2.2 * body * waver * swell + spit * crackle()))
+    return finish(samples, fade_in=0.002, fade_out=0.08)
+
+
+def smooth_drop(p, start, end):
+    """0 before `start`, easing to 1 at `end`: a sound's tail falling off."""
+    u = min(1.0, max(0.0, (p - start) / (end - start)))
+    return u * u * (3 - 2 * u)
+
+
+def stone_knock():
+    """A rubble stone landing (e01hollow): a dull, heavy thud of stone on
+    stone, deeper and softer than the goblin's rock's clack, a short knock
+    in it and grit settling."""
+    noise, grit, knock_lp, high = Noise(0x6E71), Noise(0x6E72), LowPass(), LowPass()
+    samples, phase, chip = [], 0.0, 0.0
+    for i in range(int(0.26 * RATE)):
+        t = i / RATE
+        n = noise()
+        phase += math.tau * glide(150, 82, min(1.0, t / 0.08)) / RATE
+        thud = math.sin(phase) * min(1.0, t / 0.002) * math.exp(-t / 0.045)
+        body = sum(math.sin(math.tau * f * t) * w for f, w in ((310, .35), (520, .2), (790, .1))) \
+            * math.exp(-t / 0.03)
+        knock = knock_lp(n, 900) * 1.8 * math.exp(-t / 0.014)
+        g = grit()
+        if t > 0.03 and g > 1 - 0.004 * math.exp(-t / 0.08):
+            chip = 0.35
+        chip *= 0.85
+        settle = chip * (g - high(g, 2500))
+        samples.append(math.tanh(1.6 * (thud + body + knock)) + settle)
+    return finish(samples, fade_in=0.0005, fade_out=0.05)
 
 
 AMBIENCE = {
@@ -2723,8 +2800,8 @@ def build_sounds():
         'ground_strike.wav': ground_strike(),
         'player_tick.wav': player_tick(),
         'crate_break.wav': crate_break(),
-        'geyser_sputter.wav': recut(fuse_hiss(), 0.6),
-        'geyser_erupt.wav': recut(flame_start(), 0.8),
-        'stone_knock.wav': recut(iron_thud(), 0.3),
+        'geyser_sputter.wav': geyser_sputter(),
+        'geyser_erupt.wav': geyser_erupt(),
+        'stone_knock.wav': stone_knock(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

@@ -1,0 +1,11 @@
+{
+  "components": {
+    "animation": {
+      "id": "ex10_lava_splash"
+    }
+  },
+  "sprite": {
+    "asset_id": "ex10_lava_splash_0",
+    "z_order": -10
+  }
+}

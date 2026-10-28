@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_0"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_1"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_2"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_3"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_4"
+    },
+    {
+      "duration_ms": 150,
+      "sprite": "ex10_haze_big_0_7_5"
+    }
+  ],
+  "looping": true
+}

@@ -10,7 +10,7 @@ import math
 from PIL import Image, ImageDraw
 
 from art import rng_for
-from pixels import Part, dither, packed_stones, shade, to_image, unit, wave
+from pixels import Part, compose, dither, fbm, grade, packed_stones, ramp, shade, to_image, unit, wave
 from terrain import (BACK_DARK, BREAK_LIPS, IRON_MASKS, MASKS, TILE, coursed, darker, ellipse, from_image,
                      iron_clad, line, mine_rock, rect, rock_tiles, tinted, wet_rock)
 
@@ -787,34 +787,88 @@ def parapet(i, kind='plain', back=True):
     return to_image(darker(c) if back else c)
 
 
+# The cave's back (e01hollow's deep pass): basalt columns half a column off
+# the front's, receding, and its ramp, dark to the columns' lit edges.
+BACK_COLUMNS = (7, 23, 39, 55)
+BACK_RAMP = 'θεζνγ'
+
+
 def cave_back(kind, i):
-    """The cave's back wall: dark, low-contrast rock repeating every 64 px,
-    and its kinds (ember, timber, pillar, stalactites, xbrace, ladder, ore)."""
+    """The cave's back wall, repeating every 64 px: basalt columns receding
+    into the dark, lit only along their west faces, some set back deeper,
+    their joints dark; its kinds: `ember` a seam glowing deep in a recess,
+    its glow on the rock about it; `stalactites` points hanging from the
+    roof in front of it; `pillar` a column standing out from it, nearer and
+    lit; the mine's shoring (timber, xbrace, ladder, ore) over it."""
     c = {}
-    for y in range(TILE):
-        for x in range(TILE):
-            v = (math.sin(math.tau * (x / TILE + 0.13 * i)) + math.sin(math.tau * (2 * x / TILE + y / TILE + 0.3 * i))
-                 + math.sin(math.tau * (y / TILE * 2 + 0.7)) * 0.8) / 2.8
-            n = unit('back', kind, i, x // 3, y // 3)
-            sym = 'ζ' if v > 0.35 else 'ε' if v > -0.25 else 'θ'
-            if n < 0.06:
+    # The column across the tile's side starts at the same place in every
+    # variant, so any two meet; the two inside move with the variant, so
+    # stacked tiles break their columns as cross-joints do.
+    starts = (BACK_COLUMNS[0], BACK_COLUMNS[1] + round((unit('bc', kind, i, 1) - 0.5) * 12),
+              BACK_COLUMNS[2] + round((unit('bc', kind, i, 2) - 0.5) * 12), BACK_COLUMNS[3])
+    for x in range(TILE):
+        k = max([n for n, start in enumerate(starts) if start <= x] or [3])
+        start = starts[k] if x >= starts[0] else starts[3] - TILE
+        end = starts[(k + 1) % 4] + (TILE if k == 3 else 0)
+        u = (x - start) / (end - start)
+        recess = unit('recess', kind, i, k) < 0.35
+        joints = sorted({(int(unit('bj', kind, i, k, n) * 30) + n * 32 + k * 11) % TILE for n in range(2)})
+        for y in range(TILE):
+            g = (fbm(x / 7, y / 11, ('back', kind, i, k)) - 0.5) * 0.3
+            sym = ramp(0.5 - u * 0.22 + g - (0.14 if recess else 0), BACK_RAMP, x, y, 0.2)
+            if x == start or (x == start + 1 and dither(x, y, 0.5)):
                 sym = 'θ'
-            elif n > 0.97 and v > 0.2:
-                sym = 'ν'
+            elif x == start + 2 and not recess and dither(x, y, 0.55 + 0.3 * g):
+                sym = 'γ'
+            if y in joints:
+                sym = 'θ'
             c[(x, y)] = sym
-    for k in range(3):
-        x0 = int(unit('fissure', kind, i, k) * 64)
-        y0 = int(unit('fissure-y', kind, i, k) * 64)
-        for d in range(10 + int(unit('fl', kind, i, k) * 16)):
-            x0 += 1 if unit('fx', kind, i, k, d) > 0.5 else 0
-            c[(x0 % TILE, (y0 + d) % TILE)] = 'θ'
-    if kind == 'ember' and unit('vein?', i) < 0.16:
-        x0, y0 = int(unit('vx', i) * 60), int(unit('vy', i) * 30)
-        for d in range(14 + int(unit('vlen', i) * 18)):
-            x0 += -1 if unit('vxs', i, d) < 0.3 else 1 if unit('vxs', i, d) > 0.7 else 0
-            c[(x0 % TILE, (y0 + d) % TILE)] = 'L' if unit('vh', i, d) > 0.15 else 'K'
-            if unit('vrim', i, d) < 0.5:
-                c[((x0 + 1) % TILE, (y0 + d) % TILE)] = 'M'
+    if kind == 'ember' and i:
+        # A dull warmth on a recess's columns, as if a glow lay behind them.
+        for (x, y), sym in list(c.items()):
+            if sym in ('γ', 'ν') and dither(x, y, 0.35 * fbm(x / 9, y / 9, ('warm', i))):
+                c[(x, y)] = 'Θ'
+    elif kind == 'ember':
+        x = 10 + int(unit('seam', i) * 44)
+        y0 = 6 + int(unit('seamy', i) * 26)
+        for d in range(16 + int(unit('sl', i) * 16)):
+            y = y0 + d
+            if y >= TILE - 2:
+                break
+            c[(x, y)] = 'Ъ' if d % 5 else 'y'
+            for dx, sym in ((-1, 'L'), (1, 'M'), (-2, 'Θ'), (2, 'Θ')):
+                if 0 <= x + dx < TILE and c.get((x + dx, y)) not in ('Ъ', 'y'):
+                    c[(x + dx, y)] = sym
+            x += -1 if unit('sx', i, d) < 0.3 else 1 if unit('sx', i, d) > 0.75 else 0
+    elif kind == 'stalactites':
+        # Points hanging from the roof in front of the back, of many shapes:
+        # needles, cones, stubs, forked pairs, each lit along its west edge.
+        for n in range(5 + int(unit('bstn', i) * 3)):
+            cx = 4 + int(unit('bst', i, n) * 56)
+            shape = int(unit('bsts', i, n) * 4)
+            length = (8 + int(unit('bstl', i, n) * 14), 22 + int(unit('bstl', i, n) * 34),
+                      10 + int(unit('bstl', i, n) * 8), 18 + int(unit('bstl', i, n) * 20))[shape]
+            half = (1 + int(unit('bsw', i, n) * 2), 3 + int(unit('bsw', i, n) * 4),
+                    5 + int(unit('bsw', i, n) * 4), 3 + int(unit('bsw', i, n) * 2))[shape]
+            for d in range(length):
+                w = round(half * (1 - d / length) ** (0.7 if shape == 2 else 1.3))
+                for dx in range(-w, w + 1):
+                    if 0 <= cx + dx < TILE:
+                        c[(cx + dx, d)] = 'γ' if dx == -w else 'ν' if dx < 0 else 'ε'
+                if shape == 3 and d > length * 0.45:
+                    # A forked pair: a second point off its side.
+                    off = round((d - length * 0.45) * 0.5) + 2
+                    if 0 <= cx + off < TILE:
+                        c[(cx + off, d)] = 'ν'
+    elif kind == 'pillar':
+        # A shaft of the hollow's pillars (`cave_pillar`), fluted, lit from
+        # the west, its shadow on the back to the east; level.py's pillar
+        # columns are covered by whole pillars, so this is for any other.
+        shaft = {(x, y): (x + 0.5 - 32) / 26 for y in range(TILE) for x in range(6, 58) if abs(x + 0.5 - 32) <= 26}
+        c.update(pillar_skin(shaft, lambda y: 32.0, ('pillar-tile', i)))
+        for y in range(TILE):
+            for x in range(58, 64):
+                c[(x, y)] = BACK_DARK.get(c[(x, y)], c[(x, y)])
     elif kind == 'timber':
         for y in range(TILE):
             for x in range(24, 40):
@@ -832,23 +886,6 @@ def cave_back(kind, i):
                     c[(x, y)] = '"' if v < 0.12 else '/' if v > 0.88 else 'ω'
             for x, y in ((22, 9), (41, 9), (22, 14), (41, 14)):
                 c[(x, y)], c[(x + 1, y)] = 'χ', 'Ω'
-    elif kind == 'pillar':
-        for y in range(TILE):
-            for x in range(16, 48):
-                u = (x - 16) / 31
-                sym = 'γ' if u < 0.18 else 'ν' if u < 0.7 else 'ζ'
-                if (y + int(unit('pj', i) * 20)) % 26 == 0:
-                    sym = 'ε'
-                c[(x, y)] = sym
-            c[(15, y)], c[(48, y)] = 'θ', 'θ'
-    elif kind == 'stalactites':
-        for k in range(3):
-            cx = 8 + int(unit('bst', i, k) * 48)
-            length = 18 + int(unit('bstl', i, k) * 26)
-            for d in range(length):
-                w = max(0, round((length - d) / 5))
-                for dx in range(-w, w + 1):
-                    c[(cx + dx, d)] = 'ν' if dx < 0 else 'θ'
     elif kind == 'xbrace':
         for x0, x1 in ((0, 63), (63, 0)):
             line(c, x0, 0, x1, 63, 'ω', 3)
@@ -916,50 +953,320 @@ def cave_tunnel(kind):
     return to_image(c, (128, 128))
 
 
-def cave_mouth(columns=8, rows=7):
-    """The Ember hollow's mouth (M79): the tunnel's back under the ravine's
-    east wall, `columns` x `rows` tiles of the hollow's own cave rock, in
-    shadow at the opening and lit by embers toward the hollow; a row of
-    stalactites under the lintel, ember veins growing deeper in and a floor
-    of glowing grit at its far end. Opaque, so no backdrop shows through,
-    and lit, so it dims with the hollow's backs beside it."""
-    canvas = Image.new('RGBA', (columns * TILE, rows * TILE))
+# The mouth's frame (e01hollow): the wall's wet lip hides its first row
+# down to its last `MOUTH_LIP` px; the lintel's two blocks and the jamb's
+# three, rough-dressed in the ravine's wet stone, each `(points)`.
+MOUTH_LIP = 55
+MOUTH_LINTEL = (((0, 53), (138, 53), (136, 99), (0, 101)), ((140, 53), (236, 53), (228, 89), (138, 95)))
+MOUTH_JAMB = (((0, 103), (44, 103), (46, 168), (0, 170)), ((0, 172), (40, 172), (44, 270), (0, 268)),
+              ((0, 270), (48, 272), (52, 384), (0, 384)))
+MOUTH_ROOTS = ((8, 150), (26, 96), (54, 132), (90, 70), (118, 160), (166, 58), (200, 88))
+
+
+def mouth_block(points, seed, size, light=0.0):
+    """A rough-dressed block of the ravine's wet stone for the mouth's
+    frame: shaded as a slab lit from the ravine, its corners chipped, tool
+    marks across its face, a crack through it."""
+    part = Part(size)
+    part.polygon(points)
+    inside = part.pixels()
+    xs, ys = [x for x, _ in inside], [y for _, y in inside]
+    for cx, cy in ((min(xs), min(ys)), (max(xs), min(ys)), (min(xs), max(ys)), (max(xs), max(ys))):
+        chip = 4 + round(unit('chip', seed, cx, cy) * 5)
+        inside -= {(x, y) for (x, y) in inside if abs(x - cx) + abs(y - cy) < chip}
+    c = grade(inside, 'nd=η~:', light=(-0.8, -0.55, 0.55), depth=7, spread=0.3, bias=light)
+    for (x, y) in inside:
+        if (y + round(unit('tool', seed, x // 7) * 5)) % 9 == 0 and unit('tm', seed, x, y // 3) < 0.45 and c[(x, y)] in '~:η':
+            c[(x, y)] = '='
+    x, y = min(xs) + (max(xs) - min(xs)) * (0.3 + 0.4 * unit('crack', seed)), min(ys) + 6
+    while y < max(ys) - 4:
+        p = (round(x), round(y))
+        if p in c:
+            c[p] = 'n'
+            if (p[0] + 1, p[1]) in c and c[(p[0] + 1, p[1])] not in 'n':
+                c[(p[0] + 1, p[1])] = ':'
+        x += (unit('cx', seed, round(y)) - 0.5) * 2.2
+        y += 1
+    return c
+
+
+def cave_mouth(columns=8, rows=6):
+    """The Ember hollow's mouth (e01hollow, V7): `columns` x `rows` tiles
+    behind the opening under the ravine's east wall, from the row its lip
+    hides down to the floor. The passage's back is the hollow's own (its
+    receding basalt columns), in deep shadow just inside and warmed by the
+    hollow's glow at its far end; at the wall's face a jamb of three
+    rough-dressed blocks of the ravine's wet stone under a lintel of two,
+    moss on their tops and wet down their faces, roots hanging over them
+    from the ravine's side. Opaque, and lit, so it dims with the backs."""
+    w, h = columns * TILE, rows * TILE
+    canvas = Image.new('RGBA', (w, h))
     for r in range(rows):
-        for c in range(columns):
-            depth = c / max(1, columns - 1)
-            if r == 0:
+        for col in range(columns):
+            depth = col / max(1, columns - 1)
+            if r == 1 and col >= 3:
                 kind = 'stalactites'
-            elif unit('mouth-kind', r, c) < 0.15 + 0.5 * depth ** 1.5:
+            elif col >= 4 and unit('mouth-kind', r, col) < 0.4 * depth ** 2:
                 kind = 'ember'
             else:
                 kind = 'rock'
-            tile = from_image(cave_back(kind, 80 + r * columns + c))
-            shadow = 2 if c < 2 else 1 if c < 4 else 0
+            tile = from_image(cave_back(kind, 80 + r * columns + col))
+            shadow = 3 if col < 2 else 2 if col < 3 else 1 if col < 5 else 0
             if shadow:
                 tile = darker(tile, shadow)
-            canvas.alpha_composite(to_image(tile), (c * TILE, r * TILE))
+            canvas.alpha_composite(to_image(tile), (col * TILE, r * TILE))
     c = from_image(canvas)
-    w, h = columns * TILE, rows * TILE
-    # The opening's lip: the ravine's far wall, as its wet back draws it,
-    # reaching a jagged way in at the mouth's first column, its edge lit by
-    # the night outside.
-    for r in range(rows):
-        wet = from_image(to_image(tinted(from_image(wet_rock(500 + r, (False, False, False, False), None, back=2)))))
-        for y in range(TILE):
-            edge = 10 + round(6 * math.sin((r * TILE + y) * 0.09) + 5 * math.sin((r * TILE + y) * 0.23 + 1.3)
-                              + 4 * unit('lip', (r * TILE + y) // 5))
-            for x in range(edge):
-                if (x, y) in wet:
-                    c[(x, r * TILE + y)] = wet[(x, y)]
-            c[(edge, r * TILE + y)] = 'α'
-            c[(edge + 1, r * TILE + y)] = 'ν'
-    # Glowing grit along the floor and in the joints near the hollow.
-    for x in range(w):
-        heat = (x / w) ** 2
-        for y in range(h - 6, h):
-            if dither(x, y, heat * (0.35 + (y - (h - 6)) / 10)):
-                c[(x, y)] = 'K' if unit('grit', x // 2, y) < 0.3 else 'L'
+    # The hollow's glow on the far end: the columns' lit edges warm.
+    for (x, y), sym in list(c.items()):
+        heat = max(0.0, (x - w * 0.62) / (w * 0.38)) * max(0.0, 1 - abs(y - h * 0.8) / (h * 0.7))
+        if heat > 0 and sym == 'γ' and dither(x, y, heat * 0.6):
+            c[(x, y)] = 'Θ'
+    # The frame, and the shadow it casts into the passage.
+    layers = [(mouth_block(pts, ('lintel', k), (w, h), 0.1 - 0.08 * k), 'o') for k, pts in enumerate(MOUTH_LINTEL)]
+    layers += [(mouth_block(pts, ('jamb', k), (w, h), 0.05 * (k == 1)), 'o') for k, pts in enumerate(MOUTH_JAMB)]
+    frame = compose(layers)
+    for (x, y), sym in list(c.items()):
+        if (x, y) in frame:
+            continue
+        reach = x - 52 if y > 101 else x - (236 if y < 89 else 140)
+        if 0 <= reach < 24 and dither(x, y, 1 - reach / 24):
+            c[(x, y)] = BACK_DARK.get(BACK_DARK.get(sym, sym), sym)
+        if 101 <= y < 101 + 18 and x < 236 and dither(x, y, 1 - (y - 101) / 18):
+            c[(x, y)] = BACK_DARK.get(sym, sym)
+    # The lintel's underside and the jamb's inner face in shadow.
+    for (x, y), sym in list(frame.items()):
+        if sym == 'o':
+            continue
+        if (x, y + 1) not in frame and y < 102:
+            frame[(x, y)] = 'n'
+        elif (x + 1, y) not in frame and y > 102:
+            frame[(x, y)] = 'n'
+            if frame.get((x - 1, y)) not in (None, 'o'):
+                frame[(x - 1, y)] = 'd'
+    # Moss along the blocks' tops, strands hanging from it.
+    for (x, y) in [p for p in frame if (p[0], p[1] - 1) not in frame and frame[p] != 'o']:
+        if unit('moss', x // 3, y // 30) < 0.85:
+            frame[(x, y)] = 'U' if dither(x, y, 0.4) else 'Q'
+            if frame.get((x, y + 1)) not in (None, 'o'):
+                frame[(x, y + 1)] = 'D'
+            if unit('strand', x, y) < 0.09:
+                for d in range(2, 4 + round(unit('sl', x, y) * 7)):
+                    if frame.get((x, y + d)) not in (None, 'o'):
+                        frame[(x, y + d)] = 'P' if d % 2 else 'D'
+    # Wet running down the jamb's face.
+    for k in range(6):
+        x = 4 + round(unit('wet', k) * 36)
+        for y in range(104, 104 + 50 + round(unit('wl', k) * 160)):
+            if frame.get((x, y)) not in (None, 'o', 'U', 'Q', 'D', 'P', 'n') and dither(x, y, 0.7):
+                frame[(x, y)] = 'O' if frame[(x, y)] in 'nd=' else '|'
+    c.update(frame)
+    # Roots down from the ravine's side, over the lintel and the jamb.
+    for k, (x0, length) in enumerate(MOUTH_ROOTS):
+        x = float(x0)
+        thick = 2 if length > 100 else 1
+        for d in range(length):
+            y = MOUTH_LIP - 4 + d
+            x += (unit('rx', k, d // 3) - 0.5) * 0.9 + 0.35 * math.sin(d / 9 + k)
+            for e in range(thick if d < length * 0.6 else 1):
+                c[(round(x) + e, y)] = '"' if e == 0 and d % 5 else 'ω'
+            c[(round(x) + thick, y)] = '/'
+            if unit('rootlet', k, d) < 0.06 and d > 4:
+                side = 1 if unit('rs', k, d) > 0.5 else -1
+                for e in range(1, 5 + round(unit('rl', k, d) * 6)):
+                    c[(round(x) + side * (e // 2 + 1), y + e)] = 'ω'
     return to_image(c, (w, h))
+
+
+def cave_deep(columns, rows, seed):
+    """A deep recess in the hollow's back wall (e01hollow), `columns` x
+    `rows` tiles of the cave's back with a ragged opening cut into it: in
+    it, ridges of rock receding, each further one darker, their crests
+    rimmed by a glow of embers far down at its foot, stalactites hanging in
+    silhouette against it. Its edges are the back's own tiles, so it joins
+    them."""
+    w, h = columns * TILE, rows * TILE
+    canvas = Image.new('RGBA', (w, h))
+    for r in range(rows):
+        for col in range(columns):
+            canvas.alpha_composite(cave_back('rock', 120 + seed * 16 + r * columns + col), (col * TILE, r * TILE))
+    c = from_image(canvas)
+    cx, cy, rx, ry = w / 2, h * 0.52, w * 0.4, h * 0.36
+    opening = {}
+    for y in range(h):
+        for x in range(w):
+            d = math.hypot((x - cx) / rx, (y - cy) / ry) + (fbm(x / 16, y / 12, ('deep', seed)) - 0.5) * 0.4
+            if d < 1:
+                opening[(x, y)] = d
+    foot = cy + ry * 0.75
+    glow_y = foot - ry * 0.62
+    # The far dark and the glow of embers deep in it, behind the ridges.
+    for (x, y), d in opening.items():
+        g = max(0.0, 1 - math.hypot((x - cx) / (rx * 0.92), (y - glow_y) / (ry * 0.34))
+                - (fbm(x / 9, y / 6, ('glow', seed)) - 0.5) * 0.7)
+        sym = 'θ' if d > 0.35 or g < 0.1 else 'ε'
+        if g > 0.05:
+            sym = 'Θ' if g < 0.3 else 'M' if g < 0.5 else 'L'
+            if dither(x, y, g * 0.55):
+                sym = 'y' if g > 0.75 and dither(x, y, 0.5) else 'Ъ'
+        c[(x, y)] = sym
+    # Ridges receding, far to near: each a ragged crest over the opening's
+    # foot, darker the further it lies, rimmed by the glow behind it.
+    for k, (height, body, rim) in enumerate(((0.62, 'ε', 'Ъ'), (0.42, 'ζ', 'L'), (0.2, 'ν', 'M'))):
+        for x in range(w):
+            u = (x - cx) / rx
+            crest = foot - ry * height * (1 - 0.55 * u * u) - 10 * (fbm(x / 11, k * 3.7, ('ridge', seed, k)) - 0.5) * 2
+            for y in range(round(crest), h):
+                if (x, y) in opening:
+                    c[(x, y)] = rim if y == round(crest) else body
+    # Stalactites from the opening's roof, black against the glow.
+    for k in range(5):
+        x0 = round(cx + (k - 2) * rx * 0.36 + (unit('dst', seed, k) - 0.5) * 14)
+        top = min((y for (x, y) in opening if x == x0), default=None)
+        if top is None:
+            continue
+        length = 14 + round(unit('dsl', seed, k) * 26)
+        half = 3 + round(unit('dsw', seed, k) * 3)
+        for d in range(length):
+            wdt = round(half * (1 - d / length) ** 1.2)
+            for dx in range(-wdt, wdt + 1):
+                p = (x0 + dx, top + d)
+                if p in opening:
+                    c[p] = 'ν' if dx == -wdt else 'θ'
+    # The opening's lip: lit along its lower rim, in shadow under its top.
+    for (x, y) in opening:
+        for dx, dy, sym in ((0, 1, 'γ'), (0, -1, 'θ')):
+            q = (x + dx, y + dy)
+            if q not in opening and q in c:
+                c[q] = sym
+    return to_image(c, (w, h))
+
+
+def pillar_skin(inside, centre, seed, lava=0.0, height=1):
+    """A pillar's rock over `inside` (each pixel's place across it, -1 at
+    its west edge to 1 at its east): fluted, each flute lit along its west
+    lip and grooved dark to the east, the whole rounded and lit from the
+    upper left, its west rim catching the light, its east edge black;
+    `lava` warms it from below over its lowest share."""
+    c = {}
+    for (x, y), u in inside.items():
+        cx = centre(y)
+        flute = ((x - cx) / 8.0 + 1.4 * fbm(x / 11, y / 40, ('flute', seed))) % 1.0
+        level = 0.52 - 0.48 * u + (0.14 if flute < 0.22 else -0.12 if flute > 0.78 else 0.0)
+        level += (fbm(x / 5, y / 8, ('grain', seed)) - 0.5) * 0.22
+        c[(x, y)] = ramp(level, 'ενγβαξ', x, y, 0.15)
+    for (x, y), u in inside.items():
+        if (x - 1, y) not in inside:
+            c[(x, y)] = 'δ' if dither(x, y, 0.6) else 'ξ'
+            if (x + 1, y) in inside:
+                c[(x + 1, y)] = 'ξ' if c[(x + 1, y)] in 'βγ' else c[(x + 1, y)]
+        elif (x + 1, y) not in inside:
+            c[(x, y)] = 'θ'
+    if lava:
+        # The lava's glow from below on its rims and the flutes' lips.
+        for (x, y), u in inside.items():
+            heat = max(0.0, (y / height - (1 - lava)) / lava) ** 1.5
+            rim = (x - 1, y) not in inside or (x + 1, y) not in inside
+            if heat > 0 and (rim or c[(x, y)] in 'ξδ') and dither(x, y, heat * (0.9 if rim else 0.45)):
+                c[(x, y)] = 'Ъ' if rim and heat > 0.6 else 'K' if heat > 0.45 else 'L'
+    return c
+
+
+# The hollow's pillars (e01hollow, round 2): each drawn whole, three tiles
+# wide and its column's height from the roof's lowest row to the floor,
+# placed as decorations over level.py's pillar columns; its rows, seed and
+# the share of it the lava below warms.
+PILLARS = ((6, 0, 0.0), (11, 1, 0.0), (15, 2, 0.45), (5, 3, 0.0), (5, 4, 0.0))
+
+
+def cave_pillar(rows, seed, lava=0.0):
+    """A pillar of the hollow's rock from the roof to the floor, in front of
+    the cave's back: flared where it meets the roof and again at its foot,
+    swelling and narrowing down its shaft, fluted, lit from the west, its
+    shadow cast on the back to the east, a cooling band or two across it,
+    an ember crack in it and rubble at its foot; the lava below warms the
+    one over the lake. Its sides are the back's own tiles, so it joins
+    them."""
+    w, h = 3 * TILE, rows * TILE
+    canvas = Image.new('RGBA', (w, h))
+    for r in range(rows):
+        for col in range(3):
+            canvas.alpha_composite(cave_back('rock', 160 + seed * 48 + r * 3 + col), (col * TILE, r * TILE))
+    c = from_image(canvas)
+
+    def centre(y):
+        return w / 2 + 5 * math.sin(y / 70 + seed) + 6 * (fbm(y / 46, 0.5, ('lean', seed)) - 0.5)
+
+    def half(y, side):
+        # Each side its own flare, so it meets the roof and the floor
+        # unevenly, as rock does.
+        shaft = 24 + 12 * (fbm(y / 60, 1.5, ('swell', seed)) - 0.5)
+        reach = 0.6 + 0.8 * unit('flare', seed, side)
+        roof = 68 * reach * max(0.0, 1 - y / (50 + 40 * unit('roof', seed, side))) ** 2.2
+        foot = 52 * (1.6 - reach) * max(0.0, 1 - (h - 1 - y) / (40 + 30 * unit('foot', seed, side))) ** 2
+        return (shaft + roof + foot) * (1 + 0.08 * (fbm(y / 9, 2.5 + side, ('rough', seed)) - 0.5))
+
+    inside = {}
+    for y in range(h):
+        cx, west, east = centre(y), half(y, 0), half(y, 1)
+        for x in range(w):
+            dx = x + 0.5 - cx
+            u = dx / (west if dx < 0 else east)
+            if abs(u) <= 1:
+                inside[(x, y)] = u
+    # Its shadow on the back, east of it.
+    for y in range(h):
+        east = max((x for (x, yy) in inside if yy == y), default=None)
+        if east is None:
+            continue
+        for x in range(east + 1, min(w, east + 18)):
+            if (x, y) in c and dither(x, y, 1 - (x - east) / 18):
+                c[(x, y)] = BACK_DARK.get(c[(x, y)], c[(x, y)])
+    c.update(pillar_skin(inside, centre, ('pillar', seed), lava, h))
+    # Cooling bands across the shaft: a dark seam, a lit lip under it.
+    for k in range(rows // 3):
+        y0 = round(h * (k + 1) / (rows // 3 + 1) + 20 * (unit('band', seed, k) - 0.5))
+        for x in range(w):
+            y = y0 + round(2 * math.sin(x / 9 + k))
+            if (x, y) in inside and (x, y + 1) in inside:
+                c[(x, y)] = 'ε'
+                if c[(x, y + 1)] not in ('δ', 'θ'):
+                    c[(x, y + 1)] = 'α'
+    # An ember crack down part of it.
+    x = round(centre(h * 0.4) + (unit('crack', seed) - 0.5) * 20)
+    for d in range(round(h * 0.18) + 20):
+        y = round(h * (0.3 + 0.2 * unit('cracky', seed))) + d
+        x += -1 if unit('cx', seed, d) < 0.3 else 1 if unit('cx', seed, d) > 0.72 else 0
+        if (x, y) in inside and (x + 1, y) in inside and (x - 1, y) in inside:
+            c[(x, y)] = 'y' if d % 11 < 3 else 'Ъ'
+            c[(x + 1, y)] = 'L'
+    # Drips under the flare at the roof, and rubble at its foot.
+    for k in range(6):
+        x0 = round(centre(40) + (k - 2.5) * 22 + (unit('drip', seed, k) - 0.5) * 8)
+        top = max((y for (x, y) in inside if x == x0 and y < 90), default=None)
+        if top is None:
+            continue
+        for d in range(1, 6 + round(unit('dl', seed, k) * 10)):
+            if (x0, top + d) not in inside and (x0, top + d) in c:
+                c[(x0, top + d)] = 'ν' if d < 4 else 'ε'
+    for k in range(10):
+        x0 = round(centre(h - 1) + (unit('rub', seed, k) - 0.5) * 150)
+        r = 2 + round(unit('rubr', seed, k) * 3)
+        for dy in range(-r, 1):
+            for dx in range(-r - 1, r + 2):
+                p = (x0 + dx, h - 1 + dy)
+                if p in c and p not in inside and dx * dx + 2 * dy * dy <= r * r + 1:
+                    c[p] = 'β' if dy == -r else 'ν' if dx < 0 else 'ε'
+    return to_image(c, (w, h))
+
+
+def cave_wall(rows, seed):
+    """A stretch of the cave's back drawn whole, three tiles wide: no pillar,
+    where the ember tunnel's mouth breaks level.py's pillar column."""
+    canvas = Image.new('RGBA', (3 * TILE, rows * TILE))
+    for r in range(rows):
+        for col in range(3):
+            canvas.alpha_composite(cave_back('rock', 220 + seed * 32 + r * 3 + col), (col * TILE, r * TILE))
+    return canvas
 
 
 def strip_canvas(layers, edge='α'):
@@ -1255,6 +1562,14 @@ def build_level_backs(images, lit):
             images[f'cave_back_{kind}_{i}'] = cave_back(kind, i)
     images['cave_back_ladder'] = cave_back('ladder', 2)
     cut_tiles(images, 'cave_mouth', cave_mouth())
+    # e01hollow's deep recesses in the hollow's back, two sizes.
+    cut_tiles(images, 'cave_deep_0', cave_deep(4, 3, 0))
+    cut_tiles(images, 'cave_deep_1', cave_deep(3, 3, 1))
+    # e01hollow round 2: its pillars drawn whole, and the wall where the
+    # ember tunnel breaks a pillar's column.
+    for k, (rows, seed, lava) in enumerate(PILLARS):
+        cut_tiles(images, f'cave_pillar_{k}', cave_pillar(rows, seed, lava))
+    cut_tiles(images, 'cave_wall_0', cave_wall(7, 0))
     cut_tiles(images, 'cave_tunnel_ember', cave_tunnel('ember'))
     cut_tiles(images, 'cave_tunnel_mine', cave_tunnel('timber'))
     lit.update(set(images) - first - far)

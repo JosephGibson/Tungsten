@@ -63,12 +63,12 @@ pixel) for any hand-authored sprite. The modules:
 
 | Module | Draws |
 | --- | --- |
-| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves, packed stones (`packed_stones`, a rubble core, gravel or scree; e01hollow) |
+| `pixels.py` | Shared toolkit: masks, silhouette shading, graded shading (`grade`, a dome lit top-left in dithered steps; e01foes' crawler), overlap rims, outlines, dithering, whole-period waves, packed stones (`packed_stones`, a rubble core, gravel or scree; e01hollow) and smooth value noise (`fbm`: a flame's tongues, a crater's glow, rock's soft masses; e01hollow) |
 | `actors.py` | The wizard (his gestures, the sprays' staff pose and the gun's pistol pose), fireball, the fire missile's rocket, the small ball, the bowling ball, the training dummy, the six enemies (wisp, crawler, beetle, bat, troll, goblin, with the goblin's knife) and the goblin's rock and bomb |
 | `props.py` | 01 (g)'s props: the pine crates `pine_crate_0` and `pine_crate_1` in the palette's pale pine ramp (`Л П У`), apart from the mine's dark crates, the powder keg and its four lit frames (`powder_keg_lit_<n>`), a burning crate's char overlay (`pine_crate_char_<stage>`), and the particle sprites of a crate falling in, a keg blowing and a rock breaking (`char_splinter`, `keg_stave`, `rock_chip`); `art.build_art` calls its `build_props` |
 | `terrain.py` | Masonry, turf, cliff edges, decks, trestle, waterfall backing; the level's families (the pit's lining, undersides, wet rock, basalt, mine rock and its iron cladding, the aqueduct's channel and its coping, `coping`, the bridge's deck) and the borders between them |
 | `scenery.py` | Lamp posts, ivy, waystone, summit gate, oak, arch, roots, undergrowth, crystals, waterfall, spikes; the level's props (`LEVEL_PROPS`, `HUNG_PROPS`), tiled or cut `_big_`, its water, falls and lava clips, the pool's shore (`pool_shore`), the lava's crust frames (`lava_crust_<part>_<n>_<v>`, nine: the set, its dulling, the hold, two a crack stage) and each row's partials, 8 px apart, as the freeze's front and the melt's come down through a basin (`lava_freeze_*`, `lava_melt_*`, 01 (k)), the elevator's gantry, cage and cable, and the falls' plume; the aqueduct's water (01 (k)): a spill over each broken end's lip (`spill_<side>_<k>`), the pours (`pour_wide`) and their splash feet (`pour_foot`), the drips under the coping (`channel_drips`), the fallen voussoirs and the gargoyle's clip in pale limestone, the water over its tongue; e01hollow's aqueduct: the second gargoyle, a drake in profile (`gargoyle_drake`), its water arcing from its jaws, the small pool behind the floor's turf (`pool_basin`, 3 x 1 tiles, each tile a clip), the broken pillar at the area's start (`broken_pillar`, 2 x 4), the floor's paving (`aq_paving_<k>`, four), a fallen capital, a broken amphora and the statue, a water-bearer in pale stone on a pedestal (2 x 3) |
-| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
+| `backdrops.py` | Sky, moon, clouds, ridges, woodland; the outdoor areas' five far strips, the true-black night sky, the ravine's mist bands (`BACKDROPS`), and the background tiles: cave backs and shoring, tunnel mouths, the hollow's cave mouth (`cave_mouth`, 8 × 6 since e01hollow), deep recesses (`cave_deep_0`, `cave_deep_1`), pillars drawn whole (`cave_pillar_<k>`) and the wall by its ember tunnel (`cave_wall_0`), the aqueduct's arcade and the bridge's piers, the aqueduct's four pier bases (`pier_base`, `pier_base_<k>`) and second pier top, an oculus (`arcade_pier_top_1`, e01hollow), each gap's arcade tops cut along one broken profile (`arcade_gap_<g>_<row>_<col>`, 01 (k)) and the wet piers beside them (`pier_wet_<k>`), the ravine's wet backs and the mine's cut |
 | `effects.py` | Particle sprites (dust, spark, droplet, firefly mote, cursor), glow gradients, black-hole layers, the sprays' seven clips (`SPRAY_CLIPS`), the force push's wave and dust (`PUSH_CLIPS`), the icon family's 36-pixel tiles of the nine spells, the gun and the nine summon types, the HUD's liquids and cartridges (`hud_liquid_health`, `hud_liquid_mana`, `hud_bullet`, `hud_bullet_spent`), the lightning bolt's segments, the status overlays, the fitted ice cubes and their cracked twins (the crate's and the keg's on `PROP_BOXES`), the ball's cube, the ice glint, the muzzle flash, the tracer, the drops' orbs and the 16-pixel alert and search marks (`mark_alert`, `mark_search`); e01tomes' books, their takes and the bound's ring (`TOME_CLIPS`), the three tome tiles and the shield's liquid (`hud_liquid_shield`) |
 | `polish_art.py` | Hearts (which the HUD's bars replaced), burning-ball flames, explosion shock ring, iron block and scraps with frost, snowflakes, ice shards and cold rings |
 | `sfx.py` | Synthesized sound effects, the shell's menu sounds and game over's sting, the music loops and the areas' six ambience loops (WAV); e01tomes' three pickups and the bound |
@@ -167,7 +167,9 @@ pit's lining (`pit_rim_*`, `pit_wall_<kind>_*` drawn by `PIT_KINDS`' weights,
 `pit_floor_*`). Wet and mine rock take one of 16 masks by their open sides (up
 1, right 2, down 4, left 8) and four variants each, `wet_rock_<mask>_<v>` and
 `mine_rock_<mask>_<v>`; basalt takes tops, undersides, cliffs and sixteen fill
-variants. In the mine, a cell under cover on an open face, or the cell behind
+variants (e01hollow: columns of three or four widths a variant, eight plain,
+three with cooled flow lines, one cooled to black glass, an ember crack, an
+ember nodule, gas holes and ash in the joints, `terrain.BASALT_KINDS`). In the mine, a cell under cover on an open face, or the cell behind
 one, is iron cladding, `iron_clad_<mask>_<v>`, never under open air; those
 cells become the `iron` layer's boxes. Where two families meet left to right,
 `level.BORDER_PAIRS` draws the left cell as `border_<pair>`, or
@@ -203,10 +205,11 @@ step darker, `far_boulder_0`, `far_boulder_1`, `far_rubble` and the lantern's
 speck, `far_lantern`) take the same tint (`scenery.FAR_PROPS`). The far mist,
 `far_mist_<band>_big_<row>_<col>`, cuts `backdrops.FAR_MISTS`' bands into
 tiles for the decorations layer, over the far walls and under the terrain. The
-lava's heat haze (`haze`, `haze_small`) is the plume in the palette's warm
-translucents (`э` to `Д`), and the river darkens below its first rows
-(`river_dark_1`, `river_dark_2`). The rising mist is animated
-(`scenery.RISING`): the falls' `plume`, drawn at six phases of one loop,
+river darkens below its first rows (`river_dark_1`, `river_dark_2`). The
+rising mist is animated (`scenery.RISING`): the falls' `plume` and, since
+e01hollow, the lava's heat (`haze` over the lake, `haze_small` over the
+shelf's lava), thin curling wisps in the palette's warm translucents (`э` to
+`Б`), thickest over the surface, each drawn at six phases of one loop,
 150 ms a frame, each tile of its cut its own clip (`<name>_big_<row>_<col>`,
 frames `_0` to `_5`). The ravine's pool runs out against fallen stones at its
 east end, `pool_shore`: four frames of 3 × 2 tiles, each tile with art a clip
@@ -436,7 +439,7 @@ the river, the second pier top (`arcade_pier_top_1`) taking the first's part; a 
 has a capital or pier top beside it, an arch top its springing under it and
 a keystone both arch tops beside it, a gap strip's pieces (`arcade_gap_*`)
 taking the parts they replace; a parapet stands as a `ground` prop does; a
-background structure over terrain (the cave mouth) fills its bottom row to
+background structure over terrain (the cave mouth, the hollow's deep recesses, pillars and wall) fills its bottom row to
 its tile's foot; any other decoration fails as `unjudged`.
 
 `SLAB_COLLIDERS` and `DECK_DEPTH` derive from the art's opaque bounds. Current
@@ -1129,19 +1132,49 @@ and the sounds' lengths, volumes and loops.
 
 ## The hollow
 
-e01hollow's families are placeholders until its hollow asset step draws them, each
-made from today's art at the contract's size, frames and cap, never drawn. In
-`scenery.py`, beside the lavafall's clip: `geyser_vent` (64 × 32, lit), the ember
-pool's lower half, and `geyser_vent_choked` the same darkened to the nearest palette
-colours (`darkened`); `geyser_sputter_0`–`_3` (64 pixels, unlit), the lavafall's four
-frames, and `geyser_plume_0`–`_5` (64 × 176, unlit), them stacked to the plume's
-height and cycled. In `actors.py`, `build_stones` (lit): `stone_small_<i>` and
-`stone_medium_<i>` (32 pixels) and `stone_large_<i>` (64), the goblin's rock's two
-turns stretched nearest-neighbour over each size's body box (`STONE_BOXES`), its
-bottom on the box's. `generate.particle_configs`: `geyser_embers`, the fire trail's
-under a cap of 16, and `geyser_burst`, the blast's embers as a burst of 24. `sfx.py`'s
-`recut` crops or cycles a one-shot: `geyser_sputter` (0.6 s of `fuse_hiss`),
-`geyser_erupt` (0.8 s of `flame_start`) and `stone_knock` (0.3 s of `iron_thud`).
-`test_generate.py`'s `HollowContractTests` holds the generated files to the contract
-the game reads: each sprite's size and count, each stone's lowest opaque row on its
-box's bottom (31, 31, 63), the particles' caps and the sounds' lengths and volumes.
+e01hollow's hollow, drawn in its second asset step. In `scenery.py`, beside the
+lavafall's clip: `geyser_vent` (64 × 32, lit), a low dome of cooled basalt crazed
+by long cracks, a collar of black glaze round its crater, the crater's far wall
+lit from below by the throat's slit of glow (`vent_throat`), the cracks hot near
+the collar; `geyser_vent_choked` the same under a crust of grey-white rime, the
+cracks cold (`vent_rime`). `geyser_sputter_0`–`_3` (64 pixels, unlit) are licks of
+flame and puffs of smoke rising higher each frame, and `geyser_plume_0`–`_5` (64 ×
+176, unlit) the eruption: a column of flame from noise that climbs with the frame
+(`flame`), white-yellow at its core, red and smoky at its edges, embers flung out
+(`embers`), bursting up in its first frame and guttering in its last; each frame's
+flame keeps its root behind the vent's near lip (`near_lip`). The lavafall is 23
+px wide with crust plates on its edges, glowing where they part
+(`lavafall_frame`), out of a wider `fissure`, and `lava_splash_0`–`_3` (lit) is a
+looping crown and spatter at its foot in the basin. The small lava pools are
+clips (`ember_pool_<i>_<f>`, `EMBER_POOLS`, four frames at 180 ms): lava in a
+lip of cooled basalt, its veins drifting, crust rafts on it, a bubble
+swelling and bursting; the fire crystals glow from within, their cores in the
+emissive oranges. The hollow's rubble, standing props:
+`basalt_rubble_0`–`_2` and `obsidian_rubble`, chunks of the stones' material
+(`chunk`, `heap`), `scree_left` and `scree_right` heaped against a wall on that
+side, and `fallen_slab`. In `actors.py`, `stone(size, look)` (lit): `stone_small_<i>`
+and `stone_medium_<i>` (32 pixels) and `stone_large_<i>` (64), look 0 a piece of a
+basalt column lying on its side, its hexagonal end showing, look 1 a slab of a
+flow's crust, ropy on top with a glassy rind, each filling its body box
+(`STONE_BOXES`), its bottom on the box's. In `backdrops.py`: the cave's back,
+basalt columns receding (`cave_back`), its ember seam in one variant; the mouth
+(`cave_mouth`), the hollow's back in shadow behind a jamb and lintel of
+rough-dressed wet stone (`mouth_block`) with roots and moss from the ravine's
+side; two deep recesses (`cave_deep`), ridges of rock against a far glow of
+embers; and its pillars (`cave_pillar`, `PILLARS`), each drawn whole from the
+roof's lowest row to the floor, three tiles wide, fluted rock flaring unevenly
+into the roof and the floor, its shadow on the back, the one over the lake lit
+from below by the lava; all placed as decorations, the pillars over
+`level.py`'s pillar columns and a plain stretch of back (`cave_wall`) where the
+ember tunnel breaks one, so `cave_back_pillar_<n>` (a pillar's shaft) shows
+nowhere today. The roof's stalactites take eight shapes (`STALACTITES`): a
+point with lesser ones, needles, a stub, a curtain, a spear, one snapped off, a
+forked pair and nubs, and the back's stalactite tiles five to seven points of
+several shapes. `generate.particle_configs`: `geyser_embers`,
+embers spat from the mouth that arc and fall back (cap 16), and `geyser_burst`, a
+burst of 24 flung up and out. `sfx.py`: `geyser_sputter` (0.6 s, a hissing gurgle
+with pops), `geyser_erupt` (0.95 s, a whoosh into a roar that drops off) and
+`stone_knock` (0.26 s, a dull stone thud). `test_generate.py`'s
+`HollowContractTests` holds the generated files to the contract the game reads:
+each sprite's size and count, each stone's lowest opaque row on its box's bottom
+(31, 31, 63), the particles' caps and the sounds' lengths and volumes.

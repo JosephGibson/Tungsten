@@ -149,6 +149,29 @@ def packed_stones(inside, symbols, size=5, seed='stones', mortar=None):
     return colors
 
 
+def fbm(x, y, seed, octaves=3, _lattice={}):
+    """Smooth value noise in [0, 1) at (`x`, `y`), `octaves` of it summed at
+    doubling frequencies and halving weights (e01hollow): a flame's
+    tongues, a crater's glow, rock's soft masses."""
+    def corner(o, i, j):
+        key = (seed, o, i, j)
+        if key not in _lattice:
+            _lattice[key] = unit('lattice', seed, o, i, j)
+        return _lattice[key]
+
+    total = norm = 0.0
+    for o in range(octaves):
+        u, v = x * 2 ** o, y * 2 ** o
+        i, j = math.floor(u), math.floor(v)
+        fx, fy = u - i, v - j
+        sx, sy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+        top = corner(o, i, j) + (corner(o, i + 1, j) - corner(o, i, j)) * sx
+        low = corner(o, i, j + 1) + (corner(o, i + 1, j + 1) - corner(o, i, j + 1)) * sx
+        total += (top + (low - top) * sy) / 2 ** o
+        norm += 1 / 2 ** o
+    return total / norm
+
+
 def compose(layers):
     """Paint parts back to front; each part rims what it overlaps."""
     canvas = {}

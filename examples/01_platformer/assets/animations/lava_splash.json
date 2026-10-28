@@ -1,0 +1,21 @@
+{
+  "frames": [
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lava_splash_0"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lava_splash_1"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lava_splash_2"
+    },
+    {
+      "duration_ms": 100,
+      "sprite": "ex10_lava_splash_3"
+    }
+  ],
+  "looping": true
+}

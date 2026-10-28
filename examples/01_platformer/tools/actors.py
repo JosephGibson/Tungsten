@@ -18,7 +18,7 @@ from PIL import Image
 
 from art import PALETTE
 from pixels import (
-    BAYER, NEIGHBOURS, Part, add, compose, despeckle, grade, outline, point, shade, smoothstep,
+    BAYER, NEIGHBOURS, Part, add, compose, despeckle, grade, outline, point, ramp, shade, smoothstep,
     to_image, unit,
 )
 
@@ -3087,15 +3087,122 @@ STONE_BOXES = {'small': (32, (16, 25), (9, 7)), 'medium': (32, (16, 22), (13, 10
                'large': (64, (32, 49), (20, 15))}
 
 
+# The stones' basalt, dark to light, and each look's planes in its body
+# box's unit square: points, a name and how lit each is (0 dark to 1 lit
+# from the upper left). A piece of a basalt column lying on its side, its
+# hexagonal end to the west; a slab of a flow's crust, ropy on top.
+STONE_RAMP = 'ενγβαξδ'
+STONE_LOOKS = (
+    (((0.2, 0.04), (0.88, 0.0), (1.0, 0.2), (0.4, 0.22), 'top', 0.92),
+     ((0.4, 0.22), (1.0, 0.2), (0.96, 0.76), (0.4, 0.78), 'side', 0.53),
+     ((0.4, 0.78), (0.96, 0.76), (0.84, 1.0), (0.2, 1.0), 'under', 0.2),
+     ((0.2, 0.04), (0.4, 0.22), (0.4, 0.78), (0.2, 1.0), (0.0, 0.76), (0.0, 0.26), 'end', 0.79)),
+    (((0.04, 0.62), (0.24, 0.2), (0.46, 0.0), (0.58, 0.34), (0.32, 0.62), 'top', 0.9),
+     ((0.46, 0.0), (0.74, 0.1), (0.96, 0.46), (0.58, 0.34), 'right', 0.52),
+     ((0.0, 1.0), (0.04, 0.62), (0.32, 0.62), (0.42, 1.0), 'left', 0.62),
+     ((0.32, 0.62), (0.58, 0.34), (0.96, 0.46), (1.0, 1.0), (0.42, 1.0), 'front', 0.32)),
+)
+
+
+def stone(size, look):
+    """Stone `look` (0 or 1) of `size` (e01hollow): rubble of the hollow's
+    basalt, angular, its planes lit by how they face the upper left and
+    crisp at their ridges, filling its body box (`STONE_BOXES`) with its
+    lowest opaque row the box's bottom. Look 0 is a piece of a column, its
+    hexagon's rim lit and cooling cracks across its end; look 1 a slab of a
+    flow's crust, ropy on its top, black glass along its crest."""
+    side, (cx, cy), (hx, hy) = STONE_BOXES[size]
+    left, top = cx - hx, cy - hy
+    w, h = 2 * hx - 1, 2 * hy - 1
+    seed = (size, look)
+
+    def at(u, v):
+        ju = (unit('ju', seed, u, v) - 0.5) * 0.06 if 0 < u < 1 else 0
+        jv = (unit('jv', seed, u, v) - 0.5) * 0.06 if 0 < v < 1 else 0
+        return left + (u + ju) * w, top + (v + jv) * h
+
+    c, owner = {}, {}
+    for *points, name, light in STONE_LOOKS[look]:
+        plane = Part((side, side))
+        plane.polygon([at(u, v) for u, v in points])
+        for (x, y) in plane.pixels():
+            owner[(x, y)] = name
+            grain = (unit('grain', seed, x // 2, y // 2) - 0.5) * 0.1
+            c[(x, y)] = ramp(light + grain - 0.06 * (y - top) / max(1, h), STONE_RAMP, x, y, 0.08)
+    # Ridges between the planes, lit along the upper plane's edge.
+    for (x, y), name in owner.items():
+        below, right = owner.get((x, y + 1)), owner.get((x + 1, y))
+        if below and below != name:
+            if below in ('under', 'front', 'left'):
+                c[(x, y + 1)] = 'ν'
+            if name in ('top', 'end'):
+                c[(x, y)] = 'ξ'
+        if right and right != name and name in ('end', 'left', 'top'):
+            c[(x, y)] = 'α' if name != 'left' else 'γ'
+    if look == 0:
+        # The column's end: its hexagon's upper rim lit, its lower dark,
+        # cooling cracks from its middle to three corners; a cross-joint.
+        end = [p for p, n in owner.items() if n == 'end']
+        for (x, y) in end:
+            if owner.get((x, y - 1)) != 'end' or owner.get((x - 1, y)) != 'end':
+                c[(x, y)] = 'δ' if owner.get((x, y - 1)) != 'end' else 'ξ'
+            elif owner.get((x, y + 1)) != 'end' or owner.get((x + 1, y)) != 'end':
+                c[(x, y)] = 'ν'
+        ex = sum(x for x, _ in end) / len(end)
+        ey = sum(y for _, y in end) / len(end)
+        for u, v in ((0.2, 0.04), (0.0, 0.76), (0.4, 0.78)):
+            tx, ty = at(u, v)
+            steps = max(2, round(math.hypot(tx - ex, ty - ey) * 0.75))
+            for d in range(steps):
+                p = (round(ex + (tx - ex) * d / steps), round(ey + (ty - ey) * d / steps))
+                if owner.get(p) == 'end':
+                    c[p] = 'γ'
+        jx = round(at(0.72, 0.5)[0])
+        for (x, y), name in owner.items():
+            if x == jx and name in ('side', 'top', 'under'):
+                c[(x, y)] = 'ν' if name != 'top' else 'β'
+    else:
+        # A slab of a flow's crust: ropy wrinkles across its top plane, a
+        # rind of black glass along its crest.
+        for (x, y), name in owner.items():
+            if name != 'top':
+                continue
+            u, v = (x - left) / max(1, w), (y - top) / max(1, h)
+            rope = math.sin((u * 2.2 + v * 3.4) * math.pi * (2.2 if size != 'small' else 1.4)
+                            + 0.6 * math.sin(v * 9 + look))
+            if rope > 0.72:
+                c[(x, y)] = 'β'
+            elif rope < -0.85:
+                c[(x, y)] = 'δ'
+        for (x, y), name in owner.items():
+            if name in ('top', 'right') and owner.get((x, y - 1)) is None:
+                c[(x, y)] = '2'
+                if owner.get((x, y + 1)) == name:
+                    c[(x, y + 1)] = 'ξ' if name == 'top' else 'α'
+        c[min((p for p, n in owner.items() if n == 'top'), key=lambda p: (p[1], p[0]))] = 'π'
+    # Gas holes, dark with a lit lower lip.
+    for k in range(2 + (size == 'large') * 4):
+        x = round(left + 2 + unit('ves', seed, k) * (w - 4))
+        y = round(top + 2 + unit('vesy', seed, k) * (h - 4))
+        if owner.get((x, y)) not in (None, 'end') and (x, y + 1) in owner and c[(x, y)] != '2':
+            c[(x, y)] = 'ε'
+            if c[(x, y + 1)] in 'βγ':
+                c[(x, y + 1)] = 'α'
+    canvas = outline(c, 'o', (side, side))
+    # Its own bottom row its lowest: no outline under its foot.
+    bottom = top + 2 * hy - 1
+    for p in [p for p in canvas if p[1] > bottom]:
+        del canvas[p]
+    for x in range(side):
+        if canvas.get((x, bottom)) not in (None, 'o') and (x, bottom - 1) in canvas:
+            canvas[(x, bottom)] = 'θ'
+    return to_image(canvas, (side, side))
+
+
 def build_stones(images, lit):
-    """e01hollow's rubble stones, two looks a size, lit as the crates are:
-    placeholders until its asset step draws them, the goblin's rock's two
-    turns stretched nearest-neighbour over each size's body box."""
-    for size, (side, (cx, cy), (hx, hy)) in STONE_BOXES.items():
+    """e01hollow's rubble stones, two looks a size (`stone`), lit as the
+    crates are."""
+    for size in STONE_BOXES:
         for i in range(2):
-            rock = goblin_rock(i)
-            body = rock.crop(rock.getbbox()).resize((2 * hx, 2 * hy), Image.NEAREST)
-            im = Image.new('RGBA', (side, side))
-            im.alpha_composite(body, (cx - hx, cy - hy))
-            images[f'stone_{size}_{i}'] = im
+            images[f'stone_{size}_{i}'] = stone(size, i)
             lit.add(f'stone_{size}_{i}')
