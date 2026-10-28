@@ -1,8 +1,8 @@
 # ARPG paper design
 
-A gameplay framework for action RPGs, designed on paper by the [roadmap redo](roadmap-redo.md)'s brief ([§7.3](roadmap-redo.md#73-arpg-paper-design-719), step 7.19, `D-218`): skills whose properties tag-scoped modifiers change, equipment from procedurally generated items on the same modifiers, and one rule set for players and enemies. It designs systems, not a game; every name and example here is original. Written against the API snapshots at `2f30d65` (`api/`, unchanged since) and the kit's source at `042bcab`.
+A gameplay framework for action RPGs, designed on paper by the [roadmap redo](roadmap-redo.md)'s brief ([§7.3](roadmap-redo.md#73-arpg-paper-design-719), step 7.19, `D-218`): skills whose properties tag-scoped modifiers change, equipment from procedurally generated items on the same modifiers, and one rule set for players and enemies. It designs systems, not a game; every name and example here is original. Written against the API snapshots at `2f30d65`, rechecked at `3bc28c7` (`qa6`'s refresh changed no cited span), and the kit's source at `042bcab`.
 
-- **status:** in progress
+- **status:** draft
 - **goal:** Find what an action RPG needs that the engine and kit lack, and design the framework that fills it in the kit as opt-in plugins in its domains (Q19), as register rows the owner triages to 7.10, 8.1, 8.2 and 8.7 before 7.7 plans Phase 7.
 - **non-goals:**
   - Code, and edits to any other file but `ROADMAP.md`'s `arpg-design` line.
@@ -13,8 +13,8 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
 - **ordered steps:**
   1. Read the brief, the kit's stat, damage, ability, projectile and loot code and the API snapshots; targeted research on the mechanics (§2). Done.
   2. The design (§3–§10), the page with numbers, weekly tasks and stress numbers (§11–§13), the build sheet and register (§14–§15), the scope by step (§16), trade-offs and questions (§17–§18). Done.
-  3. A fresh-context verifier on every citation (§19).
-  4. One `/critique` round at xhigh on §5 and §6, applying what holds (§19).
+  3. A fresh-context verifier on every citation (§19). Done.
+  4. One `/critique` round at xhigh on §5 and §6, applying what holds (§19). Done.
   5. The owner's triage of §15's rows and §18's questions.
   6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows.
 - **done-when:**
@@ -28,18 +28,18 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
 - The kit already resolves stats as `(base + Σadd) × (1 + Σpct) × Πmul`, flat, increased and more (`crates/tungsten-kit/src/foundation/stats.rs:96`). What an ARPG needs on top is where a modifier applies (scopes), what a skill reads (a skill sheet snapshotted onto what it spawns), what a hit carries (context tags, crit, conversion with history), what items hold (rolled lines) and where those come from (supports, passives, affixes).
 - The design keeps one stat and damage pipeline for every genre: the pieces that change shapes 7.10 builds go into `foundation`, `intent` and `damage`; projectile behaviours into `overlap` with 8.2; item instances with 8.1's items; supports, passives and affix generation into a domain of their own, `build` (Q19, PA-Q1).
 - Players and monsters share every rule; they differ only in the sources they carry (§8). 01's player-only crit, halved blasts on the player and enemy-only difficulty all become data.
-- The build sheet holds 33 systems: 2 data only, 7 game Rust (about 830 lines), 24 gaps (about 6,210 lines where a game could write them today). The register holds 22 rows: 11 into 7.10, 2 into 8.1, 3 into 8.2 and 6 into 8.7.
-- Largest finds: hits carry no context beyond damage types, so no modifier can be scoped to a skill kind (PA-1, PA-2); conversion runs in the pipeline after any scaling would and keeps no history (PA-6); a spawned payload takes none of its user's values (PA-2); nothing gives a status its damage from the hit that applied it (PA-8).
+- The build sheet holds 33 systems: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lines where a game could write them today). The register holds 22 rows: 11 into 7.10, 2 into 8.1, 3 into 8.2 and 6 into 8.7.
+- Largest finds: hits carry no context beyond damage types, so no modifier can be scoped to a skill kind (PA-1, PA-2); conversion runs in the pipeline after any scaling would and keeps no history (PA-6); a spawned payload takes none of its user's values (PA-2); a status's damage follows a hit only through an ailment rung's fill over the target's threshold, after resistances, and never through the user's lines (PA-8).
 
 ## 1. Assumptions
 
 Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows.
 
-- **§5.2's statuses and Q17's merge.** Effects become statuses with intensity, stacking, granted tags and stat changes; this design's lines (§4.1) are what a status's stat changes become, and a status's lines scale with its intensity through `curves`.
+- **The redo's §5.2 statuses and Q17's merge.** Effects become statuses with intensity, stacking, granted tags and stat changes; this design's lines (§4.1) are what a status's stat changes become, and a status's lines scale with its intensity through `curves`.
 - **P8-3's equipment as statuses.** An equipped item applies a status whose lines are the item's rolled global lines (§4.6).
 - **The `Modifier` formula,** which no step changes: `add`, `pct`, `mul`, `override` (`comp: shape modifier: A change to a value`).
 - **P8-11's and P8-13's payloads:** bursts and a pattern payload with a count and an arc, which projectile count and repeats ride (§6.3).
-- **§5.5's saves** (components registered as saved, stable IDs, references remapped) and **P7-16's seeds**.
+- **The redo's §5.5 saves** (components registered as saved, stable IDs, references remapped) and **P7-16's seeds**.
 - **Q11's names:** the `chemistry` domain and `interactions` kind; cues keep `react`.
 
 ## 2. Research
@@ -92,7 +92,7 @@ One stat resolution and one damage pipeline serve every genre. A platformer that
 
 ### 3.3 Where each piece runs
 
-The kit's phases (`crates/tungsten-kit/src/foundation/phases.rs:49-54`): `Tick`, `Intent`, `Move`, `Overlap`, `Resolve`, `React`, then `Present`.
+The kit's phases (`crates/tungsten-kit/src/foundation/phases.rs:49-55`): `Tick`, `Intent`, `Move`, `Overlap`, `Resolve`, `React`, then `Present`.
 
 | Phase | ARPG work |
 | --- | --- |
@@ -124,7 +124,7 @@ A use resolves the skill's sheet once and copies what its deliveries need into a
 
 ### 3.6 Extension points
 
-Anything the line vocabulary and the fixed outputs cannot say calls a game's named Rust handler, as §5.2's chemistry does: a unique's or support's `handler: "name"` with parameters, registered by `ItemGenPlugin::with_handler` or `SupportsPlugin::with_handler`, called on a fixed hook (on use, on hit, on kill, on chain, on equip). The load refuses an unregistered name.
+Anything the line vocabulary and the fixed outputs cannot say calls a game's named Rust handler, as the redo's §5.2 chemistry does: a unique's or support's `handler: "name"` with parameters, registered by `ItemGenPlugin::with_handler` or `SupportsPlugin::with_handler`, called on a fixed hook (on use, on hit, on kill, on chain, on equip). The load refuses an unregistered name.
 
 ## 4. Data models
 
@@ -148,8 +148,8 @@ Today's `stat_modifier` (`comp: shape stat_modifier: A modifier on one of the ta
 
 - `with`: a tag filter over the read's context (§5.1). `while`: over the holder's own tags. `against`: over the other party's tags at the hit (the target's for an attacker's line, the attacker's for a defender's).
 - `per`: the modifier's value times `floor(value of a primary stat / step)`.
-- `added` is flat typed damage with a range; `convert`, `extra` and `pen` are what `conversion` and `penetration` hold today, as lines from any source.
-- `resist` is today's `resist_modifier` on a factor (`comp: field factors: damage tag → factor in [0, 1000]`), with an optional `floor`, the lowest the factor goes (§6.4).
+- `added` is flat typed damage with a range; `convert` and `pen` are what `conversion` and `penetration` hold today, as lines from any source; `extra` is new (AR12).
+- `resist` is today's `resist_modifier` (`comp: shape resist_modifier: A modifier on the target's resistance to one damage tag.`), with an optional `floor`, the lowest its factor goes (§6.4).
 - `grant` (tags) and `handler` complete the vocabulary. Nothing else; no expressions.
 
 ### 4.2 A skill
@@ -293,7 +293,7 @@ Per read, the applying lines combine as today's `modified` does (`crates/tungste
 - **Override:** unscoped overrides keep today's last-added rule; a scoped line may not override, and the load refuses one (§17, T9). A read finished at the hit applies the winning override after the deferred terms, as `modified` does, so a snapshot keeps it beside the sums (§5.4).
 - **Counts** (`projectile_count`, `pierce`, `chain`, `fork`, `repeats`) are floored after clamping.
 - **Damage:** a part's factor is `(1 + Σpct) × Πmul` over the lines that apply to that part, and a factor below 0 counts as 0. `added` lines give parts, not factors (§6.2, step 5).
-- **Penetration** sums per type and caps at 1. **Conversion** shares sum per `from`, and a total past 1 normalizes, as today (`comp: a share never converted again`). **Extra** shares sum per `(from, to)`.
+- **Penetration** sums per type and caps at 1. **Conversion** shares sum per part over every line whose `from` is the part's type or an ancestor of it, and a part's total past 1 normalizes, as today (`comp: one part's shares past 1 normalize`), in one pass (`comp: a share never converted again`). **Extra** shares sum per `(from, to)`.
 - **Order of sums.** Lines sum in `f64` in the order of their source keys, then their index, so a result never depends on equip or apply order.
 
 ### 5.4 When each line is read
@@ -322,7 +322,7 @@ An ability caches its sheet under the holder's line revision, the holder's tag r
 3. **Sheet stats.** Each stat of §4.3 but `damage` resolves at use by §5.3; counts floored.
 4. **Cost and time.** The cost is paid (`cost`); the wind-up is `use_time × windup / use_speed` and the recovery `use_time × (1 − windup) / use_speed`; nothing else of the user's fires until the recovery ends.
 5. **Parts.** For each damage type `T`: `[min, max]` = the skill's base for `T` (an attack: the weapon's local parts × `weapon_share`, plus the skill's own) + Σ `added` lines for `T` in `C`. A part of `[0, 0]` drops. Each part has its type and an empty history.
-6. **Conversion,** one pass: for each part, its type's conversion shares (the `from` that is its type or its nearest ancestor with lines; shares normalized at 1) make new parts of type `to` with history = the part's history ∪ its type; the remainder stays. No converted share converts again.
+6. **Conversion,** one pass: for each part, the conversion lines whose `from` is its type or an ancestor of it (§5.3, normalized at 1) make new parts of type `to` with history = the part's history ∪ its type; the remainder stays. No converted share converts again.
 7. **Extra damage,** one pass over the parts step 6 left: for each `extra` line `(from, to, pct)` and each part whose type or history carries `from`, a new part of `to`, `pct` × that part, with history = that part's history ∪ its type. Extra parts make no extra.
 8. **Merge** parts of equal type and equal history, in first-appearance order.
 9. **Use-time sums,** per part, per track: Σpct and Πmul of the `damage` lines that apply in `C` ∪ the track tag ∪ the part's type and history; and per part the penetration of its type, read in `C` ∪ `delivery.hit` ∪ its type and history, so a cold part converted from fire and a native one may penetrate differently.
@@ -339,7 +339,7 @@ An ability caches its sheet under the holder's line revision, the holder's tag r
 1. **Deferred lines** fold into each part's sums, with the target's tags for `against` and the state tags for `with`.
 2. **Range draw:** one draw `u` from the kit's stream (`kit: tungsten_kit::KitRng::unit`); each part's amount = `min + u × (max − min)`, times `(1 + Σpct) × Πmul`.
 3. **Crit draw:** a second draw; below `crit_chance` (clamped to 1), every part times `crit_multiplier`, and the request is a crit (`kit: tungsten_kit::DamageRequest::with_crit`). A request with no sheet takes the source's entity-level `crit_chance` and `crit_multiplier`, and draws only when the chance is above 0.
-4. **The kit's pipeline,** amended: parts; conversion only for a request not built from a sheet, as today's step 2, since a sheet's request was converted at use (§6.2); then per part, each of the target's matching factors as today (`kit: tungsten_kit::Resist::add_modifier`, `crates/tungsten-kit/src/damage/pipeline.rs:126-133`), with one step first: 0 stays immunity; a factor above 0 rises to its tag's floor; a factor below 1 then gains the part's penetration, capped at 1; the factors multiply the part. With no floor this is today's arithmetic, and the floor comes before penetration, so penetration works past a capped resistance.
+4. **The kit's pipeline,** amended: parts; conversion only for a request not built from a sheet, as today's step 2, since a sheet's request was converted at use (§6.2); then per part, each of the target's matching factors as today (`comp: component resist: Damage factors by damage tag: a hit part's matching factors multiply its amount, and a factor of 0 is immunity.`, `crates/tungsten-kit/src/damage/pipeline.rs:126-133`), with one step first: 0 stays immunity; a factor above 0 rises to its tag's floor; a factor below 1 then gains the part's penetration, capped at 1; the factors multiply the part. With no floor this is today's arithmetic, and the floor comes before penetration, so penetration works past a capped resistance.
 5. **Damage taken:** the target's `damage_taken` read in `C` ∪ the track and state tags ∪ the part's type and history, `against` the attacker's tags from the snapshot; the part × it.
 6. **Shield, health, events,** as today's steps 5–8 (`crates/tungsten-kit/src/damage/pipeline.rs:134-148`).
 7. **Statuses from the hit,** in the chemistry phase after the damage: each landed part is a stimulus of its type. A rule whose output is a damage-over-time status gives it, per second, a share of the part's rolled amount from step 2 *before* the factor and crit, times the snapshot's `delivery.dot` sums with their deferred lines, times the status's `status_effect`. That rate is fixed at the application (§17, T1).
@@ -434,7 +434,7 @@ A first hit on a chilled fen brute (fire factor 0.6, cold 0.75, no floors):
 
 The range runs 25.66–38.49 for the same hit. A chained hit is × 0.85: 27.26. Each projectile hits up to three times (one and two chains), so a cast that lands every hit deals 3 × (32.07 + 2 × 27.26) = 259.8, times the crit's expected factor 1 + 0.09 × 0.9 = 1.081: **280.8 a cast, 389.6 a second.**
 
-Worn with §9.2's unique ring, its 18 % of cold as extra fire adds a fire part of 1.8 with history `{damage.fire, damage.cold}`, which every line above but `frostcraft`-only exclusions reach: 1.8 × 2.61 × 0.88 × 0.70 = 2.89 more on that hit. Its `chain` +1 makes four hits a projectile.
+Worn with §9.2's unique ring, its 18 % of cold as extra fire adds a fire part of 1.8 with history `{damage.fire, damage.cold}`, which every line that reaches the cold part reaches too: 1.8 × 2.61 × 0.88 × 0.70 = 2.89 more on that hit. Its `chain` +1 makes four hits a projectile.
 
 `explain hit` for the cold part of that hit:
 
@@ -478,7 +478,7 @@ cold part  10.00   from fire 16–24 at u 0.50 → 20.00, converted 0.5 (support
 
 Saved as §4.6 shows. Its wearer gains `damage` pct 0.22 with fire, 0.26 with spells, `use_speed` 0.11 with spells, and a fire `resist` `add` −0.19.
 
-**The unique.** Cinderwake Band (`cinderwake_band`): base `iron_band`, level 30. Lines: `chain` add 1 with `skill.projectile`; `extra` cold → fire, pct 15–20 (rolled 18); `resist` cold `add` +0.10; handler `burning_wake` (on a chained hit, a 32 px burning patch for 1 s). Saved as `{ "uid": 9140, "unique": "cinderwake_band", "level": 51, "seed": "…", "values": [18] }`. Its handler is the extension point: the patch is a spawn the line vocabulary cannot say, and `explain` names it as the line `handler burning_wake`.
+**The unique.** Cinderwake Band (`cinderwake_band`): base `iron_band`, level 30. Lines: `chain` add 1 with `skill.projectile`; `extra` cold → fire, pct 15–20 (rolled 18); `resist` cold `add` +0.10 (a drawback: cold hits take 10 % more); handler `burning_wake` (on a chained hit, a 32 px burning patch for 1 s). Saved as `{ "uid": 9140, "unique": "cinderwake_band", "level": 51, "seed": "…", "values": [18] }`. Its handler is the extension point: the patch is a spawn the line vocabulary cannot say, and `explain` names it as the line `handler burning_wake`.
 
 ### 9.3 A monster on the same rules
 
@@ -516,11 +516,11 @@ A reference content set a small action RPG would ship, for sizing the kinds, the
 | Uniques | 30, of which 8 name a handler |
 | Rarities | Items: normal, magic (1–2 affixes, 1 + 1), rare (3–6, 3 + 3), unique; monsters: normal, magic (1), rare (2), unique |
 | Statuses | 18: 6 ailments, 6 buffs, 4 curses, 2 world (difficulty, area) |
-| Lines on the player | About 330: passives 120, items 55 global, statuses 30, base 20, world 5, and 100 skill-local across 8 linked skills; a sheet reads about 210 |
+| Lines on the player | About 330: passives 120, items 55 global, statuses 30, base 20, world 5, and 100 skill-local across 8 linked skills; a sheet reads about 240 (the 230 entity lines and its own 12) |
 | Lines on a monster | Normal 8, magic 14, rare 24, unique 40 |
 | Monsters | 120 in view, 300 awake in an area; packs of 6–12 with a rare in one of three |
 | Deliveries | 400 alive at a peak: the player's volleys, forks and chains, and monster projectiles |
-| Hits | 1,500 a second at a peak; 3,600 periodic ticks a second from 300 monsters with 3 DoTs each |
+| Hits | About 385 a second at a peak (§13's `arpg.volley_storm`); 3,600 periodic ticks a second from 300 monsters with 3 DoTs each |
 | Items on the ground | 150 labels in play, 400 after a boss |
 | Items saved | About 500: 60 inventory cells and 4 stash tabs of 144 |
 | Screens | Skills and links, passive tree, inventory and equipment, stash, item tooltip, `explain` overlay (development builds) |
@@ -530,11 +530,11 @@ A reference content set a small action RPG would ship, for sizing the kinds, the
 
 For 8.6's evaluation on a `tungsten new` copy. Each names the rows it runs into today.
 
-1. **A new skill.** "Add Hoarfrost Lance: a cold projectile spell, levels 1–20 by curve, pierce 2, chilling what it hits; tags spell, projectile, cold." Done when a scripted run casts it at levels 1 and 20, `explain hit` shows the curve's base and both pierces, and `tungsten check` passes. Runs into PA-1, PA-2, PA-8, PA-11.
-2. **A new support.** "Add Splinter: supports projectile skills, forks once, 20 % less damage, cost × 1.2, in the volley group." Done when, linked to Cinder Volley, a run shows forked hits tagged `delivery.forked`, and linked to a melee skill `explain` shows it inert with its reason. Runs into PA-12, PA-14.
-3. **A tiered affix.** "Add `kindling`: increased damage over time with fire, five tiers at item levels 1, 15, 30, 45 and 60, on wands, staves and rings only." Done when `check` passes and a test rolling 10,000 seeded rares at level 50 finds it on no amulet and within 10 % of its expected share. Runs into PA-16.
-4. **A unique.** "Add Cinderwake Band (§9.2)." Done when it rolls in its range, `explain item` shows each line's source, and the handler's patch spawns on a chained hit only. Runs into PA-6, PA-12, PA-17.
-5. **A balance bug.** "At level 40 the shock build out-damages the fire build threefold; find the lines responsible and bring the gap within 20 %, changing data only." Done when both builds' top skills' `explain` output is in the report with the change, and a scripted run on a training dummy measures both within 20 %. Runs into PA-20.
+1. **A new skill.** "Add Hoarfrost Lance: a cold projectile spell, levels 1–20 by curve, pierce 2, chilling what it hits; tags spell, projectile, cold." Done when a scripted run casts it at levels 1 and 20, `explain hit` shows the curve's base and both pierces, and `tungsten check` passes. Runs into PA-1, PA-2, PA-8, PA-11, PA-14, PA-22.
+2. **A new support.** "Add Splinter: supports projectile skills, forks once, 20 % less damage, cost × 1.2, in the volley group." Done when, linked to Cinder Volley, a run shows forked hits tagged `delivery.forked`, and linked to a melee skill `explain` shows it inert with its reason. Runs into PA-2, PA-15, PA-17, PA-22.
+3. **A tiered affix.** "Add `kindling`: increased damage over time with fire, five tiers at item levels 1, 15, 30, 45 and 60, on wands, staves and rings only." Done when `check` passes and a test rolling 10,000 seeded rares at level 50 finds it on no amulet and within 10 % of its expected share. Runs into PA-1, PA-8, PA-12, PA-19.
+4. **A unique.** "Add Cinderwake Band (§9.2)." Done when it rolls in its range, `explain item` shows each line's source, and the handler's patch spawns on a chained hit only. Runs into PA-6, PA-12, PA-15, PA-20, PA-22.
+5. **A balance bug.** "At level 40 the shock build out-damages the fire build threefold; find the lines responsible and bring the gap within 20 %, changing data only." Done when both builds' top skills' `explain` output is in the report with the change, and a scripted run on a training dummy measures both within 20 %. Runs into PA-11, PA-22.
 
 ## 13. Stress numbers
 
@@ -543,7 +543,7 @@ Rows for 9.1, each with its budget category and the surfaces it exercises.
 | Row | Workload | Category | Surfaces |
 | --- | --- | --- | --- |
 | `arpg.horde_sheets` | 300 monsters with 24 lines each; 40 statuses applied or ended a second, each staling a sheet; each monster uses a skill every 1.2 s (250 sheet resolutions a second) | Frame | Scoped resolution, the cache |
-| `arpg.volley_storm` | The player casting 3 times a second, 5 projectiles × fork 1 × chain 3 (up to 40 hits a cast), beside 120 monster projectiles: about 400 deliveries and 600 hits a second with deferred lines | Frame | Overlap, the pipeline's draws and deferred lines |
+| `arpg.volley_storm` | The player casting 3 times a second, 5 projectiles × fork 1 × chain 3 (5 × (1 + 2 × 4), up to 45 hits a cast, 135 a second), beside 300 awake monsters using a skill every 1.2 s (250 hits a second) and 120 monster projectiles: about 400 deliveries alive and 385 hits a second with deferred lines | Frame | Overlap, the pipeline's draws and deferred lines |
 | `arpg.dot_field` | 300 monsters with 3 damage-over-time statuses ticking each 0.25 s: 3,600 periodic requests a second | Frame | Statuses, the pipeline |
 | `arpg.equip_swap` | A weapon swap: the player's 330 lines change source, entity stats and 8 sheets resolve | Operation | Sources, resolution |
 | `arpg.boss_drop` | 40 items rolled at level 80 from 440 tier entries and 30 uniques | Operation | Item generation |
@@ -559,27 +559,27 @@ Verdicts as in the [paper designs](paper-designs.md): **data only** (prefabs and
 - **AR3 · Skills: tags, levels and sheets · gap (7.10); about 500 lines today.** An ability holds a trigger, a cost, a cooldown, charges, a target and payloads; no tags, level or base values. Evidence: `comp: shape ability: What an entity can do: fired by a trigger, at a cost, with a cooldown and charges, at a target.`, `kit: tungsten_kit::Ability::with_payload`; searched `none: skill|ability_?level`.
 - **AR4 · A payload carrying its user's values · gap: the snapshot (7.10); about 200 lines today.** The spawn payload adds only a `linear_motion` to the prefab (`crates/tungsten-kit/src/intent/ability.rs:1498`); its hitbox keeps its prefab's damage, and its hits name the user as source (`crates/tungsten-kit/src/overlap/grid.rs:471-473`), so only the user's `penetration` and `conversion` components reach them. Core lets a spawn from a source take a clone of the source's component or a value derived from it; a game registering the user's `Stats` that way gives every bolt the whole stat set, so `stats_apply` writes one `damage` value into every skill's bolts, scoped to no skill. Evidence: `comp: shape spawn_payload: A prefab spawned from the entity at its point.`, `comp: the hit's own penetration, before its source's`, `kit: tungsten_kit::Source::entity`, `core: tungsten_core::World::inherit_from_source`, `core: tungsten_core::World::derive_from_source`; searched `none: snapshot_?stat|caster_?stat|skill_?sheet`.
 - **AR5 · Area · gap (7.10); about 60 lines today.** `area` is declared and read by nothing (`crates/tungsten-kit/src/foundation/stats.rs:277`); a hit shape is a fixed circle or box. Evidence: `kit: tungsten_kit::Stats::AREA`, `comp: field circle: f32 (> 0, <= 16384) — the radius, in world pixels`; searched `none: area_?scale|radius_?mult`.
-- **AR6 · Projectile speed · gap (7.10); about 30 lines today.** `projectile_speed` is declared and read by nothing (`:284`); the spawn payload's speed is its own field. Evidence: `kit: tungsten_kit::Stats::PROJECTILE_SPEED`, `comp: field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction`.
+- **AR6 · Projectile speed · gap (7.10); about 30 lines today.** `projectile_speed` is declared and read by nothing (`:284`); the spawn payload's speed is its own field. Evidence: `kit: tungsten_kit::Stats::PROJECTILE_SPEED`, `comp: field speed: f32 (>= 0) = 0.0 — world pixels per second along the direction`; searched `none: speed_?(scale|mult)|stat_?speed`.
 - **AR7 · Projectile count · gap (8.2, P8-13); about 120 lines today.** A spawn payload spawns one prefab. Evidence: `comp: shape spawn_payload: A prefab spawned from the entity at its point.`; searched `none: projectile_?count|pellet|\bspread\b`.
 - **AR8 · Pierce from the sheet · game Rust (~40 lines: a resolved count written into a projectile the game spawns itself).** A projectile's `pierce` is a fixed field. Evidence: `comp: field pierce: u32 = 0 — targets it passes before the next ends it`, `kit: tungsten_kit::Projectile::with_pierce`.
-- **AR9 · Chain and fork · gap (8.2); about 350 lines today.** A projectile ends, pierces, bounces off walls or passes them; nothing turns it toward another target or splits it. Evidence: `comp: component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces, bounces or passes the wall.`, `kit: tungsten_kit::Projectile::bounces`; searched `none: \bfork|chain_?(count|range|left)|redirect`.
+- **AR9 · Chain and fork · gap (8.2); about 350 lines today.** A projectile ends, pierces, bounces off walls or passes them; nothing turns it toward a target it has not hit or splits it (`steering` seeks the nearest, hit or not). Evidence: `comp: component projectile: Ends at its hitbox's first hit, its first wall or its range, unless it pierces, bounces or passes the wall.`, `kit: tungsten_kit::Projectile::bounces`; searched `none: \bfork|chain_?(count|range|left)|redirect`.
 - **AR10 · Penetration · data only.** A hit's own `pen` and its source's `penetration`, summed and capped at 1 (`crates/tungsten-kit/src/damage/pipeline.rs:126-127`). Evidence: `comp: component penetration:`, `kit: tungsten_kit::DamageRequest::with_penetration`. Scoping it by skill is AR2's.
 - **AR11 · Conversion before scaling, with history · gap (7.10); about 200 lines today.** Conversion runs inside the pipeline (`crates/tungsten-kit/src/damage/pipeline.rs:123-125`), after anything a game could scale, and a converted part keeps only its new type. Evidence: `comp: component conversion:`, `comp: a share never converted again`, `kit: tungsten_kit::Conversion::with_rule`; searched `none: history`.
 - **AR12 · Extra damage · gap (7.10); about 100 lines today.** Evidence: searched `none: extra_?damage|gain(ed)?_?as`.
 - **AR13 · Crit chance and multiplier · gap (7.10); about 60 lines today, and none for kit-built hits.** A request carries a crit flag the kit never sets; 01 rolls and doubles in its own request (`examples/01_platformer/src/features/combat/mod.rs:198-199`), which kit hitboxes and projectiles cannot call. Evidence: `kit: tungsten_kit::DamageRequest::with_crit`, `kit: tungsten_kit::DamageRequest::is_crit`; searched `none: crit_?(chance|multi)|critical`.
 - **AR14 · Use time, attack and cast speed · gap (7.10, with P7-6); about 250 lines today.** An ability fires at once on its trigger; `cooldown_rate` counts cooldowns only. Evidence: `comp: field cooldown: f32 (>= 0) = 0.0 — seconds between uses, counted at the entity's`, `kit: tungsten_kit::Stats::COOLDOWN_RATE`; searched `none: cast_?(time|speed)|attack_?speed|wind_?up|use_?time`.
-- **AR15 · Repeats · gap (8.2, P8-11); about 150 lines today.** Evidence: `comp: shape ability_trigger:`; searched `none: \brepeats\b|repeat_?count|repeat_?(use|cast)`.
-- **AR16 · Damage over time from its source · gap (7.10); about 150 lines today.** An effect's payload is its own amount times the request's factor (`crates/tungsten-kit/src/damage/effects.rs:764-775`); its source is named for credit only. Evidence: `comp: the payload's hit, periodic: it passes the window and starts none`, `kit: tungsten_kit::EffectRequest::with_scale`.
-- **AR17 · A status's strength from its user · game Rust (~60 lines: the request's scale from a stat).** Effects carry modifiers per stack, tags and a curve at the request's scale; nothing sets the scale from the user's stats. Evidence: `comp: shape effect_scale: A curve at the request's scale, as a factor on what`, `kit: tungsten_kit::EffectRequest::with_scale`, `comp: field modifiers: list of shape stat_modifier = [] — on the target's stats, per stack, under the source`.
-- **AR18 · Damage taken by context · gap (7.10); about 80 lines today.** The pipeline goes from resistances to the shield and health (`crates/tungsten-kit/src/damage/pipeline.rs:128-139`). Evidence: searched `none: damage_?taken|taken_?mult|\bvulnerab`.
+- **AR15 · Repeats · gap (8.2, P8-11); about 150 lines today.** A use runs its payload list once; only an interval trigger fires again. Evidence: `comp: field payload: list of shape ability_payload — what a use does, in order; at least one`, `comp: field interval: f32 (> 0) — seconds of game time between uses, at most once a step`; searched `none: \brepeats\b|repeat_?count|repeat_?(use|cast)`.
+- **AR16 · Damage over time from its source · gap (7.10); about 150 lines today.** An effect's payload is its own amount times the request's factor (`crates/tungsten-kit/src/damage/effects.rs:764-775`); its source lends the periodic request its `penetration` and `conversion` (`crates/tungsten-kit/src/damage/pipeline.rs:754-765`), and the one link to a hit is an ailment rung's scale, the fill over the threshold (`crates/tungsten-kit/src/damage/ailments.rs:541-546`). Evidence: `comp: the payload's hit, periodic: it passes the window and starts none`, `kit: tungsten_kit::EffectRequest::with_scale`, `comp: shape ailment_rung:`; searched `none: dot_?(rate|source|snapshot)|damage_?over_?time|over_?time`.
+- **AR17 · A status's strength from its user · game Rust (~60 lines: the request's scale from a stat).** Effects carry modifiers per stack, tags and a curve at the request's scale; nothing sets the scale from the user's stats (the ailment feed sets it from the hit's fill). Evidence: `comp: shape effect_scale: A curve at the request's scale, as a factor on what`, `kit: tungsten_kit::EffectRequest::with_scale`, `comp: field modifiers: list of shape stat_modifier = [] — on the target's stats, per stack, under the source`.
+- **AR18 · Damage taken by context · gap (7.10); about 80 lines today.** The pipeline goes from resistances to the shield and health (`crates/tungsten-kit/src/damage/pipeline.rs:128-139`). An unscoped damage taken is data today, a `resist` factor on the root `damage` tag (up to 1000); the gap is its context, AR2's. Evidence: searched `none: damage_?taken|taken_?mult|\bvulnerab`.
 - **AR19 · A resistance floor · gap (7.10); about 40 lines today.** Factors lie in [0, 1000] with modifiers; nothing floors one per entity. Evidence: `comp: field factors: damage tag → factor in [0, 1000]`, `kit: tungsten_kit::Resist::add_modifier`; searched `none: resist_?(floor|cap|max)|max_?resist`.
-- **AR20 · Primary stats and `per` lines · gap (7.10); about 120 lines today.** Evidence: `kit: tungsten_kit::Stats::with_bounds`; searched `none: attribute`, `none: \bper_?stat`.
+- **AR20 · Primary stats and `per` lines · gap (7.10); about 120 lines today.** Stats read one another only in fixed places (a cost's `scale`, a restore's `max`); none orders stats or adds per point of another. Evidence: `comp: field scale: text = null — a stat whose value for the user multiplies the amount`, `kit: tungsten_kit::Stats::with_bounds`; searched `none: attribute`, `none: \bper_?stat`.
 - **AR21 · Supports · gap (8.7); about 400 lines today** (the kind, links, the applicability check, skill-local lines, the reasons). Evidence: `kit: tungsten_kit::Abilities::add`; searched `none: \bsupports?_?(gem|skill)|socket`.
 - **AR22 · A passive tree · gap (8.7); about 500 lines today** (the graph, allocation by points, connectivity on a refund, the sources). The kit's `level` draws offers at each level, an unconnected choice. Evidence: `comp: component level:`, `comp: kind offers:`; searched `none: passive|talent|skill_?tree`.
 - **AR23 · Item bases and instances · gap (8.1, P8-3); about 700 lines today.** Loot tables spawn prefabs. Evidence: `comp: kind loot_tables:`, `comp: shape weighted_entry: A prefab, or nothing, and its weight.`; searched `none: inventory|equip|item_?base`.
-- **AR24 · Local and global lines; the equipment status · gap (8.1); about 200 lines today.** An effect's modifiers come from its definition, and an item's rolled values are none: `EffectRequest::new` takes a `DataRef<Effect>`. Evidence: `kit: tungsten_kit::EffectRequest::new`, `kit: tungsten_kit::Effect::with_modifier`, `comp: shape effect: A change an entity carries: timed, infinite or instant, with a payload, modifiers and tags.`
+- **AR24 · Local and global lines; the equipment status · game Rust (~200 lines, on AR23).** A game can apply an item's rolled global lines today as an infinite effect built in code and passed inline; what no item provides is the instance itself (AR23) and local lines folded into its block. Evidence: `core: tungsten_core::assets::data::DataRef<T>::inline`, `kit: tungsten_kit::Effect::with_modifier`, `kit: tungsten_kit::Effect::with_resist`, `kit: tungsten_kit::EffectRequest::new`, `comp: shape effect: A change an entity carries: timed, infinite or instant, with a payload, modifiers and tags.`
 - **AR25 · Affix pools, tiers, item level and rarity · gap (8.7); about 600 lines today.** A weighted table draws a prefab or nothing. Evidence: `kit: tungsten_kit::WeightedTable::draw`; searched `none: affix|prefix|suffix|rarity|item_?level|\btier`.
-- **AR26 · Uniques and named handlers · gap (8.7); about 150 lines, and a handler's own.** Evidence: searched `none: unique_?item|named_?handler|rust_?handler`.
+- **AR26 · Uniques and named handlers · gap (8.7); about 150 lines, and a handler's own.** Hooks registered in code exist, none named from data. Evidence: `kit: tungsten_kit::StateMachinePlugin<S>::on_enter`; searched `none: unique_?item|named_?handler|rust_?handler`.
 - **AR27 · Rolls seeded and saved · game Rust (~80 lines: a seed from the kit's stream, a stream per item, the result in the save).** Evidence: `kit: tungsten_kit::KitRng::seeded`, `kit: tungsten_kit::KitRng::next_u32`, `core: tungsten_core::save::SaveSlots::save`.
 - **AR28 · Monster levels and rarity · gap: stat bases from curves by level, and rarity on AR25 (8.7); about 250 lines today.** Curves and a level exist; a `stats` base is a number. Evidence: `comp: kind curves:`, `kit: tungsten_kit::Curve::at`, `kit: tungsten_kit::Level::new`; searched `none: base_?curve|by_?level|level_?scal`.
 - **AR29 · World sources by tag · game Rust (~60 lines, as 01's `enemies::scale`, `examples/01_platformer/src/features/enemies/mod.rs:379-386`), with a gap: no cue answers a spawn, so each spawn path calls it.** Evidence: `kit: tungsten_kit::Stats::add_modifier`, `comp: shape cue_rule:`; searched `none: field spawned:|on_?spawn\b`.
@@ -588,7 +588,7 @@ Verdicts as in the [paper designs](paper-designs.md): **data only** (prefabs and
 - **AR32 · Saves of a build · game Rust (~300 lines today; 7.9's registered components later).** Items, allocations, links, levels and statuses with their sources, by hand. Evidence: `core: tungsten_core::save::SaveData::migrate`, `kit: tungsten_kit::Effects::set_source`.
 - **AR33 · A skill bar held down · game Rust (~40 lines; P7-6's held trigger).** An `action` trigger fires on the press. Evidence: `comp: field action: text — an intent slot, used when pressed`, `kit: tungsten_kit::Intent::held`.
 
-Verdicts: 2 data only, 7 game Rust (about 830 lines), 24 gaps (about 6,210 lines where a game could write them today), none blocked.
+Verdicts: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lines where a game could write them today), none blocked.
 
 ## 15. Register
 
@@ -603,11 +603,11 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | PA-5 | Crit | AR13 | 60 | A flag only; kit hits never crit | `crit_chance` and `crit_multiplier`, drawn in the resolve's order for every request whose source has a chance (§6.4) | damage | PA-1 | 7.10 `+` |
 | PA-6 | Conversion and extra | AR11, AR12 | 300 | Conversion after scaling, with no history; no extra damage | For a sheet, conversion and extra at use, before scaling, with history per part, merged by type and history (§6.2); other requests keep today's conversion step | damage | PA-2 | 7.10 `+` |
 | PA-7 | Defender's side | AR18, AR19 | 120 | No damage taken by context; no floor; penetration on periodic hits | `damage_taken` by context; a floor per factor's tag on `resist`, before penetration; no penetration on periodic requests (§6.4, §6.5) | damage | PA-1 | 7.10 `+` |
-| PA-8 | Statuses from their user | AR16, AR17 | 210 | A DoT's rate is its own; a status's strength ignores its user | A DoT's rate from the hit's part and the snapshot's DoT sums, fixed at application; `status_effect` as the status's scale; statuses applied with instance lines (P8-3 needs them too) | damage, chemistry | PA-2 | 7.10 `+` |
+| PA-8 | Statuses from their user | AR16, AR17 | 210 | A DoT's rate is its own; a status's strength ignores its user | A DoT's rate from the hit's part and the snapshot's DoT sums, fixed at application; `status_effect` as the status's scale; statuses applied with instance lines as data, which an inline effect does in code today (P8-3 needs them too) | damage, chemistry | PA-2 | 7.10 `+` |
 | PA-9 | Primary stats | AR20 | 120 | No ordered stats; no line per point of another | `primary` stats resolved first; `per` lines on them only | foundation | PA-1 | 7.10 `+` `defer` |
 | PA-10 | World sources | AR29 | 60 | A scaling per kind of entity is each game's spawn code | A resource of named sources with a tag filter and lines, applied at spawn and to the living, live; 01's difficulty on it | foundation | PA-1 | 7.10 `+` |
 | PA-11 | `explain` records | (AR31) | — | The trace keeps amounts, not lines | Why-records while the trace is on, shared with chemistry's `explain` | foundation | PA-1 | 7.10 `+` |
-| PA-12 | Items with rolled lines | AR23, AR24 | 900 | Items are prefabs; equipment bonuses come from definitions | 8.1's item instance holds base, level, rarity, seed and rolled lines; local lines fold into its block; the equipment status carries its global lines | items | PA-8 | 8.1 `+` |
+| PA-12 | Items with rolled lines | AR23, AR24 | 900 | Items are prefabs; an item's lines go on only by an effect built in code | 8.1's item instance holds base, level, rarity, seed and rolled lines; local lines fold into its block; the equipment status carries its global lines | items | PA-8 | 8.1 `+` |
 | PA-13 | Ground items | AR30 | 250 | Labels pushed by the game each frame | A ground item's label in its rarity's style, with the pickup | items | PA-12 | 8.1 `+` |
 | PA-14 | Count and pierce from the sheet | AR7, AR8 | 160 | One prefab per spawn; a fixed pierce | P8-13's pattern payload reads `projectile_count` and its arc; pierce from the snapshot | overlap | PA-2 | 8.2 |
 | PA-15 | Chain and fork | AR9 | 350 | Nothing redirects or splits a projectile | Pierce, then fork, then chain at each hit, a family's hit list and its bound of 64 (§6.3) | overlap | PA-14 | 8.2 `+` |
@@ -655,12 +655,12 @@ If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 
 - **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16).
 - **PA-Q3. Crit in the kit for every genre.** *Default: yes, as a source's stats, drawn only where a chance is above 0* (§6.4), so 01's crit becomes data at 7.13.
 - **PA-Q4. Saved items.** *Default: in full, with the seed* (T5).
-- **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets §5.3's admission rule. *Default: 7.10.*
+- **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets the redo's §5.3 admission rule. *Default: 7.10.*
 - **PA-Q6. Armour and evasion.** No row: a physical factor and `damage_taken` lines cover 1.0. *Default: a game writes them as status lines or a handler; 1.x if two games ask.*
 
 ## 19. Verification
 
-**Mechanical checks,** run in the session's scratchpad on each revision: every `core:`, `kit:`, `umb:`, `comp:` and `cli:` span searched for verbatim in its file, every `none:` pattern run over `api/*.txt` (93 distinct, none missing, each search 0 hits), every file and line reference inside its file (19), and `just repo-check`'s header, decision, link and fragment rules (0 errors). §9's arithmetic came from a script, then the checks below.
+**Mechanical checks,** run in the session's scratchpad on each revision: every `core:`, `kit:`, `umb:`, `comp:` and `cli:` span searched for verbatim in its file, every `none:` pattern run over `api/*.txt` (104 distinct after both rounds, none missing, each search 0 hits), every file and line reference inside its file (21), and `just repo-check`'s header, decision, link and fragment rules (0 errors). §9's arithmetic came from a script, then the checks below.
 
 **Critique,** one round at xhigh on §3.5, §4.1–§4.3, §5 and §6, sent as one extract with the kit's formula and pipeline order quoted for reference (artifact only, 467 s). Six findings, all held and applied:
 
@@ -673,8 +673,16 @@ If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 
 | 5 | Floor and penetration on the factors' product changed today's per-factor penetration | Per factor, as today, with the floor first (§6.4, step 4; PA-7) |
 | 6 | Pierce was counted up but never spent | Pierce while `pierced` is below the snapshot's `pierce` (§6.3) |
 
-**Fresh-context verifier:** running.
+**Fresh-context verifier,** one round on the whole document, run beside the critique on the draft. It confirmed 79 of 87 span uses (70 distinct; 6 weak, 2 unsupported), all 23 searches at 0 hits with about 70 other names tried in `api/*.txt` and the kit's and core's source, 18 of 20 file and line references, 28 of 33 verdicts, about 120 numbers in §9, §13–§16 and the digest, and 5 decision IDs. What changed:
+
+- **Verdicts.** AR24 is game Rust: an item's rolled lines go on today as an effect built in code and passed inline (`DataRef::inline`); the tallies became 8 game Rust (about 1,030 lines) and 23 gaps (about 6,010). AR16 and the digest now say that a status follows a hit through an ailment rung's fill, never through the user's lines, and that a periodic request borrows its source's penetration and conversion. AR18 narrows to context, since an unscoped damage taken is a `resist` factor on the root `damage` tag.
+- **Evidence.** Searches added to AR6 and AR16; spans that support the claim for AR15, AR20, §4.1's resist shape, §5.3's normalization and §6.4's factors; AR26 names the state machine's hooks as a precedent; AR9 allows for `steering`.
+- **Mechanisms.** Conversion keeps today's rule of every matching ancestor, summed per part (§5.3, §6.2); the penetration order it flagged was the critique's finding 5, already applied.
+- **Numbers.** §13's volley storm is 45 hits a cast, and its hits a second are derived (385), which §11 now cites; a sheet reads about 240 lines, not 210.
+- **Smaller.** §12's tasks name the right rows; the header's API commit; the phases' range; references to the redo's §5 qualified; §9.1's extra part and §9.2's drawback worded.
+
+These fixes were checked mechanically, not by a second round (the brief's stop).
 
 ## Session log
 
-- **2026-10-28.** Read §7.3 and the sections it names, the paper designs' register, the plans README, the API snapshots and the kit's stats, damage pipeline, effects, abilities, hit grid, phases and source code, and 01's combat and enemies. Researched the mechanics on public wikis and guides (§2). Found two `D-218` entries in `DECISIONS.md` (the ARPG genre and a `game.id` rule); the `qa6` session in the same tree renumbered its rule to `D-219` (`f139bef`), so `D-218` here is the ARPG's.
+- **2026-10-28.** Read §7.3 and the sections it names, the paper designs' register, the plans README, the API snapshots and the kit's stats, damage pipeline, effects, abilities, hit grid, phases and source code, and 01's combat and enemies. Researched the mechanics on public wikis and guides (§2). Found two `D-218` entries in `DECISIONS.md` (the ARPG genre and a `game.id` rule); the `qa6` session in the same tree renumbered its rule to `D-219` (`f139bef`), so `D-218` here is the ARPG's. Drafted with a span checker and an arithmetic script in the scratchpad; the critique (gpt-6-astra, xhigh, on an 18,776-character extract) and a fresh-context verifier ran in parallel on the draft, and their findings were applied in that order.

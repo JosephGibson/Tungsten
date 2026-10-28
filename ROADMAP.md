@@ -4,7 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `arpg-design`: the ARPG paper design (redo 7.19, §7.3), paper only, beside `qa6` and 7.1–7.5; in progress, writing `docs/plans/arpg-design.md`; 7.7 waits for it (`D-218`).
+- `arpg-design`: the ARPG paper design (redo 7.19) is written and verified ([plan](docs/plans/arpg-design.md)); the owner's triage of its 22 `PA-` rows and six questions is next, then 7.7 assigns them (`D-218`).
 
 ## Next
 
