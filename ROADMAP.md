@@ -4,7 +4,6 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `qa6`: the Phase 6 QA pass's correctness list as small tasks (redo Q10).
 - `arpg-design`: the ARPG paper design (redo 7.19, §7.3), paper only, beside `qa6` and 7.1–7.5; in progress, writing `docs/plans/arpg-design.md`; 7.7 waits for it (`D-218`).
 
 ## Next
