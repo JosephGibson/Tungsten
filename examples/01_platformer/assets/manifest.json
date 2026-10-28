@@ -603,6 +603,60 @@
     "ex10_torch_flicker": {
       "path": "animations/torch_flicker.json"
     },
+    "ex10_toxic_flask": {
+      "path": "animations/toxic_flask.json"
+    },
+    "ex10_toxic_flask_burst": {
+      "path": "animations/toxic_flask_burst.json"
+    },
+    "ex10_troll_armoured_idle": {
+      "path": "animations/troll_armoured_idle.json"
+    },
+    "ex10_troll_armoured_idle_left": {
+      "path": "animations/troll_armoured_idle_left.json"
+    },
+    "ex10_troll_armoured_pickup": {
+      "path": "animations/troll_armoured_pickup.json"
+    },
+    "ex10_troll_armoured_pickup_left": {
+      "path": "animations/troll_armoured_pickup_left.json"
+    },
+    "ex10_troll_armoured_slam": {
+      "path": "animations/troll_armoured_slam.json"
+    },
+    "ex10_troll_armoured_slam_left": {
+      "path": "animations/troll_armoured_slam_left.json"
+    },
+    "ex10_troll_armoured_swipe": {
+      "path": "animations/troll_armoured_swipe.json"
+    },
+    "ex10_troll_armoured_swipe_left": {
+      "path": "animations/troll_armoured_swipe_left.json"
+    },
+    "ex10_troll_armoured_swipe_windup": {
+      "path": "animations/troll_armoured_swipe_windup.json"
+    },
+    "ex10_troll_armoured_swipe_windup_left": {
+      "path": "animations/troll_armoured_swipe_windup_left.json"
+    },
+    "ex10_troll_armoured_throw": {
+      "path": "animations/troll_armoured_throw.json"
+    },
+    "ex10_troll_armoured_throw_left": {
+      "path": "animations/troll_armoured_throw_left.json"
+    },
+    "ex10_troll_armoured_walk": {
+      "path": "animations/troll_armoured_walk.json"
+    },
+    "ex10_troll_armoured_walk_left": {
+      "path": "animations/troll_armoured_walk_left.json"
+    },
+    "ex10_troll_armoured_windup": {
+      "path": "animations/troll_armoured_windup.json"
+    },
+    "ex10_troll_armoured_windup_left": {
+      "path": "animations/troll_armoured_windup_left.json"
+    },
     "ex10_troll_idle": {
       "path": "animations/troll_idle.json"
     },
@@ -1032,6 +1086,12 @@
     "ex10_collapse_embers": {
       "path": "particles/collapse_embers.json"
     },
+    "ex10_corrode_burst": {
+      "path": "particles/corrode_burst.json"
+    },
+    "ex10_corrode_fizz": {
+      "path": "particles/corrode_fizz.json"
+    },
     "ex10_crate_collapse": {
       "path": "particles/crate_collapse.json"
     },
@@ -1070,6 +1130,9 @@
     },
     "ex10_flame_wall_hit": {
       "path": "particles/flame_wall_hit.json"
+    },
+    "ex10_flask_splash": {
+      "path": "particles/flask_splash.json"
     },
     "ex10_frost_blast": {
       "path": "particles/frost_blast.json"
@@ -1160,6 +1223,9 @@
     },
     "ex10_plank_splinters": {
       "path": "particles/plank_splinters.json"
+    },
+    "ex10_poison_bubbles": {
+      "path": "particles/poison_bubbles.json"
     },
     "ex10_poof": {
       "path": "particles/poof.json"
@@ -2524,6 +2590,11 @@
       "path": "sounds/bound.wav",
       "volume": 0.4
     },
+    "ex10_corroded_sfx": {
+      "looping": false,
+      "path": "sounds/corroded.wav",
+      "volume": 0.5
+    },
     "ex10_crackle_sfx": {
       "looping": false,
       "path": "sounds/crackle.wav",
@@ -2633,6 +2704,16 @@
       "looping": false,
       "path": "sounds/flame_start.wav",
       "volume": 0.45
+    },
+    "ex10_flask_burst_sfx": {
+      "looping": false,
+      "path": "sounds/flask_burst.wav",
+      "volume": 0.5
+    },
+    "ex10_flask_throw_sfx": {
+      "looping": false,
+      "path": "sounds/flask_throw.wav",
+      "volume": 0.5
     },
     "ex10_force_push_sfx": {
       "looping": false,
@@ -2828,6 +2909,11 @@
       "looping": false,
       "path": "sounds/player_tick.wav",
       "volume": 0.3
+    },
+    "ex10_poisoned_sfx": {
+      "looping": false,
+      "path": "sounds/poisoned.wav",
+      "volume": 0.5
     },
     "ex10_ricochet_sfx": {
       "looping": false,
@@ -9771,9 +9857,17 @@
       "filter": "nearest",
       "path": "sprites/icon_tome_pact.png"
     },
+    "ex10_icon_toxic_flask": {
+      "filter": "nearest",
+      "path": "sprites/icon_toxic_flask.png"
+    },
     "ex10_icon_troll": {
       "filter": "nearest",
       "path": "sprites/icon_troll.png"
+    },
+    "ex10_icon_troll_armoured": {
+      "filter": "nearest",
+      "path": "sprites/icon_troll_armoured.png"
     },
     "ex10_icon_wisp": {
       "filter": "nearest",
@@ -14305,6 +14399,54 @@
       "filter": "nearest",
       "path": "sprites/status_ice_wisp_cracked.png"
     },
+    "ex10_status_poison_large_0": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_large_0.png"
+    },
+    "ex10_status_poison_large_1": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_large_1.png"
+    },
+    "ex10_status_poison_large_2": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_large_2.png"
+    },
+    "ex10_status_poison_large_3": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_large_3.png"
+    },
+    "ex10_status_poison_medium_0": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_medium_0.png"
+    },
+    "ex10_status_poison_medium_1": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_medium_1.png"
+    },
+    "ex10_status_poison_medium_2": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_medium_2.png"
+    },
+    "ex10_status_poison_medium_3": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_medium_3.png"
+    },
+    "ex10_status_poison_small_0": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_small_0.png"
+    },
+    "ex10_status_poison_small_1": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_small_1.png"
+    },
+    "ex10_status_poison_small_2": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_small_2.png"
+    },
+    "ex10_status_poison_small_3": {
+      "filter": "nearest",
+      "path": "sprites/status_poison_small_3.png"
+    },
     "ex10_stone_large_0": {
       "emissive_mask": "sprites/stone_large_0_e.png",
       "filter": "nearest",
@@ -14567,6 +14709,46 @@
       "normal_map": "sprites/tool_rack_n.png",
       "path": "sprites/tool_rack.png"
     },
+    "ex10_toxic_flask_0": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_0.png"
+    },
+    "ex10_toxic_flask_1": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_1.png"
+    },
+    "ex10_toxic_flask_2": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_2.png"
+    },
+    "ex10_toxic_flask_3": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_3.png"
+    },
+    "ex10_toxic_flask_burst_0": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_0.png"
+    },
+    "ex10_toxic_flask_burst_1": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_1.png"
+    },
+    "ex10_toxic_flask_burst_2": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_2.png"
+    },
+    "ex10_toxic_flask_burst_3": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_3.png"
+    },
+    "ex10_toxic_flask_burst_4": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_4.png"
+    },
+    "ex10_toxic_flask_burst_5": {
+      "filter": "nearest",
+      "path": "sprites/toxic_flask_burst_5.png"
+    },
     "ex10_tracer": {
       "filter": "nearest",
       "path": "sprites/tracer.png"
@@ -14582,6 +14764,238 @@
       "filter": "nearest",
       "normal_map": "sprites/trestle_big_1_0_n.png",
       "path": "sprites/trestle_big_1_0.png"
+    },
+    "ex10_troll_armoured_idle_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_0.png"
+    },
+    "ex10_troll_armoured_idle_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_0_left.png"
+    },
+    "ex10_troll_armoured_idle_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_1.png"
+    },
+    "ex10_troll_armoured_idle_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_1_left.png"
+    },
+    "ex10_troll_armoured_idle_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_2.png"
+    },
+    "ex10_troll_armoured_idle_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_2_left.png"
+    },
+    "ex10_troll_armoured_idle_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_3.png"
+    },
+    "ex10_troll_armoured_idle_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_idle_3_left.png"
+    },
+    "ex10_troll_armoured_pickup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_0.png"
+    },
+    "ex10_troll_armoured_pickup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_0_left.png"
+    },
+    "ex10_troll_armoured_pickup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_1.png"
+    },
+    "ex10_troll_armoured_pickup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_1_left.png"
+    },
+    "ex10_troll_armoured_pickup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_2.png"
+    },
+    "ex10_troll_armoured_pickup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_pickup_2_left.png"
+    },
+    "ex10_troll_armoured_slam_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_0.png"
+    },
+    "ex10_troll_armoured_slam_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_0_left.png"
+    },
+    "ex10_troll_armoured_slam_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_1.png"
+    },
+    "ex10_troll_armoured_slam_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_1_left.png"
+    },
+    "ex10_troll_armoured_slam_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_2.png"
+    },
+    "ex10_troll_armoured_slam_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_slam_2_left.png"
+    },
+    "ex10_troll_armoured_swipe_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_0.png"
+    },
+    "ex10_troll_armoured_swipe_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_0_left.png"
+    },
+    "ex10_troll_armoured_swipe_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_1.png"
+    },
+    "ex10_troll_armoured_swipe_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_1_left.png"
+    },
+    "ex10_troll_armoured_swipe_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_2.png"
+    },
+    "ex10_troll_armoured_swipe_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_2_left.png"
+    },
+    "ex10_troll_armoured_swipe_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_windup_0.png"
+    },
+    "ex10_troll_armoured_swipe_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_windup_0_left.png"
+    },
+    "ex10_troll_armoured_swipe_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_windup_1.png"
+    },
+    "ex10_troll_armoured_swipe_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_swipe_windup_1_left.png"
+    },
+    "ex10_troll_armoured_throw_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_0.png"
+    },
+    "ex10_troll_armoured_throw_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_0_left.png"
+    },
+    "ex10_troll_armoured_throw_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_1.png"
+    },
+    "ex10_troll_armoured_throw_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_1_left.png"
+    },
+    "ex10_troll_armoured_throw_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_2.png"
+    },
+    "ex10_troll_armoured_throw_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_throw_2_left.png"
+    },
+    "ex10_troll_armoured_walk_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_0.png"
+    },
+    "ex10_troll_armoured_walk_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_0_left.png"
+    },
+    "ex10_troll_armoured_walk_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_1.png"
+    },
+    "ex10_troll_armoured_walk_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_1_left.png"
+    },
+    "ex10_troll_armoured_walk_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_2.png"
+    },
+    "ex10_troll_armoured_walk_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_2_left.png"
+    },
+    "ex10_troll_armoured_walk_3": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_3.png"
+    },
+    "ex10_troll_armoured_walk_3_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_3_left.png"
+    },
+    "ex10_troll_armoured_walk_4": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_4.png"
+    },
+    "ex10_troll_armoured_walk_4_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_4_left.png"
+    },
+    "ex10_troll_armoured_walk_5": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_5.png"
+    },
+    "ex10_troll_armoured_walk_5_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_5_left.png"
+    },
+    "ex10_troll_armoured_walk_6": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_6.png"
+    },
+    "ex10_troll_armoured_walk_6_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_6_left.png"
+    },
+    "ex10_troll_armoured_walk_7": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_7.png"
+    },
+    "ex10_troll_armoured_walk_7_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_walk_7_left.png"
+    },
+    "ex10_troll_armoured_windup_0": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_0.png"
+    },
+    "ex10_troll_armoured_windup_0_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_0_left.png"
+    },
+    "ex10_troll_armoured_windup_1": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_1.png"
+    },
+    "ex10_troll_armoured_windup_1_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_1_left.png"
+    },
+    "ex10_troll_armoured_windup_2": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_2.png"
+    },
+    "ex10_troll_armoured_windup_2_left": {
+      "filter": "nearest",
+      "path": "sprites/troll_armoured_windup_2_left.png"
     },
     "ex10_troll_idle_0": {
       "filter": "nearest",

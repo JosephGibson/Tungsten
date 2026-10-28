@@ -8,6 +8,8 @@ tinted at extraction; each fades to transparent before its canvas edge.
 """
 import math
 
+from PIL import Image
+
 from art import EFFECT_SIZES, ELEMENT_SIZES, ICON_SIZES, PALETTE, STATUS_CLASSES, canvas
 from pixels import BAYER, NEIGHBOURS, Part, compose, dither, outline, shade, smoothstep, to_image, unit
 
@@ -209,6 +211,9 @@ ICON_ELEMENTS = {
     'pact': dict(frame=('ψ', 'Ω', 'Φ'), back=('θ', 'д', 'ь', 'Θ', 'M', 'L'), rim='Ъ', corners=('χ', 'B')),
     'bounding': dict(frame=('φ', 'χ', 'ψ'), back=('θ', 'х', 'И', 'Й', 'З', 'Ч'), rim='Я', corners=('Ψ', 'Ω')),
     'arcane': dict(frame=('J', 'A', 'У'), back=('θ', 'Ж', 'Δ', 'Ф', 'Λ', 'Э'), rim='Ы', corners=('Z', 'a')),
+    # e01flask: poison's green, lent from the foliage until its own
+    # symbols land.
+    'poison': dict(frame=('W', 'U', 'Q'), back=('θ', 'о', 'N', 'T', 'g', 'G'), rim='C'),
 }
 ICON_ELEMENT = {
     'icon_fire_missile': 'fire', 'icon_flamethrower': 'fire', 'icon_ice_spray': 'cold',
@@ -218,6 +223,7 @@ ICON_ELEMENT = {
     'icon_beetle': 'mana', 'icon_bat': 'mana', 'icon_troll': 'mana', 'icon_goblin': 'mana',
     'icon_crate': 'mana', 'icon_keg': 'mana',
     'icon_tome_pact': 'pact', 'icon_tome_bounding': 'bounding', 'icon_tome_arcane': 'arcane',
+    'icon_toxic_flask': 'poison', 'icon_troll_armoured': 'mana',
 }
 # The summons' ring, drawn in indigo, recoloured to mana's blue.
 SUMMON_RING = {'Ξ': 'З', 'Π': 'Й'}
@@ -641,6 +647,9 @@ ICON_ART = {
     'icon_tome_pact': lambda: tome_pact(0, outlined=False),
     'icon_tome_bounding': lambda: tome_bounding(0, outlined=False),
     'icon_tome_arcane': lambda: tome_arcane(0, outlined=False),
+    # e01flask's placeholders: the lightning's subject and the troll's.
+    'icon_toxic_flask': icon_lightning,
+    'icon_troll_armoured': icon_troll,
 }
 
 
@@ -1147,6 +1156,8 @@ def build_element_art(images):
         images[f'status_halo_{name}'] = status_halo(size)
         for frame in range(CRACKLE_FRAMES):
             images[f'status_crackle_{name}_{frame}'] = status_crackle(size, frame)
+            # e01flask's poison overlay, the crackle's frames until drawn.
+            images[f'status_poison_{name}_{frame}'] = images[f'status_crackle_{name}_{frame}'].copy()
     for kind in HURTBOXES:
         for suffix, cracked in (('', False), ('_cracked', True)):
             images[f'status_ice_{kind}{suffix}'] = ice_cube(
@@ -2512,6 +2523,23 @@ def build_foe_art(images):
             images[f'{name}_{f}'] = draw(f)
 
 
+# e01flask's effects: the toxic flask tumbling through its flight and its
+# burst, centred on the flask's point and the burst's; clips as `FOE_CLIPS`.
+FLASK_CLIPS = {
+    'toxic_flask': ((16, 16), 4, 60, True),
+    'toxic_flask_burst': ((96, 96), 6, 50, False),
+}
+
+
+def build_flask_art(images):
+    """The flask's frames and its burst's, unlit: the snowball's and its
+    burst's at twice the size, placeholders until the asset session."""
+    for f in range(FLASK_CLIPS['toxic_flask'][1]):
+        images[f'toxic_flask_{f}'] = snowball(f)
+    for f in range(FLASK_CLIPS['toxic_flask_burst'][1]):
+        images[f'toxic_flask_burst_{f}'] = snowball_burst(f).resize(FLASK_CLIPS['toxic_flask_burst'][0], Image.NEAREST)
+
+
 # e01sfx (V27): the ground strike's scorch, its bottom row's middle on the
 # landing; the char ramp black through soot to ash grey, and its ember in
 # the dim violet `Ѱ` that only it uses, an emissive one (`art.GLOW`).
@@ -2639,3 +2667,4 @@ def build_effects(images):
     build_spray_art(images)
     build_push_art(images)
     build_foe_art(images)
+    build_flask_art(images)

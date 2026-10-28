@@ -3063,6 +3063,12 @@ ENEMY_CLIPS = {
     'goblin_dash_windup': (goblin_dash_windup_frames, False),
     'goblin_dash': (goblin_dash_frames, True),
     'goblin_panic': (goblin_panic_frames, True),
+    # e01flask: the armoured troll's clips, the troll's frames until drawn.
+    **{f'troll_armoured_{clip}': (frames_for, looping) for clip, frames_for, looping in (
+        ('idle', troll_idle_frames, True), ('walk', troll_walk_frames, True),
+        ('windup', troll_windup_frames, False), ('slam', troll_slam_frames, False),
+        ('pickup', troll_pickup_frames, False), ('throw', troll_throw_frames, False),
+        ('swipe_windup', troll_swipe_windup_frames, False), ('swipe', troll_swipe_frames, False))},
 }
 def build_enemies(images, animations):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no

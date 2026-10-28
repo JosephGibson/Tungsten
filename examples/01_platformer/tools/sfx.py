@@ -2803,5 +2803,10 @@ def build_sounds():
         'geyser_sputter.wav': geyser_sputter(),
         'geyser_erupt.wav': geyser_erupt(),
         'stone_knock.wav': stone_knock(),
+        # e01flask's placeholders, until the asset session draws them.
+        'flask_throw.wav': toss(),
+        'flask_burst.wav': snowball_burst(),
+        'poisoned.wav': lava_sizzle(),
+        'corroded.wav': lava_chill(),
         **{name: make() for name, make in AMBIENCE.items()},
     }

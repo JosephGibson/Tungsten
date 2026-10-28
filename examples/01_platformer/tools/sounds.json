@@ -578,5 +578,25 @@
     "looping": false,
     "path": "sounds/stone_knock.wav",
     "volume": 0.5
+  },
+  "ex10_flask_throw_sfx": {
+    "looping": false,
+    "path": "sounds/flask_throw.wav",
+    "volume": 0.5
+  },
+  "ex10_flask_burst_sfx": {
+    "looping": false,
+    "path": "sounds/flask_burst.wav",
+    "volume": 0.5
+  },
+  "ex10_poisoned_sfx": {
+    "looping": false,
+    "path": "sounds/poisoned.wav",
+    "volume": 0.5
+  },
+  "ex10_corroded_sfx": {
+    "looping": false,
+    "path": "sounds/corroded.wav",
+    "volume": 0.5
   }
 }

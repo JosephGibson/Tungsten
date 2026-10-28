@@ -1,6 +1,6 @@
-# The toxic flask (e01flask) — draft
+# The toxic flask (e01flask)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Example 01 (p), from the owner's fourth playtest (V39–V43): an eleventh spell, a toxic flask lobbed at the cursor on an arc that bursts on what it meets into a poison splash; poison, a fifth damage type in green that only living things take, with a `poisoned` status the splash builds; armour as a mechanism behind an `armoured` tag, bullets bouncing off an armoured front; Corrosive, which corrodes an armoured target holding poisoned and shocked at once for good, its resistances and its ricochet gone; and an armoured troll, the bridge's troll, summonable as a variant.
 - **non-goals:** no kit, engine, shell or template change: kit data covers the type, both effects, the ladder and the resist overrides, and the splash is 01's own radial hit, K10's sixth hand-rolled user. No seventh enemy kind and no new map object, so no save ID moves. The iron's crush stays the beetle's. Nothing poisons the wizard. Poison does nothing past its damage and the paused regeneration: no spread, no reaction with props or the other elements. The beetle's resistances stay as tuned. No release, changelog line or decision entry ([operating rules](../operating-rules.md#releases)); §3.12's "landing decision amends `D-200`" becomes the design doc's rows, as e01quick2 changed `D-210`'s keg rule with none.
 - **files to touch:** each step's in §3; outside `examples/01_platformer/`, only this plan, `ROADMAP.md`, `DESIGN.md`, `docs/plans/1.0/example-01-design.md`, `docs/plans/1.0/example-01-feedback.md` and, for a follow-up, `docs/known-issues.md`.
@@ -231,6 +231,8 @@ Round 2: the same reviewer at xhigh with `--focus-file` naming round 1's changes
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| Baseline | 2026-10-28 | pass at `41a76b90` | `just level-check` → 34 tests OK (276 s); `cargo test -p example-01-platformer --locked` → 415 passed, 1 ignored | — |
+| 1 | 2026-10-28 | pass | `LEVEL` → `OK: 6141 owned outputs match`, 39 tests OK (280 s), `FlaskContractTests` 5/5; `cargo test -p example-01-platformer --locked` → 415 passed, 1 ignored; `git diff --quiet HEAD -- …/src …/tools/content` → exit 0. 108 new outputs (6,033 → 6,141), no existing sprite, clip, config or sound changed; `level.tmj`'s tile IDs renumbered. Placeholders: flask the snowball's frames, burst the snowball's at 2×, poison overlay the crackle's, icons the lightning's (in a `poison` style lent `W U Q` / `C`) and the troll's, troll_armoured the troll's 29 frames; sounds `toss`, `snowball_burst`, `lava_sizzle`, `lava_chill`; particle caps 24, 12, 6, 20 under the contract's 32, 16, 10, 24 | `tools/{art,effects,actors,generate,sfx,test_generate}.py`, `tools/{sounds,outputs}.json`, `tools/README.md` (`## The flask, poison and armour`), `assets/` |
 
 ## Follow-ups
 

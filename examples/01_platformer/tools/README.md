@@ -1178,3 +1178,28 @@ with pops), `geyser_erupt` (0.95 s, a whoosh into a roar that drops off) and
 `HollowContractTests` holds the generated files to the contract the game reads:
 each sprite's size and count, each stone's lowest opaque row on its box's bottom
 (31, 31, 63), the particles' caps and the sounds' lengths and volumes.
+
+## The flask, poison and armour
+
+e01flask's families, placeholders until its asset session draws them. In
+`effects.py`: the toxic flask's tumble (`toxic_flask_0`–`_3`, 16 pixels, 60 ms a
+frame, looping, centred at (8, 8)) and its burst (`toxic_flask_burst_0`–`_5`, 96
+pixels, 50 ms, once, centred at (48, 48)), both clips in `FLASK_CLIPS`, today the
+snowball's frames and its burst's at twice the size; poison's overlay
+(`status_poison_<class>_<f>`, four frames a class at 32, 64 and 128 pixels, unlit,
+which the game steps through at 8 Hz), today the crackle's frames; the flask's icon
+(`icon_toxic_flask`) in a `poison` style of `ICON_ELEMENTS`, its greens lent from
+the foliage, today the lightning's subject; and the armoured troll's summon icon
+(`icon_troll_armoured`), today the troll's. In `actors.py`, `ENEMY_CLIPS` gives
+the armoured troll the troll's eight clips under `troll_armoured_` (29 frames, 128
+pixels, feet on row 124, unlit, each with its `_left` twin), today the troll's
+frames. `generate.particle_configs`: `flask_splash`, drops flung out and falling
+(cap 24); `poison_bubbles`, bubbles rising off a poisoned body (12); and
+`corrode_fizz` (6) and `corrode_burst` (20), Corroded's sparse fizz and its flakes
+as it takes, in a dull verdigris. `sfx.py`: `flask_throw`, `flask_burst`,
+`poisoned` and `corroded`, today copies of `toss`, `snowball_burst`, `lava_sizzle`
+and `lava_chill`. `test_generate.py`'s `FlaskContractTests` holds the generated
+files to the contract the game reads: each family's size and count, the flask's
+clips' timing, the armoured troll's clips frame for frame the troll's, the
+particles' caps (32, 16, 10, 24) and the sounds' longest seconds (0.4, 0.8, 0.6,
+1.0) and volumes.

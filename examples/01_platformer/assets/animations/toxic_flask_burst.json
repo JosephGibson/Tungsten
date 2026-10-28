@@ -1,0 +1,29 @@
+{
+  "frames": [
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_0"
+    },
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_1"
+    },
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_2"
+    },
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_3"
+    },
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_4"
+    },
+    {
+      "duration_ms": 50,
+      "sprite": "ex10_toxic_flask_burst_5"
+    }
+  ],
+  "looping": false
+}

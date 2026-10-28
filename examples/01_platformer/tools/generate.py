@@ -639,6 +639,23 @@ def particle_configs():
         lifetime=dict(min=.5, max=1.1), start_scale=dict(min=.08, max=.24), gravity=[0, 700], drag_per_sec=1.1,
         angular_velocity=dict(min=-9, max=9), color_over_life=geyser_ramp,
         scale_over_life=[[0, 1], [.5, .7], [1, .2]], alpha_over_life=[[0, 1], [.6, .95], [1, 0]])
+    # e01flask's placeholders: the flask's splash, drops flung out and
+    # falling; poison's bubbles rising off a body; Corroded's sparse fizz
+    # and its burst of flakes as it takes, in a dull verdigris.
+    toxic = [[0, [.75, 1, .45, 1]], [.5, [.52, .84, .25, 1]], [1, [.3, .6, .12, 0]]]
+    configs['flask_splash'] = full(
+        'droplet', 24, burst(24), (.35, .7), dict(kind='radial', speed=dict(min=120, max=320)), (0, 700), 1.2,
+        (.12, .24), [[0, 1], [1, .7]], [[0, 1], [.7, .9], [1, 0]], toxic, (-6, 6))
+    configs['poison_bubbles'] = full(
+        'droplet', 12, dict(kind='continuous', rate_hz=8), (.6, 1.0), cone((0, -1), 90, 15, 45), (0, -40), 1.0,
+        (.08, .14), [[0, .5], [.6, 1], [1, 1.2]], [[0, 0], [.15, .9], [.8, .7], [1, 0]], toxic)
+    verdigris = [[0, [.62, .86, .74, 1]], [.5, [.4, .66, .56, 1]], [1, [.26, .44, .38, 0]]]
+    configs['corrode_fizz'] = full(
+        'dust', 6, dict(kind='continuous', rate_hz=3), (.6, 1.0), cone((0, -1), 120, 10, 40), (0, -30), 1.4,
+        (.1, .2), [[0, .5], [.4, 1], [1, 1.3]], [[0, 0], [.15, .6], [.7, .4], [1, 0]], verdigris)
+    configs['corrode_burst'] = full(
+        'ice_chip', 20, burst(20), (.45, .9), cone((0, -1), 200, 120, 360), (0, 900), .8, (.09, .18),
+        [[0, 1], [1, .85]], [[0, 1], [.75, .9], [1, 0]], verdigris, (-12, 12))
     return configs
 
 
@@ -674,9 +691,10 @@ def spray_clips(animations):
     And e01tomes' (`effects.TOME_CLIPS`): each book's idle loop and take,
     and the bound's ring, which nothing turns; e01foes' (`effects.FOE_CLIPS`):
     the snowball's, its burst's and the beetle's streaks, which
-    `mirror_facing` then twins."""
-    from effects import FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
-    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS}.items():
+    `mirror_facing` then twins; e01flask's (`effects.FLASK_CLIPS`): the
+    flask's tumble and its burst."""
+    from effects import FLASK_CLIPS, FOE_CLIPS, PUSH_CLIPS, SPRAY_CLIPS, TOME_CLIPS
+    for clip,(_,frames,ms,looping) in {**SPRAY_CLIPS,**PUSH_CLIPS,**TOME_CLIPS,**FOE_CLIPS,**FLASK_CLIPS}.items():
         animations[clip]=dict(looping=looping,frames=[dict(sprite=f'ex10_{clip}_{f}',duration_ms=ms) for f in range(frames)])
 
 
