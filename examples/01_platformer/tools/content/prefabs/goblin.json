@@ -10,7 +10,8 @@
     "tags": [
       "team.enemy",
       "flesh",
-      "freezable"
+      "freezable",
+      "living"
     ],
     "rigid_body": {
       "kind": "kinematic",

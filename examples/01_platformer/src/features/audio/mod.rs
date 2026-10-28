@@ -177,6 +177,7 @@ fn cue_of(sound: Sound) -> fn(&Sounded) -> Option<CueEvent> {
         Sound::GeyserSputter => occurrence::<84>,
         Sound::GeyserErupt => occurrence::<85>,
         Sound::StoneKnock => occurrence::<86>,
+        Sound::Poisoned => occurrence::<87>,
     }
 }
 

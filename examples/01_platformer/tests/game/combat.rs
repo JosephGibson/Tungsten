@@ -573,3 +573,98 @@ fn cold_on_a_burning_frost_crawler_bursts_into_steam() {
     assert!(!has(&harness, crawler, "burning"), "put out");
     assert!(health(&harness, crawler) <= before);
 }
+
+/// An enemy of `kind` standing still on the sky's ground with its body's
+/// centre at `x`, at normal difficulty, its state machine taken off.
+fn foe(harness: &mut UiHarness, kind: EnemyKind, x: f32) -> Entity {
+    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let world = harness.world_mut();
+    let id = world.resource_mut::<SaveIds>().take();
+    let foe = enemies::spawn(world, kind, centre - kind.info().centre, id).unwrap();
+    enemies::scale(world, foe, Difficulty::Normal);
+    world.remove_component::<StateMachine<EnemyState>>(foe);
+    foe
+}
+
+#[test]
+fn poison_poisons_the_dummy_a_goblin_the_beetle_and_the_troll_but_not_a_wisp() {
+    let (mut harness, _, dummy) = with_dummy();
+    let goblin = foe(&mut harness, EnemyKind::Goblin, 1100.0);
+    let beetle = foe(&mut harness, EnemyKind::Beetle, 1250.0);
+    let troll = foe(&mut harness, EnemyKind::Troll, 1450.0);
+    let wisp = foe(&mut harness, EnemyKind::Wisp, 650.0);
+    harness.step(1);
+    let targets = [
+        ("the dummy", dummy, true),
+        ("a goblin", goblin, true),
+        ("the beetle", beetle, true),
+        ("the troll", troll, true),
+        ("a wisp", wisp, false),
+    ];
+    for (_, target, _) in targets {
+        let before = health(&harness, target);
+        land(&mut harness, target, Kind::Poison, 8.0);
+        assert!(health(&harness, target) < before, "it takes poison");
+        hit(&mut harness, target, Kind::Poison, 8.0);
+    }
+    harness.step(1);
+    for (name, target, living) in targets {
+        assert_eq!(has(&harness, target, "poisoned"), living, "{name}");
+    }
+}
+
+#[test]
+fn poisoned_ticks_three_poison_every_half_second_for_six_seconds() {
+    let (mut harness, _, dummy) = with_dummy();
+    apply(&mut harness, dummy, "poisoned", None);
+    let mut ticks: Vec<(usize, f32)> = Vec::new();
+    for frame in 0..420 {
+        harness.step(1);
+        let world = harness.world();
+        for part in harness.harness().events::<DamagedPart>() {
+            if part.entity == dummy && part.periodic {
+                assert!(part.kinds.has(world, Kind::Poison.tag()), "poison");
+                ticks.push((frame, part.amount));
+            }
+        }
+    }
+    // From 0.5 s to 5.5 s: the effect ends at 6 s before a twelfth tick.
+    assert_eq!(ticks.len(), 11, "{ticks:?}");
+    assert!(ticks.iter().all(|&(_, amount)| amount == 3.0), "{ticks:?}");
+    for pair in ticks.windows(2) {
+        assert_eq!(pair[1].0 - pair[0].0, 30, "every half second: {ticks:?}");
+    }
+    assert!(!has(&harness, dummy, "poisoned"), "over after 6 s");
+    assert!(
+        ticks[0].0 >= 29 && ticks[10].0 < 360,
+        "within its 6 s: {ticks:?}"
+    );
+}
+
+#[test]
+fn poison_pauses_the_trolls_regeneration_while_it_lasts() {
+    let (mut harness, _, _) = with_dummy();
+    let troll = foe(&mut harness, EnemyKind::Troll, 1300.0);
+    harness.step(2);
+    // An untyped hit, which starts no bleeding.
+    tungsten::kit::damage(harness.world_mut(), troll, 200.0);
+    apply(&mut harness, troll, "poisoned", None);
+    harness.step(1);
+    let mut last = health(&harness, troll);
+    for _ in 0..330 {
+        harness.step(1);
+        let now = health(&harness, troll);
+        assert!(now <= last, "no healing while poisoned: {last} → {now}");
+        last = now;
+    }
+    for _ in 0..60 {
+        if !has(&harness, troll, "poisoned") {
+            break;
+        }
+        harness.step(1);
+    }
+    assert!(!has(&harness, troll, "poisoned"), "its poison ran out");
+    let out = health(&harness, troll);
+    harness.step(60);
+    assert!(health(&harness, troll) > out + 4.0, "healing again");
+}

@@ -11,7 +11,8 @@
       "team.enemy",
       "flesh",
       "freezable",
-      "troll"
+      "troll",
+      "living"
     ],
     "rigid_body": {
       "kind": "kinematic",

@@ -111,11 +111,12 @@ pub enum School {
     Mana,
     Physical,
     Shock,
+    Poison,
 }
 
 impl School {
     /// Its border colour, from the palette: ember orange, ice cyan, indigo,
-    /// bone white and violet.
+    /// bone white, violet and poison green.
     #[must_use]
     pub const fn color(self) -> [u8; 4] {
         match self {
@@ -124,6 +125,7 @@ impl School {
             School::Mana => [132, 128, 236, 255],
             School::Physical => [242, 234, 200, 255],
             School::Shock => [184, 140, 255, 255],
+            School::Poison => [132, 214, 64, 255],
         }
     }
 }

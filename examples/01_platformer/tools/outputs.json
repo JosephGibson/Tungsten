@@ -267,6 +267,7 @@
   "assets/data/effects/mana_regen.json",
   "assets/data/effects/orb_heal.json",
   "assets/data/effects/orb_mana.json",
+  "assets/data/effects/poisoned.json",
   "assets/data/effects/shattered.json",
   "assets/data/effects/shocked.json",
   "assets/data/effects/staff_lit.json",

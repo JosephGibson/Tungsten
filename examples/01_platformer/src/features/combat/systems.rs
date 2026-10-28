@@ -1,8 +1,8 @@
 //! Combat's systems: the states the step's resolve begins with, the
 //! reactions to the parts that landed and to `shattered`, `frozen`,
-//! `shocked` and `bleeding`, the blood a blow spills, the freezes and the
-//! thaws heard, the chill's grade, the statuses' tints on their targets'
-//! sprites and their particles.
+//! `shocked`, `bleeding` and `poisoned`, the blood a blow spills, the
+//! freezes and the thaws heard, the chill's grade, the statuses' tints on
+//! their targets' sprites and their particles.
 
 use glam::Vec2;
 use tungsten::SceneEntity;
@@ -17,8 +17,8 @@ use tungsten::kit::{
 
 use super::components::{StatusEmitter, StatusLook};
 use super::{
-    BURNING, CHILL_NEEDS, CHILLED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, SHOCKED,
-    has_status,
+    BURNING, CHILL_NEEDS, CHILLED, DOUSED, FLESH, FREEZABLE, FREEZE_NEEDS, FROZEN, Kind, POISONED,
+    SHOCKED, has_status,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::elements::cascade::{self, CascadeKind};
@@ -75,7 +75,8 @@ pub fn states(world: &mut World) {
 /// source's save ID: none when the source has gone, the player's when the
 /// part named none. A blow, a physical part that is not a tick, on a `flesh`
 /// target or the courier spurts blood where it landed, once a target a
-/// step, and `bleeding` applied spurts again; a target frozen this step
+/// step, and `bleeding` applied spurts again; `poisoned` applied gurgles at
+/// its target (e01flask); a target frozen this step
 /// (frozen now, not as the resolve began), in place too, sounds its freeze
 /// with its frost burst. A geyser's fire part on a target neither burning,
 /// frozen nor doused sets it burning from the geyser, once a target a step,
@@ -144,14 +145,20 @@ pub fn reactions(
             }
         }
     }
-    let mut spurts = Vec::new();
+    let (mut spurts, mut poisoned) = (Vec::new(), Vec::new());
     if let Some(events) = world.get_resource::<EventQueue<EffectApplied>>() {
         for effect in applied.read(events) {
             match effect.id.as_deref() {
                 Some("shattered") => queued.push((CascadeKind::Shatter, effect.entity, 0.0, mine)),
                 Some("bleeding") => spurts.push(effect.entity),
+                Some("poisoned") => poisoned.push(effect.entity),
                 _ => {}
             }
+        }
+    }
+    for target in poisoned {
+        if let Some(at) = body_centre(world, target) {
+            audio::play(world, Sound::Poisoned, at);
         }
     }
     for (target, geyser) in burns {
@@ -200,18 +207,21 @@ pub fn reactions(
 /// colours: frozen's cold; chilled's frost, a freezable creature's turning
 /// toward it from the first point of cold and, chilled, deeper toward
 /// [`CHILL_DEEP`] by the chill's grade, white and gentle (01 (j)); shocked's
-/// violet on its crackle's even frames, and burning's two embers, which
-/// flicker; and the courier's red for a moment after a blow.
+/// violet on its crackle's even frames, burning's two embers, which
+/// flicker, and poisoned's green (e01flask); and the courier's red for a
+/// moment after a blow.
 pub const COLD_TINT: [u8; 4] = [158, 219, 255, 255];
 pub const FROST_TINT: [u8; 4] = [222, 241, 255, 255];
 pub const CHILL_DEEP: [u8; 4] = [194, 229, 255, 255];
 pub const SHOCK_TINT: [u8; 4] = [196, 168, 255, 255];
 pub const EMBER_TINTS: [[u8; 4]; 2] = [[255, 178, 128, 255], [255, 140, 92, 255]];
+pub const POISON_TINT: [u8; 4] = [176, 255, 140, 255];
 pub const HURT_TINT: [u8; 4] = [255, 72, 72, 255];
-/// How fast burning's tint flickers and shocked's crackle steps through
-/// its four frames, frames a second.
+/// How fast burning's tint flickers, and shocked's crackle and poisoned's
+/// bubbles step through their four frames, frames a second.
 pub const FLICKER_HZ: f32 = 12.0;
 pub const SHOCK_HZ: f32 = 16.0;
+pub const POISON_HZ: f32 = 8.0;
 
 /// Burning's ember at level time `time`, 0 or 1.
 #[must_use]
@@ -226,6 +236,12 @@ pub fn shock_frame(time: f32) -> usize {
     (time * SHOCK_HZ) as usize % 4
 }
 
+/// Poisoned's overlay frame at level time `time`, 0 to 3.
+#[must_use]
+pub fn poison_frame(time: f32) -> usize {
+    (time * POISON_HZ) as usize % 4
+}
+
 /// `a` toward `b` by `share`, 0 to 1.
 fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
     let share = share.clamp(0.0, 1.0);
@@ -236,7 +252,8 @@ fn mix(a: [u8; 4], b: [u8; 4], share: f32) -> [u8; 4] {
 
 /// The tint `tags` give a target at level time `time`, chilled to `grade`
 /// with its frost at `level` ([`frost_level`]): frozen over shocked over
-/// burning over chilled over the frost before the chill, else none.
+/// burning over poisoned over chilled over the frost before the chill, else
+/// none.
 #[must_use]
 pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
     if tags.has(FROZEN) {
@@ -245,6 +262,8 @@ pub fn tint(tags: &Tags, time: f32, grade: f32, level: f32) -> [u8; 4] {
         SHOCK_TINT
     } else if tags.has(BURNING) {
         EMBER_TINTS[flicker(time)]
+    } else if tags.has(POISONED) {
+        POISON_TINT
     } else if tags.has(CHILLED) {
         mix(FROST_TINT, CHILL_DEEP, grade)
     } else if level > 0.0 {

@@ -2,6 +2,7 @@
   "period": 0.25,
   "heal": 1.5,
   "suppressed_by": [
-    "status.burning"
+    "status.burning",
+    "status.poisoned"
   ]
 }

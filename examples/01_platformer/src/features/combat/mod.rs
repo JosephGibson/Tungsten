@@ -1,12 +1,13 @@
 //! Combat: 01's damage model on the kit's damage types, `damage` and under
 //! it `damage.physical` (with `damage.physical.bleed`), `damage.fire`,
-//! `damage.cold` and `damage.shock`, each with its colour and its ailment
-//! ladder (`data/damage_types/game.json`). A hit starts from its attack's
-//! base amounts, doubles on a crit, then takes the kit's pipeline: the
-//! target's resistances, with shocked's half again on every type, then its
-//! shield and its health. The ladders put burning, chilled, frozen,
-//! shocked, stunned and bleeding on whatever has health; 01 reads their
-//! `status.*` tags for its looks and its physics.
+//! `damage.cold`, `damage.shock` and `damage.poison`, each with its colour
+//! and its ailment ladder (`data/damage_types/game.json`). A hit starts
+//! from its attack's base amounts, doubles on a crit, then takes the kit's
+//! pipeline: the target's resistances, with shocked's half again on every
+//! type, then its shield and its health. The ladders put burning, chilled,
+//! frozen, shocked, stunned and bleeding on whatever has health, and
+//! poisoned on what is `living`; 01 reads their `status.*` tags for its
+//! looks and its physics.
 //!
 //! Combat also floats the damage numbers ([`numbers`]).
 //!
@@ -63,9 +64,12 @@ pub const FROZEN: &str = "status.frozen";
 pub const SHOCKED: &str = "status.shocked";
 pub const STUNNED: &str = "status.stunned";
 pub const DOUSED: &str = "status.doused";
-/// The kinds' tags 01 reads: what bleeds, and what freezes.
+pub const POISONED: &str = "status.poisoned";
+/// The kinds' tags 01 reads: what bleeds, what freezes, and what poison
+/// takes (every enemy but the wisp, and the dummy).
 pub const FLESH: &str = "flesh";
 pub const FREEZABLE: &str = "freezable";
+pub const LIVING: &str = "living";
 
 /// One of 01's damage types, by its tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +79,7 @@ pub enum Kind {
     Fire,
     Cold,
     Shock,
+    Poison,
 }
 
 impl Kind {
@@ -87,6 +92,7 @@ impl Kind {
             Kind::Fire => "damage.fire",
             Kind::Cold => "damage.cold",
             Kind::Shock => "damage.shock",
+            Kind::Poison => "damage.poison",
         }
     }
 }

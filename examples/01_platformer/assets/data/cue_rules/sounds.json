@@ -1373,5 +1373,21 @@
         }
       }
     ]
+  },
+  {
+    "on": "poisoned",
+    "filter": {
+      "all": [
+        "team.player"
+      ]
+    },
+    "do": [
+      {
+        "sound": {
+          "id": "ex10_poisoned_sfx",
+          "min_interval": 0.08
+        }
+      }
+    ]
   }
 ]

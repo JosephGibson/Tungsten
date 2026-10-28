@@ -813,6 +813,9 @@
       "orb_mana": {
         "path": "data/effects/orb_mana.json"
       },
+      "poisoned": {
+        "path": "data/effects/poisoned.json"
+      },
       "shattered": {
         "path": "data/effects/shattered.json"
       },

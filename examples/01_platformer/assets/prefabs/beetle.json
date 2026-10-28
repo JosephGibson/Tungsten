@@ -12,7 +12,8 @@
       "freezable",
       "conductive",
       "brittle",
-      "beetle"
+      "beetle",
+      "living"
     ],
     "rigid_body": {
       "kind": "kinematic",
