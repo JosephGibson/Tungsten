@@ -1,6 +1,6 @@
-# H2: releases, status, skills and memory (health-h2) — draft
+# H2: releases, status, skills and memory (health-h2)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo step 7.4, H2 (the redo's §4): retake H1's overhead against the M76–M85 baseline; decide the five carried workflow proposals; `just status`, derived from the tree; one `just release <kind>` with its rehearsal, a final tag publishing on its push (R-Q15); the planning, next, release and decision skills rewritten lean against a no-skill baseline on tasks 7.1–7.3 produced, with a phase plan's step prompt (phase 7's F2); the plan, perf and release memory hubs pruned to what still applies.
 - **non-goals:**
   - Retiring the per-version branches (H1's Git row, "then the per-version branches retire"): agents would push `main`, which main's pull-request rule and the owner's push guard (`D-216`) refuse, and both are the owner's settings (Q1). A Later line.
@@ -420,5 +420,6 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `fe83ae90` with the Cri
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-29 | done, lower | `classify.py`, main transcripts: the example group's bookkeeping 1,055 of 5,098 calls, 20.7 % (baseline 22.1 %), and 16.5 % of output tokens (20.0 %), 15.1 % and 10.6 % with each item's own plan as work; with `--subagents` 20.2 % and 16.3 %; gate passes. Its top five: memory 139, `e01-foes.md` 92, `docs/plans/1.0/` 87, `README.md` 84, `e01-flask.md` 74. Release sessions ran 51–65 %, plan sessions 41–50 %. Phase 7, apart: 784 of 2,572 calls, 30.5 %, and 29.9 % of output tokens (24.1 % and 22.3 % own plan as work); top five `DECISIONS.md` 79, `bench-runner.md` 71, `DESIGN.md` 64, `agent-tooling.md` 57, `known-issues.md` 54; its plan sessions 57–72 %, 0.112's release 61 %. `git_baseline.py .`: record files 11, 9, 7 and 11 over 0.109–0.112, median 10 (baseline 12); gate passes. Plan lines at deletion, eight plans: 425, 516, 380, 1,567, 245, 213, 290, 692, median 402.5 (baseline 312, not gated) | `perf-runs/20261029-overhead-h1/` (scripts, `classify-main.txt`, `classify-sub.txt`, `git.json`) |
 
 ## Follow-ups
