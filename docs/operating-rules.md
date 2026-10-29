@@ -40,7 +40,7 @@ The owner's answer of 2026-10-23: toward agile by a gradient, the 1.0 batch plan
 - **Small:** no plan; the commit is the record.
 - **Medium:** scope, non-goals, files and checks stated in the session before editing.
 - **Large** (multi-session, or a risky change): one plan file, `docs/plans/<topic>.md`, with the [plans README](plans/README.md)'s headers, deleted when done. Remove its citations in the same commit, since `just repo-check` fails on a cited plan that is gone.
-- Done means the tests pass and a demo works.
+- Done means the tests pass and a demo works. A game feature's demo is a `tungsten run --script` report, with a `tungsten render` sheet when it changes what is drawn, since a demo told from memory can't be rechecked.
 - A large plan or a risky change (concurrency, formats, the render seam) gets one critique round (`/critique`) at xhigh, and a second only when the first changed a mechanism: round 2s have mostly repaired round-1 fixes, and max has shown no lift over xhigh.
 
 ## Decisions

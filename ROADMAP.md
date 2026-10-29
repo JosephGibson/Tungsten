@@ -21,6 +21,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
 - `just perf`'s GPU run merged into its timing run, now that the timestamp ring costs `gpu` 1.01× (redo 7.3's Q5): at 9.1, once the merged run's cost is measured.
+- The per-version branches retired (H1's Git row): agents would then push `main`, which needs `main`'s pull-request rule lifted and the push guard (`D-216`) widened, both the owner's settings.
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order): agent tooling, the benchmark runner, H2, the analysis pass, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
