@@ -3057,6 +3057,7 @@ dependencies = [
  "notify",
  "rtrb",
  "serde",
+ "serde_json",
  "tungsten-core",
  "tungsten-kit",
  "tungsten-render",

@@ -31,18 +31,18 @@ use std::path::Path;
 use std::time::Instant;
 
 use tungsten_core::assets::ResolvedManifest;
+use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
-use tungsten_core::{
-    ActionMap, AudioCommand, Binding, EventQueue, GamepadId, InputState, MaterialRegistry,
-    ScrollDirection, World,
-};
+use tungsten_core::{AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, World};
 use tungsten_render::{
     DebugLineInstance, LightUbo, MeshParticleBatch, QuadInstance, SpriteBatch, TextSection,
     WorldLabelRun,
 };
 
-use crate::app::{App, ExitReason, Exiting, FrameClock, FrameEnd, FrameExtract};
+use crate::app::{App, ExitReason, Exiting, FrameClock, FrameEnd, FrameExtract, WindowSize};
 use crate::asset_loader;
+use crate::input_bridge;
+use crate::script::ScriptRunner;
 
 mod ui;
 
@@ -51,9 +51,6 @@ pub use ui::UiHarness;
 /// The dt each frame gets until [`Harness::set_dt`] changes it: 60 Hz, as
 /// smoke mode pins it.
 const DEFAULT_DT_SECS: f32 = 1.0 / 60.0;
-
-/// The pad gamepad bindings press on.
-const HARNESS_PAD: GamepadId = GamepadId::new(0);
 
 /// Runs an [`App`]'s frames one call at a time, with a pinned dt and no
 /// window.
@@ -205,23 +202,8 @@ impl Harness {
     /// When the action map has no binding for `action`.
     pub fn press_action(&mut self, action: &str) {
         let binding = self.first_binding(action);
-        let input = self.input_mut();
-        match binding {
-            Binding::Key { code } => input.key_down(code),
-            Binding::Mouse { button } => input.mouse_down(button),
-            Binding::Scroll { direction } => {
-                let lines = match direction {
-                    ScrollDirection::Up => 1.0,
-                    ScrollDirection::Down => -1.0,
-                };
-                input.add_scroll_line_delta(0.0, lines);
-            }
-            Binding::GamepadButton { button } => input.gamepad_button_down(HARNESS_PAD, button),
-            Binding::GamepadAxis { axis, direction } => {
-                input.set_gamepad_axis(HARNESS_PAD, axis, direction.along(1.0));
-            }
-            other => panic!("Harness: {other:?} cannot be pressed"),
-        }
+        input_bridge::press_binding(self.input_mut(), binding)
+            .unwrap_or_else(|err| panic!("Harness: {err}"));
     }
 
     /// Releases `action`'s first binding: the next frame reads it as just
@@ -233,14 +215,40 @@ impl Harness {
     /// When the action map has no binding for `action`.
     pub fn release_action(&mut self, action: &str) {
         let binding = self.first_binding(action);
-        let input = self.input_mut();
-        match binding {
-            Binding::Key { code } => input.key_up(code),
-            Binding::Mouse { button } => input.mouse_up(button),
-            Binding::GamepadButton { button } => input.gamepad_button_up(HARNESS_PAD, button),
-            Binding::GamepadAxis { axis, .. } => input.set_gamepad_axis(HARNESS_PAD, axis, 0.0),
-            _ => {}
+        input_bridge::release_binding(self.input_mut(), binding);
+    }
+
+    /// Runs `script` on the harness's frames with the window loop's runner
+    /// (redo 7.2), from the next frame, and returns its report. Each step
+    /// applies where a window run applies it: inputs, actions, spawns,
+    /// scenes, the stage, sheets, overlays and `ui` before `PreUpdate`, a
+    /// sheet's holds after `Update`, the camera override from the UI layout
+    /// through render, captures, probes and asserts after render. With no
+    /// renderer a capture is recorded as not written, so a script with one
+    /// does not pass here. The run ends after the script's last frame, on
+    /// `exit` or on the game's own exit; [`step`](Self::step) after it runs
+    /// the game on, unscripted. A `resolution` sets [`WindowSize`] first.
+    pub fn run_script(&mut self, script: &Script) -> Report {
+        if let Some([width, height]) = script.resolution {
+            self.world_mut()
+                .insert_resource(WindowSize { width, height });
         }
+        self.app.script = Some(ScriptRunner::new(script.clone(), "harness", true));
+        let ending = loop {
+            let ran = self.step(1);
+            if let Some(ended) = self.app.script.as_ref().and_then(ScriptRunner::ended) {
+                break ended;
+            }
+            if ran == 0 || self.exit_requested {
+                break Ending::GameExit;
+            }
+        };
+        let runner = self
+            .app
+            .script
+            .take()
+            .expect("the runner stays for the run");
+        runner.finish(self.app.world_mut(), ending, None)
     }
 
     /// Moves the cursor to (`x`, `y`) in window pixels, as a cursor event
@@ -309,9 +317,7 @@ impl Harness {
     }
 
     fn first_binding(&self, action: &str) -> Binding {
-        self.world()
-            .get_resource::<ActionMap>()
-            .and_then(|actions| actions.bindings(action).first().copied())
+        input_bridge::first_binding(self.world(), action)
             .unwrap_or_else(|| panic!("Harness: action '{action}' has no binding"))
     }
 

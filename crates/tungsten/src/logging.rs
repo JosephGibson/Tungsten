@@ -7,9 +7,9 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use env_logger::{Builder, Target};
@@ -70,11 +70,13 @@ impl StderrMode {
 }
 
 /// The log console's end of the engine logger (M57): each record the
-/// [`Tee`] sent, and how many it dropped on a full or closed channel.
+/// [`Tee`] sent, and how many it dropped on a full or closed channel; and
+/// the records' tally by level, which a script's report reads (redo 7.2).
 #[derive(Debug)]
 pub(crate) struct ConsoleFeed {
     pub(crate) records: Receiver<String>,
     pub(crate) dropped: Arc<AtomicU64>,
+    pub(crate) tally: Arc<LogTally>,
 }
 
 /// The [`Tee`]'s end of the console's channel.
@@ -82,16 +84,19 @@ pub(crate) struct ConsoleFeed {
 pub(crate) struct ConsoleSink {
     sender: SyncSender<String>,
     dropped: Arc<AtomicU64>,
+    tally: Arc<LogTally>,
 }
 
 impl ConsoleSink {
     /// Copies one record, lossy UTF-8 with one trailing newline dropped,
-    /// into the channel; a full or closed channel counts it dropped.
+    /// into the channel; a full or closed channel counts it dropped. The
+    /// tally counts it first, whatever the channel does.
     pub(crate) fn send(&self, record: &[u8]) {
         let mut text = String::from_utf8_lossy(record).into_owned();
         if text.ends_with('\n') {
             text.pop();
         }
+        self.tally.record(&text);
         if self.sender.try_send(text).is_err() {
             self.dropped.fetch_add(1, Ordering::Relaxed);
         }
@@ -103,13 +108,81 @@ impl ConsoleSink {
 pub(crate) fn console_channel(capacity: usize) -> (ConsoleSink, ConsoleFeed) {
     let (sender, records) = sync_channel(capacity);
     let dropped = Arc::new(AtomicU64::new(0));
+    let tally = Arc::new(LogTally::default());
     (
         ConsoleSink {
             sender,
             dropped: Arc::clone(&dropped),
+            tally: Arc::clone(&tally),
         },
-        ConsoleFeed { records, dropped },
+        ConsoleFeed {
+            records,
+            dropped,
+            tally,
+        },
     )
+}
+
+/// How many error and warning records the logger wrote, and the first
+/// error lines since the last [`mark`](Self::mark) (redo 7.2).
+#[derive(Debug, Default)]
+pub(crate) struct LogTally {
+    errors: AtomicU32,
+    warnings: AtomicU32,
+    first_errors: Mutex<Vec<String>>,
+}
+
+/// The error lines a [`LogTally`] keeps after a mark.
+pub(crate) const FIRST_ERRORS: usize = 5;
+
+impl LogTally {
+    /// Counts one record by its level; an error's first line is kept while
+    /// fewer than [`FIRST_ERRORS`] are.
+    fn record(&self, record: &str) {
+        let Some(fields) = record_fields(record) else {
+            return;
+        };
+        match fields.level {
+            Level::Error => {
+                self.errors.fetch_add(1, Ordering::Relaxed);
+                if let Ok(mut first) = self.first_errors.lock()
+                    && first.len() < FIRST_ERRORS
+                {
+                    first.push(format!("{}: {}", fields.target, fields.message));
+                }
+            }
+            Level::Warn => {
+                self.warnings.fetch_add(1, Ordering::Relaxed);
+            }
+            _ => {}
+        }
+    }
+
+    /// The errors and warnings counted so far.
+    pub(crate) fn counts(&self) -> (u32, u32) {
+        (
+            self.errors.load(Ordering::Relaxed),
+            self.warnings.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Starts keeping first error lines afresh and returns the counts so
+    /// far, from which a run counts its own.
+    pub(crate) fn mark(&self) -> (u32, u32) {
+        if let Ok(mut first) = self.first_errors.lock() {
+            first.clear();
+        }
+        self.counts()
+    }
+
+    /// The error lines kept since the last mark.
+    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
+    pub(crate) fn first_errors(&self) -> Vec<String> {
+        self.first_errors
+            .lock()
+            .map(|first| first.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// A record's fields (M58), as [`record_fields`] reads them.

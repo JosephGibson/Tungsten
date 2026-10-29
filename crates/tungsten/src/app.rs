@@ -21,6 +21,7 @@ use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
 use crate::plugins::UI_ROUTE;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::script::{ScriptLog, ScriptRunner};
 use crate::settings::{ShippedConfig, WindowedTarget};
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
@@ -148,6 +149,8 @@ pub struct App {
     /// The frame's raw events when `PreUpdate`, and so the UI's routing,
     /// ended; the exit check reads later ones raw.
     routed_events: usize,
+    /// The script this run follows (redo 7.2); `None` outside a script.
+    pub(crate) script: Option<ScriptRunner>,
 }
 
 impl App {
@@ -348,6 +351,12 @@ impl App {
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
+        // Redo 7.2: the script hooks with the engine's probes, and the
+        // logger's tally a script's report counts.
+        world.insert_resource(crate::script::engine_hooks());
+        world.insert_resource(ScriptLog::new(
+            console_feed.as_ref().map(|feed| Arc::clone(&feed.tally)),
+        ));
         // M57: the log console on the logger's feed, and the UI inspector.
         world.insert_resource(LogConsole::with_feed(console_feed));
         world.insert_resource(UiInspector::default());
@@ -399,6 +408,7 @@ impl App {
             exclusive_warning: std::sync::Once::new(),
             cursor: CursorIcon::Default,
             routed_events: 0,
+            script: None,
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -1309,6 +1319,9 @@ impl App {
             // startup hook's is: a slow startup system must not inflate it.
             self.last_frame = Some(Instant::now());
         }
+        if let Some(script) = self.script.as_mut() {
+            script.before_pre_update(&mut self.world);
+        }
         self.run_stage(Stage::PreUpdate, &mut system_timings);
         self.routed_events = self
             .world
@@ -1758,6 +1771,9 @@ impl App {
         if exit {
             return FrameEnd::ExitRequested;
         }
+        if let Some(script) = self.script.as_mut() {
+            script.after_update(&mut self.world);
+        }
         self.stage_cursor();
         self.stage_post_update(&mut system_timings);
         let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -1772,12 +1788,22 @@ impl App {
         let views_start = Instant::now();
         crate::debug_views::update_with(&mut self.world, Some(&self.ui_paint));
         let views_ms = views_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        // Redo 7.2: a script's camera, hidden UI and captures.
+        if let Some(script) = self.script.as_mut()
+            && script.before_layout(&mut self.world, self.capture.as_mut())
+        {
+            self.ui_paint = PaintList::default();
+            self.painted_at = None;
+        }
         // M46: the UI layout, counted in `extract` (Q11).
         let ui_layout_ms = self.stage_ui_layout();
         let mut extract_out = self.stage_extract();
         let extract_ms = extract_out.extract_ms + ui_layout_ms + views_ms;
 
         let (render_out, end) = self.stage_render(&extract_out);
+        if let Some(script) = self.script.as_mut() {
+            script.after_render(&mut self.world, self.capture.as_mut());
+        }
         inspect(&extract_out);
         self.stage_recycle(&mut extract_out);
 

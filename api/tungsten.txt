@@ -824,6 +824,7 @@ pub fn tungsten::testing::Harness::new(tungsten::app::App) -> Self
 pub fn tungsten::testing::Harness::press_action(&mut self, &str)
 pub fn tungsten::testing::Harness::release_action(&mut self, &str)
 pub fn tungsten::testing::Harness::request_close(&mut self)
+pub fn tungsten::testing::Harness::run_script(&mut self, &tungsten_core::script::Script) -> tungsten_core::script::Report
 pub fn tungsten::testing::Harness::set_cursor(&mut self, f32, f32)
 pub fn tungsten::testing::Harness::set_dt(&mut self, f32)
 pub fn tungsten::testing::Harness::step(&mut self, u32) -> u32

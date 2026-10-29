@@ -21,6 +21,7 @@ pub mod particles;
 pub mod physics_debug;
 pub mod plugins;
 pub mod post_aa;
+mod script;
 mod settings;
 pub mod sprite_extract;
 pub mod state;

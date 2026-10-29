@@ -25,6 +25,7 @@ tungsten-kit = { workspace = true, optional = true }
 winit = { workspace = true }
 glam = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 image = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }
