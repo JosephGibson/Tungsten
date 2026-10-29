@@ -83,7 +83,7 @@ Carried from the review, as of `0.27.0`.
 
 Carried findings from the dated passes listed above; later entries name their milestone or investigation. Those dates describe recorded evidence, not a fresh verification of every entry.
 
-- Redo 7.2's follow-ups (0.113): the template's `AGENTS.md` lists `tests/game/`'s modules without `script` and says a new game deletes `src/sample/` with `tests/game/sample.rs` alone; `tests/game/script.rs`, the sample's hook tests, goes with them, as `docs/getting-started.md` says. `AGENTS.md` has 1 byte of room, so the line waits for 7.16. The agent memory's scratch-driver recipes for in-game shots give way to `tungsten render` and `tungsten run --script`; H2 (7.4) prunes them.
+- Redo 7.2's follow-ups (0.113): the template's `AGENTS.md` lists `tests/game/`'s modules without `script` and says a new game deletes `src/sample/` with `tests/game/sample.rs` alone; `tests/game/script.rs`, the sample's hook tests, goes with them, as `docs/getting-started.md` says. `AGENTS.md` has 1 byte of room, so the line waits for 7.16.
 - Truncated Ogg files fail at probe; decide whether to decode the available prefix, as MP3 does. Core's `tests/integration/audio_decode.rs` pins the error.
 - Evaluate rtrb 0.4.0 against the locked 0.3.5, and adopt winit 0.31 once it leaves prerelease (0.30.13 is locked).
 - Drop the RUSTSEC-2026-0192 exception in `deny.toml` when cosmic-text/fontdb stop using `ttf-parser`.
