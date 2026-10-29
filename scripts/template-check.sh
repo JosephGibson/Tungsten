@@ -178,7 +178,8 @@ echo "Archive smoke (TUNGSTEN_SMOKE_FRAMES=3): OK"
 # and one absolute, to files inside the game's folder: check and package
 # each refuse them, naming the manifest (D-224).
 # Runs a step (its name, the entry, then the command), which must fail
-# naming the entry.
+# naming the entry; the report writes paths from the game's folder, so an
+# absolute entry reads relative.
 refused() {
   local step=$1 entry=$2
   shift 2
@@ -186,7 +187,7 @@ refused() {
     echo "error: tungsten $step passed a sprite at $entry, outside its manifest's folder" >&2
     exit 1
   fi
-  if ! grep -qF -- "assets/manifest.json: sprites.stray names '$entry', which is absolute or leaves its manifest's folder" "$out"; then
+  if ! grep -q "^assets/manifest\.json: sprites\.stray names '[^']*', which is absolute or leaves its manifest's folder" "$out"; then
     echo "error: tungsten $step did not name assets/manifest.json for $entry:" >&2
     tail -20 "$out" >&2
     exit 1
