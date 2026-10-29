@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-10-28
+
 Summary: the Phase 6 QA pass's correctness list (`qa6`, redo Q10), which closes Phase 6, and the roadmap redo's first Phase 7 step, `quick-wins` (7.1, plan `docs/plans/quick-wins.md`, deleted when done): the deprecated surface gone, one integration-test binary per crate, gamepads read through `gilrs` with a radial stick dead zone, and example 01's map objects keyed by authored names, its tileset only the tiles it uses, its assets generated and locked by family and its actors' bodies read from data; save schema 23. Beside them, action RPGs become a fifth 1.0 genre (`D-218`), scoped by the ARPG paper design (7.19, `docs/plans/arpg-design.md`, awaiting the owner's triage), and the redo gains a UI pass, camera rigs and screens as data.
 
 ### Added
@@ -38,7 +40,7 @@ Summary: the Phase 6 QA pass's correctness list (`qa6`, redo Q10), which closes 
 - **Inert post settings** (`render/post/`): `DitherMode::Bayer8` and `BlueNoise` (drawn as Bayer 4), `CrtParams::bleed` and a `PixelOutline` under a clear alpha at or above its threshold are documented and warn once; drawing them waits for a game that asks.
 - **Unregistered particle meshes** warn once per mesh name, not on every emission.
 - **Stale pending entities** (`core/ecs/command_buffer.rs`): a `PendingEntity` carries its buffer's flush count, and recording with one from before the buffer's last flush panics instead of inserting on a later spawn.
-- **Manifest paths** (`ManifestError::PathEscapes`): an entry whose path is absolute or climbs out of its manifest's folder is refused.
+- **Manifest paths** (`D-224`, `ManifestError::PathEscapes`): an entry whose path is absolute or climbs out of its manifest's folder is refused at every load, `tungsten check` and `package` included; `just template-check` seeds two such entries as errors both report.
 - **State hooks** (`tungsten/state.rs`): `active_id()` and `depth()` read the state whose hook or `update` runs, not the one below it.
 - **The inspector** picks a flipped sprite where it draws.
 - **The first frame's dt** no longer holds `AudioSystem::init`'s resampling: the frame is stamped after it.
