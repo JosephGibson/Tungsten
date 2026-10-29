@@ -15,8 +15,8 @@
   - Step 1: none in the tree but this plan's evidence log; the retake in `perf-runs/<UTC>-overhead-h1/` (untracked).
   - Step 2: `deny.toml`, `.claude/settings.json`, `.editorconfig` (new), `.gitattributes` (new), `docs/agent-setup.md`, `docs/operating-rules.md` (Plans), `docs/known-issues.md` (`:108`, `:110`, `:113`), `ROADMAP.md` (Later).
   - Step 3: `scripts/status.py` (new), `scripts/test-status.py` (new), `justfile`, `.claude/skills/tungsten-next/state.sh` (deleted), `.claude/skills/tungsten-next/SKILL.md` (§1's command only), `.claude/settings.json`, `docs/operating-rules.md` (Status), `docs/LLM_INDEX.md` (row 91).
-  - Step 4: `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py`, `justfile`, `docs/releases.md`, `docs/operating-rules.md` (intro, Git, Releases, Docs), `docs/validation.md` (`:3`, `:31`, `:54`), `docs/agent-setup.md` (`:33`, `:58`), `docs/known-issues.md` (`:107`), `docs/LLM_INDEX.md` (row 92), `DECISIONS.md`, `docs/DECISION_INDEX.md`, `.claude/skills/tungsten-release/SKILL.md` (its publishing sentence only).
-  - Step 5: `.claude/skills/tungsten-decision/SKILL.md`; evaluations in `target/h2-eval/` and `perf-runs/<UTC>-h2-skills/` (untracked).
+  - Step 4: `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py`, `justfile`, `docs/releases.md`, `docs/operating-rules.md` (intro, Git, Releases, Docs), `docs/validation.md` (`:3`, `:31`, `:54`), `docs/agent-setup.md` (`:33`, `:58`), `docs/known-issues.md` (`:107`), `docs/LLM_INDEX.md` (row 92), `DECISIONS.md`, `docs/DECISION_INDEX.md`, `.claude/skills/{tungsten-release,tungsten-finalize,tungsten-next}/SKILL.md` (their hand-off, publishing and merge lines only, so a skipped rewrite at step 6 or 7 still leaves them on the new flow).
+  - Step 5: `.claude/skills/tungsten-decision/SKILL.md`; evaluations in the run session's scratchpad and `perf-runs/<UTC>-h2-skills/` (untracked).
   - Step 6: `scripts/check-repo.py`, `scripts/test-check-repo.py`; `.claude/skills/tungsten-release/SKILL.md`, `.claude/skills/tungsten-finalize/` (deleted), `.agents/skills/tungsten-finalize` (deleted), `.gitignore`, `docs/releases.md` (`:63`), `docs/agent-setup.md` (`:18`), `docs/LLM_INDEX.md` (row 92).
   - Step 7: `.claude/skills/tungsten-next/SKILL.md`, `.claude/skills/tungsten-next/prompts.md`, `docs/agent-setup.md` (`:18`), `docs/releases.md` (`:167`, only if the reply's label shape changes).
   - Step 8: `.claude/skills/tungsten-milestone/` renamed to `.claude/skills/tungsten-plan/` (`SKILL.md`, `skeleton.md`), `.agents/skills/tungsten-milestone` replaced by `.agents/skills/tungsten-plan`, `.gitignore`, `.claude/skills/tungsten-next/{SKILL.md,prompts.md}` (the name), `docs/plans/README.md` (Executing, Lifecycle), `docs/plans/phase-7.md` (`:17`'s link), this plan (its header link), `docs/LLM_INDEX.md` (row 90), `docs/agent-setup.md` (`:18`), `scripts/check-repo.py` (`:46`'s comment), `scripts/test-check-repo.py` (`:296`'s fixture path).
@@ -130,17 +130,26 @@ No decision entry: P4a enforces `D-005` and AGENTS.md's rule, P9's files state t
 
 **Recipes.** `release-cut` goes; `release-check`, `release-preflight` and `docs-ratchet` stay.
 
-**Docs.** `docs/releases.md`: the happy path above, under "Ordinary release" (validation's and agent-setup's links follow the anchor); the headings the frozen records link (`#handoff-and-next-branch`, `#rehearsals-and-versioned-prereleases`) and `#license-notices` stay; the triggers, resume and recovery tables rewritten for the tag push. The operating rules' intro, Git and Releases lines, and Docs' `release-cut`.
+**Docs.** `docs/releases.md`: the happy path above, under "Ordinary release" (validation's and agent-setup's links follow the anchor); the headings the frozen records link (`#handoff-and-next-branch`, `#rehearsals-and-versioned-prereleases`), `#license-notices` and `#branch-preparation` (which `tungsten-finalize` links until step 6) stay; the triggers, resume and recovery tables rewritten for the tag push. The operating rules' intro, Git and Releases lines, and Docs' `release-cut`.
 
 ### 2.5 Skill evaluations (steps 5–8)
 
-Each skill is rewritten against a no-skill baseline on tasks 7.1–7.3 produced (§2.6: two a skill, three for `tungsten-next`), under three arms:
+Each skill is rewritten against a no-skill baseline on tasks 7.1–7.3 produced (§2.6: two or three a skill), under three arms. Every scratch file lives in the run session's scratchpad (`<scratch>` below), outside any repository: under `target/`, git would find the live repository, whose history and `DECISIONS.md` hold the edit tasks' answers.
 
-- **N, no skill:** told not to call the Skill tool or open `.claude/skills/` or `.agents/skills/`.
-- **O, the old skill:** told to read and follow the skill's files as they stood at this plan's commit, with the tree's current docs wherever they point, so O and L follow one current procedure and differ only in the skill: `git archive -o target/h2-eval/old.tar <commit> .claude/skills`, then `tar -xf` into `target/h2-eval/old/`, where `<commit>` is `git log --diff-filter=A --format=%h -1 -- docs/plans/health-h2.md`. Archives go to a file, never through a pipe, since the rtk hook rewrites piped git output. The old guide's cost is its bytes (A3), not a run.
-- **L, the lean skill:** told to read and follow the rewritten skill in the tree.
+- **N, no skill:** told not to call the Skill tool or open any skill folder.
+- **O, the old skill:** told to read and follow the skill's files as they stood at this plan's commit: `git archive -o <scratch>/old.tar <commit> .claude/skills`, then `tar -xf` into `<scratch>/old/`, where `<commit>` is `git log --diff-filter=A --format=%h -1 -- docs/plans/health-h2.md`. Archives go to a file, never through a pipe, since the rtk hook rewrites piped git output.
+- **L, the lean skill:** told to read and follow the rewritten skill's files, copied to `<scratch>/new/` before its runs.
 
-**Runs.** One fresh `general-purpose` subagent per arm and task, with the same prompt but the arm's line, a budget of 40 tool calls, and its answer written to `perf-runs/<UTC>-h2-skills/<task>/out-<arm>.md`; it returns one line. An edit task works in a scratch copy of the tree at its commit (`git archive -o`, then `tar -xf` into `target/h2-eval/<task>-<arm>/`, 67 MB), treated as the repository root; a run writes nothing outside its copy or its output file, and runs no git command that writes.
+O and L read the docs their skill points to in the task's tree (a copy's for an edit task, the live tree's otherwise), so they follow one procedure and differ only in the skill. The old guide's cost is its bytes (A3), not a run.
+
+**Runs.** One fresh `general-purpose` subagent per arm and task, with the same prompt but the arm's line, a budget of 40 tool calls, and its answer written to `<scratch>/h2-skills/<task>/out-<arm>.md`; it returns one line. An edit task works in its own copy of the tree at the task's commit (`git archive -o`, then `tar -xf`, 67 MB), treated as the repository root. The copy has no `.git`, so git finds no history, and no `.claude/skills/` or `.agents/skills/`, which the run session removes so each arm brings its own skill or none. A run reads and writes nothing outside its copy, its skill copy and its output file. A judgment task reads the live tree, writing nothing; a fixture task answers from its fixture and runs no git or `just` command. A script then scans each run's subagent transcript (`<session>/subagents/*.jsonl`) and voids the run on any of these:
+- in N, a Skill call or a path into a skill folder;
+- in O or L, a read of the live `.claude/skills/`;
+- in an edit task, any tool input naming the live repository's path;
+- in a fixture task, a git or `just` command;
+- in R1, a write.
+
+A voided run reruns once with the rule restated; a second void scores a miss. Each task's copies are deleted once it is graded. Its prompts, outputs, diffs, grades and keep list go to `perf-runs/<UTC>-h2-skills/` (untracked).
 
 **Measures.** Each run's tool uses, total tokens and duration, from its Agent result. For an edit task the run session, not the subagent, takes the evidence. It keeps a pristine extraction of the task's commit beside the arms' copies. A Python script (`filecmp`, `difflib`; the rtk hook rewrites `diff` and `git diff` output) writes each copy's changed-file list and unified diff against it. The run session then runs the task's check command in each copy and keeps the output. A fresh grader subagent per task scores the three arms against the task's checklist and reference: the diffs, file lists and command outputs for an edit task, the answers for a judgment task. The arms are labelled A–C in a shuffled order the grader isn't told; the run session maps them back.
 
@@ -149,20 +158,20 @@ Each skill is rewritten against a no-skill baseline on tasks 7.1–7.3 produced 
 **Gate, per skill:**
 - L passes every checklist item of its tasks: the items are the floor. N and O are references, and an item they both miss still binds L (O misses new-flow items by design).
 - L's files weigh no more than O's.
-- Every instruction L keeps is an item N missed, a new-flow item, or a denied-command trap (`git restore`, `rm`, `tag`, `stash`, a push past the version branch). Its keep list goes in the evaluation file.
+- Every instruction L keeps is an item N missed, a new-flow item, or a denied-command trap (`git restore`, `rm`, `tag`, `stash`, a push past the version branch). The one exception is a required mechanism no task exercises: it stays only when it names the failure it prevents, and the evaluation file lists it as untested. Its keep list goes in the evaluation file.
 
 A missed item earns one revision of L and one rerun of that task. A second miss fails the step's done-when (§6): the skill keeps its old text, with steps 3 and 4's fixes, and the step is marked skipped with the item.
 
 L's tokens over the skill's tasks are read against O's: lower, unchanged within 15 %, or higher. Higher earns one trim round on that skill, then stands as recorded.
 
-**Budget:** 27 task runs and 9 grader runs. A run past 60 tool calls without an answer is stopped and scored as a miss.
+**Budget:** 30 task runs and 10 grader runs. A run past 60 tool calls without an answer is stopped and scored as a miss.
 
 ### 2.6 The tasks and the four skills
 
 | Task | Skill | Kind and source | Reference | Checklist (each item pass or fail) |
 | --- | --- | --- | --- | --- |
 | D1 | decision | Edit, in a copy at `c0fc596d^`: record 7.3's benchmark policy from `docs/plans/bench-runner.md`'s design | `c0fc596d`'s `DECISIONS.md` and index diff | a `## D-226 — ` heading; Date, Decision, Why and Consequences; one `**Amended by D-226:**` line under each of `D-070`, `D-078`, `D-141`, above Date and after older markers; a new row at its index section's end, and the three rows' `Amended by`; `python3 -B scripts/check-repo.py` in the copy reports no decision or link error; no other file changed |
-| D2 | decision | Edit, in a copy at `6e642b4d^`: record 7.2's decision from `docs/plans/agent-tooling.md` §2.9 | `6e642b4d`'s decision diff | a `## D-225 — ` heading; the four fields; the marker under `D-142`; the new row and `D-142`'s row; the copy's check clean; no other file changed |
+| D2 | decision | Edit, in a copy at `d3724465^`: record 7.1's gamepad dependency from `docs/plans/quick-wins.md` §4 | `d3724465`'s `DECISIONS.md` and index diff | a `## D-220 — ` heading; the four fields, its Decision saying "Satisfies `D-015` rule 1" for `gilrs`; one `**Amended by D-220:**` line under each of `D-045`, `D-131`, `D-144`, `D-149`; the new row and the four rows' `Amended by`; the copy's check clean; no other file changed |
 | R1 | release | Read-only, on the tree after step 4: "Prepare and release 0.113": every command in order, the owner's block, nothing run that writes (0.112's release task, session 66a95df2, restated) | the guide after step 4 | notes from `git log v0.112.0..HEAD` as a `docs(changelog)` commit; the sitting against `v0.112.0` before the cut, NoMachine disconnected; `just release minor` with a subject of 72 characters at most; the agent pushes `git push origin 0.113` alone, no tag and no `gh` write; the owner's block: tag, tag push, `git switch -c 0.114`, `git push -u origin 0.114`, `gh pr create`; the merge publishes nothing |
 | R2 | release | Judgment: the owner pushed `v0.113.0` an hour ago and preflight reports no release run | the guide's recovery table | hands the owner `gh workflow run release.yml --ref v0.113.0`; never re-pushes or moves the tag; verifies with preflight and `gh run watch <id>`; runs no GitHub-changing `gh` |
 | X1 | next | Judgment, on session 928a9d47's status output (7.3's run mid-sitting) | that session's reply | nothing that writes while the capture runs, the step marked to wait for it; the step is 7.4's plan; the prompt alone in a `text` block under a label line with Opus 5.5 and xhigh; one prompt; the NoMachine line |
@@ -170,15 +179,16 @@ L's tokens over the skill's tasks are read against O's: lower, unchanged within 
 | X3 | next | Judgment, on X2's fixture with its git lines rewritten to the new flow's unmerged release: branch `0.114` tracking `origin/0.114`, version 0.113.0, newest tag `v0.113.0`, not on `origin/main`, no commits since | the guide after step 4: the merge publishes nothing and gates no work | the next step is the Now item's (7.4's plan), not the merge; the release pull request's merge appears as a heads-up for the owner, with a merge commit and at any time; the label line; one prompt |
 | P1 | plan | Edit, in a copy at `6664ed3b`: write `docs/plans/bench-runner.md`'s step 5 back, its section removed first | `6664ed3b`'s step 5 | Files, Change, Done-when, Commit and Moves; done-when as commands with expected results; `scripts/test-perf.py` cases for at least 9 of the reference's 13 behaviours; local commands with exit codes, the quick sitting marked functional only; `just script-test`; a Conventional subject of 72 characters at most; no file outside step 5's list |
 | P2 | plan | Judgment: running `bench-runner` as of `6664ed3b`, step 4 needs `crates/tungsten-render/src/text/atlas.rs`, outside its list, and a file outside the list stops the step; steps 1–3 are committed, step 4 has six changed files and one new | the skill's run rules | each changed file restored with `git show HEAD:<path> > <path>` and the new file deleted; no `git restore`, `checkout`, `stash`, `reset` or `rm`; step 4 marked skipped with its reason in the evidence log, committed alone and pushed; carries on with the steps that don't depend on it and names the ones that do; reports it at the end |
+| P3 | plan | Judgment: `bench-runner`'s plan at `6664ed3b`, extracted to `<scratch>`, is complete and uncommitted; finish the plan session as the rules require, as commands, with how each finding is recorded (7.3's plan session, af6410ef, did this) | the skill's critique and hand-off rules | the window read before a `--repo` round; `critique --raw --repo --out <scratch file> <plan>` in the background, `--force` only past the soft limit; each finding checked against the repo or a doc before any change, and recorded with what it was checked against, its verdict and its change; a second round only when the first changed a mechanism, with the §7 and log cut and a `--focus-file`; never a self-review in the critic's place; the plan committed alone, the item into Now, the branch pushed; the run prompt under a label line |
 
 The status outputs of X1 come from the transcript (`~/.claude/projects/<this project>/928a9d47*.jsonl`, the tool result holding `== git`).
 
 **What each skill becomes** (L keeps only what its gate allows):
 
-- **`tungsten-decision`:** expected to keep marker placement and order, Amended against Superseded, the old row's marker, the `D-015` phrase and the ID command.
+- **`tungsten-decision`:** expected to keep marker placement and order, Amended against Superseded, the old row's marker, the `D-015` phrase (D2) and the ID command.
 - **`tungsten-release`**, one wrapper: when a release runs, what is the owner's (the tag and its push, `gh` writes, merges), the rehearsal rule, and the guide's happy path as `just release`. `tungsten-finalize` folds in. `check_docs` first reports a frozen record's dead link or fragment as a note, as it reports archive links (Q5).
-- **`tungsten-next`:** `just status` in place of `state.sh`. A `step` prompt: `Use the tungsten-plan skill. Write the plan for <phase>'s step <N> (<name>) from ROADMAP.md: read docs/plans/<phase>.md's Step <k> and docs/plans/roadmap-redo.md's <N> row and the sections it cites; audit only the code it touches; name it docs/plans/<topic>.md; critique it last as the skill says; commit it and end with the run prompt.` A table row sends a phase plan in Now whose next step has no plan to that prompt, never to the `run` prompt. The "newest tag not on `origin/main`" row becomes a heads-up, since the merge publishes nothing and gates no work. Route, tier and reply rules only where N misses them.
-- **`tungsten-plan`**, renamed from `tungsten-milestone` (Q6): the critique mechanics, the restore commands that stand in for denied ones, the hand-off; `skeleton.md` trimmed to the sections plans use. The plans README's Executing and Lifecycle say "deleted when done", as the operating rules do.
+- **`tungsten-next`:** `just status` in place of `state.sh`. A `step` prompt: `Use the tungsten-milestone skill. Write the plan for <phase>'s step <N> (<name>) from ROADMAP.md: read docs/plans/<phase>.md's Step <k> and docs/plans/roadmap-redo.md's <N> row and the sections it cites; audit only the code it touches; name it docs/plans/<topic>.md; critique it last as the skill says; commit it and end with the run prompt.` Its skill name becomes `tungsten-plan` at step 8, with the other prompts'. A table row sends a phase plan in Now whose next step has no plan to that prompt, never to the `run` prompt. The "newest tag not on `origin/main`" row becomes a heads-up, since the merge publishes nothing and gates no work. Route, tier and reply rules only where N misses them.
+- **`tungsten-plan`**, renamed from `tungsten-milestone` (Q6): the critique mechanics (P3), the restore commands that stand in for denied ones (P2), the hand-off; `skeleton.md` trimmed to the sections plans use. The plans README's Executing and Lifecycle say "deleted when done", as the operating rules do.
 
 ### 2.7 Memory pruning (step 9)
 
@@ -236,7 +246,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 ### Step 4: Releases on a tag push
 
 - **Files:** as listed for step 4.
-- **Change:** §2.4 and §2.8: the workflow, `release.py`'s kinds and `run` (behind `just release`), the preflight, the recipes, the guide, the operating rules, the docs naming `release-cut`, the decision and its rows. `tungsten-release`'s publishing sentence only (step 6 rewrites it).
+- **Change:** §2.4 and §2.8: the workflow, `release.py`'s kinds and `run` (behind `just release`), the preflight, the recipes, the guide, the operating rules, the docs naming `release-cut`, the decision and its rows. In the three skills, their hand-off, publishing and merge lines only: the agent commits the cut and pushes its branch; the owner's block tags, pushes the tag (which publishes), starts the next branch and opens the pull request; `tungsten-next`'s "newest tag not on `origin/main`" row becomes a heads-up. Steps 6 and 7 rewrite the rest.
 - **Done-when:**
   - `python3 -B scripts/test-release.py` → passes, with cases for:
     - `minor` from 0.112.0 → 0.113.0, and a branch named otherwise refused;
@@ -254,6 +264,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
   - `rg -q 'pull_request' .github/workflows/release.yml; test $? -eq 1` → exit 0; `rg -c '^\s+- "v\[0-9\]\+\.\[0-9\]\+\.\[0-9\]\+' .github/workflows/release.yml` → 2.
   - `rg -l 'release-cut' justfile scripts docs/releases.md docs/operating-rules.md docs/validation.md docs/known-issues.md .claude; test $? -eq 1` → exit 0.
   - `just release minor --dry-run` → prints `0.113.0` and the chain; `just release rehearsal` → exit 0 and the owner's rehearsal block; `git status --short` → empty after both.
+  - `rg -q 'human merging the pull request|merge the release pull request without squashing|Git mutations are human-pasted' .claude/skills; test $? -eq 1` → exit 0.
   - `rg -c '^## D-22[7] — ' DECISIONS.md` → 1; `rg -c '^\*\*Superseded by D-22[7]:' DECISIONS.md` → 1, under `D-079`; `rg -c '^\*\*Amended by D-22[7]:' DECISIONS.md` → 1, under `D-215`; `rg -c 'D-22[7]' docs/DECISION_INDEX.md` → 3.
   - `just script-test` (actionlint included), `just ctx`, `just repo-check` → pass.
 - **Commit:** `feat(release)!: publish on a tag push and cut with just release`
@@ -263,7 +274,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 
 - **Files:** as listed for step 5.
 - **Change:**
-  - `target/h2-eval/old/` extracted (§2.5).
+  - `<scratch>/old/` extracted (§2.5).
   - The X1 status text taken from its transcript.
   - D1 and D2 under N and O; the lean skill written; D1 and D2 under L; graded.
 - **Done-when:**
@@ -300,11 +311,11 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 
 - **Files:** as listed for step 8.
 - **Change:**
-  - P1 and P2 under N and O; the lean skill, under its new name; P1 and P2 under L; graded.
+  - P1–P3 under N and O; the lean skill, under its new name; P1–P3 under L; graded.
   - The rename: folder, symlink, `.gitignore` line, the links in `phase-7.md` and this plan, the LLM index, agent-setup, `tungsten-next`'s name in its prompts and route line, the checker's comment and the test fixture's path.
   - The plans README's Executing and Lifecycle.
 - **Done-when:**
-  - §2.5's gate for P1 and P2, with L's files at most 10,162 bytes.
+  - §2.5's gate for P1–P3, with L's files at most 10,162 bytes.
   - `test -f .claude/skills/tungsten-plan/SKILL.md && test -L .agents/skills/tungsten-plan && test ! -e .claude/skills/tungsten-milestone && test ! -L .agents/skills/tungsten-milestone` → exit 0.
   - `rg -l 'tungsten-milestone' AGENTS.md docs/LLM_INDEX.md docs/agent-setup.md docs/plans/README.md docs/operating-rules.md docs/releases.md .claude scripts .gitignore; test $? -eq 1` → exit 0; no link names it: `rg -q '\]\([^)]*tungsten-milestone' docs/plans/phase-7.md docs/plans/health-h2.md; test $? -eq 1` → exit 0.
   - `rg -q 'superseded plans move to' docs/plans/README.md; test $? -eq 1` → exit 0.
@@ -333,7 +344,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
   - The checks and the demo.
   - The follow-ups to their homes: Q1's Later line exists from step 2. F3 in phase 7: the overhead retaken on 7.5's sessions, the first under H2's skills, with step 1's scripts. A known-issues line: the first release pull request merged after H2 starts no `release.yml` run (`gh run list --workflow release.yml --event pull_request`), then the line goes (§2.4, the transition).
   - Phase 7's Step 3 evidence row; F2 marked done.
-  - This plan and its citations deleted; `target/h2-eval/` deleted.
+  - This plan and its citations deleted; the scratch copies gone (§2.5 deletes each after its grade).
   - `health-h2` out of Now; `phase-7`'s line says 7.4 landed and 7.5 is next.
 - **Done-when:**
   - `just check`, `just script-test`, `just ctx`, `just repo-check`, `just deps`, `git diff --check` → pass.
@@ -343,7 +354,6 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
     - a fresh subagent with the lean `tungsten-next` on the tree after the deletion → 7.5's plan as the `step` prompt.
   - `rg -n '^\| [^|]+ \| [^|]+ \| 7\.4 \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0.
   - `rg -l 'plans/health-h2\.md' --glob '!CHANGELOG.md' --glob '!DECISIONS.md' .; test $? -eq 1` → exit 0; `just repo-check` → passes.
-  - `test ! -e target/h2-eval` → exit 0.
 - **Ends with:** the commits made, the evidence quoted, what the owner should try (the rehearsal block, `just status`), and the next prompt (7.5's plan).
 
 ## 4. Open questions
@@ -397,6 +407,14 @@ Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-29,
 | 4 | [MEDIUM] Grading answer files cannot verify the edit-task checklists | §2.5 gave the grader answers only, while D1's, D2's and P1's checklists need each copy's state | accepted | §2.5: the run session diffs each copy against a pristine extraction in Python and runs the check itself; the grader scores diffs, file lists and outputs; step 5's evidence names them |
 | 5 | [MEDIUM] The next-step evaluations omit the new flow's unmerged-release state | `.claude/skills/tungsten-next/SKILL.md:40` makes the release pull request's merge the next step while the newest tag is off `origin/main`; X2's fixture has its tag on main (`next-state-7.3-close.txt:4`) | accepted | §2.6: X3, a published tag with its pull request unmerged; the merge row becomes a heads-up; step 7 runs X1–X3 |
 | 6 | [MEDIUM] The claimed first-merge no-op contradicts the old workflow | `.github/workflows/release.yml:75` takes the "already released" exit only when the tag names another commit; a matching head builds and reaches `gh release create` (`:244`) | accepted | §2.4's transition: a pull request's run reads the workflow from its merge ref, which drops the trigger; the old path's worst case is a failed publish; step 10 adds the first release's check to known issues |
+
+Round 2: the same reviewer at xhigh, 2026-10-29, reading `fe83ae90` with the Critique section and the log cut and a focus note on round 1's changes. Footer: `417.1 s, tokens in 738864 (cached 652800), out 11692 (reasoning 8072), commands 36, output 237 KB (largest 23.3 KB), usage 5h 23% → 44%, week 37% → 40%`. Three findings, all accepted; no third round.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | [MEDIUM] A skipped skill rewrite restores instructions incompatible with the new release flow | A skipped step 7 keeps `tungsten-next`'s merge-first row (`.claude/skills/tungsten-next/SKILL.md:40`); a skipped step 6 keeps "Git mutations are human-pasted" (`.claude/skills/tungsten-release/SKILL.md:10`, and `tungsten-finalize`'s), while `just release` commits the cut | accepted | Step 4 rewrites the three skills' hand-off, publishing and merge lines, with a check, so a failed gate leaves them on the new flow |
+| 2.2 | [MEDIUM] The historical evaluation copies can read the live repository's answers | `git -C target rev-parse --show-toplevel` resolves to the live root, whose `DECISIONS.md` holds `D-225` and `D-226`; each copy also carries its era's skills | accepted | §2.5: copies and skill copies in the run session's scratchpad, outside any repository; copies stripped of their skill folders; a transcript scan voids contaminated runs |
+| 2.3 | [MEDIUM] The retention gate excludes mechanisms the plan explicitly expects to retain | No task exercised the critique mechanics (`.claude/skills/tungsten-milestone/SKILL.md:21`) or a dependency decision's `D-015` phrase (`.claude/skills/tungsten-decision/SKILL.md:28`) | accepted | §2.6: D2 becomes 7.1's `D-220` (`gilrs`, `D-015` rule 1, four amendments), and P3 adds the critique and hand-off; §2.5 keeps an unexercised required mechanism only with its failure named, listed as untested |
 
 ## Evidence log
 
