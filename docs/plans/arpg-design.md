@@ -2,21 +2,21 @@
 
 A gameplay framework for action RPGs, designed on paper by the [roadmap redo](roadmap-redo.md)'s brief ([§7.3](roadmap-redo.md#73-arpg-paper-design-719), step 7.19, `D-218`): skills whose properties tag-scoped modifiers change, equipment from procedurally generated items on the same modifiers, and one rule set for players and enemies. It designs systems, not a game; every name and example here is original. Written against the API snapshots at `2f30d65`, rechecked at `3bc28c7` (`qa6`'s refresh changed no cited span), and the kit's source at `042bcab`.
 
-- **status:** in progress
+- **status:** in progress (its steps are done; it stays as the design 7.10, 8.1, 8.2 and 8.7 build from, archived when 8.7 closes)
 - **goal:** Find what an action RPG needs that the engine and kit lack, and design the framework that fills it in the kit as opt-in plugins in its domains (Q19), as register rows the owner triages to 7.10, 8.1, 8.2 and 8.7 before 7.7 plans Phase 7.
 - **non-goals:**
   - Code, and edits to any other file but `ROADMAP.md`'s `arpg-design` line.
   - Each step's mechanisms: the step's own plan specifies them from the tree of its day.
   - A game or a vertical slice (the owner's answer of 2026-10-23); the studied games' names for things, items, content and tree layouts.
   - Minions, totems, traps and mines; reserved auras; flasks; leech; armour, evasion and block (a physical factor and a `damage_taken` line cover 1.0's need); dual wielding; crafting beyond a reroll; trade; multiplayer. A game writes them on §3.6's named handlers, or 1.x takes them.
-- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. 7.7 reads §15's register after the owner's triage; nothing else changes before then.
+- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. The [Phase 7 plan](phase-7.md) holds §15's rows' steps and status (its §2); the steps that build them read this file and leave it as it is.
 - **ordered steps:**
   1. Read the brief, the kit's stat, damage, ability, projectile and loot code and the API snapshots; targeted research on the mechanics (§2). Done.
   2. The design (§3–§10), the page with numbers, weekly tasks and stress numbers (§11–§13), the build sheet and register (§14–§15), the scope by step (§16), trade-offs and questions (§17–§18). Done.
   3. A fresh-context verifier on every citation (§19). Done.
   4. One `/critique` round at xhigh on §5 and §6, applying what holds (§19). Done.
   5. The owner's triage of §15's rows and §18's questions. Done 2026-10-29: every row at its default step, every question at its default.
-  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows.
+  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows. Done 2026-10-29 in the [Phase 7 plan](phase-7.md) (§2.2, §2.3, §2.6), with §1's assumptions rechecked there (§2.7).
 - **done-when:**
   - Every "data only" and "game Rust" verdict cites an item in `api/*.txt`, and every gap names a search that finds nothing; §19's verifier report confirms or fixes every citation.
   - One critique round on §5 and §6 has run and what held is applied (§19).
@@ -33,7 +33,7 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
 
 ## 1. Assumptions
 
-Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows.
+Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows. Rechecked at `08111d5a`: each holds ([Phase 7 plan](phase-7.md) §2.7).
 
 - **The redo's §5.2 statuses and Q17's merge.** Effects become statuses with intensity, stacking, granted tags and stat changes; this design's lines (§4.1) are what a status's stat changes become, and a status's lines scale with its intensity through `curves`.
 - **P8-3's equipment as statuses.** An equipped item applies a status whose lines are the item's rolled global lines (§4.6).
