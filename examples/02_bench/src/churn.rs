@@ -175,7 +175,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
     }
     let drawn = state.sample.count > 0;
     app.world_mut().insert_resource(state);
-    app.on_startup(r#gen::register_view_textures);
+    app.on_startup(|world, renderer| r#gen::register_view_textures(world, renderer));
     app.add_system_named("bench_counters", bench_counters_system::<ChurnCounts>);
     app.add_system_named("churn_scan", churn_scan);
     app.add_system_named("churn_despawn", churn_despawn);
@@ -191,7 +191,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
 /// Spawn serial, its toggle group (`serial % groups`), and one bit per status
 /// component the entity holds.
 #[derive(Debug, Clone, Copy)]
-struct Life {
+pub(crate) struct Life {
     serial: u64,
     group: u64,
     status: u8,

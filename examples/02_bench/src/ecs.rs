@@ -185,7 +185,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
             ..EcsCounts::default()
         }));
     }
-    app.on_startup(r#gen::register_view_textures);
+    app.on_startup(|world, renderer| r#gen::register_view_textures(world, renderer));
     app.add_system_named("bench_counters", bench_counters_system::<EcsCounts>);
     let selection = cfg.choice("systems");
     for &(name, reach, system) in SYSTEMS {

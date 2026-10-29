@@ -438,7 +438,10 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
         "assets/manifest.json".into(),
         "examples/02_bench/assets/manifest.json".into(),
     ]);
-    app.on_startup(move |world, renderer| scene::startup(world, renderer, &params));
+    app.on_startup(move |world, renderer| {
+        scene::startup(world, renderer, &params);
+        scene::rebuild_heavy(world, renderer);
+    });
     app.add_system_named("bench_counters", bench_counters_system::<GpuCounts>);
     app.add_system_named("gpu_camera", gpu_camera);
     app.add_system_named("gpu_lights", scene::move_lights);
@@ -449,6 +452,23 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
         batches
     });
     app.set_extract_text(extract_text);
+}
+
+/// The startup hook's World part at `cfg`, for the counter guards, which
+/// run no renderer.
+#[cfg(test)]
+pub(crate) fn startup(
+    world: &mut World,
+    textures: &mut dyn crate::r#gen::TextureSink,
+    cfg: &BenchConfig,
+) {
+    scene::startup(world, textures, &Params::new(cfg));
+}
+
+/// The visible tiles the tilemap extract draws, for the counter guards.
+#[cfg(test)]
+pub(crate) fn visible_tiles(world: &World) -> u32 {
+    scene::visible_tiles(world)
 }
 
 /// Runtime state: the resolved knobs, time and the camera's scroll range.

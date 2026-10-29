@@ -36,11 +36,10 @@ use tungsten::core::{
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
     Sprite, Time, Transform, Visibility, World, splitmix64,
 };
-use tungsten::render::Renderer;
 use tungsten::{App, extract_sprites_default};
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
-use crate::r#gen::{self, Cell};
+use crate::r#gen::{self, Cell, TextureSink};
 use crate::knobs::{self, Bench, BenchConfig, Guard, Knob, Preset, Row, Value};
 use crate::view::VIEWPORT;
 
@@ -426,7 +425,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
 }
 
 /// Startup hook: particle sprites and animation frames, one atlas page each.
-fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
+pub(crate) fn register_textures(world: &mut World, textures: &mut dyn TextureSink, clips: u32) {
     let particles = [
         Cell {
             id: PARTICLE_SPRITES[0].to_string(),
@@ -437,7 +436,7 @@ fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
             rgba: r#gen::spark_rgba(PARTICLE_PX),
         },
     ];
-    r#gen::register_atlas(world, renderer, FilterMode::Linear, PARTICLE_PX, &particles);
+    r#gen::register_atlas(world, textures, FilterMode::Linear, PARTICLE_PX, &particles);
     let frames: Vec<Cell> = (0..clips)
         .flat_map(|clip| {
             (0..FRAMES_PER_CLIP).map(move |frame| Cell {
@@ -446,7 +445,7 @@ fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
             })
         })
         .collect();
-    r#gen::register_atlas(world, renderer, FilterMode::Linear, FRAME_PX, &frames);
+    r#gen::register_atlas(world, textures, FilterMode::Linear, FRAME_PX, &frames);
 }
 
 fn dt_seconds(world: &World) -> f32 {

@@ -73,6 +73,81 @@ pub const WORLD_MAX: Vec2 = Vec2::new(
 /// on the left; the map cannot place it, since the tests' sky refuses an
 /// object there.
 pub const BOUNDARY: [Vec2; 2] = [Vec2::new(-TILE, WORLD_MIN.y), Vec2::new(0.0, WORLD_MAX.y)];
+/// A span of tiles in `tools/level.json`: a platform's `left` and `right`
+/// columns and the `row` of its top.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TileSpan {
+    pub left: f32,
+    pub right: f32,
+    pub row: f32,
+}
+
+/// The ball pit under the rope bridge (`tools/level.json`'s `pit`): its
+/// interior's `left` and `right` columns, and its `floor` as the row.
+pub const PIT: TileSpan = TileSpan {
+    left: 48.0,
+    right: 72.0,
+    row: 68.0,
+};
+/// The climbing shelves up the pit's middle, `pit_shelf_1` to `_10`.
+pub const PIT_SHELVES: [TileSpan; 10] = [
+    TileSpan {
+        left: 55.0,
+        right: 57.0,
+        row: 66.0,
+    },
+    TileSpan {
+        left: 59.0,
+        right: 62.0,
+        row: 63.0,
+    },
+    TileSpan {
+        left: 63.0,
+        right: 65.0,
+        row: 60.0,
+    },
+    TileSpan {
+        left: 59.0,
+        right: 62.0,
+        row: 57.0,
+    },
+    TileSpan {
+        left: 55.0,
+        right: 57.0,
+        row: 54.0,
+    },
+    TileSpan {
+        left: 59.0,
+        right: 62.0,
+        row: 51.0,
+    },
+    TileSpan {
+        left: 63.0,
+        right: 65.0,
+        row: 48.0,
+    },
+    TileSpan {
+        left: 59.0,
+        right: 62.0,
+        row: 45.0,
+    },
+    TileSpan {
+        left: 55.0,
+        right: 57.0,
+        row: 42.0,
+    },
+    TileSpan {
+        left: 59.0,
+        right: 62.0,
+        row: 39.0,
+    },
+];
+/// The rope bridge's east deck over the pit, `bridge_b`.
+pub const PIT_DECK: TileSpan = TileSpan {
+    left: 62.0,
+    right: 69.0,
+    row: 36.0,
+};
 /// The camera's shake at full trauma, in world pixels, its carrier and its
 /// decay: a hit's trauma of 0.5 moves the view a few pixels for half a
 /// second. The shell's Screen shake option scales the offset.

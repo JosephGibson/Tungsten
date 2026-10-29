@@ -1,12 +1,71 @@
 //! Procedural textures registered under `bench_` IDs, so the suite ships no
-//! image files. The `*_rgba` generators are pure; `register*` upload and
-//! register their output.
+//! image files. The `*_rgba` generators are pure; `register*` hand their
+//! output to a [`TextureSink`] and register it.
 
 use std::path::PathBuf;
 
-use tungsten::core::assets::UvRect;
+use tungsten::core::assets::{TextureHandle, UvRect};
 use tungsten::core::{AssetRegistry, FilterMode, World};
 use tungsten::render::Renderer;
+
+/// Where generated textures go. The window's renderer uploads them; the
+/// counter guards' headless sink hands out the harness's handles and uploads
+/// nothing. Both run the same packing and registration, so the registry and
+/// the extract's batch keys match the window's.
+pub(crate) trait TextureSink {
+    fn allocate_texture_handle(&mut self) -> TextureHandle;
+    fn upload_texture(
+        &mut self,
+        handle: TextureHandle,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    );
+    #[allow(clippy::too_many_arguments)] // Mirrors `Renderer::upload_lit_texture`.
+    fn upload_lit_texture(
+        &mut self,
+        handle: TextureHandle,
+        albedo: &[u8],
+        normal: &[u8],
+        emissive: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    );
+}
+
+impl TextureSink for Renderer {
+    fn allocate_texture_handle(&mut self) -> TextureHandle {
+        Renderer::allocate_texture_handle(self)
+    }
+
+    fn upload_texture(
+        &mut self,
+        handle: TextureHandle,
+        rgba: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    ) {
+        Renderer::upload_texture(self, handle, rgba, width, height, filter);
+    }
+
+    fn upload_lit_texture(
+        &mut self,
+        handle: TextureHandle,
+        albedo: &[u8],
+        normal: &[u8],
+        emissive: &[u8],
+        width: u32,
+        height: u32,
+        filter: FilterMode,
+    ) {
+        Renderer::upload_lit_texture(
+            self, handle, albedo, normal, emissive, width, height, filter,
+        );
+    }
+}
 
 /// Solid white square for walls, floors and other boxes.
 pub(crate) const RECT: &str = "bench_rect";
@@ -17,12 +76,12 @@ const RECT_PX: u32 = 4;
 const DISC_PX: u32 = 32;
 
 /// Startup hook: upload and register the lean view's textures.
-pub(crate) fn register_view_textures(world: &mut World, renderer: &mut Renderer) {
+pub(crate) fn register_view_textures(world: &mut World, textures: &mut dyn TextureSink) {
     let rect = vec![255; (RECT_PX * RECT_PX * 4) as usize];
-    register(world, renderer, RECT, RECT_PX, FilterMode::Nearest, &rect);
+    register(world, textures, RECT, RECT_PX, FilterMode::Nearest, &rect);
     register(
         world,
-        renderer,
+        textures,
         DISC,
         DISC_PX,
         FilterMode::Linear,
@@ -33,13 +92,13 @@ pub(crate) fn register_view_textures(world: &mut World, renderer: &mut Renderer)
 /// Upload one texture and register it as sprite `id`.
 pub(crate) fn register(
     world: &mut World,
-    renderer: &mut Renderer,
+    textures: &mut dyn TextureSink,
     id: &str,
     size: u32,
     filter: FilterMode,
     rgba: &[u8],
 ) {
-    let handle = renderer.allocate_texture_handle();
+    let handle = textures.allocate_texture_handle();
     world
         .get_resource_mut::<AssetRegistry>()
         .expect("AssetRegistry resource missing")
@@ -55,7 +114,7 @@ pub(crate) fn register(
             None,
             None,
         );
-    renderer.upload_texture(handle, rgba, size, size, filter);
+    textures.upload_texture(handle, rgba, size, size, filter);
 }
 
 /// White disc, lightly shaded toward the rim, with a one-pixel alpha ramp.
@@ -126,15 +185,15 @@ fn pack(size: u32, cells: &[&[u8]]) -> Page {
 /// (`D-048`).
 pub(crate) fn register_atlas(
     world: &mut World,
-    renderer: &mut Renderer,
+    textures: &mut dyn TextureSink,
     filter: FilterMode,
     size: u32,
     cells: &[Cell],
 ) {
     let pixels: Vec<&[u8]> = cells.iter().map(|cell| cell.rgba.as_slice()).collect();
     let (page, width, height, uvs) = pack(size, &pixels);
-    let handle = renderer.allocate_texture_handle();
-    renderer.upload_texture(handle, &page, width, height, filter);
+    let handle = textures.allocate_texture_handle();
+    textures.upload_texture(handle, &page, width, height, filter);
     let registry = world
         .get_resource_mut::<AssetRegistry>()
         .expect("AssetRegistry resource missing");
@@ -158,7 +217,7 @@ pub(crate) fn register_atlas(
 /// share one handle and packing (`D-061`), so the cells form one lit batch key.
 pub(crate) fn register_lit_atlas(
     world: &mut World,
-    renderer: &mut Renderer,
+    textures: &mut dyn TextureSink,
     filter: FilterMode,
     size: u32,
     cells: &[LitCell],
@@ -171,9 +230,9 @@ pub(crate) fn register_lit_atlas(
         pack(size, &pixels)
     });
     let (width, height, uvs) = (albedo.1, albedo.2, albedo.3);
-    let handle = renderer.allocate_texture_handle();
-    renderer.upload_texture(handle, &albedo.0, width, height, filter);
-    renderer.upload_lit_texture(
+    let handle = textures.allocate_texture_handle();
+    textures.upload_texture(handle, &albedo.0, width, height, filter);
+    textures.upload_lit_texture(
         handle,
         &albedo.0,
         &normal.0,
@@ -206,7 +265,7 @@ pub(crate) fn register_lit_atlas(
 #[allow(clippy::too_many_arguments)] // Mirrors `Renderer::upload_lit_texture`.
 pub(crate) fn register_lit(
     world: &mut World,
-    renderer: &mut Renderer,
+    textures: &mut dyn TextureSink,
     id: &str,
     size: u32,
     filter: FilterMode,
@@ -214,9 +273,9 @@ pub(crate) fn register_lit(
     normal: &[u8],
     emissive: &[u8],
 ) {
-    let handle = renderer.allocate_texture_handle();
-    renderer.upload_texture(handle, albedo, size, size, filter);
-    renderer.upload_lit_texture(handle, albedo, normal, emissive, size, size, filter);
+    let handle = textures.allocate_texture_handle();
+    textures.upload_texture(handle, albedo, size, size, filter);
+    textures.upload_lit_texture(handle, albedo, normal, emissive, size, size, filter);
     world
         .get_resource_mut::<AssetRegistry>()
         .expect("AssetRegistry resource missing")

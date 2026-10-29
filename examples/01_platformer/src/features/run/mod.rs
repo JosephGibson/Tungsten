@@ -6,6 +6,7 @@
 
 pub mod banner;
 pub mod components;
+pub mod pit;
 pub mod script;
 pub mod systems;
 
