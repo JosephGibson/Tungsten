@@ -592,7 +592,7 @@ Verdicts: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lin
 
 ## 15. Register
 
-Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the generic fix, dependencies), as the [paper designs](paper-designs.md)' §4 has them, with the kit domain that holds each fix. **Where** names §14's entries; an entry in parentheses adds no lines here. **Lines** is the game Rust those entries take today, each counted once. **Step** is the default the owner triages; `+` marks a fix the step's sketch in the redo's §3 does not list yet, and `defer` a row whose shape 7.10's systems do not fix, so it could wait for 8.7 at no rework.
+Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the generic fix, dependencies), as the [paper designs](paper-designs.md)' §4 has them, with the kit domain that holds each fix. **Where** names §14's entries; an entry in parentheses adds no lines here. **Lines** is the game Rust those entries take today, each counted once. **Step** is where the owner's triage sent the row (below); `+` marks a fix the step's sketch in the redo's §3 does not list yet, and `defer` a row whose shape 7.10's systems do not fix, so it could wait for 8.7 at no rework.
 
 | ID | Pattern | Where | Lines | Lacking | Generic fix | Domain | Depends on | Step |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -620,6 +620,8 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | PA-22 | `explain` and build saves | AR31, AR32 | 700 | — | `explain stat`, `hit` and `item` on PA-11's records; every component here registered as saved on 7.9 | build, umbrella | PA-11, 7.9 | 8.7 |
 
 The rows hold about 7,000 of the build sheet's 7,040 lines: AR33's 40 are P7-6's, already in 7.10's list, and AR1 and AR10 are data only.
+
+**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID.
 
 ## 16. Minimal implementation scope by step
 
