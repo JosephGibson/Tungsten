@@ -51,7 +51,7 @@ The tag names the tested release commit. A tag is fixed once its GitHub Release 
 
 ### Branch preparation
 
-[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the release, the command hand-off and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
+[tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles this docs pass, the release, the command hand-off and release inspection; this guide owns the procedure. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
 
 - Establish the requested version; the owner fetches if needed. Inventory the commits since the newest tag and the active plans.
 - Run `just release-check`. The workspace version must equal the newest versioned changelog heading and DESIGN's status version. It stays unchanged until the cut; version branch `0.NN` ships `0.NN.0`. Resolve drift without discarding unrelated work.
