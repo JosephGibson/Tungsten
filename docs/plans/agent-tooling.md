@@ -1,6 +1,6 @@
-# Agent tooling foundations (agent-tooling) — draft
+# Agent tooling foundations (agent-tooling) — in progress
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo step 7.2: `tungsten run --script` (inputs at frames, assertions, screenshots, a JSON report), `tungsten render` (a scene, an area or a prefab to PNG with overlays, on the capture path) and `tungsten describe`, so asset review sheets and in-game captures come from the command line instead of a scratch crate. Sequence capture, a Later line that waits for 7.2's review sheets, lands with them.
 - **non-goals:**
   - The later systems' surfaces (the redo's §8): `describe` of prefabs with resolved fields, `check` with suggestions, scaffolds, `explain`, save dumps, the UI tree dump and named screens (7.17, 7.20), rigs (7.18), a JSON Schema export, a resolved-schedule dump.
@@ -276,7 +276,9 @@ Checking round 2's findings turned up one more limit, the critic's neither: the 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-29 | passed | `cargo test -p tungsten-core --locked --lib -- script component_registry` → 31 passed (12 `script`, 19 `component_registry`, `count_counts_a_component_registered_as_itself` new); doc tests 5 passed; `api/tungsten-core.txt` +673 −0, every line under `tungsten_core::script`, `World::add_script_action`/`add_script_probe` (the hooks' bare-World door, as `register_component`'s) or `ComponentRegistry::count`; `just api-check` → current; clippy `-D warnings` → clean. Deviations: `count` is `None` for a name registered with a definition (`register_with`, every kit and engine component but `register::<T>`'s), since the registry knows only the definition's type, and the `count` probe fails such a step naming it (F2); the report's `passed` is a field set by `Report::finish`, the verdict computed there | `crates/tungsten-core/src/script.rs`, `crates/tungsten-core/src/tests/script.rs` |
 
 ## Follow-ups
 
+- **F2.** `ComponentRegistry::count` and the `count` probe cover components registered as themselves (`register::<T>`); a definition's (`register_with`, the kit's and the engine's) needs its build's spawned type recorded at registration, a `Bundle` or registry API addition. Until then a game probe counts them.
 - **F1.** The agent memory's scratch-driver recipes (in-game shots, cleanup by fingerprint hash) are replaced by `render` once step 6 lands; H2 (7.4) prunes agent memory.

@@ -64,6 +64,9 @@ type Check = Box<dyn Fn(&Value, Option<&World>) -> Result<(), Fail>>;
 /// A definition's asset check, shared by its `Check` and its `Prepare`.
 type AssetCheck<D> = dyn Fn(&D, &World) -> Result<(), MissingAsset>;
 
+/// How many entities hold a registered type.
+type Count = fn(&World) -> usize;
+
 /// Where a built bundle goes: a buffer's pending spawn, or a live entity
 /// (a prefab spawned at once).
 #[derive(Clone, Copy)]
@@ -78,6 +81,9 @@ struct Registration {
     type_name: &'static str,
     check: Check,
     prepare: Prepare,
+    /// For a type registered as itself; a definition's build may spawn
+    /// any types.
+    count: Option<Count>,
 }
 
 /// Why a value does not resolve: where it stopped deserializing and serde's
@@ -165,7 +171,12 @@ impl ComponentRegistry {
     /// `T` already has another name; the message names both (`D-022`).
     #[track_caller]
     pub fn register<T: DeserializeOwned + 'static>(&mut self, name: &str) -> bool {
-        self.register_with(name, |value: T, _: &SpawnContext<'_>| (value,))
+        self.insert_registration(
+            name,
+            None,
+            |value: T, _: &SpawnContext<'_>| (value,),
+            Some(count_of::<T>),
+        )
     }
 
     /// `components.<name>` deserializes to `D`, and `build` turns it and the
@@ -183,7 +194,7 @@ impl ComponentRegistry {
         D: DeserializeOwned + 'static,
         B: Bundle,
     {
-        self.insert_registration(name, None, build)
+        self.insert_registration(name, None, build, None)
     }
 
     /// [`register_with`](Self::register_with), plus `assets`: the check of
@@ -249,7 +260,7 @@ impl ComponentRegistry {
         D: DeserializeOwned + 'static,
         B: Bundle,
     {
-        self.insert_registration(name, Some(Rc::new(assets)), build)
+        self.insert_registration(name, Some(Rc::new(assets)), build, None)
     }
 
     /// The registration behind every door: the name and type checks, then
@@ -260,6 +271,7 @@ impl ComponentRegistry {
         name: &str,
         assets: Option<Rc<AssetCheck<D>>>,
         build: impl Fn(D, &SpawnContext<'_>) -> B + 'static,
+        count: Option<Count>,
     ) -> bool
     where
         D: DeserializeOwned + 'static,
@@ -312,6 +324,7 @@ impl ComponentRegistry {
                 type_name,
                 check,
                 prepare,
+                count,
             },
         );
         true
@@ -347,6 +360,16 @@ impl ComponentRegistry {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
+    }
+
+    /// How many of `world`'s entities hold the component registered under
+    /// `name`. `None` for an unknown name, and for one registered with a
+    /// definition ([`register_with`](Self::register_with) and
+    /// [`register_with_assets`](Self::register_with_assets)), whose build
+    /// may spawn any types.
+    #[must_use]
+    pub fn count(&self, name: &str, world: &World) -> Option<usize> {
+        self.entries.get(name)?.count.map(|count| count(world))
     }
 
     /// Whether `value` deserializes as the type registered under `name`. A
@@ -614,6 +637,10 @@ fn registry_mut(world: &mut World) -> &mut ComponentRegistry {
         world.insert_resource(ComponentRegistry::new());
     }
     world.resource_mut::<ComponentRegistry>()
+}
+
+fn count_of<T: 'static>(world: &World) -> usize {
+    world.query::<&T>().count()
 }
 
 /// `[a-z][a-z0-9_]*`.

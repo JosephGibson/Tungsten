@@ -239,6 +239,31 @@ fn register_with_builds_from_the_transform_and_the_world() {
 }
 
 #[test]
+fn count_counts_a_component_registered_as_itself() {
+    let mut world = World::new();
+    world.register_component::<Player>("player");
+    world.register_component::<Health>("health");
+    world.register_component_with("spawned", |def: SpawnedDef, _: &SpawnContext<'_>| {
+        (Spawned {
+            at: Vec2::ZERO,
+            bonus: def.bonus,
+        },)
+    });
+    world.spawn_with((Player, Health { max: 3 }));
+    world.spawn_with((Health { max: 4 },));
+    world.spawn_with((Spawned {
+        at: Vec2::ZERO,
+        bonus: 1,
+    },));
+    let registry = world.resource::<ComponentRegistry>();
+    assert_eq!(registry.count("player", &world), Some(1));
+    assert_eq!(registry.count("health", &world), Some(2));
+    assert_eq!(registry.count("ghost", &world), None);
+    // A definition's build may spawn any types, so it has no count.
+    assert_eq!(registry.count("spawned", &world), None);
+}
+
+#[test]
 fn prepare_leaves_the_buffer_and_insert_pending_queues_one_bundle() {
     let mut world = World::new();
     world.register_component_with("pair", |def: Health, _: &SpawnContext<'_>| (def, Player));

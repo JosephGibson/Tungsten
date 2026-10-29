@@ -18,6 +18,7 @@ pub mod post;
 pub mod rng;
 pub mod save;
 pub mod schedule;
+pub mod script;
 pub mod settings;
 pub mod text;
 pub mod time;
