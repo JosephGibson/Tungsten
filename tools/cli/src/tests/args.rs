@@ -189,7 +189,7 @@ fn a_misplaced_option_names_its_command() {
     assert_eq!(
         parse_str(&["check", "--release"]),
         Err(UsageError(
-            "`--release` is an option of `run`, not of `check`".to_owned()
+            "`--release` is an option of `run` and `render`, not of `check`".to_owned()
         ))
     );
     assert_eq!(
@@ -225,6 +225,20 @@ fn the_usage_names_every_command_and_option() {
         "--user-dir <dir>",
         "--release",
         "--json",
+        "render",
+        "--sheet <items>",
+        "--scene <file>",
+        "--at <x>,<y>",
+        "--after <action>[=<json>]",
+        "--zoom <z>",
+        "--view <height>",
+        "--size <w>x<h>",
+        "--overlay <names>",
+        "--no-ui",
+        "--frame <n>",
+        "--loop <from>..<to>/<every>",
+        "--save-script <file>",
+        "-o <path>",
     ] {
         assert!(USAGE.contains(word), "{word}");
     }

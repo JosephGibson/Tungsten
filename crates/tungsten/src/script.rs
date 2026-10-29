@@ -274,8 +274,8 @@ impl SheetLayout {
         }
     }
 
-    /// Item `index`'s point: its cell's centre, a little below the middle
-    /// to leave its caption room.
+    /// Item `index`'s centre: its cell's, a little below the middle to
+    /// leave its caption room.
     pub(crate) fn center(&self, index: usize) -> Vec2 {
         let (column, row) = (index % self.columns, index / self.columns);
         Vec2::new(
@@ -791,7 +791,10 @@ impl ScriptRunner {
         let layout = SheetLayout::new(sheet, &sizes);
         let mut errors = Vec::new();
         for (index, item) in sheet.items.iter().enumerate() {
-            let at = layout.center(index);
+            let centre = layout.center(index);
+            // A sprite draws from its top-left at the entity's point, so a
+            // sized item sits half its size up and left of its cell's centre.
+            let at = centre - sizes[index].unwrap_or(Vec2::ZERO) * 0.5;
             let name = format!("{}:{}", item.kind.name(), item.id);
             match spawn_item(world, item.kind, &item.id, at, owner) {
                 Ok(entity) => {
@@ -799,7 +802,7 @@ impl ScriptRunner {
                     if sheet.labels {
                         let half = sizes[index].map_or(layout.cell.y * 0.25, |size| size.y * 0.5);
                         self.labels
-                            .push((item.id.clone(), at - Vec2::new(0.0, half + 2.0)));
+                            .push((item.id.clone(), centre - Vec2::new(0.0, half + 2.0)));
                     }
                 }
                 Err(error) => errors.push(format!("{name}: {error}")),

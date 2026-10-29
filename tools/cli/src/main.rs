@@ -1,8 +1,9 @@
 //! `tungsten`, the engine's command line for a game project (`D-182`):
 //! `new` starts a game from the engine's template, `check` loads every file
 //! the game reads and reports every error, `package` builds the game's
-//! release archives, `run` runs it from a script and `describe` prints its
-//! components, script hooks and asset IDs (redo 7.2).
+//! release archives, `run` runs it from a script, `render` renders it to PNG
+//! and `describe` prints its components, script hooks and asset IDs (redo
+//! 7.2).
 
 mod args;
 mod cargo;
@@ -12,6 +13,7 @@ mod elf;
 mod new;
 mod notices;
 mod package;
+mod render;
 mod run;
 
 /// The files `build.rs` embeds, by their path in the engine's repository.
@@ -52,6 +54,10 @@ fn main() -> ExitCode {
         Command::Check => finish("check", current_dir().and_then(|dir| check::run(&dir))),
         Command::Package => finish("package", current_dir().and_then(|dir| package::run(&dir))),
         Command::Run(args) => finish("run", current_dir().and_then(|dir| run::run(&dir, &args))),
+        Command::Render(args) => finish(
+            "render",
+            current_dir().and_then(|dir| render::run(&dir, &args)),
+        ),
         Command::Describe(args) => finish(
             "describe",
             current_dir().and_then(|dir| describe::run(&dir, &args)),

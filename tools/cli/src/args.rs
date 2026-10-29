@@ -4,6 +4,8 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
 
+use crate::render::{self, RenderArgs};
+
 /// `tungsten --help`, which `api/tungsten-cli.txt` records.
 pub(crate) const USAGE: &str = "\
 Usage: tungsten <command>
@@ -23,6 +25,9 @@ Commands:
   describe [<name>]
               Print the game's components, script hooks and asset IDs, or
               only the entries named <name>
+  render      Render the game to PNG through a script made from its flags:
+              a contact sheet, a scene or a point of its world, once or as
+              a loop of frames
 
 Options:
   -h, --help     Print this help
@@ -38,11 +43,32 @@ Options of run:
 Options of describe:
   --json            Print the description as JSON
 
+Options of render, one of --sheet, --scene and --at, and -o:
+  --sheet <items>   Items in a captioned grid on an empty stage, by commas:
+                    prefab IDs, sprite:<id>, animation:<id>, particles:<id>
+  --scene <file>    A scene file on an empty stage
+  --at <x>,<y>      A point of the game's world, the camera's centre
+  --after <action>[=<json>]
+                    An action the game registered, with its arguments, at
+                    frame 2, the next at 3, and so on; repeatable
+  --zoom <z>        With --at: screen pixels per world pixel (default 1)
+  --view <height>   With --at: world pixels from top to bottom
+  --size <w>x<h>    The window's and the PNG's size (default 1280x720)
+  --overlay <names> Debug overlays on: physics, kit, by commas
+  --no-ui           Draw no UI
+  --frame <n>       The frame to capture (default 60)
+  --loop <from>..<to>/<every>
+                    Capture every <every>th frame into the folder -o names
+  --save-script <file>
+                    Keep the script, to edit and run with `run`
+  --release         Run the game's release build
+  -o <path>         The PNG, or with --loop the folder of NNNN.png frames
+
 Run every command but new in the game's folder. They need the game's
 engine to be the version of this command line.";
 
 /// What the arguments ask for.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub(crate) enum Command {
     /// Print the usage.
     Help,
@@ -58,6 +84,8 @@ pub(crate) enum Command {
     Run(RunArgs),
     /// Describe the game in the current folder.
     Describe(DescribeArgs),
+    /// Render the game in the current folder to PNG.
+    Render(RenderArgs),
 }
 
 /// `run`'s options.
@@ -95,7 +123,29 @@ const OPTIONS: &[(&str, &[OptionSpec])] = &[
         ],
     ),
     ("describe", &[("--json", None)]),
+    (
+        "render",
+        &[
+            ("--sheet", Some("<items>")),
+            ("--scene", Some("<file>")),
+            ("--at", Some("<x>,<y>")),
+            ("--after", Some("<action>")),
+            ("--zoom", Some("<z>")),
+            ("--view", Some("<height>")),
+            ("--size", Some("<w>x<h>")),
+            ("--overlay", Some("<names>")),
+            ("--no-ui", None),
+            ("--frame", Some("<n>")),
+            ("--loop", Some("<from>..<to>/<every>")),
+            ("--save-script", Some("<file>")),
+            ("--release", None),
+            ("-o", Some("<path>")),
+        ],
+    ),
 ];
+
+/// The options a command may give more than once.
+const REPEATABLE: &[&str] = &["--after"];
 
 /// Parses the arguments after the program's name. `-h` or `--help`
 /// anywhere asks for the usage, then `-V` or `--version` anywhere for the
@@ -120,7 +170,7 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
     let rest: Vec<OsString> = args.collect();
     let name = command.to_string_lossy().into_owned();
     let (positional, options) = match name.as_str() {
-        "new" | "check" | "package" | "run" | "describe" => split(&name, rest)?,
+        "new" | "check" | "package" | "run" | "describe" | "render" => split(&name, rest)?,
         _ => return Err(UsageError(format!("unknown command `{name}`"))),
     };
     let flag = |option: &str| options.iter().any(|(o, _)| *o == option);
@@ -139,9 +189,31 @@ pub(crate) fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Command,
             }
             Err(rest) => Err(extra("new", &rest[1..])),
         },
-        "check" | "package" | "run" if !positional.is_empty() => Err(extra(&name, &positional)),
+        "check" | "package" | "run" | "render" if !positional.is_empty() => {
+            Err(extra(&name, &positional))
+        }
         "check" => Ok(Command::Check),
         "package" => Ok(Command::Package),
+        "render" => {
+            let text = |option: &str| {
+                options
+                    .iter()
+                    .find(|(o, _)| *o == option)
+                    .and_then(|(_, v)| v.as_ref())
+                    .map(|v| v.to_string_lossy().into_owned())
+            };
+            let texts = |option: &str| -> Vec<String> {
+                options
+                    .iter()
+                    .filter(|(o, _)| *o == option)
+                    .filter_map(|(_, v)| v.as_ref())
+                    .map(|v| v.to_string_lossy().into_owned())
+                    .collect()
+            };
+            render::args(text, texts, flag)
+                .map(Command::Render)
+                .map_err(UsageError)
+        }
         "run" => Ok(Command::Run(RunArgs {
             script: value("--script")
                 .ok_or_else(|| UsageError("`run` needs --script <file>".to_owned()))?,
@@ -184,14 +256,16 @@ fn split(command: &str, rest: Vec<OsString>) -> Result<(Vec<OsString>, Vec<Given
         let Some(&(option, takes)) = own.iter().find(|(name, _)| arg == *name) else {
             return Err(misplaced(&arg, Some(command)));
         };
-        if options.iter().any(|(given, _)| *given == option) {
+        if !REPEATABLE.contains(&option) && options.iter().any(|(given, _)| *given == option) {
             return Err(UsageError(format!("`{option}` is given twice")));
         }
         let value = match takes {
             None => None,
+            // A value may start with `-` (`--at -64,0`); one of the
+            // command's own option names is never a value.
             Some(what) => Some(
                 args.next()
-                    .filter(|value| !is_option(value))
+                    .filter(|value| !own.iter().any(|(name, _)| value == *name))
                     .ok_or_else(|| UsageError(format!("`{option}` needs a {what}")))?,
             ),
         };

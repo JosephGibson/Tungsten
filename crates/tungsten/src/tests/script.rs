@@ -358,7 +358,10 @@ fn a_sheet_holds_moving_prefabs_at_their_cells_with_interpolation_on_and_off() {
         labels: true,
     };
     let layout = SheetLayout::new(&sheet, &[Some(Vec2::splat(16.0)); 3]);
-    let mut cells: Vec<Vec2> = (0..3).map(|index| layout.center(index)).collect();
+    // Each 16 × 16 sprite's top-left, so the sprite centres on its cell.
+    let mut cells: Vec<Vec2> = (0..3)
+        .map(|index| layout.center(index) - Vec2::splat(8.0))
+        .collect();
     cells.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
     for interpolate in [true, false] {
         let mut app = app_with_moving_prefabs();

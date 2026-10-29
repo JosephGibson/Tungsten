@@ -122,3 +122,17 @@ fn a_bad_script_exits_1_with_its_field_path_before_any_build() {
     assert!(!dir.join("target").exists(), "nothing was built");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn render_without_its_output_exits_2() {
+    let output = tungsten()
+        .args(["render", "--sheet", "goblin"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: `render` needs -o <path>\n\nUsage:"),
+        "{stderr}"
+    );
+}
