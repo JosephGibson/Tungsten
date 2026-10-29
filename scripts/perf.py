@@ -44,6 +44,10 @@ CLEARED_NAMES = (
     "TUNGSTEN_SCRIPT", "TUNGSTEN_REPORT", "TUNGSTEN_USER_DIR", "TUNGSTEN_CHECK", "TUNGSTEN_DESCRIBE",
 )  # fmt: skip
 RSS_POLL_SECONDS = 0.1
+# A run's deadline: a base that predates a row's script or bench variables
+# plays on forever, logging every frame. Rows measure 1-27 ms a frame.
+RUN_DEADLINE_FLOOR_S = 30
+RUN_DEADLINE_PER_FRAME_S = 0.05
 # Background load (`D-095`, `D-141`): the remote-desktop encoder anywhere, and
 # builds outside the runner's own process tree.
 ENCODER = "nxcodec.bin"
@@ -304,16 +308,22 @@ def read_rss_kib(pid, page_kib):
         return None
 
 
-def run_child(argv, env, cwd, log_path, watch=None):
+def run_deadline(frames):
+    return RUN_DEADLINE_FLOOR_S + RUN_DEADLINE_PER_FRAME_S * frames
+
+
+def run_child(argv, env, cwd, log_path, watch=None, deadline_s=None):
     """Run `argv` with its output in `log_path`, reaped by `os.wait4` for its
     rusage; `watch`, the background scan, runs before it, once a second
-    while it runs and after it exits."""
+    while it runs and after it exits. A child still running `deadline_s`
+    after its start is killed and reads `timed_out`."""
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if watch is not None:
         watch()
     start = time.monotonic()
     next_scan = start + BACKGROUND_SCAN_SECONDS
+    timed_out = False
     with open(log_path, "wb") as log:
         proc = subprocess.Popen(argv, env=env, cwd=cwd, stdout=log, stderr=subprocess.STDOUT)
         try:
@@ -321,6 +331,9 @@ def run_child(argv, env, cwd, log_path, watch=None):
                 pid, status, usage = os.wait4(proc.pid, os.WNOHANG)
                 if pid == proc.pid:
                     break
+                if deadline_s is not None and not timed_out and time.monotonic() - start >= deadline_s:
+                    timed_out = True
+                    proc.kill()
                 if watch is not None and time.monotonic() >= next_scan:
                     watch()
                     next_scan += BACKGROUND_SCAN_SECONDS
@@ -332,7 +345,8 @@ def run_child(argv, env, cwd, log_path, watch=None):
     proc.returncode = os.waitstatus_to_exitcode(status)
     if watch is not None:
         watch()
-    return {"exit_code": proc.returncode, "wall_s": round(time.monotonic() - start, 3), "rss_peak_kib": usage.ru_maxrss}
+    return {"exit_code": proc.returncode, "wall_s": round(time.monotonic() - start, 3), "rss_peak_kib": usage.ru_maxrss,
+            "timed_out": timed_out}  # fmt: skip
 
 
 # --- Captures ------------------------------------------------------------------------
@@ -415,15 +429,18 @@ def one_run(row, binary, tree, run_dir, *, warmup, frames, gpu, lister, tree_rea
     label = "gpu" if gpu else "timing"
     env = child_env(os.environ, side_env(row, warmup=warmup, frames=frames, gpu=gpu, run_dir=run_dir))
     seen = set()
+    deadline = run_deadline(warmup + frames + (GPU_TAIL if gpu else 0))
     result = run_child(
         [str(binary)], env, Path(tree) / row["folder"], run_dir / f"{label}.log",
-        watch=lambda: seen.update(background_offenders(lister(), os.getpid())),
+        watch=lambda: seen.update(background_offenders(lister(), os.getpid())), deadline_s=deadline,
     )  # fmt: skip
     shutil.rmtree(run_dir / f"{label}-user", ignore_errors=True)
     log_text = (run_dir / f"{label}.log").read_text(errors="replace")
     analysis = perf_stats.analyze(log_text, warmup, frames, row.get("guards", []), gpu=gpu)
     problems = []
-    if result["exit_code"] != 0:
+    if result["timed_out"]:
+        problems.append(f"timed out after {deadline:.0f} s")
+    elif result["exit_code"] != 0:
         problems.append(f"exited with {result['exit_code']}")
     problems += analysis["problems"]
     config_problems, config = bench_config_problems(analysis["log"], row)
@@ -911,7 +928,8 @@ def cmd_counters(args, root=REPO_ROOT, registry_path=REGISTRY):
         run_dir = out / row["name"]
         run_dir.mkdir()
         env = child_env(os.environ, side_env(row, warmup=row["warmup"], frames=COUNTER_FRAMES, gpu=False, run_dir=run_dir))
-        result = run_child([str(binaries[row["package"]])], env, Path(root) / row["folder"], run_dir / "timing.log")
+        result = run_child([str(binaries[row["package"]])], env, Path(root) / row["folder"], run_dir / "timing.log",
+                           deadline_s=run_deadline(row["warmup"] + COUNTER_FRAMES))  # fmt: skip
         shutil.rmtree(run_dir / "timing-user", ignore_errors=True)
         series = counter_series((run_dir / "timing.log").read_text(errors="replace"), row["warmup"], COUNTER_FRAMES)
         if result["exit_code"] != 0 or any(len(values) < COUNTER_FRAMES for values in series.values()):

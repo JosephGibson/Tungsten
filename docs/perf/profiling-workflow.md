@@ -122,7 +122,7 @@ TUNGSTEN_BENCH=ecs TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungst
 
 A capture is valid when every run, GPU runs included:
 
-- exits 0 and logs every measured frame after the warm-up;
+- exits 0 within its deadline, 30 s plus 50 ms a frame (warm-up, window and tail), and logs every measured frame after the warm-up; a run past its deadline is killed, so a base that predates a row's variables (0.112 has no script mode) fails its first run and the row reads `new`;
 - passes the row's guards (checked on every window frame; `bench:` guards skip the last, whose line prints in the next frame);
 - for a bench row, logs a `bench-config:` line naming the row and its preset; for a scripted row, writes a passing script report;
 - in a GPU run on an adapter with timestamp queries, has `gpu_passes:` samples for at least 95 % of its window frames, ring-full skips counted;

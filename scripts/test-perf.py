@@ -659,5 +659,26 @@ class CounterPins(unittest.TestCase):
         self.assertEqual(series["sprite_batches"], [2.0, 2.0, 2.0])
 
 
+class Deadline(unittest.TestCase):
+    def run_python(self, code, deadline_s):
+        with tempfile.TemporaryDirectory() as tmp:
+            return perf.run_child([sys.executable, "-c", code], dict(os.environ), tmp, Path(tmp) / "out.log", deadline_s=deadline_s)
+
+    def test_a_child_past_its_deadline_is_killed(self):
+        result = self.run_python("import time; time.sleep(30)", 0.3)
+        self.assertTrue(result["timed_out"])
+        self.assertNotEqual(result["exit_code"], 0)
+        self.assertLess(result["wall_s"], 5)
+
+    def test_a_child_inside_its_deadline_exits_on_its_own(self):
+        result = self.run_python("pass", 20)
+        self.assertFalse(result["timed_out"])
+        self.assertEqual(result["exit_code"], 0)
+
+    def test_the_deadline_leaves_the_slowest_row_its_margin(self):
+        # e01-pit measures 30 s for 1,110 frames.
+        self.assertGreater(perf.run_deadline(810 + 300), 2.5 * 30)
+
+
 if __name__ == "__main__":
     unittest.main()
