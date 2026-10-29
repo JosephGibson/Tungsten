@@ -201,76 +201,6 @@ pub(crate) struct Preset {
     pub(crate) set: &'static [(&'static str, Value)],
 }
 
-/// Runner-side check over every measured frame; an unmet guard invalidates
-/// the capture.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Guard {
-    /// A `physics:` field never exceeds `max`.
-    PhysicsMax { field: &'static str, max: i64 },
-    /// A `bench:` counter never drops below `min`.
-    CounterMin { counter: &'static str, min: i64 },
-    /// A `bench:` counter never exceeds `max`.
-    CounterMax { counter: &'static str, max: i64 },
-    /// A `bench:` counter keeps its first measured value.
-    CounterConst { counter: &'static str },
-    /// Two `bench:` counters are equal in every measured frame.
-    CounterEq {
-        counter: &'static str,
-        other: &'static str,
-    },
-    /// A `bench:` counter stays within `tolerance` (a share) of its median
-    /// over the measured frames, so the band follows the knobs.
-    CounterBand {
-        counter: &'static str,
-        tolerance: f64,
-    },
-}
-
-impl Guard {
-    fn describe(self) -> Json {
-        match self {
-            Self::PhysicsMax { field, max } => {
-                json!({"kind": "physics_max", "field": field, "max": max})
-            }
-            Self::CounterMin { counter, min } => {
-                json!({"kind": "counter_min", "counter": counter, "min": min})
-            }
-            Self::CounterMax { counter, max } => {
-                json!({"kind": "counter_max", "counter": counter, "max": max})
-            }
-            Self::CounterConst { counter } => json!({"kind": "counter_const", "counter": counter}),
-            Self::CounterEq { counter, other } => {
-                json!({"kind": "counter_eq", "counter": counter, "other": other})
-            }
-            Self::CounterBand { counter, tolerance } => {
-                json!({"kind": "counter_band", "counter": counter, "tolerance": tolerance})
-            }
-        }
-    }
-}
-
-/// A tracked row: the preset that selects it, the metrics it is judged on
-/// (`stage.<frame key>` or `system.<name>` with their statistics), its guards
-/// and its `bench:` counters in line order.
-#[derive(Debug)]
-pub(crate) struct Row {
-    pub(crate) name: &'static str,
-    pub(crate) preset: &'static str,
-    pub(crate) owned: &'static [(&'static str, &'static [&'static str])],
-    pub(crate) guards: &'static [Guard],
-    pub(crate) counters: &'static [&'static str],
-    /// The limiting stage capacity search expects at the budget:
-    /// `system.<name>`, `update` (any system), `stage.flush`,
-    /// `stage.particles`, `stage.extract`, `stage.render_encode`, `present`
-    /// (acquire plus submit/present) or `stage.unattributed`.
-    pub(crate) bottleneck: &'static str,
-    /// Knobs whose resolved values capacity search reports as the row's key
-    /// counts; the scaled ones also bound its `scale` axis.
-    pub(crate) key_knobs: &'static [&'static str],
-    /// Caveat shown with the row by `describe`; empty when there is none.
-    pub(crate) note: &'static str,
-}
-
 /// One benchmark: its schema plus the hooks `main` dispatches to.
 pub(crate) struct Bench {
     pub(crate) name: &'static str,
@@ -281,7 +211,6 @@ pub(crate) struct Bench {
     pub(crate) gpu_timing: bool,
     pub(crate) knobs: &'static [Knob],
     pub(crate) presets: &'static [Preset],
-    pub(crate) rows: &'static [Row],
     /// Row a resolved config measures.
     pub(crate) row: fn(&BenchConfig) -> &'static str,
     /// Cross-knob checks after every knob is in range.
@@ -356,28 +285,6 @@ impl Bench {
                 json!({"name": preset.name, "set": set})
             })
             .collect();
-        let rows: Vec<Json> = self
-            .rows
-            .iter()
-            .map(|row| {
-                let owned: Vec<Json> = row
-                    .owned
-                    .iter()
-                    .map(|(metric, stats)| json!({"metric": metric, "stats": stats}))
-                    .collect();
-                let guards: Vec<Json> = row.guards.iter().map(|guard| guard.describe()).collect();
-                json!({
-                    "name": row.name,
-                    "preset": row.preset,
-                    "owned": owned,
-                    "guards": guards,
-                    "counters": row.counters,
-                    "bottleneck": row.bottleneck,
-                    "key_knobs": row.key_knobs,
-                    "note": row.note,
-                })
-            })
-            .collect();
         json!({
             "name": self.name,
             "workload_version": self.workload_version,
@@ -385,7 +292,6 @@ impl Bench {
             "gpu_timing": self.gpu_timing,
             "knobs": self.knobs.iter().map(Knob::describe).collect::<Vec<_>>(),
             "presets": presets,
-            "rows": rows,
         })
     }
 }

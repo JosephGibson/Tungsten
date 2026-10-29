@@ -175,7 +175,7 @@ This list was the paper designs' prediction; 7.6's registers (`paper-designs.md`
 | # | Step | Contents |
 | --- | --- | --- |
 | 9.1 | Benchmarks, part 2: expansion and C1 (§5.8) | The rows Phases 7 and 8 added, filled out with genre, structural-stress and operation rows; the measured frame timeline; budgets by category (R-Q13, criteria Q12); the dated baseline. One candidate (R-Q14, narrowed) |
-| 9.2 | Performance passes | Rows over budget, largest gap first, on internals; the rewrite's §2.1 levers as a list without its breaking-later classes; the render thread (W2's R4) only if a row over budget needs it (`D-102`) |
+| 9.2 | Performance passes | Rows over budget, largest gap first, on internals; the rewrite's §2.1 levers as a list without its breaking-later classes, and the [levers for 9.2](../perf/benchmarks.md#levers-for-92) 7.3 collected; the render thread (W2's R4) only if a row over budget needs it (`D-102`) |
 | 9.3 | Stability policy | Q8 decided and recorded |
 | 9.4 | Quality | Rustdoc until `missing_docs` is clean, rustdoc examples, a pinned fixture per format (O2 as changed in §2) |
 | 9.5 | Docs and platforms | The rewrite's R6 triage, with 7.16's guidance; W9b's final pass on the getting-started guide; W7b's platform tiers in the README (criteria Q3) |

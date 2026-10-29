@@ -1,36 +1,32 @@
 # Profiling Workflow
 
-The capture contract for Tungsten performance work: how to run the benchmark suite, what a valid capture is, and how two captures are compared (`D-078`). [`benchmarks.md`](benchmarks.md) describes the six benchmarks, their knobs, guards, owned metrics and calibrated defaults. `just perf <subcommand>` runs `scripts/bench.py`, a standard-library Python 3.12 runner; `scripts/bench_report.py` holds the parsing, statistics and reports, and `just perf-test` runs `scripts/test-bench.py`.
+The capture contract for Tungsten performance work: how to run the rows, what a valid capture is, how two captures compare and how a sitting judges a change (`D-078` as redo 7.3 amends it). [`benchmarks.md`](benchmarks.md) describes the rows, their knobs, owned metrics and guards, the counter guards and the levers for 9.2. `just perf <command>` runs `scripts/perf.py`, a standard-library Python 3.12 runner; `scripts/perf_stats.py` holds the parsing, statistics and verdicts, `scripts/perf-rows.json` the rows, and `just perf-test` runs `scripts/test-perf.py`.
 
-Read [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the needed procedure: [quick start](#quick-start), [compare](#compare), [capacity](#capacity-search), [done-when checks](#writing-done-when-checks), [profiling](#profiling), [pacing](#frame-pacing), or [telemetry format](#telemetry-lines). Dated matrices describe the recorded build and machine.
+Read the [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the procedure needed: [quick start](#quick-start), [sittings](#sittings), [compare](#compare), [done-when checks](#writing-done-when-checks), [profiling](#profiling), [pacing](#frame-pacing) or the [telemetry format](#telemetry-lines).
 
 ## Comparison rule and capture rules
 
-Compare two captures only when they measure the same row with the same `workload_version`, resolved knobs, frames, warm-up, build flags, backend, adapter, present mode, frame latency and machine. Compare checks every one of these and suppresses verdicts on a mismatch. Judge on the runs, not on single frames: compare-grade captures use `--repeat 5`, and a verdict needs at least 3 runs per side.
+Compare two captures only when they measure the same row with the same workload (version, every bench knob, the script's hash, resolution, warm-up and frames), the same build flags, the same backend, adapter, present mode and frame latency, and the same machine. Compare reads every one of these from the captures and suppresses every verdict on a mismatch. Judge on runs, not frames: a verdict needs at least 3 runs a side. A change is judged in a [sitting](#sittings), which interleaves the base and the candidate with an A/A of the base.
 
 | Setting | Value |
 | --- | --- |
-| Build | `--release` with the tuned profile (`D-041`) and `RUSTFLAGS="-C force-frame-pointers=yes"`, the runner's default; `TUNGSTEN_PERF_RUSTFLAGS` overrides it. It replaces `.cargo/config.toml`'s `target-cpu=native`, so captures are generic x86-64 |
+| Build | `--release --locked` with `RUSTFLAGS="-C force-frame-pointers=yes -C llvm-args=-align-all-functions=6 -C llvm-args=-align-all-nofallthru-blocks=6"`: every function and non-fallthrough block starts on a 64-byte boundary, on both sides, so code placement moves no row. `--plain` drops the alignment for a comparison at shipping flags. `RUSTFLAGS` replaces `.cargo/config.toml`'s `target-cpu=native`, so captures are generic x86-64. Each tree builds into its own folder under `target/perf/` |
 | Backend | `WGPU_BACKEND=vulkan` on Linux |
-| Resolution | 1920×1080 (the `gpu` benchmark's `resolution` knob aside) |
-| Present | `display.present_mode = "auto"` with `display.vsync = false`, `display.max_frame_latency = 1` and no `display.frame_rate_cap`, the checked-in `tungsten.json`; `immediate` / 1 on the reference machine |
-| Frames | the benchmark's warm-up (60–180 frames), then 300 measured frames |
-| Repeats | `--repeat 5` for compare-grade captures and suites |
-| GPU timing | only in the separate GPU diagnostic run (`gpu` and `integrated`), never in a timing run |
+| Resolution | the row's: 1920×1080, the area rows 3840×2160 |
+| Present | the checked-in `tungsten.json`'s `display` pacing; `immediate` / 1 on the reference machine |
+| Frames | the row's warm-up, setup frames included, then 300 measured frames |
+| Repeats | the row's (5, the area rows 3) |
+| GPU timing | only in a GPU run, beside each timing run or alone, never in a timing run |
 | Machine | governor `performance`; nothing else using the CPU, the GPU or the screen |
 
-**No remote-desktop encoder may run during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU. On the reference machine it slowed every third frame of `ecs`, moving `total` p95 from 11.5 to 18.2 ms, while every guard passed and the digests matched. `run`, `suite` and `--sweep` now refuse known encoder/foreign-build load before building (`D-141`), replacing separate manual prechecks for those commands. The runner still scans before, once a second during and once after every measured run and invalidates a run it overlaps (see [validity](#validity-and-determinism)). Capacity probes, manual profiler/criterion runs, smoke timings and visual runs are not scanned: check before and after them, and poll during long ones:
+**No remote-desktop encoder during a capture.** A connected NoMachine client runs `nxcodec.bin`, which encodes the screen and competes for memory bandwidth with the integrated GPU: it slowed every third frame of `ecs`, `total` p95 11.5 → 18.2 ms, while every guard passed and the digests matched. `run` refuses it, and `cargo` or `rustc` outside the runner's own process tree, before building (`D-141`); a sitting's start check refuses more (below). Every measured run is scanned before, once a second during and after, and a run it overlaps is invalid.
 
-```bash
-pgrep -x 'nxcodec.bin|cargo|rustc' && echo "disconnect the remote-desktop client and stop builds first"
-```
+**Nothing else may load the machine.** Guards and digests pass under this load too:
 
-A capture that overlapped such a session is invalid: exclude it and capture again.
-
-**Nothing else may load the machine during a sitting either.** Guards and digests pass under this load too:
-
-- **No other agent session or build.** Another session's `cargo` run in the same tree landed inside a suite: one `particles` run read `total` p95 41.9 ms against about 12.5, and `particles` and `integrated` read 3–9% high for the whole window. Before a sitting, check that no other Claude or Codex session is working in the tree (`pwdx $(pgrep -x 'claude|codex')` shows where each runs). Runner preflight handles foreign `cargo`/`rustc`; the manual process check above remains for unscanned workflows. During the sitting the runner flags a `cargo` or `rustc` outside its own process tree, and a commit or dirty-tree hash that changed during a run, which a session editing without building leaves; a session that only reads files and other process names go unflagged. Preflight is not a machine-idle guarantee.
-- **None of your own commands.** Searches and edits beside a capture took `churn` `flush` p95 from 3.07–3.12 to 3.14–3.46 ms and `integrated` jitter from 0.7–1.4 to 0.8–2.6 ms, with p50 unmoved. Run each sitting as one blocking foreground command. Check a capture that ran beside other work against a clean capture's p95 and jitter, and capture it again if they are fatter.
+- **No other agent session at work, no other build.** Another session's `cargo` run landed inside a suite and read `particles` p95 41.9 ms against 12.5. An idle session passes a sitting's start check; a working one shows as a busy process. A commit or dirty-tree change during a run invalidates it.
+- **None of your own commands.** Searches and edits beside a capture fattened `churn` `flush` p95 and jitter with p50 unmoved. Run each sitting as one blocking foreground command, or as one background job with nothing beside it.
+- **No busy editor.** After a large `just clean-target --apply`, VS Code's file watcher sat at a full core for hours, which the runner's name scan cannot see; the start check's busy-process sample does.
+- **The compositor.** KWin adds about 1.45 ms to one frame per refresh in the acquire, which sets the p95 and jitter of GPU-waiting rows (`gpu` at `min`). It is the environment's, and no row owns it.
 
 ## Quick start
 
@@ -38,89 +34,82 @@ From the repository root:
 
 ```bash
 export WGPU_BACKEND=vulkan
-just perf describe                                 # benchmarks, knobs, presets and tracked rows
-just perf run physics --repeat 5                   # one capture: perf-runs/<UTC>-physics/
-just perf suite --repeat 5                         # every tracked row: perf-runs/<UTC>-suite/
-just perf baseline save perf-runs/<UTC>-suite main-2026-10-01
-just perf suite --repeat 5 --compare main-2026-10-01
-just perf compare <baseline> <candidate>           # compare.md, compare.html, compare.json
-just perf capacity --all --budget 60hz             # largest scale per row; also 144hz or milliseconds
-just perf-test                                     # runner regression tests, no GPU
+just perf list                                     # the rows
+just perf run ecs                                  # one capture: perf-runs/<UTC>-ecs/
+just perf run e01-areas --repeat 1                 # a group: one capture per row
+just perf sitting --quick                          # the tree against the last tag, CPU rows, informational
+just perf sitting --rows physics,ecs               # a full sitting of two rows
+just perf compare <capture> <capture>              # verdicts, printed
+just perf baseline save <sitting-or-capture> <name>
+just perf counters                                 # the GPU counter pins
+just perf-test                                     # runner tests, no GPU or cargo
 ```
 
-A new machine starts with an A/A check (see "Compare") before any verdict is trusted.
+## Rows and launch
 
-## Configuration
+A row lives in `scripts/perf-rows.json`. A bench row runs `example-02-bench` from the repository root with `TUNGSTEN_BENCH`, `TUNGSTEN_BENCH_PRESET` (and `TUNGSTEN_BENCH_SCALE` when the row sets `scale`) and `TUNGSTEN_SMOKE_FRAMES` at warm-up plus frames, which pins dt; its `bench-config:` line must name the row and its preset. A scripted row runs its game's build from the game's folder in script mode (`D-225`) on a script the runner composes: the row's steps, any `until: "end"` held through the last frame, and the row's asserts on the window's last frame; `TUNGSTEN_SCRIPT`, `TUNGSTEN_REPORT` and a fresh `TUNGSTEN_USER_DIR` per run, which is deleted after it. Script mode pins dt at 60 Hz. `run` flags: `--repeat N`, `--frames N`, `--plain` and `--allow-background`.
 
-The binary owns the knob schema and reads environment variables:
+**Child environment.** Every run clears the inherited `TUNGSTEN_BENCH*`, `TUNGSTEN_RENDER_*`, `TUNGSTEN_DISPLAY_*`, `TUNGSTEN_CAPTURE_*`, `TUNGSTEN_GPU_TIMING`, `TUNGSTEN_OVERLAYS_ON`, `TUNGSTEN_SMOKE_FRAMES`, `TUNGSTEN_PERF_LOG`, `RUST_LOG` and the script handshake variables, then sets `TUNGSTEN_PERF_LOG=1` and `RUST_LOG=tungsten::app=debug,bench=debug`; a GPU run adds `TUNGSTEN_GPU_TIMING=1` and five frames past the window, so the window's last timestamps arrive.
+
+The bench binary's own variables, for reading a row by hand:
 
 | Variable | Meaning |
 | --- | --- |
-| `TUNGSTEN_BENCH` | Benchmark: `physics` (default), `ecs`, `churn`, `gpu`, `particles` or `integrated` |
-| `TUNGSTEN_BENCH_PRESET` | Named knob set; default `default`. Every benchmark has `min` and `default` |
-| `TUNGSTEN_BENCH_SCALE` | Float multiplier, default 1.0, on the preset's scalable knobs |
-| `TUNGSTEN_BENCH_SET` | `knob=value,knob=value` overrides, applied last |
-| `TUNGSTEN_BENCH_DESCRIBE` | `1` prints every benchmark's schema as JSON; `config` prints the resolved configuration. Both exit before a window opens |
+| `TUNGSTEN_BENCH` | `physics` (default), `ecs`, `churn`, `gpu` or `particles` |
+| `TUNGSTEN_BENCH_PRESET` | Named knob set; default `default` |
+| `TUNGSTEN_BENCH_SCALE` | Multiplier on the preset's scalable knobs |
+| `TUNGSTEN_BENCH_SET` | `knob=value,…` overrides, applied last |
+| `TUNGSTEN_BENCH_DESCRIBE` | `1` prints the knobs and presets as JSON; `config` the resolved configuration |
 
-- **Resolution order:** preset, then scale (integer knobs round, every knob clamps to its range), then overrides, then validation. An unknown benchmark, preset or knob, or an out-of-range value, is a fatal error that names the knob and its range.
-- **Runner flags** map one to one onto the variables: `--preset`, `--scale`, a repeatable `--set knob=value`, and `--sweep knob=v1,v2,…`, which writes one capture per value plus `sweep.md` and `sweep.html` plotting the owned metrics against the knob. Before anything runs, the runner resolves the request through `TUNGSTEN_BENCH_DESCRIBE=config`, so a bad request fails without a window, and each run's `bench-config:` line must then match that object.
-- **`run` flags:** `--frames` (default 300), `--warmup` (default: the benchmark's), `--repeat`, `--gpu-timing on|off` (default: the benchmark's), `--present-mode` and `--max-frame-latency` (see "Frame pacing"), `--profile` (see "Profiling"), `--compare BASELINE` and `--allow-background` (see "Validity and determinism"). `--sweep` combines with neither `--compare` nor `--profile`.
-- **Child environment.** Every run clears inherited `TUNGSTEN_BENCH*`, `TUNGSTEN_RENDER_*`, `TUNGSTEN_DISPLAY_*`, `TUNGSTEN_CAPTURE_*`, `TUNGSTEN_GPU_TIMING`, `TUNGSTEN_OVERLAYS_ON`, `TUNGSTEN_SMOKE_FRAMES`, `TUNGSTEN_PERF_LOG` and `RUST_LOG`, then sets `TUNGSTEN_SMOKE_FRAMES` to warm-up plus frames, `TUNGSTEN_PERF_LOG=1` and `RUST_LOG=tungsten::app=debug,bench=debug`. `TUNGSTEN_SMOKE_FRAMES` pins `dt` to 1/60 s, so one build replays an identical workload. The binary runs from the repository root and writes nothing there.
-
-```bash
-TUNGSTEN_BENCH=physics TUNGSTEN_BENCH_PRESET=sparse TUNGSTEN_BENCH_SCALE=2 \
-  TUNGSTEN_BENCH_SET=speed_max=2000,cell=64 cargo run --release -p example-02-bench
-just perf run physics --preset sparse --scale 2 --set speed_max=2000 --set cell=64 --repeat 5
-just perf run gpu --sweep lights=0,1,2,4,8,16 --repeat 3
-```
-
-## Capture layout and provenance
+## Captures
 
 ```text
-perf-runs/<UTC>-<row>[-<preset>][-s<scale>][-set<hash6>][-<present>][-lat<N>]/
-  capture.json        schema 1: row, bench, workload_version, resolved config, request, frames,
-                      warm-up, build flags, provenance, renderer, owned metrics, per-run stats,
-                      rusage and RSS growth, guards, digests, valid flag, reasons and notes
-  README.md           owned metrics, stages, frame time per run (maximum, spikes), systems,
-                      GPU passes, counters, memory, validity
-  run-N/telemetry.log run-N/gpu.log (GPU diagnostic run) run-N/rss.tsv
-  profile/            perf-stat.txt, perf-record.data, perf-record.log, flamegraph.svg (--profile)
-perf-runs/<UTC>-<row>…-sweep-<knob>/<knob>-<value>/…   plus sweep.json, sweep.md, sweep.html
-perf-runs/<UTC>-suite[-<preset>][-s<scale>]/<row>/…    plus suite.json and README.md
-perf-runs/<UTC>-compare-<row>/  or  -compare-suite/    compare.json, compare.md, compare.html
-perf-runs/<UTC>-capacity-<budget>/                     capacity.json, capacity.md, capacity.html, probes/
-perf-runs/baselines/<name>/                            a copied capture or suite plus baseline.json
+perf-runs/<UTC>-<row>/
+  capture.json         schema 2 (below)
+  README.md            validity, provenance and each owned metric per run
+  run-N/timing.log     run-N/gpu.log, and a scripted row's script and report per run
+perf-runs/<UTC>-sitting[-quick]/
+  sitting.json, README.md, captures/<row>-<A|B><n>/
+perf-runs/<UTC>-counters/<row>/timing.log
+perf-runs/baselines/<name>/   a copied capture or sitting
 ```
 
-The directory name carries the preset only when it differs from the row's own preset, and `set<hash6>` is a hash of the overrides. `perf-runs/` is gitignored and machine-local.
+```text
+{schema:2, kind:"capture", row, sitting, tree{commit,dirty,ref}, build{flags,package},
+ workload{version, config, script_sha256, resolution, warmup, frames, tail},
+ renderer{backend, adapter, present_mode, max_frame_latency}, machine{fingerprint, …},
+ owned, valid, reasons, notes,
+ runs[{valid, reasons, digest, rss_peak_kib, cpu{stages,systems,counters}, gpu{stages,passes}|null}]}
+```
 
-- **Per-run statistics.** `runs[].stats.<group>.<name>` holds `n`, `mean`, `min`, `p50`, `p95`, `p99` and `max` for the groups `stages`, `systems`, `gpu_passes` (GPU diagnostic runs only, under `gpu_run`), `physics` and `counters`. Percentiles use the nearest rank. `runs[].spikes` counts the measured frames whose `total` exceeds 1.5 × the run's p50; the README lists it per run beside the run's largest `total`.
-- **Provenance** is read before the build, so it describes the built sources: the commit; the dirty-tree state (`no`, or `yes (diff <12 hex>)`, a SHA-256 over the tracked diff plus the untracked files, so two dirty captures of one tree match); the cpu0 governor, the ACPI platform profile and the AC state (`n/a` where the host lacks them); the kernel, CPU model, memory, hostname and the machine fingerprint built from them; `rustc --version`; and `WGPU_BACKEND`. Its `background` record is written after the runs: the offenders the scans saw, the runs after which the commit or dirty state differed with the values seen, and whether `--allow-background` allowed them; each run also keeps its own `background` and `tree`. Attribute a drift between captures only when commit, fingerprint, governor and profile are known.
-- **Suites.** `suite.json` (schema 1, `kind: suite`) records the request (`preset`, `scale`, `only`, `repeat`, frames), the shared build and provenance, and one row per capture: preset, directory, validity and reasons, owned-metric medians, `total` p50/p95/p99 and jitter medians, and the median peak RSS. The suite is valid when every row is. Its README tabulates the rows and states the `--preset` rule when one applied.
-- **Baselines.** `just perf baseline save <capture-or-suite> <name>` copies the directory (without `*.data` profiler recordings) to `perf-runs/baselines/<name>/` and writes `baseline.json`: name, kind (`capture` or `suite`), source, date, machine fingerprint, validity, and the row or rows. `baseline list` and `baseline rm <name>` manage them. A baseline name works wherever a capture or suite directory does. Captures without `capture.json`, such as the retired bash script's, can't be baselines.
+- Each metric is `{p50, p95, p99, mean}` over the window, nearest-rank percentiles. `cpu.counters` holds the `counters:` fields, and the `bench:` and `physics:` fields as `bench.<name>` and `physics.<name>`. `gpu.passes` comes from the `gpu_passes:` lines by the frame each names; `gpu.stages` is the GPU run's own `frame:` stages.
+- **Metric names** in the registry: `stage.<frame field>`, `system.<name>`, `counter.<name>` (the timing run), `gpu.<pass>` (the GPU run's passes, `gpu.scene` the scene pass) and `gpustage.<frame field>`.
+- **Provenance.** `tree` is the measured tree's own commit and dirty state (`no`, or `yes (diff <12 hex>)` over the tracked diff and the untracked files), or for a base export the ref's commit. `machine` holds a fingerprint of the hostname, CPU and memory, which compare holds equal, and the governor, platform profile, AC state, kernel, `rustc` and `WGPU_BACKEND`.
+- **`workload.config`** is the bench's resolved knobs from `bench-config`, null for a scripted row, which its script's hash pins instead. A registry edit after a capture therefore cannot make two captures look alike.
+- **Baselines.** `baseline save <capture-or-sitting> <name>` copies it without logs; `baseline list` and `baseline rm <name>` manage them. A baseline name works wherever a capture path does. Schema-1 captures from the old runner are refused.
 
 ## Telemetry lines
 
-`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` logs one group per frame. The engine logger writes a release build's records to stderr only while `RUST_LOG` is set, and smoke mode gives a run no user folder, so a capture writes no log file and the runner reads stderr as before (`D-119`). The parser strips the `env_logger` prefix and attaches each companion line to the preceding `frame:` line, except a `gpu_passes: from=N` line, which attaches to frame N, the N-th `frame:` line; missing companions are tolerated. System and pass names are literal keys.
+`TUNGSTEN_PERF_LOG=1` with `RUST_LOG=tungsten::app=debug,bench=debug` logs one group per frame. The parser strips the `env_logger` prefix and attaches each companion line to the preceding `frame:` line, except a `gpu_passes: from=N` line, which attaches to frame N, the N-th `frame:` line; missing companions are tolerated. System and pass names are literal keys.
 
 ```text
 backend: Vulkan adapter: AMD Radeon 660M (RADV REMBRANDT) present_mode: immediate max_frame_latency: 1 timestamp_query: true
-bench-config: {"bench":"integrated","derived":{…},"knobs":{…},"preset":"default","row":"integrated","scale":1.0,"seed":1,"workload_version":1}
-frame: total=11.81ms interval=11.94ms update=7.24ms flush=0.16ms extract=2.60ms render=1.44ms render_acquire=0.03ms render_encode=0.96ms render_submit_present=0.43ms gpu=n/a audio=0.00ms hot_reload=0.00ms
+bench-config: {"bench":"gpu","derived":{…},"knobs":{…},"preset":"default","row":"gpu","scale":1.0,"seed":1,"workload_version":1}
+frame: total=10.75ms interval=10.81ms update=0.03ms flush=0.00ms extract=0.65ms render=9.92ms render_acquire=7.53ms render_encode=2.12ms render_encode_pre_acquire=2.07ms render_submit_present=0.27ms gpu=6.88ms audio=0.00ms hot_reload=0.00ms
 counters: draw_calls=76 upload_bytes=1664304 text_renders=1 sprite_batches=60
-systems: physics_debug_toggle=0.00ms systems_overlay_toggle=0.00ms inspector_toggle=0.00ms inspector_pick=0.00ms hud_toggle=0.00ms display_input=0.00ms state_dispatcher=0.00ms bench_counters=0.00ms actor_ai=0.02ms projectiles=0.00ms physics_step=2.83ms collision_events=0.00ms … particle_count_refresh=0.00ms particle_emit=0.06ms particle_tick=0.00ms tween_tick=0.07ms
-physics: proxies=13045 dynamic=4517 sleeping=1016 pairs=6461 contacts=6080
-bench: actors=2500 projectiles=16 hits=1 particles=6249 lights=28 camera_x=1216 view_out=0 flashing=20 landings=20 shots=0 turns=86 events=22373
+systems: physics_debug_toggle=0.00ms … bench_counters=0.00ms gpu_camera=0.00ms gpu_lights=0.00ms gpu_text=0.02ms
+gpu_passes: from=57 scene=6.88ms post0_bloom_threshold=0.16ms … text=0.07ms render_span=10.39ms
+bench: sprites=2000 glow=20000 visible_tiles=12769 glyphs_changed=4000 lights=16
 ```
 
 - **`backend:`** once at renderer startup: backend, adapter, chosen present mode, the requested frame-latency hint and timestamp-query support. Compare reads them as hard fields.
-- **`frame:`** from `tungsten::FrameTimings`, once per redraw. `render` contains acquire, encode and submit/present. `render_encode` is the frame's whole command recording, before and after the surface acquire; since `D-145` `render_encode_pre_acquire`, which follows it on the line (the example above predates it), is the part recorded before the acquire: the camera upload, the text preparation and the passes before the one that writes the swapchain. `render_submit_present` includes the submit of those passes before the acquire. `unattributed` is derived: `total` minus `update`, `flush`, `hot_reload`, `extract`, `render` and `audio`. It holds the event flush and the engine's steps between the stages; since M38 the particle and tween systems are timed under their names in `post_update` (`D-133`), so it reads about 0 in `particles`. `interval` is the time from the previous frame's start to this frame's start, `n/a` on the first frame: the previous frame's `total` plus what follows it, which is the telemetry logging, a frame cap's wait and the event loop's turnaround. It is the period of the frame rate, so FPS is 1000 / mean `interval`; on the reference machine its mean is 0.05–0.13 ms above the mean `total` in the suite's rows, so an FPS taken from `total` reads 0.5% (`gpu`) to 1.5% (`integrated`) too high. It is not work: it is no part of `total`, of `unattributed`, of compare's stacked stage bars or of capacity's limiting stage, and no row owns it.
-- **`systems:`** every system's wall time in run order across the stages, `startup` (first frame), `pre_update`, `fixed_update`, `update` and `post_update`, as the schedule resolved them (`FrameTimings::system_timings`, `D-128`); engine systems under their public names in `tungsten::plugins` (`D-133`). Each name appears once a frame: a `fixed_update` system's runs are summed over the frame's fixed steps and read 0 ms in a frame with no step (`D-137`); a capture pins dt to 1/60 s, so each frame runs one step. Whitespace and `=` in names become `_`.
-- **`counters:`** right after `frame:`, the renderer's own counts of the frame (redo 7.3): `draw_calls` and `upload_bytes` (buffer and texture writes, buffers created with contents) as the engine records them, apart from glyphon's draws and uploads inside its `prepare` and `render`; `text_renders`, glyphon's `render` calls; `sprite_batches`, the extract's sprite batches. They are `RenderCounts`' fields, zero headless, and stay out of the digest.
-- **`gpu_passes: from=N`** only under `TUNGSTEN_GPU_TIMING=1` on an adapter with timestamp queries, one line per timed frame read back, naming frame N it measured. The renderer never waits for timestamps (redo 7.3): a frame resolves them into one of a ring of four readbacks and a later frame's non-blocking poll reads them, so a line arrives up to four frames after its frame, two can arrive in one frame and a frame that reads none prints none. A frame that finds every slot in flight runs untimed. A capture's GPU run takes five frames past its window so the window's last lines arrive. It lists every render pass in execution order (scene; indexed post slots such as `post0_bloom_threshold`; each bloom mip and the composite; `smaa_edges`, `smaa_blend_weights`, `smaa_neighborhood`; `text`, the overlay pass, which draws the UI paint list and then the text since M46) plus `render_span`, from the first scene timestamp to the end of the overlay, gaps included. Since `D-145` the passes before the swapchain stage run in a command buffer submitted before the acquire and the rest in a second one, so the span includes any gap between the two. Since `D-087` the last full-screen stage writes the swapchain, so there is no `present` pass. Only a screenshot frame (`TUNGSTEN_CAPTURE_FRAME`) still blits, and the runner's captures have none. `render_span` excludes uploads, query readback and presentation waits and isn't a sum of passes. `frame:`'s `gpu=` is the newest scene pass read back, for the HUD; the runner takes no GPU metric from it. A stack that exceeds the adapter's query-set limit renders without timings.
+- **`frame:`** from `tungsten::FrameTimings`, once per frame. `render` contains acquire, encode and submit/present; `render_encode_pre_acquire` is the part recorded before the acquire (`D-145`). `unattributed` is derived: `total` minus `update`, `flush`, `hot_reload`, `extract`, `render` and `audio`. `interval` is the time from the previous frame's start to this one's, `n/a` on the first frame: the frame's real period, so FPS is 1000 / mean `interval`; no row owns it. `gpu=` is the newest scene pass read back, for the HUD; the runner takes no GPU metric from it.
+- **`counters:`** right after `frame:`, the renderer's own counts of the frame: `draw_calls` and `upload_bytes` (buffer and texture writes, buffers created with contents) as the engine records them, apart from glyphon's draws and uploads inside its `prepare` and `render`; `text_renders`, glyphon's `render` calls; `sprite_batches`, the extract's sprite batches. They are `RenderCounts`' fields, zero headless, and stay out of the digest.
+- **`systems:`** every system's wall time in run order across the stages (`FrameTimings::system_timings`, `D-128`); a `fixed_update` system's runs are summed over the frame's steps (`D-137`). Whitespace and `=` in names become `_`.
+- **`gpu_passes: from=N`** only under `TUNGSTEN_GPU_TIMING=1` on an adapter with timestamp queries, one line per timed frame read back, naming frame N it measured. The renderer never waits for timestamps: a frame resolves them into one of a ring of four readbacks and a later frame's non-blocking poll reads them, so a line arrives up to four frames after its frame, two can arrive in one frame and a frame that reads none prints none. A frame that finds every slot in flight runs untimed. The line lists every render pass in execution order (scene; indexed post slots such as `post0_bloom_threshold`; each bloom mip and the composite; `smaa_edges`, `smaa_blend_weights`, `smaa_neighborhood`; `text`, the overlay pass) plus `render_span`, from the first scene timestamp to the end of the overlay, gaps included. Only a capture frame (`TUNGSTEN_CAPTURE_FRAME`) has a `present` blit. A stack past the adapter's query-set limit renders without timings.
 - **`physics:`** when physics runs: proxies and dynamic bodies gathered by the last step, sleeping bodies, and the final substep's pairs and contacts.
-- **`bench-config:`** once: the resolved configuration as JSON, with derived values such as the world size or the expected batch count.
-- **`bench:`** the benchmark's counters. Frame N + 1's first system logs frame N's line, so it follows frame N's group; the last frame has none. A hex token such as `ecs`'s `digest=0x…` stays out of the numeric statistics.
+- **`bench-config:`** once: the bench's resolved configuration as JSON, with derived values such as the expected batch count.
+- **`bench:`** the bench's counters. Frame N + 1's first system logs frame N's line, so it follows frame N's group; the last frame of a run without tail frames has none. A hex token such as `ecs`'s `digest=0x…` stays out of the statistics.
 
 To read the lines without the runner:
 
@@ -131,105 +120,74 @@ TUNGSTEN_BENCH=ecs TUNGSTEN_SMOKE_FRAMES=360 TUNGSTEN_PERF_LOG=1 RUST_LOG=tungst
 
 ## Validity and determinism
 
-Before provenance collection, building or creating output, `run`, `suite` and `--sweep` use the existing process scanner to refuse `nxcodec.bin` anywhere or `cargo`/`rustc` outside the runner's own process tree. Refusal exits 2 with the offending names and writes no capture. `--allow-background` bypasses that preflight refusal for diagnostics; measured-run load still follows the notes policy below. Load that starts after preflight remains detectable by the existing measured-run scans (`D-095`, `D-141`).
+A capture is valid when every run, GPU runs included:
 
-A capture is valid when every run, GPU diagnostic runs included:
+- exits 0 and logs every measured frame after the warm-up;
+- passes the row's guards (checked on every window frame; `bench:` guards skip the last, whose line prints in the next frame);
+- for a bench row, logs a `bench-config:` line naming the row and its preset; for a scripted row, writes a passing script report;
+- in a GPU run on an adapter with timestamp queries, has `gpu_passes:` samples for at least 95 % of its window frames, ring-full skips counted;
+- saw no background load: no encoder and no foreign build in its scans, and the working tree's commit and dirty state unchanged (`--allow-background` makes these notes, `D-095`);
+- shares its digest with every other run of the capture.
 
-- exits 0;
-- reports the requested number of measured frames after the warm-up;
-- logs a `bench-config:` line equal to the resolved request;
-- reports the present mode and frame latency in its `backend:` line that `--present-mode` and `--max-frame-latency` asked for, when either was given (an `auto`, `auto_vsync` or `auto_no_vsync` request accepts any mode of its family);
-- passes the row's guards (checked on every measured frame; `bench:` guards skip the last frame, which has no line);
-- saw no background load: no `nxcodec.bin` and no `cargo` or `rustc` outside the runner's own process tree in a scan before, once a second during or once after the run, and the same commit and dirty-tree state after the run as the provenance read before the build (`background load: <name>`, `background load: tree changed`; `--allow-background` makes them notes, `D-095`);
-- has the same determinism digest as every other run.
+The digest is a SHA-256, shortened to 16 hex digits, over the window's `physics:` lines and the `bench:` lines of every window frame but the last. A frame's `bench:` line prints in the next frame, so the last one exists only when tail frames follow; leaving it out, and the tail frames' own lines, makes a GPU run with tails hash as a timing run without them. One build under the pinned dt replays one workload, so runs must match. Compare reports whether two captures' first-run digests match, for information only: an engine change moves them legitimately; a change that must keep behaviour shows there that it did.
 
-The digest is a SHA-256, shortened to 16 hex digits, over the exact `physics:` and `bench:` text of every measured frame. One build under the pinned `dt` replays the same workload, so repeats must match; GPU diagnostic runs join the match. Compare reports whether the two sides' first-run digests match, for information only: an engine change legitimately moves them, and a change that must keep behavior shows there that it did. Suite compare lists the rows whose digests differ. [`benchmarks.md`](benchmarks.md) lists each row's guards.
-
-An invalid capture stays on disk with `valid: false` and its reasons in `capture.json` and the README. `run`, `suite` and `--sweep` then exit 3, and compare suppresses verdicts unless `--force` is given; `--force` never overrides a hard mismatch.
+An invalid capture stays on disk with `valid: false` and its reasons; `run` exits 3, and compare suppresses its verdicts.
 
 ## Compare
 
-`just perf compare <baseline> <candidate>` takes two captures or two suites, each a directory or a baseline name; mixing a capture and a suite is an error. `run --compare BASELINE` and `suite --compare BASELINE` compare the new capture or suite as soon as it is written; given a suite, `run --compare` takes its row of the same name.
+`just perf compare <baseline> <candidate>` takes two captures, each a directory, a `capture.json` or a baseline name, and judges the candidate's owned metrics from the registry (or the capture's own list for a row the registry no longer has).
 
-1. **Comparability.** Hard fields suppress every verdict on a mismatch: row, `workload_version`, every resolved knob, frames, warm-up, build flags, backend, adapter, present mode, frame latency and the machine fingerprint. Soft notes flag a different `rustc`, kernel, governor, platform profile, AC state or GPU-diagnostic setting, and a side whose runs saw background load that `--allow-background` let pass. Workload counters (`physics:` fields and `bench:` counters) whose means move by more than 5% raise a workload-drift warning: engine changes legitimately move trajectory-dependent counts, so verdicts still appear, marked.
-2. **Statistics.** The run is the statistical unit, because frames within a run are autocorrelated and share clocks, thermals and memory placement. Each run contributes its mean, p50, p95, p99 and max per metric. Jitter is a derived per-run statistic, p99 − p50 of `total`.
-3. **Verdict per metric and statistic.**
-   - Δ is the mean of the candidate's per-run values minus the mean of the baseline's.
-   - The interval is a 95% Welch interval over the per-run values. Each side's variance is floored at (0.5% of its mean)², and the t quantile comes from a built-in table, rounding the degrees of freedom down to the next tabulated entry.
-   - The practical threshold is τ = max(τ_rel × the baseline mean, τ_abs), with τ_rel 3% for mean and p50, 5% for p95 and 8% for p99, and τ_abs 0.05 ms for stages and 0.02 ms for systems, GPU passes and the scene pass.
-   - **Jitter takes p99's threshold:** τ = max(8% × the baseline's per-run p99 mean, 0.05 ms), about 1.0 ms for `integrated`. Jitter carries p99's noise, and a τ relative to the small jitter itself would read `noisy` in every A/A. Jitter still catches tail growth that p99 alone misses when p50 moves the other way.
-   - Peak RSS is judged per run with τ = max(2% × the baseline mean, 2 MiB).
-   - `regressed`: the interval lies entirely above 0 and Δ > τ. `improved`: the interval lies entirely below 0 and Δ < −τ. `unchanged`: the interval lies within ±τ. `noisy`: anything else; rerun with more repeats or on a quieter machine.
-   - Fewer than 3 runs on either side shows the deltas without a verdict.
-4. **Owned metrics.** Only a row's owned metrics produce verdicts that count against it (see [`benchmarks.md`](benchmarks.md), "Ownership"); every other stage, system and pass is judged and reported for information.
-5. **`compare.md`**, in order: a header with both sides, their commits, the machine, the comparability status and whether the first-run digests match; the owned-metric table (baseline, candidate, Δ, Δ%, interval, τ, verdict); the stages; the systems whose |Δ| > τ; the GPU passes from the diagnostic runs; memory and CPU (peak RSS with its verdict, RSS growth, CPU seconds); the workload counters; guards and validity. `compare.json` holds the same report as data.
-6. **`compare.html`** is self-contained: inline CSS and SVG, no scripts, fonts or network requests, light and dark schemes. It shows an ECDF of the pooled `total` frames per side with p50/p95/p99 markers and 16.7 and 6.9 ms budget lines, the run-1 frame-time series, stacked stage bars, per-system bars (p50 with p95 whiskers), GPU-pass bars, peak-RSS bars and the counter table. Verdict badges carry text labels, not color alone.
-7. **Suite compare.** Each row both suites hold gets its own report in `<out>/<row>/`; the suite-level `compare.json`, `compare.md` and `compare.html` add the verdict counts, the rows whose first-run digests differ, `total` and peak-RSS bars per row and each row's owned table. Rows held by only one side are listed, not compared.
-8. **A/A check.** Two captures, or two suites, of one build on one quiet machine must yield no `regressed` or `improved` verdict on any owned metric. Run one per machine before trusting verdicts. `noisy` verdicts are expected on sub-millisecond system rows that sit on the 0.02 ms floor and on the CPU render stages of the two `gpu` rows. Until `D-085` the scene pass also moved about 12% between captures; see the scene-pass note in [`benchmarks.md`](benchmarks.md#gpu). Two readings can break the rule with nothing changed: `gpu-throughput` `render_encode`, whose p95 takes one of two values per run (an A/A against a suite two hours older read its p50 `regressed`, 1.28 → 1.44 ms, on 2026-10-01), and the `ecs` rows of the per-run mode (`stats_decay`, `regen`, `follow`, `buffs`, `team_bags`, `accelerate`, `integrate`), where `buffs` read `regressed` in a five-run suite and `unchanged` with 15 runs a side in one sitting (`D-086`). An A/A of 2026-10-02, 73 minutes apart, read two of those rows `regressed` and two `improved` and nothing else: one suite held four mode runs of five and the other none.
-9. **Exit codes.** 0 on success; `--fail-on regressed` exits 1 when any owned metric regressed, in a capture or any suite row (local scripting only, `D-070`); 2 on a bad request or environment problem; 3 from `run`, `suite` and `--sweep` when a capture is invalid.
+1. **Comparability.** Every hard field above suppresses every verdict on a mismatch, and so does an invalid side.
+2. **The run is the unit.** Frames within a run are autocorrelated and share clocks, thermals and memory placement, so each run contributes its p50, p95, p99 and mean per metric.
+3. **Verdict per metric and statistic** (`D-078`):
+   - Δ is the mean of the candidate's per-run values minus the baseline's, and its 95 % Welch interval floors each side's variance at (0.5 % of its mean)², the t quantile from a built-in table.
+   - τ = max(τ_rel × the baseline mean, τ_abs), with τ_rel 3 % for mean and p50, 5 % for p95 and 8 % for p99, and τ_abs 0.05 ms for stages and 0.02 ms for systems and GPU passes.
+   - `regressed`: the interval lies above 0 and Δ > τ. `improved`: below 0 and Δ < −τ. `unchanged`: within ±τ. `noisy`: anything else. Fewer than 3 runs a side shows the deltas without a verdict.
+4. **Peak RSS** (`ru_maxrss` per run) is judged, at τ = max(2 %, 2 MiB), only between captures of one sitting. Across sittings both values print without a verdict: with transparent huge pages one build read 62 MiB more in every row an hour later.
+5. **Budgets.** A row's budget (`{metric, stat, ms}`) reads `within` when the candidate's 95 % interval lies under it, `over` when above, else `near`. No row has a budget yet; 9.1 sets them.
 
-## Capacity search
+## Sittings
 
-`just perf capacity (<bench>… | --all) [--budget 60hz|144hz|MS] [--stat p95] [--axis scale|KNOB] [--tolerance 0.05] [--frames 180]` finds, per tracked row, the largest scale whose statistic of `total` stays within a frame-time budget: 16.7 ms at 60hz, 6.9 ms at 144hz, or a millisecond value.
+`just perf sitting [--base REF] [--rows LIST] [--quick] [--cpu-only] [--wait-quiet S] [--allow-background] [--plain] [--keep]` judges the working tree (B, the candidate) against `REF` (A, the base), by default the last tag reachable from `HEAD`. The candidate's runner and registry drive both sides.
 
-1. **Probes.** Each probe runs the row's preset at one axis value for the warm-up plus `--frames` measured frames, once, telemetry only, with no GPU diagnostic run. It passes when the statistic (p95 by default) is within the budget. A child that fails, misses frames or mismatches its config fails the probe with the reason recorded; guard failures are recorded per probe and listed, but don't fail it.
-2. **Axis.** `scale` multiplies the row's scaled key knobs; its bounds are the tightest `min/value` and `max/value` over them, and a key knob whose range starts at 0 floors the axis at its first nonzero value. `--axis KNOB` searches one numeric knob instead.
-3. **Bracketing.** Start at scale 1. Double on a pass until the first fail or the upper bound; halve on a fail until the first pass or the lower bound.
-4. **Bisection.** Bisect geometrically between the last pass and the first fail until their ratio is at most 1 + tolerance, or until the resolved key counts stop changing.
-5. **Confirmation.** Rerun the best pass 3 times; it holds when their median is within the budget. Otherwise step down one tolerance step and confirm again, at most 3 times.
-6. **Report.** Per row: the budget and the maximum scale, or "≥ max (bound reached)" or "< min (budget not reachable)"; the key counts at that scale; p95 and p99; the limiting stage, meaning the largest mean among the top system, `flush`, `particles`, `extract`, `render_encode`, the present wait (`render_acquire` + `render_submit_present`) and `unattributed`, flagged ✓ or ✗ against the row's declared bottleneck; peak RSS; the probe count and the wall time. Medians come from the confirmation probes, or from the last probe for an unreachable budget. It is written to `capacity.md`, `capacity.json` and `capacity.html` (the statistic against scale on a log axis, with the budget line).
+1. **Start check.** The sitting refuses, exit 2, on the encoder or a build outside the runner; on a process other than the runner and its ancestors above 20 % of a core over a 5 s sample; or on the tree's dirty state changing meanwhile. It records the 1-minute load, the governor, AC power and the five busiest processes. `--wait-quiet S` polls every 10 s until 60 s run quiet, giving up at S. An idle agent session passes; a working one shows as busy. `--allow-background` starts despite a refusal and records it.
+2. **Base export.** `git archive REF` into `target/perf/base-tree/`, deleted at the end unless `--keep`; both trees build before anything is measured, the base into `target/perf/base-aligned/`. A package the base cannot build makes its rows `new`.
+3. **Interleaving.** Per row, captures run A1 B1 A2 B2, each at the row's repeats and sharing the sitting's id. A1↔A2 is the A/A; A1→B1 and A2→B2 are the direct pairs. A capture that only background load invalidated is taken again once, after a wait for quiet.
+4. **Verdict.** An owned metric is `regressed` when both direct pairs read it `regressed` and the A/A reads it `unchanged` or `noisy`.
+5. **One rerun.** A row runs A3 B3 A4 B4, replacing the first set, when its A/A reads an owned metric `regressed` or `improved`, or when one of its known-drift metrics reads `regressed` in a direct pair. The rerun stands alone: with a stable A/A, a metric `regressed` in both of its pairs reads `regressed`, a known-drift one included; a rerun whose own A/A fails reads `unresolved`.
+6. **Row verdicts:** `ok`, `regressed` (with the metrics), `unresolved`, `invalid`, or `new` (a row the base cannot build or run while the candidate can, measured on the candidate alone).
+7. **Output.** `perf-runs/<UTC>-sitting[-quick]/sitting.json` (`{schema:2, kind:"sitting", id, base{ref,commit}, cand{commit,dirty}, quick, wall_s, start, rows[{name, verdict, regressed[], reran, aa, pairs, budgets}]}`), a README table and the captures under `captures/`. Exit 0, 1 on a `regressed` or `unresolved` row, 3 on an `invalid` one.
+8. **Quick** (`--quick`): CPU rows only, A1 B1 A2 at 3 repeats and 150 frames, no rerun, always exit 0. Informational: never a release's evidence.
+9. **`--cpu-only`** skips GPU runs and GPU-only rows, for a base whose GPU timing differs in kind.
 
-Results are machine-specific and informational: a lower capacity is a finding to explain, not a verdict. A ✗ says the row hit a different wall than it was built to load, as `particles` (limited by the default extract) and `integrated` at 144hz (limited by its fixed post chain) do on the reference machine. A full `--all` search takes about 6 minutes at 60hz and 3 at 144hz there.
+## Counter guards and GPU counters
+
+The CPU counter guards are ordinary tests in `just check` (`D-070`'s informational CI included): see [`benchmarks.md`](benchmarks.md#counter-guards). `just perf counters [--write]` checks or writes the GPU counter pins locally, beside `just smoke` and `just visual`, for render and extract changes.
 
 ## Memory
 
-- **Peak RSS** comes from `ru_maxrss` through `os.wait4`, for every run, with no engine change. The timing run's value is the one reported, because the diagnostic run allocates query buffers. It includes driver-mapped memory, so compare it only on one machine and driver, and within one sitting: with transparent huge pages set to `always`, one build read 62 MiB more in every row an hour later, and compare called it `regressed`. Against an older baseline, capture the untouched tree first. rusage also gives user and system CPU seconds, faults and context switches.
-- **RSS growth** is the least-squares slope, in KiB/s, of `/proc/<pid>/statm` samples taken every 100 ms, fitted over the second half of the run after dropping samples within 0.2 s of the last one (the child frees memory while it shuts down). It is reported for every row and judged for none: the leak threshold for `churn` is an open proposal ([`benchmarks.md`](benchmarks.md), "Open proposals"). One 4 KiB page over a short run reads as a few KiB/s. Until `D-085` the rows that rewrite text every frame (`gpu`, `integrated`) grew by MiB/s while the text cache filled, so their peak RSS depended on capture length. The layout cache is bounded now: `gpu` reads no growth and the same peak at 300 and 900 frames.
-- **Allocation counting** isn't measured (gap M1).
+- **Peak RSS** comes from `ru_maxrss` through `os.wait4`, for every run, and includes driver-mapped memory: compare it on one machine and driver, within one sitting.
+- **Allocations** are counted by the counter guards, headless, on the test's thread.
 
-## Tracked rows, suites and regression policy
+## Regression policy
 
-| Row | Command | Judge on (owned) | Guards |
-| --- | --- | --- | --- |
-| `physics` | `just perf run physics --repeat 5` | `physics_step` p50/p95, `update` p95 | `physics.sleeping <= 0`; `bench.teleports >= 1` |
-| `physics-sparse` | `just perf run physics --preset sparse --repeat 5` | `physics_step` p50/p95 | `physics.sleeping <= 0` |
-| `ecs` | `just perf run ecs --repeat 5` | `update` p50/p95; the 14 system rows at p50 | `bench.structural <= 0`; `bench.entities constant` |
-| `churn` | `just perf run churn --repeat 5` | `flush` p50/p95; `churn_scan`, `churn_despawn`, `churn_toggle`, `churn_spawn` at p50. RSS growth is reported only | `bench.population constant`; `bench.spawned == bench.despawned` |
-| `gpu` | `just perf run gpu --repeat 5` | Scene pass (`gpu`) and `render_span` p50/p95; the bloom threshold and composite, vignette, SMAA and text passes at p50; `extract`, `render_encode` p50/p95 | None; the GPU rows are n/a without timestamp queries and the capture stays valid |
-| `gpu-throughput` | `just perf run gpu --preset throughput --repeat 5` | `extract`, `render_encode` p50/p95 | None |
-| `particles` | `just perf run particles --repeat 5` | `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites` p50/p95 (`D-133`) | `bench.live within ±10% of its median` |
-| `integrated` | `just perf run integrated --repeat 5` | `total` p50/p95/p99, jitter (p99 − p50) | `bench.view_out <= 0` |
-| capacity | `just perf capacity --all --budget 60hz` and `--budget 144hz` | Maximum scale per row (informational) | — |
-
-Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and, per run, the largest `total` and the spike count (frames above 1.5 × the run's p50) are reported too; no row owns them.
-
-**Suite runs.** `just perf suite [--preset P] [--scale S] [--only ROWS] [--repeat N] [--compare BASELINE] [--allow-background]` captures every tracked row `describe` lists, in its order, with the same flags and 300 measured frames each. It resolves every row's configuration before the first run, writes each capture to `perf-runs/<UTC>-suite…/<row>/`, then `suite.json` and the suite README, and exits 3 when any row is invalid. `--only physics,ecs` narrows it. `--repeat 5` takes about 6 minutes on the reference machine.
-
-**The `--preset` rule.** `--preset P` replaces the preset only of the rows whose own preset is `default`. `physics-sparse` and `gpu-throughput` keep `sparse` and `throughput`, because replacing their preset would measure another row. Before anything runs, the suite checks that P exists for every affected benchmark and that each resolved configuration still measures its row. `just perf suite --preset min` is a quick functional pass; `suite.json` records the request, and the README states the rule. Its `physics` row fails the per-frame teleport guard at `min` (about 3 teleports per frame, see [`benchmarks.md`](benchmarks.md#physics)), so that suite reads invalid and exits 3 even when every other row is valid.
-
-**Regression policy.**
-
-- A `regressed` verdict on an owned metric needs a fix, or a justification in `DECISIONS.md` or the plan that accepts it.
-- A `regressed` on a row whose code the change did not touch can be code placement (the `ecs` system rows and `churn`'s `flush`; see [`benchmarks.md`](benchmarks.md#ecs)). It still needs its justification: the same verdict from the baseline tree plus a function that no frame calls, which puts the row's code at the same alignment, with both compares recorded.
-- `improved` on an owned metric is the evidence an optimization claims; quote the compare report.
+- A `regressed` owned metric needs a fix, or a justification in `DECISIONS.md` or the change's plan that accepts it.
+- `improved` on an owned metric is the evidence an optimization claims: quote the sitting.
 - `noisy` needs more repeats or a quieter machine, not a threshold change. The thresholds, the variance floor and the owned metrics change only by decision.
 - Non-owned metrics are context: a regression there belongs to the row that owns the cost.
-- A change to a benchmark's work bumps its `workload_version`; captures across versions aren't comparable, so the baseline restarts.
-
-**Budgets.** The capacity budgets, 60 Hz (16.7 ms) and 144 Hz (6.9 ms) p95 of `total`, are the only budgets. Benchmarks load their owned stage on purpose, so no stage has a fixed limit.
+- A change to a row's work bumps its `workload_version`; captures across versions are not comparable.
+- Aligned builds keep code placement out of a verdict. When a row whose frames run the changed code still reads `regressed`, the control is a placebo: the candidate built with its change switched off, its addresses checked with `nm` ([profiling](#profiling)); base → placebo is placement, placebo → candidate is the change.
 
 ## Writing done-when checks
 
 - **Ask for "not `regressed`".** An effect just under τ can't read `improved` and seldom `unchanged`: `ecs` `update` p50 read −0.26, −0.30 and −0.28 ms against τ 0.32, `noisy` each time (`D-083`). Ask for `improved` only for moves well past τ; in the dead zone, report the deltas and intervals.
-- **Capture every CPU row a shared change can move.** An ECS step captured on `ecs` alone hid `churn` `flush` 2.68 → 3.1 ms until the final suite. For ECS storage, queries or the frame loop, capture the suite at each step, or `--only` every row the code runs in.
-- **Estimate cost on the judged rows.** The arrival pass was noise on a settling pile and +8.3% `physics_step` in `physics`, which lists about 195 bodies per substep (`D-092`). Count the new work's triggers per frame in those rows and price them against τ before writing the check.
+- **Capture every CPU row a shared change can move.** An ECS step captured on `ecs` alone hid `churn` `flush` 2.68 → 3.1 ms until the final suite. For ECS storage, queries or the frame loop, sit every CPU row the code runs in.
+- **Estimate cost on the judged rows.** The arrival pass was noise on a settling pile and +8.3 % `physics_step` in `physics`, which lists about 195 bodies per substep (`D-092`). Count the new work's triggers per frame in those rows and price them against τ before writing the check.
 - **Judge relocated work on frame time.** Work moved between passes moves the pass verdicts and `render_span`: `smaa_neighborhood` read `regressed` while `gpu` `total` fell (`D-087`). Name the pass that absorbs the cost, and judge `total` and GPU engine time per frame (`drm-engine-*` in `/proc/<pid>/fdinfo/`).
 
 ## Profiling
 
-- **`--profile`.** `just perf run <bench> --profile [--call-graph dwarf|fp] [--sample-frequency HZ]` runs the binary twice more after the timing runs, with the same configuration and only error logging: once under `perf stat -d` and once under `perf record` (DWARF stacks by default), then folds a flamegraph from that recording (`flamegraph --perfdata`), all into `profile/`. A missing `perf` or `flamegraph` is noted in `capture.json`. Profiler runs never feed the statistics.
-- **Stacks.** `--call-graph fp` gives smaller records but needs `-C force-frame-pointers=yes` in the effective flags (the runner refuses it otherwise); system libraries may still lack frame pointers, so use DWARF when stacks truncate or attribution is ambiguous. `--sample-frequency 499` lowers the sample count; both are recorded. Profiles locate costs; the timing runs judge them.
-- **By hand.** Build once, then profile the binary directly so Cargo isn't sampled. `perf record` and `cargo flamegraph` write `perf.data` into the current directory, which must be the repository root, so pass `-o`. `cargo flamegraph` with different `RUSTFLAGS` rebuilds `target/release`.
+- **By hand.** Build once with the runner's flags, then profile the binary directly so Cargo isn't sampled. `perf record` and `cargo flamegraph` write `perf.data` into the current directory, so pass `-o`.
 
   ```bash
   RUSTFLAGS="-C force-frame-pointers=yes" cargo build --release -p example-02-bench
@@ -241,62 +199,32 @@ Every row also reports peak RSS, with a verdict, and RSS growth. `interval` and,
   perf report -i perf-runs/manual/perf.data
   ```
 
-  `samply record` is an interactive alternative to `perf record` with the same environment; keep the window at the benchmark's warm-up plus 300 frames.
-- **GPU timing is diagnosis only.** `TUNGSTEN_GPU_TIMING=1` forces a blocking `device.poll(wait_indefinitely())` readback every frame, which inflates CPU-side timings. That is why GPU metrics come from the separate diagnostic run. Never enable it for a timing run or a profile.
-- **Confirm the rebuild after restoring files.** Cargo judges freshness by mtime, so files restored with `cp -p` (or `tar -x`, `rsync -t`) look older than the last build and the binary keeps the change they removed. Restore with plain `cp` or `touch` the files; the build must print `Compiling` for each restored crate before a capture.
-- **Predict code placement.** A row the change never touches can move with its functions' addresses (see the [regression policy](#tracked-rows-suites-and-regression-policy)). Before capturing a step, diff `nm -C --defined-only` of its release build (the runner's flags, in a scratch copy with its own `target/`) against the baseline build: a hot function whose address changes modulo 64 can move its row. When everything after an edit moves and no single pad reproduces the layout, the placebo is the candidate built with its change switched off, its addresses checked with `nm` (`D-087`, `D-092`): baseline → placebo is placement, placebo → candidate is the change.
-- **A second caller can de-inline a hot function.** A second call site made rustc outline `narrow_phase` from the pair loop, about 5.6% of `physics_step` until `#[inline(always)]` (`D-092`). Profile the baseline build too and compare per-symbol sample counts (`perf report --no-children -g none --sort symbol -n`), not shares.
-- **A helper's return type can change a hot loop.** An inlined helper returning `Option<[u8; 4]>` made the particle sprite loop store through vector shuffles, +7.4% of `particle_tick_system` samples (`D-093` accepted it); writing through `&mut [u8; 4]` read within noise. Have such helpers write in place and return a flag, and compare `perf annotate` of the hot symbol on both builds.
+  `--call-graph fp` gives smaller records and needs `-C force-frame-pointers=yes`; system libraries may lack frame pointers, so use DWARF when stacks truncate. `samply record` is an interactive alternative with the same environment; `flamegraph --perfdata` folds a recording. Profiles locate costs; captures judge them. A game row profiles the same way from its folder with the script's variables.
+- **GPU timing is diagnosis.** `TUNGSTEN_GPU_TIMING=1` no longer stalls a frame, but it resolves and copies queries every frame, so the runner keeps it out of timing runs.
+- **Confirm the rebuild after restoring files.** Cargo judges freshness by mtime, so files restored with `cp -p` (or `tar -x`, `rsync -t`) look older than the last build. Restore with plain `cp` or `touch` them; the build must print `Compiling` for each restored crate.
+- **Code placement.** Before aligned builds, rows the change never touched moved with their functions' addresses modulo 64 (`D-085`, `D-087`). To check a layout, diff `nm -C --defined-only` of the release builds.
+- **A second caller can de-inline a hot function.** A second call site made rustc outline `narrow_phase` from the pair loop, about 5.6 % of `physics_step` until `#[inline(always)]` (`D-092`). Compare per-symbol sample counts (`perf report --no-children -g none --sort symbol -n`), not shares.
+- **A helper's return type can change a hot loop.** An inlined helper returning `Option<[u8; 4]>` made the particle sprite loop store through vector shuffles, +7.4 % of `particle_tick_system` (`D-093`); writing through `&mut [u8; 4]` read within noise. Compare `perf annotate` of the hot symbol on both builds.
 
 ## Hotspots
 
 Search these first in a flamegraph:
 
-- `App::run_frame` (shared with the headless harness, `D-110`), `App::window_event`, `render_frame_full`, `render_frame_full_timed`
-- `extract_`, `extract_sprites_default` (column-slice queries, interned `SpriteAssetId` registry indexing, reused buffers and a key sort skipped in painter order; stock sprite/lit pipelines cull outside the projected view, material sprites remain; `D-086`, `D-113`, `D-114`, `D-135`)
-- `World::query`, `World::query_mut`, `World::query_slices` (`D-135`), `World::flush` (archetype moves; the app's flush shows as `World::flush_reusing`, with `insert_run` and `move_components_to` under it)
-- `physics_step`, `build_pairs`, `gather_tilemap_proxies` (tile proxies rebuilt from a full-map scan every frame)
+- `App::run_frame` (shared with the headless harness, `D-110`), `render_frame_full`, `render_frame_full_timed`
+- `extract_sprites_default` (column-slice queries, interned `SpriteAssetId` indexing, reused buffers, a key sort skipped in painter order, a cull for stock pipelines; `D-086`, `D-113`, `D-114`)
+- `World::query`, `World::query_slices` (`D-135`), `World::flush_reusing` with `insert_run` and `move_components_to` under it
+- `physics_step`, `build_pairs`, `gather_tilemap_proxies`
 - `particle_tick_system`
-- `glyphon`, `TextEngine` layout/cache work and `TextPipeline::prepare` (device-free shaping in `text/engine.rs`, GPU preparation in `text/gpu.rs`; unchanged section layouts are reused and unchanged frames skip glyphon preparation; `D-085`, `D-117`)
+- `glyphon`, `TextEngine` and `TextPipeline::prepare` (`D-085`, `D-117`)
 - `wgpu`
 
-Interpretation:
-
-- Cross-reference a hot flamegraph region with the stage and system rows of the same configuration.
-- A hot render stack with a low `render` stage is sampling noise; a hot stage with a matching telemetry change is real.
-- When `render` is high, classify it: `render_acquire` is swapchain pacing, `render_encode` is CPU command generation, `render_submit_present` is the present or readback wait. A GPU-bound frame waits in the acquire, not in the present: `gpu` spends 7.5 of its 10.7 ms in `render_acquire` and 0.3 ms in `render_submit_present` (after `D-087`). Capacity search's "present" is the sum of the two. Since `D-145` the recording splits around the acquire: `render_encode_pre_acquire` runs before it, while the GPU can already start on those passes, and `render_encode` minus `render_encode_pre_acquire` is what is left to record once the acquire returns: `gpu` records 1.58 of its 1.63 ms before the acquire, then waits 7.66 ms there and spends 0.47 ms in `render_submit_present` of its 10.65 ms frame (p50, M44).
-- Near-zero baselines make percentages meaningless; compare absolute values, as τ_abs does.
+When `render` is high, classify it: `render_acquire` is swapchain pacing, `render_encode` CPU command recording, `render_submit_present` the present wait. A GPU-bound frame waits in the acquire: `gpu` spends about 7.5 of its 10.7 ms there. Near-zero baselines make percentages meaningless; compare absolute values, as τ_abs does.
 
 ## Frame pacing
 
-A concrete `display.present_mode` (`immediate`, `mailbox` or `fifo`) is final; `"auto"` lets `display.vsync` choose the family. The checked-in defaults are `display.present_mode = "auto"`, `display.vsync = false` and `display.max_frame_latency = 1`, which resolve to the engine's auto no-vsync family (`immediate` first). `max_frame_latency` is the requested `wgpu` hint, not a backend-confirmed queue depth.
+A concrete `display.present_mode` (`immediate`, `mailbox` or `fifo`) is final; `"auto"` lets `display.vsync` choose the family. The checked-in defaults are `display.present_mode = "auto"`, `display.vsync = false` and `display.max_frame_latency = 1`, which resolve to the auto no-vsync family (`immediate` first). `max_frame_latency` is the requested `wgpu` hint, not a confirmed queue depth.
 
-Legacy `window.vsync`, `render.present_mode` and `render.max_frame_latency` only fill in what `display.*` leaves unset: a display field wins whenever it is set, `"auto"` included (`D-043`). The checked-in `tungsten.json` sets both display pacing fields, so `TUNGSTEN_RENDER_PRESENT_MODE` and `TUNGSTEN_RENDER_MAX_FRAME_LATENCY` change nothing there. `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY` override the display fields themselves.
-
-For pacing studies, keep the default captures and add override captures:
-
-```bash
-just perf run gpu --repeat 5
-just perf run gpu --repeat 5 --present-mode mailbox --max-frame-latency 2
-```
-
-`--present-mode` and `--max-frame-latency` set child-only `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`, so `tungsten.json` stays unchanged, and they suffix the directory with `-<mode>-lat<N>`. Each run's `backend:` line must confirm the request, or the capture is invalid (see "Validity and determinism"). Present mode and frame latency are hard compare fields. Acquire and present pacing belong to the environment: they are reported and owned by no row. Read the frame period from `interval`, not from `total`. A `fifo` frame blocks inside `total`, so both read the refresh period (`gpu` at `min` under `fifo` / 2: 16.63 and 16.67 ms at p50); a wait between two frames shows in `interval` alone. A frame-rate cap (`display.frame_rate_cap`) is such a wait: at a cap of 60, `gpu` at `min` reads 0.79 ms of `total` and 16.71 ms of `interval` at p50 (p99 17.06 ms, 59.8 FPS), where `total` alone would give 1,191 FPS. The April 2026 Vulkan matrix that keeps `Immediate / 1` as the shipped default is recorded in `D-078`; shipped pacing defaults change only by decision.
-
-The same matrix on the current suite, for the record (2026-10-02, the reference machine at 60 Hz, frame latency 1, three timing runs a cell, medians in ms):
-
-| Row | Mode | `total` p50 / p95 / p99 | `interval` p50 | FPS (1000 / mean `interval`) |
-| --- | --- | --- | --- | --- |
-| `gpu` | `immediate` | 10.80 / 12.23 / 12.70 | 10.86 | 89.4 |
-| `gpu` | `mailbox` | 11.76 / 17.02 / 17.32 | 11.84 | 89.7 |
-| `gpu` | `fifo` | 16.63 / 17.36 / 17.72 | 16.68 | 60.0 |
-| `integrated` | `immediate` | 8.48 / 8.99 / 9.35 | 8.62 | 116.9 |
-| `integrated` | `mailbox` | 8.43 / 9.06 / 9.28 | 8.54 | 117.9 |
-| `integrated` | `fifo` | 16.51 / 17.06 / 17.27 | 16.69 | 60.0 |
-| `gpu` at `min` | `immediate` | 3.04 / 4.69 / 4.77 | 3.08 | 294.2 |
-| `gpu` at `min` | `mailbox` | 2.90 / 4.74 / 5.03 | 2.94 | 321.2 |
-| `gpu` at `min` | `fifo` | 16.62 / 17.13 / 17.46 | 16.66 | 60.0 |
-
-`mailbox` gives the GPU-bound `gpu` row the frame rate of `immediate` with a wider spread (jitter 5.51 ms against 1.89) and gains 9% on `gpu` at `min`; the CPU-bound `integrated` row moves by under 1%.
+Legacy `window.vsync`, `render.present_mode` and `render.max_frame_latency` only fill in what `display.*` leaves unset: a display field wins whenever it is set, `"auto"` included (`D-043`). `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY` override the display fields themselves; the runner clears them. Present mode and frame latency are hard compare fields, read from the `backend:` line; pacing belongs to the environment and no row owns it. Read the frame period from `interval`, not `total`: a `fifo` frame blocks inside `total`, and a frame-rate cap's wait shows in `interval` alone. The Vulkan matrix that keeps `immediate` / 1 as the shipped default is in `D-078`; `mailbox` gives the GPU-bound `gpu` row `immediate`'s frame rate with a wider spread.
 
 ## Backends and RenderDoc
 
@@ -306,17 +234,12 @@ The same matrix on the current suite, for the record (2026-10-02, the reference 
 | `dx12` | Windows | Often available on modern hardware |
 | `metal` | macOS | Backend-dependent; verify per machine |
 | `gl` | Fallback | May be unavailable or noisy |
-| `auto` | Any | Convenient, but less reproducible |
+| `auto` | Any | Convenient, less reproducible |
 
-The `backend:` line is the source of truth for the backend, adapter, chosen present mode and requested frame latency. Without timestamp queries the GPU rows are n/a and captures stay valid.
+The `backend:` line is the source of truth for the backend, adapter, present mode and frame latency. Without timestamp queries a GPU run has no samples, and its capture stays valid.
 
-RenderDoc on Linux with Vulkan:
-
-1. Launch RenderDoc and set the executable to `target/release/example-02-bench`, with the working directory at the repository root.
-2. Set the environment: `WGPU_BACKEND=vulkan`, plus `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` for the benchmark to inspect.
-3. Start the capture and trigger a frame after the warm-up.
-4. Inspect the scene pass for draw calls, texture bindings and pass duration, and compare the batch count with `bench-config`'s derived value where the benchmark logs one.
+RenderDoc on Linux with Vulkan: set the executable to the built binary with the working directory at the repository root (a game row: its folder), set `WGPU_BACKEND=vulkan` and the row's variables, capture a frame after the warm-up, and check the scene pass's draws against the `counters:` line.
 
 ## Criterion micro-benchmarks
 
-Criterion (`D-037`) covers isolated primitives: `ecs_bench`, `physics_bench`, `action_map_bench` and `tween_tick` in `tungsten-core`, `render_bench` in `tungsten-render`, `particle_tick` in `tungsten` and `kit` in `tungsten-kit` (the kit's per-entity systems, 39 rows at 1,000 and 10,000 entities; its bound, from the first measured run at M64 (`D-174`), is each row's median per entity at 10,000 at most twice its median per entity at 1,000; that run read ratios of 0.56–1.09 over its 23 rows, M65's (`D-175`) 0.65–1.33 over 31, M66's (`D-176`) 0.61–1.25 over 33, and M67's (`D-177`) 0.59–1.23 over 39). They are regression detectors, not throughput claims. A relative `CARGO_TARGET_DIR` puts the build there from the invoking folder but criterion's reports under the bench's package folder, where the bench runs, so `CARGO_TARGET_DIR=target/criterion-native cargo bench -p tungsten-kit` writes them to `crates/tungsten-kit/target/criterion-native/criterion/`; an absolute path keeps both under one folder. `just bench-build` compiles every bench without running it; run one with `cargo bench -p tungsten-core --bench physics_bench`. Benches build with `.cargo/config.toml`'s `target-cpu=native` flags, so their numbers never compare with capture numbers. They need a machine as quiet as a capture does (see [capture rules](#comparison-rule-and-capture-rules)); compare before and after a change with `-- --save-baseline before`, then `-- --baseline before`.
+Criterion (`D-037`) covers isolated primitives: `ecs_bench`, `physics_bench`, `action_map_bench` and `tween_tick` in `tungsten-core`, `render_bench` in `tungsten-render`, `particle_tick` in `tungsten` and `kit` in `tungsten-kit` (the kit's per-entity systems; its bound is each row's median per entity at 10,000 at most twice its median per entity at 1,000, `D-174`). They are regression detectors, not throughput claims. A relative `CARGO_TARGET_DIR` puts criterion's reports under the bench's package folder, so `CARGO_TARGET_DIR=target/criterion-native cargo bench -p tungsten-kit` writes them to `crates/tungsten-kit/target/criterion-native/criterion/`; an absolute path keeps both under one folder. `just bench-build` compiles every bench without running it; run one with `cargo bench -p tungsten-core --bench physics_bench`. Benches build with `.cargo/config.toml`'s `target-cpu=native` flags, so their numbers never compare with captures. They need a machine as quiet as a capture does; compare with `-- --save-baseline before`, then `-- --baseline before`.

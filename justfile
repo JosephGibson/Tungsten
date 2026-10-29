@@ -49,13 +49,12 @@ visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked ui_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p tungsten-template-basic --test game --locked -- visual:: --nocapture
 
-# Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
+# Benchmark runner (redo 7.3); arguments go to scripts/perf.py, e.g. `just perf list`, `just perf run ecs`, `just perf sitting --quick`, `just perf counters`.
 perf *args:
-    python3 -B scripts/bench.py "$@"
+    python3 -B scripts/perf.py "$@"
 
-# Benchmark-runner regression tests: the old runner's and the new one's (redo 7.3).
+# Benchmark-runner regression tests.
 perf-test:
-    python3 -B scripts/test-bench.py
     python3 -B scripts/test-perf.py
 
 # Report stale build artifacts in target/debug (hashes cargo left behind; newest 2 per crate stay); `just clean-target --apply` deletes, --keep N and --profile release adjust.

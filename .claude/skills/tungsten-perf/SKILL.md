@@ -1,49 +1,54 @@
 ---
 name: tungsten-perf
-description: Tungsten performance work — the benchmark suite (just perf), baselines, compare verdicts, capacity search, telemetry, flamegraph/perf/samply, GPU timings, frame time/p95, present mode and swapchain pacing, or the perf-runs/ directory. Encodes the repo's canonical capture rules.
+description: Tungsten performance work — benchmark rows (just perf), sittings and verdicts, counter guards and pins, GPU counters, baselines, telemetry, flamegraph/perf/samply, GPU timings, frame time/p95, pacing, or perf-runs/. Encodes the repo's capture rules.
 ---
 
 # tungsten-perf
 
-[Profiling workflow](../../../docs/perf/profiling-workflow.md) owns the capture contract. Read its capture rules first, then the section for the requested operation. [Benchmarks](../../../docs/perf/benchmarks.md) owns workloads, knobs, guards, owned metrics, dated results and open proposals (`D-078`). Do not maintain a second copy of those tables here.
+[Profiling workflow](../../../docs/perf/profiling-workflow.md) owns the capture contract: read its capture rules first, then the section for the operation. [Benchmarks](../../../docs/perf/benchmarks.md) owns the rows' workloads, knobs, owned metrics and guards, the counter guards and the levers for 9.2 (`D-078` as redo 7.3 amends it). `scripts/perf-rows.json` is the one registry of rows. Do not keep a second copy of those tables here.
 
 ## Entry points
 
-`example-02-bench` runs six benchmarks across eight tracked rows. `just perf` wraps `scripts/bench.py`; `scripts/bench_report.py` owns statistics and reports. Use `just perf describe` for the binary's current knobs and rows.
+`just perf` runs `scripts/perf.py`; `scripts/perf_stats.py` holds parsing, statistics and verdicts. Rows: the five benchmarks of `example-02-bench` as seven rows, `e01-pit`, `template` and the `e01-areas` group.
 
 ```bash
-WGPU_BACKEND=vulkan just perf run physics --repeat 5
-WGPU_BACKEND=vulkan just perf suite --repeat 5
-just perf compare <baseline> <candidate>
-just perf baseline save <capture-or-suite> <name>
-WGPU_BACKEND=vulkan just perf capacity --all --budget 60hz
+just perf list
+WGPU_BACKEND=vulkan just perf run ecs                       # one capture
+WGPU_BACKEND=vulkan just perf sitting --quick               # the tree against the last tag, CPU rows, informational
+WGPU_BACKEND=vulkan just perf sitting --rows physics,ecs    # a full sitting: A1 B1 A2 B2, one rerun
+just perf compare <capture> <capture>
+just perf baseline save <capture-or-sitting> <name>
+just perf counters                                          # GPU draw and upload pins, local
 just perf-test
 ```
 
+## Policy
+
+- **No per-plan sitting.** A plan's perf checks are its counter guards, which `just check` runs. A change to a hot path (ECS, frame loop, extract, physics, render) may quote a quick sitting as information.
+- **Full sittings** are the evidence for a plan that claims a speed-up, measures a 7.14, 7.15 or 9.2 list item, or changes a row's workload; and for every minor or major release, against the previous tag, before its cut, unattended with the owner's NoMachine client disconnected. A `regressed` owned metric needs a fix or a known-issues entry with the sitting's path before the cut.
+- **Render or extract changes** run `just perf counters` beside `just smoke` and `just visual`.
+
 ## Rules easy to miss
 
-- Canonical captures use release builds with the runner's `-C force-frame-pointers=yes`, Vulkan, 1920×1080, auto no-vsync and latency 1, each row's warm-up plus 300 measured frames, and `--repeat 5`. Setting `RUSTFLAGS` replaces `.cargo/config.toml`'s native flags; compare only identical effective flags.
-- Compare requires matching row, workload version, knobs, frame counts, build flags, backend, adapter, pacing and machine. Run a same-build A/A on a quiet machine before trusting verdicts; known placement/mode effects are in the [Compare section](../../../docs/perf/profiling-workflow.md#compare).
-- **Digests across captures.** Compare prints whether the first-run digests match, and suite compare lists the rows that differ: information only, but where a change must keep behavior, that line shows it did.
-- **No remote-desktop encoder during captures.** `run`, `suite` and `--sweep` refuse known encoder/foreign-build load before building (`D-141`); no separate manual process precheck is needed for them. Measured-run scans still invalidate overlapping load (`D-095`). Capacity probes, manual profiler/criterion runs, smoke timings and visual runs remain unscanned and retain the guide's manual checks. `--allow-background` bypasses refusal for diagnostics and keeps measured load as notes.
-- **Nothing else runs beside a capture.** No other agent session or `cargo` build in the tree, and none of your own commands: run each sitting as one blocking foreground command. The runner flags `cargo`/`rustc` outside its own tree and a tree edited during a run, not a session that only reads or your own commands; see [capture rules](../../../docs/perf/profiling-workflow.md#comparison-rule-and-capture-rules).
-- **After restoring files, confirm the rebuild.** `cp -p` keeps old mtimes, so cargo skips the rebuild and the binary keeps the removed change; the build must print `Compiling` before a capture. See [Profiling](../../../docs/perf/profiling-workflow.md#profiling).
-- Timing runs are telemetry-only. `TUNGSTEN_GPU_TIMING=1` blocks on readback and belongs only in a separate diagnostic run, never a CPU timing run or profile.
-- Judge only the row's owned metrics. A `regressed` owned metric needs a fix or a recorded justification in a decision or plan. `noisy` needs more repeats or a quieter machine; thresholds and owned metrics change only by decision. RSS growth and capacity are informational.
-- Measure FPS from `interval`, the frame period; `total` measures work and excludes pacing waits. GPU `frame:` timing is scene-only; `gpu_passes:` and `render_span` come from diagnostic runs. See [Telemetry lines](../../../docs/perf/profiling-workflow.md#telemetry-lines).
-- Pacing studies use `--present-mode` / `--max-frame-latency` child overrides. Do not change shipped defaults to chase a benchmark. [Frame pacing](../../../docs/perf/profiling-workflow.md#frame-pacing) owns precedence and historical matrices.
-- A benchmark work change bumps its `workload_version` and starts a new baseline. Engine optimizations do not change workload versions. Archiving a plan does not approve its leftover experiments.
+- Captures are release builds with frame pointers and every function and non-fallthrough block aligned to 64 bytes, on both sides of a sitting, so code placement moves no row; `--plain` gives shipping flags. Compare requires the same row, workload (version, knobs, script hash, resolution, warm-up, frames), build flags, renderer and machine, read from the captures.
+- **A sitting judges a change.** An owned metric reads `regressed` only when both direct pairs say so and the base's A/A reads it `unchanged` or `noisy`; an unstable A/A or a known-drift metric earns one rerun, whose verdicts stand alone. Peak RSS is judged only within one sitting.
+- **No remote-desktop encoder, no other work.** `run` refuses the encoder and foreign builds; a sitting's start check also refuses a process above 20 % of a core and a tree that changes, and `--wait-quiet S` waits for 60 s of quiet. Run each capture or sitting as one blocking command, or one background job with nothing beside it. Never write to the tree while `pgrep -af scripts/perf.py` shows a capture.
+- **Counter guards.** A failing guard names each counter's pinned and new value; a rise in a cost counter needs a fix or its cause in the plan. Rewrite a pin only for a meant change: `TUNGSTEN_GUARDS_WRITE=1` on that test, then run it twice. Pins are Linux's.
+- **GPU timings arrive late.** `gpu_passes: from=N` lines come up to four frames after frame N, from a ring that never stalls; a GPU run takes five tail frames and needs 95 % of its window sampled. `frame:`'s `gpu=` is for the HUD only.
+- **After restoring files, confirm the rebuild.** `cp -p` keeps old mtimes, so cargo skips the rebuild; the build must print `Compiling`.
+- Measure FPS from `interval`; `total` excludes pacing waits. Pacing studies run the binary by hand under `TUNGSTEN_DISPLAY_PRESENT_MODE` / `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`; do not change shipped defaults to chase a row.
+- A row's work change bumps its `workload_version`; engine changes never do.
 
 ## Route by task
 
 | Task | Read |
 | --- | --- |
 | Capture failures or digests | [Validity and determinism](../../../docs/perf/profiling-workflow.md#validity-and-determinism) |
-| Compare verdicts and drift | [Compare](../../../docs/perf/profiling-workflow.md#compare) |
+| Judging a change | [Sittings](../../../docs/perf/profiling-workflow.md#sittings), [Compare](../../../docs/perf/profiling-workflow.md#compare) |
 | Plan done-when checks | [Writing done-when checks](../../../docs/perf/profiling-workflow.md#writing-done-when-checks) |
-| Scale or frame budgets | [Capacity search](../../../docs/perf/profiling-workflow.md#capacity-search) |
-| RSS or allocation questions | [Memory](../../../docs/perf/profiling-workflow.md#memory) |
+| Counter guards, GPU counters | [Counter guards](../../../docs/perf/benchmarks.md#counter-guards) |
+| What 9.2 can work on | [Levers for 9.2](../../../docs/perf/benchmarks.md#levers-for-92) |
 | perf, flamegraph or samply | [Profiling](../../../docs/perf/profiling-workflow.md#profiling), then [Hotspots](../../../docs/perf/profiling-workflow.md#hotspots) |
-| Add or recalibrate a workload | [Adding a benchmark](../../../docs/perf/benchmarks.md#adding-a-benchmark) |
+| Add a row | [Adding a row](../../../docs/perf/benchmarks.md#adding-a-row) |
 
-Use native profilers and the built binary, with outputs under `perf-runs/`. Criterion's native-flag microbenchmarks are separate from runner captures. New runtime profiling dependencies need a `D-015` decision; web/Node profilers do not apply to this engine.
+Use native profilers on the built binary, with outputs under `perf-runs/`. Criterion's native-flag micro-benchmarks are separate from captures. New runtime profiling dependencies need a `D-015` decision.

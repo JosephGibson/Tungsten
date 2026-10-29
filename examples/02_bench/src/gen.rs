@@ -141,12 +141,6 @@ pub(crate) struct Cell {
     pub(crate) rgba: Vec<u8>,
 }
 
-/// One lit atlas cell: its sprite ID and albedo, normal and emissive pixels.
-pub(crate) struct LitCell {
-    pub(crate) id: String,
-    pub(crate) textures: [Vec<u8>; 3],
-}
-
 /// A packed page: RGBA, width, height and each cell's UV rect.
 type Page = (Vec<u8>, u32, u32, Vec<UvRect>);
 
@@ -209,53 +203,6 @@ pub(crate) fn register_atlas(
             None,
             None,
             None,
-        );
-    }
-}
-
-/// `register_atlas` for lit cells: the albedo, normal and emissive pages
-/// share one handle and packing (`D-061`), so the cells form one lit batch key.
-pub(crate) fn register_lit_atlas(
-    world: &mut World,
-    textures: &mut dyn TextureSink,
-    filter: FilterMode,
-    size: u32,
-    cells: &[LitCell],
-) {
-    let [albedo, normal, emissive] = std::array::from_fn(|layer| {
-        let pixels: Vec<&[u8]> = cells
-            .iter()
-            .map(|cell| cell.textures[layer].as_slice())
-            .collect();
-        pack(size, &pixels)
-    });
-    let (width, height, uvs) = (albedo.1, albedo.2, albedo.3);
-    let handle = textures.allocate_texture_handle();
-    textures.upload_texture(handle, &albedo.0, width, height, filter);
-    textures.upload_lit_texture(
-        handle,
-        &albedo.0,
-        &normal.0,
-        &emissive.0,
-        width,
-        height,
-        filter,
-    );
-    let registry = world
-        .get_resource_mut::<AssetRegistry>()
-        .expect("AssetRegistry resource missing");
-    for (cell, uv) in cells.iter().zip(uvs) {
-        registry.register_sprite(
-            cell.id.clone(),
-            filter,
-            size,
-            size,
-            PathBuf::from(format!("__generated__/{}.png", cell.id)),
-            handle,
-            uv,
-            Some(PathBuf::from(format!("__generated__/{}_n.png", cell.id))),
-            Some(PathBuf::from(format!("__generated__/{}_e.png", cell.id))),
-            Some(handle),
         );
     }
 }
@@ -498,77 +445,5 @@ pub(crate) fn anim_frame_rgba(clip: u32, frame: u32, frames: u32, size: u32) -> 
             b * shade,
             alpha,
         ]
-    })
-}
-
-/// Walker frame `frame` of `frames` in `hue`: a round body on two legs that
-/// swing through one stride per clip, with glowing eyes. Returns the albedo,
-/// an ellipsoid normal map and the emissive eyes.
-pub(crate) fn walker_textures(hue: u32, frame: u32, frames: u32, size: u32) -> [Vec<u8>; 3] {
-    let [r, g, b] = PALETTE[(hue % 8) as usize];
-    let swing = 0.2 * (frame as f32 / frames.max(1) as f32 * std::f32::consts::TAU).sin();
-    // Squared ellipse radius of the body: below 1 inside.
-    let body = |u: f32, v: f32| (u / 0.6).powi(2) + ((v + 0.2) / 0.62).powi(2);
-    let leg = |u: f32, v: f32| {
-        (0.3..0.95).contains(&v)
-            && ((u + 0.22 - swing).abs() < 0.1 || (u - 0.22 - swing).abs() < 0.1)
-    };
-    let eye = |u: f32, v: f32| {
-        let dy = (v + 0.32).powi(2);
-        ((u - 0.2).powi(2) + dy).min((u + 0.2).powi(2) + dy) < 0.012
-    };
-    let albedo = paint(size, |u, v, _, _| {
-        let radius = body(u, v);
-        let alpha = coverage((radius.sqrt() - 1.0) * 0.6, size);
-        if eye(u, v) {
-            [1.0, 1.0, 0.95, 1.0]
-        } else if alpha > 0.0 {
-            let shade = 1.0 - 0.3 * radius.min(1.0);
-            let alpha = if leg(u, v) { 1.0 } else { alpha };
-            [r * shade, g * shade, b * shade, alpha]
-        } else if leg(u, v) {
-            [r * 0.35, g * 0.35, b * 0.35, 1.0]
-        } else {
-            [0.0; 4]
-        }
-    });
-    let normal = paint(size, |u, v, _, _| {
-        let radius = body(u, v);
-        if radius < 1.0 {
-            let tilt =
-                glam::Vec3::new(u / 0.6, (v + 0.2) / 0.62, (1.0 - radius).sqrt()).normalize();
-            [
-                tilt.x * 0.5 + 0.5,
-                tilt.y * 0.5 + 0.5,
-                tilt.z * 0.5 + 0.5,
-                1.0,
-            ]
-        } else {
-            [0.5, 0.5, 1.0, 1.0]
-        }
-    });
-    let emissive = paint(size, |u, v, _, _| {
-        if eye(u, v) {
-            [1.0, 0.85, 0.5, 1.0]
-        } else {
-            [0.0, 0.0, 0.0, 1.0]
-        }
-    });
-    [albedo, normal, emissive]
-}
-
-/// Parallax strip `layer` (0 farthest): a ridge silhouette, opaque below its
-/// profile and clear above. The profile repeats across the strip, so strips
-/// tile seamlessly side by side.
-pub(crate) fn ridge_rgba(layer: u32, size: u32) -> Vec<u8> {
-    let depth = layer as f32 / 3.0;
-    let color = [0.16 + 0.12 * depth, 0.2 + 0.14 * depth, 0.3 + 0.08 * depth];
-    let (k1, k2) = (1.0 + layer as f32, 3.0 + 2.0 * layer as f32);
-    paint(size, |u, v, _, _| {
-        let x = (u + 1.0) * std::f32::consts::PI;
-        let height = 0.35 + 0.25 * (k1 * x + layer as f32).sin() + 0.08 * (k2 * x).sin();
-        let alpha = coverage(1.0 - 2.0 * height - v, size);
-        let shade = 0.85 + 0.15 * v;
-        [color[0] * shade, color[1] * shade, color[2] * shade, alpha]
     })
 }

@@ -27,7 +27,7 @@ Resolve asset IDs during extract and pass resolved render data across the seam. 
 
 ## Pacing, timing and checks
 
-[The profiling workflow](../../../docs/perf/profiling-workflow.md#frame-pacing) owns display/render precedence, child-only pacing overrides and capture defaults. Override studies use `just perf run … --present-mode … --max-frame-latency …`; `--gpu-timing off` disables the diagnostic run.
+[The profiling workflow](../../../docs/perf/profiling-workflow.md#frame-pacing) owns display/render precedence and capture defaults. A pacing study runs the binary by hand under `TUNGSTEN_DISPLAY_PRESENT_MODE` and `TUNGSTEN_DISPLAY_MAX_FRAME_LATENCY`; GPU timings come only from a capture's GPU run, which never stalls (redo 7.3). A render or extract change runs `just perf counters` beside `just smoke` and `just visual`.
 
 `TUNGSTEN_GPU_TIMING=1` blocks on readback; keep it out of CPU profiles. Renderer changes require the shader/layout tests and GPU checks in renderer AGENTS. Cache validation alone does not establish correct pixels or visible hot reload; use the current support matrix and connected pipeline rebuild path.
 

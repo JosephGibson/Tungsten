@@ -1,6 +1,6 @@
 //! Example 02: benchmark suite. One binary runs one benchmark per launch
-//! (`docs/perf/benchmarks.md`); captures go through
-//! `just perf run <bench>` (`scripts/bench.py`).
+//! (`docs/perf/benchmarks.md`); captures go through `just perf run <row>`
+//! (`scripts/perf.py`), whose rows `scripts/perf-rows.json` holds.
 //!
 //! Env: `TUNGSTEN_BENCH` (default `physics`), `TUNGSTEN_BENCH_PRESET`
 //! (default `default`), `TUNGSTEN_BENCH_SCALE` (multiplies the scalable
@@ -18,7 +18,6 @@ mod counters;
 mod ecs;
 mod r#gen;
 mod gpu;
-mod integrated;
 mod knobs;
 mod particles;
 mod physics;
@@ -41,7 +40,6 @@ const BENCHES: &[&Bench] = &[
     &churn::BENCH,
     &gpu::BENCH,
     &particles::BENCH,
-    &integrated::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

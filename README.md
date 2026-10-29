@@ -45,9 +45,11 @@ To make a game of your own, start from the template: [Getting started](docs/gett
 Reproducible Linux perf capture (`docs/perf/profiling-workflow.md`):
 
 ```bash
-WGPU_BACKEND=vulkan just perf suite --repeat 5               # every tracked benchmark row
-just perf compare <baseline> <candidate>                     # verdicts, compare.md and compare.html
-WGPU_BACKEND=vulkan just perf capacity --all --budget 60hz   # largest scale within a budget
+just perf list                                               # the benchmark rows
+WGPU_BACKEND=vulkan just perf run ecs                        # one capture of one row
+WGPU_BACKEND=vulkan just perf sitting --quick                # the tree against the last tag, informational
+WGPU_BACKEND=vulkan just perf sitting                        # the full sitting a minor or major release runs
+just perf counters                                           # GPU draw and upload counter pins
 just perf-test                                               # runner regression tests, no GPU
 ```
 

@@ -64,7 +64,7 @@ for p in $(pgrep -x 'claude|codex'); do
   case "$cwd/" in "$PWD/"*) others="$others $name pid $p (up $(ps -o etime= -p "$p" | tr -d ' '));" ;; esac
 done
 echo "other agent sessions in this tree:${others:- none}"
-cap=$(pgrep -af 'scripts/bench\.py' | head -1)
+cap=$(pgrep -af 'scripts/perf\.py' | head -1)
 echo "perf capture running: ${cap:-none}"
 
 echo "== frozen records (a banner naming D-215; not edited again)"

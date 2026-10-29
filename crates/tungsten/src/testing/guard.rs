@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use super::Harness;
+use crate::LogConsole;
 use crate::app::FrameExtract;
 
 /// The variable that makes [`CounterGuard::check`] rewrite its pin.
@@ -118,6 +119,13 @@ impl CounterGuard {
     ///
     /// When the run ends before the window does.
     pub fn measure(harness: &mut Harness, warmup: u32, frames: u32) -> Self {
+        // The log console drains the process's one logger, which every
+        // thread's app in a test binary feeds: its window would count other
+        // tests' records as they happen to land. It counts without the feed.
+        let feed = harness
+            .world_mut()
+            .get_resource_mut::<LogConsole>()
+            .and_then(LogConsole::take_feed);
         harness.count_only = true;
         assert_eq!(
             harness.step(warmup),
@@ -139,6 +147,9 @@ impl CounterGuard {
         let allocated_after = allocations();
         let world_after = harness.world().counters();
         harness.count_only = false;
+        if let Some(console) = harness.world_mut().get_resource_mut::<LogConsole>() {
+            console.restore_feed(feed);
+        }
         Self {
             allocations: allocated_after.count - allocated.count,
             allocated_bytes: allocated_after.bytes - allocated.bytes,

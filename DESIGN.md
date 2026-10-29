@@ -628,7 +628,7 @@ Script mode (redo 7.2) runs a game in its window from a JSON script, `tungsten_c
 
 `FrameTimings` records CPU stages, per-system wall time and the frame interval. The headless harness's counter guards (`tungsten::testing::CounterGuard`) step a game's frames with `CountingAlloc` installed and pin a window's allocations, `WorldCounters` deltas and most sprite batches and instances in one JSON file per guard, so `just check` catches added work without a GPU. Renderer GPU timestamps are opt-in diagnostics (`TUNGSTEN_GPU_TIMING`): a timed frame resolves them into one of a ring of four readbacks and a later frame's non-blocking poll reads them, so they arrive up to four frames late, tagged with the frame they measured, and never stall the frame (redo 7.3); captures still keep them out of the CPU timing runs. The renderer counts the draw calls and upload bytes it records, through `tungsten-render/src/counters.rs`, and `RenderCounts` carries them with the extract's sprite batches. Criterion measures isolated primitives.
 
-[profiling-workflow.md](docs/perf/profiling-workflow.md) owns capture configuration, telemetry semantics, comparability, verdicts, capacity search and profiling commands. [benchmarks.md](docs/perf/benchmarks.md) owns the six workloads, knobs, guards, dated measurements and open performance proposals (`D-078`).
+[profiling-workflow.md](docs/perf/profiling-workflow.md) owns running the rows, captures, telemetry semantics, comparability, verdicts, sittings and profiling commands. [benchmarks.md](docs/perf/benchmarks.md) owns the rows' workloads, knobs, owned metrics and guards, the counter guards and the levers for 9.2 (`D-078`); `scripts/perf-rows.json` holds the rows.
 
 ## Non-Commitments
 

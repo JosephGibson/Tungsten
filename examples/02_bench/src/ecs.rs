@@ -17,7 +17,7 @@ use tungsten::core::{CameraState, Entity, Pcg32, Position, World};
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
 use crate::r#gen;
-use crate::knobs::{self, Bench, BenchConfig, Guard, Knob, Preset, Row, Value};
+use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Value};
 use crate::view::{self, VIEWPORT, ViewSprite, ViewTexture};
 
 mod systems;
@@ -29,7 +29,6 @@ pub(crate) static BENCH: Bench = Bench {
     gpu_timing: false,
     knobs: KNOBS,
     presets: PRESETS,
-    rows: ROWS,
     row,
     validate: knobs::no_cross_checks,
     derived,
@@ -59,43 +58,6 @@ const PRESETS: &[Preset] = &[
         set: &[],
     },
 ];
-
-const P50: &[&str] = &["p50"];
-
-const ROWS: &[Row] = &[Row {
-    name: "ecs",
-    preset: "default",
-    owned: &[
-        ("stage.update", &["p50", "p95"]),
-        ("system.brain", P50),
-        ("system.cooldowns", P50),
-        ("system.buffs", P50),
-        ("system.regen", P50),
-        ("system.stats_decay", P50),
-        ("system.accelerate", P50),
-        ("system.follow", P50),
-        ("system.integrate", P50),
-        ("system.bounds_wrap", P50),
-        ("system.heading", P50),
-        ("system.tint", P50),
-        ("system.age_phase", P50),
-        ("system.team_bags", P50),
-        ("system.faction_histogram", P50),
-    ],
-    guards: &[
-        Guard::CounterMax {
-            counter: "structural",
-            max: 0,
-        },
-        Guard::CounterConst {
-            counter: "entities",
-        },
-    ],
-    counters: &["entities", "archetypes", "lookups", "structural", "digest"],
-    bottleneck: "update",
-    key_knobs: &["entities"],
-    note: "",
-}];
 
 /// Which `systems` selection runs a system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

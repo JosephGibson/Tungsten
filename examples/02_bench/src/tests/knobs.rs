@@ -58,13 +58,30 @@ fn every_preset_resolves() {
             let cfg = resolve(bench, Some(preset.name), None, None).unwrap();
             assert_eq!(cfg.preset, preset.name, "{}", bench.name);
         }
-        for row in bench.rows {
-            assert_eq!(
-                resolve(bench, Some(row.preset), None, None).unwrap().row(),
-                row.name
-            );
-        }
     }
+}
+
+/// Each bench row of the runner's registry resolves, at its preset and
+/// scale, to the row it names.
+#[test]
+fn every_registry_row_resolves_to_its_row() {
+    let text = include_str!("../../../../scripts/perf-rows.json");
+    let registry: Json = serde_json::from_str(text).unwrap();
+    let mut checked = 0;
+    for row in registry["rows"].as_array().unwrap() {
+        let Some(name) = row["launch"]["bench"].as_str() else {
+            continue;
+        };
+        let bench = select(crate::BENCHES, Some(name)).unwrap();
+        let preset = row["launch"]["preset"].as_str();
+        let scale = row["launch"]["scale"]
+            .as_f64()
+            .map(|scale| scale.to_string());
+        let cfg = resolve(bench, preset, scale.as_deref(), None).unwrap();
+        assert_eq!(cfg.row(), row["name"].as_str().unwrap());
+        checked += 1;
+    }
+    assert_eq!(checked, 7, "the seven bench rows");
 }
 
 #[test]

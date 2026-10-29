@@ -27,7 +27,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
 | Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
-| Perf runner, capacity search, compare reports (`D-078`) | `scripts/bench.py`, `scripts/bench_report.py`, `scripts/test-bench.py` |
+| Perf runner, rows, sittings (`D-078`) | `scripts/perf.py`, `scripts/perf_stats.py`, `scripts/perf-rows.json`, `scripts/test-perf.py` |
 | Criterion micro-benchmarks | `crates/*/benches/`, `docs/perf/profiling-workflow.md` |
 | Debug views: HUD, overlay, inspectors, console; engine font (`D-044`, `D-123`, `D-165`) | `tungsten/debug_views.rs`, `tungsten/debug_hud.rs`, `tungsten/telemetry.rs`, `tungsten/engine_font.rs` |
 
@@ -77,8 +77,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | --- | --- |
 | Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
 | Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/`, `examples/01_platformer/tools/locks.json` (`D-223`), `examples/01_platformer/tools/actors.py` (`BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
-| Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
-| One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
+| Benchmarks: workloads, knobs, guards | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
 | Template: shell, sample, seam; `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `tungsten/describe.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |

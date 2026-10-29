@@ -50,7 +50,7 @@ First row that applies:
 - **Tier:** a session that generates art or sound runs on Opus 5.5 at max; every other session at xhigh. An example stop that needs new art splits off an asset session ([redo §6](../../../docs/plans/roadmap-redo.md#6-asset-sessions)).
 - **New session** for anything that starts work. **Same session** only for fixes to work an open session just showed, under about 60% context; otherwise new, its prompt starting `Read <plan or commit> first.`
 - Never two editing sessions in one tree: a parallel one gets its own worktree, which the owner makes (`git worktree add`).
-- A session that takes timing captures (`just perf run|suite|capacity`, `cargo bench`) needs the owner's NoMachine client disconnected until it ends; every other session stays connected.
+- A session that takes timing captures (`just perf run|sitting|counters`, `cargo bench`) needs the owner's NoMachine client disconnected until it ends; every other session stays connected.
 
 ## 5. Reply
 

@@ -27,7 +27,7 @@ use tungsten::core::{CameraState, CommandBuffer, Entity, PendingEntity, Position
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
 use crate::r#gen;
-use crate::knobs::{self, Bench, BenchConfig, Guard, Knob, Preset, Row, Value};
+use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Value};
 use crate::view::{self, VIEWPORT, ViewSprite, ViewTexture};
 
 pub(crate) static BENCH: Bench = Bench {
@@ -37,7 +37,6 @@ pub(crate) static BENCH: Bench = Bench {
     gpu_timing: false,
     knobs: KNOBS,
     presets: PRESETS,
-    rows: ROWS,
     row,
     validate: knobs::no_cross_checks,
     derived,
@@ -69,40 +68,6 @@ const PRESETS: &[Preset] = &[
         set: &[],
     },
 ];
-
-const P50: &[&str] = &["p50"];
-
-const ROWS: &[Row] = &[Row {
-    name: "churn",
-    preset: "default",
-    owned: &[
-        ("stage.flush", &["p50", "p95"]),
-        ("system.churn_scan", P50),
-        ("system.churn_despawn", P50),
-        ("system.churn_toggle", P50),
-        ("system.churn_spawn", P50),
-    ],
-    guards: &[
-        Guard::CounterConst {
-            counter: "population",
-        },
-        Guard::CounterEq {
-            counter: "spawned",
-            other: "despawned",
-        },
-    ],
-    counters: &[
-        "population",
-        "spawned",
-        "despawned",
-        "inserted",
-        "removed",
-        "commands",
-    ],
-    bottleneck: "stage.flush",
-    key_knobs: &["population"],
-    note: "",
-}];
 
 const STATUS_VALUE: f32 = 1.0;
 const SAMPLE_COLORS: [[u8; 4]; 2] = [[120, 186, 240, 255], [242, 196, 92, 255]];
