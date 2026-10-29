@@ -12,16 +12,16 @@
   - Image compositing: a sheet is one rendered frame with its items laid out in the world.
 - **files to touch:**
   - Step 1: `crates/tungsten-core/src/script.rs` (new), `crates/tungsten-core/src/tests/script.rs` (new), `crates/tungsten-core/src/lib.rs`, `crates/tungsten-core/src/component_registry.rs`, `api/tungsten-core.txt`.
-  - Step 2: `crates/tungsten/src/script.rs` (new), `crates/tungsten/src/tests/script.rs` (new), `crates/tungsten/src/lib.rs`, `crates/tungsten/src/app.rs`, `crates/tungsten/src/capture.rs`, `crates/tungsten/src/input_bridge.rs`, `crates/tungsten/src/testing.rs`, `crates/tungsten/src/logging.rs`, `crates/tungsten/Cargo.toml`, `Cargo.lock`, `api/tungsten.txt`.
-  - Step 3: `crates/tungsten/src/app.rs`, `crates/tungsten/src/script.rs`, `crates/tungsten/src/user_dir.rs`, `crates/tungsten/src/tests/script.rs`, `crates/tungsten/src/tests/user_dir.rs`, `DESIGN.md`, `docs/LLM_INDEX.md`; evidence in `perf-runs/<UTC>-agent-tooling/` (untracked).
+  - Step 2: `crates/tungsten/src/script.rs` (new), `crates/tungsten/src/tests/script.rs` (new), `crates/tungsten/src/lib.rs`, `crates/tungsten/src/app.rs`, `crates/tungsten/src/capture.rs`, `crates/tungsten/src/input_bridge.rs`, `crates/tungsten/src/testing.rs`, `crates/tungsten/src/logging.rs`, `crates/tungsten/Cargo.toml`, `Cargo.lock`, `api/tungsten.txt`; the perf evidence in `perf-runs/<UTC>-agent-tooling/` (untracked).
+  - Step 3: `crates/tungsten/src/app.rs`, `crates/tungsten/src/script.rs`, `crates/tungsten/src/user_dir.rs`, `crates/tungsten/src/tests/script.rs`, `crates/tungsten/src/tests/user_dir.rs`, `DESIGN.md`, `docs/LLM_INDEX.md`.
   - Step 4: `tools/cli/src/args.rs`, `tools/cli/src/main.rs`, `tools/cli/src/check.rs`, `tools/cli/src/run.rs` (new), `tools/cli/src/describe.rs` (new), `tools/cli/src/tests/args.rs`, `tools/cli/src/tests/run.rs` (new), `tools/cli/src/tests/describe.rs` (new), `tools/cli/tests/cli.rs`, `crates/tungsten/src/app.rs`, `crates/tungsten/src/describe.rs` (new), `crates/tungsten/src/tests/describe.rs` (new), `crates/tungsten/src/lib.rs`, `crates/tungsten-kit/src/foundation/describe.rs`, `api/tungsten-cli.txt`, `api/tungsten.txt`, `api/tungsten-kit.txt`, `scripts/template-check.sh`, `docs/getting-started.md`, `docs/validation.md`, `docs/LLM_INDEX.md`.
   - Step 5: `templates/basic/src/sample/script.rs` (new), `templates/basic/src/sample/mod.rs`, `templates/basic/tests/game/script.rs` (new), `templates/basic/tests/game/main.rs`, `examples/01_platformer/src/features/run/script.rs` (new), `examples/01_platformer/src/features/run/mod.rs`, `docs/getting-started.md`.
   - Step 6: `tools/cli/src/render.rs` (new), `tools/cli/src/tests/render.rs` (new), `tools/cli/src/args.rs`, `tools/cli/src/main.rs`, `tools/cli/tests/cli.rs`, `api/tungsten-cli.txt`, `docs/getting-started.md`, `examples/01_platformer/tools/README.md`, `docs/plans/roadmap-redo.md` (§6), `ROADMAP.md` (the sequence-capture Later line), `DECISIONS.md`, `docs/DECISION_INDEX.md`; the proof in `perf-runs/<UTC>-agent-tooling-sheet/` (untracked).
   - Step 7: this plan (deleted), `ROADMAP.md`, `docs/plans/phase-7.md` (its evidence row), the follow-ups' homes.
-- **ordered steps:** (1) The script format and hooks in core. (2) The runner, on the frame body and the harness. (3) Script mode in the window loop, with the perf gate. (4) `tungsten run --script` and `tungsten describe`. (5) The template's and 01's script hooks. (6) `tungsten render` and the review-sheet proof. (7) Close.
+- **ordered steps:** (1) The script format and hooks in core. (2) The runner, on the frame body and the harness, with the perf gate. (3) Script mode in the window loop. (4) `tungsten run --script` and `tungsten describe`. (5) The template's and 01's script hooks. (6) `tungsten render` and the review-sheet proof. (7) Close.
 - **done-when:** every step's done-when passes, quoted in the evidence log; `just check` passes and example 01 runs; a review sheet of 01 (a contact sheet, a loop and an area still) comes from `tungsten render` with no scratch crate (step 6); the plan deleted with its citations, phase 7's evidence row written, and `agent-tooling` out of Now.
 
-Item `agent-tooling` in [ROADMAP.md](../../ROADMAP.md), from the [roadmap redo](roadmap-redo.md)'s 7.2 row and §8, and step 1 of the [phase 7 plan](phase-7.md) (§2.8: the main track's first step; the UI track's 7.17 starts after it). Written 2026-10-29 at `94cb8744`. Runs under the [tungsten-milestone skill](../../.claude/skills/tungsten-milestone/SKILL.md) and the [operating rules](../operating-rules.md); it differs in one way: step 3's perf sitting covers steps 2 and 3, whose frame-loop changes land a commit apart.
+Item `agent-tooling` in [ROADMAP.md](../../ROADMAP.md), from the [roadmap redo](roadmap-redo.md)'s 7.2 row and §8, and step 1 of the [phase 7 plan](phase-7.md) (§2.8: the main track's first step; the UI track's 7.17 starts after it). Written 2026-10-29 at `94cb8744`. Runs under the [tungsten-milestone skill](../../.claude/skills/tungsten-milestone/SKILL.md) and the [operating rules](../operating-rules.md); it differs in one way: the close runs only once steps 1–6 have all landed, since phase 7's step 1 needs all three commands and the sheet (`docs/plans/phase-7.md:244`).
 
 ## Context digest
 
@@ -53,6 +53,10 @@ Read at `94cb8744`. `perf-runs/` is untracked; its driver is cited as the owner'
 | A15 | Today's driver (e01hollow): a scratch crate's system holds the player at a corner, presses bindings, aims through the camera, holds the camera and scripts a scene by gameplay frame; `loop.sh` launches the game once per frame of a loop | `perf-runs/20261027-e01hollow-cave-review/tools/scenes.rs:88`, `:106`, `:122`, `:130`, `:246`; `…/tools/loop.sh` |
 | A16 | Sequence capture waits in Later "with redo 7.2's review sheets"; the redo's §6 says each frame is a launch until it lands | `ROADMAP.md:22`; `docs/plans/roadmap-redo.md:415` |
 | A17 | `tungsten new` embeds every file under `templates/basic` by walking it, so a new template file ships with no list to update | `tools/cli/build.rs:56-68` |
+| A18 | `Startup` runs inside the update stage on the first frame only, before `PreUpdate`, where the dispatcher applies state requests; the shell's title push is queued there | `crates/tungsten/src/app.rs:1305-1311`; `crates/tungsten/src/plugins.rs:120`; `templates/basic/src/shell/mod.rs:274` |
+| A19 | `physics_sync` copies `Position` (or its interpolation from `PrevPosition`) into `Transform` in `PostUpdate`, and the sprite extract reads `Transform` | `crates/tungsten-core/src/physics/plugin.rs:52`, `:95`; `crates/tungsten/src/sprite_extract.rs:390-392` |
+| A20 | `App::with_plugins` loads the player's settings from the user folder at construction, and a damaged file is quarantined there; only check and smoke runs resolve no folder | `crates/tungsten/src/app.rs:185-200`, `:231`; `crates/tungsten-core/src/settings.rs:171` |
+| A21 | A run's fatal error (a failed frame, setup) is kept apart from the capture's error, the fatal one returned first | `crates/tungsten/src/app.rs:658-663` |
 
 ## 2. Design
 
@@ -79,37 +83,40 @@ A step has `frame` (counting from 1, every frame body, skipped renders included,
 | `action` | a name, with `args` | Before `PreUpdate`: a registered `fn(&mut World, &Value) -> Result<(), String>` |
 | `spawn` | `{"prefab": id, "at": [x, y]}` | Before `PreUpdate`; owned by the stage when there is one |
 | `scene` | a scene file, relative to the game's folder | Before `PreUpdate`, spawned under the stage |
-| `stage` | `{}`, or `{"ambient": [r, g, b]}` | Pops every state, pushes the engine's empty `ScriptStage`; the game's states exit and their entities go |
+| `stage` | `{}`, or `{"ambient": [r, g, b]}` | Held from its frame: each frame the runner requests what makes the stack hold the engine's empty `ScriptStage` alone (pops above it, a replace when it isn't there), so the game's states exit, their entities go, and a state the game pushes later (the shell's title at `Startup`, A18) goes too; what a stage owns spawns once `ScriptStage` is active |
 | `sheet` | `{"items": ["prefab:goblin", "sprite:icon_fire", "animation:wisp_idle", "particles:spark"], "columns"?, "cell"?, "labels"?}` | Stages if needed, spawns each item in a grid cell (from the items' sprite sizes, else `cell`, default 64 × 64) captioned by a `WorldLabel`, holds each at its cell every frame, and fits the camera to the grid; a bare item is a prefab |
 | `camera` | `{"center": [x, y], "zoom": z}`, `{"center", "view_height": h}`, `{"fit": "staged"}` or `null` | Held until `null`, drawn at extract only (§2.4) |
 | `overlay` | `{"physics": bool, "kit": bool}` | Sets `PhysicsDebugOverlay.enabled` and `KitDebug` (A10) |
 | `ui` | a bool | `false` paints no UI root, game or debug |
 | `capture` | a `.png` path; with `until`, a folder of `NNNN.png` named by frame | Arms the frame's render (§2.5) |
-| `probe` | a name, with `args` | After the frame: its value into the report |
-| `assert` | `{"probe", "args"?, "op": "==", "value", "tolerance"?}`, `op` one of `==`, `!=`, `<`, `<=`, `>`, `>=`, `~=` | After the frame; `~=` compares numbers and arrays of numbers within `tolerance` |
+| `probe` | a name, with `args` and `path` | After the frame: its value into the report |
+| `assert` | `{"probe", "args"?, "path"?, "op": "==", "value", "tolerance"?}`, `op` one of `==`, `!=`, `<`, `<=`, `>`, `>=`, `~=` | After the frame; `~=` compares numbers and arrays of numbers within `tolerance` |
 | `exit` | `{}` | Ends the run after the frame |
 
-Probes and actions live in `ScriptHooks`, a core resource with a one-line doc per entry; a name registered twice panics, as `KitDescriptions` does. Engine probes: `frame`, `entities`, `count` (`{"component": name}`, through a new `ComponentRegistry::count`), `camera` (core); `states` and `log` (`{errors, warnings}`, the umbrella's). A game or plugin adds its own in `build` (A7).
+A `path` is a JSON pointer (RFC 6901, `serde_json`'s `Value::pointer`) into the probe's value, so `{"probe": "player", "path": "/position", "op": "~="}` compares one field; a pointer that finds nothing fails the assert.
 
-The report (version 1): `script`, `frames` run, `ended` (`frames`, `exit`, `game_exit` or `failed`), `error`, `passed`, `captures` (frame, path, written or its error), `probes` (frame, name, value), `asserts` (frame, probe, op, value, actual, passed), `failed_steps` (frame, index, verb, error: an action's error, an unknown action, probe or prefab) and `log` (counts and the first five error lines). `passed` is every assert, capture and step passing; log lines only count (Q3).
+Probes and actions live in `ScriptHooks`, a core resource with a one-line doc per entry; a name registered twice panics, as `KitDescriptions` does. Engine probes: `frame`, `entities`, `count` (`{"component": name}`, through a new `ComponentRegistry::count`), `camera` (core: the game's camera, or with `{"drawn": true}` the override in force); `states` and `log` (`{errors, warnings}`, the umbrella's). A game or plugin adds its own in `build` (A7).
+
+The report (version 1): `script`, `frames` run, `ended` (`frames`, `exit`, `game_exit` or `failed`), `error`, `passed`, `captures` (frame, path, written or its error), `probes` (frame, name, value), `asserts` (frame, probe, op, value, actual, passed), `failed_steps` (frame, index, verb, error: an action's error, an unknown action, probe or prefab), `unreached` (the steps scheduled after the run ended) and `log` (counts and the first five error lines). `Report::passed` is computed in core: the run ended in `frames`, `exit` or `game_exit`, never `failed` (a fatal error, A21), with every assert, capture and step passing and nothing `unreached`, so a game that exits before an assert fails the run. Log lines only count (Q3).
 
 ### 2.3 Where in the frame
 
-1. Before `PreUpdate`, after the gamepads and the display request: the game's camera restored (§2.4), then inputs, cursor, actions, spawns, scenes, stage, sheet, overlay and `ui`, in step order.
-2. The frame's stages as today.
-3. After the flush, before the UI layout: the sheet's holds (`Position` and `PrevPosition` at the cell, `Velocity` zero), then the camera override swapped in.
-4. Render, with the frame's capture armed.
-5. After render: the capture settled, then probes and asserts read the World.
+1. After `Startup` (frame 1 only, A18) and before `PreUpdate`: inputs, cursor, actions, spawns, scenes, the stage's requests, sheet, overlay and `ui`, in step order. On frame 1 the game's `Startup` requests are queued first, so the stage's come after them.
+2. `PreUpdate`, the fixed steps and `Update` as today.
+3. After `Update`, before `PostUpdate`: the sheet's holds (`Position` and `PrevPosition` at the cell, `Velocity` zero), so `physics_sync` writes the cell into `Transform`, interpolated or not, and the extract draws it there (A19).
+4. `PostUpdate`, the flush and the events as today; then, before the UI layout, the camera override swapped in.
+5. Render, with the frame's capture armed.
+6. After render, before audio: the game's camera put back (§2.4), the capture settled, then probes and asserts read the World.
 
-The runner is one type driven from `run_frame` by an `Option` (`None` outside a script), so the harness and the window run the same steps. Captures generalize `Capture` to a frame → path map; `TUNGSTEN_CAPTURE_*` keeps its one frame and is ignored under a script, so smoke and the visual tests stay on it unchanged.
+The runner is one type driven from `run_frame` and the update stage by an `Option` (`None` outside a script), so the harness and the window run the same steps. Captures generalize `Capture` to a frame → path map; `TUNGSTEN_CAPTURE_*` keeps its one frame and is ignored under a script, so smoke and the visual tests stay on it unchanged.
 
 ### 2.4 The camera override
 
-The override draws without reaching the game: the runner keeps the game's `CameraState`, writes the override before the UI layout and extract, and puts the game's back at the next frame's start, so the camera update never takes the override as its base (A9). `cursor.world` maps through the game's camera, which is what the game reads to aim.
+The override draws without reaching the game: the runner keeps the game's `CameraState`, writes the override before the UI layout and extract, and puts the game's back right after render, before audio and on every ending, so the camera update never takes the override as its base (A9) and the World holds the game's camera whenever a run returns. `cursor.world` maps through the game's camera, which is what the game reads to aim.
 
 ### 2.5 Script mode in the window loop
 
-As smoke: dt pinned at 60 Hz and the window's keyboard, mouse and cursor events dropped. Also: `Focused(false)` dropped, so a game that pauses unfocused plays on; no watcher and no gamepad backend; the window sized by `resolution`; the user folder from `TUNGSTEN_USER_DIR` alone, ignoring code's `UserFolder` (A4), and none without it, so a script never touches the player's folder. The run ends after `frames`, on `exit`, on the game's own exit or on a failed render (`D-142`), and writes the report every time; the process exits 0 when `passed`. A skipped frame fails its capture as `D-142` says.
+As smoke: dt pinned at 60 Hz and the window's keyboard, mouse and cursor events dropped. Also: `Focused(false)` dropped, so a game that pauses unfocused plays on; no watcher and no gamepad backend; the window sized by `resolution`; the user folder from `TUNGSTEN_USER_DIR` alone, ignoring code's `UserFolder` (A4), and none without it, so a script never touches the player's folder. The run ends after `frames`, on `exit`, on the game's own exit or on a fatal error (a failed render, `D-142`; A21), and writes the report every time, with the fatal error as `error`; the process exits 0 when `Report::passed`. A skipped frame fails its capture as `D-142` says.
 
 ### 2.6 The command line
 
@@ -129,7 +136,7 @@ tungsten describe [<name>] [--json]
 
 ### 2.7 `describe`'s engine side
 
-`TUNGSTEN_DESCRIBE`: `App::run` resolves the schedule, loads the manifest roots' files into the World as `run_check` does (its errors listed, not fatal), and writes JSON from the World: `ComponentRegistry`'s names, `KitDescriptions` (a new `to_json`, under the umbrella's `kit` feature), `ScriptHooks`, and the asset registry's IDs per section. `api/tungsten-kit-components.txt` stays the kit's text snapshot, unchanged.
+`TUNGSTEN_DESCRIBE`: `App::with_plugins` treats it as a check run (no user folder, so no settings read or quarantined, A20; warnings and errors only in the log), and `App::run` resolves the schedule, loads the manifest roots' files into the World as `run_check` does (its errors listed, not fatal), and writes JSON from the World: `ComponentRegistry`'s names, `KitDescriptions` (a new `to_json`, under the umbrella's `kit` feature), `ScriptHooks`, and the asset registry's IDs per section. `api/tungsten-kit-components.txt` stays the kit's text snapshot, unchanged.
 
 ### 2.8 The games' hooks
 
@@ -137,7 +144,7 @@ Each game's own module, registered from its plugin, outside the shell (Q11): the
 
 ### 2.9 Decision
 
-One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commit, with the tungsten-decision skill), in step 6's commit with its index row: the three commands and their handshakes; the script and report formats at version 1, a field added or changed bumping the version; a capture per script frame and loops (amends `D-142`'s one-frame capture, whose variables stand); the camera override drawn at extract only; script mode's pins and its user-folder rule; the umbrella's `serde_json`, already in its graph (no `D-015` rule needed). If step 6 is skipped, step 7 writes it without `render`.
+One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commit, with the tungsten-decision skill), in step 6's commit with its index row: the three commands and their handshakes; the script and report formats at version 1, a field added or changed bumping the version; a capture per script frame and loops (amends `D-142`'s one-frame capture, whose variables stand); the camera override drawn at extract only; script mode's pins and its user-folder rule; the umbrella's `serde_json`, already in its graph (no `D-015` rule needed). If step 6 is skipped, the entry waits with the plan, which stays open (step 7).
 
 ## 3. Steps
 
@@ -145,15 +152,18 @@ One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commi
 
 - **Files:** as listed for step 1.
 - **Change:** §2.2's types (`Script`, `Step`, the verbs, `Report`) with `Script::parse` and serialization; the expansion of `until`/`every` into a frame-ordered list, steps of one frame in file order; `Assert::check`; `ScriptHooks` with `add_action`, `add_probe`, lookups and docs; the core probes; `ComponentRegistry::count(name, &World)`, a counting function stored at registration. Rustdoc on every public item; `just api`.
-- **Done-when:** `cargo test -p tungsten-core --locked --lib -- script component_registry` → passes, with tests that an unknown key fails naming its path (`steps[2].captur`), version 2 fails, `until`/`every` expand to the listed frames, each op holds on numbers, arrays and strings and `~=` on its tolerance, and `count` counts a registered component by name; `just api-check` after `just api` → passes, `api/tungsten-core.txt`'s diff adding only `script` items and `ComponentRegistry::count`; `cargo clippy -p tungsten-core --all-targets --locked -- -D warnings` → clean.
+- **Done-when:** `cargo test -p tungsten-core --locked --lib -- script component_registry` → passes, with tests that an unknown key fails naming its path (`steps[2].captur`), version 2 fails, `until`/`every` expand to the listed frames, each op holds on numbers, arrays and strings and `~=` on its tolerance, a `path` selects a field and a missing one fails, `count` counts a registered component by name, and `Report::passed` is false for a `failed` ending with no capture, for a `game_exit` with an assert `unreached`, and true for a clean `frames` ending; `just api-check` after `just api` → passes, `api/tungsten-core.txt`'s diff adding only `script` items and `ComponentRegistry::count`; `cargo clippy -p tungsten-core --all-targets --locked -- -D warnings` → clean.
 - **Commit:** `feat(core): add the script format and script hooks`
 - **Moves:** `api/tungsten-core.txt`.
 
 ### Step 2: The runner, on the frame body and the harness
 
 - **Files:** as listed for step 2.
-- **Change:** the binding press and release move from `testing.rs` to `input_bridge.rs`, the harness calling them. `script.rs`: the runner over §2.3's points, the `ScriptStage` state, the sheet's layout and holds, §2.4's camera swap, captures through the generalized `Capture`, probes and asserts, the report; `ScriptHooks` inserted at `App::new` with the umbrella's probes; the log counts from the logger. `run_frame` calls the runner where §2.3 says, under one `Option`. `Harness::run_script(&Script) -> Report` runs the same runner on the harness's frames, each capture recorded as not written (headless). The umbrella takes the workspace's `serde_json`.
-- **Done-when:** `cargo test -p tungsten --locked --lib -- script testing` → passes, with harness tests that: a press and a release reach `ActionMap` as edges on their frames; an action's error and an unknown action fail their steps and the run's `passed`; a failed assert reports its actual value; `until`/`every` probes land on their frames; `stage` leaves one state, the engine's, and the old state's entities are gone; a sheet of three prefabs under gravity keeps each at its cell after 60 frames; the game's `CameraState` reads the same after 10 overridden frames as with no override; `ui: false` leaves the frame's paint list empty; the existing harness tests pass unchanged. `just deps` → passes; `cargo tree -p tungsten --locked -e normal -i serde_json` → lists `tungsten-core`'s edge before and the umbrella's own after, with no new package in `Cargo.lock` (`git diff --unified=1 Cargo.lock` shows only `tungsten`'s dependency list). `just api-check` after `just api` → passes.
+- **Change:** the binding press and release move from `testing.rs` to `input_bridge.rs`, the harness calling them. `script.rs`: the runner over §2.3's points, the `ScriptStage` state, the sheet's layout and holds, §2.4's camera swap, captures through the generalized `Capture`, probes and asserts, the report; `ScriptHooks` inserted at `App::new` with the umbrella's probes; the log counts from the logger. `run_frame` and the update stage call the runner at §2.3's points, each under one `Option` test. `Harness::run_script(&Script) -> Report` runs the same runner on the harness's frames, each capture recorded as not written (headless). The umbrella takes the workspace's `serde_json`.
+- **Done-when:**
+  - `cargo test -p tungsten --locked --lib -- script testing` → passes, with harness tests that: a press and a release reach `ActionMap` as edges on their frames; an action's error and an unknown action fail their steps and the run; a failed assert reports its actual value; `until`/`every` probes land on their frames; a frame-1 `stage` under a test plugin whose `Startup` pushes a state, as the shell does, leaves the stack holding `ScriptStage` alone by frame 3 and the pushed state's entities gone; a sheet of three moving prefabs keeps each at its cell in `Harness::draw`'s sprites after 60 frames, with interpolation on and off; the game's `CameraState` reads the same after a run of 10 overridden frames returns as with no override; `ui: false` leaves the frame's paint list empty; the existing harness tests pass unchanged.
+  - `just deps` → passes; `cargo tree -p tungsten --locked -e normal -i serde_json` → lists the umbrella's own edge, with no new package in `Cargo.lock` (`git diff --unified=1 Cargo.lock` shows only `tungsten`'s dependency list). `just api-check` after `just api` → passes.
+  - Perf, local, before the commit: `git archive` of step 1's commit under `target/`; base and candidate `just perf suite --repeat 5` twice each in one sitting with nothing beside it; compares → no owned metric `regressed` on the candidate that the base's own A/A pair doesn't also show. With no script each frame pays two `Option` tests, so a regression is placement or a mistake, and the regression policy's placement check (a padded baseline) tells them apart. This is the plan's one frame-loop change: steps 3–6 add no per-frame work.
 - **Commit:** `feat(tungsten): run scripts on the frame body and the harness`
 - **Moves:** `api/tungsten.txt`; `Cargo.lock`'s `tungsten` entry.
 
@@ -165,7 +175,7 @@ One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commi
   - `cargo test -p tungsten --locked --lib -- user_dir script` → passes, with a test that a script run's folder is `TUNGSTEN_USER_DIR`'s over code's `UserFolder::At`, and none without it.
   - GPU, local: in `templates/basic`, `TUNGSTEN_SCRIPT=<fixture> TUNGSTEN_REPORT=<r> cargo run --quiet` with a fixture of 45 frames (a press, captures at frame 10 and at 20, 30 and 40 by `every`, an assert on `entities`) → exit 0; `jq -r '.passed, .ended, (.captures | length)' <r>` → `true`, `frames`, `4`; four PNGs at the fixture's resolution. The same fixture with an assert that fails → exit 1 and `.passed` false.
   - `just smoke` → passes; `just visual` → passes with no reference changed.
-  - Perf, local: `git archive` of step 1's commit (the parent of steps 2–3's frame-loop changes) under `target/`; base and candidate `just perf suite --repeat 5` twice each in one sitting with nothing beside it; compares → no owned metric `regressed` on the candidate that the base's own A/A pair doesn't also show. With no script the frame pays one `Option` test, so any regression is placement or a mistake; the regression policy's placement check (a padded baseline) decides which. Evidence in `perf-runs/<UTC>-agent-tooling/`.
+  - No per-frame work added: `git diff --unified=1 HEAD -- crates/tungsten/src/app.rs` before the commit touches construction, `run` and the window event arms only, never `run_frame` or a `stage_*` function; a change there runs step 2's sitting again.
 - **Commit:** `feat(tungsten): run a script in the window loop`
 - **Moves:** none.
 
@@ -173,7 +183,7 @@ One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commi
 
 - **Files:** as listed for step 4.
 - **Change:** `args.rs` parses options per command; `run.rs` (§2.6) and `describe.rs` share `check.rs`'s folder check and `cargo run` launch; `App::run` gains `TUNGSTEN_DESCRIBE` (§2.7) and `describe.rs` its JSON; the kit's `KitDescriptions::to_json`. `scripts/template-check.sh` runs `tungsten describe` and a 30-frame `tungsten run --script` with one capture and one assert on the outside copy. `docs/getting-started.md` gains "Script, render and describe" after "Check and package"; `docs/validation.md`'s command-line row names the new tests and the local GPU run; the LLM index's CLI row names the new files.
-- **Done-when:** `cargo test -p tungsten-cli --locked` → passes, with tests that each command's options parse and an unknown or misplaced one exits 2, a bad script exits 1 with its field path and no `cargo` run, and the summary lines format a report's failures; `cargo test -p tungsten --locked --lib -- describe` → passes, the template's World describing its registered components, the kit's fields, the script hooks with docs and the manifest's IDs by section. With `T=$PWD/target/debug/tungsten` after `cargo build -p tungsten-cli`: `(cd templates/basic && $T describe --json) | jq -e '(.components | length) > 0 and (.script.probes | map(.name) | index("entities")) != null'` → true. GPU, local: `(cd examples/01_platformer && $T run --script <fixture>)` → exit 0 and a last line ending `passed`; a fixture with a failing assert → exit 1 naming the assert, its value and the actual. `just template-check` → passes with its new lines. `just api-check` after `just api` → passes.
+- **Done-when:** `cargo test -p tungsten-cli --locked` → passes, with tests that each command's options parse and an unknown or misplaced one exits 2, a bad script exits 1 with its field path and no `cargo` run, and the summary lines format a report's failures; `cargo test -p tungsten --locked --lib -- describe` → passes, the template's World describing its registered components, the kit's fields, the script hooks with docs and the manifest's IDs by section, and a describe run with `TUNGSTEN_USER_DIR` over a damaged `settings.json` resolving no folder, the file left unmoved. With `T=$PWD/target/debug/tungsten` after `cargo build -p tungsten-cli`: `(cd templates/basic && $T describe --json) | jq -e '(.components | length) > 0 and (.script.probes | map(.name) | index("entities")) != null'` → true. GPU, local: `(cd examples/01_platformer && $T run --script <fixture>)` → exit 0 and a last line ending `passed`; a fixture with a failing assert → exit 1 naming the assert, its value and the actual. `just template-check` → passes with its new lines. `just api-check` after `just api` → passes.
 - **Commit:** `feat(cli): add tungsten run --script and tungsten describe`
 - **Moves:** `api/tungsten-cli.txt`, `api/tungsten.txt`, `api/tungsten-kit.txt`.
 
@@ -181,7 +191,7 @@ One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commi
 
 - **Files:** as listed for step 5.
 - **Change:** §2.8's actions and probes in each game, registered from the sample's plugin and 01's run plugin. `docs/getting-started.md`'s list of what a game deletes with the sample gains `sample/script.rs`. A template harness test runs a script through `Harness::run_script`.
-- **Done-when:** `cargo test -p tungsten-template-basic --locked` → passes, with a test whose script starts a run at frame 2, holds the player at a point from frame 30 to 90 and asserts `player`'s position there at frame 90 within 0.5; `cargo test -p tungsten-cli --locked` → passes (the embedded template); `cargo test -p example-01-platformer --locked --no-run` → builds; GPU, local: `(cd examples/01_platformer && $T run --script <fixture>)`, starting a run and asserting `area` at a placed point → exit 0; `(cd templates/basic && $T describe start_run)` → prints the action and its doc; `just repo-check` → passes (the shells unchanged).
+- **Done-when:** `cargo test -p tungsten-template-basic --locked` → passes, with a test whose script starts a run at frame 2, holds the player at a point from frame 30 to 90 and asserts `player` at `/position` there at frame 90 within 0.5, and one whose frame-1 `sheet` under the real shell leaves the stack holding `ScriptStage` alone by frame 3 with the sheet's items spawned; `cargo test -p tungsten-cli --locked` → passes (the embedded template); `cargo test -p example-01-platformer --locked --no-run` → builds; GPU, local: `(cd examples/01_platformer && $T run --script <fixture>)`, starting a run and asserting `area` at a placed point → exit 0; `(cd templates/basic && $T describe start_run)` → prints the action and its doc; `just repo-check` → passes (the shells unchanged).
 - **Commit:** `feat(template): register the sample's script hooks`, and 01's in the same commit
 - **Moves:** none.
 
@@ -196,6 +206,7 @@ One entry, the next free ID (`D-224` is the last at `94cb8744`; recheck at commi
 ### Step 7: Close
 
 - **Files:** this plan (deleted), the files that cite it (`ROADMAP.md`), `docs/plans/phase-7.md`, the follow-ups' homes.
+- **Runs only** once steps 1–6 have all landed. With one skipped, the plan stays with its status `in progress`, `agent-tooling` stays in Now, the evidence log names the step and its reason, and the session ends with the run prompt for the skipped step, not 7.3's.
 - **Change:** run `just check` and 01; move open follow-ups to known issues or Later; write phase 7's evidence row for step 1 (the commit range and this plan's done-when quoted); delete this plan and its citations; take `agent-tooling` out of Now and say in phase 7's Now line that 7.3 is next.
 - **Done-when:** `just check` → passes; `git diff --check` → clean; `cd examples/01_platformer && cargo run` → plays to its first area; `just repo-check` → passes; `rg -n 'agent-tooling' ROADMAP.md docs/plans/phase-7.md` → only phase 7's evidence row.
 - **Ends with:** the commits made, the evidence quoted, what the owner should try (`tungsten render --sheet` and a loop in 01, and `tungsten describe` in the template), and the next prompt: 7.3's plan, from tungsten-next's `plan` row with the phase 7 plan and the redo's 7.3 row and §5.8 as its sources. The UI track (7.17) may start in its own worktree now (phase 7's §2.8).
@@ -224,8 +235,8 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 6. Stop conditions
 
-- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with steps that don't depend on it (4–6 depend on 2 and 3; 6 on 4 and 5).
-- Step 3's compare reads an owned metric `regressed` past the base's A/A: run the placement check; a real cost moves the runner behind a cold call at the frame's start and the sitting runs once more; a second real regression stops the step, recorded with both compares.
+- A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with steps that don't depend on it (4–6 depend on 2 and 3; 6 on 4 and 5). The close then waits (step 7).
+- Step 2's compare reads an owned metric `regressed` past the base's A/A: run the placement check; a real cost moves the runner's tests behind one cold call and the sitting runs once more; a second real regression stops step 2 before its commit, recorded with both compares, and steps 3–6 wait with it.
 - Captures fail because the window's frames skip (an occluded or unmapped window): record the skips and the backend, and stop the GPU checks of that step, not the CPU ones.
 - A change needs a shell file, the template's `AGENTS.md` or a new crate: stop that part and record it as a follow-up.
 - A game's systems fail under `stage`: Q10's game action, in step 5's files, recorded.
@@ -233,10 +244,18 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 7. Critique
 
-<Filled by the critique round.>
+Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-29, reading `8a7346a1`. Footer: `375.7 s, tokens in 909870 (cached 822144), out 9274 (reasoning 4844), commands 33, output 365.4 KB (largest 43 KB), usage 5h 42% → 63%, week 19% → 22%`. Eight findings, all accepted; they changed done-when checks, the perf gate's step and the close, so a second round runs.
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |
+| 1 | [HIGH] A frame-1 `stage` runs before the shell creates its title state | `Startup` runs in the update stage before `PreUpdate` (`crates/tungsten/src/app.rs:1305-1311`); the shell queues the title there (`templates/basic/src/shell/mod.rs:274`) | accepted | A18; §2.2: `stage` is held each frame until the stack holds `ScriptStage` alone; §2.3: steps apply after `Startup`; steps 2 and 5 test a frame-1 stage under a `Startup` push and the real shell |
+| 2 | [HIGH] The success predicate does not account for fatal errors or unreached assertions | The fatal error is kept apart from the capture's (`crates/tungsten/src/app.rs:658-663`); §2.2 had no rule for steps after a game's exit | accepted | A21; §2.2: `Report::passed` in core needs a non-`failed` ending and nothing `unreached`; §2.5 reports the fatal error; step 1 tests both cases |
+| 3 | [MEDIUM] Sheet holds happen too late to control the rendered positions | `physics_sync` writes `Transform` in `PostUpdate` (`crates/tungsten-core/src/physics/plugin.rs:52`, `:95`), and the extract reads `Transform` (`crates/tungsten/src/sprite_extract.rs:390-392`) | accepted | A19; §2.3: holds after `Update`, before `PostUpdate`; step 2 checks the drawn sprites of moving prefabs, interpolation on and off |
+| 4 | [MEDIUM] The camera remains overridden when the final frame returns | §2.4 restored at the next frame's start, which the last frame lacks | accepted | §2.3 and §2.4: the game's camera goes back right after render and on every ending; the `camera` probe reads the game's, `drawn` the override; step 2's test reads it after the run returns |
+| 5 | [MEDIUM] The required player-position assertion cannot be expressed as specified | §2.2's `~=` took numbers and arrays; §2.8's `player` is an object | accepted | §2.2: `path`, a JSON pointer into a probe's value; step 5 asserts `/position` |
+| 6 | [MEDIUM] `describe` is intercepted after player settings have already been loaded | Settings load at construction from the user folder (`crates/tungsten/src/app.rs:231`) and a damaged file is quarantined (`crates/tungsten-core/src/settings.rs:171`); only check and smoke skip the folder (`:185-200`) | accepted | A20; §2.7: describe counts as a check run at construction; step 4 tests a damaged settings file left unmoved |
+| 7 | [MEDIUM] The combined performance gate cannot roll back everything it measures | The gate sat in step 3 while step 2's runner was already committed | accepted | The sitting moves into step 2, before its commit, as the plan's one frame-loop change; step 3 checks it adds no per-frame work; §6 stops step 2 before its commit |
+| 8 | [MEDIUM] The closing step advances the roadmap even when `render` is skipped | Phase 7's step 1 needs all three commands and the sheet (`docs/plans/phase-7.md:244`) | accepted | The header's difference, step 7's "runs only" and §6: the close waits for steps 1–6, the plan and Now line stay, and the hand-off reruns the skipped step; §2.9 waits with it |
 
 ## Evidence log
 
