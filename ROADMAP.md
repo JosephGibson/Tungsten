@@ -4,7 +4,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 has landed (`tungsten run --script`, `render` and `describe`) and 7.3 is next; 7.3–7.5 have not run, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 has landed (`tungsten run --script`, `render` and `describe`) and 7.3 runs from its plan; 7.3–7.5 have not landed, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
+- `bench-runner`: redo 7.3, benchmarks part 1: the rewritten runner with sittings, GPU timestamps without a stall, CPU counter guards in `just check` and GPU counters locally, a minimal row set with 01's pit, the template frame and 01's areas, the old suite purged and per-plan sittings retired ([plan](docs/plans/bench-runner.md)).
 
 ## Next
 
