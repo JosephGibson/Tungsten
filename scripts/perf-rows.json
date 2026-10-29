@@ -1,0 +1,1085 @@
+{
+  "schema": 1,
+  "about": "The benchmark rows `scripts/perf.py` runs (redo 7.3, D-078). Each row: its package and the folder it runs from, its launch (a bench row's TUNGSTEN_BENCH and preset, or an inline script's setup steps and the asserts it ends on), resolution, warm-up frames (setup included), measured frames, repeats, `gpu` (false, true for a GPU run beside each timing run, or \"only\"), owned metrics, validity guards, known-drift metrics, budgets and workload_version.",
+  "rows": [
+    {
+      "name": "physics",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "physics",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "field": "sleeping",
+          "kind": "physics_max",
+          "max": 0
+        },
+        {
+          "counter": "teleports",
+          "kind": "counter_min",
+          "min": 1
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "physics-sparse",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "physics",
+        "preset": "sparse"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "field": "sleeping",
+          "kind": "physics_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "ecs",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "ecs",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.brain",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.cooldowns",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.buffs",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.regen",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.stats_decay",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.accelerate",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.follow",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.integrate",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.bounds_wrap",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.heading",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.tint",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.age_phase",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.team_bags",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.faction_histogram",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "structural",
+          "kind": "counter_max",
+          "max": 0
+        },
+        {
+          "counter": "entities",
+          "kind": "counter_const"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "churn",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "churn",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.flush",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.churn_scan",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.churn_despawn",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.churn_toggle",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.churn_spawn",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "population",
+          "kind": "counter_const"
+        },
+        {
+          "counter": "spawned",
+          "kind": "counter_eq",
+          "other": "despawned"
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "gpu",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "gpu",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": true,
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.smaa_edges",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.smaa_blend_weights",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.smaa_neighborhood",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.text",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.render_encode",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "gpu-throughput",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "gpu",
+        "preset": "throughput"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 60,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": true,
+      "owned": [
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.render_encode",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "particles",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "particles",
+        "preset": "default"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 180,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.particle_count_refresh",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.particle_emit",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.particle_tick",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "system.animate_sprites",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "live",
+          "kind": "counter_band",
+          "tolerance": 0.1
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-pit",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "action": "fill_pit",
+              "args": {
+                "count": 12000
+              }
+            },
+            {
+              "frame": 630,
+              "action": "wake_foes"
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "pit",
+              "path": "/balls",
+              "op": "==",
+              "value": 12000
+            },
+            {
+              "probe": "pit",
+              "path": "/foes_alive",
+              "op": "==",
+              "value": 6
+            },
+            {
+              "probe": "pit",
+              "path": "/foes_awake",
+              "op": ">=",
+              "value": 5
+            }
+          ]
+        }
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 810,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.total",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "template",
+      "package": "tungsten-template-basic",
+      "folder": "templates/basic",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "player",
+              "path": "/health/0",
+              "op": ">",
+              "value": 0
+            }
+          ]
+        }
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 122,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "stage.total",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "stage.extract",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-clearing",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  464.0,
+                  2210.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Lantern clearing"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-aqueduct",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  8048.0,
+                  2466.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Broken aqueduct"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-ravine",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  12048.0,
+                  2210.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Waterfall ravine"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-hollow",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  14224.0,
+                  3938.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Ember hollow"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-mine",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  18800.0,
+                  3490.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Iron mine"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "e01-area-bridge",
+      "group": "e01-areas",
+      "package": "example-01-platformer",
+      "folder": "examples/01_platformer",
+      "launch": {
+        "script": {
+          "steps": [
+            {
+              "frame": 2,
+              "action": "start_run"
+            },
+            {
+              "frame": 30,
+              "until": "end",
+              "action": "place_player",
+              "args": {
+                "at": [
+                  25232.0,
+                  2210.5
+                ]
+              }
+            }
+          ],
+          "asserts": [
+            {
+              "probe": "area",
+              "op": "==",
+              "value": "Troll bridge"
+            }
+          ]
+        }
+      },
+      "resolution": [
+        3840,
+        2160
+      ],
+      "warmup": 90,
+      "frames": 300,
+      "repeat": 3,
+      "gpu": "only",
+      "owned": [
+        {
+          "metric": "gpu.scene",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.render_span",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_threshold",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post0_bloom_composite",
+          "stats": [
+            "p50"
+          ]
+        },
+        {
+          "metric": "gpu.post1_vignette",
+          "stats": [
+            "p50"
+          ]
+        }
+      ],
+      "guards": [],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    }
+  ]
+}

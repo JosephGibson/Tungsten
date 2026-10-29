@@ -53,9 +53,10 @@ visual:
 perf *args:
     python3 -B scripts/bench.py "$@"
 
-# Benchmark-runner regression tests.
+# Benchmark-runner regression tests: the old runner's and the new one's (redo 7.3).
 perf-test:
     python3 -B scripts/test-bench.py
+    python3 -B scripts/test-perf.py
 
 # Report stale build artifacts in target/debug (hashes cargo left behind; newest 2 per crate stay); `just clean-target --apply` deletes, --keep N and --profile release adjust.
 clean-target *args:
