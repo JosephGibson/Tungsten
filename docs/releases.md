@@ -1,77 +1,68 @@
 # Internal release procedure
 
-Canonical procedure (`D-071`, `D-072`, `D-074`, `D-079`, `D-122`, `D-196`). **The agent runs every check; the human pastes a short block of plain Git commands and approves the pull request in GitHub.** Agents commit their work at each logical step and push the version branch after each commit ([operating rules](operating-rules.md#git), `D-215`, `D-216`); every other push, tag, merge, fetch and checkout stays the human's, and global `~/.claude/settings.json` denies them to agents (its push guard hook refuses every push but a version branch's), who supply the commands without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
+Canonical procedure (`D-071`, `D-072`, `D-074`, `D-122`, `D-196`, `D-227`). **The agent writes the notes, runs `just release minor`, which cuts, checks and commits, and pushes the version branch; the owner pastes one block, whose tag push publishes.** Agents commit at each logical step and push the version branch after each commit ([operating rules](operating-rules.md#git), `D-215`, `D-216`); tags, every other push, merges, fetches and checkouts stay the owner's, and global `~/.claude/settings.json` denies them to agents (its push guard hook refuses every push but a version branch's), who supply the commands without bypassing those denies through another command or API. The same holds for `gh` commands that change GitHub (`gh pr create`, `gh workflow run`, reruns, deletions): agents run only the read-only ones.
 
-**Every release task ends with the exact commands the human still has to run**, values filled in, as one block. Keep them basic: commit, tag, push, open the pull request. A second block follows for after the merge: it starts the next milestone branch. Nothing is published until the human merges that pull request.
+**Every release task ends with the exact commands the owner still has to run**, values filled in, as one block: the tag, its push, the next branch and the pull request. The tag push publishes; the pull request is `main`'s merge and publishes nothing.
 
-## Ordinary milestone release
+## Ordinary release
 
-Start at the repo root on the version branch `0.NN`, with [branch documentation prepared](#branch-preparation). A release is cut when something is worth shipping, not per change ([operating rules](operating-rules.md#releases)); the cut happens once and the checks run once, after it. Use Git, authenticated `gh`, network access and a GPU/display for smoke tests. Replace `X.Y.Z`, `0.NN` and the summary; adjust remote/repository if needed. If already cut, committed, tagged or merged, [resume from that state](#resume-or-use-another-branch).
+Start at the repo root on the version branch `0.NN`, named for the next minor, with [branch documentation prepared](#branch-preparation). A release is cut when something is worth shipping, not per change ([operating rules](operating-rules.md#releases)). `just release` takes `minor`, the next minor after the newest tag (0.x's breaking release), and `rehearsal`; any other kind refuses until the redo's 9.8 adds patch, major, release candidates and promote. Use Git, authenticated `gh`, network access and a GPU/display for smoke tests. Replace `X.Y.Z`, `0.NN` and the summary. If something is already cut, committed or tagged, [resume from that state](#resume-or-use-another-branch).
 
-**Commit messages are one subject line, with no body**, in Conventional Commits, which the `commit-msg` hook checks once `just hooks` has run: the release commit is `chore(release): X.Y.Z short summary`, for example `chore(release): 0.109.0 example 01 quick fixes`, and the pull request takes the same title. 0.108's `Update 0.108: …` was the last of the old form.
+**Commit messages are one subject line, with no body**, in Conventional Commits, which the `commit-msg` hook checks once `just hooks` has run. The release commit is `chore(release): X.Y.Z short summary`, at most 72 characters, for example `chore(release): 0.109.0 example 01 quick fixes`; `just release` writes it and the pull request takes the same title.
 
-**A minor or major release sits first** (`D-226`): before the cut, `just perf sitting` against the previous tag, unattended with the owner's NoMachine client disconnected (`--wait-quiet 10800` waits for quiet). A `regressed` owned metric needs a fix or a [known-issues](known-issues.md) entry naming the sitting's path before the cut; a patch release takes no sitting.
+**Rehearse first when `release.yml`, or `release.py`'s packaging, changed since the last final tag** ([rehearsals](#rehearsals-and-versioned-prereleases)): a final tag publishes on its push, with no merge left to stop a broken build.
 
-1. **Agent: cut once and run every check.** All of it passes before anything is handed over. Review the changed-file list: the commit takes everything `git status --short` shows.
+1. **Agent: write the notes.** `[Unreleased]` from the commits since the newest tag (`git --no-pager log --oneline v0.<NN-1>.0..HEAD`), as [branch preparation](#branch-preparation) says, committed as `docs(changelog): 0.NN notes for …` and pushed.
+2. **Agent: sit first** (`D-226`): `just perf sitting` against the previous tag, unattended, with the owner's NoMachine client disconnected (`--wait-quiet 10800` waits for quiet). A `regressed` owned metric needs a fix or a [known-issues](known-issues.md) entry naming the sitting's path before the cut.
+3. **Agent: release.** Before writing anything, the command refuses a dirty tree, a branch not named `0.NN` and a subject over 72 characters. It runs the docs ratchet, the cut and the lock refresh, then the checks in order (`just check`, `just ctx`, `just repo-check`, `just api-check`, `just script-test`, `just smoke`, `just perf counters`, `just notices`, `just template-check`, `git diff --check`), commits `CHANGELOG.md`, `Cargo.toml`, `Cargo.lock` and `DESIGN.md`, and runs the preflight, which prints the agent's push and the owner's block. A failed check leaves the cut uncommitted: fix it and run the same command again, which resumes at the checks. `--dry-run` prints the version and the chain and writes nothing.
 
    ```bash
-   just release-cut X.Y.Z &&
-   just check && just ctx && just repo-check && just api-check &&
-   just script-test && just smoke && just perf counters && just notices && just template-check &&
-   git diff --check && git status --short && git diff --stat
+   just release minor 'short summary'
    ```
 
-2. **Agent: run the read-only preflight.** With `--message` it accepts the uncommitted cut as the release commit, checks the files, the tag, the remote branch and that `main` is contained in the branch, and prints step 3's commands, then step 4's post-merge block.
+4. **Agent: push the version branch**, the whole command, then end the task with the owner's block as preflight printed it ([hand-off](#handoff-and-next-branch)). The agent pushes no tag and runs no GitHub-changing `gh`.
 
    ```bash
-   just release-preflight X.Y.Z --repo JosephGibson/Tungsten \
-     --message 'chore(release): X.Y.Z short summary'
+   git push origin 0.NN
    ```
 
-3. **Human: paste the commands the agent ended with**, one block in the repo root.
+5. **Owner: paste the block** in the repo root. The tag push publishes: it starts [release.yml](../.github/workflows/release.yml), which checks the tag against the tagged tree, builds it and publishes the GitHub Release. The next branch starts from the version branch, so the next session waits on nothing.
 
    ```bash
-   git add -A
-   git commit -m 'chore(release): X.Y.Z short summary'
-   git tag -a vX.Y.Z -m 'Tungsten X.Y.Z'
-   git push origin 0.NN vX.Y.Z
+   git tag -a vX.Y.Z -m 'Tungsten X.Y.Z' &&
+   git push origin vX.Y.Z &&
+   git switch -c 0.<NN+1> 0.NN &&
+   git push -u origin 0.<NN+1> &&
    gh pr create --repo JosephGibson/Tungsten --base main --head 0.NN \
      --title 'chore(release): X.Y.Z short summary' \
-     --body 'Release vX.Y.Z. Merging this pull request publishes it.'
+     --body 'Release vX.Y.Z, published by its tag push. Merging it publishes nothing.'
    ```
 
-4. **Human: approve and merge the pull request in GitHub, then paste the post-merge block.** Merge with a merge commit, not a squash, so the branch's commits and the tagged commit stay in `main`'s history (`D-215`; the repository's settings allow merge commits alone, where through 0.108 they allowed only squashes, and since 0.112 default the merge commit's message to the pull request's title: `merge_commit_title` `PR_TITLE`, `merge_commit_message` `BLANK`). The merge starts [release.yml](../.github/workflows/release.yml), which builds the tagged commit and publishes the GitHub Release. CI reports on the pull request beforehand (informational, `D-070`). The post-merge block, printed under step 3's, starts the [next branch](#handoff-and-next-branch), where `0.<NN+1>` is the next minor:
-
-   ```bash
-   git fetch origin
-   git switch -c 0.<NN+1> --no-track origin/main
-   git push -u origin 0.<NN+1>
-   ```
-
-5. **Verify when asked.** Preflight reports the pull request, the run and the release, and prints the matching watch/view command. Finish with the [archive/asset checks](#archive-and-asset-verification); hosted builds do not test GPU/audio behavior.
+6. **Owner: merge the pull request whenever convenient**, with a merge commit, never a squash, so the branch's commits and the tag stay on `main`'s history. `main` requires a pull request; the repository allows merge commits alone and titles them with the pull request's title (`merge_commit_title` `PR_TITLE`, `merge_commit_message` `BLANK`). The merge publishes nothing and gates no work. CI reports on the pull request (informational, `D-070`).
+7. **Verify when asked.** Preflight reports the run and the release and prints the matching watch or view command. Finish with the [archive/asset checks](#archive-and-asset-verification); hosted builds do not test GPU/audio behavior.
 
    ```bash
    just release-preflight X.Y.Z --repo JosephGibson/Tungsten
    ```
 
-The tag names the tested release commit. `main`'s merge commit has the same tree, which the workflow requires; through 0.108 a squash commit with a different identity took its place, which is why older tags sit off `main`'s history. A tag is fixed once its GitHub Release exists: never move or force-push it.
+The tag names the tested release commit. A tag is fixed once its GitHub Release exists: never move or force-push it. Through 0.109 squash merges left the tags off `main`'s history; from 0.110 they sit on it.
 
 ## Reference
 
 ### Branch preparation
 
-[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass and the requested cut; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the checks, the command hand-off and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
+[tungsten-finalize](../.claude/skills/tungsten-finalize/SKILL.md) handles this docs pass; [tungsten-release](../.claude/skills/tungsten-release/SKILL.md) handles the release, the command hand-off and release inspection. This guide owns both procedures. Preparation alone does not authorize publication or deletion; honor the requested scope and existing authorization without asking again.
 
-- Establish the requested version and refreshed branch base; have the human fetch if needed. Inventory commits/diffs and active plans. If already squash-merged, compare trees as well as history to avoid counting the same changes twice.
-- Run `just release-check`. The workspace version must equal the newest versioned changelog heading and DESIGN's status version. It stays unchanged until the cut; milestone `0.NN` normally ships `0.NN.0`, maintenance increments the patch. Resolve drift without discarding unrelated work.
-- Prepare `[Unreleased]` from the inventory: a `Summary:` naming the plan, applicable Added/Changed/Fixed/Removed groups, bold bullet leads and useful decision/path references. Do not create a release heading manually. If the requested version is already current with notes, inspect those notes, Cargo.lock and DESIGN and skip cutting again. After publication, new work goes in `[Unreleased]` for a later version. Resolve older or ambiguous version requests before editing released notes.
+- Establish the requested version; the owner fetches if needed. Inventory the commits since the newest tag and the active plans.
+- Run `just release-check`. The workspace version must equal the newest versioned changelog heading and DESIGN's status version. It stays unchanged until the cut; version branch `0.NN` ships `0.NN.0`. Resolve drift without discarding unrelated work.
+- Prepare `[Unreleased]` from the inventory: a `Summary:` line, applicable Added/Changed/Fixed/Removed groups, bold bullet leads and useful decision/path references. Do not create a release heading manually. If the requested version is already current with notes, inspect those notes, Cargo.lock and DESIGN and skip cutting again. After publication, new work goes in `[Unreleased]` for a later version. Resolve older or ambiguous version requests before editing released notes.
 - During future preparation, use ``Workspace `vX.Y.Z`; release summary`` in DESIGN's status line; **omit `on branch …`**. A branch name goes stale and is not part of the version invariant. The cut updates the version token only; review the surrounding prose. README stays version-free; update its substance only when needed.
 - Add any new decision's row to [DECISION_INDEX.md](DECISION_INDEX.md). Reversals add a decision, mark the old one `Superseded by D-NNN`, and update both rows. Update [LLM_INDEX.md](LLM_INDEX.md) for changed task areas/paths; keep it under 12 KiB (`D-106`).
-- **Plan archival stays manual, before the cut.** Review acceptance checks, mark completed/abandoned/superseded plans, fix their relative links for the destination, move each known file to the archive, and repoint incoming links. Never read, search or list the archive. Keep unfinished plans active and update phase status appropriately. The cut cannot infer completion or choose replacement links; `just repo-check` checks active plans and non-archive links, so verify archive destinations by construction.
+- Plans close in their own sessions, deleted with their citations when done ([operating rules](operating-rules.md#plans)); a release moves none.
 
-`just release-cut VERSION [--date YYYY-MM-DD]` first runs `just docs-ratchet`, which refuses the cut when a crate's public items without rustdoc rose over [the baseline](../scripts/missing-docs.json) (`D-215`), then moves `[Unreleased]` into a dated section, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. It rejects inconsistent files, empty notes, non-increasing versions and dates before the last release. If the lock refresh fails, the cut files are already changed: fix Cargo.lock and rerun the checks, not the cut. The root README is never rewritten.
+`just release minor` first runs `just docs-ratchet`, which refuses the cut when a crate's public items without rustdoc rose over [the baseline](../scripts/missing-docs.json) (`D-215`), then moves `[Unreleased]` into a section dated today, updates Cargo.toml and DESIGN, and refreshes Cargo.lock. It rejects inconsistent files, empty notes, non-increasing versions and dates before the last release. If the lock refresh fails, the cut files are already changed: fix Cargo.lock and run the command again, which resumes at the checks. The root README is never rewritten.
 
-`just template-check` makes a game with `tungsten new` in a fresh folder outside the repository, after a 6 GiB free-space check on `target/`, points its tag pins at this checkout, then runs `tungsten check`, builds, tests and smoke-runs it there, packages it with `tungsten package` and smoke-runs the archive's binary, and seeds errors that `check` and `package` must report (`D-123`, `D-183`). The cut tree's pins read the new tag. Step 1 covers ordinary milestone checks under [AGENTS.md](../AGENTS.md); narrow documentation-only work can omit script/GPU checks when those rules allow it. The checks run on the working tree that step 3 commits, so change nothing in between. The merge must keep the tagged tree: if `main` gained commits the branch lacks, the human merges `main` into the branch (`git fetch origin`, `git merge origin/main`) and the checks run again before the hand-off. CI remains informational (`D-070`); report its result for the tagged commit and outstanding hardware checks.
+`just template-check` makes a game with `tungsten new` in a fresh folder outside the repository, after a 6 GiB free-space check on `target/`, points its tag pins at this checkout, then runs `tungsten check`, builds, tests and smoke-runs it there, packages it with `tungsten package` and smoke-runs the archive's binary, and seeds errors that `check` and `package` must report (`D-123`, `D-183`). The cut tree's pins read the new tag. The chain commits the tree it checked, and refuses to commit changes outside the cut. `main` may hold earlier releases' merges, which add nothing the branch lacks; preflight refuses any other commit there, which the owner merges into the branch (`git fetch origin`, `git merge origin/main`) before the chain runs again. CI remains informational (`D-070`); report its result for the tagged commit and outstanding hardware checks.
 
 ### Resume or use another branch
 
@@ -79,31 +70,31 @@ In any state, `just release-preflight X.Y.Z --repo OWNER/REPO` prints the comman
 
 | State | Resume point |
 | --- | --- |
-| Version already cut, not committed | Skip the cut in step 1; run the checks on the existing cut, then step 2. |
-| Cut committed, not tagged or pushed | Run the checks on that commit; preflight without `--message` prints the tag, push and pull-request commands. |
-| Branch and tag pushed, no pull request | Preflight prints `gh pr create`. |
-| Pull request open | Step 4: the human approves and merges it. |
-| Pull request merged | Step 5. If no run started, see [recovery](#recover-according-to-state). |
+| Notes written, nothing cut | Step 3. |
+| Cut in place, not committed (a check or the lock refresh failed) | Fix it; `just release minor '…'` again resumes at the checks. |
+| Cut committed | `just release minor '…'` again runs the preflight alone; step 4 if the branch isn't pushed. |
+| Branch pushed, no tag | Step 5, the owner's block. |
+| Tag pushed | Step 7. If no run started, see [recovery](#recover-according-to-state). |
 | Release already exists | Inspect it at the tag's original commit (`--ref SHA`); do not cut or tag again. |
-| Maintenance branch, no pull request | `--branch NAME --no-pr`: tag, push, then `gh workflow run release.yml --ref vX.Y.Z` starts the run. |
+| Pull request open or merged | Information only: it publishes nothing. |
+| Maintenance branch, no pull request | `--branch NAME --no-pr`: the owner's tag push publishes. |
 
-Release runs start three ways (`D-079`):
+Release runs start two ways (`D-227`):
 
 | Trigger | Publishes |
 | --- | --- |
-| A pull request merges into `main` and `v<workspace version>` names its head commit | That final release, after checking that the merge commit has the tagged tree |
-| A `vX.Y.Z-<pre>` tag is pushed | That prerelease or [rehearsal](#rehearsals-and-versioned-prereleases) |
-| `gh workflow run release.yml --ref TAG` | That tag: maintenance releases and recovery |
+| A `vX.Y.Z` or `vX.Y.Z-<pre>` tag is pushed | That release, prerelease or [rehearsal](#rehearsals-and-versioned-prereleases) |
+| `gh workflow run release.yml --ref TAG` | That tag: recovery |
 
-Pushing a final `vX.Y.Z` tag publishes nothing by itself. A merged pull request whose version is already released publishes nothing; one whose version is unreleased but whose head the tag does not name fails the run.
+A pull request into `main` starts no release run, and its merge publishes nothing.
 
-`just release-check [TAG]` checks files offline, including shallow CI; it does not inspect Git tag objects. `just release-preflight VERSION --repo OWNER/REPO [--branch B] [--base main] [--ref SHA] [--message TEXT] [--no-pr] [--rehearsal]` checks the files (committed ones, or the working tree with `--message`), a clean tree/index otherwise, unfinished Git operations, the live push destination and tracking ref, tag objects, that the base branch is contained, GitHub repository state, the pull request and matching release/CI runs. `--branch` defaults to the checked-out branch. **Preflight stays read-only** and prints proposed commands only on success.
+`just release-check [TAG]` checks files offline, including shallow CI; it does not inspect Git tag objects. `just release-preflight VERSION --repo OWNER/REPO [--branch B] [--base main] [--ref SHA] [--no-pr] [--rehearsal]` checks the committed files, a clean tree/index, unfinished Git operations, the live push destination and tracking ref, tag objects, that the base holds nothing the branch lacks but earlier releases' merges, GitHub repository state, the pull request and matching release/CI runs. `--branch` defaults to the checked-out branch. **Preflight stays read-only** and prints proposed commands only on success.
 
-A new tag is pushed together with its branch, as a fast-forward. Existing tags can be verified at their original commit after the branch advances, including historical tags outside main. Fetch/inspect stale refs or divergent local branches; never reset automatically. Investigate conflicting tags without replacing them. Rerun preflight if the commit, branch, tag, pull request or release changes before acting. Pushing an unchanged tag again never starts a run; push only the named branch and tag.
+The tag push carries no branch: the agent pushes the version branch first, as a fast-forward. Existing tags can be verified at their original commit after the branch advances, including historical tags outside main. Fetch/inspect stale refs or divergent local branches; never reset automatically. Investigate conflicting tags without replacing them. Rerun preflight if the commit, branch, tag, pull request or release changes before acting. Pushing an unchanged tag again never starts a run.
 
 ### Archive and asset verification
 
-Preflight reports the matching run ID. A merged pull request's run is listed under the milestone branch and the tagged commit; a tag run under the tag. Watch that numeric ID rather than choosing the newest run interactively:
+Preflight reports the matching run ID, a tag run listed under the tag and the tagged commit. Watch that numeric ID rather than choosing the newest run interactively:
 
 ```bash
 gh run watch RUN_ID --repo JosephGibson/Tungsten --exit-status &&
@@ -141,9 +132,9 @@ The font guard covers font files only. After a dependency change, check the new 
 
 ### Rehearsals and versioned prereleases
 
-A prerelease tag with its own changelog section is a versioned release and must match the workspace version. A prerelease tag without that section is a rehearsal: the workspace still passes consistency checks, notes come from `[Unreleased]`, and the tag version need not match. Both publish as GitHub prereleases as soon as the tag is pushed, without a pull request. A rehearsal may use the tip of a development branch by setting `--branch` explicitly; it does not require a version cut.
+A prerelease tag with its own changelog section is a versioned release and must match the workspace version. A prerelease tag without that section is a rehearsal: the workspace still passes consistency checks, notes come from `[Unreleased]`, and the tag version need not match. Both publish as GitHub prereleases as soon as the tag is pushed, without a pull request. A rehearsal needs no version cut.
 
-Use a unique rehearsal tag per attempt, for example `v0.0.0-test.20260926.gabcdef1`, adding a suffix if needed. Record its SHA and run ID. For such a tag, pass the version without `v` and `--rehearsal` to preflight. Do not reuse a fixed test tag for a different commit. Cleanup is a separate requested action targeting only that rehearsal release/tag; inspect whether it is immutable before attempting deletion.
+`just release rehearsal` picks a unique tag on HEAD, `v0.0.0-test.YYYYMMDD.gSHA` with a suffix when one is taken, checks it and prints the owner's block: the tag and its push. After the push, record the tag's SHA and run ID and watch the run. Do not reuse a fixed test tag for a different commit. Cleanup is a separate requested action targeting only that rehearsal release/tag; inspect whether it is immutable before attempting deletion.
 
 ### Recover according to state
 
@@ -151,9 +142,8 @@ Always inspect the identified run and GitHub release first. Network/authenticati
 
 | Observed state | Next action |
 | --- | --- |
-| Pull request merged or tag pushed; no matching run | `gh workflow run release.yml --ref vX.Y.Z` starts one (preflight prints it). Pushing the unchanged tag again is not a retry mechanism. |
-| Run failed: the tag does not name the merged head | Commits reached the branch after tagging. Run the checks on the merged head. With no GitHub Release for the tag, the human re-points it (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag -a vX.Y.Z SHA -m 'Tungsten X.Y.Z'`, `git push origin vX.Y.Z`) and starts the run manually. Do the same before merging when a fix follows the hand-off. |
-| Run failed: the merge commit differs from the tagged tree | `main` held commits the branch lacked. Test `main`'s merge commit locally, then re-point the unreleased tag to it as above and start the run manually, or ship the difference as the next patch version. |
+| Tag pushed; no matching run | The owner starts one with `gh workflow run release.yml --repo JosephGibson/Tungsten --ref vX.Y.Z` (preflight prints it), then watches it (`gh run watch RUN_ID --exit-status`). Pushing the unchanged tag again is not a retry mechanism, and the tag never moves. |
+| Run failed at the tag check, or a fix follows the tag push; no release exists | With no GitHub Release for the tag, the owner re-points it to the fixed, checked commit (`git tag -d vX.Y.Z`, `git push origin :refs/tags/vX.Y.Z`, `git tag -a vX.Y.Z SHA -m 'Tungsten X.Y.Z'`, `git push origin vX.Y.Z`); the new push starts the run. |
 | Build failed; no release exists | Inspect `gh run view RUN_ID --log-failed`. For a transient failure, rerun that run's failed jobs with `gh run rerun RUN_ID --failed`. A source/workflow fix needs a new commit and a new version/tag, or a unique rehearsal tag. |
 | Publish failed; no release exists | Inspect logs, then rerun the failed publish job if its build artifacts still exist. Artifacts have seven-day retention; expired artifacts require rebuilding via a full rerun if GitHub still allows it. |
 | Draft release or partial upload exists | Verify the tag/commit and inspect assets. The workflow uses `gh release create`, so it cannot automatically resume an existing draft. Resume the draft with verified assets from the same run and publish it once complete, or delete only the draft (keep the tag) if that cleanup is authorized, then rerun. Do not blindly clobber uploaded assets. |
@@ -164,15 +154,15 @@ Current `gh release create` with assets creates a draft, uploads assets, then pu
 
 ### Handoff and next branch
 
-End the task with the remaining command block and the post-merge block, after a short report: version/tag, the checks run and their results, anything not checked (platforms, GPU) and what the commands will do. A milestone's run session then gives the prompt for the next candidate's plan ([workflow](plans/1.0/workflow.md) §3), labelled as [tungsten-next's reply](../.claude/skills/tungsten-next/SKILL.md) labels it: `**New session** (repo root) · <mode> mode · <model> · <effort> · <reason>`, then the prompt, then its NoMachine line. Take the model and effort from the [operating rules' tiers](operating-rules.md#tiers) (`D-151`), never from memory. After the merge, report the tagged commit SHA, pull request and release URLs, run ID/result and archive/checksum verification. For preparation-only work, report requested/current versions, whether a cut occurred, plans moved, checks and the remaining steps.
+End the task with the agent's push done and the owner's block, after a short report: version/tag, the checks run and their results, anything not checked (platforms, GPU) and what the commands will do. A milestone's run session then gives the prompt for the next candidate's plan ([workflow](plans/1.0/workflow.md) §3), labelled as [tungsten-next's reply](../.claude/skills/tungsten-next/SKILL.md) labels it: `**New session** (repo root) · <mode> mode · <model> · <effort> · <reason>`, then the prompt, then its NoMachine line. Take the model and effort from the [operating rules' tiers](operating-rules.md#tiers) (`D-151`), never from memory. After the tag push, report the tagged commit SHA, run ID/result, release URL and archive/checksum verification. For preparation-only work, report requested/current versions, whether a cut occurred, checks and the remaining steps.
 
-The post-merge block starts the next milestone: it refreshes `origin/main`, creates the branch from it without tracking it and publishes it (`git fetch origin`, `git switch -c 0.<NN+1> --no-track origin/main`, `git push -u origin 0.<NN+1>`), rather than a stale local main or the pre-squash milestone branch: a branch that lacks `main`'s squash commit fails preflight's containment check at the next release. Without `--no-track` the branch tracks `main`, so a plain push or an editor sync sends milestone work to `main`, which only the release pull request may change. Preflight prints the block while the release pull request is unmerged, and a note in its place when the next branch already exists: inspect that branch's history and work before integrating main; never reset it automatically. The release pull request is the only one the procedure needs; preserve existing authorization.
+The owner's block starts the next branch from the version branch (`git switch -c 0.<NN+1> 0.NN`, `git push -u origin 0.<NN+1>`), before the merge, so the next session starts at once; `main` then gains only merges of branches it already holds, which preflight admits at the next release. A branch made from a local branch tracks nothing until `-u` gives it its own upstream, so a plain push never reaches `main`, which only the release pull request changes. Preflight prints a note in place of those commands when the next branch already exists: inspect its history before integrating; never reset it automatically. The release pull request is the only one the procedure needs; preserve existing authorization.
 
 ### Tool sources
 
 | Concern | Source |
 | --- | --- |
-| Version, notes, packaging and license notices | [release.py](../scripts/release.py), [tests](../scripts/test-release.py), [clarifications](../licenses/clarifications.json) |
+| Version, notes, the cut and `just release`, packaging and license notices | [release.py](../scripts/release.py), [tests](../scripts/test-release.py), [clarifications](../licenses/clarifications.json) |
 | Crash-report symbolization and the release probe | [crash-report.py](../scripts/crash-report.py), [tests](../scripts/test-crash-report.py) |
 | Read-only Git/GitHub preflight and command hand-off | [release-preflight.py](../scripts/release-preflight.py), [tests](../scripts/test-release-preflight.py) |
 | The `missing_docs` ratchet the cut runs first | [missing-docs.py](../scripts/missing-docs.py), [baseline](../scripts/missing-docs.json) |

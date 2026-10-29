@@ -12,7 +12,17 @@
   version             Prints the workspace version of a consistent tree.
   cut VERSION         Moves the [Unreleased] body under `## [VERSION] - DATE`, leaves
                       an empty [Unreleased], and sets the workspace version and status
-                      lines. `just release-cut` also refreshes Cargo.lock.
+                      lines. `just release minor` also refreshes Cargo.lock.
+  run KIND [SUMMARY]  `just release` (D-227). `minor`: on the branch named for the next
+                      minor after the newest vX.Y.Z tag on HEAD's history, a clean tree
+                      and a subject of 72 characters at most, the docs ratchet, the cut
+                      and the lock refresh, then CHECKS in order; the four cut files are
+                      committed as `chore(release): X.Y.Z SUMMARY` and the preflight
+                      prints the agent's push and the owner's block. A failed check
+                      leaves the cut uncommitted, and a rerun resumes at the checks.
+                      `rehearsal`: a unique v0.0.0-test.YYYYMMDD.gSHA on HEAD, checked,
+                      and the preflight's rehearsal block; no cut or commit. Other kinds
+                      wait for the redo's 9.8. --dry-run prints the chain, writing nothing.
   notes TAG           Prints the tag's CHANGELOG section ([Unreleased] for a
                       rehearsal tag), optionally with absolute repository links.
   package TAG TARGET  Zips each CPU level's example and template builds (BIN_DIR/
@@ -40,14 +50,16 @@
                       the embedded works and, last, the standard library's notices as
                       plain text.
 
-Rationale: D-071, D-072, D-074, D-079, D-120, D-122, D-186, D-196. Release steps: docs/releases.md.
+Rationale: D-071, D-072, D-074, D-079, D-120, D-122, D-186, D-196, D-227. Release steps: docs/releases.md.
 """
 
 import argparse
 import datetime
 import html.parser
+import importlib.util
 import json
 import re
+import shlex
 import shutil
 import struct
 import subprocess
@@ -62,6 +74,16 @@ CHANGELOG = "CHANGELOG.md"
 # Human status lines that name the workspace version; `cut` rewrites them.
 STATUS_FILES = ("DESIGN.md",)
 STATUS_RE = re.compile(r"(Workspace `v)([^`]*)(`)")
+# `just release` (D-227): the kinds switched on, the subject's limit, the paths the cut
+# commits and the chain the cut must pass, in order.
+KINDS = ("minor", "rehearsal")
+SUBJECT_LIMIT = 72
+CUT_PATHS = (CHANGELOG, CARGO, "Cargo.lock", *STATUS_FILES)
+RATCHET = ("just", "docs-ratchet")
+LOCK = ("cargo", "update", "--workspace", "--offline")
+CHECKS = (("just", "check"), ("just", "ctx"), ("just", "repo-check"), ("just", "api-check"),
+          ("just", "script-test"), ("just", "smoke"), ("just", "perf", "counters"), ("just", "notices"),
+          ("just", "template-check"), ("git", "diff", "--check"))
 UNRELEASED = "## [Unreleased]"
 UNRELEASED_RE = re.compile(r"^## \[Unreleased\][ \t]*$", re.M)
 RELEASE_RE = re.compile(r"^## \[([^\]]*)\] - (\d{4}-\d{2}-\d{2})$", re.ASCII)
@@ -274,7 +296,7 @@ def check_tree(root, read_file=None):
             errors.append(f"{CHANGELOG}: [{newer.version}] dated {newer.date} is before [{older.version}] ({older.date})")
     if version and releases and releases[0].version != version:
         errors.append(f"{CARGO} workspace version {version} != newest {CHANGELOG} release "
-                      f"[{releases[0].version}]; bump both with `just release-cut`")
+                      f"[{releases[0].version}]; bump both with `just release minor`")
 
     for rel in STATUS_FILES:
         found = [match[2] for match in STATUS_RE.finditer(read_file(rel))]
@@ -329,6 +351,165 @@ def cut(root, version, date):
     for rel, text in updates.items():
         write(root, rel, text)
     return check_tree(root).errors
+
+
+def git(root, *args):
+    result = subprocess.run(["git", *args], cwd=root, text=True, capture_output=True)
+    if result.returncode:
+        raise ValueError(f"git {args[0]} failed: {result.stderr.strip()}")
+    return result.stdout.rstrip("\n")  # porcelain lines keep their leading status column
+
+
+def newest_final_tag(root):
+    """The newest vX.Y.Z tag on HEAD's history; prerelease tags don't count."""
+    names = git(root, "for-each-ref", "--merged", "HEAD", "--format=%(refname:short)", "refs/tags/v*").split()
+    finals = [name for name in names if TAG_RE.match(name) and not TAG_RE.match(name)[5]]
+    return max(finals, key=lambda name: semver_key(name[1:]), default=None)
+
+
+def changed_paths(root):
+    """Staged, unstaged and untracked paths, as `git status` lists them."""
+    entries = git(root, "status", "--porcelain", "-z", "--untracked-files=normal").split("\0")
+    paths, skip = [], False
+    for entry in entries:
+        if skip or not entry:
+            skip = False
+            continue
+        paths.append(entry[3:])
+        skip = entry[0] in "RC"  # a rename's or copy's old path follows
+    return paths
+
+
+def run_step(root, command):
+    """Runs one step with its output shown; True when it passes."""
+    print(f"$ {shlex.join(command)}", flush=True)
+    return subprocess.run(command, cwd=root).returncode == 0
+
+
+def run_preflight(root, version, rehearsal=False):
+    """release-preflight.py on VERSION against origin's push destination; its exit code."""
+    spec = importlib.util.spec_from_file_location("release_preflight", Path(__file__).with_name("release-preflight.py"))
+    pre = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pre)
+    repo = pre.github_repository(git(root, "remote", "get-url", "--push", "origin"))
+    return pre.main([version, "--repo", repo, "--root", str(root), *(["--rehearsal"] if rehearsal else [])])
+
+
+def release_run(root, kind, summary=None, dry_run=False, date=None, step=run_step, preflight=run_preflight):
+    """`just release KIND`; returns errors. Refuses before writing anything (D-227)."""
+    if kind not in KINDS:
+        return [f"release kind {kind!r} isn't switched on: `minor` cuts the next minor and `rehearsal` checks a "
+                "rehearsal tag; the redo's 9.8 adds patch, major, release candidates and promote"]
+    date = date or datetime.date.today()
+    if kind == "rehearsal":
+        return rehearse(root, dry_run, date, preflight)
+    tag = newest_final_tag(root)
+    if tag is None:
+        return ["no vX.Y.Z tag on HEAD's history to release after"]
+    major, minor = int(TAG_RE.match(tag)[2]), int(TAG_RE.match(tag)[3])
+    version, branch = f"{major}.{minor + 1}.0", f"{major}.{minor + 1}"
+    subject = f"chore(release): {version} {summary}" if summary else None
+    errors = []
+    current = git(root, "branch", "--show-current")
+    if current != branch:
+        errors.append(f"release {version} runs on branch {branch}, not {current or 'a detached HEAD'}")
+    if summary is None and not dry_run:
+        errors.append("a summary is required: just release minor '<summary>'")
+    elif summary is not None and (not summary.strip() or "\n" in summary):
+        errors.append("the summary is one line of text")
+    elif subject and len(subject) > SUBJECT_LIMIT:
+        errors.append(f"the commit subject is {len(subject)} characters, over {SUBJECT_LIMIT}: {subject}")
+    state = check_tree(root)
+    changed = changed_paths(root)
+    stage = None
+    if not changed:
+        if state.version == tag[1:]:
+            stage = "cut"
+        elif state.version == version and git(root, "log", "-1", "--format=%s").startswith(f"chore(release): {version} "):
+            stage = "commit"
+        else:
+            errors.append(f"{CARGO} says {state.version}: neither the newest release {tag[1:]} nor a committed {version} cut")
+    elif set(changed) <= set(CUT_PATHS) and state.version == version and not state.errors:
+        stage = "checks"
+    else:
+        errors.append(f"the tree is dirty ({', '.join(changed)}); commit or move those changes first")
+    if errors:
+        return errors
+
+    def cut_step():
+        problems = cut(root, version, date)
+        for problem in problems:
+            print(f"ERROR: {problem}", file=sys.stderr)
+        return not problems
+
+    def commit_step():
+        paths = changed_paths(root)
+        stray = [path for path in paths if path not in CUT_PATHS]
+        if stray:
+            print(f"ERROR: the checks left changes outside the cut: {', '.join(stray)}", file=sys.stderr)
+            return False
+        git(root, "add", "--", *[path for path in CUT_PATHS if path in paths])
+        git(root, "commit", "-q", "-m", subject)
+        print(f"Committed {git(root, 'rev-parse', '--short', 'HEAD')}: {subject}")
+        return True
+
+    chain = []
+    if stage == "cut":
+        chain += [(shlex.join(RATCHET), lambda: step(root, RATCHET)),
+                  (f"release.py cut {version}", cut_step),
+                  (shlex.join(LOCK), lambda: step(root, LOCK))]
+    if stage in ("cut", "checks"):
+        chain += [(shlex.join(command), lambda command=command: step(root, command)) for command in CHECKS]
+        chain.append((f"git commit -m {shlex.quote(subject or f'chore(release): {version} <summary>')} -- "
+                      + " ".join(CUT_PATHS), commit_step))
+    chain.append((f"release-preflight.py {version} --repo <origin's repository>", lambda: preflight(root, version) == 0))
+    print(f"Release {version} (minor) on {branch}, after {tag}: "
+          + {"cut": "cutting.", "checks": "the cut is in place; resuming at the checks.",
+             "commit": "the release commit is in place; running the preflight."}[stage])
+    if dry_run:
+        print("Dry run: nothing runs and nothing is written. The chain:")
+        for label, _ in chain:
+            print(f"  {label}")
+        return []
+    for label, action in chain:
+        if not action():
+            if label.startswith(("just docs-ratchet", "release.py cut")):
+                return [f"{label} failed; nothing is committed"]
+            if label.startswith("release-preflight"):
+                return [f"the preflight failed; rerun `just release minor` to repeat it, or "
+                        f"`just release-preflight {version} --repo OWNER/REPO`"]
+            return [f"{label} failed; the cut stays uncommitted: fix it and rerun "
+                    f"`just release minor {shlex.quote(summary)}`, which resumes at the checks"]
+    return []
+
+
+def rehearse(root, dry_run, date, preflight):
+    """A unique v0.0.0-test.YYYYMMDD.gSHA on HEAD, checked, and the preflight's rehearsal block."""
+    changed = changed_paths(root)
+    if changed:
+        return [f"the tree is dirty ({', '.join(changed)}); a rehearsal tags a committed HEAD"]
+    stem = f"0.0.0-test.{date:%Y%m%d}.g{git(root, 'rev-parse', '--short=7', 'HEAD')}"
+    taken = set(git(root, "for-each-ref", "--format=%(refname:short)", f"refs/tags/v{stem}*").split())
+    if not dry_run:
+        url = git(root, "remote", "get-url", "--push", "origin")
+        taken |= {line.split("refs/tags/")[1].removesuffix("^{}")
+                  for line in git(root, "ls-remote", "--tags", "--", url, f"refs/tags/v{stem}*").splitlines()}
+    version = next(v for v in [stem] + [f"{stem}.{n}" for n in range(2, 100)] if f"v{v}" not in taken)
+    tag = f"v{version}"
+    print(f"Rehearsal tag {tag} on HEAD, a prerelease without a changelog section.")
+    if dry_run:
+        print("Dry run: nothing runs and nothing is written. The chain:")
+        print(f"  release.py check {tag}")
+        print(f"  release-preflight.py {version} --rehearsal --repo <origin's repository>")
+        return []
+    state = check_tree(root)
+    errors = state.errors + check_tag(state, tag)
+    if errors:
+        return errors
+    print(f"Release consistency: workspace {state.version}; {tag} is a rehearsal, notes from [Unreleased].")
+    if preflight(root, version, rehearsal=True):
+        return [f"the preflight failed; rerun `just release-preflight {version} --rehearsal --repo OWNER/REPO`"]
+    return []
 
 
 def notes(root, tag, link_base=None):
@@ -1094,6 +1275,11 @@ def main(argv=None):
     command = commands.add_parser("cut", help="move [Unreleased] to VERSION and bump the version")
     command.add_argument("version")
     command.add_argument("--date", type=datetime.date.fromisoformat, default=datetime.date.today())
+    command = commands.add_parser("run", help="`just release KIND`: minor cuts, checks and commits; rehearsal checks a tag")
+    command.add_argument("kind", help="minor or rehearsal; the redo's 9.8 adds the rest")
+    command.add_argument("summary", nargs="?", help="the release commit's summary, after `chore(release): X.Y.Z`")
+    command.add_argument("--dry-run", action="store_true", help="print the version and the chain; write nothing")
+    command.add_argument("--date", type=datetime.date.fromisoformat, default=datetime.date.today())
     command = commands.add_parser("notes", help="print release notes for TAG")
     command.add_argument("tag")
     command.add_argument("--link-base", help="prefix for relative links, e.g. https://github.com/o/r/blob/TAG")
@@ -1138,7 +1324,9 @@ def main(argv=None):
             if not errors:
                 print(f"Cut [{args.version}] - {args.date}: {CHANGELOG}, {CARGO} and "
                       f"{', '.join(STATUS_FILES)} updated. Next: refresh Cargo.lock "
-                      f"(`just release-cut` does), review status prose, run the checks, hand off (docs/releases.md).")
+                      f"(`just release minor` does), review status prose, run the checks (docs/releases.md).")
+        elif args.command == "run":
+            errors = release_run(root, args.kind, args.summary, args.dry_run, args.date)
         elif args.command == "notes":
             sys.stdout.write(notes(root, args.tag, args.link_base))
             errors = []

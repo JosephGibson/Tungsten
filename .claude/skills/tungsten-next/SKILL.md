@@ -27,6 +27,7 @@ The tree is evidence; ROADMAP.md is the only status record, and the commit that 
 | Records claim work the tree lacks | Both sides, quoted | Ask the owner: it may sit in another worktree, clone or stash. Don't recommend redoing it |
 | Edits in the last 3 minutes, or another session in this tree | A session is still working | Give the step after it, marked "once it stops" |
 | Uncommitted work, nothing edited in the last 3 minutes, no other session | A session stopped before its commit | Resume prompt |
+| The newest tag is not on `origin/main` | `The <tag> pull request is unmerged: merge it with a merge commit whenever convenient; it publishes nothing.` | Nothing: the merge gates no work |
 
 ## 3. Decide the next step
 
@@ -36,8 +37,7 @@ First row that applies:
 | --- | --- |
 | A perf capture is running | Nothing that writes. Give the step marked "once the capture ends" |
 | A session is still working (§2) | The step after it, marked "once it stops" |
-| The version is past the newest tag (a cut waits) | You: the release session's command block (commit, tag, push, pull request), or the release prompt if it is lost |
-| The newest tag is not on `origin/main` | You: merge the release pull request without squashing |
+| The version is past the newest tag (a cut waits) | You: the release session's block (tag, tag push, next branch, pull request), which `just release-preflight X.Y.Z --repo JosephGibson/Tungsten` reprints, or the release prompt if the cut isn't committed |
 | Uncommitted work, no session working | The resume prompt, new session |
 | A large plan in `docs/plans/` for a Now item | Its run or resume prompt, new session |
 | An example stop just finished | You: play it before the next one is planned; findings go to Later as one line each, or re-cut the next stop. Skip when the owner says they have played it |

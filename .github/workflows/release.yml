@@ -1,8 +1,8 @@
-# Release builds (D-071, D-072, D-079, D-120, D-122). A final vX.Y.Z tag
-# publishes when the pull request whose head commit it names merges into main;
-# a pushed pre-release tag (vX.Y.Z-<pre>) publishes at once; a manual run on a
-# tag covers maintenance and recovery. Each run checks the tag against
-# Cargo.toml and CHANGELOG.md, builds the examples for Linux and Windows at two
+# Release builds (D-071, D-072, D-120, D-122, D-227). A pushed tag publishes:
+# a final vX.Y.Z tag or a pre-release vX.Y.Z-<pre>; the release pull request is
+# main's merge and starts nothing here. A manual run on a tag covers recovery.
+# Each run checks the tag against Cargo.toml and CHANGELOG.md, builds the
+# examples for Linux and Windows at two
 # x86-64 CPU levels, and publishes one zip per platform for players (a launcher
 # per example under its player-facing name that runs the fastest build the CPU
 # supports, both builds and the files they read under data/, README.txt and the
@@ -15,13 +15,11 @@
 name: Release
 
 on:
-  # Pre-release tags only: pushing a final tag publishes nothing by itself.
+  # The owner's tag push publishes, final or pre-release (D-227).
   push:
     tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
-  pull_request:
-    types: [closed]
-    branches: [main]
   # gh workflow run release.yml --ref vX.Y.Z
   workflow_dispatch:
 
@@ -35,58 +33,27 @@ concurrency:
 jobs:
   verify:
     name: Tag, version and changelog agree
-    # A pull request closed without merging, or from a fork, releases nothing.
-    if: >-
-      github.event_name != 'pull_request' ||
-      (github.event.pull_request.merged &&
-      github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       tag: ${{ steps.select.outputs.tag }}
       sha: ${{ steps.select.outputs.sha }}
     steps:
-      # A merged pull request releases its head commit, the one the tag names;
-      # an empty ref is the default checkout of the tag.
+      # The default checkout of the tag: the commit it names.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
-      # Leaves `tag` empty, skipping the build, when a merge isn't a release.
       - name: Select the release tag
         id: select
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           head=$(git rev-parse HEAD)
-          if [[ "$GITHUB_EVENT_NAME" != pull_request ]]; then
-            if [[ "$GITHUB_REF_TYPE" != tag ]]; then
-              echo "::error::Run this workflow on a tag: gh workflow run release.yml --ref vX.Y.Z"
-              exit 1
-            fi
-            tag=$GITHUB_REF_NAME
-          else
-            tag="v$(python3 -B scripts/release.py version)"
-            # The commit the tag names; empty when the tag doesn't exist.
-            tagged=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$tag" --jq .sha 2>/dev/null) || tagged=""
-            if [[ "$tagged" != "$head" ]]; then
-              if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --silent 2>/dev/null; then
-                echo "::notice::$tag is already released; this merge publishes nothing."
-                exit 0
-              fi
-              echo "::error::$tag is unreleased and names ${tagged:-no commit}, not the merged head $head. See docs/releases.md, Recover according to state."
-              exit 1
-            fi
-            # main must hold exactly what was tested and tagged.
-            merged_tree=$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$MERGE_SHA" --jq .tree.sha)
-            if [[ "$merged_tree" != "$(git rev-parse 'HEAD^{tree}')" ]]; then
-              echo "::error::Merge commit $MERGE_SHA differs from the tree $tag names. See docs/releases.md, Recover according to state."
-              exit 1
-            fi
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            echo "::error::Run this workflow on a tag: gh workflow run release.yml --ref vX.Y.Z"
+            exit 1
           fi
+          tag=$GITHUB_REF_NAME
           python3 -B scripts/release.py check "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$head" >> "$GITHUB_OUTPUT"

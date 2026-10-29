@@ -132,14 +132,13 @@ notices:
 release-check *args:
     python3 -B scripts/release.py check "$@"
 
-# Read-only Git/GitHub inspection that prints the remaining release commands; VERSION, --repo, optional --message/--branch/--ref/--no-pr.
+# Read-only Git/GitHub inspection that prints the agent's push and the owner's block; VERSION, --repo, optional --branch/--ref/--no-pr/--rehearsal.
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 
-# Cut VERSION after the missing_docs ratchet: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines and Cargo.lock follow.
-release-cut version *args: docs-ratchet
-    python3 -B scripts/release.py cut "$@"
-    cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
+# The release (D-227): `minor 'summary'` cuts the next minor after the docs ratchet, runs the checks in order, commits the cut and runs the preflight, resuming at the checks after a failure; `rehearsal` checks a fresh rehearsal tag; --dry-run prints the chain.
+release kind *args:
+    python3 -B scripts/release.py run "$@"
 
 # missing_docs only falls (D-215): public items without rustdoc per crate against scripts/missing-docs.json; `--write` lowers the baseline, `--list CRATE` names the items.
 docs-ratchet *args:
