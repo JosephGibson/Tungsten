@@ -4,8 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 has landed (`tungsten run --script`, `render` and `describe`) and 7.3 runs from its plan; 7.3–7.5 have not landed, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
-- `bench-runner`: redo 7.3, benchmarks part 1: the rewritten runner with sittings, GPU timestamps without a stall, CPU counter guards in `just check` and GPU counters locally, a minimal row set with 01's pit, the template frame and 01's areas, the old suite purged and per-plan sittings retired ([plan](docs/plans/bench-runner.md)).
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`) and 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`) have landed, and 7.4 (H2) is next; 7.4–7.5 have not landed, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
 
 ## Next
 
@@ -20,6 +19,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's tile variants, re-rolled once at 0.112 (stills in `perf-runs/20261028-quick-wins-tileset/`): a platform the owner names at a playtest takes its old picks back as per-cell overrides from `5e516e60`'s `level.tmj`.
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
+- `just perf`'s GPU run merged into its timing run, now that the timestamp ring costs `gpu` 1.01× (redo 7.3's Q5): at 9.1, once the merged run's cost is measured.
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order): agent tooling, the benchmark runner, H2, the analysis pass, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
