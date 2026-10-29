@@ -68,7 +68,7 @@ Read at `4066c6ad`.
 
 ### 2.1 The overhead retake (step 1)
 
-The baseline's scripts, copied to `perf-runs/<UTC>-overhead-h1/` with four changes: `SESSIONS` takes the table below; `RECORD` adds `ROADMAP.md` and `docs/operating-rules.md`, the successors of `roadmap.json` and `workflow.md`, which it counts; `own_plan_re` takes each item's plan (`docs/plans/<topic>.md`); and each run prints which pattern made each bookkeeping call, as top-five counts. The git side counts, per release 0.109–0.112, the record files (`is_record` plus `ROADMAP.md`) touched by its non-merge commits since the previous release's point on that history (`git merge-base`), and each H1-era plan's lines at its last commit before deletion. Main transcripts give the headline, as the baseline's did; `--subagents` is printed beside.
+The baseline's scripts, copied to `perf-runs/<UTC>-overhead-h1/` with four changes: `SESSIONS` takes the table below; `RECORD` adds `ROADMAP.md` and `docs/operating-rules.md`, the successors of `roadmap.json` and `workflow.md`, which it counts; `own_plan_re` takes each item's plan (`docs/plans/<topic>.md`); and each run prints which pattern made each bookkeeping call, as top-five counts. The git side counts, per release 0.109–0.112, the record files (`is_record` plus `ROADMAP.md`) touched by its own non-merge commits, `git log --no-merges --name-only <from>..<tag>`. `<from>` is the previous release's point on this history: 0.108's squash `d31ee9bb` for 0.109 and 0.109's squash `433b4998` for 0.110, since both were squash-merged and their tags sit off it (`merge-base` would reach back to 0.107 and count a squash as the next release's), then `v0.110.0` and `v0.111.0`, which are ancestors of the next tags. Each H1-era plan's lines are counted at its last commit before deletion. Main transcripts give the headline, as the baseline's did; `--subagents` is printed beside.
 
 | Group | Sessions (transcript ID prefixes) |
 | --- | --- |
@@ -120,9 +120,11 @@ No decision entry: P4a enforces `D-005` and AGENTS.md's rule, P9's files state t
 
 **`release.yml`.** `on.push.tags` takes `v[0-9]+.[0-9]+.[0-9]+` beside the prerelease pattern. The `pull_request` trigger, its fork guard and the merge branch of the select step go. `workflow_dispatch` on a tag stays, for recovery. A tag run checks the tag against the tagged tree as it does today (`release.py check "$tag"`); the build and publish jobs don't change.
 
-**Preflight.** A final tag publishes on its push. The pull request is printed for a final release on a version branch as `main`'s merge, and its state is information only. The merged-tree and "merging publishes nothing" refusals go. Tag-push runs match final tags as they match prerelease ones. Containment becomes: the base's commits the branch lacks are all merges (`git rev-list --no-merges <sha>..<base>` prints nothing, the base's tip fetched as today), since the next branch starts before the earlier release's merge, which is all `main` then holds that it lacks. The post-merge block goes; the next branch joins the hand-off after the tag push.
+**Preflight.** A final tag publishes on its push. The pull request is printed for a final release on a version branch as `main`'s merge, and its state is information only. The merged-tree and "merging publishes nothing" refusals go. Tag-push runs match final tags as they match prerelease ones. Containment becomes: every commit the base holds that the release commit lacks (`git rev-list <sha>..<base>`, the base's tip fetched as today) is a merge of a branch the release contains that adds nothing of its own: its second parent is an ancestor of `<sha>`, and its tree equals that parent's. The next branch starts before the earlier release's merge, which is then all `main` holds that it lacks; a merge with its own resolution, or any other commit, is refused as content the release would miss. The rule holds release over release, since each release merge's tree equals its branch's. The post-merge block goes; the next branch joins the hand-off after the tag push.
 
-**Why from the version branch.** The next branch starts from the version branch's tip, the tagged commit unless commits followed it, so the merge stops gating anything: the owner pastes one block and the next session starts at once. A later branch still merges cleanly, since `main` gains only merges of branches it already holds. The first merge after this change runs, at most, the old workflow's pull-request path, which finds the tag released and publishes nothing (`.github/workflows/release.yml:76-78`).
+**Why from the version branch.** The next branch starts from the version branch's tip, the tagged commit unless commits followed it, so the merge stops gating anything: the owner pastes one block and the next session starts at once. A later branch still merges cleanly, since `main` gains only merges of branches it already holds.
+
+**The transition.** A `pull_request` run reads `release.yml` from the pull request's merge ref, which carries this step's file without the trigger, so a release pull request merged after this step starts no release run. The old path stays reachable only through a pull request from a branch without this step, and none is open. Were it to run on a matching head, it would skip its "already released" exit (`.github/workflows/release.yml:75`), build, and then fail at `gh release create` (`:244`) on the existing release, leaving the published one untouched. The first release after H2 checks that its merge started no release run (a known-issues line from step 10).
 
 **The rehearsal rule.** A change to `release.yml`, or to `release.py`'s packaging, is rehearsed (`just release rehearsal`, then the owner's tag push) before the next final tag. H2's close hands the owner that block. A final tag pushed with no run starting is recovered by `gh workflow run release.yml --ref <tag>`, the owner's.
 
@@ -132,26 +134,28 @@ No decision entry: P4a enforces `D-005` and AGENTS.md's rule, P9's files state t
 
 ### 2.5 Skill evaluations (steps 5–8)
 
-Each skill is rewritten against a no-skill baseline on two tasks 7.1–7.3 produced (§2.6), under three arms:
+Each skill is rewritten against a no-skill baseline on tasks 7.1–7.3 produced (§2.6: two a skill, three for `tungsten-next`), under three arms:
 
 - **N, no skill:** told not to call the Skill tool or open `.claude/skills/` or `.agents/skills/`.
-- **O, the old skill:** told to read and follow the skill as it stood at this plan's commit, with the guide it names: `git archive -o target/h2-eval/old.tar <commit> .claude/skills docs/releases.md`, then `tar -xf` into `target/h2-eval/old/`, where `<commit>` is `git log --diff-filter=A --format=%h -1 -- docs/plans/health-h2.md`. Archives go to a file, never through a pipe, since the rtk hook rewrites piped git output.
+- **O, the old skill:** told to read and follow the skill's files as they stood at this plan's commit, with the tree's current docs wherever they point, so O and L follow one current procedure and differ only in the skill: `git archive -o target/h2-eval/old.tar <commit> .claude/skills`, then `tar -xf` into `target/h2-eval/old/`, where `<commit>` is `git log --diff-filter=A --format=%h -1 -- docs/plans/health-h2.md`. Archives go to a file, never through a pipe, since the rtk hook rewrites piped git output. The old guide's cost is its bytes (A3), not a run.
 - **L, the lean skill:** told to read and follow the rewritten skill in the tree.
 
 **Runs.** One fresh `general-purpose` subagent per arm and task, with the same prompt but the arm's line, a budget of 40 tool calls, and its answer written to `perf-runs/<UTC>-h2-skills/<task>/out-<arm>.md`; it returns one line. An edit task works in a scratch copy of the tree at its commit (`git archive -o`, then `tar -xf` into `target/h2-eval/<task>-<arm>/`, 67 MB), treated as the repository root; a run writes nothing outside its copy or its output file, and runs no git command that writes.
 
-**Measures.** Each run's tool uses, total tokens and duration, from its Agent result. A fresh grader subagent per task scores the three outputs against the task's checklist and reference, labelled A–C in a shuffled order it isn't told; the run session maps them back.
+**Measures.** Each run's tool uses, total tokens and duration, from its Agent result. For an edit task the run session, not the subagent, takes the evidence. It keeps a pristine extraction of the task's commit beside the arms' copies. A Python script (`filecmp`, `difflib`; the rtk hook rewrites `diff` and `git diff` output) writes each copy's changed-file list and unified diff against it. The run session then runs the task's check command in each copy and keeps the output. A fresh grader subagent per task scores the three arms against the task's checklist and reference: the diffs, file lists and command outputs for an edit task, the answers for a judgment task. The arms are labelled A–C in a shuffled order the grader isn't told; the run session maps them back.
 
 **Order per skill.** N and O first; then L, written to keep what N missed; then L's runs and the grade.
 
 **Gate, per skill:**
-- L passes every checklist item O passes.
+- L passes every checklist item of its tasks: the items are the floor. N and O are references, and an item they both miss still binds L (O misses new-flow items by design).
 - L's files weigh no more than O's.
-- Every instruction L keeps is an item N missed, or a denied-command trap (`git restore`, `rm`, `tag`, `stash`, a push past the version branch). Its keep list goes in the evaluation file.
+- Every instruction L keeps is an item N missed, a new-flow item, or a denied-command trap (`git restore`, `rm`, `tag`, `stash`, a push past the version branch). Its keep list goes in the evaluation file.
 
-L's tokens over the skill's two tasks are read against O's: lower, unchanged within 15 %, or higher. Higher earns one trim round on that skill, then stands as recorded. A lost item earns one revision and one L rerun; still lost, L takes O's instruction for it back.
+A missed item earns one revision of L and one rerun of that task. A second miss fails the step's done-when (§6): the skill keeps its old text, with steps 3 and 4's fixes, and the step is marked skipped with the item.
 
-**Budget:** 24 task runs and 8 grader runs. A run past 60 tool calls without an answer is stopped and scored as a miss.
+L's tokens over the skill's tasks are read against O's: lower, unchanged within 15 %, or higher. Higher earns one trim round on that skill, then stands as recorded.
+
+**Budget:** 27 task runs and 9 grader runs. A run past 60 tool calls without an answer is stopped and scored as a miss.
 
 ### 2.6 The tasks and the four skills
 
@@ -163,6 +167,7 @@ L's tokens over the skill's two tasks are read against O's: lower, unchanged wit
 | R2 | release | Judgment: the owner pushed `v0.113.0` an hour ago and preflight reports no release run | the guide's recovery table | hands the owner `gh workflow run release.yml --ref v0.113.0`; never re-pushes or moves the tag; verifies with preflight and `gh run watch <id>`; runs no GitHub-changing `gh` |
 | X1 | next | Judgment, on session 928a9d47's status output (7.3's run mid-sitting) | that session's reply | nothing that writes while the capture runs, the step marked to wait for it; the step is 7.4's plan; the prompt alone in a `text` block under a label line with Opus 5.5 and xhigh; one prompt; the NoMachine line |
 | X2 | next | Judgment, on `perf-runs/20261029-h2-plan/next-state-7.3-close.txt` (7.3 closed, `phase-7` in Now, no 7.4 plan; its sessions line set to none, since the session it showed was the idle 7.3 run) | this plan's own prompt | the next step is 7.4's plan, in a new session; the prompt reads phase 7's Step 3 and the redo's 7.4 row and §4, not phase 7's `run` prompt; it names a `docs/plans/<topic>.md`, the critique and the run prompt; the label line; one prompt |
+| X3 | next | Judgment, on X2's fixture with its git lines rewritten to the new flow's unmerged release: branch `0.114` tracking `origin/0.114`, version 0.113.0, newest tag `v0.113.0`, not on `origin/main`, no commits since | the guide after step 4: the merge publishes nothing and gates no work | the next step is the Now item's (7.4's plan), not the merge; the release pull request's merge appears as a heads-up for the owner, with a merge commit and at any time; the label line; one prompt |
 | P1 | plan | Edit, in a copy at `6664ed3b`: write `docs/plans/bench-runner.md`'s step 5 back, its section removed first | `6664ed3b`'s step 5 | Files, Change, Done-when, Commit and Moves; done-when as commands with expected results; `scripts/test-perf.py` cases for at least 9 of the reference's 13 behaviours; local commands with exit codes, the quick sitting marked functional only; `just script-test`; a Conventional subject of 72 characters at most; no file outside step 5's list |
 | P2 | plan | Judgment: running `bench-runner` as of `6664ed3b`, step 4 needs `crates/tungsten-render/src/text/atlas.rs`, outside its list, and a file outside the list stops the step; steps 1–3 are committed, step 4 has six changed files and one new | the skill's run rules | each changed file restored with `git show HEAD:<path> > <path>` and the new file deleted; no `git restore`, `checkout`, `stash`, `reset` or `rm`; step 4 marked skipped with its reason in the evidence log, committed alone and pushed; carries on with the steps that don't depend on it and names the ones that do; reports it at the end |
 
@@ -172,7 +177,7 @@ The status outputs of X1 come from the transcript (`~/.claude/projects/<this pro
 
 - **`tungsten-decision`:** expected to keep marker placement and order, Amended against Superseded, the old row's marker, the `D-015` phrase and the ID command.
 - **`tungsten-release`**, one wrapper: when a release runs, what is the owner's (the tag and its push, `gh` writes, merges), the rehearsal rule, and the guide's happy path as `just release`. `tungsten-finalize` folds in. `check_docs` first reports a frozen record's dead link or fragment as a note, as it reports archive links (Q5).
-- **`tungsten-next`:** `just status` in place of `state.sh`. A `step` prompt: `Use the tungsten-plan skill. Write the plan for <phase>'s step <N> (<name>) from ROADMAP.md: read docs/plans/<phase>.md's Step <k> and docs/plans/roadmap-redo.md's <N> row and the sections it cites; audit only the code it touches; name it docs/plans/<topic>.md; critique it last as the skill says; commit it and end with the run prompt.` A table row sends a phase plan in Now whose next step has no plan to that prompt, never to the `run` prompt. Route, tier and reply rules only where N misses them.
+- **`tungsten-next`:** `just status` in place of `state.sh`. A `step` prompt: `Use the tungsten-plan skill. Write the plan for <phase>'s step <N> (<name>) from ROADMAP.md: read docs/plans/<phase>.md's Step <k> and docs/plans/roadmap-redo.md's <N> row and the sections it cites; audit only the code it touches; name it docs/plans/<topic>.md; critique it last as the skill says; commit it and end with the run prompt.` A table row sends a phase plan in Now whose next step has no plan to that prompt, never to the `run` prompt. The "newest tag not on `origin/main`" row becomes a heads-up, since the merge publishes nothing and gates no work. Route, tier and reply rules only where N misses them.
 - **`tungsten-plan`**, renamed from `tungsten-milestone` (Q6): the critique mechanics, the restore commands that stand in for denied ones, the hand-off; `skeleton.md` trimmed to the sections plans use. The plans README's Executing and Lifecycle say "deleted when done", as the operating rules do.
 
 ### 2.7 Memory pruning (step 9)
@@ -244,7 +249,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
   - `python3 -B scripts/test-release-preflight.py` → passes, with cases for:
     - a final tag on a version branch: tag, tag push, next branch, `gh pr create`, and no `git add -A` and no post-merge block;
     - a pushed final tag with no run → `gh workflow run`;
-    - `main` ahead by a merge commit → passes, by a non-merge commit → refused;
+    - `main` ahead by an earlier release's merge → passes; by a non-merge commit, or by a merge whose parents the branch holds but whose resolution changes a file → refused;
     - the rehearsal block.
   - `rg -q 'pull_request' .github/workflows/release.yml; test $? -eq 1` → exit 0; `rg -c '^\s+- "v\[0-9\]\+\.\[0-9\]\+\.\[0-9\]\+' .github/workflows/release.yml` → 2.
   - `rg -l 'release-cut' justfile scripts docs/releases.md docs/operating-rules.md docs/validation.md docs/known-issues.md .claude; test $? -eq 1` → exit 0.
@@ -262,7 +267,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
   - The X1 status text taken from its transcript.
   - D1 and D2 under N and O; the lean skill written; D1 and D2 under L; graded.
 - **Done-when:**
-  - `perf-runs/<UTC>-h2-skills/` holds D1's and D2's prompts, six outputs, the grades, each run's tool uses, tokens and duration, and the keep list.
+  - `perf-runs/<UTC>-h2-skills/` holds D1's and D2's prompts, each arm's diff, changed-file list and check output, the grades, each run's tool uses, tokens and duration, and the keep list.
   - §2.5's gate holds for D1 and D2, with L at most 2,386 bytes.
   - `just ctx`, `just repo-check` → pass.
 - **Commit:** `docs(skills): rewrite tungsten-decision against a no-skill baseline`
@@ -283,9 +288,9 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 ### Step 7: `tungsten-next` and the step prompt
 
 - **Files:** as listed for step 7.
-- **Change:** X1 and X2 under N and O; the lean skill with §2.6's `step` prompt and table row; X1 and X2 under L; graded. `prompts.md` stays a file unless the eval shows the split costs reads and the body stays under 8,192 bytes (Q11).
+- **Change:** X1–X3 under N and O; the lean skill with §2.6's `step` prompt, its table row and the merge row as a heads-up; X1–X3 under L; graded. `prompts.md` stays a file unless the eval shows the split costs reads and the body stays under 8,192 bytes (Q11).
 - **Done-when:**
-  - §2.5's gate for X1 and X2, with L at most 8,759 bytes.
+  - §2.5's gate for X1–X3, with L at most 8,759 bytes.
   - `rg -c '^\| .step. \|' .claude/skills/tungsten-next/prompts.md` → 1 (or the row in `SKILL.md`, by Q11).
   - `just ctx`, `just repo-check` → pass.
 - **Commit:** `docs(skills): rewrite tungsten-next lean, with a phase step's prompt`
@@ -326,7 +331,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 - **Files:** as listed for step 10.
 - **Change:**
   - The checks and the demo.
-  - The follow-ups to their homes: Q1's Later line exists from step 2. F3 in phase 7: the overhead retaken on 7.5's sessions, the first under H2's skills, with step 1's scripts.
+  - The follow-ups to their homes: Q1's Later line exists from step 2. F3 in phase 7: the overhead retaken on 7.5's sessions, the first under H2's skills, with step 1's scripts. A known-issues line: the first release pull request merged after H2 starts no `release.yml` run (`gh run list --workflow release.yml --event pull_request`), then the line goes (§2.4, the transition).
   - Phase 7's Step 3 evidence row; F2 marked done.
   - This plan and its citations deleted; `target/h2-eval/` deleted.
   - `health-h2` out of Now; `phase-7`'s line says 7.4 landed and 7.5 is next.
@@ -351,7 +356,7 @@ One entry at step 4, with the next free ID (`D-22[7]` at this writing; recheck b
 | Q4 | Who commits the cut? | The agent, through `release.py run`, naming its four paths (`D-215`); the owner's block holds no `git add` or commit |
 | Q5 | Frozen records' links to removed skills | Reported as notes, as archive links are; frozen records are never edited, and 9.7 deletes them |
 | Q6 | Rename `tungsten-milestone`? | Yes, to `tungsten-plan`: milestones ended at M85, and the redo asks for a planning skill "in place of" it |
-| Q7 | One run per arm, or repeats? | One; behaviour gates (checklists), tokens are read with a 15 % band, and a lost item earns one rerun |
+| Q7 | One run per arm, or repeats? | One; behaviour gates (every checklist item, for L), tokens are read with a 15 % band, and a missed item earns one revision and rerun |
 | Q8 | H2's own "lower" before any session runs under it | The skills' bytes against the old (gated) and the evaluations' tokens (read); the session-level retake under H2's skills at 7.5's close (F3) |
 | Q9 | A decision for `.gitattributes`? | No: the file states its rule where git applies it |
 | Q10 | The check chain in the script or the guide? | The script, so one command runs it; `--dry-run` prints it |
@@ -375,14 +380,23 @@ Each question takes its stated default; the owner reviews the plan on their own 
 - A done-when check fails: restore the step's files from the last commit, mark the step skipped, and continue with steps that don't depend on it. Step 6's R1 and R2 need step 4; step 7's L needs step 3; steps 6 and 8 need step 6's checker rule.
 - A step needs Rust code changed: stop that step and record it as a follow-up.
 - The retake reads not lower: record the top patterns and carry on, since steps 5–8 target them; the close carries the miss to 7.5's triage.
-- An evaluation run passes 60 tool calls or returns no answer: score it as a miss. Across steps 5–8, past 8M tokens: start no new runs, finish the current skill, and skip the remaining skills' steps with their reason.
+- An evaluation run passes 60 tool calls or returns no answer: score it as a miss. A lean skill missing a checklist item twice fails its step (§2.5): the old skill stays, and the step is marked skipped with the item. Across steps 5–8, past 8M tokens: start no new runs, finish the current skill, and skip the remaining skills' steps with their reason.
 - `release.yml` can't be checked locally past actionlint: never push a tag to test it (tags are the owner's); the rehearsal is handed over.
 - A push is refused: report it, never force (`D-216`).
 - Another session edits a file a step lists: stop and report.
 
 ## 7. Critique
 
-<Filled after the critique round.>
+Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-29, reading `c8105ad6`. Footer: `352.6 s, tokens in 814845 (cached 728192), out 8271 (reasoning 4786), commands 22, output 284.6 KB (largest 35.8 KB), usage 5h 2% → 23%, week 34% → 37%`. Six findings, all accepted; they changed done-when checks (step 4's preflight cases, steps 5–8's gate), the evaluation procedure and step 1's method, so a second round runs.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 1 | [MEDIUM] Merge-only ancestry does not establish that the release branch contains main's changes | A merge can carry its own resolution, which `--no-merges` admits; the old preflight compared trees only for a merged pull request (`scripts/release-preflight.py:176-180`) | accepted | §2.4: each commit the base holds beyond the release is a merge whose second parent the release holds and whose tree equals it; step 4 tests a merge with its own resolution |
+| 2 | [MEDIUM] The skill gate allows both implementations to miss required behavior | O read the old guide (`docs/releases.md:18`, `:94`), and the old routing sends a Now item's large plan to its run prompt (`.claude/skills/tungsten-next/SKILL.md:42`), so new-flow items could fail in O and L alike | accepted | §2.5: every checklist item binds L; O follows the old skill with the tree's current docs; a second miss fails the step (§6) |
+| 3 | [MEDIUM] The overhead retake counts previous releases across squash boundaries | `git merge-base v0.108.0 v0.109.0` → `bb1e4c0e` (0.107); 0.108's squash `d31ee9bb` and 0.109's `433b4998` are single-parent commits on this history; `v0.109.0` is no ancestor of `v0.110.0` | accepted | §2.1: `<from>` is `d31ee9bb` for 0.109 and `433b4998` for 0.110, the previous tag after |
+| 4 | [MEDIUM] Grading answer files cannot verify the edit-task checklists | §2.5 gave the grader answers only, while D1's, D2's and P1's checklists need each copy's state | accepted | §2.5: the run session diffs each copy against a pristine extraction in Python and runs the check itself; the grader scores diffs, file lists and outputs; step 5's evidence names them |
+| 5 | [MEDIUM] The next-step evaluations omit the new flow's unmerged-release state | `.claude/skills/tungsten-next/SKILL.md:40` makes the release pull request's merge the next step while the newest tag is off `origin/main`; X2's fixture has its tag on main (`next-state-7.3-close.txt:4`) | accepted | §2.6: X3, a published tag with its pull request unmerged; the merge row becomes a heads-up; step 7 runs X1–X3 |
+| 6 | [MEDIUM] The claimed first-merge no-op contradicts the old workflow | `.github/workflows/release.yml:75` takes the "already released" exit only when the tag names another commit; a matching head builds and reaches `gh release create` (`:244`) | accepted | §2.4's transition: a pull request's run reads the workflow from its merge ref, which drops the trigger; the old path's worst case is a failed publish; step 10 adds the first release's check to known issues |
 
 ## Evidence log
 
