@@ -10,12 +10,14 @@ Start at the repo root on the version branch `0.NN`, with [branch documentation 
 
 **Commit messages are one subject line, with no body**, in Conventional Commits, which the `commit-msg` hook checks once `just hooks` has run: the release commit is `chore(release): X.Y.Z short summary`, for example `chore(release): 0.109.0 example 01 quick fixes`, and the pull request takes the same title. 0.108's `Update 0.108: …` was the last of the old form.
 
+**A minor or major release sits first** (`D-226`): before the cut, `just perf sitting` against the previous tag, unattended with the owner's NoMachine client disconnected (`--wait-quiet 10800` waits for quiet). A `regressed` owned metric needs a fix or a [known-issues](known-issues.md) entry naming the sitting's path before the cut; a patch release takes no sitting.
+
 1. **Agent: cut once and run every check.** All of it passes before anything is handed over. Review the changed-file list: the commit takes everything `git status --short` shows.
 
    ```bash
    just release-cut X.Y.Z &&
    just check && just ctx && just repo-check && just api-check &&
-   just script-test && just smoke && just notices && just template-check &&
+   just script-test && just smoke && just perf counters && just notices && just template-check &&
    git diff --check && git status --short && git diff --stat
    ```
 

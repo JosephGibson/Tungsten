@@ -90,13 +90,13 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-041` | Release/profile tuning is the baseline. Amended by `D-096`: core dev opt-level 1; `D-111`: unpacked debuginfo. |
 | `D-068` | One shared instruction body, scoped render rules and symlinked skills; `just ctx`. Amended by `D-106`: 12 KiB index. |
 | `D-069` | Pinned Rust, edition 2024, strict CPU and dependency gates. Amended by `D-103`: 1.x MSRV bumps only in minors. |
-| `D-070` | Informational CPU CI; GPU/audio/perf local. Narrows `D-002`. Amended by `D-112`: dev-profile benches; `D-121`: Windows tests. Releases: `D-071`. |
+| `D-070` | Informational CPU CI; GPU/audio/perf local. Narrows `D-002`. Amended by `D-112`: dev-profile benches; `D-121`: Windows tests. Releases: `D-071`. Amended by `D-226`: counter guards run in `just check`. |
 | `D-071` | Version/changelog cut and release archives. CPU levels: `D-072`. README/handoff superseded by `D-074`; tag-push trigger by `D-079`. Amended by `D-120`: debug/probe; `D-122`: notices; `D-196`: one zip per platform under a plain name. |
 | `D-072` | Portable/v3 builds behind std-only launchers. Supersedes `D-071`'s generic build. Amended by `D-122`: notices; `D-186`: the template's builds, run from its folder; `D-193`: the fixtures crate stays out; `D-196`: launchers under player-facing names beside `data/`. |
 | `D-074` | Canonical release guide, version-free README and Git preflight. Supersedes `D-071`'s README/handoff; post-merge tags/local squash superseded by `D-079`. |
 | `D-079` | Human commit/tag/push/PR handoff; merge publishes the tagged tree. Supersedes `D-071`'s tag trigger and `D-074`'s post-merge tag/local squash. Amended by `D-215`: agents commit in Conventional Commits, own paths only, no pre-squash commit. |
 | `D-077` | Symphonia's `pcm` codec is enabled, so PCM WAV decodes (the platformer's synthesized sound effects); extends `D-028`. |
-| `D-078` | Seeded benchmark suite, stdlib runner, owned metrics and per-run verdicts; pacing evidence here. Narrows `D-044`. Amended by `D-095`: validity. |
+| `D-078` | Seeded benchmark suite, stdlib runner, owned metrics and per-run verdicts; pacing evidence here. Narrows `D-044`. Amended by `D-095`: validity. Amended by `D-226`: registry, sittings, aligned builds, late GPU timings. |
 | `D-095` | Background load or tree edits invalidate captures; digest equality is informational. Amends `D-078`. Amended by `D-141`: pre-build refusal replaces duplicate manual prechecks. |
 | `D-096` | Core dev/test opt-level 1; release/perf builds unchanged. Amends `D-041`. |
 | `D-097` | Human publication; terse evidence and one changelog line. Patch-series clause superseded by `D-098`; local-commit clause by `D-105`. |
@@ -115,7 +115,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-122` | Release archives include version-checked third-party/license notices; `just notices`. Amends `D-071`, `D-072`. Amended by `D-196`: one notices file, the standard library's as text. |
 | `D-124` | Taffy behind Tungsten layout styles, never public (`D-015` rule 3); no grid, rounding at extraction. |
 | `D-140` | Bounded maintenance plans in-session; saved handoffs and milestone/API reviews remain. Canonical checks: [validation](validation.md). Amended by `D-150`: no approval or API review stop. Amended by `D-215`: the 1.0 milestone route retired; a large change keeps one plan file, deleted when done. |
-| `D-141` | Perf run/suite/sweep refuse known encoder/foreign-build load before building; existing override and measured scans remain. Amends `D-095`. |
+| `D-141` | Perf run/suite/sweep refuse known encoder/foreign-build load before building; existing override and measured scans remain. Amends `D-095`. Amended by `D-226`: a sitting's start check and `--wait-quiet`. |
 | `D-150` | No owner-approval stops on the road to 1.0: plans end with the run prompt, level C critiques its own step 1 API diff, gates take defaults and sign, plan/run status from the plan's header and evidence, no graduation sessions; publication stays the owner's. Amends `D-109`, `D-118`, `D-140`. Amended by `D-215`: the level C clause goes with level C. |
 | `D-151` | Opus 5.5 max only for level C plans and gates (complexity 2–4); every other session stage xhigh, Fable and high rules kept. Supersedes the max clauses of `D-118` and `D-136`. Amended by `D-195`: a stop's own `tier` comes first; example 01's stops run Opus max. Amended by `D-215`: art or sound sessions on Opus max, code at xhigh, by rule. |
 | `D-152` | README owned fields count cut/tagged/merged stops as closed; `just release-cut` writes them; register rows are not edited after the merge. Extends `D-109`. Superseded by `D-215`: `ROADMAP.md` replaces the owned fields. |
@@ -126,6 +126,7 @@ Navigation keys and short takeaways for every decision heading in [`DECISIONS.md
 | `D-195` | A stop's own `tier` in `roadmap.json` sets its session stages' model and effort ahead of the rule; example 01's four stops (`e01a`–`e01d`) run every plan and run session on Opus 5.5 at max, since each generates assets. Amends `D-151`. Superseded by `D-215`: the tier is a rule, not a field. |
 | `D-196` | Release archives for players: `tungsten-examples-<version>-<platform>.zip` on both platforms; launchers named by `TITLES` (`Platformer`, `Benchmark`, `Template`) beside `README.txt`, `LICENSE.txt`, `THIRD-PARTY-NOTICES.txt` and a `data/` folder with the builds and their files; the standard library's notices as the file's last, plain-text section; no debug archive. Amends `D-071`, `D-072`, `D-120`, `D-122`, `D-186`. Amended by `D-197`: folder games ship under `data/<folder>/`; `Platformer` joins `FOLDERS`. |
 | `D-225` | Scripted runs (redo 7.2): `tungsten run --script`, `render` and `describe` on handshake variables in the game's own build; script and report JSON at version 1 (`tungsten_core::script`); a capture per script frame and loops; the camera override drawn at extract only; script mode pins dt, drops input and focus loss, and takes `TUNGSTEN_USER_DIR` alone. Amends `D-142`; extends `D-182`. |
+| `D-226` | Benchmarks (redo 7.3): one row registry, `scripts/perf.py`; sittings with an A/A and one rerun, aligned builds, RSS within a sitting, budget verdicts; GPU timestamps from a non-blocking ring; counter guards in `just check`; `CountingAlloc` test-only global state; no per-plan sitting, a sitting per minor or major release. Amends `D-078`, `D-141`, `D-070`. |
 
 ## ECS / Runtime Flow
 

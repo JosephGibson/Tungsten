@@ -458,6 +458,14 @@ class CheckSelection(unittest.TestCase):
         self.assertNotIn("cargo test -p tungsten-render --test shader_coverage --locked", commands)
         self.assertTrue(any("mirror" in r for r in commands["cargo test -p tungsten-render --locked"]["reasons"]))
         self.assertTrue(any("mirrors" in note for note in review))
+        self.assertTrue(any("just perf counters" in note for note in review))
+        self.assertEqual(unknown, [])
+
+    def test_hot_ecs_work_is_reviewed_on_its_counter_guards_not_a_capture(self):
+        commands, review, unknown = self.selection("crates/tungsten-core/src/ecs/world.rs")
+        note = next(note for note in review if note.startswith("Hot ECS"))
+        self.assertIn("counter guards", note)
+        self.assertNotIn("every CPU row", note)
         self.assertEqual(unknown, [])
 
     def test_kit_sources_select_their_tests_and_the_umbrellas_harness_tests(self):

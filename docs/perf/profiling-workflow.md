@@ -1,6 +1,6 @@
 # Profiling Workflow
 
-The capture contract for Tungsten performance work: how to run the rows, what a valid capture is, how two captures compare and how a sitting judges a change (`D-078` as redo 7.3 amends it). [`benchmarks.md`](benchmarks.md) describes the rows, their knobs, owned metrics and guards, the counter guards and the levers for 9.2. `just perf <command>` runs `scripts/perf.py`, a standard-library Python 3.12 runner; `scripts/perf_stats.py` holds the parsing, statistics and verdicts, `scripts/perf-rows.json` the rows, and `just perf-test` runs `scripts/test-perf.py`.
+The capture contract for Tungsten performance work: how to run the rows, what a valid capture is, how two captures compare and how a sitting judges a change (`D-078` as `D-226` amends it). [`benchmarks.md`](benchmarks.md) describes the rows, their knobs, owned metrics and guards, the counter guards and the levers for 9.2. `just perf <command>` runs `scripts/perf.py`, a standard-library Python 3.12 runner; `scripts/perf_stats.py` holds the parsing, statistics and verdicts, `scripts/perf-rows.json` the rows, and `just perf-test` runs `scripts/test-perf.py`.
 
 Read the [capture rules](#comparison-rule-and-capture-rules) before measuring, then only the procedure needed: [quick start](#quick-start), [sittings](#sittings), [compare](#compare), [done-when checks](#writing-done-when-checks), [profiling](#profiling), [pacing](#frame-pacing) or the [telemetry format](#telemetry-lines).
 
@@ -180,8 +180,9 @@ The CPU counter guards are ordinary tests in `just check` (`D-070`'s information
 
 ## Writing done-when checks
 
+- **The counter guards first** (`D-226`). A plan's perf checks are its counter guards: a step that adds a system or changes a guarded one names the guard and states whether its pin may move and why. No plan takes a sitting of its own, except one that claims a speed-up, measures a 7.14, 7.15 or 9.2 item or changes a row's workload, which quotes a full sitting's `sitting.json`; a hot-path change may quote a quick sitting as information. A minor or major release sits against the previous tag before its cut.
 - **Ask for "not `regressed`".** An effect just under τ can't read `improved` and seldom `unchanged`: `ecs` `update` p50 read −0.26, −0.30 and −0.28 ms against τ 0.32, `noisy` each time (`D-083`). Ask for `improved` only for moves well past τ; in the dead zone, report the deltas and intervals.
-- **Capture every CPU row a shared change can move.** An ECS step captured on `ecs` alone hid `churn` `flush` 2.68 → 3.1 ms until the final suite. For ECS storage, queries or the frame loop, sit every CPU row the code runs in.
+- **Sit every row a shared change can move.** An ECS step captured on `ecs` alone once hid `churn` `flush` 2.68 → 3.1 ms until the final suite; a sitting of a shared ECS or frame-loop change takes all the CPU rows, its default.
 - **Estimate cost on the judged rows.** The arrival pass was noise on a settling pile and +8.3 % `physics_step` in `physics`, which lists about 195 bodies per substep (`D-092`). Count the new work's triggers per frame in those rows and price them against τ before writing the check.
 - **Judge relocated work on frame time.** Work moved between passes moves the pass verdicts and `render_span`: `smaa_neighborhood` read `regressed` while `gpu` `total` fell (`D-087`). Name the pass that absorbs the cost, and judge `total` and GPU engine time per frame (`drm-engine-*` in `/proc/<pid>/fdinfo/`).
 

@@ -522,6 +522,7 @@ Plan number conflict note: the M15 plan originally reserved `D-041`, but that ID
 ## D-070 — CPU-only CI that reports, not blocks
 **Amended by D-112:** the `just bench-build` step only; CI builds the benchmarks with `cargo bench --workspace --no-run --profile dev --locked`; the rest stands.
 **Amended by D-121:** the job list only; a `windows-tests` job also runs `cargo test --workspace --locked` on `windows-2025`, reporting like the rest; the rest stands.
+**Amended by D-226:** the checks only; the counter guards (redo 7.3) are ordinary tests that `just check` and CI run, as informational as the rest; GPU, audio and perf captures stay local; the rest stands.
 **Date:** 2026-09-25
 **Decision:** `.github/workflows/ci.yml` runs the shared CPU gates on pull requests, manual dispatch and pushes to `main` and `0.*`: `just check`, `just bench-build`, `just deps`, `just ctx` and `just script-test`. Actions are pinned to reviewed commit SHAs and tools to checked releases (ShellCheck by SHA-256). The token is read-only, superseded runs are cancelled, and builds use generic `RUSTFLAGS="-C target-cpu=x86-64"`. GPU, audio, visual and perf checks stay local on the reference machine. No branch protection, required status checks or PR process is added.
 **Why:** These checks are deterministic and cheap, and a clean checkout catches toolchain and dependency drift that a warm local tree hides. Hardware checks can't run on shared runners, and timings from them aren't comparable.
@@ -615,6 +616,7 @@ Synchronize the keyed map from the immediately preceding substep's live positive
 **Consequences:** Extends D-028's feature list; nothing is superseded. The decode test now checks the stereo PCM fixture's rate, channels and exact frame count instead of its rejection. `deny.toml` needs no change, because MPL-2.0 is already allowed for symphonia.
 
 ## D-078 — Benchmark suite v2
+**Amended by D-226:** the rows, runner and verdict process only; `scripts/perf-rows.json` is the one registry of rows (the bench's five benchmarks as seven rows, `e01-pit`, `template`, the `e01-areas` group), `scripts/perf.py` replaces `bench.py` and `bench_report.py`, `integrated`, capacity search, sweeps, `--profile` and the HTML reports are retired; a change is judged in a sitting (A1 B1 A2 B2 with one rerun), builds are aligned to 64 bytes by default, peak RSS is judged within one sitting only, budgets read `within`/`near`/`over`, and GPU timings come late from a ring without a stall; the verdict rule, its thresholds, the variance floor and owned-metric judging stand.
 **Date:** 2026-09-30
 **Decision:** Six scalable, deterministic benchmarks in one example package replace the four `STRESS_SCENE` scenes of `example-02-sprite-stress` and `scripts/perf-capture.sh`.
 
@@ -1795,6 +1797,7 @@ The suite with culling against the suite with interned IDs only (`D-113`), and a
 - Real-task time, usage, repeated exploration and owner corrections still need a pilot; this implementation measures documentation bytes and verifies representative navigation only. Proposals 4–9 remain unapproved.
 
 ## D-141 — Perf captures refuse known background load before building
+**Amended by D-226:** the scope only; `scripts/perf.py`'s `run` keeps the pre-build refusal, and a sitting's start check also refuses a process other than the runner and its ancestors above 20 % of a core over 5 s and a tree that changes meanwhile, with `--wait-quiet S` to wait for 60 s of quiet; the rest stands.
 **Date:** 2026-10-12
 **Decision:** `scripts/bench.py` reuses its existing `/proc` scanner and own-process-tree rule before provenance collection or building for `run`, `suite` and `run --sweep`. A known `nxcodec.bin`, or foreign `cargo`/`rustc`, refuses the command with an environment error (exit 2) before any capture directory is created. The existing `--allow-background` flag bypasses this refusal for diagnostics; measured-run scans still record the load they observe and apply the existing validity/notes policy.
 
@@ -3387,3 +3390,18 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - `Harness::run_script` runs the same runner headless, its captures recorded as not written.
 - Limits: `count` covers components registered as themselves; a script run's window shows, since a hidden surface may never present; no windowless command-line run.
 - Tests: `tungsten-core` `script`; `tungsten` `script`, `describe` and `user_dir`; `tungsten-cli` `args`, `run`, `render` and `describe`; `templates/basic` `tests/game/script.rs`; `just template-check`.
+
+## D-226 — Benchmarks judged in sittings with an A/A and one rerun, from one row registry; counter guards in `just check`; GPU timestamps read late without a stall; no per-plan sitting
+**Date:** 2026-10-29
+**Decision:** Redo 7.3. `scripts/perf-rows.json` holds every benchmark row and `just perf` runs `scripts/perf.py` over it: the bench's five benchmarks as seven rows, example 01's full pit, the template's frame and six of 01's areas, the game rows as inline scripts on `D-225`'s script mode. A change is judged in a sitting: a start check, the base exported with `git archive` and built beside the candidate, captures A1 B1 A2 B2 per row, an owned metric `regressed` only when both direct pairs say so and the base's A/A reads it `unchanged` or `noisy`, and one rerun (A3 B3 A4 B4, standing alone) when the A/A moves or a known-drift metric regresses in a pair; a quick sitting (CPU rows, A1 B1 A2, 3 repeats, 150 frames) is informational. Builds align every function and non-fallthrough block to 64 bytes on both sides. Peak RSS is judged within one sitting only. Budgets read `within`, `near` or `over` against the candidate's 95 % interval. The renderer reads GPU timestamps from a ring of four readbacks, polled without blocking, and tags each sample with the frame it measured (`gpu_passes: from=N`). Counter guards pin a headless window's allocations, archetype moves, spawns, despawns, events and sprite batches per guard, as ordinary tests; `just perf counters` pins the renderer's draw calls and upload bytes locally. `tungsten::testing::CountingAlloc` keeps its counts in thread-local cells: global state, allowed only in test binaries, which no shipped build installs. Process: no per-plan sitting; a hot-path change may quote a quick sitting; a plan that claims a speed-up, measures a 7.14, 7.15 or 9.2 item or changes a row's workload runs a full sitting; a minor or major release runs one against the previous tag before its cut, and a `regressed` owned metric needs a fix or a known-issues entry with the sitting's path.
+
+**Why:** The old runner compared two captures with no A/A, so a row could read `regressed` with nothing changed: code placement moved `ecs` and `churn` rows past τ by function addresses modulo 64 (`D-085`, `D-087`), `ecs`'s per-run mode read rows `regressed` and `improved` in a same-tree pair, and peak RSS moved 62 MiB between sittings. Per-milestone sittings cost each plan a quiet hour and caught structural costs late; a counter guard catches them in `just check`. A blocking readback made the GPU run's `total` p50 1.28× the timing run's in `gpu`; the ring reads 1.01× (this plan's step 4). 7.8–7.13 rebuild physics, saves, the kit and 01, so the guards have to exist first (redo §5.8).
+
+**Consequences:**
+- Amends `D-078`, `D-141` and `D-070` as their marker lines say.
+- Three ring slots read every fourth frame untimed on the reference adapter (the CPU runs three frames ahead in immediate mode), so the ring holds four and a GPU run takes five tail frames; a GPU run needs 95 % of its window sampled.
+- A counter guard's window detaches the log console's feed, which in a test binary carries every thread's records. Pins are Linux's; elsewhere a guard prints its reading and passes. Headless 01 loads no sprite assets, so its guard's batches read 0; `just perf counters` covers the window's.
+- The counters cost one add per archetype move, spawn, despawn and flushed queue, beside work that already moves memory.
+- `smaa_luts::upload_area` and `upload_search` became crate-private, since they take the renderer's counts.
+- The template has no counter guard: `tungsten new` copies its tests into every game. 01's release `frame_time` test fails its window-1 awake count at the plan's base too, a follow-up.
+- Tests: `world_counters_` (core), `counter_guard_` (umbrella), `timing_ring_` (render), `guards_*` (`example-02-bench`), `guards::` (01's `game`), `scripts/test-perf.py`.

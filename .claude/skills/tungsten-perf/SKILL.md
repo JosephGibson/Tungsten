@@ -5,7 +5,7 @@ description: Tungsten performance work — benchmark rows (just perf), sittings 
 
 # tungsten-perf
 
-[Profiling workflow](../../../docs/perf/profiling-workflow.md) owns the capture contract: read its capture rules first, then the section for the operation. [Benchmarks](../../../docs/perf/benchmarks.md) owns the rows' workloads, knobs, owned metrics and guards, the counter guards and the levers for 9.2 (`D-078` as redo 7.3 amends it). `scripts/perf-rows.json` is the one registry of rows. Do not keep a second copy of those tables here.
+[Profiling workflow](../../../docs/perf/profiling-workflow.md) owns the capture contract: read its capture rules first, then the section for the operation. [Benchmarks](../../../docs/perf/benchmarks.md) owns the rows' workloads, knobs, owned metrics and guards, the counter guards and the levers for 9.2 (`D-078` as `D-226` amends it). `scripts/perf-rows.json` is the one registry of rows. Do not keep a second copy of those tables here.
 
 ## Entry points
 
@@ -22,7 +22,7 @@ just perf counters                                          # GPU draw and uploa
 just perf-test
 ```
 
-## Policy
+## Policy (`D-226`)
 
 - **No per-plan sitting.** A plan's perf checks are its counter guards, which `just check` runs. A change to a hot path (ECS, frame loop, extract, physics, render) may quote a quick sitting as information.
 - **Full sittings** are the evidence for a plan that claims a speed-up, measures a 7.14, 7.15 or 9.2 list item, or changes a row's workload; and for every minor or major release, against the previous tag, before its cut, unattended with the owner's NoMachine client disconnected. A `regressed` owned metric needs a fix or a known-issues entry with the sitting's path before the cut.

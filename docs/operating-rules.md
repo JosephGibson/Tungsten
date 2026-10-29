@@ -56,6 +56,7 @@ No break ledger, no level C or its API critique, no rule that prefab and scene f
 
 - Cut when something is worth shipping, not per change. A release per milestone forced a version, a changelog section and a decision entry onto every stop.
 - Until H2's script, today's [release guide](releases.md) and `just release-cut`, without the register, catalog and roadmap steps.
+- A minor or major release runs a benchmark sitting against the previous tag before its cut; plans run none of their own, their counter guards being the check (`D-226`). Per-milestone sittings cost each plan a quiet hour and caught structural costs late, and a release-to-release sitting still dates any regression.
 
 ## Tiers
 

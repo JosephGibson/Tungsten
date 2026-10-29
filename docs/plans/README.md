@@ -34,7 +34,7 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 - Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
 - Commit at each logical step in Conventional Commits, staging only the paths you changed (never `git add -A`), and push the version branch after each commit; tags, merges and every other push stay with the human ([operating rules](../operating-rules.md#git)). Keep scratch files out of the tree.
 - Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. The release's changelog section is written from the commits at the cut.
-- For perf plans, write the done-when checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
+- A plan's perf checks are its counter guards, which `just check` runs; it takes a full sitting only when it claims a speed-up, measures a 7.14, 7.15 or 9.2 item or changes a row's workload (`D-226`). Write those checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
 
 ## Lifecycle
 

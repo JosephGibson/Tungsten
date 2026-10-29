@@ -529,7 +529,7 @@ def select_checks(root, paths):
                 review.add("Public API may change: inspect the diff; regenerate with just api when needed, run just api-check and update the W4 ledger/template for breaks or authoring changes.")
             if name == "tungsten-render" and folder == "src":
                 require("just visual", "Hardware", "renderer pixels on the reference machine; requires visual switch")
-                review.add("Renderer/frame work: inspect the affected perf rows and milestone requirements; captures follow docs/perf/profiling-workflow.md.")
+                review.add("Renderer/frame work: run `just perf counters` beside smoke and visual; perf captures follow docs/perf/profiling-workflow.md (D-226).")
         if path.startswith("crates/tungsten-core/src/physics/") or re.match(r"crates/tungsten-core/(?:tests|benches)/physics", path):
             require("just physics-release", "CPU release", "solver determinism/containment are ignored in debug; also tunneling")
         if (path.startswith(("crates/tungsten-core/src/assets/", "crates/tungsten/src/asset_loader/"))
@@ -540,7 +540,7 @@ def select_checks(root, paths):
         if (path.startswith(("crates/tungsten-core/src/physics/", "crates/tungsten-core/src/ecs/"))
                 or path in ("crates/tungsten/src/app.rs", "crates/tungsten-core/src/time.rs", "crates/tungsten-core/src/schedule.rs")
                 or re.match(r"crates/tungsten/src/\w+_extract.rs$", path)):
-            review.add("Hot ECS/physics/frame/extract work: select affected perf rows with the profiling guide; shared ECS/frame-loop milestone work captures every CPU row. No captures run here.")
+            review.add("Hot ECS/physics/frame/extract work: the counter guards in `just check` are the perf check; a quick sitting may be quoted as information (D-226). No captures run here.")
         if path.endswith(".wgsl"):
             require("cargo test -p tungsten-render --test shader_coverage --locked", "Edit loop", "Naga validation and byte-equal shader mirrors")
             require("just smoke", "Hardware", "shader/pipeline fixtures; local GPU/display")
