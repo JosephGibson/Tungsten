@@ -176,7 +176,6 @@ impl LogTally {
     }
 
     /// The error lines kept since the last mark.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     pub(crate) fn first_errors(&self) -> Vec<String> {
         self.first_errors
             .lock()

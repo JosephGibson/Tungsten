@@ -57,6 +57,73 @@ const DEFAULT_CELL: f32 = 64.0;
 /// A sheet caption's size in UI units.
 const LABEL_SIZE: f32 = 12.0;
 
+/// Reads and parses the script at `path`; the error names the file and,
+/// for a bad script, the field that failed.
+pub(crate) fn load_script(path: &Path) -> anyhow::Result<Script> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|err| anyhow::anyhow!("Failed to read the script '{}': {err}", path.display()))?;
+    Script::parse(&text)
+        .map_err(|err| anyhow::anyhow!("Invalid script '{}': {err}", path.display()))
+}
+
+/// Writes `report` to `path` as JSON, its folder made first.
+pub(crate) fn write_report(report: &Report, path: &Path) -> anyhow::Result<()> {
+    let write = || -> std::io::Result<()> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut text = serde_json::to_string_pretty(report).map_err(std::io::Error::other)?;
+        text.push('\n');
+        std::fs::write(path, text)
+    };
+    write().map_err(|err| {
+        anyhow::anyhow!(
+            "Failed to write the script report '{}': {err}",
+            path.display()
+        )
+    })
+}
+
+/// The report of a script run that never started: `failed`, with the setup
+/// error, written to `report`, logged when it cannot be.
+pub(crate) fn report_setup_failure(script: &Path, report: &Path, error: &anyhow::Error) {
+    let mut failed = Report::new(script.display().to_string());
+    failed.finish(Ending::Failed, Some(format!("{error:#}")));
+    if let Err(err) = write_report(&failed, report) {
+        log::error!("{err:#}");
+    }
+}
+
+/// One line saying why a report did not pass, or that it did.
+pub(crate) fn verdict(report: &Report) -> String {
+    if report.passed {
+        return format!("script '{}' passed", report.script);
+    }
+    let failed_asserts = report.asserts.iter().filter(|a| !a.passed).count();
+    let missed = report.captures.iter().filter(|c| !c.written).count();
+    let mut parts: Vec<String> = report.error.iter().cloned().collect();
+    for (count, one, many) in [
+        (failed_asserts, "assert failed", "asserts failed"),
+        (missed, "capture not written", "captures not written"),
+        (report.failed_steps.len(), "step failed", "steps failed"),
+        (report.unreached.len(), "step unreached", "steps unreached"),
+    ] {
+        match count {
+            0 => {}
+            1 => parts.push(format!("1 {one}")),
+            n => parts.push(format!("{n} {many}")),
+        }
+    }
+    format!(
+        "script '{}' did not pass: {}",
+        report.script,
+        parts.join(", ")
+    )
+}
+
 /// The engine's script hooks: core's probes, then `states` and `log`.
 pub(crate) fn engine_hooks() -> ScriptHooks {
     let mut hooks = ScriptHooks::new();
@@ -116,7 +183,6 @@ impl ScriptLog {
         })
     }
 
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     fn report(&self) -> LogReport {
         let (errors, warnings) = self.since_start();
         LogReport {
@@ -266,7 +332,6 @@ pub(crate) struct ScriptRunner {
 
 impl ScriptRunner {
     /// A runner for `script`, reported as `path`.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     pub(crate) fn new(script: Script, path: &str, headless: bool) -> Self {
         let schedule = script.schedule();
         Self {
@@ -292,7 +357,6 @@ impl ScriptRunner {
     }
 
     /// How the script ended, once its last frame or an `exit` has run.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     pub(crate) fn ended(&self) -> Option<Ending> {
         self.ended
     }
@@ -480,10 +544,10 @@ impl ScriptRunner {
         }
     }
 
-    /// The report, with `ended` unless the script ended itself, and every
-    /// occurrence the run never settled unreached. The World is left with
+    /// The report, with `ended` unless the script ended itself, `failed`
+    /// with a fatal `error`, and every occurrence the run never settled
+    /// unreached. The World is left with
     /// the game's camera and UI.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
     pub(crate) fn finish(
         mut self,
         world: &mut World,
@@ -491,7 +555,12 @@ impl ScriptRunner {
         error: Option<String>,
     ) -> Report {
         self.put_back(world);
-        let ended = self.ended.unwrap_or(ended);
+        // A fatal error ends the run `failed`, whatever came first.
+        let ended = if error.is_some() {
+            Ending::Failed
+        } else {
+            self.ended.unwrap_or(ended)
+        };
         for (at, occurrence) in self.schedule.iter().enumerate() {
             if !self.settled[at] {
                 self.report.unreached.push(Unreached {

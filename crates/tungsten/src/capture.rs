@@ -74,6 +74,16 @@ impl Capture {
         }
     }
 
+    /// No capture yet; a script [`add`](Self::add)s its own.
+    pub(crate) fn empty() -> Self {
+        Self {
+            targets: Vec::new(),
+            ended: false,
+            outcomes: Vec::new(),
+            error: None,
+        }
+    }
+
     /// Asks for `frame`'s render at `path`, through the blit path.
     pub(crate) fn add(&mut self, frame: u64, path: PathBuf) {
         let at = self.targets.partition_point(|t| t.target_frame <= frame);

@@ -1,6 +1,7 @@
 //! The game's per-user folder (`D-119`, `D-159`): where its settings, saves
 //! and logs live, resolved from smoke mode, `game.id`, `game.user_folder`,
-//! the environment and the platform.
+//! the environment and the platform; a script run's from the environment
+//! alone (redo 7.2).
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,22 @@ impl UserDirs {
             logs: dir.join("logs"),
         }
     }
+}
+
+/// A script run's folders (redo 7.2): `TUNGSTEN_USER_DIR`'s alone, over
+/// code's `UserFolder`, and `None` without it (or set but empty) or with an
+/// invalid id, so a script never touches the player's folder. `env` looks a
+/// variable up, as [`resolve`]'s does.
+pub(crate) fn resolve_scripted(
+    game: &GameConfig,
+    env: impl Fn(&str) -> Option<OsString>,
+) -> Option<UserDirs> {
+    if game.validate().is_err() {
+        return None;
+    }
+    env(USER_DIR_ENV)
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| UserDirs::under(Path::new(&dir)))
 }
 
 /// Resolves the game's folders, in this order: smoke mode, an invalid id and

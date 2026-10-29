@@ -263,3 +263,25 @@ fn smoke_mode_wins_over_at() {
         assert_eq!(dirs, None, "{platform:?}");
     }
 }
+
+#[test]
+fn a_script_runs_folder_is_the_environments_over_codes_and_none_without_it() {
+    let mut pinned = game("my-game");
+    pinned.user_folder = UserFolder::At(PathBuf::from("/srv/pinned"));
+    assert_eq!(
+        resolve_scripted(&pinned, env_of(&[OVERRIDE, HOME])),
+        Some(UserDirs::under(Path::new("/tmp/tu"))),
+        "TUNGSTEN_USER_DIR over code's UserFolder::At"
+    );
+    assert_eq!(resolve_scripted(&pinned, env_of(&[HOME])), None);
+    assert_eq!(resolve_scripted(&game("my-game"), env_of(&[HOME])), None);
+    assert_eq!(
+        resolve_scripted(&game("my-game"), env_of(&[(USER_DIR_ENV, ""), HOME])),
+        None
+    );
+    assert_eq!(
+        resolve_scripted(&game("Not An Id"), env_of(&[OVERRIDE])),
+        None,
+        "an invalid id resolves no folder, as `resolve` does"
+    );
+}

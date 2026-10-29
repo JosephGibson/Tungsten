@@ -456,3 +456,55 @@ fn a_capture_in_the_harness_is_recorded_as_not_written() {
         ]
     );
 }
+
+#[test]
+fn a_fatal_error_ends_the_report_failed_and_the_report_round_trips() {
+    let script = script(3, &json!([{ "frame": 1, "probe": "frame" }]));
+    let mut harness = Harness::new(app());
+    let report = harness.run_script(&script);
+    assert!(report.passed);
+    assert_eq!(verdict(&report), "script 'harness' passed");
+
+    // A render that fails after the script's own end still fails the run.
+    let mut runner = ScriptRunner::new(script.clone(), "run.json", false);
+    runner.ended = Some(Ending::Frames);
+    let failed = runner.finish(
+        harness.world_mut(),
+        Ending::GameExit,
+        Some("render failed at frame 3".to_owned()),
+    );
+    assert_eq!(failed.ended, Ending::Failed);
+    assert!(!failed.passed);
+    assert_eq!(
+        verdict(&failed),
+        "script 'run.json' did not pass: render failed at frame 3, 1 step unreached"
+    );
+
+    let dir = tempdir();
+    let path = dir.join("out/report.json");
+    write_report(&failed, &path).unwrap();
+    let read: Report = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(read, failed);
+
+    let setup = dir.join("setup.json");
+    report_setup_failure(
+        Path::new("run.json"),
+        &setup,
+        &anyhow::anyhow!("Invalid script 'run.json': steps[0].captur: unknown field"),
+    );
+    let read: Report = serde_json::from_str(&fs::read_to_string(&setup).unwrap()).unwrap();
+    assert_eq!(
+        (read.ended, read.passed, read.frames),
+        (Ending::Failed, false, 0)
+    );
+    assert!(read.error.unwrap().contains("steps[0].captur"));
+
+    let bad = dir.join("bad.json");
+    fs::write(
+        &bad,
+        r#"{ "version": 1, "frames": 5, "steps": [{ "frame": 1, "captur": "a.png" }] }"#,
+    )
+    .unwrap();
+    let err = load_script(&bad).unwrap_err().to_string();
+    assert!(err.contains("steps[0].captur"), "{err}");
+}

@@ -63,6 +63,10 @@ const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 /// Names the report file `tungsten check` reads. Set, `App::run` checks the
 /// game's files in place of opening a window (M70).
 const CHECK_ENV: &str = "TUNGSTEN_CHECK";
+/// Names the script a run follows (redo 7.2); `TUNGSTEN_REPORT` names the
+/// report it writes. Both are the command line's, not a promised interface.
+const SCRIPT_ENV: &str = "TUNGSTEN_SCRIPT";
+const REPORT_ENV: &str = "TUNGSTEN_REPORT";
 
 /// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
 /// A stall (debugger pause, window drag, a blocked acquire) would otherwise
@@ -151,6 +155,8 @@ pub struct App {
     routed_events: usize,
     /// The script this run follows (redo 7.2); `None` outside a script.
     pub(crate) script: Option<ScriptRunner>,
+    /// Where a script run writes its report.
+    script_report: Option<PathBuf>,
 }
 
 impl App {
@@ -183,9 +189,20 @@ impl App {
     /// # Errors
     ///
     /// As [`App::new`].
-    pub fn with_plugins(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
+    pub fn with_plugins(config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
+        Self::build(config, plugins).inspect_err(|err| {
+            // A script run that never starts still reports why.
+            if let (Some(script), Some(report)) = (script_from_env(), report_from_env()) {
+                crate::script::report_setup_failure(&script, &report, err);
+            }
+        })
+    }
+
+    fn build(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
         let smoke_frames = smoke_frames_from_env();
         let checking = check_report_from_env().is_some();
+        // A script run reads its user folder from `TUNGSTEN_USER_DIR` alone.
+        let script_path = script_from_env().filter(|_| !checking);
         let invalid = config
             .game
             .validate()
@@ -193,15 +210,17 @@ impl App {
             .or_else(|| config.time.validate().err())
             .or_else(|| config.audio.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
-        let user_dirs = if invalid.is_none() {
-            user_dir::resolve(
+        let user_dirs = match (&invalid, &script_path) {
+            (Some(_), _) => None,
+            (None, Some(_)) => {
+                user_dir::resolve_scripted(&config.game, |name| std::env::var_os(name))
+            }
+            (None, None) => user_dir::resolve(
                 &config.game,
                 smoke_frames.is_some() || checking,
                 Platform::current(),
                 |name| std::env::var_os(name),
-            )
-        } else {
-            None
+            ),
         };
         let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
         // A check run's output is its errors: the loaders' info lines stay out.
@@ -216,12 +235,19 @@ impl App {
             log::error!("{err}");
             return Err(err.into());
         }
+        let script = match &script_path {
+            Some(path) => {
+                Some(crate::script::load_script(path).inspect_err(|err| log::error!("{err:#}"))?)
+            }
+            None => None,
+        };
         for warning in config.take_load_warnings() {
             log::warn!(target: "tungsten_core::config", "{warning}");
         }
         if user_dirs.is_none()
             && smoke_frames.is_none()
             && !checking
+            && script.is_none()
             && let Some(id) = &config.game.id
         {
             log::warn!("Game '{id}' has no user folder, so no log or crash file is written");
@@ -253,7 +279,12 @@ impl App {
             return Err(err.into());
         }
 
-        let resolved_display = resolve_startup_display(&config);
+        let mut resolved_display = resolve_startup_display(&config);
+        // A script's resolution is the window's and the captures' size.
+        if let Some([width, height]) = script.as_ref().and_then(|script| script.resolution) {
+            resolved_display.resolution = tungsten_core::Resolution { width, height };
+            resolved_display.display_mode = DisplayMode::Windowed;
+        }
         let input_map_path = PathBuf::from("input.json");
         let user_bindings = user_dirs
             .as_ref()
@@ -398,7 +429,12 @@ impl App {
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             redraw_deadline: None,
             prev_frame_start: None,
-            capture: parse_capture_config().map(Capture::new),
+            // Under a script its own steps capture; the variables are ignored.
+            capture: if script.is_some() {
+                Some(Capture::empty())
+            } else {
+                parse_capture_config().map(Capture::new)
+            },
             audio_capture: None,
             frames_rendered: 0,
             fatal_error: None,
@@ -408,7 +444,10 @@ impl App {
             exclusive_warning: std::sync::Once::new(),
             cursor: CursorIcon::Default,
             routed_events: 0,
-            script: None,
+            script: script.zip(script_path).map(|(script, path)| {
+                ScriptRunner::new(script, &path.display().to_string(), false)
+            }),
+            script_report: report_from_env(),
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -617,18 +656,61 @@ impl App {
                 .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
             return self.run_check(&report, &game_dir);
         }
-        self.resolve_schedule()
-            .inspect_err(|err| log::error!("{err}"))?;
-        self.start_hot_reload();
-        self.start_gamepads();
-        let event_loop = EventLoop::new()
-            .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
-        event_loop
-            .run_app(&mut self)
-            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+        let started = self.run_window();
+        if self.script.is_some() {
+            return self.finish_script(started.err());
+        }
+        started?;
         match self.take_run_error() {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+
+    /// Resolves the schedule and runs the event loop to its end. A script
+    /// run starts no watcher and no gamepad backend (redo 7.2).
+    fn run_window(&mut self) -> anyhow::Result<()> {
+        self.resolve_schedule()
+            .inspect_err(|err| log::error!("{err}"))?;
+        if self.script.is_none() {
+            self.start_hot_reload();
+            self.start_gamepads();
+        }
+        let event_loop = EventLoop::new()
+            .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
+        event_loop
+            .run_app(self)
+            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+        Ok(())
+    }
+
+    /// A script run's end (redo 7.2): the report, with the fatal error as
+    /// its error, written to `TUNGSTEN_REPORT`; the run's error is the fatal
+    /// one, else the report's verdict when it did not pass.
+    fn finish_script(&mut self, setup_error: Option<anyhow::Error>) -> anyhow::Result<()> {
+        let runner = self.script.take().expect("a script run keeps its runner");
+        let fatal = setup_error.or_else(|| self.fatal_error.take());
+        // A frame armed but never rendered settles here, logged.
+        if let Some(capture) = &mut self.capture {
+            let _ = capture.finish(self.frames_rendered);
+        }
+        let report = runner.finish(
+            &mut self.world,
+            tungsten_core::script::Ending::GameExit,
+            fatal.as_ref().map(|err| format!("{err:#}")),
+        );
+        if let Some(path) = &self.script_report {
+            crate::script::write_report(&report, path).inspect_err(|err| log::error!("{err:#}"))?;
+        }
+        if let Some(fatal) = fatal {
+            return Err(fatal);
+        }
+        if report.passed {
+            Ok(())
+        } else {
+            let verdict = crate::script::verdict(&report);
+            log::error!("{verdict}");
+            Err(anyhow::anyhow!(verdict))
         }
     }
 
@@ -1028,8 +1110,7 @@ pub(crate) enum FrameClock {
     /// Elapsed wall time since the previous frame, capped at [`MAX_DT_SECS`]
     /// (or pinned to 60 Hz under `TUNGSTEN_SMOKE_FRAMES`): the window loop.
     Wall,
-    /// This dt, as given: a headless caller.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
+    /// This dt, as given: a headless caller, or a script run's 60 Hz.
     Pinned(f32),
 }
 
@@ -2137,6 +2218,20 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
 }
 
 /// `TUNGSTEN_CHECK`, set and not empty: the report file of a check run.
+/// `TUNGSTEN_SCRIPT`, when set: a script run.
+fn script_from_env() -> Option<PathBuf> {
+    std::env::var_os(SCRIPT_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
+/// `TUNGSTEN_REPORT`, when set: where a script run writes its report.
+fn report_from_env() -> Option<PathBuf> {
+    std::env::var_os(REPORT_ENV)
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+}
+
 fn check_report_from_env() -> Option<PathBuf> {
     std::env::var_os(CHECK_ENV)
         .filter(|value| !value.is_empty())
@@ -2477,7 +2572,10 @@ impl ApplicationHandler for App {
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
             | WindowEvent::MouseWheel { .. }
-                if self.smoke_frames_remaining.is_some() => {}
+                if self.smoke_frames_remaining.is_some() || self.script.is_some() => {}
+            // A script run drops the window's input as smoke does, and its
+            // focus loss, so a game that pauses unfocused plays on.
+            WindowEvent::Focused(false) if self.script.is_some() => {}
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,
@@ -2524,7 +2622,23 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
-                match self.run_frame(frame_start, FrameClock::Wall, |_| {}) {
+                // A script run's dt is pinned at 60 Hz, as smoke's is.
+                let clock = if self.script.is_some() {
+                    FrameClock::Pinned(SMOKE_MODE_FIXED_DT_SECS)
+                } else {
+                    FrameClock::Wall
+                };
+                match self.run_frame(frame_start, clock, |_| {}) {
+                    // The script's last frame or `exit` ends the run.
+                    FrameEnd::Completed
+                        if self
+                            .script
+                            .as_ref()
+                            .is_some_and(|script| script.ended().is_some()) =>
+                    {
+                        event_loop.exit();
+                        return;
+                    }
                     FrameEnd::Completed => {}
                     // A failed render ends the run at once; `App::run`
                     // returns its error. The last frame has presented.
