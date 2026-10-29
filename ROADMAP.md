@@ -4,7 +4,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2–7.5 have not run, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time, 7.2 next.
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2–7.5 have not run, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time, 7.2 in work.
+- `agent-tooling`: redo 7.2, `tungsten run --script`, `tungsten render` and `tungsten describe`, with sequence capture, so review sheets and in-game captures need no scratch crate ([plan](docs/plans/agent-tooling.md)).
 
 ## Next
 
