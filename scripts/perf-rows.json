@@ -364,7 +364,21 @@
       "guards": [],
       "known_drift": [],
       "budgets": [],
-      "workload_version": 1
+      "workload_version": 1,
+      "counters": {
+        "draw_calls": {
+          "each": 76
+        },
+        "upload_bytes": {
+          "sum": 50078976
+        },
+        "text_renders": {
+          "each": 1
+        },
+        "sprite_batches": {
+          "each": 60
+        }
+      }
     },
     {
       "name": "gpu-throughput",
@@ -401,7 +415,21 @@
       "guards": [],
       "known_drift": [],
       "budgets": [],
-      "workload_version": 1
+      "workload_version": 1,
+      "counters": {
+        "draw_calls": {
+          "each": 1
+        },
+        "upload_bytes": {
+          "each": 19200128
+        },
+        "text_renders": {
+          "each": 1
+        },
+        "sprite_batches": {
+          "each": 1
+        }
+      }
     },
     {
       "name": "particles",
@@ -599,7 +627,21 @@
       "guards": [],
       "known_drift": [],
       "budgets": [],
-      "workload_version": 1
+      "workload_version": 1,
+      "counters": {
+        "draw_calls": {
+          "each": 15
+        },
+        "upload_bytes": {
+          "each": 848
+        },
+        "text_renders": {
+          "each": 2
+        },
+        "sprite_batches": {
+          "each": 1
+        }
+      }
     },
     {
       "name": "e01-area-clearing",
@@ -679,7 +721,21 @@
       "guards": [],
       "known_drift": [],
       "budgets": [],
-      "workload_version": 1
+      "workload_version": 1,
+      "counters": {
+        "draw_calls": {
+          "each": 65
+        },
+        "upload_bytes": {
+          "sum": 818400
+        },
+        "text_renders": {
+          "each": 2
+        },
+        "sprite_batches": {
+          "each": 21
+        }
+      }
     },
     {
       "name": "e01-area-aqueduct",

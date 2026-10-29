@@ -4,6 +4,8 @@
   list [--json]                   the rows `scripts/perf-rows.json` holds
   run <row|group> [flags]         one capture per row
   compare <baseline> <candidate>  verdicts on the candidate's owned metrics
+  sitting [flags]                 the working tree against a ref, A1 B1 A2 B2 per row
+  counters [--write]              the GPU counter pins, checked or written
   baseline save|list|rm           named baselines under perf-runs/baselines/
 
 A capture is `perf-runs/<UTC>-<row>/capture.json` at schema 2. Builds are
@@ -50,8 +52,23 @@ BACKGROUND_SCAN_SECONDS = 1.0
 # Frames a GPU run takes past its window, so the window's last timestamps
 # land before the process exits: the renderer's ring depth (4) plus one.
 GPU_TAIL = 5
+EXIT_REGRESSED = 1
 EXIT_ERROR = 2
 EXIT_INVALID = 3
+# A sitting's start check (`D-141` as 7.3 extends it): a process other than
+# the runner and its ancestors above this share of a core over the sample is
+# busy. `--wait-quiet` polls every QUIET_POLL_S until QUIET_SPAN_S run quiet.
+QUIET_SAMPLE_S = 5
+BUSY_SHARE = 0.20
+QUIET_POLL_S = 10
+QUIET_SPAN_S = 60
+# Quick mode: CPU rows, A1 B1 A2, no rerun; informational.
+QUICK_REPEAT = 3
+QUICK_FRAMES = 150
+# The GPU counter check: these rows, each at its warm-up plus 30 frames.
+COUNTER_ROWS = ("gpu", "gpu-throughput", "template", "e01-area-clearing")
+COUNTER_FRAMES = 30
+COUNTER_FIELDS = ("draw_calls", "upload_bytes", "text_renders", "sprite_batches")
 
 
 class PerfError(Exception):
@@ -436,15 +453,17 @@ def one_run(row, binary, tree, run_dir, *, warmup, frames, gpu, lister, tree_rea
 
 
 def capture_row(row, binary, tree, out_dir, *, flags, provenance, machine_info, repeat=None, frames=None,
-                sitting=None, allow_background=False, lister=list_processes, tree_reader=None):  # fmt: skip
+                sitting=None, allow_background=False, lister=list_processes, tree_reader=None, watched=None):  # fmt: skip
     """`repeat` runs of `row` (a timing run, a GPU run beside it or alone, as
-    the row's `gpu` says), then `capture.json` and `README.md` in `out_dir`."""
+    the row's `gpu` says), then `capture.json` and `README.md` in `out_dir`.
+    `tree_reader` must keep returning `watched` (the working tree's commit and
+    dirty state, by default the provenance's) or a run saw the tree change."""
     repeat = repeat or row["repeat"]
     frames = frames or row["frames"]
     warmup = row["warmup"]
     gpu = row.get("gpu", False)
     labels = {"only": [True], True: [False, True]}.get(gpu, [False])
-    built = {key: provenance[key] for key in ("commit", "dirty")}
+    built = watched or {key: provenance[key] for key in ("commit", "dirty")}
     reader = tree_reader or (lambda: {key: value for key, value in tree_state(tree).items() if key in ("commit", "dirty")})
     runs, digests, notes = [], [], []
     backend = config = None
@@ -545,6 +564,370 @@ def capture_readme(capture):
             lines.append(f"| `{entry['metric']}` | {stat} | " + " | ".join(cells) + " |")
     lines += ["", "Peak RSS (KiB): " + ", ".join(str(run["rss_peak_kib"]) for run in capture["runs"]), ""]
     return "\n".join(lines)
+
+
+# --- Sittings ------------------------------------------------------------------------
+
+
+def cpu_ticks(proc="/proc"):
+    """`{pid: (ppid, name, utime + stime ticks)}` of every process."""
+    table = {}
+    try:
+        entries = list(os.scandir(proc))
+    except OSError:
+        return table
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            with open(os.path.join(entry.path, "stat"), encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+            close = text.rindex(")")
+            fields = text[close + 2 :].split()
+            table[int(entry.name)] = (int(fields[1]), text[text.index("(") + 1 : close], int(fields[11]) + int(fields[12]))
+        except (OSError, ValueError, IndexError):
+            continue
+    return table
+
+
+def ancestors(table, pid):
+    """`pid` and every process above it in `table`."""
+    seen = set()
+    while pid in table and pid not in seen:
+        seen.add(pid)
+        pid = table[pid][0]
+    return seen
+
+
+def load_1m():
+    return read_text("/proc/loadavg").split(" ", 1)[0] or "n/a"
+
+
+def start_check(*, own_pid, tick_reader=cpu_ticks, tree_reader, sleep=time.sleep, seconds=QUIET_SAMPLE_S,
+                ticks_per_s=None):  # fmt: skip
+    """A sitting's contamination check: the encoder or a build outside the
+    runner, a process other than the runner and its ancestors above
+    BUSY_SHARE of a core over `seconds`, or the tree's dirty state changing
+    meanwhile, each a refusal. Returns `(refusals, record)`; the record holds
+    the 1-minute load, the governor, AC power and the five busiest processes."""
+    ticks_per_s = ticks_per_s or os.sysconf("SC_CLK_TCK")
+    before, tree_before = tick_reader(), tree_reader()
+    sleep(seconds)
+    after, tree_after = tick_reader(), tree_reader()
+    excluded = ancestors(after, own_pid)
+    processes = [(pid, ppid, name) for pid, (ppid, name, _) in after.items()]
+    refusals = [f"background load: {name}" for name in background_offenders(processes, own_pid)]
+    shares = []
+    for pid, (_, name, ticks) in after.items():
+        if pid in excluded or pid not in before or before[pid][1] != name:
+            continue
+        share = (ticks - before[pid][2]) / (ticks_per_s * seconds)
+        shares.append((share, name, pid))
+    shares.sort(reverse=True)
+    refusals += [f"busy process: {name} ({pid}) at {share:.0%} of a core" for share, name, pid in shares if share > BUSY_SHARE]
+    if tree_after != tree_before:
+        refusals.append("the tree changed during the check")
+    record = {
+        "load_1m": load_1m(),
+        "governor": file_value_or_na("/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"),
+        "ac_power": ac_power(),
+        "top": [{"name": name, "pid": pid, "share": round(share, 3)} for share, name, pid in shares[:5]],
+    }
+    return refusals, record
+
+
+def wait_quiet(limit_s, check, *, sleep=time.sleep, clock=time.monotonic):
+    """Runs `check` every QUIET_POLL_S until its runs have been quiet for
+    QUIET_SPAN_S, or until `limit_s`; returns the last `(refusals, record)`,
+    the refusals empty once quiet."""
+    start = clock()
+    quiet_since = None
+    while True:
+        refusals, record = check()
+        now = clock()
+        if refusals:
+            quiet_since = None
+        elif quiet_since is None:
+            quiet_since = now
+        if quiet_since is not None and now - quiet_since >= QUIET_SPAN_S:
+            return [], record
+        if now - start >= limit_s:
+            return refusals or [f"no {QUIET_SPAN_S} s of quiet within {limit_s} s"], record
+        print(f"Waiting for quiet: {'; '.join(refusals) or 'quiet so far'}", flush=True)
+        sleep(QUIET_POLL_S)
+
+
+def last_tag(repo=REPO_ROOT):
+    try:
+        return git_output(repo, "describe", "--tags", "--abbrev=0").decode().strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise PerfError("no tag reachable from HEAD; pass --base") from error
+
+
+def export_tree(ref, dest, repo=REPO_ROOT):
+    """`git archive ref` into `dest`, emptied first; the export's tree state
+    records the ref's commit."""
+    dest = Path(dest)
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True)
+    archive = subprocess.Popen(["git", "-C", str(repo), "archive", ref], stdout=subprocess.PIPE)
+    untar = subprocess.run(["tar", "-x", "-C", str(dest)], stdin=archive.stdout)
+    archive.stdout.close()
+    if archive.wait() != 0 or untar.returncode != 0:
+        raise PerfError(f"cannot export {ref}")
+    return tree_state(dest, ref=ref, repo=repo)
+
+
+def verdict_map(report):
+    return {f"{result['metric']} {result['stat']}": result["verdict"] for result in report["owned"]}
+
+
+def unstable(aa):
+    """The owned metrics an A/A reads moved."""
+    return sorted(key for key, verdict in aa.items() if verdict in ("regressed", "improved"))
+
+
+def judge_row(row, captures, quick=False):
+    """A row's verdict from its captures, `{"A1": capture, "B1": ...}`: the
+    A/A A1↔A2 and the direct pairs A1→B1, A2→B2 (quick: A1→B1 alone). A
+    metric reads `regressed` when every pair reads it so and the A/A reads it
+    `unchanged` or `noisy`. Returns the verdict, the regressed metrics, the
+    A/A, the pairs and whether a rerun is due: an A/A reading any owned
+    metric moved, or a known-drift metric regressed in a pair."""
+    owned = row["owned"]
+    aa = verdict_map(perf_stats.compare(captures["A1"], captures["A2"], owned))
+    pairs = [verdict_map(perf_stats.compare(captures["A1"], captures["B1"], owned))]
+    if not quick:
+        pairs.append(verdict_map(perf_stats.compare(captures["A2"], captures["B2"], owned)))
+    drift = {f"{entry['metric']} {stat}" for entry in row.get("known_drift", []) for stat in entry["stats"]}
+    rerun = bool(unstable(aa)) or any(pair.get(key) == "regressed" for pair in pairs for key in drift)
+    regressed = sorted(key for key in pairs[0] if all(pair.get(key) == "regressed" for pair in pairs) and aa.get(key) in ("unchanged", "noisy"))
+    if unstable(aa):
+        verdict = "unresolved"
+    else:
+        verdict = "regressed" if regressed else "ok"
+    return {"verdict": verdict, "regressed": regressed, "aa": aa, "pairs": pairs, "rerun_due": rerun}
+
+
+def sit_row(row, capture, quick=False, base_ready=True):
+    """One row of a sitting. `capture(side, label)` takes a capture of side
+    `A` (the base) or `B` (the candidate). Full: A1 B1 A2 B2, then, when the
+    first set calls for it, A3 B3 A4 B4, whose verdicts stand alone; quick:
+    A1 B1 A2 and no rerun. A row the base cannot build, or cannot run while
+    the candidate can, reads `new`, measured on the candidate."""
+    if not base_ready:
+        cand = capture("B", "B1")
+        return {"verdict": "new" if cand["valid"] else "invalid", "regressed": [], "reran": False, "aa": {}, "pairs": [], "candidate": cand}
+    order = ("A1", "B1", "A2") if quick else ("A1", "B1", "A2", "B2")
+    captures = {}
+    for label in order:
+        captures[label] = capture(label[0], label)
+        if label == "B1" and not captures["A1"]["valid"] and captures["B1"]["valid"]:
+            return {"verdict": "new", "regressed": [], "reran": False, "aa": {}, "pairs": [], "candidate": captures["B1"]}
+    if not all(item["valid"] for item in captures.values()):
+        return {"verdict": "invalid", "regressed": [], "reran": False, "aa": {}, "pairs": [], "candidate": captures["B1"]}
+    judged = judge_row(row, captures, quick)
+    reran = False
+    if judged["rerun_due"] and not quick:
+        reran = True
+        second = {}
+        for label, name in zip(("A1", "B1", "A2", "B2"), ("A3", "B3", "A4", "B4")):
+            second[label] = capture(name[0], name)
+        if not all(item["valid"] for item in second.values()):
+            return {"verdict": "invalid", "regressed": [], "reran": True, "aa": {}, "pairs": [], "candidate": second["B1"]}
+        captures = second
+        judged = judge_row({**row, "known_drift": []}, captures)
+    candidate = captures["B2"] if "B2" in captures else captures["B1"]
+    return {"verdict": judged["verdict"], "regressed": judged["regressed"], "reran": reran, "aa": judged["aa"],
+            "pairs": judged["pairs"], "candidate": candidate}  # fmt: skip
+
+
+def sitting_rows(registry, names, quick=False, cpu_only=False):
+    """The rows a sitting measures: `names` (rows or groups) or every row;
+    quick and `--cpu-only` drop GPU-only rows and the GPU runs of the rest."""
+    rows = registry["rows"] if not names else [row for name in names for row in select_rows(registry, name)]
+    rows = list({row["name"]: row for row in rows}.values())
+    if quick or cpu_only:
+        rows = [{**row, "gpu": False} for row in rows if row.get("gpu") != "only"]
+    if quick:
+        rows = [{**row, "repeat": QUICK_REPEAT, "frames": QUICK_FRAMES} for row in rows]
+    return rows
+
+
+def sitting_readme(sitting):
+    lines = [
+        f"# Sitting {sitting['id']}{' (quick, informational)' if sitting['quick'] else ''}",
+        "",
+        f"- Base: {sitting['base']['ref']} ({sitting['base']['commit']})",
+        f"- Candidate: {sitting['cand']['commit']}, dirty {sitting['cand']['dirty']}",
+        f"- Wall: {sitting['wall_s']:.0f} s",
+        f"- Start: load {sitting['start']['load_1m']}, governor {sitting['start']['governor']}, AC {sitting['start']['ac_power']}",
+        "",
+        "| Row | Verdict | Regressed | Reran |",
+        "| --- | --- | --- | --- |",
+    ]
+    for row in sitting["rows"]:
+        lines.append(f"| {row['name']} | {row['verdict']} | {', '.join(row['regressed']) or '—'} | {'yes' if row['reran'] else 'no'} |")
+    lines += ["", "Captures: `captures/<row>-<A|B><n>/`.", ""]
+    return "\n".join(lines)
+
+
+def cmd_sitting(args, root=REPO_ROOT):
+    started = time.monotonic()
+    registry = load_registry()
+    names = [name.strip() for name in (args.rows or "").split(",") if name.strip()]
+    rows = sitting_rows(registry, names, args.quick, args.cpu_only)
+    cand_state = {key: value for key, value in tree_state(root).items() if key in ("commit", "dirty")}
+
+    def check():
+        return start_check(own_pid=os.getpid(), tree_reader=lambda: git_dirty(root))
+
+    refusals, record = check()
+    if refusals and args.wait_quiet:
+        refusals, record = wait_quiet(args.wait_quiet, check)
+    if refusals:
+        message = "; ".join(refusals)
+        if not args.allow_background:
+            raise PerfError(f"the sitting refuses to start: {message}")
+        print(f"Starting despite: {message}", flush=True)
+    base_ref = args.base or last_tag()
+    base_dir = Path(root) / "target" / "perf" / "base-tree"
+    base_tree = export_tree(base_ref, base_dir)
+    cand_tree = tree_state(root)
+    flags = PLAIN_FLAGS if args.plain else ALIGNED_FLAGS
+    machine_info = machine()
+    binaries = {"A": {}, "B": {}}
+    for package in dict.fromkeys(row["package"] for row in rows):
+        binaries["B"][package] = build(root, package, flags, target_dir(root, "tree", args.plain))
+        try:
+            binaries["A"][package] = build(base_dir, package, flags, target_dir(root, "base", args.plain))
+        except PerfError as error:
+            print(f"Base: {error}; its rows read new", flush=True)
+    sitting_id = utc_stamp()
+    out = new_dir(Path(root) / "perf-runs", f"{sitting_id}-sitting{'-quick' if args.quick else ''}")
+    print(f"Output directory: {out.relative_to(root)}", flush=True)
+    results = []
+    for row in rows:
+        def capture(side, label, row=row):
+            tree, provenance = (base_dir, base_tree) if side == "A" else (root, cand_tree)
+            for attempt in (1, 2):
+                directory = new_dir(out / "captures", f"{row['name']}-{label}")
+                taken = capture_row(
+                    row, binaries[side][row["package"]], tree, directory, flags=flags, provenance=provenance,
+                    machine_info=machine_info, sitting=sitting_id, allow_background=args.allow_background,
+                    tree_reader=lambda: {key: value for key, value in tree_state(root).items() if key in ("commit", "dirty")},
+                    watched=cand_state,
+                )  # fmt: skip
+                background = taken["reasons"] and all("background load" in reason for reason in taken["reasons"])
+                if taken["valid"] or not background or attempt == 2:
+                    return taken
+                print(f"{row['name']} {label}: background load; waiting for quiet, then once more", flush=True)
+                wait_quiet(args.wait_quiet or QUIET_SPAN_S * 5, check)
+            return taken
+
+        print(f"== {row['name']}", flush=True)
+        outcome = sit_row(row, capture, args.quick, base_ready=row["package"] in binaries["A"])
+        budgets = perf_stats.compare(outcome["candidate"], outcome["candidate"], [], row.get("budgets", []))["budgets"]
+        results.append(
+            {"name": row["name"], "verdict": outcome["verdict"], "regressed": outcome["regressed"], "reran": outcome["reran"],
+             "aa": outcome["aa"], "pairs": outcome["pairs"], "budgets": budgets}
+        )  # fmt: skip
+        print(f"{row['name']}: {outcome['verdict']}{' ' + ', '.join(outcome['regressed']) if outcome['regressed'] else ''}", flush=True)
+    if not args.keep:
+        shutil.rmtree(base_dir, ignore_errors=True)
+    sitting = {
+        "schema": perf_stats.SCHEMA,
+        "kind": "sitting",
+        "id": sitting_id,
+        "base": {"ref": base_ref, "commit": base_tree["commit"]},
+        "cand": {"commit": cand_tree["commit"], "dirty": cand_tree["dirty"]},
+        "quick": bool(args.quick),
+        "cpu_only": bool(args.cpu_only or args.quick),
+        "flags": flags,
+        "start": record,
+        "wall_s": round(time.monotonic() - started, 1),
+        "rows": results,
+    }
+    (out / "sitting.json").write_text(json.dumps(sitting, indent=2) + "\n")
+    (out / "README.md").write_text(sitting_readme(sitting))
+    print(f"Sitting: {', '.join(f'{row['name']} {row['verdict']}' for row in results)}; {sitting['wall_s']:.0f} s")
+    if args.quick:
+        return 0
+    verdicts = {row["verdict"] for row in results}
+    if "invalid" in verdicts:
+        return EXIT_INVALID
+    return EXIT_REGRESSED if verdicts & {"regressed", "unresolved"} else 0
+
+
+# --- Counters ------------------------------------------------------------------------
+
+
+def counter_series(log_text, warmup, frames):
+    """Each window frame's `counters:` fields, `{field: [values]}`."""
+    measured = perf_stats.parse_log(log_text).frames[warmup : warmup + frames]
+    return {field: [(frame.counters or {}).get(field) for frame in measured] for field in COUNTER_FIELDS}
+
+
+def counter_pins(series):
+    """A pin per field: `{"each": v}` when every frame reads `v`, else the
+    window's `{"sum": total}`."""
+    pins = {}
+    for field, values in series.items():
+        if values and len(set(values)) == 1 and values[0] is not None:
+            pins[field] = {"each": int(values[0])}
+        else:
+            pins[field] = {"sum": int(sum(value or 0 for value in values))}
+    return pins
+
+
+def counter_mismatches(pins, series):
+    """How `series` breaks `pins`, one line per field; empty when it holds."""
+    problems = []
+    for field, values in series.items():
+        pin = pins.get(field)
+        if pin is None:
+            problems.append(f"{field}: no pin")
+        elif "each" in pin:
+            bad = [(index, value) for index, value in enumerate(values, start=1) if value != pin["each"]]
+            if bad:
+                index, value = bad[0]
+                problems.append(f"{field}: {len(bad)} of {len(values)} frames differ from {pin['each']}; first: window frame {index} reads {value}")
+        elif int(sum(value or 0 for value in values)) != pin["sum"]:
+            problems.append(f"{field}: the window sums {int(sum(value or 0 for value in values))}, pinned {pin['sum']}")
+    return problems
+
+
+def cmd_counters(args, root=REPO_ROOT, registry_path=REGISTRY):
+    registry = load_registry(registry_path)
+    rows = [{**row, "gpu": False, "repeat": 1, "frames": COUNTER_FRAMES} for row in registry["rows"] if row["name"] in COUNTER_ROWS]
+    binaries = {package: build(root, package, ALIGNED_FLAGS, target_dir(root, "tree", False)) for package in dict.fromkeys(row["package"] for row in rows)}
+    out = new_dir(Path(root) / "perf-runs", f"{utc_stamp()}-counters")
+    failed = []
+    for row in rows:
+        run_dir = out / row["name"]
+        run_dir.mkdir()
+        env = child_env(os.environ, side_env(row, warmup=row["warmup"], frames=COUNTER_FRAMES, gpu=False, run_dir=run_dir))
+        result = run_child([str(binaries[row["package"]])], env, Path(root) / row["folder"], run_dir / "timing.log")
+        shutil.rmtree(run_dir / "timing-user", ignore_errors=True)
+        series = counter_series((run_dir / "timing.log").read_text(errors="replace"), row["warmup"], COUNTER_FRAMES)
+        if result["exit_code"] != 0 or any(len(values) < COUNTER_FRAMES for values in series.values()):
+            failed.append(f"{row['name']}: the run exited {result['exit_code']} or logged fewer than {COUNTER_FRAMES} window frames")
+            continue
+        entry = next(entry for entry in registry["rows"] if entry["name"] == row["name"])
+        if args.write:
+            entry["counters"] = counter_pins(series)
+            print(f"{row['name']}: pinned {json.dumps(entry['counters'], sort_keys=True)}")
+            continue
+        problems = counter_mismatches(entry.get("counters") or {}, series)
+        failed += [f"{row['name']}: {problem}" for problem in problems]
+        print(f"{row['name']}: {'ok' if not problems else 'differs'}")
+    if args.write and not failed:
+        Path(registry_path).write_text(json.dumps(registry, indent=2) + "\n")
+        print(f"Wrote the pins to {Path(registry_path).name}")
+    for line in failed:
+        print(f"  - {line}")
+    print(f"Logs: {out.relative_to(root)}")
+    return 1 if failed else 0
 
 
 # --- Commands ------------------------------------------------------------------------
@@ -688,6 +1071,17 @@ def parser():
     compare = commands.add_parser("compare", help="verdicts of a candidate capture against a baseline")
     compare.add_argument("baseline")
     compare.add_argument("candidate")
+    sitting = commands.add_parser("sitting", help="the working tree against a ref, with an A/A and one rerun")
+    sitting.add_argument("--base", help="the ref to export and measure as the base (default: the last reachable tag)")
+    sitting.add_argument("--rows", help="comma-separated rows or groups (default: every row)")
+    sitting.add_argument("--quick", action="store_true", help="CPU rows, A1 B1 A2 at 3 repeats and 150 frames; informational")
+    sitting.add_argument("--cpu-only", action="store_true", help="skip the GPU runs and GPU-only rows")
+    sitting.add_argument("--wait-quiet", type=int, metavar="S", help="wait up to S seconds for 60 s of quiet")
+    sitting.add_argument("--allow-background", action="store_true")
+    sitting.add_argument("--plain", action="store_true", help="shipping flags on both sides")
+    sitting.add_argument("--keep", action="store_true", help="keep the base export")
+    counters = commands.add_parser("counters", help="check the GPU counter pins, or --write them")
+    counters.add_argument("--write", action="store_true")
     baseline = commands.add_parser("baseline", help="save, list or remove named baselines")
     actions = baseline.add_subparsers(dest="action", required=True)
     save = actions.add_parser("save")
@@ -701,7 +1095,7 @@ def parser():
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    handlers = {"list": cmd_list, "run": cmd_run, "compare": cmd_compare, "baseline": cmd_baseline}
+    handlers = {"list": cmd_list, "run": cmd_run, "compare": cmd_compare, "sitting": cmd_sitting, "counters": cmd_counters, "baseline": cmd_baseline}
     try:
         return handlers[args.command](args)
     except PerfError as error:

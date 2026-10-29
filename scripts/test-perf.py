@@ -481,5 +481,183 @@ class Registry(unittest.TestCase):
                 perf.load_capture(str(old), root=Path(directory))
 
 
+STEADY = (10.0, 10.05, 9.95)
+SLOW = (11.0, 11.05, 10.95)
+FAST = (9.0, 9.05, 8.95)
+
+
+def sitting(values, row_entry=None, quick=False, base_ready=True, valid=None):
+    """Runs `sit_row` on fake captures whose `stage.update` p50s come from
+    `values[label]` (default STEADY); returns the outcome and the order."""
+    order = []
+    valid = valid or {}
+
+    def take(side, label):
+        order.append(label)
+        return capture(updates=values.get(label, STEADY), valid=valid.get(label, True))
+
+    outcome = perf.sit_row(row_entry or row(owned=OWNED), take, quick=quick, base_ready=base_ready)
+    return outcome, order
+
+
+class Sittings(unittest.TestCase):
+    def test_a_row_runs_a1_b1_a2_b2_and_reads_ok(self):
+        outcome, order = sitting({})
+        self.assertEqual(order, ["A1", "B1", "A2", "B2"])
+        self.assertEqual(outcome["verdict"], "ok")
+        self.assertFalse(outcome["reran"])
+
+    def test_an_aa_that_fails_once_reruns_and_reads_ok_and_twice_unresolved(self):
+        outcome, order = sitting({"A2": SLOW})
+        self.assertEqual(order, ["A1", "B1", "A2", "B2", "A3", "B3", "A4", "B4"])
+        self.assertTrue(outcome["reran"])
+        self.assertEqual(outcome["verdict"], "ok")
+        outcome, _ = sitting({"A2": SLOW, "A4": FAST})
+        self.assertEqual(outcome["verdict"], "unresolved")
+
+    def test_a_known_drift_metric_regressed_in_a_pair_reruns(self):
+        drifting = row(owned=OWNED, known_drift=OWNED)
+        outcome, order = sitting({"B1": SLOW}, drifting)
+        self.assertEqual(len(order), 8)
+        self.assertEqual(outcome["verdict"], "ok", "the rerun's pairs read it unchanged")
+        outcome, _ = sitting({"B1": SLOW}, row(owned=OWNED))
+        self.assertEqual(outcome["verdict"], "ok", "one regressed pair is not a regression")
+        self.assertFalse(outcome["reran"])
+
+    def test_regressed_in_both_pairs_twice_reads_regressed_unless_the_rerun_aa_fails(self):
+        outcome, _ = sitting({"B1": SLOW, "B2": SLOW})
+        self.assertEqual((outcome["verdict"], outcome["regressed"]), ("regressed", ["stage.update p50"]))
+        drifting = row(owned=OWNED, known_drift=OWNED)
+        both = {"B1": SLOW, "B2": SLOW, "B3": SLOW, "B4": SLOW}
+        outcome, _ = sitting(both, drifting)
+        self.assertTrue(outcome["reran"])
+        self.assertEqual((outcome["verdict"], outcome["regressed"]), ("regressed", ["stage.update p50"]))
+        outcome, _ = sitting({**both, "A4": SLOW}, drifting)
+        self.assertEqual(outcome["verdict"], "unresolved")
+
+    def test_a_row_the_base_cannot_run_reads_new(self):
+        outcome, order = sitting({}, base_ready=False)
+        self.assertEqual((outcome["verdict"], order), ("new", ["B1"]))
+        outcome, order = sitting({}, valid={"A1": False})
+        self.assertEqual((outcome["verdict"], order), ("new", ["A1", "B1"]))
+        outcome, _ = sitting({}, valid={"B2": False})
+        self.assertEqual(outcome["verdict"], "invalid")
+
+    def test_quick_runs_cpu_rows_a1_b1_a2_without_a_rerun(self):
+        outcome, order = sitting({"A2": SLOW}, quick=True)
+        self.assertEqual(order, ["A1", "B1", "A2"])
+        self.assertEqual(outcome["verdict"], "unresolved")
+        self.assertFalse(outcome["reran"])
+        registry = perf.load_registry()
+        rows = perf.sitting_rows(registry, [], quick=True)
+        self.assertTrue(rows)
+        self.assertNotIn("e01-area-clearing", [entry["name"] for entry in rows])
+        self.assertTrue(all(entry["repeat"] == 3 and entry["frames"] == 150 and entry["gpu"] is False for entry in rows))
+        cpu_only = perf.sitting_rows(registry, ["gpu", "e01-areas"], cpu_only=True)
+        self.assertEqual([(entry["name"], entry["gpu"], entry["repeat"]) for entry in cpu_only], [("gpu", False, 5)])
+
+
+def ticks(table):
+    """A tick reader over `table`, `{pid: (ppid, name, ticks)}`."""
+    return lambda: table
+
+
+class StartCheck(unittest.TestCase):
+    OWN = os.getpid()
+
+    def check(self, before, after, trees=("no", "no")):
+        readers = iter([before, after])
+        tree = iter(trees)
+        return perf.start_check(
+            own_pid=self.OWN, tick_reader=lambda: next(readers), tree_reader=lambda: next(tree),
+            sleep=lambda _: None, seconds=5, ticks_per_s=100,
+        )  # fmt: skip
+
+    def base(self):
+        # The runner under a shell under an agent session, and an idle desktop.
+        return {1: (0, "systemd", 0), 400: (1, "claude", 0), 500: (400, "bash", 0), self.OWN: (500, "python3", 0), 600: (1, "plasmashell", 0)}
+
+    def test_refuses_the_encoder_a_foreign_build_and_a_busy_process(self):
+        cases = {
+            "background load: nxcodec.bin": {700: (1, "nxcodec.bin", 0)},
+            "background load: cargo": {700: (1, "cargo", 0)},
+            "busy process: code (700) at 40% of a core": {700: (1, "code", 0)},
+        }
+        for label, extra in cases.items():
+            with self.subTest(label=label):
+                before = {**self.base(), **extra}
+                after = {**before, 700: (*extra[700][:2], 200)}
+                refusals, record = self.check(before, after)
+                self.assertIn(label, refusals)
+                self.assertEqual(record["top"][0]["pid"], 700)
+        refusals, _ = self.check(self.base(), self.base(), trees=("no", "yes (diff 1)"))
+        self.assertEqual(refusals, ["the tree changed during the check"])
+
+    def test_passes_an_idle_agent_session_and_a_busy_ancestor(self):
+        before = {**self.base(), 800: (1, "claude", 0)}
+        after = {**before, 800: (1, "claude", 50), 400: (1, "claude", 450), 500: (400, "bash", 300)}
+        refusals, record = self.check(before, after)
+        self.assertEqual(refusals, [], "an idle session (10%) and the runner's ancestors pass")
+        self.assertEqual([entry["pid"] for entry in record["top"]], [800, 600], "ancestors stay out of the record")
+
+    def test_wait_quiet_gives_up_at_its_limit(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.wait_quiet_cases()
+
+    def wait_quiet_cases(self):
+        now = [0.0]
+        busy = (["busy process: code (7) at 90% of a core"], {"load_1m": "1.0"})
+        refusals, _ = perf.wait_quiet(30, lambda: busy, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+        self.assertEqual(refusals, busy[0])
+        self.assertGreaterEqual(now[0], 30)
+        quiet = ([], {"load_1m": "0.1"})
+        now[0] = 0.0
+        refusals, _ = perf.wait_quiet(3600, lambda: quiet, sleep=lambda s: now.__setitem__(0, now[0] + s), clock=lambda: now[0])
+        self.assertEqual(refusals, [])
+        self.assertEqual(now[0], perf.QUIET_SPAN_S, "60 s of quiet, polled every 10 s")
+
+
+class BaseExport(unittest.TestCase):
+    def test_the_export_holds_the_ref_and_records_its_commit(self):
+        git = Provenance.git
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory) / "repo"
+            repo.mkdir()
+            git(self, repo, "init", "-q")
+            git(self, repo, "config", "user.email", "t@example.com")
+            git(self, repo, "config", "user.name", "t")
+            (repo / "a.txt").write_text("one\n")
+            git(self, repo, "add", "a.txt")
+            git(self, repo, "commit", "-q", "-m", "one")
+            git(self, repo, "tag", "v1")
+            first = git(self, repo, "rev-parse", "--short", "HEAD")
+            (repo / "a.txt").write_text("two\n")
+            git(self, repo, "commit", "-q", "-am", "two")
+            export = Path(directory) / "export"
+            state = perf.export_tree("v1", export, repo=repo)
+            self.assertEqual(state, {"commit": first, "dirty": "no", "ref": "v1"})
+            self.assertEqual((export / "a.txt").read_text(), "one\n")
+
+
+class CounterPins(unittest.TestCase):
+    def test_pins_match_and_mismatch(self):
+        series = {"draw_calls": [76, 76, 76], "upload_bytes": [10, 30, 20], "text_renders": [1, 1, 1], "sprite_batches": [60, 60, 60]}
+        pins = perf.counter_pins(series)
+        self.assertEqual(pins["draw_calls"], {"each": 76})
+        self.assertEqual(pins["upload_bytes"], {"sum": 60})
+        self.assertEqual(perf.counter_mismatches(pins, series), [])
+        moved = {**series, "draw_calls": [76, 77, 76], "upload_bytes": [10, 30, 21]}
+        problems = perf.counter_mismatches(pins, moved)
+        self.assertIn("draw_calls: 1 of 3 frames differ from 76; first: window frame 2 reads 77", problems)
+        self.assertIn("upload_bytes: the window sums 61, pinned 60", problems)
+        self.assertEqual(perf.counter_mismatches({}, {"draw_calls": [1]}), ["draw_calls: no pin"])
+
+    def test_the_series_reads_each_window_frames_counters_line(self):
+        text = "\n".join(line for number in range(1, 6) for line in (frame_line(10.0), APP + f"counters: draw_calls={number} upload_bytes=0 text_renders=0 sprite_batches=2"))
+        series = perf.counter_series(text, 2, 3)
+        self.assertEqual(series["draw_calls"], [3.0, 4.0, 5.0])
+        self.assertEqual(series["sprite_batches"], [2.0, 2.0, 2.0])
+
+
 if __name__ == "__main__":
     unittest.main()
