@@ -12,7 +12,7 @@
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
 - **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (6) 7.17 the UI pass, in its own worktree from after step 1. (7) 7.9 saves and engine seams. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close.
-- **done-when:** every row in §2.2 and §2.3 reads landed, moved, closed or Later (§2.1), none open in a Phase 7 step; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
+- **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-milestone skill](../../.claude/skills/tungsten-milestone/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
 
@@ -53,7 +53,8 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 ### 2.1 Rule and status cells
 
 - **Rule:** a row goes to the step that builds the system it changes (§7.3's triage, §5.3). A row whose system no Phase 7 step builds goes to Phase 8 or Later. A row depending on a later step's system moves to the first step after it.
-- **Status cell:** `open`; `landed <sha>`; `moved → <step> (<reason>)`; `closed (<reason>)` for a row no step builds; `Later`, for a row that is one line in ROADMAP.md's Later; `9.2`, for a cost 9.2's lever list takes (§2.4). All but `open` are terminal. The commit that closes a step updates its rows here. A move records its reason; nothing else changes a row's step.
+- **Status cell:** `open`; `landed <sha>`; `closed (<reason>)` for a row no step builds; `Later`, for a row that is one line in ROADMAP.md's Later; `9.2`, for a cost 9.2's lever list takes (§2.4). All but `open` are terminal. The commit that closes a step updates its rows here.
+- **A move** rewrites the row's step cell, keeps it `open` and notes `moved from <step> (<reason>)`; a row moved into Phase 8 goes to §2.3. Nothing else changes a row's step.
 - **Pattern** is the register's, shortened; the register holds the evidence.
 
 ### 2.2 Phase 7 rows
@@ -328,7 +329,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md`, `docs/plans/arpg-design.md`, the follow-ups' homes.
 - **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
-- **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); every row's status terminal (§2.1), each `Later` row a line in ROADMAP.md's Later, each `9.2` row in the redo's 9.2 lever list, and each list item done, dropped or stopped, as the last evidence row quotes; each §2.3 ID in the redo (`for id in $(seq -f 'PA-%g' 12 22); do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing); `just repo-check` → passes; example 01 runs.
+- **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); every §2.2 row's status terminal (§2.1), each `Later` row a line in ROADMAP.md's Later, each `9.2` row in the redo's 9.2 lever list, and each list item done, dropped or stopped, as the last evidence row quotes; every open §2.3 row in the redo, moved and S-rows included (`rg -o -r '$1' '^\| ([A-Z0-9-]+) \| [^|]+ \| 8\.[0-9]+ \| open \|' docs/plans/phase-7.md | while read -r id; do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing, run before the deletion); `just repo-check` → passes; example 01 runs.
 - **Ends with:** the commits made, the evidence quoted, what the owner should play, and the next prompt (8.1's plan).
 
 ## 4. Open questions
@@ -373,6 +374,13 @@ Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-29,
 | 3 | [MEDIUM] The performance gate can discard G6's unmet behavioral requirements | `cull_to_cap` ranks by direction and distance, with no player light (`crates/tungsten-render/src/lighting.rs:133-150`); it already drops zero-intensity lights over the cap, so G6's evidence was stale too | accepted | §2.5: the floor never drops G6, `stopped` is not for it, and its evidence and target name tests past the cap |
 | 4 | [MEDIUM] A valid Later assignment makes the analysis pass fail its completion check | §2.4 sent rows to Later and 9.2 outside the tables that step 4 counts | accepted | §2.4 writes every S-row into the tables, `Later` and `9.2` included; §2.1 adds `9.2`; step 4's check counts dispositions |
 | 5 | [MEDIUM] The phase's completion contract rejects terminal states its steps allow | The header's done-when omitted `Later` (K25) and `stopped` | accepted | §2.1 names the terminal states; the header and step 17 accept them, with each `Later` row in ROADMAP.md's Later and each `9.2` row in 9.2's list |
+
+Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Critique section and the log cut and a focus note on round 1's changes. Footer: `210.1 s, tokens in 511722 (cached 448256), out 4929, commands 22, output 299.2 KB (largest 50.1 KB), usage 5h 28% → 42%, week 17% → 19%`. Two findings, both repairs of round-1 fixes, both accepted; no third round.
+
+| # | Finding | Checked against | Verdict | Change or reason |
+| --- | --- | --- | --- | --- |
+| 2.1 | [MEDIUM] Moved rows can escape the Phase 8 handoff | §2.1 made `moved` terminal, and step 17 carried only §2.3's open rows and checked PA-12–PA-22 alone, so PA-3, PA-4 or PA-9 moved to 8.7 would be lost | accepted | §2.1: a move rewrites the step cell and keeps the row open, Phase 8 rows in §2.3; step 17 checks every open §2.3 ID against the redo |
+| 2.2 | [MEDIUM] A valid `9.2` disposition still violates the overall completion condition | The header's done-when listed landed, moved, closed and Later | accepted | The header accepts §2.1's terminal states, `9.2` included |
 
 ## Evidence log
 
