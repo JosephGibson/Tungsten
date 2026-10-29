@@ -662,13 +662,17 @@ class CounterPins(unittest.TestCase):
 class Deadline(unittest.TestCase):
     def run_python(self, code, deadline_s):
         with tempfile.TemporaryDirectory() as tmp:
-            return perf.run_child([sys.executable, "-c", code], dict(os.environ), tmp, Path(tmp) / "out.log", deadline_s=deadline_s)
+            log = Path(tmp) / "out.log"
+            result = perf.run_child([sys.executable, "-c", code], dict(os.environ), tmp, log, deadline_s=deadline_s)
+            return {**result, "log_bytes": log.stat().st_size}
 
-    def test_a_child_past_its_deadline_is_killed(self):
-        result = self.run_python("import time; time.sleep(30)", 0.3)
+    def test_a_child_past_its_deadline_is_killed_and_its_log_cut(self):
+        flood = "import sys, time; sys.stdout.write('x' * (3 << 20)); sys.stdout.flush(); time.sleep(30)"
+        result = self.run_python(flood, 1.0)
         self.assertTrue(result["timed_out"])
         self.assertNotEqual(result["exit_code"], 0)
         self.assertLess(result["wall_s"], 5)
+        self.assertEqual(result["log_bytes"], perf.TIMED_OUT_LOG_BYTES)
 
     def test_a_child_inside_its_deadline_exits_on_its_own(self):
         result = self.run_python("pass", 20)

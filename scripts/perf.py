@@ -48,6 +48,8 @@ RSS_POLL_SECONDS = 0.1
 # plays on forever, logging every frame. Rows measure 1-27 ms a frame.
 RUN_DEADLINE_FLOOR_S = 30
 RUN_DEADLINE_PER_FRAME_S = 0.05
+# A killed run's log keeps its head; e01-pit on 0.112 logs 337 MB in 78 s.
+TIMED_OUT_LOG_BYTES = 1 << 20
 # Background load (`D-095`, `D-141`): the remote-desktop encoder anywhere, and
 # builds outside the runner's own process tree.
 ENCODER = "nxcodec.bin"
@@ -316,7 +318,7 @@ def run_child(argv, env, cwd, log_path, watch=None, deadline_s=None):
     """Run `argv` with its output in `log_path`, reaped by `os.wait4` for its
     rusage; `watch`, the background scan, runs before it, once a second
     while it runs and after it exits. A child still running `deadline_s`
-    after its start is killed and reads `timed_out`."""
+    after its start is killed, reads `timed_out` and keeps its log's head."""
     log_path = Path(log_path)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     if watch is not None:
@@ -343,6 +345,8 @@ def run_child(argv, env, cwd, log_path, watch=None, deadline_s=None):
             proc.wait()
             raise
     proc.returncode = os.waitstatus_to_exitcode(status)
+    if timed_out:
+        os.truncate(log_path, min(log_path.stat().st_size, TIMED_OUT_LOG_BYTES))
     if watch is not None:
         watch()
     return {"exit_code": proc.returncode, "wall_s": round(time.monotonic() - start, 3), "rss_peak_kib": usage.ru_maxrss,
