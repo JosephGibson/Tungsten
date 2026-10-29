@@ -43,6 +43,9 @@ PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
 ROADMAP = "ROADMAP.md"
 ROADMAP_SECTIONS = ("Now", "Next", "Later")
 LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)', re.M)
+# A frozen record's banner (D-215). Frozen records are never edited again, so their links
+# to removed or renamed files rot by design until step 9.7 deletes them: notes, not errors.
+FROZEN = re.compile(r"Frozen [0-9-]+ \(`?D-215")
 # The milestone skeleton is not a live plan; its links resolve at its eventual
 # docs/plans/1.0/ destination. It is outside active_plan_documents, intentionally.
 
@@ -277,6 +280,7 @@ def markdown_anchors(text):
 
 def check_local_links(root, path, text, errors, notes, anchors):
     rel = path.relative_to(root).as_posix()
+    frozen = bool(FROZEN.search(text))
     for match in LOCAL_LINK.finditer(markdown_body(text)):
         target = (match[1] or match[2]).strip("<>")
         url = urlsplit(target)
@@ -287,12 +291,18 @@ def check_local_links(root, path, text, errors, notes, anchors):
             notes.append(f"archive link left unread: {rel}: {target}")
             continue
         if not dest.exists():
-            errors.append(f"{rel}: broken link {target}")
+            if frozen:
+                notes.append(f"frozen record's dead link left as is: {rel}: {target}")
+            else:
+                errors.append(f"{rel}: broken link {target}")
         elif url.fragment and dest.suffix == ".md":
             if dest not in anchors:
                 anchors[dest] = markdown_anchors(text if dest == path else dest.read_text())
             if unquote(url.fragment) not in anchors[dest]:
-                errors.append(f"{rel}: broken fragment {target}")
+                if frozen:
+                    notes.append(f"frozen record's dead fragment left as is: {rel}: {target}")
+                else:
+                    errors.append(f"{rel}: broken fragment {target}")
 
 
 def check_docs(root, errors, notes):
