@@ -4,7 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `arpg-design`: the ARPG paper design (redo 7.19) is written and verified ([plan](docs/plans/arpg-design.md)); the owner's triage of its 22 `PA-` rows and six questions is next, then 7.7 assigns them (`D-218`).
+- `arpg-design`: the ARPG paper design (redo 7.19) is written, verified and triaged ([plan](docs/plans/arpg-design.md)); on 2026-10-29 the owner kept all 22 `PA-` rows at their default steps (11 to 7.10, 2 to 8.1, 3 to 8.2, 6 to 8.7) and all six questions at their defaults; 7.7 assigns the rows next (`D-218`).
 
 ## Next
 
