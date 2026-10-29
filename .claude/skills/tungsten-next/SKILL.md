@@ -9,7 +9,7 @@ Answers "what do I run next, and where?". The tree and [ROADMAP.md](../../../ROA
 
 ## 1. Gather, in one round of parallel calls
 
-- Run `bash .claude/skills/tungsten-next/state.sh` from the repo root; don't read the script. It prints the branch and upstream, the workspace version, the newest tag and whether it is on `origin/main`, the commits since the last release, `git status --short`, files edited in the last 3 minutes, other agent sessions in this tree, a running perf capture, frozen records edited since `D-215`, and ROADMAP.md's Now and Next with Now's count.
+- Run `just status` from the repo root; don't read the script. It prints the branch and upstream, the workspace version, the newest tag and whether it is on `origin/main`, the commits since the last release, `git status --short`, files edited in the last 3 minutes, other agent sessions in this tree, a running perf capture, frozen records edited since `D-215`, ROADMAP.md's Now and Next with Now's count, and each active plan's status, steps and last evidence row.
 - Read [prompts.md](prompts.md).
 
 Read nothing else unless the state leaves the next step unclear; then read one source the item cites (its feedback section, a plan's header). Never take status from the frozen records (the register, the catalog, the 1.0 README's owned fields): they stopped at `D-215`.

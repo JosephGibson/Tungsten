@@ -61,7 +61,7 @@ perf-test:
 clean-target *args:
     python3 -B scripts/clean-target.py "$@"
 
-# Shell, hook and workflow lint plus smoke-script, perf-helper, repo-checker, commit-hook and release-script tests (no GPU).
+# Shell, hook and workflow lint plus smoke-script, perf-helper, repo-checker, commit-hook, release-script and status tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh .githooks/commit-msg
     actionlint
@@ -72,6 +72,7 @@ script-test: perf-test
     python3 -B scripts/test-release.py
     python3 -B scripts/test-crash-report.py
     python3 -B scripts/test-release-preflight.py
+    python3 -B scripts/test-status.py
     python3 -B templates/basic/tools/sounds.py --check
     python3 -B templates/basic/tools/sprites.py --check
     python3 -B templates/basic/tools/icon.py --check
@@ -111,6 +112,10 @@ repo-check:
 # Recommend checks without running them; explicit paths or Git changes, including untracked (--base REF for committed work).
 checks *args:
     python3 -B scripts/check-repo.py --select-checks "$@"
+
+# Where the tree stands, read-only and offline: git and the newest tag, the tree, other sessions, frozen-record edits, ROADMAP.md's Now and Next, active plans.
+status:
+    python3 -B scripts/status.py
 
 # `tungsten new`'s game outside the repository: checked, built, tested, smoke-run and packaged there, then seeded errors (D-123, D-183); a release check. GPU; free-space floor first.
 template-check:

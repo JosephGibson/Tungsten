@@ -7,6 +7,7 @@ How work is picked, planned, committed and released from H1 on (`D-215`, the [ro
 - [`ROADMAP.md`](../ROADMAP.md) is the only status record: Now, Next and Later, one line per item. It replaced the register, `roadmap.json`, the roadmap page and the 1.0 README's owned fields, which grew a row, a stop and a field per change and drifted from each other.
 - Now holds one to three items; `just repo-check` refuses more, since a long Now is a waterfall again.
 - The commit that starts or finishes an item updates `ROADMAP.md`, so status never lags the tree.
+- `just status` ([`scripts/status.py`](../scripts/status.py)) derives the rest from the tree: the newest tag and the commits since it, the tree, other sessions, frozen-record edits, Now and Next, and each active plan's last evidence row. Status read by hand drifted from the tree.
 - Items keep their IDs (`e01tomes`); milestone numbers ended with the register at M85.
 
 ## Habits

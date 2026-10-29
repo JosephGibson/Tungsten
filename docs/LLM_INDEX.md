@@ -88,7 +88,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Stale `target/` artifacts, a full disk (`just clean-target`) | `scripts/clean-target.py`, `scripts/test-clean-target.py` |
 | Public-API snapshots (`just api`, `D-107`), a free diff of the surface (`D-215`) | `scripts/public-api.sh`, `api/` |
 | Writing or running a large plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/operating-rules.md` |
-| Status and what's next; rules for commits, plans, decisions, tiers and releases (`D-215`) | `ROADMAP.md`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
+| Status, what's next; commit, plan, decision, tier, release rules (`D-215`) | `ROADMAP.md`, `scripts/status.py`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
 | Releases: checks, hand-off, recovery, player archives, licenses, crash symbols (`D-071`, `D-074`, `D-079`, `D-120`, `D-122`, `D-196`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | CI jobs, the Windows test job (`D-070`, `D-121`) | `.github/workflows/ci.yml` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |
