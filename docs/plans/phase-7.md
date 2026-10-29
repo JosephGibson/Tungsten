@@ -386,6 +386,7 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Cri
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 (7.2) | 2026-10-29 | passed | `agent-tooling`, commits `2ecd7d41` (core script format and hooks), `bc1718ab` (the runner on the frame body and the harness), `1dbd0c71` (script mode in the window), `b4815fc9` (`run --script`, `describe`), `831811b0` (the template's and 01's hooks), `6e642b4d` (`render`, `D-225`) and the close; its done-when: every step's checks passed (its evidence log at `6e642b4d`); `just check` → passes (fmt, workspace clippy, every test and doctest); 01 through its own `cargo run` with a script (`start_run`, frame 180) → passed, `area` "Lantern clearing", the stack `["gameplay"]`; a review sheet of 01 from `tungsten render` with no scratch crate: the six foes' contact sheet (1280 × 720), a 20-frame campfire loop (5 distinct SHA-256 sums) and the first area's still with the physics overlay; step 2's perf gate, after a rerun and cold call points, 0 owned metrics `regressed` in both direct pairs; the plan deleted with its citations, its follow-ups in known issues, out of Now | `perf-runs/20261029-agent-tooling/` (sittings, step fixtures, `close/`), `perf-runs/20261029-agent-tooling-sheet/` |
 
 ## Follow-ups
 
