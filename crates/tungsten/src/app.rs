@@ -67,6 +67,13 @@ const CHECK_ENV: &str = "TUNGSTEN_CHECK";
 /// report it writes. Both are the command line's, not a promised interface.
 const SCRIPT_ENV: &str = "TUNGSTEN_SCRIPT";
 const REPORT_ENV: &str = "TUNGSTEN_REPORT";
+/// Names the file `tungsten describe` reads. Set, `App::run` describes the
+/// game's World in place of opening a window (redo 7.2).
+const DESCRIBE_ENV: &str = "TUNGSTEN_DESCRIBE";
+
+/// Looks an environment variable up; a parameter, so tests need no
+/// `set_var`.
+type Env<'a> = &'a dyn Fn(&str) -> Option<std::ffi::OsString>;
 
 /// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
 /// A stall (debugger pause, window drag, a blocked acquire) would otherwise
@@ -190,19 +197,28 @@ impl App {
     ///
     /// As [`App::new`].
     pub fn with_plugins(config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
-        Self::build(config, plugins).inspect_err(|err| {
+        let env = |name: &str| std::env::var_os(name);
+        Self::build(config, plugins, &env).inspect_err(|err| {
             // A script run that never starts still reports why.
-            if let (Some(script), Some(report)) = (script_from_env(), report_from_env()) {
+            if let (Some(script), Some(report)) =
+                (env_path(&env, SCRIPT_ENV), env_path(&env, REPORT_ENV))
+            {
                 crate::script::report_setup_failure(&script, &report, err);
             }
         })
     }
 
-    fn build(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
-        let smoke_frames = smoke_frames_from_env();
-        let checking = check_report_from_env().is_some();
+    /// [`App::with_plugins`] with the environment read through `env`.
+    pub(crate) fn build(
+        mut config: Config,
+        plugins: PluginSet,
+        env: Env<'_>,
+    ) -> anyhow::Result<Self> {
+        let smoke_frames = smoke_frames(env);
+        // A describe run is a check run until `App::run` (redo 7.2).
+        let checking = env_path(env, CHECK_ENV).is_some() || env_path(env, DESCRIBE_ENV).is_some();
         // A script run reads its user folder from `TUNGSTEN_USER_DIR` alone.
-        let script_path = script_from_env().filter(|_| !checking);
+        let script_path = env_path(env, SCRIPT_ENV).filter(|_| !checking);
         let invalid = config
             .game
             .validate()
@@ -212,14 +228,12 @@ impl App {
             .or_else(|| invalid_logging_level(&config.logging.level));
         let user_dirs = match (&invalid, &script_path) {
             (Some(_), _) => None,
-            (None, Some(_)) => {
-                user_dir::resolve_scripted(&config.game, |name| std::env::var_os(name))
-            }
+            (None, Some(_)) => user_dir::resolve_scripted(&config.game, env),
             (None, None) => user_dir::resolve(
                 &config.game,
                 smoke_frames.is_some() || checking,
                 Platform::current(),
-                |name| std::env::var_os(name),
+                env,
             ),
         };
         let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
@@ -447,7 +461,7 @@ impl App {
             script: script.zip(script_path).map(|(script, path)| {
                 ScriptRunner::new(script, &path.display().to_string(), false)
             }),
-            script_report: report_from_env(),
+            script_report: env_path(env, REPORT_ENV),
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -650,8 +664,21 @@ impl App {
     /// one `<file>\t<message>` line per error to that file and returns an
     /// error when there is one. [`App::new`] resolves no user folder then.
     /// The variable is the command line's, not a promised interface.
+    ///
+    /// With `TUNGSTEN_DESCRIBE` set to a file path, as `tungsten describe`
+    /// sets it, the run loads those files as a check does and writes the
+    /// World's description there as JSON: its components, script hooks and
+    /// asset IDs (redo 7.2). With `TUNGSTEN_SCRIPT` set, it runs that script
+    /// in the window and writes `TUNGSTEN_REPORT`, returning an error unless
+    /// the script passed. These variables are the command line's too.
     pub fn run(mut self) -> anyhow::Result<()> {
-        if let Some(report) = check_report_from_env() {
+        let env = |name: &str| std::env::var_os(name);
+        if let Some(out) = env_path(&env, DESCRIBE_ENV) {
+            let game_dir = std::env::current_dir()
+                .inspect_err(|err| log::error!("No current folder to describe: {err}"))?;
+            return self.run_describe(&out, &game_dir);
+        }
+        if let Some(report) = env_path(&env, CHECK_ENV) {
             let game_dir = std::env::current_dir()
                 .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
             return self.run_check(&report, &game_dir);
@@ -742,6 +769,24 @@ impl App {
                 report.display()
             )),
         }
+    }
+
+    /// `tungsten describe`'s engine side (redo 7.2): the schedule resolved,
+    /// the reload roots' files loaded into this app's World past every
+    /// error, as a check loads them, and the World's description written
+    /// to `out` as JSON (`describe.rs`). Loaders log warnings and errors
+    /// only; the load's errors are listed in the description, not returned.
+    pub(crate) fn run_describe(mut self, out: &Path, game_dir: &Path) -> anyhow::Result<()> {
+        log::set_max_level(LevelFilter::Warn);
+        self.resolve_schedule()
+            .inspect_err(|err| log::error!("{err}"))?;
+        let roots = manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let description = crate::describe::describe(&mut self.world, &roots, game_dir);
+        let mut text = serde_json::to_string_pretty(&description)?;
+        text.push('\n');
+        std::fs::write(out, text).map_err(|err| {
+            anyhow::anyhow!("Failed to write the description '{}': {err}", out.display())
+        })
     }
 
     /// The error a finished run returns (`D-142`): the fatal error, else the
@@ -2218,31 +2263,18 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
 }
 
 /// `TUNGSTEN_CHECK`, set and not empty: the report file of a check run.
-/// `TUNGSTEN_SCRIPT`, when set: a script run.
-fn script_from_env() -> Option<PathBuf> {
-    std::env::var_os(SCRIPT_ENV)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-/// `TUNGSTEN_REPORT`, when set: where a script run writes its report.
-fn report_from_env() -> Option<PathBuf> {
-    std::env::var_os(REPORT_ENV)
-        .filter(|value| !value.is_empty())
-        .map(PathBuf::from)
-}
-
-fn check_report_from_env() -> Option<PathBuf> {
-    std::env::var_os(CHECK_ENV)
+/// The path variable `name` names, when it is set and not empty: the check
+/// or describe file, a script and its report.
+fn env_path(env: Env<'_>, name: &str) -> Option<PathBuf> {
+    env(name)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }
 
 /// `TUNGSTEN_SMOKE_FRAMES` as a frame count above zero: smoke mode.
-fn smoke_frames_from_env() -> Option<u32> {
-    std::env::var("TUNGSTEN_SMOKE_FRAMES")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
+fn smoke_frames(env: Env<'_>) -> Option<u32> {
+    env("TUNGSTEN_SMOKE_FRAMES")
+        .and_then(|value| value.to_str()?.parse::<u32>().ok())
         .filter(|n| *n > 0)
 }
 

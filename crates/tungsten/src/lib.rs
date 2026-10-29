@@ -8,6 +8,7 @@ mod capture;
 mod crash;
 pub mod debug_hud;
 mod debug_views;
+mod describe;
 mod display;
 mod engine_font;
 pub mod extract;

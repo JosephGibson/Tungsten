@@ -9,7 +9,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | ECS storage/query bug | `core/ecs/world.rs`, `core/ecs/storage.rs`, `core/ecs/archetype.rs`, `core/lib.rs` |
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
 | Event flush, holds, `EventCursor` (`D-040`, `D-139`, `D-170`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
-| Frame order, smoke exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
+| Frame order, winit loop, smoke (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Kit by domain: phases, tags, stats, cues, motion, recipes (`D-155`, `D-172`–`D-177`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
 | Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
@@ -66,7 +66,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
-| Debug overlays, captures (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/script.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
+| Overlays, captures (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/script.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
 | Pixel tests (`just visual`) | `examples/02_bench/tests/visual_regression.rs`, `examples/03_fixtures/tests/` |
 
 ## Examples
@@ -80,7 +80,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
-| Game template (shell, sample, seam) and the `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
+| Template: shell, sample, seam; `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `tungsten/describe.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |

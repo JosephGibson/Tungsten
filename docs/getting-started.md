@@ -65,6 +65,27 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 
 `tungsten package`, on Linux x86-64, builds the game for release and writes two archives to `dist/`: `<name>-<version>-x86_64-unknown-linux-gnu.tar.gz` for players, holding the binary, `tungsten.json`, `input.json`, `assets/`, the game's own `LICENSE*`, `COPYING*` and `NOTICE*` files and the third-party notices, and `<name>-<version>-x86_64-unknown-linux-gnu-debug.tar.gz`, the binary's debug file under the same top folder, so it extracts over the first for a crash's backtrace (`D-120`). It builds for the portable x86-64 baseline with `RUSTFLAGS="-C target-cpu=x86-64 -C link-arg=-Wl,--build-id"`, which replaces the flags of every Cargo config file, so a game's or your own config flags, such as a linker or `target-cpu=native`, do not apply; a `RUSTFLAGS` already set in the shell stops it. The debug file needs line tables, which `debug = 1` under `[profile.release]` keeps, as `new` writes it. Before it archives anything, the staged binary checks the staged files as the player will run them, so a file the manifest names outside `assets/` fails here rather than on the player's machine. The notices list every crate the binary links under a license it ships a text of, by the rules of the engine's own archives ([license notices](releases.md#license-notices)); a crate whose package has no matching text stops the package, naming it, until the game's own `licenses/clarifications.json` supplies the text, in the engine's format. Packaging on Windows and macOS hosts comes later.
 
+## Script, render and describe
+
+`tungsten run --script <file>`, from the game's folder, runs the game in its window from a JSON script and reports what happened. The script names the last frame, an optional `resolution` and its steps; each step has a `frame`, counting frame bodies from 1, an optional `until` and `every` that repeat it, and one verb: `press` or `release` an action, move the `cursor`, call an `action` or read a `probe` the game registered, `spawn` a prefab, load a `scene`, clear the game's states for an empty `stage`, lay items out on a `sheet`, draw with another `camera`, turn an `overlay` on, hide the `ui`, `capture` the frame to a PNG (with `until`, a folder of `NNNN.png` frames), `assert` a probe's value and `exit`. A `path` is a JSON pointer into a probe's value.
+
+```json
+{
+  "version": 1,
+  "frames": 120,
+  "resolution": [1280, 720],
+  "steps": [
+    { "frame": 2, "action": "start_run" },
+    { "frame": 30, "until": 90, "every": 30, "capture": "shots/run" },
+    { "frame": 120, "assert": { "probe": "player", "path": "/health", "op": ">", "value": 0 } }
+  ]
+}
+```
+
+The command line checks the script before it builds anything, naming the field that fails (`steps[2].captur`), then runs the game's own build with `TUNGSTEN_SCRIPT` set: the window opens at the script's resolution, dt is pinned at 60 Hz, the keyboard, mouse and focus loss are ignored, and the user folder is `--user-dir`'s or a fresh temporary one, so a script never touches the player's saves. It prints each failed assert with its value and the actual, each capture not written and each failed or unreached step, then `tungsten run: <frames> frames, <n> captures, <n> asserts: passed` or `failed`, and exits 0 when the script passed and 1 otherwise. `--report <file>` keeps the JSON report; `--release` runs the release build. Every engine has the probes `frame`, `entities`, `count`, `camera`, `states` and `log`; a game adds its own actions and probes in a plugin's `build` with `world.add_script_action` and `world.add_script_probe`, each with a one-line doc. A test runs the same script headless with `Harness::run_script`, where captures are recorded as not written.
+
+`tungsten describe` prints what the game's World holds once its files load: its registered components, with the kit's fields where the kit describes them, the kit's shapes and data kinds, the script hooks with their docs and the manifest's IDs by section, then any error the load found. `tungsten describe <name>` prints only the entries named `<name>`; `--json` prints the description as JSON.
+
 ## Settings and saves
 
 The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, frame-rate limit, UI and text scales, master volume, bus volumes and the sticks' dead zone and sensitivity the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.

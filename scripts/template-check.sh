@@ -2,10 +2,10 @@
 # The outside-copy check (D-123, D-183), behind `just template-check`, one of
 # the release checks: `tungsten new` makes a game in a fresh folder outside
 # the repository, as a game starts out, and the command line checks it, it
-# builds, tests and smoke-runs there against this checkout's engine, and
-# `tungsten package` archives it; the archive's binary smoke-runs too. Then
-# two entries that leave their manifest's folder and seven seeded errors must
-# fail as they should (RC-A7).
+# builds, tests, smoke-runs, describes itself and runs a script there against
+# this checkout's engine, and `tungsten package` archives it; the archive's
+# binary smoke-runs too. Then two entries that leave their manifest's folder
+# and seven seeded errors must fail as they should (RC-A7).
 #
 # The copy builds into this checkout's target folder with the workspace's
 # profiles (which `new` writes) and .cargo/config.toml, offline, so most
@@ -129,6 +129,34 @@ if grep -qF 'Unknown font ID' "$log"; then
   exit 1
 fi
 echo "Smoke (TUNGSTEN_SMOKE_FRAMES=3): OK"
+
+# `describe` and `run --script` (redo 7.2) on the copy: the description
+# names the engine's probes, and a 30-frame script captures one frame and
+# passes one assert, its report written beside the copy.
+describe="$copy_root/describe.json"
+if ! in_copy "$tungsten" describe --json >"$describe" 2>"$out" \
+  || ! python3 -I -c 'import json, sys; d = json.load(open(sys.argv[1])); sys.exit(0 if d["components"] and any(p["name"] == "entities" for p in d["script"]["probes"]) else 1)' "$describe"; then
+  echo "error: tungsten describe on the copy failed or named no components or probes:" >&2
+  tail -20 "$out" >&2
+  exit 1
+fi
+echo "Describe (components, the entities probe): OK"
+script="$copy_root/script.json"
+shot="$copy_root/script-shot.png"
+report="$copy_root/script-report.json"
+cat >"$script" <<JSON
+{ "version": 1, "frames": 30, "steps": [
+  { "frame": 20, "capture": "$shot" },
+  { "frame": 30, "assert": { "probe": "frame", "op": "==", "value": 30 } }
+] }
+JSON
+if ! in_copy timeout --kill-after=10 "$timeout_secs" "$tungsten" run --script "$script" --report "$report" >"$out" 2>&1 \
+  || [ "$(tail -1 "$out")" != "tungsten run: 30 frames, 1 capture, 1 assert: passed" ] || [ ! -s "$shot" ]; then
+  echo "error: tungsten run --script on the copy failed:" >&2
+  tail -20 "$out" >&2
+  exit 1
+fi
+echo "Run --script (30 frames, one capture, one assert): OK"
 
 if ! package >"$out" 2>&1; then
   echo "error: tungsten package on the copy failed:" >&2

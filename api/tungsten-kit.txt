@@ -5808,6 +5808,7 @@ pub fn tungsten_kit::KitDescriptions::kinds(&self) -> impl core::iter::traits::i
 pub fn tungsten_kit::KitDescriptions::new() -> Self
 pub fn tungsten_kit::KitDescriptions::render(&self) -> alloc::string::String
 pub fn tungsten_kit::KitDescriptions::shapes(&self) -> impl core::iter::traits::iterator::Iterator<Item = &tungsten_kit::ComponentDescription>
+pub fn tungsten_kit::KitDescriptions::to_json(&self) -> serde_json::value::Value
 impl core::default::Default for tungsten_kit::KitDescriptions
 pub fn tungsten_kit::KitDescriptions::default() -> tungsten_kit::KitDescriptions
 impl core::fmt::Debug for tungsten_kit::KitDescriptions

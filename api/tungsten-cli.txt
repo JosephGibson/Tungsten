@@ -9,10 +9,26 @@ Commands:
               build, and report every error with its file
   package     Build the game for release, check it, and write its players'
               archive and its debug archive to dist/ (Linux)
+  run         Run the game in its window from a script: inputs at frames,
+              captures, probes and asserts; print what failed, and exit 0
+              when the script passed
+  describe [<name>]
+              Print the game's components, script hooks and asset IDs, or
+              only the entries named <name>
 
 Options:
   -h, --help     Print this help
   -V, --version  Print the version
 
-Run check and package in the game's folder. They need the game's engine
-to be the version of this command line.
+Options of run:
+  --script <file>   The script to follow (required)
+  --report <file>   Where the report goes (default: a temporary file)
+  --user-dir <dir>  The game's user folder (default: a fresh temporary
+                    folder, removed after)
+  --release         Run the game's release build
+
+Options of describe:
+  --json            Print the description as JSON
+
+Run every command but new in the game's folder. They need the game's
+engine to be the version of this command line.
