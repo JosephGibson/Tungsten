@@ -2032,11 +2032,13 @@ impl LogConsole {
     /// Detaches the logger's feed, whose records then wait in it. A counter
     /// guard counts its window without it: the feed carries every thread's
     /// records in a test binary, not the guarded app's alone.
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn take_feed(&mut self) -> Option<ConsoleFeed> {
         self.feed.take()
     }
 
     /// Attaches a feed [`take_feed`](Self::take_feed) took.
+    #[cfg(any(test, feature = "testing"))]
     pub(crate) fn restore_feed(&mut self, feed: Option<ConsoleFeed>) {
         if feed.is_some() {
             self.feed = feed;
