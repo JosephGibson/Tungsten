@@ -46,8 +46,8 @@ LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]
 # A frozen record's banner (D-215). Frozen records are never edited again, so their links
 # to removed or renamed files rot by design until step 9.7 deletes them: notes, not errors.
 FROZEN = re.compile(r"Frozen [0-9-]+ \(`?D-215")
-# The milestone skeleton is not a live plan; its links resolve at its eventual
-# docs/plans/1.0/ destination. It is outside active_plan_documents, intentionally.
+# The plan skeleton (.claude/skills/tungsten-plan/skeleton.md) is not a live plan; its links
+# resolve at its destination, docs/plans/<topic>.md. It is outside active_plan_documents, intentionally.
 
 
 def archive_path(path):

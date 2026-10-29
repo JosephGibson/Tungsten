@@ -309,7 +309,7 @@ class RepoChecks(unittest.TestCase):
         self.write("scripts/check-agent-context.py", "def check(root): return []\n")
         self.write("docs/plans/1.0/README.md", "[history](../archive/unread.md#anything)\n"
                    "```md\n[placeholder](<future file.md>)\n```\n")
-        self.write(".claude/skills/tungsten-milestone/skeleton.md", "[rules](../README.md)\n")
+        self.write(".claude/skills/tungsten-plan/skeleton.md", "[rules](../README.md)\n")
         originals = {name: getattr(Path, name) for name in ("exists", "read_text", "glob", "iterdir")}
 
         def guard(name):

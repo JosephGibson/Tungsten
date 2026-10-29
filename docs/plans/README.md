@@ -31,7 +31,7 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 - Do exactly the requested step or steps. Record out-of-scope findings as follow-ups in the plan or in [`docs/known-issues.md`](../known-issues.md); don't fix them.
 - Run the step's done-when checks and quote the results. Report a failed check with its output instead of working around it, and a check that did not run as not run.
 - Where the plan defers a choice, use its stated default; otherwise check [`docs/DECISION_INDEX.md`](../DECISION_INDEX.md), then ask. The "Stuck" rule in [AGENTS.md](../../AGENTS.md) applies.
-- Keep `status` current: set `in progress` when work starts and `done` when the last done-when check passes, then archive per Lifecycle (`just repo-check` flags a finished plan left here).
+- Keep `status` current: set `in progress` when work starts; when the last done-when check passes, delete the plan per Lifecycle (`just repo-check` flags a finished plan left here).
 - Commit at each logical step in Conventional Commits, staging only the paths you changed (never `git add -A`), and push the version branch after each commit; tags, merges and every other push stay with the human ([operating rules](../operating-rules.md#git)). Keep scratch files out of the tree.
 - Keep the evidence log terse: one row per step with its verdict, key numbers and capture or log paths. The release's changelog section is written from the commits at the cut.
 - A plan's perf checks are its counter guards, which `just check` runs; it takes a full sitting only when it claims a speed-up, measures a 7.14, 7.15 or 9.2 item or changes a row's workload (`D-226`). Write those checks per the profiling workflow's [Writing done-when checks](../perf/profiling-workflow.md#writing-done-when-checks).
@@ -39,11 +39,11 @@ Capture provenance and hardware-check rules stand (`D-070`, `D-095`). Every rout
 ## Lifecycle
 
 - Update `status` when work finishes; don't leave a finished plan `in progress`.
-- Keep one active plan per thread of work: archive or rename obsolete ones.
-- Completed, abandoned or superseded plans move to `docs/plans/archive/` with the same basename; a program folder's files move to `docs/plans/archive/<program>/`. Agents never read that directory.
+- Keep one active plan per thread of work: delete or rename obsolete ones.
+- A plan is deleted when done, abandoned or replaced, with its citations removed in the same commit, since `just repo-check` fails on a cited plan that is gone ([operating rules](../operating-rules.md#plans)). Its open findings move first to known issues or ROADMAP.md's Later. `docs/plans/archive/` keeps the plans archived before H1 (`D-215`); agents never read it.
 
-`just repo-check` validates active headers and flags completed plans left here. An old date alone does not make an in-progress plan stale: review its remaining checks against code and owner/platform dependencies before archiving. An audit can be complete with unresolved findings; retain still-relevant findings in a maintained follow-up document before moving it.
+`just repo-check` validates active headers and flags completed plans left here. An old date alone does not make an in-progress plan stale: review its remaining checks against code and owner/platform dependencies before deleting it. An audit can be complete with unresolved findings; retain still-relevant findings in a maintained follow-up document before deleting it.
 
-Move only known filenames, fix relative Markdown destinations for the new depth, and update incoming links in maintained docs. Never inspect the archive to discover files or confirm a move. Owner-directed retirement can preserve an unfinished plan as a historical snapshot; archived proposals do not authorize new work. Leave immutable decision text and dated release evidence intact, with historical-path guidance in the indexes.
+Never inspect the archive to discover files. Owner-directed retirement can preserve an unfinished plan as a historical snapshot; archived proposals do not authorize new work. Leave immutable decision text and dated release evidence intact, with historical-path guidance in the indexes.
 
 Phase 4 is complete; its roadmap is archived as `docs/plans/archive/phase4.md`.
