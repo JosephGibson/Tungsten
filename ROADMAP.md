@@ -4,7 +4,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`) and 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`) have landed, and 7.4 (H2) is next; 7.4–7.5 have not landed, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`) and 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`) have landed, and 7.4 (H2) runs from its plan; 7.4–7.5 have not landed, so 7.5's rows join at its triage; Phase 7 runs from it a step at a time.
+- `health-h2`: redo 7.4, H2: H1's overhead retaken, the five carried workflow proposals decided, `just status`, `just release <kind>` with a final tag publishing on its push, the planning, next, release and decision skills rewritten lean against no-skill baselines with a phase step's prompt, the memory hubs pruned ([plan](docs/plans/health-h2.md)).
 
 ## Next
 
