@@ -428,7 +428,7 @@ class CheckSelection(unittest.TestCase):
                      "examples/01_platformer/tools/shaders/soft_glow.wgsl", "examples/01_platformer/tools/level.py"):
             commands, review, unknown = self.selection(path)
             self.assertTrue({"just level-check", "cargo test -p example-01-platformer --locked",
-                             "cargo test -p tungsten-core --test manifests --locked", "just smoke"} <= commands.keys())
+                             "cargo test -p tungsten-core --test integration --locked manifests::", "just smoke"} <= commands.keys())
             self.assertEqual(unknown, [])
         path = self.root / "examples/01_platformer/tools/outputs.json"
         path.parent.mkdir(parents=True)
@@ -488,12 +488,13 @@ class CheckSelection(unittest.TestCase):
 
     def test_manifest_seam_public_api_template_and_workflow_routes(self):
         cases = {
-            "assets/manifest.json": {"cargo test -p tungsten-core --test manifests --locked", "just smoke"},
-            "crates/tungsten/src/asset_loader/mod.rs": {"cargo test -p tungsten-core --test manifests --locked", "just repo-check"},
+            "assets/manifest.json": {"cargo test -p tungsten-core --test integration --locked manifests::", "just smoke"},
+            "crates/tungsten/src/asset_loader/mod.rs": {"cargo test -p tungsten-core --test integration --locked manifests::", "just repo-check"},
             "api/tungsten.txt": {"just api-check"},
             "api/tungsten-kit-components.txt": {"just api-check", "just repo-check"},
             "templates/basic/src/game.rs": {"just template-check", "cargo test -p tungsten-template-basic --locked",
                                             "cargo test -p tungsten-cli --locked"},
+            "templates/basic/tools/sprites.py": {"just script-test", "cargo test -p tungsten-template-basic --locked"},
             "tools/cli/src/main.rs": {"cargo test -p tungsten-cli --locked", "just template-check"},
             "tools/launcher/src/main.rs": {"cargo test -p tungsten-launcher --locked", "just script-test"},
             ".github/workflows/ci.yml": {"just script-test", "just repo-check"},

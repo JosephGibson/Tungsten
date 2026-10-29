@@ -23,13 +23,13 @@
 //!
 //! Release-only by cost (2,400 steps at 3k bodies); auto-ignored in debug.
 //! Run with:
-//! `cargo test --release -p tungsten-core --test physics_containment -- --nocapture`
-
-mod common;
+//! `cargo test --release -p tungsten-core --test integration physics_containment -- --nocapture`
 
 use std::time::{Duration, Instant};
 
-use common::{BODY_RADIUS, FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
+use crate::common::{
+    BODY_RADIUS, FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box,
+};
 use glam::Vec2;
 use tungsten_core::{
     Collider, Entity, LayerKind, Pcg32, PhysicsBuffers, PhysicsConfig, Position, RigidBody,

@@ -234,6 +234,46 @@ pub struct PostStackRenderer {
     source_bind_groups: [TargetCache<u64, wgpu::BindGroup>; 3],
     /// Params of the stock passes, per post-stack slot.
     params: ParamSlots<StockParams>,
+    /// The [`InertParam`]s already warned about, one bit each.
+    inert_warned: u8,
+}
+
+/// A stock effect's setting that draws nothing, or not as named.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InertParam {
+    /// `DitherMode::Bayer8` and `BlueNoise` draw as `Bayer4`.
+    DitherMode,
+    /// `CrtParams::bleed` is not read by the shader.
+    CrtBleed,
+    /// `PixelOutline` outlines where the scene's alpha crosses its threshold;
+    /// a clear alpha at or above it leaves no such edge.
+    OutlineClearAlpha,
+}
+
+impl InertParam {
+    fn message(self) -> &'static str {
+        match self {
+            Self::DitherMode => "dither: `bayer8` and `blue_noise` draw as `bayer4`",
+            Self::CrtBleed => "crt: `bleed` does nothing yet",
+            Self::OutlineClearAlpha => {
+                "pixel_outline: the clear colour's alpha is at or above `alpha_threshold`, so nothing is outlined; clear with a lower alpha"
+            }
+        }
+    }
+}
+
+/// The setting of `pass` that draws nothing or not as named, if any, with the
+/// scene cleared at `clear_alpha`.
+pub(crate) fn inert_param(pass: &PostPass, clear_alpha: f32) -> Option<InertParam> {
+    use tungsten_core::post::DitherMode;
+    match pass {
+        PostPass::Dither(p) if p.mode != DitherMode::Bayer4 => Some(InertParam::DitherMode),
+        PostPass::Crt(p) if p.bleed != 0.0 => Some(InertParam::CrtBleed),
+        PostPass::PixelOutline(p) if clear_alpha >= p.alpha_threshold => {
+            Some(InertParam::OutlineClearAlpha)
+        }
+        _ => None,
+    }
 }
 
 impl PostStackRenderer {
@@ -261,6 +301,19 @@ impl PostStackRenderer {
             resources,
             source_bind_groups: Default::default(),
             params: ParamSlots::default(),
+            inert_warned: 0,
+        }
+    }
+
+    /// Warns once per kind when `pass` uses a setting that draws nothing
+    /// or not as named ([`inert_param`]).
+    pub(crate) fn warn_inert(&mut self, pass: &PostPass, clear_alpha: f32) {
+        if let Some(param) = inert_param(pass, clear_alpha) {
+            let bit = 1 << param as u8;
+            if self.inert_warned & bit == 0 {
+                self.inert_warned |= bit;
+                log::warn!("{}", param.message());
+            }
         }
     }
 

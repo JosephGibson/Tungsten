@@ -492,6 +492,9 @@ pub tungsten_core::assets::manifest::ManifestError::OutsideFolder::path: alloc::
 pub tungsten_core::assets::manifest::ManifestError::Parse
 pub tungsten_core::assets::manifest::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::path: alloc::string::String
@@ -1057,7 +1060,6 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::material::M
 pub mod tungsten_core::assets::particle
 pub enum tungsten_core::assets::particle::BlendMode
 pub tungsten_core::assets::particle::BlendMode::Alpha
-pub tungsten_core::assets::particle::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -1808,13 +1810,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::shader::
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::shader::ShaderAssetId
 pub struct tungsten_core::assets::shader::ShaderRegistry
 impl tungsten_core::assets::shader::ShaderRegistry
-pub fn tungsten_core::assets::shader::ShaderRegistry::allocate(&mut self, &str, std::path::PathBuf) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_core::assets::shader::ShaderRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::shader::ShaderAssetId)>
 pub fn tungsten_core::assets::shader::ShaderRegistry::name_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::shader::ShaderRegistry::new() -> Self
 pub fn tungsten_core::assets::shader::ShaderRegistry::path_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::shader::ShaderRegistry::register(&mut self, &str, tungsten_core::assets::shader::ShaderAssetId, std::path::PathBuf)
 impl core::clone::Clone for tungsten_core::assets::shader::ShaderRegistry
 pub fn tungsten_core::assets::shader::ShaderRegistry::clone(&self) -> tungsten_core::assets::shader::ShaderRegistry
 impl core::default::Default for tungsten_core::assets::shader::ShaderRegistry
@@ -2067,7 +2069,6 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::AudioDecodeError
 pub enum tungsten_core::assets::BlendMode
 pub tungsten_core::assets::BlendMode::Alpha
-pub tungsten_core::assets::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -2276,6 +2277,9 @@ pub tungsten_core::assets::ManifestError::OutsideFolder::path: alloc::string::St
 pub tungsten_core::assets::ManifestError::Parse
 pub tungsten_core::assets::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::assets::ManifestError::PathEscapes
+pub tungsten_core::assets::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile
 pub tungsten_core::assets::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile::path: alloc::string::String
@@ -3623,13 +3627,13 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ShaderEntry
 pub struct tungsten_core::assets::ShaderRegistry
 impl tungsten_core::assets::shader::ShaderRegistry
-pub fn tungsten_core::assets::shader::ShaderRegistry::allocate(&mut self, &str, std::path::PathBuf) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_core::assets::shader::ShaderRegistry::get(&self, &str) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<tungsten_core::assets::shader::ShaderAssetId>
 pub fn tungsten_core::assets::shader::ShaderRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::assets::shader::ShaderAssetId)>
 pub fn tungsten_core::assets::shader::ShaderRegistry::name_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&str>
 pub fn tungsten_core::assets::shader::ShaderRegistry::new() -> Self
 pub fn tungsten_core::assets::shader::ShaderRegistry::path_for_id(&self, tungsten_core::assets::shader::ShaderAssetId) -> core::option::Option<&std::path::Path>
+pub fn tungsten_core::assets::shader::ShaderRegistry::register(&mut self, &str, tungsten_core::assets::shader::ShaderAssetId, std::path::PathBuf)
 impl core::clone::Clone for tungsten_core::assets::shader::ShaderRegistry
 pub fn tungsten_core::assets::shader::ShaderRegistry::clone(&self) -> tungsten_core::assets::shader::ShaderRegistry
 impl core::default::Default for tungsten_core::assets::shader::ShaderRegistry
@@ -4977,35 +4981,12 @@ impl core::marker::Unpin for tungsten_core::display::DisplayValidationError
 impl core::marker::UnsafeUnpin for tungsten_core::display::DisplayValidationError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::DisplayValidationError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::DisplayValidationError
-pub enum tungsten_core::display::ScaleMode
-pub tungsten_core::display::ScaleMode::Integer
-pub tungsten_core::display::ScaleMode::Stretch
-impl tungsten_core::display::ScaleMode
-pub const fn tungsten_core::display::ScaleMode::as_str(self) -> &'static str
-pub fn tungsten_core::display::ScaleMode::from_str_name(&str) -> core::option::Option<Self>
-impl core::clone::Clone for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::clone(&self) -> tungsten_core::display::ScaleMode
-impl core::cmp::Eq for tungsten_core::display::ScaleMode
-impl core::cmp::PartialEq for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::eq(&self, &tungsten_core::display::ScaleMode) -> bool
-impl core::fmt::Debug for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::display::ScaleMode
-impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleMode
-impl core::marker::Freeze for tungsten_core::display::ScaleMode
-impl core::marker::Send for tungsten_core::display::ScaleMode
-impl core::marker::Sync for tungsten_core::display::ScaleMode
-impl core::marker::Unpin for tungsten_core::display::ScaleMode
-impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleMode
 pub struct tungsten_core::display::DisplayConfig
 pub tungsten_core::display::DisplayConfig::display_mode: core::option::Option<tungsten_core::display::DisplayMode>
 pub tungsten_core::display::DisplayConfig::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::display::DisplayConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::display::DisplayConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::display::DisplayConfig::resolution: core::option::Option<tungsten_core::display::Resolution>
-pub tungsten_core::display::DisplayConfig::scale_mode: core::option::Option<tungsten_core::display::ScaleMode>
 pub tungsten_core::display::DisplayConfig::vsync: core::option::Option<bool>
 impl tungsten_core::display::DisplayConfig
 pub fn tungsten_core::display::DisplayConfig::resolve(&self, &tungsten_core::config::WindowConfig, &tungsten_core::config::RenderConfig) -> tungsten_core::display::DisplayState
@@ -5034,7 +5015,6 @@ pub tungsten_core::display::DisplayState::frame_rate_cap: core::option::Option<u
 pub tungsten_core::display::DisplayState::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::display::DisplayState::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::display::DisplayState::resolution: tungsten_core::display::Resolution
-pub tungsten_core::display::DisplayState::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten_core::display::DisplayState::vsync: bool
 impl tungsten_core::display::DisplayState
 pub fn tungsten_core::display::DisplayState::validate(&self) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
@@ -5735,7 +5715,7 @@ impl<I> core::marker::Unpin for tungsten_core::ecs::query::OptionalColumn<I> whe
 impl<I> core::marker::UnsafeUnpin for tungsten_core::ecs::query::OptionalColumn<I> where I: core::marker::UnsafeUnpin
 impl<I> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::RefUnwindSafe
 impl<I> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::OptionalColumn<I> where I: core::panic::unwind_safe::UnwindSafe
-pub struct tungsten_core::ecs::PendingEntity(_)
+pub struct tungsten_core::ecs::PendingEntity
 impl core::clone::Clone for tungsten_core::PendingEntity
 pub fn tungsten_core::PendingEntity::clone(&self) -> tungsten_core::PendingEntity
 impl core::cmp::Eq for tungsten_core::PendingEntity
@@ -5844,17 +5824,6 @@ pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
 pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
-pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
-pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
-pub fn tungsten_core::World::query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, core::option::Option<&C>, core::option::Option<&D>)>
-pub fn tungsten_core::World::query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &mut B, core::option::Option<&C>, core::option::Option<&mut D>)>
-pub fn tungsten_core::World::query3<A: 'static, B: 'static, C: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C)>
-pub fn tungsten_core::World::query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
-pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
@@ -6543,8 +6512,10 @@ pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::set_stick_response(&mut self, tungsten_core::input::StickResponse)
 pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -6630,6 +6601,30 @@ impl core::marker::Unpin for tungsten_core::input::RoutedInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RoutedInput
+pub struct tungsten_core::input::StickResponse
+pub tungsten_core::input::StickResponse::dead_zone: f32
+pub tungsten_core::input::StickResponse::sensitivity: f32
+impl tungsten_core::input::StickResponse
+pub const tungsten_core::input::StickResponse::DEAD_ZONE_RANGE: core::ops::range::RangeInclusive<f32>
+pub const tungsten_core::input::StickResponse::DEFAULT: Self
+pub const tungsten_core::input::StickResponse::SENSITIVITY_RANGE: core::ops::range::RangeInclusive<f32>
+impl core::clone::Clone for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::clone(&self) -> tungsten_core::input::StickResponse
+impl core::cmp::PartialEq for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::eq(&self, &tungsten_core::input::StickResponse) -> bool
+impl core::default::Default for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::default() -> Self
+impl core::fmt::Debug for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::StickResponse
+impl core::marker::StructuralPartialEq for tungsten_core::input::StickResponse
+impl core::marker::Freeze for tungsten_core::input::StickResponse
+impl core::marker::Send for tungsten_core::input::StickResponse
+impl core::marker::Sync for tungsten_core::input::StickResponse
+impl core::marker::Unpin for tungsten_core::input::StickResponse
+impl core::marker::UnsafeUnpin for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::StickResponse
 pub const tungsten_core::input::STICK_PRESS: f32
 pub const tungsten_core::input::STICK_RELEASE: f32
 pub mod tungsten_core::inspect
@@ -8380,9 +8375,14 @@ pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::opti
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::stick_dead_zone(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::stick_response(&self) -> tungsten_core::input::StickResponse
+pub fn tungsten_core::settings::Settings::stick_sensitivity(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::settings::Settings::text_scale(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
@@ -8865,25 +8865,6 @@ impl core::marker::Unpin for tungsten_core::time::TimerMode
 impl core::marker::UnsafeUnpin for tungsten_core::time::TimerMode
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::TimerMode
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::TimerMode
-pub struct tungsten_core::time::DeltaTime
-pub tungsten_core::time::DeltaTime::dt: f32
-impl tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::new() -> Self
-pub fn tungsten_core::time::DeltaTime::seconds(&self) -> f32
-impl core::clone::Clone for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::clone(&self) -> tungsten_core::time::DeltaTime
-impl core::default::Default for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::default() -> Self
-impl core::fmt::Debug for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::time::DeltaTime
-impl core::marker::Freeze for tungsten_core::time::DeltaTime
-impl core::marker::Send for tungsten_core::time::DeltaTime
-impl core::marker::Sync for tungsten_core::time::DeltaTime
-impl core::marker::Unpin for tungsten_core::time::DeltaTime
-impl core::marker::UnsafeUnpin for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
 pub struct tungsten_core::time::Time
 impl tungsten_core::time::Time
 pub fn tungsten_core::time::Time::advance_frame(&mut self, f32)
@@ -12449,7 +12430,6 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::action_ma
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::action_map::Binding
 pub enum tungsten_core::BlendMode
 pub tungsten_core::BlendMode::Alpha
-pub tungsten_core::BlendMode::Premultiplied
 impl core::clone::Clone for tungsten_core::assets::particle::BlendMode
 pub fn tungsten_core::assets::particle::BlendMode::clone(&self) -> tungsten_core::assets::particle::BlendMode
 impl core::cmp::Eq for tungsten_core::assets::particle::BlendMode
@@ -13182,6 +13162,9 @@ pub tungsten_core::ManifestError::OutsideFolder::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse
 pub tungsten_core::ManifestError::Parse::path: alloc::string::String
 pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
+pub tungsten_core::ManifestError::PathEscapes
+pub tungsten_core::ManifestError::PathEscapes::id: alloc::string::String
+pub tungsten_core::ManifestError::PathEscapes::path: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile
 pub tungsten_core::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile::path: alloc::string::String
@@ -13483,28 +13466,6 @@ impl core::marker::Unpin for tungsten_core::tween::ScalarSlot
 impl core::marker::UnsafeUnpin for tungsten_core::tween::ScalarSlot
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::tween::ScalarSlot
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::tween::ScalarSlot
-pub enum tungsten_core::ScaleMode
-pub tungsten_core::ScaleMode::Integer
-pub tungsten_core::ScaleMode::Stretch
-impl tungsten_core::display::ScaleMode
-pub const fn tungsten_core::display::ScaleMode::as_str(self) -> &'static str
-pub fn tungsten_core::display::ScaleMode::from_str_name(&str) -> core::option::Option<Self>
-impl core::clone::Clone for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::clone(&self) -> tungsten_core::display::ScaleMode
-impl core::cmp::Eq for tungsten_core::display::ScaleMode
-impl core::cmp::PartialEq for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::eq(&self, &tungsten_core::display::ScaleMode) -> bool
-impl core::fmt::Debug for tungsten_core::display::ScaleMode
-pub fn tungsten_core::display::ScaleMode::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::display::ScaleMode
-impl core::marker::StructuralPartialEq for tungsten_core::display::ScaleMode
-impl core::marker::Freeze for tungsten_core::display::ScaleMode
-impl core::marker::Send for tungsten_core::display::ScaleMode
-impl core::marker::Sync for tungsten_core::display::ScaleMode
-impl core::marker::Unpin for tungsten_core::display::ScaleMode
-impl core::marker::UnsafeUnpin for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::display::ScaleMode
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::display::ScaleMode
 pub enum tungsten_core::SceneError
 pub tungsten_core::SceneError::Io
 pub tungsten_core::SceneError::Io::path: alloc::string::String
@@ -14860,32 +14821,12 @@ impl core::marker::Unpin for tungsten_core::debug_draw::DebugDraw
 impl core::marker::UnsafeUnpin for tungsten_core::debug_draw::DebugDraw
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::debug_draw::DebugDraw
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::debug_draw::DebugDraw
-pub struct tungsten_core::DeltaTime
-pub tungsten_core::DeltaTime::dt: f32
-impl tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::new() -> Self
-pub fn tungsten_core::time::DeltaTime::seconds(&self) -> f32
-impl core::clone::Clone for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::clone(&self) -> tungsten_core::time::DeltaTime
-impl core::default::Default for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::default() -> Self
-impl core::fmt::Debug for tungsten_core::time::DeltaTime
-pub fn tungsten_core::time::DeltaTime::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tungsten_core::time::DeltaTime
-impl core::marker::Freeze for tungsten_core::time::DeltaTime
-impl core::marker::Send for tungsten_core::time::DeltaTime
-impl core::marker::Sync for tungsten_core::time::DeltaTime
-impl core::marker::Unpin for tungsten_core::time::DeltaTime
-impl core::marker::UnsafeUnpin for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::time::DeltaTime
-impl core::panic::unwind_safe::UnwindSafe for tungsten_core::time::DeltaTime
 pub struct tungsten_core::DisplayConfig
 pub tungsten_core::DisplayConfig::display_mode: core::option::Option<tungsten_core::display::DisplayMode>
 pub tungsten_core::DisplayConfig::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::DisplayConfig::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::DisplayConfig::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::DisplayConfig::resolution: core::option::Option<tungsten_core::display::Resolution>
-pub tungsten_core::DisplayConfig::scale_mode: core::option::Option<tungsten_core::display::ScaleMode>
 pub tungsten_core::DisplayConfig::vsync: core::option::Option<bool>
 impl tungsten_core::display::DisplayConfig
 pub fn tungsten_core::display::DisplayConfig::resolve(&self, &tungsten_core::config::WindowConfig, &tungsten_core::config::RenderConfig) -> tungsten_core::display::DisplayState
@@ -14914,7 +14855,6 @@ pub tungsten_core::DisplayState::frame_rate_cap: core::option::Option<u32>
 pub tungsten_core::DisplayState::max_frame_latency: core::option::Option<u32>
 pub tungsten_core::DisplayState::present_mode: core::option::Option<tungsten_core::config::PresentModeConfig>
 pub tungsten_core::DisplayState::resolution: tungsten_core::display::Resolution
-pub tungsten_core::DisplayState::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten_core::DisplayState::vsync: bool
 impl tungsten_core::display::DisplayState
 pub fn tungsten_core::display::DisplayState::validate(&self) -> core::result::Result<(), tungsten_core::display::DisplayValidationError>
@@ -15426,8 +15366,10 @@ pub fn tungsten_core::input::InputState::set_fixed_view(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_focused(&mut self, bool)
 pub fn tungsten_core::input::InputState::set_gamepad_axis(&mut self, tungsten_core::input::GamepadId, tungsten_core::input::GamepadAxis, f32)
 pub fn tungsten_core::input::InputState::set_modifiers(&mut self, tungsten_core::input::Modifiers)
+pub fn tungsten_core::input::InputState::set_stick_response(&mut self, tungsten_core::input::StickResponse)
 pub fn tungsten_core::input::InputState::stick_just_pressed(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
 pub fn tungsten_core::input::InputState::stick_just_released(&self, tungsten_core::input::GamepadAxis, tungsten_core::input::AxisDirection) -> bool
+pub fn tungsten_core::input::InputState::stick_response(&self) -> tungsten_core::input::StickResponse
 pub fn tungsten_core::input::InputState::suppress_until_release(&mut self, tungsten_core::input::KeyCode)
 pub fn tungsten_core::input::InputState::update_cursor_position(&mut self, f32, f32)
 impl core::clone::Clone for tungsten_core::input::InputState
@@ -16021,7 +15963,7 @@ impl core::marker::Unpin for tungsten_core::rng::Pcg32
 impl core::marker::UnsafeUnpin for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::rng::Pcg32
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
-pub struct tungsten_core::PendingEntity(_)
+pub struct tungsten_core::PendingEntity
 impl core::clone::Clone for tungsten_core::PendingEntity
 pub fn tungsten_core::PendingEntity::clone(&self) -> tungsten_core::PendingEntity
 impl core::cmp::Eq for tungsten_core::PendingEntity
@@ -16849,9 +16791,14 @@ pub fn tungsten_core::settings::Settings::set_display_mode(&mut self, core::opti
 pub fn tungsten_core::settings::Settings::set_frame_rate_cap(&mut self, core::option::Option<tungsten_core::settings::FrameRateCap>)
 pub fn tungsten_core::settings::Settings::set_master_volume(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_resolution(&mut self, core::option::Option<tungsten_core::display::Resolution>)
+pub fn tungsten_core::settings::Settings::set_stick_dead_zone(&mut self, core::option::Option<f32>)
+pub fn tungsten_core::settings::Settings::set_stick_sensitivity(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_text_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_ui_scale(&mut self, core::option::Option<f32>)
 pub fn tungsten_core::settings::Settings::set_vsync(&mut self, core::option::Option<bool>)
+pub fn tungsten_core::settings::Settings::stick_dead_zone(&self) -> core::option::Option<f32>
+pub fn tungsten_core::settings::Settings::stick_response(&self) -> tungsten_core::input::StickResponse
+pub fn tungsten_core::settings::Settings::stick_sensitivity(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::take_load_warnings(&mut self) -> alloc::vec::Vec<alloc::string::String>
 pub fn tungsten_core::settings::Settings::text_scale(&self) -> core::option::Option<f32>
 pub fn tungsten_core::settings::Settings::ui_scale(&self) -> core::option::Option<f32>
@@ -17145,6 +17092,30 @@ impl core::marker::Unpin for tungsten_core::assets::data::StagedLoad
 impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoad
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoad
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoad
+pub struct tungsten_core::StickResponse
+pub tungsten_core::StickResponse::dead_zone: f32
+pub tungsten_core::StickResponse::sensitivity: f32
+impl tungsten_core::input::StickResponse
+pub const tungsten_core::input::StickResponse::DEAD_ZONE_RANGE: core::ops::range::RangeInclusive<f32>
+pub const tungsten_core::input::StickResponse::DEFAULT: Self
+pub const tungsten_core::input::StickResponse::SENSITIVITY_RANGE: core::ops::range::RangeInclusive<f32>
+impl core::clone::Clone for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::clone(&self) -> tungsten_core::input::StickResponse
+impl core::cmp::PartialEq for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::eq(&self, &tungsten_core::input::StickResponse) -> bool
+impl core::default::Default for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::default() -> Self
+impl core::fmt::Debug for tungsten_core::input::StickResponse
+pub fn tungsten_core::input::StickResponse::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::input::StickResponse
+impl core::marker::StructuralPartialEq for tungsten_core::input::StickResponse
+impl core::marker::Freeze for tungsten_core::input::StickResponse
+impl core::marker::Send for tungsten_core::input::StickResponse
+impl core::marker::Sync for tungsten_core::input::StickResponse
+impl core::marker::Unpin for tungsten_core::input::StickResponse
+impl core::marker::UnsafeUnpin for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::StickResponse
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::StickResponse
 pub struct tungsten_core::StyledText
 pub tungsten_core::StyledText::spans: alloc::vec::Vec<tungsten_core::text::TextSpan>
 impl core::clone::Clone for tungsten_core::text::StyledText
@@ -18154,17 +18125,6 @@ pub fn tungsten_core::World::insert_resource<T: 'static>(&mut self, T)
 pub fn tungsten_core::World::is_alive(&self, tungsten_core::Entity) -> bool
 pub fn tungsten_core::World::new() -> Self
 pub fn tungsten_core::World::query<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
-pub fn tungsten_core::World::query2<A: 'static, B: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B)>
-pub fn tungsten_core::World::query2_entities<A: 'static, B: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query2_mut<A: 'static, B: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B)>
-pub fn tungsten_core::World::query2_opt2<A: 'static, B: 'static, C: 'static, D: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, core::option::Option<&C>, core::option::Option<&D>)>
-pub fn tungsten_core::World::query2_opt2_mut<A: 'static, B: 'static, C: 'static, D: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &mut B, core::option::Option<&C>, core::option::Option<&mut D>)>
-pub fn tungsten_core::World::query3<A: 'static, B: 'static, C: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C)>
-pub fn tungsten_core::World::query3_entities<A: 'static, B: 'static, C: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
-pub fn tungsten_core::World::query3_mut<A: 'static, B: 'static, C: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_mut_without<A: 'static, B: 'static, C: 'static, X: 'static>(&mut self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &mut A, &mut B, &mut C)>
-pub fn tungsten_core::World::query3_opt2<A: 'static, B: 'static, C: 'static, D: 'static, E: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::Entity, &A, &B, &C, core::option::Option<&D>, core::option::Option<&E>)>
-pub fn tungsten_core::World::query_entities<T: 'static>(&self) -> alloc::vec::Vec<tungsten_core::Entity>
 pub fn tungsten_core::World::query_filtered<'w, Q: tungsten_core::ecs::query::ReadOnlyQueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut<'w, Q: tungsten_core::ecs::query::QueryData<'w>>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>
 pub fn tungsten_core::World::query_mut_filtered<'w, Q: tungsten_core::ecs::query::QueryData<'w>, F: tungsten_core::ecs::query::QueryFilter>(&'w mut self) -> impl core::iter::traits::iterator::Iterator<Item = Q>

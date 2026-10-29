@@ -438,8 +438,10 @@ def build_planks(images, lit):
 
 def build_props(images, lit):
     """The crates and the keg, lit; the keg's lit frames by quarter of its
-    fuse; the char overlay's three stages and the particles, unlit; and the
-    crates' planks (`build_planks`), lit."""
+    fuse; the char overlay's three stages and the splinter's and stave's
+    particles, unlit; the rock's chip, lit, as the terrain's relief prefix
+    `rock_` lit it before the generator's families split; and the crates'
+    planks (`build_planks`), lit."""
     for name, canvas in (('pine_crate_0', crate_slatted()), ('pine_crate_1', crate_planked()),
                          ('powder_keg', keg_canvas())):
         images[name] = to_image(canvas)
@@ -454,3 +456,4 @@ def build_props(images, lit):
     images['char_splinter'] = char_splinter()
     images['keg_stave'] = keg_stave()
     images['rock_chip'] = rock_chip()
+    lit.add('rock_chip')

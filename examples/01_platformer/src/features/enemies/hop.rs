@@ -64,7 +64,9 @@ impl Ahead {
 
 /// `walker`'s body's half size, by its kind.
 fn half(world: &World, walker: Entity) -> Option<Vec2> {
-    world.get::<Enemy>(walker).map(|mine| mine.kind.info().half)
+    world
+        .get::<Enemy>(walker)
+        .map(|mine| super::body(world, mine.kind).half)
 }
 
 /// Whether `walker` stands on something.

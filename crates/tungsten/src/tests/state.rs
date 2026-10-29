@@ -564,6 +564,67 @@ fn zero_duration_transition_applies_on_first_dispatch() {
 }
 
 #[test]
+fn a_pop_after_a_push_in_one_frame_waits_and_takes_the_pushed_spawns() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), true));
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("pause"), "the pop waits");
+    assert_eq!(count(&hooks, "pause:update"), 1);
+    assert_eq!(scene_entity_count(&world, "pause"), 1);
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(count(&hooks, "pause:on_exit"), 1);
+    assert_eq!(scene_entity_count(&world, "pause"), 0, "no spawn outlives");
+}
+
+#[test]
+fn a_second_replace_in_one_frame_waits_with_the_commands_after_it() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_replace(TestState::new("gameplay", hooks.clone(), true));
+    stack_mut(&mut world).request_replace(TestState::new("pause", hooks.clone(), true));
+    stack_mut(&mut world).request_push(TestState::new("menu", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("gameplay"));
+    assert_eq!(stack(&world).depth(), 1);
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"), "order kept");
+    assert_eq!(stack(&world).depth(), 2);
+    assert_eq!(scene_entity_count(&world, "gameplay"), 0);
+    assert_eq!(scene_entity_count(&world, "pause"), 1);
+}
+
+#[test]
+fn a_pop_then_a_push_in_one_frame_both_apply() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    stack_mut(&mut world).request_pop();
+    stack_mut(&mut world).request_push(TestState::new("gameplay", hooks.clone(), false));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("gameplay"));
+    assert_eq!(stack(&world).depth(), 1);
+}
+
+#[test]
+fn a_boundary_pop_after_a_plain_push_waits_a_frame() {
+    let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
+    let mut world = world_in_menu(&hooks);
+    assert!(stack_mut(&mut world).request_pop_transition(fade(0.0)));
+    stack_mut(&mut world).request_push(TestState::new("pause", hooks.clone(), true));
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("pause"));
+    assert!(!stack(&world).is_transitioning());
+
+    dispatch(&mut world, 0.0);
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(scene_entity_count(&world, "pause"), 0);
+}
+
+#[test]
 fn top_state_updates_during_transition() {
     let hooks: Hooks = Rc::new(RefCell::new(Vec::new()));
     let mut world = world_in_menu(&hooks);
@@ -831,4 +892,79 @@ fn with_no_owned_roots_a_dispatch_leaves_the_tree_untouched() {
         assert_eq!(ui.fade(root), Some(1.0));
     }
     assert!(stack(&world).owned_roots.is_empty());
+}
+
+type Reads = Rc<RefCell<Vec<(&'static str, Option<StateId>, usize)>>>;
+
+/// Records what `active_id` and `depth` read inside each of its hooks.
+struct ReadingState {
+    id: StateId,
+    reads: Reads,
+}
+
+impl ReadingState {
+    fn read(&self, hook: &'static str, world: &World) {
+        let stack = world.get_resource::<StateStack>().unwrap();
+        self.reads
+            .borrow_mut()
+            .push((hook, stack.active_id(), stack.depth()));
+    }
+}
+
+impl GameState for ReadingState {
+    fn id(&self) -> StateId {
+        self.id
+    }
+
+    fn on_enter(&mut self, ctx: &mut StateContext) {
+        self.read("on_enter", ctx.world);
+    }
+
+    fn on_exit(&mut self, ctx: &mut StateContext) {
+        self.read("on_exit", ctx.world);
+    }
+
+    fn on_pause(&mut self, ctx: &mut StateContext) {
+        self.read("on_pause", ctx.world);
+    }
+
+    fn on_resume(&mut self, ctx: &mut StateContext) {
+        self.read("on_resume", ctx.world);
+    }
+
+    fn update(&mut self, world: &mut World) {
+        self.read("update", world);
+    }
+}
+
+#[test]
+fn a_hook_reads_its_own_state_as_active_at_its_own_depth() {
+    let reads: Reads = Rc::new(RefCell::new(Vec::new()));
+    let mut world = make_world();
+    let state = |id| ReadingState {
+        id,
+        reads: reads.clone(),
+    };
+    stack_mut(&mut world).request_push(state("menu"));
+    dispatch(&mut world, 0.0);
+    stack_mut(&mut world).request_push(state("pause"));
+    dispatch(&mut world, 0.0);
+    stack_mut(&mut world).request_pop();
+    dispatch(&mut world, 0.0);
+
+    assert_eq!(
+        *reads.borrow(),
+        vec![
+            ("on_enter", Some("menu"), 1),
+            ("update", Some("menu"), 1),
+            ("on_pause", Some("menu"), 1),
+            ("on_enter", Some("pause"), 2),
+            ("update", Some("pause"), 2),
+            ("on_exit", Some("pause"), 2),
+            ("on_resume", Some("menu"), 1),
+            ("update", Some("menu"), 1),
+        ]
+    );
+    assert_eq!(stack(&world).active_id(), Some("menu"));
+    assert_eq!(stack(&world).depth(), 1);
 }

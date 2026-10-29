@@ -61,13 +61,6 @@ impl Default for LightUbo {
     }
 }
 
-impl LightUbo {
-    #[must_use]
-    pub fn byte_size() -> usize {
-        std::mem::size_of::<Self>()
-    }
-}
-
 /// Pack `lights` (already sorted + capped) plus `ambient` into a `LightUbo`.
 #[must_use]
 pub fn pack_lights(lights: &[GpuLight], ambient: Vec3) -> LightUbo {
@@ -126,15 +119,44 @@ pub fn distance_to_aabb_sq(p: Vec2, min: Vec2, max: Vec2) -> f32 {
 
 /// Sort directional-first then nearest to the AABB rectangle, truncate to
 /// `LIT_LIGHT_CAP`. Stable: ties keep input order.
+///
+/// Past the cap, the lights kept are chosen first: a dark light (intensity 0)
+/// takes no slot, and among lights the same distance from the view, all
+/// those inside it, the one nearer the view's centre wins, so a crowd at the
+/// view's edges cannot push out the light the player stands in. The kept
+/// lights then sort as above.
 #[must_use]
 pub fn cull_to_cap(camera_aabb: (Vec2, Vec2), entries: &[(Vec2, Light)]) -> Vec<GpuLight> {
     let (min, max) = camera_aabb;
-    let mut scored: Vec<(bool, f32, GpuLight)> = entries
-        .iter()
+    let directional = |light: &Light| matches!(light.kind, LightKind::Directional { .. });
+    let mut kept: Vec<&(Vec2, Light)> = entries.iter().collect();
+    if kept.len() > LIT_LIGHT_CAP {
+        kept.retain(|(_, light)| light.intensity != 0.0);
+    }
+    if kept.len() > LIT_LIGHT_CAP {
+        let centre = (min + max) * 0.5;
+        let rank = |(pos, light): &(Vec2, Light)| {
+            (
+                !directional(light),
+                distance_to_aabb_sq(*pos, min, max),
+                pos.distance_squared(centre),
+            )
+        };
+        let mut order: Vec<usize> = (0..kept.len()).collect();
+        order.sort_by(|&a, &b| {
+            rank(kept[a])
+                .partial_cmp(&rank(kept[b]))
+                .unwrap_or(Ordering::Equal)
+        });
+        order.truncate(LIT_LIGHT_CAP);
+        order.sort_unstable();
+        kept = order.into_iter().map(|index| kept[index]).collect();
+    }
+    let mut scored: Vec<(bool, f32, GpuLight)> = kept
+        .into_iter()
         .map(|(pos, light)| {
-            let directional = matches!(light.kind, LightKind::Directional { .. });
             let dist = distance_to_aabb_sq(*pos, min, max);
-            (directional, dist, pack_one_light(*pos, light))
+            (directional(light), dist, pack_one_light(*pos, light))
         })
         .collect();
     scored.sort_by(|a, b| match (a.0, b.0) {

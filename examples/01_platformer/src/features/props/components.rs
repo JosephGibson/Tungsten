@@ -25,6 +25,11 @@ pub enum StoneSize {
     Large,
 }
 
+/// A crate or keg the map sets down for a fresh run, at its markers: none
+/// of the summon's, so its caps leave it alone. Saved as `PropSave::map`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MapProp;
+
 impl StoneSize {
     /// Every size, smallest first.
     pub const ALL: [StoneSize; 3] = [StoneSize::Small, StoneSize::Medium, StoneSize::Large];

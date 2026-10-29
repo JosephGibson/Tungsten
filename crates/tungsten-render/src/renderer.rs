@@ -434,6 +434,9 @@ impl Renderer {
             )
             .expect("compile-time smaa_neighborhood_blend shader must validate");
 
+        // Bloom's ids 4..=7 follow the sprite's 0 and SMAA's 1..=3: the cache
+        // keys modules by id and `reload_shader` rebuilds the stage whose
+        // stored id matches, so a shared id would swap the wrong stage.
         let bloom_shader_ids = BloomShaderIds {
             threshold: ShaderAssetId(4),
             downsample: ShaderAssetId(5),
@@ -993,7 +996,11 @@ impl Renderer {
         )
     }
 
-    fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
+    /// The ID of shader `name`, minted on first use. The renderer is the one
+    /// allocator of shader IDs, as of texture handles (`D-048`); the umbrella
+    /// records each in core's `ShaderRegistry`, so both sides key a shader by
+    /// the same ID.
+    pub fn resolve_or_allocate_shader_id(&mut self, name: &str) -> ShaderAssetId {
         if let Some(&id) = self.shader_ids.get(name) {
             return id;
         }
@@ -2027,6 +2034,8 @@ impl Renderer {
                 && let (Some(post_pass), Some(&(src, _dst))) =
                     (post_stack.0.get(pi), plan.post_targets.get(pi))
             {
+                self.post_stack
+                    .warn_inert(post_pass, self.clear_color.a as f32);
                 self.post_stack.record_pass(
                     &self.device,
                     &self.queue,

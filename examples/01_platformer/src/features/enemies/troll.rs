@@ -45,7 +45,6 @@ use crate::features::combat::{FROZEN, Hit, Kind, STUNNED, has_status};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
-use crate::features::player::PLAYER_HALF;
 use crate::features::props::components::{Crate, Keg};
 use crate::features::toys::components::{BowlingBall, IronBlock};
 use crate::features::toys::systems::falloff;
@@ -90,8 +89,6 @@ pub const SLAM_COOLDOWN: f32 = 2.0;
 /// Its walk, its prefab's `move_speed` stat and run speed: restated so a
 /// save can move an older troll's base to it.
 pub const MOVE_SPEED: f32 = 91.0;
-/// Where its fist meets the ground, from its body's centre facing right.
-pub const FIST: Vec2 = Vec2::new(56.0, 50.0);
 /// How far from its centre it reaches for something to throw, the throw's
 /// tell, and the seconds a throw credits it.
 pub const PICKUP_REACH: f32 = 200.0;
@@ -106,9 +103,6 @@ pub const THROW_MOST: f32 = 1.2;
 pub const THROWN_LOCK: f32 = 1.0;
 /// The seconds its attack's clip runs before the recovery.
 pub const ATTACK_SECS: f32 = 0.4;
-/// Where it holds what it lifts, from its sprite's top-left: the object's
-/// bottom at its hands, over its head.
-pub const HANDS: Vec2 = Vec2::new(74.0, 2.0);
 
 /// A shape's half extents.
 fn half(shape: Shape) -> Vec2 {
@@ -196,15 +190,20 @@ pub fn pick_up(world: &mut World, troll: Entity, object: Entity) -> bool {
     true
 }
 
-/// Puts `object` at `troll`'s hands at `troll`'s velocity.
+/// Puts `object` at `troll`'s hands, its body's `hands` point over its
+/// head, where the object's bottom sits, at `troll`'s velocity.
 fn place(world: &mut World, troll: Entity, object: Entity) {
-    let (Some(at), Some(collider)) = (
+    let (Some(at), Some(collider), Some(heading)) = (
         world.get::<Position>(troll).map(|at| at.0),
         world.get::<Collider>(object).copied(),
+        world.get::<Enemy>(troll).map(|mine| mine.heading),
     ) else {
         return;
     };
-    let centre = at + HANDS - Vec2::new(0.0, half(collider.shape).y);
+    let Some(hands) = super::body(world, EnemyKind::Troll).point("hands", heading) else {
+        return;
+    };
+    let centre = at + hands - Vec2::new(0.0, half(collider.shape).y);
     let velocity = world.get::<Velocity>(troll).map_or(Vec2::ZERO, |v| v.0);
     if let Some(position) = world.get_mut::<Position>(object) {
         position.0 = centre - collider.offset;
@@ -260,7 +259,7 @@ fn aim(world: &World, object: Entity, target: Vec2) -> Vec2 {
     let below = world
         .get::<Collider>(object)
         .map_or(0.0, |collider| half(collider.shape).y);
-    let feet = target.y + PLAYER_HALF.y;
+    let feet = target.y + crate::features::player::body(world).half.y;
     Vec2::new(target.x, target.y.min(feet - below))
 }
 
@@ -307,12 +306,13 @@ pub fn throw(world: &mut World, troll: Entity) -> Option<Entity> {
     Some(object)
 }
 
-/// The point its fist meets the ground, as it faces.
+/// The point its fist meets the ground: its body's `fist` point as it
+/// faces.
 #[must_use]
 pub fn fist(world: &World, troll: Entity) -> Option<Vec2> {
-    let at = centre(world, troll)?;
+    let at = world.get::<Position>(troll)?.0;
     let heading = world.get::<Enemy>(troll)?.heading;
-    Some(at + Vec2::new(FIST.x * heading, FIST.y))
+    Some(at + super::body(world, EnemyKind::Troll).point("fist", heading)?)
 }
 
 /// What a blow of the troll's does to each saved thing in `near`, in
@@ -484,7 +484,7 @@ fn set_down(world: &mut World, troll: Entity, object: Entity) {
         world.get::<Collider>(object).copied(),
         world.get::<Position>(object).map(|position| position.0),
     ) {
-        let behind = EnemyKind::Troll.info().half.x + half(collider.shape).x + 4.0;
+        let behind = super::body(world, EnemyKind::Troll).half.x + half(collider.shape).x + 4.0;
         let moved = Vec2::new(at.x - heading * behind - collider.offset.x, point.y);
         if let Some(position) = world.get_mut::<Position>(object) {
             position.0 = moved;

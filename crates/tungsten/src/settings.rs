@@ -2,8 +2,8 @@
 //! screen calls after changing them, before `Settings::save`.
 
 use tungsten_core::{
-    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, FrameRateCap, Resolution,
-    ScaleFactor, Settings, UiTree, World,
+    AudioBus, AudioCommands, Config, DisplayMode, DisplayState, FrameRateCap, InputState,
+    Resolution, ScaleFactor, Settings, UiTree, World,
 };
 
 use crate::app::resolve_startup_display;
@@ -23,11 +23,14 @@ pub(crate) struct WindowedTarget(pub(crate) Resolution);
 /// mode, resolution, vsync and frame-rate limit (`D-180`) through a display
 /// request, the UI scale to [`ScaleFactor`], the text scale to the
 /// [`UiTree`] (M56), the master volume and every bus's volume through
-/// [`AudioCommands`]. A value the player unset returns to the shipped one:
-/// the UI scale and the text scale to 1.0, the master volume and a bus's
-/// volume to [`shipped_volume`] (`D-184`). A display request queued earlier this frame, such as a hotkey's,
-/// takes the persisted values, so the last apply wins; the F9 and F11
-/// hotkeys' changes to them since startup are replaced. In windowed
+/// [`AudioCommands`], and the sticks' dead zone and sensitivity to
+/// [`InputState`]'s `StickResponse` (P7-12), which the UI routing passes to
+/// `RoutedInput`. A value the player unset returns to the shipped one: the
+/// UI scale and the text scale to 1.0, the master volume and a bus's volume
+/// to [`shipped_volume`] (`D-184`), the stick's to `StickResponse::DEFAULT`.
+/// A display request queued earlier this frame, such as a hotkey's, takes
+/// the persisted values, so the last apply wins; the F9 and F11 hotkeys'
+/// changes to them since startup are replaced. In windowed
 /// mode the resolution is sent only when the set or shipped one differs
 /// from the last one sent (`D-169`), so a window resized by hand or
 /// maximized keeps its size at an unrelated apply, and one set while
@@ -45,6 +48,9 @@ pub fn apply_settings(world: &mut World) {
     }
     if let Some(tree) = world.get_resource_mut::<UiTree>() {
         tree.set_text_scale(settings.text_scale().unwrap_or(1.0));
+    }
+    if let Some(input) = world.get_resource_mut::<InputState>() {
+        input.set_stick_response(settings.stick_response());
     }
     if world.has_resource::<AudioCommands>() {
         let master = settings

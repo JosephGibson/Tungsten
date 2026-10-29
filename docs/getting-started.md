@@ -6,7 +6,7 @@ Make a game with Tungsten from its template, `templates/basic`: a shell of the s
 
 - Rust through [rustup](https://rustup.rs). The template's `rust-toolchain.toml` pins the toolchain the engine is tested with, and rustup installs it on first use.
 - A GPU with a current driver: Vulkan on Linux, DX12 or Vulkan on Windows. Those two are the tested hosts; Metal on macOS is untested ([known issues](known-issues.md)).
-- On Linux, `pkg-config` and the ALSA headers (`libasound2-dev` on Debian and Ubuntu).
+- On Linux, `pkg-config`, the ALSA headers and libudev for gamepads (`libasound2-dev` and `libudev-dev` on Debian and Ubuntu).
 - Git.
 - To package a game, a Linux x86-64 host with GNU `tar` and binutils' `objcopy`.
 
@@ -67,7 +67,7 @@ A debug build watches `assets/` and `input.json`. With the game running, open `a
 
 ## Settings and saves
 
-The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, frame-rate limit, UI and text scales, master volume and bus volumes the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
+The engine keeps the player's settings in the game's user folder, which `game.id` names (`D-119`, `D-159`): `~/.config/<id>` on Linux, `%APPDATA%\<id>` on Windows and `~/Library/Application Support/<id>` on macOS, or `settings/` under `TUNGSTEN_USER_DIR` when that is set. Two files live there, both written by the game: `settings.json`, the display mode, resolution, vsync, frame-rate limit, UI and text scales, master volume, bus volumes and the sticks' dead zone and sensitivity the player set, and `input.json`, the bindings the player changed, laid over the shipped `input.json` action by action. A file there that is corrupt falls back to the defaults and stays beside them as `settings.json.bad` or `input.json.bad`; it never stops the game, while a broken shipped `tungsten.json` or `input.json` still does. Without a folder (smoke mode, or no `game.id`) nothing is saved.
 
 The `Settings` resource holds the player's values, `None` for each one left at the shipped value. Change one, apply it, then save, as the shell's Audio tab does with a volume:
 

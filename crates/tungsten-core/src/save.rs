@@ -113,7 +113,7 @@ pub enum SaveError {
     /// Not 1–64 of `a`–`z`, `0`–`9`, `.`, `_` and `-` starting with a letter
     /// or digit, or a Windows device name.
     #[error(
-        "invalid slot name '{name}': expected 1-64 of a-z, 0-9, '.', '_' or '-', starting with a letter or digit, and not a Windows device name"
+        "invalid slot name '{name}': expected 1-64 of a-z, 0-9, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name"
     )]
     InvalidName {
         /// The name given.

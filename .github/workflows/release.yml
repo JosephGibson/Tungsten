@@ -127,13 +127,14 @@ jobs:
           ref: ${{ needs.verify.outputs.sha }}
           persist-credentials: false
 
-      # Same list as ci.yml. cpal needs pkg-config and ALSA headers; no locked
-      # crate links udev. X11/Wayland, xkbcommon and Vulkan load at run time.
+      # Same list as ci.yml. cpal needs pkg-config and ALSA headers; gilrs
+      # links libudev through pkg-config (D-220). X11/Wayland, xkbcommon and
+      # Vulkan load at run time.
       - name: Install Linux build prerequisites
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev
 
       # Reads rust-toolchain.toml. No cache: a cache saved on a tag ref is
       # rarely restored, and release builds start clean.

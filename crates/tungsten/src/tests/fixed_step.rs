@@ -43,7 +43,6 @@ fn push<T: 'static>(world: &mut World, value: T) {
 struct Dts {
     fixed: bool,
     delta: f32,
-    delta_time: f32,
 }
 
 #[test]
@@ -56,16 +55,7 @@ fn fixed_update_reads_the_step_and_update_the_frame_dt() {
             stage,
             system(name, move |world: &mut World| {
                 let delta = world.get_resource::<Time>().unwrap().delta();
-                #[allow(deprecated)]
-                let delta_time = world.get_resource::<tungsten_core::DeltaTime>().unwrap().dt;
-                push(
-                    world,
-                    Dts {
-                        fixed,
-                        delta,
-                        delta_time,
-                    },
-                );
+                push(world, Dts { fixed, delta });
             }),
         );
     }
@@ -77,12 +67,8 @@ fn fixed_update_reads_the_step_and_update_the_frame_dt() {
     let update: Vec<_> = dts.iter().filter(|d| !d.fixed).collect();
     assert_eq!(update.len(), 12);
     assert_eq!(fixed.len(), 4, "12 frames at 1/144 s owe 4 whole steps");
-    assert!(fixed.iter().all(|d| d.delta == PIN && d.delta_time == PIN));
-    assert!(
-        update
-            .iter()
-            .all(|d| d.delta == FAST && d.delta_time == FAST)
-    );
+    assert!(fixed.iter().all(|d| d.delta == PIN));
+    assert!(update.iter().all(|d| d.delta == FAST));
 }
 
 /// Per frame: how many fixed steps saw `jump` just pressed through

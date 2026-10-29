@@ -251,6 +251,7 @@ impl Archetype {
     }
 
     /// Column storing `type_id`; `None` when the archetype lacks it.
+    #[cfg(test)]
     pub fn column(&self, type_id: TypeId) -> Option<&dyn AnyColumn> {
         self.column_index(type_id)
             .map(|index| &*self.columns[index])
@@ -263,6 +264,7 @@ impl Archetype {
     }
 
     /// Typed column for component `T`; `None` when the archetype lacks it.
+    #[cfg(test)]
     pub fn typed_column<T: 'static>(&self) -> Option<&TypedVec<T>> {
         self.column(TypeId::of::<T>())
             .map(|column| column.typed().expect("column type matches its key"))

@@ -8,7 +8,6 @@ use example_01_platformer::features::player::components::Moves;
 use example_01_platformer::features::player::systems::{
     AIR_JUMP_BURST, DEATH_CLIP, HURT_CLIP, escaped,
 };
-use example_01_platformer::features::player::{BODY_OFFSET, PLAYER_HALF};
 use example_01_platformer::features::run::DEATH_SECS;
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::shared::Burst;
@@ -24,6 +23,7 @@ use tungsten::testing::UiHarness;
 use example_01_platformer::game::GAMEPLAY;
 
 use super::{ball, body, calm, centre, fall_dead, ground, run, settle, stand, teleport, top};
+use super::{body_offset, player_half};
 
 /// The kit's step at the harness's 60 Hz.
 const DT: f32 = 1.0 / 60.0;
@@ -114,7 +114,7 @@ fn despawn_out_of_bounds_kills_escaped_player_whose_body_drops() {
     let (mut harness, player) = run();
     harness.step(5);
     // Past the box's right side at a height the kill row leaves alone.
-    let out = Vec2::new(WORLD_MAX.x + PLAYER_HALF.x + 50.0, 20.0 * TILE);
+    let out = Vec2::new(WORLD_MAX.x + player_half().x + 50.0, 20.0 * TILE);
     teleport(&mut harness, player, out);
     harness.step(1);
     assert!(health(&harness, player).is_dead());
@@ -177,13 +177,13 @@ fn despawn_out_of_bounds_keeps_player_while_collider_overlaps_bounds() {
     let (mut harness, player) = run();
     harness.step(5);
     let collider = *harness.world().get::<Collider>(player).unwrap();
-    let start = Vec2::new(WORLD_MIN.x - PLAYER_HALF.x + 1.0, 30.0 * TILE);
+    let start = Vec2::new(WORLD_MIN.x - player_half().x + 1.0, 30.0 * TILE);
     assert!(
-        !escaped(start - BODY_OFFSET, Some(&collider)),
+        !escaped(start - body_offset(), Some(&collider)),
         "a pixel inside"
     );
     assert!(escaped(
-        start - BODY_OFFSET - Vec2::X * 2.0,
+        start - body_offset() - Vec2::X * 2.0,
         Some(&collider)
     ));
     teleport(&mut harness, player, start);
@@ -239,7 +239,7 @@ fn real_map_dimensions_spawn_and_fall_death() {
     let feet = level::marker(world, level::SPAWN_MARKER).unwrap();
     harness.step(60);
     assert!(controller(&harness, player).grounded());
-    let stood = centre(&harness, player) + Vec2::new(0.0, PLAYER_HALF.y);
+    let stood = centre(&harness, player) + Vec2::new(0.0, player_half().y);
     assert!((stood - feet).length() < 1.0, "{stood} on {feet}");
     // Past the kill row with a landing pending.
     teleport(&mut harness, player, Vec2::new(feet.x, KILL_Y + 1.0));
@@ -280,7 +280,8 @@ fn double_jump_needs_a_fresh_press_emits_once_and_refills_on_landing() {
     );
     press_again(&mut harness, "jump");
     let world = harness.world();
-    let takeoff = world.get::<Position>(player).unwrap().0 + BODY_OFFSET + Vec2::Y * PLAYER_HALF.y;
+    let takeoff =
+        world.get::<Position>(player).unwrap().0 + body_offset() + Vec2::Y * player_half().y;
     harness.step(1);
     assert!(controller(&harness, player).air_jumped());
     assert_eq!(controller(&harness, player).air_jumps_left(), 0);
@@ -375,14 +376,14 @@ fn buried(over: bool) -> (UiHarness, Entity) {
         for layer in 0..2 {
             for i in 0..5 {
                 let x = at.x - 30.0 + 15.0 * i as f32;
-                let y = at.y - PLAYER_HALF.y - 8.0 - 15.0 * layer as f32;
+                let y = at.y - player_half().y - 8.0 - 15.0 * layer as f32;
                 ball(&mut harness, Vec2::new(x, y), true);
             }
         }
     } else {
         for side in [-1.0, 1.0] {
             for row in 0..3 {
-                let x = at.x + side * (PLAYER_HALF.x + 8.0);
+                let x = at.x + side * (player_half().x + 8.0);
                 ball(
                     &mut harness,
                     Vec2::new(x, FLOOR - 8.0 - 15.0 * row as f32),
@@ -397,7 +398,7 @@ fn buried(over: bool) -> (UiHarness, Entity) {
 
 #[test]
 fn a_jump_under_small_balls_shoves_them_off_and_rises_clear() {
-    let feet = |h: &UiHarness, player: Entity| centre(h, player).y + PLAYER_HALF.y;
+    let feet = |h: &UiHarness, player: Entity| centre(h, player).y + player_half().y;
     let (mut harness, player) = buried(true);
     let floor = feet(&harness, player);
     harness.harness_mut().press_action("jump");
@@ -737,7 +738,7 @@ fn the_wizard_walks_small_bodies_aside() {
         "the crate went with him: {start} {end}"
     );
     assert!(
-        xs[49] + PLAYER_HALF.x <= end.x - CRATE_HALF.x + 0.5,
+        xs[49] + player_half().x <= end.x - CRATE_HALF.x + 0.5,
         "behind it: {} {end}",
         xs[49]
     );
@@ -746,7 +747,7 @@ fn the_wizard_walks_small_bodies_aside() {
     let (xs, start, end) = walk_into(|h| toys::place_iron(h.world_mut(), iron_at), 40);
     assert!(start.distance(end) < 1.0, "the iron held: {start} {end}");
     assert!(
-        (xs[39] + PLAYER_HALF.x - 700.0).abs() < 0.5,
+        (xs[39] + player_half().x - 700.0).abs() < 0.5,
         "he stands at it: {}",
         xs[39]
     );

@@ -187,7 +187,8 @@ pub fn waves(world: &mut World) {
                 let info = enemy.kind.info();
                 let velocity = world.get::<Velocity>(entity).map_or(Vec2::ZERO, |v| v.0);
                 let centre = body_centre(world, entity)?;
-                let along = meets(&wave, r0, r1, centre, velocity, info.half.min_element())?;
+                let half = enemies::body(world, enemy.kind).half;
+                let along = meets(&wave, r0, r1, centre, velocity, half.min_element())?;
                 // A walker leaves the ground on a low hop; a flyer takes
                 // the aim alone.
                 let hop = if info.flyer { 0.0 } else { WAVE_HOP };

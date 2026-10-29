@@ -6,9 +6,16 @@ use super::bundle::{BufferSink, Bundle};
 use super::entity::Entity;
 use super::world::World;
 
-/// Pending spawn handle; valid only for its source buffer before [`World::flush`].
+/// Pending spawn handle; valid only for its source buffer before
+/// [`World::flush`] (`D-084`). Recording with a handle from before the
+/// buffer's last flush, or one past the buffer's spawns, panics; a handle
+/// from another buffer within this one's spawns is not caught.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PendingEntity(pub(crate) u32);
+pub struct PendingEntity {
+    pub(crate) index: u32,
+    /// The buffer's flush count when the spawn was recorded.
+    pub(crate) epoch: u32,
+}
 
 /// Inserted values of one component type in recording order, type-erased for
 /// the flush.
@@ -164,6 +171,8 @@ pub struct CommandBuffer {
     pub(super) values: InsertQueues,
     /// Flush scratch: the entity of each pending spawn.
     pub(super) pending_entities: Vec<Entity>,
+    /// Flushes so far; a [`PendingEntity`] carries the count it was spawned at.
+    pub(super) epoch: u32,
 }
 
 impl CommandBuffer {
@@ -174,6 +183,7 @@ impl CommandBuffer {
             pending_count: 0,
             values: InsertQueues::default(),
             pending_entities: Vec::new(),
+            epoch: 0,
         }
     }
 
@@ -192,7 +202,25 @@ impl CommandBuffer {
         let pending_id = self.pending_count;
         self.pending_count += 1;
         self.commands.push(Command::Spawn { pending_id });
-        PendingEntity(pending_id)
+        PendingEntity {
+            index: pending_id,
+            epoch: self.epoch,
+        }
+    }
+
+    /// The target of `pending`, which must be this buffer's since its last
+    /// flush.
+    pub(super) fn pending_target(&self, pending: PendingEntity) -> CommandTarget {
+        assert!(
+            pending.epoch == self.epoch && pending.index < self.pending_count,
+            "PendingEntity {} of flush {} recorded on a buffer at flush {} with {} spawns: \
+             a handle is valid only for its own buffer before its flush (D-084)",
+            pending.index,
+            pending.epoch,
+            self.epoch,
+            self.pending_count,
+        );
+        CommandTarget::Pending(pending.index)
     }
 
     /// Queue component insert on live entity.
@@ -206,11 +234,9 @@ impl CommandBuffer {
 
     /// Queue component insert on pending entity.
     pub fn insert_pending<T: 'static>(&mut self, pending: PendingEntity, component: T) {
+        let target = self.pending_target(pending);
         let queue = self.values.push(component);
-        self.commands.push(Command::Insert {
-            target: CommandTarget::Pending(pending.0),
-            queue,
-        });
+        self.commands.push(Command::Insert { target, queue });
     }
 
     /// Queue a spawn with `bundle`'s components: a spawn and one insert per
@@ -235,9 +261,10 @@ impl CommandBuffer {
     /// Queue `bundle`'s components on a pending entity, applied at flush as
     /// one archetype move.
     pub fn insert_bundle_pending<B: Bundle>(&mut self, pending: PendingEntity, bundle: B) {
+        let target = self.pending_target(pending);
         bundle.put(&mut BufferSink {
             buffer: self,
-            target: CommandTarget::Pending(pending.0),
+            target,
         });
     }
 
@@ -265,10 +292,8 @@ impl CommandBuffer {
     /// spawn's own inserts: what [`CommandBuffer::spawn_prefab_from`]
     /// records.
     pub(crate) fn derive_pending(&mut self, source: Entity, pending: PendingEntity) {
-        self.commands.push(Command::Derive {
-            source,
-            target: CommandTarget::Pending(pending.0),
-        });
+        let target = self.pending_target(pending);
+        self.commands.push(Command::Derive { source, target });
     }
 }
 

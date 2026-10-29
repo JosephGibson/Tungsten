@@ -14,6 +14,38 @@
       ]
     },
     {
+      "name": "gilrs",
+      "version": "0.11.2",
+      "why": "The package has no license file of its own (.cargo_vcs_info.json names gilrs commit 07e286e24b046cf39e5c367daa2770b805a64692, whose root holds LICENSE-MIT). build.rs filters SDL_GameControllerDB/gamecontrollerdb.txt for the target platform and src/mapping/mod.rs compiles the result in through include_str!; the database is SDL_GameControllerDB's, under zlib, while the crate's metadata says Apache-2.0/MIT. Its licence text is the package's SDL_GameControllerDB/LICENSE, a submodule at that commit.",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "gilrs/LICENSE-MIT",
+          "source": "https://gitlab.com/gilrs-project/gilrs/-/blob/07e286e24b046cf39e5c367daa2770b805a64692/LICENSE-MIT"
+        }
+      ],
+      "bundled": [
+        {
+          "work": "the SDL_GameControllerDB gamepad mappings",
+          "license": "Zlib",
+          "file": "gilrs/SDL_GameControllerDB-LICENSE",
+          "source": "https://gitlab.com/gilrs-project/gilrs/-/tree/07e286e24b046cf39e5c367daa2770b805a64692/gilrs/SDL_GameControllerDB"
+        }
+      ]
+    },
+    {
+      "name": "gilrs-core",
+      "version": "0.6.8",
+      "why": "The package has no license file; it comes from the same gilrs commit as gilrs 0.11.2 (.cargo_vcs_info.json).",
+      "texts": [
+        {
+          "license": "MIT",
+          "file": "gilrs/LICENSE-MIT",
+          "source": "https://gitlab.com/gilrs-project/gilrs/-/blob/07e286e24b046cf39e5c367daa2770b805a64692/LICENSE-MIT"
+        }
+      ]
+    },
+    {
       "name": "harfrust",
       "version": "0.5.2",
       "why": "The package has no license file.",

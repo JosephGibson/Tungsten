@@ -1,7 +1,8 @@
 //! The data's restated copies: every Rust constant that repeats a prefab's
 //! or an ability's value matches the file the game loads, so a change to
-//! the data cannot leave its copy behind (I16); and every sound event the
-//! game sends has a cue rule that plays a registered sound.
+//! the data cannot leave its copy behind (I16), and a body moved in its
+//! file moves each spawn of it; and every sound event the game sends has a
+//! cue rule that plays a registered sound.
 
 use example_01_platformer::features::audio::components::Sound;
 use example_01_platformer::features::combat::{CHILL_NEEDS, FREEZE_NEEDS};
@@ -9,10 +10,11 @@ use example_01_platformer::features::enemies::bat::DIVE_SECS;
 use example_01_platformer::features::enemies::beetle::CHARGE_SECS;
 use example_01_platformer::features::enemies::components::{EnemyKind, Variant};
 use example_01_platformer::features::enemies::drops::ORB_SECS;
-use example_01_platformer::features::enemies::{self, crawler, snowball, troll};
+use example_01_platformer::features::enemies::{self, crawler, goblin, snowball, troll};
 use example_01_platformer::features::gun::{
     BULLET_CENTRE, BULLET_RADIUS, MAX_RICOCHETS, MUZZLE_OFFSET,
 };
+use example_01_platformer::features::player;
 use example_01_platformer::features::props::{
     BOMB_CENTRE, BOMB_RADIUS, CRATE_CENTRE, CRATE_HALF, KEG_CENTRE, KEG_HALF, PLANK_CENTRE,
     PLANK_HALF, ROCK_CENTRE, ROCK_RADIUS,
@@ -22,9 +24,13 @@ use example_01_platformer::features::toys::{
     BALL_RADIUS, HOLE_SECS, IRON_HALF, IRON_MASS, MISSILE_SPEED, SCRAP_HALF, SCRAP_MASS,
     SMALL_BALL_RADIUS,
 };
-use example_01_platformer::features::{dummy, player};
+use example_01_platformer::shared::{Body, SaveIds, body_centre};
 use glam::Vec2;
 use serde_json::Value;
+use tungsten::core::{Collider, DataRegistry, Shape};
+use tungsten::kit::Hurtbox;
+
+use super::actor_body;
 
 /// The file under `assets/` at `path`, as JSON.
 fn json(path: &str) -> Value {
@@ -63,13 +69,27 @@ fn body(prefab: &str) -> (Vec2, Vec2) {
 
 #[test]
 fn every_restated_constant_matches_its_data() {
-    // The bodies: the player's, the dummy's and each enemy's, their half
-    // sizes and centres from the sprite's top-left.
-    assert_eq!(body("player"), (player::PLAYER_HALF, player::BODY_OFFSET));
-    assert_eq!(body("dummy"), (dummy::DUMMY_HALF, dummy::DUMMY_CENTRE));
+    // The bodies: each actor's prefabs' rigid body and hurtbox are its body
+    // file's, which a spawn takes over them (`shared::fit_body`); the
+    // armoured troll's (e01flask) are the troll's.
+    let armoured = enemies::prefab(EnemyKind::Troll, Variant::Armoured);
+    let actors = EnemyKind::ALL.map(|kind| (kind.info().prefab, kind.info().prefab));
+    for (prefab, actor) in [
+        ("player", "player"),
+        ("dummy", "dummy"),
+        (armoured, "troll"),
+    ]
+    .into_iter()
+    .chain(actors)
+    {
+        let file = actor_body(actor);
+        assert_eq!(body(prefab), (file.half, file.centre), "{prefab}");
+        let hurtbox = json(&format!("prefabs/{prefab}.json"))["components"]["hurtbox"].clone();
+        let hurtbox: Hurtbox = serde_json::from_value(hurtbox).expect("a hurtbox");
+        assert_eq!(hurtbox, file.hurtbox, "{prefab}");
+    }
     for kind in EnemyKind::ALL {
         let info = kind.info();
-        assert_eq!(body(info.prefab), (info.half, info.centre), "{kind:?}");
         // Its knockback's resist, which the pushes read (the kit's has no
         // getter): 0 unless the prefab sets one.
         let prefab = json(&format!("prefabs/{}.json", info.prefab));
@@ -79,15 +99,8 @@ fn every_restated_constant_matches_its_data() {
             .unwrap_or(0.0) as f32;
         assert_eq!(resist, info.resist, "{kind:?}");
     }
-    // The armoured troll's prefab (e01flask): the troll's body and its
-    // knockback's resist, its kind's table entry.
+    // The armoured troll's knockback's resist, its kind's table entry.
     let info = EnemyKind::Troll.info();
-    let armoured = enemies::prefab(EnemyKind::Troll, Variant::Armoured);
-    assert_eq!(
-        body(armoured),
-        (info.half, info.centre),
-        "the armoured troll"
-    );
     let prefab = json(&format!("prefabs/{armoured}.json"));
     let resist = prefab
         .pointer("/components/knockback/resist")
@@ -241,4 +254,48 @@ fn every_sound_event_has_a_rule_and_its_sound_is_in_the_manifest() {
             }
         }
     }
+}
+
+#[test]
+fn a_body_moved_in_its_data_file_moves_the_spawned_body() {
+    // The goblin's file as a reload reads it, its body and hurtbox raised
+    // and widened, its hand moved: no Rust names any of it.
+    let path = "assets/data/bodies/goblin.json";
+    let text = std::fs::read_to_string(path).expect("the goblin's body");
+    let mut file: Value = serde_json::from_str(&text).expect("its JSON");
+    file["centre"] = serde_json::json!([30, 37]);
+    file["half"] = serde_json::json!([12, 24]);
+    file["hurtbox"] = serde_json::json!({ "offset": [30, 36], "shape": { "aabb": [12, 23] } });
+    file["points"]["hand"] = serde_json::json!({ "left": [6, 26], "right": [54, 26] });
+    let moved: Body = serde_json::from_value(file).expect("a body");
+    let (mut harness, _) = super::run();
+    let world = harness.world_mut();
+    world
+        .resource_mut::<DataRegistry>()
+        .insert("goblin", moved.clone());
+    let corner = Vec2::new(600.0, 500.0);
+    let id = world.resource_mut::<SaveIds>().take();
+    let goblin = enemies::spawn(world, EnemyKind::Goblin, corner, id).expect("its prefab");
+    let collider = world.get::<Collider>(goblin).expect("a collider");
+    assert_eq!(collider.offset, Vec2::new(30.0, 37.0));
+    assert_eq!(
+        collider.shape,
+        Shape::Aabb {
+            half_extents: Vec2::new(12.0, 24.0)
+        }
+    );
+    assert_eq!(world.get::<Hurtbox>(goblin), Some(&moved.hurtbox));
+    assert_eq!(moved.hurtbox.offset(), Vec2::new(30.0, 36.0));
+    assert_eq!(
+        enemies::centre(world, goblin),
+        Some(corner + Vec2::new(30.0, 37.0))
+    );
+    assert_eq!(
+        goblin::hand(world, goblin),
+        Some(corner + Vec2::new(54.0, 26.0))
+    );
+    // A summon places the moved body's centre where it is cast.
+    let at = Vec2::new(900.0, 500.0);
+    let summoned = enemies::summon(world, EnemyKind::Goblin, at).expect("its prefab");
+    assert_eq!(body_centre(world, summoned), Some(at));
 }

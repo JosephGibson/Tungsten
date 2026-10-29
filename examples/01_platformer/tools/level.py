@@ -74,6 +74,14 @@ LAVA_GLOW = dict(radius=220, color=[255, 120, 40, 230], light=1.3)
 FIRE_GLOW = dict(offset=FIRE_CENTRE, radius=175, color=[255, 125, 45, 255], light=1.6, core=62)
 # Molten drips leak from each fireball's underside, a child emitter.
 FIRE_DRIPS = 'ex10_fire_drips'
+# Each sprite the map's tile layers have used and its local tile ID, kept
+# for good: a sprite the map newly uses takes `next`, so a sprite added or
+# changed outside the map moves no cell.
+TILESET = TOOLS / 'tileset.json'
+# The object layers a save names (P7-9): 01 derives each object's save ID
+# from its name, so each needs one, unique, and none the player's.
+SAVED_LAYERS = ('hazards', 'platforms', 'dummies', 'enemies', 'pickups', 'geysers')
+PLAYER_NAME = 'player'
 
 
 def slab_runs(slabs):
@@ -171,7 +179,8 @@ def build_objects(source, images, lit):
         if not h['fire']:
             prefabs['ex10_spikes'] = dict(sprite=dict(asset_id='ex10_spikes', z_order=Z_SPIKES), components=dict(
                 hazard=dict(fire=False), contact_damage=dict(touch, shape=dict(aabb=SPIKES_HALF), offset=SPIKES_CENTRE)))
-            hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1]))
+            hazards.append(obj('ex10_spikes', centre[0] - SPIKES_CENTRE[0], centre[1] - SPIKES_CENTRE[1],
+                               name=h.get('name', '')))
             continue
         # Today's sine motion, centre + travel * sin(2 pi t / period + phase), on the
         # kit's oscillator: it starts where the sine stands at t 0.
@@ -199,7 +208,7 @@ def build_objects(source, images, lit):
             components['oscillator'] = dict(position=dict(amplitude=[t * tile for t in h['travel']],
                 period=h['period']), phase=phase)
         prefabs[cls] = dict(sprite=dict(asset_id='ex10_fireball_0', z_order=Z_FIRE), components=components)
-        hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1]))
+        hazards.append(obj(cls, start[0] - FIRE_CENTRE[0], start[1] - FIRE_CENTRE[1], name=h.get('name', '')))
     # The lava basins after the fires: a surface the player stands on, a
     # touch from just over it to the bed that burns and throws, a sizzle at
     # each touch, and the lake's light. A child of each touches what is
@@ -224,7 +233,7 @@ def build_objects(source, images, lit):
             components['glow'] = dict(LAVA_GLOW, offset=[width / 2, LAVA_TOP])
         cls = f'ex10_lava_{i}'
         prefabs[cls] = dict(components=components)
-        hazards.append(obj(cls, basin['left'] * tile, basin['row'] * tile))
+        hazards.append(obj(cls, basin['left'] * tile, basin['row'] * tile, name=basin.get('name', '')))
     layer('hazards', hazards)
 
     platforms = []
@@ -243,7 +252,8 @@ def build_objects(source, images, lit):
                 rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half),
                                 offset=[half[0], floor + half[1]]),
                 elevator=dict(rise=lift['rise'] * tile, speed=lift['speed'])))
-            platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor))
+            platforms.append(obj(cls, m['position'][0] * tile - half[0], m['position'][1] * tile - floor,
+                                 name=m.get('name', '')))
             continue
         half = [m['half_width'] * tile, source['deck_depth'] / 2]
         # Three deck tiles across its width, as today's deck draws.
@@ -264,7 +274,8 @@ def build_objects(source, images, lit):
             rigid_body=dict(kind='kinematic', shape=dict(kind='aabb', half_extents=half), offset=half),
             path_follower=dict(points=[[0, 0], [2 * travel[0], 2 * travel[1]]],
                 speed=4 * math.hypot(*travel) / m['period'], mode='ping_pong', easing='sine_in_out')))
-        platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1]))
+        platforms.append(obj(cls, centre[0] - travel[0] - half[0], centre[1] - travel[1] - half[1],
+                             name=m.get('name', '')))
     layer('platforms', platforms)
 
     areas = []
@@ -326,7 +337,7 @@ def build_objects(source, images, lit):
     # top-left, its `offset` the seconds into its cycle a run starts it at.
     rows = {p['name']: p['row'] for p in source['platforms']}
     layer('geysers', [obj('geyser', g['x'] * tile + GEYSER_POINT[0], rows[g['support']] * tile + GEYSER_POINT[1],
-        properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
+        name=g.get('name', ''), properties=[dict(name='geyser.offset', type='float', value=g['offset'])])
         for g in source.get('geysers', [])])
     return layers, prefabs
 
@@ -354,10 +365,13 @@ def terrain_cells(source):
     return cells
 
 
-def terrain_tiles(source, cells, stream):
-    """Each occupied cell's sprite, and the cells drawn as iron cladding. A
-    platform with `"variants": "own"` (01 (k)'s start wall) draws its cells'
-    variants from a stream of its own, so adding it moves no other tile's."""
+def terrain_tiles(source, cells):
+    """Each occupied cell's sprite, and the cells drawn as iron cladding.
+    Each cell draws its variant from a stream seeded by its place, so a
+    change to a platform re-rolls only the cells it covers and those whose
+    open sides it changes. A stream per platform would not do: a cell's
+    draws depend on its neighbours, and a platform widened into the next
+    takes cells from that one's stream."""
     cols, rows = source['cols'], source['rows']
     pit = source.get('pit')
     inside = set()
@@ -378,12 +392,11 @@ def terrain_tiles(source, cells, stream):
         x, y = c
         return family(c) == 'mine' and (not closed((x - 1, y)) or not closed((x + 1, y)))
 
-    own = {p['name']: rng_for('terrain-variation-' + p['name']) for p in source['platforms'] if p.get('variants') == 'own'}
     runs = [p['name'] for p in sorted(source['platforms'], key=lambda p: p['left']) if p['style'] == 'channel']
     tiles, iron = {}, set()
     for x, y in sorted(cells, key=lambda c: (c[1], c[0])):
         p = cells[(x, y)]
-        rng = own.get(p['name'], stream)
+        rng = rng_for(f'terrain-variation-{x}-{y}')
         fam = FAMILIES.get(p['style'])
         if fam is None:
             tiles[(x, y)] = p['style']
@@ -443,10 +456,13 @@ def terrain_tiles(source, cells, stream):
     return tiles, iron
 
 
-def background_tiles(source, cells, props, rng):
+def background_tiles(source, cells, props):
     """The background layer: the caves' backs under an indoor area's roof,
     the miners' shoring in its `shoring` columns, the tunnel mouths, the
-    outdoor `backs` spans and the river's depths."""
+    outdoor `backs` spans and the river's depths. Which cells draw follows
+    the terrain's occupancy and roofs, so each draws from a stream seeded
+    by its place, and a terrain change re-rolls only the backs it
+    touches."""
     cols, rows = source['cols'], source['rows']
     ground = {c for c, p in cells.items() if p['style'] in FAMILIES}
     out = {}
@@ -463,11 +479,11 @@ def background_tiles(source, cells, props, rng):
                     continue
                 if not roofed or (x, y) in cells:
                     continue
+                rng = rng_for(f'background-{x}-{y}')
                 if (x, y - 1) in ground:
                     # Behind the roof's lowest cell, whose underside the art
                     # cuts away, the back runs on up, so the cut shows the
-                    # cave's wall and never the sky; a plain tile, outside
-                    # the random stream.
+                    # cave's wall and never the sky; a plain tile, no draw.
                     out[(x, y - 1)] = f'cave_back_rock_{x % 4}'
                 if shoring[0] <= x <= shoring[1]:
                     kind = weighted(rng, (('timber_0', 3), ('timber_1', 3), ('xbrace_0', 2), ('ore_0', 1), ('ore_1', 1), ('rock_0', 2)))
@@ -501,6 +517,7 @@ def background_tiles(source, cells, props, rng):
 
     for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
         mask = open_((x, y - 1)) * 1 + open_((x + 1, y)) * 2 + open_((x, y + 1)) * 4 + open_((x - 1, y)) * 8
+        rng = rng_for(f'background-{x}-{y}')
         if family == 'wet_back':
             variant = 2 if x in falls else rng.randrange(2)
             out[(x, y)] = f'wet_back_{mask}_{variant}'
@@ -509,7 +526,7 @@ def background_tiles(source, cells, props, rng):
         else:
             out[(x, y)] = f'cut_back_{mask}_{rng.randrange(2)}'
     # The same behind each ceiling's or ledge's lowest cell over a wall:
-    # plain inner tiles, after the walls' own, outside the random stream.
+    # plain inner tiles, after the walls' own, with no draw.
     for (x, y), family in sorted(backs.items(), key=lambda item: (item[0][1], item[0][0])):
         if (x, y - 1) in ground and (x, y - 1) not in out:
             out[(x, y - 1)] = f'{family}_0_{x % 2}'
@@ -553,22 +570,23 @@ def water_props(source, cells):
 def build_level(images, lit, source=None, check=True):
     """The Tiled map, the prepared source and the level's prefabs, from
     `level.json` (or `source`). With `check`, any piece the floating check
-    lists (`placement.floating`, 01 (k)) stops the build."""
+    lists (`placement.floating`, 01 (k)) stops the build. The map's tileset
+    holds the sprites its tile layers use, each under its `TILESET` ID; the
+    prepared source's `tileset` is that file with any new ones added."""
     source=json.loads((TOOLS/'level.json').read_text()) if source is None else source
     from placement import floating, prepare
     cols,rows=source['cols'],source['rows']
     from backdrops import BACKDROPS
-    catalog=sorted('ex10_'+s for s in images if s not in BACKDROPS)
-    gids={s:i+1 for i,s in enumerate(catalog)}
-    layers={name:[0]*(cols*rows) for name in ['background','decorations','terrain','foreground','collision']}
-    rng=rng_for('terrain-variation')
+    sprite_ids={'ex10_'+s for s in images if s not in BACKDROPS}
+    layers={name:[None]*(cols*rows) for name in ['background','decorations','terrain','foreground','collision']}
     def put(layer,x,y,sprite):
         if not 0<=x<cols or not 0<=y<rows:raise ValueError('placement outside map')
-        layers[layer][y*cols+x]=gids[sprite]
+        if sprite not in sprite_ids:raise ValueError('unknown tile sprite '+sprite)
+        layers[layer][y*cols+x]=sprite
     # The terrain first, which reads only the platforms: props stand and
     # hang on what its tiles draw.
     cells=terrain_cells(source)
-    tiles,iron=terrain_tiles(source,cells,rng)
+    tiles,iron=terrain_tiles(source,cells)
     source=prepare(source,images,tiles)
     for (x,y),sprite in sorted(tiles.items(),key=lambda c:(c[0][1],c[0][0])):
         put('terrain',x,y,'ex10_'+sprite)
@@ -577,7 +595,7 @@ def build_level(images, lit, source=None, check=True):
     source['iron_cells']=sorted(iron)
     source['iron_boxes']=[[x*tile,y*tile,w*tile,h*tile] for x,y,w,h in boxes(iron)]
     source['props']+=water_props(source,cells)
-    for (x,y),sprite in sorted(background_tiles(source,cells,source['props'],rng).items(),key=lambda c:(c[0][1],c[0][0])):
+    for (x,y),sprite in sorted(background_tiles(source,cells,source['props']).items(),key=lambda c:(c[0][1],c[0][0])):
         put('background',x,y,'ex10_'+sprite)
     for p in source['decorations']:put(p['layer'],p['col'],p['row'],p['sprite'])
     # The far mist: each band's tiles across its columns in the decorations
@@ -593,6 +611,15 @@ def build_level(images, lit, source=None, check=True):
             for x in range(mist['left'], mist['right']):
                 if not opaque((x, mist['row'] + r)):
                     put('decorations', x, mist['row'] + r, f"ex10_far_mist_{mist['band']}_big_{r}_{x % 16}")
+    # Each used sprite under its kept ID; new ones from `next`, by name.
+    known=json.loads(TILESET.read_text()) if TILESET.exists() else dict(next=0,ids={})
+    ids,next_tile=dict(known['ids']),known['next']
+    used=sorted({s for data in layers.values() for s in data if s})
+    for s in used:
+        if s not in ids:ids[s],next_tile=next_tile,next_tile+1
+    source['tileset']=dict(next=next_tile,ids=ids)
+    used.sort(key=ids.get)
+    for data in layers.values():data[:]=[ids[s]+1 if s else 0 for s in data]
     tile_layers=[dict(id=i+1,type='tilelayer',name=name,width=cols,height=rows,visible=True,opacity=1,x=0,y=0,data=data,properties=[dict(name='kind',type='string',value='collision') ] if name=='collision' else []) for i,(name,data) in enumerate(layers.items())]
     # The object layers sit before `collision`, so the first and last layers stay
     # tile layers; IDs number layers, then objects, through the map.
@@ -603,23 +630,65 @@ def build_level(images, lit, source=None, check=True):
             o['id']=next_id;next_id+=1
     tiled=dict(type='map',version='1.10',orientation='orthogonal',renderorder='right-down',infinite=False,width=cols,height=rows,tilewidth=tile,tileheight=tile,
         nextobjectid=next_id,layers=tile_layers[:-1]+objects+tile_layers[-1:],
-        tilesets=[dict(firstgid=1,name='twilight_ruin',tilewidth=tile,tileheight=tile,tilecount=len(catalog),columns=0,tiles=[dict(id=i,image='../sprites/'+s.removeprefix('ex10_')+'.png',imagewidth=tile,imageheight=tile,properties=[dict(name='sprite_id',type='string',value=s)]) for i,s in enumerate(catalog)])])
+        tilesets=[dict(firstgid=1,name='twilight_ruin',tilewidth=tile,tileheight=tile,tilecount=len(used),columns=0,tiles=[dict(id=ids[s],image='../sprites/'+s.removeprefix('ex10_')+'.png',imagewidth=tile,imageheight=tile,properties=[dict(name='sprite_id',type='string',value=s)]) for s in used])])
     for i,group in enumerate(tiled['layers']):group['id']=i+1
-    validate_level(source,tiled,set(gids))
+    validate_level(source,tiled,sprite_ids)
     if check and (lines:=floating(source,tiled,images)):
         raise ValueError('floating scenery:\n'+'\n'.join(lines))
     return tiled,source,prefabs
 
 
+def opaque_tiles(images, tiled):
+    """`data/opaque_tiles/level.json`: the map's tile sprites and the
+    backdrops every pixel of which is opaque. A backdrop quad the map's
+    tiles of them cover is never seen, and a wholly black night sky hides
+    the sky (level/draw.rs)."""
+    from backdrops import BACKDROPS
+    names = {t['properties'][0]['value'].removeprefix('ex10_') for t in tiled['tilesets'][0]['tiles']} | set(BACKDROPS)
+    return {'sprites': sorted('ex10_' + name for name in names
+                              if images[name].mode != 'RGBA' or images[name].getchannel('A').getextrema() == (255, 255))}
+
+
+def tiled_text(tiled):
+    """`level.tmj`'s text: `tiled` with sorted keys and indented, but each
+    tile layer's data a map row a line and each object on one line, so a
+    change shows as the rows and objects it moves."""
+    import re
+    cols, pieces, layers = tiled['width'], {}, []
+
+    def piece(lines):
+        key = f'@{len(pieces)}@'
+        pieces[key] = lines
+        return key
+
+    for layer in tiled['layers']:
+        if layer['type'] == 'tilelayer':
+            data = layer['data']
+            layer = dict(layer, data=piece([','.join(map(str, data[i:i + cols])) for i in range(0, len(data), cols)]))
+        else:
+            layer = dict(layer, objects=piece([json.dumps(o, sort_keys=True) for o in layer['objects']]))
+        layers.append(layer)
+    text = json.dumps(dict(tiled, layers=layers), indent=2, sort_keys=True)
+
+    def expand(match):
+        indent, key, lines = match[1], match[2], pieces[match[3]]
+        inner = ',\n'.join(indent + '  ' + line for line in lines)
+        return f'{indent}{key}[\n{inner}\n{indent}]' if lines else f'{indent}{key}[]'
+    return re.sub(r'^( *)("\w+": )"(@\d+@)"', expand, text, flags=re.M) + '\n'
+
+
 def validate_level(source,tiled,sprite_ids):
     cols,rows=source['cols'],source['rows']; ts=tiled['tilesets'][0]
-    if ts['firstgid']!=1 or [t['id'] for t in ts['tiles']]!=list(range(ts['tilecount'])):raise ValueError('non-contiguous tileset')
+    # Sparse local IDs, ascending, each once.
+    local=[t['id'] for t in ts['tiles']]
+    if ts['firstgid']!=1 or local!=sorted(set(local)) or ts['tilecount']!=len(local):raise ValueError('malformed tileset')
     for t in ts['tiles']:
         if t['properties'][0]['value'] not in sprite_ids:raise ValueError('unknown sprite reference')
+    gids={ts['firstgid']+i for i in local}
     for layer in tiled['layers']:
         if layer['type']!='tilelayer':continue
         if len(layer['data'])!=cols*rows:raise ValueError('wrong layer length')
-        if any(not isinstance(g,int) or g<0 or g>ts['tilecount'] for g in layer['data']):raise ValueError('invalid GID')
+        if any(not isinstance(g,int) or (g and g not in gids) for g in layer['data']):raise ValueError('invalid GID')
     collision=next(l['data'] for l in tiled['layers'] if l['name']=='collision')
     terrain=next(l['data'] for l in tiled['layers'] if l['name']=='terrain')
     shallow={(int(x/source['tile']),int(y/source['tile'])) for x,y,w,h,_ in source.get('slab_colliders',[])}
@@ -659,6 +728,9 @@ def validate_level(source,tiled,sprite_ids):
         if all(abs(center-safe)<abs(travel)+1 for center,safe,travel in zip(p['position'],spawn,p['travel'])):raise ValueError('hazard at spawn')
     for p in source['props']+source['decorations']:
         if p['sprite'] not in sprite_ids:raise ValueError('unknown prop reference')
+    names=[o['name'] for layer in tiled['layers'] if layer['name'] in SAVED_LAYERS for o in layer['objects']]
+    bad=sorted({n for n in names if not n or n==PLAYER_NAME or names.count(n)>1})
+    if bad:raise ValueError(f'saved objects need unique names, none {PLAYER_NAME!r}: {bad}')
 
 
 

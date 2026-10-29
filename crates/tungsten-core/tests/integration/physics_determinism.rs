@@ -10,11 +10,9 @@
 //! and the settled tail in one run.
 //!
 //! Release-only by cost; auto-ignored in debug. Run with:
-//! `cargo test --release -p tungsten-core --test physics_determinism -- --nocapture`
+//! `cargo test --release -p tungsten-core --test integration physics_determinism -- --nocapture`
 
-mod common;
-
-use common::{FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
+use crate::common::{FLOOR_Y, PILE_WIDTH, SPAWN_SPACING, spawn_pile, spawn_static_box};
 use glam::Vec2;
 use tungsten_core::{Entity, Pcg32, PhysicsConfig, Position, Time, Velocity, World, physics_step};
 

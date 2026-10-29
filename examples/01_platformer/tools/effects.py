@@ -707,13 +707,25 @@ ICON_ART = {
     'icon_toxic_flask': icon_toxic_flask,
     'icon_troll_armoured': icon_troll_armoured,
 }
+# The icons drawn from another family's own art, which that family builds
+# (`art.art_families`), so a change to that art rebuilds them with it: each
+# summon's from its frame's canvas, the missile's from its rocket and each
+# tome's from its book. The rest are the effects'.
+ICON_FAMILIES = {
+    'icon_fire_missile': 'projectiles', 'icon_dummy': 'dummy', 'icon_wisp': 'wisp', 'icon_crawler': 'crawler',
+    'icon_beetle': 'beetle', 'icon_bat': 'bat', 'icon_troll': 'troll', 'icon_troll_armoured': 'troll',
+    'icon_goblin': 'goblin', 'icon_crate': 'props', 'icon_keg': 'props', 'icon_tome_pact': 'tomes',
+    'icon_tome_bounding': 'tomes', 'icon_tome_arcane': 'tomes',
+}
 
 
-def build_icons(images):
+def build_icons(images, family='effects'):
+    """Family `family`'s icons (`ICON_FAMILIES`)."""
     if set(ICON_ART) != set(ICON_SIZES) or set(ICON_ELEMENT) != set(ICON_SIZES):
         raise ValueError('every spell icon needs its art and its element')
     for name, draw in ICON_ART.items():
-        images[name] = icon_tile(name, draw())
+        if ICON_FAMILIES.get(name, 'effects') == family:
+            images[name] = icon_tile(name, draw())
 
 
 # Lightning: eight segments, each entering at its top centre and leaving
@@ -757,7 +769,8 @@ def status_box(size):
 # frozen body with no fitted one.
 #
 # Each kind's hurtbox in its frame, (left, top, right, bottom): the box its
-# prefab's hurtbox makes, which `generate.check_ice_fits` holds it to.
+# body file's hurtbox is made from (`generate.bodies`), which its prefabs are
+# held to (`generate.check_bodies`).
 HURTBOXES = {
     'wisp': (19, 21, 45, 47),  # a circle of 13 about (32, 34), as its box
     'crawler': (8, 41, 56, 59),  # aabb 24 x 9 about (32, 50)

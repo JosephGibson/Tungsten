@@ -378,6 +378,8 @@ impl Archetypes {
     }
 
     /// Archetypes containing component `T`, each with `T`'s column index.
+    /// Test-only since the arity-named queries left (redo 7.1).
+    #[cfg(test)]
     pub fn archetypes_with<T: 'static>(&self) -> impl Iterator<Item = (&Archetype, usize)> {
         let t_id = TypeId::of::<T>();
         self.archetypes
@@ -385,23 +387,13 @@ impl Archetypes {
             .filter_map(move |arch| Some((arch, arch.column_index(t_id)?)))
     }
 
-    /// Archetypes containing `a` and `b`.
+    /// Archetypes containing `a` and `b`. Test-only since the arity-named
+    /// queries left (redo 7.1).
+    #[cfg(test)]
     pub fn archetypes_with_two(&self, a: TypeId, b: TypeId) -> impl Iterator<Item = &Archetype> {
         self.archetypes
             .iter()
             .filter(move |arch| arch.has(a) && arch.has(b))
-    }
-
-    /// Archetypes containing `a`, `b`, and `c`.
-    pub fn archetypes_with_three(
-        &self,
-        a: TypeId,
-        b: TypeId,
-        c: TypeId,
-    ) -> impl Iterator<Item = &Archetype> {
-        self.archetypes
-            .iter()
-            .filter(move |arch| arch.has(a) && arch.has(b) && arch.has(c))
     }
 
     /// Mutable archetypes containing component `T`, each with `T`'s column
@@ -415,29 +407,6 @@ impl Archetypes {
             let index = arch.column_index(t_id)?;
             Some((arch, index))
         })
-    }
-
-    /// Mutable archetypes containing `a` and `b`.
-    pub fn archetypes_with_two_mut(
-        &mut self,
-        a: TypeId,
-        b: TypeId,
-    ) -> impl Iterator<Item = &mut Archetype> {
-        self.archetypes
-            .iter_mut()
-            .filter(move |arch| arch.has(a) && arch.has(b))
-    }
-
-    /// Mutable archetypes containing `a`, `b`, and `c`.
-    pub fn archetypes_with_three_mut(
-        &mut self,
-        a: TypeId,
-        b: TypeId,
-        c: TypeId,
-    ) -> impl Iterator<Item = &mut Archetype> {
-        self.archetypes
-            .iter_mut()
-            .filter(move |arch| arch.has(a) && arch.has(b) && arch.has(c))
     }
 }
 

@@ -31,7 +31,7 @@ check: fmt-check lint
 
 # Release physics tests: determinism and containment (ignored in debug, so not in `check`) plus tunneling, with the perf runner's build flags.
 physics-release *args:
-    RUSTFLAGS="${TUNGSTEN_PERF_RUSTFLAGS--C force-frame-pointers=yes}" cargo test --release -p tungsten-core --locked --test physics_determinism --test physics_tunneling --test physics_containment "$@"
+    RUSTFLAGS="${TUNGSTEN_PERF_RUSTFLAGS--C force-frame-pointers=yes}" cargo test --release -p tungsten-core --locked --test integration physics_ "$@"
 
 # Compile every benchmark without running it.
 bench-build:
@@ -44,9 +44,9 @@ smoke:
 # Pixel tests: the reference PNGs (reference machine only), then the post-stack, transition and UI overlay regressions.
 visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-02-bench --test visual_regression --locked -- --nocapture
-    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test post_regression --locked -- --nocapture
-    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test transition_regression --locked -- --nocapture
-    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test ui_regression --locked -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked post_regression:: -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked transition_regression:: -- --nocapture
+    TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked ui_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p tungsten-template-basic --test game --locked -- visual:: --nocapture
 
 # Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
@@ -106,7 +106,7 @@ ctx:
 repo-check:
     python3 -B scripts/check-repo.py
     python3 -B scripts/release.py check
-    cargo test -p tungsten-core --test manifests --test decision_index --locked -q
+    cargo test -p tungsten-core --test integration --locked -q -- manifests:: decision_index::
 
 # Recommend checks without running them; explicit paths or Git changes, including untracked (--base REF for committed work).
 checks *args:

@@ -7,7 +7,6 @@
     "vsync": false,
     "present_mode": "auto",
     "max_frame_latency": 1,
-    "scale_mode": "stretch",
     "frame_rate_cap": null
   },
   "render": {

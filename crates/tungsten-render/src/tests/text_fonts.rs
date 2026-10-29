@@ -335,3 +335,36 @@ fn epoch_rises_on_font_and_chain_changes_only() {
     engine.set_font_families(&fams, &chain(&["mono", "sans"]));
     assert!(engine.font_epoch() > chained, "changed chain");
 }
+
+#[test]
+fn a_section_in_a_family_id_draws_from_the_familys_regular_face() {
+    let mut engine = shared_engine();
+    engine.set_font_families(
+        &families(&[("body", &["sans", "sans_bold"]), ("mono", &["mono"])]),
+        &chain(&["mono", "body"]),
+    );
+    let sans = face_of(&engine, "sans");
+    let glyphs = shaped(&mut engine, "body", "Ab");
+    assert!(!glyphs.is_empty());
+    assert!(
+        glyphs.iter().all(|&(face, _)| face == sans),
+        "the family's 400 face, not the chain's head"
+    );
+    assert!(!engine.logged.contains("font body"), "no warning");
+}
+
+#[test]
+fn an_unknown_font_id_warns_once_and_draws_from_the_chains_head() {
+    let mut engine = shared_engine();
+    let sans = face_of(&engine, "sans");
+    for content in ["one", "two", "three"] {
+        let glyphs = shaped(&mut engine, "ghost", content);
+        assert!(glyphs.iter().all(|&(face, _)| face == sans), "{content}");
+    }
+    let warned: Vec<&String> = engine
+        .logged
+        .iter()
+        .filter(|m| m.starts_with("font "))
+        .collect();
+    assert_eq!(warned, vec!["font ghost"]);
+}

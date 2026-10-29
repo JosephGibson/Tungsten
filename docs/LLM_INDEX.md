@@ -12,20 +12,20 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Kit by domain: phases, tags, stats, cues, motion, recipes (`D-155`, `D-172`–`D-177`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
-| Game clock, `Time`, `Timer`, `DeltaTime`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
+| Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config, env overrides, settings (`D-159`) | `core/config.rs`, `core/settings.rs`, `core/display.rs`, `tungsten/settings.rs`, `tungsten.json` |
 | Logs, user folder, saves, crashes and target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save.rs`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap, monitor (`D-043`, `D-184`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
-| Input state, raw stream, gamepads, focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
+| Input state, raw stream, gamepads, their `gilrs` backend (`D-220`) and stick response (`D-221`), focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |
 | Camera follow/zoom/bounds/shake (`D-073`) | `core/camera.rs`, `tungsten/camera.rs` |
 | State stack, owned UI roots, scenes, components, `SceneEntity`, transitions (`D-046`, `D-093`, `D-153`) | `tungsten/state.rs`, `tungsten/transition.rs`, `core/assets/scene.rs`, `core/component_registry.rs`, `tungsten/asset_loader/scene.rs`, `examples/03_fixtures/src/transition/` |
 | Tweens (`D-054`–`D-056`) | `core/tween.rs`, `tungsten/tweens.rs`, `core/assets/scene.rs` |
 | Parallax, camera shake trauma, squash/stretch (`D-073`) | `core/components.rs`, `core/camera.rs`, `tungsten/game_feel.rs`, `tungsten/sprite_extract.rs` |
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
-| Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/audio_decode.rs` |
+| Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
 | Perf runner, capacity search, compare reports (`D-078`) | `scripts/bench.py`, `scripts/bench_report.py`, `scripts/test-bench.py` |
 | Criterion micro-benchmarks | `crates/*/benches/`, `docs/perf/profiling-workflow.md` |
@@ -47,7 +47,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Task | Open |
 | --- | --- |
 | Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
-| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/physics_tunneling.rs`, `crates/tungsten-core/tests/physics_containment.rs`, `crates/tungsten-core/tests/physics_determinism.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
+| Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/integration/physics_*.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering
 
@@ -76,7 +76,7 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Task | Open |
 | --- | --- |
 | Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
-| Platformer art, level and layout regeneration | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/` |
+| Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/`, `examples/01_platformer/tools/locks.json` (`D-223`), `examples/01_platformer/tools/actors.py` (`BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
 | Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
 | One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |

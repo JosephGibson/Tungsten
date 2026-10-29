@@ -12,7 +12,7 @@ Sources are [criteria](criteria.md) sections unless another file is named.
 | Item | Deferred in | Comes back when |
 | --- | --- | --- |
 | Editable text fields and IME | §4; [w01](w01-ui-text-suite.md) §11; the definition gate (Q8, `D-102`) | A game needs name entry |
-| Accessibility (reduced motion among it, M56 Q5), docking, virtualization, localization, data-defined screens, an editable inspector, a command console | w01 §11, "Later" | Each gets its own plan |
+| Accessibility (reduced motion among it, M56 Q5), docking, virtualization, localization, an editable inspector, a command console (data-defined screens moved to the roadmap redo's 7.20 on 2026-10-28) | w01 §11, "Later" | Each gets its own plan |
 | Owned glyph renderer (T2) and what needs it: per-glyph transforms and colour animation (wave, pop; the damage numbers' per-glyph version), in-shader outline, shadow and glow, bitmap fonts, premultiplied alpha, an initial atlas size, a readout of the atlas's bytes and growth frames (glyphon 0.12 keeps its sides private; M56 Q16 moved the known issue here), per-batch glyph release, text preparation off the main thread (W2 R3) | The glyph gate (`D-126`) | A game or the UI fixture needs one of those effects; T2 amends `D-026` |
 | Integer scene scaling (`display.scale_mode`) | The glyph gate (`D-127`) | A pixel-art game asks; the UI stays at native resolution |
 | JSON schemas for config files; live editing in the game | [w14](w14-tooling.md) | W1's widgets have shipped |

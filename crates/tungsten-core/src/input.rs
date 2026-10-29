@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::ops::RangeInclusive;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de, ser};
 
@@ -276,7 +277,8 @@ pub enum GamepadAxis {
 }
 
 impl GamepadAxis {
-    /// The axis's slot in a pad's values.
+    /// The axis's slot in a pad's values; a stick's x sits at an even slot
+    /// and its y right after.
     fn index(self) -> usize {
         match self {
             Self::LeftStickX => 0,
@@ -311,13 +313,81 @@ impl AxisDirection {
     }
 }
 
-/// A stick direction presses when the value along it reaches this, after
-/// the backend's deadzone (Q8 of M54).
+/// A stick direction presses when the raw value along it reaches this; the
+/// [`StickResponse`] does not apply.
 pub const STICK_PRESS: f32 = 0.5;
-/// A pressed stick direction releases when the value along it falls below
-/// this. [`ActionMap::value`] reads an axis binding from here: 0 at it, 1 at
-/// full tilt.
+/// A pressed stick direction releases when the raw value along it falls
+/// below this.
 pub const STICK_RELEASE: f32 = 0.35;
+
+/// How a stick reads as an analog value in [`ActionMap::value`] (P7-12),
+/// both axes of the stick together: below `dead_zone` it reads 0, and past
+/// it the vector is rescaled from the dead zone to 1 along its own
+/// direction, times `sensitivity`, its length clamped to 1. The digital
+/// presses ([`STICK_PRESS`], [`STICK_RELEASE`]) read the raw value.
+/// [`InputState`] holds one, set from the player's `Settings`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StickResponse {
+    /// The radius below which a stick reads 0, in
+    /// [`DEAD_ZONE_RANGE`](Self::DEAD_ZONE_RANGE).
+    pub dead_zone: f32,
+    /// The factor on the rescaled length, in
+    /// [`SENSITIVITY_RANGE`](Self::SENSITIVITY_RANGE).
+    pub sensitivity: f32,
+}
+
+impl StickResponse {
+    /// The dead zones [`InputState::set_stick_response`] keeps.
+    pub const DEAD_ZONE_RANGE: RangeInclusive<f32> = 0.0..=0.9;
+    /// The sensitivities [`InputState::set_stick_response`] keeps.
+    pub const SENSITIVITY_RANGE: RangeInclusive<f32> = 0.25..=2.0;
+    /// A 0.15 dead zone at sensitivity 1.
+    pub const DEFAULT: Self = Self {
+        dead_zone: 0.15,
+        sensitivity: 1.0,
+    };
+
+    /// Each field clamped to its range; one that is not finite takes the
+    /// default's.
+    fn clamped(self) -> Self {
+        let clamp = |value: f32, range: RangeInclusive<f32>, default: f32| {
+            if value.is_finite() {
+                value.clamp(*range.start(), *range.end())
+            } else {
+                default
+            }
+        };
+        Self {
+            dead_zone: clamp(
+                self.dead_zone,
+                Self::DEAD_ZONE_RANGE,
+                Self::DEFAULT.dead_zone,
+            ),
+            sensitivity: clamp(
+                self.sensitivity,
+                Self::SENSITIVITY_RANGE,
+                Self::DEFAULT.sensitivity,
+            ),
+        }
+    }
+
+    /// The stick at `(x, y)` after the response.
+    fn apply(self, x: f32, y: f32) -> (f32, f32) {
+        let length = x.hypot(y);
+        if length <= self.dead_zone {
+            return (0.0, 0.0);
+        }
+        let reach =
+            ((length - self.dead_zone) / (1.0 - self.dead_zone) * self.sensitivity).min(1.0);
+        (x / length * reach, y / length * reach)
+    }
+}
+
+impl Default for StickResponse {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
 
 /// A scroll amount as the window reports it: lines from a notched wheel or
 /// pixels from a touchpad. A positive `y` scrolls up.
@@ -567,6 +637,7 @@ pub struct InputState {
     /// The last record is a move of this pad's axis that crossed nothing, so
     /// the next such move may coalesce into it.
     open_axis: Option<(GamepadId, GamepadAxis)>,
+    stick_response: StickResponse,
 
     fixed: FixedEdges,
     fixed_view: bool,
@@ -642,6 +713,7 @@ impl InputState {
             pads: Vec::new(),
             pad_edges: PadEdges::default(),
             open_axis: None,
+            stick_response: StickResponse::DEFAULT,
             fixed: FixedEdges::default(),
             fixed_view: false,
             cursor_position: None,
@@ -1158,12 +1230,30 @@ impl InputState {
         self.pad(pad).map_or(0.0, |state| state.axes[axis.index()])
     }
 
-    /// The farthest any pad's `axis` goes toward `direction`, 0 when none
-    /// does.
-    pub(crate) fn stick_reach(&self, axis: GamepadAxis, direction: AxisDirection) -> f32 {
+    /// How sticks read in [`ActionMap::value`].
+    #[must_use]
+    pub fn stick_response(&self) -> StickResponse {
+        self.stick_response
+    }
+
+    /// Sets how sticks read in [`ActionMap::value`], each field clamped to
+    /// its range and one that is not finite taking the default's. It holds
+    /// until set again; `begin_frame` and focus loss keep it.
+    pub fn set_stick_response(&mut self, response: StickResponse) {
+        self.stick_response = response.clamped();
+    }
+
+    /// The farthest any pad's `axis` goes toward `direction` after the
+    /// [`StickResponse`], which reads the stick's two axes together; 0 when
+    /// none does.
+    pub(crate) fn stick_value(&self, axis: GamepadAxis, direction: AxisDirection) -> f32 {
+        let x = axis.index() & !1;
         self.pads
             .iter()
-            .map(|state| direction.along(state.axes[axis.index()]))
+            .map(|state| {
+                let stick = self.stick_response.apply(state.axes[x], state.axes[x + 1]);
+                direction.along(if axis.index() == x { stick.0 } else { stick.1 })
+            })
             .fold(0.0, f32::max)
     }
 
@@ -1284,7 +1374,8 @@ impl Default for InputState {
 /// release, and a press it got always gets its release, so no key sticks on
 /// either side; moves, pointer leave, modifiers and focus always reach it.
 /// [`ActionMap`] reads it through `Deref`, and its frame and fixed views
-/// behave as [`InputState`]'s. Its frame starts at each routing, so a reader
+/// behave as [`InputState`]'s; each routing gives it the raw input's
+/// [`StickResponse`]. Its frame starts at each routing, so a reader
 /// that runs before the routing sees the previous routing's edges. It is
 /// opt-in: [`InputState`] stays the raw input, which the engine's own toggles
 /// read.

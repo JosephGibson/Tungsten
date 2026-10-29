@@ -6,6 +6,58 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.112.0] - 2026-10-28
+
+Summary: the Phase 6 QA pass's correctness list (`qa6`, redo Q10), which closes Phase 6, and the roadmap redo's first Phase 7 step, `quick-wins` (7.1, plan `docs/plans/quick-wins.md`, deleted when done): the deprecated surface gone, one integration-test binary per crate, gamepads read through `gilrs` with a radial stick dead zone, and example 01's map objects keyed by authored names, its tileset only the tiles it uses, its assets generated and locked by family and its actors' bodies read from data; save schema 23. Beside them, action RPGs become a fifth 1.0 genre (`D-218`), scoped by the ARPG paper design (7.19, `docs/plans/arpg-design.md`, awaiting the owner's triage), and the redo gains a UI pass, camera rigs and screens as data.
+
+### Added
+
+- **Gamepads** (`D-220`, `tungsten/input_bridge.rs`): the `gilrs` 0.11 backend behind the umbrella's default `gamepad` feature, polled on the main thread each frame, force feedback off so its one backend thread is the engine's third; core's pad buttons, sticks, bindings and UI navigation, in since 0.74, now read a real pad. Licence texts for `gilrs`, `gilrs-core` and SDL_GameControllerDB in `licenses/`, and `libudev-dev` in CI's and the release run's Linux jobs. The menus' d-pad and stick moves are unchecked with a pad attached (known issues).
+- **Stick response** (`D-221`, `core/input.rs`): `StickResponse { dead_zone, sensitivity }` in `InputState` (0.15 and 1.0 by default, clamped to 0–0.9 and 0.25–2), which `ActionMap::value` applies over both of a stick's axes together, rescaling past the zone along the stick's direction; the digital presses stay raw. `Settings` holds the player's `stick_dead_zone` and `stick_sensitivity`, applied at startup and by `apply_settings` and passed to `RoutedInput` at each routing; gilrs's own dead zone is off.
+- **Example 01's authored map IDs** (`D-222`, `save.rs`, `tools/level.json`): every saved map object has a unique authored name (the lava pools, decks and geysers newly) and takes its save ID from it (`SaveId::authored`, FNV-1a with bit 31 set; the player's from `player`), runtime spawns counting below bit 31; a saved `map` flag on the map's crates and kegs replaces the ID range the summon cap read. An enemy added to the map needs no schema bump (`an_enemy_added_to_the_map_needs_no_schema_bump`).
+- **Example 01's asset families and locks** (`D-223`, `tools/generate.py`, `tools/locks.json`): `generate.py --family NAME` builds only those families and their post-steps; the 19 accepted art and sound families and the actors' bodies are locked by each file's SHA-256, a run that would change a locked file fails, and an unlock (`--unlock`) is the owner's; the level and `content` are never locked.
+- **Example 01's bodies as data** (`assets/data/bodies/`): the generator writes each actor's frame, body half extents and centre, hurtbox and named points (each enemy's eye, the troll's fist and hands, the goblin's hand, the crawler's snowball, the beetle's plough) beside its sprites; 01 reads them through a `bodies` data kind in place of its consts, and `--check` holds every prefab's body and hurtbox to them.
+
+### Changed
+
+- **One integration-test binary per crate** (`tests/integration/main.rs`): core's eight, the umbrella's four and the fixtures' four, run as `--test integration` with a module filter; the justfile, `docs/validation.md` and `check-repo.py` follow.
+- **Example 01's tileset** (`tools/tileset.json`, `tools/level.py`): only the 676 tiles the map uses, under IDs that are only ever added; `level.tmj` writes a map row and an object a line (204,369 → 36,918 lines, the same JSON); each terrain and background cell seeds its tile variant from its place, so a sprite change outside the terrain touches no level file and a terrain change moves only its props. This re-rolled every variant once (stills in `perf-runs/20261028-quick-wins-tileset/`); a platform the owner names at a playtest takes its old picks back (`ROADMAP.md`'s Later).
+- **Example 01's generator** leaves a file whose bytes are unchanged untouched, so the hot-reload watcher and `git status` see only real changes.
+- **Example 01's save** (`save.rs`): schema 23 maps schema 22's map IDs 0–56 to the authored ones through a frozen table of their names and sets the `map` flag inside schema 22's map-prop range; runtime IDs keep their numbers, and every older fixture loads to the state its tests pin.
+- **State commands** (`D-217`, `tungsten/state.rs`): a command that would exit a state entered earlier in the same dispatch waits for the next frame with every command after it, so the state's buffered spawns are live when its exit despawns them.
+- **Game ids and save slot names** ending in `.` are refused (`D-219`), since Windows drops the dot and two ids would share a user folder.
+- **Shader IDs** (`core/assets/shader.rs`, `tungsten/asset_loader/`): core records the IDs the renderer mints (`ShaderRegistry::register`, `Renderer::resolve_or_allocate_shader_id`) instead of allocating its own, so the two always agree.
+- **The 1.0 plan** (`D-218`, `docs/plans/roadmap-redo.md`): action RPGs are a fifth 1.0 genre, scoped by the ARPG paper design (7.19, written and verified; the owner's triage of its 22 `PA-` rows and six questions is next) and built by 8.7; the UI pass (7.17), camera rigs (7.18) and screens as data (7.20, from the 1.x backlog) join Phase 7.
+- **Release merges** take the pull request's title as their message (`docs/releases.md`, the repository's settings).
+- **Records**: DESIGN's status line (Phase 6 complete, Phase 7 in progress), known issues (the rows `qa6` left rehomed to Phase 7's passes and 01 stops, a gamepad check added), `ROADMAP.md`, the LLM index, `docs/assets.md` and 01's tools README; the quick wins plan, deleted when done.
+
+### Fixed
+
+- **Material depth under `gpu_depth`**: `damage_flash.wgsl` and the template's copy, 01's `soft_glow.wgsl` and the bench's `bench_heavy.wgsl` write `z_norm` as clip depth, as the stock sprite shaders do.
+- **Culling during a resize** (`tungsten/tilemap_extract.rs`, `sprite_extract.rs`, `app.rs`): tiles and lights cull at the surface's size, not a windowed request's pending `WindowSize`, so a pending shrink drops nothing the old surface still shows.
+- **Lights past the cap** (`render/lighting.rs`): past 16 lit lights in view, the cull keeps those nearest the view's centre, not the first queried.
+- **Font family IDs** (`render/text/engine.rs`): a text section resolves a family ID as well as a face ID, so a world label in a family draws in it, and an unknown font ID warns once.
+- **Inert post settings** (`render/post/`): `DitherMode::Bayer8` and `BlueNoise` (drawn as Bayer 4), `CrtParams::bleed` and a `PixelOutline` under a clear alpha at or above its threshold are documented and warn once; drawing them waits for a game that asks.
+- **Unregistered particle meshes** warn once per mesh name, not on every emission.
+- **Stale pending entities** (`core/ecs/command_buffer.rs`): a `PendingEntity` carries its buffer's flush count, and recording with one from before the buffer's last flush panics instead of inserting on a later spawn.
+- **Manifest paths** (`D-224`, `ManifestError::PathEscapes`): an entry whose path is absolute or climbs out of its manifest's folder is refused at every load, `tungsten check` and `package` included; `just template-check` seeds two such entries as errors both report.
+- **State hooks** (`tungsten/state.rs`): `active_id()` and `depth()` read the state whose hook or `update` runs, not the one below it.
+- **The inspector** picks a flipped sprite where it draws.
+- **The first frame's dt** no longer holds `AudioSystem::init`'s resampling: the frame is stamped after it.
+- **`UiHarness::click`** aims where a widget paints under a debug scale other than 1.
+- **Tweens** (`tungsten/tweens.rs`): `Loop` and `Times` carry a cycle's overshoot into the next, and `PingPong` reflects it at a turn, so their periods hold.
+- **The kit's all-charges refill** (`charges { all: true }`) counts from the last charge spent, not the first.
+- **A whole knockback resist** (`resist` 1) neither launches nor locks a platformer controller, nor stores a push.
+- **`render.max_frame_latency = 0`** warns and falls back at load, as `display.max_frame_latency = 0` does.
+- **The bench's particles** draw and tick with the alpha blend.
+- **Smaller ones**: core's manifest tests remove their temp folders; `just checks` recommends `just script-test` for the template's tool scripts; `UiTree`'s doc says a replaced tree needs a fresh router mid-press; DESIGN's reload matrix lists png alone; `D-041`'s marker line, the bloom shader-ID note and the fonts README's SemiBold copy.
+
+### Removed
+
+- **The deprecated surface** (W4b): the eleven arity-named queries (`query2`, `query3_mut` and the rest; the tuple forms stay), `DeltaTime`, `InspectorState::new_with_defaults`, `register` and `registered_len` (the overlay reads `InspectRegistry` alone, so `InspectorState` is now `Send` and `Sync`), `LightUbo::byte_size`, and `display.scale_mode` with `ScaleMode` (a file that still sets it loads as with any unknown display key).
+- **`BlendMode::Premultiplied`**, which drew alpha twice and no shipped config used.
+- **`ShaderRegistry::allocate`**, replaced by `register` (Changed).
+
 ## [0.111.0] - 2026-10-28
 
 Summary: one example 01 stop from the owner's notes (feedback plan `docs/plans/1.0/example-01-feedback.md` §3.12) and a follow-up on the map's foes, with no engine, kit, template or shell change: `e01flask`, the toxic flask (an eleventh spell whose splash poisons living things, poison as a fifth damage type, armour on the beetle and the bridge's troll, and Corrosive, poison and shock together melting that armour away for good); then seven more enemies on the map and a crawler that leaps higher; save schemas 20 to 22.

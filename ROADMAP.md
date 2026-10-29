@@ -4,7 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `qa6`: the Phase 6 QA pass's correctness list as small tasks (redo Q10).
+- `arpg-design`: the ARPG paper design (redo 7.19) is written and verified ([plan](docs/plans/arpg-design.md)); the owner's triage of its 22 `PA-` rows and six questions is next, then 7.7 assigns them (`D-218`).
 
 ## Next
 
@@ -15,9 +15,11 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's snowballs dousing burning props and chilling bodies, if play asks for it.
 - Example 01's crates breaking into planks under a blast or as they burn out, if play asks for it.
 - Example 01's geysers lighting, throwing or chilling props and balls, and throwing a goblin as high as the wizard (it hops about 13 px), if play asks for it.
+- Example 01's props' and toys' boxes and anchors as data beside their sprites, as the actors' bodies are (`assets/data/bodies/`): `STONE_*`, `CRATE_*`, `KEG_*`, `MUZZLE_OFFSET`, `SPRAY_MUZZLE`, `BOMB_TIP`, `SCORCH_ANCHOR`, and the wisp prefab's glow offset, its body's centre; in a later 01 stop.
+- Example 01's tile variants, re-rolled once at 0.112 (stills in `perf-runs/20261028-quick-wins-tileset/`): a platform the owner names at a playtest takes its old picks back as per-cell overrides from `5e516e60`'s `level.tmj`.
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
 - Sequence capture: one run writes every Nth frame from M to N, amending `D-142`'s one-frame capture, so an asset review's in-game loops take seconds rather than a game launch a frame; with redo 7.2's review sheets, or sooner before an art-heavy stop.
-- Phase 7, Seams (redo §3): quick wins, agent tooling, the benchmark runner, H2, the analysis pass, the Phase 7 plan, terrain and physics, saves, the kit pass, the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
-- Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, 01 refreshed, the template's final pass, proof.
+- Phase 7, Seams (redo §3): agent tooling, the benchmark runner, H2, the analysis pass, the Phase 7 plan, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
+- Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.

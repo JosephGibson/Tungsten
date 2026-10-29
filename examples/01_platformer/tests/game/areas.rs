@@ -8,7 +8,6 @@ use std::path::Path;
 use example_01_platformer::features::audio::components::Ambience;
 use example_01_platformer::features::level::components::Area;
 use example_01_platformer::features::level::{AMBIENT, AMBIENT_INDOOR, LIGHT_EASE, TILE};
-use example_01_platformer::features::player::PLAYER_HALF;
 use example_01_platformer::features::run::Run;
 use example_01_platformer::features::run::banner::{self, BANNER_SECS};
 use example_01_platformer::game::GAMEPLAY;
@@ -19,6 +18,7 @@ use tungsten::core::{AmbientLight, SoundRegistry, UserFolder};
 use tungsten::kit::damage;
 use tungsten::testing::UiHarness;
 
+use super::player_half;
 use super::{
     calm, centre, fall_dead, harness_with, player_entity, press, settle, start, teleport, top,
     user_folder,
@@ -66,7 +66,7 @@ fn a_new_area_replaces_the_banner() {
     assert_eq!(banner::shown(harness.world()), Some(FIRST));
     // Into the aqueduct while the clearing's name still shows.
     let (name, column, _, row, _) = CROSSINGS[0];
-    let inside = Vec2::new((column + 1.0) * TILE, row * TILE - PLAYER_HALF.y - 0.5);
+    let inside = Vec2::new((column + 1.0) * TILE, row * TILE - player_half().y - 0.5);
     teleport(&mut harness, player, inside);
     let mut frames = 0;
     while banner::shown(harness.world()) != Some(name) {
@@ -98,7 +98,7 @@ fn walking_across_each_area_start_autosaves_once_names_it_and_retry_starts_there
         teleport(
             &mut harness,
             player,
-            Vec2::new(x * TILE, row * TILE - PLAYER_HALF.y - 0.5),
+            Vec2::new(x * TILE, row * TILE - player_half().y - 0.5),
         );
         for _ in 0..10 {
             harness.step(1);
@@ -127,7 +127,7 @@ fn walking_across_each_area_start_autosaves_once_names_it_and_retry_starts_there
             }
         }
         assert_eq!(area(&harness).as_deref(), Some(name));
-        assert!(centre(&harness, player).x + PLAYER_HALF.x > column * TILE);
+        assert!(centre(&harness, player).x + player_half().x > column * TILE);
         assert_eq!(seen, [name], "one name crossing into {name}");
         assert_eq!(writes, 1, "one autosave crossing into {name}");
         // Past the light's ease: the area's ambience up and every other
@@ -174,7 +174,7 @@ fn walking_across_each_area_start_autosaves_once_names_it_and_retry_starts_there
     // Its body overlaps the bridge's start, where the autosave stood; which
     // area a body astride two names is the save's to say (step 7).
     assert!(
-        at.x + PLAYER_HALF.x > last.1 * TILE,
+        at.x + player_half().x > last.1 * TILE,
         "{at} is in {}",
         last.0
     );

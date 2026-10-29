@@ -1,6 +1,6 @@
 use super::*;
 use crate::telemetry::DisplayTelemetry;
-use tungsten_core::{ActionMap, DisplayMode, InputState, KeyCode, ScaleMode};
+use tungsten_core::{ActionMap, DisplayMode, InputState, KeyCode};
 
 fn seed_world() -> World {
     let mut world = World::new();
@@ -54,7 +54,6 @@ fn sync_helpers_keep_state_and_telemetry_in_step() {
     let state = DisplayState {
         display_mode: DisplayMode::BorderlessFullscreen,
         vsync: true,
-        scale_mode: ScaleMode::Integer,
         frame_rate_cap: Some(144),
         ..DisplayState::default()
     };
@@ -76,7 +75,6 @@ fn sync_helpers_keep_state_and_telemetry_in_step() {
     assert_eq!(telemetry.resolution, (1920, 1080));
     assert_eq!(telemetry.display_mode, DisplayMode::BorderlessFullscreen);
     assert!(telemetry.vsync);
-    assert_eq!(telemetry.scale_mode, ScaleMode::Integer);
     assert_eq!(telemetry.frame_rate_cap, Some(144));
     assert_eq!(telemetry.actual_present_mode.as_deref(), Some("fifo"));
     assert_eq!(window_size.width, 1920);

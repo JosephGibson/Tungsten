@@ -1,6 +1,6 @@
 # Audio decode fixtures
 
-Synthetic test tones for `tests/audio_decode.rs`, one per Symphonia format the
+Synthetic test tones for `tests/integration/audio_decode.rs`, one per Symphonia format the
 workspace enables (`wav`+`pcm`, `ogg`+`vorbis`, `mp3`, `aac`). They're generated here
 from a math expression, contain no third-party material, and fall under the
 project's MIT license. They're test data, not engine assets, so they don't

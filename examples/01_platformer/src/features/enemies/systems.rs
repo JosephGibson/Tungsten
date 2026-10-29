@@ -164,7 +164,7 @@ pub fn blocked(world: &World, walker: Entity, heading: f32) -> bool {
     let (Some(at), Some(kind)) = (centre(world, walker), kind(world, walker)) else {
         return true;
     };
-    let half = kind.info().half;
+    let half = super::body(world, kind).half;
     let wall = solid(world, at, Vec2::new(heading, 0.0), half.x + 8.0, walker);
     let toes = Vec2::new(at.x + heading * (half.x + 6.0), at.y);
     let ledge = !solid(world, toes, Vec2::Y, half.y + 14.0 + WALK_STEP, walker);
@@ -502,19 +502,13 @@ pub fn clear(world: &World, seer: Entity, from: Vec2, to: Vec2) -> bool {
     true
 }
 
-/// `enemy`'s eye, mirrored about its body's centre as it faces, as its
-/// drawing is ([`clips`]).
+/// `enemy`'s eye, its body's `eye` point as it faces, mirrored about its
+/// body's centre as its drawing is ([`clips`]).
 #[must_use]
 pub fn eye(world: &World, enemy: Entity) -> Option<Vec2> {
     let at = world.get::<Position>(enemy)?.0;
     let mine = world.get::<Enemy>(enemy)?;
-    let info = mine.kind.info();
-    let eye = if mine.heading < 0.0 {
-        Vec2::new(2.0 * info.centre.x - info.eye.x, info.eye.y)
-    } else {
-        info.eye
-    };
-    Some(at + eye)
+    Some(at + super::body(world, mine.kind).point("eye", mine.heading)?)
 }
 
 /// `enemy_sight`, in the intent phase: every [`SIGHT_EVERY`] seconds an
@@ -880,8 +874,8 @@ fn mirror(world: &mut World, enemy: Entity) {
     let Some(mine) = world.get::<Enemy>(enemy).copied() else {
         return;
     };
-    let info = mine.kind.info();
-    let shift = 2.0 * info.centre.x - info.frame;
+    let body = super::body(world, mine.kind);
+    let shift = 2.0 * body.centre.x - body.frame.x;
     if mine.heading < 0.0
         && shift != 0.0
         && let Some(transform) = world.get_mut::<Transform>(enemy)

@@ -1,7 +1,8 @@
 //! The player's settings, kept in the game's user folder (`D-159`): the
 //! display mode, resolution, vsync and frame-rate limit (`D-180`), the UI
-//! scale, the text scale (M56), the master volume and each bus's volume,
-//! layered between `tungsten.json` and the environment.
+//! scale, the text scale (M56), the master volume, each bus's volume and
+//! the sticks' dead zone and sensitivity (P7-12), layered between
+//! `tungsten.json` and the environment.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -13,6 +14,7 @@ use thiserror::Error;
 
 use crate::audio::AudioBus;
 use crate::display::{DisplayMode, Resolution};
+use crate::input::StickResponse;
 use crate::persist::{WriteError, quarantine, write_atomic};
 
 /// How many buses there are: [`AudioBus::ALL`]'s length.
@@ -92,7 +94,9 @@ pub enum UserFolder {
 ///   "ui_scale": 1.25,
 ///   "text_scale": 1.5,
 ///   "master_volume": 0.8,
-///   "bus_volumes": { "music": 0.5 }
+///   "bus_volumes": { "music": 0.5 },
+///   "stick_dead_zone": 0.2,
+///   "stick_sensitivity": 1.25
 /// }
 /// ```
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -106,6 +110,8 @@ pub struct Settings {
     master_volume: Option<f32>,
     /// By [`AudioBus::ALL`]'s order.
     bus_volumes: [Option<f32>; BUSES],
+    stick_dead_zone: Option<f32>,
+    stick_sensitivity: Option<f32>,
     path: Option<PathBuf>,
     load_warnings: Vec<String>,
 }
@@ -315,6 +321,61 @@ impl Settings {
         }
     }
 
+    /// The sticks' dead zone the player set (P7-12).
+    #[must_use]
+    pub fn stick_dead_zone(&self) -> Option<f32> {
+        self.stick_dead_zone
+    }
+
+    /// Sets or unsets the sticks' dead zone, clamped to
+    /// [`StickResponse::DEAD_ZONE_RANGE`]; a value that is not finite is
+    /// ignored.
+    pub fn set_stick_dead_zone(&mut self, dead_zone: Option<f32>) {
+        match dead_zone {
+            Some(dead_zone) if !dead_zone.is_finite() => {}
+            Some(dead_zone) => {
+                let range = StickResponse::DEAD_ZONE_RANGE;
+                self.stick_dead_zone = Some(dead_zone.clamp(*range.start(), *range.end()));
+            }
+            None => self.stick_dead_zone = None,
+        }
+    }
+
+    /// The sticks' sensitivity the player set (P7-12).
+    #[must_use]
+    pub fn stick_sensitivity(&self) -> Option<f32> {
+        self.stick_sensitivity
+    }
+
+    /// Sets or unsets the sticks' sensitivity, clamped to
+    /// [`StickResponse::SENSITIVITY_RANGE`]; a value that is not finite is
+    /// ignored.
+    pub fn set_stick_sensitivity(&mut self, sensitivity: Option<f32>) {
+        match sensitivity {
+            Some(sensitivity) if !sensitivity.is_finite() => {}
+            Some(sensitivity) => {
+                let range = StickResponse::SENSITIVITY_RANGE;
+                self.stick_sensitivity = Some(sensitivity.clamp(*range.start(), *range.end()));
+            }
+            None => self.stick_sensitivity = None,
+        }
+    }
+
+    /// The [`StickResponse`] these settings give `InputState`: the dead zone
+    /// and sensitivity the player set, [`StickResponse::DEFAULT`]'s where
+    /// unset.
+    #[must_use]
+    pub fn stick_response(&self) -> StickResponse {
+        StickResponse {
+            dead_zone: self
+                .stick_dead_zone
+                .unwrap_or(StickResponse::DEFAULT.dead_zone),
+            sensitivity: self
+                .stick_sensitivity
+                .unwrap_or(StickResponse::DEFAULT.sensitivity),
+        }
+    }
+
     /// Writes the set values through [`write_atomic`].
     ///
     /// # Errors
@@ -342,6 +403,8 @@ impl Settings {
             text_scale: self.text_scale,
             master_volume: self.master_volume,
             bus_volumes: (!buses.is_empty()).then_some(buses),
+            stick_dead_zone: self.stick_dead_zone,
+            stick_sensitivity: self.stick_sensitivity,
         };
         let mut json = serde_json::to_string_pretty(&file)
             .expect("settings serialize: plain fields with string keys");
@@ -374,6 +437,8 @@ impl Settings {
                 self.bus_volumes[bus_index(bus)] = Some(volume);
             }
         }
+        self.stick_dead_zone = file.stick_dead_zone;
+        self.stick_sensitivity = file.stick_sensitivity;
     }
 }
 
@@ -394,6 +459,10 @@ struct SettingsFile {
         deserialize_with = "bus_volumes_file"
     )]
     bus_volumes: Option<BTreeMap<String, f32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stick_dead_zone: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stick_sensitivity: Option<f32>,
 }
 
 /// `bus_volumes`: an object whose known buses each hold a number in 0..=1;
@@ -494,6 +563,18 @@ fn parse(bytes: &[u8]) -> Result<SettingsFile, String> {
         && !(volume.is_finite() && (0.0..=1.0).contains(&volume))
     {
         return Err(format!("master_volume {volume} is outside 0..=1"));
+    }
+    if let Some(dead_zone) = file.stick_dead_zone
+        && !(dead_zone.is_finite() && StickResponse::DEAD_ZONE_RANGE.contains(&dead_zone))
+    {
+        return Err(format!("stick_dead_zone {dead_zone} is outside 0..=0.9"));
+    }
+    if let Some(sensitivity) = file.stick_sensitivity
+        && !(sensitivity.is_finite() && StickResponse::SENSITIVITY_RANGE.contains(&sensitivity))
+    {
+        return Err(format!(
+            "stick_sensitivity {sensitivity} is outside 0.25..=2"
+        ));
     }
     Ok(file)
 }

@@ -127,6 +127,8 @@ pub struct CrtParams {
     pub scanline_strength: f32,
     pub curvature: f32,
     pub mask: u32,
+    /// Reserved: the shader does not read it yet, and a value other than 0
+    /// warns once.
     pub bleed: f32,
 }
 
@@ -136,7 +138,7 @@ impl Default for CrtParams {
             scanline_strength: 0.5,
             curvature: 0.05,
             mask: 0,
-            bleed: 0.1,
+            bleed: 0.0,
         }
     }
 }
@@ -162,7 +164,9 @@ impl Default for FilmGrainParams {
 pub enum DitherMode {
     #[default]
     Bayer4,
+    /// Draws as `Bayer4` for now, and warns once.
     Bayer8,
+    /// Draws as `Bayer4` for now, and warns once.
     BlueNoise,
 }
 
@@ -189,6 +193,9 @@ impl Default for DitherParams {
 pub struct PixelOutlineParams {
     pub color: [f32; 4],
     pub thickness_px: f32,
+    /// Outlines where the scene's alpha crosses this, so the scene needs a
+    /// clear colour whose alpha is below it; the default clear's 1.0 is not,
+    /// and the renderer warns once.
     pub alpha_threshold: f32,
 }
 

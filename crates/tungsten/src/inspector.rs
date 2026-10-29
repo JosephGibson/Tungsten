@@ -65,10 +65,6 @@ pub use tungsten_core::inspect::InspectFn;
 pub struct InspectorState {
     pub enabled: bool,
     pub selected: Option<Entity>,
-    /// Rows registered on the state itself by the deprecated
-    /// [`InspectorState::register`]; the overlay prints them after the
-    /// [`InspectRegistry`] resource's rows.
-    registered: Vec<(&'static str, InspectFn)>,
     /// The corner the window docks at when no place is saved for it: the
     /// bottom left (M58).
     pub corner: HudCorner,
@@ -108,7 +104,6 @@ impl Default for InspectorState {
         Self {
             enabled: false,
             selected: None,
-            registered: Vec::new(),
             // Below the HUD; the systems overlay and the UI inspector take
             // the right side (M58).
             corner: HudCorner::BottomLeft,
@@ -133,57 +128,6 @@ impl InspectorState {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    /// The state with the six canonical rows registered on itself, as before
-    /// M38. `App` now inserts those rows in the [`InspectRegistry`] resource,
-    /// so a state built this way beside an `App` prints them twice.
-    #[deprecated(
-        since = "0.52.0",
-        note = "use `InspectorState::new()`; `App` registers the canonical rows in the `InspectRegistry` resource (`default_inspect_registry`), beside which these print twice. Removed at W4b"
-    )]
-    #[must_use]
-    pub fn new_with_defaults() -> Self {
-        let mut state = Self::default();
-        state.push_row::<Tag>("Tag");
-        state.push_row::<Transform>("Transform");
-        state.push_row::<Visibility>("Visibility");
-        state.registered.push(("Sprite", Box::new(sprite_rows)));
-        state.push_row::<Position>("Position");
-        state.push_row::<Velocity>("Velocity");
-        state
-    }
-
-    /// Registers `T`'s rows on the state itself; the overlay prints them
-    /// after the [`InspectRegistry`] resource's rows.
-    #[deprecated(
-        since = "0.52.0",
-        note = "use `App::register_inspectable` or `InspectRegistry::register` on the resource, which the overlay reads first. Removed at W4b"
-    )]
-    pub fn register<T: 'static + Inspectable>(&mut self, label: &'static str) {
-        self.push_row::<T>(label);
-    }
-
-    /// How many rows the state itself holds; the registry's are not counted.
-    #[deprecated(
-        since = "0.52.0",
-        note = "use `InspectRegistry::len` on the resource. Removed at W4b"
-    )]
-    #[must_use]
-    pub fn registered_len(&self) -> usize {
-        self.registered.len()
-    }
-
-    fn push_row<T: 'static + Inspectable>(&mut self, label: &'static str) {
-        self.registered.push((
-            label,
-            Box::new(|world: &World, entity: Entity| {
-                world
-                    .get::<T>(entity)
-                    .map(Inspectable::inspect_rows)
-                    .unwrap_or_default()
-            }),
-        ));
     }
 
     pub fn toggle(&mut self) {
@@ -368,11 +312,11 @@ fn pick_entity_under_cursor(world: &World, world_cursor: Vec2) -> Option<Entity>
             let Some(asset) = registry.sprite(sprite.asset_id) else {
                 continue;
             };
-            let size = Vec2::new(
-                asset.width as f32 * transform.scale.x.abs(),
-                asset.height as f32 * transform.scale.y.abs(),
-            );
-            try_hit_aabb(&mut best, entity, world_cursor, transform.position, size);
+            // A negative scale spans the quad back from the point, as the
+            // sprite shader draws it.
+            let span = Vec2::new(asset.width as f32, asset.height as f32) * transform.scale;
+            let min = transform.position + span.min(Vec2::ZERO);
+            try_hit_aabb(&mut best, entity, world_cursor, min, span.abs());
         }
     }
 
@@ -432,18 +376,16 @@ pub fn default_inspect_registry() -> InspectRegistry {
 
 /// The header line and the rows: `middle-click an entity to pick` and none
 /// with nothing selected (M58); else `entity Entity(n)`, then for each
-/// section with rows, the registry's first, then the state's own
-/// (deprecated) list, a header row of its name and its fields indented
-/// below it, each value in its kind's hue (M58).
+/// section of the registry with rows, a header row of its name and its
+/// fields indented below it, each value in its kind's hue (M58).
 fn inspector_rows(state: &InspectorState, world: &World) -> (String, Vec<Row>) {
     let empty = InspectRegistry::new();
     let registry = world.get_resource::<InspectRegistry>().unwrap_or(&empty);
     let Some(entity) = state.selected.filter(|entity| world.is_alive(*entity)) else {
         return ("middle-click an entity to pick".to_string(), Vec::new());
     };
-    let own = state.registered.iter().map(|(label, rows)| (*label, rows));
     let mut rows = Vec::new();
-    for (section, inspect) in registry.iter().chain(own) {
+    for (section, inspect) in registry.iter() {
         let fields = inspect(world, entity);
         if fields.is_empty() {
             continue;

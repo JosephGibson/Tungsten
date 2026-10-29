@@ -17,9 +17,9 @@ use tungsten::physics::{SpatialFilter, overlap, wake};
 
 use super::components::{Lantern, LanternAnchors, Moves, Player, Shown, StaffGlow};
 use super::{
-    BODY_OFFSET, FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, Gesture, JUMP_SPEED,
-    LAND_SECS, PLAYER_HALF, RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE,
-    STAFF_LIGHT, STUCK_BY, ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
+    FLARE_CORE, FLARE_LIGHT, FLARE_RADIUS, GUTTER_PUFF, Gesture, JUMP_SPEED, LAND_SECS,
+    RELIGHT_MANA, SHOVE_BESIDE, SHOVE_HEAD, SHOVE_OVER, SHOVE_SIDE, STAFF_LIGHT, STUCK_BY,
+    ZOOM_MAX, ZOOM_MIN, ZOOM_STEP,
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::level::components::{Glow, Zoom};
@@ -411,7 +411,8 @@ pub fn moves(world: &mut World) {
         controller.grounded(),
     );
     let (bound, refused) = (controller.paid_air_jumped(), controller.air_jump_refused());
-    let feet = BODY_OFFSET + Vec2::new(0.0, PLAYER_HALF.y);
+    let body = super::body(world);
+    let feet = body.centre + Vec2::new(0.0, body.half.y);
     let at = world.get::<Position>(player).map_or(Vec2::ZERO, |p| p.0);
     let from = world.get::<PrevPosition>(player).map_or(at, |p| p.0);
     let rising = world.get::<Velocity>(player).is_some_and(|v| v.0.y < 0.0);
@@ -646,15 +647,7 @@ pub fn lantern(world: &mut World) {
     };
     let on = world.get::<Lantern>(player).is_some_and(Lantern::lit);
     let dead = world.get::<Health>(player).is_some_and(Health::is_dead);
-    let anchor = world.get::<Sprite>(player).and_then(|sprite| {
-        let name = world
-            .get_resource::<AssetRegistry>()?
-            .sprite_name(sprite.asset_id)?;
-        let anchors = world
-            .get_resource::<DataRegistry>()?
-            .get::<LanternAnchors>(ANCHORS)?;
-        anchors.0.get(name).copied()
-    });
+    let anchor = anchor(world, player);
     let flaring = world
         .get::<Moves>(player)
         .is_some_and(|moves| moves.glow > 0.0);
@@ -676,4 +669,18 @@ pub fn lantern(world: &mut World) {
             glow.reach = Some(base.reach());
         }
     }
+}
+
+/// Where the staff's orb sits in `player`'s frame now, from its sprite's
+/// top-left: its sprite's lantern anchor.
+#[must_use]
+pub fn anchor(world: &World, player: Entity) -> Option<[f32; 2]> {
+    let sprite = world.get::<Sprite>(player)?;
+    let name = world
+        .get_resource::<AssetRegistry>()?
+        .sprite_name(sprite.asset_id)?;
+    let anchors = world
+        .get_resource::<DataRegistry>()?
+        .get::<LanternAnchors>(ANCHORS)?;
+    anchors.0.get(name).copied()
 }

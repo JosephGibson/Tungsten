@@ -294,7 +294,8 @@ def floating(source, tiled, images):
     rules are in tools/README.md (Final placement)."""
     import scenery
     tile, cols = source['tile'], tiled['width']
-    catalog = {t['id'] + 1: t['properties'][0]['value'].removeprefix('ex10_') for t in tiled['tilesets'][0]['tiles']}
+    tileset = tiled['tilesets'][0]
+    catalog = {tileset['firstgid'] + t['id']: t['properties'][0]['value'].removeprefix('ex10_') for t in tileset['tiles']}
     data = {l['name']: l['data'] for l in tiled['layers'] if l['type'] == 'tilelayer'}
     terrain = {(i % cols, i // cols): catalog[g] for i, g in enumerate(data['terrain']) if g}
     background = {(i % cols, i // cols) for i, g in enumerate(data['background']) if g}

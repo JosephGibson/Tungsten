@@ -12,7 +12,7 @@
 //!
 //! Env `TUNGSTEN_POST_STACK_FIXTURE={all|retro_arcade|dreamy|glitch_boss|bloom_only|fade_pair|fade_twice|empty}`
 //! preloads a fixed stack and **disables** the cycle. `fade_pair` and
-//! `fade_twice` stack the same effect twice for `tests/post_regression.rs`.
+//! `fade_twice` stack the same effect twice for `tests/integration/post_regression.rs`.
 //! `TUNGSTEN_POST_AA_FIXTURE` picks the SMAA preset before the renderer
 //! starts, and `TUNGSTEN_BLOOM_FIXTURE=on` turns on bloom over the emissive
 //! quad (M28).
@@ -29,7 +29,7 @@
 //!
 //! `TUNGSTEN_MATERIAL_PAIR_FIXTURE={pair|same}` adds two screen-locked sprites
 //! drawn through the root manifest's `damage_flash`, red and blue (`pair`) or
-//! blue twice (`same`), for `tests/post_regression.rs`.
+//! blue twice (`same`), for `tests/integration/post_regression.rs`.
 //!
 //! Shared and fixture assets hot-reload while the scene runs. Edit manifest
 //! WGSL bodies to iterate without restarting; invalid WGSL keeps the last

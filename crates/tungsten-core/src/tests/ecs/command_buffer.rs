@@ -150,7 +150,7 @@ fn bundle_forms_record_one_insert_per_component() {
         .iter()
         .map(|command| match command {
             Command::Insert { target, queue } => {
-                (*target == CommandTarget::Pending(pending.0), *queue)
+                (*target == CommandTarget::Pending(pending.index), *queue)
             }
             _ => unreachable!(),
         })
@@ -209,4 +209,39 @@ fn a_derive_after_a_run_adds_one_archetype_per_derived_type() {
         .map(|(n, _, _)| *n)
         .collect();
     assert_eq!(spawned, [8]);
+}
+
+#[test]
+#[should_panic(expected = "valid only for its own buffer before its flush")]
+fn a_pending_handle_kept_across_a_flush_panics_when_recorded() {
+    let mut world = World::new();
+    let mut buf = CommandBuffer::new();
+    let kept = buf.spawn();
+    world.flush_reusing(&mut buf);
+    // The next frame's first spawn has the same index.
+    let _ = buf.spawn();
+    buf.insert_pending(kept, 1_u32);
+}
+
+#[test]
+#[should_panic(expected = "valid only for its own buffer before its flush")]
+fn a_pending_handle_past_another_buffers_spawns_panics_when_recorded() {
+    let mut first = CommandBuffer::new();
+    let _ = first.spawn();
+    let foreign = first.spawn();
+    let mut second = CommandBuffer::new();
+    let _ = second.spawn();
+    second.insert_pending(foreign, 1_u32);
+}
+
+#[test]
+fn a_pending_handle_records_until_its_flush() {
+    let mut world = World::new();
+    let mut buf = CommandBuffer::new();
+    world.flush_reusing(&mut buf);
+    let pending = buf.spawn();
+    buf.insert_pending(pending, 7_u32);
+    world.flush_reusing(&mut buf);
+    let values: Vec<u32> = world.query::<&u32>().copied().collect();
+    assert_eq!(values, vec![7]);
 }

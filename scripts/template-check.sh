@@ -4,8 +4,8 @@
 # the repository, as a game starts out, and the command line checks it, it
 # builds, tests and smoke-runs there against this checkout's engine, and
 # `tungsten package` archives it; the archive's binary smoke-runs too. Then
-# two files outside the stage and seven seeded errors must fail as they
-# should (RC-A7).
+# two entries that leave their manifest's folder and seven seeded errors must
+# fail as they should (RC-A7).
 #
 # The copy builds into this checkout's target folder with the workspace's
 # profiles (which `new` writes) and .cargo/config.toml, offline, so most
@@ -174,8 +174,25 @@ if ! (cd "$extract/$top" && TUNGSTEN_SMOKE_FRAMES=3 timeout --kill-after=10 "$ti
 fi
 echo "Archive smoke (TUNGSTEN_SMOKE_FRAMES=3): OK"
 
-# Two files the source folder holds and the stage does not: check passes,
-# package fails on the staged check, naming the manifest.
+# Two entries that leave their manifest's folder, one climbing out with `..`
+# and one absolute, to files inside the game's folder: check and package
+# each refuse them, naming the manifest (D-224).
+# Runs a step (its name, the entry, then the command), which must fail
+# naming the entry; the report writes paths from the game's folder, so an
+# absolute entry reads relative.
+refused() {
+  local step=$1 entry=$2
+  shift 2
+  if "$@" >"$out" 2>&1; then
+    echo "error: tungsten $step passed a sprite at $entry, outside its manifest's folder" >&2
+    exit 1
+  fi
+  if ! grep -q "^assets/manifest\.json: sprites\.stray names '[^']*', which is absolute or leaves its manifest's folder" "$out"; then
+    echo "error: tungsten $step did not name assets/manifest.json for $entry:" >&2
+    tail -20 "$out" >&2
+    exit 1
+  fi
+}
 cp "$copy/assets/sprites/player.png" "$copy/outside.png"
 for entry in "../outside.png" "$copy/assets/sprites/player.png"; do
   edit "$entry" <<'EOF'
@@ -185,24 +202,8 @@ data = json.loads(manifest.read_text())
 data["sprites"]["stray"] = {"path": sys.argv[2]}
 manifest.write_text(json.dumps(data, indent=2))
 EOF
-  if ! in_copy "$tungsten" check >"$out" 2>&1; then
-    echo "error: tungsten check failed with a sprite at $entry, inside the game's folder:" >&2
-    tail -20 "$out" >&2
-    exit 1
-  fi
-  if package >"$out" 2>&1; then
-    echo "error: tungsten package passed with a sprite at $entry, outside its stage" >&2
-    exit 1
-  fi
-  case "$entry" in
-    /*) expected="outside the game's folder" ;;
-    *) expected="references missing file" ;;
-  esac
-  if ! grep -q "^assets/manifest.json: .*$expected" "$out"; then
-    echo "error: tungsten package did not name assets/manifest.json ($expected) for $entry:" >&2
-    tail -20 "$out" >&2
-    exit 1
-  fi
+  refused check "$entry" in_copy "$tungsten" check
+  refused package "$entry" package
   edit <<'EOF'
 import json, sys, pathlib
 manifest = pathlib.Path(sys.argv[1]) / "assets/manifest.json"
@@ -212,7 +213,7 @@ manifest.write_text(json.dumps(data, indent=2))
 EOF
 done
 rm "$copy/outside.png"
-echo "Files outside the stage (../outside.png, an absolute path): OK"
+echo "Paths leaving the manifest's folder (../outside.png, an absolute path): OK"
 
 # Five content errors, one file each.
 edit <<'EOF'

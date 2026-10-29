@@ -3,7 +3,7 @@
 //! scenario and speed — correctness signal, not timing.
 //!
 //! Run with:
-//! `cargo test -p tungsten-core --test physics_tunneling -- --nocapture`
+//! `cargo test -p tungsten-core --test integration physics_tunneling -- --nocapture`
 //!
 //! Guarantee (asserted, D-064): **zero misses in every scenario at every
 //! speed up to 15,360 px/s (256 px/frame)** — static AABB walls, static

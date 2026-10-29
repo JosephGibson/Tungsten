@@ -52,13 +52,6 @@ fn press_mouse3_at(world: &mut World, x: f32, y: f32) {
 }
 
 #[test]
-#[allow(deprecated)]
-fn default_registers_canonical_components() {
-    let state = InspectorState::new_with_defaults();
-    assert_eq!(state.registered_len(), 6);
-}
-
-#[test]
 fn default_inspect_registry_registers_canonical_components() {
     assert_eq!(default_inspect_registry().len(), 6);
 }
@@ -89,6 +82,22 @@ fn pick_selects_sprite_under_cursor_on_mouse3_edge() {
 
     let selected = world.get_resource::<InspectorState>().unwrap().selected;
     assert_eq!(selected, Some(target));
+}
+
+#[test]
+fn pick_finds_a_flipped_sprite_where_it_draws() {
+    let mut world = make_world();
+    world.get_resource_mut::<InspectorState>().unwrap().enabled = true;
+    let flipped = spawn_sprite(&mut world, "flipped", Vec2::new(100.0, 100.0), 16);
+    world.get_mut::<Transform>(flipped).unwrap().scale = Vec2::new(-1.0, 1.0);
+
+    // Drawn over x 84..100, not 100..116.
+    for (x, picked) in [(92.0, Some(flipped)), (108.0, None)] {
+        press_mouse3_at(&mut world, x, 108.0);
+        inspector_pick_system(&mut world);
+        let selected = world.get_resource::<InspectorState>().unwrap().selected;
+        assert_eq!(selected, picked, "x {x}");
+    }
 }
 
 #[test]
@@ -350,14 +359,12 @@ fn the_window_says_middle_click_to_pick_with_nothing_selected() {
 }
 
 #[test]
-#[allow(deprecated)]
 fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     let mut world = make_world();
     let e = world.spawn();
     world.insert(e, Tag::new("hero"));
     world.insert(e, Transform::from_position(Vec2::new(3.0, 5.0)));
     let mut state = InspectorState::new();
-    state.register::<Tag>("Again");
     state.enabled = true;
     state.selected = Some(e);
     world.insert_resource(state);
@@ -369,11 +376,6 @@ fn the_window_lists_the_entity_then_section_row_and_value_columns() {
     assert_eq!(rows[1], ["name", "hero"], "its field below it");
     let transform = rows.iter().position(|row| row[0] == "Transform").unwrap();
     assert_eq!(rows[transform + 1][0], "pos");
-    assert_eq!(
-        rows[rows.len() - 2][0],
-        "Again",
-        "the registry's rows first, then the state's own"
-    );
 
     let bare = world.spawn();
     world.resource_mut::<InspectorState>().selected = Some(bare);

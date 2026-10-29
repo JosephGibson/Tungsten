@@ -3,7 +3,10 @@ use crate::App;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tungsten_core::config::PresentModeConfig;
-use tungsten_core::{AudioBus, AudioCommand, DisplayMode, Resolution, UserFolder};
+use tungsten_core::{
+    ActionMap, AudioBus, AudioCommand, AxisDirection, Binding, DisplayMode, GamepadAxis, GamepadId,
+    Resolution, StickResponse, UserFolder,
+};
 
 fn tempdir() -> PathBuf {
     static COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -450,4 +453,73 @@ fn shipped_volume_reads_the_config_and_defaults_to_one() {
         .set_master_volume(Some(0.1));
     apply_settings(app.world_mut());
     assert_eq!(shipped_volume(app.world(), None), 0.8);
+}
+
+/// `push` bound to the left stick's right alone, read with the stick held
+/// half way right on pad 0.
+fn half_push(world: &mut World) -> f32 {
+    world.resource_mut::<ActionMap>().replace_bindings(
+        "push",
+        vec![Binding::GamepadAxis {
+            axis: GamepadAxis::LeftStickX,
+            direction: AxisDirection::Positive,
+        }],
+    );
+    world.resource_mut::<InputState>().set_gamepad_axis(
+        GamepadId::new(0),
+        GamepadAxis::LeftStickX,
+        0.5,
+    );
+    world
+        .resource::<ActionMap>()
+        .value(world.resource::<InputState>(), "push")
+}
+
+#[test]
+fn apply_settings_sets_the_stick_response_an_action_reads() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let world = app.world_mut();
+    let default = (0.5 - 0.15) / 0.85;
+    assert!((half_push(world) - default).abs() < 1e-6);
+    let settings = world.resource_mut::<Settings>();
+    settings.set_stick_dead_zone(Some(0.3));
+    settings.set_stick_sensitivity(Some(2.0));
+    apply_settings(world);
+    assert_eq!(
+        world.resource::<InputState>().stick_response(),
+        StickResponse {
+            dead_zone: 0.3,
+            sensitivity: 2.0
+        }
+    );
+    assert!((half_push(world) - 0.2 / 0.7 * 2.0).abs() < 1e-6);
+    let settings = world.resource_mut::<Settings>();
+    settings.set_stick_dead_zone(None);
+    settings.set_stick_sensitivity(None);
+    apply_settings(world);
+    assert!(
+        (half_push(world) - default).abs() < 1e-6,
+        "unset returns to the default"
+    );
+}
+
+#[test]
+fn an_app_starts_with_the_stick_response_its_settings_file_sets() {
+    let dir = tempdir();
+    let mut app = app_at(&dir, Config::default());
+    let settings = app.world_mut().resource_mut::<Settings>();
+    settings.set_stick_dead_zone(Some(0.25));
+    settings.set_stick_sensitivity(Some(0.5));
+    settings.save().unwrap();
+    let mut restarted = app_at(&dir, Config::default());
+    let world = restarted.world_mut();
+    assert_eq!(
+        world.resource::<InputState>().stick_response(),
+        StickResponse {
+            dead_zone: 0.25,
+            sensitivity: 0.5
+        }
+    );
+    assert!((half_push(world) - 0.25 / 0.75 * 0.5).abs() < 1e-6);
 }

@@ -25,7 +25,7 @@ use example_01_platformer::features::audio::components::{Sound, Sounded};
 use example_01_platformer::features::audio::{COMBAT_IN, COMBAT_OUT, MUSIC_COMBAT};
 use example_01_platformer::features::combat::draw::overlays;
 use example_01_platformer::features::combat::{FREEZE_NEEDS, Hit, Kind};
-use example_01_platformer::features::dummy::{self, DUMMY_CENTRE};
+use example_01_platformer::features::dummy;
 use example_01_platformer::features::elements;
 use example_01_platformer::features::elements::systems::crush;
 use example_01_platformer::features::elements::{BODY_HIT_MOST, CRUSH_SPEED, body_hit};
@@ -74,6 +74,7 @@ use tungsten::kit::{
 use tungsten::testing::UiHarness;
 
 use super::combat::{PLAIN_SEED, TOP, apply, dummy_at};
+use super::{actor_body, kind_body, player_half};
 use super::{
     aim_at, body, bursts, calm, choose, ground, harness, kick as kick_at, mock_sprite, pin_camera,
     player_entity, run, settle, stand, start_at, teleport, top,
@@ -96,7 +97,8 @@ fn arena() -> (UiHarness, Entity) {
 fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let entity = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let entity =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, entity, Difficulty::Normal);
     entity
 }
@@ -104,7 +106,7 @@ fn enemy(harness: &mut UiHarness, kind: EnemyKind, centre: Vec2) -> Entity {
 /// A walker of `kind` standing on a floor whose top is at `top`, its centre
 /// at `x`.
 fn walker(harness: &mut UiHarness, kind: EnemyKind, x: f32, top: f32) -> Entity {
-    let half = kind.info().half;
+    let half = kind_body(kind).half;
     enemy(harness, kind, Vec2::new(x, top - half.y - 0.5))
 }
 
@@ -253,10 +255,11 @@ fn roost(harness: &UiHarness, bat: Entity) -> Vec2 {
 /// `difficulty`, its save ID the run's next.
 fn troll_at(harness: &mut UiHarness, x: f32, difficulty: Difficulty) -> Entity {
     let kind = EnemyKind::Troll;
-    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let troll = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let troll =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, troll, difficulty);
     troll
 }
@@ -450,7 +453,11 @@ fn crates_kegs_iron_scrap_dummies_and_the_frozen_hide_and_the_rest_do_not() {
             ),
             true,
         ),
-        ("a dummy", dummy::spawn(world, row(4) - DUMMY_CENTRE), true),
+        (
+            "a dummy",
+            dummy::spawn(world, row(4) - actor_body("dummy").centre),
+            true,
+        ),
         ("a small ball", toys::spawn_ball(world, row(5), true), false),
         (
             "a bowling ball",
@@ -928,7 +935,7 @@ fn lit_arena() -> (UiHarness, Entity, Vec2) {
 fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
     let (mut harness, _, light) = lit_arena();
     // On the ground right of the light, 120 px from its centre.
-    let y = TOP - EnemyKind::Crawler.info().half.y - 0.5;
+    let y = TOP - kind_body(EnemyKind::Crawler).half.y - 0.5;
     let x = light.x + (120.0_f32.powi(2) - (y - light.y).powi(2)).sqrt();
     let crawler = walker(&mut harness, EnemyKind::Crawler, x, TOP);
     // Its snowball cooling, so it holds once out.
@@ -965,8 +972,8 @@ fn a_crawler_in_the_light_backs_out_past_its_fear_facing_the_player() {
 fn a_cornered_crawler_stands_and_still_chills_on_touch() {
     let (mut harness, player, _) = lit_arena();
     // Right against the player, a wall at its back.
-    let half = EnemyKind::Crawler.info().half;
-    let x = 900.0 + courier::PLAYER_HALF.x + half.x + 2.0;
+    let half = kind_body(EnemyKind::Crawler).half;
+    let x = 900.0 + player_half().x + half.x + 2.0;
     super::floor(
         &mut harness,
         Vec2::new(x + half.x + 11.0, TOP - 60.0),
@@ -1039,7 +1046,7 @@ fn crossing(side: f32, gap: f32, up: f32) -> (bool, bool, usize, f32) {
         .get_mut::<Enemy>(crawler)
         .unwrap()
         .heading = side;
-    let half = EnemyKind::Crawler.info().half;
+    let half = kind_body(EnemyKind::Crawler).half;
     let (mut hops, mut reached, mut kept, mut nearest) = (0, false, true, f32::MAX);
     for _ in 0..180 {
         harness.step(1);
@@ -1072,7 +1079,7 @@ fn a_chasing_crawler_hops_a_step_and_leaps_the_gaps_it_can_land_across() {
         ] {
             let (_, kept, hops, nearest) = crossing(side, gap, up);
             assert!(kept, "{side}: it stops at {what}");
-            let half = EnemyKind::Crawler.info().half.x;
+            let half = kind_body(EnemyKind::Crawler).half.x;
             assert!(
                 nearest <= half + 8.0,
                 "{side}: at the edge of {what}: {nearest}"
@@ -1206,8 +1213,8 @@ fn a_crawler_lunge_needs_its_target_within_reach_above() {
 fn a_crawler_lunge_landing_on_the_players_head_lands_its_touch() {
     let (mut harness, player) = arena();
     harness.world_mut().get_mut::<Lantern>(player).unwrap().on = false;
-    let head = super::centre(&harness, player).y - courier::PLAYER_HALF.y;
-    let half = EnemyKind::Crawler.info().half.y;
+    let head = super::centre(&harness, player).y - player_half().y;
+    let half = kind_body(EnemyKind::Crawler).half.y;
     // Dropped from 40 px over the player's head, it lands flush on it.
     let crawler = enemy(
         &mut harness,
@@ -1434,7 +1441,7 @@ fn a_crawler_held_at_the_fear_edge_snowballs_a_lit_player_and_never_lunges() {
 fn an_afraid_crawler_throws_nothing() {
     let (mut harness, player, _) = lit_arena();
     // Cornered inside its fear, a wall at its back, the player in its band.
-    let half = EnemyKind::Crawler.info().half;
+    let half = kind_body(EnemyKind::Crawler).half;
     let x = 900.0 + 150.0;
     super::floor(
         &mut harness,
@@ -1661,7 +1668,7 @@ fn beetle_before(
     harness
         .world_mut()
         .remove_component::<StateMachine<EnemyState>>(beetle);
-    let face = x + heading * EnemyKind::Beetle.info().half.x;
+    let face = x + heading * kind_body(EnemyKind::Beetle).half.x;
     let prop = prop(harness, face + heading * 4.0);
     harness.step(2);
     (beetle, prop)
@@ -1772,7 +1779,7 @@ fn a_charge_stops_at_iron_and_presses_it_until_it_ends() {
     }
     let end = body(&harness, iron);
     assert!(start.distance(end) < 4.0, "iron from {start} to {end}");
-    let face = at(&harness, beetle).x + EnemyKind::Beetle.info().half.x;
+    let face = at(&harness, beetle).x + kind_body(EnemyKind::Beetle).half.x;
     assert!(face <= end.x - IRON_HALF.x + 0.5, "behind it: {face}");
     // Its first visit enters the attack at step 1.
     let charged = (recovered.expect("its recovery") - 1) as f32 / 60.0;
@@ -1900,7 +1907,7 @@ fn a_fast_iron_block_crushes_the_beetle() {
     let beetle = walker(&mut harness, EnemyKind::Beetle, 1300.0, TOP);
     harness.step(2);
     let centre = body(&harness, beetle);
-    let top = centre.y - EnemyKind::Beetle.info().half.y;
+    let top = centre.y - kind_body(EnemyKind::Beetle).half.y;
     let block = toys::place_iron(harness.world_mut(), Vec2::new(centre.x, top - IRON_HALF.y));
     let drive = |harness: &mut UiHarness, speed: f32| {
         harness
@@ -1950,7 +1957,7 @@ fn the_maps_bats_hang_at_their_roosts_from_the_start() {
 fn the_bat_roosts_until_it_sees_the_player() {
     let (mut harness, player, bat) = roosting();
     let roost = roost(&harness, bat);
-    let grip = EnemyKind::Bat.info().centre.y;
+    let grip = kind_body(EnemyKind::Bat).centre.y;
     assert!(
         roost.distance(Vec2::new(1300.0, 600.0 + grip)) < 0.5,
         "its frame's top on the ceiling: {roost}"
@@ -2046,7 +2053,7 @@ fn a_frozen_bat_falls_and_shatters_on_landing() {
         h.world().get::<Health>(bat).is_none_or(Health::is_dead)
     });
     assert!(shattered, "it shatters");
-    let half = EnemyKind::Bat.info().half.y;
+    let half = kind_body(EnemyKind::Bat).half.y;
     assert!(low >= TOP - half - 2.0, "on landing: {low}");
     assert!(bursts(&harness, "ex10_ice_shatter") > before);
 }
@@ -2229,7 +2236,7 @@ fn a_light_body_needs_more_speed_to_hurt() {
         } else {
             toys::BALL_RADIUS
         };
-        let x = at(&harness, crawler).x - EnemyKind::Crawler.info().half.x - radius - 8.0;
+        let x = at(&harness, crawler).x - kind_body(EnemyKind::Crawler).half.x - radius - 8.0;
         let ball = toys::spawn_ball(harness.world_mut(), Vec2::new(x, TOP - radius - 0.5), small);
         kick_at(&mut harness, ball, Vec2::new(pace, 0.0));
         let world = harness.world_mut();
@@ -2362,7 +2369,10 @@ fn a_save_while_the_troll_holds_iron_loads_with_the_hold() {
     );
     let hands = |h: &UiHarness| {
         let at = h.world().get::<Position>(troll).unwrap().0;
-        at + troll::HANDS - Vec2::new(0.0, IRON_HALF.y)
+        at + actor_body("troll")
+            .point("hands", 1.0)
+            .expect("the troll's hands")
+            - Vec2::new(0.0, IRON_HALF.y)
     };
     let kind = |h: &UiHarness| {
         h.world()
@@ -3521,10 +3531,11 @@ fn a_rock_from_a_goblin_killed_in_flight_still_lands_at_its_factor() {
         .world_mut()
         .insert_resource(KitRng::seeded(goblin_seed(0)));
     let kind = EnemyKind::Goblin;
-    let centre = Vec2::new(620.0, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(620.0, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let goblin = enemies::spawn(world, kind, centre - kind.info().centre, id).expect("its prefab");
+    let goblin =
+        enemies::spawn(world, kind, centre - kind_body(kind).centre, id).expect("its prefab");
     enemies::scale(world, goblin, Difficulty::Hard);
     harness.step(1);
     let threw = until(&mut harness, 300, |h| !thrown(h).is_empty());
@@ -3918,7 +3929,7 @@ fn troll_before(
 ) -> (Entity, Entity) {
     harness.harness_mut().set_dt(1.0 / 60.0);
     let troll = troll_at(harness, 1400.0, Difficulty::Normal);
-    let face = 1400.0 - EnemyKind::Troll.info().half.x;
+    let face = 1400.0 - kind_body(EnemyKind::Troll).half.x;
     let thing = body(harness, face - gap);
     harness.step(2);
     (troll, thing)
@@ -4113,7 +4124,7 @@ fn a_walker_steps_over_balls_on_its_way() {
     let beetle = walker(&mut harness, EnemyKind::Beetle, 1000.0, TOP);
     toys::spawn_ball(harness.world_mut(), Vec2::new(1050.0, TOP - 7.5), true);
     toys::spawn_ball(harness.world_mut(), Vec2::new(1140.0, TOP - 15.0), false);
-    let half = EnemyKind::Beetle.info().half;
+    let half = kind_body(EnemyKind::Beetle).half;
     let past = 1140.0 + 15.0 + half.x;
     let mut rose = 0.0_f32;
     let over = until(&mut harness, 300, |h| {
@@ -4144,7 +4155,7 @@ fn a_walker_leaves_crates_and_kegs_where_they_stand() {
         let (mut harness, _) = arena();
         harness.harness_mut().set_dt(1.0 / 60.0);
         let beetle = walker(&mut harness, EnemyKind::Beetle, 1000.0, TOP);
-        let front = 1000.0 + EnemyKind::Beetle.info().half.x;
+        let front = 1000.0 + kind_body(EnemyKind::Beetle).half.x;
         let centre = Vec2::new(front + 4.0 + half.x, TOP - half.y - 0.5);
         let prop = props::spawn(harness.world_mut(), kind, centre);
         harness.step(2);
@@ -4156,7 +4167,7 @@ fn a_walker_leaves_crates_and_kegs_where_they_stand() {
             "{kind:?} moved from {start} to {end}"
         );
         assert!(
-            at(&harness, beetle).x + EnemyKind::Beetle.info().half.x <= end.x - half.x + 0.5,
+            at(&harness, beetle).x + kind_body(EnemyKind::Beetle).half.x <= end.x - half.x + 0.5,
             "the beetle stayed behind the {kind:?}: {}",
             at(&harness, beetle)
         );
@@ -4283,10 +4294,10 @@ fn a_shot_turns_off_a_beetles_front_and_hits_it_once_corroded() {
 /// at Normal, its save ID the run's next.
 fn armoured_troll_at(harness: &mut UiHarness, x: f32) -> Entity {
     let kind = EnemyKind::Troll;
-    let centre = Vec2::new(x, TOP - kind.info().half.y - 0.5);
+    let centre = Vec2::new(x, TOP - kind_body(kind).half.y - 0.5);
     let world = harness.world_mut();
     let id = world.resource_mut::<SaveIds>().take();
-    let corner = centre - kind.info().centre;
+    let corner = centre - kind_body(kind).centre;
     let troll = enemies::spawn_as(world, kind, Variant::Armoured, corner, id).expect("its prefab");
     enemies::scale(world, troll, Difficulty::Normal);
     troll
@@ -4326,8 +4337,9 @@ fn the_bridge_troll_is_the_armoured_troll() {
         .filter(|&&(.., variant)| variant == Variant::Armoured)
         .map(|&(id, ..)| id)
         .collect();
-    assert_eq!(armoured, [21], "the bridge's troll, save ID 21: {trolls:?}");
-    let bridge = trolls.iter().find(|&&(id, ..)| id == 21).unwrap().1;
+    let named = SaveId::authored("bridge troll").0;
+    assert_eq!(armoured, [named], "the bridge's troll: {trolls:?}");
+    let bridge = trolls.iter().find(|&&(id, ..)| id == named).unwrap().1;
     assert!(tagged(&harness, bridge, "armoured"));
     assert!(armour_table(&harness, bridge), "armour's table");
     assert!(
@@ -4390,7 +4402,7 @@ fn a_summoned_armoured_troll_the_last_summon_type_saves_and_loads_armoured() {
     stats.set_base("mana", 1000.0);
     harness.world_mut().resource_mut::<Summon>().selected = last;
     choose(&mut harness, Spell::Summon);
-    let point = Vec2::new(900.0, TOP - EnemyKind::Troll.info().half.y - 1.0);
+    let point = Vec2::new(900.0, TOP - kind_body(EnemyKind::Troll).half.y - 1.0);
     aim_at(&mut harness, point);
     harness.harness_mut().press_action("cast");
     harness.step(1);

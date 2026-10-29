@@ -208,6 +208,12 @@ struct Repeat {
 
 /// The routing state: a `World` resource that [`ui_route_system`] updates
 /// once a frame, in `pre_update`, and the game reads (`D-149`).
+///
+/// It keeps widget IDs across frames (the press, hover and focus), and IDs
+/// are the `UiTree`'s: a game that replaces the `UiTree` resource while a
+/// press is held can send `Released` and `Activated` to the new tree's
+/// widget in that slot. Replace the tree between presses, or insert a fresh
+/// router with it, carrying over [`UiRouter::settings`].
 #[derive(Debug, Default)]
 pub struct UiRouter {
     settings: UiRouteSettings,
@@ -343,8 +349,10 @@ impl UiRouter {
             .is_some_and(|debug| debug.hide_game_layers);
         let mut stream = std::mem::take(&mut self.stream);
         stream.clear();
+        let mut stick_response = None;
         if let Some(input) = world.get_resource::<InputState>() {
             stream.extend_from_slice(input.raw_events());
+            stick_response = Some(input.stick_response());
         }
         let mut nav_actions = std::mem::take(&mut self.nav_actions);
         nav_actions.clear();
@@ -378,6 +386,10 @@ impl UiRouter {
         self.resolve_prompts(world);
         if let Some(routed) = world.get_resource_mut::<RoutedInput>() {
             routed.begin_frame();
+            // The raw input's stick response holds in the routed view too.
+            if let Some(response) = stick_response {
+                routed.set_stick_response(response);
+            }
             for input in &self.routed {
                 feed(routed, *input);
             }

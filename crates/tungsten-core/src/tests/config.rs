@@ -552,6 +552,7 @@ fn game_ids_that_fail_name_the_field_through_validate_and_load() {
         ".x",
         "a/b",
         "con.txt",
+        "mygame.",
     ];
     for (n, id) in bad.into_iter().enumerate() {
         match game_with_id(id).validate().unwrap_err() {
@@ -642,15 +643,24 @@ fn a_missing_file_warning_comes_back_from_take_load_warnings() {
 }
 
 #[test]
+fn a_zero_render_frame_latency_warns_and_falls_back_at_load() {
+    let json = r#"{ "render": { "max_frame_latency": 0 } }"#;
+    let (_, loaded) = load_json("render-latency-zero", json);
+    let mut config = loaded.unwrap();
+    assert_eq!(config.render.max_frame_latency, None);
+    assert_eq!(
+        config.take_load_warnings(),
+        ["Config render.max_frame_latency=0 is invalid; expected an integer >= 1; falling back"]
+    );
+}
+
+#[test]
 fn a_display_fallback_comes_back_from_take_load_warnings() {
     let json = r#"{ "display": { "display_mode": "theater_mode", "scale_mode": "integer" } }"#;
     let (_, loaded) = load_json("display-fallback", json);
     let mut config = loaded.unwrap();
     assert!(config.display.display_mode.is_none());
-    assert_eq!(
-        config.display.scale_mode,
-        Some(crate::display::ScaleMode::Integer)
-    );
+    // `scale_mode` left with 7.1: a stale key is ignored, with no warning.
     let warnings = config.take_load_warnings();
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(

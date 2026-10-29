@@ -256,7 +256,10 @@ pub fn load_shaders(
                 continue;
             }
         };
-        registry.allocate(id, entry.path.clone());
+        // The renderer mints the ID; core records the same one, even for a
+        // shader that fails validation, so a later edit still reloads it.
+        let asset = renderer.resolve_or_allocate_shader_id(id);
+        registry.register(id, asset, entry.path.clone());
         match renderer.upload_shader(id, source) {
             Ok(_) => {
                 log::info!("Loaded shader '{id}' from '{}'", entry.path.display());

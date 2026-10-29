@@ -46,12 +46,12 @@ jobs:
       - name: Version and changelog consistency
         run: python3 -B scripts/release.py check
 
-      # Starting set for cpal (ALSA) and friends; a first clean run confirms
-      # whether anything else is needed.
+      # Starting set for cpal (ALSA), gilrs (libudev, D-220) and friends; a
+      # first clean run confirms whether anything else is needed.
       - name: Install Linux build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev
+          sudo apt-get install -y --no-install-recommends pkg-config libasound2-dev libudev-dev
 
       # Reads rust-toolchain.toml (Rust 1.98.1 + rustfmt, clippy) and caches
       # with keys covering the compiler, Cargo.lock and RUST* env vars.

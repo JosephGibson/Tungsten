@@ -150,8 +150,8 @@ pub struct TextEngine {
     fallback_names: Vec<&'static str>,
     names: FamilyNames,
     epoch: FontEpoch,
-    /// Messages already logged once: unknown families, missing styles,
-    /// stale node IDs.
+    /// Messages already logged once: unknown font IDs and families, missing
+    /// styles, stale node IDs.
     logged: HashSet<String>,
     /// Retained text nodes (`D-117`).
     nodes: nodes::NodeStore,
@@ -623,7 +623,13 @@ impl TextEngine {
         buffer.set_wrap(cosmic_wrap(layout.wrap));
         buffer.set_ellipsize(cosmic_ellipsize(layout.overflow, buf_h));
         buffer.set_hinting(cosmic_hinting(layout.hinting));
-        let attrs = section_attrs(&self.font_attrs, &self.families, &self.chain, input.font_id);
+        let attrs = section_attrs(
+            &self.font_attrs,
+            &self.families,
+            &self.chain,
+            &mut self.logged,
+            input.font_id,
+        );
         let attrs = with_layout(attrs, layout);
         buffer.set_text(
             input.content,
@@ -987,18 +993,25 @@ fn make_attrs<'a>(font_attrs: &'a HashMap<String, StoredFontAttrs>, font_id: &st
     )
 }
 
-/// A section's attrs: its face's, else, warned at each shaping, the regular
-/// face of the chain's head (`D-116`).
+/// A section's attrs: its face's, else its family's regular face, else,
+/// warned once per ID (`logged`), the regular face of the chain's head
+/// (`D-116`).
 fn section_attrs<'a>(
     font_attrs: &'a HashMap<String, StoredFontAttrs>,
     families: &HashMap<String, Vec<String>>,
     chain: &[String],
+    logged: &mut HashSet<String>,
     font_id: &str,
 ) -> Attrs<'a> {
     if font_attrs.contains_key(font_id) {
         return make_attrs(font_attrs, font_id);
     }
-    log::warn!("Unknown font ID '{font_id}', falling back to the fallback chain's head");
+    if let Some((face, _)) = family_face(families, font_attrs, font_id, 400, false) {
+        return make_attrs(font_attrs, face);
+    }
+    if logged.insert(format!("font {font_id}")) {
+        log::warn!("Unknown font ID '{font_id}', falling back to the fallback chain's head");
+    }
     let head = chain
         .first()
         .and_then(|head| family_face(families, font_attrs, head, 400, false))

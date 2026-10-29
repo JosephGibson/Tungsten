@@ -31,7 +31,7 @@ const DEPTH_ENABLED_EXPECTED: &str = "one of: true, false, 1, 0";
 const DEPTH_SORT_EXPECTED: &str = "one of: cpu_stable, gpu_depth";
 const POST_AA_EXPECTED: &str = "one of: off, smaa_low, smaa_medium, smaa_high, smaa_ultra";
 const BLOOM_MAX_MIPS_EXPECTED: &str = "an integer in 1..=8";
-const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, and not a Windows device name";
+const GAME_ID_EXPECTED: &str = "1-64 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit, not ending in '.', and not a Windows device name";
 const LOGGING_LEVEL_EXPECTED: &str = "one of: off, error, warn, info, debug, trace";
 const FIXED_STEP_HZ_EXPECTED: &str = "an integer >= 30";
 const MAX_STEPS_PER_FRAME_EXPECTED: &str = "an integer >= 1";
@@ -394,6 +394,9 @@ fn is_valid_game_id(id: &str) -> bool {
         && bytes
             .iter()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        // Windows drops a trailing dot, so `mygame.` would share `mygame`'s
+        // folder (`D-219`).
+        && bytes.last() != Some(&b'.')
         && !is_windows_device_name(id)
 }
 
@@ -574,7 +577,8 @@ impl Config {
     /// Load config; missing file falls back to defaults.
     ///
     /// Warnings (a missing file, legacy fields that the display section
-    /// overrides, display values that fall back) are kept, not logged:
+    /// overrides, display values and a zero `render.max_frame_latency` that
+    /// fall back) are kept, not logged:
     /// [`Config::take_load_warnings`] returns them.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, ConfigError> {
         let path = path.as_ref();
@@ -598,6 +602,15 @@ impl Config {
                     })?;
                 if let Some(display) = display {
                     parsed.display = DisplayConfig::from_json_value(display, &mut warnings);
+                }
+                // As `display.max_frame_latency` does: the surface refuses 0.
+                if parsed.render.max_frame_latency == Some(0) {
+                    warnings.push(
+                        "Config render.max_frame_latency=0 is invalid; expected an integer >= 1; \
+                         falling back"
+                            .into(),
+                    );
+                    parsed.render.max_frame_latency = None;
                 }
                 parsed.load_warnings = warnings;
                 if !is_supported_msaa(parsed.render.msaa) {

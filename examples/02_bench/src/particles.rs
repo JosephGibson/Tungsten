@@ -2,13 +2,13 @@
 //! playback. `emitters` emitters draw on `configs` generated
 //! `ParticleConfig`s spanning every emission kind (continuous, burst,
 //! pulse), every velocity model (cone, radial, vector), gravity and drag,
-//! scale, color and alpha curves of 2-6 points, both blend modes and
+//! scale, color and alpha curves of 2-6 points, and
 //! lifetimes of 0.3-2.5 s. Each config emits about 150 live particles per
 //! emitter at `rate` 1, so the default's 280 emitters target about 42,000.
 //! The emitters move on Lissajous paths and `ParticleBudget` is raised to
 //! `budget`.
 //! `animated` sprites play `clips` generated 8-frame clips; `animate_sprites`
-//! walks `query2_mut::<AnimationState, Sprite>`, calls `advance` and
+//! walks `query_mut::<(Entity, &mut AnimationState, &mut Sprite)>`, calls `advance` and
 //! restarts finished one-shots.
 //!
 //! The particle stage is three named `post_update` systems since M38
@@ -214,11 +214,7 @@ fn particle_config(index: u32, target: f64) -> (ParticleConfig, Option<f32>) {
         render: ParticleRender::Quad,
         max_alive: (target * 4.0).ceil() as u32,
         seed: None,
-        blend: if index.is_multiple_of(2) {
-            BlendMode::Alpha
-        } else {
-            BlendMode::Premultiplied
-        },
+        blend: BlendMode::Alpha,
         emission,
         lifetime: Range {
             min: min_life,

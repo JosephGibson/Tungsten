@@ -56,7 +56,7 @@ pub use config::{
 pub use debug_draw::{DEFAULT_CIRCLE_SEGMENTS, DebugCommand, DebugDraw, DebugShape};
 pub use display::{
     DisplayConfig, DisplayMode, DisplayState, DisplayValidationError, MonitorInfo, Resolution,
-    ScaleFactor, ScaleMode, VideoMode, WindowSize,
+    ScaleFactor, VideoMode, WindowSize,
 };
 pub use ecs::{
     Bundle, CommandBuffer, Entity, EventCursor, EventQueue, EventRead, OptionalColumn,
@@ -65,7 +65,7 @@ pub use ecs::{
 pub use input::{
     ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,
     InputState, KeyCode, Modifiers, MouseButton, RawEvent, RawInput, RoutedInput, STICK_PRESS,
-    STICK_RELEASE, ScrollDirection, WheelDelta,
+    STICK_RELEASE, ScrollDirection, StickResponse, WheelDelta,
 };
 pub use inspect::{InspectRegistry, Inspectable};
 pub use lighting::{AmbientLight, LIGHT_CAP};
@@ -90,8 +90,6 @@ pub use text::{
     TextHinting, TextLayout, TextMeasure, TextMetrics, TextNodeId, TextNodeStore, TextOverflow,
     TextSpan, TextStyle, TextWrap, WorldLabel, WorldLabels,
 };
-#[allow(deprecated)]
-pub use time::DeltaTime;
 pub use time::{Time, Timer, TimerMode};
 pub use tween::{
     Easing, IntSlot, ScalarSlot, Tween, TweenChannel, TweenComplete, TweenDirection, TweenRepeat,

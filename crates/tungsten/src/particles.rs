@@ -6,16 +6,17 @@
 //! in place of `Sprite`; `extract_mesh_particles` batches those entities per
 //! mesh for the renderer's instanced draw.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use glam::Vec2;
 
 use tungsten_core::{
-    AssetRegistry, BlendMode, CommandBuffer, Curve, EmissionKind, Entity, EventQueue,
-    InitialVelocity, MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig,
-    ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId,
-    ParticleMeshRegistry, ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform,
-    Visibility, With, World, WorldRngSeed,
+    AssetRegistry, CommandBuffer, Curve, EmissionKind, Entity, EventQueue, InitialVelocity,
+    MeshParticle, Particle, ParticleActive, ParticleBudget, ParticleConfig, ParticleConfigRegistry,
+    ParticleEmitter, ParticleEmitterState, ParticleMeshAssetId, ParticleMeshRegistry,
+    ParticleRender, Range, Sprite, SpriteAssetId, Time, Transform, Visibility, With, World,
+    WorldRngSeed,
 };
 use tungsten_render::{MeshParticleBatch, MeshParticleInstance};
 
@@ -172,9 +173,11 @@ pub fn particle_emit_system(world: &mut World) {
                     .get_resource::<ParticleMeshRegistry>()
                     .and_then(|registry| registry.id_for_name(mesh));
                 let Some(id) = id else {
-                    log::warn!(
-                        "particle emitter {emitter_ent:?}: particle mesh '{mesh}' is not registered; nothing emitted"
-                    );
+                    if first_unknown_mesh(world, mesh) {
+                        log::warn!(
+                            "particle emitter {emitter_ent:?}: particle mesh '{mesh}' is not registered; emitters naming it emit nothing (warned once)"
+                        );
+                    }
                     maybe_emit_drained(world, emitter_ent);
                     continue;
                 };
@@ -286,11 +289,6 @@ fn integrate_particle(p: &mut Particle, t: &mut Transform, dt: f32) -> Option<[u
     if let Some(alpha_curve) = p.config.alpha_over_life.as_ref() {
         rgba[3] *= alpha_curve.sample(u);
     }
-    if matches!(p.config.blend, BlendMode::Premultiplied) {
-        rgba[0] *= rgba[3];
-        rgba[1] *= rgba[3];
-        rgba[2] *= rgba[3];
-    }
     let final_rgba = [
         (rgba[0] * p.base_rgba[0]).clamp(0.0, 1.0),
         (rgba[1] * p.base_rgba[1]).clamp(0.0, 1.0),
@@ -383,6 +381,20 @@ fn maybe_emit_drained(world: &mut World, emitter_ent: Entity) {
     }
 }
 
+/// The particle mesh names emitters named unregistered, each warned once.
+#[derive(Default)]
+struct UnknownParticleMeshes(HashSet<String>);
+
+/// Whether `mesh` is the first miss of its name, recording it.
+fn first_unknown_mesh(world: &mut World, mesh: &str) -> bool {
+    if world.get_resource::<UnknownParticleMeshes>().is_none() {
+        world.insert_resource(UnknownParticleMeshes::default());
+    }
+    world
+        .get_resource_mut::<UnknownParticleMeshes>()
+        .is_some_and(|seen| seen.0.insert(mesh.to_string()))
+}
+
 /// The world's sprite registry. A world without one (a bare test world) gets an
 /// empty one, so quad particles still spawn, age and despawn; they draw nothing.
 fn sprite_registry(world: &mut World) -> &mut AssetRegistry {
@@ -413,11 +425,6 @@ fn build_particle(
     };
     if let Some(alpha_curve) = cfg.alpha_over_life.as_ref() {
         rgba[3] *= alpha_curve.sample(0.0);
-    }
-    if matches!(cfg.blend, BlendMode::Premultiplied) {
-        rgba[0] *= rgba[3];
-        rgba[1] *= rgba[3];
-        rgba[2] *= rgba[3];
     }
     let base_rgba = [cfg.tint[0], cfg.tint[1], cfg.tint[2], cfg.tint[3]];
     let initial_color = [
@@ -619,3 +626,7 @@ pub fn extract_mesh_particles(world: &World) -> Vec<MeshParticleBatch> {
     }
     batches
 }
+
+#[cfg(test)]
+#[path = "tests/particles.rs"]
+mod tests;

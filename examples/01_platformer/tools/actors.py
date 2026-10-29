@@ -3481,10 +3481,13 @@ ENEMY_CLIPS = {
         ('pickup', troll_pickup_frames, False), ('throw', troll_throw_frames, False),
         ('swipe_windup', troll_swipe_windup_frames, False), ('swipe', troll_swipe_frames, False))},
 }
-def build_enemies(images, animations):
+def build_enemies(images, animations, enemy=None):
     """The six enemies' clips, and the goblin's rock and bomb, unlit: no
-    normal or emissive map."""
+    normal or emissive map; or only `enemy`'s, its clips those its name
+    prefixes."""
     for clip, (frames_for, looping) in ENEMY_CLIPS.items():
+        if enemy and clip.split('_')[0] != enemy:
+            continue
         rendered, durations = frames_for()
         frames = []
         for i, (im, duration) in enumerate(zip(rendered, durations, strict=True)):
@@ -3492,7 +3495,7 @@ def build_enemies(images, animations):
             images[name] = im
             frames.append({'sprite': 'ex10_' + name, 'duration_ms': duration})
         animations[clip] = {'looping': looping, 'frames': frames}
-    for i in range(2):
+    for i in range(2 if enemy in (None, 'goblin') else 0):
         images[f'goblin_rock_{i}'] = goblin_rock(i)
         images[f'goblin_bomb_{i}'] = goblin_bomb(i)
 
@@ -3623,3 +3626,26 @@ def build_stones(images, lit):
         for i in range(2):
             images[f'stone_{size}_{i}'] = stone(size, i)
             lit.add(f'stone_{size}_{i}')
+
+
+# Each actor's body in its frames, from a frame's top-left facing right, as
+# the art stands it: its frame's size, its rigid body's centre and half size,
+# a walker's and the wizard's bottom on its frames' feet row (`art.PLAYER_FEET`,
+# `art.WALKER_FEET`), its hurtbox's shape about the box `effects.HURTBOXES`
+# fits its ice to (the wizard's is his body), and the points its drawing puts
+# at named places: the eye a sight looks from, the troll's fist where a slam
+# meets the ground and its hands where it holds what it lifts, over its head,
+# the goblin's throwing hand, where the crawler's snowball leaves its jaws and
+# the middle of the beetle's plough before its face. `generate.bodies` writes
+# them as 01's `bodies` data, which 01 reads and its prefabs are held to.
+BODIES = {
+    'player': dict(frame=FRAME, centre=(48, 65), half=(20, 28)),
+    'wisp': dict(frame=(SIZE, SIZE), centre=(32, 34), half=(12, 12), hurtbox='circle', points=dict(eye=(40, 32))),
+    'crawler': dict(frame=(SIZE, SIZE), centre=(32, 51), half=(24, 10), points=dict(eye=(56, 48), snowball=(66, 40))),
+    'beetle': dict(frame=(SIZE, SIZE), centre=(32, 48), half=(24, 13), points=dict(eye=(57, 45), plough=(68, 46))),
+    'bat': dict(frame=(SIZE, SIZE), centre=(32, 28), half=(10, 9), points=dict(eye=(32, 21))),
+    'troll': dict(frame=(BIG, BIG), centre=(74, 70), half=(28, 55),
+                  points=dict(eye=(95, 21), fist=(130, 120), hands=(74, 2))),
+    'goblin': dict(frame=(SIZE, SIZE), centre=(34, 41), half=(9, 20), points=dict(eye=(41, 24), hand=(50, 30))),
+    'dummy': dict(frame=(SIZE, SIZE), centre=(32, 33), half=(14, 28)),
+}

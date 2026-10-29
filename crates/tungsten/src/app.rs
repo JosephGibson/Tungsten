@@ -38,9 +38,6 @@ use tungsten_core::post::{PostPass, PostStack};
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
-// `App` writes the deprecated `DeltaTime` each frame until W4b removes it.
-#[allow(deprecated)]
-use tungsten_core::DeltaTime;
 use tungsten_core::{
     ActionMap, AssetRegistry, AudioCommand, AudioCommands, Binding, CameraController, CameraState,
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
@@ -108,6 +105,9 @@ pub struct App {
     hot_reload: Option<HotReloadWatcher>,
     /// Directories given to `enable_hot_reload`; `run` starts the watcher.
     hot_reload_dirs: Option<Vec<PathBuf>>,
+    /// The gamepad backend `run` starts (`D-220`); never in the harness.
+    #[cfg(feature = "gamepad")]
+    gamepads: Option<input_bridge::GamepadBackend>,
     manifest_path: Option<PathBuf>,
     // D-052: ordered manifest roots merged before user startup.
     manifest_roots: Vec<PathBuf>,
@@ -287,11 +287,12 @@ impl App {
         if let Some(text_scale) = settings.text_scale() {
             ui_tree.set_text_scale(text_scale);
         }
+        // The player's stick response from the start (P7-12).
+        let mut input = InputState::new();
+        input.set_stick_response(settings.stick_response());
         let mut world = World::new();
         world.insert_resource(time_from_config(&config.time));
-        #[allow(deprecated)]
-        world.insert_resource(DeltaTime::new());
-        world.insert_resource(InputState::new());
+        world.insert_resource(input);
         world.insert_resource(action_map);
         world.insert_resource(WindowSize {
             width: resolved_display.resolution.width,
@@ -377,6 +378,8 @@ impl App {
             audio: None,
             hot_reload: None,
             hot_reload_dirs: None,
+            #[cfg(feature = "gamepad")]
+            gamepads: None,
             manifest_path: None,
             manifest_roots: Vec::new(),
             input_map_path,
@@ -607,6 +610,7 @@ impl App {
         self.resolve_schedule()
             .inspect_err(|err| log::error!("{err}"))?;
         self.start_hot_reload();
+        self.start_gamepads();
         let event_loop = EventLoop::new()
             .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
         event_loop
@@ -670,6 +674,33 @@ impl App {
             self.manifest_path.as_deref(),
         ));
         self.hot_reload = HotReloadWatcher::new(&dirs, &extra_files);
+    }
+
+    /// Starts the gamepad backend (`D-220`), after the watcher: its thread
+    /// is the third background thread. Without the `gamepad` feature there
+    /// is none.
+    #[cfg_attr(not(feature = "gamepad"), allow(clippy::unused_self))]
+    fn start_gamepads(&mut self) {
+        #[cfg(feature = "gamepad")]
+        {
+            let smoke = self.smoke_frames_remaining.is_some();
+            if let Some(input) = self.world.get_resource_mut::<InputState>() {
+                self.gamepads = input_bridge::GamepadBackend::start(input, smoke);
+            }
+        }
+    }
+
+    /// Drains the gamepad backend's events into `InputState`, at the frame's
+    /// start, so they follow the window events that arrived before it.
+    #[inline(always)]
+    #[cfg_attr(not(feature = "gamepad"), allow(clippy::unused_self))]
+    fn stage_gamepads(&mut self) {
+        #[cfg(feature = "gamepad")]
+        if let Some(backend) = self.gamepads.as_mut()
+            && let Some(input) = self.world.get_resource_mut::<InputState>()
+        {
+            backend.drain(input, self.smoke_frames_remaining.is_some());
+        }
     }
 
     /// Whether `engine_exit` was just pressed (`D-149`). When the schedule
@@ -923,10 +954,6 @@ impl App {
             }
         }
 
-        if delta.scale_mode_changed {
-            effective.scale_mode = requested.scale_mode;
-        }
-
         if delta.frame_rate_cap_changed {
             effective.frame_rate_cap = requested.frame_rate_cap;
             self.frame_budget = frame_budget_for(requested.frame_rate_cap);
@@ -1113,7 +1140,6 @@ impl App {
 
     /// Advances [`Time`] by the frame's real dt: the pinned dt as given, or a
     /// wall frame's capped elapsed time, zero with no previous frame time.
-    /// `DeltaTime` gets the game dt, or the real dt if a game removed `Time`.
     #[inline(always)]
     fn stage_time(&mut self, clock: FrameClock) {
         let real_dt = match clock {
@@ -1130,16 +1156,8 @@ impl App {
                 dt
             }
         };
-        let game_dt = match self.world.get_resource_mut::<Time>() {
-            Some(time) => {
-                time.advance_frame(real_dt);
-                time.game_delta()
-            }
-            None => real_dt,
-        };
-        #[allow(deprecated)]
-        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-            delta.dt = game_dt;
+        if let Some(time) = self.world.get_resource_mut::<Time>() {
+            time.advance_frame(real_dt);
         }
     }
 
@@ -1155,7 +1173,7 @@ impl App {
 
     /// `FixedUpdate` once per fixed step the frame's [`Time`] owes, zero or
     /// more times (`D-129`), and returns the steps run. Inside the steps
-    /// `Time::delta()` and `DeltaTime` read the step, and input edges and
+    /// `Time::delta()` reads the step, and input edges and
     /// event queues their step views; after the last, the game dt and the
     /// frame views again. Each system's runs are summed under its name, and
     /// a frame with no step lists each at 0 ms and, while the game clock
@@ -1165,10 +1183,10 @@ impl App {
     /// before the accumulator.
     #[inline(always)]
     fn stage_fixed_update(&mut self, system_timings: &mut Vec<(String, f32)>) -> u32 {
-        let Some((steps, step)) = self
+        let Some(steps) = self
             .world
             .get_resource::<Time>()
-            .map(|time| (time.fixed_steps_this_frame(), time.fixed_step()))
+            .map(Time::fixed_steps_this_frame)
         else {
             self.run_stage(Stage::FixedUpdate, system_timings);
             return 1;
@@ -1203,7 +1221,7 @@ impl App {
             if let Some(time) = self.world.get_resource_mut::<Time>() {
                 time.enter_fixed_step();
             }
-            self.set_step_views(true, step);
+            self.set_step_views(true);
             if k == 0 {
                 self.run_stage(Stage::FixedUpdate, system_timings);
             } else {
@@ -1218,23 +1236,17 @@ impl App {
             self.end_input_steps();
             self.world.end_fixed_step_events();
         }
-        let game_dt = self.world.get_resource_mut::<Time>().map(|time| {
+        if let Some(time) = self.world.get_resource_mut::<Time>() {
             time.leave_fixed_steps();
-            time.game_delta()
-        });
-        self.set_step_views(false, game_dt.unwrap_or(step));
+        }
+        self.set_step_views(false);
         steps
     }
 
     /// Turns the input and event step views on or off, the routed input's
-    /// with the raw (`D-149`), and writes `dt` to `DeltaTime`: the step
-    /// inside the steps, the game dt after them.
+    /// with the raw (`D-149`).
     #[inline(always)]
-    fn set_step_views(&mut self, on: bool, dt: f32) {
-        #[allow(deprecated)]
-        if let Some(delta) = self.world.get_resource_mut::<DeltaTime>() {
-            delta.dt = dt;
-        }
+    fn set_step_views(&mut self, on: bool) {
         if let Some(input) = self.world.get_resource_mut::<InputState>() {
             input.set_fixed_view(on);
         }
@@ -1459,8 +1471,9 @@ impl App {
         // M56: a pending prewarm's runs.
         let ui_prewarm = self.paint_prewarm();
 
-        // M54: the world labels, projected onto the size render draws at.
-        let label_viewport = match &self.renderer {
+        // M54: the world labels and the lights, projected onto the size
+        // render draws at; a pending resize leaves `WindowSize` ahead of it.
+        let viewport = match &self.renderer {
             Some(renderer) => {
                 let cfg = &renderer.surface_config;
                 (cfg.width as f32, cfg.height as f32)
@@ -1471,7 +1484,7 @@ impl App {
                 .map_or((0.0, 0.0), |w| (w.width as f32, w.height as f32)),
         };
         let (world_labels, label_counts) =
-            crate::extract::extract_world_labels(&mut self.world, label_viewport);
+            crate::extract::extract_world_labels(&mut self.world, viewport);
 
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
@@ -1492,11 +1505,6 @@ impl App {
         // AABBs -> quads; angled lines/circles -> debug-line pipeline.
         let (debug_quads, debug_lines) = drain_debug_draw(&mut self.world);
 
-        let viewport = self
-            .world
-            .get_resource::<WindowSize>()
-            .map_or((0, 0), |w| (w.width, w.height));
-
         // M29: pull lights into a UBO every frame regardless of presence so
         // the lit pipeline (when active) reads coherent ambient + count = 0.
         let camera = self
@@ -1504,8 +1512,8 @@ impl App {
             .get_resource::<CameraState>()
             .copied()
             .unwrap_or_default();
-        let (vw, vh) = (viewport.0 as f32, viewport.1 as f32);
-        let light_ubo = crate::light_extract::extract_lights(&self.world, &camera, vw, vh);
+        let light_ubo =
+            crate::light_extract::extract_lights(&self.world, &camera, viewport.0, viewport.1);
 
         let mesh_particles = crate::particles::extract_mesh_particles(&self.world);
 
@@ -1742,6 +1750,7 @@ impl App {
     ) -> FrameEnd {
         let interval_ms =
             frame_interval_ms(self.prev_frame_start.replace(frame_start), frame_start);
+        self.stage_gamepads();
         self.apply_pending_display_request();
 
         self.stage_time(clock);
@@ -2387,9 +2396,6 @@ impl ApplicationHandler for App {
             startup(&mut self.world, renderer);
         }
 
-        // Startup time excluded from first-frame dt; prevents first-substep tunneling.
-        self.last_frame = Some(Instant::now());
-
         // Audio init after startup: SoundRegistry populated.
         if let Some(sound_registry) = self.world.get_resource::<SoundRegistry>() {
             match AudioSystem::init(sound_registry) {
@@ -2401,6 +2407,10 @@ impl ApplicationHandler for App {
                 }
             }
         }
+
+        // Startup time, audio init's resampling included, excluded from
+        // first-frame dt; prevents first-substep tunneling.
+        self.last_frame = Some(Instant::now());
     }
 
     fn window_event(

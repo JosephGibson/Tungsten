@@ -1,19 +1,20 @@
-//! Shader asset registry: core-side source-of-truth for WGSL asset IDs.
+//! Shader asset registry: core-side metadata for WGSL asset IDs.
 //!
-//! D-016 seam: no `wgpu` types here. The render side keeps compiled
-//! `wgpu::ShaderModule` values keyed by the same `ShaderAssetId`.
+//! D-016 seam: no `wgpu` types here. The renderer mints each `ShaderAssetId`
+//! (`Renderer::resolve_or_allocate_shader_id`) and keeps compiled
+//! `wgpu::ShaderModule` values under it; the umbrella records the same ID
+//! here with the shader's name and path.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// Dense WGSL asset handle, minted per session by `ShaderRegistry::allocate`.
+/// Dense WGSL asset handle, minted per session by the renderer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ShaderAssetId(pub u32);
 
 /// Session-local shader id ↔ path ↔ stable-name registry.
 #[derive(Debug, Default, Clone)]
 pub struct ShaderRegistry {
-    next: u32,
     ids: HashMap<String, ShaderAssetId>,
     paths: HashMap<ShaderAssetId, PathBuf>,
     reverse: HashMap<PathBuf, ShaderAssetId>,
@@ -26,26 +27,25 @@ impl ShaderRegistry {
         Self::default()
     }
 
-    /// Allocate (or return existing) id for a manifest name; later calls with
-    /// the same id refresh the reverse-path lookup to the latest canonical path.
-    pub fn allocate(&mut self, id: &str, path: PathBuf) -> ShaderAssetId {
-        if let Some(&existing) = self.ids.get(id) {
-            if let Some(old) = self.paths.insert(existing, path.clone())
-                && old != path
-            {
-                self.reverse.remove(&old);
+    /// Records `asset`, the ID the renderer minted for manifest name `id`,
+    /// with its path. A later call for the same name rebinds the
+    /// reverse-path lookup to the latest canonical path.
+    pub fn register(&mut self, id: &str, asset: ShaderAssetId, path: PathBuf) {
+        if let Some(old) = self.ids.insert(id.to_string(), asset)
+            && old != asset
+        {
+            self.names.remove(&old);
+            if let Some(old_path) = self.paths.remove(&old) {
+                self.reverse.remove(&old_path);
             }
-            self.reverse.insert(path, existing);
-            return existing;
         }
-
-        let asset = ShaderAssetId(self.next);
-        self.next += 1;
-        self.ids.insert(id.to_string(), asset);
+        if let Some(old_path) = self.paths.insert(asset, path.clone())
+            && old_path != path
+        {
+            self.reverse.remove(&old_path);
+        }
         self.names.insert(asset, id.to_string());
-        self.reverse.insert(path.clone(), asset);
-        self.paths.insert(asset, path);
-        asset
+        self.reverse.insert(path, asset);
     }
 
     #[must_use]

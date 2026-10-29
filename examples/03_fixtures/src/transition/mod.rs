@@ -9,7 +9,7 @@
 //! `1 - StateStack::transition_cover()`.
 //!
 //! Env `TUNGSTEN_TRANSITION_FIXTURE={none|fade|wipe_radial|dissolve|pixelate}`
-//! is for the smoke matrix and `tests/transition_regression.rs`: any value
+//! is for the smoke matrix and `tests/integration/transition_regression.rs`: any value
 //! turns the debug HUD off (its timing rows differ between runs), and an effect
 //! name also requests menu -> gameplay at startup with that effect, 0.1 s per
 //! phase, linear.

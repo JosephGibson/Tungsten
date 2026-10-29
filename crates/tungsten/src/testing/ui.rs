@@ -152,16 +152,18 @@ impl UiHarness {
         self.harness.input_mut().add_scroll_line_delta(0.0, lines);
     }
 
-    /// Moves the pointer to the centre of `widget`'s last box, then presses
-    /// and releases the primary button there: one click for the next frame
-    /// to route.
+    /// Moves the pointer to the centre of where `widget` last painted and is
+    /// hit (`UiTree::visual_rect`, which maps a debug root's units at its
+    /// debug scale), then presses and releases the primary button there: one
+    /// click for the next frame to route.
     ///
     /// # Panics
     ///
     /// When `widget` has no box: not laid out, collapsed or removed.
     pub fn click(&mut self, widget: WidgetId) {
         let rect = self
-            .rect(widget)
+            .tree()
+            .visual_rect(widget)
             .unwrap_or_else(|| panic!("UiHarness::click: {widget:?} has no box"));
         let centre = (rect.min + rect.max) * 0.5 * self.scale();
         self.pointer_to(centre.x, centre.y);

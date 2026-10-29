@@ -723,8 +723,7 @@
       "right": 2,
       "row": 21,
       "bottom": 72,
-      "style": "ground",
-      "variants": "own"
+      "style": "ground"
     },
     {
       "name": "pact_shelf",
@@ -853,6 +852,7 @@
   },
   "moving_platforms": [
     {
+      "name": "deck_clearing",
       "position": [
         10,
         34.4
@@ -866,6 +866,7 @@
       "half_width": 1.3
     },
     {
+      "name": "deck_aqueduct_west",
       "position": [
         137,
         35.5
@@ -879,6 +880,7 @@
       "half_width": 1.4
     },
     {
+      "name": "deck_aqueduct_east",
       "position": [
         147,
         34
@@ -892,6 +894,7 @@
       "half_width": 1.3
     },
     {
+      "name": "deck_ravine",
       "position": [
         194.5,
         55.5
@@ -905,6 +908,7 @@
       "half_width": 1.3
     },
     {
+      "name": "deck_elevator",
       "position": [
         316.5,
         53
@@ -919,17 +923,20 @@
   "hazards": [],
   "lava": [
     {
+      "name": "lava_lake_west",
       "left": 230,
       "right": 234,
       "row": 64
     },
     {
+      "name": "lava_lake_east",
       "left": 236,
       "right": 240,
       "row": 64,
       "light": true
     },
     {
+      "name": "lava_shelf",
       "left": 260,
       "right": 263,
       "row": 57
@@ -12216,16 +12223,19 @@
   "spouts": [],
   "geysers": [
     {
+      "name": "geyser_floor_west",
       "x": 225.0,
       "support": "hollow_floor_1",
       "offset": 0.0
     },
     {
+      "name": "geyser_floor_east",
       "x": 243.5,
       "support": "hollow_floor_2",
       "offset": 1.3
     },
     {
+      "name": "geyser_shelf",
       "x": 257.0,
       "support": "hollow_shelf_a",
       "offset": 2.6

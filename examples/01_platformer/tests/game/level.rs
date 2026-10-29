@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use example_01_platformer::features::level::components::Hazard;
 use example_01_platformer::features::level::elevator::{Elevator, Stop};
 use example_01_platformer::features::level::{BOUNDARY, LAVA_LAYER, MAP, TILE};
-use example_01_platformer::features::player::{self, PLAYER_HALF};
+use example_01_platformer::features::player;
 use example_01_platformer::features::run::Run;
 use glam::Vec2;
 use serde::Deserialize;
@@ -23,6 +23,7 @@ use tungsten::kit::{CharacterAnimator, PathFollower, PlatformerController};
 use tungsten::physics::BodyKind;
 use tungsten::testing::UiHarness;
 
+use super::player_half;
 use super::{ball, calm, harness, start};
 
 const DT: f32 = 1.0 / 60.0;
@@ -248,7 +249,7 @@ fn embedded(harness: &UiHarness, centre: Vec2) -> bool {
         .iter()
         .find(|layer| layer.kind == LayerKind::Collision)
         .expect("a collision layer");
-    let (min, max) = (centre - PLAYER_HALF, centre + PLAYER_HALF);
+    let (min, max) = (centre - player_half(), centre + player_half());
     let rows = (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32;
     rows.flat_map(|row| {
         ((min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32).map(move |col| (col, row))
@@ -273,7 +274,7 @@ fn launch_lands(
     // once. A book's start may not meet a solid stair over `from`, as one
     // inside `aq_rubble_2` did; the routes' rows keep their old starts,
     // some of which overhang the next step's face.
-    let at = Vec2::new(start * TILE, from.row * TILE - PLAYER_HALF.y - 0.5);
+    let at = Vec2::new(start * TILE, from.row * TILE - player_half().y - 0.5);
     if !(from.left..from.right).contains(&start) || (air && embedded(harness, at)) {
         return false;
     }
@@ -281,7 +282,7 @@ fn launch_lands(
     let player = fresh_player(harness, at);
     harness.step(4);
     let settled = centre(harness, player);
-    if !grounded(harness, player) || (settled.y + PLAYER_HALF.y - from.row * TILE).abs() > 1.0 {
+    if !grounded(harness, player) || (settled.y + player_half().y - from.row * TILE).abs() > 1.0 {
         return false;
     }
     let spikes: Vec<Vec2> = level
@@ -321,7 +322,7 @@ fn launch_lands(
         harness.step(1);
         let at = centre(harness, player);
         let spiked = spikes.iter().any(|spike| {
-            let reach = PLAYER_HALF + SPIKES_HALF;
+            let reach = player_half() + SPIKES_HALF;
             (at - *spike).abs().cmplt(reach).all()
         });
         if spiked || at.y > level.kill_row * TILE {
@@ -329,18 +330,18 @@ fn launch_lands(
         }
         tick > 3
             && grounded(harness, player)
-            && (at.y + PLAYER_HALF.y - to.row * TILE).abs() < 1.0
-            && at.x >= to.left * TILE + PLAYER_HALF.x
-            && at.x <= to.right * TILE - PLAYER_HALF.x
+            && (at.y + player_half().y - to.row * TILE).abs() < 1.0
+            && at.x >= to.left * TILE + player_half().x
+            && at.x <= to.right * TILE - player_half().x
     });
     release_all(harness);
     // `any` stopped on a landing or on a fall onto spikes or past the map.
     let at = centre(harness, player);
     landed
-        && (at.y + PLAYER_HALF.y - to.row * TILE).abs() < 1.0
+        && (at.y + player_half().y - to.row * TILE).abs() < 1.0
         && grounded(harness, player)
-        && at.x >= to.left * TILE + PLAYER_HALF.x
-        && at.x <= to.right * TILE - PLAYER_HALF.x
+        && at.x >= to.left * TILE + player_half().x
+        && at.x <= to.right * TILE - player_half().x
 }
 
 /// Launch points on `from`: starts every half tile, nearest the target's
@@ -493,7 +494,7 @@ fn platforms_support_riders_through_a_complete_cycle_with_real_physics() {
     let (top, half) = deck(&harness);
     let player = fresh_player(
         &mut harness,
-        top - Vec2::new(0.0, half.y + PLAYER_HALF.y + 0.5),
+        top - Vec2::new(0.0, half.y + player_half().y + 0.5),
     );
     harness.step(4);
     assert!(grounded(&harness, player), "it stands on the deck");
@@ -501,7 +502,7 @@ fn platforms_support_riders_through_a_complete_cycle_with_real_physics() {
     for frame in 0..400 {
         harness.step(1);
         let (deck_centre, half) = deck(&harness);
-        let feet = centre(&harness, player).y + PLAYER_HALF.y;
+        let feet = centre(&harness, player).y + player_half().y;
         let surface = deck_centre.y - half.y;
         assert!(
             (feet - surface).abs() < 1.0,
@@ -537,7 +538,7 @@ fn every_platform_sweep_clears_terrain_and_player_headroom() {
             let eased = 0.5 - 0.5 * (step as f32 / 200.0 * std::f32::consts::PI).cos();
             let pos = centre - travel + 2.0 * travel * eased;
             let half = placement.half_width * TILE;
-            let min = pos - Vec2::new(half, DECK_DEPTH * 0.5 + PLAYER_HALF.y * 2.0);
+            let min = pos - Vec2::new(half, DECK_DEPTH * 0.5 + player_half().y * 2.0);
             let max = pos + Vec2::new(half, DECK_DEPTH * 0.5);
             for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
                 for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
@@ -591,7 +592,7 @@ fn the_elevator_sweep_clears_tiles_slabs_iron_and_a_riders_headroom() {
     for step in 0..=400 {
         let top = rest - rise * step as f32 / 400.0;
         // The cage's floor and a rider's head room over it.
-        let min = Vec2::new(x - half, top - PLAYER_HALF.y * 2.0);
+        let min = Vec2::new(x - half, top - player_half().y * 2.0);
         let max = Vec2::new(x + half, top + DECK_DEPTH);
         for row in (min.y / TILE).floor() as u32..(max.y / TILE).ceil() as u32 {
             for col in (min.x / TILE).floor() as u32..(max.x / TILE).ceil() as u32 {
@@ -673,7 +674,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
             surfaces.push((low.x, high.x, low.y));
         }
     }
-    let body = PLAYER_HALF.x * 2.0;
+    let body = player_half().x * 2.0;
     let mut nearest = f32::MAX;
     for (x0, x1, y) in surfaces {
         let dy = y - top;
@@ -707,7 +708,10 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     let stop = |harness: &UiHarness| harness.world().get::<Elevator>(deck).unwrap().stop;
     let middle = harness.world().get::<Position>(deck).unwrap().0.x + 96.0;
     let feet = deck_top(&harness);
-    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    let player = fresh_player(
+        &mut harness,
+        Vec2::new(middle, feet - player_half().y - 0.5),
+    );
     for _ in 0..600 {
         harness.step(1);
         if stop(&harness) == Stop::Top {
@@ -725,11 +729,11 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     harness.step(30);
     let at = centre(&harness, player);
     assert!(
-        at.x > left + PLAYER_HALF.x && grounded(&harness, player),
+        at.x > left + player_half().x && grounded(&harness, player),
         "on the upper level: {at}"
     );
     assert!(
-        (at.y + PLAYER_HALF.y - top).abs() < 2.0,
+        (at.y + player_half().y - top).abs() < 2.0,
         "standing on its deck: {at}"
     );
     // Left behind, it goes back down after four seconds.
@@ -745,7 +749,10 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
     // upper level holds it before any overlap, and it goes on once the
     // rider is off.
     let feet = deck_top(&harness);
-    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    let player = fresh_player(
+        &mut harness,
+        Vec2::new(middle, feet - player_half().y - 0.5),
+    );
     let mut held = false;
     let mut running = false;
     for _ in 0..900 {
@@ -756,7 +763,7 @@ fn the_mines_upper_level_is_reached_only_by_its_elevator() {
         }
         held |= harness.world().get::<Elevator>(deck).unwrap().held;
         let at = centre(&harness, player);
-        let (low, high) = (at - PLAYER_HALF, at + PLAYER_HALF);
+        let (low, high) = (at - player_half(), at + player_half());
         let inside =
             low.x < right && high.x > left && low.y < top + DECK_DEPTH - 0.5 && high.y > top + 0.5;
         assert!(
@@ -798,7 +805,7 @@ fn deck_box(harness: &UiHarness, deck: Entity) -> (Vec2, Vec2) {
 fn inside_deck(harness: &UiHarness, deck: Entity, player: Entity) -> bool {
     let (min, max) = deck_box(harness, deck);
     let at = centre(harness, player);
-    let (low, high) = (at - PLAYER_HALF, at + PLAYER_HALF);
+    let (low, high) = (at - player_half(), at + player_half());
     high.x.min(max.x) - low.x.max(min.x) > 0.5 && high.y.min(max.y) - low.y.max(min.y) > 0.5
 }
 
@@ -849,7 +856,7 @@ fn the_elevator_turns_back_over_a_player_and_sets_one_inside_out() {
     // A player standing on the shaft's bed under the bottom stop.
     let (mut harness, deck, _) = lift_at_top();
     let middle = deck_box(&harness, deck).0.x + 96.0;
-    let player = fresh_player(&mut harness, Vec2::new(middle, bed - PLAYER_HALF.y - 0.5));
+    let player = fresh_player(&mut harness, Vec2::new(middle, bed - player_half().y - 0.5));
     let stops = turned_back(&mut harness, deck, player);
     assert_eq!(
         stops,
@@ -862,14 +869,17 @@ fn the_elevator_turns_back_over_a_player_and_sets_one_inside_out() {
     let half_way = (lift.top.y + lift.bottom.y) * 0.5;
     let (min, max) = deck_box(&harness, deck);
     let head = half_way + (max.y - min.y) + (min.y - lift.top.y) + 4.0;
-    let feet = head + PLAYER_HALF.y * 2.0;
+    let feet = head + player_half().y * 2.0;
     super::floor(
         &mut harness,
         Vec2::new(middle, feet + 10.0),
         Vec2::new(96.0, 10.0),
     );
     harness.step(1);
-    let player = fresh_player(&mut harness, Vec2::new(middle, feet - PLAYER_HALF.y - 0.5));
+    let player = fresh_player(
+        &mut harness,
+        Vec2::new(middle, feet - player_half().y - 0.5),
+    );
     let stops = turned_back(&mut harness, deck, player);
     assert_eq!(
         stops,
@@ -914,7 +924,10 @@ fn a_still_rider_idles_on_the_rising_elevator() {
     let (deck, _) = elevator(&harness);
     let (min, _) = deck_box(&harness, deck);
     let middle = min.x + 96.0;
-    let player = fresh_player(&mut harness, Vec2::new(middle, min.y - PLAYER_HALF.y - 0.5));
+    let player = fresh_player(
+        &mut harness,
+        Vec2::new(middle, min.y - player_half().y - 0.5),
+    );
     let state = |harness: &UiHarness| {
         harness
             .world()
@@ -969,7 +982,7 @@ fn thin_platform_underside_and_edges_match_visible_art() {
         .unwrap();
     controller.launch(Vec2::new(0.0, -240.0));
     harness.step(40);
-    let head = centre(&harness, player).y - PLAYER_HALF.y;
+    let head = centre(&harness, player).y - player_half().y;
     assert!(
         (head - (deck.row * TILE + DECK_DEPTH)).abs() < 1.0,
         "head stopped at {head}"

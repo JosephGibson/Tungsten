@@ -28,6 +28,8 @@ fn is_default(settings: &Settings) -> bool {
         && settings.frame_rate_cap().is_none()
         && settings.ui_scale().is_none()
         && settings.master_volume().is_none()
+        && settings.stick_dead_zone().is_none()
+        && settings.stick_sensitivity().is_none()
         && AudioBus::ALL
             .iter()
             .all(|&bus| settings.bus_volume(bus).is_none())
@@ -357,4 +359,71 @@ fn player_frame_cap_any_other_value_quarantines_the_file() {
         "null is unset, as elsewhere"
     );
     assert!(settings.take_load_warnings().is_empty());
+}
+
+#[test]
+fn the_stick_response_saves_loads_clamps_and_falls_back() {
+    let dir = tempdir();
+    let path = dir.join(Settings::FILE);
+    let mut settings = Settings::load(&path);
+    assert_eq!(settings.stick_response(), StickResponse::DEFAULT);
+    settings.set_stick_dead_zone(Some(0.25));
+    settings.set_stick_sensitivity(Some(1.5));
+    settings.save().unwrap();
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(
+        saved,
+        serde_json::json!({ "stick_dead_zone": 0.25, "stick_sensitivity": 1.5 })
+    );
+    let loaded = Settings::load(&path);
+    assert_eq!(
+        loaded.stick_response(),
+        StickResponse {
+            dead_zone: 0.25,
+            sensitivity: 1.5
+        }
+    );
+
+    settings.set_stick_dead_zone(Some(2.0));
+    settings.set_stick_sensitivity(Some(0.0));
+    assert_eq!(
+        (settings.stick_dead_zone(), settings.stick_sensitivity()),
+        (Some(0.9), Some(0.25))
+    );
+    for value in [f32::NAN, f32::INFINITY] {
+        settings.set_stick_dead_zone(Some(value));
+        settings.set_stick_sensitivity(Some(value));
+        assert_eq!(settings.stick_dead_zone(), Some(0.9), "{value} ignored");
+        assert_eq!(settings.stick_sensitivity(), Some(0.25), "{value} ignored");
+    }
+    settings.set_stick_sensitivity(None);
+    assert_eq!(
+        settings.stick_response(),
+        StickResponse {
+            dead_zone: 0.9,
+            sensitivity: 1.0
+        },
+        "an unset field takes the default's"
+    );
+
+    let (_, older) = load_text(r#"{ "ui_scale": 1.5 }"#);
+    assert_eq!(
+        older.stick_response(),
+        StickResponse::DEFAULT,
+        "an older file"
+    );
+    assert_eq!(older.ui_scale(), Some(1.5));
+
+    for text in [
+        r#"{ "stick_dead_zone": 0.95 }"#,
+        r#"{ "stick_sensitivity": 0.1 }"#,
+        r#"{ "stick_dead_zone": "wide" }"#,
+    ] {
+        let (path, mut fallen) = load_text(text);
+        assert!(is_default(&fallen), "{text}");
+        let backup = path.with_file_name("settings.json.bad");
+        assert_eq!(std::fs::read_to_string(&backup).unwrap(), text);
+        assert_eq!(fallen.take_load_warnings().len(), 1);
+    }
 }

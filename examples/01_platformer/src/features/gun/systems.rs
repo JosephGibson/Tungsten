@@ -24,7 +24,7 @@ use crate::features::combat::{CORRODED, FROZEN, Hit, Kind, has_status};
 use crate::features::elements::cascade::{self, CascadeKind};
 use crate::features::elements::components::Frozen;
 use crate::features::enemies::armour;
-use crate::features::player::{self, BODY_OFFSET, Gesture};
+use crate::features::player::{self, Gesture};
 use crate::features::props::{
     self,
     components::{Crate, Keg},
@@ -159,7 +159,8 @@ pub fn adopt(world: &mut World) {
     for bullet in fresh {
         let id = world.resource_mut::<SaveIds>().take();
         world.insert(bullet, id);
-        shift(world, bullet, BODY_OFFSET - BULLET_CENTRE);
+        let centre = player::body(world).centre;
+        shift(world, bullet, centre - BULLET_CENTRE);
         let velocity = world
             .get::<LinearMotion>(bullet)
             .map_or(Vec2::X, LinearMotion::velocity);

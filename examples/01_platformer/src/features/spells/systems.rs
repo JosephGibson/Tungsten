@@ -13,7 +13,7 @@ use super::{
 };
 use crate::features::audio::{self, components::Sound};
 use crate::features::lightning;
-use crate::features::player::{self, BODY_OFFSET};
+use crate::features::player;
 use crate::features::run::Run;
 use crate::features::toys::components::{FireMissile, Spray};
 use crate::features::toys::flask::FLASK_CAP;
@@ -363,7 +363,8 @@ pub fn adopt(world: &mut World) {
     let fresh: Vec<Entity> = world
         .query_filtered::<Entity, (With<FireMissile>, Without<SaveId>)>()
         .collect();
+    let centre = player::body(world).centre;
     for missile in fresh {
-        toys::adopt_missile(world, missile, BODY_OFFSET);
+        toys::adopt_missile(world, missile, centre);
     }
 }

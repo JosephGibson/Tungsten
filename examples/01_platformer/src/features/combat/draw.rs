@@ -19,11 +19,12 @@ use super::systems::{
 use super::{BURNING, FROZEN, POISONED, SHOCKED, STUNNED};
 use crate::features::dummy::components::Dummy;
 use crate::features::elements::draw::FLAME_FRAMES;
+use crate::features::enemies;
 use crate::features::enemies::components::{Enemy, EnemyState};
 use crate::features::level::draw::{instance, material, push_quad, view};
 use crate::features::level::systems::{HALO, HALO_MATERIAL, drawn_time};
 use crate::features::player::components::{Moves, Player};
-use crate::features::player::{BODY_OFFSET, OVERLAY_SIDE};
+use crate::features::player::{self, OVERLAY_SIDE};
 
 /// A burning target's flames: frames a second, their side as a share of
 /// the target's, and where each sits on the target's box, from its
@@ -129,7 +130,7 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
         let (side, origin) = if world.has::<Player>(entity) {
             let body = world
                 .get::<Collider>(entity)
-                .map_or(BODY_OFFSET, |c| c.offset);
+                .map_or_else(|| player::body(world).centre, |c| c.offset);
             let centre = at.position + body;
             (OVERLAY_SIDE, centre - Vec2::splat(OVERLAY_SIDE * 0.5))
         } else {
@@ -141,8 +142,8 @@ pub fn overlays(world: &World) -> Vec<SpriteBatch> {
                 && enemy.heading < 0.0
                 && world.has::<StateMachine<EnemyState>>(entity)
             {
-                let info = enemy.kind.info();
-                origin.x -= 2.0 * info.centre.x - info.frame;
+                let body = enemies::body(world, enemy.kind);
+                origin.x -= 2.0 * body.centre.x - body.frame.x;
             }
             (width * at.scale.x.abs(), origin)
         };

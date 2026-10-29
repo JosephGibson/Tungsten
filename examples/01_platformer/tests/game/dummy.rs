@@ -4,11 +4,9 @@
 
 use example_01_platformer::features::combat::{Hit, Kind};
 use example_01_platformer::features::dummy::components::Dummy;
-use example_01_platformer::features::dummy::{self, DUMMY_CENTRE, SUMMON_CAP};
-use example_01_platformer::features::player::PLAYER_HALF;
+use example_01_platformer::features::dummy::{self, SUMMON_CAP};
 use example_01_platformer::features::spells::components::Spell;
 use example_01_platformer::features::toys;
-use example_01_platformer::save::{MAP_ENEMIES, MAP_GEYSERS, MAP_PICKUPS};
 use example_01_platformer::shared::SaveId;
 use glam::Vec2;
 use tungsten::core::{Entity, Velocity};
@@ -16,6 +14,7 @@ use tungsten::kit::{HitFlash, Stats, Tags};
 use tungsten::testing::UiHarness;
 
 use super::combat::{TOP, apply, dummy_at, has, with_dummy};
+use super::{actor_body, player_half};
 use super::{
     aim_at, body, centre, choose, ground, kick, mana, pin_camera, player_entity, run, stand,
 };
@@ -43,9 +42,12 @@ fn the_clearing_holds_a_dummy_with_its_three_tags() {
     );
     let id = |entity: Entity| harness.world().get::<SaveId>(entity).unwrap().0;
     assert_eq!(
-        id(dummy) + 1 + MAP_ENEMIES + MAP_PICKUPS + MAP_GEYSERS,
-        id(player),
-        "the map's dummies, then its enemies, its pickups and its geysers"
+        [id(dummy), id(player)],
+        [
+            SaveId::authored("training dummy").0,
+            SaveId::authored("player").0
+        ],
+        "each the ID its name derives"
     );
 }
 
@@ -177,9 +179,9 @@ fn summon_places_a_dummy_at_the_cursor_and_caps_the_summoned() {
     harness.step(30);
     choose(&mut harness, Spell::Summon);
     harness.step(61);
-    let feet = centre(&harness, player) + Vec2::Y * PLAYER_HALF.y;
+    let feet = centre(&harness, player) + Vec2::Y * player_half().y;
     let before = mana(&harness);
-    cast_at(&mut harness, feet + Vec2::Y * DUMMY_CENTRE.y);
+    cast_at(&mut harness, feet + Vec2::Y * actor_body("dummy").centre.y);
     assert!(summoned(&harness).is_empty(), "refused in the ground");
     assert_eq!(mana(&harness), before, "and spent nothing");
 }

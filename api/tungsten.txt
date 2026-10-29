@@ -314,20 +314,17 @@ pub tungsten::inspector::InspectorState::refresh_interval_ms: f32
 pub tungsten::inspector::InspectorState::selected: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::new() -> Self
-pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
-pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
-pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
 pub fn tungsten::inspector::InspectorState::toggle(&mut self)
 pub fn tungsten::inspector::InspectorState::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::default() -> Self
 impl core::marker::Freeze for tungsten::inspector::InspectorState
-impl !core::marker::Send for tungsten::inspector::InspectorState
-impl !core::marker::Sync for tungsten::inspector::InspectorState
+impl core::marker::Send for tungsten::inspector::InspectorState
+impl core::marker::Sync for tungsten::inspector::InspectorState
 impl core::marker::Unpin for tungsten::inspector::InspectorState
 impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
-impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
-impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::default_inspect_registry() -> tungsten_core::inspect::InspectRegistry
 pub mod tungsten::light_extract
 pub fn tungsten::light_extract::extract_lights(&tungsten_core::ecs::world::World, &tungsten_core::camera::CameraState, f32, f32) -> tungsten_render::lighting::LightUbo
@@ -714,7 +711,6 @@ pub tungsten::telemetry::DisplayTelemetry::display_mode: tungsten_core::display:
 pub tungsten::telemetry::DisplayTelemetry::frame_rate_cap: core::option::Option<u32>
 pub tungsten::telemetry::DisplayTelemetry::max_frame_latency: core::option::Option<u32>
 pub tungsten::telemetry::DisplayTelemetry::resolution: (u32, u32)
-pub tungsten::telemetry::DisplayTelemetry::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten::telemetry::DisplayTelemetry::vsync: bool
 impl tungsten::telemetry::DisplayTelemetry
 pub fn tungsten::telemetry::DisplayTelemetry::apply_state(&mut self, &tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>)
@@ -1216,7 +1212,6 @@ pub tungsten::DisplayTelemetry::display_mode: tungsten_core::display::DisplayMod
 pub tungsten::DisplayTelemetry::frame_rate_cap: core::option::Option<u32>
 pub tungsten::DisplayTelemetry::max_frame_latency: core::option::Option<u32>
 pub tungsten::DisplayTelemetry::resolution: (u32, u32)
-pub tungsten::DisplayTelemetry::scale_mode: tungsten_core::display::ScaleMode
 pub tungsten::DisplayTelemetry::vsync: bool
 impl tungsten::telemetry::DisplayTelemetry
 pub fn tungsten::telemetry::DisplayTelemetry::apply_state(&mut self, &tungsten_core::display::DisplayState, core::option::Option<alloc::string::String>)
@@ -1375,20 +1370,17 @@ pub tungsten::InspectorState::refresh_interval_ms: f32
 pub tungsten::InspectorState::selected: core::option::Option<tungsten_core::ecs::entity::Entity>
 impl tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::new() -> Self
-pub fn tungsten::inspector::InspectorState::new_with_defaults() -> Self
-pub fn tungsten::inspector::InspectorState::register<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
-pub fn tungsten::inspector::InspectorState::registered_len(&self) -> usize
 pub fn tungsten::inspector::InspectorState::toggle(&mut self)
 pub fn tungsten::inspector::InspectorState::window(&self) -> core::option::Option<tungsten_core::ui::id::WidgetId>
 impl core::default::Default for tungsten::inspector::InspectorState
 pub fn tungsten::inspector::InspectorState::default() -> Self
 impl core::marker::Freeze for tungsten::inspector::InspectorState
-impl !core::marker::Send for tungsten::inspector::InspectorState
-impl !core::marker::Sync for tungsten::inspector::InspectorState
+impl core::marker::Send for tungsten::inspector::InspectorState
+impl core::marker::Sync for tungsten::inspector::InspectorState
 impl core::marker::Unpin for tungsten::inspector::InspectorState
 impl core::marker::UnsafeUnpin for tungsten::inspector::InspectorState
-impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
-impl !core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::inspector::InspectorState
+impl core::panic::unwind_safe::UnwindSafe for tungsten::inspector::InspectorState
 pub struct tungsten::LogConsole
 pub tungsten::LogConsole::background: [u8; 4]
 pub tungsten::LogConsole::capacity: usize

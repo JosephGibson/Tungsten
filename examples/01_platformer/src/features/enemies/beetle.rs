@@ -46,13 +46,12 @@ pub const PAW_DUST: &str = "ex10_paw_dust";
 pub const DUST: &str = "ex10_charge_dust";
 pub const PAW_DUST_SECS: f32 = 0.15;
 pub const TRAIL_DUST_SECS: f32 = 0.06;
-/// The plough (K30): the box before its face, [`PLOUGH_HALF`] about
-/// [`PLOUGH_AT`] from its body's centre facing right, and the kick a body
+/// The plough (K30): the box before its face, [`PLOUGH_HALF`] about its
+/// body's `plough` point ([`plough_box`]), and the kick a body
 /// there takes along its heading, px/s: [`PLOUGH_KICK`] over its mass, at
 /// most [`PLOUGH_MOST`], and [`PLOUGH_RISE`] of it up. A crate's is 1,000,
 /// a keg's 750, under the speed that sets a keg off.
 pub const PLOUGH_HALF: Vec2 = Vec2::new(12.0, 14.0);
-pub const PLOUGH_AT: Vec2 = Vec2::new(36.0, -2.0);
 pub const PLOUGH_KICK: f32 = 12_000.0;
 pub const PLOUGH_MOST: f32 = 1_000.0;
 pub const PLOUGH_RISE: f32 = 0.3;
@@ -154,13 +153,12 @@ pub fn attack(world: &mut World, beetle: Entity) {
     plough(world, beetle, heading);
 }
 
-/// The plough's box: [`PLOUGH_HALF`] about [`PLOUGH_AT`] from its body's
-/// centre, mirrored as it faces.
+/// The plough's box's centre: its body's `plough` point as it faces.
 #[must_use]
 pub fn plough_box(world: &World, beetle: Entity) -> Option<Vec2> {
-    let at = centre(world, beetle)?;
+    let at = world.get::<Position>(beetle)?.0;
     let heading = world.get::<Enemy>(beetle)?.heading;
-    Some(at + Vec2::new(PLOUGH_AT.x * heading, PLOUGH_AT.y))
+    Some(at + super::body(world, EnemyKind::Beetle).point("plough", heading)?)
 }
 
 /// Each saved dynamic body, not held, lighter than the beetle, that meets
@@ -282,7 +280,7 @@ pub fn dust(world: &mut World) {
         }
         *next += every;
         if let Some(at) = centre(world, beetle) {
-            let half = EnemyKind::Beetle.info().half;
+            let half = super::body(world, EnemyKind::Beetle).half;
             puffs.push((
                 at + Vec2::new(heading * side * half.x, half.y - 4.0),
                 config,

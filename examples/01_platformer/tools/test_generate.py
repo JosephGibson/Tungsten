@@ -6,9 +6,9 @@ import tempfile
 import unittest
 import wave
 
-from art import STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
-from generate import generate
-from level import FAMILIES, build_level, validate_level
+from art import PALETTE, STATUS_CLASSES, TOOLS, build_art, read_grid, validate_art, validate_palette
+from generate import FAMILIES as ASSET_FAMILIES, generate, hashed, lock_breaks, users
+from level import FAMILIES, build_level, opaque_tiles, tiled_text, validate_level
 from placement import MOST, SINK, Placed, floating, hangs, stands, stream_kind
 
 
@@ -47,7 +47,8 @@ class AuthoringTests(unittest.TestCase):
             self.assertEqual(ImageChops.offset(frame, 0, 8).tobytes(), following.tobytes())
 
     def test_reject_invalid_gid_and_unknown_sprite(self):
-        for gid in [-1,2**31,len(self.tiled['tilesets'][0]['tiles'])+1]:
+        tileset=self.tiled['tilesets'][0]
+        for gid in [-1,2**31,tileset['firstgid']+max(t['id'] for t in tileset['tiles'])+1]:
             tiled=copy.deepcopy(self.tiled);tiled['layers'][0]['data'][0]=gid
             with self.assertRaisesRegex(ValueError,'GID'):validate_level(self.source,tiled,self.ids)
         tiled=copy.deepcopy(self.tiled);tiled['tilesets'][0]['tiles'][0]['properties'][0]['value']='missing'
@@ -77,7 +78,8 @@ class AuthoringTests(unittest.TestCase):
     def test_grounded_props_and_hanging_vegetation_meet_their_support(self):
         # Each supported prop on its support's drawn edge, what the terrain
         # tiles draw, not the cell's edge (01 (k)).
-        catalog={t['id']+1:t['properties'][0]['value'].removeprefix('ex10_') for t in self.tiled['tilesets'][0]['tiles']}
+        tileset=self.tiled['tilesets'][0]
+        catalog={tileset['firstgid']+t['id']:t['properties'][0]['value'].removeprefix('ex10_') for t in tileset['tiles']}
         terrain=next(l['data'] for l in self.tiled['layers'] if l['name']=='terrain')
         drawn=Placed(self.images,64);cols=self.source['cols']
         for i,g in enumerate(terrain):
@@ -106,6 +108,67 @@ class AuthoringTests(unittest.TestCase):
             if p['style'] not in FAMILIES:self.assertEqual(self.images[p['style']].getbbox(),(0,0,64,23))
         self.assertEqual(self.source['deck_depth'],23)
 
+    def test_a_sprite_outside_the_terrain_touches_no_level_file(self):
+        # A wholly opaque sprite no tile uses, first by name, and an enemy
+        # frame's pixels made opaque: neither moves a tile ID, the map's
+        # bytes or the opaque tiles' list.
+        from PIL import Image
+        def files(tiled, source, images):
+            return tiled_text(tiled), opaque_tiles(images, tiled), source['tileset']
+        before = files(self.tiled, self.source, self.images)
+        frame = self.images['crawler_walk_0']
+        for change in ({'aaa_unused': Image.new('RGBA', (64, 64), (9, 9, 9, 255))},
+                       {'crawler_walk_0': Image.new('RGBA', frame.size, (200, 40, 40, 255))}):
+            images = dict(self.images, **change)
+            tiled, source, _ = build_level(images, self.lit)
+            self.assertEqual(files(tiled, source, images), before, list(change))
+
+    def layout(self, tiled, source, name):
+        """`tiled`'s tile layers as `{layer: {cell: sprite}}`, its object
+        layers without Tiled IDs, and the pixel points of what `prepare`
+        sets on platform `name`: its props and groups' pieces, orbs, tomes,
+        crates, kegs and stones."""
+        tileset = tiled['tilesets'][0]
+        catalog = {tileset['firstgid'] + t['id']: t['properties'][0]['value'] for t in tileset['tiles']}
+        cols, tile = tiled['width'], source['tile']
+        cells = {l['name']: {(i % cols, i // cols): catalog[g] for i, g in enumerate(l['data']) if g}
+                 for l in tiled['layers'] if l['type'] == 'tilelayer'}
+        objects = [(l['name'], [{k: v for k, v in o.items() if k != 'id'} for o in l['objects']])
+                   for l in tiled['layers'] if l['type'] == 'objectgroup']
+        props = [p for p in source['props'] if p.get('support') == name]
+        props += [source['props'][i] for g in source['groups'] if g['support'] == name for i in g['pieces']]
+        spots = [(p['x'], p['y']) for p in props]
+        spots += [(p['left'], p['top']) for k in ('pickups', 'tomes') for p in source.get(k, []) if p['support'] == name]
+        spots += [(p['x'], p['y']) for k in ('crates', 'kegs', 'stones') for p in source.get(k, []) if p['support'] == name]
+        return cells, objects, {(round(x * tile), round(y * tile)) for x, y in spots}
+
+    def test_a_terrain_change_moves_only_its_props(self):
+        # A platform a tile wider, in the open (the ravine's first step, into
+        # the second's column under the gorge's wall) and indoors (the
+        # hollow's pact shelf, under the roof): tile cells change only within
+        # its bounds and a cell around them, in every layer, both times in
+        # the background too, and no object moves but what `prepare` sets on
+        # it.
+        for name, side in (('ravine_step_1', 'right'), ('pact_shelf', 'right')):
+            source = json.loads((TOOLS / 'level.json').read_text())
+            platform = next(p for p in source['platforms'] if p['name'] == name)
+            platform[side] += 1 if side == 'right' else -1
+            tiled, prepared, _ = build_level(self.images, self.lit, source)
+            before, after = self.layout(self.tiled, self.source, name), self.layout(tiled, prepared, name)
+            near = lambda c: platform['left'] - 1 <= c[0] <= platform['right'] and platform['row'] - 1 <= c[1] <= platform['bottom']
+            for layer, cells in after[0].items():
+                changed = {c for c in cells.keys() | before[0][layer].keys() if cells.get(c) != before[0][layer].get(c)}
+                self.assertEqual(sorted(c for c in changed if not near(c)), [], f'{name}: {layer}')
+                if layer in ('terrain', 'background'):
+                    self.assertTrue(changed, f'{name}: {layer}')
+            for (layer, old), (_, new) in zip(before[1], after[1]):
+                self.assertEqual(len(old), len(new), f'{name}: {layer}')
+                for a, b in zip(old, new):
+                    if a != b:
+                        self.assertEqual(dict(a, x=0, y=0), dict(b, x=0, y=0), f'{name}: {layer}')
+                        self.assertIn((round(a['x']), round(a['y'])), before[2], f'{name}: {layer} {a}')
+                        self.assertIn((round(b['x']), round(b['y'])), after[2], f'{name}: {layer} {b}')
+
     def test_open_starting_courtyard_has_unobstructed_launch_space(self):
         clearing=next(p for p in self.source['platforms'] if p['name']=='clearing')
         self.assertEqual(clearing['right']-clearing['left'],16)
@@ -125,11 +188,6 @@ class AuthoringTests(unittest.TestCase):
         self.assertGreater(moon.getpixel((32,32))[0],230)
         self.assertEqual(moon.getbbox(),(7,7,57,57))
         self.assertNotEqual(self.images['heart_full'].tobytes(),self.images['heart_empty'].tobytes())
-
-    def test_all_owned_outputs_are_deterministic(self):
-        with tempfile.TemporaryDirectory() as a,tempfile.TemporaryDirectory() as b:
-            first=generate(Path(a));second=generate(Path(b));self.assertEqual(first,second)
-            for path in first:self.assertEqual((Path(a)/path).read_bytes(),(Path(b)/path).read_bytes(),path)
 
     def test_small_ball_has_six_distinct_lit_frames(self):
         frames=self.animations['ball_small_spin']['frames']
@@ -232,6 +290,104 @@ class AuthoringTests(unittest.TestCase):
         for y in range(floor,floor+4):
             for x in range(left-4,right+4):self.assertNotEqual(collision[y*cols+x],0)
         self.assertGreater(self.source['kill_row'],floor)
+
+
+class FamilyTests(unittest.TestCase):
+    """The generator's families (`generate.FAMILIES`) against one full run
+    into a temporary directory."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp=tempfile.TemporaryDirectory(prefix='platformer-full-');cls.full=Path(cls.temp.name)
+        cls.paths=generate(cls.full)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    @staticmethod
+    def written(dest):
+        return {p.relative_to(dest).as_posix() for p in dest.rglob('*') if p.is_file()}
+
+    def changed(self, dest):
+        return {p for p in self.written(dest) if (dest / p).read_bytes() != (self.full / p).read_bytes()}
+
+    def test_each_family_alone_writes_only_its_paths_with_a_full_runs_bytes(self):
+        # Each family built on its own writes exactly the files the full run
+        # gave it and the two shared ones, byte for byte, so every output is
+        # also made twice and compared: the generator's determinism.
+        self.assertEqual(set(self.paths), set(ASSET_FAMILIES))
+        for family in ASSET_FAMILIES:
+            with self.subTest(family), tempfile.TemporaryDirectory() as temp:
+                dest = Path(temp)
+                self.assertEqual(generate(dest, {family}, self.full), {family: self.paths[family]})
+                self.assertEqual(self.written(dest), {*self.paths[family], 'assets/manifest.json', 'tools/outputs.json'})
+                self.assertEqual(self.changed(dest), set())
+
+    def test_a_troll_drawn_otherwise_changes_with_its_family_what_a_full_run_changes(self):
+        # One pixel of the troll's canvas changed in memory: `--family
+        # troll` changes exactly what a full run does, its icons included,
+        # and builds the bodies, which use it, unchanged.
+        import actors
+        original = actors.troll_canvas
+
+        def patched(pose):
+            canvas = original(pose)
+            canvas[(66, 50)] = 'Ψ' if canvas.get((66, 50)) != 'Ψ' else 'o'
+            return canvas
+        actors.troll_canvas = patched
+        try:
+            with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+                generate(Path(a))
+                self.assertEqual(users({'troll'}), {'troll', 'bodies'})
+                self.assertEqual(generate(Path(b), users({'troll'}), self.full),
+                                 {name: self.paths[name] for name in ('troll', 'bodies')})
+                everything = self.changed(Path(a))
+                self.assertEqual(self.changed(Path(b)), everything)
+                self.assertLessEqual({'assets/sprites/icon_troll.png', 'assets/sprites/icon_troll_armoured.png',
+                                      'assets/sprites/troll_idle_0.png', 'assets/sprites/troll_idle_0_left.png'},
+                                     everything)
+                self.assertLessEqual(everything, set(self.paths['troll']))
+        finally:
+            actors.troll_canvas = original
+
+    def test_a_locked_files_change_fails_the_run(self):
+        # The stones locked as the full run made them: built again they
+        # hold; with one pixel of a stone drawn otherwise in memory the run
+        # fails, naming the family and the stone's files; and a locked file
+        # changed in a tree fails that tree's check.
+        import actors
+        locks = {'stones': dict(date='2026-10-28', files=hashed(self.full, {'stones': self.paths['stones']})['stones'])}
+
+        def breaks():
+            with tempfile.TemporaryDirectory() as temp:
+                dest = Path(temp)
+                return lock_breaks(locks, hashed(dest, generate(dest, {'stones'}, self.full)))
+        self.assertEqual(breaks(), [])
+        original = actors.stone
+
+        def chipped(size, look):
+            im = original(size, look)
+            if (size, look) == ('small', 0):
+                im.putpixel((0, 0), PALETTE['o'])
+            return im
+        actors.stone = chipped
+        try:
+            broken = breaks()
+        finally:
+            actors.stone = original
+        self.assertEqual(len(broken), 1)
+        self.assertIn('stones is locked (2026-10-28) and would change assets/sprites/stone_small_0.png', broken[0])
+        self.assertNotIn('stone_small_1', broken[0])
+        with tempfile.TemporaryDirectory() as temp:
+            tree = Path(temp)
+            for path in self.paths['stones']:
+                (tree / path).parent.mkdir(parents=True, exist_ok=True)
+                (tree / path).write_bytes((self.full / path).read_bytes())
+            (tree / 'assets/sprites/stone_large_1.png').write_bytes(b'')
+            broken = lock_breaks(locks, hashed(tree, {'stones': list(locks['stones']['files'])}), 'changed in the tree')
+        self.assertEqual(broken, ["stones is locked (2026-10-28) and changed in the tree assets/sprites/stone_large_1.png; "
+                                  "unlocking it is the owner's call (--unlock stones)"])
 
 
 # e01foes' contract, the files its families own as the game reads them: each

@@ -16,7 +16,6 @@ fn defaults_are_stable() {
             vsync: false,
             present_mode: None,
             max_frame_latency: None,
-            scale_mode: ScaleMode::Stretch,
             frame_rate_cap: None,
         }
     );
@@ -67,7 +66,6 @@ fn unknown_enum_values_fall_back_to_safe_defaults() {
 
     let resolved = config.resolve(&WindowConfig::default(), &RenderConfig::default());
     assert_eq!(resolved.display_mode, DisplayMode::Windowed);
-    assert_eq!(resolved.scale_mode, ScaleMode::Stretch);
 }
 
 #[test]
@@ -127,7 +125,6 @@ fn resolve_honors_display_precedence_over_legacy_fields() {
             vsync: true,
             present_mode: Some(PresentModeConfig::Fifo),
             max_frame_latency: Some(3),
-            scale_mode: ScaleMode::Stretch,
             frame_rate_cap: Some(144),
         }
     );
@@ -137,8 +134,7 @@ fn resolve_honors_display_precedence_over_legacy_fields() {
 fn partial_display_sections_inherit_unspecified_fields() {
     let config: DisplayConfig = serde_json::from_str(
         r#"{
-            "display_mode": "borderless_fullscreen",
-            "scale_mode": "integer"
+            "display_mode": "borderless_fullscreen"
         }"#,
     )
     .unwrap();
@@ -168,7 +164,6 @@ fn partial_display_sections_inherit_unspecified_fields() {
             vsync: true,
             present_mode: Some(PresentModeConfig::AutoNoVsync),
             max_frame_latency: Some(2),
-            scale_mode: ScaleMode::Integer,
             frame_rate_cap: None,
         }
     );

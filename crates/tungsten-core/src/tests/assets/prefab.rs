@@ -434,7 +434,7 @@ fn the_queued_form_records_one_spawn_and_one_run_for_the_flush() {
     // The spawn, then Transform, Sprite, Visibility, Tag, two components and
     // the `with` bundle on one target, back to back: one run.
     assert_eq!(buffer.len(), 8);
-    assert_eq!(pending, PendingEntity(0));
+    assert_eq!(pending, PendingEntity { index: 0, epoch: 0 });
     world.flush(buffer);
     let found: Vec<_> = world
         .query::<(&Transform, &Health, &Player, &Route, &Tag)>()
@@ -1042,7 +1042,7 @@ fn spawn_prefab_from_records_one_derive_after_the_run() {
     let mut buffer = CommandBuffer::new();
     let pending = buffer.spawn_prefab_from(source, prepare(&mut world));
     assert_eq!(buffer.len(), 9, "the spawn, its run of 7 and one derive");
-    assert_eq!(pending, PendingEntity(0));
+    assert_eq!(pending, PendingEntity { index: 0, epoch: 0 });
     world.flush(buffer);
     let found: Vec<_> = world
         .query::<(&Health, &Player, &Route, &Tag, &Team)>()

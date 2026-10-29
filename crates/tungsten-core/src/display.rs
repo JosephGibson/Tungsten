@@ -6,7 +6,6 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 const DISPLAY_MODE_EXPECTED: &str = "windowed, borderless_fullscreen, or exclusive_fullscreen";
-const SCALE_MODE_EXPECTED: &str = "stretch or integer";
 const PRESENT_MODE_EXPECTED: &str = "auto, immediate, mailbox, fifo, auto_vsync, or auto_no_vsync";
 
 /// How the window is presented.
@@ -39,36 +38,6 @@ impl DisplayMode {
             "windowed" => Some(Self::Windowed),
             "borderless_fullscreen" => Some(Self::BorderlessFullscreen),
             "exclusive_fullscreen" => Some(Self::ExclusiveFullscreen),
-            _ => None,
-        }
-    }
-}
-
-/// How the render resolution fills the window.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ScaleMode {
-    /// Stretched to the window.
-    Stretch,
-    /// Scaled by the largest whole factor that fits, pixel-exact.
-    Integer,
-}
-
-impl ScaleMode {
-    /// The config name: `stretch` or `integer`.
-    #[must_use]
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Stretch => "stretch",
-            Self::Integer => "integer",
-        }
-    }
-
-    /// The mode a config name denotes; `None` for any other string.
-    #[must_use]
-    pub fn from_str_name(value: &str) -> Option<Self> {
-        match value {
-            "stretch" => Some(Self::Stretch),
-            "integer" => Some(Self::Integer),
             _ => None,
         }
     }
@@ -356,8 +325,6 @@ pub struct DisplayState {
     pub present_mode: Option<PresentModeConfig>,
     /// The swapchain's maximum frame latency, when the config sets one.
     pub max_frame_latency: Option<u32>,
-    /// How the render resolution fills the window.
-    pub scale_mode: ScaleMode,
     /// The frame-rate cap in frames per second, when one is set.
     pub frame_rate_cap: Option<u32>,
 }
@@ -370,7 +337,6 @@ impl Default for DisplayState {
             vsync: false,
             present_mode: None,
             max_frame_latency: None,
-            scale_mode: ScaleMode::Stretch,
             frame_rate_cap: None,
         }
     }
@@ -412,8 +378,6 @@ pub struct DisplayConfig {
     pub present_mode: Option<PresentModeConfig>,
     /// `display.max_frame_latency`.
     pub max_frame_latency: Option<u32>,
-    /// `display.scale_mode`.
-    pub scale_mode: Option<ScaleMode>,
     /// `display.frame_rate_cap`.
     pub frame_rate_cap: Option<u32>,
 }
@@ -421,7 +385,7 @@ pub struct DisplayConfig {
 impl DisplayConfig {
     /// The state this section gives: each set field, else the `window`
     /// section's size and vsync, the `render` section's present mode and
-    /// frame latency, windowed, stretched and uncapped.
+    /// frame latency, windowed and uncapped.
     #[must_use]
     pub fn resolve(&self, window: &WindowConfig, render: &RenderConfig) -> DisplayState {
         let mut resolved = DisplayState {
@@ -433,7 +397,6 @@ impl DisplayConfig {
             vsync: window.vsync,
             present_mode: render.present_mode,
             max_frame_latency: render.max_frame_latency,
-            scale_mode: ScaleMode::Stretch,
             frame_rate_cap: None,
         };
 
@@ -451,9 +414,6 @@ impl DisplayConfig {
         }
         if let Some(max_frame_latency) = self.max_frame_latency {
             resolved.max_frame_latency = Some(max_frame_latency);
-        }
-        if let Some(scale_mode) = self.scale_mode {
-            resolved.scale_mode = scale_mode;
         }
         if let Some(frame_rate_cap) = self.frame_rate_cap {
             resolved.frame_rate_cap = Some(frame_rate_cap);
@@ -491,9 +451,6 @@ impl DisplayConfig {
             max_frame_latency: map.get("max_frame_latency").and_then(|value| {
                 parse_optional_positive_u32("display.max_frame_latency", value, warnings)
             }),
-            scale_mode: map
-                .get("scale_mode")
-                .and_then(|value| parse_scale_mode(value, warnings)),
             frame_rate_cap: map
                 .get("frame_rate_cap")
                 .and_then(|value| parse_frame_rate_cap(value, warnings)),
@@ -539,16 +496,6 @@ fn parse_display_mode(value: &Value, warnings: &mut Vec<String>) -> Option<Displ
         value,
         DisplayMode::from_str_name,
         DISPLAY_MODE_EXPECTED,
-        warnings,
-    )
-}
-
-fn parse_scale_mode(value: &Value, warnings: &mut Vec<String>) -> Option<ScaleMode> {
-    parse_named_enum(
-        "display.scale_mode",
-        value,
-        ScaleMode::from_str_name,
-        SCALE_MODE_EXPECTED,
         warnings,
     )
 }

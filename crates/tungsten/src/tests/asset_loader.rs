@@ -82,7 +82,7 @@ fn build_minimal_particle_json(sprite_id: &str) -> String {
             "sprite": "{sprite_id}",
             "max_alive": 100,
             "seed": 1,
-            "blend": "premultiplied",
+            "blend": "alpha",
             "emission": {{"kind": "continuous", "rate_hz": 10.0}},
             "lifetime": {{"min": 0.5, "max": 1.0}},
             "initial_velocity": {{
