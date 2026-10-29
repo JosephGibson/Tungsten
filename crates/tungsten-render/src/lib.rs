@@ -1,5 +1,6 @@
 //! WGPU rendering backend: quads, sprites, debug lines, screenshots, text.
 
+mod counters;
 pub mod debug_line;
 pub mod image_diff;
 pub mod lighting;
@@ -20,6 +21,7 @@ pub mod text;
 pub mod timing;
 pub mod ui;
 
+pub use counters::FrameCounters;
 pub use debug_line::{DebugLineInstance, DebugLinePipeline};
 pub use image_diff::{DiffReport, ImageDiffError, compare_png};
 pub use lighting::{

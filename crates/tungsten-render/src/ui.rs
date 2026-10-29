@@ -13,8 +13,8 @@ use std::ops::Range;
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::{TextureHandle, UvRect};
 use tungsten_core::ui::{ClipRect, PaintCommand, PaintList, Rect, UiVertex};
-use wgpu::util::DeviceExt;
 
+use crate::counters::{self, Counts};
 use crate::sprite::{SpritePipeline, instance_capacity};
 
 /// Unit-square two-triangle vertex; the instance places and sizes it.
@@ -428,6 +428,7 @@ pub struct UiPipeline {
     warned_instance_cap: bool,
     /// Whether a frame has outgrown the largest mesh buffer, logged once.
     warned_mesh_cap: bool,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl UiPipeline {
@@ -440,6 +441,7 @@ impl UiPipeline {
         format: wgpu::TextureFormat,
         texture_layout: &wgpu::BindGroupLayout,
     ) -> Self {
+        let counts = Counts::boxed();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("ui_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("ui.wgsl").into()),
@@ -487,7 +489,9 @@ impl UiPipeline {
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
-        queue.write_texture(
+        counters::write_texture(
+            &counts,
+            queue,
             wgpu::TexelCopyTextureInfo {
                 texture: &white_texture,
                 mip_level: 0,
@@ -609,11 +613,15 @@ impl UiPipeline {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("ui_vertex_buffer"),
-            contents: bytemuck::cast_slice(UNIT_QUAD),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let vertex_buffer = counters::create_buffer_init(
+            &counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("ui_vertex_buffer"),
+                contents: bytemuck::cast_slice(UNIT_QUAD),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
         let instance_buffer = create_instance_buffer(device, INSTANCE_CAPACITY);
         let mesh_buffer = create_mesh_buffer(device, MESH_VERTEX_CAPACITY);
 
@@ -634,6 +642,7 @@ impl UiPipeline {
             items: Vec::new(),
             warned_instance_cap: false,
             warned_mesh_cap: false,
+            counts,
         }
     }
 
@@ -662,7 +671,13 @@ impl UiPipeline {
                 1.0,
             );
             let matrix: &[f32; 16] = projection.as_ref();
-            queue.write_buffer(&self.viewport_buffer, 0, bytemuck::cast_slice(matrix));
+            counters::write_buffer(
+                &self.counts,
+                queue,
+                &self.viewport_buffer,
+                0,
+                bytemuck::cast_slice(matrix),
+            );
             self.viewport_written = Some((width, height));
         }
         self.upload_mesh_vertices(device, queue);
@@ -689,7 +704,9 @@ impl UiPipeline {
                 self.instances.len()
             );
         }
-        queue.write_buffer(
+        counters::write_buffer(
+            &self.counts,
+            queue,
             &self.instance_buffer,
             0,
             bytemuck::cast_slice(&self.instances),
@@ -722,7 +739,9 @@ impl UiPipeline {
                 self.mesh_vertices.len()
             );
         }
-        queue.write_buffer(
+        counters::write_buffer(
+            &self.counts,
+            queue,
             &self.mesh_buffer,
             0,
             bytemuck::cast_slice(&self.mesh_vertices),
@@ -765,7 +784,7 @@ impl UiPipeline {
         pass.set_bind_group(1, page, &[]);
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        pass.draw(0..6, instances.clone());
+        counters::draw(&self.counts, pass, 0..6, instances.clone());
     }
 
     /// Draws a mesh item: its scissor clamped to `attachment`, then its
@@ -787,7 +806,7 @@ impl UiPipeline {
         pass.set_pipeline(&self.mesh_pipeline);
         pass.set_bind_group(0, &self.viewport_bind_group, &[]);
         pass.set_vertex_buffer(0, self.mesh_buffer.slice(..));
-        pass.draw(vertices.clone(), 0..1);
+        counters::draw(&self.counts, pass, vertices.clone(), 0..1);
     }
 }
 

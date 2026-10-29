@@ -3,8 +3,8 @@
 
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::ParticleMeshAssetId;
-use wgpu::util::DeviceExt;
 
+use crate::counters::{self, Counts};
 use crate::sprite::instance_capacity;
 
 /// One mesh particle: the mesh origin in world pixels, a per-axis scale, a
@@ -133,6 +133,7 @@ pub struct MeshParticlePipeline {
     warned: Vec<ParticleMeshAssetId>,
     /// Whether a frame has outgrown the largest instance buffer, logged once.
     warned_instance_cap: bool,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl MeshParticlePipeline {
@@ -205,6 +206,7 @@ impl MeshParticlePipeline {
             missing: Vec::new(),
             warned: Vec::new(),
             warned_instance_cap: false,
+            counts: Counts::boxed(),
         }
     }
 
@@ -247,16 +249,24 @@ impl MeshParticlePipeline {
             return;
         }
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("mesh_particle_vertex_buffer"),
-            contents: bytemuck::cast_slice(vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-        let index_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("mesh_particle_index_buffer"),
-            contents: bytemuck::cast_slice(indices),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let vertex_buffer = counters::create_buffer_init(
+            &self.counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("mesh_particle_vertex_buffer"),
+                contents: bytemuck::cast_slice(vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
+        let index_buffer = counters::create_buffer_init(
+            &self.counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("mesh_particle_index_buffer"),
+                contents: bytemuck::cast_slice(indices),
+                usage: wgpu::BufferUsages::INDEX,
+            },
+        );
 
         let slot = id.index() as usize;
         if slot >= self.meshes.len() {
@@ -311,7 +321,9 @@ impl MeshParticlePipeline {
                 self.staging.len()
             );
         }
-        queue.write_buffer(
+        counters::write_buffer(
+            &self.counts,
+            queue,
             &self.instance_buffer,
             0,
             bytemuck::cast_slice(&self.staging),
@@ -337,7 +349,13 @@ impl MeshParticlePipeline {
             };
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
             render_pass.set_index_buffer(mesh.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-            render_pass.draw_indexed(0..mesh.index_count, 0, draw.first..draw.first + draw.count);
+            counters::draw_indexed(
+                &self.counts,
+                render_pass,
+                0..mesh.index_count,
+                0,
+                draw.first..draw.first + draw.count,
+            );
         }
     }
 }

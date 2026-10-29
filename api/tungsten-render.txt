@@ -573,8 +573,6 @@ pub const tungsten_render::post::smaa_luts::SEARCH_TEX_LEN: usize
 pub const tungsten_render::post::smaa_luts::SEARCH_TEX_WIDTH: u32
 pub fn tungsten_render::post::smaa_luts::area_bytes() -> &'static [u8]
 pub fn tungsten_render::post::smaa_luts::search_bytes() -> &'static [u8]
-pub fn tungsten_render::post::smaa_luts::upload_area(&wgpu::api::device::Device, &wgpu::api::queue::Queue) -> (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
-pub fn tungsten_render::post::smaa_luts::upload_search(&wgpu::api::device::Device, &wgpu::api::queue::Queue) -> (wgpu::api::texture::Texture, wgpu::api::texture_view::TextureView)
 pub struct tungsten_render::post::PostStackRenderer
 impl tungsten_render::post::PostStackRenderer
 pub fn tungsten_render::post::PostStackRenderer::new(&wgpu::api::device::Device, wgpu_types::texture::format::TextureFormat, &tungsten_render::shader_hot_reload::ShaderModuleCache, tungsten_render::post::bloom::BloomShaderIds, &[tungsten_core::assets::shader::ShaderAssetId; 17]) -> Self
@@ -682,6 +680,27 @@ impl core::marker::Unpin for tungsten_render::timing::CpuFrameTimings
 impl core::marker::UnsafeUnpin for tungsten_render::timing::CpuFrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::CpuFrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::CpuFrameTimings
+pub struct tungsten_render::renderer::GpuFrameSample
+pub tungsten_render::renderer::GpuFrameSample::frame: u64
+pub tungsten_render::renderer::GpuFrameSample::passes: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten_render::renderer::GpuFrameSample::render_ms: f32
+pub tungsten_render::renderer::GpuFrameSample::scene_ms: core::option::Option<f32>
+impl core::clone::Clone for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::clone(&self) -> tungsten_render::timing::GpuFrameSample
+impl core::cmp::PartialEq for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::eq(&self, &tungsten_render::timing::GpuFrameSample) -> bool
+impl core::default::Default for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::default() -> tungsten_render::timing::GpuFrameSample
+impl core::fmt::Debug for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_render::timing::GpuFrameSample
+impl core::marker::Freeze for tungsten_render::timing::GpuFrameSample
+impl core::marker::Send for tungsten_render::timing::GpuFrameSample
+impl core::marker::Sync for tungsten_render::timing::GpuFrameSample
+impl core::marker::Unpin for tungsten_render::timing::GpuFrameSample
+impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameSample
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameSample
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameSample
 pub struct tungsten_render::renderer::GpuFrameTimings
 pub tungsten_render::renderer::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
 pub tungsten_render::renderer::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
@@ -690,6 +709,8 @@ pub tungsten_render::renderer::GpuFrameTimings::max_frame_latency: core::option:
 pub tungsten_render::renderer::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
 pub tungsten_render::renderer::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
 pub tungsten_render::renderer::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+pub tungsten_render::renderer::GpuFrameTimings::samples: alloc::vec::Vec<tungsten_render::timing::GpuFrameSample>
+pub tungsten_render::renderer::GpuFrameTimings::skipped_frames: u64
 impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
 pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
 impl core::default::Default for tungsten_render::timing::GpuFrameTimings
@@ -718,6 +739,7 @@ impl tungsten_render::renderer::Renderer
 pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
 pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::renderer::Renderer::frame_counters(&self) -> tungsten_render::FrameCounters
 pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
@@ -735,6 +757,7 @@ pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
 pub fn tungsten_render::renderer::Renderer::resolve_or_allocate_shader_id(&mut self, &str) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::set_font_families(&mut self, &std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>, &[alloc::string::String])
+pub fn tungsten_render::renderer::Renderer::set_frame_number(&mut self, u64)
 pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)
 pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine
@@ -1244,6 +1267,27 @@ impl core::marker::Unpin for tungsten_render::timing::CpuFrameTimings
 impl core::marker::UnsafeUnpin for tungsten_render::timing::CpuFrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::CpuFrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::CpuFrameTimings
+pub struct tungsten_render::timing::GpuFrameSample
+pub tungsten_render::timing::GpuFrameSample::frame: u64
+pub tungsten_render::timing::GpuFrameSample::passes: alloc::vec::Vec<(alloc::string::String, f32)>
+pub tungsten_render::timing::GpuFrameSample::render_ms: f32
+pub tungsten_render::timing::GpuFrameSample::scene_ms: core::option::Option<f32>
+impl core::clone::Clone for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::clone(&self) -> tungsten_render::timing::GpuFrameSample
+impl core::cmp::PartialEq for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::eq(&self, &tungsten_render::timing::GpuFrameSample) -> bool
+impl core::default::Default for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::default() -> tungsten_render::timing::GpuFrameSample
+impl core::fmt::Debug for tungsten_render::timing::GpuFrameSample
+pub fn tungsten_render::timing::GpuFrameSample::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_render::timing::GpuFrameSample
+impl core::marker::Freeze for tungsten_render::timing::GpuFrameSample
+impl core::marker::Send for tungsten_render::timing::GpuFrameSample
+impl core::marker::Sync for tungsten_render::timing::GpuFrameSample
+impl core::marker::Unpin for tungsten_render::timing::GpuFrameSample
+impl core::marker::UnsafeUnpin for tungsten_render::timing::GpuFrameSample
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::timing::GpuFrameSample
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::timing::GpuFrameSample
 pub struct tungsten_render::timing::GpuFrameTimings
 pub tungsten_render::timing::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
 pub tungsten_render::timing::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
@@ -1252,6 +1296,8 @@ pub tungsten_render::timing::GpuFrameTimings::max_frame_latency: core::option::O
 pub tungsten_render::timing::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
 pub tungsten_render::timing::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
 pub tungsten_render::timing::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+pub tungsten_render::timing::GpuFrameTimings::samples: alloc::vec::Vec<tungsten_render::timing::GpuFrameSample>
+pub tungsten_render::timing::GpuFrameTimings::skipped_frames: u64
 impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
 pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
 impl core::default::Default for tungsten_render::timing::GpuFrameTimings
@@ -1540,6 +1586,28 @@ impl core::marker::Unpin for tungsten_render::image_diff::DiffReport
 impl core::marker::UnsafeUnpin for tungsten_render::image_diff::DiffReport
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::image_diff::DiffReport
 impl core::panic::unwind_safe::UnwindSafe for tungsten_render::image_diff::DiffReport
+pub struct tungsten_render::FrameCounters
+pub tungsten_render::FrameCounters::draw_calls: u64
+pub tungsten_render::FrameCounters::text_renders: u64
+pub tungsten_render::FrameCounters::upload_bytes: u64
+impl core::clone::Clone for tungsten_render::FrameCounters
+pub fn tungsten_render::FrameCounters::clone(&self) -> tungsten_render::FrameCounters
+impl core::cmp::Eq for tungsten_render::FrameCounters
+impl core::cmp::PartialEq for tungsten_render::FrameCounters
+pub fn tungsten_render::FrameCounters::eq(&self, &tungsten_render::FrameCounters) -> bool
+impl core::default::Default for tungsten_render::FrameCounters
+pub fn tungsten_render::FrameCounters::default() -> tungsten_render::FrameCounters
+impl core::fmt::Debug for tungsten_render::FrameCounters
+pub fn tungsten_render::FrameCounters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_render::FrameCounters
+impl core::marker::StructuralPartialEq for tungsten_render::FrameCounters
+impl core::marker::Freeze for tungsten_render::FrameCounters
+impl core::marker::Send for tungsten_render::FrameCounters
+impl core::marker::Sync for tungsten_render::FrameCounters
+impl core::marker::Unpin for tungsten_render::FrameCounters
+impl core::marker::UnsafeUnpin for tungsten_render::FrameCounters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_render::FrameCounters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_render::FrameCounters
 pub struct tungsten_render::GpuFrameTimings
 pub tungsten_render::GpuFrameTimings::adapter_name: core::option::Option<alloc::string::String>
 pub tungsten_render::GpuFrameTimings::backend: core::option::Option<alloc::string::String>
@@ -1548,6 +1616,8 @@ pub tungsten_render::GpuFrameTimings::max_frame_latency: core::option::Option<u3
 pub tungsten_render::GpuFrameTimings::pass_gpu_ms: alloc::vec::Vec<(alloc::string::String, f32)>
 pub tungsten_render::GpuFrameTimings::present_mode: core::option::Option<alloc::string::String>
 pub tungsten_render::GpuFrameTimings::render_gpu_ms: core::option::Option<f32>
+pub tungsten_render::GpuFrameTimings::samples: alloc::vec::Vec<tungsten_render::timing::GpuFrameSample>
+pub tungsten_render::GpuFrameTimings::skipped_frames: u64
 impl core::clone::Clone for tungsten_render::timing::GpuFrameTimings
 pub fn tungsten_render::timing::GpuFrameTimings::clone(&self) -> tungsten_render::timing::GpuFrameTimings
 impl core::default::Default for tungsten_render::timing::GpuFrameTimings
@@ -1802,6 +1872,7 @@ impl tungsten_render::renderer::Renderer
 pub fn tungsten_render::renderer::Renderer::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten_render::renderer::Renderer::depth_sort(&self) -> tungsten_core::config::DepthSortMode
 pub fn tungsten_render::renderer::Renderer::drop_texture(&mut self, tungsten_core::assets::registry::TextureHandle)
+pub fn tungsten_render::renderer::Renderer::frame_counters(&self) -> tungsten_render::FrameCounters
 pub fn tungsten_render::renderer::Renderer::load_font(&mut self, &str, alloc::vec::Vec<u8>)
 pub fn tungsten_render::renderer::Renderer::max_2d_texture_dimension(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::new(alloc::sync::Arc<winit::window::Window>, &tungsten_core::config::RenderConfig, bool) -> core::result::Result<Self, tungsten_render::renderer::RenderError>
@@ -1819,6 +1890,7 @@ pub fn tungsten_render::renderer::Renderer::resize(&mut self, u32, u32)
 pub fn tungsten_render::renderer::Renderer::resolve_or_allocate_shader_id(&mut self, &str) -> tungsten_core::assets::shader::ShaderAssetId
 pub fn tungsten_render::renderer::Renderer::sample_count(&self) -> u32
 pub fn tungsten_render::renderer::Renderer::set_font_families(&mut self, &std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedFontFamily>, &[alloc::string::String])
+pub fn tungsten_render::renderer::Renderer::set_frame_number(&mut self, u64)
 pub fn tungsten_render::renderer::Renderer::set_post_aa(&mut self, tungsten_core::config::PostAaMode)
 pub fn tungsten_render::renderer::Renderer::surface_format(&self) -> wgpu_types::texture::format::TextureFormat
 pub fn tungsten_render::renderer::Renderer::text_engine(&self) -> &tungsten_render::TextEngine

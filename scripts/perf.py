@@ -48,8 +48,8 @@ ENCODER = "nxcodec.bin"
 BUILD_NAMES = ("cargo", "rustc")
 BACKGROUND_SCAN_SECONDS = 1.0
 # Frames a GPU run takes past its window, so the window's last timestamps
-# land before the process exits (the ring's depth plus one).
-GPU_TAIL = 4
+# land before the process exits: the renderer's ring depth (4) plus one.
+GPU_TAIL = 5
 EXIT_ERROR = 2
 EXIT_INVALID = 3
 
@@ -403,7 +403,8 @@ def one_run(row, binary, tree, run_dir, *, warmup, frames, gpu, lister, tree_rea
         watch=lambda: seen.update(background_offenders(lister(), os.getpid())),
     )  # fmt: skip
     shutil.rmtree(run_dir / f"{label}-user", ignore_errors=True)
-    analysis = perf_stats.analyze((run_dir / f"{label}.log").read_text(errors="replace"), warmup, frames, row.get("guards", []))
+    log_text = (run_dir / f"{label}.log").read_text(errors="replace")
+    analysis = perf_stats.analyze(log_text, warmup, frames, row.get("guards", []), gpu=gpu)
     problems = []
     if result["exit_code"] != 0:
         problems.append(f"exited with {result['exit_code']}")

@@ -6,6 +6,7 @@
 //! `assets/manifest.json` — they are engine-internal content with MIT
 //! attribution under `crates/tungsten-render/src/assets/smaa/ATTRIBUTION.md`.
 
+use crate::counters::{self, Counts};
 use wgpu::{Extent3d, TextureFormat, TextureUsages};
 
 const AREA_TEX_BYTES: &[u8] = include_bytes!("../assets/smaa/area.bin");
@@ -36,9 +37,10 @@ pub fn search_bytes() -> &'static [u8] {
     SEARCH_TEX_BYTES
 }
 
-/// Upload the SMAA `area` LUT (`Rg8Unorm`, 160 x 560).
+/// Upload the SMAA `area` LUT (`Rg8Unorm`, 160 x 560), counted in `counts`.
 #[must_use]
-pub fn upload_area(
+pub(crate) fn upload_area(
+    counts: &Counts,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> (wgpu::Texture, wgpu::TextureView) {
@@ -61,7 +63,9 @@ pub fn upload_area(
         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    queue.write_texture(
+    counters::write_texture(
+        counts,
+        queue,
         wgpu::TexelCopyTextureInfo {
             texture: &tex,
             mip_level: 0,
@@ -84,9 +88,10 @@ pub fn upload_area(
     (tex, view)
 }
 
-/// Upload the SMAA `search` LUT (`R8Unorm`, 64 x 16).
+/// Upload the SMAA `search` LUT (`R8Unorm`, 64 x 16), counted in `counts`.
 #[must_use]
-pub fn upload_search(
+pub(crate) fn upload_search(
+    counts: &Counts,
     device: &wgpu::Device,
     queue: &wgpu::Queue,
 ) -> (wgpu::Texture, wgpu::TextureView) {
@@ -109,7 +114,9 @@ pub fn upload_search(
         usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
         view_formats: &[],
     });
-    queue.write_texture(
+    counters::write_texture(
+        counts,
+        queue,
         wgpu::TexelCopyTextureInfo {
             texture: &tex,
             mip_level: 0,

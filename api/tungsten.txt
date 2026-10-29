@@ -764,7 +764,9 @@ impl core::marker::UnsafeUnpin for tungsten::telemetry::FrameTimings
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::FrameTimings
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::FrameTimings
 pub struct tungsten::telemetry::RenderCounts
+pub tungsten::telemetry::RenderCounts::draw_calls: u64
 pub tungsten::telemetry::RenderCounts::entities: u32
+pub tungsten::telemetry::RenderCounts::sprite_batches: u32
 pub tungsten::telemetry::RenderCounts::sprite_instances: u32
 pub tungsten::telemetry::RenderCounts::text_atlas_full: u64
 pub tungsten::telemetry::RenderCounts::text_batches: u32
@@ -772,10 +774,12 @@ pub tungsten::telemetry::RenderCounts::text_batches_prepared: u32
 pub tungsten::telemetry::RenderCounts::text_full_frames: u64
 pub tungsten::telemetry::RenderCounts::text_label_glyphs: u32
 pub tungsten::telemetry::RenderCounts::text_layouts: u32
+pub tungsten::telemetry::RenderCounts::text_renders: u64
 pub tungsten::telemetry::RenderCounts::ui_commands: u32
 pub tungsten::telemetry::RenderCounts::ui_layout_us: u32
 pub tungsten::telemetry::RenderCounts::ui_nodes_laid_out: u32
 pub tungsten::telemetry::RenderCounts::ui_roots_laid_out: u32
+pub tungsten::telemetry::RenderCounts::upload_bytes: u64
 pub tungsten::telemetry::RenderCounts::world_labels: u32
 pub tungsten::telemetry::RenderCounts::world_labels_culled: u32
 pub tungsten::telemetry::RenderCounts::world_labels_dropped: u32
@@ -1569,7 +1573,9 @@ impl core::marker::UnsafeUnpin for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::post_aa::PostAaState
 impl core::panic::unwind_safe::UnwindSafe for tungsten::post_aa::PostAaState
 pub struct tungsten::RenderCounts
+pub tungsten::RenderCounts::draw_calls: u64
 pub tungsten::RenderCounts::entities: u32
+pub tungsten::RenderCounts::sprite_batches: u32
 pub tungsten::RenderCounts::sprite_instances: u32
 pub tungsten::RenderCounts::text_atlas_full: u64
 pub tungsten::RenderCounts::text_batches: u32
@@ -1577,10 +1583,12 @@ pub tungsten::RenderCounts::text_batches_prepared: u32
 pub tungsten::RenderCounts::text_full_frames: u64
 pub tungsten::RenderCounts::text_label_glyphs: u32
 pub tungsten::RenderCounts::text_layouts: u32
+pub tungsten::RenderCounts::text_renders: u64
 pub tungsten::RenderCounts::ui_commands: u32
 pub tungsten::RenderCounts::ui_layout_us: u32
 pub tungsten::RenderCounts::ui_nodes_laid_out: u32
 pub tungsten::RenderCounts::ui_roots_laid_out: u32
+pub tungsten::RenderCounts::upload_bytes: u64
 pub tungsten::RenderCounts::world_labels: u32
 pub tungsten::RenderCounts::world_labels_culled: u32
 pub tungsten::RenderCounts::world_labels_dropped: u32

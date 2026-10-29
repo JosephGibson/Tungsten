@@ -1628,10 +1628,12 @@ impl App {
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
         let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
+        let sprite_batch_count = sprites.len() as u32;
         let ui_commands = self.ui_paint.commands.len() as u32;
         if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
             rc.entities = entity_count;
             rc.sprite_instances = sprite_instance_count;
+            rc.sprite_batches = sprite_batch_count;
             rc.ui_commands = ui_commands;
             rc.world_labels = label_counts.kept;
             rc.world_labels_culled = label_counts.culled;
@@ -1734,6 +1736,8 @@ impl App {
                 renderer.prewarm_ui_text(list);
             }
 
+            // A timed frame's GPU sample names it when it is read back.
+            renderer.set_frame_number(self.world.get_resource::<Time>().map_or(0, Time::frame));
             result = Some(if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(
                     &view_proj,
@@ -1759,7 +1763,11 @@ impl App {
             });
             // M46: the text batch counts the HUD shows next frame.
             let text_stats = renderer.text_stats();
+            let counters = renderer.frame_counters();
             if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+                rc.draw_calls = counters.draw_calls;
+                rc.upload_bytes = counters.upload_bytes;
+                rc.text_renders = counters.text_renders;
                 rc.text_batches = text_stats.batches;
                 rc.text_batches_prepared = text_stats.prepared;
                 rc.text_full_frames = text_stats.full_frames_total;
@@ -1975,16 +1983,29 @@ impl App {
                 log::debug!("{}", format_perf_systems_line(&ft.system_timings));
             }
             if log::log_enabled!(log::Level::Debug)
+                && let Some(counts) = self.world.get_resource::<RenderCounts>()
+            {
+                log::debug!(
+                    "counters: draw_calls={} upload_bytes={} text_renders={} sprite_batches={}",
+                    counts.draw_calls,
+                    counts.upload_bytes,
+                    counts.text_renders,
+                    counts.sprite_batches
+                );
+            }
+            if log::log_enabled!(log::Level::Debug)
                 && let Some(gpu) = self.world.get_resource::<GpuFrameTimings>()
             {
-                // Emit even an empty line on skipped/unsupported frames so
-                // capture warm-up counts remain aligned with frame logs.
-                let mut line = format_perf_named_timings("gpu_passes:", &gpu.pass_gpu_ms);
-                if let Some(span) = gpu.render_gpu_ms {
+                // One line per timed frame read back this frame, naming the
+                // frame it measured, up to three frames back (redo 7.3); none
+                // on a frame that read none.
+                for sample in &gpu.samples {
                     use std::fmt::Write as _;
-                    let _ = write!(line, " render_span={span:.2}ms");
+                    let tag = format!("gpu_passes: from={}", sample.frame);
+                    let mut line = format_perf_named_timings(&tag, &sample.passes);
+                    let _ = write!(line, " render_span={:.2}ms", sample.render_ms);
+                    log::debug!("{line}");
                 }
-                log::debug!("{line}");
             }
             if log::log_enabled!(log::Level::Debug)
                 && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()

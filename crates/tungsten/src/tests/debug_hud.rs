@@ -123,6 +123,7 @@ fn the_rows_list_fps_then_the_built_in_rows_then_a_providers_in_columns() {
         world_labels_dropped: 2,
         text_label_glyphs: 37,
         text_layouts: 12,
+        ..RenderCounts::default()
     });
     world.insert_resource(HudActiveState("gameplay".into()));
     world.resource_mut::<FrameTimings>().system_timings = vec![("sys_a".into(), 1.0)];

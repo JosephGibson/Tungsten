@@ -25,6 +25,7 @@ use wgpu::{Device, MultisampleState, Queue, RenderPass, TextureFormat};
 
 use super::engine::NodeAreas;
 use super::{FontSource, TextEngine, TextPrewarm, TextSection, WorldLabelRun};
+use crate::counters::Counts;
 
 /// K (`D-126`): the changed frame at which a full frame is forced while
 /// batches are retained. Sixteen trades prepare cost against atlas bytes on
@@ -360,6 +361,8 @@ pub struct TextPipeline {
     book: BatchBook,
     policy: TrimPolicy,
     stats: TextStats,
+    /// Glyphon `render` calls since the renderer last took them.
+    counts: Box<Counts>,
 }
 
 impl TextPipeline {
@@ -414,6 +417,7 @@ impl TextPipeline {
             book: BatchBook::default(),
             policy: TrimPolicy::default(),
             stats: TextStats::default(),
+            counts: Counts::boxed(),
         }
     }
 
@@ -696,6 +700,7 @@ impl TextPipeline {
         if !self.labels_drawable || self.world_labels.is_empty() {
             return;
         }
+        self.counts.text_render();
         if let Err(e) = self
             .labels_renderer
             .render(&self.atlas, &self.viewport, pass)
@@ -709,11 +714,17 @@ impl TextPipeline {
         self.labels_drawable && !self.world_labels.is_empty()
     }
 
+    /// Adds the overlay's glyphon `render` calls to `total`.
+    pub(crate) fn take_counts(&self, total: &mut crate::FrameCounters) {
+        self.counts.take_into(total);
+    }
+
     /// Draws the prepared sections.
     pub fn render<'pass>(&'pass self, pass: &mut RenderPass<'pass>) {
         if !self.sections_drawable {
             return;
         }
+        self.counts.text_render();
         if let Err(e) = self.text_renderer.render(&self.atlas, &self.viewport, pass) {
             log::error!("Text render error: {e:?}");
         }
@@ -728,6 +739,7 @@ impl TextPipeline {
         let Some(renderer) = self.batches.get(batch) else {
             return;
         };
+        self.counts.text_render();
         if let Err(e) = renderer.render(&self.atlas, &self.viewport, pass) {
             log::error!("Text batch {batch} render error: {e:?}");
         }

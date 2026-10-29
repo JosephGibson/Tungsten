@@ -100,6 +100,16 @@ impl Default for DisplayTelemetry {
 pub struct RenderCounts {
     pub entities: u32,
     pub sprite_instances: u32,
+    /// Sprite batches in this frame's extract, beside its instances.
+    pub sprite_batches: u32,
+    /// Draw calls the renderer recorded in the last rendered frame, the
+    /// engine's own; glyphon's text draws are `text_renders` (redo 7.3).
+    pub draw_calls: u64,
+    /// Bytes the renderer uploaded in the last rendered frame, the engine's
+    /// own: buffer and texture writes and buffers created with contents.
+    pub upload_bytes: u64,
+    /// Glyphon `render` calls in the last rendered frame.
+    pub text_renders: u64,
     /// Commands in the UI paint list.
     pub ui_commands: u32,
     /// Microseconds the UI layout stage took.

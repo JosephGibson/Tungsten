@@ -1,7 +1,7 @@
 //! Debug line pipeline; shares quad camera bind group and expands in shader.
 
+use crate::counters::{self, Counts};
 use bytemuck::{Pod, Zeroable};
-use wgpu::util::DeviceExt;
 
 /// Oriented-quad line instance.
 ///
@@ -66,6 +66,7 @@ const UNIT_QUAD_VERTICES: &[Vertex] = &[
 pub struct DebugLinePipeline {
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: wgpu::Buffer,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl DebugLinePipeline {
@@ -123,15 +124,21 @@ impl DebugLinePipeline {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("debug_line_unit_quad"),
-            contents: bytemuck::cast_slice(UNIT_QUAD_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let counts = Counts::boxed();
+        let vertex_buffer = counters::create_buffer_init(
+            &counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("debug_line_unit_quad"),
+                contents: bytemuck::cast_slice(UNIT_QUAD_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
 
         Self {
             pipeline,
             vertex_buffer,
+            counts,
         }
     }
 
@@ -146,17 +153,21 @@ impl DebugLinePipeline {
             return;
         }
 
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("debug_line_instance_buffer"),
-            contents: bytemuck::cast_slice(instances),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let instance_buffer = counters::create_buffer_init(
+            &self.counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("debug_line_instance_buffer"),
+                contents: bytemuck::cast_slice(instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-        render_pass.draw(0..6, 0..instances.len() as u32);
+        counters::draw(&self.counts, render_pass, 0..6, 0..instances.len() as u32);
     }
 }
 

@@ -70,8 +70,11 @@ def parse_pairs(text):
 
 
 def parse_log(text):
-    """Group telemetry lines into frames. A companion before the first
-    `frame:` line is an orphan; a missing companion is tolerated."""
+    """Group telemetry lines into frames. A companion attaches to the latest
+    `frame:` line, but a `gpu_passes: from=N` line, which a later frame
+    prints when the GPU timings of frame N come back, attaches to frame N
+    (the N-th `frame:` line). A companion before the first `frame:` line, or
+    naming no logged frame, is an orphan; a missing companion is tolerated."""
     log = Log(frames=[])
     for line in text.splitlines():
         match = LINE_RE.match(LOG_PREFIX_RE.sub("", line, count=1))
@@ -81,11 +84,16 @@ def parse_log(text):
         if tag == "frame":
             log.frames.append(Frame(stages=parse_pairs(rest)))
         elif tag in COMPANIONS:
-            if not log.frames:
+            pairs = parse_pairs(rest)
+            index = len(log.frames) - 1
+            if tag == "gpu_passes" and "from" in pairs:
+                number = pairs.pop("from")
+                index = int(number) - 1 if number is not None else -1
+            if not 0 <= index < len(log.frames):
                 log.orphans += 1
                 continue
-            frame = log.frames[-1]
-            setattr(frame, tag, parse_pairs(rest))
+            frame = log.frames[index]
+            setattr(frame, tag, pairs)
             frame.raw[tag] = rest
         elif tag == "bench-config":
             log.bench_config = rest
@@ -247,14 +255,23 @@ def evaluate_guard(guard, frames):
     return {"guard": name, "ok": True, "detail": f"{len(checked)} frames, {key} in {min(values):g}..{max(values):g}"}
 
 
-def analyze(text, warmup, frames, guards):
+# The share of a GPU run's window frames its timestamps must reach.
+GPU_SAMPLED_MIN = 0.95
+
+
+def analyze(text, warmup, frames, guards, gpu=False):
     """One run's measured window, its stats inputs, guard results, digest and
-    problems: frames missing from the window and failing guards."""
+    problems: frames missing from the window, failing guards and, in a GPU
+    run on an adapter with timestamps, a window under 95% sampled."""
     log = parse_log(text)
     measured = log.frames[warmup : warmup + frames]
     problems = []
     if len(measured) < frames:
         problems.append(f"{len(measured)} measured frames of {frames} ({len(log.frames)} logged, {warmup} warm-up)")
+    if gpu and (log.backend is None or log.backend["timestamp_query"]):
+        sampled = sum(1 for frame in measured if frame.gpu_passes)
+        if sampled < GPU_SAMPLED_MIN * frames:
+            problems.append(f"GPU timings on {sampled} of {frames} window frames, under {GPU_SAMPLED_MIN:.0%}")
     results = [evaluate_guard(guard, measured) for guard in guards]
     problems.extend(f"guard {result['guard']}: {result['detail']}" for result in results if not result["ok"])
     return {"log": log, "measured": measured, "guards": results, "digest": digest(measured), "problems": problems}

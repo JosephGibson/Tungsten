@@ -22,6 +22,7 @@
 
 use std::cmp::Ordering;
 
+use crate::counters::{self, Counts};
 use bytemuck::{Pod, Zeroable};
 use glam::{Vec2, Vec3};
 use tungsten_core::{LIGHT_CAP, Light, LightKind};
@@ -174,6 +175,7 @@ pub struct LightingResources {
     pub buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl LightingResources {
@@ -210,12 +212,19 @@ impl LightingResources {
             buffer,
             bind_group,
             bind_group_layout,
+            counts: Counts::boxed(),
         }
     }
 
     /// Upload an entire `LightUbo` payload.
     pub fn write(&self, queue: &wgpu::Queue, ubo: &LightUbo) {
-        queue.write_buffer(&self.buffer, 0, bytemuck::bytes_of(ubo));
+        counters::write_buffer(
+            &self.counts,
+            queue,
+            &self.buffer,
+            0,
+            bytemuck::bytes_of(ubo),
+        );
     }
 }
 

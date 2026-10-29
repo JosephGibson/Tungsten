@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::counters::{self, Counts, FrameCounters};
 use crate::debug_line::{DebugLineInstance, DebugLinePipeline};
 use crate::lighting::{LightUbo, LightingResources};
 use crate::lit_sprite::{
@@ -44,8 +45,8 @@ use crate::text::{
     FontSource, TextEngine, TextNodes, TextPipeline, TextPrewarm, TextSection, TextStats,
     WorldLabelRun,
 };
-use crate::timing::TimingResources;
-pub use crate::timing::{CpuFrameTimings, GpuFrameTimings};
+pub use crate::timing::{CpuFrameTimings, GpuFrameSample, GpuFrameTimings};
+use crate::timing::{Ring, TimingLayout, TimingResources};
 use crate::ui::{DrawItem, UiPipeline, attachment_scissor};
 use thiserror::Error;
 use tungsten_core::assets::{
@@ -179,6 +180,15 @@ pub struct Renderer {
     pub gpu_timings: GpuFrameTimings,
     /// Last CPU render timings.
     pub cpu_timings: CpuFrameTimings,
+    /// The timestamp readbacks of timed frames in flight (redo 7.3).
+    timing_ring: Ring<TimingResources>,
+    /// The app's number for the frame being rendered, which a timed frame's
+    /// samples name.
+    frame_number: u64,
+    /// The renderer's own draws: the present blits.
+    counts: Box<Counts>,
+    /// The last rendered frame's draws and uploads.
+    frame_counters: FrameCounters,
     /// One-shot PNG capture armed for the next frame.
     pub(crate) pending_capture: Option<PendingCapture>,
     /// View-projection bytes last written to the quad and sprite camera
@@ -273,6 +283,8 @@ impl Renderer {
             frame_gpu_ms: None,
             render_gpu_ms: None,
             pass_gpu_ms: Vec::new(),
+            samples: Vec::new(),
+            skipped_frames: 0,
             backend: Some(format!("{:?}", adapter_info.backend)),
             adapter_name: Some(adapter_info.name.clone()),
             present_mode: Some(present_mode_label(present_mode).to_string()),
@@ -634,6 +646,10 @@ impl Renderer {
             timestamp_support,
             gpu_timings,
             cpu_timings: CpuFrameTimings::default(),
+            timing_ring: Ring::default(),
+            frame_number: 0,
+            counts: Counts::boxed(),
+            frame_counters: FrameCounters::default(),
             pending_capture: None,
             camera_written: None,
             lights_written: None,
@@ -1395,6 +1411,7 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
+        self.gpu_timings.clear_durations();
         self.render_frame_internal(
             view_proj,
             quads,
@@ -1408,7 +1425,44 @@ impl Renderer {
         )
     }
 
-    /// Timed full frame; stalls on `device.poll(wait_indefinitely())`.
+    /// The app's number for the frame it renders next, which a timed
+    /// frame's [`GpuFrameSample`] names when it is read back.
+    pub fn set_frame_number(&mut self, frame: u64) {
+        self.frame_number = frame;
+    }
+
+    /// The last rendered frame's draw calls and upload bytes, the engine's
+    /// own, and its glyphon `render` calls: what was recorded between the end
+    /// of the frame before and the end of this one.
+    #[must_use]
+    pub fn frame_counters(&self) -> FrameCounters {
+        self.frame_counters
+    }
+
+    /// Adds every pipeline's counts to a frame's total and starts them over.
+    fn take_counts(&self) -> FrameCounters {
+        let mut total = FrameCounters::default();
+        self.counts.take_into(&mut total);
+        self.quad_pipeline.counts.take_into(&mut total);
+        self.sprite_pipeline.counts.take_into(&mut total);
+        self.debug_line_pipeline.counts.take_into(&mut total);
+        self.mesh_particle_pipeline.counts.take_into(&mut total);
+        self.ui_pipeline.counts.take_into(&mut total);
+        self.lighting.counts.take_into(&mut total);
+        self.post_stack.take_counts(&mut total);
+        if let Some(smaa) = &self.smaa {
+            smaa.take_counts(&mut total);
+        }
+        self.text_pipeline.take_counts(&mut total);
+        total
+    }
+
+    /// Timed full frame. It never waits on the GPU: the timestamps of a
+    /// frame resolve into a slot of a ring of four
+    /// readbacks, mapped after its submit and read by a later frame's
+    /// non-blocking poll, into [`GpuFrameTimings::samples`] with the frame
+    /// they measured. A frame that finds every slot in flight runs untimed
+    /// and counts in [`GpuFrameTimings::skipped_frames`].
     ///
     /// # Errors
     ///
@@ -1425,20 +1479,50 @@ impl Renderer {
         ui: &PaintList,
         post_stack: &PostStack,
     ) -> Result<RenderOutcome, RenderError> {
-        let timing = if self.timestamp_support {
-            TimingResources::new(
-                &self.device,
+        self.gpu_timings.samples.clear();
+        if !self.timestamp_support {
+            self.gpu_timings.clear_durations();
+            return self.render_frame_internal(
+                view_proj,
+                quads,
+                sprite_batches,
+                debug_quads,
+                debug_lines,
+                text_sections,
+                ui,
                 post_stack,
-                self.target_pool.scene.bloom_mip_count(),
-                self.post_aa.is_smaa() && self.smaa.is_some(),
-                // Only a capture frame records the present blit.
-                self.pending_capture.is_some(),
-            )
-        } else {
-            None
-        };
-
-        self.render_frame_internal(
+                None,
+            );
+        }
+        // Reads the slots whose maps an earlier frame left completing.
+        let _ = self.device.poll(wgpu::PollType::Poll);
+        let period = self.queue.get_timestamp_period();
+        let out = &mut self.gpu_timings;
+        self.timing_ring
+            .complete(TimingResources::mapped, |frame, slot| {
+                slot.read(frame, period, out);
+            });
+        let layout = TimingLayout::new(
+            post_stack,
+            self.target_pool.scene.bloom_mip_count(),
+            self.post_aa.is_smaa() && self.smaa.is_some(),
+            (self.surface_config.width, self.surface_config.height),
+        );
+        let device = &self.device;
+        let count = layout.query_count(post_stack);
+        let rebuilt = self.timing_ring.ensure(layout, || {
+            count.map(|count| TimingResources::new(device, count))
+        });
+        if rebuilt && count.is_none() {
+            log::warn!(
+                "GPU pass timing exceeds the timestamp query limit; rendering without timings"
+            );
+        }
+        let mut taken = self.timing_ring.take();
+        if let Some((_, slot)) = taken.as_mut() {
+            slot.begin();
+        }
+        let result = self.render_frame_internal(
             view_proj,
             quads,
             sprite_batches,
@@ -1447,8 +1531,18 @@ impl Renderer {
             text_sections,
             ui,
             post_stack,
-            timing,
-        )
+            taken.as_mut().map(|(_, slot)| slot),
+        );
+        if let Some((index, slot)) = taken {
+            if matches!(result, Ok(RenderOutcome::Presented { .. })) && slot.resolved() {
+                slot.map();
+                self.timing_ring.submit(index, slot, self.frame_number);
+            } else {
+                self.timing_ring.release(index, slot);
+            }
+        }
+        self.gpu_timings.skipped_frames = self.timing_ring.skipped();
+        result
     }
 
     #[allow(clippy::too_many_arguments)] // stable frame-extract surface mirrors render_frame_full.
@@ -1462,10 +1556,9 @@ impl Renderer {
         text_sections: &[TextSection],
         ui: &PaintList,
         post_stack: &PostStack,
-        mut timing: Option<TimingResources>,
+        mut timing: Option<&mut TimingResources>,
     ) -> Result<RenderOutcome, RenderError> {
         self.cpu_timings = CpuFrameTimings::default();
-        self.gpu_timings.clear_durations();
 
         let post_stack_len = post_stack.len();
         // A capture frame takes the blit path, whose source the screenshot
@@ -1502,8 +1595,13 @@ impl Renderer {
         // Late acquire (`D-145`): the passes before the swapchain stage
         // record, and submit, before the acquire waits for the swapchain.
         let encode_start = Instant::now();
-        let mut first =
-            self.record_before_acquire(view_proj, text_sections, &plan, draws, timing.as_mut());
+        let mut first = self.record_before_acquire(
+            view_proj,
+            text_sections,
+            &plan,
+            draws,
+            timing.as_deref_mut(),
+        );
         let mut encode_ms = encode_start.elapsed().as_secs_f64() as f32 * 1000.0;
         let mut submit_ms = 0.0;
         if SUBMIT_BEFORE_ACQUIRE && let Some(buffer) = first.take() {
@@ -1531,9 +1629,9 @@ impl Renderer {
         self.cpu_timings.acquire_ms = acquire_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
         // An acquire that resized the targets leaves the first part drawn at
-        // the old size: record it again at the new one, with timing
-        // resources from the resized pool, since a larger size can add bloom
-        // mips.
+        // the old size: record it again at the new one, untimed, since the
+        // ring's slots are sized for the old layout; the next frame rebuilds
+        // them.
         if record_again_after_acquire(targets_before, self.targets_at()) {
             log::debug!(
                 "late acquire: the acquire resized the targets to {}x{}; recording the passes before the swapchain stage again",
@@ -1541,17 +1639,16 @@ impl Renderer {
                 self.surface_config.height
             );
             let record_start = Instant::now();
-            if timing.is_some() {
-                timing = TimingResources::new(
-                    &self.device,
-                    post_stack,
-                    self.target_pool.scene.bloom_mip_count(),
-                    self.post_aa.is_smaa() && self.smaa.is_some(),
-                    capture.is_some(),
-                );
+            if let Some(slot) = timing.take() {
+                slot.begin();
             }
-            first =
-                self.record_before_acquire(view_proj, text_sections, &plan, draws, timing.as_mut());
+            first = self.record_before_acquire(
+                view_proj,
+                text_sections,
+                &plan,
+                draws,
+                timing.as_deref_mut(),
+            );
             encode_ms += record_start.elapsed().as_secs_f64() as f32 * 1000.0;
         }
 
@@ -1615,14 +1712,14 @@ impl Renderer {
             draws,
             Some(frame_view),
             blit_bind_group.as_ref(),
-            timing.as_mut(),
+            timing.as_deref_mut(),
         );
 
         // A direct capture's frame is in the stand-in: the same blit puts it
         // on the real swapchain.
         if let (Some(_), Some(bind_group)) = (&standin, &blit_bind_group) {
             let desc = PassDesc::new("tungsten_present_pass", TargetId::Swapchain);
-            let timestamp_writes = timing.as_mut().map(|t| t.next("present".into()));
+            let timestamp_writes = timing.as_deref_mut().map(|t| t.next("present".into()));
             let mut pass = PassRecorder::begin_timed(
                 &mut encoder,
                 &desc,
@@ -1633,7 +1730,7 @@ impl Renderer {
             );
             pass.set_pipeline(&self.present_blit.pipeline);
             pass.set_bind_group(0, bind_group, &[]);
-            pass.draw(0..3, 0..1);
+            counters::draw(&self.counts, &mut pass, 0..3, 0..1);
         }
 
         // Screenshot path: readback of the blit's source. That is the
@@ -1677,7 +1774,7 @@ impl Renderer {
             );
         }
 
-        if let Some(t) = timing.as_ref() {
+        if let Some(t) = timing {
             t.resolve(&mut encoder);
         }
 
@@ -1706,10 +1803,6 @@ impl Renderer {
             .map(|()| capture.path)
         });
 
-        if let Some(t) = timing {
-            t.read(&self.device, &self.queue, &mut self.gpu_timings);
-        }
-
         self.cpu_timings.submit_present_ms =
             submit_ms + submit_present_start.elapsed().as_secs_f64() as f32 * 1000.0;
 
@@ -1717,6 +1810,7 @@ impl Renderer {
         if reconfigure_after {
             self.reconfigure_after_suboptimal();
         }
+        self.frame_counters = self.take_counts();
 
         Ok(RenderOutcome::Presented { capture })
     }
@@ -2028,7 +2122,7 @@ impl Renderer {
                 if let Some(bind_group) = blit_bind_group {
                     pass.set_pipeline(&self.present_blit.pipeline);
                     pass.set_bind_group(0, bind_group, &[]);
-                    pass.draw(0..3, 0..1);
+                    counters::draw(&self.counts, &mut pass, 0..3, 0..1);
                 }
             } else if let Some(pi) = post_index
                 && let (Some(post_pass), Some(&(src, _dst))) =

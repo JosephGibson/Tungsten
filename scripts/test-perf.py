@@ -122,6 +122,54 @@ class Parsing(unittest.TestCase):
         self.assertIsNone(perf_stats.summarize([None]))
 
 
+def gpu_log(frames, delays, *, tail=0):
+    """A GPU run's log: each frame's `frame:` line, then the `gpu_passes:`
+    lines of the frames `delays` says it reads back, `{frame: delay}`."""
+    lines = [BACKEND]
+    due = {}
+    for frame, delay in delays.items():
+        due.setdefault(frame + delay, []).append(frame)
+    for number in range(1, frames + tail + 1):
+        lines.append(frame_line(10.0))
+        for measured in sorted(due.get(number, [])):
+            lines.append(APP + f"gpu_passes: from={measured} scene={measured / 10:.2f}ms render_span=1.00ms")
+    return "\n".join(lines) + "\n"
+
+
+class FromAttribution(unittest.TestCase):
+    """`gpu_passes: from=N` lines attach to frame N, whenever they print."""
+
+    def test_a_warm_up_frames_sample_inside_the_window_is_dropped(self):
+        # Warm-up 2: frame 2's sample prints in frame 3, the window's first.
+        analysis = perf_stats.analyze(gpu_log(6, {2: 1}), 2, 3, [])
+        self.assertTrue(all(frame.gpu_passes is None for frame in analysis["measured"]))
+        self.assertEqual(analysis["log"].frames[1].gpu_passes["scene"], 0.2, "it stays with frame 2")
+
+    def test_two_samples_read_in_one_frame_attach_to_their_own_frames(self):
+        log = perf_stats.parse_log(gpu_log(6, {2: 2, 3: 1}))
+        self.assertEqual(log.frames[1].gpu_passes["scene"], 0.2)
+        self.assertEqual(log.frames[2].gpu_passes["scene"], 0.3)
+        self.assertNotIn("from", log.frames[1].gpu_passes)
+
+    def test_the_windows_last_frames_are_sampled_from_the_tail(self):
+        delays = {frame: 3 for frame in range(1, 8)}
+        analysis = perf_stats.analyze(gpu_log(7, delays, tail=4), 2, 5, [], gpu=True)
+        self.assertEqual(analysis["problems"], [])
+        self.assertTrue(all(frame.gpu_passes for frame in analysis["measured"]))
+        short = perf_stats.analyze(gpu_log(7, delays), 2, 5, [], gpu=True)
+        self.assertIn("GPU timings on 2 of 5 window frames, under 95%", short["problems"])
+
+    def test_a_window_under_95_percent_sampled_is_invalid(self):
+        delays = {frame: 1 for frame in range(1, 101) if frame != 50}
+        ok = perf_stats.analyze(gpu_log(100, delays, tail=4), 0, 100, [], gpu=True)
+        self.assertEqual(ok["problems"], [], "99 of 100 sampled")
+        sparse = {frame: 1 for frame in range(1, 101) if frame % 10}
+        bad = perf_stats.analyze(gpu_log(100, sparse, tail=4), 0, 100, [], gpu=True)
+        self.assertIn("GPU timings on 90 of 100 window frames, under 95%", bad["problems"])
+        no_timestamps = gpu_log(100, {}).replace("timestamp_query: true", "timestamp_query: false")
+        self.assertEqual(perf_stats.analyze(no_timestamps, 0, 100, [], gpu=True)["problems"], [])
+
+
 class Guards(unittest.TestCase):
     def test_guards_pass_and_fail(self):
         frames = perf_stats.parse_log(physics_log(5)).frames
@@ -333,7 +381,14 @@ class Runner(unittest.TestCase):
         self.assertTrue((out / "capture.json").is_file() and (out / "README.md").is_file())
 
     def test_a_gpu_run_takes_tail_frames_and_digests_alike(self):
-        capture, envs, _ = self.run_capture(row(gpu=True, repeat=1), physics_log(11))
+        lines, frame = [], 0
+        for line in physics_log(11).splitlines():
+            if "frame:" in line:
+                frame += 1
+                if frame > 1:
+                    lines.append(APP + f"gpu_passes: from={frame - 1} scene=1.00ms render_span=2.00ms")
+            lines.append(line)
+        capture, envs, _ = self.run_capture(row(gpu=True, repeat=1), "\n".join(lines) + "\n")
         self.assertTrue(capture["valid"], capture["reasons"])
         timing, gpu = envs
         self.assertNotIn("TUNGSTEN_GPU_TIMING", timing)

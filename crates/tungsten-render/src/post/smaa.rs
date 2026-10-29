@@ -24,8 +24,8 @@
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::config::PostAaMode;
-use wgpu::util::DeviceExt;
 
+use crate::counters::{self, Counts};
 use crate::passes::TargetId;
 use crate::post::smaa_luts;
 use crate::shader_hot_reload::build_validated;
@@ -220,6 +220,7 @@ pub struct SmaaPipeline {
     #[allow(dead_code)]
     search_tex: wgpu::Texture,
     linear_sampler: wgpu::Sampler,
+    counts: Box<Counts>,
     target_format: wgpu::TextureFormat,
     pub shader_ids: SmaaShaderIds,
     /// Bind groups over the scene targets, keyed on the pool generation and,
@@ -232,6 +233,11 @@ pub struct SmaaPipeline {
 }
 
 impl SmaaPipeline {
+    /// Adds SMAA's draw and upload counts to `total`.
+    pub(crate) fn take_counts(&self, total: &mut crate::FrameCounters) {
+        self.counts.take_into(total);
+    }
+
     /// Build all three pipelines + LUTs. Stage shader modules come from the
     /// shared `ShaderModuleCache`; the renderer pre-seeds them with the
     /// compile-time `include_str!` WGSL.
@@ -246,21 +252,26 @@ impl SmaaPipeline {
         shader_ids: SmaaShaderIds,
     ) -> Self {
         let layouts = build_layouts(device);
-        let preset_ubo = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("smaa_preset_ubo"),
-            contents: bytemuck::bytes_of(&SmaaPresetUbo::from_preset(
-                SmaaPreset {
-                    threshold: 0.10,
-                    max_search_steps: 16,
-                    max_search_steps_diag: 0,
-                    corner_rounding: u32::MAX,
-                },
-                (1, 1),
-            )),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let (area_tex, area_view) = smaa_luts::upload_area(device, queue);
-        let (search_tex, search_view) = smaa_luts::upload_search(device, queue);
+        let counts = Counts::boxed();
+        let preset_ubo = counters::create_buffer_init(
+            &counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("smaa_preset_ubo"),
+                contents: bytemuck::bytes_of(&SmaaPresetUbo::from_preset(
+                    SmaaPreset {
+                        threshold: 0.10,
+                        max_search_steps: 16,
+                        max_search_steps_diag: 0,
+                        corner_rounding: u32::MAX,
+                    },
+                    (1, 1),
+                )),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            },
+        );
+        let (area_tex, area_view) = smaa_luts::upload_area(&counts, device, queue);
+        let (search_tex, search_view) = smaa_luts::upload_search(&counts, device, queue);
         let linear_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("smaa_linear_clamp"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -318,6 +329,7 @@ impl SmaaPipeline {
             area_tex,
             search_tex,
             linear_sampler,
+            counts,
             target_format: format,
             shader_ids,
             edge_source_bg: TargetCache::default(),
@@ -340,7 +352,13 @@ impl SmaaPipeline {
     pub fn update_preset(&self, queue: &wgpu::Queue, mode: PostAaMode, size: (u32, u32)) {
         if let Some(preset) = SmaaPreset::from_mode(mode) {
             let ubo = SmaaPresetUbo::from_preset(preset, size);
-            queue.write_buffer(&self.preset_ubo, 0, bytemuck::bytes_of(&ubo));
+            counters::write_buffer(
+                &self.counts,
+                queue,
+                &self.preset_ubo,
+                0,
+                bytemuck::bytes_of(&ubo),
+            );
         }
     }
 
@@ -377,7 +395,7 @@ impl SmaaPipeline {
         render_pass.set_pipeline(&self.edge_pipeline);
         render_pass.set_bind_group(0, &*source_bg, &[]);
         render_pass.set_bind_group(1, &self.edge_params_bg, &[]);
-        render_pass.draw(0..3, 0..1);
+        counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
     /// Record the blend-weights pass.
@@ -412,7 +430,7 @@ impl SmaaPipeline {
         render_pass.set_pipeline(&self.blend_pipeline);
         render_pass.set_bind_group(0, &*input_bg, &[]);
         render_pass.set_bind_group(1, &self.blend_lut_bg, &[]);
-        render_pass.draw(0..3, 0..1);
+        counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
     /// Record the neighborhood-blend pass. `source` names the target
@@ -462,7 +480,7 @@ impl SmaaPipeline {
         render_pass.set_pipeline(&self.nbh_pipeline);
         render_pass.set_bind_group(0, &*input_bg, &[]);
         render_pass.set_bind_group(1, &*params_bg, &[]);
-        render_pass.draw(0..3, 0..1);
+        counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
     /// Hot-reload entry: rebuild only the affected stage's pipeline against a
