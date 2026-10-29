@@ -5806,6 +5806,7 @@ pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOw
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
+pub fn tungsten_core::World::counters(&self) -> tungsten_core::WorldCounters
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
@@ -5857,6 +5858,29 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+pub struct tungsten_core::ecs::WorldCounters
+pub tungsten_core::ecs::WorldCounters::archetype_moves: u64
+pub tungsten_core::ecs::WorldCounters::despawned: u64
+pub tungsten_core::ecs::WorldCounters::events_sent: u64
+pub tungsten_core::ecs::WorldCounters::spawned: u64
+impl core::clone::Clone for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::clone(&self) -> tungsten_core::WorldCounters
+impl core::cmp::Eq for tungsten_core::WorldCounters
+impl core::cmp::PartialEq for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::eq(&self, &tungsten_core::WorldCounters) -> bool
+impl core::default::Default for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::default() -> tungsten_core::WorldCounters
+impl core::fmt::Debug for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::WorldCounters
+impl core::marker::StructuralPartialEq for tungsten_core::WorldCounters
+impl core::marker::Freeze for tungsten_core::WorldCounters
+impl core::marker::Send for tungsten_core::WorldCounters
+impl core::marker::Sync for tungsten_core::WorldCounters
+impl core::marker::Unpin for tungsten_core::WorldCounters
+impl core::marker::UnsafeUnpin for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::WorldCounters
 pub trait tungsten_core::ecs::Bundle: 'static
 pub fn tungsten_core::ecs::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
 pub fn tungsten_core::ecs::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
@@ -18776,6 +18800,7 @@ pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOw
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
+pub fn tungsten_core::World::counters(&self) -> tungsten_core::WorldCounters
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
@@ -18827,6 +18852,29 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+pub struct tungsten_core::WorldCounters
+pub tungsten_core::WorldCounters::archetype_moves: u64
+pub tungsten_core::WorldCounters::despawned: u64
+pub tungsten_core::WorldCounters::events_sent: u64
+pub tungsten_core::WorldCounters::spawned: u64
+impl core::clone::Clone for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::clone(&self) -> tungsten_core::WorldCounters
+impl core::cmp::Eq for tungsten_core::WorldCounters
+impl core::cmp::PartialEq for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::eq(&self, &tungsten_core::WorldCounters) -> bool
+impl core::default::Default for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::default() -> tungsten_core::WorldCounters
+impl core::fmt::Debug for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::WorldCounters
+impl core::marker::StructuralPartialEq for tungsten_core::WorldCounters
+impl core::marker::Freeze for tungsten_core::WorldCounters
+impl core::marker::Send for tungsten_core::WorldCounters
+impl core::marker::Sync for tungsten_core::WorldCounters
+impl core::marker::Unpin for tungsten_core::WorldCounters
+impl core::marker::UnsafeUnpin for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::WorldCounters
 #[non_exhaustive] pub struct tungsten_core::WorldLabel
 pub tungsten_core::WorldLabel::anchor: glam::f32::vec2::Vec2
 pub tungsten_core::WorldLabel::color: [u8; 4]

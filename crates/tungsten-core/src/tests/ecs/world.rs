@@ -1003,3 +1003,74 @@ fn the_fixed_step_hold_reaches_every_registered_queue() {
         "the frame view has rotated past it"
     );
 }
+
+#[test]
+fn world_counters_count_one_move_for_one_insert() {
+    let mut world = World::new();
+    let entity = world.spawn();
+    world.insert(entity, Position { x: 0.0, y: 0.0 });
+    world.insert(entity, Position { x: 1.0, y: 0.0 });
+
+    let counters = world.counters();
+    assert_eq!(counters.archetype_moves, 1, "the overwrite moves nothing");
+    assert_eq!(counters.spawned, 1);
+
+    world.remove_component::<Position>(entity);
+    assert_eq!(world.counters().archetype_moves, 2);
+}
+
+#[test]
+fn world_counters_count_one_move_for_a_buffered_three_component_spawn() {
+    let mut world = World::new();
+    let mut buffer = CommandBuffer::new();
+    let pending = buffer.spawn();
+    buffer.insert_pending(pending, Position { x: 0.0, y: 0.0 });
+    buffer.insert_pending(pending, Velocity { dx: 1.0, dy: 0.0 });
+    buffer.insert_pending(pending, Name("a".into()));
+    world.flush(buffer);
+
+    let counters = world.counters();
+    assert_eq!(counters.spawned, 1);
+    assert_eq!(counters.archetype_moves, 1, "one move per run (D-135)");
+}
+
+#[test]
+fn world_counters_count_spawns_and_despawns() {
+    let mut world = World::new();
+    let a = world.spawn();
+    let b = world.spawn_with((Position { x: 0.0, y: 0.0 },));
+    world.despawn(a);
+    world.despawn(a);
+    let mut buffer = CommandBuffer::new();
+    buffer.despawn(b);
+    world.flush(buffer);
+
+    let counters = world.counters();
+    assert_eq!(counters.spawned, 2);
+    assert_eq!(
+        counters.despawned, 2,
+        "a dead entity's despawn is not counted"
+    );
+}
+
+#[test]
+fn world_counters_sum_events_over_two_flushes() {
+    let mut world = World::new();
+    world.register_event::<i32>();
+    world.register_event::<u8>();
+    world.get_resource_mut::<EventQueue<i32>>().unwrap().send(1);
+    world.get_resource_mut::<EventQueue<i32>>().unwrap().send(2);
+    world.get_resource_mut::<EventQueue<u8>>().unwrap().send(1);
+    assert_eq!(world.counters().events_sent, 0, "counted at the flush");
+    world.flush_events();
+    assert_eq!(world.counters().events_sent, 3);
+
+    world.get_resource_mut::<EventQueue<u8>>().unwrap().send(2);
+    world.flush_events();
+    world.flush_events();
+    assert_eq!(
+        world.counters().events_sent,
+        4,
+        "a rotated event counts once"
+    );
+}

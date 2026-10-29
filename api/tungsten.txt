@@ -794,6 +794,70 @@ impl core::marker::UnsafeUnpin for tungsten::telemetry::RenderCounts
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten::telemetry::RenderCounts
 impl core::panic::unwind_safe::UnwindSafe for tungsten::telemetry::RenderCounts
 pub mod tungsten::testing
+pub struct tungsten::testing::Allocations
+pub tungsten::testing::Allocations::bytes: u64
+pub tungsten::testing::Allocations::count: u64
+impl core::clone::Clone for tungsten::testing::Allocations
+pub fn tungsten::testing::Allocations::clone(&self) -> tungsten::testing::Allocations
+impl core::cmp::Eq for tungsten::testing::Allocations
+impl core::cmp::PartialEq for tungsten::testing::Allocations
+pub fn tungsten::testing::Allocations::eq(&self, &tungsten::testing::Allocations) -> bool
+impl core::default::Default for tungsten::testing::Allocations
+pub fn tungsten::testing::Allocations::default() -> tungsten::testing::Allocations
+impl core::fmt::Debug for tungsten::testing::Allocations
+pub fn tungsten::testing::Allocations::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::testing::Allocations
+impl core::marker::StructuralPartialEq for tungsten::testing::Allocations
+impl core::marker::Freeze for tungsten::testing::Allocations
+impl core::marker::Send for tungsten::testing::Allocations
+impl core::marker::Sync for tungsten::testing::Allocations
+impl core::marker::Unpin for tungsten::testing::Allocations
+impl core::marker::UnsafeUnpin for tungsten::testing::Allocations
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::Allocations
+impl core::panic::unwind_safe::UnwindSafe for tungsten::testing::Allocations
+pub struct tungsten::testing::CounterGuard
+pub tungsten::testing::CounterGuard::allocated_bytes: u64
+pub tungsten::testing::CounterGuard::allocations: u64
+pub tungsten::testing::CounterGuard::archetype_moves: u64
+pub tungsten::testing::CounterGuard::despawned: u64
+pub tungsten::testing::CounterGuard::events_sent: u64
+pub tungsten::testing::CounterGuard::max_sprite_batches: u64
+pub tungsten::testing::CounterGuard::max_sprite_instances: u64
+pub tungsten::testing::CounterGuard::spawned: u64
+impl tungsten::testing::CounterGuard
+pub fn tungsten::testing::CounterGuard::check(&self, impl core::convert::AsRef<std::path::Path>)
+pub fn tungsten::testing::CounterGuard::measure(&mut tungsten::testing::Harness, u32, u32) -> Self
+impl core::clone::Clone for tungsten::testing::CounterGuard
+pub fn tungsten::testing::CounterGuard::clone(&self) -> tungsten::testing::CounterGuard
+impl core::cmp::Eq for tungsten::testing::CounterGuard
+impl core::cmp::PartialEq for tungsten::testing::CounterGuard
+pub fn tungsten::testing::CounterGuard::eq(&self, &tungsten::testing::CounterGuard) -> bool
+impl core::default::Default for tungsten::testing::CounterGuard
+pub fn tungsten::testing::CounterGuard::default() -> tungsten::testing::CounterGuard
+impl core::fmt::Debug for tungsten::testing::CounterGuard
+pub fn tungsten::testing::CounterGuard::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten::testing::CounterGuard
+impl core::marker::StructuralPartialEq for tungsten::testing::CounterGuard
+impl core::marker::Freeze for tungsten::testing::CounterGuard
+impl core::marker::Send for tungsten::testing::CounterGuard
+impl core::marker::Sync for tungsten::testing::CounterGuard
+impl core::marker::Unpin for tungsten::testing::CounterGuard
+impl core::marker::UnsafeUnpin for tungsten::testing::CounterGuard
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::CounterGuard
+impl core::panic::unwind_safe::UnwindSafe for tungsten::testing::CounterGuard
+pub struct tungsten::testing::CountingAlloc
+impl core::alloc::global::GlobalAlloc for tungsten::testing::CountingAlloc
+pub unsafe fn tungsten::testing::CountingAlloc::alloc(&self, core::alloc::layout::Layout) -> *mut u8
+pub unsafe fn tungsten::testing::CountingAlloc::alloc_zeroed(&self, core::alloc::layout::Layout) -> *mut u8
+pub unsafe fn tungsten::testing::CountingAlloc::dealloc(&self, *mut u8, core::alloc::layout::Layout)
+pub unsafe fn tungsten::testing::CountingAlloc::realloc(&self, *mut u8, core::alloc::layout::Layout, usize) -> *mut u8
+impl core::marker::Freeze for tungsten::testing::CountingAlloc
+impl core::marker::Send for tungsten::testing::CountingAlloc
+impl core::marker::Sync for tungsten::testing::CountingAlloc
+impl core::marker::Unpin for tungsten::testing::CountingAlloc
+impl core::marker::UnsafeUnpin for tungsten::testing::CountingAlloc
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::CountingAlloc
+impl core::panic::unwind_safe::UnwindSafe for tungsten::testing::CountingAlloc
 #[non_exhaustive] pub struct tungsten::testing::FrameDraw
 pub tungsten::testing::FrameDraw::debug_lines: alloc::vec::Vec<tungsten_render::debug_line::DebugLineInstance>
 pub tungsten::testing::FrameDraw::debug_quads: alloc::vec::Vec<tungsten_render::quad::QuadInstance>
@@ -814,6 +878,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::FrameDraw
 impl core::panic::unwind_safe::UnwindSafe for tungsten::testing::FrameDraw
 pub struct tungsten::testing::Harness
 impl tungsten::testing::Harness
+pub fn tungsten::testing::Harness::allocate_texture_handle(&mut self) -> tungsten_core::assets::registry::TextureHandle
 pub fn tungsten::testing::Harness::audio(&self) -> &[tungsten_core::audio::AudioCommand]
 pub fn tungsten::testing::Harness::draw(&self) -> core::option::Option<&tungsten::testing::FrameDraw>
 pub fn tungsten::testing::Harness::events<T: 'static>(&self) -> impl core::iter::traits::iterator::Iterator<Item = &T>
@@ -872,6 +937,7 @@ impl core::marker::Unpin for tungsten::testing::UiHarness
 impl core::marker::UnsafeUnpin for tungsten::testing::UiHarness
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten::testing::UiHarness
 impl !core::panic::unwind_safe::UnwindSafe for tungsten::testing::UiHarness
+pub fn tungsten::testing::allocations() -> tungsten::testing::Allocations
 pub mod tungsten::transition
 pub enum tungsten::transition::TransitionEffect
 pub tungsten::transition::TransitionEffect::Dissolve

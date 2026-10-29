@@ -24,13 +24,16 @@
 //! [`Time`](tungsten_core::Time) by it, and systems read it through `Time`,
 //! times the scale and zero while paused. Pause or scale the game clock
 //! through [`Harness::world_mut`], as a game does through its `World`.
+//!
+//! A counter guard ([`CounterGuard`]) pins a window's allocations, ECS
+//! counts and sprite batches, so a test fails when a change adds work.
 
 #![deny(missing_docs)]
 
 use std::path::Path;
 use std::time::Instant;
 
-use tungsten_core::assets::ResolvedManifest;
+use tungsten_core::assets::{ResolvedManifest, TextureHandle};
 use tungsten_core::script::{Ending, Report, Script};
 use tungsten_core::ui::PaintList;
 use tungsten_core::{AudioCommand, Binding, EventQueue, InputState, MaterialRegistry, World};
@@ -44,8 +47,10 @@ use crate::asset_loader;
 use crate::input_bridge;
 use crate::script::ScriptRunner;
 
+mod guard;
 mod ui;
 
+pub use guard::{Allocations, CounterGuard, CountingAlloc, allocations};
 pub use ui::UiHarness;
 
 /// The dt each frame gets until [`Harness::set_dt`] changes it: 60 Hz, as
@@ -61,6 +66,12 @@ pub struct Harness {
     audio: Vec<AudioCommand>,
     frames: u64,
     exit_requested: bool,
+    /// Whether [`step`](Self::step) only counts the sprite channel
+    /// ([`CounterGuard`]) instead of copying the frame's draw.
+    count_only: bool,
+    /// The last counted frame's sprite batches and instances.
+    sprite_counts: (u64, u64),
+    next_texture_handle: u32,
 }
 
 impl Harness {
@@ -84,7 +95,21 @@ impl Harness {
             audio: Vec::new(),
             frames: 0,
             exit_requested: false,
+            count_only: false,
+            sprite_counts: (0, 0),
+            next_texture_handle: 0,
         }
+    }
+
+    /// A texture handle to register sprites on headless, as a renderer's
+    /// [`allocate_texture_handle`](tungsten_render::Renderer::allocate_texture_handle)
+    /// gives one: the harness's own counter from 0, with no texture behind
+    /// it, since no renderer runs (`D-048`). Sprites registered on one
+    /// handle share a batch, as on one atlas page.
+    pub fn allocate_texture_handle(&mut self) -> TextureHandle {
+        let handle = TextureHandle(self.next_texture_handle);
+        self.next_texture_handle += 1;
+        handle
     }
 
     /// Loads the manifest at `path` without the renderer: its animations,
@@ -154,12 +179,27 @@ impl Harness {
             if self.exit_requested {
                 return completed;
             }
-            self.app.audio_capture = Some(Vec::new());
+            let count_only = self.count_only;
+            // Counting reuses the last frame's audio buffer, so the step
+            // itself allocates nothing.
+            let capture = if count_only {
+                let mut buffer = std::mem::take(&mut self.audio);
+                buffer.clear();
+                buffer
+            } else {
+                Vec::new()
+            };
+            self.app.audio_capture = Some(capture);
             let mut draw = None;
+            let mut sprite_counts = (0, 0);
             let end = self
                 .app
                 .run_frame(Instant::now(), FrameClock::Pinned(self.dt), |extract| {
-                    draw = Some(FrameDraw::copy_of(extract));
+                    if count_only {
+                        sprite_counts = guard::sprite_counts(extract);
+                    } else {
+                        draw = Some(FrameDraw::copy_of(extract));
+                    }
                 });
             let audio = self.app.audio_capture.take().unwrap_or_default();
             if end == FrameEnd::ExitRequested {
@@ -168,6 +208,7 @@ impl Harness {
             }
             self.draw = draw;
             self.audio = audio;
+            self.sprite_counts = sprite_counts;
             self.frames += 1;
             if end == FrameEnd::Last {
                 self.exit_requested = true;

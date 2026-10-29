@@ -1,6 +1,6 @@
-# Benchmarks, part 1: runner and guards (bench-runner) — draft
+# Benchmarks, part 1: runner and guards (bench-runner)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo step 7.3 (§5.8's part 1). Rewrite the runner with sittings built in: a same-sitting A/A, the one-rerun way out, aligned builds against code-placement noise, a contamination check at the start, RSS compared within a sitting only, budget verdicts and a quick mode. Read GPU timestamps back without stalling the frame. Add CPU counter guards to `just check` and CI, and GPU draw-call and upload-byte counters checked locally. Port a minimal row set and add 01's full pit, the template frame and 01's areas. Purge the old suite and keep its carry-overs, rewrite `tungsten-perf`, and replace per-milestone sittings with the guards and a sitting per minor or major release.
 - **non-goals:**
   - Budgets: the mechanism lands here, but no row carries a budget until 9.1 sets them. Expansion rows wait for 9.1; system rows land with their own steps from 7.8 on (§5.8).
@@ -678,5 +678,6 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading the revised draft with 
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-29 | pass | `world_counters_` 4 listed, 4 passed; `counter_guard_` 5 listed, 5 passed (three reruns alike); `cargo test -p tungsten-core` 1,170 + 33 + 18 pass; `cargo test -p tungsten` 743 + 27 pass; `just api` adds `WorldCounters`, `World::counters`, `testing::{Allocations, CounterGuard, CountingAlloc, allocations}` and `Harness::allocate_texture_handle`, removes nothing; `just docs-ratchet` "no rise"; fmt and clippy (core, umbrella, all targets) exit 0. Outside the file list: the counts sit in `ecs/storage.rs` (`move_row`, `spawn`, `despawn`), the flush reads `ecs/event_queue.rs`'s new `sent_since_flush`, and core's `lib.rs` re-exports `WorldCounters`. DESIGN.md has no testing section: its sentence is in Performance and Profiling | `crates/tungsten/src/testing/guard.rs` |
 
 ## Follow-ups

@@ -29,6 +29,26 @@ pub struct World {
     /// Staging for [`spawn_with`](Self::spawn_with) and
     /// [`insert_bundle`](Self::insert_bundle).
     bundle_scratch: BundleScratch,
+    /// Events the flushes have rotated out of the queues' current windows.
+    events_sent: u64,
+}
+
+/// What the World has done since it was made, never reset: the totals a
+/// counter guard reads over a window of frames (`tungsten::testing`). Each
+/// is one add beside work that already moves memory.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct WorldCounters {
+    /// Rows moved from one archetype to another: an insert of a type the
+    /// entity lacks, a removal, or a bundle or a command buffer's insert run
+    /// in one move (`D-084`).
+    pub archetype_moves: u64,
+    /// Entities spawned, directly or through a command buffer.
+    pub spawned: u64,
+    /// Entities despawned.
+    pub despawned: u64,
+    /// Events sent to the registered queues, counted at each
+    /// [`flush_events`](World::flush_events) from the window it rotates.
+    pub events_sent: u64,
 }
 
 /// The function a spawn from a source takes `T` through, a resource of the
@@ -65,7 +85,9 @@ enum EventStep {
 
 fn flush_event_queue<T: 'static>(world: &mut World) {
     if let Some(queue) = world.get_resource_mut::<EventQueue<T>>() {
+        let sent = queue.sent_since_flush() as u64;
         queue.flush();
+        world.events_sent += sent;
     }
 }
 
@@ -91,6 +113,19 @@ impl World {
             source_derivers: Vec::new(),
             source_types: HashSet::new(),
             bundle_scratch: BundleScratch::default(),
+            events_sent: 0,
+        }
+    }
+
+    /// The World's running totals: archetype moves, spawns, despawns and
+    /// flushed events since it was made.
+    #[must_use]
+    pub fn counters(&self) -> WorldCounters {
+        WorldCounters {
+            archetype_moves: self.archetypes.moves,
+            spawned: self.archetypes.spawned,
+            despawned: self.archetypes.despawned,
+            events_sent: self.events_sent,
         }
     }
 
