@@ -790,6 +790,9 @@ def cmd_sitting(args, root=REPO_ROOT):
         if not args.allow_background:
             raise PerfError(f"the sitting refuses to start: {message}")
         print(f"Starting despite: {message}", flush=True)
+    # The sitting's own time starts once the machine is quiet.
+    waited = time.monotonic() - started
+    started = time.monotonic()
     base_ref = args.base or last_tag()
     base_dir = Path(root) / "target" / "perf" / "base-tree"
     base_tree = export_tree(base_ref, base_dir)
@@ -846,6 +849,7 @@ def cmd_sitting(args, root=REPO_ROOT):
         "flags": flags,
         "start": record,
         "wall_s": round(time.monotonic() - started, 1),
+        "wait_s": round(waited, 1),
         "rows": results,
     }
     (out / "sitting.json").write_text(json.dumps(sitting, indent=2) + "\n")
