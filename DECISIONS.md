@@ -90,6 +90,7 @@ Decision log for non-obvious Tungsten choices. Use [the decision index](docs/DEC
 ## D-017 — Multiple manifests compose by extension, never override
 **Amended by D-089:** references between entries are checked on the merged set, so a material may name a shader of another root; unique IDs and per-manifest path resolution stand.
 **Amended by D-171:** the uniqueness clause only; a `data` entry's ID is unique within its kind across the merged set, two kinds or a prefab and a kind sharing an ID, and one file backs at most one `prefabs` or `data` entry across the set (`ManifestError::SharedFile`); per-manifest path resolution and fatal duplicates stand.
+**Amended by D-224:** per-manifest path resolution only; a path also stays inside its declaring manifest's folder, an absolute path or a `..` that climbs out refused at every load (`ManifestError::PathEscapes`); unique IDs and fatal duplicates stand.
 **Date:** 2026-04-08  
 **Decision:** IDs must be globally unique across the merged manifest set; duplicates are fatal. Each path resolves relative to its declaring manifest.
 
@@ -2610,6 +2611,7 @@ Example 01's move (the plan's step 3) stopped on its stop condition: with the pl
 - Tests: `tools/cli/src/tests/` (`args`, `check`, `notices`, `elf`, `package`, `new`), `tools/cli/tests/cli.rs`, `crates/tungsten/src/tests/check.rs` (the seeded set, its clean twin and the asset-checked lookup), `crates/tungsten/src/tests/app.rs` (`run_check_…`), the `for_check` tests in `crates/tungsten-core/src/tests/assets/`, and `just template-check` (`D-183`).
 
 ## D-183 — The tools around the command line: `just template-check` runs on `new`'s output with `check` and `package`; `api/tungsten-cli.txt` snapshots the help; the template's `AGENTS.md` joins `just ctx`
+**Superseded by D-224:** the two entries outside the stage only; `check` refuses both, `../outside.png` and an absolute path, as `package` does; the rest stands.
 **Date:** 2026-10-19
 **Decision:** `scripts/template-check.sh` builds `tungsten-cli`, makes the outside copy with `tungsten new`, checks that both engine lines pin `v<workspace version>`, then points them at this checkout's `crates/tungsten` and builds offline into this checkout's target folder. In the copy it runs `tungsten check` (clean), the build, tests and 3-frame smoke run, `tungsten package` into `target/package-check` with `RUSTFLAGS` unset, the archives' listings and the extracted binary's 3-frame smoke run, two entries outside the stage that `check` passes and `package` refuses, five seeded content errors and two seeded config errors. Its free-space floor's default rises from 3 to 6 GiB. `scripts/public-api.sh` writes `cargo run -q --locked -p tungsten-cli -- --help` to `api/tungsten-cli.txt` under the same `cmp` and `--check` rule as the kit's components file. `scripts/check-agent-context.py` budgets `templates/basic/AGENTS.md` at 12,288 B and 100 lines and lists `templates/basic/CLAUDE.md` as import-only.
 
@@ -3358,3 +3360,15 @@ Steps 7.10, 8.1 and 8.2 build the systems those would sit on. Scoping them befor
 - A new output in a locked family is a gained file: generated data beside an actor's sprites, such as its body, hurtbox and anchors, takes a family of its own.
 - `locks.json` is source: only `--lock` and `--unlock` write it, and `just level-check` reads it.
 - Tests: `test_a_locked_files_change_fails_the_run` (`tools/test_generate.py`).
+
+## D-224 — A manifest entry's path stays inside its manifest's folder, at every load; `just template-check`'s two entries outside the stage become errors `check` and `package` report
+**Date:** 2026-10-28
+**Decision:** Every manifest load, a game's own start, `tungsten check` and `tungsten package`'s staged check, refuses an entry whose path is absolute or climbs out of its declaring manifest's folder with `..` (`ManifestError::PathEscapes`), lexically and before the file is looked for, wherever the file sits. `scripts/template-check.sh`'s two entries, `../outside.png` and an absolute path into the copy, both to files inside the game's folder, now fail `check` and `package` alike, each naming `assets/manifest.json` and the path.
+
+**Why:** `qa6` (0.112, `e466fd51`) closed Physics F11: a path that left its manifest's folder made the watcher watch that folder's parent, which matters for manifests from untrusted sources such as mods. The release's `just template-check` then failed on its seeded case, whose clause in `D-183` the fix reversed without an entry.
+
+**Consequences:**
+- Amends `D-017` and supersedes `D-183`'s clause, as their marker lines say.
+- A game keeps every file a manifest names under that manifest's folder; a file shared between roots is listed by the root that holds it.
+- The template-check case no longer shows `package`'s staged check catching a file `check` passes; that check stands.
+- Tests: `a_path_may_climb_only_within_its_manifests_folder` (`tungsten-core/src/tests/assets/manifest.rs`), `just template-check`.
