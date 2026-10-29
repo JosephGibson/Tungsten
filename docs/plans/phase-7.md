@@ -12,7 +12,7 @@
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
 - **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (6) 7.17 the UI pass, in its own worktree from after step 1. (7) 7.9 saves and engine seams. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close.
-- **done-when:** every row in §2.2 and §2.3 reads landed, moved or closed, none open in a Phase 7 step; 7.14's and 7.15's lists each done or dropped by their gate (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
+- **done-when:** every row in §2.2 and §2.3 reads landed, moved, closed or Later (§2.1), none open in a Phase 7 step; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-milestone skill](../../.claude/skills/tungsten-milestone/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
 
@@ -53,7 +53,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 ### 2.1 Rule and status cells
 
 - **Rule:** a row goes to the step that builds the system it changes (§7.3's triage, §5.3). A row whose system no Phase 7 step builds goes to Phase 8 or Later. A row depending on a later step's system moves to the first step after it.
-- **Status cell:** `open`; `landed <sha>`; `moved → <step> (<reason>)`; `closed (<reason>)` for a row no step builds; `Later`. The commit that closes a step updates its rows here. A move records its reason; nothing else changes a row's step.
+- **Status cell:** `open`; `landed <sha>`; `moved → <step> (<reason>)`; `closed (<reason>)` for a row no step builds; `Later`, for a row that is one line in ROADMAP.md's Later; `9.2`, for a cost 9.2's lever list takes (§2.4). All but `open` are terminal. The commit that closes a step updates its rows here. A move records its reason; nothing else changes a row's step.
 - **Pattern** is the register's, shortened; the register holds the evidence.
 
 ### 2.2 Phase 7 rows
@@ -98,8 +98,8 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K11 | Timers with expiry and a saved form | 7.10 | open | 7.10b: the sketch's timers with expiry and saves |
 | K27 | `Damaged` hides a shield's absorption | 7.10 | open | 7.10b, with K28's flash |
 | K28 | Every non-periodic hit flashes over a status tint | 7.10 | open | 7.10b: effect looks |
-| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10c: K10's blast, impact damage, bodies as walls by layer |
-| K10 | A radial blast payload | 7.10 | open | 7.10c, with P7-2's kit part |
+| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10c: impact damage, bodies as walls by layer; its blast is K10, in 7.10b |
+| K10 | A radial blast payload | 7.10 | open | 7.10b: chemistry's `blast` output (§5.2), which replaces 01's detonation (`elements/cascade.rs:634`); abilities fire it in 7.10c |
 | P7-6 | Ability fixes | 7.10 | open | 7.10c, with K8 |
 | K8 | `charges { all: true }` refills from the first charge | 7.10 | open | 7.10c, in P7-6 |
 | PA-3 | Area and projectile speed read | 7.10 | open | 7.10c; movable to 8.7 (PA-Q2) |
@@ -159,15 +159,15 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 - Its triage sends each row by §2.1's rule: a system a Phase 7 step builds → that step; a template row → 7.11; a fix only 01 needs → 7.13; a Phase 8 system → its 8.x step; anything else → Later as one line.
 - A performance workaround it finds joins the evidence of a §2.5 item, never the list; a cost no item covers waits for 9.2.
 - A row for a step already started (the UI track may have) goes to the first unstarted step that touches that system.
-- The triage's commit writes its rows into §2.2 and §2.3 as `open`.
+- The triage's commit writes every row into §2.2 (Phase 7 steps, with `Later` or `9.2` in the step cell and status for the rest) or §2.3 (Phase 8 steps), so each S-ID has one disposition in the tables.
 
 ### 2.5 7.14's and 7.15's finite lists
 
 The candidates are the redo's 7.14 and 7.15 rows; the workload is 01 on the new systems (7.13). The evidence below orders them; it is dated and from older trees, so it ranks and does not set targets.
 
-- **Gate at each pass's start:** the pass measures each item on its row with 7.3's runner on 7.13's tree and records the item's share of the row's time. An item under 5 % of its row leaves the list (`dropped`, with the number). Nothing joins (Q4).
+- **Gate at each pass's start:** the pass measures each item on its row with 7.3's runner on 7.13's tree and records the item's share of the row's time. An item under 5 % of its row leaves the list (`dropped`, with the number). Nothing joins (Q4). G6 is a register row (P7-11), so the floor never drops it: it closes on its behaviour.
 - **Target:** remove at least half of the item's measured share, as an absolute time on its row, recorded at the gate (Q4). G6's target is behavioural.
-- **End:** every item `done` (its target met, a not-`regressed` whole-frame row and the other resource's rows beside it) or `stopped` (a profile shows the remaining cost is the work itself). Everything else waits for 9.2 (§5.8).
+- **End:** every item `done` (its target met, a not-`regressed` whole-frame row and the other resource's rows beside it), `dropped` at the gate, or `stopped` (a profile shows the remaining cost is the work itself; not for G6). Everything else waits for 9.2 (§5.8).
 
 **7.14, CPU:**
 
@@ -189,7 +189,7 @@ The candidates are the redo's 7.14 and 7.15 rows; the workload is 01 on the new 
 | G3 | Bloom and the post stack | 01's area row, the post passes; `gpu` pass rows | The bloom chain about 3.8 ms and the vignette pass 1.8 ms at 2160p: 19–29 % of `render_span` (same survey) | open |
 | G4 | Particle quads | `particles`; 01's spray frames | Inside the scene pass, not separated today | open |
 | G5 | Sprite batching and upload bytes | `gpu-throughput`; 7.3's local upload-byte counter | `gpu` `render_encode` 2.12 ms p50 (2026-10-02) | open |
-| G6 | The light cull past 16 by importance (P7-11) | 01's lantern scene; `gpu` light sweep | Cap 16, ties in World order (A13) | open; target: the player's light never culled, a dark light holds no slot, the scene pass not `regressed` |
+| G6 | The light cull past 16 by importance (P7-11) | 01's lantern scene; `gpu` light sweep | Cap 16; over it, zero-intensity lights drop and the rest rank by distance to the view, with nothing pinning the player's light (A13, `crates/tungsten-render/src/lighting.rs:133-150`) | open; target: the player's light never culled and a dark light holding no slot, each shown by a test past the cap; the scene pass not `regressed` |
 
 M77's survey predates M82's look and M85's scenery, so the order may change at the gate.
 
@@ -224,7 +224,7 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-milestone skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
-  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7), the shapes the rest stand on; **7.10b** statuses and chemistry on them (P7-4, P7-5, PA-8, K1, K11, K27, K28); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, K10, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
+  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7), the shapes the rest stand on; **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, K1, K10, K11, K27, K28); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
   - 7.12: the format and CLI, then the editor (the redo's 7.12 row).
 
 ## 3. Steps
@@ -260,7 +260,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 ### Step 4 (7.5): Analysis pass
 
 - **Rows:** none of §2; it writes the seam register. **Brief:** the redo's §7.1. Its seeds include the K-rows; those §2.2 already assigns are re-reported only with new evidence.
-- **Done-when:** the register written, verified and triaged; every `S-` row in §2.2 or §2.3 with a step by §2.4: the register's row count equals `rg -c '^\| S-[0-9]+ ' docs/plans/phase-7.md`.
+- **Done-when:** the register written, verified and triaged; every `S-` row in §2.2 or §2.3 with one disposition by §2.4 (a step, `Later` or `9.2`): the register's row count equals `rg -c '^\| S-[0-9]+ ' docs/plans/phase-7.md`.
 
 ### Step 5 (7.8): Terrain and physics
 
@@ -287,7 +287,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - **Rows:** the 29 rows §2.2 sends to 7.10, as 7.10a, 7.10b and 7.10c (§2.8). **Design:** §5.2, §5.3, the ARPG design's §3–§8 and §16.
 - **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
-- **Moves:** the kit's determinism hash, once, under 7.3's guards (§5.2).
+- **Moves:** the kit's determinism pin, at most once per 7.10 plan, under 7.3's guards (§5).
 
 ### Step 10 (7.18): Camera rigs
 
@@ -328,7 +328,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md`, `docs/plans/arpg-design.md`, the follow-ups' homes.
 - **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
-- **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); each §2.3 ID in the redo (`for id in $(seq -f 'PA-%g' 12 22); do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing); `just repo-check` → passes; example 01 runs.
+- **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); every row's status terminal (§2.1), each `Later` row a line in ROADMAP.md's Later, each `9.2` row in the redo's 9.2 lever list, and each list item done, dropped or stopped, as the last evidence row quotes; each §2.3 ID in the redo (`for id in $(seq -f 'PA-%g' 12 22); do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing); `just repo-check` → passes; example 01 runs.
 - **Ends with:** the commits made, the evidence quoted, what the owner should play, and the next prompt (8.1's plan).
 
 ## 4. Open questions
@@ -349,8 +349,8 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 5. Invariants
 
-- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate.
-- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate. Engine invariants are each step's plan's: the physics hashes move only in 7.8 and the kit's determinism hash once in 7.10, each under 7.3's guards; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
+- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate. The kit's determinism pin (`crates/tungsten/src/tests/kit_recipes/determinism.rs`) at most once per 7.10 plan, since it serializes effects and buckets (7.10b) and each genre's world (7.10c), each move with its cause in the evidence log; this splits §5.2's and the ARPG design's §16's "moves once" across 7.10's plans (Q3).
+- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate; the determinism test's two-run assertion, which holds at every commit. Engine invariants are each step's plan's: the physics hashes move only in 7.8, under 7.3's guards; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
 
 ## 6. Stop conditions
 
@@ -364,10 +364,15 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 7. Critique
 
-Not yet run.
+Round 1: the `critique` skill with `--repo`, `gpt-6-astra` at xhigh, 2026-10-29, reading `1b0c5236`. Footer: `463.2 s, tokens in 1378106 (cached 1272960), out 10056, commands 26, output 429.4 KB (largest 99.4 KB), usage 5h 0% → 28%, week 12% → 17%`. Five findings, all accepted; they changed done-when checks and 7.10's split, so a second round runs.
 
 | # | Finding | Checked against | Verdict | Change or reason |
 | --- | --- | --- | --- | --- |
+| 1 | [MEDIUM] Chemistry needs the blast implementation assigned to the following plan | The redo's §5.2 lists `blast` among chemistry's outputs (`roadmap-redo.md:246`) and replaces 01's detonations (`:252`); 01's blast is game code (`examples/01_platformer/src/features/elements/cascade.rs:634`) | accepted | K10 moves to 7.10b (§2.2, §2.8); P7-2's kit part keeps impact damage and bodies as walls in 7.10c |
+| 2 | [MEDIUM] The single hash update conflicts with independently landing the kit subplans | The pin serializes effects and buckets (`crates/tungsten/src/tests/kit_recipes/determinism.rs:120`) and runs per genre (`:526`), so 7.10b and 7.10c each move it | accepted | §5 and step 9: the pin moves at most once per 7.10 plan, with its cause; the two-run assertion never moves |
+| 3 | [MEDIUM] The performance gate can discard G6's unmet behavioral requirements | `cull_to_cap` ranks by direction and distance, with no player light (`crates/tungsten-render/src/lighting.rs:133-150`); it already drops zero-intensity lights over the cap, so G6's evidence was stale too | accepted | §2.5: the floor never drops G6, `stopped` is not for it, and its evidence and target name tests past the cap |
+| 4 | [MEDIUM] A valid Later assignment makes the analysis pass fail its completion check | §2.4 sent rows to Later and 9.2 outside the tables that step 4 counts | accepted | §2.4 writes every S-row into the tables, `Later` and `9.2` included; §2.1 adds `9.2`; step 4's check counts dispositions |
+| 5 | [MEDIUM] The phase's completion contract rejects terminal states its steps allow | The header's done-when omitted `Later` (K25) and `stopped` | accepted | §2.1 names the terminal states; the header and step 17 accept them, with each `Later` row in ROADMAP.md's Later and each `9.2` row in 9.2's list |
 
 ## Evidence log
 
