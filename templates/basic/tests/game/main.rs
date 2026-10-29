@@ -9,6 +9,7 @@ mod fit;
 mod keys;
 mod sample;
 mod saves;
+mod script;
 mod settings;
 mod shell;
 mod visual;
