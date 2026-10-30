@@ -2055,6 +2055,8 @@ pub tungsten_core::assets::tilemap::TileProps::material: core::option::Option<al
 pub tungsten_core::assets::tilemap::TileProps::one_way: bool
 pub tungsten_core::assets::tilemap::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::tilemap::TileProps::weight: u32
+impl tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::is_brush(&self) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
 pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
 impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
@@ -2092,6 +2094,9 @@ pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
+impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
+pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
@@ -4037,6 +4042,8 @@ pub tungsten_core::assets::TileProps::material: core::option::Option<alloc::stri
 pub tungsten_core::assets::TileProps::one_way: bool
 pub tungsten_core::assets::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::assets::TileProps::weight: u32
+impl tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::is_brush(&self) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
 pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
 impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
@@ -4074,6 +4081,9 @@ pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
+impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
+pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
@@ -18469,6 +18479,8 @@ pub tungsten_core::TileProps::material: core::option::Option<alloc::string::Stri
 pub tungsten_core::TileProps::one_way: bool
 pub tungsten_core::TileProps::style: core::option::Option<alloc::string::String>
 pub tungsten_core::TileProps::weight: u32
+impl tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::is_brush(&self) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
 pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
 impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
@@ -18506,6 +18518,9 @@ pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
+impl tungsten_core::assets::tilemap::TilemapData
+pub fn tungsten_core::assets::tilemap::TilemapData::auto_tile(&mut self)
+pub fn tungsten_core::assets::tilemap::TilemapData::is_auto(&self, usize, u32, u32) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData

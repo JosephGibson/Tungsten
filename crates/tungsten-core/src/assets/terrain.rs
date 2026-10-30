@@ -9,13 +9,25 @@
 //! A map's fingerprint covers all of it but its objects: a mix of its sizes,
 //! each layer's name, kind and physics and the tileset's sprites and
 //! properties, fixed at `insert`, XORed with a mix of each non-empty cell's
-//! layer, column, row and tile, updated per write. Equal fingerprints mean
-//! equal maps, so a cursor reads [`TileChanges::Unchanged`] only for a map
-//! that is the one it saw.
+//! layer, column, row, tile and auto bit, updated per write. Equal
+//! fingerprints mean equal maps, so a cursor reads [`TileChanges::Unchanged`]
+//! only for a map that is the one it saw.
+//!
+//! The auto-tiler: a tile with a `style` and no `mask` is that style's
+//! brush, one with a `mask` a variant. A brush cell is an auto cell, which
+//! holds a variant of its style for its open sides: a side is closed when
+//! the neighbour holds any tile of the style or is off the map, and the mask
+//! sums 1 up, 2 right, 4 down and 8 left for the open ones. One of the mask's
+//! variants is drawn by weight from a mix of the cell's layer, column and
+//! row, so a cell keeps its variant while its mask holds; a mask without a
+//! variant draws the brush. Any other tile is an override, counted by its
+//! neighbours' masks and never re-picked.
 
 use std::collections::{BTreeMap, VecDeque};
 
-use super::tilemap::{EMPTY_TILE, LayerKind, TileIndex, TilemapData, TilemapRegistry};
+use super::tilemap::{
+    EMPTY_TILE, LayerKind, RegisteredMap, TileIndex, TilemapData, TilemapRegistry,
+};
 
 /// The journal entries a map keeps; a cursor older than the oldest reads
 /// [`TileChanges::Replaced`].
@@ -132,10 +144,19 @@ impl MapHistory {
         }
     }
 
-    /// Journals `cell`'s change from `old` to `new`: the fingerprint, the
-    /// revision and `clock` move on, and an entry past the bound drops the
-    /// oldest.
-    fn journal(&mut self, clock: &mut u64, cell: CellChange, old: TileIndex, new: TileIndex) {
+    /// Journals `cell`'s change from `old` to `new`, each a tile and its
+    /// auto bit, when they differ: the fingerprint, the revision and `clock`
+    /// move on, and an entry past the bound drops the oldest.
+    fn journal(
+        &mut self,
+        clock: &mut u64,
+        cell: CellChange,
+        old: (TileIndex, bool),
+        new: (TileIndex, bool),
+    ) {
+        if old == new {
+            return;
+        }
         self.fingerprint ^= cell_mix(cell, old) ^ cell_mix(cell, new);
         self.revision += 1;
         *clock = (*clock).max(self.revision);
@@ -151,12 +172,189 @@ impl MapHistory {
     }
 }
 
+/// A tileset's auto-tile styles: each tile's style, each style's brush, and
+/// its variants by open-side mask with their weights, in tileset order.
+struct Styles {
+    /// By tile: its style's index.
+    of: Vec<Option<usize>>,
+    /// By style: its brush.
+    brushes: Vec<Option<TileIndex>>,
+    /// By style × 16 + mask: its variants and their weights.
+    variants: Vec<Vec<(TileIndex, u32)>>,
+}
+
+impl Styles {
+    fn of(data: &TilemapData) -> Self {
+        let mut names: Vec<&str> = Vec::new();
+        let mut styles = Self {
+            of: vec![None; data.tileset.len()],
+            brushes: Vec::new(),
+            variants: Vec::new(),
+        };
+        for (index, slot) in styles.of.iter_mut().enumerate() {
+            let tile = index as TileIndex;
+            let props = data.tile_props(tile);
+            let Some(name) = props.style.as_deref() else {
+                continue;
+            };
+            let style = names
+                .iter()
+                .position(|&known| known == name)
+                .unwrap_or_else(|| {
+                    names.push(name);
+                    styles.brushes.push(None);
+                    styles.variants.resize(names.len() * 16, Vec::new());
+                    names.len() - 1
+                });
+            *slot = Some(style);
+            match props.mask {
+                None => {
+                    styles.brushes[style].get_or_insert(tile);
+                }
+                Some(mask) => {
+                    styles.variants[style * 16 + usize::from(mask)].push((tile, props.weight));
+                }
+            }
+        }
+        styles
+    }
+
+    fn is_empty(&self) -> bool {
+        self.brushes.is_empty()
+    }
+
+    /// The style of `tile`; `None` for an empty or unstyled one.
+    fn style(&self, tile: TileIndex) -> Option<usize> {
+        usize::try_from(tile)
+            .ok()
+            .and_then(|tile| self.of.get(tile).copied().flatten())
+    }
+
+    fn is_brush(&self, tile: TileIndex) -> bool {
+        self.style(tile)
+            .is_some_and(|style| self.brushes[style] == Some(tile))
+    }
+}
+
+impl TilemapData {
+    /// Resolves every brush: each cell holding one becomes an auto cell, and
+    /// every auto cell takes its style's variant for its open sides, or the
+    /// brush when its mask has none. The loader and
+    /// [`TilemapRegistry::insert`] call it, so a registered map holds no
+    /// unresolved brush.
+    pub fn auto_tile(&mut self) {
+        let styles = Styles::of(self);
+        if styles.is_empty() {
+            return;
+        }
+        let width = (self.width as usize).max(1);
+        for layer in 0..self.layers.len() {
+            let cells = self.layers[layer].tiles.len();
+            for index in 0..cells {
+                if styles.is_brush(self.layers[layer].tiles[index]) {
+                    self.terrain.set_auto(layer, index, cells, true);
+                }
+            }
+            for index in 0..cells {
+                let (col, row) = ((index % width) as u32, (index / width) as u32);
+                if self.terrain.is_auto(layer, index)
+                    && let Some(tile) = self.pick(&styles, layer, col, row)
+                {
+                    self.layers[layer].tiles[index] = tile;
+                }
+            }
+        }
+    }
+
+    /// Whether the cell at `(col, row)` of `layer` is an auto cell, which
+    /// the auto-tiler re-picks when its open sides change; false outside the
+    /// map.
+    #[must_use]
+    pub fn is_auto(&self, layer: usize, col: u32, row: u32) -> bool {
+        let index = (row as usize) * (self.width as usize) + (col as usize);
+        col < self.width && row < self.height && self.terrain.is_auto(layer, index)
+    }
+
+    /// The tile the auto cell at `(col, row)` of `layer` resolves to: its
+    /// style's variant for its open sides, drawn by weight from its place,
+    /// or the brush; `None` when its tile has no style.
+    fn pick(&self, styles: &Styles, layer: usize, col: u32, row: u32) -> Option<TileIndex> {
+        let width = self.width as usize;
+        let tiles = &self.layers[layer].tiles;
+        let tile = tiles[(row as usize) * width + (col as usize)];
+        let style = styles.style(tile)?;
+        let closed = |col: i64, row: i64| {
+            if col < 0 || row < 0 || col >= i64::from(self.width) || row >= i64::from(self.height) {
+                return true;
+            }
+            styles.style(tiles[(row as usize) * width + (col as usize)]) == Some(style)
+        };
+        let (c, r) = (i64::from(col), i64::from(row));
+        let mut mask = 0;
+        for (bit, (dc, dr)) in [(1, (0, -1)), (2, (1, 0)), (4, (0, 1)), (8, (-1, 0))] {
+            if !closed(c + dc, r + dr) {
+                mask |= bit;
+            }
+        }
+        let variants = &styles.variants[style * 16 + mask];
+        let total: u64 = variants.iter().map(|&(_, weight)| u64::from(weight)).sum();
+        if total == 0 {
+            return Some(styles.brushes[style].unwrap_or(tile));
+        }
+        let mut roll = place_mix(layer, col, row) % total;
+        for &(variant, weight) in variants {
+            if roll < u64::from(weight) {
+                return Some(variant);
+            }
+            roll -= u64::from(weight);
+        }
+        unreachable!("the roll is below the weights' total")
+    }
+}
+
+/// Re-picks the auto cells beside `(col, row)` of `layer` whose open sides
+/// a write there changed, journaling each that changed.
+fn retile_neighbours(
+    map: &mut RegisteredMap,
+    clock: &mut u64,
+    styles: &Styles,
+    layer: usize,
+    col: u32,
+    row: u32,
+) {
+    let RegisteredMap { data, history } = map;
+    let (c, r) = (i64::from(col), i64::from(row));
+    for (dc, dr) in [(0, -1), (1, 0), (0, 1), (-1, 0)] {
+        let (Ok(col), Ok(row)) = (u32::try_from(c + dc), u32::try_from(r + dr)) else {
+            continue;
+        };
+        if !data.is_auto(layer, col, row) {
+            continue;
+        }
+        let index = (row as usize) * (data.width as usize) + (col as usize);
+        let old = data.layers[layer].tiles[index];
+        let Some(new) = data.pick(styles, layer, col, row) else {
+            continue;
+        };
+        data.layers[layer].tiles[index] = new;
+        history.journal(
+            clock,
+            CellChange { layer, col, row },
+            (old, true),
+            (new, true),
+        );
+    }
+}
+
 impl TilemapRegistry {
     /// Writes `tile` at `(col, row)` of map `id`'s `layer`, as
-    /// [`TilemapData::set_tile`] does, and journals the cell when its tile
-    /// changed; the cell's damage is cleared and it joins
-    /// [`edited_cells`](Self::edited_cells). False, with nothing written,
-    /// for a map the registry lacks.
+    /// [`TilemapData::set_tile`] does, and runs the auto-tiler: a brush makes
+    /// the cell an auto cell and resolves it, any other tile makes it an
+    /// override, and the auto cells beside it whose open sides changed are
+    /// re-picked. Each cell whose tile changed is journaled; the written
+    /// cell's damage is cleared and it joins
+    /// [`edited_cells`](Self::edited_cells) with `tile` as written. False,
+    /// with nothing written, for a map the registry lacks.
     ///
     /// # Panics
     ///
@@ -174,17 +372,30 @@ impl TilemapRegistry {
         let Some(map) = self.maps.get_mut(id) else {
             return false;
         };
+        let was_auto = map.data.is_auto(layer, col, row);
         let old = map.data.tile_at(layer, col, row);
         map.data.set_tile(layer, col, row, tile);
-        let (Some(old), Some(new)) = (old, map.data.tile_at(layer, col, row)) else {
+        let (Some(old), Some(written)) = (old, map.data.tile_at(layer, col, row)) else {
             unreachable!("TilemapData::set_tile checked the cell");
         };
+        let styles = Styles::of(&map.data);
+        let mut new = (written, false);
+        if styles.is_brush(written) {
+            let index = (row as usize) * (map.data.width as usize) + (col as usize);
+            let cells = map.data.layers[layer].tiles.len();
+            map.data.terrain.set_auto(layer, index, cells, true);
+            let resolved = map.data.pick(&styles, layer, col, row).unwrap_or(written);
+            map.data.layers[layer].tiles[index] = resolved;
+            new = (resolved, true);
+        }
         let key = (layer, row, col);
         map.history.damage.remove(&key);
-        map.history.edits.insert(key, new);
-        if old != new {
-            map.history
-                .journal(&mut self.clock, CellChange { layer, col, row }, old, new);
+        map.history.edits.insert(key, written);
+        let cell = CellChange { layer, col, row };
+        map.history
+            .journal(&mut self.clock, cell, (old, was_auto), new);
+        if !styles.is_empty() {
+            retile_neighbours(map, &mut self.clock, &styles, layer, col, row);
         }
         true
     }
@@ -371,14 +582,22 @@ impl Fold {
     }
 }
 
-/// A non-empty cell's share of the fingerprint; 0 for an empty one.
-fn cell_mix(cell: CellChange, tile: TileIndex) -> u64 {
+/// A mix of a cell's place: its layer, column and row.
+fn place_mix(layer: usize, col: u32, row: u32) -> u64 {
+    mix(
+        mix(mix(layer as u64 ^ 0xA076_1D64_78BD_642F) ^ u64::from(col))
+            ^ u64::from(row).wrapping_mul(0xE703_7ED1_A0B4_28DB),
+    )
+}
+
+/// A non-empty cell's share of the fingerprint, by its tile and auto bit; 0
+/// for an empty one.
+fn cell_mix(cell: CellChange, (tile, auto): (TileIndex, bool)) -> u64 {
     if tile < 0 {
         return 0;
     }
-    let place = mix(mix(cell.layer as u64 ^ 0xA076_1D64_78BD_642F) ^ u64::from(cell.col))
-        ^ u64::from(cell.row).wrapping_mul(0xE703_7ED1_A0B4_28DB);
-    mix(mix(place) ^ (tile as u64).wrapping_mul(0x8EBC_6AF0_9C88_C6E3))
+    let place = place_mix(cell.layer, cell.col, cell.row);
+    mix(place ^ (tile as u64).wrapping_mul(0x8EBC_6AF0_9C88_C6E3) ^ u64::from(auto) << 63)
 }
 
 /// The fingerprint of `data` as a history starts it: the mix of its sizes,
@@ -420,7 +639,7 @@ fn fingerprint(data: &TilemapData) -> u64 {
                 col: (index % width) as u32,
                 row: (index / width) as u32,
             };
-            cells ^= cell_mix(cell, tile);
+            cells ^= cell_mix(cell, (tile, data.terrain.is_auto(layer, index)));
         }
     }
     fold.0 ^ cells

@@ -207,6 +207,12 @@ impl Default for TileProps {
 }
 
 impl TileProps {
+    /// Whether the tile is its style's brush: styled, without a `mask`.
+    #[must_use]
+    pub fn is_brush(&self) -> bool {
+        self.style.is_some() && self.mask.is_none()
+    }
+
     /// The rules [`TilemapData::set_tile_props`] and the loader hold every
     /// tile's properties to, for a tileset of `tiles` entries; the message
     /// names the property.
@@ -276,14 +282,50 @@ impl Default for LayerPhysics {
 }
 
 /// What a map holds beside its public fields: each tileset entry's
-/// properties and each layer's physics, an entry past either list reading
-/// the defaults, so a map built in code or written in bulk has none.
+/// properties, each layer's physics and its auto cells, an entry past a
+/// list reading the defaults, so a map built in code or written in bulk has
+/// none.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TerrainProps {
     /// By tileset entry, trailing defaults left off.
-    tiles: Vec<TileProps>,
+    pub(super) tiles: Vec<TileProps>,
     /// By layer, trailing defaults left off.
-    layers: Vec<LayerPhysics>,
+    pub(super) layers: Vec<LayerPhysics>,
+    /// By layer, a bit per cell in row-major order: the auto cells, which
+    /// the auto-tiler re-picks; empty for a layer that never held a brush.
+    pub(super) auto: Vec<Vec<u64>>,
+}
+
+impl TerrainProps {
+    /// Whether cell `index` of `layer` is an auto cell.
+    pub(super) fn is_auto(&self, layer: usize, index: usize) -> bool {
+        self.auto
+            .get(layer)
+            .and_then(|bits| bits.get(index / 64))
+            .is_some_and(|word| word & (1 << (index % 64)) != 0)
+    }
+
+    /// Makes cell `index` of `layer`, one of `cells`, an auto cell or an
+    /// override.
+    pub(super) fn set_auto(&mut self, layer: usize, index: usize, cells: usize, auto: bool) {
+        if !auto && !self.is_auto(layer, index) {
+            return;
+        }
+        if self.auto.len() <= layer {
+            self.auto.resize(layer + 1, Vec::new());
+        }
+        let bits = &mut self.auto[layer];
+        if bits.is_empty() {
+            bits.resize(cells.div_ceil(64), 0);
+        }
+        if let Some(word) = bits.get_mut(index / 64) {
+            if auto {
+                *word |= 1 << (index % 64);
+            } else {
+                *word &= !(1 << (index % 64));
+            }
+        }
+    }
 }
 
 /// Parsed tilemap data: a Tiled file's ([`load`](Self::load)) or one built
@@ -441,8 +483,13 @@ impl TilemapData {
         );
         let tile = self.checked_tile("set_tile", tile);
         let width = self.width as usize;
+        let index = (row as usize) * width + (col as usize);
         let cells = self.layer_tiles("set_tile", layer);
-        cells[(row as usize) * width + (col as usize)] = tile;
+        let count = cells.len();
+        cells[index] = tile;
+        if !self.tile_props(tile).is_brush() {
+            self.terrain.set_auto(layer, index, count, false);
+        }
     }
 
     /// Sets every cell of `layer` to `tile`; a negative tile clears them.
@@ -454,6 +501,11 @@ impl TilemapData {
     pub fn fill(&mut self, layer: usize, tile: TileIndex) {
         let tile = self.checked_tile("fill", tile);
         self.layer_tiles("fill", layer).fill(tile);
+        if !self.tile_props(tile).is_brush()
+            && let Some(bits) = self.terrain.auto.get_mut(layer)
+        {
+            bits.clear();
+        }
     }
 
     /// `tile` as a cell stores it, or a panic naming `method` when it is at
@@ -515,6 +567,18 @@ impl TilemapData {
         );
         if let Err(message) = props.check(count) {
             panic!("TilemapData::set_tile_props: tile {tile}: {message}");
+        }
+        if props.is_brush()
+            && let Some(other) = (0..count as TileIndex).find(|&other| {
+                other != tile
+                    && self.tile_props(other).is_brush()
+                    && self.tile_props(other).style == props.style
+            })
+        {
+            panic!(
+                "TilemapData::set_tile_props: tile {tile}: style `{}` already has a brush, tile {other}",
+                props.style.as_deref().unwrap_or_default()
+            );
         }
         let tiles = &mut self.terrain.tiles;
         if index >= tiles.len() {
@@ -613,11 +677,25 @@ impl TilemapData {
             tileset.push(sprite_id.to_owned());
         }
         let mut tile_props = Vec::with_capacity(sorted_tiles.len());
+        let mut brushes: Vec<(String, u32)> = Vec::new();
         for tile in &sorted_tiles {
             let props = tile_props_of(tile, &tileset).map_err(|message| TilemapError::Invalid {
                 path: path.clone(),
                 message: format!("tile id={}: {message}", tile.id),
             })?;
+            if props.is_brush() {
+                let style = props.style.clone().unwrap_or_default();
+                if let Some((_, first)) = brushes.iter().find(|(other, _)| *other == style) {
+                    return Err(TilemapError::Invalid {
+                        path,
+                        message: format!(
+                            "tile id={}: style `{style}` already has a brush, tile id={first}",
+                            tile.id
+                        ),
+                    });
+                }
+                brushes.push((style, tile.id));
+            }
             tile_props.push(props);
         }
         while tile_props.last() == Some(&PLAIN_TILE) {
@@ -713,11 +791,14 @@ impl TilemapData {
             terrain: TerrainProps {
                 tiles: tile_props,
                 layers: layer_physics,
+                auto: Vec::new(),
             },
         };
 
         data.validate()
             .map_err(|message| TilemapError::Invalid { path, message })?;
+        let mut data = data;
+        data.auto_tile();
         Ok(data)
     }
 
@@ -1026,10 +1107,12 @@ impl TilemapRegistry {
         Self::default()
     }
 
-    /// Registers `data` under `id`, replacing any map there: its history
+    /// Registers `data` under `id`, its brushes resolved
+    /// ([`TilemapData::auto_tile`]), replacing any map there: its history
     /// starts again, with a new revision and fingerprint, an empty journal,
     /// and no damage or edits.
-    pub fn insert(&mut self, id: String, data: TilemapData) {
+    pub fn insert(&mut self, id: String, mut data: TilemapData) {
+        data.auto_tile();
         let history = MapHistory::start(&data, &mut self.clock);
         self.maps.insert(id, RegisteredMap { data, history });
     }

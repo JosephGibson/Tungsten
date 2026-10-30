@@ -393,3 +393,414 @@ fn edited_and_damaged_cells_list_what_changed() {
     assert_eq!(registry.damaged_cells("quarry").count(), 0);
     assert_eq!(registry.edited_cells("pit").count(), 0);
 }
+
+/// The tiles of style `cave`: its brush, variants for masks 0, 1, 4, 9 and
+/// 3, then `plain` (unstyled) and `sand` (a variant of another style).
+const CAVE: [(&str, Option<u8>); 6] = [
+    ("cave_brush", None),
+    ("cave_inner", Some(0)),
+    ("cave_top", Some(1)),
+    ("cave_bottom", Some(4)),
+    ("cave_top_left", Some(9)),
+    ("cave_top_right", Some(3)),
+];
+const BRUSH: TileIndex = 0;
+const INNER: TileIndex = 1;
+const TOP: TileIndex = 2;
+const BOTTOM: TileIndex = 3;
+const TOP_LEFT: TileIndex = 4;
+const CAVE_PLAIN: TileIndex = 6;
+const SAND: TileIndex = 7;
+
+/// A 5 × 4 map of the cave tiles: in layer `block`, brushes over columns 1
+/// to 3 of rows 1 and 2, `plain` at (0, 1), `sand` at (2, 0) and an
+/// authored `cave_inner` at (4, 1); in layer `full`, brushes everywhere.
+/// Brushes unresolved.
+fn cave() -> TilemapData {
+    let mut map = TilemapData::new(16, 16, 5, 4);
+    for (sprite, mask) in CAVE {
+        let tile = map.add_tile(sprite);
+        map.set_tile_props(
+            tile,
+            TileProps {
+                style: Some("cave".into()),
+                mask,
+                ..TileProps::default()
+            },
+        );
+    }
+    let plain = map.add_tile("plain");
+    let sand = map.add_tile("sand");
+    map.set_tile_props(
+        sand,
+        TileProps {
+            style: Some("sand".into()),
+            mask: Some(0),
+            ..TileProps::default()
+        },
+    );
+    let block = map.add_layer("block", LayerKind::Render);
+    for (col, row) in [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (3, 2)] {
+        map.set_tile(block, col, row, BRUSH);
+    }
+    map.set_tile(block, 0, 1, plain);
+    map.set_tile(block, 2, 0, sand);
+    map.set_tile(block, 4, 1, INNER);
+    let full = map.add_layer("full", LayerKind::Collision);
+    map.fill(full, BRUSH);
+    map
+}
+
+/// The resolved block layer, row by row, -1 empty.
+const BLOCK: [[TileIndex; 5]; 4] = [
+    [-1, -1, SAND, -1, -1],
+    [CAVE_PLAIN, TOP_LEFT, TOP, TOP, INNER],
+    [-1, BRUSH, BOTTOM, BRUSH, -1],
+    [-1, -1, -1, -1, -1],
+];
+
+fn rows(map: &TilemapData, layer: usize) -> Vec<Vec<TileIndex>> {
+    map.layers[layer]
+        .tiles
+        .chunks(map.width as usize)
+        .map(<[TileIndex]>::to_vec)
+        .collect()
+}
+
+#[test]
+fn brushes_resolve_to_their_masks_variant_at_load() {
+    let built = {
+        let mut map = cave();
+        map.auto_tile();
+        map
+    };
+    assert_eq!(rows(&built, 0), BLOCK.map(Vec::from));
+    assert!(
+        built.layers[1].tiles.iter().all(|&tile| tile == INNER),
+        "the map's edges are closed, its top too"
+    );
+    for (col, row) in [(1, 1), (2, 1), (3, 1), (1, 2), (2, 2), (3, 2)] {
+        assert!(built.is_auto(0, col, row), "({col}, {row})");
+    }
+    for (col, row) in [(0, 1), (2, 0), (4, 1), (0, 0)] {
+        assert!(
+            !built.is_auto(0, col, row),
+            "({col}, {row}) is no auto cell"
+        );
+    }
+    assert!(!built.is_auto(0, 9, 9), "outside the map");
+    // The same map from a Tiled file resolves alike at load, and an insert
+    // resolves a map built in code.
+    let property =
+        |name: &str, value: serde_json::Value| serde_json::json!({ "name": name, "value": value });
+    let mut tiles: Vec<serde_json::Value> = CAVE
+        .iter()
+        .enumerate()
+        .map(|(id, (sprite, mask))| {
+            let mut properties = vec![
+                property("sprite_id", (*sprite).into()),
+                property("style", "cave".into()),
+            ];
+            if let Some(mask) = mask {
+                properties.push(property("mask", (*mask).into()));
+            }
+            serde_json::json!({ "id": id, "properties": properties })
+        })
+        .collect();
+    tiles.push(
+        serde_json::json!({ "id": 6, "properties": [property("sprite_id", "plain".into())] }),
+    );
+    tiles.push(serde_json::json!({ "id": 7, "properties": [
+        property("sprite_id", "sand".into()), property("style", "sand".into()), property("mask", 0.into())
+    ] }));
+    let raw = cave();
+    let gids = |layer: usize| -> Vec<u32> {
+        raw.layers[layer]
+            .tiles
+            .iter()
+            .map(|&tile| if tile < 0 { 0 } else { tile as u32 + 1 })
+            .collect()
+    };
+    let json = serde_json::json!({
+        "tilewidth": 16, "tileheight": 16, "width": 5, "height": 4,
+        "tilesets": [{ "firstgid": 1, "tiles": tiles }],
+        "layers": [
+            { "type": "tilelayer", "name": "block", "data": gids(0) },
+            { "type": "tilelayer", "name": "full", "data": gids(1),
+              "properties": [{ "name": "kind", "value": "collision" }] }
+        ]
+    });
+    let loaded = load_json(&json).unwrap();
+    assert_eq!(rows(&loaded, 0), BLOCK.map(Vec::from));
+    assert_eq!(loaded.layers[1].tiles, built.layers[1].tiles);
+    assert!(loaded.is_auto(0, 1, 1) && !loaded.is_auto(0, 4, 1));
+    let mut registry = TilemapRegistry::new();
+    registry.insert("cave".into(), cave());
+    assert_eq!(rows(registry.get("cave").unwrap(), 0), BLOCK.map(Vec::from));
+}
+
+/// Writes `map` to a `.tmj` of its own and loads it.
+fn load_json(map: &serde_json::Value) -> Result<TilemapData, super::super::tilemap::TilemapError> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static COUNTER: AtomicU32 = AtomicU32::new(0);
+    let n = COUNTER.fetch_add(1, Ordering::SeqCst);
+    let path =
+        std::env::temp_dir().join(format!("tungsten-terrain-{}-{n}.tmj", std::process::id()));
+    std::fs::write(&path, map.to_string()).unwrap();
+    let result = TilemapData::load(&path);
+    std::fs::remove_file(&path).unwrap();
+    result
+}
+
+#[test]
+fn variants_draw_by_weight_seeded_by_place() {
+    // A 40 × 40 field of brushes, every cell's sides closed: mask 0's three
+    // variants drawn by their weights 1, 2 and 7.
+    let field = || {
+        let mut map = TilemapData::new(16, 16, 40, 40);
+        let brush = map.add_tile("moss");
+        map.set_tile_props(
+            brush,
+            TileProps {
+                style: Some("moss".into()),
+                ..TileProps::default()
+            },
+        );
+        for (sprite, weight) in [("moss_a", 1), ("moss_b", 2), ("moss_c", 7)] {
+            let tile = map.add_tile(sprite);
+            map.set_tile_props(
+                tile,
+                TileProps {
+                    style: Some("moss".into()),
+                    mask: Some(0),
+                    weight,
+                    ..TileProps::default()
+                },
+            );
+        }
+        let layer = map.add_layer("moss", LayerKind::Render);
+        map.fill(layer, brush);
+        map
+    };
+    let mut map = field();
+    map.auto_tile();
+    let count = |tile: TileIndex| map.layers[0].tiles.iter().filter(|&&t| t == tile).count();
+    let counts = [count(1), count(2), count(3)];
+    assert_eq!(counts.iter().sum::<usize>(), 1_600, "{counts:?}");
+    for (got, share) in counts.iter().zip([0.1_f64, 0.2, 0.7]) {
+        let want = 1_600.0 * share;
+        let spread = 4.0 * (1_600.0 * share * (1.0 - share)).sqrt();
+        assert!(
+            (*got as f64 - want).abs() < spread,
+            "{counts:?} against weights 1, 2, 7"
+        );
+    }
+    let mut again = field();
+    again.auto_tile();
+    assert_eq!(
+        again.layers[0].tiles, map.layers[0].tiles,
+        "seeded by place"
+    );
+    // A cleared cell opens its neighbours' sides, which have no variant and
+    // draw the brush; every other cell keeps its draw.
+    let mut registry = TilemapRegistry::new();
+    registry.insert("field".into(), field());
+    registry.set_tile("field", 0, 20, 20, EMPTY_TILE);
+    let edited = &registry.get("field").unwrap().layers[0].tiles;
+    for (index, (&before, &after)) in map.layers[0].tiles.iter().zip(edited).enumerate() {
+        let (col, row) = (index % 40, index / 40);
+        let beside = col.abs_diff(20) + row.abs_diff(20) == 1;
+        match (col, row) {
+            (20, 20) => assert_eq!(after, EMPTY_TILE),
+            _ if beside => assert_eq!(after, 0, "({col}, {row}) draws the brush"),
+            _ => assert_eq!(after, before, "({col}, {row}) keeps its variant"),
+        }
+    }
+}
+
+#[test]
+fn an_edit_retiles_only_its_auto_neighbours() {
+    let mut registry = TilemapRegistry::new();
+    registry.insert("cave".into(), cave());
+    let before = registry.cursor("cave").unwrap();
+    assert!(registry.set_tile("cave", 0, 2, 1, EMPTY_TILE));
+    // Up is `sand`, an override; right, down and left are auto cells whose
+    // masks gained an open side.
+    assert_eq!(
+        listed(registry.changes_since("cave", &before)),
+        Some(vec![
+            cell(0, 2, 1),
+            cell(0, 3, 1),
+            cell(0, 2, 2),
+            cell(0, 1, 1)
+        ])
+    );
+    let map = registry.get("cave").unwrap();
+    assert_eq!(
+        rows(map, 0)[1..3],
+        [
+            vec![CAVE_PLAIN, BRUSH, EMPTY_TILE, TOP_LEFT, INNER],
+            vec![-1, BRUSH, BRUSH, BRUSH, -1],
+        ],
+        "masks 11 and 5 have no variant; (3, 1) is now 9"
+    );
+    // A write beside the override and an auto cell whose mask holds journals
+    // the written cell alone.
+    let now = registry.cursor("cave").unwrap();
+    assert!(registry.set_tile("cave", 0, 4, 2, CAVE_PLAIN));
+    assert_eq!(
+        listed(registry.changes_since("cave", &now)),
+        Some(vec![cell(0, 4, 2)])
+    );
+    assert_eq!(registry.get("cave").unwrap().tile_at(0, 4, 1), Some(INNER));
+    // An override written over an auto cell is never re-picked.
+    assert!(registry.set_tile("cave", 0, 1, 2, TOP));
+    assert!(!registry.get("cave").unwrap().is_auto(0, 1, 2));
+    registry.set_tile("cave", 0, 1, 3, BRUSH);
+    assert_eq!(registry.get("cave").unwrap().tile_at(0, 1, 2), Some(TOP));
+}
+
+#[test]
+fn a_mask_without_a_variant_draws_the_brush() {
+    // A lone brush has every side open, mask 15, which no variant has.
+    let lone = |variant: bool| {
+        let mut map = TilemapData::new(16, 16, 3, 3);
+        let brush = map.add_tile("stone");
+        map.set_tile_props(
+            brush,
+            TileProps {
+                style: Some("stone".into()),
+                ..TileProps::default()
+            },
+        );
+        if variant {
+            let tile = map.add_tile("stone_lone");
+            map.set_tile_props(
+                tile,
+                TileProps {
+                    style: Some("stone".into()),
+                    mask: Some(15),
+                    ..TileProps::default()
+                },
+            );
+        }
+        let layer = map.add_layer("stone", LayerKind::Collision);
+        map.set_tile(layer, 1, 1, brush);
+        map.auto_tile();
+        map
+    };
+    let map = lone(false);
+    assert_eq!(map.tile_at(0, 1, 1), Some(0));
+    assert!(map.is_auto(0, 1, 1));
+    assert_eq!(lone(true).tile_at(0, 1, 1), Some(1));
+    // The brush resolves again once a neighbour closes a side.
+    let mut registry = TilemapRegistry::new();
+    registry.insert("lone".into(), lone(false));
+    registry.set_tile("lone", 0, 1, 0, 0);
+    let map = registry.get("lone").unwrap();
+    assert_eq!(
+        (map.tile_at(0, 1, 1), map.tile_at(0, 1, 0)),
+        (Some(0), Some(0))
+    );
+}
+
+#[test]
+fn two_brushes_for_one_style_fail_the_load() {
+    let tile = |id: u32, sprite: &str, style: &str| {
+        serde_json::json!({ "id": id, "properties": [
+            { "name": "sprite_id", "value": sprite },
+            { "name": "style", "value": style }
+        ] })
+    };
+    let map = |tiles: serde_json::Value| {
+        serde_json::json!({
+            "tilewidth": 16, "tileheight": 16, "width": 1, "height": 1,
+            "tilesets": [{ "firstgid": 1, "tiles": tiles }],
+            "layers": [{ "type": "tilelayer", "name": "ground", "data": [1] }]
+        })
+    };
+    let err = load_json(&map(serde_json::json!([
+        tile(0, "cave", "cave"),
+        tile(2, "sand", "sand"),
+        tile(3, "cave_too", "cave")
+    ])))
+    .unwrap_err();
+    assert!(
+        err.to_string()
+            .ends_with("tile id=3: style `cave` already has a brush, tile id=0"),
+        "{err}"
+    );
+    assert!(
+        load_json(&map(serde_json::json!([
+            tile(0, "cave", "cave"),
+            tile(1, "sand", "sand")
+        ])))
+        .is_ok()
+    );
+}
+
+#[test]
+#[should_panic(
+    expected = "TilemapData::set_tile_props: tile 1: style `cave` already has a brush, tile 0"
+)]
+fn set_tile_props_panics_on_a_second_brush() {
+    let mut map = TilemapData::new(16, 16, 1, 1);
+    for sprite in ["cave", "cave_too"] {
+        let tile = map.add_tile(sprite);
+        map.set_tile_props(
+            tile,
+            TileProps {
+                style: Some("cave".into()),
+                ..TileProps::default()
+            },
+        );
+    }
+}
+
+#[test]
+fn a_replay_of_the_edits_rebuilds_auto_cells() {
+    let mut painted = TilemapRegistry::new();
+    painted.insert("cave".into(), cave());
+    // A brush beside the block's corner and an explicit variant under it.
+    painted.set_tile("cave", 0, 4, 2, BRUSH);
+    painted.set_tile("cave", 0, 1, 3, TOP);
+    let edits: Vec<_> = painted.edited_cells("cave").collect();
+    assert_eq!(
+        edits,
+        [(cell(0, 4, 2), BRUSH), (cell(0, 1, 3), TOP)],
+        "a brush stays a brush; the re-picked neighbours are not listed"
+    );
+    let mut replay = TilemapRegistry::new();
+    replay.insert("cave".into(), cave());
+    for (at, tile) in &edits {
+        replay.set_tile("cave", at.layer, at.col, at.row, *tile);
+    }
+    let same = |a: &TilemapRegistry, b: &TilemapRegistry| {
+        let (a, b) = (a.get("cave").unwrap(), b.get("cave").unwrap());
+        assert_eq!(rows(a, 0), rows(b, 0));
+        for row in 0..4 {
+            for col in 0..5 {
+                assert_eq!(
+                    a.is_auto(0, col, row),
+                    b.is_auto(0, col, row),
+                    "({col}, {row})"
+                );
+            }
+        }
+    };
+    same(&painted, &replay);
+    let map = painted.get("cave").unwrap();
+    assert!(map.is_auto(0, 4, 2) && !map.is_auto(0, 1, 3));
+    assert_ne!(
+        map.tile_at(0, 3, 2),
+        Some(BRUSH),
+        "(3, 2)'s right side closed"
+    );
+    // A neighbouring edit after the replay re-tiles both copies alike.
+    for registry in [&mut painted, &mut replay] {
+        registry.set_tile("cave", 0, 0, 2, BRUSH);
+    }
+    same(&painted, &replay);
+    let cursor = painted.cursor("cave").unwrap();
+    assert!(is_unchanged(replay.changes_since("cave", &cursor)));
+}
