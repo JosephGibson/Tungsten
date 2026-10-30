@@ -912,5 +912,142 @@ The MIT License (MIT)
         self.assertEqual([path.name for path in (self.root / "n").iterdir()], [rel.NOTICES])
 
 
+class Run(unittest.TestCase):
+    """`just release KIND` on a real temporary repository; its steps and the preflight are faked."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        base = Path(temp.name)
+        self.root = base / "work"
+        self.root.mkdir()
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.name", "Release Test")
+        self.git("config", "user.email", "release@example.invalid")
+        self.git("config", "commit.gpgSign", "false")
+        self.git("config", "tag.gpgSign", "false")
+        self.git("config", "core.hooksPath", str(base / "no-hooks"))
+        for path, text in (("Cargo.toml", CARGO), ("CHANGELOG.md", CHANGELOG), ("Cargo.lock", "lock 0.26.0\n"),
+                           ("DESIGN.md", "Workspace `v0.26.0`; release summary.\n"), ("README.md", "# Engine\n")):
+            (self.root / path).write_text(text)
+        self.git("add", ".")
+        self.git("commit", "-q", "-m", "chore(release): 0.26.0 lighting")
+        self.git("tag", "-a", "v0.26.0", "-m", "Tungsten 0.26.0")
+        self.git("tag", "-a", "v0.27.0-rc.1", "-m", "A candidate, not a final release")
+        self.git("init", "-q", "--bare", str(base / "origin.git"))
+        self.git("remote", "add", "origin", str(base / "origin.git"))
+        self.git("switch", "-q", "-c", "0.27")
+        self.steps, self.preflights, self.failing = [], [], None
+
+    def git(self, *args):
+        return rel.git(self.root, *args)
+
+    def step(self, root, command):
+        self.steps.append(tuple(command))
+        if tuple(command) == rel.LOCK:
+            (root / "Cargo.lock").write_text("lock 0.27.0\n")
+        return tuple(command) != self.failing
+
+    def preflight(self, root, version, rehearsal=False):
+        self.preflights.append((version, rehearsal))
+        return 0
+
+    def release(self, kind, summary=None, dry_run=False):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            errors = rel.release_run(self.root, kind, summary, dry_run, DATE, self.step, self.preflight)
+        return errors, out.getvalue()
+
+    def snapshot(self):
+        return (self.git("status", "--porcelain"), self.git("rev-parse", "HEAD"),
+                {p: (self.root / p).read_text() for p in rel.CUT_PATHS})
+
+    def test_minor_cuts_checks_and_commits_its_four_paths(self):
+        errors, out = self.release("minor", "lighting and tools")
+        self.assertEqual(errors, [], out)
+        self.assertEqual(self.steps, [rel.RATCHET, rel.LOCK, *rel.CHECKS])
+        self.assertEqual(self.git("log", "-1", "--format=%s"), "chore(release): 0.27.0 lighting and tools")
+        self.assertEqual(sorted(self.git("show", "--name-only", "--format=", "HEAD").split()),
+                         sorted(rel.CUT_PATHS))
+        self.assertEqual((self.git("status", "--porcelain"), self.preflights), ("", [("0.27.0", False)]))
+        self.assertIn("Release 0.27.0 (minor) on 0.27, after v0.26.0: cutting.", out)
+        # A rerun finds the commit and repeats the preflight alone.
+        self.steps = []
+        errors, out = self.release("minor", "lighting and tools")
+        self.assertEqual((errors, self.steps, self.preflights[-1]), ([], [], ("0.27.0", False)))
+        self.assertIn("the release commit is in place", out)
+
+    def test_minor_refuses_a_branch_named_otherwise(self):
+        self.git("switch", "-q", "-c", "feature")
+        before = self.snapshot()
+        errors, _ = self.release("minor", "lighting")
+        self.assertIn("release 0.27.0 runs on branch 0.27, not feature", errors)
+        self.assertEqual((self.snapshot(), self.steps, self.preflights), (before, [], []))
+
+    def test_rehearsal_tag_and_kinds_not_switched_on(self):
+        sha = self.git("rev-parse", "--short=7", "HEAD")
+        before = self.snapshot()
+        errors, out = self.release("rehearsal")
+        self.assertEqual(errors, [], out)
+        self.assertEqual(self.preflights, [(f"0.0.0-test.20261001.g{sha}", True)])
+        self.assertEqual((self.snapshot(), self.steps), (before, []))
+        self.git("tag", "-a", f"v0.0.0-test.20261001.g{sha}", "-m", "An earlier attempt")
+        self.release("rehearsal")
+        self.assertEqual(self.preflights[-1], (f"0.0.0-test.20261001.g{sha}.2", True))
+        for kind in ("patch", "major", "rc", "promote"):
+            errors, _ = self.release(kind, "lighting")
+            self.assertIn("9.8", " ".join(errors), kind)
+        self.assertEqual(self.steps, [])
+
+    def test_a_73_character_subject_is_refused_before_any_write(self):
+        before = self.snapshot()
+        errors, _ = self.release("minor", "x" * 50)
+        self.assertIn("73 characters, over 72", " ".join(errors))
+        self.assertEqual((self.snapshot(), self.steps, self.preflights), (before, [], []))
+        self.assertEqual(self.release("minor", "x" * 49)[0], [])
+
+    def test_a_failed_check_leaves_the_cut_uncommitted_and_a_rerun_resumes_at_the_checks(self):
+        head = self.git("rev-parse", "HEAD")
+        self.failing = ("just", "smoke")
+        errors, _ = self.release("minor", "lighting")
+        self.assertIn("just smoke failed; the cut stays uncommitted", " ".join(errors))
+        self.assertEqual(self.git("rev-parse", "HEAD"), head)
+        self.assertEqual(rel.check_tree(self.root).version, "0.27.0")
+        self.assertEqual(sorted(rel.changed_paths(self.root)), sorted(rel.CUT_PATHS))
+        self.assertEqual(self.preflights, [])
+        self.failing, self.steps = None, []
+        errors, out = self.release("minor", "lighting")
+        self.assertEqual(errors, [], out)
+        self.assertIn("the cut is in place; resuming at the checks", out)
+        self.assertEqual(self.steps, list(rel.CHECKS))
+        self.assertEqual(self.git("log", "-1", "--format=%s"), "chore(release): 0.27.0 lighting")
+        self.assertEqual(self.git("rev-parse", "HEAD~1"), head)
+
+    def test_a_dirty_tree_outside_the_cut_is_refused(self):
+        (self.root / "README.md").write_text("# Engine, edited\n")
+        errors, _ = self.release("minor", "lighting")
+        self.assertIn("the tree is dirty (README.md)", " ".join(errors))
+        self.assertEqual(self.steps, [])
+
+    def test_dry_run_prints_the_version_and_the_chain_and_writes_nothing(self):
+        before = self.snapshot()
+        errors, out = self.release("minor", dry_run=True)
+        self.assertEqual(errors, [], out)
+        self.assertIn("Release 0.27.0 (minor)", out)
+        for command in (rel.RATCHET, rel.LOCK, *rel.CHECKS):
+            self.assertIn(f"  {' '.join(command)}\n", out)
+        self.assertIn("chore(release): 0.27.0 <summary>", out)
+        self.assertEqual((self.snapshot(), self.steps, self.preflights), (before, [], []))
+        errors, out = self.release("rehearsal", dry_run=True)
+        self.assertEqual((errors, self.preflights), ([], []))
+        self.assertIn("release-preflight.py 0.0.0-test.20261001.g", out)
+
+    def test_cli_refuses_a_kind_not_switched_on(self):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            self.assertEqual(rel.main(["--root", str(self.root), "run", "patch", "fixes"]), 1)
+        self.assertIn("9.8", err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

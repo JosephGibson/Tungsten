@@ -49,19 +49,19 @@ visual:
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p example-03-fixtures --test integration --locked ui_regression:: -- --nocapture
     TUNGSTEN_VISUAL_REGRESSION=1 cargo test -p tungsten-template-basic --test game --locked -- visual:: --nocapture
 
-# Benchmark runner; arguments go to scripts/bench.py, e.g. `just perf run physics --repeat 5`.
+# Benchmark runner (redo 7.3); arguments go to scripts/perf.py, e.g. `just perf list`, `just perf run ecs`, `just perf sitting --quick`, `just perf counters`.
 perf *args:
-    python3 -B scripts/bench.py "$@"
+    python3 -B scripts/perf.py "$@"
 
 # Benchmark-runner regression tests.
 perf-test:
-    python3 -B scripts/test-bench.py
+    python3 -B scripts/test-perf.py
 
 # Report stale build artifacts in target/debug (hashes cargo left behind; newest 2 per crate stay); `just clean-target --apply` deletes, --keep N and --profile release adjust.
 clean-target *args:
     python3 -B scripts/clean-target.py "$@"
 
-# Shell, hook and workflow lint plus smoke-script, perf-helper, repo-checker, commit-hook and release-script tests (no GPU).
+# Shell, hook and workflow lint plus smoke-script, perf-helper, repo-checker, commit-hook, release-script and status tests (no GPU).
 script-test: perf-test
     shellcheck scripts/*.sh .githooks/commit-msg
     actionlint
@@ -72,6 +72,7 @@ script-test: perf-test
     python3 -B scripts/test-release.py
     python3 -B scripts/test-crash-report.py
     python3 -B scripts/test-release-preflight.py
+    python3 -B scripts/test-status.py
     python3 -B templates/basic/tools/sounds.py --check
     python3 -B templates/basic/tools/sprites.py --check
     python3 -B templates/basic/tools/icon.py --check
@@ -112,6 +113,10 @@ repo-check:
 checks *args:
     python3 -B scripts/check-repo.py --select-checks "$@"
 
+# Where the tree stands, read-only and offline: git and the newest tag, the tree, other sessions, frozen-record edits, ROADMAP.md's Now and Next, active plans.
+status:
+    python3 -B scripts/status.py
+
 # `tungsten new`'s game outside the repository: checked, built, tested, smoke-run and packaged there, then seeded errors (D-123, D-183); a release check. GPU; free-space floor first.
 template-check:
     bash scripts/template-check.sh
@@ -127,14 +132,13 @@ notices:
 release-check *args:
     python3 -B scripts/release.py check "$@"
 
-# Read-only Git/GitHub inspection that prints the remaining release commands; VERSION, --repo, optional --message/--branch/--ref/--no-pr.
+# Read-only Git/GitHub inspection that prints the agent's push and the owner's block; VERSION, --repo, optional --branch/--ref/--no-pr/--rehearsal.
 release-preflight version *args:
     python3 -B scripts/release-preflight.py "$@"
 
-# Cut VERSION after the missing_docs ratchet: [Unreleased] becomes [VERSION] - today (--date to override); version, status lines and Cargo.lock follow.
-release-cut version *args: docs-ratchet
-    python3 -B scripts/release.py cut "$@"
-    cargo update --workspace --offline || { echo "Cargo.lock not refreshed; run: cargo update --workspace" >&2; exit 1; }
+# The release (D-227): `minor 'summary'` cuts the next minor after the docs ratchet, runs the checks in order, commits the cut and runs the preflight, resuming at the checks after a failure; `rehearsal` checks a fresh rehearsal tag; --dry-run prints the chain.
+release kind *args:
+    python3 -B scripts/release.py run "$@"
 
 # missing_docs only falls (D-215): public items without rustdoc per crate against scripts/missing-docs.json; `--write` lowers the baseline, `--list CRATE` names the items.
 docs-ratchet *args:

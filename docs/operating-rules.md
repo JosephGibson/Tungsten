@@ -1,12 +1,13 @@
 # Operating rules
 
-How work is picked, planned, committed and released from H1 on (`D-215`, the [roadmap redo](plans/roadmap-redo.md)'s §4). Each rule names the failure it prevents; a rule that can't name one is cut at the next review, and anything a script does is a link to the script. The redo's H2 (step 7.4) rewrites the skills and the release flow against these rules.
+How work is picked, planned, committed and released from H1 on (`D-215`, the [roadmap redo](plans/roadmap-redo.md)'s §4), with H2's releases on a tag push (`D-227`). Each rule names the failure it prevents; a rule that can't name one is cut at the next review, and anything a script does is a link to the script.
 
 ## Status
 
 - [`ROADMAP.md`](../ROADMAP.md) is the only status record: Now, Next and Later, one line per item. It replaced the register, `roadmap.json`, the roadmap page and the 1.0 README's owned fields, which grew a row, a stop and a field per change and drifted from each other.
 - Now holds one to three items; `just repo-check` refuses more, since a long Now is a waterfall again.
 - The commit that starts or finishes an item updates `ROADMAP.md`, so status never lags the tree.
+- `just status` ([`scripts/status.py`](../scripts/status.py)) derives the rest from the tree: the newest tag and the commits since it, the tree, other sessions, frozen-record edits, Now and Next, and each active plan's last evidence row. Status read by hand drifted from the tree.
 - Items keep their IDs (`e01tomes`); milestone numbers ended with the register at M85.
 
 ## Habits
@@ -25,7 +26,7 @@ The owner's answer of 2026-10-23: toward agile by a gradient, the 1.0 batch plan
 - A second session in parallel works in its own worktree or clone, which the owner makes (`git worktree add` stays denied to agents), since two sessions share one index otherwise.
 - Messages follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): summary`, one line, imperative, lowercase, at most 72 characters, no attribution. Types: `feat`, `fix`, `perf`, `refactor`, `test`, `docs`, `build`, `ci`, `chore`, `revert`; `!` before the colon marks a break. The [`commit-msg` hook](../.githooks/commit-msg) checks it once `just hooks` has run, so a malformed message never lands.
 - Each commit builds and passes the checks its change needs ([validation](validation.md)), so `git bisect` works.
-- Until H2 moves publishing to a tag push, a version branch and its release pull request stay the publish step, merged without squashing so the commits survive.
+- A release publishes when the owner pushes its tag (`D-227`); the version branch's pull request is `main`'s merge, by merge commit, and publishes nothing. While the merge published, the next session waited on it, and through 0.109 squash merges left the tags off `main`'s history.
 
 ## Records
 
@@ -40,7 +41,7 @@ The owner's answer of 2026-10-23: toward agile by a gradient, the 1.0 batch plan
 - **Small:** no plan; the commit is the record.
 - **Medium:** scope, non-goals, files and checks stated in the session before editing.
 - **Large** (multi-session, or a risky change): one plan file, `docs/plans/<topic>.md`, with the [plans README](plans/README.md)'s headers, deleted when done. Remove its citations in the same commit, since `just repo-check` fails on a cited plan that is gone.
-- Done means the tests pass and a demo works.
+- Done means the tests pass and a demo works. A game feature's demo is a `tungsten run --script` report, with a `tungsten render` sheet when it changes what is drawn, since a demo told from memory can't be rechecked.
 - A large plan or a risky change (concurrency, formats, the render seam) gets one critique round (`/critique`) at xhigh, and a second only when the first changed a mechanism: round 2s have mostly repaired round-1 fixes, and max has shown no lift over xhigh.
 
 ## Decisions
@@ -55,7 +56,9 @@ No break ledger, no level C or its API critique, no rule that prefab and scene f
 ## Releases
 
 - Cut when something is worth shipping, not per change. A release per milestone forced a version, a changelog section and a decision entry onto every stop.
-- Until H2's script, today's [release guide](releases.md) and `just release-cut`, without the register, catalog and roadmap steps.
+- `just release minor '<summary>'` ([`scripts/release.py`](../scripts/release.py)) refuses a dirty tree, the wrong branch and a long subject, then cuts, runs the checks in order and commits the cut; the owner's block tags, pushes the tag, starts the next branch and opens the pull request ([release guide](releases.md), `D-227`). Run by hand, the chain's ten checks were the step a release could skip or run on a stale cut.
+- A change to `release.yml`, or to `release.py`'s packaging, is rehearsed (`just release rehearsal`, then the owner's tag push) before the next final tag, since a final tag publishes on its push with no merge left to stop it.
+- A minor or major release runs a benchmark sitting against the previous tag before its cut; plans run none of their own, their counter guards being the check (`D-226`). Per-milestone sittings cost each plan a quiet hour and caught structural costs late, and a release-to-release sitting still dates any regression.
 
 ## Tiers
 
@@ -67,4 +70,4 @@ The redo's [§6](plans/roadmap-redo.md#6-asset-sessions): a brief per asset fami
 
 ## Docs
 
-- `missing_docs` only falls: `just docs-ratchet`, which `just release-cut` runs first, counts the public items without rustdoc per crate and fails on a rise over [the baseline](../scripts/missing-docs.json), so undocumented surface cannot grow between releases. Rustdoc lands per system as it settles, the rest in step 9.4.
+- `missing_docs` only falls: `just docs-ratchet`, which `just release minor` runs first, counts the public items without rustdoc per crate and fails on a rise over [the baseline](../scripts/missing-docs.json), so undocumented surface cannot grow between releases. Rustdoc lands per system as it settles, the rest in step 9.4.

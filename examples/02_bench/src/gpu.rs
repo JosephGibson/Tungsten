@@ -27,7 +27,7 @@ use tungsten::render::TextSection;
 use tungsten::{App, extract_sprites_default, extract_tilemaps};
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
-use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Row, Value};
+use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Value};
 
 mod scene;
 
@@ -38,7 +38,6 @@ pub(crate) static BENCH: Bench = Bench {
     gpu_timing: true,
     knobs: KNOBS,
     presets: PRESETS,
-    rows: ROWS,
     row,
     validate,
     derived,
@@ -139,52 +138,6 @@ const PRESETS: &[Preset] = &[
             ("aa", Value::Choice("off")),
             ("resolution", Value::Choice("1280x720")),
         ],
-    },
-];
-
-const P50: &[&str] = &["p50"];
-const P50_P95: &[&str] = &["p50", "p95"];
-const COUNTERS: &[&str] = &[
-    "sprites",
-    "glow",
-    "visible_tiles",
-    "glyphs_changed",
-    "lights",
-];
-
-const ROWS: &[Row] = &[
-    Row {
-        name: "gpu",
-        preset: "default",
-        owned: &[
-            ("stage.gpu", P50_P95),
-            ("gpu.render_span", P50_P95),
-            ("gpu.post0_bloom_threshold", P50),
-            ("gpu.post0_bloom_composite", P50),
-            ("gpu.post1_vignette", P50),
-            ("gpu.smaa_edges", P50),
-            ("gpu.smaa_blend_weights", P50),
-            ("gpu.smaa_neighborhood", P50),
-            ("gpu.text", P50),
-            ("stage.extract", P50_P95),
-            ("stage.render_encode", P50_P95),
-        ],
-        guards: &[],
-        counters: COUNTERS,
-        bottleneck: "present",
-        key_knobs: &["sprites"],
-        note: "`gpu` (the scene pass), `render_span` and the pass rows come from the GPU \
-               diagnostic run; without timestamp queries they are n/a and the capture stays valid",
-    },
-    Row {
-        name: "gpu-throughput",
-        preset: "throughput",
-        owned: &[("stage.extract", P50_P95), ("stage.render_encode", P50_P95)],
-        guards: &[],
-        counters: COUNTERS,
-        bottleneck: "stage.extract",
-        key_knobs: &["sprites"],
-        note: "",
     },
 ];
 
@@ -438,7 +391,10 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
         "assets/manifest.json".into(),
         "examples/02_bench/assets/manifest.json".into(),
     ]);
-    app.on_startup(move |world, renderer| scene::startup(world, renderer, &params));
+    app.on_startup(move |world, renderer| {
+        scene::startup(world, renderer, &params);
+        scene::rebuild_heavy(world, renderer);
+    });
     app.add_system_named("bench_counters", bench_counters_system::<GpuCounts>);
     app.add_system_named("gpu_camera", gpu_camera);
     app.add_system_named("gpu_lights", scene::move_lights);
@@ -449,6 +405,23 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
         batches
     });
     app.set_extract_text(extract_text);
+}
+
+/// The startup hook's World part at `cfg`, for the counter guards, which
+/// run no renderer.
+#[cfg(test)]
+pub(crate) fn startup(
+    world: &mut World,
+    textures: &mut dyn crate::r#gen::TextureSink,
+    cfg: &BenchConfig,
+) {
+    scene::startup(world, textures, &Params::new(cfg));
+}
+
+/// The visible tiles the tilemap extract draws, for the counter guards.
+#[cfg(test)]
+pub(crate) fn visible_tiles(world: &World) -> u32 {
+    scene::visible_tiles(world)
 }
 
 /// Runtime state: the resolved knobs, time and the camera's scroll range.

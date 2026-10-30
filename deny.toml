@@ -48,6 +48,19 @@ ignore = true
 # Duplicate versions come from the wgpu/winit/windows ecosystems; they are
 # reported, not fatal. Don't force them away with incompatible pins.
 multiple-versions = "warn"
+# AGENTS.md's hard rules, so a dependency that brings one in fails `just deps`.
+deny = [
+    { crate = "bevy_ecs", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "hecs", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "specs", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "legion", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "amethyst", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "fyrox", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "ggez", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "macroquad", reason = "no external ECS or engine crate (D-005, AGENTS.md)" },
+    { crate = "tokio", reason = "no async runtime (AGENTS.md)" },
+    { crate = "async-std", reason = "no async runtime (AGENTS.md)" },
+]
 
 [sources]
 unknown-registry = "deny"

@@ -92,12 +92,121 @@ fn check_and_package_take_no_argument() {
 #[test]
 fn an_unknown_option_is_a_usage_error() {
     assert_eq!(
-        parse_str(&["check", "--release"]),
-        Err(UsageError("unknown option `--release`".to_owned()))
+        parse_str(&["check", "--bogus"]),
+        Err(UsageError("unknown option `--bogus`".to_owned()))
     );
     assert_eq!(
         parse_str(&["new", "-x", "game"]),
         Err(UsageError("unknown option `-x`".to_owned()))
+    );
+    assert_eq!(
+        parse_str(&["run", "--script", "a.json", "--frames", "9"]),
+        Err(UsageError("unknown option `--frames`".to_owned()))
+    );
+}
+
+#[test]
+fn run_takes_its_options_in_any_order() {
+    assert_eq!(
+        parse_str(&["run", "--script", "s.json"]),
+        Ok(Command::Run(RunArgs {
+            script: PathBuf::from("s.json"),
+            report: None,
+            user_dir: None,
+            release: false,
+        }))
+    );
+    assert_eq!(
+        parse_str(&[
+            "run",
+            "--release",
+            "--user-dir",
+            "u",
+            "--script",
+            "s.json",
+            "--report",
+            "r.json"
+        ]),
+        Ok(Command::Run(RunArgs {
+            script: PathBuf::from("s.json"),
+            report: Some(PathBuf::from("r.json")),
+            user_dir: Some(PathBuf::from("u")),
+            release: true,
+        }))
+    );
+}
+
+#[test]
+fn run_needs_its_script_and_each_value() {
+    let error = |args: &[&str]| match parse_str(args) {
+        Err(UsageError(reason)) => reason,
+        other => panic!("{args:?}: {other:?}"),
+    };
+    assert_eq!(error(&["run"]), "`run` needs --script <file>");
+    assert_eq!(error(&["run", "--script"]), "`--script` needs a <file>");
+    assert_eq!(
+        error(&["run", "--script", "--release"]),
+        "`--script` needs a <file>"
+    );
+    assert_eq!(
+        error(&[
+            "run", "--report", "r.json", "--script", "a", "--report", "b"
+        ]),
+        "`--report` is given twice"
+    );
+    assert_eq!(
+        error(&["run", "--script", "a", "extra"]),
+        "`run` takes no further argument, given `extra`"
+    );
+}
+
+#[test]
+fn describe_takes_a_name_and_json() {
+    assert_eq!(
+        parse_str(&["describe"]),
+        Ok(Command::Describe(DescribeArgs {
+            name: None,
+            json: false
+        }))
+    );
+    assert_eq!(
+        parse_str(&["describe", "--json", "start_run"]),
+        Ok(Command::Describe(DescribeArgs {
+            name: Some("start_run".to_owned()),
+            json: true
+        }))
+    );
+    assert_eq!(
+        parse_str(&["describe", "a", "b"]),
+        Err(UsageError(
+            "`describe` takes no further argument, given `b`".to_owned()
+        ))
+    );
+}
+
+#[test]
+fn a_misplaced_option_names_its_command() {
+    assert_eq!(
+        parse_str(&["check", "--release"]),
+        Err(UsageError(
+            "`--release` is an option of `run` and `render`, not of `check`".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["run", "--script", "a", "--json"]),
+        Err(UsageError(
+            "`--json` is an option of `describe`, not of `run`".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["--script", "a.json", "run"]),
+        Err(UsageError(
+            "`--script` goes after its command: `run`".to_owned()
+        ))
+    );
+    assert_eq!(
+        parse_str(&["--bogus", "run"]),
+        Err(UsageError("unknown option `--bogus`".to_owned()))
     );
 }
 
@@ -107,8 +216,29 @@ fn the_usage_names_every_command_and_option() {
         "new <path>",
         "check",
         "package",
+        "run",
+        "describe [<name>]",
         "-h, --help",
         "-V, --version",
+        "--script <file>",
+        "--report <file>",
+        "--user-dir <dir>",
+        "--release",
+        "--json",
+        "render",
+        "--sheet <items>",
+        "--scene <file>",
+        "--at <x>,<y>",
+        "--after <action>[=<json>]",
+        "--zoom <z>",
+        "--view <height>",
+        "--size <w>x<h>",
+        "--overlay <names>",
+        "--no-ui",
+        "--frame <n>",
+        "--loop <from>..<to>/<every>",
+        "--save-script <file>",
+        "-o <path>",
     ] {
         assert!(USAGE.contains(word), "{word}");
     }

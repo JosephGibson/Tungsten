@@ -4,7 +4,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `arpg-design`: the ARPG paper design (redo 7.19) is written and verified ([plan](docs/plans/arpg-design.md)); the owner's triage of its 22 `PA-` rows and six questions is next, then 7.7 assigns them (`D-218`).
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`), 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) and 7.5 (the analysis pass: [the seam register](docs/plans/seam-register.md)'s 193 verified S-rows, triaged into the plan's tables) have landed, and 7.8, terrain and physics, is next; Phase 7 runs from it a step at a time.
+- `runtime-terrain`: redo 7.8's first plan, the runtime terrain: tile properties and a collision layer's physics layers, tiles edited in place with a journal and cell health, collision from an outline traced per chunk and re-traced locally, one-way edges, the auto-tiler in Rust and a `terrain` row ([plan](docs/plans/runtime-terrain.md)); 7.8's physics plan follows it.
 
 ## Next
 
@@ -18,8 +19,12 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - Example 01's props' and toys' boxes and anchors as data beside their sprites, as the actors' bodies are (`assets/data/bodies/`): `STONE_*`, `CRATE_*`, `KEG_*`, `MUZZLE_OFFSET`, `SPRAY_MUZZLE`, `BOMB_TIP`, `SCORCH_ANCHOR`, and the wisp prefab's glow offset, its body's centre; in a later 01 stop.
 - Example 01's tile variants, re-rolled once at 0.112 (stills in `perf-runs/20261028-quick-wins-tileset/`): a platform the owner names at a playtest takes its old picks back as per-cell overrides from `5e516e60`'s `level.tmj`.
 - Example 01's ribcage prop (`bones_1`), read as barbed wire in the hollow, off the troll bridge too (385.6, 401), if the owner reads it so there.
+- Example 01's hurt flash drawn as a generated full-view sprite it stretches and fades (`examples/01_platformer/tools/effects.py:3179`): an edge falloff, deeper corners and a dither on the stock vignette, so a hurt flash drives a second vignette. S-103.
+- Example 01's tests hold a press over frames until a fixed step reads it (`examples/01_platformer/tests/game/main.rs:375`): a harness `step_fixed(n)` that steps frames until `n` fixed steps have run. S-182.
 - The kit's cue listener for `SoundOnEvent`, whose events carry no position, with redo 7.9's pan and looping cue voices (P7-13).
-- Sequence capture: one run writes every Nth frame from M to N, amending `D-142`'s one-frame capture, so an asset review's in-game loops take seconds rather than a game launch a frame; with redo 7.2's review sheets, or sooner before an art-heavy stop.
-- Phase 7, Seams (redo §3): agent tooling, the benchmark runner, H2, the analysis pass, the Phase 7 plan, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
+- `just perf`'s GPU run merged into its timing run, now that the timestamp ring costs `gpu` 1.01× (redo 7.3's Q5): at 9.1, once the merged run's cost is measured.
+- Agent memory outside H2's three hubs: `git_fetch_denied` still quotes `scripts/roadmap.py`'s last fetch, which `just status` now prints, and `agent_tooling_run_traps`' perf-gate bullet and `milestone_step_refactor_outside_list` describe retired flows; prune them at the next memory pass.
+- The per-version branches retired (H1's Git row): agents would then push `main`, which needs `main`'s pull-request rule lifted and the push guard (`D-216`) widened, both the owner's settings.
+- Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order): the analysis pass, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.

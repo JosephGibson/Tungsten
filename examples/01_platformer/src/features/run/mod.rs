@@ -6,6 +6,8 @@
 
 pub mod banner;
 pub mod components;
+pub mod pit;
+pub mod script;
 pub mod systems;
 
 use glam::Vec2;
@@ -26,12 +28,13 @@ use crate::shared::SaveIds;
 use crate::shell::{self, RunStart};
 
 /// The run as a plugin: `run_areas` in the react phase, the banner's fade
-/// each frame.
+/// each frame, and the run's script hooks.
 pub struct RunPlugin;
 
 impl Plugin for RunPlugin {
-    fn build(&self, schedule: &mut Schedule, _world: &mut World) {
+    fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
+        script::register(world);
         let mut cursor = EventCursor::new();
         let areas = system("run_areas", move |world: &mut World| {
             systems::areas(world, &mut cursor);

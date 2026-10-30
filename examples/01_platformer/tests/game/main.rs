@@ -27,6 +27,7 @@ mod dummy;
 mod enemies;
 mod fixed_step;
 mod frame_time;
+mod guards;
 mod gun;
 mod hazards;
 mod hud;
@@ -68,6 +69,10 @@ use tungsten::core::{
 use tungsten::kit::CameraTarget;
 use tungsten::testing::UiHarness;
 use tungsten::{App, SceneEntity, StateId};
+
+// The counter guard reads this thread's allocations.
+#[global_allocator]
+static ALLOC: tungsten::testing::CountingAlloc = tungsten::testing::CountingAlloc;
 
 /// The game's config with its user folder set: `Off` unless a test checks
 /// what persists, so tests never touch the developer's own files.

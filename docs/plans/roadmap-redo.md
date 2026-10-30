@@ -175,7 +175,7 @@ This list was the paper designs' prediction; 7.6's registers (`paper-designs.md`
 | # | Step | Contents |
 | --- | --- | --- |
 | 9.1 | Benchmarks, part 2: expansion and C1 (§5.8) | The rows Phases 7 and 8 added, filled out with genre, structural-stress and operation rows; the measured frame timeline; budgets by category (R-Q13, criteria Q12); the dated baseline. One candidate (R-Q14, narrowed) |
-| 9.2 | Performance passes | Rows over budget, largest gap first, on internals; the rewrite's §2.1 levers as a list without its breaking-later classes; the render thread (W2's R4) only if a row over budget needs it (`D-102`) |
+| 9.2 | Performance passes | Rows over budget, largest gap first, on internals; the rewrite's §2.1 levers as a list without its breaking-later classes, and the [levers for 9.2](../perf/benchmarks.md#levers-for-92) 7.3 collected; the render thread (W2's R4) only if a row over budget needs it (`D-102`) |
 | 9.3 | Stability policy | Q8 decided and recorded |
 | 9.4 | Quality | Rustdoc until `missing_docs` is clean, rustdoc examples, a pinned fixture per format (O2 as changed in §2) |
 | 9.5 | Docs and platforms | The rewrite's R6 triage, with 7.16's guidance; W9b's final pass on the getting-started guide; W7b's platform tiers in the README (criteria Q3) |
@@ -411,7 +411,7 @@ The owner's answer of 2026-10-28 moved data-defined screens out of the 1.x backl
 
 The brief's contract (sizes, anchors, frame counts, clips, hitboxes) is what code depends on, so art changes within it touch no code. The procedure starts at H1, and the first example stop under H1 that draws new art is its first trial (the draft named `e01h`, which landed as M82 before H1). Its mechanics land in 7.1 (generation per family, locks, anchors and hitboxes as data) and 7.2 (review sheets from `render`). Sounds and music follow the same loop (Q5).
 
-In-game captures stay lean (the owner, 2026-10-28): loops only of what moves or reads only in play, one to two seconds a beat at 20 fps; static art (tiles, icons, props) takes the contact sheet and a few stills; each round re-shoots only the scenes whose art changed; the close re-captures nothing, since the generator's contract tests and check guard the files. Until sequence capture lands (ROADMAP's Later), each frame is a game launch of about 1.4 s: `e01flask`'s three rounds took about 1,400 frames, some 35 minutes.
+In-game captures stay lean (the owner, 2026-10-28): loops only of what moves or reads only in play, one to two seconds a beat at 20 fps; static art (tiles, icons, props) takes the contact sheet and a few stills; each round re-shoots only the scenes whose art changed; the close re-captures nothing, since the generator's contract tests and check guard the files. A loop is one run of `tungsten render --loop` (redo 7.2); before it, each frame was a game launch of about 1.4 s, and `e01flask`'s three rounds took about 1,400 frames, some 35 minutes.
 
 ## 7. Briefs
 

@@ -22,7 +22,7 @@ use tungsten::core::{
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
 use crate::r#gen;
-use crate::knobs::{self, Bench, BenchConfig, Guard, Knob, Preset, Row, Value};
+use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Value};
 use crate::view::{self, VIEWPORT, ViewSprite, ViewTexture};
 
 pub(crate) static BENCH: Bench = Bench {
@@ -32,7 +32,6 @@ pub(crate) static BENCH: Bench = Bench {
     gpu_timing: false,
     knobs: KNOBS,
     presets: PRESETS,
-    rows: ROWS,
     row,
     validate,
     derived,
@@ -88,51 +87,6 @@ const PRESETS: &[Preset] = &[
     Preset {
         name: "sparse",
         set: &[("mode", Value::Choice("sparse"))],
-    },
-];
-
-const NO_SLEEPERS: Guard = Guard::PhysicsMax {
-    field: "sleeping",
-    max: 0,
-};
-
-const ROWS: &[Row] = &[
-    Row {
-        name: "physics",
-        preset: "default",
-        owned: &[
-            ("system.physics_step", &["p50", "p95"]),
-            ("stage.update", &["p95"]),
-        ],
-        guards: &[
-            NO_SLEEPERS,
-            Guard::CounterMin {
-                counter: "teleports",
-                min: 1,
-            },
-        ],
-        counters: &[
-            "balls",
-            "teleports",
-            "bumper_kicks",
-            "stall_kicks",
-            "respawns",
-            "events",
-            "visible",
-        ],
-        bottleneck: "system.physics_step",
-        key_knobs: &["balls"],
-        note: "",
-    },
-    Row {
-        name: "physics-sparse",
-        preset: "sparse",
-        owned: &[("system.physics_step", &["p50", "p95"])],
-        guards: &[NO_SLEEPERS],
-        counters: &["bodies", "events", "visible"],
-        bottleneck: "system.physics_step",
-        key_knobs: &["bodies"],
-        note: "",
     },
 ];
 
@@ -263,7 +217,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
             ..PhysicsCounts::default()
         }));
     }
-    app.on_startup(r#gen::register_view_textures);
+    app.on_startup(|world, renderer| r#gen::register_view_textures(world, renderer));
     // The hand-wired step sends these; without `PhysicsPlugin` the row
     // registers the queue itself.
     app.register_event::<tungsten::core::CollisionEvent>();

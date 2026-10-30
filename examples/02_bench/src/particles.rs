@@ -36,12 +36,11 @@ use tungsten::core::{
     ParticleConfigRegistry, ParticleEmitter, ParticleEmitterState, ParticleRender, Pcg32, Range,
     Sprite, Time, Transform, Visibility, World, splitmix64,
 };
-use tungsten::render::Renderer;
 use tungsten::{App, extract_sprites_default};
 
 use crate::counters::{BenchCounters, FrameCounters, bench_counters_system};
-use crate::r#gen::{self, Cell};
-use crate::knobs::{self, Bench, BenchConfig, Guard, Knob, Preset, Row, Value};
+use crate::r#gen::{self, Cell, TextureSink};
+use crate::knobs::{self, Bench, BenchConfig, Knob, Preset, Value};
 use crate::view::VIEWPORT;
 
 pub(crate) static BENCH: Bench = Bench {
@@ -51,7 +50,6 @@ pub(crate) static BENCH: Bench = Bench {
     gpu_timing: false,
     knobs: KNOBS,
     presets: PRESETS,
-    rows: ROWS,
     row,
     validate: knobs::no_cross_checks,
     derived,
@@ -84,29 +82,6 @@ const PRESETS: &[Preset] = &[
         set: &[],
     },
 ];
-
-const P50_P95: &[&str] = &["p50", "p95"];
-
-const ROWS: &[Row] = &[Row {
-    name: "particles",
-    preset: "default",
-    owned: &[
-        ("system.particle_count_refresh", P50_P95),
-        ("system.particle_emit", P50_P95),
-        ("system.particle_tick", P50_P95),
-        ("system.animate_sprites", P50_P95),
-    ],
-    guards: &[Guard::CounterBand {
-        counter: "live",
-        tolerance: 0.1,
-    }],
-    counters: &["live", "emitters", "animated", "frame_changes"],
-    bottleneck: "system.particle_tick",
-    key_knobs: &["emitters", "animated"],
-    note: "The particle stage is three named `post_update` systems since M38 (`D-133`): the row \
-           owns `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites`; \
-           `unattributed` holds only the event flush",
-}];
 
 /// Live particles each emitter targets at `rate` 1.
 const LIVE_PER_EMITTER: f64 = 150.0;
@@ -426,7 +401,7 @@ fn configure(app: &mut App, cfg: &BenchConfig) {
 }
 
 /// Startup hook: particle sprites and animation frames, one atlas page each.
-fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
+pub(crate) fn register_textures(world: &mut World, textures: &mut dyn TextureSink, clips: u32) {
     let particles = [
         Cell {
             id: PARTICLE_SPRITES[0].to_string(),
@@ -437,7 +412,7 @@ fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
             rgba: r#gen::spark_rgba(PARTICLE_PX),
         },
     ];
-    r#gen::register_atlas(world, renderer, FilterMode::Linear, PARTICLE_PX, &particles);
+    r#gen::register_atlas(world, textures, FilterMode::Linear, PARTICLE_PX, &particles);
     let frames: Vec<Cell> = (0..clips)
         .flat_map(|clip| {
             (0..FRAMES_PER_CLIP).map(move |frame| Cell {
@@ -446,7 +421,7 @@ fn register_textures(world: &mut World, renderer: &mut Renderer, clips: u32) {
             })
         })
         .collect();
-    r#gen::register_atlas(world, renderer, FilterMode::Linear, FRAME_PX, &frames);
+    r#gen::register_atlas(world, textures, FilterMode::Linear, FRAME_PX, &frames);
 }
 
 fn dt_seconds(world: &World) -> f32 {

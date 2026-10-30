@@ -9,10 +9,50 @@ Commands:
               build, and report every error with its file
   package     Build the game for release, check it, and write its players'
               archive and its debug archive to dist/ (Linux)
+  run         Run the game in its window from a script: inputs at frames,
+              captures, probes and asserts; print what failed, and exit 0
+              when the script passed
+  describe [<name>]
+              Print the game's components, script hooks and asset IDs, or
+              only the entries named <name>
+  render      Render the game to PNG through a script made from its flags:
+              a contact sheet, a scene or a point of its world, once or as
+              a loop of frames
 
 Options:
   -h, --help     Print this help
   -V, --version  Print the version
 
-Run check and package in the game's folder. They need the game's engine
-to be the version of this command line.
+Options of run:
+  --script <file>   The script to follow (required)
+  --report <file>   Where the report goes (default: a temporary file)
+  --user-dir <dir>  The game's user folder (default: a fresh temporary
+                    folder, removed after)
+  --release         Run the game's release build
+
+Options of describe:
+  --json            Print the description as JSON
+
+Options of render, one of --sheet, --scene and --at, and -o:
+  --sheet <items>   Items in a captioned grid on an empty stage, by commas:
+                    prefab IDs, sprite:<id>, animation:<id>, particles:<id>
+  --scene <file>    A scene file on an empty stage
+  --at <x>,<y>      A point of the game's world, the camera's centre
+  --after <action>[=<json>]
+                    An action the game registered, with its arguments, at
+                    frame 2, the next at 3, and so on; repeatable
+  --zoom <z>        With --at: screen pixels per world pixel (default 1)
+  --view <height>   With --at: world pixels from top to bottom
+  --size <w>x<h>    The window's and the PNG's size (default 1280x720)
+  --overlay <names> Debug overlays on: physics, kit, by commas
+  --no-ui           Draw no UI
+  --frame <n>       The frame to capture (default 60)
+  --loop <from>..<to>/<every>
+                    Capture every <every>th frame into the folder -o names
+  --save-script <file>
+                    Keep the script, to edit and run with `run`
+  --release         Run the game's release build
+  -o <path>         The PNG, or with --loop the folder of NNNN.png frames
+
+Run every command but new in the game's folder. They need the game's
+engine to be the version of this command line.

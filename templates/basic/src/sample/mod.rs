@@ -14,6 +14,7 @@
 
 pub mod components;
 pub mod hud;
+pub mod script;
 
 use tungsten::core::post::{BloomParams, PostPass, PostStack};
 use tungsten::core::ui::UiTree;
@@ -158,6 +159,7 @@ impl Plugin for SamplePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         // Before the manifest loads, which checks each prefab's components.
         world.register_component::<Player>("player");
+        script::register(world);
         if let Some(camera) = world.get_resource_mut::<CameraController>() {
             camera.dead_zone_size = CAMERA_DEAD_ZONE.into();
             // The trauma rides an 18 Hz carrier and decays in under a second.

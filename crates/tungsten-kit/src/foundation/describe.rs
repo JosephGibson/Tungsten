@@ -6,7 +6,7 @@
 
 use std::fmt::Write as _;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use tungsten_core::World;
 
 /// What a scene component takes: its summary, fields, events, genres and
@@ -157,6 +157,32 @@ impl ComponentDescription {
     #[must_use]
     pub fn round_trip(&self, value: Value) -> Option<Result<Value, String>> {
         self.roundtrip.map(|hook| hook(value))
+    }
+
+    /// The description as JSON, its field types as the snapshot prints
+    /// them.
+    fn to_json(&self) -> Value {
+        let fields: Vec<Value> = self
+            .fields
+            .iter()
+            .map(|field| {
+                json!({
+                    "name": field.name,
+                    "type": field.ty.render(),
+                    "doc": field.doc,
+                    "default": field.default,
+                })
+            })
+            .collect();
+        json!({
+            "name": self.name,
+            "summary": self.summary,
+            "one_of": self.one_of,
+            "fields": fields,
+            "events": self.events,
+            "genres": self.genres,
+            "sample": self.sample,
+        })
     }
 
     fn render(&self, out: &mut String, heading: &str) {
@@ -458,6 +484,26 @@ impl KitDescriptions {
     /// The data kinds and their summaries, by name.
     pub fn kinds(&self) -> impl Iterator<Item = (&'static str, &'static str)> {
         self.kinds.iter().copied()
+    }
+
+    /// The descriptions as JSON, for `tungsten describe` (redo 7.2):
+    /// `components` and `shapes`, each with its `name`, `summary`,
+    /// `one_of`, `fields` (`name`, `type` as [`render`](Self::render)
+    /// prints it, `doc`, `default`), `events`, `genres` and `sample`; and
+    /// `kinds`, each with its `name` and `summary`. Sorted by name, as the
+    /// snapshot is.
+    #[must_use]
+    pub fn to_json(&self) -> Value {
+        let kinds: Vec<Value> = self
+            .kinds
+            .iter()
+            .map(|(name, summary)| json!({ "name": name, "summary": summary }))
+            .collect();
+        json!({
+            "components": self.components.iter().map(ComponentDescription::to_json).collect::<Vec<_>>(),
+            "shapes": self.shapes.iter().map(ComponentDescription::to_json).collect::<Vec<_>>(),
+            "kinds": kinds,
+        })
     }
 
     /// The snapshot: one `component` line per description with a line per

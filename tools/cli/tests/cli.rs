@@ -72,3 +72,67 @@ fn new_makes_a_game_once() {
     assert!(!root.join("Bad").exists());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn run_without_its_script_and_a_misplaced_option_exit_2() {
+    let output = tungsten().arg("run").output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: `run` needs --script <file>\n\nUsage:"),
+        "{stderr}"
+    );
+    let output = tungsten().args(["check", "--json"]).output().unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: `--json` is an option of `describe`, not of `check`"),
+        "{stderr}"
+    );
+}
+
+#[test]
+fn a_bad_script_exits_1_with_its_field_path_before_any_build() {
+    let dir = std::env::temp_dir().join(format!("tungsten_cli_bad_script_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // A game folder, so only the script can stop the run before cargo.
+    std::fs::write(
+        dir.join("Cargo.toml"),
+        "[package]\nname = \"never-built\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.join("bad.json"),
+        r#"{ "version": 1, "frames": 5, "steps": [{ "frame": 1, "captur": "a.png" }] }"#,
+    )
+    .unwrap();
+    let output = tungsten()
+        .args(["run", "--script", "bad.json"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten run: invalid script '"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("steps[0].captur"), "{stderr}");
+    assert!(!dir.join("target").exists(), "nothing was built");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn render_without_its_output_exits_2() {
+    let output = tungsten()
+        .args(["render", "--sheet", "goblin"])
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(
+        stderr.starts_with("tungsten: `render` needs -o <path>\n\nUsage:"),
+        "{stderr}"
+    );
+}

@@ -2,21 +2,21 @@
 
 A gameplay framework for action RPGs, designed on paper by the [roadmap redo](roadmap-redo.md)'s brief ([§7.3](roadmap-redo.md#73-arpg-paper-design-719), step 7.19, `D-218`): skills whose properties tag-scoped modifiers change, equipment from procedurally generated items on the same modifiers, and one rule set for players and enemies. It designs systems, not a game; every name and example here is original. Written against the API snapshots at `2f30d65`, rechecked at `3bc28c7` (`qa6`'s refresh changed no cited span), and the kit's source at `042bcab`.
 
-- **status:** draft
+- **status:** in progress (its steps are done; it stays as the design 7.10, 8.1, 8.2 and 8.7 build from, archived when 8.7 closes)
 - **goal:** Find what an action RPG needs that the engine and kit lack, and design the framework that fills it in the kit as opt-in plugins in its domains (Q19), as register rows the owner triages to 7.10, 8.1, 8.2 and 8.7 before 7.7 plans Phase 7.
 - **non-goals:**
   - Code, and edits to any other file but `ROADMAP.md`'s `arpg-design` line.
   - Each step's mechanisms: the step's own plan specifies them from the tree of its day.
   - A game or a vertical slice (the owner's answer of 2026-10-23); the studied games' names for things, items, content and tree layouts.
   - Minions, totems, traps and mines; reserved auras; flasks; leech; armour, evasion and block (a physical factor and a `damage_taken` line cover 1.0's need); dual wielding; crafting beyond a reroll; trade; multiplayer. A game writes them on §3.6's named handlers, or 1.x takes them.
-- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. 7.7 reads §15's register after the owner's triage; nothing else changes before then.
+- **files to touch:** This file. `ROADMAP.md`'s `arpg-design` line at the start and the finish. The [Phase 7 plan](phase-7.md) holds §15's rows' steps and status (its §2); the steps that build them read this file and leave it as it is.
 - **ordered steps:**
   1. Read the brief, the kit's stat, damage, ability, projectile and loot code and the API snapshots; targeted research on the mechanics (§2). Done.
   2. The design (§3–§10), the page with numbers, weekly tasks and stress numbers (§11–§13), the build sheet and register (§14–§15), the scope by step (§16), trade-offs and questions (§17–§18). Done.
   3. A fresh-context verifier on every citation (§19). Done.
   4. One `/critique` round at xhigh on §5 and §6, applying what holds (§19). Done.
-  5. The owner's triage of §15's rows and §18's questions.
-  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows.
+  5. The owner's triage of §15's rows and §18's questions. Done 2026-10-29: every row at its default step, every question at its default.
+  6. 7.7 assigns the rows to 7.10, 8.1, 8.2 and 8.7; 8.6 takes §12's tasks; 9.1 takes §13's rows. Done 2026-10-29 in the [Phase 7 plan](phase-7.md) (§2.2, §2.3, §2.6), with §1's assumptions rechecked there (§2.7).
 - **done-when:**
   - Every "data only" and "game Rust" verdict cites an item in `api/*.txt`, and every gap names a search that finds nothing; §19's verifier report confirms or fixes every citation.
   - One critique round on §5 and §6 has run and what held is applied (§19).
@@ -28,12 +28,12 @@ A gameplay framework for action RPGs, designed on paper by the [roadmap redo](ro
 - The kit already resolves stats as `(base + Σadd) × (1 + Σpct) × Πmul`, flat, increased and more (`crates/tungsten-kit/src/foundation/stats.rs:96`). What an ARPG needs on top is where a modifier applies (scopes), what a skill reads (a skill sheet snapshotted onto what it spawns), what a hit carries (context tags, crit, conversion with history), what items hold (rolled lines) and where those come from (supports, passives, affixes).
 - The design keeps one stat and damage pipeline for every genre: the pieces that change shapes 7.10 builds go into `foundation`, `intent` and `damage`; projectile behaviours into `overlap` with 8.2; item instances with 8.1's items; supports, passives and affix generation into a domain of their own, `build` (Q19, PA-Q1).
 - Players and monsters share every rule; they differ only in the sources they carry (§8). 01's player-only crit, halved blasts on the player and enemy-only difficulty all become data.
-- The build sheet holds 33 systems: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lines where a game could write them today). The register holds 22 rows: 11 into 7.10, 2 into 8.1, 3 into 8.2 and 6 into 8.7.
+- The build sheet holds 33 systems: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lines where a game could write them today). The register holds 22 rows: 11 into 7.10, 2 into 8.1, 3 into 8.2 and 6 into 8.7, the steps the owner's triage of 2026-10-29 kept, with §18's six defaults.
 - Largest finds: hits carry no context beyond damage types, so no modifier can be scoped to a skill kind (PA-1, PA-2); conversion runs in the pipeline after any scaling would and keeps no history (PA-6); a spawned payload takes none of its user's values (PA-2); a status's damage follows a hit only through an ailment rung's fill over the target's threshold, after resistances, and never through the user's lines (PA-8).
 
 ## 1. Assumptions
 
-Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows.
+Provisional, as the brief says; 7.7 rechecks each before it assigns §15's rows. Rechecked at `08111d5a`: each holds ([Phase 7 plan](phase-7.md) §2.7).
 
 - **The redo's §5.2 statuses and Q17's merge.** Effects become statuses with intensity, stacking, granted tags and stat changes; this design's lines (§4.1) are what a status's stat changes become, and a status's lines scale with its intensity through `curves`.
 - **P8-3's equipment as statuses.** An equipped item applies a status whose lines are the item's rolled global lines (§4.6).
@@ -592,7 +592,7 @@ Verdicts: 2 data only, 8 game Rust (about 1,030 lines), 23 gaps (about 6,010 lin
 
 ## 15. Register
 
-Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the generic fix, dependencies), as the [paper designs](paper-designs.md)' §4 has them, with the kit domain that holds each fix. **Where** names §14's entries; an entry in parentheses adds no lines here. **Lines** is the game Rust those entries take today, each counted once. **Step** is the default the owner triages; `+` marks a fix the step's sketch in the redo's §3 does not list yet, and `defer` a row whose shape 7.10's systems do not fix, so it could wait for 8.7 at no rework.
+Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the generic fix, dependencies), as the [paper designs](paper-designs.md)' §4 has them, with the kit domain that holds each fix. **Where** names §14's entries; an entry in parentheses adds no lines here. **Lines** is the game Rust those entries take today, each counted once. **Step** is where the owner's triage sent the row (below); `+` marks a fix the step's sketch in the redo's §3 does not list yet, and `defer` a row whose shape 7.10's systems do not fix, so it could wait for 8.7 at no rework.
 
 | ID | Pattern | Where | Lines | Lacking | Generic fix | Domain | Depends on | Step |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -620,6 +620,8 @@ Rows in the analysis pass's shape (pattern, where, lines, what is lacking, the g
 | PA-22 | `explain` and build saves | AR31, AR32 | 700 | — | `explain stat`, `hit` and `item` on PA-11's records; every component here registered as saved on 7.9 | build, umbrella | PA-11, 7.9 | 8.7 |
 
 The rows hold about 7,000 of the build sheet's 7,040 lines: AR33's 40 are P7-6's, already in 7.10's list, and AR1 and AR10 are data only.
+
+**Triage, 2026-10-29.** The owner kept every row at its default step: PA-1–PA-11 to 7.10, PA-12 and PA-13 to 8.1, PA-14–PA-16 to 8.2, PA-17–PA-22 to 8.7. PA-3, PA-4 and PA-9 may still move to 8.7 if 7.10's plan finds the step too large (PA-Q2, §16). PA-13's label styles the instance's rarity by name; 8.7's `rarities` kind (PA-19) is what rolls it. 7.7 assigns the rows by ID.
 
 ## 16. Minimal implementation scope by step
 
@@ -651,12 +653,14 @@ If 7.10 is too large, the `defer` rows (PA-9) and PA-3 and PA-4 can move to 8.7 
 
 ## 18. Questions, each with a default
 
-- **PA-Q1. The new domain's name.** *Default: `build`* (T12).
-- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16).
-- **PA-Q3. Crit in the kit for every genre.** *Default: yes, as a source's stats, drawn only where a chance is above 0* (§6.4), so 01's crit becomes data at 7.13.
-- **PA-Q4. Saved items.** *Default: in full, with the seed* (T5).
-- **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets the redo's §5.3 admission rule. *Default: 7.10.*
-- **PA-Q6. Armour and evasion.** No row: a physical factor and `damage_taken` lines cover 1.0. *Default: a game writes them as status lines or a handler; 1.x if two games ask.*
+The owner accepted all six defaults on 2026-10-29: PA-Q2 and PA-Q5 through §15's triage, the other four as asked.
+
+- **PA-Q1. The new domain's name.** *Default: `build`* (T12). **Accepted.**
+- **PA-Q2. How large 7.10 grows.** Eleven rows land there by the brief's rule. *Default: all eleven; PA-3, PA-4 and PA-9 may move to 8.7 if 7.10's plan finds it too large* (§16). **Accepted.**
+- **PA-Q3. Crit in the kit for every genre.** *Default: yes, as a source's stats, drawn only where a chance is above 0* (§6.4), so 01's crit becomes data at 7.13. **Accepted.**
+- **PA-Q4. Saved items.** *Default: in full, with the seed* (T5). **Accepted.**
+- **PA-Q5. World sources in 7.10 rather than 8.7.** 01's difficulty uses them, and the `arpg` recipe's area modifiers, which meets the redo's §5.3 admission rule. *Default: 7.10.* **Accepted.**
+- **PA-Q6. Armour and evasion.** No row: a physical factor and `damage_taken` lines cover 1.0. *Default: a game writes them as status lines or a handler; 1.x if two games ask.* **Accepted.**
 
 ## 19. Verification
 
@@ -686,3 +690,4 @@ These fixes were checked mechanically, not by a second round (the brief's stop).
 ## Session log
 
 - **2026-10-28.** Read §7.3 and the sections it names, the paper designs' register, the plans README, the API snapshots and the kit's stats, damage pipeline, effects, abilities, hit grid, phases and source code, and 01's combat and enemies. Researched the mechanics on public wikis and guides (§2). Found two `D-218` entries in `DECISIONS.md` (the ARPG genre and a `game.id` rule); the `qa6` session in the same tree renumbered its rule to `D-219` (`f139bef`), so `D-218` here is the ARPG's. Drafted with a span checker and an arithmetic script in the scratchpad; the critique (gpt-6-astra, xhigh, on an 18,776-character extract) and a fresh-context verifier ran in parallel on the draft, and their findings were applied in that order.
+- **2026-10-29.** Step 5 in the 0.113 tree: the owner triaged §15's rows in four batches (7.10's fixed shapes, 7.10's movable rows, 8.1 and 8.2, 8.7) and answered §18's four open questions; PA-Q2 and PA-Q5 followed from the rows. Every row and question kept its default. The status moved to `in progress`, not `done`: step 6 is 7.7's, and it reads §15 before the plan is archived.

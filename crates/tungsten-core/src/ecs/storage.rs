@@ -21,6 +21,11 @@ pub(crate) struct Archetypes {
     /// boxed so the cell's interior mutability stays out of `World`'s own
     /// layout: `World` keeps its auto traits.
     matches: Box<RefCell<HashMap<ShapeKey, Matched, BuildHasherDefault<KeyHasher>>>>,
+    /// Rows moved between archetypes, entities spawned and despawned, since
+    /// the storage was made ([`World::counters`](super::World::counters)).
+    pub moves: u64,
+    pub spawned: u64,
+    pub despawned: u64,
 }
 
 /// A query shape: the addresses of its data's and its filter's `matches`.
@@ -65,6 +70,9 @@ impl Archetypes {
             index,
             entities: Entities::new(),
             matches: Box::default(),
+            moves: 0,
+            spawned: 0,
+            despawned: 0,
         }
     }
 
@@ -173,6 +181,7 @@ impl Archetypes {
     /// Spawn entity in empty archetype.
     pub fn spawn(&mut self) -> Entity {
         let entity = self.entities.alloc();
+        self.spawned += 1;
         let row = self.archetypes[EMPTY_ARCHETYPE as usize].entities.len() as u32;
         self.archetypes[EMPTY_ARCHETYPE as usize]
             .entities
@@ -208,6 +217,7 @@ impl Archetypes {
         }
 
         self.entities.free(entity);
+        self.despawned += 1;
     }
 
     /// Insert or overwrite component; D-022 dead entity panics.
@@ -302,6 +312,7 @@ impl Archetypes {
         row: usize,
         new_arch_id: ArchetypeId,
     ) -> usize {
+        self.moves += 1;
         let (old_arch, new_arch) = split_two_mut(&mut self.archetypes, old_arch_id, new_arch_id);
         old_arch.move_components_to(row, new_arch);
 

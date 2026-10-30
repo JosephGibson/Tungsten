@@ -1,5 +1,5 @@
+use crate::counters::{self, Counts};
 use bytemuck::{Pod, Zeroable};
-use wgpu::util::DeviceExt;
 
 /// Colored quad instance.
 #[repr(C)]
@@ -74,6 +74,7 @@ pub struct QuadPipeline {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     camera_bind_group_layout: wgpu::BindGroupLayout,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl QuadPipeline {
@@ -161,11 +162,16 @@ impl QuadPipeline {
             cache: None,
         });
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("quad_vertex_buffer"),
-            contents: bytemuck::cast_slice(QUAD_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let counts = Counts::boxed();
+        let vertex_buffer = counters::create_buffer_init(
+            &counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("quad_vertex_buffer"),
+                contents: bytemuck::cast_slice(QUAD_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
 
         Self {
             pipeline,
@@ -173,6 +179,7 @@ impl QuadPipeline {
             camera_buffer,
             camera_bind_group,
             camera_bind_group_layout,
+            counts,
         }
     }
 
@@ -191,7 +198,13 @@ impl QuadPipeline {
     /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
+        counters::write_buffer(
+            &self.counts,
+            queue,
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(matrix_ref),
+        );
     }
 
     /// Draw colored quads.
@@ -205,17 +218,21 @@ impl QuadPipeline {
             return;
         }
 
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("quad_instance_buffer"),
-            contents: bytemuck::cast_slice(instances),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let instance_buffer = counters::create_buffer_init(
+            &self.counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("quad_instance_buffer"),
+                contents: bytemuck::cast_slice(instances),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
-        render_pass.draw(0..6, 0..instances.len() as u32);
+        counters::draw(&self.counts, render_pass, 0..6, 0..instances.len() as u32);
     }
 }
 

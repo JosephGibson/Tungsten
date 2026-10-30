@@ -106,106 +106,119 @@ class Preflight(unittest.TestCase):
     TAG = ["git", "tag", "-a", "v1.0.0", "-m", "Tungsten 1.0.0"]
     START = ["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.0.0"]
     PULL = ["gh", "pr", "create", "--repo", "owner/repo", "--base", "main", "--head", "1.1", "--title",
-            "Update 1.1: second", "--body", "Release v1.1.0. Merging this pull request publishes it."]
-    NEXT = [["git", "fetch", "origin"], ["git", "switch", "-c", "1.2", "--no-track", "origin/main"],
-            ["git", "push", "-u", "origin", "1.2"]]
+            "Update 1.1: second", "--body", "Release v1.1.0, published by its tag push. Merging it publishes nothing."]
+    NEXT = [["git", "switch", "-c", "1.2", "1.1"], ["git", "push", "-u", "origin", "1.2"]]
+    TAG11 = [["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"], ["git", "push", "origin", "v1.1.0"]]
+
+    def main(self, *argv):
+        out = io.StringIO()
+        with patch.object(pre, "api", side_effect=self.github), patch.object(pre, "github_repository", return_value="owner/repo"), contextlib.redirect_stdout(out):
+            code = pre.main([*argv, "--root", str(self.root), "--repo", "owner/repo"])
+        return code, out.getvalue()
+
+    def cut(self, version, branch):
+        """A release commit for VERSION on a new BRANCH from HEAD."""
+        self.git("checkout", "-q", "-b", branch)
+        self.write("Cargo.toml", f'[workspace.package]\nversion = "{version}"\n')
+        self.write("CHANGELOG.md", f"## [Unreleased]\n\n## [{version}] - 2026-10-01\n\n- Later.\n\n"
+                   "## [1.1.0] - 2026-09-30\n\n- Second.\n\n## [1.0.0] - 2026-09-26\n\n- First.\n")
+        self.write("DESIGN.md", f"Workspace `v{version}`\n")
+        self.commit(f"chore(release): {version} later")
+        return self.git("rev-parse", "HEAD")
 
     def test_release_from_the_base_branch_prints_exact_commands_without_writing(self):
         before = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
-        errors, info, commands, _ = self.check()
+        errors, info, agent, owner = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
+        self.assertEqual((agent, owner), ([], [self.TAG, ["git", "push", "origin", "v1.0.0"]]))
         after = self.git("show-ref"), self.git("status", "--porcelain"), (self.root / "README.md").read_bytes()
         self.assertEqual(before, after)
         self.assertTrue(any("no run for this commit" in line for line in info))
 
-    def test_handoff_prints_commit_tag_push_and_pull_request_without_writing(self):
-        self.milestone(commit=False)
+    def test_final_release_on_a_version_branch_hands_off_tag_push_next_branch_and_pull_request(self):
+        self.milestone()
         before = self.git("show-ref"), self.git("status", "--porcelain")
-        errors, info, commands, _ = self.check("1.1.0", branch="1.1", message="Update 1.1: second")
+        errors, _, agent, owner = self.check("1.1.0", branch="1.1")
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [["git", "add", "-A"], ["git", "commit", "-m", "Update 1.1: second"],
-                                    ["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
-                                    ["git", "push", "origin", "1.1", "v1.1.0"], self.PULL])
+        self.assertEqual(agent, [["git", "push", "origin", "1.1"]])
+        self.assertEqual(owner, [*self.TAG11, *self.NEXT, self.PULL])
         self.assertEqual(before, (self.git("show-ref"), self.git("status", "--porcelain")))
-        self.assertTrue(any("uncommitted changes on" in line for line in info))
-        self.assertTrue(any("CI (informational): runs once" in line for line in info))
-        self.assertIn("dirty", " ".join(self.check("1.1.0", branch="1.1")[0]))
-        self.assertIn("checked out", " ".join(self.check("1.1.0", branch="main", message="Update")[0]))
-        self.assertIn("does not match", " ".join(self.check("1.2.0", branch="1.1", message="Update")[0]))
-        self.git("tag", "-a", "v1.1.0", "-m", "Early")
-        self.assertIn("different commit", " ".join(self.check("1.1.0", branch="1.1", message="Update")[0]))
-
-    def test_post_merge_block_starts_the_next_branch_until_the_merge(self):
-        self.assertEqual(self.check()[3], [])
-        self.milestone(commit=False)
-        self.assertEqual(self.check("1.1.0", branch="1.1", message="Update 1.1: second")[3], self.NEXT)
-        self.commit("Update 1.1: second")
-        sha = self.git("rev-parse", "HEAD")
-        self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
-        self.git("push", "-u", "origin", "1.1", "v1.1.0")
-        self.pulls = [self.pull(sha)]
-        self.assertEqual(self.check("1.1.0", branch="1.1")[2:], ([], self.NEXT))
-        out = io.StringIO()
-        with patch.object(pre, "api", side_effect=self.github), patch.object(pre, "github_repository", return_value="owner/repo"), contextlib.redirect_stdout(out):
-            self.assertEqual(pre.main(["1.1.0", "--root", str(self.root), "--repo", "owner/repo"]), 0)
-        self.assertIn("After the pull request merges, start the next milestone branch:\ngit fetch origin\n"
-                      "git switch -c 1.2 --no-track origin/main\ngit push -u origin 1.2\n", out.getvalue())
-        self.git("branch", "1.2", "main")
-        errors, info, _, after = self.check("1.1.0", branch="1.1")
-        self.assertEqual((errors, after), ([], []))
+        code, out = self.main("1.1.0")
+        self.assertEqual(code, 0)
+        self.assertIn("The agent's push:\ngit push origin 1.1\nThe owner's block, whose tag push publishes:\n"
+                      "git tag -a v1.1.0 -m 'Tungsten 1.1.0' &&\ngit push origin v1.1.0 &&\n"
+                      "git switch -c 1.2 1.1 &&\ngit push -u origin 1.2 &&\ngh pr create --repo owner/repo", out)
+        self.assertNotIn("git add", out)
+        self.assertNotIn("After the pull request merges", out)
+        # The next branch already made: a note in place of its commands.
+        self.git("branch", "1.2", "1.1")
+        errors, info, _, owner = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, owner), ([], [*self.TAG11, self.PULL]))
         self.assertTrue(any("1.2 already exists" in line for line in info))
+        self.write("README.md", "dirty")
+        self.assertIn("dirty", " ".join(self.check("1.1.0", branch="1.1")[0]))
+        self.git("checkout", "--", "README.md")
+        self.assertIn("does not match", " ".join(self.check("1.2.0", branch="1.1")[0]))
+        self.git("tag", "-a", "v1.1.0", "HEAD~1", "-m", "Early")
+        self.assertIn("different commit", " ".join(self.check("1.1.0", branch="1.1")[0]))
 
-    def test_pull_request_states_from_commit_to_merged_run(self):
+    def test_pull_request_states_are_information_and_a_pushed_tag_without_a_run_starts_one(self):
         sha = self.milestone()
-        errors, _, commands, _ = self.check("1.1.0", branch="1.1")
-        self.assertEqual(errors, [])
-        self.assertEqual(commands, [["git", "tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0"],
-                                    ["git", "push", "origin", "1.1", "v1.1.0"], self.PULL])
         self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
         self.git("push", "-u", "origin", "1.1", "v1.1.0")
-        self.assertEqual(self.check("1.1.0", branch="1.1")[2], [self.PULL])
+        start = ["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.1.0"]
+        errors, info, agent, owner = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, agent, owner), ([], [], [*self.NEXT, self.PULL, start]))
+        self.assertTrue(any("No release run found" in line for line in info))
+        self.git("branch", "1.2", "1.1")
         self.pulls = [self.pull("f" * 40, merged="f" * 40, number=6), self.pull(sha)]
-        errors, info, commands, _ = self.check("1.1.0", branch="1.1")
-        self.assertEqual((errors, commands), ([], []))
-        self.assertTrue(any("#7: open; approving and merging" in line for line in info))
-        self.git("checkout", "main")
-        self.git("merge", "--squash", "1.1")
-        self.commit("Update 1.1: second (#7)")
-        self.git("push", "origin", "main")
-        squash = self.git("rev-parse", "HEAD")
-        self.git("checkout", "1.1")
-        self.pulls = [self.pull(sha, merged=squash)]
-        errors, info, commands, after = self.check("1.1.0", branch="1.1")
-        self.assertEqual((errors, after), ([], []))
-        self.assertTrue(any("tree matches" in line for line in info))
-        self.assertEqual(commands, [["gh", "workflow", "run", "release.yml", "--repo", "owner/repo", "--ref", "v1.1.0"]])
-        self.runs = [self.run_info(tag="1.1", sha=sha, event="pull_request", conclusion="skipped", id=41),
-                     self.run_info(tag="1.1", sha=sha, event="pull_request", status="in_progress", conclusion=None)]
-        self.assertEqual(self.check("1.1.0", branch="1.1")[2],
+        errors, info, _, owner = self.check("1.1.0", branch="1.1")
+        self.assertEqual((errors, owner), ([], [start]))
+        self.assertTrue(any("#7: open; main's merge, which publishes nothing" in line for line in info))
+        self.runs = [self.run_info(tag="1.1", sha=sha, event="pull_request", id=40),
+                     self.run_info(tag="v1.1.0", sha=sha, conclusion="skipped", id=41),
+                     self.run_info(tag="v1.1.0", sha=sha, status="in_progress", conclusion=None)]
+        self.assertEqual(self.check("1.1.0", branch="1.1")[3],
                          [["gh", "run", "watch", "42", "--repo", "owner/repo", "--exit-status"]])
+        self.pulls = [self.pull(sha, merged="e" * 40)]
+        errors, info, _, _ = self.check("1.1.0", branch="1.1")
+        self.assertEqual(errors, [])
+        self.assertTrue(any("#7: merged; main's merge, which publishes nothing" in line for line in info))
 
-    def test_base_ahead_moved_branch_and_changed_merge_tree_fail(self):
-        sha = self.milestone()
+    def test_main_ahead_by_an_earlier_release_merge_passes(self):
+        self.milestone()
         self.git("push", "-u", "origin", "1.1")
-        self.git("checkout", "main")
+        later = self.cut("1.2.0", "1.2")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--no-ff", "1.1", "-m", "Merge 1.1")
+        self.git("push", "origin", "main")
+        self.git("checkout", "-q", "1.2")
+        base_tip = self.git("rev-parse", "origin/main")
+        self.assertNotEqual(base_tip, self.sha)
+        self.assertEqual(pre.foreign_commits(self.root, later, base_tip), [])
+        errors, _, agent, owner = self.check("1.2.0", branch="1.2")
+        self.assertEqual(errors, [])
+        self.assertEqual(agent, [["git", "push", "origin", "1.2"]])
+        self.assertEqual(owner[:2], [["git", "tag", "-a", "v1.2.0", "-m", "Tungsten 1.2.0"],
+                                     ["git", "push", "origin", "v1.2.0"]])
+
+    def test_main_ahead_by_a_commit_or_a_merge_with_its_own_resolution_is_refused(self):
+        self.milestone()
+        self.git("push", "-u", "origin", "1.1")
+        self.cut("1.2.0", "1.2")
+        self.git("checkout", "-q", "main")
+        self.git("merge", "-q", "--no-ff", "--no-commit", "1.1")
+        self.write("README.md", "resolved differently")
+        self.commit("Merge 1.1 with a change of its own")
+        self.git("push", "origin", "main")
+        self.git("checkout", "-q", "1.2")
+        self.assertIn("has commits 1.2 lacks", " ".join(self.check("1.2.0", branch="1.2")[0]))
+        self.git("checkout", "-q", "main")
         self.write("README.md", "hotfix")
         self.commit("hotfix")
         self.git("push", "origin", "main")
-        hotfix = self.git("rev-parse", "HEAD")
-        self.git("checkout", "1.1")
-        self.assertIn("has commits 1.1 lacks", " ".join(self.check("1.1.0", branch="1.1")[0]))
-        self.pulls = [self.pull(sha, merged=hotfix)]
-        self.assertIn("differs from the tagged commit", " ".join(self.check("1.1.0", branch="1.1")[0]))
-        self.pulls = []
-        self.git("merge", "main")
-        self.git("tag", "-a", "v1.1.0", "-m", "Tungsten 1.1.0")
-        self.git("push", "origin", "1.1", "v1.1.0")
-        tagged = self.git("rev-parse", "HEAD")
-        self.write("README.md", "after the tag")
-        self.commit("late fix")
-        self.git("push", "origin", "1.1")
-        self.assertIn("moved past", " ".join(self.check("1.1.0", ref=tagged, branch="1.1")[0]))
+        self.git("checkout", "-q", "1.2")
+        self.assertIn("merge main into 1.2", " ".join(self.check("1.2.0", branch="1.2")[0]))
 
     def test_dirty_untracked_and_staged_changes_fail(self):
         self.write("new.txt", "untracked")
@@ -229,12 +242,14 @@ class Preflight(unittest.TestCase):
         self.git("update-ref", "refs/remotes/origin/main", self.sha)
         self.assertIn("stale/missing", " ".join(self.check()[0]))
 
-    def test_unpublished_commit_is_pushed_with_its_tag_unless_diverged(self):
+    def test_unpublished_commit_is_pushed_before_its_tag_unless_diverged(self):
         self.write("README.md", "new")
         self.commit("not pushed")
-        errors, _, commands, _ = self.check()
+        errors, _, agent, owner = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands[:2], [self.TAG, ["git", "push", "origin", "main", "v1.0.0"]])
+        # main's push stays the owner's; a version branch's is the agent's.
+        self.assertEqual((agent, owner[:3]), ([], [["git", "push", "origin", "main"], self.TAG,
+                                                    ["git", "push", "origin", "v1.0.0"]]))
         self.assertIn("does not match", " ".join(self.check("2.0.0")[0]))
         self.git("push", "origin", "main")
         self.git("reset", "--hard", self.sha)
@@ -246,28 +261,33 @@ class Preflight(unittest.TestCase):
     def test_reads_selected_commit_not_clean_working_files(self):
         self.write("DESIGN.md", "Workspace `v9.0.0`\n")
         self.commit("bad working version")
-        errors, _, commands, _ = self.check(ref=self.sha)
+        errors, _, _, owner = self.check(ref=self.sha)
         self.assertEqual(errors, [])
-        self.assertEqual(commands[:2], [["git", "tag", "-a", "v1.0.0", self.sha, "-m", "Tungsten 1.0.0"],
-                                        ["git", "push", "origin", "v1.0.0"]])
+        self.assertEqual(owner[:2], [["git", "tag", "-a", "v1.0.0", self.sha, "-m", "Tungsten 1.0.0"],
+                                     ["git", "push", "origin", "v1.0.0"]])
         self.git("push", "origin", "main")
         self.assertIn("status line says", " ".join(self.check()[0]))
 
-    def test_maintenance_branch_without_a_pull_request_starts_the_run_manually(self):
+    def test_maintenance_branch_without_a_pull_request_publishes_on_its_tag_push(self):
         self.git("checkout", "-b", "maintenance")
         self.git("push", "-u", "origin", "maintenance")
-        errors, _, commands, _ = self.check(branch="maintenance", no_pr=True)
+        errors, _, agent, owner = self.check(branch="maintenance", no_pr=True)
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [self.TAG, ["git", "push", "origin", "v1.0.0"], self.START])
-        self.assertEqual(self.check(branch="maintenance")[2][-1][:3], ["gh", "pr", "create"])
+        self.assertEqual((agent, owner), ([], [self.TAG, ["git", "push", "origin", "v1.0.0"]]))
+        self.assertEqual(self.check(branch="maintenance")[3][-1][:3], ["gh", "pr", "create"])
 
     def test_rehearsal_requires_explicit_flag_and_own_section_is_not_rehearsal(self):
         version = "0.0.0-test.20260926.gabc123"
         self.assertIn("--rehearsal", " ".join(self.check(version)[0]))
-        errors, _, commands, _ = self.check(version, rehearsal=True)
+        errors, _, agent, owner = self.check(version, rehearsal=True)
         self.assertEqual(errors, [])
-        # A pushed prerelease tag starts its own run.
-        self.assertEqual(commands[-1], ["git", "push", "origin", "v" + version])
+        # The rehearsal block: a pushed tag starts its own run; no next branch or pull request.
+        self.assertEqual((agent, owner), ([], [["git", "tag", "-a", "v" + version, "-m", "Tungsten " + version],
+                                               ["git", "push", "origin", "v" + version]]))
+        code, out = self.main(version, "--rehearsal")
+        self.assertEqual(code, 0)
+        self.assertIn(f"The owner's block, whose tag push publishes:\ngit tag -a v{version} -m 'Tungsten {version}' &&\n"
+                      f"git push origin v{version}\n", out)
         self.assertIn("--rehearsal", " ".join(self.check(rehearsal=True)[0]))
         self.write("Cargo.toml", '[workspace.package]\nversion = "1.1.0-rc.1"\n')
         self.write("DESIGN.md", "Workspace `v1.1.0-rc.1`\n")
@@ -278,9 +298,9 @@ class Preflight(unittest.TestCase):
 
     def test_matching_local_tag_is_not_recreated(self):
         self.tag(remote=False)
-        errors, _, commands, _ = self.check()
+        errors, _, _, owner = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [["git", "push", "origin", "v1.0.0"], self.START])
+        self.assertEqual(owner, [["git", "push", "origin", "v1.0.0"]])
 
     def test_published_release_resumes_by_original_sha_after_branch_advance(self):
         self.tag()
@@ -289,10 +309,10 @@ class Preflight(unittest.TestCase):
         self.git("push", "origin", "main")
         self.existing = {"draft": False, "html_url": "https://github.com/owner/repo/releases/tag/v1.0.0"}
         self.runs = [self.run_info()]
-        errors, info, commands, _ = self.check(ref=self.sha)
+        errors, info, agent, owner = self.check(ref=self.sha)
         self.assertEqual(errors, [])
         self.assertTrue(any("published; verify" in line for line in info))
-        self.assertTrue(all(c[0] == "gh" for c in commands))
+        self.assertTrue(agent == [] and all(c[0] == "gh" for c in owner))
         self.assertIn("different commit", " ".join(self.check()[0]))
 
     def test_draft_and_exact_run_selection(self):
@@ -303,19 +323,19 @@ class Preflight(unittest.TestCase):
                      self.run_info(status="in_progress", conclusion=None)]
         self.ci_runs = [self.run_info(tag="main", conclusion="failure"),
                         self.run_info(id=99, event="pull_request", conclusion="success")]
-        errors, info, commands, _ = self.check()
+        errors, info, _, owner = self.check()
         self.assertEqual(errors, [])
         self.assertTrue(any("draft; inspect" in line for line in info))
         self.assertTrue(any("CI (informational)" in line and "failure" in line for line in info))
-        self.assertEqual(commands[-1], ["gh", "run", "watch", "42", "--repo", "owner/repo", "--exit-status"])
+        self.assertEqual(owner[-1], ["gh", "run", "watch", "42", "--repo", "owner/repo", "--exit-status"])
         self.runs = [self.run_info(event="workflow_dispatch")]
-        self.assertEqual(self.check()[2][-1], ["gh", "run", "view", "42", "--repo", "owner/repo"])
+        self.assertEqual(self.check()[3][-1], ["gh", "run", "view", "42", "--repo", "owner/repo"])
 
     def test_remote_tag_without_run_starts_one_instead_of_another_push(self):
         self.tag()
-        errors, info, commands, _ = self.check()
+        errors, info, agent, owner = self.check()
         self.assertEqual(errors, [])
-        self.assertEqual(commands, [self.START])
+        self.assertEqual((agent, owner), ([], [self.START]))
         self.assertTrue(any("No release run found" in line for line in info))
 
     def test_lightweight_and_conflicting_tag_objects_fail(self):
@@ -328,9 +348,9 @@ class Preflight(unittest.TestCase):
 
     def test_github_repository_mismatch_stops_commands(self):
         with patch.object(pre, "api", return_value={"object": {"sha": "f" * 40}}), patch.object(pre, "github_repository", return_value="owner/repo"):
-            errors, _, commands, _ = pre.preflight(self.root, "1.0.0", "HEAD", "origin", "main", "owner/repo")
+            errors, _, agent, owner = pre.preflight(self.root, "1.0.0", "HEAD", "origin", "main", "owner/repo")
         self.assertIn("GitHub branch differs", " ".join(errors))
-        self.assertEqual(commands, [])
+        self.assertEqual((agent, owner), ([], []))
 
     def test_release_without_tag_is_not_recreated(self):
         self.existing = {"draft": True, "html_url": "https://github.com/owner/repo/releases/tag/v1.0.0"}

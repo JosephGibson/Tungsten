@@ -277,8 +277,36 @@ east end, `pool_shore`: four frames of 3 × 2 tiles, each tile with art a clip
 
 Cosmetic RNG streams use the first eight bytes of SHA-256 of the asset name,
 not Python's process-randomized hash. Changing one asset does not perturb others.
-To review art, make a contact sheet in temporary output, outside `assets/`;
-review-only files must not enter the generated inventory.
+To review art, render it from this folder with `tungsten render` (redo 7.2)
+into a session's evidence folder, outside `assets/`; review-only files must
+not enter the generated inventory. A contact sheet stages prefabs, sprites,
+animations or particle configs in a captioned grid; a loop of an animated
+effect at 20 fps is one run; an area still starts a run and centres the
+camera on a point of the level, the physics overlay on:
+
+```bash
+tungsten render --sheet wisp,crawler,beetle,bat,troll,goblin -o $OUT/foes.png
+tungsten render --sheet animation:ex10_campfire --loop 2..61/3 -o $OUT/loop/
+tungsten render --after start_run --at 640,2240 --view 288 \
+  --overlay physics --frame 120 -o $OUT/area.png
+```
+
+`--save-script` keeps the script a render runs, to edit and run with
+`tungsten run --script`. A review keeps its scripts in its evidence folder,
+not here, so none rots with the level; this one holds the wizard over the
+aqueduct and checks the banner's area:
+
+```json
+{
+  "version": 1, "frames": 150, "resolution": [1280, 720],
+  "steps": [
+    { "frame": 2, "action": "start_run" },
+    { "frame": 60, "until": 150, "action": "place_player", "args": { "at": [8000, 300] } },
+    { "frame": 150, "capture": "review/aqueduct.png" },
+    { "frame": 150, "assert": { "probe": "area", "op": "==", "value": "Broken aqueduct" } }
+  ]
+}
+```
 
 ## Editing the level
 

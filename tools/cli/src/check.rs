@@ -25,9 +25,7 @@ pub(crate) const CHECK_ENV: &str = "TUNGSTEN_CHECK";
 /// Runs `tungsten check` in `dir`, the game's folder, printing every error
 /// and a summary; `true` when there is none.
 pub(crate) fn run(dir: &Path) -> anyhow::Result<bool> {
-    require_game_folder(dir)?;
-    let metadata = cargo::metadata(dir)?;
-    cargo::check_engine_version(&metadata, cargo::VERSION).map_err(anyhow::Error::msg)?;
+    require_game(dir)?;
     let config = config_stage(dir);
     if !config.is_empty() {
         print_findings(&config);
@@ -40,6 +38,14 @@ pub(crate) fn run(dir: &Path) -> anyhow::Result<bool> {
     print_findings(&findings);
     println!("{}", summary(&findings));
     Ok(findings.is_empty())
+}
+
+/// The game in `dir` that `check`, `run` and `describe` work on: its
+/// folder, and its engine at this command line's version.
+pub(crate) fn require_game(dir: &Path) -> anyhow::Result<()> {
+    require_game_folder(dir)?;
+    let metadata = cargo::metadata(dir)?;
+    cargo::check_engine_version(&metadata, cargo::VERSION).map_err(anyhow::Error::msg)
 }
 
 /// A `Cargo.toml` in `dir`, or the error that says where to run.
@@ -93,12 +99,30 @@ pub(crate) fn content_stage(
     report: &Path,
     command: &mut Command,
 ) -> anyhow::Result<ExitStatus> {
+    run_game(dir, false, &[(CHECK_ENV, report)], command)
+}
+
+/// Runs the game in `dir` with the handshake's variables `envs` set: as
+/// `cargo run --quiet` (with `--release` when asked) when `command` is
+/// `cargo`, else the program given. Its output is the terminal's unless
+/// the caller set it.
+pub(crate) fn run_game(
+    dir: &Path,
+    release: bool,
+    envs: &[(&str, &Path)],
+    command: &mut Command,
+) -> anyhow::Result<ExitStatus> {
     if command.get_program() == "cargo" {
         command.args(["run", "--quiet"]);
+        if release {
+            command.arg("--release");
+        }
+    }
+    for (name, value) in envs {
+        command.env(name, value);
     }
     command
         .current_dir(dir)
-        .env(CHECK_ENV, report)
         .status()
         .with_context(|| format!("cannot run `{}`", command.get_program().to_string_lossy()))
 }

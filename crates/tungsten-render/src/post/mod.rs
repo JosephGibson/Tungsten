@@ -17,6 +17,7 @@ pub mod fullscreen;
 pub mod smaa;
 pub mod smaa_luts;
 
+use crate::counters::{self, Counts};
 use bloom::{BloomPipeline, BloomShaderIds};
 
 /// The stock effects in `PostPass` order: the manifest ID of each one's shader
@@ -236,6 +237,7 @@ pub struct PostStackRenderer {
     params: ParamSlots<StockParams>,
     /// The [`InertParam`]s already warned about, one bit each.
     inert_warned: u8,
+    counts: Box<Counts>,
 }
 
 /// A stock effect's setting that draws nothing, or not as named.
@@ -277,6 +279,12 @@ pub(crate) fn inert_param(pass: &PostPass, clear_alpha: f32) -> Option<InertPara
 }
 
 impl PostStackRenderer {
+    /// Adds the stack's draw and upload counts, bloom's included, to `total`.
+    pub(crate) fn take_counts(&self, total: &mut crate::FrameCounters) {
+        self.counts.take_into(total);
+        self.bloom.counts.take_into(total);
+    }
+
     /// Build every pipeline from the shared `ShaderModuleCache`, which the
     /// renderer pre-seeds with the compile-time `include_str!` WGSL.
     /// `stock_shader_ids` are the cache IDs of the `STOCK_SHADERS` rows.
@@ -302,6 +310,7 @@ impl PostStackRenderer {
             source_bind_groups: Default::default(),
             params: ParamSlots::default(),
             inert_warned: 0,
+            counts: Counts::boxed(),
         }
     }
 
@@ -527,13 +536,13 @@ impl PostStackRenderer {
             StockParams { ubo, bind_group }
         });
         if stale {
-            queue.write_buffer(&params.ubo, 0, &payload);
+            counters::write_buffer(&self.counts, queue, &params.ubo, 0, &payload);
         }
         let params_bg = params.bind_group.clone();
         render_pass.set_pipeline(&self.pipeline_for(pass).pipeline);
         render_pass.set_bind_group(0, &source_bg, &[]);
         render_pass.set_bind_group(1, &params_bg, &[]);
-        render_pass.draw(0..3, 0..1);
+        counters::draw(&self.counts, render_pass, 0..3, 0..1);
     }
 
     /// Record a `PostPass::Bloom` slot at encoder level. Unlike `record_pass`,

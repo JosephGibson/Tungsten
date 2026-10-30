@@ -124,6 +124,12 @@ impl<T> EventQueue<T> {
         held.iter().map(Vec::len).sum::<usize>() + previous.len() + current.len()
     }
 
+    /// How many events were sent since the last [`flush`](Self::flush),
+    /// whatever the step view.
+    pub(super) fn sent_since_flush(&self) -> usize {
+        self.current.len()
+    }
+
     /// Rotate windows; App-owned frame boundary. In a frame that holds
     /// ([`World::hold_events_for_fixed_step`](crate::ecs::World::hold_events_for_fixed_step))
     /// the previous window joins the held events; otherwise both are

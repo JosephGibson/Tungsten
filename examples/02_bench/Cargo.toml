@@ -12,5 +12,9 @@ anyhow = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }
 
+[dev-dependencies]
+# The counter guards' harness and counting allocator.
+tungsten = { workspace = true, features = ["testing"] }
+
 [lints]
 workspace = true

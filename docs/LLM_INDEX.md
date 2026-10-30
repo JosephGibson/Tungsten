@@ -1,6 +1,6 @@
 # LLM Navigation Index
 
-Task → file map: read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the documentation map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
+Task → file map: read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the doc map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
 
 ## Runtime and ECS
 
@@ -9,7 +9,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | ECS storage/query bug | `core/ecs/world.rs`, `core/ecs/storage.rs`, `core/ecs/archetype.rs`, `core/lib.rs` |
 | Deferred spawn/despawn (`D-039`) | `core/ecs/command_buffer.rs` |
 | Event flush, holds, `EventCursor` (`D-040`, `D-139`, `D-170`) | `core/ecs/event_queue.rs`, `core/ecs/world.rs` |
-| Frame order, smoke-frame exit, winit loop (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
+| Frame order, winit loop, smoke (`D-018`, `D-043`) | `tungsten/app.rs`, `tungsten/lib.rs` |
 | Schedule, stages, plugins, `DefaultPlugins`, engine system names (`D-128`, `D-133`) | `core/schedule.rs`, `core/physics/plugin.rs`, `tungsten/plugins.rs`, `tungsten/app.rs`, `tungsten/tests/plugins.rs` |
 | Kit by domain: phases, tags, stats, cues, motion, recipes (`D-155`, `D-172`–`D-177`) | `crates/tungsten-kit/src/`, `tungsten/tests/kit.rs`, `tungsten/tests/kit_recipes/`, `crates/tungsten/tests/fixtures/kit/` |
 | Game clock, `Time`, `Timer`, fixed step, interpolation (`D-088`, `D-129`, `D-134`, `D-137`, `D-139`, `D-146`) | `core/time.rs`, `core/tests/time.rs`, `core/physics/plugin.rs`, `tungsten/app.rs`, `tungsten/tests/fixed_step.rs`, `tungsten/tests/testing.rs` |
@@ -27,7 +27,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Particles, mesh particles (`D-049`–`D-051`, `D-093`) | `core/assets/particle.rs`, `core/rng.rs`, `core/components.rs`, `tungsten/particles.rs`, `render/mesh_particle.rs`, `examples/01_platformer/assets/particles/` |
 | Audio mixer, decode (`D-027`, `D-028`, `D-034`) | `tungsten/audio.rs`, `core/assets/audio.rs`, `crates/tungsten-core/tests/integration/audio_decode.rs` |
 | Telemetry, perf lines (`D-038`, `D-041`) | `tungsten/telemetry.rs`, `tungsten/app.rs`, `docs/perf/profiling-workflow.md` |
-| Perf runner, capacity search, compare reports (`D-078`) | `scripts/bench.py`, `scripts/bench_report.py`, `scripts/test-bench.py` |
+| Perf runner, rows, sittings (`D-078`) | `scripts/perf.py`, `scripts/perf_stats.py`, `scripts/perf-rows.json`, `scripts/test-perf.py` |
 | Criterion micro-benchmarks | `crates/*/benches/`, `docs/perf/profiling-workflow.md` |
 | Debug views: HUD, overlay, inspectors, console; engine font (`D-044`, `D-123`, `D-165`) | `tungsten/debug_views.rs`, `tungsten/debug_hud.rs`, `tungsten/telemetry.rs`, `tungsten/engine_font.rs` |
 
@@ -66,7 +66,7 @@ Read `crates/tungsten-render/AGENTS.md` before editing the render crate.
 | SMAA (`D-059`) | `tungsten/post_aa.rs`, `render/post/smaa.rs`, `render/post/smaa_luts.rs`, `render/targets.rs`, `render/passes/order.rs` |
 | Bloom (`D-060`) | `core/post.rs`, `render/post/bloom.rs`, `render/targets.rs` |
 | Lighting (`D-061`) | `core/components.rs`, `core/lighting.rs`, `render/lighting.rs`, `render/lit_sprite.rs`, `assets/shaders/lit_sprite.wgsl`, `tungsten/light_extract.rs` |
-| Debug overlays, screenshots (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
+| Overlays, captures (`D-047`, `D-142`) | `core/debug_draw.rs`, `core/inspect.rs`, `render/debug_line.rs`, `render/screenshot.rs`, `render/image_diff.rs`, `tungsten/capture.rs`, `tungsten/script.rs`, `tungsten/physics_debug.rs`, `tungsten/systems_overlay.rs`, `tungsten/inspector.rs` |
 | Pixel tests (`just visual`) | `examples/02_bench/tests/visual_regression.rs`, `examples/03_fixtures/tests/` |
 
 ## Examples
@@ -77,10 +77,9 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | --- | --- |
 | Platformer, a game on the template run from its folder | `examples/01_platformer/README.md` (each mechanic's kit item), `examples/01_platformer/src/game.rs` and `examples/01_platformer/src/save.rs` (the seam), `examples/01_platformer/src/features/`, `examples/01_platformer/src/shell/` (the template's, copied), `examples/01_platformer/tests/game/` (`saves`, `playthrough`) |
 | Platformer art, level and layout regeneration; the actors' bodies as data | `examples/01_platformer/tools/README.md`, `examples/01_platformer/tools/generate.py`, `examples/01_platformer/tools/level.py`, `examples/01_platformer/tools/level.json`, `examples/01_platformer/tools/content/`, `examples/01_platformer/tools/locks.json` (`D-223`), `examples/01_platformer/tools/actors.py` (`BODIES`), `examples/01_platformer/src/shared.rs` (`Body`) |
-| Benchmark harness, knobs, presets | `examples/02_bench/src/main.rs`, `examples/02_bench/src/knobs.rs`, `docs/perf/benchmarks.md` |
-| One benchmark's workload | `examples/02_bench/src/<bench>.rs` |
+| Benchmarks: workloads, knobs, guards | `examples/02_bench/src/<bench>.rs`, `examples/02_bench/src/knobs.rs`, `examples/02_bench/src/tests/guards.rs`, `docs/perf/benchmarks.md` |
 | Fixtures crate (`D-193`): scenes by `TUNGSTEN_FIXTURE`, pixel tests, UI sprite generator | `examples/03_fixtures/src/`, `examples/03_fixtures/tests/`, `examples/03_fixtures/tools/README.md` |
-| Game template (shell, sample, seam) and the `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
+| Template: shell, sample, seam; `tungsten` CLI (`D-181`–`D-183`, `D-187`, `D-199`) | `templates/basic/`, `templates/basic/AGENTS.md`, `tools/cli/src/`, `tungsten/asset_loader/check.rs`, `tungsten/describe.rs`, `scripts/template-check.sh`, `docs/getting-started.md` |
 | GPU smoke run, fixture matrices (`just smoke`) | `scripts/smoke-examples.sh`, `scripts/test-smoke-examples.sh` |
 | Documentation maintenance | `docs/README.md`, `docs/plans/README.md` |
 | Open findings, unchecked platforms and follow-ups | `docs/known-issues.md` |
@@ -88,9 +87,9 @@ Run with `cargo run -p example-NN-name`; example 01 from its folder: `cd example
 | Agent instruction budgets and links (`just ctx`) | `scripts/check-agent-context.py` |
 | Stale `target/` artifacts, a full disk (`just clean-target`) | `scripts/clean-target.py`, `scripts/test-clean-target.py` |
 | Public-API snapshots (`just api`, `D-107`), a free diff of the surface (`D-215`) | `scripts/public-api.sh`, `api/` |
-| Writing or running a large plan | `.claude/skills/tungsten-milestone/SKILL.md`, `docs/operating-rules.md` |
-| Status and what's next; rules for commits, plans, decisions, tiers and releases (`D-215`) | `ROADMAP.md`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
-| Releases: checks, hand-off, recovery, player archives, licenses, crash symbols (`D-071`, `D-074`, `D-079`, `D-120`, `D-122`, `D-196`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-finalize/SKILL.md`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
+| Writing or running a large plan | `.claude/skills/tungsten-plan/SKILL.md`, `docs/operating-rules.md` |
+| Status, what's next; commit, plan, decision, tier, release rules (`D-215`) | `ROADMAP.md`, `scripts/status.py`, `docs/operating-rules.md`, `docs/plans/roadmap-redo.md`, `.claude/skills/tungsten-next/SKILL.md`, `.githooks/commit-msg` |
+| Releases: checks, hand-off, recovery, player archives, licenses, crash symbols (`D-071`, `D-074`, `D-120`, `D-122`, `D-196`, `D-227`) | `.github/workflows/release.yml`, `scripts/release.py`, `scripts/test-release.py`, `licenses/`, `scripts/crash-report.py`, `scripts/test-crash-report.py`, `tools/launcher/src/main.rs`, `.claude/skills/tungsten-release/SKILL.md`, `docs/releases.md`, `scripts/release-preflight.py`, `scripts/test-release-preflight.py` |
 | CI jobs, the Windows test job (`D-070`, `D-121`) | `.github/workflows/ci.yml` |
 | New dependency or design change | `docs/DECISION_INDEX.md`, then `DECISIONS.md` by ID; to write an entry, `.claude/skills/tungsten-decision/SKILL.md` |
 

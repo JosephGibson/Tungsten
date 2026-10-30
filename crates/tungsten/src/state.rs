@@ -219,6 +219,13 @@ impl StateStack {
         true
     }
 
+    /// Whether a request waits: a command not yet applied, or held from the
+    /// last dispatch, or a transition queued or active. A script's stage
+    /// asks for its states only when none waits (redo 7.2).
+    pub(crate) fn requests_waiting(&self) -> bool {
+        !self.pending.is_empty() || self.is_transitioning()
+    }
+
     /// A transition is queued or active. States keep updating during one; a
     /// game that wants input frozen checks this.
     #[must_use]

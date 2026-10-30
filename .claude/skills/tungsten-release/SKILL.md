@@ -1,12 +1,12 @@
 ---
 name: tungsten-release
-description: Run the release checks, end with the human's commit/tag/push/pull-request command block, and verify, rehearse or recover Tungsten releases using the canonical release guide and read-only preflight.
+description: Prepare, cut, rehearse, verify or recover a Tungsten release — branch documentation, the notes, `just release`, the version branch's push and the owner's tag/next-branch/pull-request block — from docs/releases.md. Use for any release or rehearsal request.
 ---
 
 # tungsten-release
 
-Read [docs/releases.md](../../../docs/releases.md): its numbered happy path owns the checks, commands and commit messages; its reference covers resuming, verification, rehearsals and recovery. Follow the requested stage and existing authorization.
+[docs/releases.md](../../../docs/releases.md) owns the procedure: its numbered path, then its reference for branch preparation, resuming, rehearsals and recovery. Follow the requested stage.
 
-Run every check yourself first. Then end the task with the exact commands the human still has to run, values filled in, as one block of basic commit, tag, push and pull-request commands; the read-only preflight prints them. Git mutations and GitHub-changing `gh` commands are human-pasted under the permission model stated there, and the human merging the pull request in GitHub is what publishes.
-
-Use [tungsten-finalize](../tungsten-finalize/SKILL.md) if branch documentation or the version cut is still needed. Follow the guide's handoff requirements and [AGENTS.md](../../../AGENTS.md). Do not maintain a second procedure here.
+- **Yours:** the notes, the sitting before a minor cut, `just release minor '<summary>'` (it runs every check and commits the cut) and `git push origin 0.NN`, the whole command.
+- **The owner's:** the tag and its push, which publishes; every other push; merges; every GitHub-changing `gh` (`gh pr create`, `gh workflow run`, reruns). End with the owner's block as preflight prints it. The merge publishes nothing.
+- **Rehearse first** when `release.yml`, or `release.py`'s packaging, changed since the last final tag: `just release rehearsal`, then the owner's tag push, before any final tag.

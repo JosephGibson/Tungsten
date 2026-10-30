@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use bytemuck::{Pod, Zeroable};
 use tungsten_core::assets::{FilterMode, MaterialAssetId, TextureHandle};
 use tungsten_core::tween::UniformOverrideBlock;
-use wgpu::util::DeviceExt;
 
+use crate::counters::{self, Counts};
 use crate::material::{MaterialPipeline, MaterialSlot};
 use crate::post::ParamSlots;
 use crate::shader_hot_reload::build_validated;
@@ -227,6 +227,7 @@ pub struct SpritePipeline {
     material_batches: HashMap<MaterialAssetId, usize>,
     /// Whether a frame has outgrown the largest instance buffer, logged once.
     warned_instance_cap: bool,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl SpritePipeline {
@@ -359,11 +360,16 @@ impl SpritePipeline {
             depth_write,
         );
 
-        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("sprite_vertex_buffer"),
-            contents: bytemuck::cast_slice(SPRITE_VERTICES),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
+        let counts = Counts::boxed();
+        let vertex_buffer = counters::create_buffer_init(
+            &counts,
+            device,
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("sprite_vertex_buffer"),
+                contents: bytemuck::cast_slice(SPRITE_VERTICES),
+                usage: wgpu::BufferUsages::VERTEX,
+            },
+        );
         let instance_capacity = 1;
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("sprite_instance_buffer"),
@@ -405,6 +411,7 @@ impl SpritePipeline {
             material_slots: HashMap::new(),
             material_batches: HashMap::new(),
             warned_instance_cap: false,
+            counts,
         }
     }
 
@@ -528,7 +535,9 @@ impl SpritePipeline {
             view_formats: &[],
         });
 
-        queue.write_texture(
+        counters::write_texture(
+            &self.counts,
+            queue,
             wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
@@ -606,7 +615,9 @@ impl SpritePipeline {
             tex_size.width,
             tex_size.height
         );
-        queue.write_texture(
+        counters::write_texture(
+            &self.counts,
+            queue,
             wgpu::TexelCopyTextureInfo {
                 texture: &gpu_tex.texture,
                 mip_level: 0,
@@ -700,7 +711,9 @@ impl SpritePipeline {
             (&normal, normal_rgba),
             (&emissive, emissive_rgba),
         ] {
-            queue.write_texture(
+            counters::write_texture(
+                &self.counts,
+                queue,
                 wgpu::TexelCopyTextureInfo {
                     texture: tex,
                     mip_level: 0,
@@ -796,7 +809,9 @@ impl SpritePipeline {
             (&lit.normal, normal_rgba),
             (&lit.emissive, emissive_rgba),
         ] {
-            queue.write_texture(
+            counters::write_texture(
+                &self.counts,
+                queue,
                 wgpu::TexelCopyTextureInfo {
                     texture: tex,
                     mip_level: 0,
@@ -828,7 +843,13 @@ impl SpritePipeline {
     /// Upload caller-owned camera view-projection matrix.
     pub fn update_camera(&self, queue: &wgpu::Queue, view_proj: &glam::Mat4) {
         let matrix_ref: &[f32; 16] = view_proj.as_ref();
-        queue.write_buffer(&self.camera_buffer, 0, bytemuck::cast_slice(matrix_ref));
+        counters::write_buffer(
+            &self.counts,
+            queue,
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(matrix_ref),
+        );
     }
 
     /// Drops material `id`'s UBO slots: a new or rebuilt material pipeline has
@@ -898,7 +919,8 @@ impl SpritePipeline {
         let Some(upload_size) = wgpu::BufferSize::new(drawn as u64 * instance_stride) else {
             return;
         };
-        let Some(mut upload) = queue.write_buffer_with(&self.instance_buffer, 0, upload_size)
+        let Some(mut upload) =
+            counters::write_buffer_with(&self.counts, queue, &self.instance_buffer, 0, upload_size)
         else {
             log::error!("sprite instance upload of {drawn} instances was rejected");
             return;
@@ -1041,14 +1063,14 @@ impl SpritePipeline {
                             MaterialSlot::new(device, &mp.bind_group_layout, &mp.name)
                         });
                     if stale {
-                        queue.write_buffer(&slot.ubo, 0, &payload);
+                        counters::write_buffer(&self.counts, queue, &slot.ubo, 0, &payload);
                     }
                     render_pass.set_bind_group(2, &slot.bind_group, &[]);
                 }
             }
 
             render_pass.set_vertex_buffer(1, self.instance_buffer.slice(start..end));
-            render_pass.draw(0..6, 0..count as u32);
+            counters::draw(&self.counts, render_pass, 0..6, 0..count as u32);
         }
     }
 

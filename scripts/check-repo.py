@@ -43,8 +43,11 @@ PLAN_CITATION = re.compile(r"docs/plans/[\w./-]+?\.md")
 ROADMAP = "ROADMAP.md"
 ROADMAP_SECTIONS = ("Now", "Next", "Later")
 LOCAL_LINK = re.compile(r'\]\((<[^>]+>|[^\s)]+)(?:\s+"[^"]*")?\)|^\s{0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)', re.M)
-# The milestone skeleton is not a live plan; its links resolve at its eventual
-# docs/plans/1.0/ destination. It is outside active_plan_documents, intentionally.
+# A frozen record's banner (D-215). Frozen records are never edited again, so their links
+# to removed or renamed files rot by design until step 9.7 deletes them: notes, not errors.
+FROZEN = re.compile(r"Frozen [0-9-]+ \(`?D-215")
+# The plan skeleton (.claude/skills/tungsten-plan/skeleton.md) is not a live plan; its links
+# resolve at its destination, docs/plans/<topic>.md. It is outside active_plan_documents, intentionally.
 
 
 def archive_path(path):
@@ -277,6 +280,7 @@ def markdown_anchors(text):
 
 def check_local_links(root, path, text, errors, notes, anchors):
     rel = path.relative_to(root).as_posix()
+    frozen = bool(FROZEN.search(text))
     for match in LOCAL_LINK.finditer(markdown_body(text)):
         target = (match[1] or match[2]).strip("<>")
         url = urlsplit(target)
@@ -287,12 +291,18 @@ def check_local_links(root, path, text, errors, notes, anchors):
             notes.append(f"archive link left unread: {rel}: {target}")
             continue
         if not dest.exists():
-            errors.append(f"{rel}: broken link {target}")
+            if frozen:
+                notes.append(f"frozen record's dead link left as is: {rel}: {target}")
+            else:
+                errors.append(f"{rel}: broken link {target}")
         elif url.fragment and dest.suffix == ".md":
             if dest not in anchors:
                 anchors[dest] = markdown_anchors(text if dest == path else dest.read_text())
             if unquote(url.fragment) not in anchors[dest]:
-                errors.append(f"{rel}: broken fragment {target}")
+                if frozen:
+                    notes.append(f"frozen record's dead fragment left as is: {rel}: {target}")
+                else:
+                    errors.append(f"{rel}: broken fragment {target}")
 
 
 def check_docs(root, errors, notes):
@@ -529,7 +539,7 @@ def select_checks(root, paths):
                 review.add("Public API may change: inspect the diff; regenerate with just api when needed, run just api-check and update the W4 ledger/template for breaks or authoring changes.")
             if name == "tungsten-render" and folder == "src":
                 require("just visual", "Hardware", "renderer pixels on the reference machine; requires visual switch")
-                review.add("Renderer/frame work: inspect the affected perf rows and milestone requirements; captures follow docs/perf/profiling-workflow.md.")
+                review.add("Renderer/frame work: run `just perf counters` beside smoke and visual; perf captures follow docs/perf/profiling-workflow.md (D-226).")
         if path.startswith("crates/tungsten-core/src/physics/") or re.match(r"crates/tungsten-core/(?:tests|benches)/physics", path):
             require("just physics-release", "CPU release", "solver determinism/containment are ignored in debug; also tunneling")
         if (path.startswith(("crates/tungsten-core/src/assets/", "crates/tungsten/src/asset_loader/"))
@@ -540,7 +550,7 @@ def select_checks(root, paths):
         if (path.startswith(("crates/tungsten-core/src/physics/", "crates/tungsten-core/src/ecs/"))
                 or path in ("crates/tungsten/src/app.rs", "crates/tungsten-core/src/time.rs", "crates/tungsten-core/src/schedule.rs")
                 or re.match(r"crates/tungsten/src/\w+_extract.rs$", path)):
-            review.add("Hot ECS/physics/frame/extract work: select affected perf rows with the profiling guide; shared ECS/frame-loop milestone work captures every CPU row. No captures run here.")
+            review.add("Hot ECS/physics/frame/extract work: the counter guards in `just check` are the perf check; a quick sitting may be quoted as information (D-226). No captures run here.")
         if path.endswith(".wgsl"):
             require("cargo test -p tungsten-render --test shader_coverage --locked", "Edit loop", "Naga validation and byte-equal shader mirrors")
             require("just smoke", "Hardware", "shader/pipeline fixtures; local GPU/display")

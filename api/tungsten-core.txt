@@ -4167,6 +4167,7 @@ impl tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::check_in(&self, &str, &serde_json::value::Value, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::count(&self, &str, &tungsten_core::World) -> core::option::Option<usize>
 pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
 pub fn tungsten_core::component_registry::ComponentRegistry::name_of<T: 'static>(&self) -> core::option::Option<&str>
@@ -5791,6 +5792,9 @@ impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::W
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::ecs::World
 impl tungsten_core::World
+pub fn tungsten_core::World::add_script_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::World::add_script_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
+impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
@@ -5802,6 +5806,7 @@ pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOw
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
+pub fn tungsten_core::World::counters(&self) -> tungsten_core::WorldCounters
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
@@ -5853,6 +5858,29 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+pub struct tungsten_core::ecs::WorldCounters
+pub tungsten_core::ecs::WorldCounters::archetype_moves: u64
+pub tungsten_core::ecs::WorldCounters::despawned: u64
+pub tungsten_core::ecs::WorldCounters::events_sent: u64
+pub tungsten_core::ecs::WorldCounters::spawned: u64
+impl core::clone::Clone for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::clone(&self) -> tungsten_core::WorldCounters
+impl core::cmp::Eq for tungsten_core::WorldCounters
+impl core::cmp::PartialEq for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::eq(&self, &tungsten_core::WorldCounters) -> bool
+impl core::default::Default for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::default() -> tungsten_core::WorldCounters
+impl core::fmt::Debug for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::WorldCounters
+impl core::marker::StructuralPartialEq for tungsten_core::WorldCounters
+impl core::marker::Freeze for tungsten_core::WorldCounters
+impl core::marker::Send for tungsten_core::WorldCounters
+impl core::marker::Sync for tungsten_core::WorldCounters
+impl core::marker::Unpin for tungsten_core::WorldCounters
+impl core::marker::UnsafeUnpin for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::WorldCounters
 pub trait tungsten_core::ecs::Bundle: 'static
 pub fn tungsten_core::ecs::Bundle::put<S: tungsten_core::ecs::bundle::BundleSink>(self, &mut S)
 pub fn tungsten_core::ecs::Bundle::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> tungsten_core::ecs::bundle::Chain<Self, B> where Self: core::marker::Sized
@@ -8298,6 +8326,671 @@ pub fn tungsten_core::PhysicsPlugin::build(&self, &mut tungsten_core::schedule::
 pub fn tungsten_core::PhysicsPlugin::name(&self) -> &'static str
 pub fn tungsten_core::schedule::system(impl core::convert::Into<alloc::string::String>, impl core::ops::function::FnMut(&mut tungsten_core::World) + 'static) -> tungsten_core::schedule::SystemDesc
 pub type tungsten_core::schedule::SystemFn = alloc::boxed::Box<dyn core::ops::function::FnMut(&mut tungsten_core::World)>
+pub mod tungsten_core::script
+pub enum tungsten_core::script::CameraView
+pub tungsten_core::script::CameraView::FitStaged
+pub tungsten_core::script::CameraView::ViewHeight
+pub tungsten_core::script::CameraView::ViewHeight::center: [f32; 2]
+pub tungsten_core::script::CameraView::ViewHeight::view_height: f32
+pub tungsten_core::script::CameraView::Zoom
+pub tungsten_core::script::CameraView::Zoom::center: [f32; 2]
+pub tungsten_core::script::CameraView::Zoom::zoom: f32
+impl core::clone::Clone for tungsten_core::script::CameraView
+pub fn tungsten_core::script::CameraView::clone(&self) -> tungsten_core::script::CameraView
+impl core::cmp::PartialEq for tungsten_core::script::CameraView
+pub fn tungsten_core::script::CameraView::eq(&self, &tungsten_core::script::CameraView) -> bool
+impl core::fmt::Debug for tungsten_core::script::CameraView
+pub fn tungsten_core::script::CameraView::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::CameraView
+impl core::marker::StructuralPartialEq for tungsten_core::script::CameraView
+impl serde_core::ser::Serialize for tungsten_core::script::CameraView
+pub fn tungsten_core::script::CameraView::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::CameraView
+pub fn tungsten_core::script::CameraView::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::CameraView
+impl core::marker::Send for tungsten_core::script::CameraView
+impl core::marker::Sync for tungsten_core::script::CameraView
+impl core::marker::Unpin for tungsten_core::script::CameraView
+impl core::marker::UnsafeUnpin for tungsten_core::script::CameraView
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::CameraView
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::CameraView
+pub enum tungsten_core::script::Cursor
+pub tungsten_core::script::Cursor::Window([f32; 2])
+pub tungsten_core::script::Cursor::World([f32; 2])
+impl core::clone::Clone for tungsten_core::script::Cursor
+pub fn tungsten_core::script::Cursor::clone(&self) -> tungsten_core::script::Cursor
+impl core::cmp::PartialEq for tungsten_core::script::Cursor
+pub fn tungsten_core::script::Cursor::eq(&self, &tungsten_core::script::Cursor) -> bool
+impl core::convert::From<tungsten_core::script::Cursor> for serde_json::value::Value
+pub fn serde_json::value::Value::from(tungsten_core::script::Cursor) -> serde_json::value::Value
+impl core::convert::TryFrom<serde_json::value::Value> for tungsten_core::script::Cursor
+pub type tungsten_core::script::Cursor::Error = alloc::string::String
+pub fn tungsten_core::script::Cursor::try_from(serde_json::value::Value) -> core::result::Result<Self, alloc::string::String>
+impl core::fmt::Debug for tungsten_core::script::Cursor
+pub fn tungsten_core::script::Cursor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::Cursor
+impl core::marker::StructuralPartialEq for tungsten_core::script::Cursor
+impl serde_core::ser::Serialize for tungsten_core::script::Cursor
+pub fn tungsten_core::script::Cursor::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Cursor
+pub fn tungsten_core::script::Cursor::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Cursor
+impl core::marker::Send for tungsten_core::script::Cursor
+impl core::marker::Sync for tungsten_core::script::Cursor
+impl core::marker::Unpin for tungsten_core::script::Cursor
+impl core::marker::UnsafeUnpin for tungsten_core::script::Cursor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Cursor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Cursor
+pub enum tungsten_core::script::Ending
+pub tungsten_core::script::Ending::Exit
+pub tungsten_core::script::Ending::Failed
+pub tungsten_core::script::Ending::Frames
+pub tungsten_core::script::Ending::GameExit
+impl core::clone::Clone for tungsten_core::script::Ending
+pub fn tungsten_core::script::Ending::clone(&self) -> tungsten_core::script::Ending
+impl core::cmp::Eq for tungsten_core::script::Ending
+impl core::cmp::PartialEq for tungsten_core::script::Ending
+pub fn tungsten_core::script::Ending::eq(&self, &tungsten_core::script::Ending) -> bool
+impl core::fmt::Debug for tungsten_core::script::Ending
+pub fn tungsten_core::script::Ending::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::Ending
+impl core::marker::StructuralPartialEq for tungsten_core::script::Ending
+impl serde_core::ser::Serialize for tungsten_core::script::Ending
+pub fn tungsten_core::script::Ending::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Ending
+pub fn tungsten_core::script::Ending::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Ending
+impl core::marker::Send for tungsten_core::script::Ending
+impl core::marker::Sync for tungsten_core::script::Ending
+impl core::marker::Unpin for tungsten_core::script::Ending
+impl core::marker::UnsafeUnpin for tungsten_core::script::Ending
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Ending
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Ending
+pub enum tungsten_core::script::Op
+pub tungsten_core::script::Op::Eq
+pub tungsten_core::script::Op::Ge
+pub tungsten_core::script::Op::Gt
+pub tungsten_core::script::Op::Le
+pub tungsten_core::script::Op::Lt
+pub tungsten_core::script::Op::Ne
+pub tungsten_core::script::Op::Near
+impl tungsten_core::script::Op
+pub fn tungsten_core::script::Op::symbol(self) -> &'static str
+impl core::clone::Clone for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::clone(&self) -> tungsten_core::script::Op
+impl core::cmp::Eq for tungsten_core::script::Op
+impl core::cmp::PartialEq for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::eq(&self, &tungsten_core::script::Op) -> bool
+impl core::fmt::Debug for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::Op
+impl core::marker::StructuralPartialEq for tungsten_core::script::Op
+impl serde_core::ser::Serialize for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Op
+pub fn tungsten_core::script::Op::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Op
+impl core::marker::Send for tungsten_core::script::Op
+impl core::marker::Sync for tungsten_core::script::Op
+impl core::marker::Unpin for tungsten_core::script::Op
+impl core::marker::UnsafeUnpin for tungsten_core::script::Op
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Op
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Op
+pub enum tungsten_core::script::SheetKind
+pub tungsten_core::script::SheetKind::Animation
+pub tungsten_core::script::SheetKind::Particles
+pub tungsten_core::script::SheetKind::Prefab
+pub tungsten_core::script::SheetKind::Sprite
+impl tungsten_core::script::SheetKind
+pub fn tungsten_core::script::SheetKind::name(self) -> &'static str
+impl core::clone::Clone for tungsten_core::script::SheetKind
+pub fn tungsten_core::script::SheetKind::clone(&self) -> tungsten_core::script::SheetKind
+impl core::cmp::Eq for tungsten_core::script::SheetKind
+impl core::cmp::PartialEq for tungsten_core::script::SheetKind
+pub fn tungsten_core::script::SheetKind::eq(&self, &tungsten_core::script::SheetKind) -> bool
+impl core::fmt::Debug for tungsten_core::script::SheetKind
+pub fn tungsten_core::script::SheetKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::SheetKind
+impl core::marker::StructuralPartialEq for tungsten_core::script::SheetKind
+impl core::marker::Freeze for tungsten_core::script::SheetKind
+impl core::marker::Send for tungsten_core::script::SheetKind
+impl core::marker::Sync for tungsten_core::script::SheetKind
+impl core::marker::Unpin for tungsten_core::script::SheetKind
+impl core::marker::UnsafeUnpin for tungsten_core::script::SheetKind
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::SheetKind
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::SheetKind
+pub enum tungsten_core::script::Verb
+pub tungsten_core::script::Verb::Action(tungsten_core::script::ActionStep)
+pub tungsten_core::script::Verb::Assert(tungsten_core::script::Assert)
+pub tungsten_core::script::Verb::Camera(core::option::Option<tungsten_core::script::CameraView>)
+pub tungsten_core::script::Verb::Capture(alloc::string::String)
+pub tungsten_core::script::Verb::Cursor(tungsten_core::script::Cursor)
+pub tungsten_core::script::Verb::Exit
+pub tungsten_core::script::Verb::Overlay(tungsten_core::script::OverlayStep)
+pub tungsten_core::script::Verb::Press(alloc::string::String)
+pub tungsten_core::script::Verb::Probe(tungsten_core::script::ProbeStep)
+pub tungsten_core::script::Verb::Release(alloc::string::String)
+pub tungsten_core::script::Verb::Scene(alloc::string::String)
+pub tungsten_core::script::Verb::Sheet(tungsten_core::script::SheetStep)
+pub tungsten_core::script::Verb::Spawn(tungsten_core::script::SpawnStep)
+pub tungsten_core::script::Verb::Stage(tungsten_core::script::StageStep)
+pub tungsten_core::script::Verb::Ui(bool)
+impl tungsten_core::script::Verb
+pub fn tungsten_core::script::Verb::name(&self) -> &'static str
+impl core::clone::Clone for tungsten_core::script::Verb
+pub fn tungsten_core::script::Verb::clone(&self) -> tungsten_core::script::Verb
+impl core::cmp::PartialEq for tungsten_core::script::Verb
+pub fn tungsten_core::script::Verb::eq(&self, &tungsten_core::script::Verb) -> bool
+impl core::fmt::Debug for tungsten_core::script::Verb
+pub fn tungsten_core::script::Verb::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Verb
+impl core::marker::Freeze for tungsten_core::script::Verb
+impl core::marker::Send for tungsten_core::script::Verb
+impl core::marker::Sync for tungsten_core::script::Verb
+impl core::marker::Unpin for tungsten_core::script::Verb
+impl core::marker::UnsafeUnpin for tungsten_core::script::Verb
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Verb
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Verb
+pub struct tungsten_core::script::ActionStep
+pub tungsten_core::script::ActionStep::args: serde_json::value::Value
+pub tungsten_core::script::ActionStep::name: alloc::string::String
+impl core::clone::Clone for tungsten_core::script::ActionStep
+pub fn tungsten_core::script::ActionStep::clone(&self) -> tungsten_core::script::ActionStep
+impl core::cmp::PartialEq for tungsten_core::script::ActionStep
+pub fn tungsten_core::script::ActionStep::eq(&self, &tungsten_core::script::ActionStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::ActionStep
+pub fn tungsten_core::script::ActionStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::ActionStep
+impl core::marker::Freeze for tungsten_core::script::ActionStep
+impl core::marker::Send for tungsten_core::script::ActionStep
+impl core::marker::Sync for tungsten_core::script::ActionStep
+impl core::marker::Unpin for tungsten_core::script::ActionStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::ActionStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ActionStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ActionStep
+pub struct tungsten_core::script::Assert
+pub tungsten_core::script::Assert::args: serde_json::value::Value
+pub tungsten_core::script::Assert::op: tungsten_core::script::Op
+pub tungsten_core::script::Assert::path: core::option::Option<alloc::string::String>
+pub tungsten_core::script::Assert::probe: alloc::string::String
+pub tungsten_core::script::Assert::tolerance: core::option::Option<f64>
+pub tungsten_core::script::Assert::value: serde_json::value::Value
+impl tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::check(&self, &serde_json::value::Value) -> core::result::Result<bool, alloc::string::String>
+pub fn tungsten_core::script::Assert::evaluate(&self, u32, core::result::Result<&serde_json::value::Value, alloc::string::String>) -> tungsten_core::script::AssertReport
+impl core::clone::Clone for tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::clone(&self) -> tungsten_core::script::Assert
+impl core::cmp::PartialEq for tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::eq(&self, &tungsten_core::script::Assert) -> bool
+impl core::fmt::Debug for tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Assert
+impl serde_core::ser::Serialize for tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Assert
+pub fn tungsten_core::script::Assert::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Assert
+impl core::marker::Send for tungsten_core::script::Assert
+impl core::marker::Sync for tungsten_core::script::Assert
+impl core::marker::Unpin for tungsten_core::script::Assert
+impl core::marker::UnsafeUnpin for tungsten_core::script::Assert
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Assert
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Assert
+pub struct tungsten_core::script::AssertReport
+pub tungsten_core::script::AssertReport::actual: serde_json::value::Value
+pub tungsten_core::script::AssertReport::error: core::option::Option<alloc::string::String>
+pub tungsten_core::script::AssertReport::frame: u32
+pub tungsten_core::script::AssertReport::op: tungsten_core::script::Op
+pub tungsten_core::script::AssertReport::passed: bool
+pub tungsten_core::script::AssertReport::path: core::option::Option<alloc::string::String>
+pub tungsten_core::script::AssertReport::probe: alloc::string::String
+pub tungsten_core::script::AssertReport::value: serde_json::value::Value
+impl core::clone::Clone for tungsten_core::script::AssertReport
+pub fn tungsten_core::script::AssertReport::clone(&self) -> tungsten_core::script::AssertReport
+impl core::cmp::PartialEq for tungsten_core::script::AssertReport
+pub fn tungsten_core::script::AssertReport::eq(&self, &tungsten_core::script::AssertReport) -> bool
+impl core::fmt::Debug for tungsten_core::script::AssertReport
+pub fn tungsten_core::script::AssertReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::AssertReport
+impl serde_core::ser::Serialize for tungsten_core::script::AssertReport
+pub fn tungsten_core::script::AssertReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::AssertReport
+pub fn tungsten_core::script::AssertReport::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::AssertReport
+impl core::marker::Send for tungsten_core::script::AssertReport
+impl core::marker::Sync for tungsten_core::script::AssertReport
+impl core::marker::Unpin for tungsten_core::script::AssertReport
+impl core::marker::UnsafeUnpin for tungsten_core::script::AssertReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::AssertReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::AssertReport
+pub struct tungsten_core::script::CaptureReport
+pub tungsten_core::script::CaptureReport::error: core::option::Option<alloc::string::String>
+pub tungsten_core::script::CaptureReport::frame: u32
+pub tungsten_core::script::CaptureReport::path: alloc::string::String
+pub tungsten_core::script::CaptureReport::written: bool
+impl core::clone::Clone for tungsten_core::script::CaptureReport
+pub fn tungsten_core::script::CaptureReport::clone(&self) -> tungsten_core::script::CaptureReport
+impl core::cmp::Eq for tungsten_core::script::CaptureReport
+impl core::cmp::PartialEq for tungsten_core::script::CaptureReport
+pub fn tungsten_core::script::CaptureReport::eq(&self, &tungsten_core::script::CaptureReport) -> bool
+impl core::fmt::Debug for tungsten_core::script::CaptureReport
+pub fn tungsten_core::script::CaptureReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::CaptureReport
+impl serde_core::ser::Serialize for tungsten_core::script::CaptureReport
+pub fn tungsten_core::script::CaptureReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::CaptureReport
+pub fn tungsten_core::script::CaptureReport::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::CaptureReport
+impl core::marker::Send for tungsten_core::script::CaptureReport
+impl core::marker::Sync for tungsten_core::script::CaptureReport
+impl core::marker::Unpin for tungsten_core::script::CaptureReport
+impl core::marker::UnsafeUnpin for tungsten_core::script::CaptureReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::CaptureReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::CaptureReport
+pub struct tungsten_core::script::FailedStep
+pub tungsten_core::script::FailedStep::error: alloc::string::String
+pub tungsten_core::script::FailedStep::frame: u32
+pub tungsten_core::script::FailedStep::index: usize
+pub tungsten_core::script::FailedStep::verb: alloc::string::String
+impl core::clone::Clone for tungsten_core::script::FailedStep
+pub fn tungsten_core::script::FailedStep::clone(&self) -> tungsten_core::script::FailedStep
+impl core::cmp::Eq for tungsten_core::script::FailedStep
+impl core::cmp::PartialEq for tungsten_core::script::FailedStep
+pub fn tungsten_core::script::FailedStep::eq(&self, &tungsten_core::script::FailedStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::FailedStep
+pub fn tungsten_core::script::FailedStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::FailedStep
+impl serde_core::ser::Serialize for tungsten_core::script::FailedStep
+pub fn tungsten_core::script::FailedStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::FailedStep
+pub fn tungsten_core::script::FailedStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::FailedStep
+impl core::marker::Send for tungsten_core::script::FailedStep
+impl core::marker::Sync for tungsten_core::script::FailedStep
+impl core::marker::Unpin for tungsten_core::script::FailedStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::FailedStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::FailedStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::FailedStep
+pub struct tungsten_core::script::LogReport
+pub tungsten_core::script::LogReport::errors: u32
+pub tungsten_core::script::LogReport::first_errors: alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::script::LogReport::warnings: u32
+impl core::clone::Clone for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::clone(&self) -> tungsten_core::script::LogReport
+impl core::cmp::Eq for tungsten_core::script::LogReport
+impl core::cmp::PartialEq for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::eq(&self, &tungsten_core::script::LogReport) -> bool
+impl core::default::Default for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::default() -> tungsten_core::script::LogReport
+impl core::fmt::Debug for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::LogReport
+impl serde_core::ser::Serialize for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::LogReport
+pub fn tungsten_core::script::LogReport::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::LogReport
+impl core::marker::Send for tungsten_core::script::LogReport
+impl core::marker::Sync for tungsten_core::script::LogReport
+impl core::marker::Unpin for tungsten_core::script::LogReport
+impl core::marker::UnsafeUnpin for tungsten_core::script::LogReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::LogReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::LogReport
+pub struct tungsten_core::script::Occurrence
+pub tungsten_core::script::Occurrence::frame: u32
+pub tungsten_core::script::Occurrence::step: usize
+impl core::clone::Clone for tungsten_core::script::Occurrence
+pub fn tungsten_core::script::Occurrence::clone(&self) -> tungsten_core::script::Occurrence
+impl core::cmp::Eq for tungsten_core::script::Occurrence
+impl core::cmp::PartialEq for tungsten_core::script::Occurrence
+pub fn tungsten_core::script::Occurrence::eq(&self, &tungsten_core::script::Occurrence) -> bool
+impl core::fmt::Debug for tungsten_core::script::Occurrence
+pub fn tungsten_core::script::Occurrence::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::Occurrence
+impl core::marker::StructuralPartialEq for tungsten_core::script::Occurrence
+impl core::marker::Freeze for tungsten_core::script::Occurrence
+impl core::marker::Send for tungsten_core::script::Occurrence
+impl core::marker::Sync for tungsten_core::script::Occurrence
+impl core::marker::Unpin for tungsten_core::script::Occurrence
+impl core::marker::UnsafeUnpin for tungsten_core::script::Occurrence
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Occurrence
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Occurrence
+pub struct tungsten_core::script::OverlayStep
+pub tungsten_core::script::OverlayStep::kit: core::option::Option<bool>
+pub tungsten_core::script::OverlayStep::physics: core::option::Option<bool>
+impl core::clone::Clone for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::clone(&self) -> tungsten_core::script::OverlayStep
+impl core::cmp::Eq for tungsten_core::script::OverlayStep
+impl core::cmp::PartialEq for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::eq(&self, &tungsten_core::script::OverlayStep) -> bool
+impl core::default::Default for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::default() -> tungsten_core::script::OverlayStep
+impl core::fmt::Debug for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::OverlayStep
+impl core::marker::StructuralPartialEq for tungsten_core::script::OverlayStep
+impl serde_core::ser::Serialize for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::OverlayStep
+pub fn tungsten_core::script::OverlayStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::OverlayStep
+impl core::marker::Send for tungsten_core::script::OverlayStep
+impl core::marker::Sync for tungsten_core::script::OverlayStep
+impl core::marker::Unpin for tungsten_core::script::OverlayStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::OverlayStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::OverlayStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::OverlayStep
+pub struct tungsten_core::script::ProbeReport
+pub tungsten_core::script::ProbeReport::frame: u32
+pub tungsten_core::script::ProbeReport::name: alloc::string::String
+pub tungsten_core::script::ProbeReport::path: core::option::Option<alloc::string::String>
+pub tungsten_core::script::ProbeReport::value: serde_json::value::Value
+impl core::clone::Clone for tungsten_core::script::ProbeReport
+pub fn tungsten_core::script::ProbeReport::clone(&self) -> tungsten_core::script::ProbeReport
+impl core::cmp::PartialEq for tungsten_core::script::ProbeReport
+pub fn tungsten_core::script::ProbeReport::eq(&self, &tungsten_core::script::ProbeReport) -> bool
+impl core::fmt::Debug for tungsten_core::script::ProbeReport
+pub fn tungsten_core::script::ProbeReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::ProbeReport
+impl serde_core::ser::Serialize for tungsten_core::script::ProbeReport
+pub fn tungsten_core::script::ProbeReport::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::ProbeReport
+pub fn tungsten_core::script::ProbeReport::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::ProbeReport
+impl core::marker::Send for tungsten_core::script::ProbeReport
+impl core::marker::Sync for tungsten_core::script::ProbeReport
+impl core::marker::Unpin for tungsten_core::script::ProbeReport
+impl core::marker::UnsafeUnpin for tungsten_core::script::ProbeReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ProbeReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ProbeReport
+pub struct tungsten_core::script::ProbeStep
+pub tungsten_core::script::ProbeStep::args: serde_json::value::Value
+pub tungsten_core::script::ProbeStep::name: alloc::string::String
+pub tungsten_core::script::ProbeStep::path: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tungsten_core::script::ProbeStep
+pub fn tungsten_core::script::ProbeStep::clone(&self) -> tungsten_core::script::ProbeStep
+impl core::cmp::PartialEq for tungsten_core::script::ProbeStep
+pub fn tungsten_core::script::ProbeStep::eq(&self, &tungsten_core::script::ProbeStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::ProbeStep
+pub fn tungsten_core::script::ProbeStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::ProbeStep
+impl core::marker::Freeze for tungsten_core::script::ProbeStep
+impl core::marker::Send for tungsten_core::script::ProbeStep
+impl core::marker::Sync for tungsten_core::script::ProbeStep
+impl core::marker::Unpin for tungsten_core::script::ProbeStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::ProbeStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ProbeStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ProbeStep
+pub struct tungsten_core::script::Report
+pub tungsten_core::script::Report::asserts: alloc::vec::Vec<tungsten_core::script::AssertReport>
+pub tungsten_core::script::Report::captures: alloc::vec::Vec<tungsten_core::script::CaptureReport>
+pub tungsten_core::script::Report::ended: tungsten_core::script::Ending
+pub tungsten_core::script::Report::error: core::option::Option<alloc::string::String>
+pub tungsten_core::script::Report::failed_steps: alloc::vec::Vec<tungsten_core::script::FailedStep>
+pub tungsten_core::script::Report::frames: u32
+pub tungsten_core::script::Report::log: tungsten_core::script::LogReport
+pub tungsten_core::script::Report::passed: bool
+pub tungsten_core::script::Report::probes: alloc::vec::Vec<tungsten_core::script::ProbeReport>
+pub tungsten_core::script::Report::script: alloc::string::String
+pub tungsten_core::script::Report::unreached: alloc::vec::Vec<tungsten_core::script::Unreached>
+pub tungsten_core::script::Report::version: u32
+impl tungsten_core::script::Report
+pub fn tungsten_core::script::Report::finish(&mut self, tungsten_core::script::Ending, core::option::Option<alloc::string::String>)
+pub fn tungsten_core::script::Report::new(impl core::convert::Into<alloc::string::String>) -> Self
+impl core::clone::Clone for tungsten_core::script::Report
+pub fn tungsten_core::script::Report::clone(&self) -> tungsten_core::script::Report
+impl core::cmp::PartialEq for tungsten_core::script::Report
+pub fn tungsten_core::script::Report::eq(&self, &tungsten_core::script::Report) -> bool
+impl core::fmt::Debug for tungsten_core::script::Report
+pub fn tungsten_core::script::Report::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Report
+impl serde_core::ser::Serialize for tungsten_core::script::Report
+pub fn tungsten_core::script::Report::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Report
+pub fn tungsten_core::script::Report::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Report
+impl core::marker::Send for tungsten_core::script::Report
+impl core::marker::Sync for tungsten_core::script::Report
+impl core::marker::Unpin for tungsten_core::script::Report
+impl core::marker::UnsafeUnpin for tungsten_core::script::Report
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Report
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Report
+pub struct tungsten_core::script::Script
+pub tungsten_core::script::Script::frames: u32
+pub tungsten_core::script::Script::resolution: core::option::Option<[u32; 2]>
+pub tungsten_core::script::Script::steps: alloc::vec::Vec<tungsten_core::script::Step>
+pub tungsten_core::script::Script::version: u32
+impl tungsten_core::script::Script
+pub fn tungsten_core::script::Script::parse(&str) -> core::result::Result<Self, tungsten_core::script::ScriptError>
+pub fn tungsten_core::script::Script::schedule(&self) -> alloc::vec::Vec<tungsten_core::script::Occurrence>
+impl core::clone::Clone for tungsten_core::script::Script
+pub fn tungsten_core::script::Script::clone(&self) -> tungsten_core::script::Script
+impl core::cmp::PartialEq for tungsten_core::script::Script
+pub fn tungsten_core::script::Script::eq(&self, &tungsten_core::script::Script) -> bool
+impl core::fmt::Debug for tungsten_core::script::Script
+pub fn tungsten_core::script::Script::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Script
+impl serde_core::ser::Serialize for tungsten_core::script::Script
+pub fn tungsten_core::script::Script::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Script
+pub fn tungsten_core::script::Script::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Script
+impl core::marker::Send for tungsten_core::script::Script
+impl core::marker::Sync for tungsten_core::script::Script
+impl core::marker::Unpin for tungsten_core::script::Script
+impl core::marker::UnsafeUnpin for tungsten_core::script::Script
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Script
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Script
+#[non_exhaustive] pub struct tungsten_core::script::ScriptError
+pub tungsten_core::script::ScriptError::field: alloc::string::String
+pub tungsten_core::script::ScriptError::message: alloc::string::String
+impl core::clone::Clone for tungsten_core::script::ScriptError
+pub fn tungsten_core::script::ScriptError::clone(&self) -> tungsten_core::script::ScriptError
+impl core::cmp::Eq for tungsten_core::script::ScriptError
+impl core::cmp::PartialEq for tungsten_core::script::ScriptError
+pub fn tungsten_core::script::ScriptError::eq(&self, &tungsten_core::script::ScriptError) -> bool
+impl core::error::Error for tungsten_core::script::ScriptError
+impl core::fmt::Debug for tungsten_core::script::ScriptError
+pub fn tungsten_core::script::ScriptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::script::ScriptError
+pub fn tungsten_core::script::ScriptError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::ScriptError
+impl core::marker::Freeze for tungsten_core::script::ScriptError
+impl core::marker::Send for tungsten_core::script::ScriptError
+impl core::marker::Sync for tungsten_core::script::ScriptError
+impl core::marker::Unpin for tungsten_core::script::ScriptError
+impl core::marker::UnsafeUnpin for tungsten_core::script::ScriptError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ScriptError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ScriptError
+pub struct tungsten_core::script::ScriptHooks
+impl tungsten_core::script::ScriptHooks
+pub fn tungsten_core::script::ScriptHooks::actions(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &'static str)>
+pub fn tungsten_core::script::ScriptHooks::add_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::script::ScriptHooks::add_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
+pub fn tungsten_core::script::ScriptHooks::call_action(&mut tungsten_core::World, &str, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
+pub fn tungsten_core::script::ScriptHooks::has_action(&self, &str) -> bool
+pub fn tungsten_core::script::ScriptHooks::has_probe(&self, &str) -> bool
+pub fn tungsten_core::script::ScriptHooks::new() -> Self
+pub fn tungsten_core::script::ScriptHooks::probes(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &'static str)>
+pub fn tungsten_core::script::ScriptHooks::read_probe(&tungsten_core::World, &str, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
+impl core::default::Default for tungsten_core::script::ScriptHooks
+pub fn tungsten_core::script::ScriptHooks::default() -> Self
+impl core::fmt::Debug for tungsten_core::script::ScriptHooks
+pub fn tungsten_core::script::ScriptHooks::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::script::ScriptHooks
+impl !core::marker::Send for tungsten_core::script::ScriptHooks
+impl !core::marker::Sync for tungsten_core::script::ScriptHooks
+impl core::marker::Unpin for tungsten_core::script::ScriptHooks
+impl core::marker::UnsafeUnpin for tungsten_core::script::ScriptHooks
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ScriptHooks
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ScriptHooks
+pub struct tungsten_core::script::ScriptRun
+pub tungsten_core::script::ScriptRun::drawn_camera: core::option::Option<tungsten_core::camera::CameraState>
+pub tungsten_core::script::ScriptRun::frame: u32
+impl core::clone::Clone for tungsten_core::script::ScriptRun
+pub fn tungsten_core::script::ScriptRun::clone(&self) -> tungsten_core::script::ScriptRun
+impl core::default::Default for tungsten_core::script::ScriptRun
+pub fn tungsten_core::script::ScriptRun::default() -> tungsten_core::script::ScriptRun
+impl core::fmt::Debug for tungsten_core::script::ScriptRun
+pub fn tungsten_core::script::ScriptRun::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::script::ScriptRun
+impl core::marker::Freeze for tungsten_core::script::ScriptRun
+impl core::marker::Send for tungsten_core::script::ScriptRun
+impl core::marker::Sync for tungsten_core::script::ScriptRun
+impl core::marker::Unpin for tungsten_core::script::ScriptRun
+impl core::marker::UnsafeUnpin for tungsten_core::script::ScriptRun
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::ScriptRun
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::ScriptRun
+pub struct tungsten_core::script::SheetItem
+pub tungsten_core::script::SheetItem::id: alloc::string::String
+pub tungsten_core::script::SheetItem::kind: tungsten_core::script::SheetKind
+impl core::clone::Clone for tungsten_core::script::SheetItem
+pub fn tungsten_core::script::SheetItem::clone(&self) -> tungsten_core::script::SheetItem
+impl core::cmp::Eq for tungsten_core::script::SheetItem
+impl core::cmp::PartialEq for tungsten_core::script::SheetItem
+pub fn tungsten_core::script::SheetItem::eq(&self, &tungsten_core::script::SheetItem) -> bool
+impl core::convert::From<tungsten_core::script::SheetItem> for alloc::string::String
+pub fn alloc::string::String::from(tungsten_core::script::SheetItem) -> alloc::string::String
+impl core::convert::TryFrom<alloc::string::String> for tungsten_core::script::SheetItem
+pub type tungsten_core::script::SheetItem::Error = alloc::string::String
+pub fn tungsten_core::script::SheetItem::try_from(alloc::string::String) -> core::result::Result<Self, alloc::string::String>
+impl core::fmt::Debug for tungsten_core::script::SheetItem
+pub fn tungsten_core::script::SheetItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::SheetItem
+impl serde_core::ser::Serialize for tungsten_core::script::SheetItem
+pub fn tungsten_core::script::SheetItem::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::SheetItem
+pub fn tungsten_core::script::SheetItem::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::SheetItem
+impl core::marker::Send for tungsten_core::script::SheetItem
+impl core::marker::Sync for tungsten_core::script::SheetItem
+impl core::marker::Unpin for tungsten_core::script::SheetItem
+impl core::marker::UnsafeUnpin for tungsten_core::script::SheetItem
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::SheetItem
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::SheetItem
+pub struct tungsten_core::script::SheetStep
+pub tungsten_core::script::SheetStep::cell: core::option::Option<[f32; 2]>
+pub tungsten_core::script::SheetStep::columns: core::option::Option<u32>
+pub tungsten_core::script::SheetStep::items: alloc::vec::Vec<tungsten_core::script::SheetItem>
+pub tungsten_core::script::SheetStep::labels: bool
+impl core::clone::Clone for tungsten_core::script::SheetStep
+pub fn tungsten_core::script::SheetStep::clone(&self) -> tungsten_core::script::SheetStep
+impl core::cmp::PartialEq for tungsten_core::script::SheetStep
+pub fn tungsten_core::script::SheetStep::eq(&self, &tungsten_core::script::SheetStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::SheetStep
+pub fn tungsten_core::script::SheetStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::SheetStep
+impl serde_core::ser::Serialize for tungsten_core::script::SheetStep
+pub fn tungsten_core::script::SheetStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::SheetStep
+pub fn tungsten_core::script::SheetStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::SheetStep
+impl core::marker::Send for tungsten_core::script::SheetStep
+impl core::marker::Sync for tungsten_core::script::SheetStep
+impl core::marker::Unpin for tungsten_core::script::SheetStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::SheetStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::SheetStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::SheetStep
+pub struct tungsten_core::script::SpawnStep
+pub tungsten_core::script::SpawnStep::at: [f32; 2]
+pub tungsten_core::script::SpawnStep::prefab: alloc::string::String
+impl core::clone::Clone for tungsten_core::script::SpawnStep
+pub fn tungsten_core::script::SpawnStep::clone(&self) -> tungsten_core::script::SpawnStep
+impl core::cmp::PartialEq for tungsten_core::script::SpawnStep
+pub fn tungsten_core::script::SpawnStep::eq(&self, &tungsten_core::script::SpawnStep) -> bool
+impl core::fmt::Debug for tungsten_core::script::SpawnStep
+pub fn tungsten_core::script::SpawnStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::SpawnStep
+impl serde_core::ser::Serialize for tungsten_core::script::SpawnStep
+pub fn tungsten_core::script::SpawnStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::SpawnStep
+pub fn tungsten_core::script::SpawnStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::SpawnStep
+impl core::marker::Send for tungsten_core::script::SpawnStep
+impl core::marker::Sync for tungsten_core::script::SpawnStep
+impl core::marker::Unpin for tungsten_core::script::SpawnStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::SpawnStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::SpawnStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::SpawnStep
+pub struct tungsten_core::script::StageStep
+pub tungsten_core::script::StageStep::ambient: core::option::Option<[f32; 3]>
+impl core::clone::Clone for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::clone(&self) -> tungsten_core::script::StageStep
+impl core::cmp::PartialEq for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::eq(&self, &tungsten_core::script::StageStep) -> bool
+impl core::default::Default for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::default() -> tungsten_core::script::StageStep
+impl core::fmt::Debug for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::StageStep
+impl serde_core::ser::Serialize for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::StageStep
+pub fn tungsten_core::script::StageStep::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::StageStep
+impl core::marker::Send for tungsten_core::script::StageStep
+impl core::marker::Sync for tungsten_core::script::StageStep
+impl core::marker::Unpin for tungsten_core::script::StageStep
+impl core::marker::UnsafeUnpin for tungsten_core::script::StageStep
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::StageStep
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::StageStep
+pub struct tungsten_core::script::Step
+pub tungsten_core::script::Step::every: u32
+pub tungsten_core::script::Step::frame: u32
+pub tungsten_core::script::Step::until: core::option::Option<u32>
+pub tungsten_core::script::Step::verb: tungsten_core::script::Verb
+impl tungsten_core::script::Step
+pub fn tungsten_core::script::Step::capture_path(&self, u32) -> core::option::Option<std::path::PathBuf>
+pub fn tungsten_core::script::Step::frames(&self) -> impl core::iter::traits::iterator::Iterator<Item = u32> + use<>
+impl core::clone::Clone for tungsten_core::script::Step
+pub fn tungsten_core::script::Step::clone(&self) -> tungsten_core::script::Step
+impl core::cmp::PartialEq for tungsten_core::script::Step
+pub fn tungsten_core::script::Step::eq(&self, &tungsten_core::script::Step) -> bool
+impl core::fmt::Debug for tungsten_core::script::Step
+pub fn tungsten_core::script::Step::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Step
+impl serde_core::ser::Serialize for tungsten_core::script::Step
+pub fn tungsten_core::script::Step::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Step
+pub fn tungsten_core::script::Step::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Step
+impl core::marker::Send for tungsten_core::script::Step
+impl core::marker::Sync for tungsten_core::script::Step
+impl core::marker::Unpin for tungsten_core::script::Step
+impl core::marker::UnsafeUnpin for tungsten_core::script::Step
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Step
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Step
+pub struct tungsten_core::script::Unreached
+pub tungsten_core::script::Unreached::frame: u32
+pub tungsten_core::script::Unreached::index: usize
+pub tungsten_core::script::Unreached::verb: alloc::string::String
+impl core::clone::Clone for tungsten_core::script::Unreached
+pub fn tungsten_core::script::Unreached::clone(&self) -> tungsten_core::script::Unreached
+impl core::cmp::Eq for tungsten_core::script::Unreached
+impl core::cmp::PartialEq for tungsten_core::script::Unreached
+pub fn tungsten_core::script::Unreached::eq(&self, &tungsten_core::script::Unreached) -> bool
+impl core::fmt::Debug for tungsten_core::script::Unreached
+pub fn tungsten_core::script::Unreached::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::script::Unreached
+impl serde_core::ser::Serialize for tungsten_core::script::Unreached
+pub fn tungsten_core::script::Unreached::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::script::Unreached
+pub fn tungsten_core::script::Unreached::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::script::Unreached
+impl core::marker::Send for tungsten_core::script::Unreached
+impl core::marker::Sync for tungsten_core::script::Unreached
+impl core::marker::Unpin for tungsten_core::script::Unreached
+impl core::marker::UnsafeUnpin for tungsten_core::script::Unreached
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::script::Unreached
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::script::Unreached
+pub const tungsten_core::script::DEFAULT_TOLERANCE: f64
+pub const tungsten_core::script::REPORT_VERSION: u32
+pub const tungsten_core::script::SCRIPT_VERSION: u32
+pub fn tungsten_core::script::select<'v>(&'v serde_json::value::Value, core::option::Option<&str>) -> core::result::Result<&'v serde_json::value::Value, alloc::string::String>
+pub type tungsten_core::script::ScriptAction = dyn core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String>
+pub type tungsten_core::script::ScriptProbe = dyn core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
 pub mod tungsten_core::settings
 pub enum tungsten_core::settings::FrameRateCap
 pub tungsten_core::settings::FrameRateCap::Fps(core::num::nonzero::NonZeroU32)
@@ -14603,6 +15296,7 @@ impl tungsten_core::component_registry::ComponentRegistry
 pub fn tungsten_core::component_registry::ComponentRegistry::check(&self, &str, &serde_json::value::Value) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::check_in(&self, &str, &serde_json::value::Value, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::ComponentError>
 pub fn tungsten_core::component_registry::ComponentRegistry::contains(&self, &str) -> bool
+pub fn tungsten_core::component_registry::ComponentRegistry::count(&self, &str, &tungsten_core::World) -> core::option::Option<usize>
 pub fn tungsten_core::component_registry::ComponentRegistry::is_empty(&self) -> bool
 pub fn tungsten_core::component_registry::ComponentRegistry::len(&self) -> usize
 pub fn tungsten_core::component_registry::ComponentRegistry::name_of<T: 'static>(&self) -> core::option::Option<&str>
@@ -18092,6 +18786,9 @@ impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::ecs::query::W
 impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::ecs::query::Without<T>
 pub struct tungsten_core::World
 impl tungsten_core::World
+pub fn tungsten_core::World::add_script_action(&mut self, &str, &'static str, impl core::ops::function::Fn(&mut tungsten_core::World, &serde_json::value::Value) -> core::result::Result<(), alloc::string::String> + 'static)
+pub fn tungsten_core::World::add_script_probe(&mut self, &str, &'static str, impl core::ops::function::Fn(&tungsten_core::World, &serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String> + 'static)
+impl tungsten_core::World
 pub fn tungsten_core::World::check_map_objects(&self, &str, &tungsten_core::assets::tilemap::TilemapData) -> core::result::Result<(), tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_map_objects(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::assets::prefab::PreparedPrefab>, tungsten_core::assets::prefab::PrefabError>
 pub fn tungsten_core::World::prepare_prefab(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<tungsten_core::assets::prefab::PreparedPrefab, tungsten_core::assets::prefab::PrefabError>
@@ -18103,6 +18800,7 @@ pub fn tungsten_core::World::register_data_kind<T: serde_core::de::DeserializeOw
 pub fn tungsten_core::World::register_data_kind_with_assets<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &'static str, impl core::ops::function::Fn(&T, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static) -> bool
 impl tungsten_core::World
 pub fn tungsten_core::World::component_types(&self, tungsten_core::Entity) -> alloc::vec::Vec<(core::any::TypeId, &'static str)>
+pub fn tungsten_core::World::counters(&self) -> tungsten_core::WorldCounters
 pub fn tungsten_core::World::derive_from_source<T: 'static>(&mut self, fn(&tungsten_core::World, tungsten_core::Entity) -> core::option::Option<T>) -> bool
 pub fn tungsten_core::World::despawn(&mut self, tungsten_core::Entity)
 pub fn tungsten_core::World::end_fixed_step_events(&mut self)
@@ -18154,6 +18852,29 @@ impl core::marker::Unpin for tungsten_core::World
 impl core::marker::UnsafeUnpin for tungsten_core::World
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::World
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::World
+pub struct tungsten_core::WorldCounters
+pub tungsten_core::WorldCounters::archetype_moves: u64
+pub tungsten_core::WorldCounters::despawned: u64
+pub tungsten_core::WorldCounters::events_sent: u64
+pub tungsten_core::WorldCounters::spawned: u64
+impl core::clone::Clone for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::clone(&self) -> tungsten_core::WorldCounters
+impl core::cmp::Eq for tungsten_core::WorldCounters
+impl core::cmp::PartialEq for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::eq(&self, &tungsten_core::WorldCounters) -> bool
+impl core::default::Default for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::default() -> tungsten_core::WorldCounters
+impl core::fmt::Debug for tungsten_core::WorldCounters
+pub fn tungsten_core::WorldCounters::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::WorldCounters
+impl core::marker::StructuralPartialEq for tungsten_core::WorldCounters
+impl core::marker::Freeze for tungsten_core::WorldCounters
+impl core::marker::Send for tungsten_core::WorldCounters
+impl core::marker::Sync for tungsten_core::WorldCounters
+impl core::marker::Unpin for tungsten_core::WorldCounters
+impl core::marker::UnsafeUnpin for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::WorldCounters
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::WorldCounters
 #[non_exhaustive] pub struct tungsten_core::WorldLabel
 pub tungsten_core::WorldLabel::anchor: glam::f32::vec2::Vec2
 pub tungsten_core::WorldLabel::color: [u8; 4]

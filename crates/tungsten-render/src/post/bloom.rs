@@ -10,8 +10,8 @@
 use tungsten_core::assets::ShaderAssetId;
 use tungsten_core::post::BloomParams;
 use tungsten_core::tween::UniformOverrideBlock;
-use wgpu::util::DeviceExt;
 
+use crate::counters::{self, Counts};
 use crate::passes::TargetId;
 use crate::shader_hot_reload::{ShaderModuleCache, build_validated};
 use crate::targets::{BLOOM_PYRAMID_FORMAT, RenderTargetPool, TargetCache};
@@ -176,6 +176,7 @@ pub struct BloomPipeline {
     /// The slot being recorded: UBO bytes of its sub-passes. Kept for its
     /// allocation.
     payloads: Vec<[u8; 256]>,
+    pub(crate) counts: Box<Counts>,
 }
 
 impl BloomPipeline {
@@ -247,6 +248,7 @@ impl BloomPipeline {
             shader_ids: ids,
             slots: Vec::new(),
             payloads: Vec::new(),
+            counts: Counts::boxed(),
         }
     }
 
@@ -334,14 +336,15 @@ impl BloomPipeline {
         };
         let layouts = &self.layouts;
         let sampler = &self.sampler;
+        let counts = &*self.counts;
         let objects = slot_cache(&mut self.slots, slot).get_or_build(key, || {
-            build_slot(device, layouts, sampler, pool, src, payloads)
+            build_slot(counts, device, layouts, sampler, pool, src, payloads)
         });
         // A stage's UBO is written only when its bytes change: new params or
         // new sizes.
         for (stage, payload) in objects.stages.iter_mut().zip(payloads.iter()) {
             if stage.written != *payload {
-                queue.write_buffer(&stage.ubo, 0, payload);
+                counters::write_buffer(counts, queue, &stage.ubo, 0, payload);
                 stage.written = *payload;
             }
         }
@@ -387,7 +390,7 @@ impl BloomPipeline {
             pass.set_pipeline(&self.threshold);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
-            pass.draw(0..3, 0..1);
+            counters::draw(counts, &mut pass, 0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
         }
@@ -420,7 +423,7 @@ impl BloomPipeline {
             pass.set_pipeline(&self.downsample);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
-            pass.draw(0..3, 0..1);
+            counters::draw(counts, &mut pass, 0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
         }
@@ -457,7 +460,7 @@ impl BloomPipeline {
             pass.set_pipeline(&self.upsample);
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
-            pass.draw(0..3, 0..1);
+            counters::draw(counts, &mut pass, 0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
         }
@@ -485,7 +488,7 @@ impl BloomPipeline {
             pass.set_bind_group(0, &stage.source_bg, &[]);
             pass.set_bind_group(1, &stage.params_bg, &[]);
             pass.set_bind_group(2, &objects.composite_bg, &[]);
-            pass.draw(0..3, 0..1);
+            counters::draw(counts, &mut pass, 0..3, 0..1);
             drop(pass);
             encoder.pop_debug_group();
         }
@@ -523,6 +526,7 @@ fn stage_payloads(
 /// Builds a slot's UBOs, seeded with `payloads`, and its bind groups, in
 /// the order of [`stage_payloads`].
 fn build_slot(
+    counts: &Counts,
     device: &wgpu::Device,
     layouts: &BloomLayouts,
     sampler: &wgpu::Sampler,
@@ -552,7 +556,7 @@ fn build_slot(
         .into_iter()
         .zip(payloads)
         .map(|((label, view), payload)| {
-            let ubo = create_params_ubo(device, label, payload);
+            let ubo = create_params_ubo(counts, device, label, payload);
             BloomStage {
                 params_bg: build_params_bg(device, layouts, &ubo, label),
                 source_bg: build_source_bg(device, layouts, view, sampler, label),
@@ -596,12 +600,21 @@ fn inv_size(size: (u32, u32)) -> (f32, f32) {
     (1.0 / w, 1.0 / h)
 }
 
-fn create_params_ubo(device: &wgpu::Device, label: &str, payload: &[u8; 256]) -> wgpu::Buffer {
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some(&format!("{label}_ubo")),
-        contents: payload,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-    })
+fn create_params_ubo(
+    counts: &Counts,
+    device: &wgpu::Device,
+    label: &str,
+    payload: &[u8; 256],
+) -> wgpu::Buffer {
+    counters::create_buffer_init(
+        counts,
+        device,
+        &wgpu::util::BufferInitDescriptor {
+            label: Some(&format!("{label}_ubo")),
+            contents: payload,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        },
+    )
 }
 
 fn build_params_bg(

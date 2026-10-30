@@ -1,8 +1,8 @@
 #[cfg(any(feature = "gamepad", test))]
-use tungsten_core::input::{GamepadAxis, GamepadButton, GamepadId};
-use tungsten_core::input::{InputState, KeyCode, Modifiers, MouseButton};
+use tungsten_core::input::{GamepadAxis, GamepadButton};
+use tungsten_core::input::{GamepadId, InputState, KeyCode, Modifiers, MouseButton};
 use tungsten_core::ui::CursorIcon;
-use tungsten_core::{ScaleFactor, World};
+use tungsten_core::{ActionMap, Binding, ScaleFactor, ScrollDirection, World};
 use winit::event::ElementState;
 use winit::keyboard::{KeyCode as WinitKeyCode, ModifiersState, PhysicalKey};
 
@@ -165,6 +165,53 @@ pub fn apply_modifiers(world: &mut World, state: ModifiersState) {
 pub fn apply_pointer_left(world: &mut World) {
     if let Some(input) = world.get_resource_mut::<InputState>() {
         input.pointer_left();
+    }
+}
+
+/// The pad a gamepad binding presses on, for the harness and a script.
+pub(crate) const PRESS_PAD: GamepadId = GamepadId::new(0);
+
+/// `action`'s first binding in the World's action map.
+pub(crate) fn first_binding(world: &World, action: &str) -> Option<Binding> {
+    world
+        .get_resource::<ActionMap>()
+        .and_then(|actions| actions.bindings(action).first().copied())
+}
+
+/// Presses `binding`, as the key, button, wheel or gamepad event would: the
+/// next routing reads it as just pressed, and later ones as held until
+/// [`release_binding`]. A scroll binding lasts one frame, as a wheel notch
+/// does. A gamepad binding presses on [`PRESS_PAD`]; a stick binding tilts
+/// its axis fully its way. `Err` names a binding nothing presses.
+pub(crate) fn press_binding(input: &mut InputState, binding: Binding) -> Result<(), String> {
+    match binding {
+        Binding::Key { code } => input.key_down(code),
+        Binding::Mouse { button } => input.mouse_down(button),
+        Binding::Scroll { direction } => {
+            let lines = match direction {
+                ScrollDirection::Up => 1.0,
+                ScrollDirection::Down => -1.0,
+            };
+            input.add_scroll_line_delta(0.0, lines);
+        }
+        Binding::GamepadButton { button } => input.gamepad_button_down(PRESS_PAD, button),
+        Binding::GamepadAxis { axis, direction } => {
+            input.set_gamepad_axis(PRESS_PAD, axis, direction.along(1.0));
+        }
+        other => return Err(format!("{other:?} cannot be pressed")),
+    }
+    Ok(())
+}
+
+/// Releases `binding`: the next routing reads it as just released. A
+/// scroll binding has nothing to release; a stick binding centres its axis.
+pub(crate) fn release_binding(input: &mut InputState, binding: Binding) {
+    match binding {
+        Binding::Key { code } => input.key_up(code),
+        Binding::Mouse { button } => input.mouse_up(button),
+        Binding::GamepadButton { button } => input.gamepad_button_up(PRESS_PAD, button),
+        Binding::GamepadAxis { axis, .. } => input.set_gamepad_axis(PRESS_PAD, axis, 0.0),
+        _ => {}
     }
 }
 

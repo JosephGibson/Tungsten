@@ -2,7 +2,8 @@
 """Read-only Git/GitHub release preflight. Prints commands; never executes them.
 
 Requires git, authenticated gh and network access. Use release.py check for
-offline/shallow-CI checks. See docs/releases.md (D-074, D-079).
+offline/shallow-CI checks. A pushed tag publishes; a version branch's pull request
+is main's merge and publishes nothing. See docs/releases.md (D-074, D-227).
 """
 
 import argparse
@@ -67,7 +68,21 @@ def is_ancestor(root, older, newer):
     return run(root, "git", "merge-base", "--is-ancestor", older, newer, optional=True).returncode == 0
 
 
-def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="main", message=None, no_pr=False):
+def foreign_commits(root, sha, base_tip):
+    """Commits the base holds that SHA lacks, other than merges of a branch SHA contains that add
+    nothing of their own: a second parent SHA holds and a tree equal to that parent's (D-227)."""
+    foreign = []
+    for commit in git(root, "rev-list", f"{sha}..{base_tip}").split():
+        parents = git(root, "rev-list", "--parents", "-n", "1", commit).split()[1:]
+        if (len(parents) == 2 and is_ancestor(root, parents[1], sha)
+                and git(root, "rev-parse", f"{commit}^{{tree}}") == git(root, "rev-parse", f"{parents[1]}^{{tree}}")):
+            continue
+        foreign.append(commit)
+    return foreign
+
+
+def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="main", no_pr=False):
+    """Returns errors, info, the agent's push and the owner's block."""
     if not release.SEMVER_RE.fullmatch(version):
         raise ValueError("version must be X.Y.Z[-pre], without a leading v")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
@@ -76,13 +91,9 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
         raise ValueError("--remote must name a configured Git remote")
     git(root, "check-ref-format", f"refs/heads/{branch}")
     git(root, "check-ref-format", f"refs/heads/{base}")
-    errors, info, commands, after = [], [], [], []
-    # Hand-off: uncommitted changes plus a message become the release commit.
-    dirty = bool(git(root, "status", "--porcelain", "--untracked-files=normal"))
-    handoff = dirty and message is not None
-    if dirty and not handoff:
-        errors.append("working tree/index is dirty; pass --message to hand the changes off as the release "
-                      "commit, or commit them first")
+    errors, info, agent, owner = [], [], [], []
+    if git(root, "status", "--porcelain", "--untracked-files=normal"):
+        errors.append("working tree/index is dirty; commit the release first (`just release minor` commits the cut)")
     for marker in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply", "sequencer"):
         path = Path(git(root, "rev-parse", "--git-path", marker))
         if not path.is_absolute():
@@ -91,16 +102,13 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
             errors.append(f"unfinished Git operation: {marker}")
     head = resolve(root, "HEAD^{commit}")
     sha = resolve(root, ref + "^{commit}")
-    if handoff and (sha != head or git(root, "branch", "--show-current") != branch):
-        errors.append(f"uncommitted changes with --message need {branch} checked out and --ref HEAD")
     tag = "v" + version
     tag_ref = f"refs/tags/{tag}"
     branch_ref = f"refs/heads/{branch}"
     base_ref = f"refs/heads/{base}"
     major, minor = release.SEMVER_RE.fullmatch(version).group(1, 2)
     following = f"{major}.{int(minor) + 1}"
-    committed = None if handoff else lambda path: run(root, "git", "show", f"{sha}:{path}").stdout
-    state = release.check_tree(root, committed)
+    state = release.check_tree(root, lambda path: run(root, "git", "show", f"{sha}:{path}").stdout)
     errors.extend(state.errors)
     errors.extend(release.check_tag(state, tag))
     is_rehearsal = release.is_rehearsal(state, tag)
@@ -125,76 +133,68 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
     if local_tag:
         if git(root, "cat-file", "-t", tag_ref) != "tag":
             errors.append(f"local {tag} is not an annotated tag")
-        if handoff or resolve(root, tag_ref + "^{commit}") != sha:
+        if resolve(root, tag_ref + "^{commit}") != sha:
             errors.append(f"local {tag} points to a different commit")
     if remote_tag:
         if tag_ref + "^{}" not in refs:
             errors.append(f"remote {tag} is not an annotated tag")
-        if handoff or remote_commit != sha:
+        if remote_commit != sha:
             errors.append(f"remote {tag} points to a different commit; never move a released tag")
         if local_tag and local_tag != remote_tag:
             errors.append(f"local and remote {tag} have different tag objects; do not overwrite either")
-    # A new tag is pushed together with its branch, as a fast-forward. Resuming
-    # an existing tag may use an older commit, including one outside main.
+    # The tag push carries no branch: the branch is pushed first, as a fast-forward. Resuming an
+    # existing tag may use an older commit, including one outside main.
     if not remote_tag and tip != sha:
         if resolve(root, branch_ref + "^{commit}", optional=True) != sha:
-            errors.append(f"local {branch} is not the selected commit; the proposed push sends {branch}")
+            errors.append(f"local {branch} is not the selected commit, which the branch's push would send")
         if tip and not is_ancestor(root, tip, sha):
             errors.append(f"{remote}/{branch} has commits the selected commit lacks; integrate them first")
-    # Final tags publish when their pull request merges into the base branch;
-    # prerelease tags publish when pushed (D-079).
+    # Every pushed tag publishes; a final release on a version branch also gets main's merge (D-227).
     prerelease = bool(release.TAG_RE.match(tag)[5])
     wants_pr = not (prerelease or no_pr or branch == base)
     if base_ref not in refs and (wants_pr or not tip):
         errors.append(f"remote branch {remote}/{base} does not exist")
     info.extend((f"Repository: {repo}; remote: {remote}; branch: {branch}",
-                 f"Commit: {'uncommitted changes on ' if handoff else ''}{sha}; tag: {tag}; "
-                 f"mode: {'rehearsal' if is_rehearsal else 'release'}"))
+                 f"Commit: {sha}; tag: {tag}; mode: {'rehearsal' if is_rehearsal else 'release'}"))
     if errors:
-        return errors, info, commands, after
+        return errors, info, agent, owner
 
     # Bind the explicit GitHub repository to the observed Git destination.
     bound = branch if tip else base
     github_branch = api(root, f"repos/{repo}/git/ref/heads/{quote(bound, safe='')}")
     if github_branch["object"]["sha"] != refs[f"refs/heads/{bound}"]:
-        return ["GitHub branch differs from the Git remote; check --repo and rerun"], info, commands, after
+        return ["GitHub branch differs from the Git remote; check --repo and rerun"], info, agent, owner
     if remote_tag:
         github_tag = api(root, f"repos/{repo}/git/ref/tags/{tag}")
         if github_tag["object"]["sha"] != remote_tag:
-            return ["GitHub tag differs from the Git remote; check --repo and rerun"], info, commands, after
+            return ["GitHub tag differs from the Git remote; check --repo and rerun"], info, agent, owner
     existing = api(root, f"repos/{repo}/releases/tags/{tag}", missing=True)
     if existing and not remote_tag:
-        return ["GitHub release exists without the observed remote tag; inspect before continuing"], info, commands, after
+        return ["GitHub release exists without the observed remote tag; inspect before continuing"], info, agent, owner
+    if wants_pr and not remote_tag and not existing:
+        # main may hold earlier releases' merges, which add nothing the branch lacks; any other
+        # commit there would be content the tagged release misses.
+        base_tip = refs[base_ref]
+        if resolve(root, base_tip + "^{commit}", optional=True) is None:
+            return [f"{remote}/{base} isn't fetched (its tip {base_tip[:12]} is missing here); fetch it and rerun"], \
+                info, agent, owner
+        foreign = foreign_commits(root, sha, base_tip)
+        if foreign:
+            return [f"{remote}/{base} has commits {branch} lacks ({', '.join(c[:12] for c in foreign[:5])}); merge "
+                    f"{base} into {branch} and rerun the checks before tagging"], info, agent, owner
     pull = None
     if wants_pr and (tip or remote_tag):
         pulls = api(root, f"repos/{repo}/pulls?state=all&base={quote(base, safe='')}"
                           f"&head={quote(repo.split('/')[0] + ':' + branch, safe=':')}&per_page=100")
-        # An open pull request follows its branch; a merged one must have released this commit.
-        pull = (next((p for p in pulls if p["merged_at"] and p["head"]["sha"] == sha), None)
-                or next((p for p in pulls if p["state"] == "open"), None))
-    merged = bool(pull and pull["merged_at"])
-    if merged:
-        merge_tree = api(root, f"repos/{repo}/git/commits/{pull['merge_commit_sha']}")["tree"]["sha"]
-        if merge_tree != git(root, "rev-parse", f"{sha}^{{tree}}"):
-            return [f"pull request #{pull['number']} merged as a tree that differs from the tagged commit; "
-                    "release.yml refuses to publish it"], info, commands, after
-    elif wants_pr and not existing:
-        # release.yml publishes only when the merge keeps the tagged tree and head.
-        if not is_ancestor(root, refs[base_ref], sha):
-            return [f"{remote}/{base} has commits {branch} lacks (or isn't fetched); merge {base} into "
-                    f"{branch} and rerun the checks before tagging"], info, commands, after
-        if remote_tag and tip and tip != sha:
-            return [f"{remote}/{branch} moved past the commit {tag} names; merging it publishes nothing"], info, commands, after
+        pull = (next((p for p in pulls if p["state"] == "open"), None)
+                or next((p for p in pulls if p["merged_at"] and p["head"]["sha"] == sha), None))
     if pull:
-        info.append(f"Pull request #{pull['number']}: "
-                    + ("merged; its tree matches the tagged commit" if merged
-                       else f"open; approving and merging it in GitHub publishes {tag}") + f" — {pull['html_url']}")
+        info.append(f"Pull request #{pull['number']}: {'merged' if pull['merged_at'] else 'open'}; "
+                    f"{base}'s merge, which publishes nothing — {pull['html_url']}")
     runs = api(root, f"repos/{repo}/actions/workflows/release.yml/runs?head_sha={sha}&per_page=100")
-    # Tag runs (pushed prerelease tags, manual runs) name the tag; a merged pull
-    # request's run names its head branch. A close without a merge is skipped.
+    # Tag runs (a pushed tag, or a manual run on one) name the tag.
     matches = [r for r in runs["workflow_runs"] if r["head_sha"] == sha and r["conclusion"] != "skipped"
-               and (r["head_branch"] == tag and r["event"] in ("push", "workflow_dispatch")
-                    or merged and r["head_branch"] == branch and r["event"] == "pull_request")]
+               and r["head_branch"] == tag and r["event"] in ("push", "workflow_dispatch")]
     matches.sort(key=lambda r: r["id"], reverse=True)
     ci = api(root, f"repos/{repo}/actions/workflows/ci.yml/runs?head_sha={sha}&per_page=100")
     # pull_request head_sha names the contributor commit, but checkout normally
@@ -202,45 +202,41 @@ def preflight(root, version, ref, remote, branch, repo, rehearsal=False, base="m
     checks = [r for r in ci["workflow_runs"] if r["head_sha"] == sha
               and r["event"] in ("push", "workflow_dispatch")]
     checks.sort(key=lambda r: r["id"], reverse=True)
-    info.append("CI (informational): " + ("runs once the release commit is pushed" if handoff else
-                f"{checks[0]['html_url']} — {checks[0]['conclusion'] or checks[0]['status']}" if checks
-                else "no run for this commit"))
+    info.append("CI (informational): " + (f"{checks[0]['html_url']} — {checks[0]['conclusion'] or checks[0]['status']}"
+                                          if checks else "no run for this commit"))
+    if not remote_tag and tip != sha:
+        # Agents push version branches (D-216); the base branch's push stays the owner's.
+        (agent if branch != base else owner).append(["git", "push", remote, branch])
     if existing:
         info.append(f"GitHub release: {'draft; inspect/resume uploads' if existing['draft'] else 'published; verify artifacts'} — {existing['html_url']}")
-        commands.append(["gh", "release", "view", tag, "--repo", repo])
+        owner.append(["gh", "release", "view", tag, "--repo", repo])
     else:
-        if handoff:
-            commands.extend((["git", "add", "-A"], ["git", "commit", "-m", message]))
         if not local_tag and not remote_tag:
-            commands.append(["git", "tag", "-a", tag, *([] if sha == head else [sha]), "-m", f"Tungsten {version}"])
+            owner.append(["git", "tag", "-a", tag, *([] if sha == head else [sha]), "-m", f"Tungsten {version}"])
         if not remote_tag:
-            commands.append(["git", "push", remote, *([branch] if handoff or tip != sha else []), tag])
-        if wants_pr and not pull:
-            commands.append(["gh", "pr", "create", "--repo", repo, "--base", base, "--head", branch,
-                             "--title", message or git(root, "log", "-1", "--format=%s", sha),
-                             "--body", f"Release {tag}. Merging this pull request publishes it."])
+            owner.append(["git", "push", remote, tag])
+    if wants_pr:
+        # The next branch starts from the version branch, so no session waits on the merge.
+        if resolve(root, f"refs/heads/{following}", optional=True) or f"refs/heads/{following}" in refs:
+            info.append(f"Next branch: {following} already exists")
+        else:
+            owner.extend((["git", "switch", "-c", following, branch], ["git", "push", "-u", remote, following]))
+        if not pull:
+            owner.append(["gh", "pr", "create", "--repo", repo, "--base", base, "--head", branch,
+                          "--title", git(root, "log", "-1", "--format=%s", sha),
+                          "--body", f"Release {tag}, published by its tag push. Merging it publishes nothing."])
     if matches:
         latest = matches[0]
         info.append(f"Release run: {latest['id']} — {latest['conclusion'] or latest['status']} — {latest['html_url']}")
         if latest["status"] != "completed":
-            commands.append(["gh", "run", "watch", str(latest["id"]), "--repo", repo, "--exit-status"])
+            owner.append(["gh", "run", "watch", str(latest["id"]), "--repo", repo, "--exit-status"])
         else:
-            commands.append(["gh", "run", "view", str(latest["id"]), "--repo", repo])
-    elif not existing and (merged or remote_tag and prerelease or not (wants_pr or prerelease)):
-        # Nothing started (or will start) a run for this tag, and pushing an
-        # unchanged tag again never does.
-        if remote_tag:
-            info.append("No release run found for this tag; the last command starts one.")
-        commands.append(["gh", "workflow", "run", "release.yml", "--repo", repo, "--ref", tag])
-    # After the merge: the next milestone branch, from the base without tracking it (docs/releases.md).
-    if wants_pr and not merged and not existing:
-        if resolve(root, f"refs/heads/{following}", optional=True) or f"refs/heads/{following}" in refs:
-            info.append(f"Next branch: {following} already exists; inspect it before integrating {base}")
-        else:
-            after.extend((["git", "fetch", remote],
-                          ["git", "switch", "-c", following, "--no-track", f"{remote}/{base}"],
-                          ["git", "push", "-u", remote, following]))
-    return errors, info, commands, after
+            owner.append(["gh", "run", "view", str(latest["id"]), "--repo", repo])
+    elif remote_tag and not existing:
+        # Pushing an unchanged tag again never starts a run.
+        info.append("No release run found for this tag; the last command starts one.")
+        owner.append(["gh", "workflow", "run", "release.yml", "--repo", repo, "--ref", tag])
+    return errors, info, agent, owner
 
 
 def main(argv=None):
@@ -251,8 +247,6 @@ def main(argv=None):
     parser.add_argument("--branch", help="branch carrying the release commit (default: the checked-out branch)")
     parser.add_argument("--base", default="main", help="branch the release pull request merges into")
     parser.add_argument("--repo", required=True, help="explicit GitHub OWNER/REPO")
-    parser.add_argument("--message", help="release commit subject and pull request title; with it, "
-                        "uncommitted changes are handed off as the release commit")
     parser.add_argument("--no-pr", action="store_true", help="release without a pull request (maintenance branch)")
     parser.add_argument("--rehearsal", action="store_true")
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
@@ -262,20 +256,21 @@ def main(argv=None):
         branch = args.branch or git(root, "branch", "--show-current")
         if not branch:
             raise ValueError("--branch is required on a detached HEAD")
-        errors, info, commands, after = preflight(root, args.version, args.ref, args.remote, branch, args.repo,
-                                                  args.rehearsal, args.base, args.message, args.no_pr)
+        errors, info, agent, owner = preflight(root, args.version, args.ref, args.remote, branch, args.repo,
+                                               args.rehearsal, args.base, args.no_pr)
         for line in info:
             print(line)
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         if not errors:
-            print("Preflight passed at the observed refs. Commands below are proposals, not executed:")
-            for command in commands:
-                print(shlex.join(command))
-            if after:
-                print("After the pull request merges, start the next milestone branch:")
-                for command in after:
-                    print(shlex.join(command))
+            print("Preflight passed at the observed refs. Commands below are proposals, not executed.")
+            if agent:
+                print("The agent's push:")
+                print(" &&\n".join(shlex.join(command) for command in agent))
+            if owner:
+                publishes = ["git", "push", args.remote, "v" + args.version] in owner
+                print("The owner's block" + (", whose tag push publishes:" if publishes else ":"))
+                print(" &&\n".join(shlex.join(command) for command in owner))
         return int(bool(errors))
     except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

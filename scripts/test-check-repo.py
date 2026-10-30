@@ -286,6 +286,22 @@ class RepoChecks(unittest.TestCase):
         self.assertEqual(errors, ["docs/plans/1.0/README.md: broken link gone.md",
                                   "docs/plans/1.0/work.md: broken fragment #old-checks"])
 
+    def test_frozen_records_dead_links_are_notes_and_live_docs_errors(self):
+        self.write("DECISIONS.md", "## D-001 — test\n## D-215 — freeze\n")
+        for doc in qa.DOCS:
+            self.write(doc, "# Doc\n")
+        self.write("scripts/check-agent-context.py", "def check(root): return []\n")
+        self.write("docs/plans/1.0/workflow.md", "# Workflow\n\n**Frozen 2026-10-25 (`D-215`):** ROADMAP.md replaces it.\n\n"
+                   "[skill](../../../.claude/skills/gone/SKILL.md)\n[guide](live.md#old-heading)\n")
+        self.write("docs/plans/1.0/live.md", "# Live\n\n[skill](../../../.claude/skills/gone/SKILL.md)\n[self](#old-heading)\n")
+        errors, notes = [], []
+        qa.check_docs(self.root, errors, notes)
+        self.assertEqual(errors, ["docs/plans/1.0/live.md: broken link ../../../.claude/skills/gone/SKILL.md",
+                                  "docs/plans/1.0/live.md: broken fragment #old-heading"])
+        self.assertIn("frozen record's dead link left as is: docs/plans/1.0/workflow.md: "
+                      "../../../.claude/skills/gone/SKILL.md", notes)
+        self.assertIn("frozen record's dead fragment left as is: docs/plans/1.0/workflow.md: live.md#old-heading", notes)
+
     def test_links_skip_archive_and_template_examples_without_probing_them(self):
         self.write("DECISIONS.md", "## D-001 — test\n")
         for doc in qa.DOCS:
@@ -293,7 +309,7 @@ class RepoChecks(unittest.TestCase):
         self.write("scripts/check-agent-context.py", "def check(root): return []\n")
         self.write("docs/plans/1.0/README.md", "[history](../archive/unread.md#anything)\n"
                    "```md\n[placeholder](<future file.md>)\n```\n")
-        self.write(".claude/skills/tungsten-milestone/skeleton.md", "[rules](../README.md)\n")
+        self.write(".claude/skills/tungsten-plan/skeleton.md", "[rules](../README.md)\n")
         originals = {name: getattr(Path, name) for name in ("exists", "read_text", "glob", "iterdir")}
 
         def guard(name):
@@ -458,6 +474,14 @@ class CheckSelection(unittest.TestCase):
         self.assertNotIn("cargo test -p tungsten-render --test shader_coverage --locked", commands)
         self.assertTrue(any("mirror" in r for r in commands["cargo test -p tungsten-render --locked"]["reasons"]))
         self.assertTrue(any("mirrors" in note for note in review))
+        self.assertTrue(any("just perf counters" in note for note in review))
+        self.assertEqual(unknown, [])
+
+    def test_hot_ecs_work_is_reviewed_on_its_counter_guards_not_a_capture(self):
+        commands, review, unknown = self.selection("crates/tungsten-core/src/ecs/world.rs")
+        note = next(note for note in review if note.startswith("Hot ECS"))
+        self.assertIn("counter guards", note)
+        self.assertNotIn("every CPU row", note)
         self.assertEqual(unknown, [])
 
     def test_kit_sources_select_their_tests_and_the_umbrellas_harness_tests(self):

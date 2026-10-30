@@ -19,7 +19,7 @@ use tungsten::extract_sprites_default;
 use tungsten::render::{Renderer, TextSection};
 
 use super::{GpuState, Kind, MAP_TILES, Params};
-use crate::r#gen::{self, Cell};
+use crate::r#gen::{self, Cell, TextureSink};
 
 /// Tilemap registry ID.
 const TILEMAP: &str = "bench_tiles";
@@ -43,9 +43,10 @@ fn tile_id(variant: u32) -> String {
     format!("bench_tile_{variant}")
 }
 
-/// Startup hook: textures, the `bench_heavy` loop count, then the sprite
-/// field and glow layer, which need the manifest's material ID.
-pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Params) {
+/// Startup hook, the World's part: textures, the `bench_heavy` loop count,
+/// then the sprite field and glow layer, which need the manifest's material
+/// ID. [`rebuild_heavy`] is the renderer's part.
+pub(super) fn startup(world: &mut World, textures: &mut dyn TextureSink, params: &Params) {
     for texture in 0..params.textures {
         let filter = if texture.is_multiple_of(2) {
             FilterMode::Nearest
@@ -55,7 +56,7 @@ pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Param
         let rgba = r#gen::pattern_rgba(texture, TEXTURE_PX);
         r#gen::register(
             world,
-            renderer,
+            textures,
             &unlit_id(texture as u8),
             TEXTURE_PX,
             filter,
@@ -71,13 +72,13 @@ pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Param
         ),
     ] {
         r#gen::register_lit(
-            world, renderer, id, TEXTURE_PX, filter, &albedo, &normal, &emissive,
+            world, textures, id, TEXTURE_PX, filter, &albedo, &normal, &emissive,
         );
     }
     let glow = r#gen::soft_dot_rgba(GLOW_TEXTURE_PX);
     r#gen::register(
         world,
-        renderer,
+        textures,
         GLOW,
         GLOW_TEXTURE_PX,
         FilterMode::Linear,
@@ -90,7 +91,7 @@ pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Param
                 rgba: r#gen::tile_rgba(variant, params.tile_px),
             })
             .collect();
-        r#gen::register_atlas(world, renderer, FilterMode::Nearest, params.tile_px, &cells);
+        r#gen::register_atlas(world, textures, FilterMode::Nearest, params.tile_px, &cells);
         // After manifest composition, which replaces the registry.
         world
             .get_resource_mut::<TilemapRegistry>()
@@ -99,7 +100,7 @@ pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Param
         let entity = world.spawn();
         world.insert(entity, TilemapInstance::new(TILEMAP, Vec2::ZERO));
     }
-    let heavy = heavy_material(world, renderer, params.shader_iters);
+    let heavy = heavy_material(world, params.shader_iters);
     spawn_field(world, params, heavy);
 
     let (sprites, glow, _) = params.batches();
@@ -114,10 +115,10 @@ pub(super) fn startup(world: &mut World, renderer: &mut Renderer, params: &Param
     }
 }
 
-/// Writes `iterations` into `bench_heavy`'s authored `i32s[0]` and rebuilds
-/// its pipeline, so every heavy sprite shares one UBO and needs no
-/// per-entity override block.
-fn heavy_material(world: &mut World, renderer: &mut Renderer, iterations: i32) -> MaterialAssetId {
+/// Writes `iterations` into `bench_heavy`'s authored `i32s[0]`, so every
+/// heavy sprite shares one UBO and needs no per-entity override block;
+/// [`rebuild_heavy`] rebuilds its pipeline.
+fn heavy_material(world: &mut World, iterations: i32) -> MaterialAssetId {
     let registry = world
         .get_resource_mut::<MaterialRegistry>()
         .expect("MaterialRegistry resource missing");
@@ -135,10 +136,23 @@ fn heavy_material(world: &mut World, renderer: &mut Renderer, iterations: i32) -
         .expect("bench_heavy shader")
         .to_string();
     registry.allocate(HEAVY, path, shader, defaults);
-    if let Err(err) = renderer.reload_material(id, defaults) {
-        panic!("rebuilding bench_heavy with {iterations} iterations failed: {err}");
-    }
     id
+}
+
+/// Startup hook, the renderer's part, after [`startup`]: rebuilds
+/// `bench_heavy`'s pipeline with the loop count `startup` wrote.
+pub(super) fn rebuild_heavy(world: &World, renderer: &mut Renderer) {
+    let registry = world
+        .get_resource::<MaterialRegistry>()
+        .expect("MaterialRegistry resource missing");
+    let id = registry.get(HEAVY).expect("startup allocated bench_heavy");
+    let defaults = registry.defaults_for_id(id).expect("bench_heavy defaults");
+    if let Err(err) = renderer.reload_material(id, defaults) {
+        panic!(
+            "rebuilding bench_heavy with {} iterations failed: {err}",
+            defaults.i32s[0]
+        );
+    }
 }
 
 /// The world registry's ID for sprite `name`.

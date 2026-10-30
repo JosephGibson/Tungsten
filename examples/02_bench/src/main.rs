@@ -1,6 +1,6 @@
 //! Example 02: benchmark suite. One binary runs one benchmark per launch
-//! (`docs/perf/benchmarks.md`); captures go through
-//! `just perf run <bench>` (`scripts/bench.py`).
+//! (`docs/perf/benchmarks.md`); captures go through `just perf run <row>`
+//! (`scripts/perf.py`), whose rows `scripts/perf-rows.json` holds.
 //!
 //! Env: `TUNGSTEN_BENCH` (default `physics`), `TUNGSTEN_BENCH_PRESET`
 //! (default `default`), `TUNGSTEN_BENCH_SCALE` (multiplies the scalable
@@ -18,10 +18,11 @@ mod counters;
 mod ecs;
 mod r#gen;
 mod gpu;
-mod integrated;
 mod knobs;
 mod particles;
 mod physics;
+#[cfg(test)]
+mod tests;
 mod view;
 
 use tungsten::core::{Config, InputState, KeyCode, PluginSet, Resolution, World};
@@ -30,7 +31,7 @@ use tungsten::{
     StatePlugin, SystemTimingOverlay, TweensPlugin,
 };
 
-use crate::knobs::Bench;
+use crate::knobs::{Bench, BenchConfig};
 use crate::view::VIEWPORT;
 
 const BENCHES: &[&Bench] = &[
@@ -39,7 +40,6 @@ const BENCHES: &[&Bench] = &[
     &churn::BENCH,
     &gpu::BENCH,
     &particles::BENCH,
-    &integrated::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {
@@ -69,12 +69,27 @@ fn main() -> anyhow::Result<()> {
         ""
     };
     config.window.title = format!("Tungsten bench: {} ({}){hint}", cfg.row(), cfg.preset);
+    let mut app = bench_app(config, &cfg)?;
+    // Captures run under `TUNGSTEN_SMOKE_FRAMES`; the extra system would add a
+    // row to their `systems:` lines.
+    if interactive {
+        app.add_system_named("bench_cycle", cycle_system(cfg.bench.name, cfg.preset));
+    }
+    counters::log_config(&bench_config);
+    apply_overlay_env(&mut app);
+    app.run()
+}
+
+/// The benchmark's app on `config`: the capture viewport, vsync off, the
+/// row's engine config, the engine plugins and the row's own setup, with its
+/// startup hook. `main` and the counter guards build it alike.
+fn bench_app(mut config: Config, cfg: &BenchConfig) -> anyhow::Result<App> {
     config.display.resolution = Some(Resolution {
         width: VIEWPORT.x as u32,
         height: VIEWPORT.y as u32,
     });
     config.display.vsync = Some(false);
-    (cfg.bench.engine_config)(&mut config, &cfg);
+    (cfg.bench.engine_config)(&mut config, cfg);
     // No `DefaultPlugins`: each row wires the engine systems it measures
     // itself, in its own order. These are the engine stages every row ran
     // before the schedule, so the frames stay comparable.
@@ -85,15 +100,8 @@ fn main() -> anyhow::Result<()> {
         .with(ParticlesPlugin)
         .with(TweensPlugin);
     let mut app = App::with_plugins(config, plugins)?;
-    (cfg.bench.configure)(&mut app, &cfg);
-    // Captures run under `TUNGSTEN_SMOKE_FRAMES`; the extra system would add a
-    // row to their `systems:` lines.
-    if interactive {
-        app.add_system_named("bench_cycle", cycle_system(cfg.bench.name, cfg.preset));
-    }
-    counters::log_config(&bench_config);
-    apply_overlay_env(&mut app);
-    app.run()
+    (cfg.bench.configure)(&mut app, cfg);
+    Ok(app)
 }
 
 /// Whether this is a window run rather than a pinned-dt smoke or capture run.

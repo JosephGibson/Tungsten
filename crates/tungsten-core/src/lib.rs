@@ -18,6 +18,7 @@ pub mod post;
 pub mod rng;
 pub mod save;
 pub mod schedule;
+pub mod script;
 pub mod settings;
 pub mod text;
 pub mod time;
@@ -60,7 +61,7 @@ pub use display::{
 };
 pub use ecs::{
     Bundle, CommandBuffer, Entity, EventCursor, EventQueue, EventRead, OptionalColumn,
-    PendingEntity, ShakeEvent, SquashEvent, With, Without, World,
+    PendingEntity, ShakeEvent, SquashEvent, With, Without, World, WorldCounters,
 };
 pub use input::{
     ActionMap, ActionMapError, AxisDirection, Binding, GamepadAxis, GamepadButton, GamepadId,

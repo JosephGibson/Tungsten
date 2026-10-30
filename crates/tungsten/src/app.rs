@@ -21,6 +21,7 @@ use crate::physics_debug::{PhysicsDebugOverlay, physics_debug_emit_system};
 use crate::plugins::DefaultPlugins;
 use crate::plugins::UI_ROUTE;
 use crate::post_aa::{PendingPostAa, PostAaState, sync_post_aa_state, take_pending_post_aa};
+use crate::script::{ScriptLog, ScriptRunner};
 use crate::settings::{ShippedConfig, WindowedTarget};
 use crate::sprite_extract::ExtractScratch;
 use crate::state::StateStack;
@@ -62,6 +63,17 @@ const SMOKE_MODE_FIXED_DT_SECS: f32 = 1.0 / 60.0;
 /// Names the report file `tungsten check` reads. Set, `App::run` checks the
 /// game's files in place of opening a window (M70).
 const CHECK_ENV: &str = "TUNGSTEN_CHECK";
+/// Names the script a run follows (redo 7.2); `TUNGSTEN_REPORT` names the
+/// report it writes. Both are the command line's, not a promised interface.
+const SCRIPT_ENV: &str = "TUNGSTEN_SCRIPT";
+const REPORT_ENV: &str = "TUNGSTEN_REPORT";
+/// Names the file `tungsten describe` reads. Set, `App::run` describes the
+/// game's World in place of opening a window (redo 7.2).
+const DESCRIBE_ENV: &str = "TUNGSTEN_DESCRIBE";
+
+/// Looks an environment variable up; a parameter, so tests need no
+/// `set_var`.
+type Env<'a> = &'a dyn Fn(&str) -> Option<std::ffi::OsString>;
 
 /// Longest per-frame dt (seconds) a frame hands to the simulation (`D-088`).
 /// A stall (debugger pause, window drag, a blocked acquire) would otherwise
@@ -148,6 +160,10 @@ pub struct App {
     /// The frame's raw events when `PreUpdate`, and so the UI's routing,
     /// ended; the exit check reads later ones raw.
     routed_events: usize,
+    /// The script this run follows (redo 7.2); `None` outside a script.
+    pub(crate) script: Option<ScriptRunner>,
+    /// Where a script run writes its report.
+    script_report: Option<PathBuf>,
 }
 
 impl App {
@@ -180,9 +196,29 @@ impl App {
     /// # Errors
     ///
     /// As [`App::new`].
-    pub fn with_plugins(mut config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
-        let smoke_frames = smoke_frames_from_env();
-        let checking = check_report_from_env().is_some();
+    pub fn with_plugins(config: Config, plugins: PluginSet) -> anyhow::Result<Self> {
+        let env = |name: &str| std::env::var_os(name);
+        Self::build(config, plugins, &env).inspect_err(|err| {
+            // A script run that never starts still reports why.
+            if let (Some(script), Some(report)) =
+                (env_path(&env, SCRIPT_ENV), env_path(&env, REPORT_ENV))
+            {
+                crate::script::report_setup_failure(&script, &report, err);
+            }
+        })
+    }
+
+    /// [`App::with_plugins`] with the environment read through `env`.
+    pub(crate) fn build(
+        mut config: Config,
+        plugins: PluginSet,
+        env: Env<'_>,
+    ) -> anyhow::Result<Self> {
+        let smoke_frames = smoke_frames(env);
+        // A describe run is a check run until `App::run` (redo 7.2).
+        let checking = env_path(env, CHECK_ENV).is_some() || env_path(env, DESCRIBE_ENV).is_some();
+        // A script run reads its user folder from `TUNGSTEN_USER_DIR` alone.
+        let script_path = env_path(env, SCRIPT_ENV).filter(|_| !checking);
         let invalid = config
             .game
             .validate()
@@ -190,15 +226,15 @@ impl App {
             .or_else(|| config.time.validate().err())
             .or_else(|| config.audio.validate().err())
             .or_else(|| invalid_logging_level(&config.logging.level));
-        let user_dirs = if invalid.is_none() {
-            user_dir::resolve(
+        let user_dirs = match (&invalid, &script_path) {
+            (Some(_), _) => None,
+            (None, Some(_)) => user_dir::resolve_scripted(&config.game, env),
+            (None, None) => user_dir::resolve(
                 &config.game,
                 smoke_frames.is_some() || checking,
                 Platform::current(),
-                |name| std::env::var_os(name),
-            )
-        } else {
-            None
+                env,
+            ),
         };
         let level = config.logging.level.parse().unwrap_or(LevelFilter::Info);
         // A check run's output is its errors: the loaders' info lines stay out.
@@ -213,12 +249,19 @@ impl App {
             log::error!("{err}");
             return Err(err.into());
         }
+        let script = match &script_path {
+            Some(path) => {
+                Some(crate::script::load_script(path).inspect_err(|err| log::error!("{err:#}"))?)
+            }
+            None => None,
+        };
         for warning in config.take_load_warnings() {
             log::warn!(target: "tungsten_core::config", "{warning}");
         }
         if user_dirs.is_none()
             && smoke_frames.is_none()
             && !checking
+            && script.is_none()
             && let Some(id) = &config.game.id
         {
             log::warn!("Game '{id}' has no user folder, so no log or crash file is written");
@@ -250,7 +293,12 @@ impl App {
             return Err(err.into());
         }
 
-        let resolved_display = resolve_startup_display(&config);
+        let mut resolved_display = resolve_startup_display(&config);
+        // A script's resolution is the window's and the captures' size.
+        if let Some([width, height]) = script.as_ref().and_then(|script| script.resolution) {
+            resolved_display.resolution = tungsten_core::Resolution { width, height };
+            resolved_display.display_mode = DisplayMode::Windowed;
+        }
         let input_map_path = PathBuf::from("input.json");
         let user_bindings = user_dirs
             .as_ref()
@@ -348,6 +396,12 @@ impl App {
         world.insert_resource(PhysicsDebugOverlay::default());
         world.insert_resource(SystemTimingOverlay::default());
         world.insert_resource(InspectorState::new());
+        // Redo 7.2: the script hooks with the engine's probes, and the
+        // logger's tally a script's report counts.
+        world.insert_resource(crate::script::engine_hooks());
+        world.insert_resource(ScriptLog::new(
+            console_feed.as_ref().map(|feed| Arc::clone(&feed.tally)),
+        ));
         // M57: the log console on the logger's feed, and the UI inspector.
         world.insert_resource(LogConsole::with_feed(console_feed));
         world.insert_resource(UiInspector::default());
@@ -389,7 +443,12 @@ impl App {
             frame_budget: frame_budget_for(resolved_display.frame_rate_cap),
             redraw_deadline: None,
             prev_frame_start: None,
-            capture: parse_capture_config().map(Capture::new),
+            // Under a script its own steps capture; the variables are ignored.
+            capture: if script.is_some() {
+                Some(Capture::empty())
+            } else {
+                parse_capture_config().map(Capture::new)
+            },
             audio_capture: None,
             frames_rendered: 0,
             fatal_error: None,
@@ -399,6 +458,10 @@ impl App {
             exclusive_warning: std::sync::Once::new(),
             cursor: CursorIcon::Default,
             routed_events: 0,
+            script: script.zip(script_path).map(|(script, path)| {
+                ScriptRunner::new(script, &path.display().to_string(), false)
+            }),
+            script_report: env_path(env, REPORT_ENV),
         };
 
         // Engine plugins register first, so their `PreUpdate` systems precede
@@ -601,24 +664,80 @@ impl App {
     /// one `<file>\t<message>` line per error to that file and returns an
     /// error when there is one. [`App::new`] resolves no user folder then.
     /// The variable is the command line's, not a promised interface.
+    ///
+    /// With `TUNGSTEN_DESCRIBE` set to a file path, as `tungsten describe`
+    /// sets it, the run loads those files as a check does and writes the
+    /// World's description there as JSON: its components, script hooks and
+    /// asset IDs (redo 7.2). With `TUNGSTEN_SCRIPT` set, it runs that script
+    /// in the window and writes `TUNGSTEN_REPORT`, returning an error unless
+    /// the script passed. These variables are the command line's too.
     pub fn run(mut self) -> anyhow::Result<()> {
-        if let Some(report) = check_report_from_env() {
+        let env = |name: &str| std::env::var_os(name);
+        if let Some(out) = env_path(&env, DESCRIBE_ENV) {
+            let game_dir = std::env::current_dir()
+                .inspect_err(|err| log::error!("No current folder to describe: {err}"))?;
+            return self.run_describe(&out, &game_dir);
+        }
+        if let Some(report) = env_path(&env, CHECK_ENV) {
             let game_dir = std::env::current_dir()
                 .inspect_err(|err| log::error!("No current folder to check: {err}"))?;
             return self.run_check(&report, &game_dir);
         }
-        self.resolve_schedule()
-            .inspect_err(|err| log::error!("{err}"))?;
-        self.start_hot_reload();
-        self.start_gamepads();
-        let event_loop = EventLoop::new()
-            .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
-        event_loop
-            .run_app(&mut self)
-            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+        let started = self.run_window();
+        if self.script.is_some() {
+            return self.finish_script(started.err());
+        }
+        started?;
         match self.take_run_error() {
             Some(error) => Err(error),
             None => Ok(()),
+        }
+    }
+
+    /// Resolves the schedule and runs the event loop to its end. A script
+    /// run starts no watcher and no gamepad backend (redo 7.2).
+    fn run_window(&mut self) -> anyhow::Result<()> {
+        self.resolve_schedule()
+            .inspect_err(|err| log::error!("{err}"))?;
+        if self.script.is_none() {
+            self.start_hot_reload();
+            self.start_gamepads();
+        }
+        let event_loop = EventLoop::new()
+            .inspect_err(|err| log::error!("Failed to create the event loop: {err}"))?;
+        event_loop
+            .run_app(self)
+            .inspect_err(|err| log::error!("Event loop failed: {err}"))?;
+        Ok(())
+    }
+
+    /// A script run's end (redo 7.2): the report, with the fatal error as
+    /// its error, written to `TUNGSTEN_REPORT`; the run's error is the fatal
+    /// one, else the report's verdict when it did not pass.
+    fn finish_script(&mut self, setup_error: Option<anyhow::Error>) -> anyhow::Result<()> {
+        let runner = self.script.take().expect("a script run keeps its runner");
+        let fatal = setup_error.or_else(|| self.fatal_error.take());
+        // A frame armed but never rendered settles here, logged.
+        if let Some(capture) = &mut self.capture {
+            let _ = capture.finish(self.frames_rendered);
+        }
+        let report = runner.finish(
+            &mut self.world,
+            tungsten_core::script::Ending::GameExit,
+            fatal.as_ref().map(|err| format!("{err:#}")),
+        );
+        if let Some(path) = &self.script_report {
+            crate::script::write_report(&report, path).inspect_err(|err| log::error!("{err:#}"))?;
+        }
+        if let Some(fatal) = fatal {
+            return Err(fatal);
+        }
+        if report.passed {
+            Ok(())
+        } else {
+            let verdict = crate::script::verdict(&report);
+            log::error!("{verdict}");
+            Err(anyhow::anyhow!(verdict))
         }
     }
 
@@ -650,6 +769,24 @@ impl App {
                 report.display()
             )),
         }
+    }
+
+    /// `tungsten describe`'s engine side (redo 7.2): the schedule resolved,
+    /// the reload roots' files loaded into this app's World past every
+    /// error, as a check loads them, and the World's description written
+    /// to `out` as JSON (`describe.rs`). Loaders log warnings and errors
+    /// only; the load's errors are listed in the description, not returned.
+    pub(crate) fn run_describe(mut self, out: &Path, game_dir: &Path) -> anyhow::Result<()> {
+        log::set_max_level(LevelFilter::Warn);
+        self.resolve_schedule()
+            .inspect_err(|err| log::error!("{err}"))?;
+        let roots = manifest_reload_roots(&self.manifest_roots, self.manifest_path.as_deref());
+        let description = crate::describe::describe(&mut self.world, &roots, game_dir);
+        let mut text = serde_json::to_string_pretty(&description)?;
+        text.push('\n');
+        std::fs::write(out, text).map_err(|err| {
+            anyhow::anyhow!("Failed to write the description '{}': {err}", out.display())
+        })
     }
 
     /// The error a finished run returns (`D-142`): the fatal error, else the
@@ -1018,8 +1155,7 @@ pub(crate) enum FrameClock {
     /// Elapsed wall time since the previous frame, capped at [`MAX_DT_SECS`]
     /// (or pinned to 60 Hz under `TUNGSTEN_SMOKE_FRAMES`): the window loop.
     Wall,
-    /// This dt, as given: a headless caller.
-    #[cfg_attr(not(any(test, feature = "testing")), allow(dead_code))]
+    /// This dt, as given: a headless caller, or a script run's 60 Hz.
     Pinned(f32),
 }
 
@@ -1309,6 +1445,9 @@ impl App {
             // startup hook's is: a slow startup system must not inflate it.
             self.last_frame = Some(Instant::now());
         }
+        if let Some(script) = self.script.as_mut() {
+            script.before_pre_update(&mut self.world);
+        }
         self.run_stage(Stage::PreUpdate, &mut system_timings);
         self.routed_events = self
             .world
@@ -1489,10 +1628,12 @@ impl App {
         // Before HUD compose: counts row uses this frame's extract.
         let entity_count = self.world.entity_count();
         let sprite_instance_count: u32 = sprites.iter().map(|b| b.instances.len() as u32).sum();
+        let sprite_batch_count = sprites.len() as u32;
         let ui_commands = self.ui_paint.commands.len() as u32;
         if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
             rc.entities = entity_count;
             rc.sprite_instances = sprite_instance_count;
+            rc.sprite_batches = sprite_batch_count;
             rc.ui_commands = ui_commands;
             rc.world_labels = label_counts.kept;
             rc.world_labels_culled = label_counts.culled;
@@ -1595,6 +1736,8 @@ impl App {
                 renderer.prewarm_ui_text(list);
             }
 
+            // A timed frame's GPU sample names it when it is read back.
+            renderer.set_frame_number(self.world.get_resource::<Time>().map_or(0, Time::frame));
             result = Some(if self.gpu_timing_enabled {
                 renderer.render_frame_full_timed(
                     &view_proj,
@@ -1620,7 +1763,11 @@ impl App {
             });
             // M46: the text batch counts the HUD shows next frame.
             let text_stats = renderer.text_stats();
+            let counters = renderer.frame_counters();
             if let Some(rc) = self.world.get_resource_mut::<RenderCounts>() {
+                rc.draw_calls = counters.draw_calls;
+                rc.upload_bytes = counters.upload_bytes;
+                rc.text_renders = counters.text_renders;
                 rc.text_batches = text_stats.batches;
                 rc.text_batches_prepared = text_stats.prepared;
                 rc.text_full_frames = text_stats.full_frames_total;
@@ -1758,6 +1905,9 @@ impl App {
         if exit {
             return FrameEnd::ExitRequested;
         }
+        if let Some(script) = self.script.as_mut() {
+            script.after_update(&mut self.world);
+        }
         self.stage_cursor();
         self.stage_post_update(&mut system_timings);
         let update_ms = update_start.elapsed().as_secs_f64() as f32 * 1000.0;
@@ -1772,12 +1922,22 @@ impl App {
         let views_start = Instant::now();
         crate::debug_views::update_with(&mut self.world, Some(&self.ui_paint));
         let views_ms = views_start.elapsed().as_secs_f64() as f32 * 1000.0;
+        // Redo 7.2: a script's camera, hidden UI and captures.
+        if let Some(script) = self.script.as_mut()
+            && script.before_layout(&mut self.world, self.capture.as_mut())
+        {
+            self.ui_paint = PaintList::default();
+            self.painted_at = None;
+        }
         // M46: the UI layout, counted in `extract` (Q11).
         let ui_layout_ms = self.stage_ui_layout();
         let mut extract_out = self.stage_extract();
         let extract_ms = extract_out.extract_ms + ui_layout_ms + views_ms;
 
         let (render_out, end) = self.stage_render(&extract_out);
+        if let Some(script) = self.script.as_mut() {
+            script.after_render(&mut self.world, self.capture.as_mut());
+        }
         inspect(&extract_out);
         self.stage_recycle(&mut extract_out);
 
@@ -1823,16 +1983,29 @@ impl App {
                 log::debug!("{}", format_perf_systems_line(&ft.system_timings));
             }
             if log::log_enabled!(log::Level::Debug)
+                && let Some(counts) = self.world.get_resource::<RenderCounts>()
+            {
+                log::debug!(
+                    "counters: draw_calls={} upload_bytes={} text_renders={} sprite_batches={}",
+                    counts.draw_calls,
+                    counts.upload_bytes,
+                    counts.text_renders,
+                    counts.sprite_batches
+                );
+            }
+            if log::log_enabled!(log::Level::Debug)
                 && let Some(gpu) = self.world.get_resource::<GpuFrameTimings>()
             {
-                // Emit even an empty line on skipped/unsupported frames so
-                // capture warm-up counts remain aligned with frame logs.
-                let mut line = format_perf_named_timings("gpu_passes:", &gpu.pass_gpu_ms);
-                if let Some(span) = gpu.render_gpu_ms {
+                // One line per timed frame read back this frame, naming the
+                // frame it measured, up to three frames back (redo 7.3); none
+                // on a frame that read none.
+                for sample in &gpu.samples {
                     use std::fmt::Write as _;
-                    let _ = write!(line, " render_span={span:.2}ms");
+                    let tag = format!("gpu_passes: from={}", sample.frame);
+                    let mut line = format_perf_named_timings(&tag, &sample.passes);
+                    let _ = write!(line, " render_span={:.2}ms", sample.render_ms);
+                    log::debug!("{line}");
                 }
-                log::debug!("{line}");
             }
             if log::log_enabled!(log::Level::Debug)
                 && let Some(buffers) = self.world.get_resource::<PhysicsBuffers>()
@@ -2071,7 +2244,7 @@ fn log_perf_line(
 }
 
 /// Per-system companion to the `frame:` perf line, in registration order.
-/// Whitespace and `=` in names become `_` so `scripts/bench_report.py` can
+/// Whitespace and `=` in names become `_` so `scripts/perf_stats.py` can
 /// split `name=ms` tokens on whitespace.
 fn format_perf_systems_line(system_timings: &[(String, f32)]) -> String {
     format_perf_named_timings("systems:", system_timings)
@@ -2097,8 +2270,8 @@ fn format_perf_named_timings(tag: &str, system_timings: &[(String, f32)]) -> Str
 
 /// Physics companion to the `frame:` perf line: last step's proxy, dynamic
 /// and sleeping body counts plus the final substep's pairs and contacts.
-/// `scripts/bench_report.py` checks `sleeping` against the physics
-/// benchmark's guard and hashes the line into the determinism digest.
+/// `scripts/perf_stats.py` checks `sleeping` against the physics rows'
+/// guard and hashes the line into the workload digest.
 fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
     format!(
         "physics: proxies={} dynamic={} sleeping={} pairs={} contacts={}",
@@ -2111,17 +2284,18 @@ fn format_perf_physics_line(buffers: &PhysicsBuffers) -> String {
 }
 
 /// `TUNGSTEN_CHECK`, set and not empty: the report file of a check run.
-fn check_report_from_env() -> Option<PathBuf> {
-    std::env::var_os(CHECK_ENV)
+/// The path variable `name` names, when it is set and not empty: the check
+/// or describe file, a script and its report.
+fn env_path(env: Env<'_>, name: &str) -> Option<PathBuf> {
+    env(name)
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
 }
 
 /// `TUNGSTEN_SMOKE_FRAMES` as a frame count above zero: smoke mode.
-fn smoke_frames_from_env() -> Option<u32> {
-    std::env::var("TUNGSTEN_SMOKE_FRAMES")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
+fn smoke_frames(env: Env<'_>) -> Option<u32> {
+    env("TUNGSTEN_SMOKE_FRAMES")
+        .and_then(|value| value.to_str()?.parse::<u32>().ok())
         .filter(|n| *n > 0)
 }
 
@@ -2451,7 +2625,10 @@ impl ApplicationHandler for App {
             | WindowEvent::CursorMoved { .. }
             | WindowEvent::CursorLeft { .. }
             | WindowEvent::MouseWheel { .. }
-                if self.smoke_frames_remaining.is_some() => {}
+                if self.smoke_frames_remaining.is_some() || self.script.is_some() => {}
+            // A script run drops the window's input as smoke does, and its
+            // focus loss, so a game that pauses unfocused plays on.
+            WindowEvent::Focused(false) if self.script.is_some() => {}
             WindowEvent::KeyboardInput {
                 event,
                 is_synthetic,
@@ -2498,7 +2675,23 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 let frame_start = Instant::now();
-                match self.run_frame(frame_start, FrameClock::Wall, |_| {}) {
+                // A script run's dt is pinned at 60 Hz, as smoke's is.
+                let clock = if self.script.is_some() {
+                    FrameClock::Pinned(SMOKE_MODE_FIXED_DT_SECS)
+                } else {
+                    FrameClock::Wall
+                };
+                match self.run_frame(frame_start, clock, |_| {}) {
+                    // The script's last frame or `exit` ends the run.
+                    FrameEnd::Completed
+                        if self
+                            .script
+                            .as_ref()
+                            .is_some_and(|script| script.ended().is_some()) =>
+                    {
+                        event_loop.exit();
+                        return;
+                    }
                     FrameEnd::Completed => {}
                     // A failed render ends the run at once; `App::run`
                     // returns its error. The last frame has presented.
