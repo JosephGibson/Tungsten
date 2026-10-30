@@ -12,7 +12,7 @@ Every asset file is listed in a `manifest.json` and named in game code by its re
 | Font family | manifest only | `font_families` | family ID, `faces` (`fonts` IDs) (`D-115`) |
 | Fallback chain | manifest only | `font_fallback` | a list of family IDs, not a map (`D-115`) |
 | Sound | `assets/sounds/` | `sounds` | ID; optional `looping`, `volume` (finite, at least 0), `bus` (`"music"` or `"effects"`, effects by default) and `max_voices` (1 to 64, 64 by default); a sample rate of 1,000–384,000 Hz |
-| Tilemap | `assets/tilemaps/` | `tilemaps` | ID; a Tiled `.tmj` with one embedded tileset whose tiles name sprite IDs in a `sprite_id` property; tile layers (a `kind` property `collision` for collision) and object layers, whose object classes name prefabs (`D-032`, `D-157`) |
+| Tilemap | `assets/tilemaps/` | `tilemaps` | ID; a Tiled `.tmj` with one embedded tileset whose tiles name sprite IDs in a `sprite_id` property, with optional tile properties `material` (a string, not empty), `health` (finite, above 0) and `broken` (the sprite of the tile a broken cell becomes; needs `health`); tile layers (a `kind` property `collision` for collision, whose `layers` and `mask`, strings of comma-separated layer numbers 0 to 31, are the physics layers its tiles are in and meet, `"0"` and every layer when absent) and object layers, whose object classes name prefabs (`D-032`, `D-157`); a property of the wrong type or out of range fails the load |
 | Shader | `assets/shaders/` | `shaders` | ID (`D-057`) |
 | Material | manifest only | `materials` | `shader` ID, `uniform_defaults` (`D-058`) |
 | Particle mesh | manifest only | `particle_meshes` | `vertices`, `indices` |

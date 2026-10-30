@@ -5,6 +5,10 @@
 //! M51: object layers load as [`ObjectLayer`]s of [`MapObject`]s, whose
 //! classes name prefabs (`World::spawn_map_objects`); a map built in code
 //! starts from [`TilemapData::new`].
+//!
+//! A tileset tile's custom properties beside `sprite_id` load as its
+//! [`TileProps`], and a collision layer's `layers` and `mask` as its
+//! [`LayerPhysics`]; unknown properties are ignored.
 
 use glam::Vec2;
 use serde::Deserialize;
@@ -155,9 +159,137 @@ pub struct TilemapLayer {
     pub tiles: Vec<TileIndex>,
 }
 
+/// A tileset entry's properties beside its sprite, from its Tiled tile's
+/// custom properties of the same names or
+/// [`TilemapData::set_tile_props`]. The default is a plain tile: no
+/// material, unbreakable, solid on every side and unstyled.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct TileProps {
+    /// A name game code reads, such as `"stone"`; never empty.
+    pub material: Option<String>,
+    /// The damage that breaks a cell of the tile: finite and above 0, or
+    /// `None` for an unbreakable tile.
+    pub health: Option<f32>,
+    /// The tile a broken cell becomes, [`EMPTY_TILE`] to clear it; a tile
+    /// other than empty needs `health`. Tiled names it by its sprite ID, the
+    /// first tile of the tileset with that sprite.
+    pub broken: TileIndex,
+    /// In a collision layer, solid through its top face only, from above.
+    pub one_way: bool,
+    /// Its auto-tile style.
+    pub style: Option<String>,
+    /// A style variant's open sides, 0 to 15 (1 up, 2 right, 4 down, 8
+    /// left); it needs `style`, and a styled tile without one is the
+    /// style's brush.
+    pub mask: Option<u8>,
+    /// A variant's draw weight, at least 1; a weight other than 1 needs
+    /// `mask`.
+    pub weight: u32,
+}
+
+/// The default [`TileProps`], which a tile without its own reads.
+static PLAIN_TILE: TileProps = TileProps {
+    material: None,
+    health: None,
+    broken: EMPTY_TILE,
+    one_way: false,
+    style: None,
+    mask: None,
+    weight: 1,
+};
+
+impl Default for TileProps {
+    fn default() -> Self {
+        PLAIN_TILE.clone()
+    }
+}
+
+impl TileProps {
+    /// The rules [`TilemapData::set_tile_props`] and the loader hold every
+    /// tile's properties to, for a tileset of `tiles` entries; the message
+    /// names the property.
+    fn check(&self, tiles: usize) -> Result<(), String> {
+        if self.material.as_deref() == Some("") {
+            return Err("`material` must not be empty".to_owned());
+        }
+        if let Some(health) = self.health
+            && !(health.is_finite() && health > 0.0)
+        {
+            return Err(format!(
+                "`health` must be finite and above 0 (got {health})"
+            ));
+        }
+        if self.broken >= 0 {
+            if self.health.is_none() {
+                return Err("`broken` needs `health`".to_owned());
+            }
+            if self.broken as usize >= tiles {
+                return Err(format!(
+                    "`broken` tile {} is past the tileset's {tiles} entries",
+                    self.broken
+                ));
+            }
+        }
+        if let Some(mask) = self.mask {
+            if mask > 15 {
+                return Err(format!("`mask` must be 0 to 15 (got {mask})"));
+            }
+            if self.style.is_none() {
+                return Err("`mask` needs `style`".to_owned());
+            }
+        }
+        if self.weight == 0 {
+            return Err("`weight` must be at least 1 (got 0)".to_owned());
+        }
+        if self.weight != 1 && self.mask.is_none() {
+            return Err("`weight` needs `mask`".to_owned());
+        }
+        Ok(())
+    }
+}
+
+/// The physics layers a collision layer's tiles are in and meet, one bit
+/// per layer 0 to 31, as a `RigidBody`'s `layers` and `mask` are (`D-178`).
+/// The default, as without the properties, is layer 0 meeting every layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LayerPhysics {
+    /// The layers its tiles are in.
+    pub layers: u32,
+    /// The layers its tiles meet; 0 meets none.
+    pub mask: u32,
+}
+
+impl LayerPhysics {
+    /// Layer 0 meeting every layer: a layer without the properties.
+    pub const DEFAULT: Self = Self {
+        layers: 1,
+        mask: u32::MAX,
+    };
+}
+
+impl Default for LayerPhysics {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
+/// What a map holds beside its public fields: each tileset entry's
+/// properties and each layer's physics, an entry past either list reading
+/// the defaults, so a map built in code or written in bulk has none.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct TerrainProps {
+    /// By tileset entry, trailing defaults left off.
+    tiles: Vec<TileProps>,
+    /// By layer, trailing defaults left off.
+    layers: Vec<LayerPhysics>,
+}
+
 /// Parsed tilemap data: a Tiled file's ([`load`](Self::load)) or one built
 /// in code ([`new`](Self::new) and its setters). The fields stay public for
-/// reading and bulk writes.
+/// reading and bulk writes; tile properties and layer physics are read and
+/// set through their methods ([`tile_props`](Self::tile_props),
+/// [`layer_physics`](Self::layer_physics)).
 #[derive(Debug, Clone, Deserialize)]
 #[non_exhaustive]
 pub struct TilemapData {
@@ -171,6 +303,9 @@ pub struct TilemapData {
     /// The object layers, in file order; `Deserialize` skips them.
     #[serde(skip)]
     pub object_layers: Vec<ObjectLayer>,
+    /// Tile properties and layer physics; `Deserialize` skips them.
+    #[serde(skip)]
+    pub(crate) terrain: TerrainProps,
 }
 
 /// A Tiled object layer: its name and its objects, in file order.
@@ -253,6 +388,7 @@ impl TilemapData {
             tileset: Vec::new(),
             layers: Vec::new(),
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
         }
     }
 
@@ -345,6 +481,89 @@ impl TilemapData {
         }
     }
 
+    /// The properties of tileset entry `tile`; the defaults for an entry
+    /// that has none set, and for an empty or unknown tile.
+    #[must_use]
+    pub fn tile_props(&self, tile: TileIndex) -> &TileProps {
+        usize::try_from(tile)
+            .ok()
+            .and_then(|tile| self.terrain.tiles.get(tile))
+            .unwrap_or(&PLAIN_TILE)
+    }
+
+    /// Sets the properties of tileset entry `tile`.
+    ///
+    /// # Panics
+    ///
+    /// When `tile` is not an entry of the tileset, or `props` breaks a rule
+    /// of [`TileProps`]'s fields: an empty `material`, a `health` not finite
+    /// and above 0, a `broken` tile without `health` or past the tileset, a
+    /// `mask` past 15 or without `style`, a `weight` of 0, or one other than
+    /// 1 without `mask`.
+    #[track_caller]
+    pub fn set_tile_props(&mut self, tile: TileIndex, props: TileProps) {
+        let count = self.tileset.len();
+        assert!(
+            tile >= 0,
+            "TilemapData::set_tile_props: tile {tile} is empty, not a tileset entry"
+        );
+        let index = tile as usize;
+        assert!(
+            index < count,
+            "TilemapData::set_tile_props: tile {tile} is past the tileset's {count} entries"
+        );
+        if let Err(message) = props.check(count) {
+            panic!("TilemapData::set_tile_props: tile {tile}: {message}");
+        }
+        let tiles = &mut self.terrain.tiles;
+        if index >= tiles.len() {
+            tiles.resize(index + 1, TileProps::default());
+        }
+        tiles[index] = props;
+        while tiles.last() == Some(&PLAIN_TILE) {
+            tiles.pop();
+        }
+    }
+
+    /// The physics layers of `layer`'s tiles; the defaults for a layer that
+    /// has none set or does not exist.
+    #[must_use]
+    pub fn layer_physics(&self, layer: usize) -> LayerPhysics {
+        self.terrain
+            .layers
+            .get(layer)
+            .copied()
+            .unwrap_or(LayerPhysics::DEFAULT)
+    }
+
+    /// Sets the physics layers of collision layer `layer`'s tiles.
+    ///
+    /// # Panics
+    ///
+    /// When `layer` is past the map's layers or is not a collision layer.
+    #[track_caller]
+    pub fn set_layer_physics(&mut self, layer: usize, physics: LayerPhysics) {
+        let count = self.layers.len();
+        match self.layers.get(layer) {
+            Some(found) if found.kind == LayerKind::Collision => {}
+            Some(found) => panic!(
+                "TilemapData::set_layer_physics: layer {layer} ('{}') is not a collision layer",
+                found.name
+            ),
+            None => panic!(
+                "TilemapData::set_layer_physics: layer {layer} is past the map's {count} layers"
+            ),
+        }
+        let layers = &mut self.terrain.layers;
+        if layer >= layers.len() {
+            layers.resize(layer + 1, LayerPhysics::DEFAULT);
+        }
+        layers[layer] = physics;
+        while layers.last() == Some(&LayerPhysics::DEFAULT) {
+            layers.pop();
+        }
+    }
+
     /// Load and validate Tiled `.tmj`; sprite existence checked by asset loader.
     pub fn load(path: impl AsRef<Path>) -> Result<Self, TilemapError> {
         let file = path.as_ref();
@@ -392,9 +611,21 @@ impl TilemapData {
             }
             tileset.push(sprite_id.to_owned());
         }
+        let mut tile_props = Vec::with_capacity(sorted_tiles.len());
+        for tile in &sorted_tiles {
+            let props = tile_props_of(tile, &tileset).map_err(|message| TilemapError::Invalid {
+                path: path.clone(),
+                message: format!("tile id={}: {message}", tile.id),
+            })?;
+            tile_props.push(props);
+        }
+        while tile_props.last() == Some(&PLAIN_TILE) {
+            tile_props.pop();
+        }
 
         let alignment = ts.objectalignment.as_deref().unwrap_or("unspecified");
         let mut layers: Vec<TilemapLayer> = Vec::new();
+        let mut layer_physics: Vec<LayerPhysics> = Vec::new();
         let mut object_layers: Vec<ObjectLayer> = Vec::new();
         for tl in &tiled.layers {
             // Skipped with its group, a collision layer would go unnoticed.
@@ -437,6 +668,11 @@ impl TilemapData {
                     "collision" => LayerKind::Collision,
                     _ => LayerKind::Render,
                 });
+            let physics = layer_physics_of(tl, kind).map_err(|message| TilemapError::Invalid {
+                path: path.clone(),
+                message: format!("layer '{}': {message}", tl.name),
+            })?;
+            layer_physics.push(physics);
 
             let tiles: Vec<TileIndex> = data
                 .iter()
@@ -462,6 +698,9 @@ impl TilemapData {
             });
         }
 
+        while layer_physics.last() == Some(&LayerPhysics::DEFAULT) {
+            layer_physics.pop();
+        }
         let data = TilemapData {
             tile_width: tiled.tilewidth,
             tile_height: tiled.tileheight,
@@ -470,6 +709,10 @@ impl TilemapData {
             tileset,
             layers,
             object_layers,
+            terrain: TerrainProps {
+                tiles: tile_props,
+                layers: layer_physics,
+            },
         };
 
         data.validate()
@@ -535,6 +778,120 @@ impl TilemapData {
             self.height as f32 * self.tile_height as f32,
         )
     }
+}
+
+/// A tileset tile's properties beside `sprite_id`, each given once, of its
+/// type and held to [`TileProps`]'s rules; `broken` names a sprite of
+/// `tileset`. The message names the property.
+fn tile_props_of(tile: &TiledTile, tileset: &[String]) -> Result<TileProps, String> {
+    const NAMES: [&str; 7] = [
+        "material", "health", "broken", "one_way", "style", "mask", "weight",
+    ];
+    let mut props = TileProps::default();
+    let mut seen: Vec<&str> = Vec::new();
+    for property in &tile.properties {
+        let (name, value) = (property.name.as_str(), &property.value);
+        if !NAMES.contains(&name) {
+            continue;
+        }
+        if seen.contains(&name) {
+            return Err(format!("`{name}` is given twice"));
+        }
+        seen.push(name);
+        let wrong = |expected: &str| format!("`{name}` must be {expected} (got {value})");
+        match name {
+            "material" => {
+                props.material = Some(value.as_str().ok_or_else(|| wrong("a string"))?.to_owned());
+            }
+            "health" => {
+                props.health = Some(value.as_f64().ok_or_else(|| wrong("a number"))? as f32);
+            }
+            "broken" => {
+                let sprite = value.as_str().ok_or_else(|| wrong("a string"))?;
+                let Some(index) = tileset.iter().position(|entry| entry == sprite) else {
+                    return Err(format!(
+                        "`broken` names sprite `{sprite}`, which no tile of the tileset has"
+                    ));
+                };
+                props.broken = index as TileIndex;
+            }
+            "one_way" => props.one_way = value.as_bool().ok_or_else(|| wrong("a bool"))?,
+            "style" => {
+                props.style = Some(value.as_str().ok_or_else(|| wrong("a string"))?.to_owned());
+            }
+            "mask" => {
+                let mask = value.as_i64().ok_or_else(|| wrong("an integer"))?;
+                props.mask = Some(
+                    u8::try_from(mask)
+                        .ok()
+                        .filter(|&mask| mask <= 15)
+                        .ok_or_else(|| format!("`mask` must be 0 to 15 (got {mask})"))?,
+                );
+            }
+            "weight" => {
+                let weight = value.as_i64().ok_or_else(|| wrong("an integer"))?;
+                props.weight = u32::try_from(weight)
+                    .ok()
+                    .filter(|&weight| weight >= 1)
+                    .ok_or_else(|| format!("`weight` must be 1 to {} (got {weight})", u32::MAX))?;
+            }
+            _ => {}
+        }
+    }
+    if seen.contains(&"weight") && props.mask.is_none() {
+        return Err("`weight` needs `mask`".to_owned());
+    }
+    props.check(tileset.len())?;
+    Ok(props)
+}
+
+/// A tile layer's `layers` and `mask` properties, the physics layers its
+/// tiles are in and meet: comma-separated layer numbers 0 to 31, on a
+/// collision layer only. The message names the property.
+fn layer_physics_of(layer: &TiledLayer, kind: LayerKind) -> Result<LayerPhysics, String> {
+    let mut physics = LayerPhysics::DEFAULT;
+    for property in &layer.properties {
+        let name = property.name.as_str();
+        let bits = match name {
+            "layers" => &mut physics.layers,
+            "mask" => &mut physics.mask,
+            _ => continue,
+        };
+        if kind != LayerKind::Collision {
+            return Err(format!(
+                "`{name}` is a collision layer's property, and this layer's `kind` is not `collision`"
+            ));
+        }
+        let Some(list) = property.value.as_str() else {
+            return Err(format!(
+                "`{name}` must be a string of layer numbers separated by commas (got {})",
+                property.value
+            ));
+        };
+        *bits = layer_bits(list).map_err(|message| format!("`{name}` {message}"))?;
+    }
+    Ok(physics)
+}
+
+/// The bits of `list`, layer numbers 0 to 31 separated by commas, spaces
+/// around them allowed; an empty list holds none.
+fn layer_bits(list: &str) -> Result<u32, String> {
+    if list.trim().is_empty() {
+        return Ok(0);
+    }
+    let mut bits = 0;
+    for item in list.split(',').map(str::trim) {
+        if item.is_empty() || !item.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(format!(
+                "must be layer numbers 0 to 31 separated by commas (got \"{list}\")"
+            ));
+        }
+        match item.parse::<u32>() {
+            Ok(layer) if layer <= 31 => bits |= 1 << layer,
+            _ => return Err(format!("holds layer {item}; a layer must be 0 to 31")),
+        }
+    }
+    Ok(bits)
 }
 
 /// One `objectgroup` layer, checked: every number finite and each size at

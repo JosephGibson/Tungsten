@@ -1,6 +1,6 @@
-# Runtime terrain (runtime-terrain) — draft
+# Runtime terrain (runtime-terrain)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** The first of redo 7.8's two plans (phase 7's Step 5 and §2.8; the redo's 7.8 row and §5.1's runtime half): the terrain that physics and chemistry stand on, on today's tile grid. Tile properties (material, health, the tile a broken cell becomes, one-way, auto-tile styles) and a collision layer's physics layers, read from the Tiled file; tiles edited in place through the registry, with a journal its consumers read; collision traced from the solid region's outline per 16 × 16 chunk and re-traced locally after an edit; one-way edges; the auto-tiler in Rust; region queries and sensors that follow an edit locally; the outline in the physics overlay; a `terrain` benchmark row with its counter guard. It lands P7-1.
 - **non-goals:**
   - The second plan of 7.8, the redo's §5.6 physics on this terrain: friction, contact speeds with begin and end, impulses and radial impulses, sensor exit, slopes, the controller pushed and riding, `Shape` made `#[non_exhaustive]`, the cheaper query index, and every other row Step 5 names (§2.1).
@@ -288,5 +288,6 @@ Round 2: the same reviewer at xhigh, 2026-10-30, reading the same tree with roun
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-30 | passed | `assets::tilemap::` 27 passed, the four named tests among them; `manifests::` 5 and `asset_loader::` 54 passed; `cargo fmt --check`, `just lint`, `just api` (+153 lines, `api/tungsten-core.txt`), `just api-check`, `just docs-ratchet` (core 875, no rise) and `just repo-check` exit 0 | `crates/tungsten-core/src/assets/tilemap.rs` |
 
 ## Follow-ups

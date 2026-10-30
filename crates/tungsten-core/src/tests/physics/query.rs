@@ -1,4 +1,5 @@
 use super::*;
+use crate::assets::tilemap::TerrainProps;
 use crate::assets::{LayerKind, TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry};
 use crate::physics::components::{Collider, Position, RigidBodyBundle, Velocity};
 use crate::physics::physics_step;
@@ -42,6 +43,7 @@ fn floor(world: &mut World, width: u32) {
             height: 2,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,

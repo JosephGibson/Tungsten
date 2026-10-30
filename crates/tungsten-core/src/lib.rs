@@ -28,8 +28,8 @@ pub mod ui;
 pub use assets::{
     AnimationData, AnimationRegistry, AnimationState, AssetId, AssetRegistry, AudioHandle,
     BlendMode, Curve, DataEntry, DataError, DataRef, DataRegistry, EMPTY_TILE, EmissionKind,
-    FilterMode, FontEntry, FontFamilyEntry, FontRegistry, InitialVelocity, LayerKind, Lerp,
-    LoadedManifest, ManifestError, MapObject, MaterialAssetId, MaterialRegistry,
+    FilterMode, FontEntry, FontFamilyEntry, FontRegistry, InitialVelocity, LayerKind, LayerPhysics,
+    Lerp, LoadedManifest, ManifestError, MapObject, MaterialAssetId, MaterialRegistry,
     MaterialUniformDefaults, ObjectLayer, ParticleActive, ParticleBudget, ParticleConfig,
     ParticleConfigError, ParticleConfigRegistry, ParticleEntry, ParticleMesh, ParticleMeshAssetId,
     ParticleMeshEntry, ParticleMeshRegistry, ParticleRender, PrefabData, PrefabEntry, PrefabError,
@@ -37,8 +37,8 @@ pub use assets::{
     ResolvedManifest, ResolvedMaterial, ResolvedParticle, ResolvedParticleMesh, ResolvedPrefab,
     ResolvedSound, ResolvedUiTheme, SceneData, SceneEntry, SceneError, SceneSprite, SceneTransform,
     SceneTween, SceneTweenChannel, SceneTweenRepeat, SoundData, SoundEntry, SoundRegistry,
-    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileIndex, TilemapData,
-    TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
+    SpriteAsset, SpriteAssetId, StagedLoad, StagedLoadError, TextureHandle, TileIndex, TileProps,
+    TilemapData, TilemapInstance, TilemapLayer, TilemapRegistry, UiThemeEntry, WorldRngSeed,
 };
 pub use audio::{AudioBus, AudioCommand, AudioCommands, MAX_VOICES, Voice};
 pub use camera::{CameraBounds, CameraController, CameraMode, CameraState};

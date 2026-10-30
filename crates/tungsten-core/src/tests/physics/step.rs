@@ -2,6 +2,7 @@ use super::pairs::{
     EMPTY_PAIR, PAIR_AWAKE, PAIR_MARGIN_SLOPS, build_pairs, collect_tripped, gravity_allowance,
 };
 use super::*;
+use crate::assets::tilemap::TerrainProps;
 use crate::assets::{LayerKind, TilemapInstance};
 use crate::assets::{TilemapData, TilemapLayer, TilemapRegistry};
 use crate::ecs::World;
@@ -84,6 +85,7 @@ fn tilemap_collision_layer_blocks_dynamic_body() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -462,6 +464,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
                 height: 2,
                 tileset: vec!["solid".into()],
                 object_layers: Vec::new(),
+                terrain: TerrainProps::default(),
                 layers: vec![TilemapLayer {
                     name: "collision".into(),
                     kind: LayerKind::Collision,
@@ -597,6 +600,7 @@ fn zero_restitution_body_does_not_bounce_off_multi_tile_floor() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -638,6 +642,7 @@ fn bouncy_ball_does_not_double_impulse_on_multi_tile_seam() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -753,6 +758,7 @@ fn pile_of_balls_does_not_escape_bottom_right_corner() {
             height: H,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "collision".into(),
                 kind: LayerKind::Collision,
@@ -2434,6 +2440,7 @@ fn kinematic_body_passes_static_bodies_tiles_and_kinematic_bodies() {
             height: 1,
             tileset: vec!["solid".into()],
             object_layers: Vec::new(),
+            terrain: TerrainProps::default(),
             layers: vec![TilemapLayer {
                 name: "solid".into(),
                 kind: LayerKind::Collision,
@@ -2801,6 +2808,7 @@ fn map_data(width: u32, layers: Vec<Vec<i32>>) -> TilemapData {
         height: layers[0].len() as u32 / width,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers: layers
             .into_iter()
             .enumerate()
@@ -3519,6 +3527,7 @@ fn a_tile_support_removed_wakes_the_island_on_it() {
         height: 1,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers: vec![TilemapLayer {
             name: "collision".into(),
             kind: LayerKind::Collision,
@@ -4134,6 +4143,7 @@ fn cache_map(tiles: Vec<i32>, decor: bool) -> TilemapData {
         height: 3,
         tileset: vec!["solid".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers,
     }
 }

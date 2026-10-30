@@ -38,6 +38,6 @@ pub use scene::{
 };
 pub use shader::{ShaderAssetId, ShaderRegistry};
 pub use tilemap::{
-    EMPTY_TILE, LayerKind, MapObject, ObjectLayer, TileIndex, TilemapData, TilemapError,
-    TilemapInstance, TilemapLayer, TilemapRegistry,
+    EMPTY_TILE, LayerKind, LayerPhysics, MapObject, ObjectLayer, TileIndex, TileProps, TilemapData,
+    TilemapError, TilemapInstance, TilemapLayer, TilemapRegistry,
 };

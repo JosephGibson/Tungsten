@@ -1893,6 +1893,29 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::TilemapError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapError
+pub struct tungsten_core::assets::tilemap::LayerPhysics
+pub tungsten_core::assets::tilemap::LayerPhysics::layers: u32
+pub tungsten_core::assets::tilemap::LayerPhysics::mask: u32
+impl tungsten_core::assets::tilemap::LayerPhysics
+pub const tungsten_core::assets::tilemap::LayerPhysics::DEFAULT: Self
+impl core::clone::Clone for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::clone(&self) -> tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::Eq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::eq(&self, &tungsten_core::assets::tilemap::LayerPhysics) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Freeze for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Send for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Sync for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
 #[non_exhaustive] pub struct tungsten_core::assets::tilemap::MapObject
 pub tungsten_core::assets::tilemap::MapObject::class: alloc::string::String
 pub tungsten_core::assets::tilemap::MapObject::id: u32
@@ -1931,6 +1954,30 @@ impl core::marker::Unpin for tungsten_core::assets::tilemap::ObjectLayer
 impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::ObjectLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::ObjectLayer
+#[non_exhaustive] pub struct tungsten_core::assets::tilemap::TileProps
+pub tungsten_core::assets::tilemap::TileProps::broken: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::assets::tilemap::TileProps::health: core::option::Option<f32>
+pub tungsten_core::assets::tilemap::TileProps::mask: core::option::Option<u8>
+pub tungsten_core::assets::tilemap::TileProps::material: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::tilemap::TileProps::one_way: bool
+pub tungsten_core::assets::tilemap::TileProps::style: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::tilemap::TileProps::weight: u32
+impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::eq(&self, &tungsten_core::assets::tilemap::TileProps) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Freeze for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Send for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Sync for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Unpin for tungsten_core::assets::tilemap::TileProps
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TileProps
 #[non_exhaustive] pub struct tungsten_core::assets::tilemap::TilemapData
 pub tungsten_core::assets::tilemap::TilemapData::height: u32
 pub tungsten_core::assets::tilemap::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
@@ -1943,11 +1990,15 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
@@ -2844,6 +2895,29 @@ impl core::marker::Unpin for tungsten_core::assets::registry::FontRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::FontRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::FontRegistry
+pub struct tungsten_core::assets::LayerPhysics
+pub tungsten_core::assets::LayerPhysics::layers: u32
+pub tungsten_core::assets::LayerPhysics::mask: u32
+impl tungsten_core::assets::tilemap::LayerPhysics
+pub const tungsten_core::assets::tilemap::LayerPhysics::DEFAULT: Self
+impl core::clone::Clone for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::clone(&self) -> tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::Eq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::eq(&self, &tungsten_core::assets::tilemap::LayerPhysics) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Freeze for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Send for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Sync for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
 pub struct tungsten_core::assets::LoadedManifest(pub tungsten_core::assets::manifest::ResolvedManifest)
 impl tungsten_core::assets::manifest::LoadedManifest
 pub fn tungsten_core::assets::manifest::LoadedManifest::as_resolved(&self) -> &tungsten_core::assets::manifest::ResolvedManifest
@@ -3762,6 +3836,30 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
+#[non_exhaustive] pub struct tungsten_core::assets::TileProps
+pub tungsten_core::assets::TileProps::broken: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::assets::TileProps::health: core::option::Option<f32>
+pub tungsten_core::assets::TileProps::mask: core::option::Option<u8>
+pub tungsten_core::assets::TileProps::material: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TileProps::one_way: bool
+pub tungsten_core::assets::TileProps::style: core::option::Option<alloc::string::String>
+pub tungsten_core::assets::TileProps::weight: u32
+impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::eq(&self, &tungsten_core::assets::tilemap::TileProps) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Freeze for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Send for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Sync for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Unpin for tungsten_core::assets::tilemap::TileProps
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TileProps
 #[non_exhaustive] pub struct tungsten_core::assets::TilemapData
 pub tungsten_core::assets::TilemapData::height: u32
 pub tungsten_core::assets::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
@@ -3774,11 +3872,15 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData
@@ -16096,6 +16198,29 @@ impl core::marker::Unpin for tungsten_core::inspect::InspectRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::inspect::InspectRegistry
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::inspect::InspectRegistry
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::inspect::InspectRegistry
+pub struct tungsten_core::LayerPhysics
+pub tungsten_core::LayerPhysics::layers: u32
+pub tungsten_core::LayerPhysics::mask: u32
+impl tungsten_core::assets::tilemap::LayerPhysics
+pub const tungsten_core::assets::tilemap::LayerPhysics::DEFAULT: Self
+impl core::clone::Clone for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::clone(&self) -> tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::Eq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::eq(&self, &tungsten_core::assets::tilemap::LayerPhysics) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::LayerPhysics
+pub fn tungsten_core::assets::tilemap::LayerPhysics::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Freeze for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Send for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Sync for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::Unpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::LayerPhysics
 pub struct tungsten_core::Light
 pub tungsten_core::Light::color: glam::f32::vec3::Vec3
 pub tungsten_core::Light::intensity: f32
@@ -18014,6 +18139,30 @@ impl core::marker::Unpin for tungsten_core::assets::registry::TextureHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::registry::TextureHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::registry::TextureHandle
+#[non_exhaustive] pub struct tungsten_core::TileProps
+pub tungsten_core::TileProps::broken: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::TileProps::health: core::option::Option<f32>
+pub tungsten_core::TileProps::mask: core::option::Option<u8>
+pub tungsten_core::TileProps::material: core::option::Option<alloc::string::String>
+pub tungsten_core::TileProps::one_way: bool
+pub tungsten_core::TileProps::style: core::option::Option<alloc::string::String>
+pub tungsten_core::TileProps::weight: u32
+impl core::clone::Clone for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::clone(&self) -> tungsten_core::assets::tilemap::TileProps
+impl core::cmp::PartialEq for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::eq(&self, &tungsten_core::assets::tilemap::TileProps) -> bool
+impl core::default::Default for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::default() -> Self
+impl core::fmt::Debug for tungsten_core::assets::tilemap::TileProps
+pub fn tungsten_core::assets::tilemap::TileProps::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Freeze for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Send for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Sync for tungsten_core::assets::tilemap::TileProps
+impl core::marker::Unpin for tungsten_core::assets::tilemap::TileProps
+impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TileProps
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TileProps
 #[non_exhaustive] pub struct tungsten_core::TilemapData
 pub tungsten_core::TilemapData::height: u32
 pub tungsten_core::TilemapData::layers: alloc::vec::Vec<tungsten_core::assets::tilemap::TilemapLayer>
@@ -18026,11 +18175,15 @@ impl tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::add_layer(&mut self, impl core::convert::Into<alloc::string::String>, tungsten_core::assets::tilemap::LayerKind) -> usize
 pub fn tungsten_core::assets::tilemap::TilemapData::add_tile(&mut self, impl core::convert::Into<alloc::string::String>) -> tungsten_core::assets::tilemap::TileIndex
 pub fn tungsten_core::assets::tilemap::TilemapData::fill(&mut self, usize, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::layer_physics(&self, usize) -> tungsten_core::assets::tilemap::LayerPhysics
 pub fn tungsten_core::assets::tilemap::TilemapData::load(impl core::convert::AsRef<std::path::Path>) -> core::result::Result<Self, tungsten_core::assets::tilemap::TilemapError>
 pub fn tungsten_core::assets::tilemap::TilemapData::new(u32, u32, u32, u32) -> Self
 pub fn tungsten_core::assets::tilemap::TilemapData::pixel_size(&self) -> glam::f32::vec2::Vec2
+pub fn tungsten_core::assets::tilemap::TilemapData::set_layer_physics(&mut self, usize, tungsten_core::assets::tilemap::LayerPhysics)
 pub fn tungsten_core::assets::tilemap::TilemapData::set_tile(&mut self, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex)
+pub fn tungsten_core::assets::tilemap::TilemapData::set_tile_props(&mut self, tungsten_core::assets::tilemap::TileIndex, tungsten_core::assets::tilemap::TileProps)
 pub fn tungsten_core::assets::tilemap::TilemapData::tile_at(&self, usize, u32, u32) -> core::option::Option<tungsten_core::assets::tilemap::TileIndex>
+pub fn tungsten_core::assets::tilemap::TilemapData::tile_props(&self, tungsten_core::assets::tilemap::TileIndex) -> &tungsten_core::assets::tilemap::TileProps
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapData
 pub fn tungsten_core::assets::tilemap::TilemapData::clone(&self) -> tungsten_core::assets::tilemap::TilemapData
 impl core::fmt::Debug for tungsten_core::assets::tilemap::TilemapData

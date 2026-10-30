@@ -9,6 +9,7 @@ fn tiny_map() -> TilemapData {
         height: 2,
         tileset: vec!["grass".into(), "dirt".into()],
         object_layers: Vec::new(),
+        terrain: TerrainProps::default(),
         layers: vec![
             TilemapLayer {
                 name: "bg".into(),
@@ -483,4 +484,424 @@ fn fill_panics_on_a_missing_layer() {
     map.add_tile("grass");
     map.add_layer("ground", LayerKind::Render);
     map.fill(2, 0);
+}
+
+/// A 2 × 1 map of 16 px tiles whose tileset holds `tiles`, Tiled tiles
+/// with their properties, and whose layers are `layers`, each filled with
+/// gid 1.
+fn map_with_tiles(tiles: &serde_json::Value, layers: &serde_json::Value) -> serde_json::Value {
+    let layers: Vec<serde_json::Value> = layers
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|layer| {
+            let mut layer = layer.clone();
+            layer["type"] = "tilelayer".into();
+            layer["data"] = serde_json::json!([1, 1]);
+            layer
+        })
+        .collect();
+    serde_json::json!({
+        "tilewidth": 16, "tileheight": 16, "width": 2, "height": 1,
+        "tilesets": [{ "firstgid": 1, "tiles": tiles }],
+        "layers": layers
+    })
+}
+
+/// A Tiled tile `id` drawing `sprite`, with `properties` beside its
+/// `sprite_id`.
+fn tiled_tile(id: u32, sprite: &str, properties: &serde_json::Value) -> serde_json::Value {
+    let mut all =
+        vec![serde_json::json!({ "name": "sprite_id", "type": "string", "value": sprite })];
+    all.extend(properties.as_array().unwrap().iter().cloned());
+    serde_json::json!({ "id": id, "properties": all })
+}
+
+#[test]
+fn tile_properties_load_from_the_tileset() {
+    let tiles = serde_json::json!([
+        tiled_tile(
+            0,
+            "rock",
+            &serde_json::json!([
+                { "name": "material", "type": "string", "value": "stone" },
+                { "name": "health", "type": "float", "value": 3 },
+                { "name": "broken", "type": "string", "value": "rubble" },
+                { "name": "style", "type": "string", "value": "cave" },
+                { "name": "mask", "type": "int", "value": 5 },
+                { "name": "weight", "type": "int", "value": 2 },
+                { "name": "colour", "type": "color", "value": "#ff00ff00" }
+            ])
+        ),
+        tiled_tile(
+            1,
+            "rubble",
+            &serde_json::json!([
+                { "name": "one_way", "type": "bool", "value": true },
+                { "name": "material", "type": "string", "value": "gravel" }
+            ])
+        ),
+        tiled_tile(2, "plain", &serde_json::json!([])),
+        tiled_tile(
+            3,
+            "spike",
+            &serde_json::json!([
+                { "name": "health", "type": "float", "value": 0.5 }
+            ])
+        ),
+        tiled_tile(
+            4,
+            "brush",
+            &serde_json::json!([
+                { "name": "style", "type": "string", "value": "cave" }
+            ])
+        ),
+        tiled_tile(
+            5,
+            "rubble",
+            &serde_json::json!([
+                { "name": "material", "type": "string", "value": "dust" }
+            ])
+        )
+    ]);
+    let map = load_json(&map_with_tiles(
+        &tiles,
+        &serde_json::json!([{ "name": "ground" }]),
+    ))
+    .unwrap();
+    let rock = map.tile_props(0);
+    assert_eq!(
+        (
+            rock.material.as_deref(),
+            rock.health,
+            rock.broken,
+            rock.one_way
+        ),
+        (Some("stone"), Some(3.0), 1, false),
+        "`broken` names the first tile drawing `rubble`"
+    );
+    assert_eq!(
+        (rock.style.as_deref(), rock.mask, rock.weight),
+        (Some("cave"), Some(5), 2)
+    );
+    let rubble = map.tile_props(1);
+    assert!(rubble.one_way);
+    assert_eq!(
+        (rubble.material.as_deref(), rubble.health, rubble.broken),
+        (Some("gravel"), None, EMPTY_TILE)
+    );
+    assert_eq!(rubble.weight, 1, "a weight's default");
+    assert_eq!(map.tile_props(2), &TileProps::default());
+    assert_eq!(map.tile_props(3).health, Some(0.5));
+    let brush = map.tile_props(4);
+    assert_eq!(
+        (brush.style.as_deref(), brush.mask),
+        (Some("cave"), None),
+        "a styled tile without a mask is the style's brush"
+    );
+    assert_eq!(map.tile_props(5).material.as_deref(), Some("dust"));
+    for missing in [EMPTY_TILE, 6, 99] {
+        assert_eq!(map.tile_props(missing), &TileProps::default(), "{missing}");
+    }
+    let default = TileProps::default();
+    assert_eq!(
+        (default.broken, default.weight, default.one_way),
+        (EMPTY_TILE, 1, false)
+    );
+}
+
+#[test]
+fn a_collision_layers_physics_layers_load_from_its_properties() {
+    let tiles = serde_json::json!([tiled_tile(0, "a", &serde_json::json!([]))]);
+    let collision = |properties: serde_json::Value| {
+        let mut all =
+            vec![serde_json::json!({ "name": "kind", "type": "string", "value": "collision" })];
+        all.extend(properties.as_array().unwrap().iter().cloned());
+        serde_json::Value::Array(all)
+    };
+    let layers = serde_json::json!([
+        { "name": "ground" },
+        { "name": "walls", "properties": collision(serde_json::json!([
+            { "name": "layers", "type": "string", "value": "1, 3" },
+            { "name": "mask", "type": "string", "value": "0,2" }
+        ])) },
+        { "name": "glass", "properties": collision(serde_json::json!([
+            { "name": "layers", "type": "string", "value": "" },
+            { "name": "mask", "type": "string", "value": " " }
+        ])) },
+        { "name": "solid", "properties": collision(serde_json::json!([])) },
+        { "name": "high", "properties": collision(serde_json::json!([
+            { "name": "layers", "type": "string", "value": "31" },
+            { "name": "mask", "type": "string", "value": "31,0,31" }
+        ])) }
+    ]);
+    let map = load_json(&map_with_tiles(&tiles, &layers)).unwrap();
+    let physics: Vec<_> = (0..6).map(|layer| map.layer_physics(layer)).collect();
+    assert_eq!(
+        physics,
+        [
+            LayerPhysics::DEFAULT,
+            LayerPhysics {
+                layers: 1 << 1 | 1 << 3,
+                mask: 1 | 1 << 2
+            },
+            LayerPhysics { layers: 0, mask: 0 },
+            LayerPhysics::DEFAULT,
+            LayerPhysics {
+                layers: 1 << 31,
+                mask: 1 << 31 | 1
+            },
+            LayerPhysics::DEFAULT,
+        ]
+    );
+    assert_eq!(
+        LayerPhysics::DEFAULT,
+        LayerPhysics {
+            layers: 1,
+            mask: u32::MAX
+        },
+        "layer 0, meeting every layer"
+    );
+
+    let cases = [
+        (
+            serde_json::json!({ "name": "ground", "properties": [
+                { "name": "layers", "type": "string", "value": "1" }
+            ] }),
+            "layer 'ground': `layers` is a collision layer's property, and this layer's `kind` is not `collision`",
+        ),
+        (
+            serde_json::json!({ "name": "ground", "properties": [
+                { "name": "kind", "type": "string", "value": "render" },
+                { "name": "mask", "type": "string", "value": "1" }
+            ] }),
+            "layer 'ground': `mask` is a collision layer's property, and this layer's `kind` is not `collision`",
+        ),
+        (
+            serde_json::json!({ "name": "walls", "properties": collision(serde_json::json!([
+                { "name": "layers", "type": "string", "value": "0, 32" }
+            ])) }),
+            "layer 'walls': `layers` holds layer 32; a layer must be 0 to 31",
+        ),
+        (
+            serde_json::json!({ "name": "walls", "properties": collision(serde_json::json!([
+                { "name": "mask", "type": "string", "value": "99999999999" }
+            ])) }),
+            "layer 'walls': `mask` holds layer 99999999999; a layer must be 0 to 31",
+        ),
+        (
+            serde_json::json!({ "name": "walls", "properties": collision(serde_json::json!([
+                { "name": "mask", "type": "int", "value": 3 }
+            ])) }),
+            "layer 'walls': `mask` must be a string of layer numbers separated by commas (got 3)",
+        ),
+    ];
+    for (layer, expected) in cases {
+        let err = load_json(&map_with_tiles(&tiles, &serde_json::json!([layer]))).unwrap_err();
+        assert!(matches!(err, TilemapError::Invalid { .. }), "{err:?}");
+        assert!(err.to_string().ends_with(expected), "{err}");
+    }
+    for list in ["1,,2", "a", "-1", "1;2", "1,", "1 2", "+1"] {
+        let layer = serde_json::json!({ "name": "walls", "properties": collision(serde_json::json!([
+            { "name": "layers", "type": "string", "value": list }
+        ])) });
+        let err = load_json(&map_with_tiles(&tiles, &serde_json::json!([layer]))).unwrap_err();
+        assert!(
+            err.to_string().ends_with(&format!(
+                "layer 'walls': `layers` must be layer numbers 0 to 31 separated by commas (got \"{list}\")"
+            )),
+            "{err}"
+        );
+    }
+}
+
+#[test]
+fn each_tile_property_rule_fails_the_load_naming_the_tile() {
+    let style = serde_json::json!({ "name": "style", "type": "string", "value": "cave" });
+    let mask = serde_json::json!({ "name": "mask", "type": "int", "value": 3 });
+    let health = serde_json::json!({ "name": "health", "type": "float", "value": 1 });
+    let property =
+        |name: &str, value: serde_json::Value| serde_json::json!({ "name": name, "value": value });
+    let cases = [
+        (
+            vec![property("material", 5.into())],
+            "`material` must be a string (got 5)",
+        ),
+        (
+            vec![property("material", "".into())],
+            "`material` must not be empty",
+        ),
+        (
+            vec![property("health", "3".into())],
+            "`health` must be a number (got \"3\")",
+        ),
+        (
+            vec![property("health", 0.into())],
+            "`health` must be finite and above 0 (got 0)",
+        ),
+        (
+            vec![property("health", (-2.5).into())],
+            "`health` must be finite and above 0 (got -2.5)",
+        ),
+        (
+            vec![property("health", 1e40.into())],
+            "`health` must be finite and above 0 (got inf)",
+        ),
+        (
+            vec![health.clone(), property("broken", 3.into())],
+            "`broken` must be a string (got 3)",
+        ),
+        (
+            vec![health.clone(), property("broken", "nothing".into())],
+            "`broken` names sprite `nothing`, which no tile of the tileset has",
+        ),
+        (
+            vec![property("broken", "base".into())],
+            "`broken` needs `health`",
+        ),
+        (
+            vec![property("one_way", "yes".into())],
+            "`one_way` must be a bool (got \"yes\")",
+        ),
+        (
+            vec![property("style", 1.into())],
+            "`style` must be a string (got 1)",
+        ),
+        (
+            vec![style.clone(), property("mask", 1.5.into())],
+            "`mask` must be an integer (got 1.5)",
+        ),
+        (
+            vec![style.clone(), property("mask", 16.into())],
+            "`mask` must be 0 to 15 (got 16)",
+        ),
+        (
+            vec![style.clone(), property("mask", (-1).into())],
+            "`mask` must be 0 to 15 (got -1)",
+        ),
+        (vec![mask.clone()], "`mask` needs `style`"),
+        (
+            vec![style.clone(), mask.clone(), property("weight", 0.into())],
+            "`weight` must be 1 to 4294967295 (got 0)",
+        ),
+        (
+            vec![style.clone(), mask.clone(), property("weight", 2.5.into())],
+            "`weight` must be an integer (got 2.5)",
+        ),
+        (
+            vec![style.clone(), property("weight", 2.into())],
+            "`weight` needs `mask`",
+        ),
+        (
+            vec![style.clone(), property("weight", 1.into())],
+            "`weight` needs `mask`",
+        ),
+        (
+            vec![
+                property("material", "a".into()),
+                property("material", "b".into()),
+            ],
+            "`material` is given twice",
+        ),
+    ];
+    for (properties, expected) in cases {
+        let tiles = serde_json::json!([
+            tiled_tile(0, "base", &serde_json::json!([])),
+            tiled_tile(7, "a", &serde_json::Value::Array(properties.clone()))
+        ]);
+        let err = load_json(&map_with_tiles(
+            &tiles,
+            &serde_json::json!([{ "name": "ground" }]),
+        ))
+        .unwrap_err();
+        assert!(matches!(err, TilemapError::Invalid { .. }), "{err:?}");
+        assert!(
+            err.to_string().ends_with(&format!("tile id=7: {expected}")),
+            "{properties:?}: {err}"
+        );
+    }
+}
+
+#[test]
+fn a_map_built_in_code_takes_tile_properties_and_layer_physics() {
+    let mut map = TilemapData::new(16, 16, 4, 2);
+    let rock = map.add_tile("rock");
+    let rubble = map.add_tile("rubble");
+    let plain = map.add_tile("plain");
+    let ground = map.add_layer("ground", LayerKind::Render);
+    let walls = map.add_layer("walls", LayerKind::Collision);
+    let glass = map.add_layer("glass", LayerKind::Collision);
+    assert_eq!(map.tile_props(rock), &TileProps::default());
+    assert_eq!(map.layer_physics(walls), LayerPhysics::DEFAULT);
+
+    let stone = TileProps {
+        material: Some("stone".into()),
+        health: Some(4.0),
+        broken: rubble,
+        ..TileProps::default()
+    };
+    map.set_tile_props(rock, stone.clone());
+    let ledge = TileProps {
+        one_way: true,
+        style: Some("ledge".into()),
+        mask: Some(10),
+        weight: 3,
+        ..TileProps::default()
+    };
+    map.set_tile_props(rubble, ledge.clone());
+    assert_eq!(map.tile_props(rock), &stone);
+    assert_eq!(map.tile_props(rubble), &ledge);
+    assert_eq!(map.tile_props(plain), &TileProps::default());
+    map.set_tile_props(rubble, TileProps::default());
+    assert_eq!(map.tile_props(rubble), &TileProps::default());
+    assert_eq!(map.tile_props(rock), &stone);
+
+    let glassy = LayerPhysics {
+        layers: 1 << 2,
+        mask: 0,
+    };
+    map.set_layer_physics(glass, glassy);
+    assert_eq!(map.layer_physics(glass), glassy);
+    assert_eq!(map.layer_physics(walls), LayerPhysics::DEFAULT);
+    assert_eq!(map.layer_physics(ground), LayerPhysics::DEFAULT);
+    // A bulk write to the public fields reads the defaults.
+    map.layers.push(TilemapLayer {
+        name: "more".into(),
+        kind: LayerKind::Collision,
+        tiles: vec![EMPTY_TILE; 8],
+    });
+    map.tileset.push("extra".into());
+    assert_eq!(map.layer_physics(3), LayerPhysics::DEFAULT);
+    assert_eq!(map.tile_props(3), &TileProps::default());
+    assert!(map.validate().is_ok());
+}
+
+#[test]
+#[should_panic(expected = "TilemapData::set_tile_props: tile 0: `mask` needs `style`")]
+fn set_tile_props_panics_on_a_broken_rule() {
+    let mut map = TilemapData::new(16, 16, 2, 2);
+    let tile = map.add_tile("rock");
+    let props = TileProps {
+        mask: Some(3),
+        ..TileProps::default()
+    };
+    map.set_tile_props(tile, props);
+}
+
+#[test]
+#[should_panic(expected = "TilemapData::set_tile_props: tile 1 is past the tileset's 1 entries")]
+fn set_tile_props_panics_past_the_tileset() {
+    let mut map = TilemapData::new(16, 16, 2, 2);
+    map.add_tile("rock");
+    map.set_tile_props(1, TileProps::default());
+}
+
+#[test]
+#[should_panic(
+    expected = "TilemapData::set_layer_physics: layer 0 ('ground') is not a collision layer"
+)]
+fn set_layer_physics_panics_on_a_render_layer() {
+    let mut map = TilemapData::new(16, 16, 2, 2);
+    let ground = map.add_layer("ground", LayerKind::Render);
+    map.set_layer_physics(ground, LayerPhysics::DEFAULT);
 }
