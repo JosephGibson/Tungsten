@@ -118,7 +118,7 @@ use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{Aabb, Contact, FACE_ALL};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::{CollisionEvent, SensorEntered};
-use super::query::{IndexEntry, SpatialIndex};
+use super::query::{IndexEntry, SpatialIndex, TileHit};
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
 use glam::Vec2;
@@ -501,8 +501,10 @@ impl PhysicsBuffers {
 
     /// The tile proxies as index entries, in tile order, each identity
     /// naming its map, layer and cell and each in its collision layer's
-    /// layers; with the cache version they are of.
-    pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>) -> u64 {
+    /// layers, and their cells into `cells`; with the cache version they
+    /// are of.
+    pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>, cells: &mut Vec<TileHit>) -> u64 {
+        cells.extend_from_slice(&self.tiles.cells);
         out.extend(
             self.tiles
                 .proxies

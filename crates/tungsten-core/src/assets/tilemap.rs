@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 
 use crate::assets::scene::{MAX_POSITION, within_position_bound};
+use crate::assets::terrain::MapHistory;
 
 /// Error loading a Tiled `.tmj` tilemap.
 #[derive(Debug, Error)]
@@ -1001,11 +1002,22 @@ fn map_object(
     })
 }
 
-/// Loaded tilemap registry resource.
+/// Loaded tilemap registry resource. Its maps are edited in place through
+/// it ([`set_tile`](Self::set_tile), [`damage_tile`](Self::damage_tile)),
+/// each written cell journaled for [`changes_since`](Self::changes_since).
 #[derive(Debug, Default, Clone)]
 pub struct TilemapRegistry {
-    maps: HashMap<String, TilemapData>,
+    pub(super) maps: HashMap<String, RegisteredMap>,
     path_to_id: HashMap<PathBuf, String>,
+    /// The highest revision any map's history has reached.
+    pub(super) clock: u64,
+}
+
+/// A registered map with its history since its `insert`.
+#[derive(Debug, Clone)]
+pub(super) struct RegisteredMap {
+    pub(super) data: TilemapData,
+    pub(super) history: MapHistory,
 }
 
 impl TilemapRegistry {
@@ -1014,23 +1026,27 @@ impl TilemapRegistry {
         Self::default()
     }
 
+    /// Registers `data` under `id`, replacing any map there: its history
+    /// starts again, with a new revision and fingerprint, an empty journal,
+    /// and no damage or edits.
     pub fn insert(&mut self, id: String, data: TilemapData) {
-        self.maps.insert(id, data);
+        let history = MapHistory::start(&data, &mut self.clock);
+        self.maps.insert(id, RegisteredMap { data, history });
     }
 
     /// Insert with source-path reverse lookup.
     pub fn insert_with_path(&mut self, id: String, data: TilemapData, path: PathBuf) {
         self.path_to_id.insert(path, id.clone());
-        self.maps.insert(id, data);
+        self.insert(id, data);
     }
 
     #[must_use]
     pub fn get(&self, id: &str) -> Option<&TilemapData> {
-        self.maps.get(id)
+        self.maps.get(id).map(|map| &map.data)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&str, &TilemapData)> {
-        self.maps.iter().map(|(k, v)| (k.as_str(), v))
+        self.maps.iter().map(|(k, v)| (k.as_str(), &v.data))
     }
 
     pub fn ids(&self) -> impl Iterator<Item = &str> {

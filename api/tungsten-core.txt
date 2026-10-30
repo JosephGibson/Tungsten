@@ -1830,6 +1830,99 @@ impl core::marker::Unpin for tungsten_core::assets::shader::ShaderRegistry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::shader::ShaderRegistry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::shader::ShaderRegistry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::shader::ShaderRegistry
+pub mod tungsten_core::assets::terrain
+pub enum tungsten_core::assets::terrain::TileChanges<'a>
+pub tungsten_core::assets::terrain::TileChanges::Cells(tungsten_core::assets::terrain::ChangedCells<'a>)
+pub tungsten_core::assets::terrain::TileChanges::Replaced
+pub tungsten_core::assets::terrain::TileChanges::Unchanged
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::clone(&self) -> tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+#[non_exhaustive] pub enum tungsten_core::assets::terrain::TileDamage
+pub tungsten_core::assets::terrain::TileDamage::Broken
+pub tungsten_core::assets::terrain::TileDamage::Broken::tile: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::assets::terrain::TileDamage::Damaged
+pub tungsten_core::assets::terrain::TileDamage::Damaged::health: f32
+pub tungsten_core::assets::terrain::TileDamage::Unbreakable
+impl core::clone::Clone for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::clone(&self) -> tungsten_core::assets::terrain::TileDamage
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::eq(&self, &tungsten_core::assets::terrain::TileDamage) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::TileDamage
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Freeze for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Send for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Sync for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Unpin for tungsten_core::assets::terrain::TileDamage
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileDamage
+pub struct tungsten_core::assets::terrain::CellChange
+pub tungsten_core::assets::terrain::CellChange::col: u32
+pub tungsten_core::assets::terrain::CellChange::layer: usize
+pub tungsten_core::assets::terrain::CellChange::row: u32
+impl core::clone::Clone for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::clone(&self) -> tungsten_core::assets::terrain::CellChange
+impl core::cmp::Eq for tungsten_core::assets::terrain::CellChange
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::eq(&self, &tungsten_core::assets::terrain::CellChange) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::terrain::CellChange
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::CellChange
+impl core::marker::Freeze for tungsten_core::assets::terrain::CellChange
+impl core::marker::Send for tungsten_core::assets::terrain::CellChange
+impl core::marker::Sync for tungsten_core::assets::terrain::CellChange
+impl core::marker::Unpin for tungsten_core::assets::terrain::CellChange
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::CellChange
+pub struct tungsten_core::assets::terrain::ChangedCells<'a>
+impl core::iter::traits::exact_size::ExactSizeIterator for tungsten_core::assets::terrain::ChangedCells<'_>
+impl core::iter::traits::iterator::Iterator for tungsten_core::assets::terrain::ChangedCells<'_>
+pub type tungsten_core::assets::terrain::ChangedCells<'_>::Item = tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::next(&mut self) -> core::option::Option<tungsten_core::assets::terrain::CellChange>
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::clone(&self) -> tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
+pub struct tungsten_core::assets::terrain::MapCursor
+impl core::clone::Clone for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::clone(&self) -> tungsten_core::assets::terrain::MapCursor
+impl core::cmp::Eq for tungsten_core::assets::terrain::MapCursor
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::eq(&self, &tungsten_core::assets::terrain::MapCursor) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::MapCursor
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Freeze for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Send for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Sync for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Unpin for tungsten_core::assets::terrain::MapCursor
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::MapCursor
 pub mod tungsten_core::assets::tilemap
 pub enum tungsten_core::assets::tilemap::LayerKind
 pub tungsten_core::assets::tilemap::LayerKind::Collision
@@ -2046,6 +2139,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 pub struct tungsten_core::assets::tilemap::TilemapRegistry
+impl tungsten_core::assets::tilemap::TilemapRegistry
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::changes_since(&self, &str, &tungsten_core::assets::terrain::MapCursor) -> core::option::Option<tungsten_core::assets::terrain::TileChanges<'_>>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::cursor(&self, &str) -> core::option::Option<tungsten_core::assets::terrain::MapCursor>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damage_tile(&mut self, &str, usize, u32, u32, f32) -> tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damaged_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, f32)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::edited_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, tungsten_core::assets::tilemap::TileIndex)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::health(&self, &str, usize, u32, u32) -> core::option::Option<f32>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::set_tile(&mut self, &str, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex) -> bool
 impl tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::tilemap::TilemapData>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -2565,6 +2666,42 @@ impl core::marker::Unpin for tungsten_core::assets::data::StagedLoadError
 impl core::marker::UnsafeUnpin for tungsten_core::assets::data::StagedLoadError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::data::StagedLoadError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::data::StagedLoadError
+pub enum tungsten_core::assets::TileChanges<'a>
+pub tungsten_core::assets::TileChanges::Cells(tungsten_core::assets::terrain::ChangedCells<'a>)
+pub tungsten_core::assets::TileChanges::Replaced
+pub tungsten_core::assets::TileChanges::Unchanged
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::clone(&self) -> tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+#[non_exhaustive] pub enum tungsten_core::assets::TileDamage
+pub tungsten_core::assets::TileDamage::Broken
+pub tungsten_core::assets::TileDamage::Broken::tile: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::assets::TileDamage::Damaged
+pub tungsten_core::assets::TileDamage::Damaged::health: f32
+pub tungsten_core::assets::TileDamage::Unbreakable
+impl core::clone::Clone for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::clone(&self) -> tungsten_core::assets::terrain::TileDamage
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::eq(&self, &tungsten_core::assets::terrain::TileDamage) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::TileDamage
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Freeze for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Send for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Sync for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Unpin for tungsten_core::assets::terrain::TileDamage
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileDamage
 pub enum tungsten_core::assets::TilemapError
 pub tungsten_core::assets::TilemapError::DuplicateTile
 pub tungsten_core::assets::TilemapError::DuplicateTile::path: alloc::string::String
@@ -2763,6 +2900,45 @@ impl core::marker::Unpin for tungsten_core::assets::audio::AudioHandle
 impl core::marker::UnsafeUnpin for tungsten_core::assets::audio::AudioHandle
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::audio::AudioHandle
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::audio::AudioHandle
+pub struct tungsten_core::assets::CellChange
+pub tungsten_core::assets::CellChange::col: u32
+pub tungsten_core::assets::CellChange::layer: usize
+pub tungsten_core::assets::CellChange::row: u32
+impl core::clone::Clone for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::clone(&self) -> tungsten_core::assets::terrain::CellChange
+impl core::cmp::Eq for tungsten_core::assets::terrain::CellChange
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::eq(&self, &tungsten_core::assets::terrain::CellChange) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::terrain::CellChange
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::CellChange
+impl core::marker::Freeze for tungsten_core::assets::terrain::CellChange
+impl core::marker::Send for tungsten_core::assets::terrain::CellChange
+impl core::marker::Sync for tungsten_core::assets::terrain::CellChange
+impl core::marker::Unpin for tungsten_core::assets::terrain::CellChange
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::CellChange
+pub struct tungsten_core::assets::ChangedCells<'a>
+impl core::iter::traits::exact_size::ExactSizeIterator for tungsten_core::assets::terrain::ChangedCells<'_>
+impl core::iter::traits::iterator::Iterator for tungsten_core::assets::terrain::ChangedCells<'_>
+pub type tungsten_core::assets::terrain::ChangedCells<'_>::Item = tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::next(&mut self) -> core::option::Option<tungsten_core::assets::terrain::CellChange>
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::clone(&self) -> tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
 pub struct tungsten_core::assets::Curve<V: core::marker::Copy>
 pub tungsten_core::assets::Curve::points: alloc::vec::Vec<(f32, V)>
 impl<V: core::marker::Copy + tungsten_core::assets::particle::Lerp> tungsten_core::assets::particle::Curve<V>
@@ -2947,6 +3123,23 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ManifestIssue
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ManifestIssue
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ManifestIssue
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ManifestIssue
+pub struct tungsten_core::assets::MapCursor
+impl core::clone::Clone for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::clone(&self) -> tungsten_core::assets::terrain::MapCursor
+impl core::cmp::Eq for tungsten_core::assets::terrain::MapCursor
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::eq(&self, &tungsten_core::assets::terrain::MapCursor) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::MapCursor
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Freeze for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Send for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Sync for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Unpin for tungsten_core::assets::terrain::MapCursor
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::MapCursor
 #[non_exhaustive] pub struct tungsten_core::assets::MapObject
 pub tungsten_core::assets::MapObject::class: alloc::string::String
 pub tungsten_core::assets::MapObject::id: u32
@@ -3943,6 +4136,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 pub struct tungsten_core::assets::TilemapRegistry
+impl tungsten_core::assets::tilemap::TilemapRegistry
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::changes_since(&self, &str, &tungsten_core::assets::terrain::MapCursor) -> core::option::Option<tungsten_core::assets::terrain::TileChanges<'_>>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::cursor(&self, &str) -> core::option::Option<tungsten_core::assets::terrain::MapCursor>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damage_tile(&mut self, &str, usize, u32, u32, f32) -> tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damaged_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, f32)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::edited_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, tungsten_core::assets::tilemap::TileIndex)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::health(&self, &str, usize, u32, u32) -> core::option::Option<f32>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::set_tile(&mut self, &str, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex) -> bool
 impl tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::tilemap::TilemapData>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>
@@ -7538,6 +7739,7 @@ pub tungsten_core::physics::SpatialHit::entity: core::option::Option<tungsten_co
 pub tungsten_core::physics::SpatialHit::layers: u32
 pub tungsten_core::physics::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::physics::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit
 impl core::cmp::PartialEq for tungsten_core::SpatialHit
@@ -7553,6 +7755,29 @@ impl core::marker::Unpin for tungsten_core::SpatialHit
 impl core::marker::UnsafeUnpin for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SpatialHit
+#[non_exhaustive] pub struct tungsten_core::physics::TileHit
+pub tungsten_core::physics::TileHit::col: u32
+pub tungsten_core::physics::TileHit::layer: usize
+pub tungsten_core::physics::TileHit::map: tungsten_core::Entity
+pub tungsten_core::physics::TileHit::row: u32
+impl core::clone::Clone for tungsten_core::physics::TileHit
+pub fn tungsten_core::physics::TileHit::clone(&self) -> tungsten_core::physics::TileHit
+impl core::cmp::Eq for tungsten_core::physics::TileHit
+impl core::cmp::PartialEq for tungsten_core::physics::TileHit
+pub fn tungsten_core::physics::TileHit::eq(&self, &tungsten_core::physics::TileHit) -> bool
+impl core::fmt::Debug for tungsten_core::physics::TileHit
+pub fn tungsten_core::physics::TileHit::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::physics::TileHit
+pub fn tungsten_core::physics::TileHit::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::physics::TileHit
+impl core::marker::StructuralPartialEq for tungsten_core::physics::TileHit
+impl core::marker::Freeze for tungsten_core::physics::TileHit
+impl core::marker::Send for tungsten_core::physics::TileHit
+impl core::marker::Sync for tungsten_core::physics::TileHit
+impl core::marker::Unpin for tungsten_core::physics::TileHit
+impl core::marker::UnsafeUnpin for tungsten_core::physics::TileHit
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::TileHit
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::TileHit
 pub struct tungsten_core::physics::Velocity(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Velocity
 pub fn tungsten_core::physics::components::Velocity::new(f32, f32) -> Self
@@ -14620,6 +14845,42 @@ impl core::marker::Unpin for tungsten_core::text::TextWrap
 impl core::marker::UnsafeUnpin for tungsten_core::text::TextWrap
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::text::TextWrap
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::text::TextWrap
+pub enum tungsten_core::TileChanges<'a>
+pub tungsten_core::TileChanges::Cells(tungsten_core::assets::terrain::ChangedCells<'a>)
+pub tungsten_core::TileChanges::Replaced
+pub tungsten_core::TileChanges::Unchanged
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::clone(&self) -> tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::TileChanges<'a>
+pub fn tungsten_core::assets::terrain::TileChanges<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileChanges<'a>
+#[non_exhaustive] pub enum tungsten_core::TileDamage
+pub tungsten_core::TileDamage::Broken
+pub tungsten_core::TileDamage::Broken::tile: tungsten_core::assets::tilemap::TileIndex
+pub tungsten_core::TileDamage::Damaged
+pub tungsten_core::TileDamage::Damaged::health: f32
+pub tungsten_core::TileDamage::Unbreakable
+impl core::clone::Clone for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::clone(&self) -> tungsten_core::assets::terrain::TileDamage
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::eq(&self, &tungsten_core::assets::terrain::TileDamage) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::terrain::TileDamage::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::TileDamage
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Freeze for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Send for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Sync for tungsten_core::assets::terrain::TileDamage
+impl core::marker::Unpin for tungsten_core::assets::terrain::TileDamage
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::TileDamage
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::TileDamage
 pub enum tungsten_core::TimerMode
 pub tungsten_core::TimerMode::Once
 pub tungsten_core::TimerMode::Repeating
@@ -15303,6 +15564,45 @@ impl core::marker::Unpin for tungsten_core::camera::CameraState
 impl core::marker::UnsafeUnpin for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::camera::CameraState
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::camera::CameraState
+pub struct tungsten_core::CellChange
+pub tungsten_core::CellChange::col: u32
+pub tungsten_core::CellChange::layer: usize
+pub tungsten_core::CellChange::row: u32
+impl core::clone::Clone for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::clone(&self) -> tungsten_core::assets::terrain::CellChange
+impl core::cmp::Eq for tungsten_core::assets::terrain::CellChange
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::eq(&self, &tungsten_core::assets::terrain::CellChange) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::CellChange::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::assets::terrain::CellChange
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::CellChange
+impl core::marker::Freeze for tungsten_core::assets::terrain::CellChange
+impl core::marker::Send for tungsten_core::assets::terrain::CellChange
+impl core::marker::Sync for tungsten_core::assets::terrain::CellChange
+impl core::marker::Unpin for tungsten_core::assets::terrain::CellChange
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::CellChange
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::CellChange
+pub struct tungsten_core::ChangedCells<'a>
+impl core::iter::traits::exact_size::ExactSizeIterator for tungsten_core::assets::terrain::ChangedCells<'_>
+impl core::iter::traits::iterator::Iterator for tungsten_core::assets::terrain::ChangedCells<'_>
+pub type tungsten_core::assets::terrain::ChangedCells<'_>::Item = tungsten_core::assets::terrain::CellChange
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::next(&mut self) -> core::option::Option<tungsten_core::assets::terrain::CellChange>
+pub fn tungsten_core::assets::terrain::ChangedCells<'_>::size_hint(&self) -> (usize, core::option::Option<usize>)
+impl<'a> core::clone::Clone for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::clone(&self) -> tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::fmt::Debug for tungsten_core::assets::terrain::ChangedCells<'a>
+pub fn tungsten_core::assets::terrain::ChangedCells<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Freeze for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Send for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Sync for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::Unpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::ChangedCells<'a>
 pub struct tungsten_core::Collider
 pub tungsten_core::Collider::offset: glam::f32::vec2::Vec2
 pub tungsten_core::Collider::shape: tungsten_core::physics::components::Shape
@@ -16286,6 +16586,23 @@ impl core::marker::Unpin for tungsten_core::post::LutParams
 impl core::marker::UnsafeUnpin for tungsten_core::post::LutParams
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::LutParams
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::LutParams
+pub struct tungsten_core::MapCursor
+impl core::clone::Clone for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::clone(&self) -> tungsten_core::assets::terrain::MapCursor
+impl core::cmp::Eq for tungsten_core::assets::terrain::MapCursor
+impl core::cmp::PartialEq for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::eq(&self, &tungsten_core::assets::terrain::MapCursor) -> bool
+impl core::fmt::Debug for tungsten_core::assets::terrain::MapCursor
+pub fn tungsten_core::assets::terrain::MapCursor::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::terrain::MapCursor
+impl core::marker::StructuralPartialEq for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Freeze for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Send for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Sync for tungsten_core::assets::terrain::MapCursor
+impl core::marker::Unpin for tungsten_core::assets::terrain::MapCursor
+impl core::marker::UnsafeUnpin for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::terrain::MapCursor
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::terrain::MapCursor
 #[non_exhaustive] pub struct tungsten_core::MapObject
 pub tungsten_core::MapObject::class: alloc::string::String
 pub tungsten_core::MapObject::id: u32
@@ -17766,6 +18083,7 @@ pub tungsten_core::SpatialHit::entity: core::option::Option<tungsten_core::Entit
 pub tungsten_core::SpatialHit::layers: u32
 pub tungsten_core::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::SpatialHit::point: glam::f32::vec2::Vec2
+pub tungsten_core::SpatialHit::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl core::clone::Clone for tungsten_core::SpatialHit
 pub fn tungsten_core::SpatialHit::clone(&self) -> tungsten_core::SpatialHit
 impl core::cmp::PartialEq for tungsten_core::SpatialHit
@@ -18235,6 +18553,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::tilemap::TilemapLayer
 pub struct tungsten_core::TilemapRegistry
+impl tungsten_core::assets::tilemap::TilemapRegistry
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::changes_since(&self, &str, &tungsten_core::assets::terrain::MapCursor) -> core::option::Option<tungsten_core::assets::terrain::TileChanges<'_>>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::cursor(&self, &str) -> core::option::Option<tungsten_core::assets::terrain::MapCursor>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damage_tile(&mut self, &str, usize, u32, u32, f32) -> tungsten_core::assets::terrain::TileDamage
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::damaged_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, f32)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::edited_cells(&self, &str) -> impl core::iter::traits::iterator::Iterator<Item = (tungsten_core::assets::terrain::CellChange, tungsten_core::assets::tilemap::TileIndex)> + '_
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::health(&self, &str, usize, u32, u32) -> core::option::Option<f32>
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::set_tile(&mut self, &str, usize, u32, u32, tungsten_core::assets::tilemap::TileIndex) -> bool
 impl tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::get(&self, &str) -> core::option::Option<&tungsten_core::assets::tilemap::TilemapData>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::id_for_path(&self, &std::path::Path) -> core::option::Option<&str>

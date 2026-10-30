@@ -1,17 +1,18 @@
 //! Once-per-frame gather of entity and tilemap collider proxies in
 //! deterministic `World` order (D-066), their warm-start keys and their
 //! layers; sensors are gathered beside the proxies, never as one. Tile
-//! proxies come from a cache of the collision layers that is checked every
-//! frame and rescanned only when a map changed; each is in its collision
-//! layer's physics layers.
+//! proxies come from a cache of the collision layers that asks the registry
+//! every frame whether a map changed (its cursor) and rescans that map
+//! alone; each is in its collision layer's physics layers.
 
 use super::{Layers, Proxy, ProxyLayers, SensorBody};
 use crate::assets::{
-    LayerKind, LayerPhysics, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
+    LayerKind, MapCursor, TileChanges, TilemapData, TilemapInstance, TilemapRegistry,
 };
 use crate::ecs::{Entity, World};
 use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
+use crate::physics::query::TileHit;
 use glam::Vec2;
 
 /// Warm-start identity for entity proxies; tag bit 63 separates the entity
@@ -132,15 +133,15 @@ pub(super) fn gather_proxies(
 }
 
 /// The static tile proxies of every collision layer, each in its layer's
-/// physics layers, as the last scan built them in gather order, with each
-/// one's sensor identity and the maps they came from. The gather checks the
-/// maps every frame, the tiles and physics of each collision layer compared
-/// whole, and scans again only when one differs, so the proxies, their
-/// order, keys, face masks, layers and identities are what a scan of this
-/// frame would give.
+/// physics layers, in gather order: each map's, in query order, as its last
+/// scan built them, with each one's sensor identity and cell. A map is
+/// scanned again only when its registry cursor reads a change, its instance
+/// moved or names another map, or it appeared; one that went drops out. So
+/// the proxies, their order, keys, face masks, layers, identities and cells
+/// are what a scan of this frame would give.
 #[derive(Debug, Default)]
 pub(super) struct TileCache {
-    /// Bumped by every scan; 0 before the first.
+    /// Bumped by every change to the proxies; 0 before the first.
     pub(super) version: u64,
     maps: Vec<CachedMap>,
     /// The tile proxies, in gather order.
@@ -151,40 +152,56 @@ pub(super) struct TileCache {
     layered: bool,
     /// Each tile proxy's identity in sensor overlap keys, in the same order.
     pub(super) ids: Vec<u64>,
+    /// Each tile proxy's map, layer and cell, in the same order.
+    pub(super) cells: Vec<TileHit>,
+    /// Maps scanned since the cache was made.
     #[cfg(test)]
     pub(super) scans: usize,
 }
 
-/// One map as the last scan read it: what a later frame compares.
+/// One map as its last scan read it, and where its proxies sit.
 #[derive(Debug)]
-pub(super) struct CachedMap {
+struct CachedMap {
     entity: Entity,
+    id: String,
     origin: [u32; 2],
-    tile: [u32; 2],
-    size: [u32; 2],
-    /// Each collision layer's index, physics and tiles.
-    layers: Vec<(usize, LayerPhysics, Vec<TileIndex>)>,
+    cursor: MapCursor,
+    /// Its proxies' first index in the cache's arrays, and their count.
+    start: usize,
+    len: usize,
 }
 
 impl CachedMap {
-    /// Whether `data`, placed by `instance` on `entity`, is this map.
-    fn is(&self, entity: Entity, instance: &TilemapInstance, data: &TilemapData) -> bool {
-        let mut collision = data
-            .layers
-            .iter()
-            .enumerate()
-            .filter(|(_, layer)| layer.kind == LayerKind::Collision);
+    /// Whether `instance` on `entity` places this map as it was scanned, its
+    /// registry cursor reading no change since.
+    fn holds(
+        &self,
+        entity: Entity,
+        instance: &TilemapInstance,
+        registry: &TilemapRegistry,
+    ) -> bool {
         self.entity == entity
-            && self.origin == [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
-            && self.tile == [data.tile_width, data.tile_height]
-            && self.size == [data.width, data.height]
-            && self.layers.iter().all(|(index, physics, tiles)| {
-                collision.next().is_some_and(|(at, layer)| {
-                    at == *index && data.layer_physics(at) == *physics && layer.tiles == *tiles
-                })
-            })
-            && collision.next().is_none()
+            && self.id == instance.id
+            && self.origin == origin_bits(instance)
+            && matches!(
+                registry.changes_since(&self.id, &self.cursor),
+                Some(TileChanges::Unchanged)
+            )
     }
+}
+
+fn origin_bits(instance: &TilemapInstance) -> [u32; 2] {
+    [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
+}
+
+/// Tile proxies with each one's layers, sensor identity and cell, in one
+/// order.
+#[derive(Debug, Default)]
+pub(super) struct TileArrays {
+    pub(super) proxies: Vec<Proxy>,
+    pub(super) layers: Vec<Layers>,
+    pub(super) ids: Vec<u64>,
+    pub(super) cells: Vec<TileHit>,
 }
 
 impl TileCache {
@@ -193,154 +210,184 @@ impl TileCache {
         self.proxies.len()
     }
 
-    /// Brings the cache up to `world`'s maps: unchanged maps keep it, any
-    /// difference scans them all again.
+    /// Brings the cache up to `world`'s maps: an unchanged map keeps its
+    /// proxies, a changed or new one is scanned, and one that went drops.
     fn refresh(&mut self, world: &World) {
-        if self.matches(world) {
+        let registry = world.get_resource::<TilemapRegistry>();
+        if self.matches(world, registry) {
             return;
         }
-        self.scan(world);
+        let kept = std::mem::take(&mut self.maps);
+        let old = TileArrays {
+            proxies: std::mem::take(&mut self.proxies),
+            layers: std::mem::take(&mut self.layers),
+            ids: std::mem::take(&mut self.ids),
+            cells: std::mem::take(&mut self.cells),
+        };
+        let mut arrays = TileArrays::default();
+        for (entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
+            let Some((data, cursor, registry)) = registry.and_then(|registry| {
+                Some((
+                    registry.get(&instance.id)?,
+                    registry.cursor(&instance.id)?,
+                    registry,
+                ))
+            }) else {
+                continue;
+            };
+            let start = arrays.proxies.len();
+            match kept.iter().find(|map| map.entity == entity) {
+                Some(map) if map.holds(entity, instance, registry) => {
+                    let range = map.start..map.start + map.len;
+                    arrays
+                        .proxies
+                        .extend_from_slice(&old.proxies[range.clone()]);
+                    arrays.layers.extend_from_slice(&old.layers[range.clone()]);
+                    arrays.ids.extend_from_slice(&old.ids[range.clone()]);
+                    arrays.cells.extend_from_slice(&old.cells[range]);
+                }
+                _ => {
+                    scan_map(entity, instance, data, &mut arrays);
+                    #[cfg(test)]
+                    {
+                        self.scans += 1;
+                    }
+                }
+            }
+            self.maps.push(CachedMap {
+                entity,
+                id: instance.id.clone(),
+                origin: origin_bits(instance),
+                cursor,
+                start,
+                len: arrays.proxies.len() - start,
+            });
+        }
+        self.layered = arrays
+            .layers
+            .iter()
+            .any(|&layers| layers != Layers::DEFAULT);
+        self.proxies = arrays.proxies;
+        self.layers = arrays.layers;
+        self.ids = arrays.ids;
+        self.cells = arrays.cells;
+        self.version += 1;
     }
 
     /// Whether the maps with registered data, in query order, are the ones
-    /// the last scan read.
-    fn matches(&self, world: &World) -> bool {
-        let Some(registry) = world.get_resource::<TilemapRegistry>() else {
+    /// the cache holds, each unchanged.
+    fn matches(&self, world: &World, registry: Option<&TilemapRegistry>) -> bool {
+        let Some(registry) = registry else {
             return self.maps.is_empty();
         };
         let mut cached = self.maps.iter();
-        for (map, instance) in world.query::<(Entity, &TilemapInstance)>() {
-            let Some(data) = registry.get(&instance.id) else {
+        for (entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
+            if registry.get(&instance.id).is_none() {
                 continue;
-            };
-            if !cached.next().is_some_and(|old| old.is(map, instance, data)) {
+            }
+            if !cached
+                .next()
+                .is_some_and(|map| map.holds(entity, instance, registry))
+            {
                 return false;
             }
         }
         cached.next().is_none()
     }
+}
 
-    /// Scans every collision layer of every map again.
-    fn scan(&mut self, world: &World) {
-        self.proxies.clear();
-        self.layers.clear();
-        self.ids.clear();
-        self.maps.clear();
-        gather_tilemap_proxies(
-            world,
-            &mut self.proxies,
-            &mut self.layers,
-            &mut self.ids,
-            &mut self.maps,
-        );
-        self.layered = self.layers.iter().any(|&layers| layers != Layers::DEFAULT);
-        self.version += 1;
-        #[cfg(test)]
-        {
-            self.scans += 1;
+/// Scan every map's collision layers, as a fresh cache would: the test
+/// oracle of the kept proxies.
+#[cfg(test)]
+pub(super) fn gather_tilemap_proxies(world: &World, arrays: &mut TileArrays) {
+    let Some(registry) = world.get_resource::<TilemapRegistry>() else {
+        return;
+    };
+    for (map, instance) in world.query::<(Entity, &TilemapInstance)>() {
+        if let Some(data) = registry.get(&instance.id) {
+            scan_map(map, instance, data, arrays);
         }
     }
 }
 
-/// Scan the static tile proxies of collision layers, their layers, their
-/// identities and the maps they came from.
-pub(super) fn gather_tilemap_proxies(
-    world: &World,
-    proxies: &mut Vec<Proxy>,
-    tile_layers: &mut Vec<Layers>,
-    tile_ids: &mut Vec<u64>,
-    maps: &mut Vec<CachedMap>,
-) {
-    let Some(registry) = world.get_resource::<TilemapRegistry>() else {
-        return;
-    };
+/// Scan one map's collision layers into `arrays`: each solid cell's static
+/// proxy, its layer's layers, its sensor identity and its cell, in layer,
+/// row and column order.
+fn scan_map(map: Entity, instance: &TilemapInstance, data: &TilemapData, arrays: &mut TileArrays) {
+    let tw = data.tile_width as f32;
+    let th = data.tile_height as f32;
+    let half = Vec2::new(tw * 0.5, th * 0.5);
 
-    for (map, instance) in world.query::<(Entity, &TilemapInstance)>() {
-        let Some(data) = registry.get(&instance.id) else {
+    for (layer_index, layer) in data.layers.iter().enumerate() {
+        if layer.kind != LayerKind::Collision {
             continue;
+        }
+        let physics = data.layer_physics(layer_index);
+        let layer_layers = Layers {
+            layers: physics.layers,
+            mask: physics.mask,
         };
-        maps.push(CachedMap {
-            entity: map,
-            origin: [instance.origin.x.to_bits(), instance.origin.y.to_bits()],
-            tile: [data.tile_width, data.tile_height],
-            size: [data.width, data.height],
-            layers: data
-                .layers
-                .iter()
-                .enumerate()
-                .filter(|(_, layer)| layer.kind == LayerKind::Collision)
-                .map(|(index, layer)| (index, data.layer_physics(index), layer.tiles.clone()))
-                .collect(),
-        });
-        let tw = data.tile_width as f32;
-        let th = data.tile_height as f32;
-        let half = Vec2::new(tw * 0.5, th * 0.5);
-
-        for (layer_index, layer) in data.layers.iter().enumerate() {
-            if layer.kind != LayerKind::Collision {
-                continue;
+        let w = data.width as i32;
+        let h = data.height as i32;
+        let is_solid = |c: i32, r: i32| -> bool {
+            if c < 0 || r < 0 || c >= w || r >= h {
+                return false;
             }
-            let physics = data.layer_physics(layer_index);
-            let layer_layers = Layers {
-                layers: physics.layers,
-                mask: physics.mask,
-            };
-            let w = data.width as i32;
-            let h = data.height as i32;
-            let is_solid = |c: i32, r: i32| -> bool {
-                if c < 0 || r < 0 || c >= w || r >= h {
-                    return false;
+            let idx = (r as usize) * (data.width as usize) + (c as usize);
+            layer.tiles[idx] >= 0
+        };
+        for row in 0..data.height {
+            for col in 0..data.width {
+                let idx = (row as usize) * (data.width as usize) + (col as usize);
+                let tile = layer.tiles[idx];
+                if tile < 0 {
+                    continue;
                 }
-                let idx = (r as usize) * (data.width as usize) + (c as usize);
-                layer.tiles[idx] >= 0
-            };
-            for row in 0..data.height {
-                for col in 0..data.width {
-                    let idx = (row as usize) * (data.width as usize) + (col as usize);
-                    let tile = layer.tiles[idx];
-                    if tile < 0 {
-                        continue;
-                    }
-                    let c = col as i32;
-                    let r = row as i32;
-                    // Solid neighbors mask internal faces; map edges remain exposed.
-                    let mut face_mask: u8 = 0;
-                    if !is_solid(c, r - 1) {
-                        face_mask |= FACE_TOP;
-                    }
-                    if !is_solid(c, r + 1) {
-                        face_mask |= FACE_BOTTOM;
-                    }
-                    if !is_solid(c - 1, r) {
-                        face_mask |= FACE_LEFT;
-                    }
-                    if !is_solid(c + 1, r) {
-                        face_mask |= FACE_RIGHT;
-                    }
-                    let center = Vec2::new(
-                        instance.origin.x + (col as f32) * tw + half.x,
-                        instance.origin.y + (row as f32) * th + half.y,
-                    );
-                    proxies.push(Proxy {
-                        entity: None,
-                        key: tile_key(center),
-                        center,
-                        prev_center: center,
-                        velocity: Vec2::ZERO,
-                        offset: Vec2::ZERO,
-                        shape: Shape::Aabb { half_extents: half },
-                        is_dynamic: false,
-                        has_velocity: false,
-                        inv_mass: 0.0,
-                        restitution: 0.0,
-                        face_mask,
-                        sleeping: false,
-                        kinematic: false,
-                        kept_awake: false,
-                    });
-                    tile_layers.push(layer_layers);
-                    tile_ids.push(tile_identity(map, layer_index, col, row));
+                let c = col as i32;
+                let r = row as i32;
+                // Solid neighbors mask internal faces; map edges remain exposed.
+                let mut face_mask: u8 = 0;
+                if !is_solid(c, r - 1) {
+                    face_mask |= FACE_TOP;
                 }
+                if !is_solid(c, r + 1) {
+                    face_mask |= FACE_BOTTOM;
+                }
+                if !is_solid(c - 1, r) {
+                    face_mask |= FACE_LEFT;
+                }
+                if !is_solid(c + 1, r) {
+                    face_mask |= FACE_RIGHT;
+                }
+                let center = Vec2::new(
+                    instance.origin.x + (col as f32) * tw + half.x,
+                    instance.origin.y + (row as f32) * th + half.y,
+                );
+                arrays.proxies.push(Proxy {
+                    entity: None,
+                    key: tile_key(center),
+                    center,
+                    prev_center: center,
+                    velocity: Vec2::ZERO,
+                    offset: Vec2::ZERO,
+                    shape: Shape::Aabb { half_extents: half },
+                    is_dynamic: false,
+                    has_velocity: false,
+                    inv_mass: 0.0,
+                    restitution: 0.0,
+                    face_mask,
+                    sleeping: false,
+                    kinematic: false,
+                    kept_awake: false,
+                });
+                arrays.layers.push(layer_layers);
+                arrays.ids.push(tile_identity(map, layer_index, col, row));
+                arrays.cells.push(TileHit {
+                    map,
+                    layer: layer_index,
+                    col,
+                    row,
+                });
             }
         }
     }

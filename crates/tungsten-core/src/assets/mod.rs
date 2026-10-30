@@ -9,6 +9,7 @@ pub mod prefab;
 pub mod registry;
 pub mod scene;
 pub mod shader;
+pub mod terrain;
 pub mod tilemap;
 
 pub use animation::{
@@ -37,6 +38,7 @@ pub use scene::{
     SceneTweenRepeat,
 };
 pub use shader::{ShaderAssetId, ShaderRegistry};
+pub use terrain::{CellChange, ChangedCells, MapCursor, TileChanges, TileDamage};
 pub use tilemap::{
     EMPTY_TILE, LayerKind, LayerPhysics, MapObject, ObjectLayer, TileIndex, TileProps, TilemapData,
     TilemapError, TilemapInstance, TilemapLayer, TilemapRegistry,

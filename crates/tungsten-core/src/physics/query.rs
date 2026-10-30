@@ -184,6 +184,23 @@ pub struct SpatialHit {
     /// The layers of the body or tile met, one bit per layer: a body's
     /// [`RigidBody::layers`], a tile's those of its collision layer.
     pub layers: u32,
+    /// The tile cell met; `None` for a body.
+    pub tile: Option<TileHit>,
+}
+
+/// The tile cell a query met: its map's entity, its collision layer and
+/// its column and row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct TileHit {
+    /// The entity whose `TilemapInstance` places the map.
+    pub map: Entity,
+    /// The collision layer's index in the map's layers.
+    pub layer: usize,
+    /// The cell's column, from the map's left.
+    pub col: u32,
+    /// The cell's row, from the map's top.
+    pub row: u32,
 }
 
 /// One shape in the index, at the last step's final position.
@@ -290,14 +307,15 @@ struct IndexState {
     builds: usize,
 }
 
-/// The index's tile entries, in tile order, their exact boxes' grid by
-/// tile order and their union's corners, rebuilt when the step's tile cache
-/// or the cell size changes.
+/// The index's tile entries and their cells, in tile order, their exact
+/// boxes' grid by tile order and their union's corners, rebuilt when the
+/// step's tile cache or the cell size changes.
 #[derive(Debug, Default)]
 struct TileIndex {
     /// The cache version and cell size bits it was built for.
     staged: Option<(u64, u32)>,
     entries: Vec<IndexEntry>,
+    cells: Vec<TileHit>,
     grid: SpatialGrid,
     bounds: Option<(Vec2, Vec2)>,
 }
@@ -309,6 +327,12 @@ fn grow(bounds: Option<(Vec2, Vec2)>, aabb: &Aabb) -> (Vec2, Vec2) {
 }
 
 impl IndexState {
+    /// The cell of the tile `id` names; `None` for a body or a sensor.
+    fn tile_hit(&self, id: ProxyId) -> Option<TileHit> {
+        let at = (id as usize).checked_sub(self.tile_base)?;
+        self.tiles.cells.get(at).copied()
+    }
+
     /// The entry `id` names.
     fn entry(&self, id: ProxyId) -> &IndexEntry {
         let id = id as usize;
@@ -334,7 +358,8 @@ impl IndexState {
         if self.tiles.staged != Some(key) {
             let tiles = &mut self.tiles;
             tiles.entries.clear();
-            buffers.index_tiles(&mut tiles.entries);
+            tiles.cells.clear();
+            buffers.index_tiles(&mut tiles.entries, &mut tiles.cells);
             tiles.grid.set_cell_size(cell_size);
             tiles.bounds = None;
             for (ordinal, entry) in tiles.entries.iter().enumerate() {
@@ -488,6 +513,7 @@ pub fn cast_ray(
                 normal,
                 distance,
                 layers: entry.layers,
+                tile: state.tile_hit(id),
             };
             keep_closer(&mut best, hit, id, max_distance);
         }
@@ -532,6 +558,10 @@ pub fn cast_shape(
                 continue;
             }
             if let Some(hit) = cast_against(shape, origin, dir, entry) {
+                let hit = SpatialHit {
+                    tile: state.tile_hit(id),
+                    ..hit
+                };
                 keep_closer(&mut best, hit, id, max_distance);
             }
         }
@@ -594,7 +624,11 @@ pub fn nearest(
         for &id in &state.candidates {
             let entry = state.entry(id);
             if filter.admits(entry, world) {
-                keep_closer(&mut best, surface_hit(point, entry), id, max_distance);
+                let hit = SpatialHit {
+                    tile: state.tile_hit(id),
+                    ..surface_hit(point, entry)
+                };
+                keep_closer(&mut best, hit, id, max_distance);
             }
         }
         best.map(|(hit, _)| hit)
@@ -683,6 +717,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
             normal: contact.normal,
             distance: 0.0,
             layers: entry.layers,
+            tile: None,
         });
     }
     let (distance, normal, point) = match (shape, entry.shape) {
@@ -725,6 +760,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
         normal,
         distance,
         layers: entry.layers,
+        tile: None,
     })
 }
 
@@ -833,6 +869,7 @@ fn surface_hit(point: Vec2, entry: &IndexEntry) -> SpatialHit {
         normal,
         distance,
         layers: entry.layers,
+        tile: None,
     }
 }
 

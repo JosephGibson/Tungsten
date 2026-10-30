@@ -945,3 +945,78 @@ fn filters_see_tiles_by_their_collision_layers() {
     .unwrap();
     assert_eq!((near.point.x, near.layers), (48.0, 1 << 1));
 }
+
+#[test]
+fn a_hit_names_the_tile_cell_it_met() {
+    // A 4 × 3 map at (100, 50): `decor`, then two collision layers, `low`
+    // with a tile at column 1 of row 2 and `high` one at column 3 of row 0.
+    let mut world = world();
+    let mut data = TilemapData::new(16, 16, 4, 3);
+    let solid = data.add_tile("solid");
+    let decor = data.add_layer("decor", LayerKind::Render);
+    data.fill(decor, solid);
+    let low = data.add_layer("low", LayerKind::Collision);
+    let high = data.add_layer("high", LayerKind::Collision);
+    data.set_tile(low, 1, 2, solid);
+    data.set_tile(high, 3, 0, solid);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("cells".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("cells", Vec2::new(100.0, 50.0)));
+    let post = wall(&mut world, Vec2::new(300.0, 90.0), Vec2::splat(4.0));
+    physics_step(&mut world);
+    let cell = |layer: usize, col: u32, row: u32| {
+        Some(TileHit {
+            map,
+            layer,
+            col,
+            row,
+        })
+    };
+
+    let down = cast_ray(&world, Vec2::new(124.0, 0.0), Vec2::Y, 500.0, &all()).unwrap();
+    assert_eq!(
+        (down.point, down.tile),
+        (Vec2::new(124.0, 82.0), cell(1, 1, 2))
+    );
+    let across = cast_ray(&world, Vec2::new(0.0, 58.0), Vec2::X, 500.0, &all()).unwrap();
+    assert_eq!(across.tile, cell(2, 3, 0));
+    let swept = cast_shape(
+        &world,
+        Shape::Circle { radius: 2.0 },
+        Vec2::new(124.0, 0.0),
+        Vec2::Y,
+        500.0,
+        &all(),
+    )
+    .unwrap();
+    assert_eq!(swept.tile, cell(1, 1, 2));
+    // A cast starting inside the tile, moving into it, stops there at once.
+    let inside = cast_shape(
+        &world,
+        Shape::Aabb {
+            half_extents: Vec2::splat(2.0),
+        },
+        Vec2::new(124.0, 83.0),
+        Vec2::Y,
+        10.0,
+        &all(),
+    )
+    .unwrap();
+    assert_eq!((inside.distance, inside.tile), (0.0, cell(1, 1, 2)));
+    let near = nearest(&world, Vec2::new(124.0, 120.0), 500.0, &all()).unwrap();
+    assert_eq!(near.tile, cell(1, 1, 2));
+    let body = cast_ray(&world, Vec2::new(300.0, 0.0), Vec2::Y, 500.0, &all()).unwrap();
+    assert_eq!((body.entity, body.tile), (Some(post), None));
+    // An edit moves the hit to the new cell at the next step.
+    world
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("cells", low, 1, 1, solid);
+    physics_step(&mut world);
+    let down = cast_ray(&world, Vec2::new(124.0, 0.0), Vec2::Y, 500.0, &all()).unwrap();
+    assert_eq!(
+        (down.point, down.tile),
+        (Vec2::new(124.0, 66.0), cell(1, 1, 1))
+    );
+}

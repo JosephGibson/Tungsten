@@ -3,8 +3,10 @@ use super::pairs::{
 };
 use super::*;
 use crate::assets::tilemap::TerrainProps;
+use crate::assets::{
+    EMPTY_TILE, TileDamage, TileProps, TilemapData, TilemapLayer, TilemapRegistry,
+};
 use crate::assets::{LayerKind, TilemapInstance};
-use crate::assets::{TilemapData, TilemapLayer, TilemapRegistry};
 use crate::ecs::World;
 use crate::physics::components::RigidBodyBundle;
 
@@ -4247,7 +4249,8 @@ fn cache_map(tiles: Vec<i32>, decor: bool) -> TilemapData {
 }
 
 /// Gathers `world` into `buffers`, then asserts the tile proxies after the
-/// entity proxies, and their identities, are a fresh scan's.
+/// entity proxies, and their layers, identities and cells, are a fresh
+/// scan's.
 fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     gather_proxies(
         world,
@@ -4258,18 +4261,11 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         &mut buffers.tiles,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
-    let (mut fresh, mut fresh_layers, mut ids, mut maps) =
-        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    super::gather::gather_tilemap_proxies(
-        world,
-        &mut fresh,
-        &mut fresh_layers,
-        &mut ids,
-        &mut maps,
-    );
+    let mut fresh = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut fresh);
     let tail = &buffers.proxies[buffers.bodies..];
-    assert_eq!(tail.len(), fresh.len(), "{when}: tile count");
-    for (at, (kept, scanned)) in tail.iter().zip(&fresh).enumerate() {
+    assert_eq!(tail.len(), fresh.proxies.len(), "{when}: tile count");
+    for (at, (kept, scanned)) in tail.iter().zip(&fresh.proxies).enumerate() {
         assert!(
             kept.key == scanned.key
                 && kept.center == scanned.center
@@ -4284,21 +4280,25 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     if buffers.sensors.is_empty() {
         assert!(buffers.tile_ids.is_empty(), "{when}: no identities");
     } else {
-        assert_eq!(buffers.tile_ids, ids, "{when}: identities");
+        assert_eq!(buffers.tile_ids, fresh.ids, "{when}: identities");
     }
+    assert_eq!(buffers.tiles.ids, fresh.ids, "{when}: cached identities");
+    assert_eq!(buffers.tiles.cells, fresh.cells, "{when}: cells");
     assert_eq!(
         buffers.layers.of[buffers.bodies..],
-        fresh_layers[..],
+        fresh.layers[..],
         "{when}: tile layers"
     );
 }
 
 #[test]
 fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
-    // Edited by a registry insert, moved, joined by a second map, given a
-    // render layer before its collision layer (which moves every
-    // identity), and despawned: after each the gathered tiles are a fresh
-    // scan's, and a frame with no change scans nothing.
+    // Edited by a registry insert and in place, broken, moved, joined by a
+    // second map, given a render layer before its collision layer (which
+    // moves every identity), its registry replaced by one of equal and of
+    // different content, and despawned: after each the gathered tiles are a
+    // fresh scan's, only the maps that changed are scanned, and a frame
+    // with no change scans nothing.
     let mut world = seed_world();
     let solid = |gaps: &[usize]| {
         (0..18)
@@ -4322,45 +4322,123 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
     assert_tiles_fresh(&world, &mut buffers, "unchanged");
     assert_eq!(buffers.tiles.scans, 1, "an unchanged frame scans nothing");
 
-    type Change<'a> = (&'static str, Box<dyn Fn(&mut World) + 'a>);
-    let changes: [Change<'_>; 5] = [
+    fn registry(world: &mut World) -> &mut TilemapRegistry {
+        world.get_resource_mut::<TilemapRegistry>().unwrap()
+    }
+    let breakable = |gaps: &[usize]| {
+        let mut data = cache_map(solid(gaps), false);
+        data.set_tile_props(
+            0,
+            TileProps {
+                health: Some(1.0),
+                ..TileProps::default()
+            },
+        );
+        data
+    };
+    type Change<'a> = (&'static str, usize, Box<dyn Fn(&mut World) + 'a>);
+    let changes: [Change<'_>; 13] = [
         (
-            "edited",
-            Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), false));
+            "edited by an insert",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), cache_map(solid(&[2, 9, 13]), false));
+            }),
+        ),
+        (
+            "edited in place",
+            1,
+            Box::new(move |world: &mut World| {
+                assert!(registry(world).set_tile("a", 0, 4, 1, EMPTY_TILE));
+            }),
+        ),
+        (
+            "written and written back",
+            0,
+            Box::new(move |world: &mut World| {
+                registry(world).set_tile("a", 0, 2, 0, 0);
+                registry(world).set_tile("a", 0, 2, 0, EMPTY_TILE);
+            }),
+        ),
+        (
+            "made breakable",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), breakable(&[2, 9, 13]));
+            }),
+        ),
+        (
+            "damaged",
+            0,
+            Box::new(move |world: &mut World| {
+                let damage = registry(world).damage_tile("a", 0, 0, 2, 0.5);
+                assert_eq!(damage, TileDamage::Damaged { health: 0.5 });
+            }),
+        ),
+        (
+            "broken",
+            1,
+            Box::new(move |world: &mut World| {
+                let damage = registry(world).damage_tile("a", 0, 0, 2, 0.5);
+                assert_eq!(damage, TileDamage::Broken { tile: EMPTY_TILE });
             }),
         ),
         (
             "moved",
+            1,
             Box::new(move |world: &mut World| {
                 world.get_mut::<TilemapInstance>(map).unwrap().origin = Vec2::new(-40.0, 8.0);
             }),
         ),
         (
             "joined",
+            1,
             Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("b".into(), cache_map(solid(&[0]), false));
+                registry(world).insert("b".into(), cache_map(solid(&[0]), false));
                 let second = world.spawn();
                 world.insert(second, TilemapInstance::new("b", Vec2::new(64.0, 0.0)));
             }),
         ),
         (
+            "the second edited in place",
+            1,
+            Box::new(move |world: &mut World| {
+                assert!(registry(world).set_tile("b", 0, 0, 0, 0));
+            }),
+        ),
+        (
             "decor before collision",
+            1,
+            Box::new(move |world: &mut World| {
+                registry(world).insert("a".into(), cache_map(solid(&[2, 9, 13]), true));
+            }),
+        ),
+        (
+            "a registry of equal content",
+            0,
             Box::new(|world: &mut World| {
-                world
-                    .get_resource_mut::<TilemapRegistry>()
-                    .unwrap()
-                    .insert("a".into(), cache_map(solid(&[2, 9, 13]), true));
+                let old = world.get_resource::<TilemapRegistry>().unwrap();
+                let mut equal = TilemapRegistry::new();
+                for id in ["b", "a"] {
+                    equal.insert(id.into(), old.get(id).unwrap().clone());
+                }
+                world.insert_resource(equal);
+            }),
+        ),
+        (
+            "a registry of different content",
+            1,
+            Box::new(|world: &mut World| {
+                let old = world.get_resource::<TilemapRegistry>().unwrap();
+                let mut other = TilemapRegistry::new();
+                other.insert("a".into(), cache_map(solid(&[1]), true));
+                other.insert("b".into(), old.get("b").unwrap().clone());
+                world.insert_resource(other);
             }),
         ),
         (
             "despawned",
+            0,
             Box::new(move |world: &mut World| {
                 world.despawn(map);
             }),
@@ -4368,13 +4446,19 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
     ];
     let mut scans = 1;
     let mut version = buffers.tiles.version;
-    for (when, change) in changes {
+    for (when, scanned, change) in changes {
         let ids_before = buffers.tile_ids.clone();
+        let tiles_before = buffers.tiles.len();
         change(&mut world);
         assert_tiles_fresh(&world, &mut buffers, when);
-        scans += 1;
-        assert_eq!(buffers.tiles.scans, scans, "{when}: one scan");
-        assert!(buffers.tiles.version > version, "{when}: a new version");
+        scans += scanned;
+        assert_eq!(buffers.tiles.scans, scans, "{when}: maps scanned");
+        let changed = scanned > 0 || buffers.tiles.len() != tiles_before;
+        assert_eq!(
+            buffers.tiles.version > version,
+            changed,
+            "{when}: a new version only for a change"
+        );
         version = buffers.tiles.version;
         if when == "decor before collision" {
             assert_ne!(
@@ -4385,6 +4469,108 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
         assert_tiles_fresh(&world, &mut buffers, when);
         assert_eq!(buffers.tiles.scans, scans, "{when}: then no more");
     }
+}
+
+#[test]
+fn an_edit_rescans_its_map_alone() {
+    let mut world = seed_world();
+    let full = || vec![0; 18];
+    for (id, x) in [("a", 0.0), ("b", 200.0)] {
+        world
+            .get_resource_mut::<TilemapRegistry>()
+            .unwrap()
+            .insert(id.into(), cache_map(full(), false));
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new(id, Vec2::new(x, 0.0)));
+    }
+    let mut buffers = PhysicsBuffers::default();
+    assert_tiles_fresh(&world, &mut buffers, "first");
+    assert_eq!(buffers.tiles.scans, 2);
+    let b_before: Vec<[u32; 2]> = buffers.tiles.proxies[18..]
+        .iter()
+        .map(|proxy| proxy.center.to_array().map(f32::to_bits))
+        .collect();
+    let version = buffers.tiles.version;
+    assert!(
+        world
+            .get_resource_mut::<TilemapRegistry>()
+            .unwrap()
+            .set_tile("a", 0, 3, 1, EMPTY_TILE)
+    );
+    assert_tiles_fresh(&world, &mut buffers, "a edited");
+    assert_eq!(buffers.tiles.scans, 3, "map a alone scanned again");
+    assert!(buffers.tiles.version > version);
+    assert_eq!(buffers.tiles.len(), 35);
+    let b_after: Vec<[u32; 2]> = buffers.tiles.proxies[17..]
+        .iter()
+        .map(|proxy| proxy.center.to_array().map(f32::to_bits))
+        .collect();
+    assert_eq!(b_after, b_before, "map b's proxies kept");
+    assert_tiles_fresh(&world, &mut buffers, "unchanged");
+    assert_eq!(buffers.tiles.scans, 3);
+}
+
+#[test]
+fn an_edited_cell_collides_at_the_next_step() {
+    // A 6 px box rests on a 3-cell floor of 16 px tiles, its top at y 32;
+    // the cell under it is cleared, then filled again under a second box
+    // falling through the gap.
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let mut tiles = vec![-1; 9];
+    tiles[6..9].fill(0);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("floor".into(), map_data(3, vec![tiles]));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("floor", Vec2::ZERO));
+    let resting = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(24.0, 20.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let y = |world: &World, body: Entity| world.get::<Position>(body).unwrap().0.y;
+    let rest = y(&world, resting);
+    assert!((rest + 6.0 - 32.0).abs() < 0.5, "resting at {rest}");
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 1, 2, EMPTY_TILE)
+    );
+    physics_step(&mut world);
+    assert!(y(&world, resting) > rest, "it falls at the next step");
+    for _ in 0..30 {
+        physics_step(&mut world);
+    }
+    assert!(y(&world, resting) > 48.0, "through the gap");
+    // A box falling through the gap meets the cell filled before it gets
+    // there.
+    let falling = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(24.0, -40.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..5 {
+        physics_step(&mut world);
+    }
+    assert!(y(&world, falling) + 6.0 < 32.0, "still above the floor");
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 1, 2, 0)
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let landed = y(&world, falling);
+    assert!((landed + 6.0 - 32.0).abs() < 0.5, "landed at {landed}");
 }
 
 #[test]
@@ -4447,7 +4633,8 @@ fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
         let tiles = buffers.proxies[buffers.bodies..]
             .iter()
             .zip(tile_ids)
-            .map(|(proxy, id)| (proxy, id, Layers::DEFAULT.layers));
+            .zip(&buffers.layers.of[buffers.bodies..])
+            .map(|((proxy, id), layers)| (proxy, id, layers.layers));
         for (proxy, identity, layers) in others.chain(tiles) {
             if sensor.layers.mask & layers != 0
                 && shapes_overlap(sensor.shape, sensor.center, proxy.shape, proxy.center)
