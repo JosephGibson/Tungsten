@@ -22,6 +22,11 @@ fn script_of(args: &[&str]) -> Value {
     script
 }
 
+/// `rel` under `/game`, joined as `script` joins it: Windows puts a `\` before `rel`.
+fn game(rel: &str) -> PathBuf {
+    Path::new("/game").join(rel)
+}
+
 #[test]
 fn a_sheet_is_one_step_and_a_capture_at_frame_60() {
     assert_eq!(
@@ -30,7 +35,7 @@ fn a_sheet_is_one_step_and_a_capture_at_frame_60() {
             "version": 1, "frames": 60, "resolution": [1280, 720],
             "steps": [
                 { "frame": 1, "sheet": { "items": ["goblin", "sprite:icon_fire"] } },
-                { "frame": 60, "capture": "/game/shots/foes.png" }
+                { "frame": 60, "capture": game("shots/foes.png") }
             ]
         })
     );
@@ -87,7 +92,7 @@ fn a_point_takes_its_actions_view_and_overlays() {
                 { "frame": 1, "overlay": { "physics": true, "kit": true } },
                 { "frame": 2, "action": "start_run" },
                 { "frame": 3, "action": "place_player", "args": { "at": [10, -20] } },
-                { "frame": 120, "capture": "/game/area.png" }
+                { "frame": 120, "capture": game("area.png") }
             ]
         })
     );
@@ -114,9 +119,9 @@ fn a_scene_stages_loads_and_fits() {
         ])["steps"],
         json!([
             { "frame": 1, "stage": {} },
-            { "frame": 1, "scene": "/game/assets/scenes/arena.json" },
+            { "frame": 1, "scene": game("assets/scenes/arena.json") },
             { "frame": 1, "camera": { "fit": "staged" } },
-            { "frame": 5, "capture": "/game/s.png" }
+            { "frame": 5, "capture": game("s.png") }
         ])
     );
 }
