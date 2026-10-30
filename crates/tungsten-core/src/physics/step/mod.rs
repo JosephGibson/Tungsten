@@ -88,12 +88,14 @@
 //! Sensors are gathered beside the proxies, never as one, so no substep,
 //! pair, solve or sweep sees them. The writeback moves each by its velocity;
 //! then the step builds the spatial index and tests each sensor, in gather
-//! order, against the bodies and tiles it overlaps at their final positions,
-//! in a layer its mask holds. A pair the previous step lacked sends
-//! `SensorEntered`, after the frame's collision events. A pair's key holds
-//! the sensor's key in its high half and the other's identity in its low
-//! half (a tile's names its map, layer and cell), and a step without sensors
-//! forgets every pair.
+//! order, against the bodies it overlaps at their final positions and the
+//! solid cells of the tile cache's grids, in a layer its mask holds. A pair
+//! the previous step lacked sends `SensorEntered`, after the frame's
+//! collision events. A pair's key holds the sensor's key in its high half
+//! and the other's identity in its low half (a tile's names its map, layer
+//! and cell), and a step without sensors forgets every pair. A sensor whose
+//! identity, box and mask are the last pass's keeps its tile pairs and tests
+//! only the cells the step's tile refresh changed.
 //!
 //! Layers and masks: the gather keeps each proxy's layers and mask in an
 //! array beside the proxies, as `pair_flags` is (D-080), a tile's those of
@@ -131,6 +133,7 @@ mod solver;
 mod sweep;
 
 use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
+pub(super) use gather::GridCell;
 use gather::{TileCache, entity_key, gather_proxies};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
@@ -373,6 +376,9 @@ pub struct PhysicsBuffers {
     sensor_tiles: Vec<SensorTiles>,
     /// Sensor passes run, which dates each `sensor_tiles` entry.
     sensor_passes: u64,
+    /// The tile cells the last sensor pass tested.
+    #[cfg(test)]
+    sensor_cells: usize,
     sensor_events: Vec<SensorEntered>,
     candidates: Vec<ProxyId>,
     /// The pair grid: entity proxies staged per build, tiles per cache.
@@ -528,6 +534,12 @@ impl PhysicsBuffers {
     /// The version of the tile cache the last step used.
     pub(super) fn tiles_version(&self) -> u64 {
         self.tiles.version
+    }
+
+    /// The tile cache the last step used, whose grids region queries and
+    /// sensors read.
+    pub(super) fn grid_cells(&self) -> &TileCache {
+        &self.tiles
     }
 }
 
@@ -1029,28 +1041,28 @@ fn substep(
     }
 }
 
-/// One sensor's tile pairs, sorted, with what they were found for.
+/// One sensor's tile pairs, sorted, each with its cell's map, and what
+/// they were found for.
 #[derive(Debug, Default)]
 struct SensorTiles {
     key: Option<SensorKey>,
     /// The sensor pass that last found or kept them.
     used: u64,
-    pairs: Vec<u128>,
+    pairs: Vec<(u128, Entity)>,
 }
 
-/// What a sensor's tile overlaps depend on: the sensor, its box and mask,
-/// and the tiles.
+/// What a sensor's tile overlaps depend on beside the tiles: the sensor,
+/// its box and its mask.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SensorKey {
     identity: u64,
     center: [u32; 2],
     shape: [u32; 3],
     mask: u32,
-    tiles: u64,
 }
 
 impl SensorKey {
-    fn of(sensor: &IndexEntry, tiles: u64) -> Self {
+    fn of(sensor: &IndexEntry) -> Self {
         let shape = match sensor.shape {
             Shape::Aabb { half_extents } => [0, half_extents.x.to_bits(), half_extents.y.to_bits()],
             Shape::Circle { radius } => [1, radius.to_bits(), 0],
@@ -1060,18 +1072,18 @@ impl SensorKey {
             center: [sensor.center.x.to_bits(), sensor.center.y.to_bits()],
             shape,
             mask: sensor.mask,
-            tiles,
         }
     }
 }
 
-/// Sensor pass: each sensor, in gather order, against the bodies and tiles
-/// it overlaps at the step's final positions, in index order (the spatial
-/// index, built here). A pair the previous step lacked sends
-/// `SensorEntered`; the step's pairs, sorted, replace the previous ones. A
-/// sensor whose key matches the one the last pass kept has the same tile
-/// pairs, every one of them in the previous step's, so only its bodies are
-/// tested; the events and the pairs are those a test of every tile gives.
+/// Sensor pass: each sensor, in gather order, against the bodies it
+/// overlaps at the step's final positions, in index order (the spatial
+/// index, built here), then the solid cells of the tile cache's grids, in
+/// tile order. A pair the previous step lacked sends `SensorEntered`; the
+/// step's pairs, sorted, replace the previous ones. A sensor whose key
+/// matches the one the last pass kept keeps its tile pairs, drops those of
+/// the cells the step's refresh changed and tests those cells alone; the
+/// events and the pairs are those a test of every cell gives.
 fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
     let mut body_pairs = std::mem::take(&mut buffers.sensor_body_pairs);
@@ -1079,7 +1091,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut kept = std::mem::take(&mut buffers.sensor_tiles);
     buffers.sensor_passes += 1;
     let pass = buffers.sensor_passes;
-    let version = buffers.tiles.version;
+    let (replaced, written) = (&buffers.tiles.replaced, &buffers.tiles.written_ids);
     kept.resize_with(buffers.sensors.len(), SensorTiles::default);
     let mut fresh = vec![false; buffers.sensors.len()];
     body_pairs.clear();
@@ -1096,15 +1108,22 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
         // they go through cells shared by the three callbacks.
         let entered = std::cell::RefCell::new(entered);
         let kept = std::cell::RefCell::new(kept);
-        SpatialIndex::sensor_overlaps(
+        let tested = SpatialIndex::sensor_overlaps(
             world,
             buffers,
             |index, sensor| {
-                let key = SensorKey::of(sensor, version);
+                let key = SensorKey::of(sensor);
                 let mut kept = kept.borrow_mut();
                 let entry = &mut kept[index];
                 if entry.key == Some(key) && entry.used + 1 == pass {
                     entry.used = pass;
+                    if !(replaced.is_empty() && written.is_empty()) {
+                        entry.pairs.retain(|&(pair, map)| {
+                            !replaced.contains(&map)
+                                && written.binary_search(&(pair as u64)).is_err()
+                        });
+                        fresh[index] = true;
+                    }
                     true
                 } else {
                     entry.key = Some(key);
@@ -1125,9 +1144,9 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                         .push(SensorEntered::new(entity, other.entity));
                 }
             },
-            |index, sensor, tile| {
+            |index, sensor, tile, map| {
                 let pair = pair_of(sensor, tile);
-                kept.borrow_mut()[index].pairs.push(pair);
+                kept.borrow_mut()[index].pairs.push((pair, map));
                 if previous.binary_search(&pair).is_err()
                     && let Some(entity) = sensor.entity
                 {
@@ -1137,10 +1156,16 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                 }
             },
         );
+        #[cfg(test)]
+        {
+            buffers.sensor_cells = tested;
+        }
+        #[cfg(not(test))]
+        let _ = tested;
     }
     for (entry, &fresh) in kept.iter_mut().zip(&fresh) {
         if fresh {
-            entry.pairs.sort_unstable();
+            entry.pairs.sort_unstable_by_key(|&(pair, _)| pair);
         }
     }
     // Every pair, sorted: the body pairs merged with each sensor's sorted
@@ -1152,7 +1177,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     pairs.clear();
     let mut bodies = body_pairs.iter().copied().peekable();
     for &index in &order {
-        for &tile in &kept[index].pairs {
+        for &(tile, _) in &kept[index].pairs {
             while let Some(body) = bodies.next_if(|&body| body < tile) {
                 pairs.push(body);
             }

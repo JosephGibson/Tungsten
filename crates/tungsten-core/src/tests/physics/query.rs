@@ -1020,3 +1020,153 @@ fn a_hit_names_the_tile_cell_it_met() {
         (Vec2::new(124.0, 66.0), cell(1, 1, 1))
     );
 }
+
+/// A map of seeded size, tile size and origin: a render layer, then one or
+/// two collision layers with about 40 % of their cells solid, the second in
+/// physics layer 1.
+fn seeded_map(rng: &mut crate::Pcg32) -> (TilemapData, Vec2) {
+    let tile = [8, 16, 24][rng.next_u32() as usize % 3];
+    let (width, height) = (4 + rng.next_u32() % 17, 3 + rng.next_u32() % 12);
+    let mut data = TilemapData::new(tile, tile, width, height);
+    let solid = data.add_tile("solid");
+    let decor = data.add_layer("decor", LayerKind::Render);
+    data.fill(decor, solid);
+    let layers = 1 + rng.next_u32() % 2;
+    for index in 0..layers {
+        let layer = data.add_layer(format!("solid{index}"), LayerKind::Collision);
+        for row in 0..height {
+            for col in 0..width {
+                if rng.next_f32_unit() < 0.4 {
+                    data.set_tile(layer, col, row, solid);
+                }
+            }
+        }
+        if index == 1 {
+            data.set_layer_physics(
+                layer,
+                crate::assets::LayerPhysics {
+                    layers: 1 << 1,
+                    mask: RigidBody::ALL_LAYERS,
+                },
+            );
+        }
+    }
+    let origin = Vec2::new(rng.next_range(-100.0, 100.0), rng.next_range(-100.0, 100.0)).round();
+    (data, origin)
+}
+
+#[test]
+fn overlap_and_nearest_read_tiles_from_the_grid_as_before() {
+    // Against a test of every solid cell's box, in tile order, as the index
+    // held them: the same overlaps in the same order, and the same nearest
+    // hit, its distance, point, normal and cell, ties to the earlier cell.
+    let filters = [
+        all(),
+        all().with_mask(1),
+        all().with_mask(1 << 1),
+        all().without_layers(1 << 1),
+        all().with_tiles(false),
+    ];
+    for seed in 0..200 {
+        let mut rng = crate::Pcg32::seeded(0x5E9D + seed);
+        let (data, origin) = seeded_map(&mut rng);
+        let mut world = world();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("seeded".into(), data.clone());
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("seeded", origin));
+        physics_step(&mut world);
+        let (tw, th) = (data.tile_width as f32, data.tile_height as f32);
+        let half = Vec2::new(tw * 0.5, th * 0.5);
+        let mut cells = Vec::new();
+        for (index, layer) in data.layers.iter().enumerate() {
+            if layer.kind != LayerKind::Collision {
+                continue;
+            }
+            let physics = data.layer_physics(index);
+            for row in 0..data.height {
+                for col in 0..data.width {
+                    if data.tile_at(index, col, row).is_some_and(|tile| tile >= 0) {
+                        let center = Vec2::new(
+                            origin.x + (col as f32) * tw + half.x,
+                            origin.y + (row as f32) * th + half.y,
+                        );
+                        let entry = IndexEntry {
+                            entity: None,
+                            center,
+                            shape: Shape::Aabb { half_extents: half },
+                            face_mask: FACE_ALL,
+                            sensor: false,
+                            identity: 0,
+                            layers: physics.layers,
+                            mask: physics.mask,
+                        };
+                        cells.push((
+                            entry,
+                            TileHit {
+                                map,
+                                layer: index,
+                                col,
+                                row,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        let size = data.pixel_size();
+        let mut out = Vec::new();
+        for query in 0..12 {
+            let filter = filters[query % filters.len()];
+            let place = |rng: &mut crate::Pcg32| {
+                origin
+                    + Vec2::new(
+                        rng.next_range(-30.0, size.x + 30.0),
+                        rng.next_range(-30.0, size.y + 30.0),
+                    )
+            };
+            let shape = if rng.next_u32().is_multiple_of(2) {
+                Shape::Circle {
+                    radius: rng.next_range(0.0, 30.0),
+                }
+            } else {
+                Shape::Aabb {
+                    half_extents: Vec2::new(rng.next_range(0.0, 30.0), rng.next_range(0.0, 30.0)),
+                }
+            };
+            let center = place(&mut rng);
+            overlap(&world, shape, center, &filter, &mut out);
+            let want: Vec<Option<Entity>> = cells
+                .iter()
+                .filter(|(entry, _)| {
+                    filter.admits(entry, &world)
+                        && shapes_overlap(shape, center, entry.shape, entry.center)
+                })
+                .map(|_| None)
+                .collect();
+            assert_eq!(out, want, "seed {seed}, query {query}: overlap");
+            // Every other point on the cells' corners and edges, where
+            // cells tie.
+            let mut point = place(&mut rng);
+            if query % 2 == 1 {
+                point = origin + ((point - origin) / half).round() * half;
+            }
+            let reach = rng.next_range(0.0, 60.0);
+            let mut best: Option<(SpatialHit, TileHit)> = None;
+            for (entry, cell) in &cells {
+                let hit = surface_hit(point, entry);
+                if filter.admits(entry, &world)
+                    && hit.distance <= reach
+                    && best.is_none_or(|(kept, _)| hit.distance < kept.distance)
+                {
+                    best = Some((hit, *cell));
+                }
+            }
+            let got = nearest(&world, point, reach, &filter)
+                .map(|hit| (hit.distance, hit.point, hit.normal, hit.tile));
+            let want = best.map(|(hit, cell)| (hit.distance, hit.point, hit.normal, Some(cell)));
+            assert_eq!(got, want, "seed {seed}, query {query}: nearest");
+        }
+    }
+}

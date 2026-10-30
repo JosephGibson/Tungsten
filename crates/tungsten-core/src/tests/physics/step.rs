@@ -4613,28 +4613,27 @@ fn a_changed_linear_slop_restages_the_tile_grid() {
 }
 
 /// The step's sensor pairs and new pairs as a test of every proxy and tile
-/// finds them, from the buffers after the step: each sensor in gather order
-/// against the entity proxies, then the tiles, in a layer its mask holds.
-fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
+/// finds them, from the world after the step: each sensor in gather order
+/// against the entity proxies, then a fresh scan's tile cells, in a layer
+/// its mask holds.
+fn sensor_oracle(world: &World) -> (Vec<u128>, Vec<(u64, u64)>) {
     use crate::physics::query::shapes_overlap;
+    let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+    let mut fresh = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut fresh);
     let mut pairs = Vec::new();
     let mut order = Vec::new();
-    let tiles = buffers.proxies.len() - buffers.bodies;
     for sensor in &buffers.sensors {
         let others = buffers.proxies[..buffers.bodies]
             .iter()
             .zip(&buffers.layers.of)
             .map(|(proxy, layers)| (proxy, proxy.key, layers.layers));
-        let tile_ids = if buffers.tile_ids.len() == tiles {
-            buffers.tile_ids.clone()
-        } else {
-            vec![0; tiles]
-        };
-        let tiles = buffers.proxies[buffers.bodies..]
+        let tiles = fresh
+            .proxies
             .iter()
-            .zip(tile_ids)
-            .zip(&buffers.layers.of[buffers.bodies..])
-            .map(|((proxy, id), layers)| (proxy, id, layers.layers));
+            .zip(&fresh.ids)
+            .zip(&fresh.layers)
+            .map(|((proxy, &id), layers)| (proxy, id, layers.layers));
         for (proxy, identity, layers) in others.chain(tiles) {
             if sensor.layers.mask & layers != 0
                 && shapes_overlap(sensor.shape, sensor.center, proxy.shape, proxy.center)
@@ -4649,12 +4648,83 @@ fn sensor_oracle(buffers: &PhysicsBuffers) -> (Vec<u128>, Vec<(u64, u64)>) {
 }
 
 #[test]
+fn a_sensor_retests_only_the_cells_an_edit_changed() {
+    // A still sensor over 15 cells of a 6 × 3 map of 16 px tiles, its
+    // collision layer after a render layer: the first pass tests the 15, an
+    // unchanged step none, an edit the solid cells it wrote under the
+    // sensor, and a moved map every cell under it.
+    let mut world = seed_world();
+    world
+        .get_resource_mut::<TilemapRegistry>()
+        .unwrap()
+        .insert("a".into(), cache_map(vec![0; 18], true));
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("a", Vec2::ZERO));
+    let sensor = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(40.0, 24.0)),
+        Collider::aabb(Vec2::new(28.0, 20.0)),
+    ));
+    let step = |world: &mut World| {
+        physics_step(world);
+        let entered = drain_sensor_events(world).len();
+        let (want, _) = sensor_oracle(world);
+        let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
+        assert_eq!(buffers.sensor_pairs, want, "the pairs");
+        (buffers.sensor_cells, entered, buffers.sensor_pairs.len())
+    };
+    assert_eq!(step(&mut world), (15, 15, 15), "the first pass");
+    assert_eq!(step(&mut world), (0, 0, 15), "an unchanged step");
+    let edit = |world: &mut World, layer: usize, col: u32, row: u32, tile: i32| {
+        assert!(
+            world
+                .get_resource_mut::<TilemapRegistry>()
+                .unwrap()
+                .set_tile("a", layer, col, row, tile)
+        );
+    };
+    edit(&mut world, 1, 2, 1, EMPTY_TILE);
+    assert_eq!(
+        step(&mut world),
+        (0, 0, 14),
+        "a cleared cell drops its pair"
+    );
+    edit(&mut world, 1, 2, 1, 0);
+    assert_eq!(step(&mut world), (1, 1, 15), "a filled cell is tested");
+    edit(&mut world, 1, 5, 0, EMPTY_TILE);
+    edit(&mut world, 1, 5, 0, 0);
+    edit(&mut world, 1, 5, 2, EMPTY_TILE);
+    assert_eq!(step(&mut world), (0, 0, 15), "edits outside the sensor");
+    edit(&mut world, 0, 2, 1, EMPTY_TILE);
+    assert_eq!(step(&mut world), (0, 0, 15), "a render layer's edit");
+    edit(&mut world, 1, 1, 1, EMPTY_TILE);
+    edit(&mut world, 1, 3, 1, EMPTY_TILE);
+    edit(&mut world, 1, 3, 1, 0);
+    assert_eq!(
+        step(&mut world),
+        (1, 0, 14),
+        "a cell written twice is tested once"
+    );
+    world.get_mut::<TilemapInstance>(map).unwrap().origin.x = 8.0;
+    let (tested, _, pairs) = step(&mut world);
+    assert_eq!(
+        (tested, pairs),
+        (pairs, 11),
+        "a moved map's cells, all tested"
+    );
+    assert_eq!(step(&mut world), (0, 0, 11));
+    // A sensor that moved tests every cell under it.
+    world.get_mut::<Position>(sensor).unwrap().0.x += 1.0;
+    let (tested, entered, pairs) = step(&mut world);
+    assert_eq!((tested, entered), (pairs, 0));
+}
+
+#[test]
 fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
     // A still sensor keeps its tile pairs from step to step, one that moves
     // every third step and one whose mask leaves out the tiles' layer test
-    // again; a body falls through them, the map is edited and a step runs
-    // without sensors. Every step's pairs and new-pair events are a full
-    // test's (`sensor_oracle`).
+    // again; a body falls through them, the map is replaced and edited in
+    // place and a step runs without sensors. Every step's pairs and new-pair
+    // events are a full test's (`sensor_oracle`).
     let mut world = seed_world();
     let gaps = |gaps: &[usize]| {
         (0..18)
@@ -4695,6 +4765,26 @@ fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
                 .unwrap()
                 .insert("a".into(), cache_map(gaps(&[3, 8, 14]), false));
         }
+        // Registry edits under the still sensor, under the mover's path and
+        // outside both.
+        let edit = match step {
+            8 => Some((3, 1, EMPTY_TILE)),
+            10 => Some((3, 1, 0)),
+            12 => Some((0, 2, EMPTY_TILE)),
+            24 => Some((2, 0, EMPTY_TILE)),
+            25 => Some((5, 0, EMPTY_TILE)),
+            26 => Some((2, 0, 0)),
+            36 => Some((4, 2, EMPTY_TILE)),
+            _ => None,
+        };
+        if let Some((col, row, tile)) = edit {
+            assert!(
+                world
+                    .get_resource_mut::<TilemapRegistry>()
+                    .unwrap()
+                    .set_tile("a", 0, col, row, tile)
+            );
+        }
         let sensorless = step == 30;
         if sensorless {
             for sensor in [still, mover, masked] {
@@ -4719,8 +4809,8 @@ fn kept_sensor_tile_pairs_are_what_testing_every_tile_finds() {
         if sensorless {
             continue;
         }
+        let (want, order) = sensor_oracle(&world);
         let buffers = world.get_resource::<PhysicsBuffers>().unwrap();
-        let (want, order) = sensor_oracle(buffers);
         assert_eq!(buffers.sensor_pairs, want, "step {step}: the pairs");
         let new: Vec<(u64, u64)> = order
             .into_iter()

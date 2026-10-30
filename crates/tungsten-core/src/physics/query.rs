@@ -52,7 +52,7 @@ use super::collision::{
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
 };
 use super::components::{RigidBody, Shape};
-use super::step::PhysicsBuffers;
+use super::step::{GridCell, PhysicsBuffers};
 use crate::ecs::{Entity, World};
 use glam::Vec2;
 
@@ -248,25 +248,27 @@ impl SpatialIndex {
     /// The step's sensor pass: builds the index of `buffers` and calls
     /// `visit` with each sensor, in gather order, and each body in a layer
     /// the sensor's mask holds that it overlaps with penetration above 0, in
-    /// index order, then, unless `tiles_known(index, sensor)` says this
-    /// sensor's tiles are the last step's, each such tile, in index order,
-    /// through `visit_tile`. Sensors do not detect sensors. The step's
-    /// queries reuse the index.
+    /// index order, then each such solid tile cell of the step's grids, in
+    /// tile order, through `visit_tile` with the cell's map: every cell
+    /// under the sensor, or, when `tiles_known(index, sensor)` says this
+    /// sensor's tile pairs are the last step's, only the cells the step's
+    /// refresh changed. Sensors do not detect sensors. Returns the cells
+    /// tested; the step's queries reuse the index.
     pub(super) fn sensor_overlaps(
         world: &World,
         buffers: &PhysicsBuffers,
         mut tiles_known: impl FnMut(usize, &IndexEntry) -> bool,
         mut visit: impl FnMut(&IndexEntry, &IndexEntry),
-        mut visit_tile: impl FnMut(usize, &IndexEntry, &IndexEntry),
-    ) {
+        mut visit_tile: impl FnMut(usize, &IndexEntry, &IndexEntry, Entity),
+    ) -> usize {
         with_index_of(world, buffers, |state| {
+            let mut tested = 0;
             let sensors = state.tile_base..state.bodies.len();
             for (index, at) in sensors.enumerate() {
                 let sensor = state.bodies[at];
                 let known = tiles_known(index, &sensor);
-                state.gather_parts(&sensor.aabb(), !known);
+                state.gather_parts(&sensor.aabb(), false);
                 state.candidates.sort_unstable();
-                let tiles = state.tiles.entries.len();
                 for &id in &state.candidates {
                     let other = state.entry(id);
                     if other.sensor
@@ -275,14 +277,27 @@ impl SpatialIndex {
                     {
                         continue;
                     }
-                    if (state.tile_base..state.tile_base + tiles).contains(&(id as usize)) {
-                        visit_tile(index, &sensor, other);
-                    } else {
-                        visit(&sensor, other);
+                    visit(&sensor, other);
+                }
+                let (min, max) = padded(&sensor.aabb());
+                let mut test = |cell: &GridCell| {
+                    tested += 1;
+                    let tile = cell_entry(cell);
+                    if sensor.mask & tile.layers != 0
+                        && shapes_overlap(sensor.shape, sensor.center, tile.shape, tile.center)
+                    {
+                        visit_tile(index, &sensor, &tile, cell.cell.map);
                     }
+                };
+                if known {
+                    buffers.grid_cells().changed_cells_in(min, max, &mut test);
+                } else {
+                    buffers.grid_cells().cells_in(min, max, &mut test);
                 }
             }
-        });
+            tested
+        })
+        .unwrap_or(0)
     }
 }
 
@@ -452,9 +467,51 @@ impl IndexState {
 }
 
 /// Runs `f` on the index of `world`'s last step, rebuilt first when a step
-/// has run since; `None` before the first step.
-fn with_index<R>(world: &World, f: impl FnOnce(&mut IndexState) -> R) -> Option<R> {
-    with_index_of(world, world.get_resource::<PhysicsBuffers>()?, f)
+/// has run since, and the step's buffers; `None` before the first step.
+fn with_index<R>(
+    world: &World,
+    f: impl FnOnce(&mut IndexState, &PhysicsBuffers) -> R,
+) -> Option<R> {
+    let buffers = world.get_resource::<PhysicsBuffers>()?;
+    with_index_of(world, buffers, |state| f(state, buffers))
+}
+
+/// `aabb`'s corners, each moved out by [`QUERY_PAD`].
+fn padded(aabb: &Aabb) -> (Vec2, Vec2) {
+    let pad = Vec2::splat(QUERY_PAD);
+    (aabb.min() - pad, aabb.max() + pad)
+}
+
+/// A solid cell of the step's grids as an index entry: its box, layers and
+/// identity, every face exposed, which region queries do not read.
+fn cell_entry(cell: &GridCell) -> IndexEntry {
+    IndexEntry {
+        entity: None,
+        center: cell.center,
+        shape: Shape::Aabb {
+            half_extents: cell.half,
+        },
+        face_mask: FACE_ALL,
+        sensor: false,
+        identity: cell.identity,
+        layers: cell.layers,
+        mask: cell.mask,
+    }
+}
+
+/// A rank that orders a hit with the bodies (by index id), then the tiles
+/// read from the grids (by their visit, in tile order), then the sensors.
+fn rank(state: &IndexState, id: ProxyId) -> u64 {
+    if (id as usize) < state.tile_base {
+        u64::from(id)
+    } else {
+        (2 << 32) | u64::from(id)
+    }
+}
+
+/// The rank of the `ordinal`-th tile a query read from the grids.
+fn tile_rank(ordinal: u64) -> u64 {
+    (1 << 32) | ordinal
 }
 
 /// Runs `f` on `world`'s index of `buffers`, rebuilt first when a step has
@@ -496,7 +553,7 @@ pub fn cast_ray(
 ) -> Option<SpatialHit> {
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
-    with_index(world, |state| {
+    with_index(world, |state, _| {
         state.gather(&Aabb::from_min_max(origin.min(end), origin.max(end)));
         let mut best = None;
         for &id in &state.candidates {
@@ -515,7 +572,7 @@ pub fn cast_ray(
                 layers: entry.layers,
                 tile: state.tile_hit(id),
             };
-            keep_closer(&mut best, hit, id, max_distance);
+            keep_closer(&mut best, hit, u64::from(id), max_distance);
         }
         best.map(|(hit, _)| hit)
     })
@@ -546,7 +603,7 @@ pub fn cast_shape(
     }
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
-    with_index(world, |state| {
+    with_index(world, |state, _| {
         state.gather(&Aabb::from_min_max(
             origin.min(end) - half,
             origin.max(end) + half,
@@ -562,7 +619,7 @@ pub fn cast_shape(
                     tile: state.tile_hit(id),
                     ..hit
                 };
-                keep_closer(&mut best, hit, id, max_distance);
+                keep_closer(&mut best, hit, u64::from(id), max_distance);
             }
         }
         best.map(|(hit, _)| hit)
@@ -571,10 +628,12 @@ pub fn cast_shape(
 }
 
 /// Every body and tile whose shape overlaps `shape` at `center` with
-/// penetration above 0, at the last step's positions, in index order; a
-/// tile is listed as `None`. `out` is cleared first and stays empty for a
-/// non-finite `center` or extents that are not finite and positive or 0.
-/// Tile faces play no part here: a shape inside a tile overlaps it.
+/// penetration above 0, at the last step's positions, in index order: the
+/// bodies, then the tiles by map, layer, row and column, each a cell of the
+/// step's grids listed as `None`, then the sensors. `out` is cleared first
+/// and stays empty for a non-finite `center` or extents that are not finite
+/// and positive or 0. Tile faces play no part here: a shape inside a tile
+/// overlaps it.
 pub fn overlap(
     world: &World,
     shape: Shape,
@@ -589,25 +648,42 @@ pub fn overlap(
     if !center.is_finite() {
         return;
     }
-    with_index(world, |state| {
-        state.gather(&Aabb::new(center, half));
+    with_index(world, |state, buffers| {
+        let query = Aabb::new(center, half);
+        state.gather_parts(&query, false);
         state.candidates.sort_unstable();
-        for &id in &state.candidates {
-            let entry = state.entry(id);
+        let split = state
+            .candidates
+            .partition_point(|&id| (id as usize) < state.tile_base);
+        let mut list = |entry: &IndexEntry| {
             if filter.admits(entry, world)
                 && shapes_overlap(shape, center, entry.shape, entry.center)
             {
                 out.push(entry.entity);
             }
+        };
+        for &id in &state.candidates[..split] {
+            list(state.entry(id));
+        }
+        if filter.tiles {
+            let (min, max) = padded(&query);
+            buffers
+                .grid_cells()
+                .cells_in(min, max, |cell| list(&cell_entry(cell)));
+        }
+        for &id in &state.candidates[split..] {
+            list(state.entry(id));
         }
     });
 }
 
 /// The body or tile whose surface is closest to `point` within
-/// `max_distance`, at the last step's positions. The hit's `point` is the
-/// closest surface point; a `point` inside a shape, or on its edge, gives
-/// distance 0, that point and a zero normal. `point` must be finite and
-/// `max_distance` finite and not negative, or there is no hit.
+/// `max_distance`, at the last step's positions, a tile being a cell of the
+/// step's grids. The hit's `point` is the closest surface point; a `point`
+/// inside a shape, or on its edge, gives distance 0, that point and a zero
+/// normal. Ties go to the body, then the tile in tile order, then the
+/// sensor. `point` must be finite and `max_distance` finite and not
+/// negative, or there is no hit.
 #[must_use]
 pub fn nearest(
     world: &World,
@@ -618,18 +694,35 @@ pub fn nearest(
     if !point.is_finite() || !max_distance.is_finite() || max_distance < 0.0 {
         return None;
     }
-    with_index(world, |state| {
-        state.gather(&Aabb::new(point, Vec2::splat(max_distance)));
+    with_index(world, |state, buffers| {
+        let query = Aabb::new(point, Vec2::splat(max_distance));
+        state.gather_parts(&query, false);
         let mut best = None;
         for &id in &state.candidates {
             let entry = state.entry(id);
             if filter.admits(entry, world) {
-                let hit = SpatialHit {
-                    tile: state.tile_hit(id),
-                    ..surface_hit(point, entry)
-                };
-                keep_closer(&mut best, hit, id, max_distance);
+                keep_closer(
+                    &mut best,
+                    surface_hit(point, entry),
+                    rank(state, id),
+                    max_distance,
+                );
             }
+        }
+        if filter.tiles {
+            let (min, max) = padded(&query);
+            let mut ordinal = 0;
+            buffers.grid_cells().cells_in(min, max, |cell| {
+                let entry = cell_entry(cell);
+                if filter.admits(&entry, world) {
+                    let hit = SpatialHit {
+                        tile: Some(cell.cell),
+                        ..surface_hit(point, &entry)
+                    };
+                    keep_closer(&mut best, hit, tile_rank(ordinal), max_distance);
+                }
+                ordinal += 1;
+            });
         }
         best.map(|(hit, _)| hit)
     })
@@ -637,21 +730,21 @@ pub fn nearest(
 }
 
 /// Keep `hit` when it lies within `max_distance` and beats `best`: a lower
-/// distance, or the same at a lower index.
+/// distance, or the same at a lower rank (its index order).
 fn keep_closer(
-    best: &mut Option<(SpatialHit, ProxyId)>,
+    best: &mut Option<(SpatialHit, u64)>,
     hit: SpatialHit,
-    id: ProxyId,
+    rank: u64,
     max_distance: f32,
 ) {
     if hit.distance > max_distance {
         return;
     }
-    let closer = best.as_ref().is_none_or(|(kept, kept_id)| {
-        hit.distance < kept.distance || (hit.distance == kept.distance && id < *kept_id)
+    let closer = best.as_ref().is_none_or(|(kept, kept_rank)| {
+        hit.distance < kept.distance || (hit.distance == kept.distance && rank < *kept_rank)
     });
     if closer {
-        *best = Some((hit, id));
+        *best = Some((hit, rank));
     }
 }
 
