@@ -6,6 +6,8 @@ Format reference: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.113.0] - 2026-10-30
+
 Summary: the roadmap redo's Phase 7 steps 7.2 to 7.5: scripted runs, with `tungsten run --script`, `render` and `describe` (7.2, `D-225`); the benchmark runner, judged in sittings, with counter guards and GPU timings read without a stall (7.3, `D-226`); H2's releases on a tag push through `just release`, `just status` and the lean skills (7.4, `D-227`); and the analysis pass, whose seam register is triaged into the Phase 7 plan (7.5). 7.8's runtime terrain plan is written. 01's save stays at schema 23.
 
 ### Added
