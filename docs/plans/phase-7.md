@@ -56,6 +56,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 - **Status cell:** `open`; `landed <sha>`; `closed (<reason>)` for a row no step builds; `Later`, for a row that is one line in ROADMAP.md's Later; `9.2`, for a cost 9.2's lever list takes (§2.4). All but `open` are terminal. The commit that closes a step updates its rows here.
 - **A move** rewrites the row's step cell, keeps it `open` and notes `moved from <step> (<reason>)`; a row moved into Phase 8 goes to §2.3. Nothing else changes a row's step.
 - **Pattern** is the register's, shortened; the register holds the evidence.
+- **7.5's rows:** [the seam register](seam-register.md) holds the S-rows' evidence, and its §4 01's sites for the other IDs.
 
 ### 2.2 Phase 7 rows
 
@@ -66,6 +67,8 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K26 | An ability's cost scaled by a stat | e01tomes | landed (0.109) | `Ability::with_cost_scale` |
 | K29 | A cue sound's position and falloff | e01sfx | landed (0.110) | `CueListener`; P7-13's rest is 7.9's |
 | K25 | Air jumps priced, refused, counted at run time | Later | Later | Cost and refusal landed in `e01tomes`; the run-time and unlimited counts wait in Later |
+| S-103 | The hurt flash's vignette generated as a full-view sprite | Later | Later | no step builds the post passes |
+| S-182 | A test's press held over frames until a fixed step has read it | Later | Later | no step builds the harness's fixed-step stepping |
 | P7-1 | Tiles changed at runtime | 7.8 | open | Runtime terrain first (§5.1) |
 | P7-2 | Pushes and impacts: physics part | 7.8 | open | Impulses, radial impulses, contact speeds (§5.6) |
 | P7-3 | Something in range: sensor exit | 7.8 | open | `Interactable` is 8.1's (§2.3) |
@@ -73,7 +76,16 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K14 | The query index rebuilt from every body | 7.8 | open | §5.6's cheaper index; its remaining cost is C1 (§2.5) |
 | K23 | Kinematic pairs never touch | 7.8 | open | Moving platforms against controllers |
 | K30 | A locked controller stops dead at a body | 7.8 | open | Named in §5.6 |
-| K31 | A spatial filter by body kind or mass | 7.8 | open | Built with the index; 8.2's sight rays use it |
+| S-60 | Rays cast again from inside each body they meet (K31) | 7.8 | open | Built with the index; 8.2's sight rays use it |
+| S-16 | A fire hazard's touch swept by hand | 7.8 | open | + a swept sensor that counts a start overlap |
+| S-26 | Friction and rolling by hand | 7.8 | open | §5.6's friction first; rolling by Q1 |
+| S-65 | A body's world box worked out by hand | 7.8 | open | + `Collider::world_box` |
+| S-77 | An entity teleported by writing its positions by hand | 7.8 | open | + a core `teleport` |
+| S-99 | A controller's filter, shove and step set in code at each spawn and load | 7.8 | open | + a layer-mask filter in the controller's data and saved form |
+| S-112 | Iron's extra fall added to its velocity each step by hand | 7.8 | open | + a gravity scale on a body |
+| S-132 | A lift's trip held until every rider stands wholly on it | 7.8 | open | §5.6's riding: the carry cast against the world |
+| S-172 | A point's distance to a shape's surface (`surface_distance`) | 7.8 | open | + `Shape::distance` |
+| S-175 | Physics layer bits restated in Rust and in the generator | 7.8 | open | + named physics layers in data |
 | P7-8 | Saves of many areas | 7.9 | open | §5.5, G4; depends on P7-9 (landed) |
 | P7-10 | A tile layer's depth among sprites | 7.9 | open | |
 | P7-13 | Audio: looping cue voices, pan, bus ducking | 7.9 | open | Falloff landed as K29; Later's `SoundOnEvent` listener joins it |
@@ -82,7 +94,35 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K2 | A particle config's draw depth | 7.9 | open | |
 | K4 | An animation's playback rate | 7.9 | open | |
 | K9 | Lit sprites without the hit-flash material | 7.9 | open | |
-| K21 | An emitter's rate and direction at run time | 7.9 | open | |
+| S-38 | Emitters changed at run time by hand (K21) | 7.9 | open |  |
+| S-2 | Migrations setting saved bodies out of solids a map change added | 7.9 | open | + a restored body set out of solids to its nearest free spot, on 7.8's physics |
+| S-3 | Retunes carried into saves by hand | 7.9 | open | + saved state laid over the prefab's, so a retune reaches old saves unmigrated |
+| S-25 | Looks and a muzzle flash aged by hand each frame | 7.9 | open | + a light-intensity tween channel; the looks on `Lifetime` |
+| S-27 | A spray's stream as hand-made particles | 7.9 | open | + particle clips, a stretch along the velocity and a stop at a surface |
+| S-29 | A hole's particles and streaks steered into a spiral by hand | 7.9 | open | + a particle attractor: a pull and a swirl toward a point |
+| S-40 | Parallax strips as Rust tables, repeated and stretched by hand | 7.9 | open | + a repeating parallax layer under the tiles |
+| S-43 | Each source schema's `migrate` arm restating every later step's call | 7.9 | open | + migrations run a schema step at a time |
+| S-46 | Left-facing art as whole-frame mirrored twins | 7.9 | open | + a sprite flip about a pivot that mirrors lit normals |
+| S-58 | Art variants by hand | 7.9 | open | + a prefab's sprite variants picked per instance, kept through a save |
+| S-59 | A same-step order kept by hand across a load | 7.9 | open | + a same-step order by stable ID and a saved solver cache (backlog row 85) |
+| S-63 | Music per state run by hand | 7.9 | open | + music per state on the stack, with P7-13's ducking |
+| S-70 | Quad helpers for 01's own sprite extracts, copying the default extract | 7.9 | open | + public render helpers: an instance from a sprite, joined batches, the view box |
+| S-71 | A material restating the sprite contract to change its fragment | 7.9 | open | + fragment-only materials |
+| S-76 | The ice beam's core laid as tiles along the cone each frame | 7.9 | open | + a beam sprite tiled along a segment |
+| S-87 | One-shot clips spawned by hand, each with a lifetime restating its clip's length | 7.9 | open | + a one-shot clip that despawns as it ends |
+| S-89 | Newborn particles patched after spawn | 7.9 | open | + a particle's start colour by its direction or a range |
+| S-95 | Flat-colour rectangles and thick lines faked as sprite quads | 7.9 | open | + a flat-colour sprite instance and a segment helper |
+| S-97 | The far walls baked as tinted copies of the play layer's rock | 7.9 | open | + a tile layer's tint and an unlit flag |
+| S-101 | Save envelopes faked as text in the tests | 7.9 | open | + a `SaveSlots` writer for tests |
+| S-113 | A sound played on a walk's footfall frames by a watch of 01's | 7.9 | open | + frame cues on a clip |
+| S-117 | Soft glows drawn by a material of 01's own | 7.9 | open | + a stock glow material |
+| S-125 | The map's props set down at its markers by the run's code | 7.9 | open | + map props a save keeps, spawned by the level on a fresh run (known issue 38) |
+| S-137 | Sprite anchors restated as constants | 7.9 | open | + a sprite anchor in the manifest (Later's props' anchors as data) |
+| S-138 | A state's particles cleared by hand when it leaves | 7.9 | open | + particles owned by their emitter's state |
+| S-143 | The sprite base replaced by a copy of the engine's default | 7.9 | open | + extract contributions ordered under the default base, with P7-10 |
+| S-148 | Sprites mocked by hand in tests | 7.9 | open | + the headless load registers sprite metadata |
+| S-173 | A manifest sound played at its manifest volume by hand | 7.9 | open | + a play at the manifest's volume and loop |
+| S-179 | The manifest root and debug hot reload wired by hand in `main` | 7.9 | open | + the manifest root and hot reload from `Config` |
 | PA-1 | Lines scoped by tags | 7.10 | open | 7.10a (§2.8) |
 | PA-2 | Skill sheets and the snapshot | 7.10 | open | 7.10a |
 | PA-5 | Crit | 7.10 | open | 7.10a; every genre (PA-Q3) |
@@ -95,14 +135,14 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | P7-4 | Statuses on tiles and things | 7.10 | open | 7.10b: §5.2, Q17's merge, Q11's names |
 | P7-5 | Light as a stimulus | 7.10 | open | 7.10b: the core light-at-a-point query |
 | PA-8 | Statuses from their user | 7.10 | open | 7.10b, after PA-2 |
-| K1 | Cue rules can't tell a periodic tick from a hit | 7.10 | open | 7.10b: statuses replace effects' periodic payloads |
-| K11 | Timers with expiry and a saved form | 7.10 | open | 7.10b: the sketch's timers with expiry and saves |
+| S-122 | Hits told apart in code (K1) | 7.10 | open | 7.10b: statuses replace effects' periodic payloads |
+| S-36 | Saved countdowns hand-ticked on 01's own components (K11) | 7.13 | open | + moved from 7.10b (has: the kit's `Cooldown` saves and sends `CooldownElapsed`; `Lifetime`'s saved form and expiry stay a kit gap no 01 code needs) |
 | K27 | `Damaged` hides a shield's absorption | 7.10 | open | 7.10b, with K28's flash |
 | K28 | Every non-periodic hit flashes over a status tint | 7.10 | open | 7.10b: effect looks |
 | P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10c: impact damage, bodies as walls by layer; its blast is K10, in 7.10b |
-| K10 | A radial blast payload | 7.10 | open | 7.10b: chemistry's `blast` output (§5.2), which replaces 01's detonation (`elements/cascade.rs:634`); abilities fire it in 7.10c |
+| S-4 | Radial blasts hand-rolled (K10) | 7.10 | open | 7.10b: chemistry's `blast` output (§5.2), which replaces 01's detonation (`elements/cascade.rs:634`); abilities fire it in 7.10c |
 | P7-6 | Ability fixes | 7.10 | open | 7.10c, with K8 |
-| K8 | `charges { all: true }` refills from the first charge | 7.10 | open | 7.10c, in P7-6 |
+| K8 | `charges { all: true }` refills from the first charge | 7.10 | landed `4d51a071` | qa6, in 0.112; 01's own reload waits on P7-6's held trigger and refill countdown (the seam register's §4) |
 | PA-3 | Area and projectile speed read | 7.10 | open | 7.10c; movable to 8.7 (PA-Q2) |
 | PA-4 | Use time | 7.10 | open | 7.10c, with P7-6's held trigger; movable to 8.7 (PA-Q2) |
 | P7-19 | One-shot clips | 7.10 | open | 7.10c |
@@ -112,13 +152,156 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | K20 | A top-down mover's outside velocity; additive knockback | 7.10 | open | 7.10c: motion on 7.8's impulses |
 | K22 | A hotkey for `KitDebug`; hit shapes without the trace | 7.10 | open | 7.10c |
 | P7-18 | The kit's genre claims | 7.10 | open | 7.10c: `platformer`, `top_down`, `rpg`, `shooter`, `arpg`; `grid` and `shmup` dropped (G1–G3) |
+| S-1 | Status looks drawn by hand | 7.10 | open | 7.10b: §5.2's status looks, with an overlay clip and its glow |
+| S-5 | Chain lightning decided and queued in 01's code | 7.10 | open | 7.10c: the conduction payload, on P7-4's tags |
+| S-10 | Presentation shown by an enemy's AI state, drawn in code | 7.10 | open | + 7.10c: attachments shown by a state or tag, scaled over it, mirrored by facing |
+| S-12 | Damage numbers shaped in 01's own pass over `DamagedPart` | 7.10 | open | + 7.10a: damage numbers merged over a window, ticks smaller, crits styled with PA-5 |
+| S-15 | Cones by hand | 7.10 | open | 7.10c: the cone payload |
+| S-17 | Summons, toys and props placed at the aim point by 01's own code | 7.10 | open | + 7.10c: a `place` payload (backlog row 86) |
+| S-18 | Live counts capped by hand per kind | 7.10 | open | + 7.10c: a cap on a prefab group's live instances |
+| S-19 | A rider-started lift written in Rust | 7.10 | open | + 7.10c: a path follower a rider starts, with waits and cue events |
+| S-20 | Each kind's clip picked from its AI state in a match | 7.10 | open | + 7.10c: clips chosen by data rules over a state name the game sets |
+| S-31 | A kill row and the level's box by hand | 7.10 | open | + 7.10c: world bounds with a kill row |
+| S-37 | A body carried over a carrier's head in 01's code | 7.10 | open | + 7.10c: a kit carry |
+| S-39 | Code-sent cue events registered one `CuesOnEvent` per name | 7.10 | open | + 7.10b: a cue event carrying its name, registered once |
+| S-41 | Impact cues by hand | 7.10 | open | + 7.10b: cue filters on an event's amount and a per-subject interval, on 7.8's contact speeds |
+| S-48 | The controller's jumps and landing answered in code | 7.10 | open | + 7.10b: cue events for a controller's jumps and landing |
+| S-51 | A lit fuse's emitters kept by hand | 7.10 | open | + 7.10b: a look's particles at a named anchor that follows the frame and rotation |
+| S-52 | A health bar over an enemy drawn as flat quads | 7.10 | open | + 7.10c: a kit health bar |
+| S-53 | Lobs aimed in 01's code | 7.10 | open | + 7.10c: a lob that lands on a point |
+| S-56 | Reactions to an effect applied or run out written in code | 7.10 | open | + 7.10b: an effect filter on `effect_applied` and `effect_expired` rules |
+| S-66 | A cast's pose picked by the aim's angle by hand | 7.10 | open | + 7.10c: an aim pose in the character animator |
+| S-73 | A projectile's end read from its events in Rust to fire its blast | 7.10 | open | + 7.10c: an on-end payload on projectiles, firing S-4's blast |
+| S-78 | Missiles and tracers turned to their flight by hand | 7.10 | open | + 7.10c: `facing`'s mirror past the vertical; 01's prefabs use it |
+| S-79 | A look at a point played statement by statement from code | 7.10 | open | 7.10b: named world cues |
+| S-84 | A periodic hazard's phase cycle by hand | 7.10 | open | + 7.10c: timed transitions and a start offset on `StateMachine` |
+| S-86 | Fallen enemies brought back at their places by a hand-ticked timer each | 7.10 | open | + 7.10c: a spawner that spawns again after its spawn dies |
+| S-88 | Spawned prefabs moved by hand onto their source's body centre | 7.10 | open | + 7.10c: spawns centred on the source's body |
+| S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.10 | open | + 7.10c: `steering` driving a `TopDownMover` |
+| S-96 | A look held after its last trigger by a game-time stamp | 7.10 | open | + 7.10b: a cue for a fresh effect only |
+| S-105 | A spell's icon and cast gesture as per-spell arms | 7.10 | open | + 7.10c: an ability's icon and cast clip in its data |
+| S-110 | HUD flashes and a fade ticked by hand; a cooldown's end found by comparison | 7.10 | open | + 7.10c: an event as an ability's cooldown ends; the flashes as UI tracks |
+| S-121 | A shake's share worked out by hand from its distance | 7.10 | open | + 7.10b: a shake with falloff |
+| S-130 | A spell's cast, start and end sounds played from code | 7.10 | open | + 7.10c: `ability_used` rules by the ability's name; a held ability's start and end |
+| S-134 | Each enemy kind's knockback resist restated in its info table | 7.10 | open | + 7.10c: `Knockback::resist()` |
+| S-135 | A refused use's reason mapped from `Used` and played from code | 7.10 | open | + 7.10c: an `ability_refused` cue event with its reason |
+| S-142 | A dead entity disarmed by hand | 7.10 | open | + 7.10c: a death policy that disarms the touch, the hitbox and the controller |
+| S-150 | A heading of 01's own on each enemy | 7.10 | open | + 7.10c: `Facing::face` toward a point |
+| S-154 | The cue listener moved to the player each step by 01's system | 7.10 | open | + 7.10b: a `CueListener` that follows an entity |
+| S-156 | A contact damage switched off by taking the component off | 7.10 | open | + 7.10c: an on/off switch on `ContactDamage` |
+| S-159 | A timed pickup blinks over its last seconds at a steady 5 Hz | 7.10 | open | + 7.10c: a blink over a `lifetime`'s last seconds |
+| S-165 | The damage numbers option copied each frame into a tag | 7.10 | open | + 7.10b: a cue rule condition on a game flag |
+| S-186 | A spawned missile's fall put back after the spawn payload drops it | 7.10 | open | + 7.10c: the spawn payload keeps the prefab's motion |
+| S-9 | The shell's UI builders hand-built over the tree | 7.17 | open | the tree-only builders |
+| S-28 | A confirm dialog built by the shell | 7.17 | open | the confirm |
+| S-33 | A modal screen's plumbing by hand | 7.17 | open | the modal screen helper |
+| S-42 | Fit rules written over the tree in the tests | 7.17 | open | `assert_fits` |
+| S-45 | Tree queries hand-written in tests beside the harness's `find` | 7.17 | open | `UiHarness`'s queries |
+| S-62 | Toasts built and ticked by the shell | 7.17 | open | the toast |
+| S-64 | UI art sized in whole screen pixels per art pixel by hand | 7.17 | open | + a pixel-art UI mode |
+| S-67 | The area banner's fades stepped by hand on the game clock | 7.17 | open | + UI tracks on the game clock |
+| S-81 | A change of run behind a hand-made UI curtain | 7.17 | open | + a reset transition for the whole stack |
+| S-82 | Styles changed by read-modify-write | 7.17 | open | styles edited in place |
+| S-91 | The shell's spacing, widths and text sizes as 22 Rust constants | 7.17 | open | named text styles and spacing in the theme file |
+| S-93 | Display labels sized by hand under the text scale | 7.17 | open | shrink-to-fit text |
+| S-94 | A slot's key label picked from the bindings by hand each frame | 7.17 | open | + a short binding label and a compact prompt placeholder |
+| S-102 | The gameplay cursor drawn as a sprite by 01 | 7.17 | open | + a cursor sprite from config |
+| S-104 | A cooldown's radial sweep built as mesh triangles by hand | 7.17 | open | + a radial fill |
+| S-108 | WCAG contrast computed by hand in tests | 7.17 | open | + a contrast ratio in the theme, or in `check` |
+| S-109 | Menu sounds played from the UI's events by hand | 7.17 | open | + menu sounds in the theme and a back role |
+| S-114 | 01's theme made by substituting the template's literal colours | 7.17 | open | + kind styles naming colour tokens |
+| S-116 | An action read through the `ActionMap` on the routed input by hand | 7.17 | open | + world-level `pressed` on the routed input |
+| S-123 | The UI's reference height and default scale set in Rust | 7.17 | open | + the UI's reference height and scale in `tungsten.json` |
+| S-127 | A health meter hand-built from a track and a fill panel | 7.17 | open | the meter |
+| S-133 | A scale slider applied at its release by hand | 7.17 | open | + a slider's value committed on release |
+| S-139 | The shell's theme applied by hand from the registry at the title | 7.17 | open | + the manifest's starting theme |
+| S-149 | The template's shell assets copied into 01 by its generator each run | 7.17 | open | + the shell's assets in the engine; the hit-flash material with the kit |
+| S-152 | A label kept on one line by turning its wrap off or widening its box | 7.17 | open | shrink-to-fit text, or the wrap fix (known issue 32) |
+| S-153 | A UI panel placed over a world point by hand | 7.17 | open | + a UI root anchored to a world point |
+| S-155 | A pressed widget identified by its position in a list | 7.17 | open | a typed key per widget |
+| S-157 | The game clock paused and resumed by hand under a covering screen | 7.17 | open | + a state that holds the game clock while covered |
+| S-162 | Columns lined up across rows by hand, with no grid layout | 7.17 | open | + a grid layout |
+| S-163 | A run's resources removed one by one as gameplay exits | 7.17 | open | + state-owned resources |
+| S-171 | A label's text read back by joining its spans by hand | 7.17 | open | + `UiTree::plain_text` |
+| S-183 | Panels used as layout groups, painted clear by hand | 7.17 | open | the layout-only group |
+| S-187 | A rebind capture's 5 s timeout ticked by hand on the real clock | 7.17 | open | + a timeout on `capture_next_input` |
+| S-72 | The settings screen's rows as a Rust table | 7.20 | open | the settings screen as a file |
+| S-75 | The camera's view as a zoom recomputed each frame for a set world height | 7.18 | open | 01's and the template's cameras as rigs |
+| S-146 | The Screen shake option applied by scaling the shake offset by hand | 7.18 | open | + a shake scale on the camera |
+| S-44 | Audio commands gathered and filtered by hand in test helpers | 7.11 | open | the harness's audio queries |
+| S-49 | The template's synthesis primitives copied into 01's sound script | 7.11 | open | the template's synthesis primitives as a module 01 imports |
+| S-50 | The Bloom option kept by taking the game's Bloom passes out and back | 7.11 | open | a post stack the shell owns and a Bloom switch in `Settings` |
+| S-57 | A `place_player` action and a `player` probe registered by each game | 7.11 | open | core script steps that place a tagged entity and probe it |
+| S-68 | The rebindable actions and their labels restated as a Rust table | 7.11 | open | a label per action in the action map's file |
+| S-80 | The `start_run` hook registered by the game, though the shell owns it | 7.11 | open | the shell registers `start_run` |
+| S-118 | Gameplay options kept in a second `SaveSlots` store | 7.11 | open | game options kept in `Settings` |
+| S-119 | A key or an action tapped for one frame by a test helper | 7.11 | open | `tap_action` and `tap_key` |
+| S-120 | The engine's F11 and F9 toggles mirrored into `Settings` by the shell | 7.11 | open | display keys that write `Settings` |
+| S-124 | An action's binding columns picked out of its flat list by hand | 7.11 | open | an action's binding by device class |
+| S-145 | Mute on focus loss by applying a zero-volume copy of `Settings` | 7.11 | open | a mute-when-unfocused switch |
+| S-147 | The display as set, else as it runs, merged by hand | 7.11 | open | the display `Settings` ask for, exposed |
+| S-167 | A lead line's notes parsed by the same loop twice | 7.11 | open | a `melody()` helper |
+| S-168 | Reset reloads `input.json` to learn the shipped bindings | 7.11 | open | the action map's shipped bindings and reset |
+| S-176 | Script hook arguments parsed by hand | 7.11 | open | a typed `add_script_action` |
+| S-188 | `Counters` inserted when missing | 7.11 | open | has: the kit's `Counters` |
+| S-193 | The patrol enemy's place restated in a test | 7.11 | open | has: the test reads `ENEMIES` |
 | P7-16 | Seeded generation | 7.12 | open | Depends on P7-1 (7.8); the registry `remove` (A6) |
 | P7-17 | Places, routes and rooms in our own format | 7.12 | open | Depends on P7-9 (landed) |
+| S-85 | Engine settings as Rust literals in the level plugin | 7.12 | open | + scene sections for gravity, the broadphase cell, the particle budget and the post stack |
+| S-129 | A prefab's art scale passed in code at every spawn | 7.12 | open | + a scale in prefab data |
+| S-140 | Each actor's prefabs restate its body file's box and hurtbox | 7.12 | open | + prefab variants by `extends` |
+| S-144 | Map object names re-read from the object layers | 7.12 | open | + map objects spawned with their names |
+| S-178 | Structures drawn whole, then cut into cell-sized tiles | 7.12 | open | + tiles larger than their cell |
+| S-7 | Looks animated by hand from an age each frame | 7.13 | open | + has: 01's looks as tweened sprites ended by a `Lifetime` |
+| S-13 | Constants restating prefab, ability, damage-type and art data | 7.13 | open | + has: values read off the loaded prefabs, abilities and damage types |
+| S-21 | A thrown dynamic body as a projectile in 01's own code | 7.13 | open | + has: the snowball as a kit projectile on P7-2's bodies as walls |
+| S-30 | Per-kind data set in Rust | 7.13 | open | + has: 01's components registered and named in its prefabs |
+| S-32 | A thick ray traced by hand against bodies and tile points | 7.13 | open | + has: each trace a `cast_shape` |
+| S-34 | Per-kind tables in Rust | 7.13 | open | + has: 01's per-kind tables as data kinds |
+| S-47 | 01's `Hit` builder restating the kit's `DamageRequest` builder | 7.13 | open | + has: 01's hits as `DamageRequest`s once 7.10a lands |
+| S-55 | Clip records built by hand in each art builder | 7.13 | open | + 01's tools: one clip helper, in 7.13's asset session |
+| S-74 | Props larger than a tile cut into 64 px pieces | 7.13 | open | + has: big props placed whole, in 7.13's asset session |
+| S-83 | Boxes tested against the collision layer by indexing its tiles | 7.13 | open | + has: the tests call `overlap` on tiles |
+| S-98 | Equality guards before UI setters that already skip an equal value | 7.13 | open | + has: 01's direct setter calls; the setters already skip an equal value, so no §2.5 item has a cost to take |
+| S-100 | A pickup's effect and burst run by a system of 01's | 7.13 | open | + has: the orbs' `picked_up` cues |
+| S-106 | Places in the map by coordinates in code and tests | 7.13 | open | + has: the pit's spots as named markers |
+| S-107 | Integer hashes hand-rolled to a unit float | 7.13 | open | + has: `splitmix64` for each unit draw |
+| S-111 | Entities classed by a marker component or a list of component kinds | 7.13 | open | + has: tags for 01's and the template sample's markers |
+| S-115 | Fire shaded by copied code | 7.13 | open | + 01's tools: one flame field, in 7.13's asset session |
+| S-126 | A projectile's wall meetings answered in code | 7.13 | open | + has: wall meetings brought to cues by `CuesOnEvent` |
+| S-128 | Parts tied to an owner by hand | 7.13 | open | + has: parts spawned as children |
+| S-131 | The generator and its tests re-check what `tungsten check` reports | 7.13 | open | + has: `tungsten check` after the generator, in 7.13's asset session |
+| S-136 | The level's own game clock beside the engine's | 7.13 | open | + has: `Time::elapsed` |
+| S-141 | Loop crossfades written inline beside 01's own `crossfaded` | 7.13 | open | + has: `crossfaded`, in 7.13's asset session |
+| S-151 | The summoning ring drawn three times | 7.13 | open | + has: `icon_of`, in 7.13's asset session |
+| S-158 | A dive's speed as a stats override added and removed by hand | 7.13 | open | + has: the dive's speed as an effect |
+| S-160 | Map facts restated as constants | 7.13 | open | + has: the map's facts read off the loaded map |
+| S-161 | The dithered alpha quantiser copied | 7.13 | open | + 01's tools: `white_alpha` takes its steps, in 7.13's asset session |
+| S-164 | A test that every cue rule's sound is in the manifest | 7.13 | open | + has: the kit's `cue_rules` check |
+| S-166 | Palette ramps picked by hand | 7.13 | open | + has: `pixels.ramp`, in 7.13's asset session |
+| S-169 | A shooting star moved and despawned by hand | 7.13 | open | + has: `LinearMotion` and `Lifetime` |
+| S-170 | A tell's or a throw's seconds restating its clip's length | 7.13 | open | + has: a state ended by its clip |
+| S-174 | Art sizes restated as constants | 7.13 | open | + has: sizes read off the registry's sprites |
+| S-177 | An immediate recursive despawn beside the kit's deferred one | 7.13 | open | + has: `despawn_recursive` flushed at once |
+| S-180 | A child's offset and its transform both written | 7.13 | open | + has: the look ordered before `TRANSFORM_PROPAGATE` |
+| S-181 | An animated sprite's first frame named by hand | 7.13 | open | + has: `current_sprite` |
+| S-185 | A once-a-frame guard on a fixed-step press | 7.13 | open | + has: the take as a plain fixed-step system |
+| S-189 | An attack's seconds restating its ability's hitbox window | 7.13 | open | + has: a state ended by its hitbox's window |
+| S-190 | A push skipped in code for a kind that resists knockback whole | 7.13 | open | + has: the kit's whole resist |
+| S-192 | A slot's charge pips by spell kind | 7.13 | open | + has: the ability's `charges` |
 | K12 | `World::has` scans the type list | 7.14 | open | Item C4 (§2.5) |
 | K13 | `animation_tick` resolves clips by name | 7.14 | open | Item C3 (§2.5) |
+| S-24 | A bounded pool of fire emitters hopped along the burning crest | 7.14 | open | C2: burning looks at 12,000 bodies, one emitter over many points |
+| S-35 | A ball's save hand-packed into a flat array | 7.14 | open | C5: a prefab's runtime spawns saved as a table |
+| S-54 | C1's frame-time capture kept as an ignored test beside the `e01-pit` row | 7.14 | open | C1: the `e01-pit` row measures it; the ignored test goes (known issues 39, 40) |
+| S-90 | Each small ball's rainbow hue turned by the CPU every frame | 7.14 | open | C3: `ball_look`'s `powf` a ball (known issue 41) |
+| S-184 | Enemies far from the player held still by 01's distance check | 7.14 | open | C3: an activity radius that holds far machines and movers |
+| S-191 | Three autosaves' times taken from `SaveSlots::list` | 7.14 | open | C5: a per-slot header read (known issue 36) |
 | P7-11 | More lights than the cap | 7.15 | open | Item G6 (§2.5) |
+| S-14 | Backdrop quads culled on the CPU under opaque tiles | 7.15 | open | G2: the backdrops under opaque tiles, culled by the renderer |
+| S-23 | One-off particle bursts capped and despawned by hand | 7.15 | open | G4: a capped burst budget that keeps key bursts, drained emitters despawned by the engine |
 
-7.11, 7.13, 7.16, 7.17, 7.18 and 7.20 hold no register row yet: their designs are the redo's §5.9–§5.11 and §3 sketches, and 7.5's triage may send them rows (§2.4).
+7.16 holds no register row: its sketch is the redo's 7.16 row. 7.5's triage (§2.4) sent S-rows to every other open step, the template's to 7.11 and those only 01 needs to 7.13.
 
 ### 2.3 Phase 8 rows
 
@@ -144,7 +327,13 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | PA-14 | Count and pierce from the sheet | 8.2 | open | On P8-13's pattern payload |
 | PA-15 | Chain and fork | 8.2 | open | |
 | PA-16 | Repeats | 8.2 | open | On P8-11's bursts |
+| S-6 | A walker's way over what lies ahead, by casts | 8.2 | open | navigation on platforms: hops, drops and leaps |
 | P8-15 | Drawn art | 8.3 | open | `asset add` and Aseprite import |
+| S-8 | Each stop's asset contract restated as test tables | 8.3 | open | + asset contracts `tungsten check` holds each file to |
+| S-11 | 01's own asset pipeline | 8.3 | open | + per-family generation in `tungsten` (the redo's §8 Assets row) |
+| S-22 | Actors' bodies as 01's own data kind | 8.3 | open | + named points mirrored by facing and a body section in prefab data |
+| S-61 | A point per animation frame | 8.3 | open | per-frame anchors, as slices import |
+| S-69 | Lit sprites' normal maps and emissive masks derived by 01's tools | 8.3 | open | + normal maps and emissive masks derived by the pipeline |
 | PA-17 | Supports | 8.7 | open | `build` domain (PA-Q1) |
 | PA-18 | Passive tree | 8.7 | open | |
 | PA-19 | Item generation | 8.7 | open | |
@@ -174,11 +363,11 @@ The candidates are the redo's 7.14 and 7.15 rows; the workload is 01 on the new 
 
 | # | Item | Row (7.3's set or the step that adds it) | Evidence today | Status |
 | --- | --- | --- | --- | --- |
-| C1 | The spatial query index after 7.8 (K14) | 01's full pit, `physics_step`; `physics-sparse` | `physics_step` 2.07 of 3.71 ms p50 (56 %) in 01's full pit, release, 2026-10-23 at M81's tree (`perf-runs/20261023-e01g-frame/after.txt`); A12 | open |
-| C2 | Interaction spread (7.10's chemistry) | 7.10's spread row at 12,000 bodies (§5.8) | Not built; 01's `fire_spread` rebuilt a cell map of every unburnt ball per step (P5, unmeasured) | open |
-| C3 | Per-entity kit systems: `animation_tick` resolving clips by name (K13) | 01's full pit, `update`; `particles` `animate_sprites` | 0.90 ms for 12,000 balls on one clip (K13, at 0.97); interned animation IDs, an open proposal in `docs/perf/benchmarks.md` | open |
+| C1 | The spatial query index after 7.8 (K14) | 01's full pit, `physics_step`; `physics-sparse` | `physics_step` 2.07 of 3.71 ms p50 (56 %) in 01's full pit, release, 2026-10-23 at M81's tree (`perf-runs/20261023-e01g-frame/after.txt`); A12; S-54: the ignored frame-time test beside the `e01-pit` row | open |
+| C2 | Interaction spread (7.10's chemistry) | 7.10's spread row at 12,000 bodies (§5.8) | Not built; 01's `fire_spread` rebuilt a cell map of every unburnt ball per step (P5, unmeasured); S-24: 01's pool of fire emitters hopped along the burning crest | open |
+| C3 | Per-entity kit systems: `animation_tick` resolving clips by name (K13) | 01's full pit, `update`; `particles` `animate_sprites` | 0.90 ms for 12,000 balls on one clip (K13, at 0.97); interned animation IDs, an open proposal in `docs/perf/benchmarks.md`; S-90: `ball_look`'s `powf` a ball, 0.26 ms for 12,000 (known issue 41); S-184: far enemies held by 01's distance check | open |
 | C4 | `World::has` and the query paths (K12) | `ecs` `update`; 01's full pit | No isolated time; P1–P7 moved 01 off per-entity `has` (feedback §1) | open |
-| C5 | The save snapshot | 7.9's save row (§5.5's autosave cost) | Not built; 01's `save.rs` is 2,873 lines (A5) | open |
+| C5 | The save snapshot | 7.9's save row (§5.5's autosave cost) | Not built; 01's `save.rs` is 2,873 lines (A5); S-35: a ball's save hand-packed so 12,000 fit; S-191: the autosave rotation parses every slot whole (known issue 36) | open |
 | C6 | The extract | 01's full pit, `extract`; `gpu-throughput` | 0.13 of 3.71 ms p50 (3.5 %) in 01's full pit (as C1); 13.3 ms at 400,000 sprites in `gpu-throughput` (2026-10-02) | open; likely dropped at the gate in 01 |
 
 **7.15, GPU** (local, `D-070`):
@@ -186,9 +375,9 @@ The candidates are the redo's 7.14 and 7.15 rows; the workload is 01 on the new 
 | # | Item | Row | Evidence today | Status |
 | --- | --- | --- | --- | --- |
 | G1 | The lit-sprite path in the scene pass | 01's area row, scene pass (Q5); `gpu` scene pass | The scene pass is 13.3–23.9 of 19.4–30.1 ms `render_span` p50 (69–79 %) in six areas at 2160p, the mine's spot under game over's passes (M77's survey, 2026-10-22 at 0.97, `perf-runs/20261022-m77-example-01-fixes/gpu-areas/`); `gpu` 6.88 of 10.39 ms (2026-10-02) | open |
-| G2 | Tile layers and the layered backdrops (overdraw) | 01's area row, scene pass | The backdrops take 3.2–4.9 ms of the scene pass at 2160p (`gpu-areas-nobackdrop/` against `gpu-areas/`) | open |
+| G2 | Tile layers and the layered backdrops (overdraw) | 01's area row, scene pass | The backdrops take 3.2–4.9 ms of the scene pass at 2160p (`gpu-areas-nobackdrop/` against `gpu-areas/`); S-14: 01's CPU cull of backdrop quads under opaque tiles | open |
 | G3 | Bloom and the post stack | 01's area row, the post passes; `gpu` pass rows | The bloom chain about 3.8 ms and the vignette pass 1.8 ms at 2160p: 19–29 % of `render_span` (same survey) | open |
-| G4 | Particle quads | `particles`; 01's spray frames | Inside the scene pass, not separated today | open |
+| G4 | Particle quads | `particles`; 01's spray frames | Inside the scene pass, not separated today; S-23: 01's burst cap and its despawn of drained emitters | open |
 | G5 | Sprite batching and upload bytes | `gpu-throughput`; 7.3's local upload-byte counter | `gpu` `render_encode` 2.12 ms p50 (2026-10-02) | open |
 | G6 | The light cull past 16 by importance (P7-11) | 01's lantern scene; `gpu` light sweep | Cap 16; over it, zero-intensity lights drop and the rest rank by distance to the view, with nothing pinning the player's light (A13, `crates/tungsten-render/src/lighting.rs:133-150`) | open; target: the player's light never culled and a dark light holding no slot, each shown by a test past the cap; the scene pass not `regressed` |
 
@@ -225,7 +414,7 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
-  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7), the shapes the rest stand on; **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, K1, K10, K11, K27, K28); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
+  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-122 (K1), S-4 (K10), K27, K28; 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-92, S-105, S-110, S-130, S-134, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
   - 7.12: the format and CLI, then the editor (the redo's 7.12 row).
 
 ## 3. Steps
@@ -265,34 +454,34 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 ### Step 5 (7.8): Terrain and physics
 
-- **Rows:** P7-1, P7-2 (physics), P7-3 (sensor exit), K7, K14, K23, K30, K31. **Design:** §5.1, §5.6.
+- **Rows:** P7-1, P7-2 (physics), P7-3 (sensor exit), K7, K14, K23, K30, S-60 (K31); 7.5's S-16, S-26, S-65, S-77, S-99, S-112, S-132, S-172, S-175. **Design:** §5.1, §5.6.
 - **Done-when:** the redo's 7.8 sketch; friction and slope piles as rows (§2.6).
 - **Moves:** the physics hashes, under 7.3's guards.
 
 ### Step 6 (7.17): UI pass, UI track
 
-- **Rows:** none yet. **Design:** §5.9. After 7.2, in its own worktree, beside 7.8–7.10.
+- **Rows:** 7.5's S-9, S-28, S-33, S-42, S-45, S-62, S-64, S-67, S-81, S-82, S-91, S-93, S-94, S-102, S-104, S-108, S-109, S-114, S-116, S-123, S-127, S-133, S-139, S-149, S-152, S-153, S-155, S-157, S-162, S-163, S-171, S-183, S-187. **Design:** §5.9. After 7.2, in its own worktree, beside 7.8–7.10.
 - **Done-when:** the redo's 7.17 sketch, the shell's `tokei` count against `D-199`'s 2,900 measured, and the idle-screen counter guard.
 
 ### Step 7 (7.9): Saves and engine seams
 
-- **Rows:** P7-8, P7-10, P7-13, P7-14, P7-15, K2, K4, K9, K21. **Design:** §5.4, §5.5.
+- **Rows:** P7-8, P7-10, P7-13, P7-14, P7-15, K2, K4, K9, S-38 (K21); 7.5's S-2, S-3, S-25, S-27, S-29, S-40, S-43, S-46, S-58, S-59, S-63, S-70, S-71, S-76, S-87, S-89, S-95, S-97, S-101, S-113, S-117, S-125, S-137, S-138, S-143, S-148, S-173, S-179. **Design:** §5.4, §5.5.
 - **Done-when:** the redo's 7.9 sketch, with §5.5's acceptance test (a restore into a world with other entity allocations, 01's save tests unchanged); the save snapshot and boot rows.
 
 ### Step 8 (7.20): Screens as data, UI track
 
-- **Rows:** none yet. **Design:** §5.11. After 7.17.
+- **Rows:** 7.5's S-72. **Design:** §5.11. After 7.17.
 - **Done-when:** the redo's 7.20 sketch and the reloaded-screen counter guard.
 
 ### Step 9 (7.10): Kit pass
 
-- **Rows:** the 29 rows §2.2 sends to 7.10, as 7.10a, 7.10b and 7.10c (§2.8). **Design:** §5.2, §5.3, the ARPG design's §3–§8 and §16.
+- **Rows:** the 68 rows §2.2 sends to 7.10, as 7.10a, 7.10b and 7.10c (§2.8). **Design:** §5.2, §5.3, the ARPG design's §3–§8 and §16.
 - **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
 - **Moves:** the kit's determinism pin, at most once per 7.10 plan, under 7.3's guards (§5).
 
 ### Step 10 (7.18): Camera rigs
 
-- **Rows:** none yet. **Design:** §5.10. After 7.10, before 7.13.
+- **Rows:** 7.5's S-75, S-146. **Design:** §5.10. After 7.10, before 7.13.
 - **Done-when:** the redo's 7.18 sketch; a switch never jumps at 30, 60 or 144 Hz.
 
 ### Step 11 (7.11): Template updates
@@ -302,7 +491,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 ### Step 12 (7.12): Level format, agent CLI, editor
 
-- **Rows:** P7-16, P7-17. **Design:** §5.1.
+- **Rows:** P7-16, P7-17; 7.5's S-85, S-129, S-140, S-144, S-178. **Design:** §5.1.
 - **Done-when:** the redo's 7.12 sketch; `check`'s props supported generalizing `D-214`.
 
 ### Step 13 (7.13): 01 on the new systems
@@ -312,12 +501,12 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 ### Step 14 (7.14): Performance pass, CPU
 
-- **Rows:** K12, K13; **list:** C1–C6 (§2.5).
+- **Rows:** K12, K13; 7.5's S-24, S-35, S-54, S-90, S-184, S-191, the evidence of C2, C5, C1, C3, C3 and C5; **list:** C1–C6 (§2.5).
 - **Done-when:** the gate's shares recorded; each item `done`, `dropped` or `stopped` in §2.5; the whole-frame row and the GPU rows not `regressed`.
 
 ### Step 15 (7.15): Performance pass, GPU
 
-- **Rows:** P7-11; **list:** G1–G6 (§2.5).
+- **Rows:** P7-11; 7.5's S-14, S-23, the evidence of G2 and G4; **list:** G1–G6 (§2.5).
 - **Done-when:** as step 14, with the CPU frame, the extract included, not `regressed`.
 
 ### Step 16 (7.16): Agent guidance
