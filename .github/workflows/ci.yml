@@ -124,4 +124,5 @@ jobs:
           build-warnings: ""
 
       - name: Tests (dev profile)
-        run: cargo test --workspace --locked
+        # Past a failing crate, so one run shows every crate's failures.
+        run: cargo test --workspace --locked --no-fail-fast
