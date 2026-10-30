@@ -27,6 +27,10 @@ Summary: the roadmap redo's Phase 7 steps 7.2 to 7.5: scripted runs, with `tungs
 - **The 1.0 plan** (`docs/plans/`): the Phase 7 plan (7.7, `phase-7.md`) assigns every register row by ID; the owner's answers to the ARPG design are recorded; the seam register (7.5, `seam-register.md`) holds 193 verified S-rows, triaged into the plan's tables; 7.8's runtime terrain plan (`runtime-terrain.md`) is next. Perf policy: no per-plan sitting, and one sitting for each minor or major release (`D-226`).
 - **Records**: DESIGN, README's perf commands, the LLM index, `docs/perf/benchmarks.md` and `profiling-workflow.md` rewritten for the runner, `docs/agent-setup.md`'s instruction loading checked again on Claude Code 2.1.311 and Codex CLI 0.160.0, and known issues (the shot recipes 7.2 replaced dropped; 01's release frame-time test, which fails at 0.113, and 7.5's leftover rows added). The agent tooling, bench runner, H2 and analysis pass plans are deleted, done.
 
+### Fixed
+
+- **A sitting's default base** (`scripts/perf.py`'s `last_tag`): the highest `vX.Y.Z` tag on HEAD's history, as `release.py` and `status.py` read it, not `git describe`'s nearest tag, which took the rehearsal tag `v0.0.0-test.20261029.ge76c32f` for 0.113's release sitting instead of `v0.112.0`.
+
 ### Removed
 
 - **The old perf runner** (`D-226`): `scripts/bench.py`, `bench_report.py` and their tests, the bench's `integrated` benchmark and knobs, capacity search, sweeps, `--profile` and the HTML reports.

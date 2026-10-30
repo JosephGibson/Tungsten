@@ -148,7 +148,7 @@ An invalid capture stays on disk with `valid: false` and its reasons; `run` exit
 
 ## Sittings
 
-`just perf sitting [--base REF] [--rows LIST] [--quick] [--cpu-only] [--wait-quiet S] [--allow-background] [--plain] [--keep]` judges the working tree (B, the candidate) against `REF` (A, the base), by default the last tag reachable from `HEAD`. The candidate's runner and registry drive both sides.
+`just perf sitting [--base REF] [--rows LIST] [--quick] [--cpu-only] [--wait-quiet S] [--allow-background] [--plain] [--keep]` judges the working tree (B, the candidate) against `REF` (A, the base), by default the highest `vX.Y.Z` tag on `HEAD`'s history, the last release; rehearsal and other prerelease tags don't count. The candidate's runner and registry drive both sides.
 
 1. **Start check.** The sitting refuses, exit 2, on the encoder or a build outside the runner; on a process other than the runner and its ancestors above 20 % of a core over a 5 s sample; or on the tree's dirty state changing meanwhile. It records the 1-minute load, the governor, AC power and the five busiest processes. `--wait-quiet S` polls every 10 s until 60 s run quiet, giving up at S. An idle agent session passes; a working one shows as busy. `--allow-background` starts despite a refusal and records it.
 2. **Base export.** `git archive REF` into `target/perf/base-tree/`, deleted at the end unless `--keep`; both trees build before anything is measured, the base into `target/perf/base-aligned/`. A package the base cannot build makes its rows `new`.

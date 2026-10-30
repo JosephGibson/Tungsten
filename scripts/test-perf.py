@@ -638,6 +638,29 @@ class BaseExport(unittest.TestCase):
             self.assertEqual(state, {"commit": first, "dirty": "no", "ref": "v1"})
             self.assertEqual((export / "a.txt").read_text(), "one\n")
 
+    def test_the_default_base_is_the_last_release_not_a_rehearsal(self):
+        git = Provenance.git
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+            git(self, repo, "init", "-q")
+            git(self, repo, "config", "user.email", "t@example.com")
+            git(self, repo, "config", "user.name", "t")
+            for message, tags in [
+                ("one", ["v0.0.0-test.20261028.gaaaaaaa"]),
+                ("two", ["v0.9.0"]),
+                ("three", ["v0.10.0"]),
+                ("four", ["v0.0.0-test.20261029.gbbbbbbb", "v0.11.0-rc.1"]),
+            ]:
+                (repo / "a.txt").write_text(f"{message}\n")
+                git(self, repo, "add", "a.txt")
+                git(self, repo, "commit", "-q", "-m", message)
+                for tag in tags:
+                    git(self, repo, "tag", tag)
+                if message == "one":
+                    with self.assertRaises(perf.PerfError, msg="a rehearsal tag alone is no base"):
+                        perf.last_tag(repo)
+            self.assertEqual(perf.last_tag(repo), "v0.10.0", "newer rehearsal and prerelease tags are skipped; 10 > 9")
+
 
 class CounterPins(unittest.TestCase):
     def test_pins_match_and_mismatch(self):

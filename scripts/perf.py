@@ -678,11 +678,20 @@ def wait_quiet(limit_s, check, *, sleep=time.sleep, clock=time.monotonic):
         sleep(QUIET_POLL_S)
 
 
+FINAL_TAG = re.compile(r"v(\d+)\.(\d+)\.(\d+)")
+
+
 def last_tag(repo=REPO_ROOT):
+    """The highest `vX.Y.Z` tag on HEAD's history; rehearsal and other
+    prerelease tags don't count, so a release's sitting reads the last release."""
     try:
-        return git_output(repo, "describe", "--tags", "--abbrev=0").decode().strip()
+        refs = git_output(repo, "for-each-ref", "--merged", "HEAD", "--format=%(refname:short)", "refs/tags/v*")
     except (OSError, subprocess.CalledProcessError) as error:
-        raise PerfError("no tag reachable from HEAD; pass --base") from error
+        raise PerfError("cannot list the tags on HEAD's history; pass --base") from error
+    finals = [tag for tag in refs.decode().split() if FINAL_TAG.fullmatch(tag)]
+    if not finals:
+        raise PerfError("no vX.Y.Z tag reachable from HEAD; pass --base")
+    return max(finals, key=lambda tag: tuple(int(part) for part in FINAL_TAG.fullmatch(tag).groups()))
 
 
 def export_tree(ref, dest, repo=REPO_ROOT):
@@ -1098,7 +1107,7 @@ def parser():
     compare.add_argument("baseline")
     compare.add_argument("candidate")
     sitting = commands.add_parser("sitting", help="the working tree against a ref, with an A/A and one rerun")
-    sitting.add_argument("--base", help="the ref to export and measure as the base (default: the last reachable tag)")
+    sitting.add_argument("--base", help="the ref to export and measure as the base (default: the last vX.Y.Z tag on HEAD's history)")
     sitting.add_argument("--rows", help="comma-separated rows or groups (default: every row)")
     sitting.add_argument("--quick", action="store_true", help="CPU rows, A1 B1 A2 at 3 repeats and 150 frames; informational")
     sitting.add_argument("--cpu-only", action="store_true", help="skip the GPU runs and GPU-only rows")
