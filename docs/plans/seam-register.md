@@ -2,7 +2,7 @@
 
 Every place example 01 and the template compensate for the engine, kit or template, with evidence, ranked by the code a generic fix would delete and how often the pattern recurs: the roadmap redo's analysis pass (`docs/plans/roadmap-redo.md`, step 7.5, its brief in §7.1). It keeps its register as the paper designs and the ARPG design keep theirs: this file holds each row's evidence, and the Phase 7 plan's tables (`docs/plans/phase-7.md` §2.2–§2.3) its disposition. Framed at `3b01712d`.
 
-- **status:** draft
+- **status:** in progress (written, verified and triaged by redo 7.5; the evidence its rows' steps build from, deleted with its citations by the rule in its done-when)
 - **goal:** Every seam in 01's `src/`, `tests/` and `tools/` and in the template as a verified row: the code a generic fix would delete, how often the pattern recurs, what the engine, kit or template lacks, the fix and its prerequisites; ranked, and each row triaged once into phase 7's tables, so the step that builds each system takes its seams.
 - **non-goals:**
   - Fixes, and edits to code, tests, tools, assets, data or `api/`: the steps that build each system make them.
@@ -130,7 +130,7 @@ The feedback plan's kit and engine gaps (`docs/plans/1.0/example-01-feedback.md`
 
 ### 2.2 Backlog rows citing 01
 
-`docs/plans/1.0/backlog-1.x.md`, 29 rows (`rg -c '^\|.*(examples/01_platformer|[Ee]xample 01|01 \()'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
+`docs/plans/1.0/backlog-1.x.md` at `3b01712d`, 29 rows (`rg -c '^\|.*(examples/01_platformer|[Ee]xample 01|01 \()'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
 
 | Line | Row | Match |
 | --- | --- | --- |
@@ -166,7 +166,7 @@ The feedback plan's kit and engine gaps (`docs/plans/1.0/example-01-feedback.md`
 
 ### 2.3 Known issues citing 01 or the template
 
-`docs/known-issues.md`, 11 lines (`rg -c 'examples/01_platformer|templates/basic'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
+`docs/known-issues.md` at `3b01712d`, 11 lines (`rg -c 'examples/01_platformer|templates/basic'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
 
 | Line | Entry | Shares | Match |
 | --- | --- | --- | --- |
@@ -184,7 +184,7 @@ The feedback plan's kit and engine gaps (`docs/plans/1.0/example-01-feedback.md`
 
 ### 2.4 Later lines naming example 01
 
-`ROADMAP.md`'s Later, 7 lines (`rg -c '^- Example 01'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
+`ROADMAP.md`'s Later at `3b01712d`, 7 lines (`rg -c '^- Example 01'`). Match: by S-ID, a §4 entry by its registered ID, or a bug by its §5 ID.
 
 | Line | Line's subject | Match |
 | --- | --- | --- |
@@ -470,18 +470,18 @@ Rows `S-1` … in rank order (§1.4): the merge's rows and the §4 entries verif
 
 ## 5. Bugs noted
 
-Bugs the readers met and a verifier confirmed: 8. Step 5 files each in known issues' Open findings; Filed says where.
+Bugs the readers met and a verifier confirmed: 8. 7.5's close filed seven in known issues' Open findings as P3 rows, each naming redo 7.5 and its ID here; b6 was already ROADMAP.md's Later line on the route test, so it is not filed twice.
 
 | ID | Bug | Filed |
 | --- | --- | --- |
-| b2 | src/features/enemies/goblin.rs:57 — `THROW_SECS` (0.25) restates the throw's clip, which runs 300 ms (`assets/animations/goblin_throw.json`, frames of 60, 70 and 170 ms; corrected by its verifier), so the recovery cuts its last 50 ms | — |
-| b3 | tests/game/enemies.rs:4416 — filters out save ID 21, the map's armoured troll's runtime ID before authored IDs; authored IDs are hashes now (src/shared.rs:35-42), so the filter excludes nothing it meant to, and `arena()` has already taken the map's enemies off | — |
-| b4 | src/features/audio/systems.rs:126 — the hum's 0.01 dead band lacks the `volume > 0.0 \|\| level == 0.0` guard the holes' (:154) and the crackle's (:203) carry, so a hum last set under 0.01 never falls to 0 when the last wisp dies or leaves | — |
-| b5 | src/features/level/title.rs:179 — the title's clock runs while a screen covers it but shooting stars are counted only on top, so on return they fire back to back, one per 0.7 s, until the count catches up | — |
-| b6 | tests/game/level.rs:273-276 — some `LAUNCHES` rows start the body overhanging the next step's face, as the test's own note says (eight by `ROADMAP.md`'s Later) | — |
-| b7 | tools/sfx.py:1156 — `soft_kick`, `brush` (:1168) and `tom` (:1349) render at their `rate`, the music's 22,050, through `LowPass()` at its default 44,100, so each filter cuts at half the cutoff it names; `stab`'s comment (:1367) notes it for itself alone | — |
-| b8 | tools/sfx.py:2664 — `LOOPS` leaves out three loops `sounds.json` registers as looping (`ice_spray`, `flame_spray`, `wisp_hum`), so their length and seam escape `seam_problem` (tools/generate.py:960) | — |
-| b9 | src/save.rs:2811 — `restore_missile`'s doc comment (2811-2814) sits on `restore_flask`, run into the flask's own (2815-2816); `restore_missile` (2843) has none | — |
+| b2 | src/features/enemies/goblin.rs:57 — `THROW_SECS` (0.25) restates the throw's clip, which runs 300 ms (`assets/animations/goblin_throw.json`, frames of 60, 70 and 170 ms; corrected by its verifier), so the recovery cuts its last 50 ms | known issues, Open findings (P3) |
+| b3 | tests/game/enemies.rs:4416 — filters out save ID 21, the map's armoured troll's runtime ID before authored IDs; authored IDs are hashes now (src/shared.rs:35-42), so the filter excludes nothing it meant to, and `arena()` has already taken the map's enemies off | known issues, Open findings (P3) |
+| b4 | src/features/audio/systems.rs:126 — the hum's 0.01 dead band lacks the `volume > 0.0 \|\| level == 0.0` guard the holes' (:154) and the crackle's (:203) carry, so a hum last set under 0.01 never falls to 0 when the last wisp dies or leaves | known issues, Open findings (P3) |
+| b5 | src/features/level/title.rs:179 — the title's clock runs while a screen covers it but shooting stars are counted only on top, so on return they fire back to back, one per 0.7 s, until the count catches up | known issues, Open findings (P3) |
+| b6 | tests/game/level.rs:273-276 — some `LAUNCHES` rows start the body overhanging the next step's face, as the test's own note says (eight by `ROADMAP.md`'s Later) | ROADMAP.md's Later (the route test's line) |
+| b7 | tools/sfx.py:1156 — `soft_kick`, `brush` (:1168) and `tom` (:1349) render at their `rate`, the music's 22,050, through `LowPass()` at its default 44,100, so each filter cuts at half the cutoff it names; `stab`'s comment (:1367) notes it for itself alone | known issues, Open findings (P3) |
+| b8 | tools/sfx.py:2664 — `LOOPS` leaves out three loops `sounds.json` registers as looping (`ice_spray`, `flame_spray`, `wisp_hum`), so their length and seam escape `seam_problem` (tools/generate.py:960) | known issues, Open findings (P3) |
+| b9 | src/save.rs:2811 — `restore_missile`'s doc comment (2811-2814) sits on `restore_flask`, run into the flask's own (2815-2816); `restore_missile` (2843) has none | known issues, Open findings (P3) |
 
 ## 6. Verification
 

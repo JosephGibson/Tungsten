@@ -4,8 +4,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 
 ## Now
 
-- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`) and 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) have landed, and 7.5, the analysis pass, runs from its plan, its rows joining at its triage; Phase 7 runs from it a step at a time.
-- `analysis-pass`: redo 7.5, the analysis pass: nine readers read 01's code, tests and tools and the template once each into a seam register, which fresh readers verify and the triage sends into phase 7's tables by its §2.4 ([plan](docs/plans/analysis-pass.md)).
+- `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`), 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) and 7.5 (the analysis pass: [the seam register](docs/plans/seam-register.md)'s 193 verified S-rows, triaged into the plan's tables) have landed, and 7.8, terrain and physics, is next; Phase 7 runs from it a step at a time.
 
 ## Next
 
