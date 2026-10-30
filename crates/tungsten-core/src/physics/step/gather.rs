@@ -126,7 +126,7 @@ pub(super) fn gather_proxies(
     tiles.refresh(world);
     proxies.extend_from_slice(&tiles.proxies);
     layers.of.extend_from_slice(&tiles.layers);
-    layers.layered = layered || tiles.layered;
+    layers.layered = layered || tiles.state.layered;
     if !sensors.is_empty() {
         tile_ids.extend_from_slice(&tiles.ids);
     }
@@ -144,31 +144,40 @@ pub(super) fn gather_proxies(
 /// scan of this frame would give.
 #[derive(Debug, Default)]
 pub(in crate::physics) struct TileCache {
-    /// Bumped by every change to the proxies; 0 before the first.
-    pub(super) version: u64,
-    maps: Vec<CachedMap>,
     /// The tile proxies, in gather order.
     pub(super) proxies: Vec<Proxy>,
     /// Each tile proxy's layers and mask, in the same order.
     pub(super) layers: Vec<Layers>,
-    /// Some tile proxy is off [`Layers::DEFAULT`].
-    layered: bool,
     /// Each tile proxy's identity in sensor overlap keys, in the same order.
     pub(super) ids: Vec<u64>,
-    /// Each tile proxy's map, layer and cell, in the same order.
-    pub(super) cells: Vec<TileHit>,
+    /// The rest, which no frame copies: boxed, so the step's buffers, which
+    /// it moves out of the World and back each step, stay small.
+    state: Box<CacheState>,
+}
+
+/// The tile cache's maps and bookkeeping beside the arrays the gather
+/// copies.
+#[derive(Debug, Default)]
+struct CacheState {
+    /// Bumped by every change to the proxies; 0 before the first.
+    version: u64,
+    maps: Vec<CachedMap>,
+    /// Some tile proxy is off [`Layers::DEFAULT`].
+    layered: bool,
+    /// Each tile proxy's map, layer and cell, in proxy order.
+    cells: Vec<TileHit>,
     /// The maps whose every cell the last refresh changed: replaced,
     /// added, moved, resized or gone.
-    pub(super) replaced: Vec<Entity>,
+    replaced: Vec<Entity>,
     /// The collision cells the last refresh found written in the other
     /// maps, by map in cache order, each map's sorted by layer, row and
     /// column.
     written: Vec<(Entity, Vec<WrittenCell>)>,
     /// Those cells' sensor identities, sorted.
-    pub(super) written_ids: Vec<u64>,
+    written_ids: Vec<u64>,
     /// Maps scanned since the cache was made.
     #[cfg(test)]
-    pub(super) scans: usize,
+    scans: usize,
 }
 
 /// One map as its last scan read it: where its proxies sit, and its
@@ -357,6 +366,34 @@ impl TileCache {
         self.proxies.len()
     }
 
+    /// Bumped by every change to the proxies; 0 before the first.
+    pub(super) fn version(&self) -> u64 {
+        self.state.version
+    }
+
+    /// Each tile proxy's map, layer and cell, in proxy order.
+    pub(super) fn cells(&self) -> &[TileHit] {
+        &self.state.cells
+    }
+
+    /// The maps whose every cell the last refresh changed: replaced, added,
+    /// moved, resized or gone.
+    pub(super) fn replaced(&self) -> &[Entity] {
+        &self.state.replaced
+    }
+
+    /// The sensor identities of the collision cells the last refresh found
+    /// written in the other maps, sorted.
+    pub(super) fn written_ids(&self) -> &[u64] {
+        &self.state.written_ids
+    }
+
+    /// Maps scanned since the cache was made.
+    #[cfg(test)]
+    pub(super) fn scans(&self) -> usize {
+        self.state.scans
+    }
+
     /// Calls `visit` with each solid cell of the last refresh whose box may
     /// meet `[min, max]`, in tile order: by map, layer, row and column.
     pub(in crate::physics) fn cells_in(
@@ -365,7 +402,7 @@ impl TileCache {
         max: Vec2,
         mut visit: impl FnMut(&GridCell),
     ) {
-        for map in &self.maps {
+        for map in &self.state.maps {
             map.cells_in(min, max, &mut visit);
         }
     }
@@ -379,12 +416,13 @@ impl TileCache {
         max: Vec2,
         mut visit: impl FnMut(&GridCell),
     ) {
-        for map in &self.maps {
-            if self.replaced.contains(&map.entity) {
+        for map in &self.state.maps {
+            if self.state.replaced.contains(&map.entity) {
                 map.cells_in(min, max, &mut visit);
                 continue;
             }
             let Some((_, cells)) = self
+                .state
                 .written
                 .iter()
                 .find(|(entity, _)| *entity == map.entity)
@@ -410,20 +448,20 @@ impl TileCache {
     /// proxies, a changed or new one is scanned, and one that went drops;
     /// what changed is noted for the sensor pass.
     fn refresh(&mut self, world: &World) {
-        self.replaced.clear();
-        self.written.clear();
-        self.written_ids.clear();
+        self.state.replaced.clear();
+        self.state.written.clear();
+        self.state.written_ids.clear();
         let registry = world.get_resource::<TilemapRegistry>();
         if self.matches(world, registry) {
             return;
         }
-        let mut kept = std::mem::take(&mut self.maps);
+        let mut kept = std::mem::take(&mut self.state.maps);
         let order: Vec<Entity> = kept.iter().map(|map| map.entity).collect();
         let old = TileArrays {
             proxies: std::mem::take(&mut self.proxies),
             layers: std::mem::take(&mut self.layers),
             ids: std::mem::take(&mut self.ids),
-            cells: std::mem::take(&mut self.cells),
+            cells: std::mem::take(&mut self.state.cells),
         };
         let mut arrays = TileArrays::default();
         let mut scanned = false;
@@ -480,26 +518,26 @@ impl TileCache {
                     map.start = start;
                     map.cursor = cursor;
                     let map = kept.swap_remove(at);
-                    self.maps.push(map);
+                    self.state.maps.push(map);
                     continue;
                 }
                 Refresh::Written(cells) => {
-                    self.written_ids.extend(
+                    self.state.written_ids.extend(
                         cells
                             .iter()
                             .map(|&(layer, row, col)| tile_identity(entity, layer, col, row)),
                     );
-                    self.written.push((entity, cells));
+                    self.state.written.push((entity, cells));
                 }
-                Refresh::Whole => self.replaced.push(entity),
+                Refresh::Whole => self.state.replaced.push(entity),
             }
             scanned = true;
             scan_map(entity, instance, data, &mut arrays);
             #[cfg(test)]
             {
-                self.scans += 1;
+                self.state.scans += 1;
             }
-            self.maps.push(CachedMap::of(
+            self.state.maps.push(CachedMap::of(
                 entity,
                 instance,
                 data,
@@ -510,22 +548,23 @@ impl TileCache {
         }
         // What is left went, or now places another map elsewhere.
         for gone in &kept {
-            if !self.replaced.contains(&gone.entity) {
-                self.replaced.push(gone.entity);
+            if !self.state.replaced.contains(&gone.entity) {
+                self.state.replaced.push(gone.entity);
             }
         }
-        let same = !scanned && kept.is_empty() && self.maps.iter().map(|map| map.entity).eq(order);
-        self.written_ids.sort_unstable();
-        self.layered = arrays
+        let same =
+            !scanned && kept.is_empty() && self.state.maps.iter().map(|map| map.entity).eq(order);
+        self.state.written_ids.sort_unstable();
+        self.state.layered = arrays
             .layers
             .iter()
             .any(|&layers| layers != Layers::DEFAULT);
         self.proxies = arrays.proxies;
         self.layers = arrays.layers;
         self.ids = arrays.ids;
-        self.cells = arrays.cells;
+        self.state.cells = arrays.cells;
         if !same {
-            self.version += 1;
+            self.state.version += 1;
         }
     }
 
@@ -533,9 +572,9 @@ impl TileCache {
     /// the cache holds, each placed as it was and unchanged.
     fn matches(&self, world: &World, registry: Option<&TilemapRegistry>) -> bool {
         let Some(registry) = registry else {
-            return self.maps.is_empty();
+            return self.state.maps.is_empty();
         };
-        let mut cached = self.maps.iter();
+        let mut cached = self.state.maps.iter();
         for (entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
             if registry.get(&instance.id).is_none() {
                 continue;

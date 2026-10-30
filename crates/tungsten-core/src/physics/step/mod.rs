@@ -510,7 +510,7 @@ impl PhysicsBuffers {
     /// layers, and their cells into `cells`; with the cache version they
     /// are of.
     pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>, cells: &mut Vec<TileHit>) -> u64 {
-        cells.extend_from_slice(&self.tiles.cells);
+        cells.extend_from_slice(self.tiles.cells());
         out.extend(
             self.tiles
                 .proxies
@@ -528,12 +528,12 @@ impl PhysicsBuffers {
                     mask: layers.mask,
                 }),
         );
-        self.tiles.version
+        self.tiles.version()
     }
 
     /// The version of the tile cache the last step used.
     pub(super) fn tiles_version(&self) -> u64 {
-        self.tiles.version
+        self.tiles.version()
     }
 
     /// The tile cache the last step used, whose grids region queries and
@@ -1091,7 +1091,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut kept = std::mem::take(&mut buffers.sensor_tiles);
     buffers.sensor_passes += 1;
     let pass = buffers.sensor_passes;
-    let (replaced, written) = (&buffers.tiles.replaced, &buffers.tiles.written_ids);
+    let (replaced, written) = (buffers.tiles.replaced(), buffers.tiles.written_ids());
     kept.resize_with(buffers.sensors.len(), SensorTiles::default);
     let mut fresh = vec![false; buffers.sensors.len()];
     body_pairs.clear();

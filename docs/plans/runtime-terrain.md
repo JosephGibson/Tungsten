@@ -299,6 +299,7 @@ Round 2: the same reviewer at xhigh, 2026-10-30, reading the same tree with roun
 | 9 | 2026-10-30 | not run | Depends on step 6 (the `traced` guard, `terrain_traces`) | — |
 | 10 | 2026-10-30 | not run | Its entry records §2.7 and §2.8 and amends `D-064` for them, so its check (at least the six named) waits on step 6 | — |
 | 11 | 2026-10-30 | not run | The close needs every step, the outline demo and `just perf run terrain` | — |
+| 2, 3, 5 (fix) | 2026-10-30 | passed | `just check` after the stop failed one test, 01's pit pin (allocated_bytes 69,118,160 → 69,125,840), and 02's `physics` and `physics-sparse` pins, which the plan holds still, had moved by the same 7,680 bytes; an allocation-size histogram of the pit's window found one allocation a frame grown from 2,408 to 2,536 bytes, the `PhysicsBuffers` resource the step re-boxes, by the tile cache's new fields (32 bytes at step 2, 24 at step 3, 72 at step 5). With the cache's bookkeeping boxed every pin holds: `just check` 3,732 passed in 30 suites, 0 failed; `git diff --check`, `just api-check` and `just repo-check` exit 0 | `crates/tungsten-core/src/physics/step/gather.rs` |
 
 ## Follow-ups
 

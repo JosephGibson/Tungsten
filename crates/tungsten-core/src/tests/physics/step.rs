@@ -4283,7 +4283,7 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         assert_eq!(buffers.tile_ids, fresh.ids, "{when}: identities");
     }
     assert_eq!(buffers.tiles.ids, fresh.ids, "{when}: cached identities");
-    assert_eq!(buffers.tiles.cells, fresh.cells, "{when}: cells");
+    assert_eq!(buffers.tiles.cells(), fresh.cells, "{when}: cells");
     assert_eq!(
         buffers.layers.of[buffers.bodies..],
         fresh.layers[..],
@@ -4318,9 +4318,9 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
     ));
     let mut buffers = PhysicsBuffers::default();
     assert_tiles_fresh(&world, &mut buffers, "first");
-    assert_eq!(buffers.tiles.scans, 1);
+    assert_eq!(buffers.tiles.scans(), 1);
     assert_tiles_fresh(&world, &mut buffers, "unchanged");
-    assert_eq!(buffers.tiles.scans, 1, "an unchanged frame scans nothing");
+    assert_eq!(buffers.tiles.scans(), 1, "an unchanged frame scans nothing");
 
     fn registry(world: &mut World) -> &mut TilemapRegistry {
         world.get_resource_mut::<TilemapRegistry>().unwrap()
@@ -4445,21 +4445,21 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
         ),
     ];
     let mut scans = 1;
-    let mut version = buffers.tiles.version;
+    let mut version = buffers.tiles.version();
     for (when, scanned, change) in changes {
         let ids_before = buffers.tile_ids.clone();
         let tiles_before = buffers.tiles.len();
         change(&mut world);
         assert_tiles_fresh(&world, &mut buffers, when);
         scans += scanned;
-        assert_eq!(buffers.tiles.scans, scans, "{when}: maps scanned");
+        assert_eq!(buffers.tiles.scans(), scans, "{when}: maps scanned");
         let changed = scanned > 0 || buffers.tiles.len() != tiles_before;
         assert_eq!(
-            buffers.tiles.version > version,
+            buffers.tiles.version() > version,
             changed,
             "{when}: a new version only for a change"
         );
-        version = buffers.tiles.version;
+        version = buffers.tiles.version();
         if when == "decor before collision" {
             assert_ne!(
                 buffers.tile_ids, ids_before,
@@ -4467,7 +4467,7 @@ fn the_tile_cache_matches_a_fresh_scan_after_every_change() {
             );
         }
         assert_tiles_fresh(&world, &mut buffers, when);
-        assert_eq!(buffers.tiles.scans, scans, "{when}: then no more");
+        assert_eq!(buffers.tiles.scans(), scans, "{when}: then no more");
     }
 }
 
@@ -4485,12 +4485,12 @@ fn an_edit_rescans_its_map_alone() {
     }
     let mut buffers = PhysicsBuffers::default();
     assert_tiles_fresh(&world, &mut buffers, "first");
-    assert_eq!(buffers.tiles.scans, 2);
+    assert_eq!(buffers.tiles.scans(), 2);
     let b_before: Vec<[u32; 2]> = buffers.tiles.proxies[18..]
         .iter()
         .map(|proxy| proxy.center.to_array().map(f32::to_bits))
         .collect();
-    let version = buffers.tiles.version;
+    let version = buffers.tiles.version();
     assert!(
         world
             .get_resource_mut::<TilemapRegistry>()
@@ -4498,8 +4498,8 @@ fn an_edit_rescans_its_map_alone() {
             .set_tile("a", 0, 3, 1, EMPTY_TILE)
     );
     assert_tiles_fresh(&world, &mut buffers, "a edited");
-    assert_eq!(buffers.tiles.scans, 3, "map a alone scanned again");
-    assert!(buffers.tiles.version > version);
+    assert_eq!(buffers.tiles.scans(), 3, "map a alone scanned again");
+    assert!(buffers.tiles.version() > version);
     assert_eq!(buffers.tiles.len(), 35);
     let b_after: Vec<[u32; 2]> = buffers.tiles.proxies[17..]
         .iter()
@@ -4507,7 +4507,7 @@ fn an_edit_rescans_its_map_alone() {
         .collect();
     assert_eq!(b_after, b_before, "map b's proxies kept");
     assert_tiles_fresh(&world, &mut buffers, "unchanged");
-    assert_eq!(buffers.tiles.scans, 3);
+    assert_eq!(buffers.tiles.scans(), 3);
 }
 
 #[test]

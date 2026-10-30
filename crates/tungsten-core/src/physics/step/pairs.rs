@@ -73,7 +73,7 @@ impl PairGrid {
     /// Stage `tiles`' proxies at `cell_size`, each box grown by `radius`,
     /// unless the grid holds them so already.
     pub(super) fn stage_tiles(&mut self, tiles: &TileCache, cell_size: f32, radius: f32) {
-        let key = (tiles.version, cell_size.to_bits(), radius.to_bits());
+        let key = (tiles.version(), cell_size.to_bits(), radius.to_bits());
         if self.staged == Some(key) {
             return;
         }
