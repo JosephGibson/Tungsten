@@ -96,8 +96,9 @@
 //! forgets every pair.
 //!
 //! Layers and masks: the gather keeps each proxy's layers and mask in an
-//! array beside the proxies, as `pair_flags` is (D-080), and notes whether
-//! any proxy or sensor is off the defaults (layer 0, every layer met). Only
+//! array beside the proxies, as `pair_flags` is (D-080), a tile's those of
+//! its collision layer, and notes whether any proxy or sensor is off the
+//! defaults (layer 0, every layer met). Only
 //! then do the pair build and repair, the safety net and the arrival pass
 //! test that the two sides meet, so a world without layers runs the same
 //! loops. A pair that does not meet is never admitted, so it makes no
@@ -217,8 +218,9 @@ struct Layers {
 }
 
 impl Layers {
-    /// Layer 0, meeting every layer: every constructor's body, a tile and a
-    /// collider without a `RigidBody`.
+    /// Layer 0, meeting every layer: every constructor's body, a collider
+    /// without a `RigidBody`, and a tile of a collision layer that names no
+    /// physics layers.
     const DEFAULT: Self = Self {
         layers: RigidBody::DEFAULT_LAYERS,
         mask: RigidBody::ALL_LAYERS,
@@ -498,22 +500,24 @@ impl PhysicsBuffers {
     }
 
     /// The tile proxies as index entries, in tile order, each identity
-    /// naming its map, layer and cell; with the cache version they are of.
+    /// naming its map, layer and cell and each in its collision layer's
+    /// layers; with the cache version they are of.
     pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>) -> u64 {
         out.extend(
             self.tiles
                 .proxies
                 .iter()
                 .zip(&self.tiles.ids)
-                .map(|(proxy, &identity)| IndexEntry {
+                .zip(&self.tiles.layers)
+                .map(|((proxy, &identity), layers)| IndexEntry {
                     entity: None,
                     center: proxy.center,
                     shape: proxy.shape,
                     face_mask: proxy.face_mask,
                     sensor: false,
                     identity,
-                    layers: Layers::DEFAULT.layers,
-                    mask: Layers::DEFAULT.mask,
+                    layers: layers.layers,
+                    mask: layers.mask,
                 }),
         );
         self.tiles.version

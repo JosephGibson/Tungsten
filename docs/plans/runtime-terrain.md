@@ -289,5 +289,6 @@ Round 2: the same reviewer at xhigh, 2026-10-30, reading the same tree with roun
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
 | 1 | 2026-10-30 | passed | `assets::tilemap::` 27 passed, the four named tests among them; `manifests::` 5 and `asset_loader::` 54 passed; `cargo fmt --check`, `just lint`, `just api` (+153 lines, `api/tungsten-core.txt`), `just api-check`, `just docs-ratchet` (core 875, no rise) and `just repo-check` exit 0 | `crates/tungsten-core/src/assets/tilemap.rs` |
+| 2 | 2026-10-30 | passed | core `physics::` 174 passed, `a_tile_layer_meets_bodies_by_its_layers_and_mask` and `filters_see_tiles_by_their_collision_layers` among them; kit `overlap::projectile::` 13 passed with `shots_meet_tiles_by_their_layers`; `cargo test -p tungsten-kit` 786 and `-p tungsten` 770 passed; fmt, lint, api (+4 core lines, the components snapshot's `bounce_layers` text), api-check, docs-ratchet (no rise) and repo-check exit 0; `physics/mod.rs` needed no change | `crates/tungsten-core/src/physics/step/gather.rs`, `crates/tungsten-kit/src/overlap/projectile.rs` |
 
 ## Follow-ups

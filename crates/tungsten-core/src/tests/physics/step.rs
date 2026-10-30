@@ -3712,6 +3712,104 @@ fn layers_a_mask_without_layer_0_falls_through_tiles_and_a_static_box() {
     assert!((y - speed * 0.5).abs() < 1.0e-2, "the body was held at {y}");
 }
 
+/// A 6 × 10 map of 16 px tiles: an upper floor on row 2 in collision layer
+/// `solid1`, in physics layer 1 meeting layer 1 alone, and a lower floor on
+/// row 8 in `solid0`, at the defaults.
+fn two_floor_map(world: &mut World) {
+    let mut lower = vec![-1; 60];
+    lower[48..54].fill(0);
+    let mut upper = vec![-1; 60];
+    upper[12..18].fill(0);
+    let mut map = map_data(6, vec![lower, upper]);
+    map.set_layer_physics(
+        1,
+        crate::assets::LayerPhysics {
+            layers: 1 << 1,
+            mask: 1 << 1,
+        },
+    );
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("floors".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("floors", Vec2::ZERO));
+}
+
+#[test]
+fn a_tile_layer_meets_bodies_by_its_layers_and_mask() {
+    // Each 8 px box falls at 120 px/s for 2 s from y 8: it stops on the upper
+    // floor's top (y 32) when the two meet, else on the lower's (y 128).
+    let cases = [
+        ("the default body", RigidBody::dynamic(), 128.0),
+        (
+            "a body in layer 1",
+            RigidBody::dynamic().with_layers(1 << 1),
+            32.0,
+        ),
+        (
+            "a layer-1 body meeting layer 1",
+            layer_one(RigidBody::dynamic()),
+            32.0,
+        ),
+        (
+            "a body in layer 2",
+            RigidBody::dynamic().with_layers(1 << 2),
+            128.0,
+        ),
+    ];
+    for (name, body, floor) in cases {
+        let mut world = seed_world();
+        two_floor_map(&mut world);
+        let faller = spawn_body(
+            &mut world,
+            body,
+            Collider::aabb(Vec2::splat(4.0)),
+            Vec2::new(40.0, 8.0),
+            Vec2::new(0.0, 120.0),
+        );
+        for _ in 0..120 {
+            physics_step(&mut world);
+        }
+        let bottom = world.get::<Position>(faller).unwrap().0.y + 4.0;
+        assert!((bottom - floor).abs() < 0.5, "{name} ended at {bottom}");
+    }
+    // A layer-1 body whose mask lacks layer 0 passes the lower floor too.
+    let mut world = seed_world();
+    two_floor_map(&mut world);
+    let ghost = spawn_body(
+        &mut world,
+        layer_one(RigidBody::dynamic()),
+        Collider::aabb(Vec2::splat(4.0)),
+        Vec2::new(40.0, 56.0),
+        Vec2::new(0.0, 120.0),
+    );
+    for _ in 0..120 {
+        physics_step(&mut world);
+    }
+    let y = world.get::<Position>(ghost).unwrap().0.y;
+    assert!((y - 296.0).abs() < 1.0e-2, "the body was held at {y}");
+    // A sensor over both floors reports the tiles in a layer its mask
+    // holds: both by default, the upper floor's for layer 1.
+    for (mask, tiles) in [(RigidBody::ALL_LAYERS, 2), (1 << 1, 1), (1 << 2, 0)] {
+        let mut world = seed_world();
+        two_floor_map(&mut world);
+        let sensor = spawn_body(
+            &mut world,
+            RigidBody::sensor().with_mask(mask),
+            Collider::aabb(Vec2::new(4.0, 60.0)),
+            Vec2::new(40.0, 80.0),
+            Vec2::ZERO,
+        );
+        physics_step(&mut world);
+        let entered = drain_sensor_events(&mut world);
+        assert_eq!(
+            entered,
+            vec![SensorEntered::new(sensor, None); tiles],
+            "mask {mask:#x}"
+        );
+    }
+}
+
 /// `pushed_body_arrives_at_a_static_wall_and_stops_its_pusher`'s rig, with
 /// `wall` for the wall (none without it) and `ball` for both balls: the
 /// arrival pass's listed and clamp counts, and the balls' position bits.
@@ -4160,8 +4258,15 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         &mut buffers.tiles,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
-    let (mut fresh, mut ids, mut maps) = (Vec::new(), Vec::new(), Vec::new());
-    super::gather::gather_tilemap_proxies(world, &mut fresh, &mut ids, &mut maps);
+    let (mut fresh, mut fresh_layers, mut ids, mut maps) =
+        (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    super::gather::gather_tilemap_proxies(
+        world,
+        &mut fresh,
+        &mut fresh_layers,
+        &mut ids,
+        &mut maps,
+    );
     let tail = &buffers.proxies[buffers.bodies..];
     assert_eq!(tail.len(), fresh.len(), "{when}: tile count");
     for (at, (kept, scanned)) in tail.iter().zip(&fresh).enumerate() {
@@ -4181,10 +4286,9 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     } else {
         assert_eq!(buffers.tile_ids, ids, "{when}: identities");
     }
-    assert!(
-        buffers.layers.of[buffers.bodies..]
-            .iter()
-            .all(|layers| *layers == Layers::DEFAULT),
+    assert_eq!(
+        buffers.layers.of[buffers.bodies..],
+        fresh_layers[..],
         "{when}: tile layers"
     );
 }

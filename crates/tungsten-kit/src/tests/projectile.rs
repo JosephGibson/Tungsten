@@ -574,3 +574,93 @@ fn a_pass_and_a_pierce_are_independent_and_a_hit_before_the_wall_lands_first() {
         .collect();
     assert_eq!(struck, [target]);
 }
+
+/// Columns of 16 px tiles over rows 0 to 11, each (column, the physics
+/// layers of its own collision layer).
+fn tile_columns(world: &mut World, columns: &[(u32, u32)]) {
+    use tungsten_core::{LayerKind, LayerPhysics, TilemapData, TilemapInstance, TilemapRegistry};
+
+    let mut map = TilemapData::new(16, 16, 16, 12);
+    let solid = map.add_tile("solid");
+    for &(col, layers) in columns {
+        let layer = map.add_layer(format!("column {col}"), LayerKind::Collision);
+        for row in 0..12 {
+            map.set_tile(layer, col, row, solid);
+        }
+        map.set_layer_physics(
+            layer,
+            LayerPhysics {
+                layers,
+                mask: RigidBody::ALL_LAYERS,
+            },
+        );
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("columns".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("columns", Vec2::ZERO));
+}
+
+#[test]
+fn shots_meet_tiles_by_their_layers() {
+    let left = Vec2::new(-1.0, 0.0);
+    for dt in DTS {
+        // A column in layer 3, passed under `pass_layers` 3.
+        let (mut world, mut schedule) = wall_rig();
+        tile_columns(&mut world, &[(10, 1 << 3)]);
+        let iron = slab(&mut world, 260.0, 1 << 2);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_pass_layers(1 << 3),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            ("passed", 158.0, Some(WallContact::new(None, left, 1 << 3))),
+            (
+                "expired",
+                253.0,
+                Some(WallContact::new(Some(iron), left, 1 << 2)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "passed, dt {dt}: {got:?}");
+        // A column in layer 2, bounced under `bounce_layers` 2.
+        let (mut world, mut schedule) = wall_rig();
+        tile_columns(&mut world, &[(10, 1 << 2)]);
+        let stone = slab(&mut world, 40.0, 1);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_bounces(1).with_bounce_layers(1 << 2),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            ("bounced", 158.0, Some(WallContact::new(None, left, 1 << 2))),
+            (
+                "expired",
+                47.0,
+                Some(WallContact::new(Some(stone), Vec2::new(1.0, 0.0), 1)),
+            ),
+        ];
+        assert!(same_meetings(&got, &want), "bounced, dt {dt}: {got:?}");
+        // A column in layers 0 and 1 is passed under `pass_layers` 0, and the
+        // column in layer 2 behind it stops the shot.
+        let (mut world, mut schedule) = wall_rig();
+        tile_columns(&mut world, &[(10, 0b11), (14, 1 << 2)]);
+        let bolt = flier(
+            &mut world,
+            100.0,
+            1200.0,
+            Projectile::new().with_pass_layers(1),
+        );
+        let got = meetings(&mut world, &mut schedule, bolt, dt);
+        let want = [
+            ("passed", 158.0, Some(WallContact::new(None, left, 0b11))),
+            ("expired", 222.0, Some(WallContact::new(None, left, 1 << 2))),
+        ];
+        assert!(same_meetings(&got, &want), "two layers, dt {dt}: {got:?}");
+    }
+}

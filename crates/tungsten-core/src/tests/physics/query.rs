@@ -850,3 +850,98 @@ fn layers_overlap_and_nearest_skip_what_the_mask_lacks() {
         Some(Some(layered))
     );
 }
+
+#[test]
+fn filters_see_tiles_by_their_collision_layers() {
+    // One row of 16 px cells in three collision layers: `low`'s tile at
+    // column 2 in layer 1, `both`'s at column 5 in layers 0 and 1, `plain`'s
+    // at column 7 at the defaults.
+    let mut world = world();
+    let mut map = TilemapData::new(16, 16, 8, 1);
+    let solid = map.add_tile("solid");
+    for (name, col, layers) in [("low", 2, 1 << 1), ("both", 5, 0b11), ("plain", 7, 1)] {
+        let layer = map.add_layer(name, LayerKind::Collision);
+        map.set_tile(layer, col, 0, solid);
+        if layers != 1 {
+            map.set_layer_physics(
+                layer,
+                crate::assets::LayerPhysics {
+                    layers,
+                    mask: RigidBody::ALL_LAYERS,
+                },
+            );
+        }
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("row".into(), map);
+    let instance = world.spawn();
+    world.insert(instance, TilemapInstance::new("row", Vec2::ZERO));
+    physics_step(&mut world);
+
+    let ray = |from: f32, filter: &SpatialFilter| {
+        cast_ray(&world, Vec2::new(from, 8.0), Vec2::X, 500.0, filter)
+            .map(|hit| (hit.point.x, hit.layers, hit.entity))
+    };
+    let low = Some((32.0, 1 << 1, None));
+    let both = Some((80.0, 0b11, None));
+    let plain = Some((112.0, 1, None));
+    assert_eq!(ray(-10.0, &all()), low);
+    assert_eq!(ray(-10.0, &all().with_mask(1)), both, "layer 0's");
+    assert_eq!(ray(-10.0, &all().with_mask(1 << 1)), low);
+    assert_eq!(ray(50.0, &all().with_mask(1 << 1)), both, "layer 1's");
+    assert_eq!(ray(-10.0, &all().with_mask(1 << 2)), None);
+    assert_eq!(
+        ray(-10.0, &all().without_layers(1 << 1)),
+        plain,
+        "a tile in layers 0 and 1 is skipped without layer 1"
+    );
+    assert_eq!(ray(-10.0, &all().without_layers(1)), low);
+    assert_eq!(ray(50.0, &all().without_layers(1)), None);
+    assert_eq!(
+        ray(-10.0, &all().with_mask(1 << 1).without_layers(1)),
+        low,
+        "the mask and the skipped layers both hold"
+    );
+    assert_eq!(ray(50.0, &all().with_mask(1 << 1).without_layers(1)), None);
+    // A later call replaces the earlier skipped layers.
+    assert_eq!(
+        ray(-10.0, &all().without_layers(1 << 1).without_layers(0)),
+        low
+    );
+    let swept = cast_shape(
+        &world,
+        Shape::Circle { radius: 3.0 },
+        Vec2::new(-10.0, 8.0),
+        Vec2::X,
+        500.0,
+        &all().without_layers(1 << 1),
+    )
+    .unwrap();
+    assert_eq!((swept.point.x, swept.layers), (112.0, 1));
+    let mut out = Vec::new();
+    let mut overlaps = |filter: &SpatialFilter| {
+        overlap(
+            &world,
+            Shape::Aabb {
+                half_extents: Vec2::new(64.0, 4.0),
+            },
+            Vec2::new(64.0, 8.0),
+            filter,
+            &mut out,
+        );
+        out.len()
+    };
+    assert_eq!(overlaps(&all()), 3);
+    assert_eq!(overlaps(&all().with_mask(1)), 2);
+    assert_eq!(overlaps(&all().without_layers(1)), 1);
+    assert_eq!(overlaps(&all().without_layers(1 << 1)), 1);
+    let near = nearest(
+        &world,
+        Vec2::new(64.0, 8.0),
+        500.0,
+        &all().without_layers(1),
+    )
+    .unwrap();
+    assert_eq!((near.point.x, near.layers), (48.0, 1 << 1));
+}

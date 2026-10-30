@@ -117,8 +117,11 @@ pub enum BodyKind {
 /// event or wake. A sensor reports a body or tile in a layer its own mask
 /// holds, whatever the other's mask, and a
 /// [`SpatialFilter`](crate::physics::SpatialFilter) sees what its mask holds.
-/// Tiles, and colliders without a `RigidBody`, are in layer 0 and meet every
-/// layer, so layer 0 is the world: a body whose mask lacks it passes them.
+/// Colliders without a `RigidBody` are in layer 0 and meet every layer, and
+/// so are tiles unless their collision layer names its own
+/// ([`LayerPhysics`](crate::LayerPhysics)), so layer 0 is the world: a body
+/// whose mask lacks it passes them. A tile meets bodies as a static body in
+/// its layer's layers does.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RigidBody {
     pub kind: BodyKind,
@@ -134,8 +137,8 @@ pub struct RigidBody {
 }
 
 impl RigidBody {
-    /// Layer 0 alone, the world's layer: every constructor's `layers`, and
-    /// the layers of tiles and of colliders without a `RigidBody`.
+    /// Layer 0 alone, the world's layer: every constructor's `layers`, the
+    /// layers of colliders without a `RigidBody`, and tiles' by default.
     pub const DEFAULT_LAYERS: u32 = 1;
     /// Every layer: every constructor's `mask`.
     pub const ALL_LAYERS: u32 = u32::MAX;

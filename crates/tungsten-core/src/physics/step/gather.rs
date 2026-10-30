@@ -2,10 +2,13 @@
 //! deterministic `World` order (D-066), their warm-start keys and their
 //! layers; sensors are gathered beside the proxies, never as one. Tile
 //! proxies come from a cache of the collision layers that is checked every
-//! frame and rescanned only when a map changed.
+//! frame and rescanned only when a map changed; each is in its collision
+//! layer's physics layers.
 
 use super::{Layers, Proxy, ProxyLayers, SensorBody};
-use crate::assets::{LayerKind, TileIndex, TilemapData, TilemapInstance, TilemapRegistry};
+use crate::assets::{
+    LayerKind, LayerPhysics, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
+};
 use crate::ecs::{Entity, World};
 use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
@@ -117,23 +120,24 @@ pub(super) fn gather_proxies(
         });
         layers.of.push(body_layers);
     }
-    layers.layered = layered;
 
     tiles.refresh(world);
     proxies.extend_from_slice(&tiles.proxies);
-    layers.of.resize(proxies.len(), Layers::DEFAULT);
+    layers.of.extend_from_slice(&tiles.layers);
+    layers.layered = layered || tiles.layered;
     if !sensors.is_empty() {
         tile_ids.extend_from_slice(&tiles.ids);
     }
     kinematics
 }
 
-/// The static tile proxies of every collision layer, in layer 0 and meeting
-/// every layer, as the last scan built them in gather order, with each
+/// The static tile proxies of every collision layer, each in its layer's
+/// physics layers, as the last scan built them in gather order, with each
 /// one's sensor identity and the maps they came from. The gather checks the
-/// maps every frame, the tiles of each collision layer compared whole, and
-/// scans again only when one differs, so the proxies, their order, keys,
-/// face masks and identities are what a scan of this frame would give.
+/// maps every frame, the tiles and physics of each collision layer compared
+/// whole, and scans again only when one differs, so the proxies, their
+/// order, keys, face masks, layers and identities are what a scan of this
+/// frame would give.
 #[derive(Debug, Default)]
 pub(super) struct TileCache {
     /// Bumped by every scan; 0 before the first.
@@ -141,6 +145,10 @@ pub(super) struct TileCache {
     maps: Vec<CachedMap>,
     /// The tile proxies, in gather order.
     pub(super) proxies: Vec<Proxy>,
+    /// Each tile proxy's layers and mask, in the same order.
+    pub(super) layers: Vec<Layers>,
+    /// Some tile proxy is off [`Layers::DEFAULT`].
+    layered: bool,
     /// Each tile proxy's identity in sensor overlap keys, in the same order.
     pub(super) ids: Vec<u64>,
     #[cfg(test)]
@@ -154,8 +162,8 @@ pub(super) struct CachedMap {
     origin: [u32; 2],
     tile: [u32; 2],
     size: [u32; 2],
-    /// Each collision layer's index and tiles.
-    layers: Vec<(usize, Vec<TileIndex>)>,
+    /// Each collision layer's index, physics and tiles.
+    layers: Vec<(usize, LayerPhysics, Vec<TileIndex>)>,
 }
 
 impl CachedMap {
@@ -170,10 +178,10 @@ impl CachedMap {
             && self.origin == [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
             && self.tile == [data.tile_width, data.tile_height]
             && self.size == [data.width, data.height]
-            && self.layers.iter().all(|(index, tiles)| {
-                collision
-                    .next()
-                    .is_some_and(|(at, layer)| at == *index && layer.tiles == *tiles)
+            && self.layers.iter().all(|(index, physics, tiles)| {
+                collision.next().is_some_and(|(at, layer)| {
+                    at == *index && data.layer_physics(at) == *physics && layer.tiles == *tiles
+                })
             })
             && collision.next().is_none()
     }
@@ -215,9 +223,17 @@ impl TileCache {
     /// Scans every collision layer of every map again.
     fn scan(&mut self, world: &World) {
         self.proxies.clear();
+        self.layers.clear();
         self.ids.clear();
         self.maps.clear();
-        gather_tilemap_proxies(world, &mut self.proxies, &mut self.ids, &mut self.maps);
+        gather_tilemap_proxies(
+            world,
+            &mut self.proxies,
+            &mut self.layers,
+            &mut self.ids,
+            &mut self.maps,
+        );
+        self.layered = self.layers.iter().any(|&layers| layers != Layers::DEFAULT);
         self.version += 1;
         #[cfg(test)]
         {
@@ -226,11 +242,12 @@ impl TileCache {
     }
 }
 
-/// Scan the static tile proxies of collision layers, their identities and
-/// the maps they came from.
+/// Scan the static tile proxies of collision layers, their layers, their
+/// identities and the maps they came from.
 pub(super) fn gather_tilemap_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
+    tile_layers: &mut Vec<Layers>,
     tile_ids: &mut Vec<u64>,
     maps: &mut Vec<CachedMap>,
 ) {
@@ -252,7 +269,7 @@ pub(super) fn gather_tilemap_proxies(
                 .iter()
                 .enumerate()
                 .filter(|(_, layer)| layer.kind == LayerKind::Collision)
-                .map(|(index, layer)| (index, layer.tiles.clone()))
+                .map(|(index, layer)| (index, data.layer_physics(index), layer.tiles.clone()))
                 .collect(),
         });
         let tw = data.tile_width as f32;
@@ -263,6 +280,11 @@ pub(super) fn gather_tilemap_proxies(
             if layer.kind != LayerKind::Collision {
                 continue;
             }
+            let physics = data.layer_physics(layer_index);
+            let layer_layers = Layers {
+                layers: physics.layers,
+                mask: physics.mask,
+            };
             let w = data.width as i32;
             let h = data.height as i32;
             let is_solid = |c: i32, r: i32| -> bool {
@@ -316,6 +338,7 @@ pub(super) fn gather_tilemap_proxies(
                         kinematic: false,
                         kept_awake: false,
                     });
+                    tile_layers.push(layer_layers);
                     tile_ids.push(tile_identity(map, layer_index, col, row));
                 }
             }

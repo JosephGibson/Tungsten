@@ -218,7 +218,7 @@ component projectile: Ends at its hitbox's first hit, its first wall or its rang
   field pierce: u32 = 0 — targets it passes before the next ends it
   field range: f32 (> 0) = null — world pixels it travels before it ends; none when left out
   field bounces: u32 = 0 — walls it turns at before the next ends it
-  field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, tiles in layer 0; a wall outside them ends it; every layer when left out
+  field bounce_layers: list of u32 (<= 31) = null — physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out
   field pass_layers: list of u32 (<= 31) = [] — physics layers whose walls it passes as if open, before the bounce layers
   events: ProjectileExpired, ProjectileBounced, ProjectilePassed, Struck
   genres: top_down, platformer, shmup

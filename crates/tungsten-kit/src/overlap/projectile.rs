@@ -4,7 +4,8 @@
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::{
-    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, Velocity, cast_shape, overlap,
+    BodyKind, Collider, Position, RigidBody, Shape, SpatialFilter, SpatialHit, Velocity,
+    cast_shape, overlap,
 };
 use tungsten_core::{
     Entity, EventQueue, Inspectable, Plugin, Schedule, SpawnContext, Transform, World, system,
@@ -53,8 +54,9 @@ const PROJECTILE: &str = "projectile";
 /// - `pass_layers`: the physics layers whose walls it passes as if they
 ///   were open. None by default.
 ///
-/// Walls are tiles of collision layers, in physics layer 0, and static
-/// colliders, in their [`RigidBody::layers`] (layer 0 without a body);
+/// Walls are tiles of collision layers, in their layer's physics layers
+/// (layer 0 by default, [`LayerPhysics`](tungsten_core::LayerPhysics)), and
+/// static colliders, in their [`RigidBody::layers`] (layer 0 without a body);
 /// kinematic and dynamic bodies are never walls, their hurtboxes are what
 /// it hits. A wall is in the masks when one of its layers is, and passing
 /// comes first. In a step the sweep meets walls in order: each one passed
@@ -250,8 +252,8 @@ impl Projectile {
     }
 
     /// The projectile, turning only at walls in `layers` (one bit per
-    /// physics layer, tiles in layer 0) while it has bounces left, and
-    /// ending at others. Every layer by default.
+    /// physics layer; a tile is in its collision layer's) while it has
+    /// bounces left, and ending at others. Every layer by default.
     #[must_use]
     pub fn with_bounce_layers(mut self, layers: u32) -> Self {
         self.bounce_layers = layers;
@@ -259,7 +261,8 @@ impl Projectile {
     }
 
     /// The projectile, passing walls in `layers` (one bit per physics
-    /// layer, tiles in layer 0) as if they were open. None by default.
+    /// layer; a tile is in its collision layer's) as if they were open. None
+    /// by default.
     #[must_use]
     pub fn with_pass_layers(mut self, layers: u32) -> Self {
         self.pass_layers = layers;
@@ -317,7 +320,8 @@ impl Projectile {
 
 /// The wall a projectile met: its entity (`None` for a tile), its outward
 /// normal where the projectile met it and its physics layers, one bit per
-/// layer (a tile's is layer 0). Build one with [`WallContact::new`].
+/// layer (a tile's are its collision layer's). Build one with
+/// [`WallContact::new`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct WallContact {
@@ -569,7 +573,7 @@ impl Plugin for ProjectilePlugin {
                         min: None,
                         max: Some(31),
                     })),
-                    "physics layers whose walls it turns at while it has bounces left, tiles in layer 0; a wall outside them ends it; every layer when left out",
+                    "physics layers whose walls it turns at while it has bounces left, a tile in its collision layer's; a wall outside them ends it; every layer when left out",
                 )
                 .default("null"),
             )
@@ -622,9 +626,6 @@ enum Stop {
     /// Its range.
     Range,
 }
-
-/// The layers of a tile: layer 0, the world's.
-const TILE_LAYERS: u32 = RigidBody::DEFAULT_LAYERS;
 
 /// [`PROJECTILE_TICK`]'s state between steps: the step's projectiles, a
 /// query's candidates, a projectile's hits, the walls an overlap lists and
@@ -720,12 +721,12 @@ impl ProjectileRunner {
     }
 
     /// The first wall the sweep meets outside `pass`, the projectile's pass
-    /// layers: a tile by a cast, or a static collider by an overlap of the
-    /// sweep's bounds and the swept test; the earlier of the two, with its
-    /// contact. The walls in `pass` it meets at or before that one, or over
-    /// the whole sweep, go to `passed` in sweep order; one it starts inside
-    /// is behind it, and of tiles only where it enters them from open
-    /// space.
+    /// layers: a tile in none of them by a cast, or a static collider by an
+    /// overlap of the sweep's bounds and the swept test; the earlier of the
+    /// two, with its contact. The walls in `pass` it meets at or before that
+    /// one, or over the whole sweep, go to `passed` in sweep order; one it
+    /// starts inside is behind it, and of tiles only where it enters them
+    /// from open space, a cast over the tiles in a pass layer.
     fn wall(
         &mut self,
         world: &World,
@@ -736,23 +737,23 @@ impl ProjectileRunner {
     ) -> Option<(f32, WallContact)> {
         let motion = sweep.end - sweep.start;
         let tiles = SpatialFilter::new().with_bodies(false);
-        let mut first = None;
-        let tiles_pass = pass & TILE_LAYERS != 0;
-        if tiles_pass {
-            overlap(world, sweep.shape, sweep.start, &tiles, &mut self.walls);
-        }
-        if !tiles_pass || self.walls.is_empty() {
-            let met =
-                cast_shape(world, sweep.shape, sweep.start, motion, length, &tiles).map(|hit| {
-                    (
-                        (hit.distance / length).clamp(0.0, 1.0),
-                        WallContact::new(None, hit.normal, TILE_LAYERS),
-                    )
-                });
-            if tiles_pass {
-                self.passed.extend(met);
-            } else {
-                first = met;
+        let tile_contact = |hit: SpatialHit| {
+            (
+                (hit.distance / length).clamp(0.0, 1.0),
+                WallContact::new(None, hit.normal, hit.layers),
+            )
+        };
+        let stops = tiles.without_layers(pass);
+        let mut first =
+            cast_shape(world, sweep.shape, sweep.start, motion, length, &stops).map(tile_contact);
+        if pass != 0 {
+            let passable = tiles.with_mask(pass);
+            overlap(world, sweep.shape, sweep.start, &passable, &mut self.walls);
+            if self.walls.is_empty() {
+                self.passed.extend(
+                    cast_shape(world, sweep.shape, sweep.start, motion, length, &passable)
+                        .map(tile_contact),
+                );
             }
         }
         let (min, max) = sweep.bounds();

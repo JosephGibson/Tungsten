@@ -7491,6 +7491,7 @@ pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
 impl core::cmp::Eq for tungsten_core::SpatialFilter
@@ -7534,6 +7535,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::broadphase
 #[non_exhaustive] pub struct tungsten_core::physics::SpatialHit
 pub tungsten_core::physics::SpatialHit::distance: f32
 pub tungsten_core::physics::SpatialHit::entity: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::SpatialHit::layers: u32
 pub tungsten_core::physics::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::SpatialHit::point: glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::SpatialHit
@@ -17717,6 +17719,7 @@ pub fn tungsten_core::SpatialFilter::with_bodies(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_mask(self, u32) -> Self
 pub fn tungsten_core::SpatialFilter::with_sensors(self, bool) -> Self
 pub fn tungsten_core::SpatialFilter::with_tiles(self, bool) -> Self
+pub fn tungsten_core::SpatialFilter::without_layers(self, u32) -> Self
 impl core::clone::Clone for tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::clone(&self) -> tungsten_core::SpatialFilter
 impl core::cmp::Eq for tungsten_core::SpatialFilter
@@ -17760,6 +17763,7 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::broadphase
 #[non_exhaustive] pub struct tungsten_core::SpatialHit
 pub tungsten_core::SpatialHit::distance: f32
 pub tungsten_core::SpatialHit::entity: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::SpatialHit::layers: u32
 pub tungsten_core::SpatialHit::normal: glam::f32::vec2::Vec2
 pub tungsten_core::SpatialHit::point: glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::SpatialHit

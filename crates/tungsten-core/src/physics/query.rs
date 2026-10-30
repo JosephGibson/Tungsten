@@ -9,8 +9,12 @@
 //! one despawned since is skipped; before the first step nothing is found.
 //! Ties go to the lower index (proxies in gather order, then sensors), so
 //! every answer is deterministic. A filter sees the layers its mask holds
-//! ([`SpatialFilter::with_mask`]), every layer by default; tiles are in
-//! layer 0.
+//! ([`SpatialFilter::with_mask`]), every layer by default, and can skip
+//! layers ([`SpatialFilter::without_layers`]); a tile is in its collision
+//! layer's physics layers ([`TilemapData::layer_physics`]), layer 0 by
+//! default.
+//!
+//! [`TilemapData::layer_physics`]: crate::TilemapData::layer_physics
 //!
 //! Tiles keep `D-064`'s seams: a cast never hits a face the tile's neighbour
 //! covers, and a corner beside such a face is square, so a cast along a tile
@@ -65,6 +69,8 @@ pub struct SpatialFilter {
     sensors: bool,
     tiles: bool,
     mask: u32,
+    /// The layers whose bodies, sensors and tiles it skips.
+    without: u32,
 }
 
 impl Default for SpatialFilter {
@@ -75,6 +81,7 @@ impl Default for SpatialFilter {
             sensors: false,
             tiles: true,
             mask: RigidBody::ALL_LAYERS,
+            without: 0,
         }
     }
 }
@@ -118,18 +125,30 @@ impl SpatialFilter {
     }
 
     /// The filter, seeing only the bodies, sensors and tiles in a layer
-    /// `mask` holds, one bit per layer ([`RigidBody::layers`]); tiles are in
-    /// layer 0. It replaces an earlier mask; the default holds every layer.
-    /// Sensors still need [`with_sensors`](Self::with_sensors).
+    /// `mask` holds, one bit per layer ([`RigidBody::layers`]); a tile is in
+    /// its collision layer's layers. It replaces an earlier mask; the
+    /// default holds every layer. Sensors still need
+    /// [`with_sensors`](Self::with_sensors).
     #[must_use]
     pub fn with_mask(mut self, mask: u32) -> Self {
         self.mask = mask;
         self
     }
 
+    /// The filter, skipping the bodies, sensors and tiles in any layer
+    /// `layers` holds, one bit per layer, beside
+    /// [`with_mask`](Self::with_mask)'s rule: a tile in layers 0 and 1 is
+    /// skipped without layer 1 and seen with a mask of layer 0. It replaces
+    /// earlier skipped layers; the default skips none.
+    #[must_use]
+    pub fn without_layers(mut self, layers: u32) -> Self {
+        self.without = layers;
+        self
+    }
+
     /// The entry passes the filter and its entity is still alive.
     fn admits(&self, entry: &IndexEntry, world: &World) -> bool {
-        if entry.layers & self.mask == 0 {
+        if entry.layers & self.mask == 0 || entry.layers & self.without != 0 {
             return false;
         }
         match entry.entity {
@@ -162,6 +181,9 @@ pub struct SpatialHit {
     /// How far the ray or the cast shape's centre travelled; for
     /// [`nearest`], the distance to the surface.
     pub distance: f32,
+    /// The layers of the body or tile met, one bit per layer: a body's
+    /// [`RigidBody::layers`], a tile's those of its collision layer.
+    pub layers: u32,
 }
 
 /// One shape in the index, at the last step's final position.
@@ -177,7 +199,7 @@ pub(super) struct IndexEntry {
     /// The body's key or the tile's identity (the low half of a sensor
     /// pair's key); a sensor's key (the high half).
     pub(super) identity: u64,
-    /// The layers it is in; a tile's is layer 0.
+    /// The layers it is in; a tile's are its collision layer's.
     pub(super) layers: u32,
     /// The layers it meets; a sensor reports what this holds.
     pub(super) mask: u32,
@@ -465,6 +487,7 @@ pub fn cast_ray(
                 point: origin + dir * distance,
                 normal,
                 distance,
+                layers: entry.layers,
             };
             keep_closer(&mut best, hit, id, max_distance);
         }
@@ -659,6 +682,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
             point: origin - contact.normal * reach,
             normal: contact.normal,
             distance: 0.0,
+            layers: entry.layers,
         });
     }
     let (distance, normal, point) = match (shape, entry.shape) {
@@ -700,6 +724,7 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
         point,
         normal,
         distance,
+        layers: entry.layers,
     })
 }
 
@@ -807,6 +832,7 @@ fn surface_hit(point: Vec2, entry: &IndexEntry) -> SpatialHit {
         point: surface,
         normal,
         distance,
+        layers: entry.layers,
     }
 }
 
