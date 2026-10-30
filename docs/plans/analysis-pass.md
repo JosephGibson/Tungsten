@@ -1,6 +1,6 @@
-# Analysis pass and seam register (analysis-pass) — draft
+# Analysis pass and seam register (analysis-pass)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** Redo 7.5 ([roadmap redo](roadmap-redo.md) §7.1): find every place example 01 and the template compensate for the engine, kit or template, with evidence, ranked by the code a generic fix would delete and how often the pattern recurs; write it as a verified seam register, `docs/plans/seam-register.md`; and triage each row into the [Phase 7 plan](phase-7.md)'s tables by its §2.4, so the step that builds each system takes its seams.
 - **non-goals:**
   - Fixes, and edits to code, tests, tools, assets, data or `api/`: the steps that build each system make them.
@@ -297,6 +297,7 @@ Round 2: the same reviewer at xhigh, 2026-10-30, reading the draft with this sec
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-30 | passed | `shares.py --check` → the nine shares at §2.2's figures, `in scope: 157 files, 86,471 lines`, `unassigned 0, doubled 0`, exit 0; `check.py fixture.md` → `refused: fixture.md:8 m2: src/game.rs:15 is also in m1 (overlap)`, `refused: fixture.md:9 m3: Lines 12 but its ranges sum to 10`, exit 1; `check-repo.py` → 0 errors, exit 0; the no-code check against `3b01712d` → exit 0. Session `f5a4f152` in `sessions.txt`; the other session in the tree (`bc379e5c`) answered a status question read-only, idle from 02:40:58, before the first change | `perf-runs/20261030-analysis-pass/` (`shares.py`, `check.py`, `fixture.md`, `sessions.txt`) |
 
 ## Follow-ups
 
