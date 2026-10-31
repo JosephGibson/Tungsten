@@ -12,11 +12,13 @@
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
 - **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (7) 7.9 saves and engine seams. (6) 7.17 the UI pass, after step 7. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close. One track, a step at a time in this order (§2.8): Step 7 runs before Step 6, and both keep their numbers, which plans cite.
-- **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
+- **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's evidence row written by §3's rule; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
 
 ## Context digest
+
+At writing (`08111d5a`, 2026-10-29); the evidence log holds what has run since.
 
 - 0.112 is out with `qa6`, the quick wins (7.1) and the ARPG design (7.19). 7.2–7.5 have not run: no agent tooling, the old benchmark suite, no H2, no seam register (A15). 7.6 ran on 2026-10-23; the owner triaged 7.19 on 2026-10-29 with every row and question at its default.
 - 7.7 waits only for 7.19 (Q20), so it runs now, ahead of 7.2–7.5 in time but not in order. 7.5's register joins §2 at its triage by §2.4's rule, and 7.3's rows hold the lists' numbers (Q1).
@@ -422,7 +424,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 - No row of the step left open: `rg -n '^\| [^|]+ \| [^|]+ \| <step> \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0.
 - Its plan closed: deleted with its citations, `just repo-check` → passes.
-- This file's evidence row written in the step's closing commit, with the commit range and the step's done-when quoted from its plan.
+- This file's evidence row written in the step's closing commit, terse as the [plans README](README.md) asks, in about 800 characters: the verdict; the plan and its commit range; its own evidence log, cited by the last commit that held it; at most five key numbers from its done-when, the demo's among them; how many rows landed and moved (the tables name which); the capture paths.
 - From 7.8 on, a system step's benchmark row and counter guard in 7.3's runner (§5.8), except 7.18.
 
 **Hand-off:** each step ends with the plan prompt of the next step in §2.8's order, from tungsten-next's `step` row with this file and the redo's row as its sources.
@@ -585,3 +587,4 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Cri
 - **F1.** The paper designs' step 6 and its done-when ("7.7 has assigned every row of §4") are met by §2; its step 6 also says "7.13 and 8.5 take the weekly tasks", where the redo's §8 now says 7.13 and 8.6. Mark it at the next edit of that file, or at step 17.
 - **F2.** Done at 7.4: tungsten-next's `step` prompt hands a phase plan's next step its own plan, and its `run` prompt says "never a phase plan".
 - **F3.** Done at 7.5 (`perf-runs/20261030-analysis-pass/overhead/`, H1's classifier with 7.5's two sessions and its plan and register as its own files): the main sessions at 64.5 % of tool calls and 66.3 % of output tokens (45.4 % and 49.2 % with the plan and the register counted as 7.5's work), 11.5 % and 13.8 % with the subagents' 3,986 calls. A documents pass whose product is records, so read beside H2's retake of H1 with that caveat: the example group at 20.7 % of tool calls and 16.5 % of output tokens (baseline 22.1 % and 20.0 %), Phase 7's sessions at 30.5 % and 29.9 %, plan sessions 33–72 %.
+- **F4.** Done at 7.8's close (`perf-runs/20261031-overhead-7.8/`, F3's classifier on 7.8's seven sessions: two plans, four runs, one an 8-call false start, and a revision; 0.113's release left out): 28.8 % of tool calls and 18.5 % of output tokens touched records, against the example group's 20.7 % and 16.5 % at H2's retake. The runs took 13.0–20.6 % and 8.0–11.9 %; the plan sessions 54–55 % and 38–43 %, mostly their own plan file, 19–22 % of calls without it. With each session's own plan counted as its work, 7.8 took 15.3 % and 10.3 %.
