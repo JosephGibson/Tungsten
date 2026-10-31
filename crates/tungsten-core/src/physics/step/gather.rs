@@ -339,6 +339,9 @@ pub(in crate::physics) struct TileRun {
     pub(in crate::physics) half: Vec2,
     /// Its cells' mask, the one-way flag included.
     pub(in crate::physics) face_mask: u8,
+    /// A slope cell's kind, 1 to 12, its run being the cell alone; 0 for a
+    /// run of full or one-way cells.
+    pub(in crate::physics) slope: u8,
     /// Its layer's layers and mask.
     pub(in crate::physics) layers: u32,
     pub(in crate::physics) mask: u32,
@@ -389,13 +392,15 @@ struct CachedLayer {
 }
 
 /// A solid cell of a collision layer, as region queries, sensors and the
-/// cells of a cast's runs test it: a box exactly as its proxy's is, with
-/// its layers, sensor identity and cell, and its map's and layer's places
-/// in the cache, which rank it in tile order.
+/// cells of a cast's runs test it: a box exactly as its proxy's is, a slope
+/// cell's polygon in it, with its layers, sensor identity and cell, and its
+/// map's and layer's places in the cache, which rank it in tile order.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::physics) struct GridCell {
     pub(in crate::physics) center: Vec2,
     pub(in crate::physics) half: Vec2,
+    /// Its slope's kind, 1 to 12; 0 for a full or one-way cell.
+    pub(in crate::physics) slope: u8,
     /// Its layer's layers and mask.
     pub(in crate::physics) layers: u32,
     pub(in crate::physics) mask: u32,
@@ -626,6 +631,9 @@ impl CachedMap {
             ),
             half,
             face_mask: run.mask,
+            slope: self.slope(
+                layer.tiles[(run.row as usize) * (self.width as usize) + (run.col as usize)],
+            ),
             layers: layer.layers.layers,
             mask: layer.layers.mask,
             identity: run_key(self.entity, layer.index, run),
@@ -686,6 +694,7 @@ impl CachedMap {
                 self.at.y + (row as f32) * self.tile.y + half.y,
             ),
             half,
+            slope: self.slope(tile),
             layers: layer.layers.layers,
             mask: layer.layers.mask,
             identity: tile_identity(self.entity, layer.index, col, row),

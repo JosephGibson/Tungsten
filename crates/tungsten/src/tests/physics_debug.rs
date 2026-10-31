@@ -255,3 +255,69 @@ fn the_overlay_draws_the_tile_outline() {
     got.sort_unstable();
     assert_eq!(got, want);
 }
+
+#[test]
+fn the_overlay_draws_a_slopes_face() {
+    // A `45 br` slope cell from (16, 16) to (32, 32) beside a full cell on
+    // its right: the slope's bottom leg and its face, the full cell's top,
+    // bottom and right; the leg and the face they share draw nothing, nor
+    // the slope's corners on its top and left.
+    use tungsten_core::physics::{PhysicsConfig, physics_step};
+    use tungsten_core::{
+        LayerKind, Slope, TileProps, TilemapData, TilemapInstance, TilemapRegistry,
+    };
+
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 60.0);
+    world.insert_resource(time);
+    world.insert_resource(PhysicsConfig::default());
+    world.insert_resource(DebugDraw::new());
+    let overlay = PhysicsDebugOverlay {
+        enabled: true,
+        ..Default::default()
+    };
+    world.insert_resource(overlay);
+    let mut data = TilemapData::new(16, 16, 4, 3);
+    let solid = data.add_tile("solid");
+    let ramp = data.add_tile("ramp");
+    let mut props = TileProps::default();
+    props.slope = Some(Slope::parse("45 br").unwrap());
+    data.set_tile_props(ramp, props);
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    data.set_tile(layer, 1, 1, ramp);
+    data.set_tile(layer, 2, 1, solid);
+    let mut registry = TilemapRegistry::new();
+    registry.insert("ramp".into(), data);
+    world.insert_resource(registry);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ramp", Vec2::ZERO));
+    physics_step(&mut world);
+
+    physics_debug_emit_system(&mut world);
+
+    let mut want = vec![
+        ([16, 32], [32, 32]),
+        ([16, 32], [32, 16]),
+        ([32, 16], [48, 16]),
+        ([32, 32], [48, 32]),
+        ([48, 16], [48, 32]),
+    ];
+    let mut got: Vec<_> = world
+        .get_resource::<DebugDraw>()
+        .unwrap()
+        .commands()
+        .iter()
+        .map(|command| {
+            let DebugShape::Line { a, b } = command.shape else {
+                panic!("only lines: {command:?}");
+            };
+            assert_eq!(command.color, overlay.color_aabb);
+            let ends = |v: Vec2| [v.x.round() as i32, v.y.round() as i32];
+            (ends(a), ends(b))
+        })
+        .collect();
+    want.sort_unstable();
+    got.sort_unstable();
+    assert_eq!(got, want);
+}

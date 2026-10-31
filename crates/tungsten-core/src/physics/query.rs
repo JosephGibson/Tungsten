@@ -57,6 +57,7 @@ use super::collision::{
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
 };
 use super::components::{RigidBody, Shape};
+use super::step::slope::{self, SlopePolygon};
 use super::step::{GridCell, PhysicsBuffers, TileRun};
 use crate::ecs::{Entity, World};
 use glam::Vec2;
@@ -217,6 +218,9 @@ pub(super) struct IndexEntry {
     pub(super) shape: Shape,
     /// A tile's exposed faces; `FACE_ALL` for an entity collider.
     pub(super) face_mask: u8,
+    /// A slope tile's kind, 1 to 12, its polygon meeting queries in place of
+    /// its box; 0 for a full tile or a body.
+    pub(super) slope: u8,
     pub(super) sensor: bool,
     /// The body's key or the tile's identity (the low half of a sensor
     /// pair's key); a sensor's key (the high half).
@@ -230,6 +234,11 @@ pub(super) struct IndexEntry {
 impl IndexEntry {
     fn aabb(&self) -> Aabb {
         Aabb::new(self.center, half_extents(self.shape))
+    }
+
+    /// A slope tile's polygon in its box.
+    fn polygon(&self) -> Option<SlopePolygon> {
+        (self.slope != 0).then(|| slope::polygon(self.slope, self.center, half_extents(self.shape)))
     }
 }
 
@@ -294,7 +303,7 @@ impl SpatialIndex {
                     tested += 1;
                     let tile = cell_entry(cell);
                     if sensor.mask & tile.layers != 0
-                        && shapes_overlap(sensor.shape, sensor.center, tile.shape, tile.center)
+                        && entry_overlaps(sensor.shape, sensor.center, &tile)
                     {
                         visit_tile(index, &sensor, &tile, cell.cell);
                     }
@@ -493,8 +502,9 @@ fn padded(aabb: &Aabb) -> (Vec2, Vec2) {
     (aabb.min() - pad, aabb.max() + pad)
 }
 
-/// A solid cell of the step's grids as an index entry: its box, layers and
-/// identity, every face exposed, which region queries do not read.
+/// A solid cell of the step's grids as an index entry: its box, a slope
+/// cell's kind, its layers and identity, every face exposed, which region
+/// queries do not read.
 fn cell_entry(cell: &GridCell) -> IndexEntry {
     IndexEntry {
         entity: None,
@@ -503,6 +513,7 @@ fn cell_entry(cell: &GridCell) -> IndexEntry {
             half_extents: cell.half,
         },
         face_mask: FACE_ALL,
+        slope: cell.slope,
         sensor: false,
         identity: cell.identity,
         layers: cell.layers,
@@ -789,9 +800,7 @@ pub fn overlap(
             .candidates
             .partition_point(|&id| (id as usize) < state.tile_base);
         let mut list = |entry: &IndexEntry| {
-            if filter.admits(entry, world)
-                && shapes_overlap(shape, center, entry.shape, entry.center)
-            {
+            if filter.admits(entry, world) && entry_overlaps(shape, center, entry) {
                 out.push(entry.entity);
             }
         };
@@ -916,6 +925,9 @@ fn valid_half_extents(shape: Shape) -> Option<Vec2> {
 /// The ray against one entry: its entry distance and the surface normal
 /// there.
 fn ray_against(origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Option<(f32, Vec2)> {
+    if let Some(poly) = entry.polygon() {
+        return slope::ray(origin, dir, &poly, entry.face_mask);
+    }
     match entry.shape {
         Shape::Aabb { half_extents } => {
             let local = origin - entry.center;
@@ -952,6 +964,22 @@ fn cast_against(shape: Shape, origin: Vec2, dir: Vec2, entry: &IndexEntry) -> Op
             point: origin - contact.normal * reach,
             normal: contact.normal,
             distance: 0.0,
+            layers: entry.layers,
+            tile: None,
+        });
+    }
+    if let Some(poly) = entry.polygon() {
+        let (distance, normal) = slope::cast(shape, origin, dir, &poly, entry.face_mask)?;
+        let at = origin + dir * distance;
+        let point = match shape {
+            Shape::Aabb { half_extents } => slope_contact_point(at, half_extents, &poly, normal),
+            Shape::Circle { radius } => at - normal * radius,
+        };
+        return Some(SpatialHit {
+            entity: entry.entity,
+            point,
+            normal,
+            distance,
             layers: entry.layers,
             tile: None,
         });
@@ -1008,6 +1036,14 @@ fn start_overlap(shape: Shape, origin: Vec2, entry: &IndexEntry) -> Option<Conta
         return None;
     }
     let (center, mask) = (entry.center, entry.face_mask);
+    if let Some(poly) = entry.polygon() {
+        return match shape {
+            Shape::Aabb { half_extents } => {
+                slope::box_contact(origin, half_extents, &poly, mask, 0.0)
+            }
+            Shape::Circle { radius } => slope::circle_contact(origin, radius, &poly, mask, 0.0),
+        };
+    }
     match (shape, entry.shape) {
         (
             Shape::Aabb { half_extents },
@@ -1059,6 +1095,9 @@ pub(super) fn first_overlap(
         return Some(0.0);
     }
     let (local, dir) = (start - other_start, motion - other_motion);
+    // A disc's entry takes a unit direction; its `t` is then in px.
+    let length = dir.length();
+    let unit = dir.try_normalize();
     let t = match (shape, other) {
         (
             Shape::Aabb { half_extents },
@@ -1067,14 +1106,39 @@ pub(super) fn first_overlap(
             },
         ) => enter_box(local, dir, half_extents + other, false)?.0,
         (Shape::Circle { radius }, Shape::Circle { radius: other }) => {
-            enter_circle(local, dir, Vec2::ZERO, radius + other, false)?
+            enter_circle(local, unit?, Vec2::ZERO, radius + other, false)? / length
         }
         (Shape::Circle { radius }, Shape::Aabb { half_extents })
         | (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
-            enter_rounded_box(local, dir, half_extents, radius, FACE_ALL)?.0
+            enter_rounded_box(local, unit?, half_extents, radius, FACE_ALL)?.0 / length
         }
     };
     (t <= 1.0).then_some(t.max(0.0))
+}
+
+/// [`first_overlap`] of `shape` moving from `start` by `motion` against a
+/// still slope tile's polygon, every side exposed.
+pub(super) fn first_overlap_slope(
+    shape: Shape,
+    start: Vec2,
+    motion: Vec2,
+    poly: &SlopePolygon,
+) -> Option<f32> {
+    if slope::overlaps(shape, start, poly) {
+        return Some(0.0);
+    }
+    let (t, _) = slope::cast(shape, start, motion.try_normalize()?, poly, FACE_ALL)?;
+    let t = t / motion.length();
+    (t <= 1.0).then_some(t.max(0.0))
+}
+
+/// `shape` at `center` overlaps the entry with penetration above 0: its
+/// shape, or a slope tile's polygon.
+fn entry_overlaps(shape: Shape, center: Vec2, entry: &IndexEntry) -> bool {
+    match entry.polygon() {
+        Some(poly) => slope::overlaps(shape, center, &poly),
+        None => shapes_overlap(shape, center, entry.shape, entry.center),
+    }
 }
 
 /// `shape` at `center` and `other` at `other_center` overlap with
@@ -1110,27 +1174,38 @@ fn circle_overlaps_box(circle: Vec2, radius: f32, center: Vec2, half: Vec2) -> b
 
 /// The closest surface point of the entry to `point`, as a hit.
 fn surface_hit(point: Vec2, entry: &IndexEntry) -> SpatialHit {
-    let (surface, normal, distance) = match entry.shape {
-        Shape::Aabb { half_extents } => {
-            let closest = point
-                .max(entry.center - half_extents)
-                .min(entry.center + half_extents);
-            let offset = point - closest;
-            let distance = offset.length();
-            if distance > 0.0 {
-                (closest, offset / distance, distance)
-            } else {
-                (point, Vec2::ZERO, 0.0)
-            }
+    let (surface, normal, distance) = if let Some(poly) = entry.polygon() {
+        let closest = poly.closest(point);
+        let offset = point - closest;
+        let distance = offset.length();
+        if poly.contains(point) || distance == 0.0 {
+            (point, Vec2::ZERO, 0.0)
+        } else {
+            (closest, offset / distance, distance)
         }
-        Shape::Circle { radius } => {
-            let offset = point - entry.center;
-            let length = offset.length();
-            if length > radius {
-                let normal = offset / length;
-                (entry.center + normal * radius, normal, length - radius)
-            } else {
-                (point, Vec2::ZERO, 0.0)
+    } else {
+        match entry.shape {
+            Shape::Aabb { half_extents } => {
+                let closest = point
+                    .max(entry.center - half_extents)
+                    .min(entry.center + half_extents);
+                let offset = point - closest;
+                let distance = offset.length();
+                if distance > 0.0 {
+                    (closest, offset / distance, distance)
+                } else {
+                    (point, Vec2::ZERO, 0.0)
+                }
+            }
+            Shape::Circle { radius } => {
+                let offset = point - entry.center;
+                let length = offset.length();
+                if length > radius {
+                    let normal = offset / length;
+                    (entry.center + normal * radius, normal, length - radius)
+                } else {
+                    (point, Vec2::ZERO, 0.0)
+                }
             }
         }
     };
@@ -1262,10 +1337,16 @@ fn enter_rounded_box(
     Some((t, face_normal(dir, entered, mask)?))
 }
 
-/// The `t` at which `origin + t·dir` enters the circle, closed for a ray
-/// and open for a shape cast; `None` when it misses, moves away, or starts
-/// inside (on the edge too, when closed).
-fn enter_circle(origin: Vec2, dir: Vec2, center: Vec2, radius: f32, closed: bool) -> Option<f32> {
+/// The `t` at which `origin + t·dir`, `dir` a unit vector, enters the
+/// circle, closed for a ray and open for a shape cast; `None` when it
+/// misses, moves away, or starts inside (on the edge too, when closed).
+pub(super) fn enter_circle(
+    origin: Vec2,
+    dir: Vec2,
+    center: Vec2,
+    radius: f32,
+    closed: bool,
+) -> Option<f32> {
     let m = origin - center;
     let c = m.length_squared() - radius * radius;
     let inside = if closed { c <= 0.0 } else { c < 0.0 };
@@ -1302,6 +1383,38 @@ fn box_contact_point(at: Vec2, half: Vec2, center: Vec2, other: Vec2, normal: Ve
         )
     } else {
         center + Vec2::new(other.x.copysign(normal.x), other.y.copysign(normal.y))
+    }
+}
+
+/// Where a box at `at` with `half` first touches a slope polygon across the
+/// side of outward `normal`: the polygon's vertex farthest along it, else
+/// the box's corner farthest against it on the sloped face, else the middle
+/// of the span a leg and the box's face share.
+fn slope_contact_point(at: Vec2, half: Vec2, poly: &SlopePolygon, normal: Vec2) -> Vec2 {
+    let points = &poly.points[..poly.len];
+    let far = points
+        .iter()
+        .map(|p| p.dot(normal))
+        .fold(f32::NEG_INFINITY, f32::max);
+    let mut support = points.iter().filter(|p| far - p.dot(normal) < 1.0e-3);
+    let (Some(&first), second) = (support.next(), support.next()) else {
+        return at;
+    };
+    let Some(&second) = second else {
+        return first;
+    };
+    if normal.x != 0.0 && normal.y != 0.0 {
+        return at - Vec2::new(half.x.copysign(normal.x), half.y.copysign(normal.y));
+    }
+    let shared = |a: f32, a_half: f32, low: f32, high: f32| {
+        f32::midpoint((a - a_half).max(low), (a + a_half).min(high))
+    };
+    if normal.y == 0.0 {
+        let (low, high) = (first.y.min(second.y), first.y.max(second.y));
+        Vec2::new(first.x, shared(at.y, half.y, low, high))
+    } else {
+        let (low, high) = (first.x.min(second.x), first.x.max(second.x));
+        Vec2::new(shared(at.x, half.x, low, high), first.y)
     }
 }
 

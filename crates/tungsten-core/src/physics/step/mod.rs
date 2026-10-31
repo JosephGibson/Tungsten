@@ -140,7 +140,7 @@ use super::components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Spin, Velocity,
 };
 use super::events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered, SensorExited};
-use super::query::{IndexEntry, SpatialIndex, TileHit, first_overlap};
+use super::query::{IndexEntry, SpatialIndex, TileHit, first_overlap, first_overlap_slope};
 use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
@@ -151,7 +151,7 @@ mod gather;
 mod outline;
 mod pairs;
 mod sleep;
-mod slope;
+pub(super) mod slope;
 mod solver;
 mod sweep;
 
@@ -623,26 +623,41 @@ impl PhysicsBuffers {
 
     /// The exposed faces of the tile outline's runs as world segments, at
     /// the last step's map positions, run by run in tile order, each run's
-    /// top, bottom, left and right (diagnostic): what the physics overlay
-    /// draws over a tile map.
+    /// top, bottom, left and right, a slope cell's legs along their spans
+    /// and then its sloped face (diagnostic): what the physics overlay draws
+    /// over a tile map.
     pub fn terrain_faces(&self) -> impl Iterator<Item = TerrainFace> + '_ {
         self.tiles.runs().iter().flat_map(|run| {
-            let (min, max) = (run.center - run.half, run.center + run.half);
             let one_way = run.face_mask & FACE_ONE_WAY != 0;
-            [
-                (FACE_TOP, min, Vec2::new(max.x, min.y), Vec2::NEG_Y),
-                (FACE_BOTTOM, Vec2::new(min.x, max.y), max, Vec2::Y),
-                (FACE_LEFT, min, Vec2::new(min.x, max.y), Vec2::NEG_X),
-                (FACE_RIGHT, Vec2::new(max.x, min.y), max, Vec2::X),
-            ]
-            .into_iter()
-            .filter(move |&(face, ..)| run.face_mask & face != 0)
-            .map(move |(_, start, end, normal)| TerrainFace {
-                start,
-                end,
-                normal,
-                one_way,
-            })
+            let mut faces = [None; 5];
+            if run.slope == 0 {
+                let (min, max) = (run.center - run.half, run.center + run.half);
+                let sides = [
+                    (FACE_TOP, min, Vec2::new(max.x, min.y), Vec2::NEG_Y),
+                    (FACE_BOTTOM, Vec2::new(min.x, max.y), max, Vec2::Y),
+                    (FACE_LEFT, min, Vec2::new(min.x, max.y), Vec2::NEG_X),
+                    (FACE_RIGHT, Vec2::new(max.x, min.y), max, Vec2::X),
+                ];
+                for (slot, (face, start, end, normal)) in faces.iter_mut().zip(sides) {
+                    if run.face_mask & face != 0 {
+                        *slot = Some((start, end, normal));
+                    }
+                }
+            } else {
+                let sloped = slope::faces(run.slope, run.center, run.half, run.face_mask);
+                for (slot, face) in faces.iter_mut().zip(sloped) {
+                    *slot = Some(face);
+                }
+            }
+            faces
+                .into_iter()
+                .flatten()
+                .map(move |(start, end, normal)| TerrainFace {
+                    start,
+                    end,
+                    normal,
+                    one_way,
+                })
         })
     }
 
@@ -692,6 +707,7 @@ impl PhysicsBuffers {
                     center: proxy.center,
                     shape: proxy.shape,
                     face_mask: proxy.face_mask,
+                    slope: 0,
                     sensor: false,
                     identity: proxy.key,
                     layers: layers.layers,
@@ -703,6 +719,7 @@ impl PhysicsBuffers {
             center: sensor.center,
             shape: sensor.shape,
             face_mask: FACE_ALL,
+            slope: 0,
             sensor: true,
             identity: sensor.key,
             layers: sensor.layers.layers,
@@ -724,6 +741,7 @@ impl PhysicsBuffers {
                 half_extents: run.half,
             },
             face_mask: run.face_mask,
+            slope: run.slope,
             sensor: false,
             identity: run.identity,
             layers: run.layers,
@@ -749,9 +767,9 @@ impl PhysicsBuffers {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct TerrainFace {
-    /// The face's top or left end.
+    /// The face's left end, or its top end for an upright face.
     pub start: Vec2,
-    /// Its bottom or right end.
+    /// Its other end.
     pub end: Vec2,
     /// Its outward unit normal.
     pub normal: Vec2,
@@ -1809,16 +1827,21 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
         let (min, max) = (reach.min(), reach.max());
         buffers.tiles.cells_in(min, max, |cell| {
             let met = sensor.layers.mask & cell.layers != 0
-                && first_overlap(
-                    sensor.shape,
-                    sweep.start,
-                    motion,
-                    Shape::Aabb {
-                        half_extents: cell.half,
-                    },
-                    cell.center,
-                    Vec2::ZERO,
-                )
+                && if cell.slope == 0 {
+                    first_overlap(
+                        sensor.shape,
+                        sweep.start,
+                        motion,
+                        Shape::Aabb {
+                            half_extents: cell.half,
+                        },
+                        cell.center,
+                        Vec2::ZERO,
+                    )
+                } else {
+                    let poly = slope::polygon(cell.slope, cell.center, cell.half);
+                    first_overlap_slope(sensor.shape, sweep.start, motion, &poly)
+                }
                 .is_some();
             if met {
                 let pair = pair_of(sensor.key, cell.identity);

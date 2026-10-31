@@ -15,8 +15,17 @@
 //! masked leg taking the exposed edge's normal and its distance along it, as
 //! [`aabb_vs_circle_speculative`](crate::physics::aabb_vs_circle_speculative)
 //! does.
+//!
+//! The queries meet the same polygon: a ray closed, so a graze hits; a shape
+//! cast open, so a shape touching a side slides along it, as its centre's
+//! path into their sum, a box's the pentagon and a circle's the polygon grown
+//! by its radius, a vertex between two exposed sides rounded and one beside a
+//! masked side square, as `enter_rounded_box` squares a box's; an internal
+//! side never entered; overlaps with penetration above 0 and the nearest
+//! point of its boundary.
 
 use crate::physics::collision::{Contact, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
+use crate::physics::components::Shape;
 use glam::Vec2;
 
 /// A slope cell's polygon: its vertices in order around it, the cell's
@@ -144,6 +153,30 @@ impl SlopePolygon {
             let (p, _, normal) = self.edge(i);
             (point - p).dot(normal) < 0.0
         })
+    }
+
+    /// The point of its boundary nearest `point`.
+    pub(in crate::physics) fn closest(&self, point: Vec2) -> Vec2 {
+        let mut best = (f32::INFINITY, self.points[0]);
+        for i in 0..self.len {
+            let (p, q, _) = self.edge(i);
+            let t = ((point - p).dot(q - p) / (q - p).length_squared()).clamp(0.0, 1.0);
+            let at = p + (q - p) * t;
+            let distance = point.distance_squared(at);
+            if distance < best.0 {
+                best = (distance, at);
+            }
+        }
+        best.1
+    }
+
+    /// The sloped face's ends, its left one first.
+    pub(in crate::physics) fn face(&self) -> (Vec2, Vec2) {
+        let i = (0..self.len)
+            .find(|&i| self.normals[i] == self.normal)
+            .unwrap_or(0);
+        let (p, q, _) = self.edge(i);
+        if p.x <= q.x { (p, q) } else { (q, p) }
     }
 
     /// The Minkowski sum with a box of `half`: five vertices, each edge `k`
@@ -349,6 +382,192 @@ pub(in crate::physics) fn box_sweep(
     }
     let normal = entered?;
     (enter < leave && (0.0..=1.0).contains(&enter)).then_some((enter, normal))
+}
+
+/// Whether a shape at `center` overlaps the polygon with penetration above
+/// 0, touching not counting: a box when its centre is strictly inside their
+/// sum, a circle when its centre is strictly inside the polygon or its
+/// surface reaches past the nearest point.
+pub(in crate::physics) fn overlaps(shape: Shape, center: Vec2, poly: &SlopePolygon) -> bool {
+    match shape {
+        Shape::Aabb { half_extents } => {
+            let (vertices, normals) = poly.minkowski(half_extents);
+            (0..5).all(|k| (center - vertices[k]).dot(normals[k]) < 0.0)
+        }
+        Shape::Circle { radius } => {
+            poly.contains(center) || center.distance_squared(poly.closest(center)) < radius * radius
+        }
+    }
+}
+
+/// The path `origin + t·dir` clipped by the convex sides `(point, normal)`,
+/// closed to admit a path that only touches them or open not to: the `t`
+/// it enters at, which may be negative from inside, the side it enters
+/// through and one it enters through at once; `None` when it misses or the
+/// sides lie behind. A path under `f32::EPSILON` along a side's normal runs
+/// parallel to it.
+fn clip(
+    origin: Vec2,
+    dir: Vec2,
+    sides: &[(Vec2, Vec2)],
+    closed: bool,
+) -> Option<(f32, usize, Option<usize>)> {
+    let (mut enter, mut leave) = (f32::NEG_INFINITY, f32::INFINITY);
+    let (mut first, mut tie) = (None, None);
+    for (k, &(point, normal)) in sides.iter().enumerate() {
+        let start = (origin - point).dot(normal);
+        let rate = dir.dot(normal);
+        if rate.abs() < f32::EPSILON {
+            if start > 0.0 || (!closed && start == 0.0) {
+                return None;
+            }
+            continue;
+        }
+        let t = -start / rate;
+        if rate < 0.0 {
+            if t > enter {
+                (enter, first, tie) = (t, Some(k), None);
+            } else if t == enter {
+                tie = Some(k);
+            }
+        } else {
+            leave = leave.min(t);
+        }
+    }
+    let crosses = if closed {
+        enter <= leave
+    } else {
+        enter < leave
+    };
+    if !crosses || leave < 0.0 || (!closed && leave == 0.0) {
+        return None;
+    }
+    Some((enter, first?, tie))
+}
+
+/// The outward normal a path enters through, side `first` or, at a corner,
+/// with side `tie` too, by `mask`: an internal side is never entered, a
+/// corner beside one is entered through its exposed side and one between
+/// two exposed sides along their mean.
+fn entered_normal(normals: &[Vec2], first: usize, tie: Option<usize>, mask: u8) -> Option<Vec2> {
+    let open = |k: usize| exposed(normals[k], mask);
+    let Some(second) = tie else {
+        return open(first).then_some(normals[first]);
+    };
+    match (open(first), open(second)) {
+        (true, true) => Some((normals[first] + normals[second]).normalize()),
+        (true, false) => Some(normals[first]),
+        (false, true) => Some(normals[second]),
+        (false, false) => None,
+    }
+}
+
+/// A ray from `origin` along unit `dir` against the polygon, closed, so a
+/// graze hits: the `t` it enters at and the outward normal there; `None`
+/// when it misses, enters through an internal side, or starts inside the
+/// polygon or on its edge.
+pub(in crate::physics) fn ray(
+    origin: Vec2,
+    dir: Vec2,
+    poly: &SlopePolygon,
+    mask: u8,
+) -> Option<(f32, Vec2)> {
+    if (0..poly.len).all(|i| (origin - poly.points[i]).dot(poly.normals[i]) <= 0.0) {
+        return None;
+    }
+    let sides: [(Vec2, Vec2); 4] = std::array::from_fn(|i| (poly.points[i], poly.normals[i]));
+    let (t, first, tie) = clip(origin, dir, &sides[..poly.len], true)?;
+    Some((t, entered_normal(&poly.normals, first, tie, mask)?))
+}
+
+/// `shape` cast from `origin` along unit `dir` against the polygon, open, so
+/// a shape touching a side slides along it: the first `t >= 0` its centre
+/// enters their sum at and the outward normal there; `None` when it misses,
+/// enters through an internal side or starts inside the sum, where the
+/// narrow phase found no overlap, so only internal sides lie around it. A
+/// box's sum is the pentagon; a circle's the polygon grown by its radius,
+/// a vertex between two exposed sides rounded by a disc and one beside an
+/// internal side square.
+pub(in crate::physics) fn cast(
+    shape: Shape,
+    origin: Vec2,
+    dir: Vec2,
+    poly: &SlopePolygon,
+    mask: u8,
+) -> Option<(f32, Vec2)> {
+    match shape {
+        Shape::Aabb { half_extents } => {
+            let (vertices, normals) = poly.minkowski(half_extents);
+            let sides: [(Vec2, Vec2); 5] = std::array::from_fn(|k| (vertices[k], normals[k]));
+            let (t, first, tie) = clip(origin, dir, &sides, false)?;
+            if t < 0.0 {
+                return None;
+            }
+            Some((t, entered_normal(&normals, first, tie, mask)?))
+        }
+        Shape::Circle { radius } => {
+            let n = poly.len;
+            let sides: [(Vec2, Vec2); 4] = std::array::from_fn(|i| {
+                (poly.points[i] + poly.normals[i] * radius, poly.normals[i])
+            });
+            let (t, first, tie) = clip(origin, dir, &sides[..n], false)?;
+            // Past an end of the side it enters, a vertex's corner: rounded
+            // when both its sides are exposed.
+            let at = origin + dir * t.max(0.0);
+            let (p, q) = (poly.points[first], poly.points[(first + 1) % n]);
+            let along = (at - sides[first].0).dot((q - p).normalize());
+            let corner = if along < 0.0 {
+                Some(((first + n - 1) % n, first, p))
+            } else if along > p.distance(q) {
+                Some((first, (first + 1) % n, q))
+            } else {
+                None
+            };
+            if let Some((j, l, vertex)) = corner
+                && exposed(poly.normals[j], mask)
+                && exposed(poly.normals[l], mask)
+            {
+                let t = crate::physics::query::enter_circle(origin, dir, vertex, radius, false)?;
+                return Some((t, (origin + dir * t - vertex).normalize_or_zero()));
+            }
+            if t < 0.0 {
+                return None;
+            }
+            Some((t, entered_normal(&poly.normals, first, tie, mask)?))
+        }
+    }
+}
+
+/// The cell sides exposed by `mask` of slope `code`'s polygon in the cell
+/// of `half` around `center`, as world segments and their outward normals:
+/// its legs on the top, bottom, left and right, each along its span, then
+/// its sloped face, always; a segment's left end first, an upright one's
+/// top end. A side it touches at a vertex alone draws nothing.
+pub(in crate::physics) fn faces(
+    code: u8,
+    center: Vec2,
+    half: Vec2,
+    mask: u8,
+) -> impl Iterator<Item = (Vec2, Vec2, Vec2)> {
+    let min = center - half;
+    let size = half * 2.0;
+    let poly = polygon(code, center, half);
+    let spans = legs(code);
+    let leg = move |side: u8| {
+        let (_, low, high) = spans.into_iter().find(|&(face, ..)| face == side)?;
+        let (start, end, normal) = match side {
+            FACE_TOP => (Vec2::new(low, 0.0), Vec2::new(high, 0.0), Vec2::NEG_Y),
+            FACE_BOTTOM => (Vec2::new(low, 1.0), Vec2::new(high, 1.0), Vec2::Y),
+            FACE_LEFT => (Vec2::new(0.0, low), Vec2::new(0.0, high), Vec2::NEG_X),
+            _ => (Vec2::new(1.0, low), Vec2::new(1.0, high), Vec2::X),
+        };
+        (mask & side != 0).then(|| (min + start * size, min + end * size, normal))
+    };
+    let (start, end) = poly.face();
+    [FACE_TOP, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT]
+        .into_iter()
+        .filter_map(leg)
+        .chain(std::iter::once((start, end, poly.normal)))
 }
 
 /// Slope kind `code`'s vertex farthest out across its cell side `side`, in

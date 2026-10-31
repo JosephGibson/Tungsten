@@ -1097,6 +1097,7 @@ fn overlap_and_nearest_read_tiles_from_the_grid_as_before() {
                             center,
                             shape: Shape::Aabb { half_extents: half },
                             face_mask: FACE_ALL,
+                            slope: 0,
                             sensor: false,
                             identity: 0,
                             layers: physics.layers,
@@ -1256,6 +1257,7 @@ fn todays_cells(world: &World) -> Vec<(IndexEntry, TileHit)> {
                         ),
                         shape: Shape::Aabb { half_extents: half },
                         face_mask,
+                        slope: 0,
                         sensor: false,
                         identity: 0,
                         layers: physics.layers,
@@ -1473,6 +1475,7 @@ fn casts_where_pass_the_hits_they_refuse() {
                     center: at,
                     shape: body,
                     face_mask: FACE_ALL,
+                    slope: 0,
                     sensor: false,
                     identity: 0,
                     layers: RigidBody::DEFAULT_LAYERS,
@@ -1616,4 +1619,445 @@ fn casts_meet_a_one_way_edge_from_above_only() {
     assert_eq!(nearest(&world, Vec2::new(72.0, 40.0), 20.0, &all()), None);
     let near = nearest(&world, Vec2::new(72.0, 40.0), 60.0, &all()).unwrap();
     assert_eq!((near.distance, near.tile), (56.0, cell(4, 6)));
+}
+
+/// The slope of kind `code`, 1 to 12: its rise times four plus its corner,
+/// plus 1.
+fn slope_kind(code: u8) -> crate::assets::Slope {
+    use crate::assets::{SlopeCorner, SlopeRise};
+    let rises = [SlopeRise::Full, SlopeRise::Low, SlopeRise::High];
+    let corners = [
+        SlopeCorner::BottomRight,
+        SlopeCorner::BottomLeft,
+        SlopeCorner::TopRight,
+        SlopeCorner::TopLeft,
+    ];
+    let at = usize::from(code - 1);
+    crate::assets::Slope {
+        rise: rises[at / 4],
+        corner: corners[at % 4],
+    }
+}
+
+/// A world with slope kind `code` alone in the middle of a 3 × 3 map at the
+/// origin, its cell from (16, 16) to (32, 32), after a step; and the map.
+fn slope_world(code: u8) -> (World, Entity) {
+    let mut world = world();
+    let mut data = TilemapData::new(16, 16, 3, 3);
+    let ramp = data.add_tile("ramp");
+    data.set_tile_props(
+        ramp,
+        crate::assets::TileProps {
+            slope: Some(slope_kind(code)),
+            ..Default::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    data.set_tile(layer, 1, 1, ramp);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ramp".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ramp", Vec2::ZERO));
+    physics_step(&mut world);
+    (world, map)
+}
+
+/// How deep a ray's point (`None`) or a shape at `center` lies in the
+/// polygon, by its least push-out: above 0 overlapping, 0 touching, below 0
+/// apart, by an exact test (a box by SAT on x, y and the slope's normal).
+fn slope_depth(shape: Option<Shape>, center: Vec2, poly: &SlopePolygon) -> f32 {
+    let points = &poly.points[..poly.len];
+    let inside = (0..poly.len)
+        .map(|i| -(center - points[i]).dot(poly.normals[i]))
+        .fold(f32::INFINITY, f32::min);
+    let signed = if inside > 0.0 {
+        inside
+    } else {
+        -center.distance(poly.closest(center))
+    };
+    match shape {
+        None => signed,
+        Some(Shape::Circle { radius }) => radius + signed,
+        Some(Shape::Aabb { half_extents }) => [Vec2::X, Vec2::Y, poly.normal]
+            .into_iter()
+            .map(|axis| {
+                let reach = half_extents.x * axis.x.abs() + half_extents.y * axis.y.abs();
+                let along = points.iter().map(|p| p.dot(axis));
+                let low = along.clone().fold(f32::INFINITY, f32::min);
+                let high = along.fold(f32::NEG_INFINITY, f32::max);
+                (center.dot(axis) + reach).min(high) - (center.dot(axis) - reach).max(low)
+            })
+            .fold(f32::INFINITY, f32::min),
+    }
+}
+
+/// The convex hull of `points`, collinear points dropped.
+fn hull(mut points: Vec<Vec2>) -> Vec<Vec2> {
+    points.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+    points.dedup();
+    let turn = |o: Vec2, a: Vec2, b: Vec2| (a - o).perp_dot(b - o);
+    let chain = |points: &mut dyn Iterator<Item = Vec2>| {
+        let mut side: Vec<Vec2> = Vec::new();
+        for p in points {
+            while side.len() >= 2 && turn(side[side.len() - 2], side[side.len() - 1], p) <= 0.0 {
+                side.pop();
+            }
+            side.push(p);
+        }
+        side.pop();
+        side
+    };
+    let mut out = chain(&mut points.iter().copied());
+    out.extend(chain(&mut points.iter().rev().copied()));
+    out
+}
+
+/// The outward normal of the one side of the convex ring `points` that
+/// `at` lies within 1e-2 px of; `None` near two, by a vertex.
+fn side_normal(points: &[Vec2], at: Vec2) -> Option<Vec2> {
+    let centroid = points.iter().copied().sum::<Vec2>() / points.len() as f32;
+    let mut near = (0..points.len()).filter_map(|i| {
+        let (p, q) = (points[i], points[(i + 1) % points.len()]);
+        let t = ((at - p).dot(q - p) / (q - p).length_squared()).clamp(0.0, 1.0);
+        (at.distance(p + (q - p) * t) < 1.0e-2).then(|| {
+            let normal = Vec2::new(q.y - p.y, p.x - q.x).normalize();
+            if normal.dot(centroid - p) > 0.0 {
+                -normal
+            } else {
+                normal
+            }
+        })
+    });
+    let (Some(normal), None) = (near.next(), near.next()) else {
+        return None;
+    };
+    Some(normal)
+}
+
+#[test]
+fn casts_meet_slopes_as_a_refined_march_does() {
+    // Each kind alone, 2,000 seeded rays, boxes and circles of 0.1 to 2.5
+    // cells across from around and inside the cell: a cast from outside hits
+    // where a 1/64 px march of an exact overlap test first overlaps, its
+    // bracket bisected to 1e-5 px, within 1e-3 px, with the normal of the
+    // side it meets, by a hull-built sum for a box, and the cell; one from
+    // inside a shape stops at once moving in and passes moving out, and a
+    // ray from inside passes. Where the march finds no bracket but the cast
+    // hits, a 1e-4 px march around the hit settles it: a sliver thinner than
+    // 1/64 px, entered where the cast says, or a graze, within 1e-3 px of
+    // touching; each is counted, and few.
+    std::thread::scope(|scope| {
+        let runs: Vec<_> = (1..=12u8)
+            .map(|code| {
+                scope.spawn(move || {
+                    let (world, map) = slope_world(code);
+                    let cell = Some(TileHit {
+                        map,
+                        layer: 0,
+                        col: 1,
+                        row: 1,
+                    });
+                    let poly = slope::polygon(code, Vec2::splat(24.0), Vec2::splat(8.0));
+                    let mut rng = crate::Pcg32::seeded(0xCA57_0000 + u64::from(code));
+                    let (mut hits, mut inside, mut grazes, mut slivers) = (0, 0, 0, 0);
+                    for probe in 0..2_000 {
+                        let size = rng.next_range(0.8, 20.0);
+                        let shape = match probe % 3 {
+                            0 => None,
+                            1 => Some(Shape::Aabb {
+                                half_extents: Vec2::new(size, rng.next_range(0.8, 20.0)),
+                            }),
+                            _ => Some(Shape::Circle { radius: size }),
+                        };
+                        let spread = 24.0 + size;
+                        let origin = Vec2::new(
+                            24.0 + rng.next_range(-spread, spread),
+                            24.0 + rng.next_range(-spread, spread),
+                        );
+                        let angle = rng.next_range(0.0, std::f32::consts::TAU);
+                        let dir = Vec2::from_angle(angle);
+                        let max = 64.0;
+                        let got = match shape {
+                            None => cast_ray(&world, origin, dir, max, &all()),
+                            Some(shape) => cast_shape(&world, shape, origin, dir, max, &all()),
+                        };
+                        let at = format!(
+                            "kind {code}, probe {probe}: {shape:?} from {origin} along {dir}"
+                        );
+                        let overlapped = |s: f32| {
+                            let depth = slope_depth(shape, origin + dir * s, &poly);
+                            if shape.is_none() {
+                                depth >= 0.0
+                            } else {
+                                depth > 0.0
+                            }
+                        };
+                        if let Some(hit) = got {
+                            assert_eq!(hit.tile, cell, "{at}: {hit:?}");
+                        }
+                        if overlapped(0.0) {
+                            inside += 1;
+                            let Some(shape) = shape else {
+                                assert!(got.is_none(), "{at}: a ray from inside hit {got:?}");
+                                continue;
+                            };
+                            let contact = match shape {
+                                Shape::Aabb { half_extents } => {
+                                    slope::box_contact(origin, half_extents, &poly, FACE_ALL, 0.0)
+                                }
+                                Shape::Circle { radius } => {
+                                    slope::circle_contact(origin, radius, &poly, FACE_ALL, 0.0)
+                                }
+                            };
+                            match contact.filter(|contact| dir.dot(contact.normal) < 0.0) {
+                                Some(contact) => {
+                                    let hit =
+                                        got.unwrap_or_else(|| panic!("{at}: moving in passed"));
+                                    assert_eq!(
+                                        (hit.distance, hit.normal),
+                                        (0.0, contact.normal),
+                                        "{at}"
+                                    );
+                                }
+                                None => assert!(got.is_none(), "{at}: moving out hit {got:?}"),
+                            }
+                            continue;
+                        }
+                        let bisect = |(mut lo, mut hi): (f32, f32)| {
+                            while hi - lo > 1.0e-5 {
+                                let mid = f32::midpoint(lo, hi);
+                                if overlapped(mid) { hi = mid } else { lo = mid }
+                            }
+                            hi
+                        };
+                        let steps = (max * 64.0) as u32;
+                        let first = (1..=steps).find(|&k| overlapped(k as f32 / 64.0));
+                        let mut want =
+                            first.map(|k| bisect(((k - 1) as f32 / 64.0, k as f32 / 64.0)));
+                        if let (Some(hit), None) = (got, want) {
+                            let from = (hit.distance - 0.05).max(0.0);
+                            let fine = (1..=1_000).find(|&k| overlapped(from + k as f32 * 1.0e-4));
+                            if let Some(k) = fine {
+                                want = Some(bisect((
+                                    from + (k - 1) as f32 * 1.0e-4,
+                                    from + k as f32 * 1.0e-4,
+                                )));
+                                slivers += 1;
+                            }
+                        }
+                        match (got, want) {
+                            (Some(hit), Some(distance)) => {
+                                assert!(
+                                    (hit.distance - distance).abs() < 1.0e-3,
+                                    "{at}: {} against the march's {distance}",
+                                    hit.distance
+                                );
+                                let center = origin + dir * distance;
+                                let normal = match shape {
+                                    None => side_normal(&poly.points[..poly.len], center),
+                                    Some(Shape::Circle { .. }) => {
+                                        Some((center - poly.closest(center)).normalize())
+                                    }
+                                    Some(Shape::Aabb { half_extents }) => {
+                                        let corners: Vec<Vec2> = poly.points[..poly.len]
+                                            .iter()
+                                            .flat_map(|&p| {
+                                                [-1.0, 1.0].into_iter().flat_map(move |x| {
+                                                    [-1.0, 1.0]
+                                                        .map(|y| p + half_extents * Vec2::new(x, y))
+                                                })
+                                            })
+                                            .collect();
+                                        side_normal(&hull(corners), center)
+                                    }
+                                };
+                                if let Some(normal) = normal {
+                                    assert!(
+                                        hit.normal.abs_diff_eq(normal, 1.0e-3),
+                                        "{at}: normal {} against the side's {normal}",
+                                        hit.normal
+                                    );
+                                }
+                                hits += 1;
+                            }
+                            (None, None) => {}
+                            (got, want) => {
+                                // Either answer within 1e-3 px of touching, or
+                                // of the cast's end.
+                                let around = got.map_or_else(|| want.unwrap(), |hit| hit.distance);
+                                let deepest = (-1024..=1024)
+                                    .map(|k| (around + k as f32 / 1024.0).clamp(0.0, max))
+                                    .map(|s| slope_depth(shape, origin + dir * s, &poly))
+                                    .fold(f32::NEG_INFINITY, f32::max);
+                                assert!(
+                                    deepest.abs() < 1.0e-3 || (around - max).abs() < 1.0e-3,
+                                    "{at}: {got:?} against the march's {want:?}, deepest {deepest}"
+                                );
+                                grazes += 1;
+                            }
+                        }
+                    }
+                    (code, hits, inside, grazes, slivers)
+                })
+            })
+            .collect();
+        for run in runs {
+            let (code, hits, inside, grazes, slivers) = run.join().unwrap();
+            assert!(
+                hits > 200 && inside > 100 && grazes + slivers < 20,
+                "kind {code}: {hits} hits, {inside} from inside, {grazes} grazes, {slivers} slivers"
+            );
+        }
+    });
+}
+
+#[test]
+fn casts_graze_slopes_exactly() {
+    // A `45 br` cell from (16, 16) to (32, 32), its face from (16, 32) to
+    // (32, 16): what a march can miss, a path that only touches.
+    let (world, _) = slope_world(1);
+    let along = Vec2::new(1.0, -1.0).normalize();
+    // A ray is closed: along the face it meets the face's lower end through
+    // the bottom's plane, and down along it the top end through the right's.
+    let up = cast_ray(&world, Vec2::new(8.0, 40.0), along, 100.0, &all()).unwrap();
+    assert_close(up.point, Vec2::new(16.0, 32.0));
+    assert_eq!(up.normal, Vec2::Y);
+    let down = cast_ray(&world, Vec2::new(40.0, 8.0), -along, 100.0, &all()).unwrap();
+    assert_close(down.point, Vec2::new(32.0, 16.0));
+    assert_eq!(down.normal, Vec2::X);
+    // Level with the apex, a ray touches it alone.
+    let level = cast_ray(&world, Vec2::new(0.0, 16.0), Vec2::X, 100.0, &all()).unwrap();
+    assert_close(level.point, Vec2::new(32.0, 16.0));
+    // A shape is open: a box whose corner rests on the face slides along it
+    // either way and stops at once moving into it.
+    let rest = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    let on_face = Vec2::new(24.0, 24.0) - Vec2::splat(4.0);
+    for dir in [along, -along] {
+        assert_eq!(cast_shape(&world, rest, on_face, dir, 100.0, &all()), None);
+    }
+    let into = cast_shape(&world, rest, on_face, Vec2::new(1.0, 1.0), 100.0, &all()).unwrap();
+    assert_eq!((into.distance, into.point), (0.0, Vec2::splat(24.0)));
+    assert_close(into.normal, Vec2::new(-1.0, -1.0).normalize());
+    // A circle whose path passes the apex at its radius grazes it; one
+    // aimed at it meets the apex's disc.
+    let ball = Shape::Circle { radius: 4.0 };
+    assert_eq!(
+        cast_shape(&world, ball, Vec2::new(0.0, 12.0), Vec2::X, 100.0, &all()),
+        None
+    );
+    let head_on = cast_shape(&world, ball, Vec2::new(32.0, -20.0), Vec2::Y, 100.0, &all()).unwrap();
+    assert!((head_on.distance - 32.0).abs() < 1.0e-4, "{head_on:?}");
+    assert_close(head_on.normal, Vec2::NEG_Y);
+    let glancing =
+        cast_shape(&world, ball, Vec2::new(34.0, -20.0), Vec2::Y, 100.0, &all()).unwrap();
+    let touch = 36.0 - 12f32.sqrt();
+    assert!((glancing.distance - touch).abs() < 1.0e-4, "{glancing:?}");
+    assert_close(glancing.normal, Vec2::new(0.5, -(12f32.sqrt()) / 4.0));
+    assert_close(glancing.point, Vec2::new(32.0, 16.0));
+}
+
+#[test]
+fn overlap_and_nearest_meet_slopes() {
+    // A `45 br` cell from (16, 16) to (32, 32): its box's empty half above
+    // the face is no tile to overlaps, nearest surfaces and sensors.
+    let (mut world, _) = slope_world(1);
+    let mut out = Vec::new();
+    let small = Shape::Aabb {
+        half_extents: Vec2::splat(2.0),
+    };
+    overlap(&world, small, Vec2::new(20.0, 20.0), &all(), &mut out);
+    assert!(out.is_empty(), "the empty corner: {out:?}");
+    overlap(&world, small, Vec2::new(28.0, 28.0), &all(), &mut out);
+    assert_eq!(out, [None], "the solid corner");
+    // A hair short of the face is no overlap; a hair past it is.
+    let ball = Shape::Circle { radius: 2.0 };
+    let off = Vec2::new(-1.0, -1.0).normalize();
+    overlap(
+        &world,
+        ball,
+        Vec2::splat(24.0) + off * 2.001,
+        &all(),
+        &mut out,
+    );
+    assert!(out.is_empty(), "short of the face: {out:?}");
+    overlap(
+        &world,
+        ball,
+        Vec2::splat(24.0) + off * 1.999,
+        &all(),
+        &mut out,
+    );
+    assert_eq!(out, [None], "past the face");
+    // The nearest point of a point in the empty corner is on the face.
+    let near = nearest(&world, Vec2::new(18.0, 18.0), 50.0, &all()).unwrap();
+    assert!(
+        (near.distance - 12.0 / 2f32.sqrt()).abs() < 1.0e-4,
+        "{near:?}"
+    );
+    assert_close(near.point, Vec2::splat(24.0));
+    assert_close(near.normal, off);
+    let inside = nearest(&world, Vec2::new(30.0, 30.0), 50.0, &all()).unwrap();
+    assert_eq!((inside.distance, inside.normal), (0.0, Vec2::ZERO));
+    // A sensor in the empty corner meets no tile; one over the face does.
+    world.insert_resource(crate::ecs::EventQueue::<crate::physics::SensorEntered>::new());
+    world.insert_resource(crate::ecs::EventQueue::<crate::physics::SensorExited>::new());
+    let corner = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(19.0, 19.0)),
+        Collider::aabb(Vec2::splat(2.5)),
+    ));
+    let over = world.spawn_with(RigidBodyBundle::sensor(
+        Position(Vec2::new(23.0, 23.0)),
+        Collider::aabb(Vec2::splat(2.5)),
+    ));
+    physics_step(&mut world);
+    let entered: Vec<Entity> = world
+        .resource::<crate::ecs::EventQueue<crate::physics::SensorEntered>>()
+        .iter_current()
+        .map(|event| event.sensor)
+        .collect();
+    assert_eq!(entered, [over], "{corner:?} sits in the empty corner");
+}
+
+#[test]
+fn swept_circles_meet_where_they_first_touch() {
+    // A ball of radius 1 moving 20 px: past a ball of radius 0.5 at 2 px it
+    // never touches it, at it it touches with 1.5 px between centres, and
+    // along a box's diagonal it meets the box's rounded corner.
+    let ball = Shape::Circle { radius: 1.0 };
+    let small = Shape::Circle { radius: 0.5 };
+    let motion = Vec2::new(20.0, 0.0);
+    let pass = first_overlap(
+        ball,
+        Vec2::new(-10.0, 2.0),
+        motion,
+        small,
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    assert_eq!(pass, None);
+    let hit = first_overlap(
+        ball,
+        Vec2::new(-10.0, 0.0),
+        motion,
+        small,
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    assert!((hit.unwrap() - 8.5 / 20.0).abs() < 1.0e-6, "{hit:?}");
+    let block = Shape::Aabb {
+        half_extents: Vec2::ONE,
+    };
+    let corner = first_overlap(
+        ball,
+        Vec2::splat(-10.0),
+        Vec2::splat(20.0),
+        block,
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    let touch = (9.0 - std::f32::consts::FRAC_1_SQRT_2) / 20.0;
+    assert!((corner.unwrap() - touch).abs() < 1.0e-6, "{corner:?}");
 }
