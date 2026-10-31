@@ -7368,6 +7368,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_faces(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::physics::step::TerrainFace> + '_
 pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
@@ -7381,6 +7382,26 @@ impl core::marker::Unpin for tungsten_core::physics::step::PhysicsBuffers
 impl core::marker::UnsafeUnpin for tungsten_core::physics::step::PhysicsBuffers
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::PhysicsBuffers
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::PhysicsBuffers
+#[non_exhaustive] pub struct tungsten_core::physics::step::TerrainFace
+pub tungsten_core::physics::step::TerrainFace::end: glam::f32::vec2::Vec2
+pub tungsten_core::physics::step::TerrainFace::normal: glam::f32::vec2::Vec2
+pub tungsten_core::physics::step::TerrainFace::one_way: bool
+pub tungsten_core::physics::step::TerrainFace::start: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::clone(&self) -> tungsten_core::physics::step::TerrainFace
+impl core::cmp::PartialEq for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::eq(&self, &tungsten_core::physics::step::TerrainFace) -> bool
+impl core::fmt::Debug for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::step::TerrainFace
+impl core::marker::StructuralPartialEq for tungsten_core::physics::step::TerrainFace
+impl core::marker::Freeze for tungsten_core::physics::step::TerrainFace
+impl core::marker::Send for tungsten_core::physics::step::TerrainFace
+impl core::marker::Sync for tungsten_core::physics::step::TerrainFace
+impl core::marker::Unpin for tungsten_core::physics::step::TerrainFace
+impl core::marker::UnsafeUnpin for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::TerrainFace
 pub fn tungsten_core::physics::step::physics_step(&mut tungsten_core::World)
 pub fn tungsten_core::physics::step::wake(&mut tungsten_core::World, tungsten_core::Entity)
 #[non_exhaustive] pub enum tungsten_core::physics::BodyKind
@@ -7516,6 +7537,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_faces(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::physics::step::TerrainFace> + '_
 pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
@@ -7767,6 +7789,26 @@ impl core::marker::Unpin for tungsten_core::SpatialHit
 impl core::marker::UnsafeUnpin for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SpatialHit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SpatialHit
+#[non_exhaustive] pub struct tungsten_core::physics::TerrainFace
+pub tungsten_core::physics::TerrainFace::end: glam::f32::vec2::Vec2
+pub tungsten_core::physics::TerrainFace::normal: glam::f32::vec2::Vec2
+pub tungsten_core::physics::TerrainFace::one_way: bool
+pub tungsten_core::physics::TerrainFace::start: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::clone(&self) -> tungsten_core::physics::step::TerrainFace
+impl core::cmp::PartialEq for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::eq(&self, &tungsten_core::physics::step::TerrainFace) -> bool
+impl core::fmt::Debug for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::step::TerrainFace
+impl core::marker::StructuralPartialEq for tungsten_core::physics::step::TerrainFace
+impl core::marker::Freeze for tungsten_core::physics::step::TerrainFace
+impl core::marker::Send for tungsten_core::physics::step::TerrainFace
+impl core::marker::Sync for tungsten_core::physics::step::TerrainFace
+impl core::marker::Unpin for tungsten_core::physics::step::TerrainFace
+impl core::marker::UnsafeUnpin for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::TerrainFace
 #[non_exhaustive] pub struct tungsten_core::physics::TileHit
 pub tungsten_core::physics::TileHit::col: u32
 pub tungsten_core::physics::TileHit::layer: usize
@@ -17140,6 +17182,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_faces(&self) -> impl core::iter::traits::iterator::Iterator<Item = tungsten_core::physics::step::TerrainFace> + '_
 pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
@@ -18324,6 +18367,26 @@ impl core::marker::Unpin for tungsten_core::components::Tag
 impl core::marker::UnsafeUnpin for tungsten_core::components::Tag
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::components::Tag
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::components::Tag
+#[non_exhaustive] pub struct tungsten_core::TerrainFace
+pub tungsten_core::TerrainFace::end: glam::f32::vec2::Vec2
+pub tungsten_core::TerrainFace::normal: glam::f32::vec2::Vec2
+pub tungsten_core::TerrainFace::one_way: bool
+pub tungsten_core::TerrainFace::start: glam::f32::vec2::Vec2
+impl core::clone::Clone for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::clone(&self) -> tungsten_core::physics::step::TerrainFace
+impl core::cmp::PartialEq for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::eq(&self, &tungsten_core::physics::step::TerrainFace) -> bool
+impl core::fmt::Debug for tungsten_core::physics::step::TerrainFace
+pub fn tungsten_core::physics::step::TerrainFace::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::step::TerrainFace
+impl core::marker::StructuralPartialEq for tungsten_core::physics::step::TerrainFace
+impl core::marker::Freeze for tungsten_core::physics::step::TerrainFace
+impl core::marker::Send for tungsten_core::physics::step::TerrainFace
+impl core::marker::Sync for tungsten_core::physics::step::TerrainFace
+impl core::marker::Unpin for tungsten_core::physics::step::TerrainFace
+impl core::marker::UnsafeUnpin for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::TerrainFace
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::TerrainFace
 #[non_exhaustive] pub struct tungsten_core::TextLayout
 pub tungsten_core::TextLayout::align: tungsten_core::text::TextAlign
 pub tungsten_core::TextLayout::features: tungsten_core::text::FontFeatures

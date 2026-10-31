@@ -174,3 +174,84 @@ fn toggle_system_flips_on_f1_action() {
 
     assert!(world.get_resource::<PhysicsDebugOverlay>().unwrap().enabled);
 }
+
+#[test]
+fn the_overlay_draws_the_tile_outline() {
+    // A one-way ledge of 16 px tiles from x 32 to 96 over a floor along the
+    // map's bottom row: one line per exposed face of each run, the ledge's
+    // in the sensor colour, after a step has traced them.
+    use tungsten_core::physics::{PhysicsConfig, physics_step};
+    use tungsten_core::{LayerKind, TileProps, TilemapData, TilemapInstance, TilemapRegistry};
+
+    let mut world = World::new();
+    let mut time = Time::new();
+    time.advance_frame(1.0 / 60.0);
+    world.insert_resource(time);
+    world.insert_resource(PhysicsConfig::default());
+    world.insert_resource(DebugDraw::new());
+    let overlay = PhysicsDebugOverlay {
+        enabled: true,
+        ..Default::default()
+    };
+    world.insert_resource(overlay);
+    let mut data = TilemapData::new(16, 16, 10, 4);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    let mut props = TileProps::default();
+    props.one_way = true;
+    data.set_tile_props(ledge, props);
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for col in 2..6 {
+        data.set_tile(layer, col, 1, ledge);
+    }
+    for col in 0..10 {
+        data.set_tile(layer, col, 3, solid);
+    }
+    let mut registry = TilemapRegistry::new();
+    registry.insert("ledge".into(), data);
+    world.insert_resource(registry);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ledge", Vec2::ZERO));
+    physics_step(&mut world);
+
+    physics_debug_emit_system(&mut world);
+
+    let line = |a: [i32; 2], b: [i32; 2], one_way: bool| (a, b, one_way);
+    let mut want = vec![
+        // The ledge: its left end's top and left, the middle's top, its
+        // right end's top and right.
+        line([32, 16], [48, 16], true),
+        line([32, 16], [32, 32], true),
+        line([48, 16], [80, 16], true),
+        line([80, 16], [96, 16], true),
+        line([96, 16], [96, 32], true),
+        // The floor: its left cell's top, bottom and left, the middle's top
+        // and bottom, its right cell's top, bottom and right.
+        line([0, 48], [16, 48], false),
+        line([0, 64], [16, 64], false),
+        line([0, 48], [0, 64], false),
+        line([16, 48], [144, 48], false),
+        line([16, 64], [144, 64], false),
+        line([144, 48], [160, 48], false),
+        line([144, 64], [160, 64], false),
+        line([160, 48], [160, 64], false),
+    ];
+    let mut got: Vec<_> = world
+        .get_resource::<DebugDraw>()
+        .unwrap()
+        .commands()
+        .iter()
+        .map(|command| {
+            let DebugShape::Line { a, b } = command.shape else {
+                panic!("only lines: {command:?}");
+            };
+            let one_way = command.color == overlay.color_sensor;
+            assert!(one_way || command.color == overlay.color_aabb);
+            let ends = |v: Vec2| [v.x as i32, v.y as i32];
+            line(ends(a), ends(b), one_way)
+        })
+        .collect();
+    want.sort_unstable();
+    got.sort_unstable();
+    assert_eq!(got, want);
+}

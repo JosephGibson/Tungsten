@@ -1,25 +1,29 @@
 //! D-042 physics debug overlay reads `Position + Collider`, not `Transform`,
-//! drawn at the point `physics_sync` draws the body (`D-137`).
+//! drawn at the point `physics_sync` draws the body (`D-137`), and the last
+//! step's tile outline.
 
-use tungsten_core::physics::{BodyKind, Collider, Position, PrevPosition, RigidBody, Shape};
+use tungsten_core::physics::{
+    BodyKind, Collider, PhysicsBuffers, Position, PrevPosition, RigidBody, Shape,
+};
 use tungsten_core::{ActionMap, DebugDraw, Entity, InputState, Time, World};
 
 /// Physics debug overlay config. A kinematic body or a sensor is outlined in
 /// its kind's colour, whatever its shape; every other collider in its
-/// shape's colour.
+/// shape's colour. Each exposed face of the tile outline is a line in the
+/// box colour, a one-way tile's in the sensor colour.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PhysicsDebugOverlay {
     /// Outlines are drawn.
     pub enabled: bool,
     /// Box colliders of static and dynamic bodies and of colliders without
-    /// a body.
+    /// a body, and the tile outline's faces.
     pub color_aabb: [f32; 4],
     /// Circle colliders of static and dynamic bodies and of colliders
     /// without a body.
     pub color_circle: [f32; 4],
     /// Kinematic bodies, either shape.
     pub color_kinematic: [f32; 4],
-    /// Sensors, either shape.
+    /// Sensors, either shape, and one-way tiles' faces.
     pub color_sensor: [f32; 4],
     /// Outline width.
     pub thickness: f32,
@@ -64,7 +68,8 @@ pub(crate) fn physics_debug_toggle_system(world: &mut World) {
 /// [`PrevPosition`] is outlined at `prev + (cur - prev) * alpha` while
 /// [`Time::interpolate`] is on, where its sprite is drawn, so the outline
 /// does not lead the sprite by up to a step; every other collider at its
-/// `Position`.
+/// `Position`. Then a line for each exposed face of the last step's tile
+/// outline ([`PhysicsBuffers::terrain_faces`]).
 pub(crate) fn physics_debug_emit_system(world: &mut World) {
     let Some(overlay) = world.get_resource::<PhysicsDebugOverlay>() else {
         return;
@@ -119,6 +124,18 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
             }
         }
     }
+    if let Some(buffers) = world.get_resource::<PhysicsBuffers>() {
+        emits.extend(buffers.terrain_faces().map(|face| DebugEmit::Line {
+            a: face.start,
+            b: face.end,
+            color: if face.one_way {
+                color_sensor
+            } else {
+                color_aabb
+            },
+            thickness,
+        }));
+    }
 
     if emits.is_empty() {
         return;
@@ -140,6 +157,12 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
                 color,
                 thickness,
             } => debug.draw_circle(center, radius, color, thickness),
+            DebugEmit::Line {
+                a,
+                b,
+                color,
+                thickness,
+            } => debug.draw_line(a, b, color, thickness),
         }
     }
 }
@@ -154,6 +177,12 @@ enum DebugEmit {
     Circle {
         center: glam::Vec2,
         radius: f32,
+        color: [f32; 4],
+        thickness: f32,
+    },
+    Line {
+        a: glam::Vec2,
+        b: glam::Vec2,
         color: [f32; 4],
         thickness: f32,
     },

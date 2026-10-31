@@ -117,7 +117,9 @@
 
 use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
-use super::collision::{Aabb, Contact, FACE_ALL, FACE_ONE_WAY};
+use super::collision::{
+    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP,
+};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::{CollisionEvent, SensorEntered};
 use super::query::{IndexEntry, SpatialIndex};
@@ -452,6 +454,31 @@ impl PhysicsBuffers {
         self.proxies.len()
     }
 
+    /// The exposed faces of the tile outline's runs as world segments, at
+    /// the last step's map positions, run by run in tile order, each run's
+    /// top, bottom, left and right (diagnostic): what the physics overlay
+    /// draws over a tile map.
+    pub fn terrain_faces(&self) -> impl Iterator<Item = TerrainFace> + '_ {
+        self.tiles.runs().iter().flat_map(|run| {
+            let (min, max) = (run.center - run.half, run.center + run.half);
+            let one_way = run.face_mask & FACE_ONE_WAY != 0;
+            [
+                (FACE_TOP, min, Vec2::new(max.x, min.y), Vec2::NEG_Y),
+                (FACE_BOTTOM, Vec2::new(min.x, max.y), max, Vec2::Y),
+                (FACE_LEFT, min, Vec2::new(min.x, max.y), Vec2::NEG_X),
+                (FACE_RIGHT, Vec2::new(max.x, min.y), max, Vec2::X),
+            ]
+            .into_iter()
+            .filter(move |&(face, ..)| run.face_mask & face != 0)
+            .map(move |(_, start, end, normal)| TerrainFace {
+                start,
+                end,
+                normal,
+                one_way,
+            })
+        })
+    }
+
     /// Chunks of tile outline traced since the buffers were made, a 16 × 16
     /// block of a collision layer's cells each (diagnostic): a map's every
     /// chunk when it appears, moves or is replaced, and for a written cell
@@ -548,6 +575,21 @@ impl PhysicsBuffers {
     pub(super) fn grid_cells(&self) -> &TileCache {
         &self.tiles
     }
+}
+
+/// One exposed face of the tile outline, a world segment
+/// ([`PhysicsBuffers::terrain_faces`]).
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
+pub struct TerrainFace {
+    /// The face's top or left end.
+    pub start: Vec2,
+    /// Its bottom or right end.
+    pub end: Vec2,
+    /// Its outward unit normal.
+    pub normal: Vec2,
+    /// A one-way tile's face: solid from above alone.
+    pub one_way: bool,
 }
 
 /// Wake `entity`'s sleep island (D-065); no-op when nothing has ever slept.

@@ -31,7 +31,7 @@ pub use plugin::{
     physics_sync,
 };
 pub use query::{SpatialFilter, SpatialHit, TileHit, cast_ray, cast_shape, nearest, overlap};
-pub use step::{PhysicsBuffers, physics_step, wake};
+pub use step::{PhysicsBuffers, TerrainFace, physics_step, wake};
 
 use glam::Vec2;
 
