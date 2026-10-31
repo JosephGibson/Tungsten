@@ -2,7 +2,8 @@
 
 use std::path::{Path, PathBuf};
 use tungsten_core::PrefabData;
-use tungsten_core::assets::manifest::ResolvedManifest;
+use tungsten_core::assets::manifest::{ManifestError, ResolvedManifest};
+use tungsten_core::physics::PhysicsMaterial;
 
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -199,4 +200,134 @@ fn every_data_file_parses() {
         failures.len(),
         failures.join("\n  - ")
     );
+}
+
+/// `physics_layers` and `physics_materials` merge across roots, each name
+/// and each layer given once; a repeat, an invalid name or layer and an
+/// out-of-range coefficient fail the load, and the check keeps each one.
+#[test]
+fn physics_layers_and_materials_load_and_refuse_repeats() {
+    let dir = std::env::temp_dir().join(format!("tungsten_physics_names_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let write = |name: &str, text: &str| {
+        let path = dir.join(name);
+        std::fs::write(&path, text).unwrap();
+        path
+    };
+    let base = write(
+        "base.json",
+        r#"{ "physics_layers": { "walls": 3, "water": 5 },
+             "physics_materials": { "ice": { "friction": 0.05 } } }"#,
+    );
+    let more = write(
+        "more.json",
+        r#"{ "physics_layers": { "lava": 6 },
+             "physics_materials": { "mud": { "friction": 0.9, "restitution": 0.1, "rolling": 0.2 } } }"#,
+    );
+    let merged = ResolvedManifest::load_and_merge_many(&[&base, &more]).unwrap();
+    let mut layers: Vec<(&str, u32)> = merged
+        .physics_layers
+        .iter()
+        .map(|(name, &layer)| (name.as_str(), layer))
+        .collect();
+    layers.sort_unstable();
+    assert_eq!(layers, [("lava", 6), ("walls", 3), ("water", 5)]);
+    assert_eq!(
+        merged.physics_materials["ice"],
+        PhysicsMaterial {
+            friction: 0.05,
+            restitution: 0.0,
+            rolling: 0.0
+        }
+    );
+    assert_eq!(
+        merged.physics_materials["mud"],
+        PhysicsMaterial {
+            friction: 0.9,
+            restitution: 0.1,
+            rolling: 0.2
+        }
+    );
+
+    // Across roots: a name, a layer or a material given again.
+    let message = |roots: &[&PathBuf]| {
+        ResolvedManifest::load_and_merge_many(roots)
+            .expect_err("must fail")
+            .to_string()
+    };
+    let walls_again = write(
+        "walls_again.json",
+        r#"{ "physics_layers": { "walls": 7 } }"#,
+    );
+    assert_eq!(
+        message(&[&base, &walls_again]),
+        "duplicate asset ID 'physics_layers.walls' across manifests"
+    );
+    let three_again = write("three_again.json", r#"{ "physics_layers": { "fire": 3 } }"#);
+    assert_eq!(
+        message(&[&base, &three_again]),
+        "physics layer 3 is named both 'walls' and 'fire'"
+    );
+    let ice_again = write(
+        "ice_again.json",
+        r#"{ "physics_materials": { "ice": {} } }"#,
+    );
+    assert_eq!(
+        message(&[&base, &ice_again]),
+        "duplicate asset ID 'physics_materials.ice' across manifests"
+    );
+
+    // In one root: a layer two names give, a bad name or layer, a bad
+    // coefficient, an unknown field and a name given twice.
+    for (text, expected) in [
+        (
+            r#"{ "physics_layers": { "b": 1, "a": 1 } }"#,
+            "physics layer 1 is named both 'a' and 'b'",
+        ),
+        (
+            r#"{ "physics_layers": { "Walls": 1 } }"#,
+            "physics layer 'Walls' is invalid: a name must match [a-z][a-z0-9_]*",
+        ),
+        (
+            r#"{ "physics_layers": { "deep": 32 } }"#,
+            "physics layer 'deep' is invalid: a layer must be 0 to 31 (got 32)",
+        ),
+        (
+            r#"{ "physics_materials": { "glue": { "friction": -1 } } }"#,
+            "physics material 'glue' is invalid: `friction` must be finite and at least 0 (got -1)",
+        ),
+        (
+            r#"{ "physics_materials": { "rubber": { "restitution": 1.5 } } }"#,
+            "physics material 'rubber' is invalid: `restitution` must be in 0..=1 (got 1.5)",
+        ),
+        (
+            r#"{ "physics_materials": { "rubber": { "grip": 1 } } }"#,
+            "unknown field `grip`",
+        ),
+        (
+            r#"{ "physics_layers": { "walls": 1, "walls": 2 } }"#,
+            "duplicate ID `walls` in one section",
+        ),
+    ] {
+        let root = write("one.json", text);
+        let got = message(&[&root]);
+        assert!(got.contains(expected), "{text}: {got}");
+    }
+
+    // The check keeps going: each repeat is an issue, the first kept.
+    let (graph, issues) =
+        ResolvedManifest::load_for_check(&[&base, &walls_again, &three_again], &dir);
+    assert_eq!(graph.physics_layers["walls"], 3);
+    assert!(!graph.physics_layers.contains_key("fire"));
+    assert_eq!(issues.len(), 2, "{issues:?}");
+    assert!(matches!(
+        issues[0].error,
+        ManifestError::DuplicateId { ref id } if id == "physics_layers.walls"
+    ));
+    assert!(matches!(
+        issues[1].error,
+        ManifestError::PhysicsLayerTaken { layer: 3, .. }
+    ));
+    std::fs::remove_dir_all(&dir).unwrap();
 }

@@ -1302,3 +1302,68 @@ fn load_sounds_gives_a_sound_its_manifest_bus_and_voice_limit() {
     );
     assert!(sounds.get_looping(theme) && (sounds.get_volume(hit) - 0.8).abs() < 1e-6);
 }
+
+#[test]
+fn the_loader_inserts_physics_names_and_a_reload_replaces_them() {
+    use glam::Vec2;
+    use tungsten_core::physics::{PhysicsLayers, PhysicsMaterial, PhysicsMaterials, RigidBody};
+    use tungsten_core::schedule::{Plugin, Schedule};
+
+    // A manifest naming a layer and a material, and a prefab naming both.
+    let dir = tempdir();
+    write(
+        &dir.join("prefabs/crate.json"),
+        r#"{ "components": { "rigid_body": { "kind": "dynamic",
+            "shape": { "kind": "aabb", "half_extents": [8.0, 8.0] },
+            "layers": ["walls"], "material": "ice" } } }"#,
+    );
+    let root = dir.join("manifest.json");
+    write(
+        &root,
+        r#"{ "physics_layers": { "walls": 3 },
+             "physics_materials": { "ice": { "friction": 0.05, "restitution": 0.25 } },
+             "prefabs": { "crate": { "path": "prefabs/crate.json" } } }"#,
+    );
+    let manifest = ResolvedManifest::load(&root).unwrap();
+    let mut world = seed_world();
+    tungsten_core::physics::PhysicsPlugin.build(&mut Schedule::new(), &mut world);
+    // Before the names load, the prefab names what the World lacks.
+    assert!(load_prefabs(&manifest, &mut world).is_err());
+    load_physics_names(&manifest, &mut world);
+    load_prefabs(&manifest, &mut world).unwrap();
+    let ice = PhysicsMaterial {
+        friction: 0.05,
+        restitution: 0.25,
+        rolling: 0.0,
+    };
+    assert_eq!(world.resource::<PhysicsLayers>().bit("walls"), Some(1 << 3));
+    let materials = world.resource::<PhysicsMaterials>();
+    assert_eq!((materials.get("ice"), materials.version()), (Some(ice), 0));
+    let spawned = world.spawn_prefab("crate", Vec2::ZERO).unwrap();
+    let body = *world.get::<RigidBody>(spawned).unwrap();
+    assert_eq!(
+        (body.layers, body.friction, body.restitution),
+        (1 << 3, 0.05, 0.25)
+    );
+
+    // A reload replaces both, the materials' version moving on.
+    let mut next = ResolvedManifest::default();
+    next.physics_layers.insert("water".to_owned(), 5);
+    next.physics_materials.insert(
+        "mud".to_owned(),
+        PhysicsMaterial {
+            friction: 0.9,
+            ..PhysicsMaterial::default()
+        },
+    );
+    load_physics_names(&next, &mut world);
+    let layers = world.resource::<PhysicsLayers>();
+    assert_eq!(
+        (layers.bit("walls"), layers.bit("water")),
+        (None, Some(1 << 5))
+    );
+    let materials = world.resource::<PhysicsMaterials>();
+    assert_eq!(materials.get("ice"), None);
+    assert_eq!(materials.get("mud").map(|mud| mud.friction), Some(0.9));
+    assert_eq!(materials.version(), 1);
+}

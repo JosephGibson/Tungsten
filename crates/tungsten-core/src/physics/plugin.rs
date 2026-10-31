@@ -7,12 +7,12 @@
 use glam::Vec2;
 use serde::Deserialize;
 
-use crate::component_registry::SpawnContext;
+use crate::component_registry::{MissingAsset, SpawnContext};
 use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
-    Collider, CollisionEvent, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered,
-    Shape, Velocity, physics_step,
+    Collider, CollisionEvent, PhysicsLayers, PhysicsMaterials, Position, PrevPosition, RigidBody,
+    RigidBodyBundle, SensorEntered, Shape, Velocity, physics_step,
 };
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
@@ -29,7 +29,9 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 /// `EventQueue<CollisionEvent>`, `EventQueue<SensorEntered>` and the
 /// `rigid_body` scene component, which
 /// spawns a [`RigidBodyBundle`] at the entry's position
-/// ([`component_registry`](crate::component_registry)). The snapshot is
+/// ([`component_registry`](crate::component_registry)), its layer and
+/// material names checked against the World's [`PhysicsLayers`] and
+/// [`PhysicsMaterials`]. The snapshot is
 /// registered first, so it heads the stage ahead of a game's fixed systems,
 /// which `DefaultPlugins` builds before. `PhysicsConfig` stays the app's
 /// resource, so a game edits it before or after adding the plugin.
@@ -40,7 +42,7 @@ impl Plugin for PhysicsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<CollisionEvent>();
         world.register_event::<SensorEntered>();
-        world.register_component_with(RIGID_BODY, spawn_rigid_body);
+        world.register_component_with_assets(RIGID_BODY, check_rigid_body, spawn_rigid_body);
         schedule.add(
             Stage::FixedUpdate,
             system(PHYSICS_PREV_SNAPSHOT, physics_prev_snapshot),
@@ -122,26 +124,101 @@ enum SceneShape {
     Circle { radius: f32 },
 }
 
-/// One layer number in `rigid_body.layers` or `rigid_body.mask`: 0 to 31.
-#[derive(Clone, Copy, Deserialize)]
-#[serde(try_from = "u32")]
-struct SceneLayer(u32);
+/// One entry of `rigid_body.layers` or `rigid_body.mask`: a layer number,
+/// 0 to 31, or a physics layer's name ([`PhysicsLayers`]).
+enum SceneLayer {
+    Number(u32),
+    Name(String),
+}
 
-impl TryFrom<u32> for SceneLayer {
-    type Error = String;
+impl<'de> Deserialize<'de> for SceneLayer {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Entry;
 
-    fn try_from(layer: u32) -> Result<Self, String> {
-        if layer < u32::BITS {
-            Ok(Self(layer))
-        } else {
-            Err(format!("a layer must be 0 to 31 (got {layer})"))
+        impl serde::de::Visitor<'_> for Entry {
+            type Value = SceneLayer;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a layer number 0 to 31 or a physics layer name")
+            }
+
+            fn visit_u64<E: serde::de::Error>(self, layer: u64) -> Result<SceneLayer, E> {
+                if layer < u64::from(u32::BITS) {
+                    Ok(SceneLayer::Number(layer as u32))
+                } else {
+                    Err(E::custom(format_args!(
+                        "a layer must be 0 to 31 (got {layer})"
+                    )))
+                }
+            }
+
+            fn visit_i64<E: serde::de::Error>(self, layer: i64) -> Result<SceneLayer, E> {
+                match u64::try_from(layer) {
+                    Ok(layer) => self.visit_u64(layer),
+                    Err(_) => Err(E::invalid_value(
+                        serde::de::Unexpected::Signed(layer),
+                        &self,
+                    )),
+                }
+            }
+
+            fn visit_str<E: serde::de::Error>(self, name: &str) -> Result<SceneLayer, E> {
+                Ok(SceneLayer::Name(name.to_owned()))
+            }
         }
+
+        deserializer.deserialize_any(Entry)
     }
 }
 
-/// The bits of a list of layers; an empty list has none.
-fn layer_bits(layers: &[SceneLayer]) -> u32 {
-    layers.iter().fold(0, |bits, layer| bits | 1 << layer.0)
+/// `rigid_body.layers` or `rigid_body.mask` as written: the bits of its
+/// numbers, and its names with their places in the list, which resolve at
+/// spawn.
+struct SceneLayers {
+    bits: u32,
+    names: Vec<(usize, String)>,
+}
+
+impl<'de> Deserialize<'de> for SceneLayers {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct List;
+
+        impl<'de> serde::de::Visitor<'de> for List {
+            type Value = SceneLayers;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a sequence")
+            }
+
+            fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<SceneLayers, A::Error> {
+                // The numbers take the buffer a list of `u32` would, sized as
+                // serde sizes one, so a list of numbers allocates as it did
+                // before names were read.
+                const MAX_PREALLOC_BYTES: usize = 1024 * 1024;
+                let capacity = seq
+                    .size_hint()
+                    .unwrap_or(0)
+                    .min(MAX_PREALLOC_BYTES / size_of::<u32>());
+                let mut numbers: Vec<u32> = Vec::with_capacity(capacity);
+                let mut names = Vec::new();
+                let mut at = 0;
+                while let Some(entry) = seq.next_element::<SceneLayer>()? {
+                    match entry {
+                        SceneLayer::Number(layer) => numbers.push(layer),
+                        SceneLayer::Name(name) => names.push((at, name)),
+                    }
+                    at += 1;
+                }
+                let bits = numbers.iter().fold(0, |bits, layer| bits | 1 << layer);
+                Ok(SceneLayers { bits, names })
+            }
+        }
+
+        deserializer.deserialize_seq(List)
+    }
 }
 
 /// `components.rigid_body` as written.
@@ -153,25 +230,39 @@ struct RigidBodyFields {
     #[serde(default)]
     offset: [f32; 2],
     mass: Option<f32>,
-    #[serde(default)]
-    restitution: f32,
+    /// The entry's own coefficients, over its material's; each 0 without
+    /// either.
+    restitution: Option<f32>,
+    friction: Option<f32>,
+    rolling: Option<f32>,
+    /// A physics material's name ([`PhysicsMaterials`]).
+    material: Option<String>,
     velocity: Option<[f32; 2]>,
     /// The layers the body is in; `[0]` when missing.
-    layers: Option<Vec<SceneLayer>>,
+    layers: Option<SceneLayers>,
     /// The layers it meets; every layer when missing.
-    mask: Option<Vec<SceneLayer>>,
+    mask: Option<SceneLayers>,
     /// A dynamic body's share of gravity; 1 when missing.
     gravity_scale: Option<f32>,
 }
 
 /// `components.rigid_body`, checked: the bundle's parts beside the entry's
-/// position.
-#[derive(Clone, Copy, Deserialize)]
+/// position, and the names that resolve against the World at spawn.
+#[derive(Deserialize)]
 #[serde(try_from = "RigidBodyFields")]
 struct RigidBodyDef {
     velocity: Option<Velocity>,
     collider: Collider,
+    /// The body with its numbered layers and its own coefficients.
     body: RigidBody,
+    /// The layer names of `layers` and of `mask`, with their places.
+    layer_names: Vec<(usize, String)>,
+    mask_names: Vec<(usize, String)>,
+    material: Option<String>,
+    /// The entry's own coefficients, which its material's do not replace.
+    restitution: Option<f32>,
+    friction: Option<f32>,
+    rolling: Option<f32>,
 }
 
 impl TryFrom<RigidBodyFields> for RigidBodyDef {
@@ -207,11 +298,21 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                 "`offset` must be within ±{MAX_BODY_EXTENT} (got [{ox}, {oy}])"
             ));
         }
-        if !(0.0..=1.0).contains(&fields.restitution) {
+        if let Some(restitution) = fields.restitution
+            && !(0.0..=1.0).contains(&restitution)
+        {
             return Err(format!(
-                "`restitution` must be in 0..=1 (got {})",
-                fields.restitution
+                "`restitution` must be in 0..=1 (got {restitution})"
             ));
+        }
+        for (field, value) in [("friction", fields.friction), ("rolling", fields.rolling)] {
+            if let Some(value) = value
+                && !(value.is_finite() && value >= 0.0)
+            {
+                return Err(format!(
+                    "`{field}` must be finite and at least 0 (got {value})"
+                ));
+            }
         }
         let velocity = match fields.velocity {
             Some([x, y]) if !(x.is_finite() && y.is_finite()) => {
@@ -231,8 +332,8 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             scale => scale.unwrap_or(1.0),
         };
-        // `restitution` is accepted on every kind and does nothing on a
-        // sensor, which has no contacts.
+        // `restitution`, `friction`, `rolling` and `material` are accepted on
+        // every kind and do nothing on a sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
             SceneBodyKind::Dynamic => {
                 let mass = fields.mass.unwrap_or(1.0);
@@ -252,14 +353,16 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             }
             SceneBodyKind::Sensor => (RigidBody::sensor(), Some(velocity.unwrap_or_default())),
         };
-        let layers = fields
+        let (layers, layer_names) = fields
             .layers
-            .as_deref()
-            .map_or(RigidBody::DEFAULT_LAYERS, layer_bits);
-        let mask = fields
+            .map_or((RigidBody::DEFAULT_LAYERS, Vec::new()), |list| {
+                (list.bits, list.names)
+            });
+        let (mask, mask_names) = fields
             .mask
-            .as_deref()
-            .map_or(RigidBody::ALL_LAYERS, layer_bits);
+            .map_or((RigidBody::ALL_LAYERS, Vec::new()), |list| {
+                (list.bits, list.names)
+            });
         Ok(Self {
             velocity,
             collider: Collider {
@@ -267,23 +370,99 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
                 offset: Vec2::new(ox, oy),
             },
             body: body
-                .with_restitution(fields.restitution)
+                .with_restitution(fields.restitution.unwrap_or(0.0))
+                .with_friction(fields.friction.unwrap_or(0.0))
+                .with_rolling(fields.rolling.unwrap_or(0.0))
                 .with_layers(layers)
                 .with_mask(mask)
                 .with_gravity_scale(gravity_scale),
+            layer_names,
+            mask_names,
+            material: fields.material,
+            restitution: fields.restitution,
+            friction: fields.friction,
+            rolling: fields.rolling,
         })
     }
 }
 
+/// `rigid_body`'s World check: each layer name in the World's
+/// [`PhysicsLayers`] and the material in its [`PhysicsMaterials`].
+fn check_rigid_body(def: &RigidBodyDef, world: &World) -> Result<(), MissingAsset> {
+    let layers = world.get_resource::<PhysicsLayers>();
+    for (field, names) in [("layers", &def.layer_names), ("mask", &def.mask_names)] {
+        for (at, name) in names {
+            if layers.and_then(|layers| layers.bit(name)).is_none() {
+                return Err(MissingAsset::new(
+                    format!("{field}[{at}]"),
+                    "physics layer",
+                    name,
+                ));
+            }
+        }
+    }
+    if let Some(name) = &def.material
+        && world
+            .get_resource::<PhysicsMaterials>()
+            .and_then(|materials| materials.get(name))
+            .is_none()
+    {
+        return Err(MissingAsset::new("material", "physics material", name));
+    }
+    Ok(())
+}
+
 /// `rigid_body`'s spawn: a [`RigidBodyBundle`] at the entry's position, so
 /// `Position` and `PrevPosition` start there; the transform's scale does not
-/// size the collider.
+/// size the collider. Its layer names add their bits, and its material's
+/// coefficients stand where the entry gives none of its own.
 fn spawn_rigid_body(def: RigidBodyDef, at: &SpawnContext<'_>) -> RigidBodyBundle {
+    let RigidBodyDef {
+        velocity,
+        collider,
+        mut body,
+        layer_names,
+        mask_names,
+        material,
+        restitution,
+        friction,
+        rolling,
+    } = def;
+    if !(layer_names.is_empty() && mask_names.is_empty()) {
+        let layers = at
+            .world()
+            .get_resource::<PhysicsLayers>()
+            .expect("the check found the physics layers");
+        let bits = |names: &[(usize, String)]| {
+            layers
+                .bits(names.iter().map(|(_, name)| name.as_str()))
+                .expect("the check found every layer name")
+        };
+        body.layers |= bits(&layer_names);
+        body.mask |= bits(&mask_names);
+    }
+    if let Some(name) = material {
+        let material = at
+            .world()
+            .get_resource::<PhysicsMaterials>()
+            .and_then(|materials| materials.get(&name))
+            .expect("the check found the physics material");
+        body = body.with_material(material);
+        if let Some(restitution) = restitution {
+            body = body.with_restitution(restitution);
+        }
+        if let Some(friction) = friction {
+            body = body.with_friction(friction);
+        }
+        if let Some(rolling) = rolling {
+            body = body.with_rolling(rolling);
+        }
+    }
     RigidBodyBundle {
         position: Position(at.transform().position),
-        velocity: def.velocity,
-        collider: def.collider,
-        body: def.body,
+        velocity,
+        collider,
+        body,
     }
 }
 

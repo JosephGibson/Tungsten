@@ -2,6 +2,7 @@ use glam::Vec2;
 
 use super::*;
 use crate::ecs::Entity;
+use crate::physics::PhysicsMaterial;
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -326,8 +327,20 @@ fn rigid_body_rejects_bad_values_naming_the_field_or_value() {
             "`velocity` must be finite (got [inf, 0])",
         ),
         (
-            serde_json::json!({ "kind": "dynamic", "shape": circle, "friction": 0.5 }),
-            "unknown field `friction`",
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "bounce": 0.5 }),
+            "unknown field `bounce`",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "friction": -0.5 }),
+            "`friction` must be finite and at least 0 (got -0.5)",
+        ),
+        (
+            serde_json::json!({ "kind": "static", "shape": circle, "rolling": 1e40 }),
+            "`rolling` must be finite and at least 0 (got inf)",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "material": 3 }),
+            "invalid type: integer `3`, expected a string",
         ),
         (
             serde_json::json!({ "kind": "dynamic",
@@ -425,9 +438,9 @@ fn layers_rigid_body_fails_on_layer_32_and_a_non_integer_at_the_fields_path() {
             "invalid value: integer `-1`",
         ),
         (
-            serde_json::json!({ "kind": "dynamic", "shape": circle, "mask": ["walls"] }),
+            serde_json::json!({ "kind": "dynamic", "shape": circle, "mask": [true] }),
             "mask[0]",
-            "invalid type: string \"walls\"",
+            "invalid type: boolean `true`, expected a layer number 0 to 31 or a physics layer name",
         ),
         (
             serde_json::json!({ "kind": "dynamic", "shape": circle, "layers": 3 }),
@@ -493,4 +506,144 @@ fn rigid_body_reads_its_gravity_scale() {
         let message = check_error(&world, &value);
         assert!(message.contains(expected), "{value}: {message}");
     }
+}
+
+/// A World with the plugin's components and the layers `walls` (3) and
+/// `water` (5) and the material `ice`.
+fn named_world() -> World {
+    let mut world = physics_world();
+    world.insert_resource(PhysicsLayers::new([
+        ("walls".to_owned(), 3),
+        ("water".to_owned(), 5),
+    ]));
+    world.insert_resource(PhysicsMaterials::new([("ice".to_owned(), ICE)]));
+    world
+}
+
+const ICE: PhysicsMaterial = PhysicsMaterial {
+    friction: 0.05,
+    restitution: 0.25,
+    rolling: 0.01,
+};
+
+#[test]
+fn rigid_body_takes_layer_names_and_a_material() {
+    let mut world = named_world();
+    let shape = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    // A name's bit joins the numbers'.
+    let named = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape,
+            "layers": ["walls", 1], "mask": ["water"] }),
+    );
+    let body = world.get::<RigidBody>(named).unwrap();
+    assert_eq!((body.layers, body.mask), (1 << 3 | 1 << 1, 1 << 5));
+    // A material's coefficients, the entry's own over them.
+    let icy = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "static", "shape": shape, "material": "ice" }),
+    );
+    assert_eq!(
+        world.get::<RigidBody>(icy),
+        Some(&RigidBody::r#static().with_material(ICE))
+    );
+    let rough = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape, "material": "ice",
+            "friction": 0.9, "restitution": 0.0 }),
+    );
+    let body = world.get::<RigidBody>(rough).unwrap();
+    assert_eq!(
+        (body.friction, body.restitution, body.rolling),
+        (0.9, 0.0, 0.01)
+    );
+    // Without a material, the entry's own; without either, 0.
+    let own = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape,
+            "friction": 0.4, "rolling": 0.2, "restitution": 0.5 }),
+    );
+    assert_eq!(
+        world.get::<RigidBody>(own),
+        Some(
+            &RigidBody::dynamic()
+                .with_friction(0.4)
+                .with_rolling(0.2)
+                .with_restitution(0.5)
+        )
+    );
+    let plain = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape }),
+    );
+    assert_eq!(world.get::<RigidBody>(plain), Some(&RigidBody::dynamic()));
+    // Game code reads the same bits.
+    let layers = world.resource::<PhysicsLayers>();
+    assert_eq!(layers.bit("walls"), Some(1 << 3));
+    assert_eq!(layers.layer("water"), Some(5));
+    assert_eq!(layers.bits(["walls", "water"]), Ok(1 << 3 | 1 << 5));
+    assert_eq!(
+        layers.bits(["walls", "lava"]),
+        Err(crate::physics::UnknownLayer("lava".to_owned()))
+    );
+    assert_eq!(world.resource::<PhysicsMaterials>().get("ice"), Some(ICE));
+}
+
+#[test]
+fn an_unknown_layer_or_material_fails_the_load_at_its_field() {
+    use crate::component_registry::ComponentRegistry;
+
+    let shape = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let cases = [
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": shape, "layers": ["walls", "lava"] }),
+            "component `rigid_body`, field `layers[1]`: unknown physics layer `lava`",
+        ),
+        (
+            serde_json::json!({ "kind": "sensor", "shape": shape, "mask": [2, "Walls"] }),
+            "component `rigid_body`, field `mask[1]`: unknown physics layer `Walls`",
+        ),
+        (
+            serde_json::json!({ "kind": "static", "shape": shape, "material": "mud" }),
+            "component `rigid_body`, field `material`: unknown physics material `mud`",
+        ),
+    ];
+    let world = named_world();
+    let registry = world.resource::<ComponentRegistry>();
+    for (value, expected) in &cases {
+        // The shape alone checks out: the names wait for the World.
+        assert!(registry.check("rigid_body", value).is_ok(), "{value}");
+        let message = registry
+            .check_in("rigid_body", value, &world)
+            .expect_err("must fail")
+            .to_string();
+        assert_eq!(message, *expected, "{value}");
+        // A spawn checks against its World before it builds.
+        let context = SpawnContext::new(&world, Transform::default());
+        let Err(error) = registry.prepare("rigid_body", value, &context) else {
+            panic!("{value} prepared");
+        };
+        assert_eq!(error.to_string(), *expected, "{value}");
+    }
+    // A World without the resources knows no name.
+    let bare = physics_world();
+    let message = bare
+        .resource::<ComponentRegistry>()
+        .check_in(
+            "rigid_body",
+            &serde_json::json!({ "kind": "dynamic", "shape": shape, "layers": ["walls"],
+                "material": "ice" }),
+            &bare,
+        )
+        .expect_err("must fail")
+        .to_string();
+    assert_eq!(
+        message,
+        "component `rigid_body`, field `layers[0]`: unknown physics layer `walls`"
+    );
 }

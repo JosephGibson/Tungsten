@@ -147,6 +147,7 @@ pub fn tungsten::asset_loader::load_fonts(&tungsten_core::assets::manifest::Reso
 pub fn tungsten::asset_loader::load_materials(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particle_meshes(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_particles(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
+pub fn tungsten::asset_loader::load_physics_names(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World)
 pub fn tungsten::asset_loader::load_prefabs(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World) -> anyhow::Result<()>
 pub fn tungsten::asset_loader::load_scene(&tungsten_core::ecs::world::World, &std::path::Path) -> anyhow::Result<tungsten_core::assets::scene::SceneData>
 pub fn tungsten::asset_loader::load_shaders(&tungsten_core::assets::manifest::ResolvedManifest, &mut tungsten_core::ecs::world::World, &mut tungsten_render::renderer::Renderer) -> anyhow::Result<()>

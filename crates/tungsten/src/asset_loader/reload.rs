@@ -707,6 +707,9 @@ pub fn reload_manifest(
         }
     }
 
+    // The physics layer names and materials, which the prefabs name.
+    super::load_physics_names(&new_manifest, world);
+
     // M51 prefabs and M61 data entries, in the startup order: after the
     // tilemaps and particle configs their components name, every file read
     // again and committed once; then the new maps' objects.

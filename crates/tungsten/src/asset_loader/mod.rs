@@ -11,6 +11,7 @@ use tungsten_core::assets::{
     ParticleConfig, ParticleConfigRegistry, ParticleMeshRegistry, ParticleRender, ResolvedManifest,
     ShaderRegistry, SoundData, SoundRegistry, TilemapData, TilemapRegistry,
 };
+use tungsten_core::physics::{PhysicsLayers, PhysicsMaterials};
 use tungsten_core::ui::{Theme, ThemeFile, UiThemeRegistry};
 use tungsten_core::{AssetRegistry, World};
 use tungsten_render::Renderer;
@@ -399,6 +400,27 @@ fn missing_particle_render_ref<'a>(
     }
 }
 
+/// Puts the manifest's `physics_layers` and `physics_materials` in the World
+/// as [`PhysicsLayers`] and [`PhysicsMaterials`], replacing those it holds:
+/// the startup loads them before the prefabs, which name them, and a
+/// manifest reload replaces them, the materials' version moving on.
+pub fn load_physics_names(manifest: &ResolvedManifest, world: &mut World) {
+    world.insert_resource(PhysicsLayers::new(
+        manifest
+            .physics_layers
+            .iter()
+            .map(|(name, &layer)| (name.clone(), layer)),
+    ));
+    let materials = manifest
+        .physics_materials
+        .iter()
+        .map(|(name, &material)| (name.clone(), material));
+    match world.get_resource_mut::<PhysicsMaterials>() {
+        Some(existing) => existing.replace(materials),
+        None => world.insert_resource(PhysicsMaterials::new(materials)),
+    }
+}
+
 /// Load particle configs; sprite and mesh references are validated after
 /// both have loaded.
 pub fn load_particles(manifest: &ResolvedManifest, world: &mut World) -> anyhow::Result<()> {
@@ -444,6 +466,7 @@ pub fn load_all(
     load_tilemaps(manifest, world)?;
     load_particle_meshes(manifest, world, renderer)?;
     load_particles(manifest, world)?;
+    load_physics_names(manifest, world);
     load_prefabs(manifest, world)?;
 
     let registry = world

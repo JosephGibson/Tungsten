@@ -4,6 +4,7 @@
 use glam::Vec2;
 
 use crate::ecs::bundle::{Bundle, BundleSink};
+use crate::physics::PhysicsMaterial;
 use crate::physics::collision::Aabb;
 
 /// World-space position.
@@ -149,8 +150,8 @@ pub enum BodyKind {
     Sensor,
 }
 
-/// Body mass/restitution state, and the layers the body is in and the layers
-/// it meets.
+/// Body mass, restitution, friction and rolling state, its gravity scale,
+/// and the layers the body is in and the layers it meets.
 ///
 /// Layers are bits of a `u32`, one per layer, 0 to 31. Two bodies touch only
 /// when each one's [`mask`](Self::mask) holds a layer the other is in
@@ -179,6 +180,13 @@ pub struct RigidBody {
     /// from every constructor, 0 floating, 2 twice as hard, and a negative
     /// scale rising. Other kinds take no gravity.
     pub gravity_scale: f32,
+    /// Coulomb friction, finite and at least 0: 0 from every constructor. A
+    /// contact's is the geometric mean of its two sides', a tile's from its
+    /// physics material.
+    pub friction: f32,
+    /// Rolling resistance, finite and at least 0: 0 from every
+    /// constructor. A contact's is the larger of its two sides'.
+    pub rolling: f32,
 }
 
 impl RigidBody {
@@ -198,6 +206,8 @@ impl RigidBody {
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
             gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
         }
     }
 
@@ -211,6 +221,8 @@ impl RigidBody {
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
             gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
         }
     }
 
@@ -227,6 +239,8 @@ impl RigidBody {
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
             gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
         }
     }
 
@@ -242,6 +256,8 @@ impl RigidBody {
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
             gravity_scale: 1.0,
+            friction: 0.0,
+            rolling: 0.0,
         }
     }
 
@@ -286,6 +302,46 @@ impl RigidBody {
         );
         self.gravity_scale = scale;
         self
+    }
+
+    /// The body with Coulomb friction `friction`, below 0 taken as 0
+    /// ([`friction`](Self::friction)).
+    ///
+    /// # Panics
+    ///
+    /// When `friction` is not finite.
+    #[must_use]
+    pub fn with_friction(mut self, friction: f32) -> Self {
+        assert!(
+            friction.is_finite(),
+            "friction must be finite (got {friction})"
+        );
+        self.friction = friction.max(0.0);
+        self
+    }
+
+    /// The body with rolling resistance `rolling`, below 0 taken as 0
+    /// ([`rolling`](Self::rolling)).
+    ///
+    /// # Panics
+    ///
+    /// When `rolling` is not finite.
+    #[must_use]
+    pub fn with_rolling(mut self, rolling: f32) -> Self {
+        assert!(
+            rolling.is_finite(),
+            "rolling must be finite (got {rolling})"
+        );
+        self.rolling = rolling.max(0.0);
+        self
+    }
+
+    /// The body with `material`'s friction, restitution and rolling.
+    #[must_use]
+    pub fn with_material(self, material: PhysicsMaterial) -> Self {
+        self.with_friction(material.friction)
+            .with_restitution(material.restitution)
+            .with_rolling(material.rolling)
     }
 
     /// The contact rule: each body's mask holds a layer the other is in.

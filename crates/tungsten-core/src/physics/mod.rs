@@ -6,7 +6,8 @@
 //! reports what it begins to overlap ([`SensorEntered`]). Ray and shape
 //! casts, overlaps and nearest-surface queries read the last step's bodies,
 //! sensors and tiles ([`cast_ray`], [`cast_shape`], [`overlap`],
-//! [`nearest`]).
+//! [`nearest`]). A game names its physics layers and materials in its
+//! manifests ([`PhysicsLayers`], [`PhysicsMaterials`]).
 
 pub mod broadphase;
 pub mod collision;
@@ -33,7 +34,135 @@ pub use plugin::{
 pub use query::{SpatialFilter, SpatialHit, TileHit, cast_ray, cast_shape, nearest, overlap};
 pub use step::{PhysicsBuffers, TerrainFace, physics_step, teleport, wake};
 
+use std::collections::BTreeMap;
+
 use glam::Vec2;
+
+/// The physics layers a game names in its manifests' `physics_layers`
+/// (`D-178`): each name's layer, 0 to 31. The asset loader inserts it and a
+/// manifest reload replaces it; `rigid_body` data names layers through it,
+/// and game code reads the bits it gives.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PhysicsLayers {
+    by_name: BTreeMap<String, u32>,
+}
+
+impl PhysicsLayers {
+    /// Each name's layer, as `layers` gives them; a name given twice keeps
+    /// its last layer.
+    ///
+    /// # Panics
+    ///
+    /// When a layer is 32 or more.
+    #[must_use]
+    pub fn new(layers: impl IntoIterator<Item = (String, u32)>) -> Self {
+        let by_name: BTreeMap<String, u32> = layers.into_iter().collect();
+        for (name, &layer) in &by_name {
+            assert!(
+                layer < u32::BITS,
+                "physics layer `{name}` must be 0 to 31 (got {layer})"
+            );
+        }
+        Self { by_name }
+    }
+
+    /// The layer `name` names, 0 to 31; `None` for a name it lacks.
+    #[must_use]
+    pub fn layer(&self, name: &str) -> Option<u32> {
+        self.by_name.get(name).copied()
+    }
+
+    /// The bit of the layer `name` names, `1 << layer`, as
+    /// [`RigidBody::layers`] and [`RigidBody::mask`] hold it; `None` for a
+    /// name it lacks.
+    #[must_use]
+    pub fn bit(&self, name: &str) -> Option<u32> {
+        self.layer(name).map(|layer| 1 << layer)
+    }
+
+    /// The bits of every layer `names` names; the first name it lacks is
+    /// the error.
+    pub fn bits<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Result<u32, UnknownLayer> {
+        names.into_iter().try_fold(0, |bits, name| {
+            self.bit(name)
+                .map(|bit| bits | bit)
+                .ok_or_else(|| UnknownLayer(name.to_owned()))
+        })
+    }
+
+    /// The names and their layers, by name.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, u32)> {
+        self.by_name
+            .iter()
+            .map(|(name, &layer)| (name.as_str(), layer))
+    }
+}
+
+/// A physics layer name that [`PhysicsLayers`] lacks.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("unknown physics layer `{0}`")]
+pub struct UnknownLayer(pub String);
+
+/// A physics material's contact coefficients, as a manifest's
+/// `physics_materials` entry gives them: what a body or a tile of it
+/// contacts with.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct PhysicsMaterial {
+    /// Coulomb friction, finite and at least 0; a contact's is the
+    /// geometric mean of its two sides'.
+    pub friction: f32,
+    /// Restitution, 0 to 1; a contact's is the larger of its two sides'.
+    pub restitution: f32,
+    /// Rolling resistance, finite and at least 0; a contact's is the larger
+    /// of its two sides'.
+    pub rolling: f32,
+}
+
+/// The physics materials a game names in its manifests'
+/// `physics_materials`, by name. The asset loader inserts it and a manifest
+/// reload replaces its materials, moving its [`version`](Self::version) on,
+/// which the tile cache reads.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PhysicsMaterials {
+    by_name: BTreeMap<String, PhysicsMaterial>,
+    version: u64,
+}
+
+impl PhysicsMaterials {
+    /// The materials `materials` names, at version 0.
+    #[must_use]
+    pub fn new(materials: impl IntoIterator<Item = (String, PhysicsMaterial)>) -> Self {
+        Self {
+            by_name: materials.into_iter().collect(),
+            version: 0,
+        }
+    }
+
+    /// The material `name` names; `None` for a name it lacks.
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<PhysicsMaterial> {
+        self.by_name.get(name).copied()
+    }
+
+    /// Replaces every material with `materials`' and moves the version on.
+    pub fn replace(&mut self, materials: impl IntoIterator<Item = (String, PhysicsMaterial)>) {
+        self.by_name = materials.into_iter().collect();
+        self.version += 1;
+    }
+
+    /// Bumped by each [`replace`](Self::replace); 0 when made.
+    #[must_use]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    /// The names and their materials, by name.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, PhysicsMaterial)> {
+        self.by_name
+            .iter()
+            .map(|(name, &material)| (name.as_str(), material))
+    }
+}
 
 /// Per-world physics tunables resource.
 #[derive(Debug, Clone, Copy)]

@@ -189,7 +189,9 @@ pub(crate) fn check_files(
         }
     }
 
-    // 9. Data entries, then prefabs, in two phases; then each prefab's sprite.
+    // 9. The physics layer names and materials, which bodies name; then the
+    // data entries and prefabs, in two phases, and each prefab's sprite.
+    super::load_physics_names(&manifest, world);
     check_prefabs_and_data(&manifest, world, &mut errors);
 
     // 10. Each map's objects against the prefabs.

@@ -6,6 +6,7 @@ use thiserror::Error;
 use crate::assets::material::MaterialUniformDefaults;
 use crate::assets::particle::ParticleMesh;
 use crate::audio::{AudioBus, MAX_VOICES};
+use crate::physics::PhysicsMaterial;
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
@@ -79,6 +80,34 @@ pub enum ManifestError {
     FontFamilyFaceMissing { family: String, face: String },
     #[error("font_fallback names unknown font family '{family}'")]
     UnknownFallbackFamily { family: String },
+    /// A `physics_layers` entry's name is not `[a-z][a-z0-9_]*` or its
+    /// layer is not 0 to 31.
+    #[error("physics layer '{name}' is invalid: {reason}")]
+    InvalidPhysicsLayer {
+        /// The name the entry gives.
+        name: String,
+        /// What is wrong with it.
+        reason: String,
+    },
+    /// Two `physics_layers` names give one layer, in one manifest or across
+    /// them.
+    #[error("physics layer {layer} is named both '{first}' and '{second}'")]
+    PhysicsLayerTaken {
+        /// The layer, 0 to 31.
+        layer: u32,
+        /// The name that took it first, or the smaller in one manifest.
+        first: String,
+        /// The other name.
+        second: String,
+    },
+    /// A `physics_materials` entry's coefficient is out of range.
+    #[error("physics material '{id}' is invalid: {reason}")]
+    InvalidPhysicsMaterial {
+        /// The material's name.
+        id: String,
+        /// What is wrong with it.
+        reason: String,
+    },
     /// An entry's path is absolute or climbs out of its manifest's folder
     /// with `..`; every load refuses it, so a watcher never watches outside.
     #[error("{id} names '{path}', which is absolute or leaves its manifest's folder")]
@@ -269,6 +298,59 @@ pub struct RawManifest {
     /// error; a plugin registers each kind.
     #[serde(default, deserialize_with = "data_sections")]
     pub data: BTreeMap<String, BTreeMap<String, DataEntry>>,
+    /// Physics layer names: a name, `[a-z][a-z0-9_]*`, and its layer, 0 to
+    /// 31 (`D-178`). A name or a layer given twice, in one manifest or
+    /// across them, fails the load.
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub physics_layers: HashMap<String, u32>,
+    /// Physics materials: a name and its contact coefficients; `materials`
+    /// names the render's (`D-058`).
+    #[serde(default, deserialize_with = "unique_ids")]
+    pub physics_materials: HashMap<String, PhysicsMaterialEntry>,
+}
+
+/// A `physics_materials` entry: each coefficient optional, unknown fields
+/// failing. `friction` finite and at least 0, `= 0`; `restitution` in
+/// 0..=1, `= 0`; `rolling` finite and at least 0, `= 0`.
+#[derive(Debug, Clone, Copy, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+pub struct PhysicsMaterialEntry {
+    /// Coulomb friction.
+    pub friction: Option<f32>,
+    /// Restitution.
+    pub restitution: Option<f32>,
+    /// Rolling resistance.
+    pub rolling: Option<f32>,
+}
+
+impl PhysicsMaterialEntry {
+    /// The material, or why a coefficient is out of range.
+    fn resolve(self) -> Result<PhysicsMaterial, String> {
+        let at_least_zero = |field: &str, value: Option<f32>| match value {
+            Some(value) if !(value.is_finite() && value >= 0.0) => Err(format!(
+                "`{field}` must be finite and at least 0 (got {value})"
+            )),
+            value => Ok(value.unwrap_or(0.0)),
+        };
+        let restitution = match self.restitution {
+            Some(value) if !(0.0..=1.0).contains(&value) => {
+                return Err(format!("`restitution` must be in 0..=1 (got {value})"));
+            }
+            value => value.unwrap_or(0.0),
+        };
+        Ok(PhysicsMaterial {
+            friction: at_least_zero("friction", self.friction)?,
+            restitution,
+            rolling: at_least_zero("rolling", self.rolling)?,
+        })
+    }
+}
+
+/// Whether `name` is `[a-z][a-z0-9_]*`.
+fn valid_layer_name(name: &str) -> bool {
+    let mut bytes = name.bytes();
+    bytes.next().is_some_and(|b| b.is_ascii_lowercase())
+        && bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -587,6 +669,10 @@ pub struct ResolvedManifest {
     pub prefabs: HashMap<String, ResolvedPrefab>,
     /// Data entries by kind, then ID (M61).
     pub data: BTreeMap<String, BTreeMap<String, ResolvedDataEntry>>,
+    /// Physics layer names and their layers, 0 to 31 (`D-178`).
+    pub physics_layers: HashMap<String, u32>,
+    /// Physics materials by name.
+    pub physics_materials: HashMap<String, PhysicsMaterial>,
 }
 
 #[derive(Debug, Clone)]
@@ -1011,6 +1097,44 @@ impl ResolvedManifest {
             );
         }
 
+        // Sorted, so the layer or material an error names does not depend
+        // on map order; a layer two names give keeps the smaller name.
+        let mut layers: Vec<(String, u32)> = raw.physics_layers.into_iter().collect();
+        layers.sort();
+        for (name, layer) in layers {
+            let reason = if !valid_layer_name(&name) {
+                Some("a name must match [a-z][a-z0-9_]*".to_owned())
+            } else if layer >= u32::BITS {
+                Some(format!("a layer must be 0 to 31 (got {layer})"))
+            } else {
+                None
+            };
+            if let Some(reason) = reason {
+                sink.report(ManifestError::InvalidPhysicsLayer { name, reason })?;
+                continue;
+            }
+            if let Some((first, _)) = result.physics_layers.iter().find(|&(_, &l)| l == layer) {
+                sink.report(ManifestError::PhysicsLayerTaken {
+                    layer,
+                    first: first.clone(),
+                    second: name,
+                })?;
+                continue;
+            }
+            result.physics_layers.insert(name, layer);
+        }
+        let mut materials: Vec<(String, PhysicsMaterialEntry)> =
+            raw.physics_materials.into_iter().collect();
+        materials.sort_by(|a, b| a.0.cmp(&b.0));
+        for (id, entry) in materials {
+            match entry.resolve() {
+                Ok(material) => {
+                    result.physics_materials.insert(id, material);
+                }
+                Err(reason) => sink.report(ManifestError::InvalidPhysicsMaterial { id, reason })?,
+            }
+        }
+
         // Sorted, so the mesh an error names does not depend on map order.
         let mut meshes: Vec<(String, ParticleMeshEntry)> =
             raw.particle_meshes.into_iter().collect();
@@ -1319,6 +1443,35 @@ impl ResolvedManifest {
             }
         }
         append_fallback(&mut self.font_fallback, other.font_fallback);
+        // Sorted, so the name an error gives does not depend on map order.
+        let mut layers: Vec<(String, u32)> = other.physics_layers.into_iter().collect();
+        layers.sort();
+        for (name, layer) in layers {
+            if self.physics_layers.contains_key(&name) {
+                sink.report(ManifestError::DuplicateId {
+                    id: format!("physics_layers.{name}"),
+                })?;
+                continue;
+            }
+            if let Some((first, _)) = self.physics_layers.iter().find(|&(_, &l)| l == layer) {
+                sink.report(ManifestError::PhysicsLayerTaken {
+                    layer,
+                    first: first.clone(),
+                    second: name,
+                })?;
+                continue;
+            }
+            self.physics_layers.insert(name, layer);
+        }
+        for (id, material) in other.physics_materials {
+            if self.physics_materials.contains_key(&id) {
+                sink.report(ManifestError::DuplicateId {
+                    id: format!("physics_materials.{id}"),
+                })?;
+                continue;
+            }
+            self.physics_materials.insert(id, material);
+        }
         if check_refs {
             self.validate_font_refs(sink)?;
             self.validate_shared_files(sink)?;

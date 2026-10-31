@@ -443,6 +443,12 @@ pub tungsten_core::assets::manifest::ManifestError::FontFamilyFaceMissing::famil
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::InvalidParticleMesh::reason: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsLayer
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsLayer::name: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsLayer::reason: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Io
 pub tungsten_core::assets::manifest::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::Io::source: core::io::error::Error
@@ -495,6 +501,10 @@ pub tungsten_core::assets::manifest::ManifestError::Parse::source: serde_json::e
 pub tungsten_core::assets::manifest::ManifestError::PathEscapes
 pub tungsten_core::assets::manifest::ManifestError::PathEscapes::id: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::PathEscapes::path: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken
+pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::first: alloc::string::String
+pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::layer: u32
+pub tungsten_core::assets::manifest::ManifestError::PhysicsLayerTaken::second: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::manifest::ManifestError::SharedFile::path: alloc::string::String
@@ -634,6 +644,26 @@ impl core::marker::Unpin for tungsten_core::assets::manifest::ParticleEntry
 impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ParticleEntry
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ParticleEntry
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ParticleEntry
+pub struct tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub tungsten_core::assets::manifest::PhysicsMaterialEntry::friction: core::option::Option<f32>
+pub tungsten_core::assets::manifest::PhysicsMaterialEntry::restitution: core::option::Option<f32>
+pub tungsten_core::assets::manifest::PhysicsMaterialEntry::rolling: core::option::Option<f32>
+impl core::clone::Clone for tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub fn tungsten_core::assets::manifest::PhysicsMaterialEntry::clone(&self) -> tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::default::Default for tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub fn tungsten_core::assets::manifest::PhysicsMaterialEntry::default() -> tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::fmt::Debug for tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub fn tungsten_core::assets::manifest::PhysicsMaterialEntry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::assets::manifest::PhysicsMaterialEntry
+pub fn tungsten_core::assets::manifest::PhysicsMaterialEntry::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::marker::Send for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::marker::Sync for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::marker::Unpin for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::PhysicsMaterialEntry
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::PhysicsMaterialEntry
 #[non_exhaustive] pub struct tungsten_core::assets::manifest::PrefabEntry
 pub tungsten_core::assets::manifest::PrefabEntry::path: alloc::string::String
 impl core::clone::Clone for tungsten_core::assets::manifest::PrefabEntry
@@ -658,6 +688,8 @@ pub tungsten_core::assets::manifest::RawManifest::fonts: std::collections::hash:
 pub tungsten_core::assets::manifest::RawManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::MaterialEntry>
 pub tungsten_core::assets::manifest::RawManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleMeshEntry>
 pub tungsten_core::assets::manifest::RawManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ParticleEntry>
+pub tungsten_core::assets::manifest::RawManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
+pub tungsten_core::assets::manifest::RawManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PhysicsMaterialEntry>
 pub tungsten_core::assets::manifest::RawManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::PrefabEntry>
 pub tungsten_core::assets::manifest::RawManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ShaderEntry>
 pub tungsten_core::assets::manifest::RawManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::SoundEntry>
@@ -748,6 +780,8 @@ pub tungsten_core::assets::manifest::ResolvedManifest::fonts: std::collections::
 pub tungsten_core::assets::manifest::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::manifest::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::assets::manifest::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::assets::manifest::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
+pub tungsten_core::assets::manifest::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
 pub tungsten_core::assets::manifest::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::manifest::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::assets::manifest::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
@@ -2385,6 +2419,12 @@ pub tungsten_core::assets::ManifestError::FontFamilyFaceMissing::family: alloc::
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::InvalidParticleMesh::reason: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidPhysicsLayer
+pub tungsten_core::assets::ManifestError::InvalidPhysicsLayer::name: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidPhysicsLayer::reason: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial
+pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
+pub tungsten_core::assets::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
 pub tungsten_core::assets::ManifestError::Io
 pub tungsten_core::assets::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::assets::ManifestError::Io::source: core::io::error::Error
@@ -2437,6 +2477,10 @@ pub tungsten_core::assets::ManifestError::Parse::source: serde_json::error::Erro
 pub tungsten_core::assets::ManifestError::PathEscapes
 pub tungsten_core::assets::ManifestError::PathEscapes::id: alloc::string::String
 pub tungsten_core::assets::ManifestError::PathEscapes::path: alloc::string::String
+pub tungsten_core::assets::ManifestError::PhysicsLayerTaken
+pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::first: alloc::string::String
+pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::layer: u32
+pub tungsten_core::assets::ManifestError::PhysicsLayerTaken::second: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile
 pub tungsten_core::assets::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::assets::ManifestError::SharedFile::path: alloc::string::String
@@ -3616,6 +3660,8 @@ pub tungsten_core::assets::ResolvedManifest::fonts: std::collections::hash::map:
 pub tungsten_core::assets::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::assets::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::assets::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::assets::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
+pub tungsten_core::assets::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
 pub tungsten_core::assets::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::assets::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::assets::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
@@ -7237,12 +7283,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::components::RigidBody
+pub tungsten_core::physics::components::RigidBody::friction: f32
 pub tungsten_core::physics::components::RigidBody::gravity_scale: f32
 pub tungsten_core::physics::components::RigidBody::inv_mass: f32
 pub tungsten_core::physics::components::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::physics::components::RigidBody::layers: u32
 pub tungsten_core::physics::components::RigidBody::mask: u32
 pub tungsten_core::physics::components::RigidBody::restitution: f32
+pub tungsten_core::physics::components::RigidBody::rolling: f32
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7251,11 +7299,14 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_friction(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
@@ -7591,6 +7642,74 @@ impl core::marker::Unpin for tungsten_core::physics::PhysicsConfig
 impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsConfig
+pub struct tungsten_core::physics::PhysicsLayers
+impl tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::bit(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::physics::PhysicsLayers::bits<'a>(&self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>) -> core::result::Result<u32, tungsten_core::physics::UnknownLayer>
+pub fn tungsten_core::physics::PhysicsLayers::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, u32)>
+pub fn tungsten_core::physics::PhysicsLayers::layer(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::physics::PhysicsLayers::new(impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, u32)>) -> Self
+impl core::clone::Clone for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::clone(&self) -> tungsten_core::physics::PhysicsLayers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsLayers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::eq(&self, &tungsten_core::physics::PhysicsLayers) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::default() -> tungsten_core::physics::PhysicsLayers
+impl core::fmt::Debug for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsLayers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsLayers
+impl core::marker::Send for tungsten_core::physics::PhysicsLayers
+impl core::marker::Sync for tungsten_core::physics::PhysicsLayers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsLayers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsLayers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsLayers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsLayers
+pub struct tungsten_core::physics::PhysicsMaterial
+pub tungsten_core::physics::PhysicsMaterial::friction: f32
+pub tungsten_core::physics::PhysicsMaterial::restitution: f32
+pub tungsten_core::physics::PhysicsMaterial::rolling: f32
+impl core::clone::Clone for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::clone(&self) -> tungsten_core::physics::PhysicsMaterial
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::eq(&self, &tungsten_core::physics::PhysicsMaterial) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::default() -> tungsten_core::physics::PhysicsMaterial
+impl core::fmt::Debug for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsMaterial
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Freeze for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Send for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Sync for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Unpin for tungsten_core::physics::PhysicsMaterial
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsMaterial
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsMaterial
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsMaterial
+pub struct tungsten_core::physics::PhysicsMaterials
+impl tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::get(&self, &str) -> core::option::Option<tungsten_core::physics::PhysicsMaterial>
+pub fn tungsten_core::physics::PhysicsMaterials::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::physics::PhysicsMaterial)>
+pub fn tungsten_core::physics::PhysicsMaterials::new(impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, tungsten_core::physics::PhysicsMaterial)>) -> Self
+pub fn tungsten_core::physics::PhysicsMaterials::replace(&mut self, impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, tungsten_core::physics::PhysicsMaterial)>)
+pub fn tungsten_core::physics::PhysicsMaterials::version(&self) -> u64
+impl core::clone::Clone for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::clone(&self) -> tungsten_core::physics::PhysicsMaterials
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::eq(&self, &tungsten_core::physics::PhysicsMaterials) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::default() -> tungsten_core::physics::PhysicsMaterials
+impl core::fmt::Debug for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Freeze for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Send for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Sync for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Unpin for tungsten_core::physics::PhysicsMaterials
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsMaterials
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsMaterials
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsMaterials
 pub struct tungsten_core::physics::PhysicsPlugin
 impl core::clone::Clone for tungsten_core::PhysicsPlugin
 pub fn tungsten_core::PhysicsPlugin::clone(&self) -> tungsten_core::PhysicsPlugin
@@ -7646,12 +7765,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::RigidBody
+pub tungsten_core::physics::RigidBody::friction: f32
 pub tungsten_core::physics::RigidBody::gravity_scale: f32
 pub tungsten_core::physics::RigidBody::inv_mass: f32
 pub tungsten_core::physics::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::physics::RigidBody::layers: u32
 pub tungsten_core::physics::RigidBody::mask: u32
 pub tungsten_core::physics::RigidBody::restitution: f32
+pub tungsten_core::physics::RigidBody::rolling: f32
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7660,11 +7781,14 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_friction(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
@@ -7847,6 +7971,25 @@ impl core::marker::Unpin for tungsten_core::physics::TileHit
 impl core::marker::UnsafeUnpin for tungsten_core::physics::TileHit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::TileHit
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::TileHit
+pub struct tungsten_core::physics::UnknownLayer(pub alloc::string::String)
+impl core::clone::Clone for tungsten_core::physics::UnknownLayer
+pub fn tungsten_core::physics::UnknownLayer::clone(&self) -> tungsten_core::physics::UnknownLayer
+impl core::cmp::Eq for tungsten_core::physics::UnknownLayer
+impl core::cmp::PartialEq for tungsten_core::physics::UnknownLayer
+pub fn tungsten_core::physics::UnknownLayer::eq(&self, &tungsten_core::physics::UnknownLayer) -> bool
+impl core::error::Error for tungsten_core::physics::UnknownLayer
+impl core::fmt::Debug for tungsten_core::physics::UnknownLayer
+pub fn tungsten_core::physics::UnknownLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::physics::UnknownLayer
+pub fn tungsten_core::physics::UnknownLayer::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::physics::UnknownLayer
+impl core::marker::Freeze for tungsten_core::physics::UnknownLayer
+impl core::marker::Send for tungsten_core::physics::UnknownLayer
+impl core::marker::Sync for tungsten_core::physics::UnknownLayer
+impl core::marker::Unpin for tungsten_core::physics::UnknownLayer
+impl core::marker::UnsafeUnpin for tungsten_core::physics::UnknownLayer
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::UnknownLayer
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::UnknownLayer
 pub struct tungsten_core::physics::Velocity(pub glam::f32::vec2::Vec2)
 impl tungsten_core::physics::components::Velocity
 pub fn tungsten_core::physics::components::Velocity::new(f32, f32) -> Self
@@ -14205,6 +14348,12 @@ pub tungsten_core::ManifestError::FontFamilyFaceMissing::family: alloc::string::
 pub tungsten_core::ManifestError::InvalidParticleMesh
 pub tungsten_core::ManifestError::InvalidParticleMesh::id: alloc::string::String
 pub tungsten_core::ManifestError::InvalidParticleMesh::reason: alloc::string::String
+pub tungsten_core::ManifestError::InvalidPhysicsLayer
+pub tungsten_core::ManifestError::InvalidPhysicsLayer::name: alloc::string::String
+pub tungsten_core::ManifestError::InvalidPhysicsLayer::reason: alloc::string::String
+pub tungsten_core::ManifestError::InvalidPhysicsMaterial
+pub tungsten_core::ManifestError::InvalidPhysicsMaterial::id: alloc::string::String
+pub tungsten_core::ManifestError::InvalidPhysicsMaterial::reason: alloc::string::String
 pub tungsten_core::ManifestError::Io
 pub tungsten_core::ManifestError::Io::path: alloc::string::String
 pub tungsten_core::ManifestError::Io::source: core::io::error::Error
@@ -14257,6 +14406,10 @@ pub tungsten_core::ManifestError::Parse::source: serde_json::error::Error
 pub tungsten_core::ManifestError::PathEscapes
 pub tungsten_core::ManifestError::PathEscapes::id: alloc::string::String
 pub tungsten_core::ManifestError::PathEscapes::path: alloc::string::String
+pub tungsten_core::ManifestError::PhysicsLayerTaken
+pub tungsten_core::ManifestError::PhysicsLayerTaken::first: alloc::string::String
+pub tungsten_core::ManifestError::PhysicsLayerTaken::layer: u32
+pub tungsten_core::ManifestError::PhysicsLayerTaken::second: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile
 pub tungsten_core::ManifestError::SharedFile::first: alloc::string::String
 pub tungsten_core::ManifestError::SharedFile::path: alloc::string::String
@@ -17244,6 +17397,74 @@ impl core::marker::Unpin for tungsten_core::physics::PhysicsConfig
 impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsConfig
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsConfig
+pub struct tungsten_core::PhysicsLayers
+impl tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::bit(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::physics::PhysicsLayers::bits<'a>(&self, impl core::iter::traits::collect::IntoIterator<Item = &'a str>) -> core::result::Result<u32, tungsten_core::physics::UnknownLayer>
+pub fn tungsten_core::physics::PhysicsLayers::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, u32)>
+pub fn tungsten_core::physics::PhysicsLayers::layer(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::physics::PhysicsLayers::new(impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, u32)>) -> Self
+impl core::clone::Clone for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::clone(&self) -> tungsten_core::physics::PhysicsLayers
+impl core::cmp::Eq for tungsten_core::physics::PhysicsLayers
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::eq(&self, &tungsten_core::physics::PhysicsLayers) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::default() -> tungsten_core::physics::PhysicsLayers
+impl core::fmt::Debug for tungsten_core::physics::PhysicsLayers
+pub fn tungsten_core::physics::PhysicsLayers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsLayers
+impl core::marker::Freeze for tungsten_core::physics::PhysicsLayers
+impl core::marker::Send for tungsten_core::physics::PhysicsLayers
+impl core::marker::Sync for tungsten_core::physics::PhysicsLayers
+impl core::marker::Unpin for tungsten_core::physics::PhysicsLayers
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsLayers
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsLayers
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsLayers
+pub struct tungsten_core::PhysicsMaterial
+pub tungsten_core::PhysicsMaterial::friction: f32
+pub tungsten_core::PhysicsMaterial::restitution: f32
+pub tungsten_core::PhysicsMaterial::rolling: f32
+impl core::clone::Clone for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::clone(&self) -> tungsten_core::physics::PhysicsMaterial
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::eq(&self, &tungsten_core::physics::PhysicsMaterial) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::default() -> tungsten_core::physics::PhysicsMaterial
+impl core::fmt::Debug for tungsten_core::physics::PhysicsMaterial
+pub fn tungsten_core::physics::PhysicsMaterial::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::PhysicsMaterial
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Freeze for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Send for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Sync for tungsten_core::physics::PhysicsMaterial
+impl core::marker::Unpin for tungsten_core::physics::PhysicsMaterial
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsMaterial
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsMaterial
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsMaterial
+pub struct tungsten_core::PhysicsMaterials
+impl tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::get(&self, &str) -> core::option::Option<tungsten_core::physics::PhysicsMaterial>
+pub fn tungsten_core::physics::PhysicsMaterials::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, tungsten_core::physics::PhysicsMaterial)>
+pub fn tungsten_core::physics::PhysicsMaterials::new(impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, tungsten_core::physics::PhysicsMaterial)>) -> Self
+pub fn tungsten_core::physics::PhysicsMaterials::replace(&mut self, impl core::iter::traits::collect::IntoIterator<Item = (alloc::string::String, tungsten_core::physics::PhysicsMaterial)>)
+pub fn tungsten_core::physics::PhysicsMaterials::version(&self) -> u64
+impl core::clone::Clone for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::clone(&self) -> tungsten_core::physics::PhysicsMaterials
+impl core::cmp::PartialEq for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::eq(&self, &tungsten_core::physics::PhysicsMaterials) -> bool
+impl core::default::Default for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::default() -> tungsten_core::physics::PhysicsMaterials
+impl core::fmt::Debug for tungsten_core::physics::PhysicsMaterials
+pub fn tungsten_core::physics::PhysicsMaterials::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Freeze for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Send for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Sync for tungsten_core::physics::PhysicsMaterials
+impl core::marker::Unpin for tungsten_core::physics::PhysicsMaterials
+impl core::marker::UnsafeUnpin for tungsten_core::physics::PhysicsMaterials
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::PhysicsMaterials
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::PhysicsMaterials
 pub struct tungsten_core::PhysicsPlugin
 impl core::clone::Clone for tungsten_core::PhysicsPlugin
 pub fn tungsten_core::PhysicsPlugin::clone(&self) -> tungsten_core::PhysicsPlugin
@@ -17589,6 +17810,8 @@ pub tungsten_core::ResolvedManifest::fonts: std::collections::hash::map::HashMap
 pub tungsten_core::ResolvedManifest::materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedMaterial>
 pub tungsten_core::ResolvedManifest::particle_meshes: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticleMesh>
 pub tungsten_core::ResolvedManifest::particles: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedParticle>
+pub tungsten_core::ResolvedManifest::physics_layers: std::collections::hash::map::HashMap<alloc::string::String, u32>
+pub tungsten_core::ResolvedManifest::physics_materials: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::physics::PhysicsMaterial>
 pub tungsten_core::ResolvedManifest::prefabs: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedPrefab>
 pub tungsten_core::ResolvedManifest::shaders: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedShader>
 pub tungsten_core::ResolvedManifest::sounds: std::collections::hash::map::HashMap<alloc::string::String, tungsten_core::assets::manifest::ResolvedSound>
@@ -17705,12 +17928,14 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 pub struct tungsten_core::RigidBody
+pub tungsten_core::RigidBody::friction: f32
 pub tungsten_core::RigidBody::gravity_scale: f32
 pub tungsten_core::RigidBody::inv_mass: f32
 pub tungsten_core::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::RigidBody::layers: u32
 pub tungsten_core::RigidBody::mask: u32
 pub tungsten_core::RigidBody::restitution: f32
+pub tungsten_core::RigidBody::rolling: f32
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -17719,11 +17944,14 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_friction(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
