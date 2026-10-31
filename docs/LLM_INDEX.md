@@ -1,6 +1,6 @@
 # LLM Navigation Index
 
-Task → file map: read only the matching row's files. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the doc map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
+Task → file map: read only the matching row's. Prefixes: `core/` = `crates/tungsten-core/src/`, `render/` = `crates/tungsten-render/src/`, `tungsten/` = `crates/tungsten/src/`; other paths start at the repo root. `tungsten/app.rs` is the frame-loop hub. `D-NNN` IDs resolve through [DECISION_INDEX.md](DECISION_INDEX.md); [the doc map](README.md) names canonical guides. Unit tests usually live in `crates/<crate>/src/tests/` (the module's `#[path]`).
 
 ## Runtime and ECS
 
@@ -16,7 +16,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Tuple queries, `With`/`Without`, bundles, `spawn_with`, `RigidBodyBundle` (`D-130`, `D-135`) | `core/ecs/query.rs`, `core/ecs/bundle.rs`, `core/ecs/world.rs`, `core/tests/ecs/query.rs` |
 | Headless harness, `Harness`, `FrameDraw`, `UiHarness` (`D-110`, `D-125`) | `tungsten/testing.rs`, `tungsten/testing/ui.rs`, `tungsten/app.rs`, `tungsten/tests/testing.rs` |
 | Config, env overrides, settings (`D-159`) | `core/config.rs`, `core/settings.rs`, `core/display.rs`, `tungsten/settings.rs`, `tungsten.json` |
-| Logs, user folder, saves, crashes and target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save.rs`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
+| Logs, user folder, saves, crashes, target triple, `TUNGSTEN_USER_DIR`, `TUNGSTEN_TEST_PANIC` (`D-119`, `D-160`, `D-230`) | `tungsten/logging.rs`, `tungsten/user_dir.rs`, `core/save{.rs,/}`, `core/persist.rs`, `tungsten/crash.rs`, `tungsten/app.rs`, `crates/tungsten/build.rs`, `tools/crash-probe/` |
 | Display apply, fullscreen, vsync, frame cap, monitor (`D-043`, `D-184`) | `tungsten/display.rs`, `core/display.rs` |
 | Input actions, `input.json`, rebind reload (`D-045`, `D-159`) | `core/input/action_map.rs`, `core/input/key_serde.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/debug_hud.rs`, `tungsten/display.rs`, `input.json` |
 | Input state, raw stream, gamepads, their `gilrs` backend (`D-220`) and stick response (`D-221`), focus loss, modifiers, pointer leave, `ScaleFactor`, winit bridge (`D-144`) | `core/input.rs`, `core/display.rs`, `tungsten/input_bridge.rs`, `tungsten/app.rs`, `core/tests/input.rs`, `tungsten/tests/input_bridge.rs` |

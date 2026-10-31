@@ -30,6 +30,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - The auto-tiler's 8-bit blob masks, 47 variants, beside its 4-bit open sides (`D-228`, runtime-terrain's Q4).
 - Contacts on the outline's runs under a solver rule that holds 01's pit sweep: no stiffened run contact did, and friction does not change that measurement (`D-228`, physics-on-terrain's Q3).
 - Physics layer names in a tile layer's `layers` and `mask`, as `rigid_body` takes them, with 7.12's level format (`D-229`, physics-on-terrain's Q4, S-175).
+- The physics step's order by save ID and a saved solver cache (S-59's rest): a loaded run's physics then matches the uninterrupted run's, at a move of the physics hashes (`D-230`, saves-and-seams' Q3).
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order, one track): saves, the UI pass (7.17), screens as data (7.20), the kit pass, camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
