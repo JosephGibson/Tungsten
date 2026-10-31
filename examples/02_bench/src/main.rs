@@ -84,15 +84,20 @@ fn main() -> anyhow::Result<()> {
     app.run()
 }
 
-/// The benchmark's app on `config`: the capture viewport, vsync off, the
-/// row's engine config, the engine plugins and the row's own setup, with its
-/// startup hook. `main` and the counter guards build it alike.
+/// The benchmark's app on `config`: the capture viewport, vsync off,
+/// interpolation off, the row's engine config, the engine plugins and the
+/// row's own setup, with its startup hook. `main` and the counter guards
+/// build it alike.
 fn bench_app(mut config: Config, cfg: &BenchConfig) -> anyhow::Result<App> {
     config.display.resolution = Some(Resolution {
         width: VIEWPORT.x as u32,
         height: VIEWPORT.y as u32,
     });
     config.display.vsync = Some(false);
+    // The physics rows step by hand, without `PhysicsPlugin`'s snapshot, so a
+    // body's `PrevPosition` stays where it spawned; the lean view draws at
+    // `Position`, and the physics overlay must too.
+    config.time.interpolate = false;
     (cfg.bench.engine_config)(&mut config, cfg);
     // No `DefaultPlugins`: each row wires the engine systems it measures
     // itself, in its own order. These are the engine stages every row ran
