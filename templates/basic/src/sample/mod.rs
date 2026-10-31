@@ -10,13 +10,16 @@
 //! over's music, and comes back after pause. Gameplay's sounds are cues in the prefabs. It keeps the entities
 //! it spawned in [`SampleRun`], which the death check, the HUD and
 //! `save::capture` read, so a replaced run's entities, despawned at the
-//! frame's end, never count.
+//! frame's end, never count. It names each in the area [`AREA`], the
+//! player globally, which a save holds them by: a loaded run spawns as a
+//! new one, then takes the save's changes over it.
 
 pub mod components;
 pub mod hud;
 pub mod script;
 
 use tungsten::core::post::{BloomParams, PostPass, PostStack};
+use tungsten::core::save::{self, SaveState, Saved, restore_world};
 use tungsten::core::ui::UiTree;
 use tungsten::core::{
     AudioCommands, CameraController, CameraState, DataRef, Entity, PreparedPrefab, Schedule,
@@ -26,12 +29,16 @@ use tungsten::kit::{Counters, EffectRequest, Health, Stats, Tags};
 use tungsten::{GameState, Plugin, RootCover, SceneEntity, StateContext, StateId};
 
 use crate::game::GAMEPLAY;
+use crate::save::SaveGame;
 use crate::shell::game_over::GAME_OVER;
 use crate::shell::options::GameOptions;
 use crate::shell::pause::PAUSE;
 use crate::shell::{self, Difficulty, RunStart, theme};
 use components::Player;
 
+/// The sample's code-built level, the area its placed entities are named
+/// in.
+pub const AREA: &str = "sample";
 /// The player's prefab, by its manifest ID.
 pub const PLAYER_PREFAB: &str = "player";
 /// Where the player starts: the middle of a 1280 × 720 window.
@@ -142,13 +149,60 @@ pub struct Enemy {
 }
 
 impl Enemy {
-    /// Spawns the enemy at `slot` of [`ENEMIES`] at its place.
+    /// Spawns the enemy at `slot` of [`ENEMIES`] at its place, named
+    /// `enemy_<slot>`: a fallen one's name is free.
     fn spawn(world: &mut World, slot: usize) -> Self {
         let (prefab, at) = ENEMIES[slot];
         let entity = prepare(world, prefab, at).spawn(world);
+        name(world, entity, Some(AREA), &format!("enemy_{slot}"));
         let back = Timer::once(ENEMY_RETURN_SECS);
         Self { entity, back }
     }
+
+    /// Whether it stands: its health above 0.
+    #[must_use]
+    pub fn alive(&self, world: &World) -> bool {
+        world
+            .get::<Health>(self.entity)
+            .is_some_and(|h| !h.is_dead())
+    }
+}
+
+/// Names `entity` for saves; a run's names are free, since its exit drops
+/// the last run's.
+fn name(world: &mut World, entity: Entity, area: Option<&str>, name: &str) {
+    if let Err(err) = save::name(world, entity, area, name) {
+        log::warn!("{err}");
+    }
+}
+
+/// Spawns each of `items`, named `<what>_<slot>` in [`AREA`].
+fn place(world: &mut World, what: &str, items: &[(&str, [f32; 2])]) -> Vec<(u8, Entity)> {
+    (0..)
+        .zip(items)
+        .map(|(slot, &(prefab, at))| {
+            let entity = prepare(world, prefab, at).spawn(world);
+            name(world, entity, Some(AREA), &format!("{what}_{slot}"));
+            (slot, entity)
+        })
+        .collect()
+}
+
+/// Lays `save`'s run over the new one, each fallen enemy down as long as
+/// it was, under the spawn grace; a save that does not load leaves the new
+/// run.
+fn continue_run(world: &mut World, save: &SaveGame, player: Entity) {
+    let scene = (SceneEntity { state_id: GAMEPLAY },);
+    if let Err(err) = restore_world(world, &save.world, &scene) {
+        log::warn!("The save's run did not load: {err}");
+    }
+    let enemies = &mut world.resource_mut::<SampleRun>().enemies;
+    for &(slot, down) in &save.down {
+        if let Some(enemy) = enemies.get_mut(usize::from(slot)) {
+            enemy.back.tick(down);
+        }
+    }
+    EffectRequest::new(player, DataRef::by_id(SPAWN_GRACE)).apply(world);
 }
 
 /// The sample as a plugin: the components its prefabs name, the camera's
@@ -227,10 +281,7 @@ fn bring_back(world: &mut World) {
         return;
     };
     for (slot, enemy) in enemies.iter_mut().enumerate() {
-        let alive = world
-            .get::<Health>(enemy.entity)
-            .is_some_and(|h| !h.is_dead());
-        if alive {
+        if enemy.alive(world) {
             enemy.back.reset();
         } else if enemy.back.tick(delta) > 0 {
             *enemy = Enemy::spawn(world, slot);
@@ -290,55 +341,24 @@ impl GameState for GameplayState {
     fn on_enter(&mut self, ctx: &mut StateContext) {
         let world = &mut *ctx.world;
         let start = self.start.take().unwrap_or_default();
-        let every = |count: usize| (0..).take(count).collect::<Vec<u8>>();
-        let (at, gems_left, counted, pickups_left) = match &start.save {
-            Some(save) => (
-                save.player,
-                save.gems_left.clone(),
-                save.gems,
-                save.pickups_left.clone(),
-            ),
-            None => (
-                PLAYER_START,
-                every(GEM_STARTS.len()),
-                0,
-                every(PICKUPS.len()),
-            ),
-        };
-        let (mut player, continued) = (prepare(world, PLAYER_PREFAB, at), start.save.is_some());
-        if let Some(save) = start.save {
-            player = player.with((save.health,));
-        }
-        let player = player.spawn(world);
+        let player = prepare(world, PLAYER_PREFAB, PLAYER_START).spawn(world);
         // Before any step, so the first one already runs at this max.
         if let Some(stats) = world.get_mut::<Stats>(player) {
             stats.set_base(Stats::MAX_HEALTH, max_health(start.difficulty));
         }
-        if continued {
-            EffectRequest::new(player, DataRef::by_id(SPAWN_GRACE)).apply(world);
-        }
+        name(world, player, None, "player");
         let enemies = (0..ENEMIES.len())
             .map(|slot| Enemy::spawn(world, slot))
             .collect();
         let dummy = prepare(world, DUMMY_PREFAB, DUMMY_START).spawn(world);
-        let pickups = pickups_left
-            .into_iter()
-            .filter_map(|slot| {
-                let (prefab, at) = *PICKUPS.get(usize::from(slot))?;
-                Some((slot, prepare(world, prefab, at).spawn(world)))
-            })
-            .collect();
-        let gems = gems_left
-            .into_iter()
-            .filter_map(|slot| {
-                let at = *GEM_STARTS.get(usize::from(slot))?;
-                Some((slot, prepare(world, GEM_PREFAB, at).spawn(world)))
-            })
-            .collect();
+        name(world, dummy, Some(AREA), "dummy");
+        let pickups = place(world, "pickup", &PICKUPS);
+        let gems = GEM_STARTS.map(|at| (GEM_PREFAB, at));
+        let gems = place(world, "gem", &gems);
         if !world.has_resource::<Counters>() {
             world.insert_resource(Counters::new());
         }
-        world.resource_mut::<Counters>().set("gems", counted);
+        world.resource_mut::<Counters>().set("gems", 0);
         world.insert_resource(SampleRun {
             player,
             gems,
@@ -346,6 +366,9 @@ impl GameState for GameplayState {
             pickups,
             enemies,
         });
+        if let Some(save) = &start.save {
+            continue_run(world, save, player);
+        }
         // The view starts centred on the play space, at this window's zoom.
         let (window, zoom) = (*world.resource::<WindowSize>(), zoom(world));
         let view = [window.width, window.height].map(|side| side as f32 / zoom / 2.0);
@@ -367,6 +390,13 @@ impl GameState for GameplayState {
 
     fn on_exit(&mut self, ctx: &mut StateContext) {
         ctx.world.remove_resource::<SampleRun>();
+        // The next run names its own: this one's, despawned at the frame's
+        // flush, hold no save identity meanwhile.
+        let saved: Vec<Entity> = ctx.world.query_filtered::<Entity, With<Saved>>().collect();
+        for entity in saved {
+            ctx.world.remove_component::<Saved>(entity);
+        }
+        ctx.world.remove_resource::<SaveState>();
         ctx.world.remove_resource::<hud::Hud>();
         ctx.world.insert_resource(PostStack::default());
         // Both loops stop with the run, pause's too: a Quit to Title from

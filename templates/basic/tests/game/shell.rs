@@ -27,6 +27,7 @@ use tungsten_template_basic::shell::{
     AUTOSAVES, Difficulty, RunStart, RunState, request_autosave, theme, widgets,
 };
 
+use super::saves::{gems_left, newer_slot, player_of, set_gems, set_player};
 use super::{
     act, find, harness, harness_with, health, heard, player_entity, player_position, plays, press,
     settle, shows, slot_file, start, start_at, stops, tap, top, user_folder,
@@ -109,8 +110,8 @@ fn new_game_picks_a_difficulty_and_writes_a_fresh_autosave() {
     assert_eq!(health(&harness, player_entity(&harness)), (3.0, 3.0));
     let save = read(&dir, AUTOSAVES[0]);
     assert_eq!(save.meta.difficulty, Difficulty::Hard);
-    assert_eq!(save.player, PLAYER_START);
-    assert_eq!(save.gems_left, [0, 1, 2]);
+    assert_eq!(player_of(&save), PLAYER_START);
+    assert_eq!(gems_left(&save), [0, 1, 2]);
     assert_eq!(save.gems, 0);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -146,8 +147,16 @@ fn new_game_asks_first_over_an_autosave() {
     press(&mut harness, "Start");
     assert_eq!(top(&harness), Some(game::GAMEPLAY));
     let fresh = read(&dir, AUTOSAVES[2]);
-    assert_eq!(fresh.player, PLAYER_START, "the empty autosave takes it");
-    assert_eq!(read(&dir, AUTOSAVES[1]).player, old.player, "the rest stay");
+    assert_eq!(
+        player_of(&fresh),
+        PLAYER_START,
+        "the empty autosave takes it"
+    );
+    assert_eq!(
+        player_of(&read(&dir, AUTOSAVES[1])),
+        player_of(&old),
+        "the rest stay"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -206,7 +215,7 @@ fn quit_to_title_autosaves_and_returns_to_the_title() {
     assert_eq!(top(&harness), Some(TITLE));
     assert_eq!(depth(&harness), 1);
     assert!(!harness.world().has_resource::<RunState>(), "the run ended");
-    assert_eq!(read(&dir, AUTOSAVES[1]).player, walked);
+    assert_eq!(player_of(&read(&dir, AUTOSAVES[1])), walked);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -258,18 +267,18 @@ fn quit_to_title_asks_once_and_names_lost_progress_only_when_the_autosave_failed
     // Read-only autosaves: three from a newer build.
     let dir = user_folder("quit-read-only");
     std::fs::create_dir_all(dir.join("saves")).unwrap();
-    let newer = r#"{ "envelope": 1, "slot": "autosave_1", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
-    for slot in AUTOSAVES {
-        std::fs::write(slot_file(&dir, slot), newer).unwrap();
-    }
+    let newer: Vec<String> = AUTOSAVES
+        .iter()
+        .map(|slot| newer_slot(&dir, slot))
+        .collect();
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
     tap(&mut harness, "state_pause");
     press(&mut harness, "Quit to Title");
     assert!(shows(&harness, lost), "read-only autosaves");
-    for slot in AUTOSAVES {
+    for (slot, newer) in AUTOSAVES.into_iter().zip(&newer) {
         assert_eq!(
-            std::fs::read_to_string(slot_file(&dir, slot)).unwrap(),
+            &std::fs::read_to_string(slot_file(&dir, slot)).unwrap(),
             newer
         );
     }
@@ -354,7 +363,8 @@ fn older_slot(dir: &Path) -> SaveGame {
     let mut harness = harness();
     start(&mut harness);
     let mut save = save::capture(harness.world()).unwrap();
-    (save.meta.game_version, save.player) = ("0.0.1".into(), [41.0, 42.0]);
+    save.meta.game_version = "0.0.1".into();
+    set_player(&mut save, [41.0, 42.0]);
     SaveSlots::new(Some(dir.join("saves")))
         .save("slot_1", &save)
         .unwrap();
@@ -568,7 +578,7 @@ fn retry_starts_fresh_when_the_runs_first_autosave_failed() {
         .set("gems", 1);
     tap(&mut harness, "state_pause");
     harness.step(1);
-    assert_eq!(read(&dir, AUTOSAVES[1]).gems_left.len(), 2);
+    assert_eq!(gems_left(&read(&dir, AUTOSAVES[1])).len(), 2);
 
     let writable = make_read_only(&dir.join("saves"));
     let mut harness = harness_with(UserFolder::At(dir.clone()));
@@ -625,7 +635,8 @@ fn retry_autosaves_only_the_new_runs_gems() {
     start(&mut harness);
     // A save with one gem left, which the run's Retry loads.
     let mut one = save::capture(harness.world()).expect("a live run");
-    one.gems_left = vec![2];
+    let gems = one.gems;
+    set_gems(&mut one, &[2], gems);
     SaveSlots::new(Some(dir.join("saves")))
         .save("slot_1", &one)
         .unwrap();
@@ -634,7 +645,7 @@ fn retry_autosaves_only_the_new_runs_gems() {
     kill(&mut harness);
     press(&mut harness, "Retry");
     assert_eq!(
-        read(&dir, AUTOSAVES[1]).gems_left,
+        gems_left(&read(&dir, AUTOSAVES[1])),
         [2],
         "the new run's gem alone, in the next autosave"
     );
@@ -668,11 +679,11 @@ fn a_close_in_gameplay_autosaves_in_the_last_frame() {
     start(&mut harness);
     walk(&mut harness, 20);
     let walked = player_position(&harness).unwrap();
-    assert_ne!(read(&dir, AUTOSAVES[0]).player, walked);
+    assert_ne!(player_of(&read(&dir, AUTOSAVES[0])), walked);
     harness.harness_mut().request_close();
     assert_eq!(harness.step(1), 1, "the last frame runs");
     assert!(harness.harness().exit_requested());
-    assert_eq!(read(&dir, AUTOSAVES[1]).player, walked);
+    assert_eq!(player_of(&read(&dir, AUTOSAVES[1])), walked);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1098,7 +1109,7 @@ fn a_run_change_fades_through_the_curtain_and_autosaves_the_new_run_once() {
     assert_eq!(autosave_bytes(&dir)[1..], [None, None], "in one slot");
     let save = read(&dir, AUTOSAVES[0]);
     assert_eq!(save.meta.difficulty, Difficulty::Normal);
-    assert_eq!(save.player, PLAYER_START, "the new run's");
+    assert_eq!(player_of(&save), PLAYER_START, "the new run's");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1110,7 +1121,8 @@ fn load_under_the_curtain(dir: &Path) -> (UiHarness, [f32; 2]) {
     walk(&mut harness, 20);
     let walked = player_position(&harness).unwrap();
     let mut hard = save::capture(harness.world()).unwrap();
-    (hard.meta.difficulty, hard.player) = (Difficulty::Hard, [50.0, 60.0]);
+    hard.meta.difficulty = Difficulty::Hard;
+    set_player(&mut hard, [50.0, 60.0]);
     SaveSlots::new(Some(dir.join("saves")))
         .save("slot_1", &hard)
         .unwrap();
@@ -1199,7 +1211,7 @@ fn a_first_autosave_waits_for_a_capture() {
         1,
         "one, once it has a save"
     );
-    assert_eq!(read(&dir, AUTOSAVES[0]).player, PLAYER_START);
+    assert_eq!(player_of(&read(&dir, AUTOSAVES[0])), PLAYER_START);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -1238,7 +1250,7 @@ fn a_close_during_a_run_change_saves_one_run_whole() {
     // Over pause's autosave: the clock held, so no step ran since.
     let save = read(&dir, AUTOSAVES[1]);
     assert_eq!(
-        (save.meta.difficulty, save.player),
+        (save.meta.difficulty, player_of(&save)),
         (Difficulty::Normal, walked)
     );
     let _ = std::fs::remove_dir_all(&dir);
@@ -1254,7 +1266,7 @@ fn a_close_during_a_run_change_saves_one_run_whole() {
     // The loaded run's first autosave, in the slot left empty.
     let save = read(&dir, AUTOSAVES[2]);
     assert_eq!(
-        (save.meta.difficulty, save.player),
+        (save.meta.difficulty, player_of(&save)),
         (Difficulty::Hard, [50.0, 60.0])
     );
     let _ = std::fs::remove_dir_all(&dir);
@@ -1271,8 +1283,8 @@ fn pause_then_quit_game_keeps_the_earlier_autosaves() {
     let earlier = autosave_bytes(&dir);
     assert!(earlier[0].is_some() && earlier[1].is_some() && earlier[2].is_none());
     assert_ne!(
-        read(&dir, AUTOSAVES[0]).player,
-        read(&dir, AUTOSAVES[1]).player
+        player_of(&read(&dir, AUTOSAVES[0])),
+        player_of(&read(&dir, AUTOSAVES[1]))
     );
     walk(&mut harness, 20);
     let walked = player_position(&harness).unwrap();
@@ -1285,7 +1297,7 @@ fn pause_then_quit_game_keeps_the_earlier_autosaves() {
     assert_eq!(harness.step(1), 0, "the last frame ran");
     let now = autosave_bytes(&dir);
     assert_eq!(now[..2], earlier[..2], "the earlier autosaves stay");
-    assert_eq!(read(&dir, AUTOSAVES[2]).player, walked);
+    assert_eq!(player_of(&read(&dir, AUTOSAVES[2])), walked);
     let _ = std::fs::remove_dir_all(&dir);
 }
 

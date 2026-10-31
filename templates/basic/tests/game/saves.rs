@@ -1,16 +1,21 @@
-//! The save seam: the schema's migration, a continued run's restore, a
-//! slot that fails to load, and the options' own store.
+//! The save seam: older sample saves, a continued run's restore, a slot
+//! that fails to load, and the options' own store.
 
 use std::path::Path;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use serde::{Deserialize, Serialize};
 use tungsten::StateStack;
+use tungsten::core::save::{SaveStamp, Saved, Value};
 use tungsten::core::ui::WidgetKind;
-use tungsten::core::{SaveData, SaveSlots, UserFolder};
-use tungsten::kit::{Counters, Health, Hit, damage};
+use tungsten::core::{Entity, Position, SaveData, SaveSlots, Time, UserFolder};
+use tungsten::kit::{Counters, Effects, Health, Hit, damage};
 use tungsten::testing::UiHarness;
 use tungsten_template_basic::game;
-use tungsten_template_basic::sample::{ENEMIES, HAZARD_START, PLAYER_START, SampleRun};
+use tungsten_template_basic::sample::{
+    AREA, ENEMIES, GEM_STARTS, HAZARD_START, PLAYER_START, SPAWN_GRACE, SampleRun,
+};
 use tungsten_template_basic::save::{self, SaveGame};
 use tungsten_template_basic::shell::confirm::CONFIRM;
 use tungsten_template_basic::shell::game_over::GAME_OVER;
@@ -19,7 +24,7 @@ use tungsten_template_basic::shell::pause::PAUSE;
 use tungsten_template_basic::shell::saves::SAVES;
 use tungsten_template_basic::shell::toast::Toasts;
 use tungsten_template_basic::shell::{
-    self, AUTOSAVES, Difficulty, OLD_AUTOSAVE, RunState, request_autosave, widgets,
+    self, AUTOSAVES, OLD_AUTOSAVE, RunState, SlotState, request_autosave, widgets,
 };
 
 use super::{
@@ -27,106 +32,207 @@ use super::{
     slot_file, start, tap, top, user_folder,
 };
 
-/// The template's save before schema 2: the player's position alone.
+/// A save's data as its file holds it, read whole.
 #[derive(Serialize, Deserialize)]
-struct SaveV1 {
+struct Raw(Value);
+
+impl SaveData for Raw {
+    const SCHEMA: u32 = <SaveGame as SaveData>::SCHEMA;
+}
+
+/// `save` as the JSON its file holds, through a scratch slot: the template
+/// carries no JSON crate of its own.
+fn json_of(save: &SaveGame) -> Value {
+    static SCRATCH: AtomicU32 = AtomicU32::new(0);
+    let dir = user_folder(&format!("json-{}", SCRATCH.fetch_add(1, Ordering::Relaxed)));
+    let slots = SaveSlots::new(Some(dir.join("saves")));
+    slots.save("scratch", save).unwrap();
+    let Raw(value) = slots.load::<Raw>("scratch").unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    value
+}
+
+fn from_json(value: Value) -> SaveGame {
+    SaveGame::deserialize(value).unwrap()
+}
+
+fn point(at: [f32; 2]) -> Value {
+    Value::from(at.to_vec())
+}
+
+/// Where `save`'s player stands: the position it saved, else the start.
+pub fn player_of(save: &SaveGame) -> [f32; 2] {
+    let at = &json_of(save)["world"]["global"]["named"]["player"]["components"]["position"];
+    <[f32; 2]>::deserialize(at.clone()).unwrap_or(PLAYER_START)
+}
+
+/// `save` with its player at `at`.
+pub fn set_player(save: &mut SaveGame, at: [f32; 2]) {
+    let mut value = json_of(save);
+    value["world"]["global"]["named"]["player"]["components"]["position"] = point(at);
+    *save = from_json(value);
+}
+
+/// The names a save's area lists as gone.
+fn gone(value: &Value) -> Vec<Value> {
+    value["world"]["areas"][AREA]["gone"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// The gems `save` leaves, by their place in `GEM_STARTS`.
+pub fn gems_left(save: &SaveGame) -> Vec<u8> {
+    let gone = gone(&json_of(save));
+    (0..GEM_STARTS.len() as u8)
+        .filter(|slot| !gone.contains(&Value::from(format!("gem_{slot}"))))
+        .collect()
+}
+
+/// `save` with the gems `left`, by their place, and `gems` counted.
+pub fn set_gems(save: &mut SaveGame, left: &[u8], gems: i64) {
+    let mut value = json_of(save);
+    let mut names: Vec<Value> = gone(&value)
+        .into_iter()
+        .filter(|name| !name.as_str().is_some_and(|name| name.starts_with("gem_")))
+        .collect();
+    names.extend(
+        (0..GEM_STARTS.len() as u8)
+            .filter(|slot| !left.contains(slot))
+            .map(|slot| Value::from(format!("gem_{slot}"))),
+    );
+    // A gem gone has no changes of its own.
+    if let Some(named) = value["world"]["areas"][AREA]["named"].as_object_mut() {
+        named.retain(|name, _| !names.contains(&Value::from(name.as_str())));
+    }
+    value["world"]["areas"][AREA]["gone"] = Value::Array(names);
+    value["world"]["resources"]["counters"]["gems"] = Value::from(gems);
+    value["gems"] = Value::from(gems);
+    *save = from_json(value);
+}
+
+/// What a save of another schema holds: nothing this build reads.
+#[derive(Serialize)]
+struct Other {
     player: [f32; 2],
 }
 
-impl SaveData for SaveV1 {
-    const SCHEMA: u32 = 1;
+/// A newer build's save in `dir`'s `slot`, schema 9; the file's text.
+pub fn newer_slot(dir: &Path, slot: &str) -> String {
+    let stamp = SaveStamp::new(9, "9.0.0", 1);
+    let data = Other { player: [1.0, 2.0] };
+    SaveSlots::new(Some(dir.join("saves")))
+        .save_stamped(slot, &data, &stamp)
+        .unwrap();
+    std::fs::read_to_string(slot_file(dir, slot)).unwrap()
 }
 
-/// The template's save before schema 3: no pickups.
-#[derive(Serialize, Deserialize)]
-struct SaveV2 {
-    meta: shell::RunMeta,
-    player: [f32; 2],
-    health: tungsten::kit::Health,
-    gems_left: Vec<u8>,
-    gems: i64,
-}
-
-impl SaveData for SaveV2 {
-    const SCHEMA: u32 = 2;
+/// The gems of the run that stand.
+fn gems_standing(harness: &UiHarness) -> Vec<u8> {
+    let run = harness.world().resource::<SampleRun>();
+    run.gems
+        .iter()
+        .filter(|(_, gem)| harness.world().is_alive(*gem))
+        .map(|(slot, _)| *slot)
+        .collect()
 }
 
 #[test]
-fn a_schema_2_save_migrates() {
-    let dir = user_folder("migrate-2");
-    let fresh = fresh_save();
-    let old = SaveV2 {
-        meta: fresh.meta.clone(),
-        player: [120.0, 220.0],
-        health: fresh.health.clone(),
-        gems_left: vec![1],
-        gems: 2,
-    };
+fn older_sample_saves_read_as_older() {
+    let dir = user_folder("older-sample");
     let slots = SaveSlots::new(Some(dir.join("saves")));
-    slots.save("slot_4", &old).unwrap();
-    let save = slots.load::<SaveGame>("slot_4").expect("schema 2 migrates");
-    assert_eq!(
-        (save.player, save.gems_left, save.gems),
-        ([120.0, 220.0], vec![1], 2)
-    );
-    assert_eq!(save.pickups_left, [0, 1], "every pickup still there");
-    assert_eq!(<SaveGame as SaveData>::SCHEMA, 3);
+    let old = Other {
+        player: [100.0, 200.0],
+    };
+    for schema in 1..=3 {
+        let stamp = SaveStamp::new(schema, "0.113.0", 1_000 * u64::from(schema));
+        slots
+            .save_stamped(&format!("slot_{schema}"), &old, &stamp)
+            .unwrap();
+    }
+    let mut harness = harness_with(UserFolder::At(dir.clone()));
+    let (states, _) = shell::read_slots(harness.world_mut());
+    for schema in 1..=3 {
+        let slot = format!("slot_{schema}");
+        let state = &states.iter().find(|(name, _)| *name == slot).unwrap().1;
+        assert!(matches!(state, SlotState::Older(_)), "{slot}");
+    }
+    assert_eq!(<SaveGame as SaveData>::SCHEMA, 4);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn pickups_left_round_trip() {
-    let dir = user_folder("pickups-left");
+fn continue_restores_the_run_in_a_churned_world() {
+    let dir = user_folder("churned");
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
-    let taken = harness.world().resource::<SampleRun>().pickups[0].1;
-    harness.world_mut().despawn(taken);
+    let player = player_entity(&harness);
+    harness.harness_mut().press_action("move_right");
+    harness.step(20);
+    super::release_and_settle(&mut harness, "move_right");
+    assert_eq!(damage(harness.world_mut(), player, 1.0), Hit::Hurt);
+    let gems = harness.world().resource::<SampleRun>().gems.clone();
+    for &(_, gem) in &gems[..2] {
+        harness.world_mut().despawn(gem);
+    }
+    harness
+        .world_mut()
+        .resource_mut::<Counters>()
+        .set("gems", 2);
+    let at = player_position(&harness).unwrap();
+    harness.pointer_to(at[0] - 300.0, at[1] - 200.0);
+    harness.step(1);
+    harness.harness_mut().press_action("shoot");
+    harness.step(2);
+    harness.harness_mut().release_action("shoot");
     tap(&mut harness, "state_pause");
     harness.step(1);
-    let saved = SaveSlots::new(Some(dir.join("saves")))
-        .load::<SaveGame>(AUTOSAVES[1])
-        .unwrap();
-    assert_eq!(saved.pickups_left, [1], "the speed pickup alone");
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    press(&mut harness, "Continue");
-    let run = harness.world().resource::<SampleRun>();
-    let left: Vec<u8> = run.pickups.iter().map(|(slot, _)| *slot).collect();
-    assert_eq!(left, [1], "the heal stays taken");
-    let _ = std::fs::remove_dir_all(&dir);
-}
+    let orbiter = |harness: &UiHarness| {
+        let entity = harness.world().resource::<SampleRun>().enemies[1].entity;
+        harness.world().get::<Position>(entity).map(|at| at.0)
+    };
+    let bolts = |harness: &UiHarness| -> Vec<[f32; 2]> {
+        let world = harness.world();
+        let mut bolts: Vec<[f32; 2]> = world
+            .query::<(&Saved, &Position)>()
+            .filter(|(saved, _)| saved.prefab() == Some("bolt"))
+            .map(|(_, at)| at.0.to_array())
+            .collect();
+        bolts.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        bolts
+    };
+    let (moved, hurt) = (player_position(&harness).unwrap(), health(&harness, player));
+    let (circling, flying) = (orbiter(&harness).unwrap(), bolts(&harness));
+    assert!(!flying.is_empty(), "a bolt in flight");
 
-#[test]
-fn a_schema_1_autosave_migrates() {
-    let dir = user_folder("migrate");
-    let slots = SaveSlots::new(Some(dir.join("saves")));
-    slots
-        .save(
-            AUTOSAVES[0],
-            &SaveV1 {
-                player: [100.0, 200.0],
-            },
-        )
-        .unwrap();
-    let save = slots
-        .load::<SaveGame>(AUTOSAVES[0])
-        .expect("schema 1 migrates");
-    assert_eq!(save.player, [100.0, 200.0]);
-    assert_eq!(save.meta.difficulty, Difficulty::Normal);
-    assert_eq!(save.meta.game_version, "unknown");
-    assert_eq!(save.meta.playtime_secs, 0.0);
-    assert_eq!((save.health.current(), save.health.max()), (5.0, 5.0));
-    assert_eq!(save.gems_left, [0, 1, 2]);
-    assert_eq!(save.gems, 0);
-    assert_eq!(save.pickups_left, [0, 1], "through schema 2's step");
-
-    // Continued, after the question an unknown version asks, it plays from
-    // there.
-    let mut harness = harness_with(UserFolder::At(dir.clone()));
-    press(&mut harness, "Continue");
-    assert_eq!(top(&harness), Some(CONFIRM));
-    press(&mut harness, "Load");
-    assert_eq!(top(&harness), Some(game::GAMEPLAY));
-    assert_eq!(player_position(&harness), Some([100.0, 200.0]));
+    let mut restarted = harness_with(UserFolder::At(dir.clone()));
+    let world = restarted.world_mut();
+    let churn: Vec<Entity> = (0..100).map(|_| world.spawn()).collect();
+    for entity in churn {
+        world.despawn(entity);
+    }
+    // The game clock held, so what the load restored stands to be read.
+    world.resource_mut::<Time>().set_scale(0.0);
+    press(&mut restarted, "Continue");
+    let near = |a: [f32; 2], b: [f32; 2]| (a[0] - b[0]).abs() < 1e-4 && (a[1] - b[1]).abs() < 1e-4;
+    let at = player_position(&restarted).unwrap();
+    assert!(near(at, moved), "{at:?} {moved:?}");
+    assert_eq!(health(&restarted, player_entity(&restarted)), hurt);
+    let circled = orbiter(&restarted).unwrap();
+    assert!(circled.distance(circling) < 1e-4, "mid-orbit");
+    let restored = bolts(&restarted);
+    assert_eq!(restored.len(), flying.len());
+    assert!(
+        restored.iter().zip(&flying).all(|(&a, &b)| near(a, b)),
+        "in flight"
+    );
+    assert_eq!(gems_standing(&restarted), [2], "two gems gone");
+    assert_eq!(restarted.world().resource::<Counters>().get("gems"), 2);
+    let effects = restarted.world().get::<Effects>(player_entity(&restarted));
+    assert!(
+        effects.is_some_and(|effects| effects.has(SPAWN_GRACE)),
+        "the grace"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -138,7 +244,8 @@ fn continue_restores_position_health_gems_and_count() {
     let player = player_entity(&harness);
     harness.harness_mut().press_action("move_right");
     harness.step(20);
-    harness.harness_mut().release_action("move_right");
+    // Settled: the save holds no slide to carry on with.
+    super::release_and_settle(&mut harness, "move_right");
     assert_eq!(damage(harness.world_mut(), player, 1.0), Hit::Hurt);
     let gem = harness.world().resource::<SampleRun>().gems[1].1;
     harness.world_mut().despawn(gem);
@@ -156,14 +263,11 @@ fn continue_restores_position_health_gems_and_count() {
     press(&mut restarted, "Continue");
     assert_eq!(player_position(&restarted), Some(moved));
     assert_eq!(health(&restarted, player_entity(&restarted)), (4.0, 5.0));
-    let gems: Vec<u8> = restarted
-        .world()
-        .resource::<SampleRun>()
-        .gems
-        .iter()
-        .map(|(slot, _)| *slot)
-        .collect();
-    assert_eq!(gems, [0, 2], "the taken gem stays taken");
+    assert_eq!(
+        gems_standing(&restarted),
+        [0, 2],
+        "the taken gem stays taken"
+    );
     assert_eq!(restarted.world().resource::<Counters>().get("gems"), 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -178,7 +282,7 @@ fn low_health_save(at: [f32; 2]) -> SaveGame {
     harness.step(40);
     let mut save = save::capture(harness.world()).expect("a live run");
     assert_eq!((save.health.current(), save.health.max()), (1.0, 5.0));
-    save.player = at;
+    set_player(&mut save, at);
     save
 }
 
@@ -251,10 +355,8 @@ fn a_continued_run_survives_its_first_two_seconds() {
 fn a_slot_that_fails_to_load_is_never_overwritten() {
     let dir = user_folder("newer-save");
     let slot = slot_file(&dir, AUTOSAVES[0]);
-    std::fs::create_dir_all(slot.parent().unwrap()).unwrap();
     // A save from a newer build of the game: schema 9.
-    let newer = r#"{ "envelope": 1, "slot": "autosave_1", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": { "player": [1.0, 2.0], "lives": 3 } }"#;
-    std::fs::write(&slot, newer).unwrap();
+    let newer = newer_slot(&dir, AUTOSAVES[0]);
 
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     assert_eq!(find(&harness, "Continue"), None, "nothing to continue");
@@ -268,8 +370,7 @@ fn a_slot_that_fails_to_load_is_never_overwritten() {
 
     // The last slot, newer too: listed, neither loaded nor overwritten.
     let last = slot_file(&dir, "slot_10");
-    let newer_last = newer.replace("\"autosave_1\"", "\"slot_10\"");
-    std::fs::write(&last, &newer_last).unwrap();
+    let newer_last = newer_slot(&dir, "slot_10");
     press(&mut harness, "Save");
     assert_eq!(find(&harness, "Slot 10"), None, "not a save target");
     assert!(named(&harness, "Slot 10").is_some(), "but listed");
@@ -315,8 +416,9 @@ fn options_keep_their_own_folder_and_a_damaged_file_falls_back() {
 /// `save` with `player` and `gems` written to `slot` in `dir`, played for
 /// 12:04.
 fn write_slot(dir: &Path, slot: &str, mut save: SaveGame, player: [f32; 2], gems: i64) {
-    save.player = player;
-    save.gems = gems;
+    set_player(&mut save, player);
+    let left = gems_left(&save);
+    set_gems(&mut save, &left, gems);
     save.meta.playtime_secs = 724.0;
     SaveSlots::new(Some(dir.join("saves")))
         .save(slot, &save)
@@ -429,7 +531,10 @@ fn saving_to_an_empty_slot_writes_it_and_toasts() {
     press(&mut harness, "Slot 1");
     assert_eq!(top(&harness), Some(SAVES), "no question for an empty slot");
     let slots = SaveSlots::new(Some(dir.join("saves")));
-    assert_eq!(slots.load::<SaveGame>("slot_1").unwrap().player, walked);
+    assert_eq!(
+        player_of(&slots.load::<SaveGame>("slot_1").unwrap()),
+        walked
+    );
     harness.step(1);
     let toasts = harness.world().resource::<Toasts>().texts(harness.tree());
     assert_eq!(toasts, ["Saved to Slot 1"]);
@@ -457,7 +562,7 @@ fn overwriting_asks_first_and_cancel_keeps_the_old_save() {
     press(&mut harness, "Overwrite");
     let slots = SaveSlots::new(Some(dir.join("saves")));
     assert_eq!(
-        slots.load::<SaveGame>("slot_1").unwrap().player,
+        player_of(&slots.load::<SaveGame>("slot_1").unwrap()),
         PLAYER_START
     );
     let _ = std::fs::remove_dir_all(&dir);
@@ -524,10 +629,8 @@ fn a_delete_that_fails_keeps_the_slot_read_only_and_says_so() {
 #[test]
 fn a_damaged_or_newer_slot_shows_its_label_and_is_neither_loaded_nor_overwritten() {
     let dir = user_folder("damaged-newer");
-    let newer = r#"{ "envelope": 1, "slot": "slot_1", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
+    let newer = newer_slot(&dir, "slot_1");
     let damaged = "{ not json";
-    std::fs::create_dir_all(dir.join("saves")).unwrap();
-    std::fs::write(slot_file(&dir, "slot_1"), newer).unwrap();
     std::fs::write(slot_file(&dir, "slot_3"), damaged).unwrap();
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     harness.step(1);
@@ -566,7 +669,8 @@ fn hurt_save() -> SaveGame {
     assert_eq!(damage(harness.world_mut(), player, 1.0), Hit::Hurt);
     harness.step(40);
     let mut save = save::capture(harness.world()).unwrap();
-    save.gems_left = vec![0, 1];
+    let gems = save.gems;
+    set_gems(&mut save, &[0, 1], gems);
     save
 }
 
@@ -589,7 +693,7 @@ fn loading_from_pause_leaves_one_gameplay_state() {
     assert_eq!(player_position(&harness), Some([50.0, 60.0]));
     assert_eq!(health(&harness, player_entity(&harness)), (4.0, 5.0));
     assert_eq!(harness.world().resource::<Counters>().get("gems"), 1);
-    assert_eq!(harness.world().resource::<SampleRun>().gems.len(), 2);
+    assert_eq!(gems_standing(&harness), [0, 1]);
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -607,9 +711,8 @@ fn loading_from_pause_asks_first_unless_the_run_is_checkpointed() {
     // Read-only autosaves: three from a newer build.
     let dir = user_folder("load-asks-read-only");
     write_slot(&dir, "slot_1", fresh_save(), [50.0, 60.0], 0);
-    let newer = r#"{ "envelope": 1, "slot": "autosave_1", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
     for slot in AUTOSAVES {
-        std::fs::write(slot_file(&dir, slot), newer).unwrap();
+        newer_slot(&dir, slot);
     }
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     start(&mut harness);
@@ -736,7 +839,10 @@ fn autosaves_rotate_through_three_slots_overwriting_the_oldest() {
     assert_eq!(retry_from(&harness), Some(AUTOSAVES[0]), "the run's first");
     let read = |slot: &str| {
         let slots = SaveSlots::new(Some(dir.join("saves")));
-        slots.load::<SaveGame>(slot).ok().map(|save| save.player)
+        slots
+            .load::<SaveGame>(slot)
+            .ok()
+            .map(|save| player_of(&save))
     };
     let mut held = [read(AUTOSAVES[0]), None, None];
     assert!(held[0].is_some());
@@ -882,14 +988,9 @@ fn an_older_save_names_its_version_and_asks_before_it_loads() {
     let mut old = fresh_save();
     old.meta.game_version = "0.0.1".into();
     write_slot(&dir, "slot_1", old, [11.0, 12.0], 0);
-    SaveSlots::new(Some(dir.join("saves")))
-        .save(
-            AUTOSAVES[0],
-            &SaveV1 {
-                player: [21.0, 22.0],
-            },
-        )
-        .unwrap();
+    let mut unknown = fresh_save();
+    unknown.meta.game_version = "unknown".into();
+    write_slot(&dir, AUTOSAVES[0], unknown, [21.0, 22.0], 0);
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "Load");
     let slot = details(&harness, "Slot 1");
@@ -899,7 +1000,7 @@ fn an_older_save_names_its_version_and_asks_before_it_loads() {
     press(&mut harness, "Autosave 1");
     assert_eq!(top(&harness), Some(CONFIRM));
     let question = "Autosave 1 was saved by an older version, unknown. Load it?";
-    assert!(shows(&harness, question), "the migrated one");
+    assert!(shows(&harness, question), "the unknown one");
     press(&mut harness, "Cancel");
     press(&mut harness, "Slot 1");
     assert!(shows(
@@ -1045,13 +1146,12 @@ fn an_empty_row_reads_quieter() {
 }
 
 /// What a build of schema 0 wrote to `slot` at `at`, which this build's
-/// `migrate` refuses.
+/// `migrate_step` refuses.
 fn older_slot(dir: &Path, slot: &str, at: u64) {
-    let text = format!(
-        r#"{{ "envelope": 1, "slot": "{slot}", "schema": 0, "engine_version": "0.1.0", "saved_at_ms": {at}, "data": {{ "player": [1.0, 2.0] }} }}"#
-    );
-    std::fs::create_dir_all(dir.join("saves")).unwrap();
-    std::fs::write(slot_file(dir, slot), text).unwrap();
+    let stamp = SaveStamp::new(0, "0.1.0", at);
+    SaveSlots::new(Some(dir.join("saves")))
+        .save_stamped(slot, &Other { player: [1.0, 2.0] }, &stamp)
+        .unwrap();
 }
 
 #[test]
@@ -1089,9 +1189,7 @@ fn a_newer_autosave_is_never_written() {
     // A newer version's autosave sits out every rotation; the other two
     // take turns.
     let dir = user_folder("newer-autosave");
-    let newer = r#"{ "envelope": 1, "slot": "autosave_2", "schema": 9, "engine_version": "9.0.0", "saved_at_ms": 1, "data": {} }"#;
-    std::fs::create_dir_all(dir.join("saves")).unwrap();
-    std::fs::write(slot_file(&dir, AUTOSAVES[1]), newer).unwrap();
+    let newer = newer_slot(&dir, AUTOSAVES[1]);
     let mut harness = harness_with(UserFolder::At(dir.clone()));
     press(&mut harness, "New Game");
     press(&mut harness, "Normal");
