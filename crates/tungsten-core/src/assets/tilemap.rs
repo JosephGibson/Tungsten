@@ -1194,11 +1194,13 @@ pub struct TilemapRegistry {
     pub(super) clock: u64,
 }
 
-/// A registered map with its history since its `insert`.
+/// A registered map with its history since its `insert`, and its copy as
+/// inserted, which [`TilemapRegistry::revert`] puts back.
 #[derive(Debug, Clone)]
 pub(super) struct RegisteredMap {
     pub(super) data: TilemapData,
     pub(super) history: MapHistory,
+    pub(super) inserted: TilemapData,
 }
 
 impl TilemapRegistry {
@@ -1214,7 +1216,28 @@ impl TilemapRegistry {
     pub fn insert(&mut self, id: String, mut data: TilemapData) {
         data.auto_tile();
         let history = MapHistory::start(&data, &mut self.clock);
-        self.maps.insert(id, RegisteredMap { data, history });
+        let inserted = data.clone();
+        self.maps.insert(
+            id,
+            RegisteredMap {
+                data,
+                history,
+                inserted,
+            },
+        );
+    }
+
+    /// Puts map `id` back as it was inserted, its edits and damage gone,
+    /// with a new history as [`insert`](Self::insert) gives one: a new run
+    /// of its area starts on the map as its file has it. False for a map
+    /// the registry lacks.
+    pub fn revert(&mut self, id: &str) -> bool {
+        let Some(map) = self.maps.get_mut(id) else {
+            return false;
+        };
+        map.data = map.inserted.clone();
+        map.history = MapHistory::start(&map.data, &mut self.clock);
+        true
     }
 
     /// Insert with source-path reverse lookup.

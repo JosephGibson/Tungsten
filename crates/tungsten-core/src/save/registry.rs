@@ -236,8 +236,6 @@ pub(crate) trait Erased {
         ids: &dyn Fn(Entity) -> Option<SaveId>,
     ) -> Option<(Refs, usize)>;
     fn load_refs(&self, world: &mut World, at: Holder, refs: &BTreeMap<String, Vec<Entity>>);
-    // Kept areas' pending references (redo 7.9's step 3) read it.
-    #[allow(dead_code)]
     fn keys(&self, world: &World, at: Holder) -> Option<Vec<String>>;
 }
 

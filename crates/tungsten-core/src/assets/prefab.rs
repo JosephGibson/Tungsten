@@ -643,7 +643,17 @@ impl World {
         map: &str,
         origin: impl Into<Vec2>,
     ) -> Result<Vec<PreparedPrefab>, PrefabError> {
-        let origin = origin.into();
+        let prepared = self.prepare_map_objects_named(map, origin.into())?;
+        Ok(prepared.into_iter().map(|(prefab, _)| prefab).collect())
+    }
+
+    /// [`prepare_map_objects`](Self::prepare_map_objects), each with its
+    /// object's name, empty when Tiled gave none.
+    pub(crate) fn prepare_map_objects_named(
+        &mut self,
+        map: &str,
+        origin: Vec2,
+    ) -> Result<Vec<(PreparedPrefab, String)>, PrefabError> {
         let built = {
             let data = self
                 .get_resource::<TilemapRegistry>()
@@ -665,12 +675,15 @@ impl World {
                 }
                 let next = Built::new(self, &object.class, prefab, components, position)
                     .map_err(|err| format!("prefab `{}`: {err}", object.class))?;
-                built.push(next);
+                built.push((next, object.name.clone()));
                 Ok(())
             })?;
             built
         };
-        Ok(built.into_iter().map(|next| next.intern(self)).collect())
+        Ok(built
+            .into_iter()
+            .map(|(next, name)| (next.intern(self), name))
+            .collect())
     }
 
     /// [`prepare_map_objects`](Self::prepare_map_objects), then spawns each

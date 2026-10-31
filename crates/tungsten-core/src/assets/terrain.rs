@@ -322,7 +322,7 @@ fn retile_neighbours(
     col: u32,
     row: u32,
 ) {
-    let RegisteredMap { data, history } = map;
+    let RegisteredMap { data, history, .. } = map;
     let (c, r) = (i64::from(col), i64::from(row));
     for (dc, dr) in [(0, -1), (1, 0), (0, 1), (-1, 0)] {
         let (Ok(col), Ok(row)) = (u32::try_from(c + dc), u32::try_from(r + dr)) else {

@@ -5,14 +5,15 @@
 //! the envelope and slots stay `D-160`'s. Its keys sort and a run's spawns
 //! go by ID, so two captures of one world are byte-equal.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use super::id::{AUTHORED, SaveId, SaveState, Saved};
+use super::area::{TilePlan, TileRecord, apply_tiles, capture_tiles, plan_tiles};
+use super::id::{AUTHORED, PendingRef, SaveId, SaveState, Saved};
 use super::patch::{diff, merge};
 use super::registry::{Entry, Holder, Refs, SaveRegistry};
 use crate::assets::{PrefabError, PreparedPrefab};
@@ -78,6 +79,9 @@ pub(crate) struct AreaSave {
     pub(crate) gone: Vec<String>,
     #[serde(default)]
     pub(crate) spawns: Vec<SpawnRecord>,
+    /// Each of the area's maps the game edited or damaged.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub(crate) tiles: BTreeMap<String, TileRecord>,
 }
 
 /// A named entity's changes over its fresh spawn.
@@ -206,8 +210,10 @@ impl RestoreReport {
 /// Captures the World: each saved entity's registered components (a named
 /// one's as changes over its fresh spawn, a run's spawn in full), its
 /// references by save ID, the named entities gone since their naming, each
-/// registered resource whole and the run's counter. A World with no save
-/// state captures its resources alone.
+/// loaded area's tiles, each registered resource whole, the run's counter,
+/// and each area kept while the World has not loaded it, with the
+/// references waiting on one. A World with no save state captures its
+/// resources alone.
 ///
 /// # Errors
 ///
@@ -224,56 +230,58 @@ pub fn capture_world(world: &World) -> Result<WorldSave, CaptureError> {
     }
     let empty = SaveRegistry::new();
     let registry = world.get_resource::<SaveRegistry>().unwrap_or(&empty);
+    let no_state = SaveState::default();
+    let state = world.get_resource::<SaveState>().unwrap_or(&no_state);
     let ids = |entity: Entity| world.get::<Saved>(entity).map(|saved| saved.id);
+    let by_id = saved_entities(world);
+    let mut waiting = waiting_refs(world, registry, state, &by_id);
     let mut capture = Capture {
         global: AreaSave::default(),
         areas: BTreeMap::new(),
         dropped: 0,
     };
 
-    if let Some(state) = world.get_resource::<SaveState>() {
-        for area in &state.loaded {
-            capture.areas.entry(area.clone()).or_default();
+    for (area, maps) in &state.loaded {
+        capture.areas.entry(area.clone()).or_default().tiles = capture_tiles(world, maps.iter());
+    }
+    for (&id, named) in &state.named {
+        let alive = by_id.get(&id) == Some(&named.entity);
+        let area = capture.area(named.area.as_deref());
+        if !alive {
+            area.gone.push(named.name.clone());
+            continue;
         }
-        for (&id, named) in &state.named {
-            let alive = world.is_alive(named.entity)
-                && world.get::<Saved>(named.entity).map(|saved| saved.id) == Some(id);
+        let mut record = NamedRecord::default();
+        let at = Holder::Entity(named.entity);
+        for (name, entry) in &registry.components.entries {
+            let current = entry
+                .saved
+                .to_value(world, at)
+                .transpose()
+                .map_err(|err| serialize_error(&named.name, name, &err))?;
+            match (current, named.baseline.get(name)) {
+                (Some(value), Some(base)) => {
+                    if let Some(patch) = diff(base, &value) {
+                        record.components.insert(name.clone(), patch);
+                    }
+                }
+                (Some(value), None) => {
+                    record.components.insert(name.clone(), value);
+                }
+                (None, Some(_)) => record.removed.push(name.clone()),
+                (None, None) => {}
+            }
+            if let Some((refs, dropped)) = entry.saved.save_refs(world, at, &ids) {
+                capture.dropped += dropped;
+                if !refs.is_empty() {
+                    record.refs.insert(name.clone(), refs);
+                }
+            }
+        }
+        add_refs(&mut record.refs, waiting.remove(&Some(id)));
+        if !record.is_empty() {
             let area = capture.area(named.area.as_deref());
-            if !alive {
-                area.gone.push(named.name.clone());
-                continue;
-            }
-            let mut record = NamedRecord::default();
-            let at = Holder::Entity(named.entity);
-            for (name, entry) in &registry.components.entries {
-                let current = entry
-                    .saved
-                    .to_value(world, at)
-                    .transpose()
-                    .map_err(|err| serialize_error(&named.name, name, &err))?;
-                match (current, named.baseline.get(name)) {
-                    (Some(value), Some(base)) => {
-                        if let Some(patch) = diff(base, &value) {
-                            record.components.insert(name.clone(), patch);
-                        }
-                    }
-                    (Some(value), None) => {
-                        record.components.insert(name.clone(), value);
-                    }
-                    (None, Some(_)) => record.removed.push(name.clone()),
-                    (None, None) => {}
-                }
-                if let Some((refs, dropped)) = entry.saved.save_refs(world, at, &ids) {
-                    capture.dropped += dropped;
-                    if !refs.is_empty() {
-                        record.refs.insert(name.clone(), refs);
-                    }
-                }
-            }
-            if !record.is_empty() {
-                let area = capture.area(named.area.as_deref());
-                area.named.insert(named.name.clone(), record);
-            }
+            area.named.insert(named.name.clone(), record);
         }
     }
 
@@ -301,11 +309,17 @@ pub fn capture_world(world: &World) -> Result<WorldSave, CaptureError> {
                 }
             }
         }
+        add_refs(&mut record.refs, waiting.remove(&Some(saved.id)));
         capture.area(saved.area.as_deref()).spawns.push(record);
     }
     capture.global.spawns.sort_by_key(|spawn| spawn.id);
     for area in capture.areas.values_mut() {
         area.spawns.sort_by_key(|spawn| spawn.id);
+    }
+    for (name, area) in &state.kept {
+        if !state.loaded.contains_key(name) {
+            capture.areas.insert(name.clone(), area.clone());
+        }
     }
 
     let mut resources = BTreeMap::new();
@@ -325,12 +339,11 @@ pub fn capture_world(world: &World) -> Result<WorldSave, CaptureError> {
             }
         }
     }
+    add_refs(&mut resource_refs, waiting.remove(&None));
 
     Ok(WorldSave {
         format: FORMAT,
-        next_id: world
-            .get_resource::<SaveState>()
-            .map_or(0, SaveState::next_id),
+        next_id: state.next_id,
         versions: Versions {
             components: versions(&registry.components.entries),
             resources: versions(&registry.resources.entries),
@@ -359,6 +372,73 @@ impl Capture {
     }
 }
 
+/// Each live saved entity by its ID.
+fn saved_entities(world: &World) -> HashMap<SaveId, Entity> {
+    world
+        .query::<(Entity, &Saved)>()
+        .map(|(entity, saved)| (saved.id, entity))
+        .collect()
+}
+
+/// The references waiting on an area that still hang on a key their
+/// holder has, by holder (`None` for a resource), as a capture writes them.
+fn waiting_refs(
+    world: &World,
+    registry: &SaveRegistry,
+    state: &SaveState,
+    by_id: &HashMap<SaveId, Entity>,
+) -> HashMap<Option<SaveId>, BTreeMap<String, Refs>> {
+    let mut waiting: HashMap<Option<SaveId>, BTreeMap<String, Refs>> = HashMap::new();
+    for pending in &state.pending {
+        let Some((holder, entry)) = holder_of(registry, by_id, pending) else {
+            continue;
+        };
+        if !entry
+            .saved
+            .keys(world, holder)
+            .is_some_and(|keys| keys.contains(&pending.key))
+        {
+            continue;
+        }
+        waiting
+            .entry(pending.holder)
+            .or_default()
+            .entry(pending.component.clone())
+            .or_default()
+            .entry(pending.key.clone())
+            .or_default()
+            .extend(pending.ids.iter().copied());
+    }
+    waiting
+}
+
+/// A pending reference's holder and its registration, while it lives.
+fn holder_of<'a>(
+    registry: &'a SaveRegistry,
+    by_id: &HashMap<SaveId, Entity>,
+    pending: &PendingRef,
+) -> Option<(Holder, &'a Entry)> {
+    match pending.holder {
+        Some(id) => Some((
+            Holder::Entity(*by_id.get(&id)?),
+            registry.components.entries.get(&pending.component)?,
+        )),
+        None => Some((
+            Holder::Resource,
+            registry.resources.entries.get(&pending.component)?,
+        )),
+    }
+}
+
+fn add_refs(into: &mut BTreeMap<String, Refs>, extra: Option<BTreeMap<String, Refs>>) {
+    for (component, refs) in extra.into_iter().flatten() {
+        let held = into.entry(component).or_default();
+        for (key, ids) in refs {
+            held.entry(key).or_default().extend(ids);
+        }
+    }
+}
+
 fn versions(entries: &BTreeMap<String, Entry>) -> BTreeMap<String, u32> {
     entries
         .iter()
@@ -374,20 +454,26 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 }
 
 /// Restores `save` into a World the game has spawned as a new run, its
-/// entities named: each loaded area's named entities take their changes
-/// over the fresh spawn (a body's moved position through
+/// entities named and its areas loaded: each loaded area's maps go back as
+/// inserted with the save's edits and damage written; its named entities
+/// take their changes over the fresh spawn (a body's moved position through
 /// [`teleport`](crate::physics::teleport)), the gone despawn, each run's
 /// spawn comes back from its prefab with a clone of `with` (a state's
-/// marker, as a prefab spawn's `with`), its saved components and
-/// its ID, the resources are replaced and the counter set; then a second
-/// pass resolves the references by save ID, once every entity exists.
+/// marker, as a prefab spawn's `with`), its saved components and its ID,
+/// the resources are replaced and the counter set. Each area the World has
+/// not loaded is kept, migrated to the registry's versions, for
+/// [`enter_area`](super::enter_area) and the next capture. Then a second
+/// pass resolves the references by save ID, once every entity exists; one
+/// into a kept area waits for it.
 ///
 /// It checks everything first and changes nothing on an error: the
 /// format, each version, each value migrated a step at a time and merged,
-/// each spawn's prefab prepared. A component name the registry lacks, a
-/// prefab the manifest lacks and a named record whose entity the level no
-/// longer has are dropped, a line each in the report, so a save outlives a
-/// content change.
+/// each spawn's prefab prepared, each tile against its map. A component
+/// name the registry lacks, a prefab the manifest lacks, a named record
+/// whose entity the level no longer has and a tile edit past its map's
+/// layers or cells, on a layer whose name changed or naming a sprite its
+/// tileset lacks are dropped, a line each in the report, so a save outlives
+/// a content change.
 ///
 /// # Errors
 ///
@@ -422,25 +508,35 @@ pub fn restore_world<B: Bundle + Clone>(
 
     let mut report = RestoreReport::default();
     let mut plan = Plan::default();
-    let loaded: Vec<String> = world
-        .get_resource::<SaveState>()
-        .map(|state| state.loaded.iter().cloned().collect())
-        .unwrap_or_default();
-    let areas = std::iter::once((None, &save.global)).chain(
-        save.areas
-            .iter()
-            .map(|(name, area)| (Some(name.as_str()), area)),
-    );
-    for (name, area) in areas {
-        if let Some(name) = name
-            && !loaded.iter().any(|loaded| loaded == name)
-        {
-            report
-                .dropped
-                .push(format!("area `{name}`: the world has not loaded it"));
-            continue;
+    let versions = &save.versions.components;
+    plan_area(
+        world,
+        &registry,
+        versions,
+        None,
+        &save.global,
+        &mut plan,
+        &mut report,
+    )?;
+    let mut kept = BTreeMap::new();
+    for (name, area) in &save.areas {
+        let loaded = world
+            .get_resource::<SaveState>()
+            .is_some_and(|state| state.loaded.contains_key(name));
+        if loaded {
+            plan_area(
+                world,
+                &registry,
+                versions,
+                Some(name),
+                area,
+                &mut plan,
+                &mut report,
+            )?;
+        } else {
+            let area = keep_area(&registry, versions, name, area, &mut report)?;
+            kept.insert(name.clone(), area);
         }
-        plan_area(world, &registry, save, name, area, &mut plan, &mut report)?;
     }
     for (name, value) in &save.resources {
         let Some(entry) = registry.resources.entries.get(name) else {
@@ -456,7 +552,92 @@ pub fn restore_world<B: Bundle + Clone>(
         plan.resources.push((entry.clone(), value));
     }
 
-    apply(world, &registry, save, plan, with, &mut report);
+    // Checked: from here every change applies.
+    let holders = apply(world, &registry, plan, with);
+    let state = world.resource_mut::<SaveState>();
+    state.next_id = save.next_id;
+    state.kept = kept;
+    state.pending.clear();
+    resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
+    Ok(report)
+}
+
+/// Applies area `level`'s kept record, once the game has spawned it, then
+/// resolves the references waiting on an area ([`super::enter_area`]).
+pub(crate) fn enter<B: Bundle + Clone>(
+    world: &mut World,
+    level: &str,
+    with: &B,
+) -> Result<RestoreReport, RestoreError> {
+    let mut report = RestoreReport::default();
+    let Some(record) = world
+        .get_resource::<SaveState>()
+        .map(|state| state.kept.get(level).cloned())
+    else {
+        return Ok(report);
+    };
+    let registry = world
+        .get_resource::<SaveRegistry>()
+        .cloned()
+        .unwrap_or_default();
+    let mut plan = Plan::default();
+    if let Some(record) = &record {
+        let versions = versions(&registry.components.entries);
+        plan_area(
+            world,
+            &registry,
+            &versions,
+            Some(level),
+            record,
+            &mut plan,
+            &mut report,
+        )?;
+    }
+
+    // Checked: from here every change applies.
+    let state = world.resource_mut::<SaveState>();
+    state.kept.remove(level);
+    let waiting = std::mem::take(&mut state.pending);
+    let holders = apply(world, &registry, plan, with);
+    resolve_all(world, &registry, holders, &BTreeMap::new(), &mut report);
+
+    let by_id = saved_entities(world);
+    let waits = Waits::of(world.resource::<SaveState>());
+    let mut still = Vec::new();
+    for pending in waiting {
+        let Some((holder, entry)) = holder_of(&registry, &by_id, &pending) else {
+            continue;
+        };
+        if !entry
+            .saved
+            .keys(world, holder)
+            .is_some_and(|keys| keys.contains(&pending.key))
+        {
+            continue;
+        }
+        let mut resolved = Vec::new();
+        let mut unresolved = Vec::new();
+        for id in pending.ids {
+            match by_id.get(&id) {
+                Some(&entity) => resolved.push(entity),
+                None if waits.could_wait(id) => unresolved.push(id),
+                None => report
+                    .dropped
+                    .push(unresolved_line(&pending.component, &pending.key, id)),
+            }
+        }
+        if !resolved.is_empty() {
+            let refs = BTreeMap::from([(pending.key.clone(), resolved)]);
+            entry.saved.load_refs(world, holder, &refs);
+        }
+        if !unresolved.is_empty() {
+            still.push(PendingRef {
+                ids: unresolved,
+                ..pending
+            });
+        }
+    }
+    world.resource_mut::<SaveState>().pending.extend(still);
     Ok(report)
 }
 
@@ -483,6 +664,7 @@ fn check_versions(
 /// What a checked restore changes, in order.
 #[derive(Default)]
 struct Plan {
+    tiles: Vec<TilePlan>,
     despawn: Vec<Entity>,
     named: Vec<NamedPlan>,
     spawns: Vec<SpawnPlan>,
@@ -505,12 +687,17 @@ struct SpawnPlan {
     refs: BTreeMap<String, Refs>,
 }
 
+/// The version `component` was saved at.
+fn saved_version(versions: &BTreeMap<String, u32>, component: &str) -> u32 {
+    versions.get(component).copied().unwrap_or(1)
+}
+
 /// Checks `area`'s records against the World and adds what they change to
 /// `plan`.
 fn plan_area(
     world: &mut World,
     registry: &SaveRegistry,
-    save: &WorldSave,
+    versions: &BTreeMap<String, u32>,
     area: Option<&str>,
     record: &AreaSave,
     plan: &mut Plan,
@@ -530,6 +717,11 @@ fn plan_area(
         .then_some(named.entity)
     };
 
+    if let Some(area) = area {
+        plan.tiles
+            .extend(plan_tiles(world, area, &record.tiles, report));
+    }
+
     for (name, named) in &record.named {
         let Some(entity) = entity_of(world, name) else {
             report
@@ -546,12 +738,7 @@ fn plan_area(
                     .push(format!("{what}: not a saved component"));
                 continue;
             };
-            let saved = save
-                .versions
-                .components
-                .get(component)
-                .copied()
-                .unwrap_or(1);
+            let saved = saved_version(versions, component);
             let patch = migrate(entry, saved, patch.clone(), &what)?;
             let value = match entry.saved.to_value(world, Holder::Entity(entity)) {
                 Some(Ok(fresh)) => merge(fresh, &patch),
@@ -595,12 +782,7 @@ fn plan_area(
                 continue;
             };
             let what = format!("{what}'s `{component}`");
-            let saved = save
-                .versions
-                .components
-                .get(component)
-                .copied()
-                .unwrap_or(1);
+            let saved = saved_version(versions, component);
             let value = migrate(entry, saved, value.clone(), &what)?;
             check(entry, &value, &what)?;
             puts.push((entry.clone(), component.clone(), value));
@@ -631,6 +813,54 @@ fn plan_area(
         });
     }
     Ok(())
+}
+
+/// Area `name`'s record migrated to the registry's versions, kept while
+/// the World has not loaded it; a component name the registry lacks is
+/// dropped with a line.
+fn keep_area(
+    registry: &SaveRegistry,
+    versions: &BTreeMap<String, u32>,
+    name: &str,
+    area: &AreaSave,
+    report: &mut RestoreReport,
+) -> Result<AreaSave, RestoreError> {
+    let mut kept = area.clone();
+    let migrate_all = |what: &str,
+                       components: &mut BTreeMap<String, Value>,
+                       whole: bool,
+                       report: &mut RestoreReport|
+     -> Result<(), RestoreError> {
+        let mut migrated = BTreeMap::new();
+        for (component, value) in std::mem::take(components) {
+            let what = format!("{what}'s `{component}`");
+            let Some(entry) = registry.components.entries.get(&component) else {
+                report
+                    .dropped
+                    .push(format!("{what}: not a saved component"));
+                continue;
+            };
+            let value = migrate(entry, saved_version(versions, &component), value, &what)?;
+            if whole {
+                check(entry, &value, &what)?;
+            }
+            migrated.insert(component, value);
+        }
+        *components = migrated;
+        Ok(())
+    };
+    for (object, record) in &mut kept.named {
+        let what = format!("`{object}` in area `{name}`");
+        migrate_all(&what, &mut record.components, false, report)?;
+        record
+            .removed
+            .retain(|component| registry.components.entries.contains_key(component));
+    }
+    for spawn in &mut kept.spawns {
+        let what = format!("spawn {} (`{}`)", spawn.id.0, spawn.prefab);
+        migrate_all(&what, &mut spawn.components, true, report)?;
+    }
+    Ok(kept)
 }
 
 fn migrate(entry: &Entry, saved: u32, value: Value, what: &str) -> Result<Value, RestoreError> {
@@ -684,21 +914,22 @@ fn put_all(world: &mut World, entity: Entity, puts: Vec<(Entry, String, Value)>)
     }
 }
 
+/// Applies a checked plan and returns each entity it wrote with the
+/// references its record holds.
 fn apply<B: Bundle + Clone>(
     world: &mut World,
     registry: &SaveRegistry,
-    save: &WorldSave,
     plan: Plan,
     with: &B,
-    report: &mut RestoreReport,
-) {
+) -> Vec<(Entity, BTreeMap<String, Refs>)> {
     if !world.has_resource::<SaveState>() {
         world.insert_resource(SaveState::default());
     }
+    apply_tiles(world, plan.tiles);
     for entity in plan.despawn {
         world.despawn(entity);
     }
-    let mut holders: Vec<(Entity, BTreeMap<String, Refs>)> = Vec::new();
+    let mut holders = Vec::new();
     for named in plan.named {
         put_all(world, named.entity, named.puts);
         for entry in named.removes {
@@ -729,70 +960,136 @@ fn apply<B: Bundle + Clone>(
         let loaded = entry.saved.put(world, Holder::Resource, value);
         debug_assert!(loaded.is_ok(), "a checked value failed to load");
     }
-    world.resource_mut::<SaveState>().next_id = save.next_id;
-
-    // The second pass: every entity exists, so references resolve.
-    let by_id: HashMap<SaveId, Entity> = world
-        .query::<(Entity, &Saved)>()
-        .map(|(entity, saved)| (saved.id, entity))
-        .collect();
-    for (entity, refs) in holders {
-        resolve(
-            world,
-            registry,
-            &by_id,
-            Holder::Entity(entity),
-            &refs,
-            false,
-            report,
-        );
-    }
-    resolve(
-        world,
-        registry,
-        &by_id,
-        Holder::Resource,
-        &save.resource_refs,
-        true,
-        report,
-    );
+    holders
 }
 
-/// Loads each value's references that resolve; a line each for the rest.
-fn resolve(
+/// Which unresolved references wait for a kept area: a run's spawn a kept
+/// record holds, or a name no loaded area gave while an area is kept.
+struct Waits {
+    named: HashSet<SaveId>,
+    kept_spawns: HashSet<SaveId>,
+    any_kept: bool,
+}
+
+impl Waits {
+    fn of(state: &SaveState) -> Self {
+        Self {
+            named: state.named.keys().copied().collect(),
+            kept_spawns: state
+                .kept
+                .values()
+                .flat_map(|area| area.spawns.iter().map(|spawn| spawn.id))
+                .collect(),
+            any_kept: !state.kept.is_empty(),
+        }
+    }
+
+    fn could_wait(&self, id: SaveId) -> bool {
+        if id.is_authored() {
+            self.any_kept && !self.named.contains(&id)
+        } else {
+            self.kept_spawns.contains(&id)
+        }
+    }
+}
+
+fn unresolved_line(component: &str, key: &str, id: SaveId) -> String {
+    format!(
+        "`{component}`'s reference `{key}` to save ID {}: no such entity",
+        id.0
+    )
+}
+
+/// The second pass: loads each holder's references that resolve, keeps
+/// those into a kept area waiting and reports the rest.
+fn resolve_all(
     world: &mut World,
     registry: &SaveRegistry,
-    by_id: &HashMap<SaveId, Entity>,
-    holder: Holder,
-    refs: &BTreeMap<String, Refs>,
-    resources: bool,
+    holders: Vec<(Entity, BTreeMap<String, Refs>)>,
+    resource_refs: &BTreeMap<String, Refs>,
     report: &mut RestoreReport,
 ) {
-    let entries = if resources {
-        &registry.resources.entries
-    } else {
-        &registry.components.entries
-    };
-    for (name, refs) in refs {
-        let Some(entry) = entries.get(name).filter(|entry| entry.saved.has_refs()) else {
-            report
-                .dropped
-                .push(format!("`{name}`'s references: no reference codec"));
-            continue;
+    let by_id = saved_entities(world);
+    let waits = Waits::of(world.resource::<SaveState>());
+    let mut waiting = Vec::new();
+    for (entity, refs) in holders {
+        let id = world.get::<Saved>(entity).map(|saved| saved.id);
+        let mut pass = Pass {
+            by_id: &by_id,
+            waits: &waits,
+            waiting: &mut waiting,
+            report,
         };
-        let mut resolved: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
-        for (key, ids) in refs {
-            for id in ids {
-                match by_id.get(id) {
-                    Some(&entity) => resolved.entry(key.clone()).or_default().push(entity),
-                    None => report.dropped.push(format!(
-                        "`{name}`'s reference `{key}` to save ID {}: no such entity",
-                        id.0
-                    )),
+        pass.resolve(
+            world,
+            &registry.components.entries,
+            Holder::Entity(entity),
+            id,
+            &refs,
+        );
+    }
+    let mut pass = Pass {
+        by_id: &by_id,
+        waits: &waits,
+        waiting: &mut waiting,
+        report,
+    };
+    pass.resolve(
+        world,
+        &registry.resources.entries,
+        Holder::Resource,
+        None,
+        resource_refs,
+    );
+    world.resource_mut::<SaveState>().pending.extend(waiting);
+}
+
+/// The second pass's lookups and what it collects.
+struct Pass<'a> {
+    by_id: &'a HashMap<SaveId, Entity>,
+    waits: &'a Waits,
+    waiting: &'a mut Vec<PendingRef>,
+    report: &'a mut RestoreReport,
+}
+
+impl Pass<'_> {
+    /// Loads each of `holder`'s values' references that resolve.
+    fn resolve(
+        &mut self,
+        world: &mut World,
+        entries: &BTreeMap<String, Entry>,
+        holder: Holder,
+        id: Option<SaveId>,
+        refs: &BTreeMap<String, Refs>,
+    ) {
+        for (name, refs) in refs {
+            let Some(entry) = entries.get(name).filter(|entry| entry.saved.has_refs()) else {
+                self.report
+                    .dropped
+                    .push(format!("`{name}`'s references: no reference codec"));
+                continue;
+            };
+            let mut resolved: BTreeMap<String, Vec<Entity>> = BTreeMap::new();
+            for (key, ids) in refs {
+                let mut unresolved = Vec::new();
+                for &target in ids {
+                    match self.by_id.get(&target) {
+                        Some(&entity) => resolved.entry(key.clone()).or_default().push(entity),
+                        None if self.waits.could_wait(target) => unresolved.push(target),
+                        None => self.report.dropped.push(unresolved_line(name, key, target)),
+                    }
+                }
+                if !unresolved.is_empty() {
+                    self.waiting.push(PendingRef {
+                        holder: id,
+                        component: name.clone(),
+                        key: key.clone(),
+                        ids: unresolved,
+                    });
                 }
             }
+            entry.saved.load_refs(world, holder, &resolved);
         }
-        entry.saved.load_refs(world, holder, &resolved);
     }
 }
 

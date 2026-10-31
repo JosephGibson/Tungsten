@@ -804,3 +804,37 @@ fn a_replay_of_the_edits_rebuilds_auto_cells() {
     let cursor = painted.cursor("cave").unwrap();
     assert!(is_unchanged(replay.changes_since("cave", &cursor)));
 }
+
+#[test]
+fn revert_puts_a_map_back_as_inserted_with_a_new_history() {
+    let mut registry = registry();
+    let before = registry.cursor("quarry").unwrap();
+    assert!(registry.set_tile("quarry", 1, 0, 0, PLAIN));
+    let edited = registry.cursor("quarry").unwrap();
+    registry.damage_tile("quarry", 1, 2, 2, 3.0);
+    assert_eq!(registry.edited_cells("quarry").count(), 1);
+    assert_eq!(registry.damaged_cells("quarry").count(), 1);
+
+    assert!(registry.revert("quarry"));
+    let map = registry.get("quarry").unwrap();
+    assert_eq!(map.tile_at(1, 0, 0), Some(EMPTY_TILE));
+    assert_eq!(registry.health("quarry", 1, 2, 2), Some(10.0));
+    assert_eq!(registry.edited_cells("quarry").count(), 0);
+    assert_eq!(registry.damaged_cells("quarry").count(), 0);
+    assert!(
+        matches!(
+            registry.changes_since("quarry", &edited),
+            Some(TileChanges::Replaced)
+        ),
+        "a cursor from the old history reads the map whole"
+    );
+    assert!(
+        matches!(
+            registry.changes_since("quarry", &before),
+            Some(TileChanges::Unchanged)
+        ),
+        "the map is the one the first cursor saw"
+    );
+    assert_ne!(registry.cursor("quarry"), Some(before), "a new history");
+    assert!(!registry.revert("pit"), "a map the registry lacks");
+}

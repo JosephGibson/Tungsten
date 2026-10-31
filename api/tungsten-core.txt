@@ -1450,6 +1450,8 @@ pub tungsten_core::assets::prefab::PrefabError::UnknownMap::map: alloc::string::
 pub tungsten_core::assets::prefab::PrefabError::Validation
 pub tungsten_core::assets::prefab::PrefabError::Validation::message: alloc::string::String
 pub tungsten_core::assets::prefab::PrefabError::Validation::path: alloc::string::String
+impl core::convert::From<tungsten_core::assets::prefab::PrefabError> for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::from(tungsten_core::assets::prefab::PrefabError) -> Self
 impl core::error::Error for tungsten_core::assets::prefab::PrefabError
 pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
@@ -2264,6 +2266,7 @@ pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert(&mut self, alloc:
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::tilemap::TilemapData, std::path::PathBuf)
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_core::assets::tilemap::TilemapData)>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::new() -> Self
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::revert(&mut self, &str) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::clone(&self) -> tungsten_core::assets::tilemap::TilemapRegistry
 impl core::default::Default for tungsten_core::assets::tilemap::TilemapRegistry
@@ -2644,6 +2647,8 @@ pub tungsten_core::assets::PrefabError::UnknownMap::map: alloc::string::String
 pub tungsten_core::assets::PrefabError::Validation
 pub tungsten_core::assets::PrefabError::Validation::message: alloc::string::String
 pub tungsten_core::assets::PrefabError::Validation::path: alloc::string::String
+impl core::convert::From<tungsten_core::assets::prefab::PrefabError> for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::from(tungsten_core::assets::prefab::PrefabError) -> Self
 impl core::error::Error for tungsten_core::assets::prefab::PrefabError
 pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
@@ -4348,6 +4353,7 @@ pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert(&mut self, alloc:
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::tilemap::TilemapData, std::path::PathBuf)
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_core::assets::tilemap::TilemapData)>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::new() -> Self
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::revert(&mut self, &str) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::clone(&self) -> tungsten_core::assets::tilemap::TilemapRegistry
 impl core::default::Default for tungsten_core::assets::tilemap::TilemapRegistry
@@ -6355,6 +6361,8 @@ pub fn tungsten_core::World::register_saved<T: serde_core::ser::Serialize + serd
 pub fn tungsten_core::World::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_saved_resource_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
 pub fn tungsten_core::World::register_saved_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+impl tungsten_core::World
+pub fn tungsten_core::World::spawn_area(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::save::AreaError>
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -8967,6 +8975,26 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
 pub mod tungsten_core::save
 pub use tungsten_core::save::Value
+#[non_exhaustive] pub enum tungsten_core::save::AreaError
+pub tungsten_core::save::AreaError::Name
+pub tungsten_core::save::AreaError::Name::map: alloc::string::String
+pub tungsten_core::save::AreaError::Name::source: tungsten_core::save::NameError
+pub tungsten_core::save::AreaError::Prefab(tungsten_core::assets::prefab::PrefabError)
+impl core::convert::From<tungsten_core::assets::prefab::PrefabError> for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::from(tungsten_core::assets::prefab::PrefabError) -> Self
+impl core::error::Error for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Debug for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::AreaError
+impl core::marker::Send for tungsten_core::save::AreaError
+impl core::marker::Sync for tungsten_core::save::AreaError
+impl core::marker::Unpin for tungsten_core::save::AreaError
+impl core::marker::UnsafeUnpin for tungsten_core::save::AreaError
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::AreaError
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::save::AreaError
 #[non_exhaustive] pub enum tungsten_core::save::CaptureError
 pub tungsten_core::save::CaptureError::Queued
 pub tungsten_core::save::CaptureError::Queued::commands: usize
@@ -9254,6 +9282,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
 pub struct tungsten_core::save::SaveState
 impl tungsten_core::save::SaveState
+pub fn tungsten_core::save::SaveState::is_kept(&self, &str) -> bool
 pub fn tungsten_core::save::SaveState::is_loaded(&self, &str) -> bool
 pub fn tungsten_core::save::SaveState::name_of(&self, tungsten_core::SaveId) -> core::option::Option<&str>
 pub fn tungsten_core::save::SaveState::named_entity(&self, tungsten_core::SaveId) -> core::option::Option<tungsten_core::Entity>
@@ -9354,6 +9383,7 @@ pub trait tungsten_core::save::SaveData: serde_core::ser::Serialize + serde_core
 pub const tungsten_core::save::SaveData::SCHEMA: u32
 pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
 pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
+pub fn tungsten_core::save::enter_area<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &str, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
 pub fn tungsten_core::save::restore_world<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &tungsten_core::save::WorldSave, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
@@ -15265,6 +15295,8 @@ pub tungsten_core::PrefabError::UnknownMap::map: alloc::string::String
 pub tungsten_core::PrefabError::Validation
 pub tungsten_core::PrefabError::Validation::message: alloc::string::String
 pub tungsten_core::PrefabError::Validation::path: alloc::string::String
+impl core::convert::From<tungsten_core::assets::prefab::PrefabError> for tungsten_core::save::AreaError
+pub fn tungsten_core::save::AreaError::from(tungsten_core::assets::prefab::PrefabError) -> Self
 impl core::error::Error for tungsten_core::assets::prefab::PrefabError
 pub fn tungsten_core::assets::prefab::PrefabError::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl core::fmt::Debug for tungsten_core::assets::prefab::PrefabError
@@ -19810,6 +19842,7 @@ pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert(&mut self, alloc:
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::insert_with_path(&mut self, alloc::string::String, tungsten_core::assets::tilemap::TilemapData, std::path::PathBuf)
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &tungsten_core::assets::tilemap::TilemapData)>
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::new() -> Self
+pub fn tungsten_core::assets::tilemap::TilemapRegistry::revert(&mut self, &str) -> bool
 impl core::clone::Clone for tungsten_core::assets::tilemap::TilemapRegistry
 pub fn tungsten_core::assets::tilemap::TilemapRegistry::clone(&self) -> tungsten_core::assets::tilemap::TilemapRegistry
 impl core::default::Default for tungsten_core::assets::tilemap::TilemapRegistry
@@ -20572,6 +20605,8 @@ pub fn tungsten_core::World::register_saved<T: serde_core::ser::Serialize + serd
 pub fn tungsten_core::World::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_saved_resource_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
 pub fn tungsten_core::World::register_saved_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+impl tungsten_core::World
+pub fn tungsten_core::World::spawn_area(&mut self, &str, impl core::convert::Into<glam::f32::vec2::Vec2>) -> core::result::Result<alloc::vec::Vec<tungsten_core::Entity>, tungsten_core::save::AreaError>
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World

@@ -1289,3 +1289,32 @@ fn a_world_that_never_named_spawns_as_before() {
         "one move a spawn, one more for the derived `Team`, as before"
     );
 }
+
+#[test]
+fn map_objects_spawn_with_their_names() {
+    let world = with_prefabs(
+        world(),
+        &[(
+            "slime",
+            json!({ "tag": "slime", "components": { "health": { "max": 3 } } }),
+        )],
+    );
+    let mut unnamed = object(3, "slime", [8.0, 8.0], json!({}));
+    unnamed.name = String::new();
+    let mut world = with_map(
+        world,
+        vec![
+            layer(
+                "enemies",
+                vec![object(1, "slime", [0.0, 0.0], json!({})), unnamed],
+            ),
+            layer("more", vec![object(2, "slime", [16.0, 0.0], json!({}))]),
+        ],
+    );
+    let prepared = world
+        .prepare_map_objects_named("level", Vec2::ZERO)
+        .unwrap();
+    let names: Vec<&str> = prepared.iter().map(|(_, name)| name.as_str()).collect();
+    assert_eq!(names, ["object1", "", "object2"], "in layer and file order");
+    assert!(prepared.iter().all(|(prefab, _)| prefab.id() == "slime"));
+}

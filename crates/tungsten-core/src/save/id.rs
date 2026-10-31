@@ -12,6 +12,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use super::registry::{Holder, SaveRegistry};
+use super::world::AreaSave;
+use crate::assets::TilemapInstance;
 use crate::ecs::{Entity, World};
 
 /// The bit every authored save ID sets and no run's spawn reaches.
@@ -84,13 +86,29 @@ pub(crate) struct Named {
 }
 
 /// A World's save state, inserted at its first naming: the run's counter,
-/// every named entity and the areas loaded.
+/// every named entity, the areas loaded, the areas kept while not loaded
+/// and the references waiting on one.
 #[derive(Debug, Default)]
 pub struct SaveState {
     pub(crate) next_id: u64,
     pub(crate) named: BTreeMap<SaveId, Named>,
-    /// The areas the World has loaded: each one a name was given in.
-    pub(crate) loaded: BTreeSet<String>,
+    /// The areas the World has loaded, each one a name was given in or
+    /// `World::spawn_area` spawned, with the maps whose tiles it saves.
+    pub(crate) loaded: BTreeMap<String, BTreeSet<String>>,
+    /// The areas a restore kept, at the registry's versions.
+    pub(crate) kept: BTreeMap<String, AreaSave>,
+    /// References into a kept area, by the key their holder hangs them on.
+    pub(crate) pending: Vec<PendingRef>,
+}
+
+/// A reference waiting for its area to load: its holder (`None` for a
+/// resource), the value it hangs on, its key there and the save IDs.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct PendingRef {
+    pub(crate) holder: Option<SaveId>,
+    pub(crate) component: String,
+    pub(crate) key: String,
+    pub(crate) ids: Vec<SaveId>,
 }
 
 impl SaveState {
@@ -106,10 +124,17 @@ impl SaveState {
         self.named.get(&id).map(|named| named.entity)
     }
 
-    /// Whether the World has loaded `area`: a name was given in it.
+    /// Whether the World has loaded `area`: a name was given in it, or
+    /// `World::spawn_area` spawned it.
     #[must_use]
     pub fn is_loaded(&self, area: &str) -> bool {
-        self.loaded.contains(area)
+        self.loaded.contains_key(area)
+    }
+
+    /// Whether a restore kept `area`, which the World has not loaded.
+    #[must_use]
+    pub fn is_kept(&self, area: &str) -> bool {
+        self.kept.contains_key(area)
     }
 
     /// The name `id` was given.
@@ -230,9 +255,14 @@ pub fn name(
     if !world.has_resource::<SaveState>() {
         world.insert_resource(SaveState::default());
     }
+    // A map instance named in an area saves the map's tiles with it.
+    let map = world
+        .get::<TilemapInstance>(entity)
+        .map(|instance| instance.id.clone());
     let state = world.resource_mut::<SaveState>();
     if let Some(area) = area {
-        state.loaded.insert(area.to_owned());
+        let maps = state.loaded.entry(area.to_owned()).or_default();
+        maps.extend(map);
     }
     state.named.insert(
         id,

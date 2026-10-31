@@ -20,11 +20,13 @@ use thiserror::Error;
 use crate::config::GameConfig;
 use crate::persist::{WriteError, write_atomic};
 
+pub(crate) mod area;
 pub(crate) mod id;
 pub(crate) mod patch;
 pub(crate) mod registry;
 pub(crate) mod world;
 
+pub use area::{AreaError, enter_area};
 pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving};
 pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
