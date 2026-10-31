@@ -15,6 +15,7 @@ pub mod broadphase;
 pub mod collision;
 pub mod components;
 pub mod events;
+mod free_spot;
 mod plugin;
 mod query;
 pub mod step;
@@ -29,6 +30,7 @@ pub use components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Spin, Velocity,
 };
 pub use events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered, SensorExited};
+pub use free_spot::free_spot;
 pub use plugin::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin, physics_prev_snapshot,
     physics_sync,

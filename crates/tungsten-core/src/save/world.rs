@@ -18,7 +18,7 @@ use super::patch::{diff, merge};
 use super::registry::{Entry, Holder, Refs, SaveRegistry};
 use crate::assets::{PrefabError, PreparedPrefab};
 use crate::ecs::{Bundle, CommandBuffer, Entity, World};
-use crate::physics::{Position, teleport};
+use crate::physics::{BodyKind, Position, RigidBody, free_spot, teleport};
 
 /// The format this build writes and reads.
 pub const FORMAT: u32 = 1;
@@ -464,7 +464,8 @@ fn serialize_error(what: &str, component: &str, err: &serde_json::Error) -> Capt
 /// not loaded is kept, migrated to the registry's versions, for
 /// [`enter_area`](super::enter_area) and the next capture. Then a second
 /// pass resolves the references by save ID, once every entity exists; one
-/// into a kept area waits for it.
+/// into a kept area waits for it. Last, each moving body it placed that
+/// overlaps a solid goes to its [`free_spot`](crate::physics::free_spot).
 ///
 /// It checks everything first and changes nothing on an error: the
 /// format, each version, each value migrated a step at a time and merged,
@@ -554,11 +555,13 @@ pub fn restore_world<B: Bundle + Clone>(
 
     // Checked: from here every change applies.
     let holders = apply(world, &registry, plan, with);
+    let placed: Vec<Entity> = holders.iter().map(|&(entity, _)| entity).collect();
     let state = world.resource_mut::<SaveState>();
     state.next_id = save.next_id;
     state.kept = kept;
     state.pending.clear();
     resolve_all(world, &registry, holders, &save.resource_refs, &mut report);
+    settle(world, &placed, &mut report);
     Ok(report)
 }
 
@@ -599,7 +602,9 @@ pub(crate) fn enter<B: Bundle + Clone>(
     state.kept.remove(level);
     let waiting = std::mem::take(&mut state.pending);
     let holders = apply(world, &registry, plan, with);
+    let placed: Vec<Entity> = holders.iter().map(|&(entity, _)| entity).collect();
     resolve_all(world, &registry, holders, &BTreeMap::new(), &mut report);
+    settle(world, &placed, &mut report);
 
     let by_id = saved_entities(world);
     let waits = Waits::of(world.resource::<SaveState>());
@@ -961,6 +966,33 @@ fn apply<B: Bundle + Clone>(
         debug_assert!(loaded.is_ok(), "a checked value failed to load");
     }
     holders
+}
+
+/// The restore's last pass: each moving body it placed that overlaps a
+/// solid goes to its [`free_spot`]; one with none in reach stays where it
+/// was, a line in the report.
+fn settle(world: &mut World, placed: &[Entity], report: &mut RestoreReport) {
+    for &entity in placed {
+        let Some(body) = world.get::<RigidBody>(entity) else {
+            continue;
+        };
+        if matches!(body.kind, BodyKind::Static | BodyKind::Sensor) {
+            continue;
+        }
+        let Some(&Position(at)) = world.get::<Position>(entity) else {
+            continue;
+        };
+        match free_spot(world, entity) {
+            Some(spot) if spot != at => teleport(world, entity, spot),
+            Some(_) => {}
+            None => {
+                let id = world.get::<Saved>(entity).map_or(0, |saved| saved.id.0);
+                report.dropped.push(format!(
+                    "body of save ID {id}: no free spot within eight cells, left where it was"
+                ));
+            }
+        }
+    }
 }
 
 /// Which unresolved references wait for a kept area: a run's spawn a kept

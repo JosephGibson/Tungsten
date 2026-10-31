@@ -787,3 +787,66 @@ fn two_captures_of_one_world_are_byte_equal() {
         serde_json::to_vec_pretty(&second).unwrap()
     );
 }
+
+/// A 20 × 10 map of 16 px cells, with a wall at column 6 (x 96 to 112)
+/// when `wall`, and its instance at the origin.
+fn with_room(mut world: World, wall: bool) -> World {
+    use crate::assets::{LayerKind, TilemapData, TilemapInstance, TilemapRegistry};
+
+    let mut map = TilemapData::new(16, 16, 20, 10);
+    let rock = map.add_tile("rock");
+    let walls = map.add_layer("walls", LayerKind::Collision);
+    if wall {
+        for row in 0..10 {
+            map.set_tile(walls, 6, row, rock);
+        }
+    }
+    let mut maps = TilemapRegistry::new();
+    maps.insert("room".into(), map);
+    world.insert_resource(maps);
+    world.spawn_with((TilemapInstance::new("room", Vec2::ZERO),));
+    world
+}
+
+/// A named 8 × 8 crate at (40, 80).
+fn crate_body(world: &mut World) -> Entity {
+    use crate::physics::{Collider, RigidBodyBundle};
+
+    let body = world.spawn_with(RigidBodyBundle::dynamic(
+        Position(Vec2::new(40.0, 80.0)),
+        Collider::aabb(Vec2::splat(4.0)),
+    ));
+    name(world, body, None, "crate").unwrap();
+    body
+}
+
+#[test]
+fn a_restored_body_inside_a_new_wall_comes_back_beside_it() {
+    use crate::physics::PrevPosition;
+
+    let mut a = with_room(world(), false);
+    let body = crate_body(&mut a);
+    a.get_mut::<Position>(body).unwrap().0 = Vec2::new(100.0, 80.0);
+    let saved = capture_world(&a).unwrap();
+
+    let mut b = with_room(world(), true);
+    let body = crate_body(&mut b);
+    let report = restore_world(&mut b, &saved, &(Scene,)).unwrap();
+    assert!(report.is_clean(), "{report:?}");
+    let beside = Vec2::new(92.0, 80.0);
+    assert_eq!(
+        b.get::<Position>(body),
+        Some(&Position(beside)),
+        "half a cell left, the nearer face"
+    );
+    assert_eq!(b.get::<PrevPosition>(body), Some(&PrevPosition(beside)));
+
+    let mut walled = with_room(world(), true);
+    let fenced = crate_body(&mut walled);
+    restore_world(&mut walled, &capture_world(&b).unwrap(), &(Scene,)).unwrap();
+    assert_eq!(
+        walled.get::<Position>(fenced),
+        Some(&Position(beside)),
+        "a body already free stays"
+    );
+}
