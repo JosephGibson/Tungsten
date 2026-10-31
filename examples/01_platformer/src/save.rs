@@ -301,9 +301,10 @@ pub const S16_SUPPORTS: [[Vec2; 2]; 3] = [
 ];
 
 impl SaveData for SaveGame {
-    /// Bump it when `SaveGame` changes shape, and extend `migrate`. Schema 7
+    /// Bump it when `SaveGame` changes shape, and add its step to
+    /// `migrate_step`. Schema 7
     /// is 01 (d)'s new map: its objects take every save ID anew and every
-    /// place moved, so `migrate` refuses each older schema and the slot
+    /// place moved, so `migrate_step` refuses each older schema and the slot
     /// reads as an older version's (`D-204`). Schema 8 adds the staff light
     /// to the player's abilities. Schema 9 places new map objects before
     /// the player, which take the save IDs from schema 8's player's on.
@@ -331,7 +332,7 @@ impl SaveData for SaveGame {
     /// (`to_23`).
     const SCHEMA: u32 = 23;
 
-    fn migrate(
+    fn migrate_step(
         from: u32,
         mut data: Value,
     ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
@@ -346,171 +347,30 @@ impl SaveData for SaveGame {
                     r#"{{"name": "{STAFF_LIGHT}", "ability": "{STAFF_LIGHT}", "cooldown_left": 0.0, "charges": null, "refill_left": 0.0, "interval_left": 0.0}}"#
                 );
                 entries.push(entry.parse()?);
-                shift_ids(&mut data)?;
-                to_10(&mut data)?;
-                to_11(&mut data)?;
-                to_12(&mut data);
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
             }
-            8 => {
-                shift_ids(&mut data)?;
-                to_10(&mut data)?;
-                to_11(&mut data)?;
-                to_12(&mut data);
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
+            8 => shift_ids(&mut data)?,
+            9 => to_10(&mut data)?,
+            10 => to_11(&mut data)?,
+            11 => to_12(&mut data),
+            12 => to_13(&mut data)?,
+            13 => to_14(&mut data)?,
+            14 => to_15(&mut data)?,
+            15 => to_16(&mut data)?,
+            16 => to_17(&mut data),
+            // Schema 18's planks read as none from an older save.
+            17 => {}
+            18 => to_19(&mut data)?,
+            19 => to_20(&mut data)?,
+            20 => to_21(&mut data),
+            21 => to_22(&mut data),
+            22 => to_23(&mut data),
+            _ => {
+                return Err(
+                    format!("schema {from} has no migration to schema {}", Self::SCHEMA).into(),
+                );
             }
-            9 => {
-                to_10(&mut data)?;
-                to_11(&mut data)?;
-                to_12(&mut data);
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            10 => {
-                to_11(&mut data)?;
-                to_12(&mut data);
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            11 => {
-                to_12(&mut data);
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            12 => {
-                to_13(&mut data)?;
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            13 => {
-                to_14(&mut data)?;
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            14 => {
-                to_15(&mut data)?;
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            15 => {
-                to_16(&mut data)?;
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            16 => {
-                to_17(&mut data);
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            17 | 18 => {
-                to_19(&mut data)?;
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            19 => {
-                to_20(&mut data)?;
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            20 => {
-                to_21(&mut data);
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            21 => {
-                to_22(&mut data);
-                to_23(&mut data);
-                Ok(data)
-            }
-            22 => {
-                to_23(&mut data);
-                Ok(data)
-            }
-            _ => Err(format!("schema {from} has no migration to schema {}", Self::SCHEMA).into()),
         }
+        Ok(data)
     }
 }
 
