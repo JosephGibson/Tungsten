@@ -5,7 +5,6 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 ## Now
 
 - `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`), 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) and 7.5 (the analysis pass: [the seam register](docs/plans/seam-register.md)'s 193 verified S-rows, triaged into the plan's tables) have landed, and 7.8, terrain and physics, is next; Phase 7 runs from it a step at a time.
-- `runtime-terrain`: redo 7.8's first plan, the runtime terrain: tile properties and a collision layer's physics layers, tiles edited in place with a journal and cell health, collision from an outline traced per chunk and re-traced locally, one-way edges, the auto-tiler in Rust and a `terrain` row ([plan](docs/plans/runtime-terrain.md)); 7.8's physics plan follows it.
 
 ## Next
 
@@ -25,6 +24,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - `just perf`'s GPU run merged into its timing run, now that the timestamp ring costs `gpu` 1.01× (redo 7.3's Q5): at 9.1, once the merged run's cost is measured.
 - Agent memory outside H2's three hubs: `git_fetch_denied` still quotes `scripts/roadmap.py`'s last fetch, which `just status` now prints, and `agent_tooling_run_traps`' perf-gate bullet and `milestone_step_refactor_outside_list` describe retired flows; prune them at the next memory pass.
 - The per-version branches retired (H1's Git row): agents would then push `main`, which needs `main`'s pull-request rule lifted and the push guard (`D-216`) widened, both the owner's settings.
+- The step's tile proxies without the interior cells, which make no contact: 01's level keeps 1,551 of its 10,093, and one-cell boxes without them matched every pit case (`perf-runs/20261030-runtime-terrain/`), so a frame copies and an edit restages a sixth of them; only which sleepers an edit wakes moves (`D-156`). A measured perf item for 7.14, read on `terrain` (`D-228`).
 - Faces between two collision layers' cells exposed only to bodies that do not meet the other layer, seamless joins across layers (`D-228`, runtime-terrain's Q2).
 - The auto-tiler's 8-bit blob masks, 47 variants, beside its 4-bit open sides (`D-228`, runtime-terrain's Q4).
 - Dropping through a one-way tile edge, with the physics plan's controller (`D-228`, runtime-terrain's Q8).
