@@ -24,7 +24,7 @@ Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3,
 - The rule is §7.3's triage: a row goes to the step that builds the system it changes, so each system is built once (`D-218`). A row split across systems is split here (P7-2, P7-3).
 - Phase 7 is one track since 2026-10-31: 7.17 and 7.20 run after 7.9 in this tree, not beside 7.8–7.10 in a worktree (§2.8).
 - Decisions: `D-215` (the redo), `D-218` (the fifth genre; 7.7 waits for 7.19), `D-172` (admission, amended by §5.3), `D-140` (routes), `D-070` (CI is CPU only; GPU and time rows stay local).
-- Later steps read this file: 7.10 its rows, PA-1–PA-11 among them, and PA-Q2's three movable rows (§2.8); 7.14 and 7.15 their lists (§2.5); 7.13 and 8.6 their tasks, 9.1 its stress rows (§2.6).
+- Later steps read this file: 7.10 its rows and its four plans' order, with PA-1–PA-11 but PA-3, PA-4 and PA-9, which moved to 8.7 (§2.3, §2.8); 7.14 and 7.15 their lists (§2.5); 7.13 and 8.6 their tasks, 9.1 its stress rows (§2.6).
 
 ## 1. Audit
 
@@ -70,20 +70,20 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-103 | The hurt flash's vignette generated as a full-view sprite | Later | Later | no step builds the post passes |
 | S-182 | A test's press held over frames until a fixed step has read it | Later | Later | no step builds the harness's fixed-step stepping |
 | P7-1 | Tiles changed at runtime | 7.8 | landed `c31c8bfc` | `D-228`, the runtime terrain (§5.1) |
-| P7-2 | Pushes and impacts: physics part | 7.10 | open | Impulses, radial impulses and a kinematic body's push record; moved from 7.8 (physics-on-terrain's step 7 stopped: its push record counted the soft solver's push-out); contact speeds, begins and ends landed `992f75d2` (§5.6, `D-229`) |
+| P7-2 | Pushes and impacts: physics part | 7.10 | open | 7.10m (§2.8): impulses, radial impulses and a kinematic body's push record; moved from 7.8 (physics-on-terrain's step 7 stopped: its push record counted the soft solver's push-out); contact speeds, begins and ends landed `992f75d2` (§5.6, `D-229`) |
 | P7-3 | Something in range: sensor exit | 7.8 | landed `e6c9bbe0` | `SensorExited`, `D-229`; `Interactable` is 8.1's (§2.3) |
-| K7 | A controller pushed by bodies | 7.10 | open | §5.6: pushed and riding; M84's shove onto impulses; moved from 7.8 (on P7-2's impulses, which did not land there) |
+| K7 | A controller pushed by bodies | 7.10 | open | 7.10m; §5.6: pushed and riding; M84's shove onto impulses; moved from 7.8 (on P7-2's impulses, which did not land there) |
 | K14 | The query index rebuilt from every body | 7.14 | open | §5.6's cheaper index; its remaining cost is C1 (§2.5); moved from 7.8 (a resting grid kept across refreshes moved `terrain`'s pin as the cave's bodies shift between asleep and awake: beside C1) |
-| K23 | Kinematic pairs never touch | 7.10 | open | Moving platforms against controllers; moved from 7.8 (with the controller's rules, behind step 12) |
-| K30 | A locked controller stops dead at a body | 7.10 | open | Named in §5.6; moved from 7.8 (on P7-2's impulses) |
+| K23 | Kinematic pairs never touch | 7.10 | open | 7.10m: moving platforms against controllers; moved from 7.8 (with the controller's rules, behind step 12) |
+| K30 | A locked controller stops dead at a body | 7.10 | open | 7.10m; named in §5.6; moved from 7.8 (on P7-2's impulses) |
 | S-60 | Rays cast again from inside each body they meet (K31) | 7.8 | landed `5656e347` | `cast_ray_where`, `cast_shape_where`; 8.2's sight rays use them |
 | S-16 | A fire hazard's touch swept by hand | 7.8 | landed `e6c9bbe0` | `RigidBody::swept`, a start overlap counting |
 | S-26 | Friction and rolling by hand | 7.8 | landed `52202d87` | Friction `aae37231`, rolling circles `52202d87` |
 | S-65 | A body's world box worked out by hand | 7.8 | landed `79c0f268` | `Collider::world_box` |
 | S-77 | An entity teleported by writing its positions by hand | 7.8 | landed `79c0f268` | `physics::teleport` |
-| S-99 | A controller's filter, shove and step set in code at each spawn and load | 7.10 | open | + a layer-mask filter in the controller's data and saved form; moved from 7.8 with the controller on slopes and the drop through a one-way edge (physics-on-terrain's step 12 stopped at the slope casts' exact-contact entry, a known issue fixed ahead of them) |
+| S-99 | A controller's filter, shove and step set in code at each spawn and load | 7.10 | open | + 7.10m: a layer-mask filter in the controller's data and saved form; moved from 7.8 with the controller on slopes and the drop through a one-way edge (physics-on-terrain's step 12 stopped at the slope casts' exact-contact entry, a known issue fixed ahead of them) |
 | S-112 | Iron's extra fall added to its velocity each step by hand | 7.8 | landed `79c0f268` | `RigidBody::gravity_scale` |
-| S-132 | A lift's trip held until every rider stands wholly on it | 7.10 | open | §5.6's riding: the carry cast against the world; moved from 7.8 (with the controller's rules) |
+| S-132 | A lift's trip held until every rider stands wholly on it | 7.10 | open | 7.10m; §5.6's riding: the carry cast against the world; moved from 7.8 (with the controller's rules) |
 | S-172 | A point's distance to a shape's surface (`surface_distance`) | 7.8 | landed `79c0f268` | `Shape::distance` |
 | S-175 | Physics layer bits restated in Rust and in the generator | 7.8 | landed `ddc3e3e4` | `physics_layers` in the manifests, names in `rigid_body`; a tile layer's names wait for 7.12 (Later) |
 | P7-8 | Saves of many areas | 7.9 | open | §5.5, G4; depends on P7-9 (landed) |
@@ -129,7 +129,6 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | PA-6 | Conversion and extra | 7.10 | open | 7.10a |
 | PA-7 | Defender's side | 7.10 | open | 7.10a |
 | P7-7 | A hit's side | 7.10 | open | 7.10a, with PA-2's hit context |
-| PA-9 | Primary stats | 7.10 | open | 7.10a; movable to 8.7 (PA-Q2) |
 | PA-10 | World sources | 7.10 | open | 7.10a; 01's difficulty on it (PA-Q5) |
 | PA-11 | `explain` records | 7.10 | open | 7.10a; shared with chemistry's `explain` |
 | P7-4 | Statuses on tiles and things | 7.10 | open | 7.10b: §5.2, Q17's merge, Q11's names |
@@ -139,17 +138,15 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-36 | Saved countdowns hand-ticked on 01's own components (K11) | 7.13 | open | + moved from 7.10b (has: the kit's `Cooldown` saves and sends `CooldownElapsed`; `Lifetime`'s saved form and expiry stay a kit gap no 01 code needs) |
 | K27 | `Damaged` hides a shield's absorption | 7.10 | open | 7.10b, with K28's flash |
 | K28 | Every non-periodic hit flashes over a status tint | 7.10 | open | 7.10b: effect looks |
-| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10c: impact damage, bodies as walls by layer; its blast is K10, in 7.10b |
+| P7-2 | Pushes and impacts: kit part | 7.10 | open | 7.10m (from 7.10c, 2026-10-31): impact damage and bodies as walls by layer, on the physics part; its blast is K10, in 7.10b |
 | S-4 | Radial blasts hand-rolled (K10) | 7.10 | open | 7.10b: chemistry's `blast` output (§5.2), which replaces 01's detonation (`elements/cascade.rs:634`); abilities fire it in 7.10c |
 | P7-6 | Ability fixes | 7.10 | open | 7.10c, with K8 |
 | K8 | `charges { all: true }` refills from the first charge | 7.10 | landed `4d51a071` | qa6, in 0.112; 01's own reload waits on P7-6's held trigger and refill countdown (the seam register's §4) |
-| PA-3 | Area and projectile speed read | 7.10 | open | 7.10c; movable to 8.7 (PA-Q2) |
-| PA-4 | Use time | 7.10 | open | 7.10c, with P7-6's held trigger; movable to 8.7 (PA-Q2) |
 | P7-19 | One-shot clips | 7.10 | open | 7.10c |
 | P7-20 | A hitbox by facing (K3) | 7.10 | open | 7.10c |
 | K3 | A hitbox that follows its owner's facing | 7.10 | open | 7.10c, in P7-20 |
-| K19 | The magnet and a falling bodiless pickup | 7.10 | open | 7.10c: motion on 7.8's physics |
-| K20 | A top-down mover's outside velocity; additive knockback | 7.10 | open | 7.10c: motion on 7.8's impulses |
+| K19 | The magnet and a falling bodiless pickup | 7.10 | open | 7.10m (from 7.10c): motion on 7.8's physics |
+| K20 | A top-down mover's outside velocity; additive knockback | 7.10 | open | 7.10m (from 7.10c): motion on its impulses |
 | K22 | A hotkey for `KitDebug`; hit shapes without the trace | 7.10 | open | 7.10c |
 | P7-18 | The kit's genre claims | 7.10 | open | 7.10c: `platformer`, `top_down`, `rpg`, `shooter`, `arpg`; `grid` and `shmup` dropped (G1–G3) |
 | S-1 | Status looks drawn by hand | 7.10 | open | 7.10b: §5.2's status looks, with an overlay clip and its glow |
@@ -177,13 +174,13 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-84 | A periodic hazard's phase cycle by hand | 7.10 | open | + 7.10c: timed transitions and a start offset on `StateMachine` |
 | S-86 | Fallen enemies brought back at their places by a hand-ticked timer each | 7.10 | open | + 7.10c: a spawner that spawns again after its spawn dies |
 | S-88 | Spawned prefabs moved by hand onto their source's body centre | 7.10 | open | + 7.10c: spawns centred on the source's body |
-| S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.10 | open | + 7.10c: `steering` driving a `TopDownMover` |
+| S-92 | A flyer's arrive at a point on a top-down mover among walls | 7.10 | open | + 7.10m (from 7.10c): `steering` driving a `TopDownMover`, with K20 |
 | S-96 | A look held after its last trigger by a game-time stamp | 7.10 | open | + 7.10b: a cue for a fresh effect only |
 | S-105 | A spell's icon and cast gesture as per-spell arms | 7.10 | open | + 7.10c: an ability's icon and cast clip in its data |
 | S-110 | HUD flashes and a fade ticked by hand; a cooldown's end found by comparison | 7.10 | open | + 7.10c: an event as an ability's cooldown ends; the flashes as UI tracks |
 | S-121 | A shake's share worked out by hand from its distance | 7.10 | open | + 7.10b: a shake with falloff |
 | S-130 | A spell's cast, start and end sounds played from code | 7.10 | open | + 7.10c: `ability_used` rules by the ability's name; a held ability's start and end |
-| S-134 | Each enemy kind's knockback resist restated in its info table | 7.10 | open | + 7.10c: `Knockback::resist()` |
+| S-134 | Each enemy kind's knockback resist restated in its info table | 7.10 | open | + 7.10m (from 7.10c): `Knockback::resist()`, with K20's knockback |
 | S-135 | A refused use's reason mapped from `Used` and played from code | 7.10 | open | + 7.10c: an `ability_refused` cue event with its reason |
 | S-142 | A dead entity disarmed by hand | 7.10 | open | + 7.10c: a death policy that disarms the touch, the hitbox and the controller |
 | S-150 | A heading of 01's own on each enemy | 7.10 | open | + 7.10c: `Facing::face` toward a point |
@@ -334,6 +331,9 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | S-22 | Actors' bodies as 01's own data kind | 8.3 | open | + named points mirrored by facing and a body section in prefab data |
 | S-61 | A point per animation frame | 8.3 | open | per-frame anchors, as slices import |
 | S-69 | Lit sprites' normal maps and emissive masks derived by 01's tools | 8.3 | open | + normal maps and emissive masks derived by the pipeline |
+| PA-3 | Area and projectile speed read | 8.7 | open | Moved from 7.10 (PA-Q2, taken early on 2026-10-31: ARPG only, and the ARPG design's §16 moves it with no rework); §9.1's sheet reads 690 px/s |
+| PA-4 | Use time | 8.7 | open | Moved from 7.10 (PA-Q2, as PA-3); on P7-6's held trigger (7.10c); §9.1's use time reads 0.721 s |
+| PA-9 | Primary stats | 8.7 | open | Moved from 7.10 (PA-Q2, as PA-3); `per` lines on 7.10a's scoped lines |
 | PA-17 | Supports | 8.7 | open | `build` domain (PA-Q1) |
 | PA-18 | Passive tree | 8.7 | open | |
 | PA-19 | Item generation | 8.7 | open | |
@@ -413,7 +413,7 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
-  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-9–PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-122 (K1), S-4 (K10), K27, K28; 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code, motion and the genre tags (P7-2's kit part, P7-6, K8, PA-3, PA-4, P7-19, P7-20, K3, K19, K20, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-92, S-105, S-110, S-130, S-134, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). PA-3, PA-4 and PA-9 move to 8.7 when the plan holding them passes ten steps or its critique finds 7.10 too large (PA-Q2).
+  - 7.10 (Q3): **7.10a** stats and hits (PA-1, PA-2, PA-5–PA-7, PA-10, PA-11, P7-7; 7.5's S-12), the shapes the rest stand on; **7.10m**, the motion plan, after 7.10a, whose hits its impact damage and knockback carry: the impulses and the controller's rules 7.8 moved on, the known issues' slope-cast fix ahead of the slope rules, and the motion 7.10b's blast stands on (P7-2's physics and kit parts, K7, K19, K20, K23, K30; 7.5's S-92, S-99, S-132, S-134); **7.10b** statuses and chemistry on them, with the blast its outputs need (P7-4, P7-5, PA-8, S-122 (K1), S-4 (K10), K27, K28; 7.5's S-1, S-39, S-41, S-48, S-51, S-56, S-79, S-96, S-121, S-154, S-165); **7.10c** abilities, 01's generic code and the genre tags (P7-6, K8, P7-19, P7-20, K3, K22, P7-18; 7.5's S-5, S-10, S-15, S-17, S-18, S-19, S-20, S-31, S-37, S-52, S-53, S-66, S-73, S-78, S-84, S-86, S-88, S-105, S-110, S-130, S-135, S-142, S-150, S-156, S-159, S-186). K11 moved to 7.13 as S-36, the kit's `Cooldown` already being its timer (§2.2). Each plan updates the kit's determinism pin where it changes what the hash serializes (§5). The order is 7.10a → 7.10m → 7.10b → 7.10c (2026-10-31): 7.10m took the six rows 7.8 moved on, which no plan held, and 7.10c's motion; PA-3, PA-4 and PA-9 moved to 8.7 then, PA-Q2's move taken early (§2.3).
   - 7.12: the format and CLI, then the editor (the redo's 7.12 row).
 
 ## 3. Steps
@@ -474,9 +474,9 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 
 ### Step 9 (7.10): Kit pass
 
-- **Rows:** the 68 rows §2.2 sends to 7.10, as 7.10a, 7.10b and 7.10c (§2.8). **Design:** §5.2, §5.3, the ARPG design's §3–§8 and §16.
-- **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
-- **Moves:** the kit's determinism pin, at most once per 7.10 plan, under 7.3's guards (§5).
+- **Rows:** every row §2.2 sends to 7.10, as 7.10a, 7.10m, 7.10b and 7.10c, in that order (§2.8). **Design:** §5.2, §5.3, §5.6 for 7.10m, the ARPG design's §3–§8 and §16.
+- **Done-when:** the redo's 7.10 sketch; the ARPG design's §16 row for 7.10 (§9.1's hit resolves to 32.07 in a kit test, its sheet's speed and use time being 8.7's with PA-3 and PA-4; 01's crit, blast share and difficulty are data with its tests' outcomes unchanged); the spread row at 12,000 bodies.
+- **Moves:** the kit's determinism pin, at most once per 7.10 plan, and the physics hashes in 7.10m, each under 7.3's guards (§5).
 
 ### Step 10 (7.18): Camera rigs
 
@@ -516,7 +516,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 ### Step 17: Close
 
 - **Files:** this plan (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md`, `docs/plans/arpg-design.md`, the follow-ups' homes.
-- **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
+- **Change:** carry §2.3's open rows into the redo's §3 Phase 8 rows by ID (PA-12 and PA-13 into 8.1, PA-14–PA-16 into 8.2, P8-6's note into 8.1, PA-3, PA-4, PA-9 and PA-17–PA-22 named in 8.7); point the ARPG design at the redo; move open follow-ups to known issues or Later; delete this plan and its citations; take `phase-7` out of Now.
 - **Done-when:** no Phase 7 step's row open (`rg -n '^\| [^|]+ \| [^|]+ \| 7\.[0-9]+ \| open \|' docs/plans/phase-7.md; test $? -eq 1` → exit 0, run before the deletion); every §2.2 row's status terminal (§2.1), each `Later` row a line in ROADMAP.md's Later, each `9.2` row in the redo's 9.2 lever list, and each list item done, dropped or stopped, as the last evidence row quotes; every open §2.3 row in the redo, moved and S-rows included (`rg -o -r '$1' '^\| ([A-Z0-9-]+) \| [^|]+ \| 8\.[0-9]+ \| open \|' docs/plans/phase-7.md | while read -r id; do rg -q "$id\b" docs/plans/roadmap-redo.md || echo "$id"; done` → prints nothing, run before the deletion); `just repo-check` → passes; example 01 runs.
 - **Ends with:** the commits made, the evidence quoted, what the owner should play, and the next prompt (8.1's plan).
 
@@ -526,7 +526,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 | --- | --- | --- |
 | Q1 | 7.7 ran before 7.2–7.5. Re-cut the order? | No: the redo's order stands; 7.5's rows join by §2.4, and the lists' numbers come from 7.3's rows at each pass's start |
 | Q2 | The K-rows the redo's §3 doesn't cite (K1, K11, K19–K23, K27, K28, K31) | The steps in §2.2; 7.5's triage may re-cut them with new evidence |
-| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; PA-3, PA-4 and PA-9 move to 8.7 on PA-Q2's trigger there |
+| Q3 | 7.10 as three plans in dependency order | Yes, as §2.8; four since 2026-10-31, 7.10m holding the motion 7.8 moved on, with PA-3, PA-4 and PA-9 moved to 8.7 (PA-Q2) |
 | Q4 | The lists' floor and target | A floor of 5 % of the row's time at the gate; a target of half the item's measured share; G6 behavioural |
 | Q5 | Where 7.15 measures 01 | A local GPU row of 01's areas in 7.3's set, M77's area survey made a row |
 | Q6 | Where Phase 8's assignments live after this plan | The redo's §3 rows by ID (step 17); the ARPG design stays until 8.7 closes |
@@ -538,15 +538,15 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 5. Invariants
 
-- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate. The kit's determinism pin (`crates/tungsten/src/tests/kit_recipes/determinism.rs`) at most once per 7.10 plan, since it serializes effects and buckets (7.10b) and each genre's world (7.10c), each move with its cause in the evidence log; this splits §5.2's and the ARPG design's §16's "moves once" across 7.10's plans (Q3).
-- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate; the determinism test's two-run assertion, which holds at every commit. Engine invariants are each step's plan's: the physics hashes move only in 7.8, under 7.3's guards; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
+- **May move:** a row's step, only by §2.1's move with its reason; a list item, only out, at its gate. The kit's determinism pin (`crates/tungsten/src/tests/kit_recipes/determinism.rs`) at most once per 7.10 plan, since it serializes effects and buckets (7.10b) and each genre's world (7.10m, 7.10c), each move with its cause in the evidence log; this splits §5.2's and the ARPG design's §16's "moves once" across 7.10's plans (Q3).
+- **Must not move:** the redo's fixed orders (§2.8); the lists' membership beyond the gate; the determinism test's two-run assertion, which holds at every commit. Engine invariants are each step's plan's: the physics hashes move only in 7.8 and with the rows 7.8 moved on (7.10m's, and K14 in 7.14's C1), each under 7.3's guards with its cause in the evidence log; the pinned containment hash, the row digests, `gpu-visual.png` and the post and transition regressions move only where a step's plan says so.
 
 ## 6. Stop conditions
 
 - A step's done-when fails: its rows stay open, steps that depend on it wait, and a later step that doesn't may run first, within §2.8's fixed orders. A step's own plan handles its failed checks as the skill says.
 - A row needs a system no Phase 7 step builds: it moves to Phase 8 or Later, with its reason.
 - A row's dependency lands after its step: it moves to the first step after the dependency.
-- 7.10 is too large: PA-Q2's trigger (§2.8).
+- A 7.10 plan passes ten steps or its critique finds it too large: it splits by §2.8's dependency order (PA-Q2's three rows have moved).
 - A list item can't reach its target: `stopped`, with the profile.
 - A new performance finding: 9.2, never the list.
 
