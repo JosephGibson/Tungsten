@@ -213,3 +213,155 @@ fn delete_removes_the_slot() {
         .collect();
     assert_eq!(names, ["kept"]);
 }
+
+/// Schema 3, its steps each adding one field from the last: schema 1 had
+/// `a`, 2 added `b`, 3 added `c`.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Stepped {
+    a: u32,
+    b: u32,
+    c: u32,
+}
+
+impl SaveData for Stepped {
+    const SCHEMA: u32 = 3;
+
+    fn migrate_step(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        match from {
+            1 => data["b"] = (data["a"].as_u64().ok_or("no a")? + 1).into(),
+            2 => data["c"] = (data["b"].as_u64().ok_or("no b")? * 10).into(),
+            _ => return Err(format!("no step from {from}").into()),
+        }
+        Ok(data)
+    }
+}
+
+/// Schema 3 with its own `migrate`, straight from 1, and no steps.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Jumped {
+    a: u32,
+    c: u32,
+}
+
+impl SaveData for Jumped {
+    const SCHEMA: u32 = 3;
+
+    fn migrate(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        if from != 1 {
+            return Err(format!("no migration from {from}").into());
+        }
+        data["c"] = 7.into();
+        Ok(data)
+    }
+}
+
+#[test]
+fn migrate_steps_a_schema_at_a_time_by_default() {
+    let slots = slots();
+    slots
+        .save_stamped(
+            "one",
+            &serde_json::json!({ "a": 1 }),
+            &SaveStamp::new(1, "0.1.0", 5),
+        )
+        .unwrap();
+    slots
+        .save_stamped(
+            "two",
+            &serde_json::json!({ "a": 1, "b": 4 }),
+            &SaveStamp::new(2, "0.1.0", 5),
+        )
+        .unwrap();
+    assert_eq!(
+        slots.load::<Stepped>("one").unwrap(),
+        Stepped { a: 1, b: 2, c: 20 },
+        "1 to 2, then 2 to 3"
+    );
+    assert_eq!(
+        slots.load::<Stepped>("two").unwrap(),
+        Stepped { a: 1, b: 4, c: 40 },
+        "2 to 3 alone"
+    );
+    slots
+        .save_stamped(
+            "zero",
+            &serde_json::json!({}),
+            &SaveStamp::new(0, "0.1.0", 5),
+        )
+        .unwrap();
+    let err = slots.load::<Stepped>("zero").unwrap_err();
+    assert!(
+        matches!(&err, SaveError::Migration { from: 0, .. }),
+        "{err}"
+    );
+    assert!(err.to_string().contains("no step from 0"), "{err}");
+    assert_eq!(
+        Progress::migrate(1, serde_json::json!({}))
+            .unwrap_err()
+            .to_string(),
+        "schema 1 has no migration to schema 2",
+        "the default step refuses"
+    );
+}
+
+#[test]
+fn a_type_that_overrides_migrate_keeps_its_own() {
+    let slots = slots();
+    slots
+        .save_stamped(
+            "old",
+            &serde_json::json!({ "a": 2 }),
+            &SaveStamp::new(1, "0.1.0", 5),
+        )
+        .unwrap();
+    assert_eq!(slots.load::<Jumped>("old").unwrap(), Jumped { a: 2, c: 7 });
+    assert!(
+        Jumped::migrate_step(1, serde_json::json!({})).is_err(),
+        "its steps are the default's"
+    );
+}
+
+#[test]
+fn a_stamped_save_lists_and_loads_with_its_stamp() {
+    let slots = slots();
+    let stamp = SaveStamp::new(1, "0.50.0", 1_700_000_000_000);
+    slots
+        .save_stamped("older", &serde_json::json!({ "a": 3 }), &stamp)
+        .unwrap();
+    let list = slots.list().unwrap();
+    assert_eq!(
+        list.slots,
+        [SlotInfo {
+            name: "older".into(),
+            schema: 1,
+            engine_version: "0.50.0".into(),
+            saved_at_ms: 1_700_000_000_000,
+        }]
+    );
+    assert_eq!(
+        slots.load::<Stepped>("older").unwrap(),
+        Stepped { a: 3, b: 4, c: 40 }
+    );
+
+    slots
+        .save_stamped(
+            "newer",
+            &serde_json::json!({ "a": 3 }),
+            &SaveStamp::new(9, "9.0.0", 0),
+        )
+        .unwrap();
+    assert!(matches!(
+        slots.load::<Stepped>("newer"),
+        Err(SaveError::NewerSchema {
+            found: 9,
+            supported: 3,
+            ..
+        })
+    ));
+}

@@ -111,3 +111,60 @@ fn a_failed_migration_is_a_typed_error() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Schema 3 by steps: 1 to 2 adds the gems, 2 to 3 the keys.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct ProgressV3 {
+    level: u32,
+    gems: u32,
+    keys: u32,
+}
+
+impl SaveData for ProgressV3 {
+    const SCHEMA: u32 = 3;
+
+    fn migrate_step(
+        from: u32,
+        mut data: Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        match from {
+            1 => data["gems"] = 0.into(),
+            2 => data["keys"] = 1.into(),
+            _ => return Err(format!("no migration from schema {from}").into()),
+        }
+        Ok(data)
+    }
+}
+
+#[test]
+fn a_stepwise_migration_loads_across_two_apps() {
+    let dir = user_folder("stepwise");
+    let mut first = app_at(&dir);
+    let slots = first.world_mut().resource::<SaveSlots>().clone();
+    slots.save("slot-1", &ProgressV1 { level: 4 }).unwrap();
+    slots
+        .save("slot-2", &ProgressV2 { level: 5, gems: 3 })
+        .unwrap();
+
+    let mut next = app_at(&dir);
+    let slots = next.world_mut().resource::<SaveSlots>();
+    assert_eq!(
+        slots.load::<ProgressV3>("slot-1").unwrap(),
+        ProgressV3 {
+            level: 4,
+            gems: 0,
+            keys: 1
+        },
+        "two steps"
+    );
+    assert_eq!(
+        slots.load::<ProgressV3>("slot-2").unwrap(),
+        ProgressV3 {
+            level: 5,
+            gems: 3,
+            keys: 1
+        },
+        "one step"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
