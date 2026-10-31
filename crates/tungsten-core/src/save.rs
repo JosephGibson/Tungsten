@@ -5,6 +5,10 @@
 //! ```json
 //! { "envelope": 1, "slot": "autosave", "schema": 2, "engine_version": "0.73.0", "saved_at_ms": 1760400000000, "data": { "…": "the game's type" } }
 //! ```
+//!
+//! Saves of the World itself: the entities a game names ([`name`]) and a
+//! run's spawns from them carry a [`SaveId`], and the components and
+//! resources a [`SaveRegistry`] holds are what a save writes.
 
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -15,6 +19,14 @@ use thiserror::Error;
 
 use crate::config::GameConfig;
 use crate::persist::{WriteError, write_atomic};
+
+pub(crate) mod id;
+pub(crate) mod registry;
+
+pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving};
+pub use registry::{
+    MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
+};
 
 /// The JSON value [`SaveData::migrate`] rewrites, re-exported so a game
 /// needs no `serde_json` dependency of its own to write a migration.

@@ -143,6 +143,62 @@ fn physics_plugin_registers_the_sensor_event_queue() {
 }
 
 #[test]
+fn the_physics_plugin_registers_position_velocity_and_spin() {
+    use crate::save::SaveRegistry;
+
+    let mut world = physics_world();
+    let registry = world.resource::<SaveRegistry>().clone();
+    assert_eq!(
+        registry.component_names().collect::<Vec<_>>(),
+        ["position", "spin", "velocity"]
+    );
+    assert_eq!(registry.component_name::<Position>(), Some("position"));
+    assert_eq!(registry.component_name::<Velocity>(), Some("velocity"));
+    assert_eq!(registry.component_name::<Spin>(), Some("spin"));
+
+    let body = world.spawn_with((
+        Position::new(1.5, -2.0),
+        Velocity::new(30.0, 0.25),
+        Spin {
+            angle: 0.5,
+            angular_velocity: -1.0,
+            prev_angle: 0.25,
+        },
+    ));
+    let at = crate::save::registry::Holder::Entity(body);
+    let value = |world: &World, name: &str| {
+        registry.components.entries[name]
+            .saved
+            .to_value(world, at)
+            .unwrap()
+            .unwrap()
+    };
+    assert_eq!(value(&world, "position"), serde_json::json!([1.5, -2.0]));
+    assert_eq!(value(&world, "velocity"), serde_json::json!([30.0, 0.25]));
+    let spin = value(&world, "spin");
+    assert_eq!(
+        spin,
+        serde_json::json!({ "angle": 0.5, "angular_velocity": -1.0, "prev_angle": 0.25 })
+    );
+
+    let copy = world.spawn();
+    for name in ["position", "velocity", "spin"] {
+        let saved = value(&world, name);
+        registry.components.entries[name]
+            .saved
+            .put(
+                &mut world,
+                crate::save::registry::Holder::Entity(copy),
+                saved,
+            )
+            .unwrap();
+    }
+    assert_eq!(world.get::<Position>(copy), world.get::<Position>(body));
+    assert_eq!(world.get::<Velocity>(copy), world.get::<Velocity>(body));
+    assert_eq!(world.get::<Spin>(copy), world.get::<Spin>(body));
+}
+
+#[test]
 fn physics_plugin_registers_rigid_body_on_a_bare_world() {
     let world = physics_world();
     let registry = world.resource::<crate::component_registry::ComponentRegistry>();

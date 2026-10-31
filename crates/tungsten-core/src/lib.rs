@@ -86,7 +86,7 @@ pub use post::{
     TonemapParams, VignetteParams, WipeRadialParams,
 };
 pub use rng::{Pcg32, splitmix64};
-pub use save::{SaveData, SaveSlots};
+pub use save::{SaveData, SaveId, SaveOptions, SaveRegistry, SaveSlots, Saved};
 pub use schedule::{Plugin, PluginSet, Schedule, ScheduleError, Stage, SystemDesc, system};
 pub use settings::{FrameRateCap, Settings, UserFolder};
 pub use text::{

@@ -6105,6 +6105,8 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::CommandBuffer
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::CommandBuffer
 pub struct tungsten_core::ecs::Entity
 impl tungsten_core::Entity
+pub const tungsten_core::Entity::PLACEHOLDER: tungsten_core::Entity
+impl tungsten_core::Entity
 pub fn tungsten_core::Entity::id(self) -> u32
 impl core::clone::Clone for tungsten_core::Entity
 pub fn tungsten_core::Entity::clone(&self) -> tungsten_core::Entity
@@ -6346,6 +6348,11 @@ impl tungsten_core::World
 pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 pub fn tungsten_core::World::register_component_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+impl tungsten_core::World
+pub fn tungsten_core::World::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_saved_resource_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::World::register_saved_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World
@@ -8958,6 +8965,39 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
 pub mod tungsten_core::save
 pub use tungsten_core::save::Value
+#[non_exhaustive] pub enum tungsten_core::save::NameError
+pub tungsten_core::save::NameError::AlreadySaved
+pub tungsten_core::save::NameError::AlreadySaved::id: tungsten_core::SaveId
+pub tungsten_core::save::NameError::AlreadySaved::name: alloc::string::String
+pub tungsten_core::save::NameError::Clash
+pub tungsten_core::save::NameError::Clash::name: alloc::string::String
+pub tungsten_core::save::NameError::Clash::other: alloc::string::String
+pub tungsten_core::save::NameError::Dead
+pub tungsten_core::save::NameError::Dead::name: alloc::string::String
+pub tungsten_core::save::NameError::Empty
+pub tungsten_core::save::NameError::Serialize
+pub tungsten_core::save::NameError::Serialize::message: alloc::string::String
+pub tungsten_core::save::NameError::Serialize::name: alloc::string::String
+pub tungsten_core::save::NameError::Taken
+pub tungsten_core::save::NameError::Taken::name: alloc::string::String
+impl core::clone::Clone for tungsten_core::save::NameError
+pub fn tungsten_core::save::NameError::clone(&self) -> tungsten_core::save::NameError
+impl core::cmp::Eq for tungsten_core::save::NameError
+impl core::cmp::PartialEq for tungsten_core::save::NameError
+pub fn tungsten_core::save::NameError::eq(&self, &tungsten_core::save::NameError) -> bool
+impl core::error::Error for tungsten_core::save::NameError
+impl core::fmt::Debug for tungsten_core::save::NameError
+pub fn tungsten_core::save::NameError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::save::NameError
+pub fn tungsten_core::save::NameError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::NameError
+impl core::marker::Freeze for tungsten_core::save::NameError
+impl core::marker::Send for tungsten_core::save::NameError
+impl core::marker::Sync for tungsten_core::save::NameError
+impl core::marker::Unpin for tungsten_core::save::NameError
+impl core::marker::UnsafeUnpin for tungsten_core::save::NameError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::NameError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::NameError
 #[non_exhaustive] pub enum tungsten_core::save::SaveError
 pub tungsten_core::save::SaveError::Corrupt
 pub tungsten_core::save::SaveError::Corrupt::slot: alloc::string::String
@@ -9000,6 +9040,113 @@ impl core::marker::Unpin for tungsten_core::save::SaveError
 impl core::marker::UnsafeUnpin for tungsten_core::save::SaveError
 impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveError
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveError
+pub struct tungsten_core::save::RefCodec<T>
+pub tungsten_core::save::RefCodec::keys: fn(&T) -> alloc::vec::Vec<alloc::string::String>
+pub tungsten_core::save::RefCodec::load: fn(&mut T, &tungsten_core::save::RefReader<'_>)
+pub tungsten_core::save::RefCodec::save: fn(&T, &mut tungsten_core::save::RefWriter<'_>)
+impl<T> core::clone::Clone for tungsten_core::save::RefCodec<T>
+pub fn tungsten_core::save::RefCodec<T>::clone(&self) -> Self
+impl<T> core::marker::Copy for tungsten_core::save::RefCodec<T>
+impl<T> core::marker::Freeze for tungsten_core::save::RefCodec<T>
+impl<T> core::marker::Send for tungsten_core::save::RefCodec<T>
+impl<T> core::marker::Sync for tungsten_core::save::RefCodec<T>
+impl<T> core::marker::Unpin for tungsten_core::save::RefCodec<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::save::RefCodec<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RefCodec<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RefCodec<T>
+pub struct tungsten_core::save::RefReader<'a>
+impl<'a> tungsten_core::save::RefReader<'a>
+pub fn tungsten_core::save::RefReader<'a>::first(&self, &str) -> core::option::Option<tungsten_core::Entity>
+pub fn tungsten_core::save::RefReader<'a>::get(&self, &str) -> &[tungsten_core::Entity]
+pub fn tungsten_core::save::RefReader<'a>::iter(&self) -> impl core::iter::traits::iterator::Iterator<Item = (&str, &[tungsten_core::Entity])>
+impl<'a> core::marker::Freeze for tungsten_core::save::RefReader<'a>
+impl<'a> core::marker::Send for tungsten_core::save::RefReader<'a>
+impl<'a> core::marker::Sync for tungsten_core::save::RefReader<'a>
+impl<'a> core::marker::Unpin for tungsten_core::save::RefReader<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::save::RefReader<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RefReader<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RefReader<'a>
+pub struct tungsten_core::save::RefWriter<'a>
+impl<'a> tungsten_core::save::RefWriter<'a>
+pub fn tungsten_core::save::RefWriter<'a>::put(&mut self, &str, tungsten_core::Entity)
+impl<'a> core::marker::Freeze for tungsten_core::save::RefWriter<'a>
+impl<'a> !core::marker::Send for tungsten_core::save::RefWriter<'a>
+impl<'a> !core::marker::Sync for tungsten_core::save::RefWriter<'a>
+impl<'a> core::marker::Unpin for tungsten_core::save::RefWriter<'a>
+impl<'a> core::marker::UnsafeUnpin for tungsten_core::save::RefWriter<'a>
+impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RefWriter<'a>
+impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RefWriter<'a>
+pub struct tungsten_core::save::SaveId(pub u64)
+impl tungsten_core::SaveId
+pub fn tungsten_core::SaveId::authored(&str) -> Self
+pub fn tungsten_core::SaveId::is_authored(self) -> bool
+impl core::clone::Clone for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::clone(&self) -> tungsten_core::SaveId
+impl core::cmp::Eq for tungsten_core::SaveId
+impl core::cmp::Ord for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::cmp(&self, &tungsten_core::SaveId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::eq(&self, &tungsten_core::SaveId) -> bool
+impl core::cmp::PartialOrd for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::partial_cmp(&self, &tungsten_core::SaveId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::SaveId
+impl core::marker::StructuralPartialEq for tungsten_core::SaveId
+impl serde_core::ser::Serialize for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::SaveId
+impl core::marker::Send for tungsten_core::SaveId
+impl core::marker::Sync for tungsten_core::SaveId
+impl core::marker::Unpin for tungsten_core::SaveId
+impl core::marker::UnsafeUnpin for tungsten_core::SaveId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
+pub struct tungsten_core::save::SaveOptions<T>
+impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
+pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
+pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self
+pub fn tungsten_core::SaveOptions<T>::version(self, u32) -> Self
+impl<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::new() -> Self
+impl<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static> core::default::Default for tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::default() -> Self
+impl<T> core::marker::Freeze for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Send for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Sync for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Unpin for tungsten_core::SaveOptions<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::SaveOptions<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveOptions<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveOptions<T>
+pub struct tungsten_core::save::SaveRegistry
+impl tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::component_has_refs(&self, &str) -> bool
+pub fn tungsten_core::SaveRegistry::component_name<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::SaveRegistry::component_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::SaveRegistry::component_version(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::SaveRegistry::new() -> Self
+pub fn tungsten_core::SaveRegistry::register<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::SaveRegistry::register_resource<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::SaveRegistry::resource_has_refs(&self, &str) -> bool
+pub fn tungsten_core::SaveRegistry::resource_name<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::SaveRegistry::resource_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::SaveRegistry::resource_version(&self, &str) -> core::option::Option<u32>
+impl core::clone::Clone for tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::clone(&self) -> tungsten_core::SaveRegistry
+impl core::default::Default for tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::default() -> tungsten_core::SaveRegistry
+impl core::marker::Freeze for tungsten_core::SaveRegistry
+impl !core::marker::Send for tungsten_core::SaveRegistry
+impl !core::marker::Sync for tungsten_core::SaveRegistry
+impl core::marker::Unpin for tungsten_core::SaveRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::SaveRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveRegistry
 pub struct tungsten_core::save::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
@@ -9021,6 +9168,42 @@ impl core::marker::Unpin for tungsten_core::save::SaveSlots
 impl core::marker::UnsafeUnpin for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
+pub struct tungsten_core::save::SaveState
+impl tungsten_core::save::SaveState
+pub fn tungsten_core::save::SaveState::name_of(&self, tungsten_core::SaveId) -> core::option::Option<&str>
+pub fn tungsten_core::save::SaveState::named_entity(&self, tungsten_core::SaveId) -> core::option::Option<tungsten_core::Entity>
+pub fn tungsten_core::save::SaveState::next_id(&self) -> u64
+impl core::default::Default for tungsten_core::save::SaveState
+pub fn tungsten_core::save::SaveState::default() -> tungsten_core::save::SaveState
+impl core::fmt::Debug for tungsten_core::save::SaveState
+pub fn tungsten_core::save::SaveState::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tungsten_core::save::SaveState
+impl core::marker::Send for tungsten_core::save::SaveState
+impl core::marker::Sync for tungsten_core::save::SaveState
+impl core::marker::Unpin for tungsten_core::save::SaveState
+impl core::marker::UnsafeUnpin for tungsten_core::save::SaveState
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveState
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveState
+pub struct tungsten_core::save::Saved
+impl tungsten_core::Saved
+pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
+pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
+impl core::clone::Clone for tungsten_core::Saved
+pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved
+impl core::cmp::Eq for tungsten_core::Saved
+impl core::cmp::PartialEq for tungsten_core::Saved
+pub fn tungsten_core::Saved::eq(&self, &tungsten_core::Saved) -> bool
+impl core::fmt::Debug for tungsten_core::Saved
+pub fn tungsten_core::Saved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::Saved
+impl core::marker::Freeze for tungsten_core::Saved
+impl core::marker::Send for tungsten_core::Saved
+impl core::marker::Sync for tungsten_core::Saved
+impl core::marker::Unpin for tungsten_core::Saved
+impl core::marker::UnsafeUnpin for tungsten_core::Saved
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Saved
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Saved
 #[non_exhaustive] pub struct tungsten_core::save::SlotInfo
 pub tungsten_core::save::SlotInfo::engine_version: alloc::string::String
 pub tungsten_core::save::SlotInfo::name: alloc::string::String
@@ -9057,9 +9240,15 @@ impl core::marker::Unpin for tungsten_core::save::SlotList
 impl core::marker::UnsafeUnpin for tungsten_core::save::SlotList
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SlotList
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SlotList
+pub const tungsten_core::save::AUTHORED: u64
 pub trait tungsten_core::save::SaveData: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
 pub const tungsten_core::save::SaveData::SCHEMA: u32
 pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
+pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
+pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
+pub fn tungsten_core::save::saving(&tungsten_core::World) -> bool
+pub type tungsten_core::save::MigrationStep = fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
+pub type tungsten_core::save::Refs = alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_core::SaveId>>
 pub mod tungsten_core::schedule
 pub mod tungsten_core::schedule::names
 pub const tungsten_core::schedule::names::CAMERA_UPDATE: &str
@@ -16694,6 +16883,8 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::post::DitherPara
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::post::DitherParams
 pub struct tungsten_core::Entity
 impl tungsten_core::Entity
+pub const tungsten_core::Entity::PLACEHOLDER: tungsten_core::Entity
+impl tungsten_core::Entity
 pub fn tungsten_core::Entity::id(self) -> u32
 impl core::clone::Clone for tungsten_core::Entity
 pub fn tungsten_core::Entity::clone(&self) -> tungsten_core::Entity
@@ -18462,6 +18653,77 @@ impl core::marker::Unpin for tungsten_core::input::RoutedInput
 impl core::marker::UnsafeUnpin for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::RoutedInput
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::RoutedInput
+pub struct tungsten_core::SaveId(pub u64)
+impl tungsten_core::SaveId
+pub fn tungsten_core::SaveId::authored(&str) -> Self
+pub fn tungsten_core::SaveId::is_authored(self) -> bool
+impl core::clone::Clone for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::clone(&self) -> tungsten_core::SaveId
+impl core::cmp::Eq for tungsten_core::SaveId
+impl core::cmp::Ord for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::cmp(&self, &tungsten_core::SaveId) -> core::cmp::Ordering
+impl core::cmp::PartialEq for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::eq(&self, &tungsten_core::SaveId) -> bool
+impl core::cmp::PartialOrd for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::partial_cmp(&self, &tungsten_core::SaveId) -> core::option::Option<core::cmp::Ordering>
+impl core::fmt::Debug for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for tungsten_core::SaveId
+impl core::marker::StructuralPartialEq for tungsten_core::SaveId
+impl serde_core::ser::Serialize for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::SaveId
+pub fn tungsten_core::SaveId::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::SaveId
+impl core::marker::Send for tungsten_core::SaveId
+impl core::marker::Sync for tungsten_core::SaveId
+impl core::marker::Unpin for tungsten_core::SaveId
+impl core::marker::UnsafeUnpin for tungsten_core::SaveId
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveId
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveId
+pub struct tungsten_core::SaveOptions<T>
+impl<T: 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::form<F>() -> Self where F: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + for<'a> core::convert::From<&'a T>, T: core::convert::From<F>
+pub fn tungsten_core::SaveOptions<T>::refs(self, tungsten_core::save::RefCodec<T>) -> Self
+pub fn tungsten_core::SaveOptions<T>::step(self, u32, tungsten_core::save::MigrationStep) -> Self
+pub fn tungsten_core::SaveOptions<T>::version(self, u32) -> Self
+impl<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static> tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::new() -> Self
+impl<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static> core::default::Default for tungsten_core::SaveOptions<T>
+pub fn tungsten_core::SaveOptions<T>::default() -> Self
+impl<T> core::marker::Freeze for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Send for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Sync for tungsten_core::SaveOptions<T>
+impl<T> core::marker::Unpin for tungsten_core::SaveOptions<T>
+impl<T> core::marker::UnsafeUnpin for tungsten_core::SaveOptions<T>
+impl<T> core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveOptions<T>
+impl<T> core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveOptions<T>
+pub struct tungsten_core::SaveRegistry
+impl tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::component_has_refs(&self, &str) -> bool
+pub fn tungsten_core::SaveRegistry::component_name<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::SaveRegistry::component_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::SaveRegistry::component_version(&self, &str) -> core::option::Option<u32>
+pub fn tungsten_core::SaveRegistry::new() -> Self
+pub fn tungsten_core::SaveRegistry::register<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::SaveRegistry::register_resource<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::SaveRegistry::resource_has_refs(&self, &str) -> bool
+pub fn tungsten_core::SaveRegistry::resource_name<T: 'static>(&self) -> core::option::Option<&str>
+pub fn tungsten_core::SaveRegistry::resource_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::SaveRegistry::resource_version(&self, &str) -> core::option::Option<u32>
+impl core::clone::Clone for tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::clone(&self) -> tungsten_core::SaveRegistry
+impl core::default::Default for tungsten_core::SaveRegistry
+pub fn tungsten_core::SaveRegistry::default() -> tungsten_core::SaveRegistry
+impl core::marker::Freeze for tungsten_core::SaveRegistry
+impl !core::marker::Send for tungsten_core::SaveRegistry
+impl !core::marker::Sync for tungsten_core::SaveRegistry
+impl core::marker::Unpin for tungsten_core::SaveRegistry
+impl core::marker::UnsafeUnpin for tungsten_core::SaveRegistry
+impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::SaveRegistry
+impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::SaveRegistry
 pub struct tungsten_core::SaveSlots
 impl tungsten_core::save::SaveSlots
 pub fn tungsten_core::save::SaveSlots::delete(&self, &str) -> core::result::Result<(), tungsten_core::save::SaveError>
@@ -18483,6 +18745,26 @@ impl core::marker::Unpin for tungsten_core::save::SaveSlots
 impl core::marker::UnsafeUnpin for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
+pub struct tungsten_core::Saved
+impl tungsten_core::Saved
+pub fn tungsten_core::Saved::area(&self) -> core::option::Option<&str>
+pub fn tungsten_core::Saved::id(&self) -> tungsten_core::SaveId
+pub fn tungsten_core::Saved::prefab(&self) -> core::option::Option<&str>
+impl core::clone::Clone for tungsten_core::Saved
+pub fn tungsten_core::Saved::clone(&self) -> tungsten_core::Saved
+impl core::cmp::Eq for tungsten_core::Saved
+impl core::cmp::PartialEq for tungsten_core::Saved
+pub fn tungsten_core::Saved::eq(&self, &tungsten_core::Saved) -> bool
+impl core::fmt::Debug for tungsten_core::Saved
+pub fn tungsten_core::Saved::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::Saved
+impl core::marker::Freeze for tungsten_core::Saved
+impl core::marker::Send for tungsten_core::Saved
+impl core::marker::Sync for tungsten_core::Saved
+impl core::marker::Unpin for tungsten_core::Saved
+impl core::marker::UnsafeUnpin for tungsten_core::Saved
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::Saved
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::Saved
 pub struct tungsten_core::ScaleFactor
 impl tungsten_core::display::ScaleFactor
 pub fn tungsten_core::display::ScaleFactor::get(&self) -> f32
@@ -20173,6 +20455,11 @@ impl tungsten_core::World
 pub fn tungsten_core::World::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
 pub fn tungsten_core::World::register_component_with<D, B>(&mut self, &str, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
 pub fn tungsten_core::World::register_component_with_assets<D, B>(&mut self, &str, impl core::ops::function::Fn(&D, &tungsten_core::World) -> core::result::Result<(), tungsten_core::component_registry::MissingAsset> + 'static, impl core::ops::function::Fn(D, &tungsten_core::component_registry::SpawnContext<'_>) -> B + 'static) -> bool where D: serde_core::de::DeserializeOwned + 'static, B: tungsten_core::ecs::bundle::Bundle
+impl tungsten_core::World
+pub fn tungsten_core::World::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str) -> bool
+pub fn tungsten_core::World::register_saved_resource_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
+pub fn tungsten_core::World::register_saved_with<T: 'static>(&mut self, &str, tungsten_core::SaveOptions<T>) -> bool
 impl core::default::Default for tungsten_core::World
 pub fn tungsten_core::World::default() -> Self
 impl core::marker::Freeze for tungsten_core::World

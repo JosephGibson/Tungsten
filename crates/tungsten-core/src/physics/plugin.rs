@@ -5,7 +5,7 @@
 //! `D-007`).
 
 use glam::Vec2;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::component_registry::{MissingAsset, SpawnContext};
 use crate::components::Transform;
@@ -15,6 +15,7 @@ use crate::physics::{
     PhysicsMaterials, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered,
     SensorExited, Shape, Spin, Velocity, physics_step,
 };
+use crate::save::SaveOptions;
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
 
@@ -29,7 +30,8 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 /// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
 /// `EventQueue<CollisionEvent>`, `EventQueue<ContactBegan>`,
 /// `EventQueue<ContactEnded>`, `EventQueue<SensorEntered>`,
-/// `EventQueue<SensorExited>` and the
+/// `EventQueue<SensorExited>`, the saved components `position`, `velocity`
+/// and `spin` (each through a saved form of its own), and the
 /// `rigid_body` scene component, which
 /// spawns a [`RigidBodyBundle`] at the entry's position
 /// ([`component_registry`](crate::component_registry)), its layer and
@@ -49,6 +51,9 @@ impl Plugin for PhysicsPlugin {
         world.register_event::<SensorEntered>();
         world.register_event::<SensorExited>();
         world.register_component_with_assets(RIGID_BODY, check_rigid_body, spawn_rigid_body);
+        world.register_saved_with("position", SaveOptions::<Position>::form::<SavedVec>());
+        world.register_saved_with("velocity", SaveOptions::<Velocity>::form::<SavedVec>());
+        world.register_saved_with("spin", SaveOptions::<Spin>::form::<SavedSpin>());
         schedule.add(
             Stage::FixedUpdate,
             system(PHYSICS_PREV_SNAPSHOT, physics_prev_snapshot),
@@ -129,6 +134,63 @@ pub fn physics_sync(world: &mut World) {
 
 /// The scene component [`PhysicsPlugin`] registers.
 const RIGID_BODY: &str = "rigid_body";
+
+/// `Position` and `Velocity` in a save: `[x, y]`.
+#[derive(Serialize, Deserialize)]
+struct SavedVec([f32; 2]);
+
+impl From<&Position> for SavedVec {
+    fn from(position: &Position) -> Self {
+        Self(position.0.to_array())
+    }
+}
+
+impl From<SavedVec> for Position {
+    fn from(saved: SavedVec) -> Self {
+        Self(Vec2::from_array(saved.0))
+    }
+}
+
+impl From<&Velocity> for SavedVec {
+    fn from(velocity: &Velocity) -> Self {
+        Self(velocity.0.to_array())
+    }
+}
+
+impl From<SavedVec> for Velocity {
+    fn from(saved: SavedVec) -> Self {
+        Self(Vec2::from_array(saved.0))
+    }
+}
+
+/// `Spin` in a save, its history included, so a restore draws no jump.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedSpin {
+    angle: f32,
+    angular_velocity: f32,
+    prev_angle: f32,
+}
+
+impl From<&Spin> for SavedSpin {
+    fn from(spin: &Spin) -> Self {
+        Self {
+            angle: spin.angle,
+            angular_velocity: spin.angular_velocity,
+            prev_angle: spin.prev_angle,
+        }
+    }
+}
+
+impl From<SavedSpin> for Spin {
+    fn from(saved: SavedSpin) -> Self {
+        Self {
+            angle: saved.angle,
+            angular_velocity: saved.angular_velocity,
+            prev_angle: saved.prev_angle,
+        }
+    }
+}
 
 /// The largest collider size and offset a scene names, in pixels: with the
 /// transform's ±2^24, a scene's bodies stay inside the broadphase's `i32`

@@ -60,6 +60,8 @@ pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnc
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
+pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
 pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>
@@ -1161,6 +1163,8 @@ pub fn tungsten::app::App::on_startup(&mut self, impl core::ops::function::FnOnc
 pub fn tungsten::app::App::register_component<T: serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::register_event<T: 'static>(&mut self)
 pub fn tungsten::app::App::register_inspectable<T: 'static + tungsten_core::inspect::Inspectable>(&mut self, &'static str)
+pub fn tungsten::app::App::register_saved<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
+pub fn tungsten::app::App::register_saved_resource<T: serde_core::ser::Serialize + serde_core::de::DeserializeOwned + 'static>(&mut self, &str)
 pub fn tungsten::app::App::renderer_mut(&mut self) -> core::option::Option<&mut tungsten_render::renderer::Renderer>
 pub fn tungsten::app::App::resolve_schedule(&mut self) -> anyhow::Result<()>
 pub fn tungsten::app::App::run(self) -> anyhow::Result<()>

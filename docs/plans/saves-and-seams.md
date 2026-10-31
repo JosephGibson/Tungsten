@@ -1,6 +1,6 @@
 # Saves of many areas (saves-and-seams) — draft
 
-- **status:** draft
+- **status:** in progress
 - **goal:** The first of redo 7.9's two plans (phase 7's Step 7 and §2.8; the redo's 7.9 row and §5.5): saves the engine does for the game. A save identity on each entity a save keeps, from its authored name or, for a run's spawn, from the run's counter at the spawn; a registry of saved components and resources, each with its own version and migration steps, that the kit fills for its own; a capture per area under its level reference, a named entity's changes laid over its fresh spawn, a run's spawns in full, despawns, tile edits and health, registered resources, and entity references by save ID resolved in a second pass, those into an area not loaded kept until it loads; a restored body set out of solids at its nearest free spot; slot migrations a schema at a time and a stamped writer for tests; the kit's same-step orders by save ID; the template's capture and restore one call each; a `saves` benchmark row and its counter guard. It lands P7-8, S-2, S-3, S-43, S-59 (the kit's part), S-101 and S-125.
 - **non-goals:**
   - 7.9's second plan: §5.4's boot loading and its row, sprite sheets (P7-15), sound hot reload and the small seams (P7-10, P7-13, P7-14, K2, K4, K9, S-38, S-25, S-27, S-29, S-40, S-46, S-58, S-63, S-70, S-71, S-76, S-87, S-89, S-95, S-97, S-113, S-117, S-137, S-138, S-143, S-148, S-173, S-179) (Q1).
@@ -326,6 +326,7 @@ Round 2: the same reviewer at xhigh, 2026-10-31, reading `d72b0cb8` with this pl
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-31 | done | `save::` 20 passed (the 9 named); `physics::plugin::` 23, `app::` 46 passed; kit 678 + 109, tungsten 747 + 27, 01 443 (1 ignored) passed; examples and templates unchanged; guards: 02 10, 01 1 passed; `just physics-release` 16 passed; determinism 1 passed; fmt, lint, `just api-check`, `just docs-ratchet` (no rise) exit 0 | `crates/tungsten-core/src/save/{id,registry}.rs`, `crates/tungsten-core/src/tests/save/`, `crates/tungsten-core/src/physics/plugin.rs`, `crates/tungsten/src/app.rs`, `api/` |
 
 ## Follow-ups
 

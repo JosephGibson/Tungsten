@@ -57,6 +57,46 @@ fn m30_game_feel_events_are_pre_registered() {
 }
 
 #[test]
+fn the_app_registers_transform_and_visibility_and_a_games_own() {
+    use serde::{Deserialize, Serialize};
+    use tungsten_core::save::SaveRegistry;
+    use tungsten_core::{Position, Transform, Visibility};
+
+    #[derive(Serialize, Deserialize)]
+    struct Gold(u32);
+
+    #[derive(Serialize, Deserialize)]
+    struct Weather {
+        raining: bool,
+    }
+
+    let mut app = App::new(Config::default()).expect("App::new failed");
+    app.register_saved::<Gold>("gold");
+    app.register_saved::<Gold>("gold");
+    app.register_saved_resource::<Weather>("weather");
+    let registry = app.world.resource::<SaveRegistry>();
+    assert_eq!(registry.component_name::<Transform>(), Some("transform"));
+    assert_eq!(registry.component_name::<Visibility>(), Some("visibility"));
+    assert_eq!(
+        registry.component_name::<Position>(),
+        Some("position"),
+        "the default plugins' physics"
+    );
+    assert_eq!(registry.component_name::<Gold>(), Some("gold"));
+    assert_eq!(registry.resource_name::<Weather>(), Some("weather"));
+    assert_eq!(registry.component_version("gold"), Some(1));
+
+    let bare = App::with_plugins(Config::default(), tungsten_core::PluginSet::new())
+        .expect("App::with_plugins failed");
+    let registry = bare.world.resource::<SaveRegistry>();
+    assert_eq!(
+        registry.component_names().collect::<Vec<_>>(),
+        ["transform", "visibility"],
+        "the app's own whichever plugins run"
+    );
+}
+
+#[test]
 fn startup_display_downgrades_invalid_resolution_to_engine_defaults() {
     let mut config = Config::default();
     config.window.width = 0;

@@ -30,12 +30,14 @@ use crate::telemetry::{DisplayTelemetry, FrameTimings, RenderCounts};
 use crate::user_dir::{self, Platform};
 use log::LevelFilter;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use tungsten_core::assets::{
     FontRegistry, ParticleConfigRegistry, ParticleMeshRegistry, ShaderRegistry, SoundRegistry,
     TilemapRegistry,
 };
 use tungsten_core::physics::{PhysicsBuffers, PhysicsConfig};
 use tungsten_core::post::{PostPass, PostStack};
+use tungsten_core::save::SaveOptions;
 use tungsten_core::ui::{
     CursorIcon, PaintList, UiDebug, UiRouter, UiThemeRegistry, UiTree, WindowPlacements,
 };
@@ -44,7 +46,7 @@ use tungsten_core::{
     CommandBuffer, ComponentRegistry, Config, ConfigError, DebugDraw, DebugShape, DisplayMode,
     DisplayState, InputState, InspectRegistry, Inspectable, ParticleActive, ParticleBudget, Plugin,
     PluginSet, RawInput, RoutedInput, SaveSlots, Schedule, Settings, Stage, SystemDesc, Time,
-    TimeConfig, World, WorldLabels, WorldRngSeed, system,
+    TimeConfig, Transform, Visibility, World, WorldLabels, WorldRngSeed, system,
 };
 use tungsten_render::renderer::RenderError;
 use tungsten_render::{
@@ -411,6 +413,15 @@ impl App {
         // extracts draw; plugins register theirs as they build.
         world.insert_resource(ComponentRegistry::new());
         asset_loader::register_extract_components(&mut world);
+        // Redo 7.9: the saved components every game draws with.
+        world.register_saved_with(
+            "transform",
+            SaveOptions::<Transform>::form::<SavedTransform>(),
+        );
+        world.register_saved_with(
+            "visibility",
+            SaveOptions::<Visibility>::form::<SavedVisibility>(),
+        );
         // M26: empty post stack by default — byte-identical to M25 baseline.
         world.insert_resource(tungsten_core::post::PostStack::new());
         // M27: track post-AA state from startup config; pending request seam.
@@ -494,6 +505,33 @@ impl App {
     #[track_caller]
     pub fn register_component<T: DeserializeOwned + 'static>(&mut self, name: &str) {
         self.world.register_component::<T>(name);
+    }
+
+    /// [`World::register_saved`] on the app's world: a save of the world
+    /// holds each saved entity's `T` under `name`.
+    ///
+    /// # Panics
+    ///
+    /// When `name` is not `[a-z][a-z0-9_]*`, already names another type, or
+    /// `T` already has another name
+    /// ([`SaveRegistry::register`](tungsten_core::save::SaveRegistry::register)).
+    #[track_caller]
+    pub fn register_saved<T: Serialize + DeserializeOwned + 'static>(&mut self, name: &str) {
+        self.world.register_saved::<T>(name);
+    }
+
+    /// [`World::register_saved_resource`] on the app's world: a save of the
+    /// world holds resource `T` whole under `name`.
+    ///
+    /// # Panics
+    ///
+    /// As [`register_saved`](Self::register_saved).
+    #[track_caller]
+    pub fn register_saved_resource<T: Serialize + DeserializeOwned + 'static>(
+        &mut self,
+        name: &str,
+    ) {
+        self.world.register_saved_resource::<T>(name);
     }
 
     /// Builds `plugin` into the schedule and the world now.
@@ -2117,6 +2155,51 @@ fn manifest_reload_roots(roots: &[PathBuf], manifest_path: Option<&Path>) -> Vec
 }
 
 /// True when the canonical path `canon` names one of `reload_roots`.
+/// `Transform` in a save.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SavedTransform {
+    position: [f32; 2],
+    rotation: f32,
+    scale: [f32; 2],
+}
+
+impl From<&Transform> for SavedTransform {
+    fn from(transform: &Transform) -> Self {
+        Self {
+            position: transform.position.to_array(),
+            rotation: transform.rotation,
+            scale: transform.scale.to_array(),
+        }
+    }
+}
+
+impl From<SavedTransform> for Transform {
+    fn from(saved: SavedTransform) -> Self {
+        Self {
+            position: saved.position.into(),
+            rotation: saved.rotation,
+            scale: saved.scale.into(),
+        }
+    }
+}
+
+/// `Visibility` in a save: whether it is drawn.
+#[derive(Serialize, Deserialize)]
+struct SavedVisibility(bool);
+
+impl From<&Visibility> for SavedVisibility {
+    fn from(visibility: &Visibility) -> Self {
+        Self(visibility.visible)
+    }
+}
+
+impl From<SavedVisibility> for Visibility {
+    fn from(saved: SavedVisibility) -> Self {
+        Self { visible: saved.0 }
+    }
+}
+
 fn is_reload_root(canon: &Path, reload_roots: &[PathBuf]) -> bool {
     reload_roots
         .iter()
