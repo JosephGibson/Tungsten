@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the five benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the six benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The five benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The six benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest.
@@ -144,6 +144,25 @@ Owns particle emit, tick and count refresh, and animation playback. Warm-up 180 
 - **Owned:** `particle_count_refresh`, `particle_emit`, `particle_tick` and `animate_sprites`, each p50/p95 (`D-133`).
 - **Guard:** `bench.live within ±10% of its median`.
 
+## `terrain`
+
+Owns the runtime terrain's share of `physics_step` (redo 7.8): the registry's writes and journal, the tile cache's chunk re-traces and the edited map's proxy rebuild, the pair grid's tile restage and the sensors' re-test of the cells written under them. Warm-up 120 frames. Module: `terrain.rs`.
+
+- **Cave.** A seeded cave of 16 px cells under a sky band an eighth of the map's height: noise smoothed four times, cut by a two-column drain every 64 columns, in a collision layer and a styled art layer of 16 generated variants and a brush, auto-tiled by open sides. Each frame refills the cells it broke 60 frames before, then breaks `edits` floors (solid cells under air), a seeded one in each column of a seeded walk, in both layers, so from the 60th frame on the solid count holds. Circles of 3, 4.5 and 6 px fall on it and through the floors broken under them; one below the map respawns in the sky. Each of the `sensors` sensors is a column the map's height. The art layer draws through the engine's tilemap extract and the bodies through the lean view, the camera fitting the map.
+- **Settling.** Bodies collect in the cave's pits slowly, the awake count falling from 1,200 to about 960 over a `default` capture, while `physics_step` holds: the edited map's proxy rebuild and the tile restage lead it (p50 5.35 ms, p95 5.77 ms on the reference machine, 2026-10-30).
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `width`, `height` | 512, 192 | 32–4,096, 32–1,024 | | Cells of 16 px, the sky's band included |
+| `bodies` | 1,200 | 0–20,000 | yes | |
+| `edits` | 32 | 1–256 | yes | Floors broken a frame in both layers; as many refilled |
+| `sensors` | 4 | 0–16 | | |
+
+- **Presets:** `min` (64 × 32 cells, 60 bodies, 4 edits, one sensor) and `default`.
+- **Counters:** `bench:` `bodies`, `edits`, `refills`, `traced` (chunks traced that frame), `awake`, `respawns` and `visible`.
+- **Owned:** `physics_step` p50/p95 and `update` p95.
+- **Guards:** `bench.edits constant` and `bench.traced <= 256`, 8 × `edits`: each of a frame's 2 × `edits` collision writes re-traces at most the chunks within one cell of it.
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
@@ -178,6 +197,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `particles` | `guards_particles` | `particles` at `min` | emitters and animated sprites; instances = visible sprites by the default extract's cull |
 | `gpu` | `guards_gpu` | `gpu` at `min` | field and glow sprites, lights, tilemap; instances = sprites plus visible tiles |
 | `gpu-throughput` | `guards_gpu_throughput` | `gpu` at `throughput`, scale 0.01 | as `gpu` |
+| `terrain` | `guards_terrain` | `terrain` at `min` | `Body` count = `bodies`, `Sensor` count = `sensors`, one map; the warm-up's last frame and the window's last break and refill `edits` cells each and trace 1 to 8 × `edits` chunks; every frame's instances = bodies in view plus visible art tiles |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 
 Each bench guard runs its row's warm-up and a 60-frame window at the configuration named, and asserts the row its configuration measures before any pin. A rise in a cost counter needs a fix or its cause in the change's plan. The template has none: `tungsten new` copies the template's tests into every game.
@@ -194,7 +214,7 @@ Each bench guard runs its row's warm-up and a 60-frame window at the configurati
 - **Text-cache RSS:** closed (`D-085`).
 - **Default extract:** open in part. Rewritten (`D-086`), interned (`D-113`) and culled (`D-114`); it still leads `gpu-throughput` (12.15 of 13.68 ms `total` p50 on 2026-10-04), and the bound test costs rows with every sprite in view; Engine findings, `gpu`.
 - **Surface clear and present blit:** closed for the blit (`D-087`); the clear in the first swapchain pass stays, which only `LoadOp::DontCare` (`unsafe`) removes; Engine findings.
-- **Tile collision proxies:** open. Rebuilt from a full-map scan every frame, 8,528 proxies and about 1.9 ms of `physics_step` in the retired `integrated` row; Engine findings.
+- **Tile collision proxies:** open in part. Kept across steps (`D-203`) and re-traced by 16 × 16 chunk after an edit (runtime-terrain); a frame with an edit still rebuilds the edited map's proxies and restages the pair grid's tiles, which lead `terrain`'s 5.35 ms `physics_step` p50 (2026-10-30); dropping the interior cells, which make no contact, is the measured next step (ROADMAP.md, Later).
 - **Contact wakes rebuild the pair list:** open. Re-pairing a woken proxy would remove about 2.5 builds a frame where wakes are common, and needs its own decision (`D-081`); Engine findings.
 - **Bundle insert:** closed (`D-135`).
 - **Archetype count:** open. `ecs` `update` p50 9.14 / 10.52 / 19.15 ms at 64 / 488 / 3,189 archetypes, consistent with each column's first cache lines missing; no candidate without `unsafe`; Engine findings.

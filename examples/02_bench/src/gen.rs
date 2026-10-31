@@ -418,6 +418,25 @@ pub(crate) fn tile_rgba(variant: u32, size: u32) -> Vec<u8> {
     })
 }
 
+/// `terrain`'s art tile for open sides `mask` (1 up, 2 right, 4 down, 8
+/// left): grey-brown rock with a lit rim on each open side. `None` is the
+/// style's brush, magenta, which no cell keeps once the auto-tiler picks.
+pub(crate) fn terrain_rgba(mask: Option<u8>, size: u32) -> Vec<u8> {
+    paint(size, |_, _, px, py| {
+        let Some(mask) = mask else {
+            return [0.9, 0.2, 0.8, 1.0];
+        };
+        let rim = (size / 8).max(1);
+        let lit = (mask & 1 != 0 && py < rim)
+            || (mask & 2 != 0 && px >= size - rim)
+            || (mask & 4 != 0 && py >= size - rim)
+            || (mask & 8 != 0 && px < rim);
+        let noise = (hash(px, py, 0x7e44) & 0xff) as f32 / 255.0;
+        let shade = if lit { 1.0 } else { 0.62 + 0.18 * noise };
+        [0.50 * shade, 0.44 * shade, 0.38 * shade, 1.0]
+    })
+}
+
 /// Frame `frame` of `frames` for clip `clip`: a disc in the clip's hue with
 /// a spoke that turns once over the clip and a filling wedge.
 pub(crate) fn anim_frame_rgba(clip: u32, frame: u32, frames: u32, size: u32) -> Vec<u8> {

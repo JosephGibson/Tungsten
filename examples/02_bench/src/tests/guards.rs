@@ -18,9 +18,11 @@ use tungsten::core::{
 use tungsten::testing::{CounterGuard, Harness};
 
 use crate::churn::Life;
+use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
+use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
 
@@ -83,6 +85,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
                 .expect("the bench manifest loads headless");
             gpu::startup(harness.world_mut(), &mut textures, cfg);
         }
+        "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
         other => panic!("no guard startup for bench {other}"),
     }
     harness
@@ -285,4 +288,64 @@ fn guards_gpu_throughput() {
         gpu_populations,
         gpu_drawable,
     );
+}
+
+/// `terrain`'s drawable instances: the bodies in view and the art layer's
+/// visible tiles.
+fn terrain_drawable(world: &World) -> u64 {
+    view_drawable(world) + u64::from(gpu::visible_tiles(world))
+}
+
+/// The last frame's edits, refills and chunks traced.
+fn terrain_edits(world: &World) -> (u64, u64, u64) {
+    let counts = &world.resource::<BenchCounters<TerrainCounts>>().counts;
+    (
+        u64::from(counts.edits),
+        u64::from(counts.refills),
+        u64::from(counts.traced),
+    )
+}
+
+#[test]
+fn guards_terrain() {
+    let bench = knobs::select(BENCHES, Some("terrain")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some("min"), None, None).expect("a configuration");
+    assert_eq!(
+        cfg.row(),
+        "terrain",
+        "the configuration measures another row"
+    );
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(
+        count::<terrain::Body>(world),
+        knob(&cfg, "bodies"),
+        "bodies"
+    );
+    assert_eq!(
+        count::<terrain::Sensor>(world),
+        knob(&cfg, "sensors"),
+        "sensors"
+    );
+    assert_eq!(count::<TilemapInstance>(world), 1, "the map");
+    // Past the first refills, the warm-up's last frame and the window's
+    // break and refill `edits` cells each and trace at most the 8 × `edits`
+    // chunks around them.
+    CounterGuard::measure(&mut harness, cfg.bench.warmup, 0);
+    let edits = knob(&cfg, "edits");
+    let check = |(broken, refilled, traced): (u64, u64, u64), when: &str| {
+        assert_eq!((broken, refilled), (edits, edits), "{when}: edits");
+        assert!(
+            traced > 0 && traced <= 8 * edits,
+            "{when}: {traced} chunks traced"
+        );
+    };
+    check(terrain_edits(harness.world()), "warm-up");
+    let reading = measure(&mut harness, 0, terrain_drawable);
+    check(terrain_edits(harness.world()), "window");
+    assert!(
+        reading.max_sprite_instances > 0,
+        "terrain: the guard drew nothing"
+    );
+    reading.check(manifest_path("src/tests/guards/terrain.json"));
 }
