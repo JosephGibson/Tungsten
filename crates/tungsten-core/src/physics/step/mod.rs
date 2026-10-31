@@ -120,9 +120,10 @@ use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
     Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP,
 };
-use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
+use super::components::{BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Velocity};
 use super::events::{CollisionEvent, SensorEntered};
 use super::query::{IndexEntry, SpatialIndex};
+use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
 use glam::Vec2;
@@ -413,6 +414,19 @@ pub struct PhysicsBuffers {
     /// Scratch: island tags scheduled to wake this frame.
     wake_islands: Vec<u64>,
     arrival: ArrivalScratch,
+    /// The step's state beyond the proxies' own.
+    extra: Box<StepExtra>,
+}
+
+/// The step's state that no fixed field of [`PhysicsBuffers`] holds, boxed:
+/// the step moves the buffers out of the World and back each step, so they
+/// grow by this pointer alone. Its vectors are cleared and refilled, so a
+/// steady world allocates nothing new a step.
+#[derive(Debug, Default)]
+struct StepExtra {
+    /// Each entity proxy's gravity scale, in proxy order; empty while every
+    /// one is 1.
+    gravity_scales: Vec<f32>,
 }
 
 impl PhysicsBuffers {
@@ -599,6 +613,27 @@ pub fn wake(world: &mut World, entity: Entity) {
     }
 }
 
+/// Moves `entity` to `at` at once: its `Position`, `PrevPosition` and
+/// `Transform.position`, each it has, set to `at`, its `Velocity` zeroed
+/// when it has one, and its island woken, so nothing draws it sliding from
+/// the old point. A kinematic body or a sensor jumps as a `Position` write
+/// moves it: no contact sees the jump.
+pub fn teleport(world: &mut World, entity: Entity, at: Vec2) {
+    if let Some(position) = world.get_mut::<Position>(entity) {
+        position.0 = at;
+    }
+    if let Some(prev) = world.get_mut::<PrevPosition>(entity) {
+        prev.0 = at;
+    }
+    if let Some(transform) = world.get_mut::<Transform>(entity) {
+        transform.position = at;
+    }
+    if let Some(velocity) = world.get_mut::<Velocity>(entity) {
+        velocity.0 = Vec2::ZERO;
+    }
+    wake(world, entity);
+}
+
 /// Run one physics tick with fixed substeps (D-064), advancing at most
 /// `PhysicsConfig::max_step_dt` of the frame's game dt, [`Time::delta`]
 /// (D-094); a paused clock leaves every body as it is.
@@ -636,6 +671,7 @@ pub fn physics_step(world: &mut World) {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     let substeps = substep_count(&config, dt, kinematics > 0);
@@ -707,6 +743,20 @@ pub fn physics_step(world: &mut World) {
     world.insert_resource(buffers);
 }
 
+/// The config the pair budgets read (D-081): `config`, its gravity times
+/// the largest gravity scale's size when one is above 1, so a body falling
+/// faster than the world's gravity keeps its pairs; at scales up to 1 the
+/// budgets are `config`'s, bit for bit.
+fn pair_config(config: &PhysicsConfig, gravity_scales: &[f32]) -> PhysicsConfig {
+    let lift = gravity_scales
+        .iter()
+        .fold(1.0_f32, |most, &scale| most.max(scale.abs()));
+    PhysicsConfig {
+        gravity: config.gravity * lift,
+        ..*config
+    }
+}
+
 /// The step's substep count (D-064): `PhysicsConfig::substeps`, or, in a
 /// world with a kinematic proxy, enough that no substep is longer than a
 /// 1/60 s step's, from `substeps` up to twice it. Contacts against a
@@ -774,7 +824,7 @@ fn write_back(world: &mut World, proxies: &[Proxy], sensors: &mut [SensorBody], 
 /// once per frame (old behavior integrated them per substep — for pure
 /// ballistic motion the trajectories differ only at O(g·dt²)). A
 /// collider-less kinematic body or sensor moves by its velocity, without
-/// gravity.
+/// gravity. A dynamic one falls by its gravity scale.
 /// Columnar pass over collider-less archetypes; no per-entity lookups.
 fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
     for (_entity, velocity, position, body) in world.query_mut_filtered::<(
@@ -786,7 +836,7 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
     {
         match body.kind {
             BodyKind::Dynamic => {
-                velocity.0 += gravity * dt;
+                velocity.0 += gravity * dt * body.gravity_scale;
                 position.0 += velocity.0 * dt;
             }
             BodyKind::Kinematic | BodyKind::Sensor => position.0 += velocity.0 * dt,
@@ -797,7 +847,8 @@ fn integrate_loose_bodies(world: &mut World, dt: f32, gravity: Vec2) {
 
 /// One solver substep: contacts once, warm-started soft solve, integrate,
 /// arrival pass, relax, restitution, speculative safety net. Runs entirely on the
-/// dense proxy arrays — no `World` access (D-066).
+/// dense proxy arrays — no `World` access (D-066). The pair budgets read
+/// [`pair_config`]'s gravity.
 fn substep(
     config: &PhysicsConfig,
     sub_dt: f32,
@@ -805,7 +856,8 @@ fn substep(
     buffers: &mut PhysicsBuffers,
     sleep_enabled: bool,
 ) {
-    refresh_pairs(config, sub_dt, time_left, buffers);
+    let pair_config = pair_config(config, &buffers.extra.gravity_scales);
+    refresh_pairs(&pair_config, sub_dt, time_left, buffers);
     #[cfg(test)]
     if buffers.check_pair_contacts {
         tests::assert_pair_contacts(config, sub_dt, buffers);
@@ -836,6 +888,7 @@ fn substep(
         island_parent,
         kept,
         arrival,
+        extra,
         ..
     } = buffers;
     candidates.clear();
@@ -988,16 +1041,34 @@ fn substep(
     // arrival pass measures what the solve adds against it (D-092).
     // Tile proxies follow the entity proxies and never move: the passes
     // that skip them walk the entity proxies alone.
+    // A body falls by its gravity scale; while every scale is 1 the loop
+    // reads none.
     let bodies = *bodies;
     arrival.fit(proxies.len());
-    for (proxy, admitted) in proxies[..bodies]
-        .iter_mut()
-        .zip(arrival.admitted.iter_mut())
-    {
-        if proxy.is_dynamic && !proxy.sleeping {
-            *admitted = proxy.velocity;
-            if proxy.has_velocity {
-                proxy.velocity += config.gravity * sub_dt;
+    let gravity = config.gravity * sub_dt;
+    if extra.gravity_scales.is_empty() {
+        for (proxy, admitted) in proxies[..bodies]
+            .iter_mut()
+            .zip(arrival.admitted.iter_mut())
+        {
+            if proxy.is_dynamic && !proxy.sleeping {
+                *admitted = proxy.velocity;
+                if proxy.has_velocity {
+                    proxy.velocity += gravity;
+                }
+            }
+        }
+    } else {
+        for ((proxy, admitted), &scale) in proxies[..bodies]
+            .iter_mut()
+            .zip(arrival.admitted.iter_mut())
+            .zip(&extra.gravity_scales)
+        {
+            if proxy.is_dynamic && !proxy.sleeping {
+                *admitted = proxy.velocity;
+                if proxy.has_velocity {
+                    proxy.velocity += gravity * scale;
+                }
             }
         }
     }

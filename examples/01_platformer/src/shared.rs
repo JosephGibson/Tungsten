@@ -205,8 +205,10 @@ pub fn fit_body(world: &mut World, entity: Entity, actor: &str) {
 pub fn surface_distance(at: Vec2, centre: Vec2, shape: Shape) -> f32 {
     let offset = at - centre;
     match shape {
-        Shape::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
         Shape::Circle { radius } => (offset.length() - radius).max(0.0),
+        other => (offset.abs() - other.half_extents())
+            .max(Vec2::ZERO)
+            .length(),
     }
 }
 

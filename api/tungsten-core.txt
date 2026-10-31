@@ -7153,11 +7153,14 @@ impl core::marker::Unpin for tungsten_core::physics::components::BodyKind
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::BodyKind
-pub enum tungsten_core::physics::components::Shape
+#[non_exhaustive] pub enum tungsten_core::physics::components::Shape
 pub tungsten_core::physics::components::Shape::Aabb
 pub tungsten_core::physics::components::Shape::Aabb::half_extents: glam::f32::vec2::Vec2
 pub tungsten_core::physics::components::Shape::Circle
 pub tungsten_core::physics::components::Shape::Circle::radius: f32
+impl tungsten_core::physics::components::Shape
+pub fn tungsten_core::physics::components::Shape::distance(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_core::physics::components::Shape::half_extents(&self) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::physics::components::Shape
 pub fn tungsten_core::physics::components::Shape::clone(&self) -> tungsten_core::physics::components::Shape
 impl core::cmp::PartialEq for tungsten_core::physics::components::Shape
@@ -7178,8 +7181,10 @@ pub tungsten_core::physics::components::Collider::offset: glam::f32::vec2::Vec2
 pub tungsten_core::physics::components::Collider::shape: tungsten_core::physics::components::Shape
 impl tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::aabb(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::center(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics::components::Collider::circle(f32) -> Self
 pub fn tungsten_core::physics::components::Collider::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::world_box(&self, glam::f32::vec2::Vec2) -> tungsten_core::physics::collision::Aabb
 impl core::clone::Clone for tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::clone(&self) -> tungsten_core::physics::components::Collider
 impl core::cmp::PartialEq for tungsten_core::physics::components::Collider
@@ -7232,6 +7237,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::components::RigidBody
+pub tungsten_core::physics::components::RigidBody::gravity_scale: f32
 pub tungsten_core::physics::components::RigidBody::inv_mass: f32
 pub tungsten_core::physics::components::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::physics::components::RigidBody::layers: u32
@@ -7245,6 +7251,7 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
@@ -7403,6 +7410,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::step::TerrainFace
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::step::TerrainFace
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::step::TerrainFace
 pub fn tungsten_core::physics::step::physics_step(&mut tungsten_core::World)
+pub fn tungsten_core::physics::step::teleport(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2)
 pub fn tungsten_core::physics::step::wake(&mut tungsten_core::World, tungsten_core::Entity)
 #[non_exhaustive] pub enum tungsten_core::physics::BodyKind
 pub tungsten_core::physics::BodyKind::Dynamic
@@ -7425,11 +7433,14 @@ impl core::marker::Unpin for tungsten_core::physics::components::BodyKind
 impl core::marker::UnsafeUnpin for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::BodyKind
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::BodyKind
-pub enum tungsten_core::physics::Shape
+#[non_exhaustive] pub enum tungsten_core::physics::Shape
 pub tungsten_core::physics::Shape::Aabb
 pub tungsten_core::physics::Shape::Aabb::half_extents: glam::f32::vec2::Vec2
 pub tungsten_core::physics::Shape::Circle
 pub tungsten_core::physics::Shape::Circle::radius: f32
+impl tungsten_core::physics::components::Shape
+pub fn tungsten_core::physics::components::Shape::distance(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_core::physics::components::Shape::half_extents(&self) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::physics::components::Shape
 pub fn tungsten_core::physics::components::Shape::clone(&self) -> tungsten_core::physics::components::Shape
 impl core::cmp::PartialEq for tungsten_core::physics::components::Shape
@@ -7475,8 +7486,10 @@ pub tungsten_core::physics::Collider::offset: glam::f32::vec2::Vec2
 pub tungsten_core::physics::Collider::shape: tungsten_core::physics::components::Shape
 impl tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::aabb(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::center(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics::components::Collider::circle(f32) -> Self
 pub fn tungsten_core::physics::components::Collider::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::world_box(&self, glam::f32::vec2::Vec2) -> tungsten_core::physics::collision::Aabb
 impl core::clone::Clone for tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::clone(&self) -> tungsten_core::physics::components::Collider
 impl core::cmp::PartialEq for tungsten_core::physics::components::Collider
@@ -7633,6 +7646,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::physics::components::PrevPosit
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::components::PrevPosition
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::PrevPosition
 pub struct tungsten_core::physics::RigidBody
+pub tungsten_core::physics::RigidBody::gravity_scale: f32
 pub tungsten_core::physics::RigidBody::inv_mass: f32
 pub tungsten_core::physics::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::physics::RigidBody::layers: u32
@@ -7646,6 +7660,7 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self
@@ -7877,6 +7892,7 @@ pub fn tungsten_core::physics::overlap(&tungsten_core::World, tungsten_core::phy
 pub fn tungsten_core::physics::physics_prev_snapshot(&mut tungsten_core::World)
 pub fn tungsten_core::physics::physics_step(&mut tungsten_core::World)
 pub fn tungsten_core::physics::physics_sync(&mut tungsten_core::World)
+pub fn tungsten_core::physics::teleport(&mut tungsten_core::World, tungsten_core::Entity, glam::f32::vec2::Vec2)
 pub fn tungsten_core::physics::wake(&mut tungsten_core::World, tungsten_core::Entity)
 pub type tungsten_core::physics::ProxyId = u32
 pub mod tungsten_core::post
@@ -14706,11 +14722,14 @@ impl core::marker::Unpin for tungsten_core::input::ScrollDirection
 impl core::marker::UnsafeUnpin for tungsten_core::input::ScrollDirection
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::input::ScrollDirection
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::input::ScrollDirection
-pub enum tungsten_core::Shape
+#[non_exhaustive] pub enum tungsten_core::Shape
 pub tungsten_core::Shape::Aabb
 pub tungsten_core::Shape::Aabb::half_extents: glam::f32::vec2::Vec2
 pub tungsten_core::Shape::Circle
 pub tungsten_core::Shape::Circle::radius: f32
+impl tungsten_core::physics::components::Shape
+pub fn tungsten_core::physics::components::Shape::distance(&self, glam::f32::vec2::Vec2) -> f32
+pub fn tungsten_core::physics::components::Shape::half_extents(&self) -> glam::f32::vec2::Vec2
 impl core::clone::Clone for tungsten_core::physics::components::Shape
 pub fn tungsten_core::physics::components::Shape::clone(&self) -> tungsten_core::physics::components::Shape
 impl core::cmp::PartialEq for tungsten_core::physics::components::Shape
@@ -15662,8 +15681,10 @@ pub tungsten_core::Collider::offset: glam::f32::vec2::Vec2
 pub tungsten_core::Collider::shape: tungsten_core::physics::components::Shape
 impl tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::aabb(glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::center(&self, glam::f32::vec2::Vec2) -> glam::f32::vec2::Vec2
 pub fn tungsten_core::physics::components::Collider::circle(f32) -> Self
 pub fn tungsten_core::physics::components::Collider::with_offset(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::components::Collider::world_box(&self, glam::f32::vec2::Vec2) -> tungsten_core::physics::collision::Aabb
 impl core::clone::Clone for tungsten_core::physics::components::Collider
 pub fn tungsten_core::physics::components::Collider::clone(&self) -> tungsten_core::physics::components::Collider
 impl core::cmp::PartialEq for tungsten_core::physics::components::Collider
@@ -17684,6 +17705,7 @@ impl core::marker::UnsafeUnpin for tungsten_core::assets::manifest::ResolvedUiTh
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::assets::manifest::ResolvedUiTheme
 pub struct tungsten_core::RigidBody
+pub tungsten_core::RigidBody::gravity_scale: f32
 pub tungsten_core::RigidBody::inv_mass: f32
 pub tungsten_core::RigidBody::kind: tungsten_core::physics::components::BodyKind
 pub tungsten_core::RigidBody::layers: u32
@@ -17697,6 +17719,7 @@ pub fn tungsten_core::physics::components::RigidBody::kinematic() -> Self
 pub fn tungsten_core::physics::components::RigidBody::meets(&self, &tungsten_core::physics::components::RigidBody) -> bool
 pub fn tungsten_core::physics::components::RigidBody::sensor() -> Self
 pub fn tungsten_core::physics::components::RigidBody::static() -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_gravity_scale(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_layers(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mask(self, u32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Self

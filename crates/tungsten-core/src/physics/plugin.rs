@@ -160,6 +160,8 @@ struct RigidBodyFields {
     layers: Option<Vec<SceneLayer>>,
     /// The layers it meets; every layer when missing.
     mask: Option<Vec<SceneLayer>>,
+    /// A dynamic body's share of gravity; 1 when missing.
+    gravity_scale: Option<f32>,
 }
 
 /// `components.rigid_body`, checked: the bundle's parts beside the entry's
@@ -220,6 +222,15 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
         if fields.mass.is_some() && !matches!(fields.kind, SceneBodyKind::Dynamic) {
             return Err("`mass` is for dynamic bodies only".to_owned());
         }
+        let gravity_scale = match fields.gravity_scale {
+            Some(_) if !matches!(fields.kind, SceneBodyKind::Dynamic) => {
+                return Err("`gravity_scale` is for dynamic bodies only".to_owned());
+            }
+            Some(scale) if !scale.is_finite() => {
+                return Err(format!("`gravity_scale` must be finite (got {scale})"));
+            }
+            scale => scale.unwrap_or(1.0),
+        };
         // `restitution` is accepted on every kind and does nothing on a
         // sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
@@ -258,7 +269,8 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             body: body
                 .with_restitution(fields.restitution)
                 .with_layers(layers)
-                .with_mask(mask),
+                .with_mask(mask)
+                .with_gravity_scale(gravity_scale),
         })
     }
 }

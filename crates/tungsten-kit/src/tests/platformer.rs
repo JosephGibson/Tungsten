@@ -1056,10 +1056,7 @@ fn the_step_climbs_a_low_box_and_not_a_tall_one() {
 fn walk_into_a_ball(collider: Collider) -> (f32, bool, Vec2, f32) {
     let (mut world, mut schedule) = rig();
     tile_floor(&mut world, 64);
-    let half_height = match collider.shape {
-        tungsten_core::physics::Shape::Circle { radius } => radius,
-        tungsten_core::physics::Shape::Aabb { half_extents } => half_extents.y,
-    };
+    let half_height = collider.shape.half_extents().y;
     let mut pc = PlatformerController::new(50.0, JUMP).with_step_height(32.0);
     pc.set_run(1.0);
     let entity = world.spawn_with(

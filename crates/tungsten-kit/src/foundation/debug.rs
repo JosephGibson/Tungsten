@@ -235,12 +235,7 @@ fn kit_debug_draw(world: &mut World) {
     }
     for (_, collider, position) in world.query::<(&Zone, &Collider, &Position)>() {
         let at = position.0 + collider.offset;
-        match collider.shape {
-            Shape::Aabb { half_extents } => {
-                draw.draw_aabb(at - half_extents, at + half_extents, ZONE_COLOR, THICKNESS);
-            }
-            Shape::Circle { radius } => draw.draw_circle(at, radius, ZONE_COLOR, THICKNESS),
-        }
+        draw_shape_at(&mut draw, collider.shape, at, ZONE_COLOR, THICKNESS);
     }
     let spawners: Vec<Entity> = world
         .query::<(Entity, &Spawner)>()
@@ -291,13 +286,14 @@ fn kit_debug_draw(world: &mut World) {
     world.insert_resource(draw);
 }
 
-/// `shape` centred at `at`, its lines `thickness` wide.
+/// `shape` centred at `at`, its lines `thickness` wide: a circle, or any
+/// other shape as its box.
 fn draw_shape_at(draw: &mut DebugDraw, shape: Shape, at: Vec2, color: [f32; 4], thickness: f32) {
-    match shape {
-        Shape::Aabb { half_extents } => {
-            draw.draw_aabb(at - half_extents, at + half_extents, color, thickness);
-        }
-        Shape::Circle { radius } => draw.draw_circle(at, radius, color, thickness),
+    if let Shape::Circle { radius } = shape {
+        draw.draw_circle(at, radius, color, thickness);
+    } else {
+        let half = shape.half_extents();
+        draw.draw_aabb(at - half, at + half, color, thickness);
     }
 }
 

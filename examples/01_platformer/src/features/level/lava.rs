@@ -219,10 +219,8 @@ pub fn take(world: &mut World) {
         .query::<(Entity, &Lava, &Transform, &ContactDamage)>()
         .filter(|(_, lava, ..)| lava.crust.is_none())
         .filter_map(|(basin, _, at, touch)| match touch.shape()?.shape() {
-            Shape::Aabb { half_extents } => {
-                Some((basin, at.position + touch.offset(), half_extents))
-            }
             Shape::Circle { .. } => None,
+            other => Some((basin, at.position + touch.offset(), other.half_extents())),
         })
         .collect();
     let mut met = Vec::new();
@@ -311,10 +309,7 @@ fn rows(world: &World, basin: Entity) -> usize {
         .as_ref()
         .and_then(ContactDamage::shape)
         .map_or(1, |shape| {
-            let height = match shape.shape() {
-                Shape::Aabb { half_extents } => 2.0 * half_extents.y,
-                Shape::Circle { radius } => 2.0 * radius,
-            };
+            let height = 2.0 * shape.shape().half_extents().y;
             ((height / TILE).round() as usize).max(1)
         })
 }

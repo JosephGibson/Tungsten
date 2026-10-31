@@ -51,10 +51,7 @@ impl Sweep {
 
 /// A shape's half extents.
 pub(crate) fn half_extents(shape: Shape) -> Vec2 {
-    match shape {
-        Shape::Circle { radius } => Vec2::splat(radius),
-        Shape::Aabb { half_extents } => half_extents,
-    }
+    shape.half_extents()
 }
 
 /// Where `entity` stands over the step: a root with a `Position` from its
@@ -339,6 +336,12 @@ fn span(a: Shape, b: Shape, start: DVec2, motion: DVec2) -> Span {
         | (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
             rounded(start, motion, half_extents.as_dvec2(), f64::from(radius))
         }
+        // A later shape meets as its box.
+        (a, b) => slab(
+            start,
+            motion,
+            (a.half_extents() + b.half_extents()).as_dvec2(),
+        ),
     }
 }
 
@@ -390,6 +393,8 @@ fn push_out(a: Shape, b: Shape, start: DVec2) -> DVec2 {
                 (start - start.clamp(-half, half)).normalize_or(DVec2::Y)
             }
         }
+        // A later shape pushes out as its box.
+        (a, b) => least((a.half_extents() + b.half_extents()).as_dvec2()),
     }
 }
 

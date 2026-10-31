@@ -104,9 +104,10 @@ impl From<HitShapeDef> for HitShape {
 
 impl From<HitShape> for HitShapeDef {
     fn from(shape: HitShape) -> Self {
+        // A later shape is written as its box.
         match shape.shape {
             Shape::Circle { radius } => HitShapeDef::Circle(radius),
-            Shape::Aabb { half_extents } => HitShapeDef::Aabb(half_extents),
+            other => HitShapeDef::Aabb(other.half_extents()),
         }
     }
 }
@@ -255,7 +256,10 @@ impl HitShape {
     pub(crate) fn summary(&self) -> String {
         match self.shape {
             Shape::Circle { radius } => format!("circle {radius}"),
-            Shape::Aabb { half_extents } => format!("box {} x {}", half_extents.x, half_extents.y),
+            other => {
+                let half = other.half_extents();
+                format!("box {} x {}", half.x, half.y)
+            }
         }
     }
 }

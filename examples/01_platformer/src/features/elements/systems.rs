@@ -316,10 +316,7 @@ pub fn fire_particles(world: &mut World) {
         .query::<(&Fuel, &Transform, &Collider, Option<&SaveId>)>()
         .filter(|(fuel, ..)| fuel.lit)
         .map(|(_, at, collider, id)| {
-            let rise = match collider.shape {
-                Shape::Aabb { half_extents } => half_extents.y,
-                Shape::Circle { radius } => radius,
-            };
+            let rise = collider.shape.half_extents().y;
             // A pair sits 6 px over its source: here, the box's top.
             let top = at.position + collider.offset - Vec2::new(0.0, rise - 6.0);
             (id.copied(), top)
@@ -445,10 +442,7 @@ pub fn fire_contacts(world: &mut World) {
     let mut touched: Vec<(Option<SaveId>, Entity, Vec2)> = world
         .query::<(Entity, &Ball, &Position, Option<&PrevPosition>, &Collider)>()
         .filter_map(|(ball, _, at, prev, collider)| {
-            let radius = match collider.shape {
-                Shape::Circle { radius } => radius,
-                Shape::Aabb { half_extents } => half_extents.x,
-            };
+            let radius = collider.shape.half_extents().x;
             let end = at.0 + collider.offset;
             let start = prev.map_or(end, |prev| prev.0 + collider.offset);
             let reach = Vec2::splat(radius);
@@ -481,10 +475,7 @@ pub fn fire_contacts(world: &mut World) {
             let at = world.get::<Position>(prop)?;
             let prev = world.get::<PrevPosition>(prop);
             let collider = world.get::<Collider>(prop)?;
-            let half = match collider.shape {
-                Shape::Aabb { half_extents } => half_extents,
-                Shape::Circle { radius } => Vec2::splat(radius),
-            };
+            let half = collider.shape.half_extents();
             let end = at.0 + collider.offset;
             let start = prev.map_or(end, |prev| prev.0 + collider.offset);
             let hit = fires
@@ -774,10 +765,7 @@ pub fn crush(world: &mut World) {
             .query::<(Entity, &Health, &Position, &Collider)>()
             .filter(|(entity, health, ..)| !health.is_dead() && beetle::is_beetle(world, *entity))
             .filter_map(|(entity, health, p, c)| {
-                let half = match c.shape {
-                    Shape::Aabb { half_extents } => half_extents,
-                    Shape::Circle { radius } => Vec2::splat(radius),
-                };
+                let half = c.shape.half_extents();
                 let target = p.0 + c.offset;
                 speed_into(entity, target, half)?;
                 Some((entity, health.current(), target))
@@ -805,10 +793,7 @@ pub fn crush(world: &mut World) {
             .query::<(Entity, &Player, &Position, &Collider)>()
             .filter(|_| !thrown)
             .filter_map(|(entity, _, p, c)| {
-                let half = match c.shape {
-                    Shape::Aabb { half_extents } => half_extents,
-                    Shape::Circle { radius } => Vec2::splat(radius),
-                };
+                let half = c.shape.half_extents();
                 let target = p.0 + c.offset;
                 Some((entity, speed_into(entity, target, half)?, target))
             })
@@ -967,10 +952,10 @@ pub fn thermal_shatter(world: &mut World, at: Vec2, radius: f32) {
             let body = p.0 + collider.offset;
             let offset = at - body;
             let distance = match collider.shape {
-                Shape::Aabb { half_extents } => {
-                    (offset.abs() - half_extents).max(Vec2::ZERO).length()
-                }
                 Shape::Circle { radius } => (offset.length() - radius).max(0.0),
+                other => (offset.abs() - other.half_extents())
+                    .max(Vec2::ZERO)
+                    .length(),
             };
             (distance <= radius).then(|| (world.get::<SaveId>(entity).copied(), entity, body))
         })
@@ -1025,10 +1010,7 @@ fn live_by_id(world: &World, id: u64) -> Option<Entity> {
 /// The gap between two bodies' surfaces, boxes or circles: below 0 where
 /// they overlap.
 fn gap(a: Vec2, a_shape: Shape, b: Vec2, b_shape: Shape) -> f32 {
-    let half = |shape: Shape| match shape {
-        Shape::Aabb { half_extents } => half_extents,
-        Shape::Circle { radius } => Vec2::splat(radius),
-    };
+    let half = |shape: Shape| shape.half_extents();
     match (a_shape, b_shape) {
         (Shape::Circle { radius: ra }, Shape::Circle { radius: rb }) => a.distance(b) - ra - rb,
         (Shape::Circle { radius }, other) | (other, Shape::Circle { radius }) => {
@@ -1112,11 +1094,11 @@ type Hurt = (Entity, Entity, f32);
 /// `shape` grown by `margin` on every side.
 fn grown(shape: Shape, margin: f32) -> Shape {
     match shape {
-        Shape::Aabb { half_extents } => Shape::Aabb {
-            half_extents: half_extents + Vec2::splat(margin),
-        },
         Shape::Circle { radius } => Shape::Circle {
             radius: radius + margin,
+        },
+        other => Shape::Aabb {
+            half_extents: other.half_extents() + Vec2::splat(margin),
         },
     }
 }

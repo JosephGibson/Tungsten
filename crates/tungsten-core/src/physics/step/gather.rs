@@ -8,7 +8,7 @@
 //! beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
-use super::{Layers, Proxy, ProxyLayers, SensorBody};
+use super::{Layers, Proxy, ProxyLayers, SensorBody, StepExtra};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
@@ -78,8 +78,10 @@ fn run_key(map: Entity, layer: usize, run: &Run) -> u64 {
 /// the defaults. A sensor row joins `sensors` instead of the proxies; in a
 /// frame with sensors, `tile_ids` gets each tile proxy's identity, in proxy
 /// order, and stays empty otherwise. The tile proxies are `tiles`', brought
-/// up to the World's maps first. Returns how many kinematic proxies it
-/// staged, which sets the frame's substep count.
+/// up to the World's maps first. `extra` gets each entity proxy's gravity
+/// scale once a dynamic body's differs from 1, 1 for every proxy that is
+/// not dynamic. Returns how many kinematic proxies it staged, which sets the
+/// frame's substep count.
 pub(super) fn gather_proxies(
     world: &World,
     proxies: &mut Vec<Proxy>,
@@ -87,11 +89,13 @@ pub(super) fn gather_proxies(
     sensors: &mut Vec<SensorBody>,
     tile_ids: &mut Vec<u64>,
     tiles: &mut TileCache,
+    extra: &mut StepExtra,
 ) -> usize {
     proxies.clear();
     layers.of.clear();
     sensors.clear();
     tile_ids.clear();
+    extra.gravity_scales.clear();
     let mut kinematics = 0;
     let mut layered = false;
 
@@ -131,6 +135,16 @@ pub(super) fn gather_proxies(
             None => (false, false, 0.0, 0.0),
         };
         let center = position.0 + collider.offset;
+        let gravity_scale = match body {
+            Some(b) if is_dynamic => b.gravity_scale,
+            _ => 1.0,
+        };
+        // Once one scale differs from 1, every proxy has one.
+        let scales = &mut extra.gravity_scales;
+        if gravity_scale != 1.0 || !scales.is_empty() {
+            scales.resize(proxies.len(), 1.0);
+            scales.push(gravity_scale);
+        }
         proxies.push(Proxy {
             entity: Some(entity),
             key: entity_key(entity),

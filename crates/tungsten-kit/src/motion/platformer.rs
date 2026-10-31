@@ -846,9 +846,10 @@ impl PlatformerController {
         {
             return None;
         }
+        // A box, and any later shape, reaches no further.
         let round = match shape {
             Shape::Circle { radius } => CLIMB_ROUND_REACH * radius,
-            Shape::Aabb { .. } => 0.0,
+            _ => 0.0,
         };
         let across = rest.abs().max(CLIMB_REACH * self.step_height + round);
         climb(

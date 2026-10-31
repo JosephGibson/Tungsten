@@ -146,10 +146,7 @@ pub fn unstick(world: &mut World) {
     if !(pressed && able) {
         return;
     }
-    let half = match collider.shape {
-        Shape::Aabb { half_extents } => half_extents,
-        Shape::Circle { radius } => Vec2::splat(radius),
-    };
+    let half = collider.shape.half_extents();
     let head = Vec2::new(centre.x, centre.y - half.y - SHOVE_HEAD * 0.5);
     let boxes = [
         (
@@ -218,10 +215,7 @@ pub fn escaped(at: Vec2, collider: Option<&Collider>) -> bool {
 fn extent(at: Vec2, collider: Option<&Collider>) -> (Vec2, Vec2) {
     collider.map_or((at, at), |collider| {
         let centre = at + collider.offset;
-        let half = match collider.shape {
-            Shape::Aabb { half_extents } => half_extents,
-            Shape::Circle { radius } => Vec2::splat(radius),
-        };
+        let half = collider.shape.half_extents();
         (centre - half, centre + half)
     })
 }

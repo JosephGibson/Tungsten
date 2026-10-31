@@ -1,6 +1,6 @@
 # Physics on the runtime terrain (physics-on-terrain)
 
-- **status:** draft
+- **status:** in progress
 - **goal:** The second of redo 7.8's two plans (phase 7's Step 5; the redo's 7.8 row, §5.6, and §5.1's slopes): the physics `D-228` left open, closing Step 5's remaining rows. Body seams (a collider's world box, a shape's distance, `teleport`, a gravity scale, `Shape` non-exhaustive); physics layer names and physics materials in the manifest; Coulomb friction by material and circles that roll; contact events with a closing speed, a begin and an end, and sensor exits, both naming a tile's cell; swept sensors; impulses and radial impulses, with what a kinematic body takes kept for its driver; casts that pass the hits a predicate refuses; a query index that keeps its resting bodies across steps; 45° and 2:1 slope tiles; the platformer controller on slopes (floor normals, slope and slide limits, snap-down), dropping through one-way edges, its filter in data, pushed by bodies and by kinematic bodies, hitting a body under locked input instead of stopping dead, its carry cast and its shove on impulses; friction and slope pile rows with counter guards. It lands P7-2 (physics), P7-3 (sensor exit), K7, K14, K23, K30, S-16, S-26, S-60, S-65, S-77, S-99, S-112, S-132, S-172 and S-175.
 - **non-goals:**
   - 7.10's kit on these: K10's radial payload, impact damage and bodies as walls by layer (P7-2's kit half), motion on impulses (K19, K20), cue filters on contact speeds (S-41). `Interactable`, P7-3's other half (8.1), and exits from the kit's zones and triggers.
@@ -189,7 +189,7 @@ Each code step also passes `cargo fmt --all -- --check` and `just lint` → exit
 - **Change:** §2.3, with `docs/assets.md`'s two rows and the known issue's "Layers in data are numbers" (`docs/known-issues.md:55`).
 - **Done-when:** `cargo test -p tungsten-core --lib --locked physics::plugin::` → exit 0, with `rigid_body_takes_layer_names_and_a_material` (names resolved, a material's coefficients and the entry's overrides) and `an_unknown_layer_or_material_fails_the_load_at_its_field` in `tests/physics/plugin.rs`; `cargo test -p tungsten-core --test integration --locked manifests::` → exit 0, with `physics_layers_and_materials_load_and_refuse_repeats` in `tests/integration/manifests.rs`; `cargo test -p tungsten --lib --locked asset_loader::` → exit 0, with `the_loader_inserts_physics_names_and_a_reload_replaces_them` in `crates/tungsten/src/tests/asset_loader.rs`; `cargo test -p example-01-platformer --locked` → exit 0; `just repo-check` → exit 0; the guards and the hashes.
 - **Commit:** `feat(core): name physics layers and materials in the manifest`
-- **Moves:** none.
+- **Moves:** 01's `pit` pin in `allocated_bytes` alone, by 13 bytes for each byte `RigidBody` grows (friction and rolling): its window holds one boxed `RigidBodyBundle` and three 4-row `RigidBody` columns (step 1's evidence); 02's pins none.
 
 ### Step 3: Friction
 
@@ -371,5 +371,6 @@ A sweep of the fixes against the clauses that read the same state added two chan
 
 | Step | Date | Verdict | Key numbers | Paths |
 | --- | --- | --- | --- | --- |
+| 1 | 2026-10-31 | landed | `physics::` 192 passed (the four new tests in); kit, umbrella, 01 (443, 1 ignored) and 02 suites exit 0; `just physics-release` 15 passed, hashes unchanged; fmt, `just lint`, `just api-check` ("snapshots current") and `just docs-ratchet` ("no rise") exit 0. Pins rewritten, then the guards run twice, ok: 02's `physics` `allocated_bytes` 12427036 → 12427516, `physics-sparse` 12337500 → 12337980, `terrain` 2614400 → 2614880 (+480: 60 steps × `StepExtra`'s 8-byte pointer); 01's `pit` 69118160 → 69118692 (+532 = 480 + 52). The 52 is `RigidBody`'s growth, 20 → 24 bytes, which Moves missed: a window size histogram (60: 1 → 0, 64: 681 → 682, 80: 138 → 135, 96: 2835 → 2838) shows one boxed `RigidBodyBundle` (60 → 64) and three 4-row `RigidBody` columns (80 → 96), and a probe with 4 more bytes read 52 more. Step 2's Moves now names that cause. 01's matches call `half_extents` where they worked one out and take box-treating wildcard arms elsewhere; the pair budgets read gravity times the largest scale above 1 | `crates/tungsten-core/src/physics/`, the A1 files, the four pins |
 
 ## Follow-ups

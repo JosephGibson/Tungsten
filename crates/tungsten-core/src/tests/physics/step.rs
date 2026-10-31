@@ -517,6 +517,7 @@ fn sweep_grid_returns_the_pair_grids_statics_in_order() {
             &mut buffers.sensors,
             &mut buffers.tile_ids,
             &mut buffers.tiles,
+            &mut buffers.extra,
         );
         buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
         for proxy in buffers.proxies.iter_mut().step_by(4) {
@@ -1595,6 +1596,7 @@ fn contact_woken_body_rebuilds_pairs_over_static_floor_in_waking_frame() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     sleep_frame_start(&mut buffers, 4.0 * config.linear_slop);
@@ -1675,6 +1677,7 @@ fn lone_fast_body_trips_its_budget_and_rebuilds_before_narrow_phase() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
@@ -1790,6 +1793,7 @@ fn oracle_buffers(world: &World) -> PhysicsBuffers {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.island_parent = (0..buffers.proxies.len() as u32).collect();
@@ -1936,6 +1940,7 @@ fn warm_start_forgets_disappearing_contacts_and_syncs_empty_final_substep() {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     buffers.reference_impulses = Some(ImpulseMap::default());
@@ -2772,6 +2777,85 @@ fn collider_less_kinematic_body_moves_by_its_velocity() {
         "half a second at {velocity:?} ended at {position:?}"
     );
     assert_eq!(world.get::<Velocity>(loose).unwrap().0, velocity);
+}
+
+#[test]
+fn teleport_moves_a_body_without_a_slide() {
+    let mut world = seed_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let start = world.get::<Position>(top).unwrap().0;
+    world.insert(top, PrevPosition(start));
+    world.insert(top, Transform::from_position(start));
+    settle_to_sleep(&mut world, &[bottom, top]);
+    let at = Vec2::new(40.0, -50.0);
+    teleport(&mut world, top, at);
+    assert_eq!(world.get::<Position>(top).unwrap().0, at);
+    assert_eq!(world.get::<PrevPosition>(top).unwrap().0, at);
+    assert_eq!(world.get::<Transform>(top).unwrap().position, at);
+    assert_eq!(world.get::<Velocity>(top).unwrap().0, Vec2::ZERO);
+    assert!(!is_sleeping(&world, top), "a teleported sleeper wakes");
+    // Drawn at the point half a step on, and after the next step near it,
+    // never between the old point and the new.
+    let mut time = Time::new();
+    time.advance_frame(0.5 / 60.0);
+    assert_eq!(time.alpha(), 0.5);
+    world.insert_resource(time);
+    crate::physics::physics_sync(&mut world);
+    assert_eq!(world.get::<Transform>(top).unwrap().position, at);
+    world.resource_mut::<Time>().advance_frame(0.5 / 60.0);
+    crate::physics::physics_prev_snapshot(&mut world);
+    physics_step(&mut world);
+    crate::physics::physics_sync(&mut world);
+    let drawn = world.get::<Transform>(top).unwrap().position;
+    assert!(
+        drawn.distance(at) < 1.0,
+        "drawn at {drawn} a step after a teleport to {at}"
+    );
+}
+
+#[test]
+fn gravity_scale_scales_a_fall() {
+    const G: f32 = 900.0;
+    const STEPS: usize = 60;
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, G);
+    let substeps = world.resource::<PhysicsConfig>().substeps as usize;
+    let bodies: Vec<(f32, Entity, Entity)> = [0.0, 0.5, 1.0, 2.0, -1.0]
+        .into_iter()
+        .enumerate()
+        .map(|(i, scale)| {
+            let at = Vec2::new(100.0 * i as f32, 0.0);
+            let body = RigidBody::dynamic().with_gravity_scale(scale);
+            let solid = spawn_body(&mut world, body, Collider::circle(4.0), at, Vec2::ZERO);
+            let loose = world.spawn_with((Position(at), Velocity(Vec2::ZERO), body));
+            (scale, solid, loose)
+        })
+        .collect();
+    for _ in 0..STEPS {
+        physics_step(&mut world);
+    }
+    // Each integration adds the scaled gravity, then moves: n of them of
+    // `h` from rest fall `g · s · h² · n (n + 1) / 2`. A body with a
+    // collider is integrated each substep, a loose one once a step.
+    let fall =
+        |scale: f32, n: usize, h: f64| f64::from(G * scale) * h * h * (n * (n + 1)) as f64 / 2.0;
+    let dt = 1.0 / 60.0;
+    for (scale, solid, loose) in bodies {
+        for (entity, expected, what) in [
+            (
+                solid,
+                fall(scale, STEPS * substeps, dt / substeps as f64),
+                "body",
+            ),
+            (loose, fall(scale, STEPS, dt), "loose body"),
+        ] {
+            let y = f64::from(world.get::<Position>(entity).unwrap().0.y);
+            assert!(
+                (y - expected).abs() <= 1e-3 * expected.abs(),
+                "a {what} at scale {scale} fell {y}, the closed form {expected}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -4259,6 +4343,7 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     let mut fresh = super::gather::TileArrays::default();
@@ -5005,6 +5090,7 @@ fn assert_tiles_today(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         &mut buffers.sensors,
         &mut buffers.tile_ids,
         &mut buffers.tiles,
+        &mut buffers.extra,
     );
     buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
     let mut today = super::gather::TileArrays::default();

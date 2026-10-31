@@ -444,3 +444,53 @@ fn layers_rigid_body_fails_on_layer_32_and_a_non_integer_at_the_fields_path() {
         );
     }
 }
+
+#[test]
+fn rigid_body_reads_its_gravity_scale() {
+    for body in [
+        RigidBody::dynamic(),
+        RigidBody::r#static(),
+        RigidBody::kinematic(),
+        RigidBody::sensor(),
+    ] {
+        assert_eq!(body.gravity_scale, 1.0, "{:?}", body.kind);
+    }
+    let mut world = physics_world();
+    let shape = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let light = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape, "gravity_scale": -0.25 }),
+    );
+    assert_eq!(
+        world.get::<RigidBody>(light),
+        Some(&RigidBody::dynamic().with_gravity_scale(-0.25))
+    );
+    let plain = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "dynamic", "shape": shape }),
+    );
+    assert_eq!(world.get::<RigidBody>(plain).unwrap().gravity_scale, 1.0);
+    for (value, expected) in [
+        (
+            serde_json::json!({ "kind": "static", "shape": shape, "gravity_scale": 2.0 }),
+            "`gravity_scale` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "kinematic", "shape": shape, "gravity_scale": 0.0 }),
+            "`gravity_scale` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "sensor", "shape": shape, "gravity_scale": 1.0 }),
+            "`gravity_scale` is for dynamic bodies only",
+        ),
+        (
+            serde_json::json!({ "kind": "dynamic", "shape": shape, "gravity_scale": 1e40 }),
+            "`gravity_scale` must be finite (got inf)",
+        ),
+    ] {
+        let message = check_error(&world, &value);
+        assert!(message.contains(expected), "{value}: {message}");
+    }
+}

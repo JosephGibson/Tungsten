@@ -105,23 +105,22 @@ pub(crate) fn physics_debug_emit_system(world: &mut World) {
             Some(BodyKind::Sensor) => Some(color_sensor),
             _ => None,
         };
-        match collider.shape {
-            Shape::Aabb { half_extents } => {
-                emits.push(DebugEmit::Aabb {
-                    min: center - half_extents,
-                    max: center + half_extents,
-                    color: kind_color.unwrap_or(color_aabb),
-                    thickness,
-                });
-            }
-            Shape::Circle { radius } => {
-                emits.push(DebugEmit::Circle {
-                    center,
-                    radius,
-                    color: kind_color.unwrap_or(color_circle),
-                    thickness,
-                });
-            }
+        // A circle, and any other shape as its box.
+        if let Shape::Circle { radius } = collider.shape {
+            emits.push(DebugEmit::Circle {
+                center,
+                radius,
+                color: kind_color.unwrap_or(color_circle),
+                thickness,
+            });
+        } else {
+            let half = collider.shape.half_extents();
+            emits.push(DebugEmit::Aabb {
+                min: center - half,
+                max: center + half,
+                color: kind_color.unwrap_or(color_aabb),
+                thickness,
+            });
         }
     }
     if let Some(buffers) = world.get_resource::<PhysicsBuffers>() {

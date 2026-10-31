@@ -136,7 +136,7 @@ fn meets(wave: &Wave, r0: f32, r1: f32, centre: Vec2, velocity: Vec2, extent: f3
 fn extent(collider: &Collider) -> f32 {
     match collider.shape {
         Shape::Circle { radius } => radius,
-        Shape::Aabb { half_extents } => half_extents.min_element(),
+        other => other.half_extents().min_element(),
     }
 }
 

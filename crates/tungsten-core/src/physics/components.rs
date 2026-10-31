@@ -4,6 +4,7 @@
 use glam::Vec2;
 
 use crate::ecs::bundle::{Bundle, BundleSink};
+use crate::physics::collision::Aabb;
 
 /// World-space position.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -41,13 +42,38 @@ impl Velocity {
     }
 }
 
-/// Axis-aligned collider shape.
+/// Axis-aligned collider shape. A match outside this crate needs a wildcard
+/// arm, since later shapes are additions; [`half_extents`](Self::half_extents)
+/// bounds every one.
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum Shape {
     /// Axis-aligned box.
     Aabb { half_extents: Vec2 },
     /// Circle radius.
     Circle { radius: f32 },
+}
+
+impl Shape {
+    /// Half the size of the shape's bounding box: a box's half extents, a
+    /// circle's radius on both axes.
+    #[must_use]
+    pub fn half_extents(&self) -> Vec2 {
+        match *self {
+            Self::Aabb { half_extents } => half_extents,
+            Self::Circle { radius } => Vec2::splat(radius),
+        }
+    }
+
+    /// How far a point `offset` from the shape's centre lies from its
+    /// surface: 0 on or inside it.
+    #[must_use]
+    pub fn distance(&self, offset: Vec2) -> f32 {
+        match *self {
+            Self::Aabb { half_extents } => (offset.abs() - half_extents).max(Vec2::ZERO).length(),
+            Self::Circle { radius } => (offset.length() - radius).max(0.0),
+        }
+    }
 }
 
 /// Collider shape plus local offset from `Position`.
@@ -79,6 +105,20 @@ impl Collider {
         self.offset = offset;
         self
     }
+
+    /// The collider's centre on a body at `position`: `position` plus its
+    /// offset.
+    #[must_use]
+    pub fn center(&self, position: Vec2) -> Vec2 {
+        position + self.offset
+    }
+
+    /// The collider's world box on a body at `position`: its shape's
+    /// bounding box about its centre, as the broadphase stages it.
+    #[must_use]
+    pub fn world_box(&self, position: Vec2) -> Aabb {
+        Aabb::new(self.center(position), self.shape.half_extents())
+    }
 }
 
 /// How a body moves and what its contacts do. A match outside this crate
@@ -88,7 +128,8 @@ impl Collider {
 pub enum BodyKind {
     /// Never moves; the immovable side of its contacts with dynamic bodies.
     Static,
-    /// Moved by gravity, its `Velocity` and its contacts; sleeps in islands.
+    /// Moved by gravity times its [`gravity_scale`](RigidBody::gravity_scale),
+    /// its `Velocity` and its contacts; sleeps in islands.
     Dynamic,
     /// Moved by its `Velocity` alone, each substep and without gravity; a
     /// contact never moves it. It pushes dynamic bodies as an immovable one
@@ -134,6 +175,10 @@ pub struct RigidBody {
     /// The layers the body meets; [`ALL_LAYERS`](Self::ALL_LAYERS) from every
     /// constructor.
     pub mask: u32,
+    /// The share of the world's gravity a dynamic body falls by, finite: 1
+    /// from every constructor, 0 floating, 2 twice as hard, and a negative
+    /// scale rising. Other kinds take no gravity.
+    pub gravity_scale: f32,
 }
 
 impl RigidBody {
@@ -152,6 +197,7 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
         }
     }
 
@@ -164,6 +210,7 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
         }
     }
 
@@ -179,6 +226,7 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
         }
     }
 
@@ -193,6 +241,7 @@ impl RigidBody {
             restitution: 0.0,
             layers: Self::DEFAULT_LAYERS,
             mask: Self::ALL_LAYERS,
+            gravity_scale: 1.0,
         }
     }
 
@@ -220,6 +269,22 @@ impl RigidBody {
     #[must_use]
     pub fn with_mask(mut self, mask: u32) -> Self {
         self.mask = mask;
+        self
+    }
+
+    /// The body falling by `scale` times the world's gravity
+    /// ([`gravity_scale`](Self::gravity_scale)).
+    ///
+    /// # Panics
+    ///
+    /// When `scale` is not finite.
+    #[must_use]
+    pub fn with_gravity_scale(mut self, scale: f32) -> Self {
+        assert!(
+            scale.is_finite(),
+            "a gravity scale must be finite (got {scale})"
+        );
+        self.gravity_scale = scale;
         self
     }
 
