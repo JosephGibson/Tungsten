@@ -11,7 +11,7 @@
   - This session: this file; `ROADMAP.md` (Now, Later's Phase 7 line); `docs/plans/arpg-design.md` (step 6, files to touch).
   - Each later step: its own plan file (`docs/plans/<topic>.md`), this file's §2 status cells and evidence row, `ROADMAP.md`, and what its plan lists.
   - The close: this file (deleted), `ROADMAP.md`, `docs/plans/roadmap-redo.md` (§3's Phase 8 rows take §2.3's IDs), `docs/plans/arpg-design.md` (its pointer to this file).
-- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (6) 7.17 the UI pass, in its own worktree from after step 1. (7) 7.9 saves and engine seams. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close.
+- **ordered steps:** (1) 7.2 agent tooling. (2) 7.3 benchmarks, part 1. (3) 7.4 H2. (4) 7.5 the analysis pass, its rows folded into §2. (5) 7.8 terrain and physics. (7) 7.9 saves and engine seams. (6) 7.17 the UI pass, after step 7. (8) 7.20 screens as data, after step 6. (9) 7.10 the kit pass. (10) 7.18 camera rigs. (11) 7.11 template updates. (12) 7.12 level format, CLI, editor. (13) 7.13 01 on the new systems. (14) 7.14 the CPU pass. (15) 7.15 the GPU pass. (16) 7.16 agent guidance. (17) Close. One track, a step at a time in this order (§2.8): Step 7 runs before Step 6, and both keep their numbers, which plans cite.
 - **done-when:** every row in §2.2 reads landed, closed, Later or 9.2 (§2.1), none open in a Phase 7 step, and every open row in §2.3 is carried into the redo's §3 by ID; every item on 7.14's and 7.15's lists reads done, dropped or stopped (§2.5); every step's done-when quoted in the evidence log; the tests pass and example 01 runs on Phase 7's systems (7.13); the plan deleted with its citations, §2.3 carried into the redo, and `phase-7` out of Now.
 
 Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3, §5.8, §7.3, Q20). Written 2026-10-29 at `08111d5a`. Runs under the [tungsten-plan skill](../../.claude/skills/tungsten-plan/SKILL.md) and the [operating rules](../operating-rules.md), and differs from the skill in one way: each step is a redo step of a session or more with its own plan, so a session takes one step, never "every remaining step".
@@ -22,7 +22,7 @@ Item `phase-7` in [ROADMAP.md](../../ROADMAP.md), from the redo's step 7.7 (§3,
 - 7.7 waits only for 7.19 (Q20), so it runs now, ahead of 7.2–7.5 in time but not in order. 7.5's register joins §2 at its triage by §2.4's rule, and 7.3's rows hold the lists' numbers (Q1).
 - The registers: the paper designs' §4 (P7-1–P7-20, P8-1–P8-17), the ARPG design's §15 (PA-1–PA-22), and the feedback plan's kit and engine gaps ([`example-01-feedback.md`](1.0/example-01-feedback.md) §6, K1–K31), which the redo's §3 cites and 7.5 seeds from.
 - The rule is §7.3's triage: a row goes to the step that builds the system it changes, so each system is built once (`D-218`). A row split across systems is split here (P7-2, P7-3).
-- Phase 7 is two tracks: the main track (7.2 → 7.16) and the UI track (7.17 → 7.20) in its own worktree beside 7.8–7.10, joining at 7.11 (the redo's fixed orders).
+- Phase 7 is one track since 2026-10-31: 7.17 and 7.20 run after 7.9 in this tree, not beside 7.8–7.10 in a worktree (§2.8).
 - Decisions: `D-215` (the redo), `D-218` (the fifth genre; 7.7 waits for 7.19), `D-172` (admission, amended by §5.3), `D-140` (routes), `D-070` (CI is CPU only; GPU and time rows stay local).
 - Later steps read this file: 7.10 its rows, PA-1–PA-11 among them, and PA-Q2's three movable rows (§2.8); 7.14 and 7.15 their lists (§2.5); 7.13 and 8.6 their tasks, 9.1 its stress rows (§2.6).
 
@@ -89,7 +89,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 | P7-8 | Saves of many areas | 7.9 | open | §5.5, G4; depends on P7-9 (landed) |
 | P7-10 | A tile layer's depth among sprites | 7.9 | open | |
 | P7-13 | Audio: looping cue voices, pan, bus ducking | 7.9 | open | Falloff landed as K29; Later's `SoundOnEvent` listener joins it |
-| P7-14 | Text outline (K5) | 7.9 | open | A field of 7.17's named text styles if 7.17 lands first |
+| P7-14 | Text outline (K5) | 7.9 | open | 7.9 lands first (§2.8), so 7.17's named text styles take the outline as a field |
 | P7-15 | A file per frame | 7.9 | open | Sprite sheets, with §5.4's boot loading |
 | K2 | A particle config's draw depth | 7.9 | open | |
 | K4 | An animation's playback rate | 7.9 | open | |
@@ -348,7 +348,7 @@ Read at `08111d5a`: only what an assignment, an assumption or a list item needs.
 - 7.5 numbers its rows `S-1`, `S-2`, … (Q8); a row it re-reports from the K-rows keeps its K ID beside its S ID.
 - Its triage sends each row by §2.1's rule: a system a Phase 7 step builds → that step; a template row → 7.11; a fix only 01 needs → 7.13; a Phase 8 system → its 8.x step; anything else → Later as one line.
 - A performance workaround it finds joins the evidence of a §2.5 item, never the list; a cost no item covers waits for 9.2.
-- A row for a step already started (the UI track may have) goes to the first unstarted step that touches that system.
+- A row for a step already started goes to the first unstarted step that touches that system.
 - The triage's commit writes every row into §2.2 (Phase 7 steps, with `Later` or `9.2` in the step cell and status for the rest) or §2.3 (Phase 8 steps), so each S-ID has one disposition in the tables.
 
 ### 2.5 7.14's and 7.15's finite lists
@@ -408,9 +408,8 @@ The brief's kit survey still holds where a row rests on it: crit is a flag and `
 
 ### 2.8 Order, tracks and routes
 
-- **Main track:** 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.10 → 7.18 → 7.11 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16.
-- **UI track,** in its own worktree, which the owner makes: 7.17 from after 7.2, then 7.20, both before 7.11. The tracks share only the template's saves (7.9); whichever lands second rebases.
-- **Fixed orders** (the redo's §3): 7.17 → 7.20 → 7.11; 7.18 after 7.10 and before 7.13; 7.5 before 7.8, so its rows reach the steps that build them.
+- **One track,** a step at a time in this tree (2026-10-31, the owner's choice): 7.2 → 7.3 → 7.4 → 7.5 → 7.8 → 7.9 → 7.17 → 7.20 → 7.10 → 7.18 → 7.11 → 7.12 → 7.13 → 7.14 → 7.15 → 7.16. The UI steps no longer run beside 7.8–7.10 in a worktree: a session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. Steps 6 and 7 keep their numbers, which plans cite, so Step 7 (7.9) runs before Step 6 (7.17).
+- **Fixed orders** (the redo's §3): 7.9 → 7.17 → 7.20 → 7.11; 7.18 after 7.10 and before 7.13; 7.5 before 7.8, so its rows reach the steps that build them.
 - **Routes:** every step is large under `D-140` and writes its own plan with the tungsten-plan skill, except 7.16, which is medium unless its research spans sessions. Where a step needs several plans:
   - 7.8: runtime terrain, then physics with slopes and the controller last (the redo's 7.8 row).
   - 7.9: saves of many areas, then boot loading with sprite sheets and the small seams.
@@ -426,7 +425,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - This file's evidence row written in the step's closing commit, with the commit range and the step's done-when quoted from its plan.
 - From 7.8 on, a system step's benchmark row and counter guard in 7.3's runner (§5.8), except 7.18.
 
-**Hand-off:** each step ends with the next step's plan prompt, from tungsten-next's `plan` row with this file and the redo's row as its sources.
+**Hand-off:** each step ends with the plan prompt of the next step in §2.8's order, from tungsten-next's `step` row with this file and the redo's row as its sources.
 
 ### Step 1 (7.2): Agent tooling foundations
 
@@ -458,9 +457,9 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - **Done-when:** the redo's 7.8 sketch; friction and slope piles as rows (§2.6).
 - **Moves:** the physics hashes, under 7.3's guards.
 
-### Step 6 (7.17): UI pass, UI track
+### Step 6 (7.17): UI pass
 
-- **Rows:** 7.5's S-9, S-28, S-33, S-42, S-45, S-62, S-64, S-67, S-81, S-82, S-91, S-93, S-94, S-102, S-104, S-108, S-109, S-114, S-116, S-123, S-127, S-133, S-139, S-149, S-152, S-153, S-155, S-157, S-162, S-163, S-171, S-183, S-187. **Design:** §5.9. After 7.2, in its own worktree, beside 7.8–7.10.
+- **Rows:** 7.5's S-9, S-28, S-33, S-42, S-45, S-62, S-64, S-67, S-81, S-82, S-91, S-93, S-94, S-102, S-104, S-108, S-109, S-114, S-116, S-123, S-127, S-133, S-139, S-149, S-152, S-153, S-155, S-157, S-162, S-163, S-171, S-183, S-187. **Design:** §5.9. After 7.9 (§2.8).
 - **Done-when:** the redo's 7.17 sketch, the shell's `tokei` count against `D-199`'s 2,900 measured, and the idle-screen counter guard.
 
 ### Step 7 (7.9): Saves and engine seams
@@ -468,7 +467,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 - **Rows:** P7-8, P7-10, P7-13, P7-14, P7-15, K2, K4, K9, S-38 (K21); 7.5's S-2, S-3, S-25, S-27, S-29, S-40, S-43, S-46, S-58, S-59, S-63, S-70, S-71, S-76, S-87, S-89, S-95, S-97, S-101, S-113, S-117, S-125, S-137, S-138, S-143, S-148, S-173, S-179. **Design:** §5.4, §5.5.
 - **Done-when:** the redo's 7.9 sketch, with §5.5's acceptance test (a restore into a world with other entity allocations, 01's save tests unchanged); the save snapshot and boot rows.
 
-### Step 8 (7.20): Screens as data, UI track
+### Step 8 (7.20): Screens as data
 
 - **Rows:** 7.5's S-72. **Design:** §5.11. After 7.17.
 - **Done-when:** the redo's 7.20 sketch and the reloaded-screen counter guard.
@@ -531,7 +530,7 @@ Each step is a redo step; its own plan holds its mechanisms, files, checks and c
 | Q4 | The lists' floor and target | A floor of 5 % of the row's time at the gate; a target of half the item's measured share; G6 behavioural |
 | Q5 | Where 7.15 measures 01 | A local GPU row of 01's areas in 7.3's set, M77's area survey made a row |
 | Q6 | Where Phase 8's assignments live after this plan | The redo's §3 rows by ID (step 17); the ARPG design stays until 8.7 closes |
-| Q7 | `phase-7` in Now for the whole phase | Yes, beside the step in work; with the UI track, Now holds three |
+| Q7 | `phase-7` in Now for the whole phase | Yes, beside the step in work; one track since 2026-10-31, so Now holds two |
 | Q8 | 7.5's row IDs | `S-1`, `S-2`, … |
 | Q9 | P8-6's schedules depend on P8-8's navigation, a step later | 8.1 resolves schedules by time and places NPCs without paths; walking between places waits for 8.2 |
 
@@ -544,13 +543,12 @@ Each question takes its stated default; the owner reviews the plan on their own 
 
 ## 6. Stop conditions
 
-- A step's done-when fails: its rows stay open, steps that depend on it wait, and the other track carries on. A step's own plan handles its failed checks as the skill says.
+- A step's done-when fails: its rows stay open, steps that depend on it wait, and a later step that doesn't may run first, within §2.8's fixed orders. A step's own plan handles its failed checks as the skill says.
 - A row needs a system no Phase 7 step builds: it moves to Phase 8 or Later, with its reason.
 - A row's dependency lands after its step: it moves to the first step after the dependency.
 - 7.10 is too large: PA-Q2's trigger (§2.8).
 - A list item can't reach its target: `stopped`, with the profile.
 - A new performance finding: 9.2, never the list.
-- Now would hold four items: the UI track waits.
 
 ## 7. Critique
 
