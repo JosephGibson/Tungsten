@@ -22,6 +22,7 @@ mod knobs;
 mod particles;
 mod physics;
 mod piles;
+mod saves;
 mod terrain;
 #[cfg(test)]
 mod tests;
@@ -44,6 +45,7 @@ const BENCHES: &[&Bench] = &[
     &particles::BENCH,
     &terrain::BENCH,
     &piles::BENCH,
+    &saves::BENCH,
 ];
 
 fn main() -> anyhow::Result<()> {

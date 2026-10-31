@@ -163,6 +163,23 @@ Owns the runtime terrain's share of `physics_step` (redo 7.8): the registry's wr
 - **Owned:** `physics_step` p50/p95 and `update` p95.
 - **Guards:** `bench.edits constant` and `bench.traced <= 256`, 8 × `edits`: each of a frame's 2 × `edits` collision writes re-traces at most the chunks within one cell of it.
 
+## `saves`
+
+Owns a world save's capture (redo 7.9): `capture_world` over named objects and a named spawner's runtime spawns, then `serde_json::to_vec`, each frame. Warm-up 60 frames. Module: `saves.rs`.
+
+- **World.** One area of named objects with `Health`, `Stats` and `Tags`, and a named spawner's runtime spawns from an empty prefab, each a kinematic circle with a velocity; everything drifts across the viewport, bouncing off its edges, so each save holds changed positions. The kit's health, stats and tags plugins and the physics plugin build into a schedule the app never runs: their saved components register, their systems stay out of the frame. `save_snapshot` runs in `pre_update`, after the counters, where the command buffer is empty; the lean view draws everything.
+- **Cost.** At `default`, 12,101 records and about 3.07 MB a save: `save_snapshot` p50 26.5 ms, p95 29.2 ms (reference machine, 2026-10-31, a diagnostic sitting beside a remote desktop), the measure 7.14's C5 (a table for many spawns of one prefab) starts from.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `objects` | 100 | 1–10,000 | yes | Named objects in the area |
+| `spawns` | 12,000 | 0–100,000 | yes | The named spawner's runtime spawns; 12,000 is example 01's full pit |
+
+- **Presets:** `min` (20 objects, 200 spawns) and `default`.
+- **Counters:** `bench:` `saved` (records), `bytes` (the serialized save) and `visible`.
+- **Owned:** `system.save_snapshot` p50/p95 and `stage.update` p95.
+- **Guards:** `bench.saved constant` and `bench.bytes <= 3,080,192`, the first valid reading's 3,074,117 rounded up to 64 KiB.
+
 ## `friction` and `slopes`
 
 `friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
@@ -223,6 +240,7 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `terrain` | `guards_terrain` | `terrain` at `min` | `Body` count = `bodies`, `Sensor` count = `sensors`, one map; the warm-up's last frame and the window's last break and refill `edits` cells each and trace 1 to 8 × `edits` chunks; every frame's instances = bodies in view plus visible art tiles |
 | `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
 | `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
+| `saves` | `guards_saves` | `saves` at `min` | records = `objects` + 1 + `spawns`; view instances |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 
 Each bench guard runs its row's warm-up and a 60-frame window at the configuration named, and asserts the row its configuration measures before any pin. A rise in a cost counter needs a fix or its cause in the change's plan. The template has none: `tungsten new` copies the template's tests into every game.

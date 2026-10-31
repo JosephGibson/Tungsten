@@ -23,6 +23,7 @@ use crate::r#gen::{self, TextureSink};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
 use crate::piles::{self, PileCounts};
+use crate::saves::SaveCounts;
 use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
@@ -73,7 +74,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
         .collect();
     let mut textures = HeadlessTextures(handles.into_iter());
     match cfg.bench.name {
-        "physics" | "ecs" | "churn" => {
+        "physics" | "ecs" | "churn" | "saves" => {
             r#gen::register_view_textures(harness.world_mut(), &mut textures);
         }
         "particles" => {
@@ -417,4 +418,25 @@ fn guards_slopes() {
             counts.recycled
         );
     });
+}
+
+#[test]
+fn guards_saves() {
+    guard(
+        "saves",
+        ("saves", "min", None),
+        |world, cfg| {
+            let records = knob(cfg, "objects") + 1 + knob(cfg, "spawns");
+            assert_eq!(
+                count::<tungsten::core::save::Saved>(world),
+                records,
+                "records"
+            );
+            assert!(
+                world.has_resource::<BenchCounters<SaveCounts>>(),
+                "the counters"
+            );
+        },
+        view_drawable,
+    );
 }
