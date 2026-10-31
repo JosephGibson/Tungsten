@@ -5,6 +5,7 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 ## Now
 
 - `phase-7`: the Phase 7 plan (redo 7.7) assigns every register row by ID, `PA-` rows included, and names 7.14's and 7.15's finite lists ([plan](docs/plans/phase-7.md)); 7.2 (`tungsten run --script`, `render` and `describe`), 7.3 (`just perf`'s sittings, counter guards and GPU counters, `D-226`), 7.4 (H2: `just status`, releases on a tag push with `just release`, `D-227`, and the lean skills) and 7.5 (the analysis pass: [the seam register](docs/plans/seam-register.md)'s 193 verified S-rows, triaged into the plan's tables) have landed, and 7.8, terrain and physics, is next; Phase 7 runs from it a step at a time.
+- `physics-on-terrain`: redo 7.8's second plan, physics on the runtime terrain: body seams, physics layer names and materials, friction and circles that roll, contact events with speeds, begins and ends, sensor exits and swept sensors, impulses and a kinematic body's push, casts that pass refused hits, a resting query index, slope tiles, the platformer controller on slopes and pushed by bodies, and `friction` and `slopes` rows ([plan](docs/plans/physics-on-terrain.md)); it closes phase 7's Step 5.
 
 ## Next
 
