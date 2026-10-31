@@ -139,24 +139,88 @@ impl ContactEnded {
 }
 
 /// A sensor began to overlap a body (`other`) or a solid tile (`other:
-/// None`) in a layer its mask holds ([`RigidBody`](crate::physics::RigidBody)),
-/// sent at the end of the step in which the overlap began: once per pair
-/// while it lasts, and again after the two separate and overlap anew. A body
-/// already overlapping when the sensor's mask comes to hold its layer is
-/// reported at that step. Build one with [`SensorEntered::new`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// None`, `tile` its cell) in a layer its mask holds
+/// ([`RigidBody`](crate::physics::RigidBody)), sent at the end of the step in
+/// which the overlap began: once per pair while it lasts, and again after
+/// the two separate and overlap anew. A body already overlapping when the
+/// sensor's mask comes to hold its layer is reported at that step. A swept
+/// sensor ([`RigidBody::swept`](crate::physics::RigidBody::swept)) reports
+/// what it met over the step. Build one with [`SensorEntered::new`].
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[non_exhaustive]
 pub struct SensorEntered {
     /// The sensor.
     pub sensor: Entity,
     /// The body it began to overlap; `None` for a tile.
     pub other: Option<Entity>,
+    /// The tile's cell.
+    pub tile: Option<TileHit>,
+    /// The other's centre at the step's end, or, for a swept sensor, where
+    /// they first touched; a tile's, its cell's centre.
+    pub point: Vec2,
 }
 
 impl SensorEntered {
-    /// An event with these fields, as the step sends one.
+    /// An event with these fields, no tile and its point at the origin, as
+    /// the step sends one.
     #[must_use]
     pub fn new(sensor: Entity, other: Option<Entity>) -> Self {
-        Self { sensor, other }
+        Self {
+            sensor,
+            other,
+            tile: None,
+            point: Vec2::ZERO,
+        }
+    }
+
+    /// The event with its tile's cell `tile`.
+    #[must_use]
+    pub fn with_tile(mut self, tile: TileHit) -> Self {
+        self.tile = Some(tile);
+        self
+    }
+
+    /// The event with its point `point`.
+    #[must_use]
+    pub fn with_point(mut self, point: Vec2) -> Self {
+        self.point = point;
+        self
+    }
+}
+
+/// A sensor stopped overlapping a body or a tile it reported entering: sent
+/// at the end of the step whose sensor pass lacks the pair, after the
+/// entries, whether the two separated, the sensor's mask dropped the layer,
+/// the cell was written away or either was despawned (the entities may be
+/// dead). A swept sensor's pairs are what it met over the step, so one it
+/// passed exits at the next step unless met again. Build one with
+/// [`SensorExited::new`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SensorExited {
+    /// The sensor.
+    pub sensor: Entity,
+    /// The body; `None` for a tile.
+    pub other: Option<Entity>,
+    /// The tile's cell.
+    pub tile: Option<TileHit>,
+}
+
+impl SensorExited {
+    /// An event with these fields and no tile, as the step sends one.
+    #[must_use]
+    pub fn new(sensor: Entity, other: Option<Entity>) -> Self {
+        Self {
+            sensor,
+            other,
+            tile: None,
+        }
+    }
+
+    /// The event with its tile's cell `tile`.
+    #[must_use]
+    pub fn with_tile(mut self, tile: TileHit) -> Self {
+        self.tile = Some(tile);
+        self
     }
 }

@@ -17,6 +17,7 @@ fn seed_world() -> World {
     world.insert_resource(time);
     world.insert_resource(EventQueue::<CollisionEvent>::new());
     world.insert_resource(EventQueue::<SensorEntered>::new());
+    world.insert_resource(EventQueue::<SensorExited>::new());
     world.insert_resource(PhysicsConfig::default());
     world.insert_resource(TilemapRegistry::new());
     world
@@ -3177,11 +3178,32 @@ fn proxy_stays_80_bytes_with_the_kinematic_flag() {
     assert_eq!(std::mem::size_of::<Proxy>(), 80);
 }
 
-/// Every sensor event sent by the last step, flushing the queue.
+/// Every sensor entry sent by the last step, flushing the queue, as
+/// `(sensor, other, tile)`: its point set to the origin.
 fn drain_sensor_events(world: &mut World) -> Vec<SensorEntered> {
     let events = world
         .get_resource_mut::<EventQueue<SensorEntered>>()
         .unwrap();
+    let sent = events
+        .iter_current()
+        .map(|event| event.with_point(Vec2::ZERO))
+        .collect();
+    events.flush();
+    sent
+}
+
+/// Every sensor entry sent by the last step, its point kept, flushing the
+/// queue.
+fn drain_sensor_entries(world: &mut World) -> Vec<SensorEntered> {
+    let events = world.resource_mut::<EventQueue<SensorEntered>>();
+    let sent = events.iter_current().copied().collect();
+    events.flush();
+    sent
+}
+
+/// Every sensor exit sent by the last step, flushing the queue.
+fn drain_sensor_exits(world: &mut World) -> Vec<SensorExited> {
+    let events = world.resource_mut::<EventQueue<SensorExited>>();
     let sent = events.iter_current().copied().collect();
     events.flush();
     sent
@@ -3485,22 +3507,35 @@ fn sensor_on_a_tile_of_a_moving_map_sends_one_event() {
         entered.extend(drain_sensor_events(&mut world));
         world.get_mut::<TilemapInstance>(map).unwrap().origin.x += 0.5;
     }
-    assert_eq!(entered, [SensorEntered::new(sensor, None)]);
+    let cell = TileHit {
+        map,
+        layer: 0,
+        col: 0,
+        row: 0,
+    };
+    assert_eq!(entered, [SensorEntered::new(sensor, None).with_tile(cell)]);
 }
 
 #[test]
 fn sensor_sees_another_layers_tile_at_the_same_cell_as_new() {
     let mut world = seed_world();
-    spawn_map(&mut world, "layers", Vec2::ZERO, 1, vec![vec![0], vec![-1]]);
+    let map = spawn_map(&mut world, "layers", Vec2::ZERO, 1, vec![vec![0], vec![-1]]);
     let sensor = spawn_sensor(
         &mut world,
         Collider::circle(4.0),
         Vec2::new(8.0, 8.0),
         Vec2::ZERO,
     );
-    let tile = [SensorEntered::new(sensor, None)];
+    let tile = |layer: usize| {
+        [SensorEntered::new(sensor, None).with_tile(TileHit {
+            map,
+            layer,
+            col: 0,
+            row: 0,
+        })]
+    };
     physics_step(&mut world);
-    assert_eq!(drain_sensor_events(&mut world), tile);
+    assert_eq!(drain_sensor_events(&mut world), tile(0));
     physics_step(&mut world);
     assert!(drain_sensor_events(&mut world).is_empty());
     // The cell's solid tile now comes from the other layer.
@@ -3509,7 +3544,7 @@ fn sensor_sees_another_layers_tile_at_the_same_cell_as_new() {
         .unwrap()
         .insert("layers".into(), map_data(1, vec![vec![-1], vec![0]]));
     physics_step(&mut world);
-    assert_eq!(drain_sensor_events(&mut world), tile);
+    assert_eq!(drain_sensor_events(&mut world), tile(1));
 }
 
 #[test]
@@ -3578,12 +3613,23 @@ fn sensor_events_follow_sensor_order_then_index_order() {
         Collider::aabb(Vec2::splat(4.0)),
         Vec2::new(20.0, 0.0),
     );
-    spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
+    let map = spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
     physics_step(&mut world);
+    let cell = |col: u32| TileHit {
+        map,
+        layer: 0,
+        col,
+        row: 0,
+    };
     let expected: Vec<_> = [first, second]
         .into_iter()
         .flat_map(|sensor| {
-            [Some(left), Some(right), None, None].map(|other| SensorEntered::new(sensor, other))
+            [
+                SensorEntered::new(sensor, Some(left)),
+                SensorEntered::new(sensor, Some(right)),
+                SensorEntered::new(sensor, None).with_tile(cell(0)),
+                SensorEntered::new(sensor, None).with_tile(cell(1)),
+            ]
         })
         .collect();
     assert_eq!(drain_sensor_events(&mut world), expected);
@@ -4190,9 +4236,18 @@ fn a_tile_layer_meets_bodies_by_its_layers_and_mask() {
     assert!((y - 296.0).abs() < 1.0e-2, "the body was held at {y}");
     // A sensor over both floors reports the tiles in a layer its mask
     // holds: both by default, the upper floor's for layer 1.
-    for (mask, tiles) in [(RigidBody::ALL_LAYERS, 2), (1 << 1, 1), (1 << 2, 0)] {
+    for (mask, cells) in [
+        (RigidBody::ALL_LAYERS, &[(0, 8), (1, 2)][..]),
+        (1 << 1, &[(1, 2)][..]),
+        (1 << 2, &[][..]),
+    ] {
         let mut world = seed_world();
         two_floor_map(&mut world);
+        let map = world
+            .query::<(Entity, &TilemapInstance)>()
+            .next()
+            .unwrap()
+            .0;
         let sensor = spawn_body(
             &mut world,
             RigidBody::sensor().with_mask(mask),
@@ -4202,11 +4257,18 @@ fn a_tile_layer_meets_bodies_by_its_layers_and_mask() {
         );
         physics_step(&mut world);
         let entered = drain_sensor_events(&mut world);
-        assert_eq!(
-            entered,
-            vec![SensorEntered::new(sensor, None); tiles],
-            "mask {mask:#x}"
-        );
+        let expected: Vec<SensorEntered> = cells
+            .iter()
+            .map(|&(layer, row)| {
+                SensorEntered::new(sensor, None).with_tile(TileHit {
+                    map,
+                    layer,
+                    col: 2,
+                    row,
+                })
+            })
+            .collect();
+        assert_eq!(entered, expected, "mask {mask:#x}");
     }
 }
 
@@ -6131,4 +6193,298 @@ fn collision_events_carry_their_builds_speed() {
     );
     assert_eq!(events.len(), 1, "{events:?}");
     assert_eq!((events[0].penetration, events[0].speed), (0.0, 6_000.0));
+}
+
+#[test]
+fn a_sensor_reports_each_exit() {
+    let mut world = seed_world();
+    let map = spawn_map(&mut world, "floor", Vec2::new(-8.0, 30.0), 1, vec![vec![0]]);
+    let sensor = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::new(20.0, 30.0)),
+        Vec2::new(0.0, 10.0),
+        Vec2::ZERO,
+    );
+    let small = Collider::aabb(Vec2::splat(2.0));
+    let leaving = spawn_static(&mut world, small, Vec2::new(-10.0, 0.0));
+    let doomed = spawn_static(&mut world, small, Vec2::ZERO);
+    let masked = spawn_body(
+        &mut world,
+        RigidBody::r#static().with_layers(1 << 1),
+        small,
+        Vec2::new(10.0, 0.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_events(&mut world).len(),
+        4,
+        "three bodies and a cell"
+    );
+    assert!(drain_sensor_exits(&mut world).is_empty());
+    let mut exits = Vec::new();
+    world.get_mut::<Position>(leaving).unwrap().0 = Vec2::new(500.0, 0.0);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    world.despawn(doomed);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    world.get_mut::<RigidBody>(sensor).unwrap().mask = RigidBody::ALL_LAYERS & !(1 << 1);
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    assert!(
+        world
+            .resource_mut::<TilemapRegistry>()
+            .set_tile("floor", 0, 0, 0, EMPTY_TILE)
+    );
+    physics_step(&mut world);
+    exits.push(drain_sensor_exits(&mut world));
+    let cell = TileHit {
+        map,
+        layer: 0,
+        col: 0,
+        row: 0,
+    };
+    assert_eq!(
+        exits,
+        [
+            vec![SensorExited::new(sensor, Some(leaving))],
+            vec![SensorExited::new(sensor, Some(doomed))],
+            vec![SensorExited::new(sensor, Some(masked))],
+            vec![SensorExited::new(sensor, None).with_tile(cell)],
+        ]
+    );
+    assert!(
+        drain_sensor_events(&mut world).is_empty(),
+        "no entry on the way"
+    );
+}
+
+/// A sensor circle of radius 4, swept or plain, at `at` moving at
+/// `velocity`, without gravity.
+fn spawn_sweeper(world: &mut World, swept: bool, at: Vec2, velocity: Vec2) -> Entity {
+    let body = if swept {
+        RigidBody::sensor().with_swept()
+    } else {
+        RigidBody::sensor()
+    };
+    spawn_body(world, body, Collider::circle(4.0), at, velocity)
+}
+
+#[test]
+fn a_swept_sensor_meets_what_it_passes() {
+    // At 3,000 px/s it moves 50 px a step, from x -25 past a ball at the
+    // origin to 25: they first touch with the sensor at x -8.
+    for swept in [true, false] {
+        let mut world = seed_world();
+        let ball = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::circle(4.0),
+            Vec2::ZERO,
+            Vec2::ZERO,
+        );
+        let sensor = spawn_sweeper(
+            &mut world,
+            swept,
+            Vec2::new(-25.0, 0.0),
+            Vec2::new(3_000.0, 0.0),
+        );
+        physics_step(&mut world);
+        let entered = drain_sensor_entries(&mut world);
+        physics_step(&mut world);
+        let exited = drain_sensor_exits(&mut world);
+        if swept {
+            assert_eq!(
+                entered,
+                [SensorEntered::new(sensor, Some(ball)).with_point(Vec2::ZERO)]
+            );
+            assert_eq!(exited, [SensorExited::new(sensor, Some(ball))]);
+        } else {
+            assert!(
+                entered.is_empty() && exited.is_empty(),
+                "a plain sensor saw it"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_swept_sensor_follows_a_bounce() {
+    // A ball at 3,000 px/s crosses a still sensor, bounces off the wall
+    // beyond and crosses back within one step, outside the sensor at both
+    // of the step's ends.
+    for swept in [true, false] {
+        let mut world = seed_world();
+        spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(10.0, 50.0)),
+            Vec2::new(100.0, 0.0),
+        );
+        let ball = spawn_body(
+            &mut world,
+            RigidBody::dynamic().with_restitution(1.0),
+            Collider::circle(4.0),
+            Vec2::new(60.0, 0.0),
+            Vec2::new(3_000.0, 0.0),
+        );
+        let sensor = spawn_body(
+            &mut world,
+            if swept {
+                RigidBody::sensor().with_swept()
+            } else {
+                RigidBody::sensor()
+            },
+            Collider::aabb(Vec2::splat(1.0)),
+            Vec2::new(80.0, 0.0),
+            Vec2::ZERO,
+        );
+        physics_step(&mut world);
+        let at = world.get::<Position>(ball).unwrap().0;
+        let velocity = world.get::<Velocity>(ball).unwrap().0;
+        assert!(
+            at.x + 4.0 < 79.0 && velocity.x < 0.0,
+            "the ball came back: at {at}, {velocity}"
+        );
+        let entered = drain_sensor_entries(&mut world);
+        if swept {
+            assert_eq!(entered.len(), 1, "{entered:?}");
+            assert_eq!((entered[0].sensor, entered[0].other), (sensor, Some(ball)));
+        } else {
+            assert!(entered.is_empty(), "a plain sensor saw it");
+        }
+    }
+}
+
+#[test]
+fn a_swept_sensor_meets_a_body_knocked_through_it() {
+    // A resting ball struck at 3,000 px/s flies across a still sensor 12 px
+    // on within the step, past the box its pairs were staged with.
+    let mut world = seed_world();
+    let target = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::ZERO,
+        Vec2::ZERO,
+    );
+    spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::new(-10.0, 0.0),
+        Vec2::new(3_000.0, 0.0),
+    );
+    let sensor = spawn_body(
+        &mut world,
+        RigidBody::sensor().with_swept(),
+        Collider::aabb(Vec2::splat(1.0)),
+        Vec2::new(12.0, 0.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    let at = world.get::<Position>(target).unwrap().0;
+    assert!(
+        at.x - 4.0 > 13.0,
+        "the ball stopped short of the far side, at {at}"
+    );
+    let entered = drain_sensor_entries(&mut world);
+    assert!(
+        entered
+            .iter()
+            .any(|e| (e.sensor, e.other) == (sensor, Some(target))),
+        "{entered:?}"
+    );
+}
+
+#[test]
+fn a_swept_sensor_counts_a_start_overlap() {
+    // Overlapping a ball and a static box where its step starts: met at
+    // once, each at its centre.
+    let mut world = seed_world();
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(4.0),
+        Vec2::new(2.0, 0.0),
+        Vec2::ZERO,
+    );
+    let post = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(-3.0, 2.0),
+    );
+    let sensor = spawn_sweeper(&mut world, true, Vec2::ZERO, Vec2::new(0.0, 3_000.0));
+    physics_step(&mut world);
+    let entered = drain_sensor_entries(&mut world);
+    assert_eq!(
+        entered,
+        [
+            SensorEntered::new(sensor, Some(ball)).with_point(Vec2::new(2.0, 0.0)),
+            SensorEntered::new(sensor, Some(post)).with_point(Vec2::new(-3.0, 2.0)),
+        ]
+    );
+}
+
+#[test]
+fn sensor_events_name_their_cells() {
+    // A plain sensor over two cells names each at its centre, and both on
+    // its way out; a swept one names the cell it crosses within a step.
+    let mut world = seed_world();
+    let map = spawn_map(&mut world, "pair", Vec2::ZERO, 2, vec![vec![0, 0]]);
+    let cell = |col: u32| TileHit {
+        map,
+        layer: 0,
+        col,
+        row: 0,
+    };
+    let plain = spawn_sensor(
+        &mut world,
+        Collider::aabb(Vec2::new(12.0, 4.0)),
+        Vec2::new(16.0, 8.0),
+        Vec2::ZERO,
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_entries(&mut world),
+        [
+            SensorEntered::new(plain, None)
+                .with_tile(cell(0))
+                .with_point(Vec2::new(8.0, 8.0)),
+            SensorEntered::new(plain, None)
+                .with_tile(cell(1))
+                .with_point(Vec2::new(24.0, 8.0)),
+        ]
+    );
+    world.get_mut::<Position>(plain).unwrap().0 = Vec2::new(16.0, 400.0);
+    physics_step(&mut world);
+    // Exits come in pair order, which a tile's identity hash sets.
+    let mut exits = drain_sensor_exits(&mut world);
+    exits.sort_by_key(|exit| exit.tile.map(|tile| tile.col));
+    assert_eq!(
+        exits,
+        [
+            SensorExited::new(plain, None).with_tile(cell(0)),
+            SensorExited::new(plain, None).with_tile(cell(1)),
+        ]
+    );
+    // From above the map to below it within one step, over column 1.
+    let swept = spawn_sweeper(
+        &mut world,
+        true,
+        Vec2::new(24.0, -20.0),
+        Vec2::new(0.0, 3_000.0),
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_entries(&mut world),
+        [SensorEntered::new(swept, None)
+            .with_tile(cell(1))
+            .with_point(Vec2::new(24.0, 8.0))]
+    );
+    physics_step(&mut world);
+    assert_eq!(
+        drain_sensor_exits(&mut world),
+        [SensorExited::new(swept, None).with_tile(cell(1))]
+    );
 }

@@ -262,14 +262,19 @@ impl SpatialIndex {
     pub(super) fn sensor_overlaps(
         world: &World,
         buffers: &PhysicsBuffers,
+        swept: impl Fn(usize) -> bool,
         mut tiles_known: impl FnMut(usize, &IndexEntry) -> bool,
         mut visit: impl FnMut(&IndexEntry, &IndexEntry),
-        mut visit_tile: impl FnMut(usize, &IndexEntry, &IndexEntry, Entity),
+        mut visit_tile: impl FnMut(usize, &IndexEntry, &IndexEntry, TileHit),
     ) -> usize {
         with_index_of(world, buffers, |state| {
             let mut tested = 0;
             let sensors = state.tile_base..state.bodies.len();
             for (index, at) in sensors.enumerate() {
+                // A swept sensor's pairs are what it met over its move.
+                if swept(index) {
+                    continue;
+                }
                 let sensor = state.bodies[at];
                 let known = tiles_known(index, &sensor);
                 state.gather_parts(&sensor.aabb(), false);
@@ -291,7 +296,7 @@ impl SpatialIndex {
                     if sensor.mask & tile.layers != 0
                         && shapes_overlap(sensor.shape, sensor.center, tile.shape, tile.center)
                     {
-                        visit_tile(index, &sensor, &tile, cell.cell.map);
+                        visit_tile(index, &sensor, &tile, cell.cell);
                     }
                 };
                 if known {
@@ -971,6 +976,41 @@ fn start_overlap(shape: Shape, origin: Vec2, entry: &IndexEntry) -> Option<Conta
             circle_vs_circle_speculative(origin, radius, center, other, 0.0)
         }
     }
+}
+
+/// The first `t` in `[0, 1]` at which `shape`, moving from `start` by
+/// `motion`, overlaps `other`, moving from `other_start` by `other_motion`,
+/// with penetration above 0: 0 when they start overlapping, `None` when
+/// they never do, a graze included. Their relative motion cast against
+/// their Minkowski sum, as the query's shape casts meet a body.
+pub(super) fn first_overlap(
+    shape: Shape,
+    start: Vec2,
+    motion: Vec2,
+    other: Shape,
+    other_start: Vec2,
+    other_motion: Vec2,
+) -> Option<f32> {
+    if shapes_overlap(shape, start, other, other_start) {
+        return Some(0.0);
+    }
+    let (local, dir) = (start - other_start, motion - other_motion);
+    let t = match (shape, other) {
+        (
+            Shape::Aabb { half_extents },
+            Shape::Aabb {
+                half_extents: other,
+            },
+        ) => enter_box(local, dir, half_extents + other, false)?.0,
+        (Shape::Circle { radius }, Shape::Circle { radius: other }) => {
+            enter_circle(local, dir, Vec2::ZERO, radius + other, false)?
+        }
+        (Shape::Circle { radius }, Shape::Aabb { half_extents })
+        | (Shape::Aabb { half_extents }, Shape::Circle { radius }) => {
+            enter_rounded_box(local, dir, half_extents, radius, FACE_ALL)?.0
+        }
+    };
+    (t <= 1.0).then_some(t.max(0.0))
 }
 
 /// `shape` at `center` and `other` at `other_center` overlap with

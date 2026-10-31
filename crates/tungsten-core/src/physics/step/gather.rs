@@ -10,7 +10,7 @@
 //! outline's runs beside them, which casts meet.
 
 use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
-use super::{Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra};
+use super::{Layers, NO_SPIN, Proxy, ProxyLayers, SensorBody, SpinState, StepExtra, SweptSensor};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
@@ -28,6 +28,14 @@ use std::ops::RangeInclusive;
 /// keyspace from tile hashes.
 pub(super) fn entity_key(entity: Entity) -> u64 {
     (1 << 63) | (u64::from(entity.generation & 0x7FFF_FFFF) << 32) | u64::from(entity.index)
+}
+
+/// The entity an [`entity_key`] names, its generation's low 31 bits kept.
+pub(super) fn key_entity(key: u64) -> Entity {
+    Entity {
+        index: key as u32,
+        generation: ((key >> 32) & 0x7FFF_FFFF) as u32,
+    }
 }
 
 /// Warm-start identity for tile proxies, hashed from the tile center; stable
@@ -105,6 +113,7 @@ pub(super) fn gather_proxies(
     extra.spin_of.clear();
     extra.spins.clear();
     extra.rollings.clear();
+    extra.swept.clear();
     let mut kinematics = 0;
     let mut layered = false;
 
@@ -123,6 +132,12 @@ pub(super) fn gather_proxies(
         let body_layers = body.as_ref().map_or(Layers::DEFAULT, Layers::of);
         layered |= body_layers != Layers::DEFAULT;
         if body.is_some_and(|b| b.kind == BodyKind::Sensor) {
+            if body.is_some_and(|b| b.swept) {
+                extra.swept.push(SweptSensor {
+                    sensor: sensors.len() as u32,
+                    start: position.0 + collider.offset,
+                });
+            }
             sensors.push(SensorBody {
                 entity,
                 key: entity_key(entity),

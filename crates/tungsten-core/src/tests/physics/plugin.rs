@@ -2,7 +2,7 @@ use glam::Vec2;
 
 use super::*;
 use crate::ecs::Entity;
-use crate::physics::PhysicsMaterial;
+use crate::physics::{BodyKind, PhysicsMaterial};
 
 const DT: f32 = 1.0 / 60.0;
 
@@ -728,4 +728,28 @@ fn the_plugin_registers_the_contact_queues() {
     assert!(world.has_resource::<EventQueue<ContactBegan>>());
     assert!(world.has_resource::<EventQueue<ContactEnded>>());
     assert!(world.has_resource::<EventQueue<CollisionEvent>>());
+}
+
+#[test]
+fn swept_is_for_sensors() {
+    let mut world = physics_world();
+    let shape = serde_json::json!({ "kind": "circle", "radius": 4.0 });
+    let sweeper = spawn_body(
+        &mut world,
+        Vec2::ZERO,
+        &serde_json::json!({ "kind": "sensor", "shape": shape, "swept": true }),
+    );
+    assert!(world.get::<RigidBody>(sweeper).unwrap().swept);
+    assert_eq!(RigidBody::sensor().with_swept().kind, BodyKind::Sensor);
+    for kind in ["dynamic", "static", "kinematic"] {
+        let message = check_error(
+            &world,
+            &serde_json::json!({ "kind": kind, "shape": shape, "swept": true }),
+        );
+        assert!(
+            message.contains("`swept` is for sensors only"),
+            "{kind}: {message}"
+        );
+    }
+    assert!(std::panic::catch_unwind(|| RigidBody::dynamic().with_swept()).is_err());
 }

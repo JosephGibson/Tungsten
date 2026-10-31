@@ -12,8 +12,8 @@ use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
     Collider, CollisionEvent, ContactBegan, ContactEnded, PhysicsBuffers, PhysicsLayers,
-    PhysicsMaterials, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape,
-    Spin, Velocity, physics_step,
+    PhysicsMaterials, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered,
+    SensorExited, Shape, Spin, Velocity, physics_step,
 };
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
@@ -28,7 +28,8 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 /// Registers [`PHYSICS_PREV_SNAPSHOT`] and [`PHYSICS_STEP`] after it in
 /// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
 /// `EventQueue<CollisionEvent>`, `EventQueue<ContactBegan>`,
-/// `EventQueue<ContactEnded>`, `EventQueue<SensorEntered>` and the
+/// `EventQueue<ContactEnded>`, `EventQueue<SensorEntered>`,
+/// `EventQueue<SensorExited>` and the
 /// `rigid_body` scene component, which
 /// spawns a [`RigidBodyBundle`] at the entry's position
 /// ([`component_registry`](crate::component_registry)), its layer and
@@ -46,6 +47,7 @@ impl Plugin for PhysicsPlugin {
         world.register_event::<ContactBegan>();
         world.register_event::<ContactEnded>();
         world.register_event::<SensorEntered>();
+        world.register_event::<SensorExited>();
         world.register_component_with_assets(RIGID_BODY, check_rigid_body, spawn_rigid_body);
         schedule.add(
             Stage::FixedUpdate,
@@ -274,6 +276,9 @@ struct RigidBodyFields {
     /// A dynamic circle that rolls, spawned with a `Spin`.
     #[serde(default)]
     rolls: bool,
+    /// A sensor swept over its step's move.
+    #[serde(default)]
+    swept: bool,
 }
 
 /// `components.rigid_body`, checked: the bundle's parts beside the entry's
@@ -370,6 +375,9 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
         {
             return Err("`rolls` is for dynamic circles only".to_owned());
         }
+        if fields.swept && !matches!(fields.kind, SceneBodyKind::Sensor) {
+            return Err("`swept` is for sensors only".to_owned());
+        }
         // `restitution`, `friction`, `rolling` and `material` are accepted on
         // every kind and do nothing on a sensor, which has no contacts.
         let (body, velocity) = match fields.kind {
@@ -389,7 +397,15 @@ impl TryFrom<RigidBodyFields> for RigidBodyDef {
             SceneBodyKind::Kinematic => {
                 (RigidBody::kinematic(), Some(velocity.unwrap_or_default()))
             }
-            SceneBodyKind::Sensor => (RigidBody::sensor(), Some(velocity.unwrap_or_default())),
+            SceneBodyKind::Sensor => {
+                let sensor = RigidBody::sensor();
+                let sensor = if fields.swept {
+                    sensor.with_swept()
+                } else {
+                    sensor
+                };
+                (sensor, Some(velocity.unwrap_or_default()))
+            }
         };
         let (layers, layer_names) = fields
             .layers

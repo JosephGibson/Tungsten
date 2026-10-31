@@ -7292,6 +7292,7 @@ pub tungsten_core::physics::components::RigidBody::mask: u32
 pub tungsten_core::physics::components::RigidBody::restitution: f32
 pub tungsten_core::physics::components::RigidBody::rolling: f32
 pub tungsten_core::physics::components::RigidBody::rolls: bool
+pub tungsten_core::physics::components::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7308,6 +7309,7 @@ pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Se
 pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_swept(self) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
@@ -7472,12 +7474,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events:
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactEnded
 #[non_exhaustive] pub struct tungsten_core::physics::events::SensorEntered
 pub tungsten_core::physics::events::SensorEntered::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::events::SensorEntered::point: glam::f32::vec2::Vec2
 pub tungsten_core::physics::events::SensorEntered::sensor: tungsten_core::Entity
+pub tungsten_core::physics::events::SensorEntered::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_point(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::clone(&self) -> tungsten_core::physics::events::SensorEntered
-impl core::cmp::Eq for tungsten_core::physics::events::SensorEntered
 impl core::cmp::PartialEq for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::eq(&self, &tungsten_core::physics::events::SensorEntered) -> bool
 impl core::fmt::Debug for tungsten_core::physics::events::SensorEntered
@@ -7491,6 +7496,29 @@ impl core::marker::Unpin for tungsten_core::physics::events::SensorEntered
 impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorEntered
+#[non_exhaustive] pub struct tungsten_core::physics::events::SensorExited
+pub tungsten_core::physics::events::SensorExited::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::events::SensorExited::sensor: tungsten_core::Entity
+pub tungsten_core::physics::events::SensorExited::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorExited::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::clone(&self) -> tungsten_core::physics::events::SensorExited
+impl core::cmp::Eq for tungsten_core::physics::events::SensorExited
+impl core::cmp::PartialEq for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::eq(&self, &tungsten_core::physics::events::SensorExited) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::SensorExited
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::SensorExited
+impl core::marker::Freeze for tungsten_core::physics::events::SensorExited
+impl core::marker::Send for tungsten_core::physics::events::SensorExited
+impl core::marker::Sync for tungsten_core::physics::events::SensorExited
+impl core::marker::Unpin for tungsten_core::physics::events::SensorExited
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorExited
 pub mod tungsten_core::physics::step
 pub struct tungsten_core::physics::step::PhysicsBuffers
 impl tungsten_core::physics::step::PhysicsBuffers
@@ -7899,6 +7927,7 @@ pub tungsten_core::physics::RigidBody::mask: u32
 pub tungsten_core::physics::RigidBody::restitution: f32
 pub tungsten_core::physics::RigidBody::rolling: f32
 pub tungsten_core::physics::RigidBody::rolls: bool
+pub tungsten_core::physics::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -7915,6 +7944,7 @@ pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Se
 pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_swept(self) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
@@ -7965,12 +7995,15 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::compone
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::components::RigidBodyBundle
 #[non_exhaustive] pub struct tungsten_core::physics::SensorEntered
 pub tungsten_core::physics::SensorEntered::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::SensorEntered::point: glam::f32::vec2::Vec2
 pub tungsten_core::physics::SensorEntered::sensor: tungsten_core::Entity
+pub tungsten_core::physics::SensorEntered::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_point(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::clone(&self) -> tungsten_core::physics::events::SensorEntered
-impl core::cmp::Eq for tungsten_core::physics::events::SensorEntered
 impl core::cmp::PartialEq for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::eq(&self, &tungsten_core::physics::events::SensorEntered) -> bool
 impl core::fmt::Debug for tungsten_core::physics::events::SensorEntered
@@ -7984,6 +8017,29 @@ impl core::marker::Unpin for tungsten_core::physics::events::SensorEntered
 impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorEntered
+#[non_exhaustive] pub struct tungsten_core::physics::SensorExited
+pub tungsten_core::physics::SensorExited::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::SensorExited::sensor: tungsten_core::Entity
+pub tungsten_core::physics::SensorExited::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorExited::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::clone(&self) -> tungsten_core::physics::events::SensorExited
+impl core::cmp::Eq for tungsten_core::physics::events::SensorExited
+impl core::cmp::PartialEq for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::eq(&self, &tungsten_core::physics::events::SensorExited) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::SensorExited
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::SensorExited
+impl core::marker::Freeze for tungsten_core::physics::events::SensorExited
+impl core::marker::Send for tungsten_core::physics::events::SensorExited
+impl core::marker::Sync for tungsten_core::physics::events::SensorExited
+impl core::marker::Unpin for tungsten_core::physics::events::SensorExited
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorExited
 pub struct tungsten_core::physics::SpatialFilter
 impl tungsten_core::SpatialFilter
 pub fn tungsten_core::SpatialFilter::excluding(self, tungsten_core::Entity) -> Self
@@ -18136,6 +18192,7 @@ pub tungsten_core::RigidBody::mask: u32
 pub tungsten_core::RigidBody::restitution: f32
 pub tungsten_core::RigidBody::rolling: f32
 pub tungsten_core::RigidBody::rolls: bool
+pub tungsten_core::RigidBody::swept: bool
 impl tungsten_core::physics::components::RigidBody
 pub const tungsten_core::physics::components::RigidBody::ALL_LAYERS: u32
 pub const tungsten_core::physics::components::RigidBody::DEFAULT_LAYERS: u32
@@ -18152,6 +18209,7 @@ pub fn tungsten_core::physics::components::RigidBody::with_mass(self, f32) -> Se
 pub fn tungsten_core::physics::components::RigidBody::with_material(self, tungsten_core::physics::PhysicsMaterial) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_restitution(self, f32) -> Self
 pub fn tungsten_core::physics::components::RigidBody::with_rolling(self, f32) -> Self
+pub fn tungsten_core::physics::components::RigidBody::with_swept(self) -> Self
 impl core::clone::Clone for tungsten_core::physics::components::RigidBody
 pub fn tungsten_core::physics::components::RigidBody::clone(&self) -> tungsten_core::physics::components::RigidBody
 impl core::cmp::PartialEq for tungsten_core::physics::components::RigidBody
@@ -18400,12 +18458,15 @@ impl !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::schedule::Sched
 impl !core::panic::unwind_safe::UnwindSafe for tungsten_core::schedule::Schedule
 #[non_exhaustive] pub struct tungsten_core::SensorEntered
 pub tungsten_core::SensorEntered::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::SensorEntered::point: glam::f32::vec2::Vec2
 pub tungsten_core::SensorEntered::sensor: tungsten_core::Entity
+pub tungsten_core::SensorEntered::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_point(self, glam::f32::vec2::Vec2) -> Self
+pub fn tungsten_core::physics::events::SensorEntered::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::clone(&self) -> tungsten_core::physics::events::SensorEntered
-impl core::cmp::Eq for tungsten_core::physics::events::SensorEntered
 impl core::cmp::PartialEq for tungsten_core::physics::events::SensorEntered
 pub fn tungsten_core::physics::events::SensorEntered::eq(&self, &tungsten_core::physics::events::SensorEntered) -> bool
 impl core::fmt::Debug for tungsten_core::physics::events::SensorEntered
@@ -18419,6 +18480,29 @@ impl core::marker::Unpin for tungsten_core::physics::events::SensorEntered
 impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorEntered
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorEntered
+#[non_exhaustive] pub struct tungsten_core::SensorExited
+pub tungsten_core::SensorExited::other: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::SensorExited::sensor: tungsten_core::Entity
+pub tungsten_core::SensorExited::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::SensorExited::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::clone(&self) -> tungsten_core::physics::events::SensorExited
+impl core::cmp::Eq for tungsten_core::physics::events::SensorExited
+impl core::cmp::PartialEq for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::eq(&self, &tungsten_core::physics::events::SensorExited) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::SensorExited
+pub fn tungsten_core::physics::events::SensorExited::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::SensorExited
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::SensorExited
+impl core::marker::Freeze for tungsten_core::physics::events::SensorExited
+impl core::marker::Send for tungsten_core::physics::events::SensorExited
+impl core::marker::Sync for tungsten_core::physics::events::SensorExited
+impl core::marker::Unpin for tungsten_core::physics::events::SensorExited
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::SensorExited
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::SensorExited
 pub struct tungsten_core::Settings
 impl tungsten_core::settings::Settings
 pub const tungsten_core::settings::Settings::FILE: &'static str

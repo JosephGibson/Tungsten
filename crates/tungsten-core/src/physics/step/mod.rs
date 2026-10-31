@@ -91,7 +91,10 @@
 //! order, against the bodies it overlaps at their final positions and the
 //! solid cells of the tile cache's grids, in a layer its mask holds. A pair
 //! the previous step lacked sends `SensorEntered`, after the frame's
-//! collision events. A pair's key holds the sensor's key in its high half
+//! collision events, and a pair of the previous step this one lacks sends
+//! `SensorExited`. A swept sensor is tested in each substep instead, its
+//! share of the step's move against each moving body's substep move, and
+//! once against the static bodies and cells its whole move meets. A pair's key holds the sensor's key in its high half
 //! and the other's identity in its low half (a tile's names its map, layer
 //! and cell), and a step without sensors forgets every pair. A sensor whose
 //! identity, box and mask are the last pass's keeps its tile pairs and tests
@@ -136,8 +139,8 @@ use super::collision::{
 use super::components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Spin, Velocity,
 };
-use super::events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered};
-use super::query::{IndexEntry, SpatialIndex, TileHit};
+use super::events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered, SensorExited};
+use super::query::{IndexEntry, SpatialIndex, TileHit, first_overlap};
 use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
@@ -153,7 +156,7 @@ mod sweep;
 
 use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
 pub(super) use gather::{GridCell, TileRun};
-use gather::{TileCache, entity_key, gather_proxies};
+use gather::{TileCache, entity_key, gather_proxies, key_entity};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
 use solver::{
@@ -484,6 +487,36 @@ struct StepExtra {
     /// The step's begins and ends, sent after its collision events.
     began: Vec<ContactBegan>,
     ended: Vec<ContactEnded>,
+    /// The step's swept sensors, in gather order.
+    swept: Vec<SweptSensor>,
+    /// Time the step's substeps have advanced, which places a swept sensor
+    /// in each.
+    swept_elapsed: f32,
+    /// The bodies the swept sensors met in the substeps, in the order met.
+    swept_meets: Vec<SweptMeet>,
+    /// The last sensor pass's tile pairs with their cells, sorted by pair,
+    /// which name an exit's cell; and scratch for this pass's.
+    sensor_cells: Vec<(u128, TileHit)>,
+    sensor_cells_next: Vec<(u128, TileHit)>,
+    /// The step's sensor exits, sent after its entries.
+    sensor_exits: Vec<SensorExited>,
+}
+
+/// A swept sensor of the step ([`RigidBody::swept`]): its place among the
+/// sensors and its centre at the gather.
+#[derive(Debug, Clone, Copy)]
+struct SweptSensor {
+    sensor: u32,
+    start: Vec2,
+}
+
+/// A body a swept sensor met in a substep: its proxy, and its centre where
+/// they first touched.
+#[derive(Debug, Clone, Copy)]
+struct SweptMeet {
+    sensor: u32,
+    proxy: u32,
+    point: Vec2,
 }
 
 /// [`StepExtra::spin_of`]'s slot for a proxy that does not spin.
@@ -781,6 +814,8 @@ pub fn physics_step(world: &mut World) {
     integrate_loose_bodies(world, dt, config.gravity);
     // The contact record runs while a queue reads it.
     let extra = &mut *buffers.extra;
+    extra.swept_meets.clear();
+    extra.swept_elapsed = 0.0;
     extra.record_on = world.has_resource::<EventQueue<ContactBegan>>()
         || world.has_resource::<EventQueue<ContactEnded>>();
     if extra.record_on {
@@ -856,8 +891,8 @@ pub fn physics_step(world: &mut World) {
     );
     // Queries see this step's final positions from here on.
     SpatialIndex::mark_stale(world);
-    if buffers.sensors.is_empty() {
-        buffers.sensor_pairs.clear();
+    // A step without sensors keeps no pair, its last ones exiting.
+    if buffers.sensors.is_empty() && buffers.sensor_pairs.is_empty() {
         buffers.sensor_tiles.clear();
     } else {
         sensor_pass(world, &mut buffers);
@@ -905,6 +940,16 @@ pub fn physics_step(world: &mut World) {
             }
         } else {
             buffers.sensor_events.clear();
+        }
+    }
+    let exits = &mut buffers.extra.sensor_exits;
+    if !exits.is_empty() {
+        if let Some(sink) = world.get_resource_mut::<EventQueue<SensorExited>>() {
+            for event in exits.drain(..) {
+                sink.send(event);
+            }
+        } else {
+            exits.clear();
         }
     }
 
@@ -1051,6 +1096,7 @@ fn substep(
         proxies,
         bodies,
         tiles,
+        sensors,
         pair_budgets,
         pair_flags,
         layers,
@@ -1500,6 +1546,11 @@ fn substep(
         }
     }
 
+    // Swept sensors meet the moving bodies along this substep's moves.
+    if !extra.swept.is_empty() {
+        sweep_sensors(proxies, bodies, layers, sensors, extra, sub_dt);
+    }
+
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.
     for (proxy, budget) in proxies[..bodies].iter().zip(pair_budgets) {
@@ -1509,14 +1560,14 @@ fn substep(
     }
 }
 
-/// One sensor's tile pairs, sorted, each with its cell's map, and what
-/// they were found for.
+/// One sensor's tile pairs, sorted, each with its cell, and what they were
+/// found for.
 #[derive(Debug, Default)]
 struct SensorTiles {
     key: Option<SensorKey>,
     /// The sensor pass that last found or kept them.
     used: u64,
-    pairs: Vec<(u128, Entity)>,
+    pairs: Vec<(u128, TileHit)>,
 }
 
 /// What a sensor's tile overlaps depend on beside the tiles: the sensor,
@@ -1544,19 +1595,84 @@ impl SensorKey {
     }
 }
 
+/// Each swept sensor's substep share of its step's move against every
+/// dynamic and kinematic body whose box over its own substep move meets the
+/// sensor's: a body met for the first time this step is noted with its
+/// centre where they first touched. A sleeper's move is none. Static
+/// bodies and cells wait for the sensor pass, which meets them once.
+fn sweep_sensors(
+    proxies: &[Proxy],
+    bodies: usize,
+    layers: &ProxyLayers,
+    sensors: &[SensorBody],
+    extra: &mut StepExtra,
+    sub_dt: f32,
+) {
+    let StepExtra {
+        swept,
+        swept_elapsed,
+        swept_meets,
+        ..
+    } = extra;
+    for sweep in swept.iter() {
+        let sensor = &sensors[sweep.sensor as usize];
+        let start = sweep.start + sensor.velocity * *swept_elapsed;
+        let motion = sensor.velocity * sub_dt;
+        let half = sensor.shape.half_extents();
+        let reach = Aabb::new(start, half).union(&Aabb::new(start + motion, half));
+        for (index, proxy) in proxies[..bodies].iter().enumerate() {
+            if !(proxy.is_dynamic || proxy.kinematic)
+                || sensor.layers.mask & layers.of[index].layers == 0
+            {
+                continue;
+            }
+            let moved = if proxy.moves() {
+                proxy.center - proxy.prev_center
+            } else {
+                Vec2::ZERO
+            };
+            let from = proxy.center - moved;
+            if !reach.overlaps(&Aabb::new(from, proxy.half_extents()).union(&proxy.world_aabb())) {
+                continue;
+            }
+            let Some(t) = first_overlap(sensor.shape, start, motion, proxy.shape, from, moved)
+            else {
+                continue;
+            };
+            let met = swept_meets
+                .iter()
+                .any(|meet| meet.sensor == sweep.sensor && meet.proxy == index as u32);
+            if !met {
+                swept_meets.push(SweptMeet {
+                    sensor: sweep.sensor,
+                    proxy: index as u32,
+                    point: from + moved * t,
+                });
+            }
+        }
+    }
+    *swept_elapsed += sub_dt;
+}
+
 /// Sensor pass: each sensor, in gather order, against the bodies it
 /// overlaps at the step's final positions, in index order (the spatial
 /// index, built here), then the solid cells of the tile cache's grids, in
-/// tile order. A pair the previous step lacked sends `SensorEntered`; the
-/// step's pairs, sorted, replace the previous ones. A sensor whose key
-/// matches the one the last pass kept keeps its tile pairs, drops those of
-/// the cells the step's refresh changed and tests those cells alone; the
-/// events and the pairs are those a test of every cell gives.
+/// tile order; then each swept sensor's meetings over its step: the bodies
+/// its substeps met, in the order met, then the static bodies and the
+/// cells its whole move meets. A pair the previous step lacked sends
+/// `SensorEntered`, with the other's centre (where a swept sensor first met
+/// it, a cell's centre) and a tile's cell; a pair of the previous step this
+/// one lacks sends `SensorExited`, in pair order; the step's pairs, sorted,
+/// replace the previous ones. A sensor whose key matches the one the last
+/// pass kept keeps its tile pairs, drops those of the cells the step's
+/// refresh changed and tests those cells alone; the events and the pairs
+/// are those a test of every cell gives.
 fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut pairs = std::mem::take(&mut buffers.sensor_scratch);
     let mut body_pairs = std::mem::take(&mut buffers.sensor_body_pairs);
     let mut entered = std::mem::take(&mut buffers.sensor_events);
     let mut kept = std::mem::take(&mut buffers.sensor_tiles);
+    let mut cells = std::mem::take(&mut buffers.extra.sensor_cells_next);
     buffers.sensor_passes += 1;
     let pass = buffers.sensor_passes;
     let (replaced, written) = (buffers.tiles.replaced(), buffers.tiles.written_ids());
@@ -1564,8 +1680,12 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     let mut fresh = vec![false; buffers.sensors.len()];
     body_pairs.clear();
     let previous = &buffers.sensor_pairs;
-    let pair_of = |sensor: &IndexEntry, other: &IndexEntry| {
-        (u128::from(sensor.identity) << 64) | u128::from(other.identity)
+    let pair_of = |sensor: u64, other: u64| (u128::from(sensor) << 64) | u128::from(other);
+    let swept = &buffers.extra.swept;
+    let is_swept = |index: usize| {
+        swept
+            .binary_search_by_key(&(index as u32), |sweep| sweep.sensor)
+            .is_ok()
     };
     {
         let kept = &mut kept;
@@ -1579,6 +1699,7 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
         let tested = SpatialIndex::sensor_overlaps(
             world,
             buffers,
+            is_swept,
             |index, sensor| {
                 let key = SensorKey::of(sensor);
                 let mut kept = kept.borrow_mut();
@@ -1586,8 +1707,8 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                 if entry.key == Some(key) && entry.used + 1 == pass {
                     entry.used = pass;
                     if !(replaced.is_empty() && written.is_empty()) {
-                        entry.pairs.retain(|&(pair, map)| {
-                            !replaced.contains(&map)
+                        entry.pairs.retain(|&(pair, cell)| {
+                            !replaced.contains(&cell.map)
                                 && written.binary_search(&(pair as u64)).is_err()
                         });
                         fresh[index] = true;
@@ -1602,25 +1723,27 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
                 }
             },
             |sensor, other| {
-                let pair = pair_of(sensor, other);
+                let pair = pair_of(sensor.identity, other.identity);
                 body_pairs.push(pair);
                 if previous.binary_search(&pair).is_err()
                     && let Some(entity) = sensor.entity
                 {
                     entered
                         .borrow_mut()
-                        .push(SensorEntered::new(entity, other.entity));
+                        .push(SensorEntered::new(entity, other.entity).with_point(other.center));
                 }
             },
-            |index, sensor, tile, map| {
-                let pair = pair_of(sensor, tile);
-                kept.borrow_mut()[index].pairs.push((pair, map));
+            |index, sensor, tile, cell| {
+                let pair = pair_of(sensor.identity, tile.identity);
+                kept.borrow_mut()[index].pairs.push((pair, cell));
                 if previous.binary_search(&pair).is_err()
                     && let Some(entity) = sensor.entity
                 {
-                    entered
-                        .borrow_mut()
-                        .push(SensorEntered::new(entity, tile.entity));
+                    entered.borrow_mut().push(
+                        SensorEntered::new(entity, None)
+                            .with_tile(cell)
+                            .with_point(tile.center),
+                    );
                 }
             },
         );
@@ -1631,6 +1754,81 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
         #[cfg(not(test))]
         let _ = tested;
     }
+    // The swept sensors' meetings: the substeps' bodies, then the static
+    // bodies and cells over the whole move, each once.
+    let bodies = buffers.bodies;
+    for sweep in &buffers.extra.swept {
+        let index = sweep.sensor as usize;
+        let sensor = &buffers.sensors[index];
+        let motion = sensor.center - sweep.start;
+        let half = sensor.shape.half_extents();
+        let reach = Aabb::new(sweep.start, half).union(&Aabb::new(sensor.center, half));
+        let mut meet = |other: u64, entity: Option<Entity>, point: Vec2| {
+            let pair = pair_of(sensor.key, other);
+            if body_pairs.contains(&pair) {
+                return;
+            }
+            body_pairs.push(pair);
+            if previous.binary_search(&pair).is_err() {
+                entered.push(SensorEntered::new(sensor.entity, entity).with_point(point));
+            }
+        };
+        for found in &buffers.extra.swept_meets {
+            if found.sensor == sweep.sensor {
+                let proxy = &buffers.proxies[found.proxy as usize];
+                meet(proxy.key, proxy.entity, found.point);
+            }
+        }
+        for (at, proxy) in buffers.proxies[..bodies].iter().enumerate() {
+            let fixed = !proxy.is_dynamic && !proxy.kinematic;
+            if fixed
+                && sensor.layers.mask & buffers.layers.of[at].layers != 0
+                && reach.overlaps(&proxy.world_aabb())
+                && first_overlap(
+                    sensor.shape,
+                    sweep.start,
+                    motion,
+                    proxy.shape,
+                    proxy.center,
+                    Vec2::ZERO,
+                )
+                .is_some()
+            {
+                meet(proxy.key, proxy.entity, proxy.center);
+            }
+        }
+        let entry = &mut kept[index];
+        entry.key = None;
+        entry.used = pass;
+        entry.pairs.clear();
+        fresh[index] = true;
+        let (min, max) = (reach.min(), reach.max());
+        buffers.tiles.cells_in(min, max, |cell| {
+            let met = sensor.layers.mask & cell.layers != 0
+                && first_overlap(
+                    sensor.shape,
+                    sweep.start,
+                    motion,
+                    Shape::Aabb {
+                        half_extents: cell.half,
+                    },
+                    cell.center,
+                    Vec2::ZERO,
+                )
+                .is_some();
+            if met {
+                let pair = pair_of(sensor.key, cell.identity);
+                entry.pairs.push((pair, cell.cell));
+                if previous.binary_search(&pair).is_err() {
+                    entered.push(
+                        SensorEntered::new(sensor.entity, None)
+                            .with_tile(cell.cell)
+                            .with_point(cell.center),
+                    );
+                }
+            }
+        });
+    }
     for (entry, &fresh) in kept.iter_mut().zip(&fresh) {
         if fresh {
             entry.pairs.sort_unstable_by_key(|&(pair, _)| pair);
@@ -1638,21 +1836,45 @@ fn sensor_pass(world: &World, buffers: &mut PhysicsBuffers) {
     }
     // Every pair, sorted: the body pairs merged with each sensor's sorted
     // tile pairs, the sensors in key order, since a pair's high half is its
-    // sensor's identity.
+    // sensor's identity; the tile pairs' cells beside them.
     body_pairs.sort_unstable();
     let mut order: Vec<usize> = (0..kept.len()).collect();
-    order.sort_unstable_by_key(|&index| kept[index].key.map_or(0, |key| key.identity));
+    order.sort_unstable_by_key(|&index| buffers.sensors.get(index).map_or(0, |sensor| sensor.key));
     pairs.clear();
+    cells.clear();
     let mut bodies = body_pairs.iter().copied().peekable();
     for &index in &order {
-        for &(tile, _) in &kept[index].pairs {
+        for &(tile, cell) in &kept[index].pairs {
             while let Some(body) = bodies.next_if(|&body| body < tile) {
                 pairs.push(body);
             }
             pairs.push(tile);
+            cells.push((tile, cell));
         }
     }
     pairs.extend(bodies);
+    // The previous pairs this pass lacks exit, naming their cells.
+    let old_cells = &buffers.extra.sensor_cells;
+    let exits = &mut buffers.extra.sensor_exits;
+    let mut now = pairs.iter().peekable();
+    for &pair in previous {
+        while now.next_if(|&&next| next < pair).is_some() {}
+        if now.peek() == Some(&&pair) {
+            continue;
+        }
+        let other = pair as u64;
+        let sensor = key_entity((pair >> 64) as u64);
+        exits.push(if other >> 63 == 1 {
+            SensorExited::new(sensor, Some(key_entity(other)))
+        } else {
+            let exit = SensorExited::new(sensor, None);
+            match old_cells.binary_search_by_key(&pair, |&(pair, _)| pair) {
+                Ok(at) => exit.with_tile(old_cells[at].1),
+                Err(_) => exit,
+            }
+        });
+    }
+    buffers.extra.sensor_cells_next = std::mem::replace(&mut buffers.extra.sensor_cells, cells);
     buffers.sensor_scratch = std::mem::replace(&mut buffers.sensor_pairs, pairs);
     buffers.sensor_body_pairs = body_pairs;
     buffers.sensor_events = entered;

@@ -165,9 +165,11 @@ pub enum BodyKind {
     /// pass through it and no `CollisionEvent` names it. At the end of each
     /// step it sends a [`SensorEntered`](crate::physics::SensorEntered) for
     /// every static, dynamic or kinematic body or solid tile it has begun to
-    /// overlap in a layer its [`mask`](RigidBody::mask) holds; a body it
-    /// passes within one step goes unseen, and sensors do not detect
-    /// sensors. It never sleeps.
+    /// overlap in a layer its [`mask`](RigidBody::mask) holds, and a
+    /// [`SensorExited`](crate::physics::SensorExited) for each it no longer
+    /// overlaps; a body it passes within one step goes unseen unless it is
+    /// [`swept`](RigidBody::swept), and sensors do not detect sensors. It
+    /// never sleeps.
     Sensor,
 }
 
@@ -212,6 +214,11 @@ pub struct RigidBody {
     /// which the step turns. False from every constructor; boxes stay
     /// upright.
     pub rolls: bool,
+    /// A swept sensor: it reports every body and tile it meets over its
+    /// step's move, not only those it overlaps at the step's end, so one
+    /// it passes within a step enters, and exits at the next. False from
+    /// every constructor; a sensor's alone.
+    pub swept: bool,
 }
 
 impl RigidBody {
@@ -234,6 +241,7 @@ impl RigidBody {
             friction: 0.0,
             rolling: 0.0,
             rolls: false,
+            swept: false,
         }
     }
 
@@ -250,6 +258,7 @@ impl RigidBody {
             friction: 0.0,
             rolling: 0.0,
             rolls: false,
+            swept: false,
         }
     }
 
@@ -269,6 +278,7 @@ impl RigidBody {
             friction: 0.0,
             rolling: 0.0,
             rolls: false,
+            swept: false,
         }
     }
 
@@ -287,6 +297,7 @@ impl RigidBody {
             friction: 0.0,
             rolling: 0.0,
             rolls: false,
+            swept: false,
         }
     }
 
@@ -371,6 +382,22 @@ impl RigidBody {
         self.with_friction(material.friction)
             .with_restitution(material.restitution)
             .with_rolling(material.rolling)
+    }
+
+    /// The sensor swept over its step's move ([`swept`](Self::swept)).
+    ///
+    /// # Panics
+    ///
+    /// When the body is not a sensor.
+    #[must_use]
+    pub fn with_swept(mut self) -> Self {
+        assert!(
+            self.kind == BodyKind::Sensor,
+            "only a sensor is swept (got {:?})",
+            self.kind
+        );
+        self.swept = true;
+        self
     }
 
     /// The contact rule: each body's mask holds a layer the other is in.
