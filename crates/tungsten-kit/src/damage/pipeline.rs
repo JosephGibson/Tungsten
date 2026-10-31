@@ -14,6 +14,7 @@ use crate::damage::health::{Damaged, DamagedPart, Health, Hit, ImmunePart, start
 use crate::damage::kinds::{
     Conversion, ConversionRule, DamageKinds, DamageTypeTable, Penetration, merge_types,
 };
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::Despawning;
@@ -837,13 +838,23 @@ impl Resolver {
         if !self.damage.is_empty() {
             merge_types(world);
         }
-        self.damage
-            .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
+        let order = order_of(world);
+        self.damage.sort_by_key(|request| {
+            (
+                order.key(request.target),
+                request.source.map(|source| order.key(source)),
+            )
+        });
         for request in self.damage.drain(..) {
             resolve(world, &request, &mut self.landed, &mut self.immune);
         }
-        self.heals
-            .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
+        let order = order_of(world);
+        self.heals.sort_by_key(|request| {
+            (
+                order.key(request.target),
+                request.source.map(|source| order.key(source)),
+            )
+        });
         for request in self.heals.drain(..) {
             resolve_heal(world, &request);
         }

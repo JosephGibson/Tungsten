@@ -11,6 +11,7 @@ use crate::foundation::describe::{
     Bound, ComponentDescription, FieldDescription, FieldType, describe_shape, round_trip,
 };
 use crate::foundation::optional_vec2;
+use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::tags::{TagFilter, Tags, check_declared, valid_tag};
 use crate::motion::drive::{placed_point, point_of};
@@ -251,7 +252,8 @@ impl Resolver {
                         Some((entity, at))
                     }),
             );
-            found.sort_by_key(|(entity, _)| entity.id());
+            let order = order_of(world);
+            found.sort_by_key(|&(entity, _)| order.key(entity));
             self.used += 1;
             self.used - 1
         };

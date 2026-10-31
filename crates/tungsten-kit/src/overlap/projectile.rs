@@ -18,6 +18,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::optional_positive;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::lifecycle::ended::{Despawning, end, ensure_kit_despawn};
@@ -658,7 +659,8 @@ impl ProjectileRunner {
                 .filter(|(_, projectile)| !projectile.spent)
                 .map(|(entity, _)| entity),
         );
-        self.projectiles.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.projectiles.sort_by_key(|&entity| order.key(entity));
         for i in 0..self.projectiles.len() {
             let entity = self.projectiles[i];
             if world.has::<Despawning>(entity) {

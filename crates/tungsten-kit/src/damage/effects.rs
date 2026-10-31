@@ -25,6 +25,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows_with;
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::stats::{Modifier, STATS_APPLY, Stats};
 use crate::foundation::tags::{Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
@@ -2333,8 +2334,13 @@ impl EffectResolver {
         for request in self.expiries.drain(..) {
             resolve_effect(world, &request);
         }
-        self.requests
-            .sort_by_key(|request| (request.target.id(), request.source.map(Entity::id)));
+        let order = order_of(world);
+        self.requests.sort_by_key(|request| {
+            (
+                order.key(request.target),
+                request.source.map(|source| order.key(source)),
+            )
+        });
         for request in self.requests.drain(..) {
             resolve_effect(world, &request);
         }
@@ -2382,7 +2388,8 @@ impl Ticker {
                 .query::<(Entity, &Effects)>()
                 .map(|(entity, _)| entity),
         );
-        self.entities.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.entities.sort_by_key(|&entity| order.key(entity));
         let entities = std::mem::take(&mut self.entities);
         for &entity in &entities {
             self.tick_entity(world, entity, dt);

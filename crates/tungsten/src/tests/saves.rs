@@ -245,3 +245,82 @@ fn a_touch_restored_in_a_churned_world_keeps_its_schedule() {
     }
     assert_eq!(health(&b, hero_b), 7.0, "two more hits, on the schedule");
 }
+
+/// Two hazards, each touching both heroes on its own interval.
+fn hazards(world: &mut World) {
+    for (name, interval) in [("brambles", 0.25), ("embers", 0.4)] {
+        let hazard = world.spawn_with((
+            at(0.0).0,
+            at(0.0).1,
+            ContactDamage::new(1.0)
+                .with_interval(interval)
+                .with_shape(HitShape::circle(24.0), Vec2::ZERO),
+        ));
+        named(world, hazard, name);
+    }
+    for (name, x) in [("ana", 6.0), ("bo", -6.0)] {
+        let hero = world.spawn_with((
+            at(x).0,
+            at(x).1,
+            Hurtbox::new(HitShape::circle(4.0)),
+            Health::new(1000.0),
+        ));
+        named(world, hero, name);
+    }
+}
+
+/// Each frame's hits: the hurt entity's and the source's save IDs, and the
+/// amount, in the order the step resolved them.
+fn hits_over(harness: &mut Harness, frames: u32) -> Vec<Vec<(u64, Option<u64>, f32)>> {
+    let id = |world: &World, entity: Entity| {
+        world
+            .get::<tungsten_core::Saved>(entity)
+            .map(|saved| saved.id().0)
+    };
+    (0..frames)
+        .map(|_| {
+            harness.step(1);
+            let world = harness.world();
+            harness
+                .events::<Damaged>()
+                .map(|damaged| {
+                    (
+                        id(world, damaged.entity).unwrap(),
+                        damaged.source.and_then(|source| id(world, source)),
+                        damaged.amount,
+                    )
+                })
+                .collect()
+        })
+        .collect()
+}
+
+#[test]
+fn a_loaded_run_resolves_its_steps_hits_as_the_uninterrupted_run() {
+    let mut a = harness(0);
+    hazards(a.world_mut());
+    a.step(30);
+    let saved = capture(&a);
+
+    let mut b = harness(100);
+    hazards(b.world_mut());
+    restore(&mut b, &saved);
+    let uninterrupted = hits_over(&mut a, 120);
+    let loaded = hits_over(&mut b, 120);
+    assert!(
+        uninterrupted.iter().filter(|hits| hits.len() > 1).count() > 3,
+        "steps with several hits"
+    );
+    assert_eq!(loaded, uninterrupted);
+    for name in ["ana", "bo"] {
+        let health = |harness: &Harness| {
+            let entity = harness
+                .world()
+                .resource::<save::SaveState>()
+                .named_entity(save::SaveId::authored(name))
+                .unwrap();
+            health(harness, entity)
+        };
+        assert_eq!(health(&b), health(&a), "{name}");
+    }
+}

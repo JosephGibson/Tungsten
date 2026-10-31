@@ -20,6 +20,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags};
 use crate::foundation::{non_negative, optional_vec2, positive};
 use crate::lifecycle::ended::Despawning;
@@ -329,8 +330,7 @@ fn contact_saved() -> SaveOptions<ContactDamage> {
             contact
                 .timed
                 .retain(|timed| timed.target != Entity::PLACEHOLDER);
-            // `due` finds a target by its index.
-            contact.timed.sort_by_key(|timed| timed.target.id());
+            sort_by_target(&mut contact.timed);
         },
         keys: |_| Vec::new(),
     })
@@ -610,8 +610,7 @@ impl ContactDamage {
                 met: clock - f64::from(touch.since_met),
             });
         }
-        // `due` finds a target by its index.
-        self.timed.sort_by_key(|timed| timed.target.id());
+        sort_by_target(&mut self.timed);
     }
 
     /// Sets the damage a `damage` stat gives; one that is not finite and at
@@ -621,6 +620,12 @@ impl ContactDamage {
             self.damage = damage;
         }
     }
+}
+
+/// Sorts touches by their target's index, which `due` finds a target by:
+/// a lookup's order, not a step's, so it stays by index while saving.
+fn sort_by_target(timed: &mut [Timed]) {
+    timed.sort_by_key(|timed| timed.target.id());
 }
 
 /// The seconds from `then` to `clock`, as an `f32` of at least 0.
@@ -839,7 +844,8 @@ impl ContactRunner {
         self.hitters.clear();
         self.hitters
             .extend(world.query_filtered::<Entity, With<ContactDamage>>());
-        self.hitters.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.hitters.sort_by_key(|&entity| order.key(entity));
         for i in 0..self.hitters.len() {
             let hitter = self.hitters[i];
             if world.has::<Despawning>(hitter) {

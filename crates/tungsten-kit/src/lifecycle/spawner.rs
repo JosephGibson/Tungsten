@@ -19,6 +19,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
 use crate::foundation::positive;
+use crate::foundation::saved::{order_of, saving};
 use crate::foundation::trace::{TraceKind, trace};
 
 /// [`SpawnerPlugin`]'s system, in the react phase.
@@ -299,6 +300,12 @@ impl Ticker {
             for _ in 0..count {
                 due.push((entity, spawner.prefab.clone(), at));
             }
+        }
+        // While saving, by the spawner's save ID, so two spawners due in
+        // one step give their spawns the same IDs whatever their rows.
+        if saving(world) {
+            let order = order_of(world);
+            due.sort_by_key(|&(spawner, ..)| order.key(spawner));
         }
         for (spawner, prefab, position) in due.drain(..) {
             match world.prepare_prefab(&prefab, position) {

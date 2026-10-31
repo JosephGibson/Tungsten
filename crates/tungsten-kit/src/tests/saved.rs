@@ -38,7 +38,7 @@ fn rig() -> (World, Schedule) {
     let mut schedule = Schedule::new();
     KitPlugins::set()
         .without::<TagsPlugin>()
-        .with(TagsPlugin::new().with_tags(["team.player", "damage.fire", "door.locked"]))
+        .with(TagsPlugin::new().with_tags(["team.player", "damage.fire", "door.locked", "casting"]))
         .build(&mut schedule, &mut world);
     schedule.resolve().unwrap();
     for (id, value) in [
@@ -504,4 +504,214 @@ fn a_pending_hit_target_drops_once_its_hitbox_rearms() {
     enter_area(&mut entered, "south", &(Probe,)).unwrap();
     assert_eq!(entered.get::<Hitbox>(sword).unwrap().hit_targets(), [bat]);
     assert_eq!(entity_named(&entered, "bat"), bat);
+}
+
+/// Two names, the first's save ID above the second's.
+fn high_then_low() -> [&'static str; 2] {
+    let [a, b] = ["ember", "frost"];
+    if SaveId::authored(a) > SaveId::authored(b) {
+        [a, b]
+    } else {
+        [b, a]
+    }
+}
+
+/// One fixed step whose events stay readable: commands flushed, events not
+/// rotated.
+fn step_keeping_events(world: &mut World, schedule: &mut Schedule) {
+    world.resource_mut::<Time>().advance_frame(DT);
+    schedule.run_stage(Stage::FixedUpdate, world, |_, _| {});
+    flush(world);
+}
+
+/// Two sources hitting one golem in one step, the first by the lower
+/// index; named when `saving`, the first under the higher save ID.
+fn two_hits(saving: bool) -> (Vec<Option<Entity>>, [Entity; 2]) {
+    let (mut world, mut schedule) = rig();
+    let golem = world.spawn_with((Health::new(100.0),));
+    let first = world.spawn();
+    let second = world.spawn();
+    assert!(first.id() < second.id());
+    if saving {
+        let [high, low] = high_then_low();
+        named(&mut world, golem, None, "golem");
+        named(&mut world, first, None, high);
+        named(&mut world, second, None, low);
+    }
+    DamageRequest::new(golem, 1.0)
+        .with_source(first)
+        .queue(&mut world);
+    DamageRequest::new(golem, 2.0)
+        .with_source(second)
+        .queue(&mut world);
+    step_keeping_events(&mut world, &mut schedule);
+    let sources = world
+        .resource::<tungsten_core::EventQueue<crate::Damaged>>()
+        .iter()
+        .map(|damaged| damaged.source)
+        .collect();
+    (sources, [first, second])
+}
+
+#[test]
+fn same_step_hits_resolve_in_save_id_order_while_saving() {
+    let (sources, [first, second]) = two_hits(true);
+    assert_eq!(
+        sources,
+        [Some(second), Some(first)],
+        "the lower save ID first, though its index is higher"
+    );
+}
+
+#[test]
+fn without_save_state_the_order_is_by_entity_index() {
+    let (sources, [first, second]) = two_hits(false);
+    assert_eq!(sources, [Some(first), Some(second)]);
+}
+
+#[test]
+fn while_saving_a_contact_finds_its_touch_and_a_held_effect_stays_held() {
+    let (mut world, mut schedule) = rig();
+    let spikes = world.spawn_with((
+        Position(Vec2::ZERO),
+        ContactDamage::new(1.0)
+            .with_interval(0.5)
+            .with_shape(HitShape::circle(16.0), Vec2::ZERO),
+    ));
+    let hero = |world: &mut World, x: f32| {
+        world.spawn_with((
+            Position(Vec2::new(x, 0.0)),
+            crate::Hurtbox::new(HitShape::circle(4.0)),
+            Health::new(10.0),
+            crate::Tags::new(["casting"]),
+        ))
+    };
+    let first = hero(&mut world, 4.0);
+    let second = hero(&mut world, -4.0);
+    let [high, low] = high_then_low();
+    named(&mut world, spikes, None, "spikes");
+    named(&mut world, first, None, high);
+    named(&mut world, second, None, low);
+    let held = DataRef::inline(
+        Effect::new()
+            .with_duration(1.0)
+            .with_period(0.25)
+            .with_damage(1.0)
+            .with_suppressed_by(["casting"]),
+    );
+    for target in [first, second] {
+        EffectRequest::new(target, held.clone()).apply(&mut world);
+    }
+    let left = |world: &World, target| {
+        world
+            .get::<Effects>(target)
+            .unwrap()
+            .instances()
+            .next()
+            .unwrap()
+            .left()
+    };
+    for _ in 0..20 {
+        step(&mut world, &mut schedule);
+    }
+    for target in [first, second] {
+        assert_eq!(
+            world.get::<Health>(target).unwrap().current(),
+            9.0,
+            "one touch at once, the next due at 0.5 s: its touch was found"
+        );
+        assert_eq!(left(&world, target), Some(1.0), "held: no time, no payload");
+    }
+}
+
+/// Spawns `count` entities and despawns them all, highest index first, so
+/// the next spawns take the lowest free indices in turn.
+fn churn_up(world: &mut World, count: usize) {
+    let spawned: Vec<Entity> = (0..count).map(|_| world.spawn()).collect();
+    for entity in spawned.into_iter().rev() {
+        world.despawn(entity);
+    }
+}
+
+/// Whether `first`'s entity has the lower index of the two named.
+fn first_is_lower(world: &World, [first, second]: [&str; 2]) -> bool {
+    entity_named(world, first).id() < entity_named(world, second).id()
+}
+
+/// Spawners due in one step, built in `order`.
+fn spawners(world: &mut World, order: [&str; 2]) {
+    for name in order {
+        let spawner = world.spawn_with((Position(Vec2::ZERO), Spawner::new("slime", 0.5)));
+        named(world, spawner, None, name);
+    }
+}
+
+/// Each run's spawn's save ID with its source's.
+fn spawned_by(world: &World) -> BTreeSet<(SaveId, Option<SaveId>)> {
+    world
+        .query::<(&save::Saved, &Source)>()
+        .filter(|(saved, _)| saved.prefab().is_some())
+        .map(|(saved, source)| (saved.id(), id_of(world, source.entity())))
+        .collect()
+}
+
+#[test]
+fn simultaneous_spawners_give_their_spawns_the_same_ids_after_a_churned_load() {
+    let (mut a, mut schedule_a) = rig();
+    spawners(&mut a, ["east", "west"]);
+    for _ in 0..10 {
+        step(&mut a, &mut schedule_a);
+    }
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, mut schedule_b) = rig();
+    churn_up(&mut b, 30);
+    spawners(&mut b, ["west", "east"]);
+    assert!(first_is_lower(&a, ["east", "west"]) && first_is_lower(&b, ["west", "east"]));
+    restore(&mut b, &saved);
+    for _ in 0..25 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+    }
+    assert_eq!(spawned_by(&a).len(), 2, "both due in one step");
+    assert_eq!(spawned_by(&b), spawned_by(&a));
+}
+
+/// Bells whose cooldowns, without jitter, elapse in one step, each cue
+/// spawning a glow, built in `order`.
+fn bells(world: &mut World, order: [&str; 2]) {
+    prefab(
+        world,
+        "bell",
+        json!({ "components": {
+            "cooldown": { "seconds": 0.5 },
+            "cues": { "cooldown_elapsed": [{ "prefab": "glow" }] } } }),
+    );
+    for name in order {
+        let bell = world.spawn_prefab("bell", [0.0, 0.0]).unwrap();
+        named(world, bell, None, name);
+    }
+}
+
+#[test]
+fn two_cooldowns_whose_cues_spawn_give_the_same_ids_after_a_churned_load() {
+    let (mut a, mut schedule_a) = rig();
+    bells(&mut a, ["east", "west"]);
+    for _ in 0..10 {
+        step(&mut a, &mut schedule_a);
+    }
+    let saved = capture_world(&a).unwrap();
+
+    let (mut b, mut schedule_b) = rig();
+    churn_up(&mut b, 30);
+    bells(&mut b, ["west", "east"]);
+    assert!(first_is_lower(&a, ["east", "west"]) && first_is_lower(&b, ["west", "east"]));
+    restore(&mut b, &saved);
+    for _ in 0..25 {
+        step(&mut a, &mut schedule_a);
+        step(&mut b, &mut schedule_b);
+    }
+    assert_eq!(tagged(&a, "glow"), 2, "both elapsed in one step");
+    assert_eq!(spawned_by(&a).len(), 2);
+    assert_eq!(spawned_by(&b), spawned_by(&a));
 }

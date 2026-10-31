@@ -26,6 +26,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::{point, register_rows};
 use crate::foundation::phases::{Phase, ensure_phases};
+use crate::foundation::saved::order_of;
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
 use crate::foundation::{non_negative, optional_positive};
 use crate::lifecycle::despawn::DESPAWN_OUTSIDE;
@@ -1582,7 +1583,8 @@ impl HitboxRunner {
         self.hitters.clear();
         self.hitters
             .extend(world.query_filtered::<Entity, (With<Hitbox>, Without<Projectile>)>());
-        self.hitters.sort_by_key(|entity| entity.id());
+        let order = order_of(world);
+        self.hitters.sort_by_key(|&entity| order.key(entity));
         for i in 0..self.hitters.len() {
             let hitter = self.hitters[i];
             if let Some(sweep) = self.collect(world, &grid, hitter) {

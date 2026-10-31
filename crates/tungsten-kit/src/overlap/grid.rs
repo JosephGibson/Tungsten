@@ -8,6 +8,7 @@ use tungsten_core::{Entity, EventQueue, Transform, World};
 
 use crate::damage::health::Health;
 use crate::damage::pipeline::DamageRequest;
+use crate::foundation::saved::order_of;
 use crate::foundation::source::Source;
 use crate::foundation::tags::Tags;
 use crate::foundation::trace::{TraceKind, trace};
@@ -181,7 +182,8 @@ impl HitGrid {
                 self.entries.push(GridEntry { entity, sweep });
             }
         }
-        self.entries.sort_by_key(|entry| entry.entity.id());
+        let order = order_of(world);
+        self.entries.sort_by_key(|entry| order.key(entry.entity));
         for (index, entry) in self.entries.iter().enumerate() {
             let (min, max) = entry.sweep.bounds();
             self.bounds = Some(
