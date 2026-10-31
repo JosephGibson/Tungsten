@@ -7405,8 +7405,12 @@ pub tungsten_core::physics::events::CollisionEvent::a: tungsten_core::Entity
 pub tungsten_core::physics::events::CollisionEvent::b: core::option::Option<tungsten_core::Entity>
 pub tungsten_core::physics::events::CollisionEvent::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::events::CollisionEvent::penetration: f32
+pub tungsten_core::physics::events::CollisionEvent::speed: f32
+pub tungsten_core::physics::events::CollisionEvent::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_speed(self, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::clone(&self) -> tungsten_core::physics::events::CollisionEvent
 impl core::fmt::Debug for tungsten_core::physics::events::CollisionEvent
@@ -7419,6 +7423,53 @@ impl core::marker::Unpin for tungsten_core::physics::events::CollisionEvent
 impl core::marker::UnsafeUnpin for tungsten_core::physics::events::CollisionEvent
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::CollisionEvent
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::CollisionEvent
+#[non_exhaustive] pub struct tungsten_core::physics::events::ContactBegan
+pub tungsten_core::physics::events::ContactBegan::a: tungsten_core::Entity
+pub tungsten_core::physics::events::ContactBegan::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::events::ContactBegan::normal: glam::f32::vec2::Vec2
+pub tungsten_core::physics::events::ContactBegan::speed: f32
+pub tungsten_core::physics::events::ContactBegan::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::ContactBegan::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::clone(&self) -> tungsten_core::physics::events::ContactBegan
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::eq(&self, &tungsten_core::physics::events::ContactBegan) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactBegan
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactBegan
+impl core::marker::Freeze for tungsten_core::physics::events::ContactBegan
+impl core::marker::Send for tungsten_core::physics::events::ContactBegan
+impl core::marker::Sync for tungsten_core::physics::events::ContactBegan
+impl core::marker::Unpin for tungsten_core::physics::events::ContactBegan
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactBegan
+#[non_exhaustive] pub struct tungsten_core::physics::events::ContactEnded
+pub tungsten_core::physics::events::ContactEnded::a: tungsten_core::Entity
+pub tungsten_core::physics::events::ContactEnded::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::events::ContactEnded::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::ContactEnded::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::clone(&self) -> tungsten_core::physics::events::ContactEnded
+impl core::cmp::Eq for tungsten_core::physics::events::ContactEnded
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::eq(&self, &tungsten_core::physics::events::ContactEnded) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactEnded
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactEnded
+impl core::marker::Freeze for tungsten_core::physics::events::ContactEnded
+impl core::marker::Send for tungsten_core::physics::events::ContactEnded
+impl core::marker::Sync for tungsten_core::physics::events::ContactEnded
+impl core::marker::Unpin for tungsten_core::physics::events::ContactEnded
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactEnded
 #[non_exhaustive] pub struct tungsten_core::physics::events::SensorEntered
 pub tungsten_core::physics::events::SensorEntered::other: core::option::Option<tungsten_core::Entity>
 pub tungsten_core::physics::events::SensorEntered::sensor: tungsten_core::Entity
@@ -7584,8 +7635,12 @@ pub tungsten_core::physics::CollisionEvent::a: tungsten_core::Entity
 pub tungsten_core::physics::CollisionEvent::b: core::option::Option<tungsten_core::Entity>
 pub tungsten_core::physics::CollisionEvent::normal: glam::f32::vec2::Vec2
 pub tungsten_core::physics::CollisionEvent::penetration: f32
+pub tungsten_core::physics::CollisionEvent::speed: f32
+pub tungsten_core::physics::CollisionEvent::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_speed(self, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::clone(&self) -> tungsten_core::physics::events::CollisionEvent
 impl core::fmt::Debug for tungsten_core::physics::events::CollisionEvent
@@ -7616,6 +7671,53 @@ impl core::marker::Unpin for tungsten_core::physics::collision::Contact
 impl core::marker::UnsafeUnpin for tungsten_core::physics::collision::Contact
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::collision::Contact
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::collision::Contact
+#[non_exhaustive] pub struct tungsten_core::physics::ContactBegan
+pub tungsten_core::physics::ContactBegan::a: tungsten_core::Entity
+pub tungsten_core::physics::ContactBegan::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::ContactBegan::normal: glam::f32::vec2::Vec2
+pub tungsten_core::physics::ContactBegan::speed: f32
+pub tungsten_core::physics::ContactBegan::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::ContactBegan::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::clone(&self) -> tungsten_core::physics::events::ContactBegan
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::eq(&self, &tungsten_core::physics::events::ContactBegan) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactBegan
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactBegan
+impl core::marker::Freeze for tungsten_core::physics::events::ContactBegan
+impl core::marker::Send for tungsten_core::physics::events::ContactBegan
+impl core::marker::Sync for tungsten_core::physics::events::ContactBegan
+impl core::marker::Unpin for tungsten_core::physics::events::ContactBegan
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactBegan
+#[non_exhaustive] pub struct tungsten_core::physics::ContactEnded
+pub tungsten_core::physics::ContactEnded::a: tungsten_core::Entity
+pub tungsten_core::physics::ContactEnded::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::physics::ContactEnded::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::ContactEnded::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::clone(&self) -> tungsten_core::physics::events::ContactEnded
+impl core::cmp::Eq for tungsten_core::physics::events::ContactEnded
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::eq(&self, &tungsten_core::physics::events::ContactEnded) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactEnded
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactEnded
+impl core::marker::Freeze for tungsten_core::physics::events::ContactEnded
+impl core::marker::Send for tungsten_core::physics::events::ContactEnded
+impl core::marker::Sync for tungsten_core::physics::events::ContactEnded
+impl core::marker::Unpin for tungsten_core::physics::events::ContactEnded
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactEnded
 pub struct tungsten_core::physics::PhysicsBuffers
 impl tungsten_core::physics::step::PhysicsBuffers
 pub fn tungsten_core::physics::step::PhysicsBuffers::contact_count(&self) -> usize
@@ -15904,8 +16006,12 @@ pub tungsten_core::CollisionEvent::a: tungsten_core::Entity
 pub tungsten_core::CollisionEvent::b: core::option::Option<tungsten_core::Entity>
 pub tungsten_core::CollisionEvent::normal: glam::f32::vec2::Vec2
 pub tungsten_core::CollisionEvent::penetration: f32
+pub tungsten_core::CollisionEvent::speed: f32
+pub tungsten_core::CollisionEvent::tile: core::option::Option<tungsten_core::physics::TileHit>
 impl tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_speed(self, f32) -> Self
+pub fn tungsten_core::physics::events::CollisionEvent::with_tile(self, tungsten_core::physics::TileHit) -> Self
 impl core::clone::Clone for tungsten_core::physics::events::CollisionEvent
 pub fn tungsten_core::physics::events::CollisionEvent::clone(&self) -> tungsten_core::physics::events::CollisionEvent
 impl core::fmt::Debug for tungsten_core::physics::events::CollisionEvent
@@ -16040,6 +16146,53 @@ impl core::marker::Unpin for tungsten_core::physics::collision::Contact
 impl core::marker::UnsafeUnpin for tungsten_core::physics::collision::Contact
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::collision::Contact
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::collision::Contact
+#[non_exhaustive] pub struct tungsten_core::ContactBegan
+pub tungsten_core::ContactBegan::a: tungsten_core::Entity
+pub tungsten_core::ContactBegan::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::ContactBegan::normal: glam::f32::vec2::Vec2
+pub tungsten_core::ContactBegan::speed: f32
+pub tungsten_core::ContactBegan::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>, glam::f32::vec2::Vec2, f32) -> Self
+pub fn tungsten_core::physics::events::ContactBegan::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::clone(&self) -> tungsten_core::physics::events::ContactBegan
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::eq(&self, &tungsten_core::physics::events::ContactBegan) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactBegan
+pub fn tungsten_core::physics::events::ContactBegan::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactBegan
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactBegan
+impl core::marker::Freeze for tungsten_core::physics::events::ContactBegan
+impl core::marker::Send for tungsten_core::physics::events::ContactBegan
+impl core::marker::Sync for tungsten_core::physics::events::ContactBegan
+impl core::marker::Unpin for tungsten_core::physics::events::ContactBegan
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactBegan
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactBegan
+#[non_exhaustive] pub struct tungsten_core::ContactEnded
+pub tungsten_core::ContactEnded::a: tungsten_core::Entity
+pub tungsten_core::ContactEnded::b: core::option::Option<tungsten_core::Entity>
+pub tungsten_core::ContactEnded::tile: core::option::Option<tungsten_core::physics::TileHit>
+impl tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::new(tungsten_core::Entity, core::option::Option<tungsten_core::Entity>) -> Self
+pub fn tungsten_core::physics::events::ContactEnded::with_tile(self, tungsten_core::physics::TileHit) -> Self
+impl core::clone::Clone for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::clone(&self) -> tungsten_core::physics::events::ContactEnded
+impl core::cmp::Eq for tungsten_core::physics::events::ContactEnded
+impl core::cmp::PartialEq for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::eq(&self, &tungsten_core::physics::events::ContactEnded) -> bool
+impl core::fmt::Debug for tungsten_core::physics::events::ContactEnded
+pub fn tungsten_core::physics::events::ContactEnded::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tungsten_core::physics::events::ContactEnded
+impl core::marker::StructuralPartialEq for tungsten_core::physics::events::ContactEnded
+impl core::marker::Freeze for tungsten_core::physics::events::ContactEnded
+impl core::marker::Send for tungsten_core::physics::events::ContactEnded
+impl core::marker::Sync for tungsten_core::physics::events::ContactEnded
+impl core::marker::Unpin for tungsten_core::physics::events::ContactEnded
+impl core::marker::UnsafeUnpin for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::physics::events::ContactEnded
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::physics::events::ContactEnded
 pub struct tungsten_core::CrtParams
 pub tungsten_core::CrtParams::bleed: f32
 pub tungsten_core::CrtParams::curvature: f32

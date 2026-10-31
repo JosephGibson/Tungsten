@@ -797,6 +797,31 @@ impl TileCache {
         &self.state.rollings
     }
 
+    /// The cell the tile proxy at `ordinal` stands for, its centre `center`:
+    /// its map, layer, column and row, one-way cells included.
+    pub(super) fn cell_hit(&self, ordinal: usize, center: Vec2) -> Option<TileHit> {
+        let identity = *self.ids.get(ordinal)?;
+        let (map_slot, map) = self
+            .state
+            .maps
+            .iter()
+            .enumerate()
+            .find(|(_, map)| (map.start..map.start + map.len).contains(&ordinal))?;
+        let (cols, rows) = map.span(center, center)?;
+        for slot in 0..map.layers.len() {
+            for row in rows.clone() {
+                for col in cols.clone() {
+                    if let Some(cell) = map.cell(map_slot, slot, col, row)
+                        && cell.identity == identity
+                    {
+                        return Some(cell.cell);
+                    }
+                }
+            }
+        }
+        None
+    }
+
     /// Chunks traced since the cache was made.
     pub(super) fn traced(&self) -> u64 {
         self.state.traced

@@ -5756,3 +5756,379 @@ fn a_cell_turned_one_way_wakes_its_sleepers() {
         "it fell to the floor: {fallen}"
     );
 }
+
+/// [`seed_world`] with the contact record's queues, so the step keeps it.
+fn record_world() -> World {
+    let mut world = seed_world();
+    world.insert_resource(EventQueue::<ContactBegan>::new());
+    world.insert_resource(EventQueue::<ContactEnded>::new());
+    world
+}
+
+/// Every begin and end the last step sent, flushing both queues.
+fn drain_contacts(world: &mut World) -> (Vec<ContactBegan>, Vec<ContactEnded>) {
+    let began = world.resource_mut::<EventQueue<ContactBegan>>();
+    let sent_began: Vec<ContactBegan> = began.iter_current().copied().collect();
+    began.flush();
+    let ended = world.resource_mut::<EventQueue<ContactEnded>>();
+    let sent_ended: Vec<ContactEnded> = ended.iter_current().copied().collect();
+    ended.flush();
+    (sent_began, sent_ended)
+}
+
+/// Steps `world` `steps` times, gathering every begin and end.
+fn step_contacts(world: &mut World, steps: usize) -> (Vec<ContactBegan>, Vec<ContactEnded>) {
+    let (mut began, mut ended) = (Vec::new(), Vec::new());
+    for _ in 0..steps {
+        physics_step(world);
+        let (b, e) = drain_contacts(world);
+        began.extend(b);
+        ended.extend(e);
+        world.resource_mut::<EventQueue<CollisionEvent>>().flush();
+    }
+    (began, ended)
+}
+
+#[test]
+fn contacts_begin_and_end_once_per_touch() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 40.0));
+    let (began, ended) = step_contacts(&mut world, 200);
+    assert_eq!(began.len(), 1, "{began:?}");
+    let begin = began[0];
+    assert_eq!((begin.a, begin.b, begin.tile), (ball, Some(floor), None));
+    assert!((begin.normal - Vec2::NEG_Y).length() < 1e-6, "{begin:?}");
+    assert!(begin.speed > 100.0, "a 30 px fall lands at {}", begin.speed);
+    assert!(ended.is_empty(), "{ended:?}");
+    assert!(is_sleeping(&world, ball), "the ball rests asleep");
+    // Launched off: one end, and nothing while it flies.
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::new(0.0, -600.0);
+    wake(&mut world, ball);
+    let (began, ended) = step_contacts(&mut world, 30);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
+}
+
+/// A ball of radius 10 at 300 px/s along x, `gap` px short of a static
+/// wall at the step's start, with `restitution`: its begins and ends over
+/// 60 steps without gravity.
+fn impact(gap: f32, restitution: f32) -> (Entity, Entity, Vec<ContactBegan>, Vec<ContactEnded>) {
+    let mut world = record_world();
+    let wall = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(10.0, 100.0)),
+        Vec2::new(100.0, 0.0),
+    );
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic().with_restitution(restitution),
+        Collider::circle(10.0),
+        Vec2::new(90.0 - 10.0 - gap, 0.0),
+        Vec2::new(300.0, 0.0),
+    );
+    let (began, ended) = step_contacts(&mut world, 60);
+    (ball, wall, began, ended)
+}
+
+#[test]
+fn a_contact_begins_at_its_impact_speed() {
+    for restitution in [0.0, 0.5] {
+        for gap in [0.5, 3.0, 12.0] {
+            let (ball, wall, began, ended) = impact(gap, restitution);
+            assert_eq!(
+                began.len(),
+                1,
+                "gap {gap}, restitution {restitution}: {began:?}"
+            );
+            let begin = began[0];
+            assert_eq!((begin.a, begin.b), (ball, Some(wall)));
+            assert!(
+                (begin.speed - 300.0).abs() <= 3.0,
+                "gap {gap}, restitution {restitution}: began at {}",
+                begin.speed
+            );
+            // The bounced ball leaves once; the inelastic one stays.
+            let ends = usize::from(restitution > 0.0);
+            assert_eq!(ended.len(), ends, "gap {gap}, restitution {restitution}");
+        }
+    }
+}
+
+#[test]
+fn a_knocked_ball_begins_at_its_knock_speed() {
+    // A ball resting `gap` px from a wall is struck by an equal one at
+    // `speed`; the pair's begin reads the knock, not the rest its contact
+    // was built in. At 0.5 px the at-rest margin holds the wall's contact;
+    // at 1.5 px only the arrival pass meets the wall in time.
+    for (gap, speed) in [(0.5, 600.0), (1.5, 1_200.0)] {
+        let mut world = record_world();
+        let wall = spawn_static(
+            &mut world,
+            Collider::aabb(Vec2::new(10.0, 100.0)),
+            Vec2::new(100.0, 0.0),
+        );
+        let target = spawn_ball(&mut world, Vec2::new(90.0 - 10.0 - gap, 0.0));
+        let striker = spawn_body(
+            &mut world,
+            RigidBody::dynamic(),
+            Collider::circle(10.0),
+            Vec2::new(90.0 - 10.0 - gap - 22.0, 0.0),
+            Vec2::new(speed, 0.0),
+        );
+        let (began, _) = step_contacts(&mut world, 10);
+        let wall_begins: Vec<&ContactBegan> = began.iter().filter(|b| b.b == Some(wall)).collect();
+        assert_eq!(wall_begins.len(), 1, "gap {gap}: {began:?}");
+        let begin = wall_begins[0];
+        assert_eq!(begin.a, target, "gap {gap}");
+        assert!(
+            begin.speed > 100.0 && begin.speed <= speed / 2.0 * 1.03,
+            "gap {gap}: struck at {speed}, the wall's begin at {}",
+            begin.speed
+        );
+        assert!(began.iter().any(|b| b.a == striker || b.b == Some(striker)));
+        if gap > 1.0 {
+            let clamps = world.resource::<PhysicsBuffers>().arrival.clamps;
+            assert!(clamps > 0, "the arrival pass clamped nothing");
+        }
+    }
+}
+
+#[test]
+fn a_sleeping_pile_neither_ends_nor_begins() {
+    let mut world = record_world();
+    let (bottom, top) = spawn_sleeping_stack(&mut world);
+    let (began, _) = step_contacts(&mut world, 150);
+    assert_eq!(began.len(), 2, "floor and stack: {began:?}");
+    assert!(is_sleeping(&world, bottom) && is_sleeping(&world, top));
+    // Woken, it settles and sleeps again, touching throughout.
+    wake(&mut world, bottom);
+    assert!(!is_sleeping(&world, bottom));
+    let (began, ended) = step_contacts(&mut world, 150);
+    assert!(began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    assert!(is_sleeping(&world, bottom), "the pile sleeps again");
+
+    // A ball asleep on a still kinematic deck keeps its contact while the
+    // deck is written a hair aside, and ends it when the deck goes.
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let deck = spawn_kinematic(
+        &mut world,
+        Collider::aabb(Vec2::new(60.0, 8.0)),
+        Vec2::new(0.0, 108.0),
+        Vec2::ZERO,
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 90.0));
+    let (began, _) = step_contacts(&mut world, 120);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert!(is_sleeping(&world, ball), "the ball sleeps on the deck");
+    let at = world.get::<Position>(deck).unwrap().0;
+    teleport(&mut world, deck, at + Vec2::new(0.25, 0.0));
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty() && ended.is_empty(), "{began:?} {ended:?}");
+    assert!(is_sleeping(&world, ball), "a kinematic write wakes nothing");
+    teleport(&mut world, deck, at + Vec2::new(0.0, 400.0));
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended, [ContactEnded::new(ball, Some(deck))]);
+}
+
+#[test]
+fn a_body_leaving_a_sleeper_ends_their_contact() {
+    // Below the wake threshold the sleeper stays asleep, so only the
+    // awake body's solve can tell the touch is over.
+    let mut world = record_world();
+    let sleeper = spawn_ball(&mut world, Vec2::ZERO);
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    assert!(is_sleeping(&world, sleeper));
+    let mover = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(10.0),
+        Vec2::new(20.0, 0.0),
+        Vec2::new(-5.0, 0.0),
+    );
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert_eq!(began.len(), 1, "{began:?}");
+    assert!(ended.is_empty(), "{ended:?}");
+    world.get_mut::<Velocity>(mover).unwrap().0 = Vec2::new(10.0, 0.0);
+    let (began, ended) = step_contacts(&mut world, 20);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(ended.len(), 1, "{ended:?}");
+    let end = ended[0];
+    assert!(
+        (end.a, end.b) == (mover, Some(sleeper)) || (end.a, end.b) == (sleeper, Some(mover)),
+        "{end:?}"
+    );
+    assert!(is_sleeping(&world, sleeper), "the sleeper never woke");
+}
+
+#[test]
+fn a_despawned_body_ends_its_contacts() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    let floor = spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 79.0));
+    let (began, _) = step_contacts(&mut world, 30);
+    assert_eq!(began.len(), 1);
+    world.despawn(ball);
+    let (began, ended) = step_contacts(&mut world, 2);
+    assert!(began.is_empty());
+    assert_eq!(ended, [ContactEnded::new(ball, Some(floor))]);
+}
+
+#[test]
+fn contact_events_name_the_tile_cell() {
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    // Two collision layers of a 3 × 3 map, each solid at column 1, row 2
+    // alone, so the ball's pairs are that cell's in each layer.
+    let mut cell_row = vec![-1; 9];
+    cell_row[7] = 0;
+    let layers = || vec![cell_row.clone(), cell_row.clone()];
+    let map = spawn_map(&mut world, "two", Vec2::ZERO, 3, layers());
+    // A ball of radius 6 over the cell's middle (x 16..32).
+    let ball = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(24.0, 20.0),
+        Vec2::ZERO,
+    );
+    let mut collisions = Vec::new();
+    let (mut began, mut ended) = (Vec::new(), Vec::new());
+    for _ in 0..120 {
+        physics_step(&mut world);
+        collisions.extend(drain_events(&mut world));
+        let (b, e) = drain_contacts(&mut world);
+        began.extend(b);
+        ended.extend(e);
+    }
+    let cell = |map: Entity, layer: usize| TileHit {
+        map,
+        layer,
+        col: 1,
+        row: 2,
+    };
+    assert!(ended.is_empty(), "{ended:?}");
+    let begun: Vec<Option<TileHit>> = began.iter().map(|b| b.tile).collect();
+    assert_eq!(
+        begun,
+        [Some(cell(map, 0)), Some(cell(map, 1))],
+        "a pair a layer"
+    );
+    assert!(began.iter().all(|b| b.a == ball && b.b.is_none()));
+    assert!(
+        collisions
+            .iter()
+            .any(|c| c.a == ball && c.tile == Some(cell(map, 1))),
+        "the collision events name the cell"
+    );
+    // The map replaced in place, layer 1 emptied: its pair ends, layer 0's
+    // stands.
+    world.resource_mut::<TilemapRegistry>().insert(
+        "two".into(),
+        map_data(3, vec![cell_row.clone(), vec![-1; 9]]),
+    );
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert!(began.is_empty(), "{began:?}");
+    assert_eq!(
+        ended,
+        [ContactEnded::new(ball, None).with_tile(cell(map, 1))]
+    );
+    // Another map in its place: the old pair ends, the new ones begin.
+    world.despawn(map);
+    let other = spawn_map(&mut world, "two", Vec2::ZERO, 3, layers());
+    let (began, ended) = step_contacts(&mut world, 3);
+    assert_eq!(
+        ended,
+        [ContactEnded::new(ball, None).with_tile(cell(map, 0))]
+    );
+    let begun: Vec<Option<TileHit>> = began.iter().map(|b| b.tile).collect();
+    assert_eq!(begun, [Some(cell(other, 0)), Some(cell(other, 1))]);
+}
+
+#[test]
+fn collision_events_carry_their_builds_speed() {
+    // A resting ball's contact is built at rest.
+    let mut world = record_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(200.0, 10.0)),
+        Vec2::new(0.0, 100.0),
+    );
+    let ball = spawn_ball(&mut world, Vec2::new(0.0, 79.0));
+    for _ in 0..20 {
+        physics_step(&mut world);
+        drain_events(&mut world);
+    }
+    world.get_mut::<Velocity>(ball).unwrap().0 = Vec2::ZERO;
+    physics_step(&mut world);
+    let resting = drain_events(&mut world);
+    assert!(!resting.is_empty());
+    assert!(resting.iter().all(|event| event.speed < 1.0), "{resting:?}");
+    // The safety net's clamp names the speed it stopped.
+    let mut world = record_world();
+    spawn_static(
+        &mut world,
+        Collider::aabb(Vec2::new(2.0, 50.0)),
+        Vec2::new(50.0, 0.0),
+    );
+    spawn_ball(&mut world, Vec2::ZERO);
+    let config = *world.resource::<PhysicsConfig>();
+    let mut buffers = PhysicsBuffers::default();
+    gather_proxies(
+        &world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+        &mut buffers.extra,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    buffers.static_grid.begin_frame();
+    build_pairs(&config, 1.0 / 240.0, 1.0 / 60.0, &mut buffers);
+    let ball_index = buffers.proxies.iter().position(|p| p.is_dynamic).unwrap();
+    let proxy = &mut buffers.proxies[ball_index];
+    proxy.prev_center = Vec2::ZERO;
+    proxy.center = Vec2::new(100.0, 0.0);
+    proxy.velocity = Vec2::new(6_000.0, 0.0);
+    let PhysicsBuffers {
+        proxies,
+        bodies,
+        layers,
+        grid,
+        static_grid,
+        candidates,
+        events,
+        tiles,
+        ..
+    } = &mut buffers;
+    speculative_pass(
+        &config,
+        proxies,
+        *bodies,
+        layers,
+        grid,
+        static_grid,
+        candidates,
+        events,
+        tiles,
+        None,
+    );
+    assert_eq!(events.len(), 1, "{events:?}");
+    assert_eq!((events[0].penetration, events[0].speed), (0.0, 6_000.0));
+}

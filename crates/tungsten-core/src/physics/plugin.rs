@@ -11,8 +11,9 @@ use crate::component_registry::{MissingAsset, SpawnContext};
 use crate::components::Transform;
 use crate::ecs::World;
 use crate::physics::{
-    Collider, CollisionEvent, PhysicsBuffers, PhysicsLayers, PhysicsMaterials, Position,
-    PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape, Spin, Velocity, physics_step,
+    Collider, CollisionEvent, ContactBegan, ContactEnded, PhysicsBuffers, PhysicsLayers,
+    PhysicsMaterials, Position, PrevPosition, RigidBody, RigidBodyBundle, SensorEntered, Shape,
+    Spin, Velocity, physics_step,
 };
 use crate::schedule::{Plugin, Schedule, Stage, system};
 use crate::time::Time;
@@ -26,7 +27,8 @@ pub const PHYSICS_SYNC: &str = "physics_sync";
 
 /// Registers [`PHYSICS_PREV_SNAPSHOT`] and [`PHYSICS_STEP`] after it in
 /// `FixedUpdate`, [`PHYSICS_SYNC`] in `PostUpdate`,
-/// `EventQueue<CollisionEvent>`, `EventQueue<SensorEntered>` and the
+/// `EventQueue<CollisionEvent>`, `EventQueue<ContactBegan>`,
+/// `EventQueue<ContactEnded>`, `EventQueue<SensorEntered>` and the
 /// `rigid_body` scene component, which
 /// spawns a [`RigidBodyBundle`] at the entry's position
 /// ([`component_registry`](crate::component_registry)), its layer and
@@ -41,6 +43,8 @@ pub struct PhysicsPlugin;
 impl Plugin for PhysicsPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         world.register_event::<CollisionEvent>();
+        world.register_event::<ContactBegan>();
+        world.register_event::<ContactEnded>();
         world.register_event::<SensorEntered>();
         world.register_component_with_assets(RIGID_BODY, check_rigid_body, spawn_rigid_body);
         schedule.add(

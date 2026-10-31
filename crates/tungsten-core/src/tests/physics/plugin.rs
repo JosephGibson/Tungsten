@@ -718,3 +718,14 @@ fn rolls_is_for_circles() {
     });
     assert!(boxed.is_err(), "a box's bundle refuses a spin");
 }
+
+#[test]
+fn the_plugin_registers_the_contact_queues() {
+    use crate::ecs::EventQueue;
+    use crate::physics::{ContactBegan, ContactEnded};
+
+    let world = physics_world();
+    assert!(world.has_resource::<EventQueue<ContactBegan>>());
+    assert!(world.has_resource::<EventQueue<ContactEnded>>());
+    assert!(world.has_resource::<EventQueue<CollisionEvent>>());
+}

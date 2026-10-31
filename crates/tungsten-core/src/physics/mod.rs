@@ -3,7 +3,9 @@
 //! sleeping. Bodies are static, dynamic or kinematic, or sensors
 //! ([`BodyKind`]): a kinematic body moves by its velocity alone and pushes
 //! dynamic bodies; a sensor moves the same way, collides with nothing and
-//! reports what it begins to overlap ([`SensorEntered`]). Ray and shape
+//! reports what it begins to overlap ([`SensorEntered`]). Contacts send
+//! [`CollisionEvent`]s with their closing speed and tile cell, and pairs
+//! their begins and ends ([`ContactBegan`], [`ContactEnded`]). Ray and shape
 //! casts, overlaps and nearest-surface queries read the last step's bodies,
 //! sensors and tiles ([`cast_ray`], [`cast_shape`], [`overlap`],
 //! [`nearest`]). A game names its physics layers and materials in its
@@ -26,7 +28,7 @@ pub use collision::{
 pub use components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, RigidBodyBundle, Shape, Spin, Velocity,
 };
-pub use events::{CollisionEvent, SensorEntered};
+pub use events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered};
 pub use plugin::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin, physics_prev_snapshot,
     physics_sync,

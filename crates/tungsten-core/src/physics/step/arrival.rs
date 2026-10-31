@@ -4,7 +4,7 @@
 use super::pairs::PAIR_REPAIRED;
 use super::pairs::PairGrid;
 use super::solver::narrow_phase_at;
-use super::{Proxy, ProxyLayers};
+use super::{Proxy, ProxyLayers, TouchObs};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid};
 use crate::physics::collision::Aabb;
@@ -172,8 +172,10 @@ fn arrival_center(proxy: &Proxy) -> Vec2 {
 /// The pair list, the contacts, their impulses and the events are left
 /// alone; the regular repair (D-081) picks a new pair up before the next
 /// narrow phase. A clamp is inelastic, and a sleeper is immovable here: the
-/// wake test fires at the next narrow phase. Every loop runs in proxy, grid
-/// or sorted order, so the pass is deterministic.
+/// wake test fires at the next narrow phase. With `touches`, the contact
+/// record's, each clamp is a touch of its pair, at the closing speed it
+/// found. Every loop runs in proxy, grid or sorted order, so the pass is
+/// deterministic.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn arrival_pass(
     config: &PhysicsConfig,
@@ -186,7 +188,20 @@ pub(super) fn arrival_pass(
     repaired: &[u32],
     candidates: &mut Vec<ProxyId>,
     arrival: &mut ArrivalScratch,
+    mut touches: Option<&mut Vec<TouchObs>>,
 ) {
+    let mut touch = |pair: &ArrivalPair, proxies: &[Proxy]| {
+        if let Some(touches) = touches.as_deref_mut() {
+            let approach = (proxies[pair.x as usize].velocity - proxies[pair.y as usize].velocity)
+                .dot(pair.normal);
+            touches.push(TouchObs {
+                a: pair.x,
+                b: pair.y,
+                normal: pair.normal,
+                speed: (-approach).max(0.0),
+            });
+        }
+    };
     let ArrivalScratch {
         admitted,
         list,
@@ -336,6 +351,7 @@ pub(super) fn arrival_pass(
             if closing >= 0.0 || inv_x + inv_y <= 0.0 {
                 continue;
             }
+            touch(pair, proxies);
             let lambda = -closing / (inv_x + inv_y);
             proxies[x].velocity += pair.normal * (lambda * inv_x);
             proxies[y].velocity -= pair.normal * (lambda * inv_y);
@@ -385,6 +401,7 @@ pub(super) fn arrival_pass(
                 inv_target
             };
             if closing < 0.0 {
+                touch(pair, proxies);
                 let lambda = -closing / (inv_mover + inv_chain);
                 proxies[mover].velocity -= dir * (lambda * inv_mover);
                 ArrivalScratch::mark(state, touched, mover, ARRIVAL_MOVED);

@@ -1,8 +1,9 @@
 //! Safety-net slab sweep against statics (D-064) and the statics-only grid
 //! that answers it once a frame's queries outnumber the statics (D-080).
 
+use super::gather::TileCache;
 use super::pairs::PairGrid;
-use super::{Proxy, ProxyLayers};
+use super::{Proxy, ProxyLayers, TouchObs, tile_hit};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
 use crate::physics::collision::{
@@ -99,7 +100,9 @@ impl SweepGrid {
 /// Only statics can be hit, never a kinematic body, and only those whose
 /// layers meet the body's. The pair grid answers the query until the
 /// statics-only grid is worth staging (D-080); both return the same statics
-/// in the same order, so the first hit is the same.
+/// in the same order, so the first hit is the same. Each clamp's event names
+/// the speed it stopped and a tile's cell, and with `touches`, the contact
+/// record's, it is a touch too.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn speculative_pass(
     config: &PhysicsConfig,
@@ -110,6 +113,8 @@ pub(super) fn speculative_pass(
     static_grid: &mut SweepGrid,
     candidates: &mut Vec<ProxyId>,
     events: &mut Vec<CollisionEvent>,
+    tiles: &TileCache,
+    mut touches: Option<&mut Vec<TouchObs>>,
 ) {
     const BACKOFF: f32 = 1.0e-3;
     let slack = 4.0 * config.linear_slop;
@@ -200,6 +205,15 @@ pub(super) fn speculative_pass(
             let impulse = -(1.0 + restitution) * v_along_normal;
             proxies[a_idx].velocity = v + normal * impulse;
         }
+        let speed = (-v_along_normal).max(0.0);
+        if let Some(touches) = touches.as_deref_mut() {
+            touches.push(TouchObs {
+                a: a_idx as u32,
+                b: b_idx as u32,
+                normal,
+                speed,
+            });
+        }
 
         if let Some(a_entity) = proxies[a_idx].entity {
             events.push(CollisionEvent {
@@ -207,6 +221,8 @@ pub(super) fn speculative_pass(
                 b: proxies[b_idx].entity,
                 normal,
                 penetration: 0.0,
+                speed,
+                tile: tile_hit(tiles, bodies, b_idx, &proxies[b_idx]),
             });
         }
     }

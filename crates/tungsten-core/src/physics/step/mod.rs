@@ -97,6 +97,19 @@
 //! identity, box and mask are the last pass's keeps its tile pairs and tests
 //! only the cells the step's tile refresh changed.
 //!
+//! The contact record (`ContactBegan`, `ContactEnded`) runs while either
+//! queue exists. A pair touches in a substep when its contact penetrates or
+//! the solve gave it a normal impulse, or an arrival or safety-net clamp
+//! stopped one side against the other; a pair is its two sides, a tile by
+//! its map, layer and cell (the cache's identity), never the solver's pair
+//! key. Each contact carries the largest closing speed its pair had since
+//! its last touch, sampled at its build and after the solve and the arrival
+//! pass, by solver key between substeps and steps; a touch spends it. At
+//! the step's end, before the sleep pass, a pair touched for the first time
+//! begins and one not touched ends, unless both its sides were immovable
+//! through the step (asleep, static, a tile or a still kinematic body) and
+//! neither changed, or a changed kinematic side still overlaps it.
+//!
 //! Layers and masks: the gather keeps each proxy's layers and mask in an
 //! array beside the proxies, as `pair_flags` is (D-080), a tile's those of
 //! its collision layer, and notes whether any proxy or sensor is off the
@@ -123,8 +136,8 @@ use super::collision::{
 use super::components::{
     BodyKind, Collider, Position, PrevPosition, RigidBody, Shape, Spin, Velocity,
 };
-use super::events::{CollisionEvent, SensorEntered};
-use super::query::{IndexEntry, SpatialIndex};
+use super::events::{CollisionEvent, ContactBegan, ContactEnded, SensorEntered};
+use super::query::{IndexEntry, SpatialIndex, TileHit};
 use crate::components::Transform;
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
@@ -458,6 +471,19 @@ struct StepExtra {
     /// The substep's rolling resistance constraints, one for each contact
     /// with a spinning side whose rolling resistance is above 0.
     rolling: Vec<RollingConstraint>,
+    /// The step keeps the contact record: a `ContactBegan` or `ContactEnded`
+    /// queue exists.
+    record_on: bool,
+    /// The touching pairs and what tells their begins and ends.
+    record: ContactRecord,
+    /// The substep's contacts' carried closing speeds, parallel to the
+    /// contacts; filled only while the record runs.
+    contact_closing: Vec<f32>,
+    /// The arrival pass's and the safety net's touches in the substep.
+    touches: Vec<TouchObs>,
+    /// The step's begins and ends, sent after its collision events.
+    began: Vec<ContactBegan>,
+    ended: Vec<ContactEnded>,
 }
 
 /// [`StepExtra::spin_of`]'s slot for a proxy that does not spin.
@@ -753,6 +779,15 @@ pub fn physics_step(world: &mut World) {
         .unwrap_or_default();
 
     integrate_loose_bodies(world, dt, config.gravity);
+    // The contact record runs while a queue reads it.
+    let extra = &mut *buffers.extra;
+    extra.record_on = world.has_resource::<EventQueue<ContactBegan>>()
+        || world.has_resource::<EventQueue<ContactEnded>>();
+    if extra.record_on {
+        extra.record.begin_step();
+    } else {
+        extra.record.clear();
+    }
 
     let kinematics = gather_proxies(
         world,
@@ -795,6 +830,23 @@ pub fn physics_step(world: &mut World) {
     }
 
     sync_impulses(&mut buffers);
+    if buffers.extra.record_on {
+        let PhysicsBuffers {
+            proxies,
+            bodies,
+            tiles,
+            layers,
+            extra,
+            ..
+        } = &mut buffers;
+        let StepExtra {
+            record,
+            began,
+            ended,
+            ..
+        } = &mut **extra;
+        record.finish(proxies, *bodies, tiles, layers, began, ended);
+    }
     write_back(
         world,
         &buffers.proxies,
@@ -824,6 +876,26 @@ pub fn physics_step(world: &mut World) {
             }
         } else {
             buffers.events.clear();
+        }
+    }
+    // Begins and ends follow the collision events.
+    let extra = &mut *buffers.extra;
+    if !extra.began.is_empty() {
+        if let Some(sink) = world.get_resource_mut::<EventQueue<ContactBegan>>() {
+            for event in extra.began.drain(..) {
+                sink.send(event);
+            }
+        } else {
+            extra.began.clear();
+        }
+    }
+    if !extra.ended.is_empty() {
+        if let Some(sink) = world.get_resource_mut::<EventQueue<ContactEnded>>() {
+            for event in extra.ended.drain(..) {
+                sink.send(event);
+            }
+        } else {
+            extra.ended.clear();
         }
     }
     if !buffers.sensor_events.is_empty() {
@@ -978,6 +1050,7 @@ fn substep(
     let PhysicsBuffers {
         proxies,
         bodies,
+        tiles,
         pair_budgets,
         pair_flags,
         layers,
@@ -1007,8 +1080,12 @@ fn substep(
     contacts.clear();
     extra.friction.clear();
     extra.rolling.clear();
+    extra.contact_closing.clear();
+    extra.touches.clear();
+    let bodies = *bodies;
     let friction_on = !extra.frictions.is_empty();
     let spins_on = !extra.spin_of.is_empty();
+    let record_on = extra.record_on;
     let seed_impulses = std::mem::take(seed_pair_impulses);
 
     // Narrow phase once per substep; solver iterations reuse these contacts.
@@ -1131,6 +1208,12 @@ fn substep(
             key,
             pair_index,
         });
+        // The record carries the largest closing speed of a pair in reach
+        // since its last touch.
+        if record_on {
+            let carried = extra.record.closing.get(key);
+            extra.contact_closing.push(carried.max(-approach));
+        }
         // Friction rides beside the contact when both sides have some, and
         // rolling resistance when a side spins. A spinning side's moment of
         // inertia is `m r² / 2`, so its rim adds `r² / I = 2 / m` to the
@@ -1188,7 +1271,7 @@ fn substep(
         }
         if contact.penetration > 0.0 {
             if proxies[a_idx].kinematic || proxies[b_idx].kinematic {
-                kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact);
+                kinematic_touch(proxies, events, kept, a_idx, b_idx, &contact, approach);
                 continue;
             }
             // Touching contacts between awake dynamic bodies join one island;
@@ -1207,6 +1290,8 @@ fn substep(
                     b: proxies[b_idx].entity,
                     normal: contact.normal,
                     penetration: contact.penetration,
+                    speed: (-approach).max(0.0),
+                    tile: tile_hit(tiles, bodies, b_idx, &proxies[b_idx]),
                 });
             }
         }
@@ -1219,7 +1304,6 @@ fn substep(
     // that skip them walk the entity proxies alone.
     // A body falls by its gravity scale; while every scale is 1 the loop
     // reads none.
-    let bodies = *bodies;
     arrival.fit(proxies.len());
     let gravity = config.gravity * sub_dt;
     if extra.gravity_scales.is_empty() {
@@ -1329,7 +1413,23 @@ fn substep(
             repaired,
             candidates,
             arrival,
+            record_on.then_some(&mut extra.touches),
         );
+    }
+    // The record samples each contact's closing speed after the solve and
+    // the arrival pass, which catches a body knocked into a contact built
+    // while it rested; the arrival pass's clamps are touches.
+    if record_on {
+        for (contact, closing) in contacts.iter().zip(extra.contact_closing.iter_mut()) {
+            let approach = (proxies[contact.a as usize].velocity
+                - proxies[contact.b as usize].velocity)
+                .dot(contact.normal);
+            *closing = closing.max(-approach);
+        }
+        for &touch in &extra.touches {
+            extra.record.observe(proxies, bodies, tiles, touch);
+        }
+        extra.touches.clear();
     }
 
     // One bias-free relax iteration strips the injected bias energy.
@@ -1338,6 +1438,29 @@ fn substep(
     solve_rolling(&mut extra.spins, contacts, &mut extra.rolling);
 
     apply_restitution(proxies, contacts, config.restitution_threshold);
+
+    // A contact that penetrates or that the solve gave an impulse touches;
+    // a touch spends its pair's carried speed.
+    if record_on {
+        for (contact, closing) in contacts.iter().zip(extra.contact_closing.iter_mut()) {
+            if contact.penetration > 0.0 || contact.impulse > 0.0 {
+                let (a, b, normal) = if proxies[contact.a as usize].kinematic {
+                    (contact.b, contact.a, -contact.normal)
+                } else {
+                    (contact.a, contact.b, contact.normal)
+                };
+                let touch = TouchObs {
+                    a,
+                    b,
+                    normal,
+                    speed: *closing,
+                };
+                extra.record.observe(proxies, bodies, tiles, touch);
+                *closing = 0.0;
+            }
+        }
+        extra.record.carry(contacts, &extra.contact_closing);
+    }
 
     // Direct indexed carry between substeps; synchronize the keyed map only
     // at frame end or when a pair rebuild invalidates these indices.
@@ -1368,7 +1491,14 @@ fn substep(
         static_grid,
         candidates,
         events,
+        tiles,
+        record_on.then_some(&mut extra.touches),
     );
+    if record_on {
+        for &touch in &extra.touches {
+            extra.record.observe(proxies, bodies, tiles, touch);
+        }
+    }
 
     // Sum displacement between narrow phases, including the sweep's clamp.
     // This bounds distance from the build center even after direction changes.
@@ -1544,6 +1674,7 @@ fn kinematic_touch(
     a_idx: usize,
     b_idx: usize,
     contact: &Contact,
+    approach: f32,
 ) {
     let (pushed, kinematic, normal) = if proxies[a_idx].kinematic {
         (b_idx, a_idx, -contact.normal)
@@ -1560,7 +1691,392 @@ fn kinematic_touch(
             b: proxies[kinematic].entity,
             normal,
             penetration: contact.penetration,
+            speed: (-approach).max(0.0),
+            tile: None,
         });
+    }
+}
+
+/// The cell a tile proxy at `index` stands for; `None` for a body's.
+fn tile_hit(tiles: &TileCache, bodies: usize, index: usize, proxy: &Proxy) -> Option<TileHit> {
+    if proxy.entity.is_some() {
+        return None;
+    }
+    tiles.cell_hit(index - bodies, proxy.center)
+}
+
+/// One touch a substep saw, by proxy: `a` the body it pushed along
+/// `normal`, as `CollisionEvent` names it, and the pair's closing speed.
+#[derive(Debug, Clone, Copy)]
+struct TouchObs {
+    a: u32,
+    b: u32,
+    normal: Vec2,
+    speed: f32,
+}
+
+/// Flat open-addressing map from a 128-bit key to a `u32`.
+#[derive(Debug, Default)]
+struct KeyIndex {
+    keys: Vec<u128>,
+    values: Vec<u32>,
+    mask: u64,
+}
+
+impl KeyIndex {
+    /// Clear and size for `expected` insertions at <= 0.5 load factor.
+    fn reset(&mut self, expected: usize) {
+        let capacity = (expected * 2).next_power_of_two().max(64);
+        self.mask = capacity as u64 - 1;
+        self.keys.clear();
+        self.keys.resize(capacity, u128::MAX);
+        self.values.clear();
+        self.values.resize(capacity, 0);
+    }
+
+    /// Empty the map, keeping its buffers.
+    fn clear(&mut self) {
+        self.keys.clear();
+        self.values.clear();
+        self.mask = 0;
+    }
+
+    fn slot(&self, key: u128) -> usize {
+        let h = (key as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            ^ ((key >> 64) as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+        ((h ^ (h >> 29)) & self.mask) as usize
+    }
+
+    fn insert(&mut self, key: u128, value: u32) {
+        debug_assert!(key != u128::MAX && !self.keys.is_empty());
+        let mut i = self.slot(key);
+        loop {
+            if self.keys[i] == u128::MAX || self.keys[i] == key {
+                self.keys[i] = key;
+                self.values[i] = value;
+                return;
+            }
+            i = (i + 1) & self.mask as usize;
+        }
+    }
+
+    fn get(&self, key: u128) -> Option<u32> {
+        if self.keys.is_empty() {
+            return None;
+        }
+        let mut i = self.slot(key);
+        loop {
+            if self.keys[i] == key {
+                return Some(self.values[i]);
+            }
+            if self.keys[i] == u128::MAX {
+                return None;
+            }
+            i = (i + 1) & self.mask as usize;
+        }
+    }
+}
+
+/// A pair's identity in the contact record: its two sides, each an entity
+/// key or a tile's identity (its map, layer and cell), smaller first.
+fn side_pair(a: u64, b: u64) -> u128 {
+    let (lo, hi) = if a < b { (a, b) } else { (b, a) };
+    (u128::from(hi) << 64) | u128::from(lo)
+}
+
+/// A kinematic proxy's centre, box and layers, hashed, so the record sees
+/// one written between steps; 0 for every other kind, which a change wakes
+/// or solves.
+fn kinematic_state(proxy: &Proxy, layers: Layers) -> u64 {
+    if !proxy.kinematic {
+        return 0;
+    }
+    let half = proxy.half_extents();
+    [
+        proxy.center.x.to_bits(),
+        proxy.center.y.to_bits(),
+        half.x.to_bits(),
+        half.y.to_bits(),
+        layers.layers,
+        layers.mask,
+    ]
+    .into_iter()
+    .fold(0x243F_6A88_85A3_08D3_u64, |h, word| {
+        (h ^ u64::from(word)).wrapping_mul(0x0000_0100_0000_01B3)
+    }) | 1
+}
+
+/// Whether a proxy cannot move in the step: static, a tile, asleep through
+/// it, or a kinematic body at rest.
+fn immovable(proxy: &Proxy) -> bool {
+    (!proxy.is_dynamic && !proxy.kinematic)
+        || proxy.sleeping
+        || (proxy.kinematic && proxy.velocity == Vec2::ZERO)
+}
+
+/// One touching pair of the contact record.
+#[derive(Debug, Clone, Copy)]
+struct RecordEntry {
+    id: u128,
+    /// Its sides and normal as its first touching contact named them, and
+    /// its tile side's cell.
+    a: Entity,
+    b: Option<Entity>,
+    tile: Option<TileHit>,
+    normal: Vec2,
+    /// The begin's speed: the largest closing speed of its touches in the
+    /// step it began.
+    speed: f32,
+    /// The record step that last found it touching, and the one it began.
+    touched: u64,
+    began: u64,
+    /// Its sides' keys, a tile's identity for `b` when `b_tile`.
+    a_key: u64,
+    b_key: u64,
+    b_tile: bool,
+    /// Where its sides were: a body's proxy index, a tile's ordinal.
+    a_at: u32,
+    b_at: u32,
+    /// Its kinematic sides' [`kinematic_state`].
+    a_state: u64,
+    b_state: u64,
+}
+
+/// The contact record (`ContactBegan`, `ContactEnded`): the pairs touching
+/// at the last step's end, in the order they began. A step's touches mark
+/// their pairs, a new one beginning; at its end a pair it did not touch ends,
+/// unless its sides are both immovable through the step and still where
+/// they were, or still overlapping.
+#[derive(Debug, Default)]
+struct ContactRecord {
+    entries: Vec<RecordEntry>,
+    /// Each entry's place by its identity.
+    index: KeyIndex,
+    /// Steps the record has run.
+    stamp: u64,
+    /// The closing speeds carried from the last substep, by solver pair key:
+    /// each pair in reach the largest it had since its last touch, the
+    /// nonzero ones.
+    closing: ImpulseMap,
+    next_closing: ImpulseMap,
+    /// Entity proxy indices by key and tile ordinals by identity, built the
+    /// first time a step's stored place misses.
+    by_key: KeyIndex,
+    by_key_built: bool,
+    by_identity: KeyIndex,
+    by_identity_built: bool,
+}
+
+impl ContactRecord {
+    /// Forgets every pair and carried speed.
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.index.clear();
+        self.closing.clear();
+        self.next_closing.clear();
+    }
+
+    /// A new step: its touches take a new stamp, and the places are looked up
+    /// afresh.
+    fn begin_step(&mut self) {
+        self.stamp += 1;
+        self.by_key_built = false;
+        self.by_identity_built = false;
+    }
+
+    /// Notes `touch`: its pair touches this step, beginning when the record
+    /// does not hold it.
+    fn observe(&mut self, proxies: &[Proxy], bodies: usize, tiles: &TileCache, touch: TouchObs) {
+        let (pa, pb) = (&proxies[touch.a as usize], &proxies[touch.b as usize]);
+        let Some(a) = pa.entity else {
+            return;
+        };
+        let (b_key, b_at, b_tile) = if pb.entity.is_some() {
+            (pb.key, touch.b, false)
+        } else {
+            let ordinal = touch.b as usize - bodies;
+            (tiles.ids[ordinal], ordinal as u32, true)
+        };
+        let id = side_pair(pa.key, b_key);
+        let stamp = self.stamp;
+        if let Some(at) = self.index.get(id) {
+            let entry = &mut self.entries[at as usize];
+            entry.touched = stamp;
+            if entry.began == stamp {
+                entry.speed = entry.speed.max(touch.speed);
+            }
+            if entry.a_key == pa.key {
+                (entry.a_at, entry.b_at) = (touch.a, b_at);
+            } else {
+                (entry.a_at, entry.b_at) = (b_at, touch.a);
+            }
+            return;
+        }
+        if self.index.keys.is_empty() || self.entries.len() * 2 >= self.index.keys.len() {
+            self.reindex(self.entries.len() + 1);
+        }
+        self.index.insert(id, self.entries.len() as u32);
+        self.entries.push(RecordEntry {
+            id,
+            a,
+            b: pb.entity,
+            tile: if b_tile {
+                tiles.cell_hit(b_at as usize, pb.center)
+            } else {
+                None
+            },
+            normal: touch.normal,
+            speed: touch.speed,
+            touched: stamp,
+            began: stamp,
+            a_key: pa.key,
+            b_key,
+            b_tile,
+            a_at: touch.a,
+            b_at,
+            a_state: 0,
+            b_state: 0,
+        });
+    }
+
+    /// The map of the entries' places, rebuilt for `expected` of them.
+    fn reindex(&mut self, expected: usize) {
+        self.index.reset(expected);
+        for (at, entry) in self.entries.iter().enumerate() {
+            self.index.insert(entry.id, at as u32);
+        }
+    }
+
+    /// The closing speeds the next substep carries: each contact's still in
+    /// reach, the nonzero ones.
+    fn carry(&mut self, contacts: &[ContactConstraint], closing: &[f32]) {
+        let carried = closing.iter().filter(|&&speed| speed > 0.0).count();
+        if carried == 0 {
+            self.next_closing.clear();
+        } else {
+            self.next_closing.reset(carried);
+            for (contact, &speed) in contacts.iter().zip(closing) {
+                if speed > 0.0 {
+                    self.next_closing.insert(contact.key, speed);
+                }
+            }
+        }
+        std::mem::swap(&mut self.closing, &mut self.next_closing);
+    }
+
+    /// The proxy index of the body keyed `key`, last at `at`.
+    fn body(&mut self, proxies: &[Proxy], bodies: usize, key: u64, at: u32) -> Option<usize> {
+        let at = at as usize;
+        if at < bodies && proxies[at].key == key {
+            return Some(at);
+        }
+        if !self.by_key_built {
+            self.by_key.reset(bodies);
+            for (index, proxy) in proxies[..bodies].iter().enumerate() {
+                self.by_key.insert(u128::from(proxy.key), index as u32);
+            }
+            self.by_key_built = true;
+        }
+        self.by_key.get(u128::from(key)).map(|index| index as usize)
+    }
+
+    /// The proxy index of the tile of identity `identity`, last ordinal `at`.
+    fn tile(&mut self, tiles: &TileCache, bodies: usize, identity: u64, at: u32) -> Option<usize> {
+        let at = at as usize;
+        if tiles.ids.get(at) == Some(&identity) {
+            return Some(bodies + at);
+        }
+        if !self.by_identity_built {
+            self.by_identity.reset(tiles.ids.len());
+            for (ordinal, &id) in tiles.ids.iter().enumerate() {
+                self.by_identity.insert(u128::from(id), ordinal as u32);
+            }
+            self.by_identity_built = true;
+        }
+        self.by_identity
+            .get(u128::from(identity))
+            .map(|ordinal| bodies + ordinal as usize)
+    }
+
+    /// The step's end: a pair it touched and the last did not begins; one it
+    /// did not touch ends, unless its sides are both immovable through the
+    /// step and neither changed, or they still overlap. Begins come in
+    /// first-touch order, ends in the record's.
+    fn finish(
+        &mut self,
+        proxies: &[Proxy],
+        bodies: usize,
+        tiles: &TileCache,
+        layers: &ProxyLayers,
+        began: &mut Vec<ContactBegan>,
+        ended: &mut Vec<ContactEnded>,
+    ) {
+        let stamp = self.stamp;
+        let mut entries = std::mem::take(&mut self.entries);
+        let before = entries.len();
+        entries.retain_mut(|entry| {
+            let ends = |entry: &RecordEntry, ended: &mut Vec<ContactEnded>| {
+                ended.push(ContactEnded {
+                    a: entry.a,
+                    b: entry.b,
+                    tile: entry.tile,
+                });
+            };
+            let a = self.body(proxies, bodies, entry.a_key, entry.a_at);
+            let b = if entry.b_tile {
+                self.tile(tiles, bodies, entry.b_key, entry.b_at)
+            } else {
+                self.body(proxies, bodies, entry.b_key, entry.b_at)
+            };
+            let (Some(a), Some(b)) = (a, b) else {
+                // A side went: a despawned body or an emptied cell.
+                if entry.touched != stamp {
+                    ends(entry, ended);
+                    return false;
+                }
+                return true;
+            };
+            let state = |index: usize| kinematic_state(&proxies[index], layers.of[index]);
+            if entry.touched != stamp {
+                // A pair the step solved touches only as solved; one it did
+                // not keeps touching while its sides stay as they were, or
+                // still overlap.
+                if !(immovable(&proxies[a]) && immovable(&proxies[b])) {
+                    ends(entry, ended);
+                    return false;
+                }
+                if (state(a), state(b)) != (entry.a_state, entry.b_state) {
+                    let overlaps = layers.meet(a, b)
+                        && narrow_phase(&proxies[a], &proxies[b], 0.0)
+                            .is_some_and(|contact| contact.penetration > 0.0);
+                    if !overlaps {
+                        ends(entry, ended);
+                        return false;
+                    }
+                }
+                entry.touched = stamp;
+            } else if entry.began == stamp {
+                began.push(ContactBegan {
+                    a: entry.a,
+                    b: entry.b,
+                    normal: entry.normal,
+                    speed: entry.speed,
+                    tile: entry.tile,
+                });
+            }
+            entry.a_at = a as u32;
+            entry.b_at = if entry.b_tile {
+                (b - bodies) as u32
+            } else {
+                b as u32
+            };
+            (entry.a_state, entry.b_state) = (state(a), state(b));
+            true
+        });
+        self.entries = entries;
+        if self.entries.len() != before {
+            self.reindex(self.entries.len());
+        }
     }
 }
 
