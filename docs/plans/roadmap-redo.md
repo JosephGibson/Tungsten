@@ -714,4 +714,4 @@ No further round: these fixes are local to their sections, and none changes a me
   - Two risks replaced the first ARPG risk.
 
   Not critiqued.
-- **2026-10-31, one track,** at the owner's choice: 7.17 and 7.20 run after 7.9 in the one tree, no longer beside 7.8–7.10 in a worktree (§3's 7.17 row and fixed orders; `phase-7.md` §2.8). A session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share.
+- **2026-10-31, one track,** at the owner's choice: 7.17 and 7.20 run after 7.9 in the one tree, no longer beside 7.8–7.10 in a worktree (§3's 7.17 row and fixed orders; `phase-7.md` §2.8). A session beside the track would share the CPU with each close's timed rows and leave the owner a merge across version branches, and 7.9 changes the template's saves, the one file set they share. One artifact-only critique round on the diff at xhigh: no concerns.

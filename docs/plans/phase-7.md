@@ -571,6 +571,8 @@ Round 2: the same reviewer at xhigh, 2026-10-29, reading `a577dfc1` with the Cri
 | 2.1 | [MEDIUM] Moved rows can escape the Phase 8 handoff | §2.1 made `moved` terminal, and step 17 carried only §2.3's open rows and checked PA-12–PA-22 alone, so PA-3, PA-4 or PA-9 moved to 8.7 would be lost | accepted | §2.1: a move rewrites the step cell and keeps the row open, Phase 8 rows in §2.3; step 17 checks every open §2.3 ID against the redo |
 | 2.2 | [MEDIUM] A valid `9.2` disposition still violates the overall completion condition | The header's done-when listed landed, moved, closed and Later | accepted | The header accepts §2.1's terminal states, `9.2` included |
 
+Round 3, on the re-cut of 2026-10-31 (one track, 7.10m, PA-3, PA-4 and PA-9 to 8.7, the evidence rule): the same reviewer at xhigh, artifact-only, on the diff `35e1849c..0866a8c6`. Footer: `77.9 s, tokens in 31361 (cached 0), out 2070, usage 5h 59% → 64%, week 75% → 76%`. No concerns.
+
 ## Evidence log
 
 | Step | Date | Verdict | Key numbers | Paths |
