@@ -244,6 +244,7 @@ impl Plugin for FollowPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Follow>(world, "Follow");
+        world.register_saved::<Follow>(FOLLOW_COMPONENT);
         describe_target(world);
         describe(
             world,

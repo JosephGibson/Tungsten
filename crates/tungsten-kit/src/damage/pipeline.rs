@@ -5,6 +5,8 @@
 //! same way.
 
 use glam::Vec2;
+use serde::{Deserialize, Serialize};
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{Entity, EventQueue, World};
 
 use crate::damage::defense::{Resist, Shield};
@@ -599,6 +601,213 @@ impl Healed {
 pub(crate) struct Requests {
     damage: Vec<DamageRequest>,
     heals: Vec<HealRequest>,
+}
+
+/// The name a save holds the queued damage and heal requests under.
+pub(crate) const DAMAGE_REQUESTS: &str = "damage_requests";
+
+/// A damage part in a save: its damage types by name and its amount.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PartSave {
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    tags: Tags,
+    amount: f32,
+}
+
+/// A [`DamageRequest`] in a save, its target and source by reference.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DamageSave {
+    parts: Vec<PartSave>,
+    #[serde(default, skip_serializing_if = "Tags::is_empty")]
+    tags: Tags,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    position: Option<[f32; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    knockback: Option<[f32; 2]>,
+    #[serde(default)]
+    crit: bool,
+    #[serde(default)]
+    periodic: bool,
+    #[serde(default)]
+    push_always: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    penetration: Option<Penetration>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conversion: Option<Conversion>,
+}
+
+impl From<&DamageRequest> for DamageSave {
+    fn from(request: &DamageRequest) -> Self {
+        Self {
+            parts: request
+                .parts
+                .as_slice()
+                .iter()
+                .map(|part| PartSave {
+                    tags: part.tags.clone(),
+                    amount: part.amount,
+                })
+                .collect(),
+            tags: request.tags.clone(),
+            position: request.position.map(|at| at.to_array()),
+            knockback: request.knockback.map(|push| push.to_array()),
+            crit: request.crit,
+            periodic: request.periodic,
+            push_always: request.push_always,
+            penetration: request.penetration.clone(),
+            conversion: request.conversion.clone(),
+        }
+    }
+}
+
+impl From<DamageSave> for DamageRequest {
+    /// A part's amount that is not finite and at least 0 reads as 0.
+    fn from(saved: DamageSave) -> Self {
+        let mut parts: Vec<DamagePart> = saved
+            .parts
+            .into_iter()
+            .map(|part| DamagePart {
+                tags: part.tags,
+                amount: if part.amount.is_finite() {
+                    part.amount.max(0.0)
+                } else {
+                    0.0
+                },
+            })
+            .collect();
+        let parts = if parts.len() == 1 {
+            Parts::One(parts.remove(0))
+        } else {
+            Parts::Many(parts)
+        };
+        Self {
+            target: Entity::PLACEHOLDER,
+            parts,
+            source: None,
+            tags: saved.tags,
+            position: saved.position.map(Vec2::from_array),
+            knockback: saved.knockback.map(Vec2::from_array),
+            crit: saved.crit,
+            periodic: saved.periodic,
+            push_always: saved.push_always,
+            penetration: saved.penetration,
+            conversion: saved.conversion,
+        }
+    }
+}
+
+/// A [`HealRequest`] in a save: its amount.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HealSave {
+    amount: f32,
+}
+
+/// The queued requests in a save.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RequestsSave {
+    #[serde(default)]
+    damage: Vec<DamageSave>,
+    #[serde(default)]
+    heals: Vec<HealSave>,
+}
+
+impl From<&Requests> for RequestsSave {
+    fn from(requests: &Requests) -> Self {
+        Self {
+            damage: requests.damage.iter().map(Into::into).collect(),
+            heals: requests
+                .heals
+                .iter()
+                .map(|heal| HealSave {
+                    amount: heal.amount,
+                })
+                .collect(),
+        }
+    }
+}
+
+impl From<RequestsSave> for Requests {
+    fn from(saved: RequestsSave) -> Self {
+        Self {
+            damage: saved.damage.into_iter().map(Into::into).collect(),
+            heals: saved
+                .heals
+                .into_iter()
+                .map(|heal| HealRequest {
+                    target: Entity::PLACEHOLDER,
+                    amount: if heal.amount.is_finite() {
+                        heal.amount.max(0.0)
+                    } else {
+                        0.0
+                    },
+                    source: None,
+                })
+                .collect(),
+        }
+    }
+}
+
+/// Each queued request's target and source, by key.
+fn request_refs(requests: &Requests) -> impl Iterator<Item = (String, Entity)> + '_ {
+    let damage = requests
+        .damage
+        .iter()
+        .enumerate()
+        .flat_map(|(index, request)| {
+            std::iter::once((format!("damage.{index}.target"), request.target)).chain(
+                request
+                    .source
+                    .map(|source| (format!("damage.{index}.source"), source)),
+            )
+        });
+    let heals = requests
+        .heals
+        .iter()
+        .enumerate()
+        .flat_map(|(index, request)| {
+            std::iter::once((format!("heal.{index}.target"), request.target)).chain(
+                request
+                    .source
+                    .map(|source| (format!("heal.{index}.source"), source)),
+            )
+        });
+    damage.chain(heals)
+}
+
+/// The queued damage and heal requests, saved so a request queued after a
+/// step's resolve resolves once after a load; each target and source by
+/// save ID.
+pub(crate) fn requests_saved() -> SaveOptions<Requests> {
+    SaveOptions::<Requests>::form::<RequestsSave>().refs(RefCodec {
+        save: |requests, out: &mut RefWriter<'_>| {
+            for (key, entity) in request_refs(requests) {
+                out.put(&key, entity);
+            }
+        },
+        load: |requests, refs: &RefReader<'_>| {
+            for (index, request) in requests.damage.iter_mut().enumerate() {
+                if let Some(target) = refs.first(&format!("damage.{index}.target")) {
+                    request.target = target;
+                }
+                if let Some(source) = refs.first(&format!("damage.{index}.source")) {
+                    request.source = Some(source);
+                }
+            }
+            for (index, request) in requests.heals.iter_mut().enumerate() {
+                if let Some(target) = refs.first(&format!("heal.{index}.target")) {
+                    request.target = target;
+                }
+                if let Some(source) = refs.first(&format!("heal.{index}.source")) {
+                    request.source = Some(source);
+                }
+            }
+        },
+        keys: |requests| request_refs(requests).map(|(key, _)| key).collect(),
+    })
 }
 
 /// [`DAMAGE_RESOLVE`]'s state between steps: the drained lists and a

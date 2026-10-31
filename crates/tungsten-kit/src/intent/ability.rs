@@ -1680,6 +1680,7 @@ impl Plugin for AbilitiesPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Abilities>(world, "Abilities");
+        world.register_saved::<Abilities>(ABILITIES);
         describe_target(world);
         describe_abilities(world);
         world.register_event::<AbilityUsed>();

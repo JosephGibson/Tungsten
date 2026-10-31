@@ -1,5 +1,7 @@
 //! The spawn chain's origin, derived at the flush from each spawn's source.
 
+use serde::{Deserialize, Serialize};
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{Entity, Inspectable, Plugin, Schedule, World};
 
 use crate::foundation::inspect::register_rows;
@@ -70,8 +72,42 @@ impl Plugin for SourcePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Source>(world, "Source");
+        world.register_saved_with(SOURCE, source_saved());
         world.derive_from_source::<Source>(derive_source);
     }
+}
+
+/// The name a save holds [`Source`] under.
+const SOURCE: &str = "source";
+
+/// A [`Source`] in a save: nothing but its reference, which the codec
+/// writes by save ID.
+#[derive(Serialize, Deserialize)]
+struct SourceSave;
+
+impl From<&Source> for SourceSave {
+    fn from(_: &Source) -> Self {
+        Self
+    }
+}
+
+impl From<SourceSave> for Source {
+    fn from(_: SourceSave) -> Self {
+        Self(Entity::PLACEHOLDER)
+    }
+}
+
+/// `Source` saved as its reference alone.
+fn source_saved() -> SaveOptions<Source> {
+    SaveOptions::<Source>::form::<SourceSave>().refs(RefCodec {
+        save: |source, out: &mut RefWriter<'_>| out.put(SOURCE, source.0),
+        load: |source, refs: &RefReader<'_>| {
+            if let Some(entity) = refs.first(SOURCE) {
+                source.0 = entity;
+            }
+        },
+        keys: |_| vec![SOURCE.to_owned()],
+    })
 }
 
 /// The source's own `Source`, else the source; the `Option` is the

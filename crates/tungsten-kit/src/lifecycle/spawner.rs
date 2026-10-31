@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use glam::Vec2;
 use serde::{Deserialize, Serialize};
 use tungsten_core::physics::Position;
+use tungsten_core::save::SaveOptions;
 use tungsten_core::{
     CommandBuffer, Entity, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, Time, Timer,
     Transform, World, system,
@@ -140,6 +141,46 @@ impl Spawner {
     }
 }
 
+/// A [`Spawner`] in a save: its prefab, interval and spawns left, and how
+/// far its countdown has come.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpawnerSave {
+    prefab: String,
+    interval: f32,
+    elapsed: f32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    remaining: Option<u32>,
+}
+
+impl From<&Spawner> for SpawnerSave {
+    fn from(spawner: &Spawner) -> Self {
+        Self {
+            prefab: spawner.prefab.clone(),
+            interval: spawner.timer.duration(),
+            elapsed: spawner.timer.elapsed(),
+            remaining: spawner.remaining,
+        }
+    }
+}
+
+impl From<SpawnerSave> for Spawner {
+    /// An interval that is not finite and above 0 reads as one second.
+    fn from(saved: SpawnerSave) -> Self {
+        let interval = if saved.interval.is_finite() && saved.interval > 0.0 {
+            saved.interval
+        } else {
+            1.0
+        };
+        let mut spawner = Self::new(saved.prefab, interval);
+        spawner.remaining = saved.remaining;
+        if saved.elapsed.is_finite() && saved.elapsed > 0.0 {
+            spawner.timer.tick(saved.elapsed);
+        }
+        spawner
+    }
+}
+
 /// Registers the `spawner` scene component and [`SPAWNER_TICK`] in the
 /// react phase, last in the fixed step. Its system ticks every [`Spawner`]
 /// with a `Position` or a `Transform` and queues the spawns that are due
@@ -152,6 +193,7 @@ impl Plugin for SpawnerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Spawner>(world, "Spawner");
+        world.register_saved_with(SPAWNER, SaveOptions::<Spawner>::form::<SpawnerSave>());
         describe(
             world,
             ComponentDescription::new(

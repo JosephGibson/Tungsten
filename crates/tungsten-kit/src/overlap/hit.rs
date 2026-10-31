@@ -9,6 +9,7 @@ use glam::Vec2;
 use serde::de::{Error as _, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use tungsten_core::physics::Shape;
+use tungsten_core::save::{RefCodec, RefReader, RefWriter, SaveOptions};
 use tungsten_core::{
     Entity, Inspectable, MissingAsset, Plugin, Schedule, SpawnContext, SystemDesc, Time, With,
     Without, World, system,
@@ -388,7 +389,7 @@ pub(crate) fn ensure_grid(schedule: &mut Schedule) {
 /// assert_eq!(saved["shape"], serde_json::json!({ "aabb": [6.0, 3.0] }));
 /// assert_eq!(serde_json::from_value::<Hitbox>(saved).unwrap(), sword);
 /// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(try_from = "HitboxFields", into = "HitboxFields")]
 pub struct Hitbox {
     shape: HitShape,
@@ -401,6 +402,11 @@ pub struct Hitbox {
     typed: Option<Box<HitPayload>>,
     /// The targets hit in this activation, by index.
     hit: Vec<Entity>,
+    /// Activations so far, which [`arm`](Self::arm) and
+    /// [`rearm`](Self::rearm) raise: the key a save hangs the hit targets
+    /// on, so a target waiting for its area is dropped once a new
+    /// activation starts. Not part of the scene form or of equality.
+    activation: u32,
     /// Seconds a window lasts; `None` for a hitbox that is always armed.
     window: Option<f32>,
     /// Seconds left of the open window.
@@ -608,6 +614,7 @@ impl TryFrom<HitboxFields> for Hitbox {
             knockback: fields.knockback,
             typed: payload_from_save(fields.parts, fields.pen, fields.convert)?,
             hit: Vec::new(),
+            activation: 0,
             window: fields.window,
             armed_left: if fields.window.is_some() {
                 fields.armed_left
@@ -616,6 +623,71 @@ impl TryFrom<HitboxFields> for Hitbox {
             },
         })
     }
+}
+
+impl PartialEq for Hitbox {
+    /// Every field but the activation count, a save's bookkeeping.
+    fn eq(&self, other: &Self) -> bool {
+        self.shape == other.shape
+            && self.offset == other.offset
+            && self.damage == other.damage
+            && self.tags == other.tags
+            && self.filter == other.filter
+            && self.knockback == other.knockback
+            && self.typed == other.typed
+            && self.hit == other.hit
+            && self.window == other.window
+            && self.armed_left == other.armed_left
+    }
+}
+
+/// A [`Hitbox`] in a save: its scene form and its activation count; the
+/// codec writes the activation's targets under it.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HitboxSave {
+    hitbox: Hitbox,
+    #[serde(default)]
+    activation: u32,
+}
+
+impl From<&Hitbox> for HitboxSave {
+    fn from(hitbox: &Hitbox) -> Self {
+        Self {
+            hitbox: hitbox.clone(),
+            activation: hitbox.activation,
+        }
+    }
+}
+
+impl From<HitboxSave> for Hitbox {
+    fn from(saved: HitboxSave) -> Self {
+        Self {
+            activation: saved.activation,
+            ..saved.hitbox
+        }
+    }
+}
+
+/// `Hitbox` saved with its activation, its targets by save ID under it.
+fn hitbox_saved() -> SaveOptions<Hitbox> {
+    SaveOptions::<Hitbox>::form::<HitboxSave>().refs(RefCodec {
+        save: |hitbox, out: &mut RefWriter<'_>| {
+            let key = hitbox.activation.to_string();
+            for &target in &hitbox.hit {
+                out.put(&key, target);
+            }
+        },
+        load: |hitbox, refs: &RefReader<'_>| {
+            let targets = refs.get(&hitbox.activation.to_string()).to_vec();
+            for target in targets {
+                if !hitbox.hit.contains(&target) {
+                    hitbox.hit.push(target);
+                }
+            }
+        },
+        keys: |hitbox| vec![hitbox.activation.to_string()],
+    })
 }
 
 impl From<Hitbox> for HitboxFields {
@@ -660,6 +732,7 @@ impl Hitbox {
             knockback: 0.0,
             typed: None,
             hit: Vec::new(),
+            activation: 0,
             window: None,
             armed_left: 0.0,
         }
@@ -884,13 +957,21 @@ impl Hitbox {
     /// Starts a new activation: every target may be hit once more.
     pub fn rearm(&mut self) {
         self.hit.clear();
+        self.activation = self.activation.wrapping_add(1);
     }
 
     /// Starts a new activation and opens the window of a windowed hitbox;
     /// [`rearm`](Self::rearm) for one without a window.
     pub fn arm(&mut self) {
-        self.hit.clear();
+        self.rearm();
         self.armed_left = self.window.unwrap_or(0.0);
+    }
+
+    /// The activations so far: 0 until [`arm`](Self::arm) or
+    /// [`rearm`](Self::rearm) starts the first after its spawn.
+    #[must_use]
+    pub fn activation(&self) -> u32 {
+        self.activation
     }
 
     /// Whether it hits: always without a window, else while the window
@@ -909,7 +990,7 @@ impl Hitbox {
     /// Starts a new activation with a window of `seconds`: an ability's
     /// `hitbox` payload.
     pub(crate) fn arm_for(&mut self, seconds: f32) {
-        self.hit.clear();
+        self.rearm();
         self.window = Some(seconds);
         self.armed_left = seconds;
     }
@@ -1404,6 +1485,7 @@ impl Plugin for HitPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Hitbox>(world, "Hitbox");
+        world.register_saved_with(HITBOX, hitbox_saved());
         register_rows::<Hurtbox>(world, "Hurtbox");
         describe_hit_shape(world);
         describe(

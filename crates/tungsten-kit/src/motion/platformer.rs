@@ -924,6 +924,7 @@ impl Plugin for PlatformerControllerPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<PlatformerController>(world, "PlatformerController");
+        world.register_saved::<PlatformerController>(PLATFORMER_CONTROLLER_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

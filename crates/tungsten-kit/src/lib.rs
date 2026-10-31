@@ -243,6 +243,7 @@ pub use foundation::phases::{
 };
 pub use foundation::plugins::KitPlugins;
 pub use foundation::rng::KitRng;
+pub use foundation::saved::UNSAVED_COMPONENTS;
 pub use foundation::source::{Source, SourcePlugin};
 pub use foundation::stats::{Modifier, STATS_APPLY, Stats, StatsPlugin};
 pub use foundation::tags::{TagFilter, Tags, TagsPlugin};

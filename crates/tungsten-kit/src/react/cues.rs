@@ -27,7 +27,7 @@ use crate::foundation::describe::{
 use crate::foundation::inspect::register_rows;
 use crate::foundation::non_negative;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::rng::KitRng;
+use crate::foundation::rng::{KIT_RNG, KitRng};
 use crate::foundation::tags::{TagFilter, TagFilterDef, Tags, check_declared, valid_tag};
 use crate::foundation::trace::{TraceKind, trace};
 use crate::intent::ability::{Abilities, AbilityUsed, Used, use_ability};
@@ -1759,6 +1759,7 @@ impl Plugin for CuesPlugin {
         if !world.has_resource::<KitRng>() {
             world.insert_resource(KitRng::default());
         }
+        world.register_saved_resource::<KitRng>(KIT_RNG);
         register_loot_tables(world);
         world.register_data_kind_with_assets(CUE_RULES, check_rule_list);
         world.register_component_with_assets(

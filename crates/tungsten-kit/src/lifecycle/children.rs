@@ -308,7 +308,8 @@ impl Spawn {
                     Ok(prepared) => {
                         world.resource_mut::<CommandBuffer>().spawn_prefab_from(
                             parent,
-                            prepared.with(queued_child(parent, offset, index)),
+                            // Children come back from their parent's fresh spawn.
+                            prepared.unsaved().with(queued_child(parent, offset, index)),
                         );
                         trace(world, parent, || TraceKind::Spawn {
                             prefab,

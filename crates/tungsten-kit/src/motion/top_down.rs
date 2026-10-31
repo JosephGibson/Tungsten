@@ -249,6 +249,7 @@ impl Plugin for TopDownMoverPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<TopDownMover>(world, "TopDownMover");
+        world.register_saved::<TopDownMover>(TOP_DOWN_MOVER_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

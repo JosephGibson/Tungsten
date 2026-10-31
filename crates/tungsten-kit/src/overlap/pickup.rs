@@ -296,6 +296,7 @@ impl Plugin for PickupPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Pickup>(world, "Pickup");
+        world.register_saved::<Pickup>(PICKUP);
         describe_hit_shape(world);
         describe(
             world,

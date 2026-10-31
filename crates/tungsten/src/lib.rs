@@ -94,3 +94,7 @@ mod kit_recipes;
 #[cfg(test)]
 #[path = "tests/save_slots.rs"]
 mod save_slots_tests;
+
+#[cfg(all(test, feature = "kit"))]
+#[path = "tests/saves.rs"]
+mod saves_tests;

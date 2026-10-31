@@ -10,6 +10,7 @@ pub(crate) mod inspect;
 pub(crate) mod phases;
 pub(crate) mod plugins;
 pub(crate) mod rng;
+pub(crate) mod saved;
 pub(crate) mod source;
 pub(crate) mod stats;
 pub(crate) mod tags;

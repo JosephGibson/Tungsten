@@ -527,6 +527,7 @@ impl Plugin for ProjectilePlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Projectile>(world, "Projectile");
+        world.register_saved::<Projectile>(PROJECTILE);
         describe(
             world,
             ComponentDescription::new(

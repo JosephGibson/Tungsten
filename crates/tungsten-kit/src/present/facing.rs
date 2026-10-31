@@ -325,6 +325,7 @@ impl Plugin for FacingPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Facing>(world, "Facing");
+        world.register_saved::<Facing>(FACING_COMPONENT);
         describe(
             world,
             ComponentDescription::new(

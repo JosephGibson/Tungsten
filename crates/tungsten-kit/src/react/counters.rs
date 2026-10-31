@@ -275,6 +275,10 @@ impl Plugin for CountersPlugin {
         ensure_phases(schedule);
         register_rows::<Counters>(world, "Counters");
         register_rows::<Flags>(world, "Flags");
+        world.register_saved::<Counters>(COUNTERS);
+        world.register_saved::<Flags>(FLAGS);
+        world.register_saved_resource::<Counters>(COUNTERS);
+        world.register_saved_resource::<Flags>(FLAGS);
         describe(
             world,
             ComponentDescription::new(

@@ -19,7 +19,7 @@ use crate::foundation::describe::{
 };
 use crate::foundation::inspect::register_rows;
 use crate::foundation::phases::{Phase, ensure_phases};
-use crate::foundation::rng::KitRng;
+use crate::foundation::rng::{KIT_RNG, KitRng};
 use crate::foundation::tags::valid_tag;
 use crate::foundation::trace::{TraceKind, trace};
 use crate::intent::ability::{ABILITIES, Abilities, Ability};
@@ -761,6 +761,8 @@ impl Plugin for LevelPlugin {
     fn build(&self, schedule: &mut Schedule, world: &mut World) {
         ensure_phases(schedule);
         register_rows::<Level>(world, "Level");
+        world.register_saved::<Level>(LEVEL);
+        world.register_saved_resource::<KitRng>(KIT_RNG);
         register_curves(world);
         describe_level(world);
         world.register_event::<LevelUp>();
