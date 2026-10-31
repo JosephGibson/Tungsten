@@ -535,6 +535,100 @@
       "workload_version": 1
     },
     {
+      "name": "friction",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "piles",
+        "preset": "friction"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "sleeping",
+          "kind": "counter_max",
+          "max": 0
+        },
+        {
+          "counter": "escaped",
+          "kind": "counter_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
+      "name": "slopes",
+      "package": "example-02-bench",
+      "folder": ".",
+      "launch": {
+        "bench": "piles",
+        "preset": "slopes"
+      },
+      "resolution": [
+        1920,
+        1080
+      ],
+      "warmup": 120,
+      "frames": 300,
+      "repeat": 5,
+      "gpu": false,
+      "owned": [
+        {
+          "metric": "system.physics_step",
+          "stats": [
+            "p50",
+            "p95"
+          ]
+        },
+        {
+          "metric": "stage.update",
+          "stats": [
+            "p95"
+          ]
+        }
+      ],
+      "guards": [
+        {
+          "counter": "recycled",
+          "kind": "counter_min",
+          "min": 60
+        },
+        {
+          "counter": "inside",
+          "kind": "counter_max",
+          "max": 0
+        }
+      ],
+      "known_drift": [],
+      "budgets": [],
+      "workload_version": 1
+    },
+    {
       "name": "e01-pit",
       "package": "example-01-platformer",
       "folder": "examples/01_platformer",

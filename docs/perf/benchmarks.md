@@ -6,7 +6,7 @@ The rows `just perf` measures (`D-078` as redo 7.3 amends it), each owning one c
 just perf list                                   # every row, its kind and repeats
 just perf run ecs                                # one capture
 just perf sitting --quick                        # the working tree against the last tag, CPU rows, informational
-cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the six benchmarks
+cargo run -p example-02-bench                    # physics at `default`, interactive; Tab cycles the seven benchmarks
 TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 ```
 
@@ -14,7 +14,7 @@ TUNGSTEN_BENCH=gpu TUNGSTEN_BENCH_PRESET=min cargo run -p example-02-bench
 
 ## Harness
 
-- **Two kinds of row.** The six benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
+- **Two kinds of row.** The seven benchmarks of `examples/02_bench/` (package `example-02-bench`) run one per launch, selected by `TUNGSTEN_BENCH` and `TUNGSTEN_BENCH_PRESET` and captured under `TUNGSTEN_SMOKE_FRAMES`, which pins dt to 1/60 s. The game rows run a game's own build in script mode (`D-225`) on an inline script the registry holds: setup steps, then the warm-up and the window, ending on the row's asserts; script mode pins dt too.
 - **The bench binary.** `main.rs` resolves the configuration (`knobs.rs`: preset, then scale, then overrides, then validation) and builds the app through `bench_app`, which the counter guards build alike. `TUNGSTEN_BENCH_DESCRIBE=1` prints every benchmark's knobs and presets as JSON and `=config` the resolved configuration, before a window opens. `TUNGSTEN_OVERLAYS_ON=physics,systems,inspector` enables overlays. In an interactive run Tab relaunches the binary on the next benchmark, keeping the preset when it has it.
 - **Determinism.** Every random choice comes from `Pcg32::seeded(seed)` and dt is pinned, so one build replays one workload. No rendered text depends on wall-clock time. A capture's runs share a digest over the window's `physics:` and `bench:` lines.
 - **Assets.** `gen.rs` generates every bench texture under `bench_` IDs through a `TextureSink`: the renderer uploads them, and the counter guards' headless sink hands out the harness's handles and uploads nothing, so both register the same sprites, pages and batch keys. The bench's only asset files are `examples/02_bench/assets/manifest.json` and the `bench_heavy` shader and material it lists, which `gpu` loads after the root manifest.
@@ -163,6 +163,29 @@ Owns the runtime terrain's share of `physics_step` (redo 7.8): the registry's wr
 - **Owned:** `physics_step` p50/p95 and `update` p95.
 - **Guards:** `bench.edits constant` and `bench.traced <= 256`, 8 × `edits`: each of a frame's 2 × `edits` collision writes re-traces at most the chunks within one cell of it.
 
+## `friction` and `slopes`
+
+`friction` owns `physics_step`'s friction and rolling rows; `slopes` its slope tiles' contacts (phase 7's piles). One benchmark, `piles`, whose `mode` knob names its row as `physics`' names `physics-sparse`. Warm-up 120 frames. Module: `piles.rs`.
+
+- **Friction.** A bin of 16 px tiles, walls down both sides and a floor, their physics material built in code: boxes and circles of 3, 4 and 5 px, every other one a circle that rolls, under the material's `friction` and `rolling` and their own, fall into it from its upper three fifths and are stirred by kinematic paddles of 16 × 80 px, one to each 24 cells of floor, sweeping it at `paddle_speed`. Each turns back two cells short of its section's ends, so none pins a body against a wall: a kinematic push has no bound, and a body crushed into a corner cell leaves through the map's edge.
+- **Slopes.** The same bodies and tiles in a field: below a spawn band a quarter of its height, rows of slope-cell diamonds four rows apart, staggered, a 45° one (`45 br` and `45 bl` over `45 tr` and `45 tl`) and a 2:1 one (`2:1 low br`, `high br`, `high bl` and `low bl` over the four ceilings) by turns, two clear cells at each wall: every slope kind. The bodies start spread over the field's empty cells, so the stream is in flight from the first frame; each whose collision event names a floor cell returns to the band's upper half at rest.
+- **Sleep** is off by default, so every body stays in the solve: one paddle per 24 cells still left a straggler asleep in its wake for a second at a time.
+- **Reference machine**, 2026-10-31, one run each: `friction` `physics_step` p50 7.21 ms, p95 8.05 ms, `update` p95 8.10 ms; `slopes` 2.33, 2.44 and 2.50 ms.
+
+| Knob | Default | Range | Scales | Notes |
+| --- | --- | --- | --- | --- |
+| `mode` | `friction` | `friction`, `slopes` | | Names the row |
+| `width`, `height` | 96, 40 | 16–512, 16–256 | | Cells of 16 px |
+| `bodies` | 3,000 | 0–50,000 | yes | |
+| `friction`, `rolling` | 0.5, 0.02 | 0–2, 0–0.5 | | The bodies' and the tiles' alike |
+| `paddle_speed` | 240 | 0–2,000 | | `friction` only; px/s |
+| `sleep` | `off` | `off`, `on` | | `on` lets resting bodies sleep |
+
+- **Presets:** `default` and `friction` (the defaults), `friction-min` (24 × 24 cells, 400 bodies), `slopes-min` (32 × 32 cells, 300 bodies, friction 0.3) and `slopes` (96 × 48 cells, 2,000 bodies, friction 0.3).
+- **Counters:** `bench:` `bodies`, `awake`, `sleeping`, `escaped` (bodies past the walls' or the floor's cells), `spinning` (circles turning faster than 0.5 rad/s), `recycled` (returns to the band over the last 60 frames), `inside` (bodies whose centre is inside a slope cell's polygon) and `visible`.
+- **Owned:** `physics_step` p50/p95 and `update` p95, each row.
+- **Guards:** `friction`: `bench.sleeping <= 0` and `bench.escaped <= 0`. `slopes`: `bench.recycled >= 60`, at least one a frame over each second, and `bench.inside <= 0`.
+
 ## `e01-pit`
 
 Example 01's heaviest frame: the full ball pit under the rope bridge with six enemies awake about the player (`features/run/pit.rs`). The script: `start_run` at frame 2, `fill_pit` to 12,000 balls at 30, `wake_foes` at 630, then 180 warm-up frames (warm-up 810 in all) and 300 measured; it ends asserting the `pit` probe (`balls` = 12,000, `foes_alive` = 6, `foes_awake` ≥ 5). 1920×1080, CPU, five repeats.
@@ -198,6 +221,8 @@ Ordinary tests that pin what a frame does, so a change that adds work fails `jus
 | `gpu` | `guards_gpu` | `gpu` at `min` | field and glow sprites, lights, tilemap; instances = sprites plus visible tiles |
 | `gpu-throughput` | `guards_gpu_throughput` | `gpu` at `throughput`, scale 0.01 | as `gpu` |
 | `terrain` | `guards_terrain` | `terrain` at `min` | `Body` count = `bodies`, `Sensor` count = `sensors`, one map; the warm-up's last frame and the window's last break and refill `edits` cells each and trace 1 to 8 × `edits` chunks; every frame's instances = bodies in view plus visible art tiles |
+| `friction` | `guards_friction` | `piles` at `friction-min` | `Body` count = `bodies`, one paddle, one map; each window frame no body asleep or out of the bin and a circle spinning; instances = bodies and paddles in view plus visible art tiles |
+| `slopes` | `guards_slopes` | `piles` at `slopes-min` | `Body` count = `bodies`, no paddle, one map; each window frame no centre inside a slope cell's polygon and at least 60 returns over the last 60 frames; instances as `friction` |
 | `pit` | `example-01-platformer` `guards::the_full_pit_holds_its_counts` | `start_run`, 2,000 balls, 120 settle frames, `wake_foes`, a 60-frame window | the `pit` counts (headless 01 loads no sprite assets, so its batches read 0) |
 
 Each bench guard runs its row's warm-up and a 60-frame window at the configuration named, and asserts the row its configuration measures before any pin. A rise in a cost counter needs a fix or its cause in the change's plan. The template has none: `tungsten new` copies the template's tests into every game.

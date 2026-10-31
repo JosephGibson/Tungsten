@@ -437,6 +437,29 @@ pub(crate) fn terrain_rgba(mask: Option<u8>, size: u32) -> Vec<u8> {
     })
 }
 
+/// A `piles` tile: a full cell, or a slope cell's polygon `points` in its
+/// local units, y down, either winding, over a clear background.
+pub(crate) fn pile_tile_rgba(points: Option<&[(f32, f32)]>, size: u32) -> Vec<u8> {
+    paint(size, |u, v, px, py| {
+        let (x, y) = (f32::midpoint(u, 1.0), f32::midpoint(v, 1.0));
+        let inside = points.is_none_or(|points| {
+            let turns: Vec<f32> = (0..points.len())
+                .map(|i| {
+                    let ((ax, ay), (bx, by)) = (points[i], points[(i + 1) % points.len()]);
+                    (bx - ax) * (y - ay) - (by - ay) * (x - ax)
+                })
+                .collect();
+            turns.iter().all(|&turn| turn >= 0.0) || turns.iter().all(|&turn| turn <= 0.0)
+        });
+        if !inside {
+            return [0.0; 4];
+        }
+        let noise = (hash(px, py, 0x9115) & 0xff) as f32 / 255.0;
+        let shade = 0.66 + 0.16 * noise;
+        [0.46 * shade, 0.48 * shade, 0.56 * shade, 1.0]
+    })
+}
+
 /// Frame `frame` of `frames` for clip `clip`: a disc in the clip's hue with
 /// a spoke that turns once over the clip and a filling wedge.
 pub(crate) fn anim_frame_rgba(clip: u32, frame: u32, frames: u32, size: u32) -> Vec<u8> {

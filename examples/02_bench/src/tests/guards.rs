@@ -22,6 +22,7 @@ use crate::counters::BenchCounters;
 use crate::r#gen::{self, TextureSink};
 use crate::knobs::{self, BenchConfig};
 use crate::physics::Ball;
+use crate::piles::{self, PileCounts};
 use crate::terrain::{self, TerrainCounts};
 use crate::view::{self, ViewSprite};
 use crate::{BENCHES, bench_app, gpu, particles};
@@ -86,6 +87,7 @@ fn harness(cfg: &BenchConfig) -> Harness {
             gpu::startup(harness.world_mut(), &mut textures, cfg);
         }
         "terrain" => terrain::startup(harness.world_mut(), &mut textures, cfg),
+        "piles" => piles::startup(harness.world_mut(), &mut textures, cfg),
         other => panic!("no guard startup for bench {other}"),
     }
     harness
@@ -154,6 +156,17 @@ fn gpu_drawable(world: &World) -> u64 {
 /// each frame's extracted instances against `drawable`. The checks run
 /// between counted frames, so their allocations stay out of the reading.
 fn measure(harness: &mut Harness, warmup: u32, drawable: fn(&World) -> u64) -> CounterGuard {
+    measure_checking(harness, warmup, drawable, |_, _| {})
+}
+
+/// [`measure`], calling `check` with the World and the window frame's index
+/// after each frame.
+fn measure_checking(
+    harness: &mut Harness,
+    warmup: u32,
+    drawable: fn(&World) -> u64,
+    mut check: impl FnMut(&World, u32),
+) -> CounterGuard {
     let mut total = CounterGuard::measure(harness, warmup, 0);
     for frame in 0..WINDOW {
         let one = CounterGuard::measure(harness, 0, 1);
@@ -163,6 +176,7 @@ fn measure(harness: &mut Harness, warmup: u32, drawable: fn(&World) -> u64) -> C
             "window frame {frame}: the extract drew {} instances of {expected} drawable",
             one.max_sprite_instances
         );
+        check(harness.world(), frame);
         total.allocations += one.allocations;
         total.allocated_bytes += one.allocated_bytes;
         total.archetype_moves += one.archetype_moves;
@@ -292,7 +306,9 @@ fn guards_gpu_throughput() {
 
 /// `terrain`'s drawable instances: the bodies in view and the art layer's
 /// visible tiles.
-fn terrain_drawable(world: &World) -> u64 {
+/// The lean view's drawable quads and the visible tiles of the map's art
+/// layer.
+fn tiled_drawable(world: &World) -> u64 {
     view_drawable(world) + u64::from(gpu::visible_tiles(world))
 }
 
@@ -341,11 +357,64 @@ fn guards_terrain() {
         );
     };
     check(terrain_edits(harness.world()), "warm-up");
-    let reading = measure(&mut harness, 0, terrain_drawable);
+    let reading = measure(&mut harness, 0, tiled_drawable);
     check(terrain_edits(harness.world()), "window");
     assert!(
         reading.max_sprite_instances > 0,
         "terrain: the guard drew nothing"
     );
     reading.check(manifest_path("src/tests/guards/terrain.json"));
+}
+
+/// One `piles` guard: `row` at `preset`, its bodies, paddles and map counted
+/// first, and `frame` checking each window frame's counters before the pin.
+fn guard_piles(row: &str, preset: &str, paddles: u64, frame: fn(&PileCounts, u32)) {
+    let bench = knobs::select(BENCHES, Some("piles")).expect("a bench");
+    let cfg = knobs::resolve(bench, Some(preset), None, None).expect("a configuration");
+    assert_eq!(cfg.row(), row, "the configuration measures another row");
+    let mut harness = harness(&cfg);
+    let world = harness.world();
+    assert_eq!(count::<piles::Body>(world), knob(&cfg, "bodies"), "bodies");
+    assert_eq!(count::<piles::Paddle>(world), paddles, "the paddle");
+    assert_eq!(count::<TilemapInstance>(world), 1, "the map");
+    let reading = measure_checking(
+        &mut harness,
+        cfg.bench.warmup,
+        tiled_drawable,
+        |world, at| {
+            frame(&world.resource::<BenchCounters<PileCounts>>().counts, at);
+        },
+    );
+    assert!(
+        reading.max_sprite_instances > 0,
+        "{row}: the guard drew nothing"
+    );
+    reading.check(manifest_path(&format!("src/tests/guards/{row}.json")));
+}
+
+#[test]
+fn guards_friction() {
+    // Stirred by the paddle, nothing sleeps and nothing leaves the bin.
+    guard_piles("friction", "friction-min", 1, |counts, at| {
+        assert_eq!(
+            (counts.sleeping, counts.escaped),
+            (0, 0),
+            "window frame {at}: sleeping and escaped"
+        );
+        assert!(counts.spinning > 0, "window frame {at}: no circle spins");
+    });
+}
+
+#[test]
+fn guards_slopes() {
+    // The stream returns at least 60 bodies a second to the band, and no
+    // body's centre is inside a slope cell's polygon.
+    guard_piles("slopes", "slopes-min", 0, |counts, at| {
+        assert_eq!(counts.inside, 0, "window frame {at}: inside a slope");
+        assert!(
+            counts.recycled >= 60,
+            "window frame {at}: {} returned over the last 60 frames",
+            counts.recycled
+        );
+    });
 }
