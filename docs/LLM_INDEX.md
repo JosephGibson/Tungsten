@@ -38,7 +38,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 | Manifest load, data entries, load path, GPU upload, registry, IDs, composition (`D-009`, `D-017`, `D-035`, `D-052`, `D-113`, `D-171`) | `core/assets/manifest.rs`, `core/assets/data.rs`, `core/assets/registry.rs`, `core/assets/mod.rs`, `tungsten/asset_loader/` |
 | Hot reload, file watch (`D-031`, `D-053`) | `tungsten/hot_reload.rs`, `tungsten/asset_loader/reload.rs` |
 | Sprite atlases (`D-048`) | `core/assets/atlas.rs`, `tungsten/asset_loader/atlas.rs` |
-| Tilemaps, tile collision (`D-032`, `D-033`) | `core/assets/tilemap.rs`, `core/assets/terrain.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
+| Tilemaps, tile collision (`D-032`, `D-033`, `D-228`) | `core/assets/tilemap.rs`, `core/assets/terrain.rs`, `tungsten/tilemap_extract.rs`, `core/physics/step/gather.rs` |
 | Prefabs, spawn inheritance, Tiled objects, tilemap builder (`D-157`, `D-170`) | `core/assets/prefab.rs`, `core/assets/tilemap.rs`, `tungsten/asset_loader/prefab.rs` |
 | UI theme asset, nine-slice insets, letter spacing (`D-148`, `D-198`) | `core/ui/theme_file.rs`, `core/assets/manifest.rs`, `tungsten/asset_loader/mod.rs`, `tungsten/asset_loader/reload.rs`, `tungsten/tests/asset_loader.rs` |
 
@@ -46,7 +46,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 
 | Task | Open |
 | --- | --- |
-| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
+| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/integration/physics_*.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering
