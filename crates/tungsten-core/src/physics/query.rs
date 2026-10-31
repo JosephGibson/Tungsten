@@ -18,7 +18,12 @@
 //!
 //! Tiles keep `D-064`'s seams: a cast never hits a face the tile's neighbour
 //! covers, and a corner beside such a face is square, so a cast along a tile
-//! floor slides past its seams. Entity colliders keep every face.
+//! floor slides past its seams. Entity colliders keep every face. A one-way
+//! tile ([`TileProps::one_way`]) is a surface: a cast meets it only moving
+//! down from at or above its top face, through that face or a rounded top
+//! corner, and [`overlap`], [`nearest`] and sensors leave it out.
+//!
+//! [`TileProps::one_way`]: crate::TileProps::one_way
 //!
 //! ```
 //! use glam::Vec2;
@@ -48,7 +53,7 @@ use std::cell::RefCell;
 use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{
-    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP,
+    Aabb, Contact, FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP,
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
 };
 use super::components::{RigidBody, Shape};
@@ -532,6 +537,20 @@ fn tile_rank(cell: &GridCell) -> Rank {
     )
 }
 
+/// Whether a cast from `origin` along `dir`, its shape reaching `below`
+/// under its centre, may meet `run`: any run but a one-way one, which it
+/// meets only moving down from at or above its top face.
+fn meets_run(run: &TileRun, origin: Vec2, dir: Vec2, below: f32) -> bool {
+    run.face_mask & FACE_ONE_WAY == 0
+        || (dir.y > 0.0 && origin.y + below <= run.center.y - run.half.y)
+}
+
+/// Whether a hit on a cell of `run` counts: any but one on a one-way cell
+/// whose normal does not point up, its top face or a rounded top corner.
+fn counts_on(run: &TileRun, hit: &SpatialHit) -> bool {
+    run.face_mask & FACE_ONE_WAY == 0 || hit.normal.y < 0.0
+}
+
 /// Whether a path from `origin` along `dir` meets the box at `center`
 /// grown by `half`, and a little more for rounding, from any side or from
 /// inside: a run whose cells are worth testing.
@@ -601,9 +620,12 @@ pub fn cast_ray(
             }
             if let Some(run) = state.tile_run(id) {
                 // A run: the hits of its cells, each its own box.
-                if path_meets(origin, dir, run.center, run.half) {
+                if meets_run(run, origin, dir, 0.0) && path_meets(origin, dir, run.center, run.half)
+                {
                     buffers.grid_cells().run_cells_in(run, min, max, |cell| {
-                        if let Some(hit) = hit_of(&run_cell(cell, run), Some(cell.cell)) {
+                        if let Some(hit) = hit_of(&run_cell(cell, run), Some(cell.cell))
+                            && counts_on(run, &hit)
+                        {
                             keep_closer(&mut best, hit, tile_rank(cell), max_distance);
                         }
                     });
@@ -655,9 +677,13 @@ pub fn cast_shape(
             }
             if let Some(run) = state.tile_run(id) {
                 // A run: the hits of its cells, each its own box.
-                if path_meets(origin, dir, run.center, run.half + half) {
+                if meets_run(run, origin, dir, half.y)
+                    && path_meets(origin, dir, run.center, run.half + half)
+                {
                     buffers.grid_cells().run_cells_in(run, min, max, |cell| {
-                        if let Some(hit) = cast_against(shape, origin, dir, &run_cell(cell, run)) {
+                        if let Some(hit) = cast_against(shape, origin, dir, &run_cell(cell, run))
+                            && counts_on(run, &hit)
+                        {
                             let hit = SpatialHit {
                                 tile: Some(cell.cell),
                                 ..hit

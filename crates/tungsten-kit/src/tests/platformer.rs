@@ -1289,3 +1289,40 @@ fn a_shove_share_above_one_panics() {
 fn a_negative_step_height_panics() {
     let _ = PlatformerController::new(RUN, JUMP).with_step_height(-1.0);
 }
+
+#[test]
+fn the_controller_jumps_up_through_a_one_way_edge_and_lands_on_it() {
+    // A one-way ledge of 16 px tiles, its top face at y -128, over the hero
+    // standing on the tile floor: the hero jumps through it to its full
+    // peak and lands on it.
+    let (mut world, mut schedule, entity) = standing(PlatformerController::new(RUN, JUMP));
+    let mut ledge = TilemapData::new(16, 16, 64, 1);
+    let tile = ledge.add_tile("ledge");
+    let mut props = tungsten_core::TileProps::default();
+    props.one_way = true;
+    ledge.set_tile_props(tile, props);
+    let layer = ledge.add_layer("ledge", LayerKind::Collision);
+    ledge.fill(layer, tile);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ledge".into(), ledge);
+    let instance = world.spawn();
+    world.insert(
+        instance,
+        TilemapInstance::new("ledge", Vec2::new(0.0, -128.0)),
+    );
+    steps(&mut world, &mut schedule, 2);
+    assert!(state(&world, entity).grounded(), "still on the floor");
+    let start = position(&world, entity).y;
+    controller(&mut world, entity).press_jump();
+    let top = peak(&mut world, &mut schedule, entity, 25);
+    let exact = JUMP * JUMP / (2.0 * GRAVITY);
+    assert!(
+        start - top > exact - 0.25,
+        "it rose through the ledge to {top}"
+    );
+    steps(&mut world, &mut schedule, 40);
+    let feet = position(&world, entity).y + HALF.y;
+    assert!(state(&world, entity).grounded(), "it stands");
+    assert!((feet + 128.0).abs() < 0.05, "on the ledge: feet at {feet}");
+}

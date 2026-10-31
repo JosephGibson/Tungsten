@@ -36,6 +36,18 @@ fn tile_key(center: Vec2) -> u64 {
     h & !(1 << 63)
 }
 
+/// A tile proxy's warm-start identity: [`tile_key`], a one-way cell's with
+/// its flag mixed in, so a cell turning one-way or back is another support
+/// to the sleep record, which wakes the sleepers on it (`D-156`).
+fn cell_key(center: Vec2, one_way: bool) -> u64 {
+    let key = tile_key(center);
+    if !one_way {
+        return key;
+    }
+    let h = (key ^ 0x6F6E_655F_7761_7921).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    (h ^ (h >> 31)) & !(1 << 63)
+}
+
 /// A tile's identity in sensor overlap keys: its map entity, layer and
 /// cell, so a map whose origin moves keeps it, and another layer's tile at
 /// the cell is another tile. Bit 63 stays clear, apart from entity keys.
@@ -410,7 +422,8 @@ impl CachedMap {
             for row in 0..self.height {
                 for col in 0..self.width {
                     let at = (row as usize) * (self.width as usize) + (col as usize);
-                    if layer.tiles[at] < 0 {
+                    let tile = layer.tiles[at];
+                    if tile < 0 {
                         continue;
                     }
                     let center = Vec2::new(
@@ -419,7 +432,7 @@ impl CachedMap {
                     );
                     arrays.proxies.push(Proxy {
                         entity: None,
-                        key: tile_key(center),
+                        key: cell_key(center, self.one_way(tile)),
                         center,
                         prev_center: center,
                         velocity: Vec2::ZERO,
@@ -510,8 +523,15 @@ impl CachedMap {
         Some((cols, rows))
     }
 
-    /// The cell at `(col, row)` of the layer at `slot` when it is solid,
-    /// this map being at `map_slot`.
+    /// Whether `tile` is one-way.
+    fn one_way(&self, tile: TileIndex) -> bool {
+        self.classes
+            .get(tile as usize)
+            .is_some_and(|class| class.one_way)
+    }
+
+    /// The cell at `(col, row)` of the layer at `slot` when it holds a solid
+    /// tile, one-way or not, this map being at `map_slot`.
     fn cell(&self, map_slot: usize, slot: usize, col: u32, row: u32) -> Option<GridCell> {
         let layer = &self.layers[slot];
         let tile = layer.tiles[(row as usize) * (self.width as usize) + (col as usize)];
@@ -539,8 +559,19 @@ impl CachedMap {
         })
     }
 
-    /// Calls `visit` with each solid cell whose box may meet `[min, max]`,
-    /// in layer, row and column order, this map being at `map_slot`.
+    /// [`Self::cell`] for region queries and sensors, which leave one-way
+    /// cells out: they are surfaces, not solids.
+    fn solid_cell(&self, map_slot: usize, slot: usize, col: u32, row: u32) -> Option<GridCell> {
+        let tile = self.layers[slot].tiles[(row as usize) * (self.width as usize) + (col as usize)];
+        if self.one_way(tile) {
+            return None;
+        }
+        self.cell(map_slot, slot, col, row)
+    }
+
+    /// Calls `visit` with each solid cell, one-way cells left out, whose box
+    /// may meet `[min, max]`, in layer, row and column order, this map being
+    /// at `map_slot`.
     fn cells_in(&self, map_slot: usize, min: Vec2, max: Vec2, visit: &mut impl FnMut(&GridCell)) {
         let Some((cols, rows)) = self.span(min, max) else {
             return;
@@ -548,7 +579,7 @@ impl CachedMap {
         for slot in 0..self.layers.len() {
             for row in rows.clone() {
                 for col in cols.clone() {
-                    if let Some(cell) = self.cell(map_slot, slot, col, row) {
+                    if let Some(cell) = self.solid_cell(map_slot, slot, col, row) {
                         visit(&cell);
                     }
                 }
@@ -630,8 +661,9 @@ impl TileCache {
         self.state.scans
     }
 
-    /// Calls `visit` with each solid cell of the last refresh whose box may
-    /// meet `[min, max]`, in tile order: by map, layer, row and column.
+    /// Calls `visit` with each solid cell of the last refresh, one-way cells
+    /// left out, whose box may meet `[min, max]`, in tile order: by map,
+    /// layer, row and column.
     pub(in crate::physics) fn cells_in(
         &self,
         min: Vec2,
@@ -643,9 +675,9 @@ impl TileCache {
         }
     }
 
-    /// Calls `visit` with each solid cell the last refresh changed whose box
-    /// may meet `[min, max]`, in tile order: every cell of a replaced map,
-    /// the written ones of the rest.
+    /// Calls `visit` with each solid cell the last refresh changed, one-way
+    /// cells left out, whose box may meet `[min, max]`, in tile order: every
+    /// cell of a replaced map, the written ones of the rest.
     pub(in crate::physics) fn changed_cells_in(
         &self,
         min: Vec2,
@@ -673,7 +705,7 @@ impl TileCache {
                     continue;
                 }
                 let slot = map.layers.iter().position(|layer| layer.index == index);
-                if let Some(cell) = slot.and_then(|slot| map.cell(map_slot, slot, col, row)) {
+                if let Some(cell) = slot.and_then(|slot| map.solid_cell(map_slot, slot, col, row)) {
                     visit(&cell);
                 }
             }

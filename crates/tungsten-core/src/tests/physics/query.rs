@@ -1370,3 +1370,100 @@ fn casts_on_run_boxes_give_the_cells_hits() {
         }
     }
 }
+
+#[test]
+fn casts_meet_a_one_way_edge_from_above_only() {
+    // A one-way ledge of 16 px cells from x 32 to 112, its top face at y 48,
+    // over a solid floor whose top is at y 96.
+    let mut world = world();
+    let mut data = TilemapData::new(16, 16, 10, 7);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    data.set_tile_props(
+        ledge,
+        crate::assets::TileProps {
+            one_way: true,
+            ..crate::assets::TileProps::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for col in 2..7 {
+        data.set_tile(layer, col, 3, ledge);
+    }
+    for col in 0..10 {
+        data.set_tile(layer, col, 6, solid);
+    }
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ledge".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ledge", Vec2::ZERO));
+    physics_step(&mut world);
+    let cell = |col: u32, row: u32| {
+        Some(TileHit {
+            map,
+            layer: 0,
+            col,
+            row,
+        })
+    };
+    let ray = |from: Vec2, dir: Vec2| {
+        cast_ray(&world, from, dir, 500.0, &all()).map(|hit| (hit.point, hit.normal, hit.tile))
+    };
+    let small = Shape::Aabb {
+        half_extents: Vec2::splat(4.0),
+    };
+    let cast = |shape: Shape, from: Vec2, dir: Vec2| {
+        cast_shape(&world, shape, from, dir, 500.0, &all())
+            .map(|hit| (hit.distance, hit.normal, hit.tile))
+    };
+
+    // From above, moving down: the top face.
+    assert_eq!(
+        ray(Vec2::new(72.0, 0.0), Vec2::Y),
+        Some((Vec2::new(72.0, 48.0), Vec2::NEG_Y, cell(4, 3)))
+    );
+    assert_eq!(
+        cast(small, Vec2::new(72.0, 20.0), Vec2::Y),
+        Some((24.0, Vec2::NEG_Y, cell(4, 3)))
+    );
+    // From below or inside, or across: passed, so the floor or nothing.
+    assert_eq!(ray(Vec2::new(72.0, 90.0), Vec2::NEG_Y), None);
+    assert_eq!(ray(Vec2::new(0.0, 56.0), Vec2::X), None);
+    assert_eq!(
+        ray(Vec2::new(72.0, 50.0), Vec2::Y),
+        Some((Vec2::new(72.0, 96.0), Vec2::NEG_Y, cell(4, 6)))
+    );
+    assert_eq!(
+        cast(small, Vec2::new(72.0, 56.0), Vec2::Y),
+        Some((36.0, Vec2::NEG_Y, cell(4, 6)))
+    );
+    assert_eq!(cast(small, Vec2::new(72.0, 90.0), Vec2::NEG_Y), None);
+    assert_eq!(cast(small, Vec2::new(0.0, 52.0), Vec2::X), None);
+    // A circle aimed at the ledge's top-left corner meets it rounded; one
+    // whose bottom starts under the top face passes into its left face.
+    let circle = Shape::Circle { radius: 4.0 };
+    let corner = Vec2::new(32.0, 48.0) - Vec2::splat(4.0 * std::f32::consts::FRAC_1_SQRT_2);
+    let (distance, normal, tile) =
+        cast(circle, corner - Vec2::splat(10.0), Vec2::ONE).expect("the corner");
+    assert!((distance - 200.0_f32.sqrt()).abs() < 1.0e-3, "{distance}");
+    assert!(
+        normal.x < 0.0 && normal.y < 0.0,
+        "a rounded top corner: {normal}"
+    );
+    assert_eq!(tile, cell(2, 3));
+    assert_eq!(
+        cast(circle, Vec2::new(20.0, 50.0), Vec2::ONE).map(|(_, _, tile)| tile),
+        Some(cell(3, 6)),
+        "past the ledge's side, onto the floor"
+    );
+    // Region queries leave it out: a surface, not a solid.
+    let mut out = Vec::new();
+    overlap(&world, small, Vec2::new(72.0, 56.0), &all(), &mut out);
+    assert!(out.is_empty(), "{out:?}");
+    overlap(&world, small, Vec2::new(72.0, 100.0), &all(), &mut out);
+    assert_eq!(out, [None], "the floor is a solid");
+    assert_eq!(nearest(&world, Vec2::new(72.0, 40.0), 20.0, &all()), None);
+    let near = nearest(&world, Vec2::new(72.0, 40.0), 60.0, &all()).unwrap();
+    assert_eq!((near.distance, near.tile), (56.0, cell(4, 6)));
+}

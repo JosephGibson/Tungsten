@@ -117,7 +117,7 @@
 
 use super::PhysicsConfig;
 use super::broadphase::{ProxyId, SpatialGrid};
-use super::collision::{Aabb, Contact, FACE_ALL};
+use super::collision::{Aabb, Contact, FACE_ALL, FACE_ONE_WAY};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::{CollisionEvent, SensorEntered};
 use super::query::{IndexEntry, SpatialIndex};
@@ -138,7 +138,9 @@ pub(super) use gather::{GridCell, TileRun};
 use gather::{TileCache, entity_key, gather_proxies};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
-use solver::{apply_impulse, apply_restitution, narrow_phase, soft_params, solve_contacts};
+use solver::{
+    apply_impulse, apply_restitution, narrow_phase, one_way_holds, soft_params, solve_contacts,
+};
 use sweep::{SweepGrid, speculative_pass};
 
 /// Per-substep collider proxy; tile proxies use `entity = None`.
@@ -819,6 +821,23 @@ fn substep(
         let Some(contact) = narrow_phase(&proxies[a_idx], &proxies[b_idx], margin) else {
             continue;
         };
+        // A one-way tile's new contact needs the body's bottom within the
+        // slack of its top face; one the pair carried last substep keeps the
+        // narrow phase's quarter cell, so a pressed body does not sink
+        // through.
+        if proxies[b_idx].face_mask & FACE_ONE_WAY != 0 {
+            let held = if seed_impulses {
+                impulses.get(pair_key(proxies[a_idx].key, proxies[b_idx].key))
+            } else {
+                cached_impulse
+            };
+            let (a, b) = (&proxies[a_idx], &proxies[b_idx]);
+            if held <= 0.0
+                && !one_way_holds(a, a.center, b, b.center, contact.normal, speculative_slack)
+            {
+                continue;
+            }
+        }
         // Wake test (D-065): a touching contact with real relative motion, or
         // a speculative gap approached faster than the threshold, wakes the
         // sleeping side before the solver sees the contact — a bullet wakes

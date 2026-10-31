@@ -6,7 +6,7 @@ use super::{Proxy, ProxyLayers};
 use crate::physics::PhysicsConfig;
 use crate::physics::broadphase::{ProxyId, SpatialGrid, for_each_in_both};
 use crate::physics::collision::{
-    Aabb, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
+    Aabb, FACE_BOTTOM, FACE_LEFT, FACE_ONE_WAY, FACE_RIGHT, FACE_TOP, sweep_aabb_vs_aabb,
 };
 use crate::physics::components::Shape;
 use crate::physics::events::CollisionEvent;
@@ -112,6 +112,7 @@ pub(super) fn speculative_pass(
     events: &mut Vec<CollisionEvent>,
 ) {
     const BACKOFF: f32 = 1.0e-3;
+    let slack = 4.0 * config.linear_slop;
 
     // Tile proxies are never dynamic: only the entity proxies sweep.
     for a_idx in 0..bodies {
@@ -167,6 +168,15 @@ pub(super) fn speculative_pass(
                     FACE_BOTTOM
                 };
                 if target.face_mask & face_bit == 0 {
+                    continue;
+                }
+                // A one-way tile stops a body through its top face alone,
+                // one whose previous bottom lay above it, within the narrow
+                // phase's slack.
+                if target.face_mask & FACE_ONE_WAY != 0
+                    && (face_bit != FACE_TOP
+                        || a_prev.y + a_half.y > target.center.y - b_half.y + slack)
+                {
                     continue;
                 }
                 if best.is_none_or(|(best_t, _, _)| t < best_t) {

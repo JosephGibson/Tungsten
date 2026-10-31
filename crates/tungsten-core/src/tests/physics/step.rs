@@ -5144,3 +5144,215 @@ fn an_edit_retraces_its_chunk_and_neighbours_only() {
     physics_step(&mut world);
     assert_eq!(traces(&world), before);
 }
+
+/// A map of 16 px cells drawn by rows of letters, `#` solid, `=` one-way
+/// and `.` empty, in one collision layer.
+fn one_way_map(rows: &[&str]) -> TilemapData {
+    let (width, height) = (rows[0].len() as u32, rows.len() as u32);
+    let mut data = TilemapData::new(16, 16, width, height);
+    let solid = data.add_tile("solid");
+    let ledge = data.add_tile("ledge");
+    data.set_tile_props(
+        ledge,
+        TileProps {
+            one_way: true,
+            ..TileProps::default()
+        },
+    );
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    for (row, letters) in rows.iter().enumerate() {
+        for (col, letter) in letters.chars().enumerate() {
+            let tile = match letter {
+                '#' => solid,
+                '=' => ledge,
+                _ => continue,
+            };
+            data.set_tile(layer, col as u32, row as u32, tile);
+        }
+    }
+    data
+}
+
+/// `world` under 900 px/s² of gravity with `data` placed at the origin.
+fn one_way_world(data: TilemapData) -> World {
+    let mut world = seed_world();
+    world.resource_mut::<PhysicsConfig>().gravity = Vec2::new(0.0, 900.0);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("ledges".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("ledges", Vec2::ZERO));
+    world
+}
+
+#[test]
+fn a_body_lands_on_a_one_way_edge_and_passes_it_from_below() {
+    // A one-way ledge from x 48 to 160, its top face at y 80, over a floor
+    // whose top is at y 144, with one-way cells on the floor from x 192 to
+    // 256: a ball dropped on the ledge rests on it, one launched up from the
+    // floor passes it and lands on it, and a box sliding along the floor
+    // passes the cells on it at its speed.
+    let mut world = one_way_world(one_way_map(&[
+        "..............................",
+        "..............................",
+        "..............................",
+        "..............................",
+        "..............................",
+        "...=======....................",
+        "..............................",
+        "..............................",
+        "............====..............",
+        "##############################",
+    ]));
+    let dropped = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(136.0, 20.0),
+        Vec2::ZERO,
+    );
+    let launched = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::circle(6.0),
+        Vec2::new(72.0, 138.0),
+        Vec2::new(0.0, -500.0),
+    );
+    let slider = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(5.0)),
+        Vec2::new(150.0, 139.0),
+        Vec2::new(60.0, 0.0),
+    );
+    let at = |world: &World, body: Entity| world.get::<Position>(body).unwrap().0;
+    let mut highest = f32::MAX;
+    for _ in 0..180 {
+        physics_step(&mut world);
+        highest = highest.min(at(&world, launched).y);
+        let slid = at(&world, slider);
+        assert!(
+            (slid.y - 139.0).abs() < 0.5,
+            "the box left the floor at {slid}"
+        );
+    }
+    let rest = at(&world, dropped).y + 6.0;
+    assert!(
+        (rest - 80.0).abs() < 0.5,
+        "the dropped ball rests at {rest}"
+    );
+    assert!(
+        highest + 6.0 < 80.0,
+        "the launched ball rose past the ledge: {highest}"
+    );
+    let landed = at(&world, launched).y + 6.0;
+    assert!((landed - 80.0).abs() < 0.5, "and landed on it at {landed}");
+    let slid = at(&world, slider);
+    let speed = world.get::<Velocity>(slider).unwrap().0;
+    assert!(slid.x > 261.0, "the box passed the cells: {slid}");
+    assert!((speed.x - 60.0).abs() < 1.0e-3, "at its speed: {speed}");
+}
+
+#[test]
+fn a_stack_rests_on_a_one_way_edge() {
+    // Ten 12 px boxes dropped in a column onto a one-way ledge whose top face
+    // is at y 160, nothing under it: after 600 steps every box rests above
+    // the face.
+    let mut rows = vec!["...................."; 16];
+    rows[10] = ".....==========.....";
+    let mut world = one_way_world(one_way_map(&rows));
+    let boxes: Vec<Entity> = (0..10)
+        .map(|i| {
+            spawn_body(
+                &mut world,
+                RigidBody::dynamic(),
+                Collider::aabb(Vec2::splat(6.0)),
+                Vec2::new(160.0, 150.0 - 14.0 * i as f32),
+                Vec2::ZERO,
+            )
+        })
+        .collect();
+    let mut deepest = f32::MIN;
+    for _ in 0..600 {
+        physics_step(&mut world);
+        for &body in &boxes {
+            let bottom = world.get::<Position>(body).unwrap().0.y + 6.0;
+            deepest = deepest.max(bottom);
+        }
+    }
+    assert!(deepest < 160.0 + 1.0, "a box sank to {deepest}");
+    let bottom = world.get::<Position>(boxes[0]).unwrap().0.y + 6.0;
+    assert!(
+        (bottom - 160.0).abs() < 1.0,
+        "the stack stands on the face: {bottom}"
+    );
+}
+
+#[test]
+fn a_cell_turned_one_way_wakes_its_sleepers() {
+    // A 6 px box asleep on a solid cell's top inside the one-way cell over
+    // it, and a 12 px box asleep on the floor against a solid cell's side:
+    // each cell set one-way through the registry, both boxes are awake at
+    // the next step, and the first falls through its cell, now covered, to
+    // the floor.
+    let mut world = one_way_world(one_way_map(&[
+        "............",
+        "............",
+        "............",
+        "............",
+        "..=.........",
+        "..#.........",
+        "........#...",
+        "############",
+    ]));
+    let small = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(3.0)),
+        Vec2::new(40.0, 77.0),
+        Vec2::ZERO,
+    );
+    let beside = spawn_body(
+        &mut world,
+        RigidBody::dynamic(),
+        Collider::aabb(Vec2::splat(6.0)),
+        Vec2::new(122.0, 106.0),
+        Vec2::ZERO,
+    );
+    for _ in 0..90 {
+        physics_step(&mut world);
+    }
+    let sleeping = |world: &World, body: Entity| {
+        world
+            .get_resource::<PhysicsBuffers>()
+            .unwrap()
+            .is_sleeping(body)
+    };
+    assert!(
+        sleeping(&world, small) && sleeping(&world, beside),
+        "both asleep"
+    );
+    let small_y = world.get::<Position>(small).unwrap().0.y;
+    assert!(
+        (small_y + 3.0 - 80.0).abs() < 0.5,
+        "on the cell at {small_y}"
+    );
+    for (col, row) in [(2, 5), (8, 6)] {
+        assert!(
+            world
+                .resource_mut::<TilemapRegistry>()
+                .set_tile("ledges", 0, col, row, 1)
+        );
+    }
+    physics_step(&mut world);
+    assert!(!sleeping(&world, small), "the small box woke");
+    assert!(!sleeping(&world, beside), "the box beside the cell woke");
+    for _ in 0..60 {
+        physics_step(&mut world);
+    }
+    let fallen = world.get::<Position>(small).unwrap().0.y + 3.0;
+    assert!(
+        (fallen - 112.0).abs() < 0.5,
+        "it fell to the floor: {fallen}"
+    );
+}

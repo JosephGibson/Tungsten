@@ -4,7 +4,7 @@
 use super::{ContactConstraint, Proxy};
 use crate::physics::PhysicsConfig;
 use crate::physics::collision::{
-    Aabb, Contact, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
+    Aabb, Contact, FACE_ONE_WAY, aabb_vs_aabb_speculative, aabb_vs_circle_speculative,
     circle_vs_circle_speculative,
 };
 use crate::physics::components::Shape;
@@ -123,8 +123,53 @@ pub(super) fn narrow_phase(a: &Proxy, b: &Proxy, margin: f32) -> Option<Contact>
 }
 
 /// `narrow_phase` with the two bodies placed at `a_center` and `b_center`.
+/// A one-way tile `b` gives a contact only from above: one pushing `a` up
+/// with its bottom at most a quarter cell below the tile's top face.
 #[inline(always)]
 pub(super) fn narrow_phase_at(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    margin: f32,
+) -> Option<Contact> {
+    let contact = masked_contact(a, a_center, b, b_center, margin)?;
+    if b.face_mask & FACE_ONE_WAY != 0
+        && !one_way_holds(
+            a,
+            a_center,
+            b,
+            b_center,
+            contact.normal,
+            0.5 * b.half_extents().y,
+        )
+    {
+        return None;
+    }
+    Some(contact)
+}
+
+/// Whether the one-way tile `b` at `b_center` holds `a` at `a_center` with a
+/// contact along `normal`: one pushing it up, its bottom at most `depth`
+/// below the tile's top face.
+#[inline(always)]
+pub(super) fn one_way_holds(
+    a: &Proxy,
+    a_center: Vec2,
+    b: &Proxy,
+    b_center: Vec2,
+    normal: Vec2,
+    depth: f32,
+) -> bool {
+    let bottom = a_center.y + a.half_extents().y;
+    let top = b_center.y - b.half_extents().y;
+    normal.y < 0.0 && bottom <= top + depth
+}
+
+/// The signed-distance contact of `a` at `a_center` against `b` at
+/// `b_center`, a tile by its face mask.
+#[inline(always)]
+fn masked_contact(
     a: &Proxy,
     a_center: Vec2,
     b: &Proxy,
