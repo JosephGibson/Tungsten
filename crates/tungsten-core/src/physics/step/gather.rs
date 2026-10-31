@@ -2,15 +2,20 @@
 //! deterministic `World` order (D-066), their warm-start keys and their
 //! layers; sensors are gathered beside the proxies, never as one. Tile
 //! proxies come from a cache of the collision layers that asks the registry
-//! every frame whether a map changed (its cursor) and rescans that map
-//! alone; each is in its collision layer's physics layers.
+//! every frame whether a map changed (its cursor) and re-traces only the
+//! 16 × 16 chunks around the cells written (`outline`); each is in its
+//! collision layer's physics layers. The cache keeps the outline's runs
+//! beside them, which casts meet.
 
+use super::outline::{CHUNK, LayerCells, Run, TileClass, trace_chunk};
 use super::{Layers, Proxy, ProxyLayers, SensorBody};
 use crate::assets::{
     LayerKind, MapCursor, TileChanges, TileIndex, TilemapData, TilemapInstance, TilemapRegistry,
 };
 use crate::ecs::{Entity, World};
-use crate::physics::collision::{FACE_ALL, FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
+use crate::physics::collision::FACE_ALL;
+#[cfg(test)]
+use crate::physics::collision::{FACE_BOTTOM, FACE_LEFT, FACE_RIGHT, FACE_TOP};
 use crate::physics::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use crate::physics::query::TileHit;
 use glam::Vec2;
@@ -41,6 +46,17 @@ fn tile_identity(map: Entity, layer: usize, col: u32, row: u32) -> u64 {
         ^ cell.wrapping_mul(0x8DA6_B343_D816_3841);
     let h = (h ^ (h >> 29)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
     (h ^ (h >> 32)) & !(1 << 63)
+}
+
+/// A run's identity in the spatial index: a mix of its map, layer, first
+/// and last cell and mask. Bit 63 stays clear, apart from entity keys.
+fn run_key(map: Entity, layer: usize, run: &Run) -> u64 {
+    let last = (u64::from(run.row + run.rows - 1) << 32) | u64::from(run.col + run.cols - 1);
+    let h = tile_identity(map, layer, run.col, run.row).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ last.wrapping_mul(0xC2B2_AE3D_27D4_EB4F)
+        ^ u64::from(run.mask).wrapping_mul(0x8DA6_B343_D816_3841);
+    let h = (h ^ (h >> 31)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    (h ^ (h >> 29)) & !(1 << 63)
 }
 
 /// Gather entity + tilemap proxies in deterministic `World` order, once per
@@ -134,14 +150,18 @@ pub(super) fn gather_proxies(
 }
 
 /// The static tile proxies of every collision layer, each in its layer's
-/// physics layers, in gather order: each map's, in query order, as its last
-/// scan built them, with each one's sensor identity and cell; and each
-/// collision layer's cells as the last refresh read them, which region
-/// queries and sensors read. A map is scanned again only when its registry
-/// cursor reads a change to a collision layer, its instance moved or names
-/// another map, or it appeared; one that went drops out. So the proxies,
-/// their order, keys, face masks, layers, identities and cells are what a
-/// scan of this frame would give.
+/// physics layers, in gather order: each map's, in query order, one per
+/// solid cell in layer, row and column order, with each one's sensor
+/// identity, its face mask the outline's; the outline's runs, which casts
+/// meet; and each collision layer's cells as the last refresh read them,
+/// which region queries and sensors read. Per map, layer and 16 × 16 chunk
+/// the cache keeps the masks and runs traced from those cells. A map is
+/// traced again whole when it appears, moves, names another map or is
+/// replaced; a write to its collision cells re-traces the chunks holding
+/// each written cell and its four neighbours, and its proxies are rebuilt
+/// from its masks; one that went drops out. So the proxies, their order,
+/// keys, face masks, layers and identities, and the runs, are what a scan
+/// of this frame would give.
 #[derive(Debug, Default)]
 pub(in crate::physics) struct TileCache {
     /// The tile proxies, in gather order.
@@ -164,8 +184,9 @@ struct CacheState {
     maps: Vec<CachedMap>,
     /// Some tile proxy is off [`Layers::DEFAULT`].
     layered: bool,
-    /// Each tile proxy's map, layer and cell, in proxy order.
-    cells: Vec<TileHit>,
+    /// The outline's runs, in their first cell's tile order: by map, layer,
+    /// row and column.
+    runs: Vec<TileRun>,
     /// The maps whose every cell the last refresh changed: replaced,
     /// added, moved, resized or gone.
     replaced: Vec<Entity>,
@@ -175,13 +196,39 @@ struct CacheState {
     written: Vec<(Entity, Vec<WrittenCell>)>,
     /// Those cells' sensor identities, sorted.
     written_ids: Vec<u64>,
-    /// Maps scanned since the cache was made.
+    /// Chunks traced since the cache was made.
+    traced: u64,
+    /// The arrays the last refresh replaced, kept for the next one to fill.
+    spare: TileArrays,
+    /// Maps traced, whole or in part, since the cache was made.
     #[cfg(test)]
     scans: usize,
 }
 
-/// One map as its last scan read it: where its proxies sit, and its
-/// collision layers' cells where its instance placed them.
+/// One run of the outline as the index holds it: its box, exposed faces,
+/// layers and identity, and its cells by its map's and layer's places in
+/// the cache: from its first, `cols` across and `rows` down.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(in crate::physics) struct TileRun {
+    pub(in crate::physics) center: Vec2,
+    pub(in crate::physics) half: Vec2,
+    /// Its cells' mask, the one-way flag included.
+    pub(in crate::physics) face_mask: u8,
+    /// Its layer's layers and mask.
+    pub(in crate::physics) layers: u32,
+    pub(in crate::physics) mask: u32,
+    pub(in crate::physics) identity: u64,
+    pub(in crate::physics) map_slot: u32,
+    pub(in crate::physics) layer_slot: u32,
+    pub(in crate::physics) col: u32,
+    pub(in crate::physics) row: u32,
+    pub(in crate::physics) cols: u32,
+    pub(in crate::physics) rows: u32,
+}
+
+/// One map as its last refresh read it: where its proxies sit, and its
+/// collision layers' cells where its instance placed them, with their
+/// masks and runs.
 #[derive(Debug)]
 struct CachedMap {
     entity: Entity,
@@ -196,22 +243,30 @@ struct CachedMap {
     tile: Vec2,
     width: u32,
     height: u32,
+    /// By tileset entry: what a tile breaks runs on.
+    classes: Vec<TileClass>,
     /// Its collision layers, in layer order.
     layers: Vec<CachedLayer>,
 }
 
-/// A collision layer's cells as the cache's last refresh read them.
+/// A collision layer's cells as the cache's last refresh read them, and
+/// what their trace gave.
 #[derive(Debug)]
 struct CachedLayer {
     /// Its index in the map's layers.
     index: usize,
     layers: Layers,
     tiles: Vec<TileIndex>,
+    /// Each cell's exposed faces, row-major: 0 for an empty or interior one.
+    masks: Vec<u8>,
+    /// By chunk, row-major: its runs in their first cell's row-major order.
+    chunks: Vec<Vec<Run>>,
 }
 
-/// A solid cell of a collision layer, as region queries and sensors test
-/// it: a box exactly as its proxy's was, with its layers, sensor identity
-/// and cell.
+/// A solid cell of a collision layer, as region queries, sensors and the
+/// cells of a cast's runs test it: a box exactly as its proxy's is, with
+/// its layers, sensor identity and cell, and its map's and layer's places
+/// in the cache, which rank it in tile order.
 #[derive(Debug, Clone, Copy)]
 pub(in crate::physics) struct GridCell {
     pub(in crate::physics) center: Vec2,
@@ -221,30 +276,50 @@ pub(in crate::physics) struct GridCell {
     pub(in crate::physics) mask: u32,
     pub(in crate::physics) identity: u64,
     pub(in crate::physics) cell: TileHit,
+    pub(in crate::physics) map_slot: u32,
+    pub(in crate::physics) layer_slot: u32,
 }
 
 impl CachedMap {
-    /// The map as `instance` on `entity` places `data`, its cursor `cursor`
-    /// and its proxies from `start`, `len` of them.
+    /// The map as `instance` on `entity` places `data`, its cursor `cursor`,
+    /// its collision layers' cells copied and nothing traced.
     fn of(
         entity: Entity,
         instance: &TilemapInstance,
         data: &TilemapData,
         cursor: MapCursor,
-        start: usize,
-        len: usize,
     ) -> Self {
+        let mut materials: Vec<&str> = Vec::new();
+        let classes = (0..data.tileset.len())
+            .map(|tile| {
+                let props = data.tile_props(tile as TileIndex);
+                let material = props.material.as_deref().map_or(0, |name| {
+                    let known = materials.iter().position(|&other| other == name);
+                    let at = known.unwrap_or_else(|| {
+                        materials.push(name);
+                        materials.len() - 1
+                    });
+                    at as u32 + 1
+                });
+                TileClass {
+                    material,
+                    one_way: props.one_way,
+                }
+            })
+            .collect();
+        let chunks = data.width.div_ceil(CHUNK) * data.height.div_ceil(CHUNK);
         Self {
             entity,
             id: instance.id.clone(),
             origin: origin_bits(instance),
             cursor,
-            start,
-            len,
+            start: 0,
+            len: 0,
             at: instance.origin,
             tile: Vec2::new(data.tile_width as f32, data.tile_height as f32),
             width: data.width,
             height: data.height,
+            classes,
             layers: data
                 .layers
                 .iter()
@@ -259,15 +334,161 @@ impl CachedMap {
                             mask: physics.mask,
                         },
                         tiles: layer.tiles.clone(),
+                        masks: vec![0; layer.tiles.len()],
+                        chunks: vec![Vec::new(); chunks as usize],
                     }
                 })
                 .collect(),
         }
     }
 
-    /// Whether `instance` on `entity` places this map where it was scanned.
+    /// Whether `instance` on `entity` places this map where it was traced.
     fn placed_by(&self, entity: Entity, instance: &TilemapInstance) -> bool {
         self.entity == entity && self.id == instance.id && self.origin == origin_bits(instance)
+    }
+
+    /// Traces chunk `(cx, cy)` of the layer at `slot` again.
+    fn trace(&mut self, slot: usize, cx: u32, cy: u32, traced: &mut u64) {
+        let chunk = (cy * self.width.div_ceil(CHUNK) + cx) as usize;
+        let layer = &mut self.layers[slot];
+        let cells = LayerCells {
+            width: self.width,
+            height: self.height,
+            tiles: &layer.tiles,
+            classes: &self.classes,
+        };
+        trace_chunk(&cells, cx, cy, &mut layer.masks, &mut layer.chunks[chunk]);
+        *traced += 1;
+    }
+
+    /// Traces every chunk of every collision layer.
+    fn trace_all(&mut self, traced: &mut u64) {
+        let (across, down) = (self.width.div_ceil(CHUNK), self.height.div_ceil(CHUNK));
+        for slot in 0..self.layers.len() {
+            for cy in 0..down {
+                for cx in 0..across {
+                    self.trace(slot, cx, cy, traced);
+                }
+            }
+        }
+    }
+
+    /// Copies the written `cells` from `data` and re-traces the chunks that
+    /// hold each and its four neighbours, each once.
+    fn write(&mut self, data: &TilemapData, cells: &[WrittenCell], traced: &mut u64) {
+        let width = self.width as usize;
+        let mut dirty: Vec<(usize, u32, u32)> = Vec::new();
+        for &(index, row, col) in cells {
+            let Some(slot) = self.layers.iter().position(|layer| layer.index == index) else {
+                continue;
+            };
+            let at = (row as usize) * width + col as usize;
+            self.layers[slot].tiles[at] = data.layers[index].tiles[at];
+            let (c, r) = (i64::from(col), i64::from(row));
+            for (dc, dr) in [(0, 0), (0, -1), (1, 0), (0, 1), (-1, 0)] {
+                let (Ok(col), Ok(row)) = (u32::try_from(c + dc), u32::try_from(r + dr)) else {
+                    continue;
+                };
+                if col < self.width && row < self.height {
+                    dirty.push((slot, row / CHUNK, col / CHUNK));
+                }
+            }
+        }
+        dirty.sort_unstable();
+        dirty.dedup();
+        for (slot, cy, cx) in dirty {
+            self.trace(slot, cx, cy, traced);
+        }
+    }
+
+    /// Appends the map's proxies to `arrays`: each solid cell's static box
+    /// with the mask its trace gave, its layer's layers and its sensor
+    /// identity, in layer, row and column order.
+    fn push_proxies(&self, arrays: &mut TileArrays) {
+        let half = Vec2::new(self.tile.x * 0.5, self.tile.y * 0.5);
+        for layer in &self.layers {
+            for row in 0..self.height {
+                for col in 0..self.width {
+                    let at = (row as usize) * (self.width as usize) + (col as usize);
+                    if layer.tiles[at] < 0 {
+                        continue;
+                    }
+                    let center = Vec2::new(
+                        self.at.x + (col as f32) * self.tile.x + half.x,
+                        self.at.y + (row as f32) * self.tile.y + half.y,
+                    );
+                    arrays.proxies.push(Proxy {
+                        entity: None,
+                        key: tile_key(center),
+                        center,
+                        prev_center: center,
+                        velocity: Vec2::ZERO,
+                        offset: Vec2::ZERO,
+                        shape: Shape::Aabb { half_extents: half },
+                        is_dynamic: false,
+                        has_velocity: false,
+                        inv_mass: 0.0,
+                        restitution: 0.0,
+                        face_mask: layer.masks[at],
+                        sleeping: false,
+                        kinematic: false,
+                        kept_awake: false,
+                    });
+                    arrays.layers.push(layer.layers);
+                    arrays
+                        .ids
+                        .push(tile_identity(self.entity, layer.index, col, row));
+                }
+            }
+        }
+    }
+
+    /// Appends the map's runs to `runs` in their first cell's tile order,
+    /// this map being at `map_slot`.
+    fn push_runs(&self, map_slot: usize, runs: &mut Vec<TileRun>) {
+        let across = self.width.div_ceil(CHUNK) as usize;
+        let mut cursors: Vec<usize> = Vec::new();
+        for (slot, layer) in self.layers.iter().enumerate() {
+            for (cy, chunk_row) in layer.chunks.chunks(across.max(1)).enumerate() {
+                cursors.clear();
+                cursors.resize(chunk_row.len(), 0);
+                let rows = cy as u32 * CHUNK..((cy as u32 + 1) * CHUNK).min(self.height);
+                for row in rows {
+                    for (chunk, at) in chunk_row.iter().zip(cursors.iter_mut()) {
+                        while let Some(run) = chunk.get(*at).filter(|run| run.row == row) {
+                            runs.push(self.run_of(map_slot, slot, run));
+                            *at += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// `run` of the layer at `slot` as the index holds it.
+    fn run_of(&self, map_slot: usize, slot: usize, run: &Run) -> TileRun {
+        let layer = &self.layers[slot];
+        let half = Vec2::new(
+            (run.cols as f32 * self.tile.x) * 0.5,
+            (run.rows as f32 * self.tile.y) * 0.5,
+        );
+        TileRun {
+            center: Vec2::new(
+                self.at.x + (run.col as f32) * self.tile.x + half.x,
+                self.at.y + (run.row as f32) * self.tile.y + half.y,
+            ),
+            half,
+            face_mask: run.mask,
+            layers: layer.layers.layers,
+            mask: layer.layers.mask,
+            identity: run_key(self.entity, layer.index, run),
+            map_slot: map_slot as u32,
+            layer_slot: slot as u32,
+            col: run.col,
+            row: run.row,
+            cols: run.cols,
+            rows: run.rows,
+        }
     }
 
     /// The columns and rows of the cells whose boxes may meet `[min, max]`.
@@ -289,8 +510,10 @@ impl CachedMap {
         Some((cols, rows))
     }
 
-    /// The cell at `(col, row)` of `layer` when it is solid.
-    fn cell(&self, layer: &CachedLayer, col: u32, row: u32) -> Option<GridCell> {
+    /// The cell at `(col, row)` of the layer at `slot` when it is solid,
+    /// this map being at `map_slot`.
+    fn cell(&self, map_slot: usize, slot: usize, col: u32, row: u32) -> Option<GridCell> {
+        let layer = &self.layers[slot];
         let tile = layer.tiles[(row as usize) * (self.width as usize) + (col as usize)];
         if tile < 0 {
             return None;
@@ -311,19 +534,21 @@ impl CachedMap {
                 col,
                 row,
             },
+            map_slot: map_slot as u32,
+            layer_slot: slot as u32,
         })
     }
 
     /// Calls `visit` with each solid cell whose box may meet `[min, max]`,
-    /// in layer, row and column order.
-    fn cells_in(&self, min: Vec2, max: Vec2, visit: &mut impl FnMut(&GridCell)) {
+    /// in layer, row and column order, this map being at `map_slot`.
+    fn cells_in(&self, map_slot: usize, min: Vec2, max: Vec2, visit: &mut impl FnMut(&GridCell)) {
         let Some((cols, rows)) = self.span(min, max) else {
             return;
         };
-        for layer in &self.layers {
+        for slot in 0..self.layers.len() {
             for row in rows.clone() {
                 for col in cols.clone() {
-                    if let Some(cell) = self.cell(layer, col, row) {
+                    if let Some(cell) = self.cell(map_slot, slot, col, row) {
                         visit(&cell);
                     }
                 }
@@ -340,23 +565,29 @@ fn origin_bits(instance: &TilemapInstance) -> [u32; 2] {
     [instance.origin.x.to_bits(), instance.origin.y.to_bits()]
 }
 
-/// Tile proxies with each one's layers, sensor identity and cell, in one
-/// order.
+/// Tile proxies with each one's layers and sensor identity, in one order.
 #[derive(Debug, Default)]
 pub(super) struct TileArrays {
     pub(super) proxies: Vec<Proxy>,
     pub(super) layers: Vec<Layers>,
     pub(super) ids: Vec<u64>,
-    pub(super) cells: Vec<TileHit>,
+}
+
+impl TileArrays {
+    fn clear(&mut self) {
+        self.proxies.clear();
+        self.layers.clear();
+        self.ids.clear();
+    }
 }
 
 /// What a refresh does with a map it held.
 enum Refresh {
-    /// Its proxies and cells stand.
+    /// Its proxies, masks and runs stand.
     Keep(usize),
-    /// Its collision cells listed were written: scan it again.
-    Written(Vec<WrittenCell>),
-    /// New, moved, renamed or replaced: scan it whole.
+    /// Its collision cells listed were written: re-trace around them.
+    Written(usize, Vec<WrittenCell>),
+    /// New, moved, renamed or replaced: trace it whole.
     Whole,
 }
 
@@ -371,9 +602,14 @@ impl TileCache {
         self.state.version
     }
 
-    /// Each tile proxy's map, layer and cell, in proxy order.
-    pub(super) fn cells(&self) -> &[TileHit] {
-        &self.state.cells
+    /// The outline's runs, in their first cell's tile order.
+    pub(super) fn runs(&self) -> &[TileRun] {
+        &self.state.runs
+    }
+
+    /// Chunks traced since the cache was made.
+    pub(super) fn traced(&self) -> u64 {
+        self.state.traced
     }
 
     /// The maps whose every cell the last refresh changed: replaced, added,
@@ -388,7 +624,7 @@ impl TileCache {
         &self.state.written_ids
     }
 
-    /// Maps scanned since the cache was made.
+    /// Maps traced, whole or in part, since the cache was made.
     #[cfg(test)]
     pub(super) fn scans(&self) -> usize {
         self.state.scans
@@ -402,8 +638,8 @@ impl TileCache {
         max: Vec2,
         mut visit: impl FnMut(&GridCell),
     ) {
-        for map in &self.state.maps {
-            map.cells_in(min, max, &mut visit);
+        for (slot, map) in self.state.maps.iter().enumerate() {
+            map.cells_in(slot, min, max, &mut visit);
         }
     }
 
@@ -416,9 +652,9 @@ impl TileCache {
         max: Vec2,
         mut visit: impl FnMut(&GridCell),
     ) {
-        for map in &self.state.maps {
+        for (map_slot, map) in self.state.maps.iter().enumerate() {
             if self.state.replaced.contains(&map.entity) {
-                map.cells_in(min, max, &mut visit);
+                map.cells_in(map_slot, min, max, &mut visit);
                 continue;
             }
             let Some((_, cells)) = self
@@ -436,8 +672,33 @@ impl TileCache {
                 if !(cols.contains(&col) && rows.contains(&row)) {
                     continue;
                 }
-                let layer = map.layers.iter().find(|layer| layer.index == index);
-                if let Some(cell) = layer.and_then(|layer| map.cell(layer, col, row)) {
+                let slot = map.layers.iter().position(|layer| layer.index == index);
+                if let Some(cell) = slot.and_then(|slot| map.cell(map_slot, slot, col, row)) {
+                    visit(&cell);
+                }
+            }
+        }
+    }
+
+    /// Calls `visit` with each cell of `run` whose box may meet `[min, max]`,
+    /// in row and column order.
+    pub(in crate::physics) fn run_cells_in(
+        &self,
+        run: &TileRun,
+        min: Vec2,
+        max: Vec2,
+        mut visit: impl FnMut(&GridCell),
+    ) {
+        let map = &self.state.maps[run.map_slot as usize];
+        let Some((cols, rows)) = map.span(min, max) else {
+            return;
+        };
+        let cols = (*cols.start()).max(run.col)..=(*cols.end()).min(run.col + run.cols - 1);
+        let rows = (*rows.start()).max(run.row)..=(*rows.end()).min(run.row + run.rows - 1);
+        for row in rows {
+            for col in cols.clone() {
+                let slot = run.layer_slot as usize;
+                if let Some(cell) = map.cell(run.map_slot as usize, slot, col, row) {
                     visit(&cell);
                 }
             }
@@ -445,26 +706,29 @@ impl TileCache {
     }
 
     /// Brings the cache up to `world`'s maps: an unchanged map keeps its
-    /// proxies, a changed or new one is scanned, and one that went drops;
-    /// what changed is noted for the sensor pass.
+    /// proxies, a written one re-traces the chunks around its written cells
+    /// and rebuilds its proxies, a new, moved or replaced one is traced
+    /// whole, and one that went drops; what changed is noted for the sensor
+    /// pass.
     fn refresh(&mut self, world: &World) {
-        self.state.replaced.clear();
-        self.state.written.clear();
-        self.state.written_ids.clear();
+        let state = &mut *self.state;
+        state.replaced.clear();
+        state.written.clear();
+        state.written_ids.clear();
         let registry = world.get_resource::<TilemapRegistry>();
-        if self.matches(world, registry) {
+        if Self::matches(&state.maps, world, registry) {
             return;
         }
-        let mut kept = std::mem::take(&mut self.state.maps);
+        let mut kept = std::mem::take(&mut state.maps);
         let order: Vec<Entity> = kept.iter().map(|map| map.entity).collect();
         let old = TileArrays {
             proxies: std::mem::take(&mut self.proxies),
             layers: std::mem::take(&mut self.layers),
             ids: std::mem::take(&mut self.ids),
-            cells: std::mem::take(&mut self.state.cells),
         };
-        let mut arrays = TileArrays::default();
-        let mut scanned = false;
+        let mut arrays = std::mem::take(&mut state.spare);
+        arrays.clear();
+        let mut changed = false;
         for (entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
             let Some((data, cursor, registry)) = registry.and_then(|registry| {
                 Some((
@@ -494,87 +758,93 @@ impl TileCache {
                         if cells.is_empty() {
                             Refresh::Keep(at)
                         } else {
-                            Refresh::Written(cells)
+                            Refresh::Written(at, cells)
                         }
                     }
                     _ => Refresh::Whole,
                 },
             };
             let start = arrays.proxies.len();
-            // A map scanned again leaves its old entry, which went with it.
-            if let (Some(at), Refresh::Written(_) | Refresh::Whole) = (at, &refresh) {
-                kept.swap_remove(at);
-            }
-            match refresh {
+            let mut map = match refresh {
                 Refresh::Keep(at) => {
-                    let map = &mut kept[at];
+                    let mut map = kept.swap_remove(at);
                     let range = map.start..map.start + map.len;
                     arrays
                         .proxies
                         .extend_from_slice(&old.proxies[range.clone()]);
                     arrays.layers.extend_from_slice(&old.layers[range.clone()]);
-                    arrays.ids.extend_from_slice(&old.ids[range.clone()]);
-                    arrays.cells.extend_from_slice(&old.cells[range]);
+                    arrays.ids.extend_from_slice(&old.ids[range]);
                     map.start = start;
                     map.cursor = cursor;
-                    let map = kept.swap_remove(at);
-                    self.state.maps.push(map);
+                    state.maps.push(map);
                     continue;
                 }
-                Refresh::Written(cells) => {
-                    self.state.written_ids.extend(
+                Refresh::Written(at, cells) => {
+                    let mut map = kept.swap_remove(at);
+                    map.write(data, &cells, &mut state.traced);
+                    state.written_ids.extend(
                         cells
                             .iter()
                             .map(|&(layer, row, col)| tile_identity(entity, layer, col, row)),
                     );
-                    self.state.written.push((entity, cells));
+                    state.written.push((entity, cells));
+                    map
                 }
-                Refresh::Whole => self.state.replaced.push(entity),
-            }
-            scanned = true;
-            scan_map(entity, instance, data, &mut arrays);
+                Refresh::Whole => {
+                    // A map traced again leaves its old entry, which went
+                    // with it.
+                    if let Some(at) = at {
+                        kept.swap_remove(at);
+                    }
+                    let mut map = CachedMap::of(entity, instance, data, cursor);
+                    map.trace_all(&mut state.traced);
+                    state.replaced.push(entity);
+                    map
+                }
+            };
+            changed = true;
             #[cfg(test)]
             {
-                self.state.scans += 1;
+                state.scans += 1;
             }
-            self.state.maps.push(CachedMap::of(
-                entity,
-                instance,
-                data,
-                cursor,
-                start,
-                arrays.proxies.len() - start,
-            ));
+            map.cursor = cursor;
+            map.start = start;
+            map.push_proxies(&mut arrays);
+            map.len = arrays.proxies.len() - start;
+            state.maps.push(map);
         }
         // What is left went, or now places another map elsewhere.
         for gone in &kept {
-            if !self.state.replaced.contains(&gone.entity) {
-                self.state.replaced.push(gone.entity);
+            if !state.replaced.contains(&gone.entity) {
+                state.replaced.push(gone.entity);
             }
         }
-        let same =
-            !scanned && kept.is_empty() && self.state.maps.iter().map(|map| map.entity).eq(order);
-        self.state.written_ids.sort_unstable();
-        self.state.layered = arrays
+        let same = !changed && kept.is_empty() && state.maps.iter().map(|map| map.entity).eq(order);
+        state.written_ids.sort_unstable();
+        state.layered = arrays
             .layers
             .iter()
             .any(|&layers| layers != Layers::DEFAULT);
         self.proxies = arrays.proxies;
         self.layers = arrays.layers;
         self.ids = arrays.ids;
-        self.state.cells = arrays.cells;
+        state.spare = old;
         if !same {
-            self.state.version += 1;
+            state.runs.clear();
+            for (slot, map) in state.maps.iter().enumerate() {
+                map.push_runs(slot, &mut state.runs);
+            }
+            state.version += 1;
         }
     }
 
     /// Whether the maps with registered data, in query order, are the ones
-    /// the cache holds, each placed as it was and unchanged.
-    fn matches(&self, world: &World, registry: Option<&TilemapRegistry>) -> bool {
+    /// in `maps`, each placed as it was and unchanged.
+    fn matches(maps: &[CachedMap], world: &World, registry: Option<&TilemapRegistry>) -> bool {
         let Some(registry) = registry else {
-            return self.state.maps.is_empty();
+            return maps.is_empty();
         };
-        let mut cached = self.state.maps.iter();
+        let mut cached = maps.iter();
         for (entity, instance) in world.query::<(Entity, &TilemapInstance)>() {
             if registry.get(&instance.id).is_none() {
                 continue;
@@ -594,8 +864,17 @@ impl TileCache {
     }
 }
 
-/// Scan every map's collision layers, as a fresh cache would: the test
-/// oracle of the kept proxies.
+/// A fresh trace of `world`'s maps, as a cache made this frame holds it:
+/// the oracle of the kept runs.
+#[cfg(test)]
+pub(super) fn trace_tilemaps(world: &World) -> TileCache {
+    let mut fresh = TileCache::default();
+    fresh.refresh(world);
+    fresh
+}
+
+/// Scan every map's collision layers cell by cell, as the step did before
+/// the outline: the test oracle of the kept proxies.
 #[cfg(test)]
 pub(super) fn gather_tilemap_proxies(world: &World, arrays: &mut TileArrays) {
     let Some(registry) = world.get_resource::<TilemapRegistry>() else {
@@ -608,9 +887,10 @@ pub(super) fn gather_tilemap_proxies(world: &World, arrays: &mut TileArrays) {
     }
 }
 
-/// Scan one map's collision layers into `arrays`: each solid cell's static
-/// proxy, its layer's layers, its sensor identity and its cell, in layer,
-/// row and column order.
+/// Scan one map's collision layers into `arrays` as the step did before the
+/// outline: each solid cell's static proxy and its face mask, its layer's
+/// layers and its sensor identity, in layer, row and column order.
+#[cfg(test)]
 fn scan_map(map: Entity, instance: &TilemapInstance, data: &TilemapData, arrays: &mut TileArrays) {
     let tw = data.tile_width as f32;
     let th = data.tile_height as f32;
@@ -680,12 +960,6 @@ fn scan_map(map: Entity, instance: &TilemapInstance, data: &TilemapData, arrays:
                 });
                 arrays.layers.push(layer_layers);
                 arrays.ids.push(tile_identity(map, layer_index, col, row));
-                arrays.cells.push(TileHit {
-                    map,
-                    layer: layer_index,
-                    col,
-                    row,
-                });
             }
         }
     }

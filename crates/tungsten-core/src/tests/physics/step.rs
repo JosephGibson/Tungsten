@@ -4249,8 +4249,8 @@ fn cache_map(tiles: Vec<i32>, decor: bool) -> TilemapData {
 }
 
 /// Gathers `world` into `buffers`, then asserts the tile proxies after the
-/// entity proxies, and their layers, identities and cells, are a fresh
-/// scan's.
+/// entity proxies, and their layers and identities, are a fresh scan's,
+/// and the outline's runs a fresh trace's.
 fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
     gather_proxies(
         world,
@@ -4283,7 +4283,11 @@ fn assert_tiles_fresh(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
         assert_eq!(buffers.tile_ids, fresh.ids, "{when}: identities");
     }
     assert_eq!(buffers.tiles.ids, fresh.ids, "{when}: cached identities");
-    assert_eq!(buffers.tiles.cells(), fresh.cells, "{when}: cells");
+    assert_eq!(
+        buffers.tiles.runs(),
+        super::gather::trace_tilemaps(world).runs(),
+        "{when}: runs"
+    );
     assert_eq!(
         buffers.layers.of[buffers.bodies..],
         fresh.layers[..],
@@ -4892,4 +4896,251 @@ fn both_pair_grid_layouts_build_the_same_pairs() {
         assert_eq!(built[0], built[1], "seed {seed}");
         assert!(built[0].len() > 40, "seed {seed}: too few pairs");
     }
+}
+
+/// A seeded map for the outline's oracles: a render layer, then two
+/// collision layers of 16 or 64 px cells, 8 to 40 across and 6 to 30 down,
+/// filling toward the bottom in three materials, `stone` breakable at
+/// health 2, none one-way; the second collision layer in physics layer 1.
+fn outline_map(rng: &mut crate::Pcg32) -> TilemapData {
+    let tile = if rng.next_u32().is_multiple_of(2) {
+        16
+    } else {
+        64
+    };
+    let (width, height) = (8 + rng.next_u32() % 33, 6 + rng.next_u32() % 25);
+    let mut data = TilemapData::new(tile, tile, width, height);
+    let plain = data.add_tile("plain");
+    let sand = data.add_tile("sand");
+    let stone = data.add_tile("stone");
+    data.set_tile_props(
+        sand,
+        TileProps {
+            material: Some("sand".into()),
+            ..TileProps::default()
+        },
+    );
+    data.set_tile_props(
+        stone,
+        TileProps {
+            material: Some("stone".into()),
+            health: Some(2.0),
+            ..TileProps::default()
+        },
+    );
+    let decor = data.add_layer("decor", LayerKind::Render);
+    data.fill(decor, plain);
+    for index in 0..2 {
+        let layer = data.add_layer(format!("solid{index}"), LayerKind::Collision);
+        for row in 0..height {
+            for col in 0..width {
+                // Rows fill more toward the bottom, so floors and walls form.
+                if rng.next_f32_unit() < 0.25 + 0.5 * (row as f32 / height as f32) {
+                    let tile = [plain, plain, sand, stone][rng.next_u32() as usize % 4];
+                    data.set_tile(layer, col, row, tile);
+                }
+            }
+        }
+        if index == 1 {
+            data.set_layer_physics(
+                layer,
+                crate::assets::LayerPhysics {
+                    layers: 1 << 1,
+                    mask: RigidBody::ALL_LAYERS,
+                },
+            );
+        }
+    }
+    data
+}
+
+/// Every field of a proxy as bits, in declaration order.
+fn proxy_bits(proxy: &Proxy) -> [u64; 19] {
+    let bits = |v: Vec2| [u64::from(v.x.to_bits()), u64::from(v.y.to_bits())];
+    let (kind, extent) = match proxy.shape {
+        Shape::Aabb { half_extents } => (0, half_extents),
+        Shape::Circle { radius } => (1, Vec2::splat(radius)),
+    };
+    let entity = proxy.entity.map_or(u64::MAX, |entity| {
+        (u64::from(entity.generation) << 32) | u64::from(entity.index)
+    });
+    let [cx, cy] = bits(proxy.center);
+    let [px, py] = bits(proxy.prev_center);
+    let [vx, vy] = bits(proxy.velocity);
+    let [ox, oy] = bits(proxy.offset);
+    let [ex, ey] = bits(extent);
+    [
+        entity,
+        proxy.key,
+        cx,
+        cy,
+        px,
+        py,
+        vx,
+        vy,
+        ox,
+        oy,
+        kind,
+        ex,
+        ey,
+        u64::from(proxy.is_dynamic),
+        u64::from(proxy.has_velocity),
+        u64::from(proxy.inv_mass.to_bits()),
+        u64::from(proxy.restitution.to_bits()),
+        u64::from(proxy.face_mask),
+        u64::from(proxy.sleeping)
+            | u64::from(proxy.kinematic) << 1
+            | u64::from(proxy.kept_awake) << 2,
+    ]
+}
+
+/// Gathers `world` into `buffers`, then asserts the step's tile proxies,
+/// their layers and their sensor identities are the per-cell gather's,
+/// field by field and in order.
+fn assert_tiles_today(world: &World, buffers: &mut PhysicsBuffers, when: &str) {
+    gather_proxies(
+        world,
+        &mut buffers.proxies,
+        &mut buffers.layers,
+        &mut buffers.sensors,
+        &mut buffers.tile_ids,
+        &mut buffers.tiles,
+    );
+    buffers.bodies = buffers.proxies.len() - buffers.tiles.len();
+    let mut today = super::gather::TileArrays::default();
+    super::gather::gather_tilemap_proxies(world, &mut today);
+    let kept: Vec<_> = buffers.proxies[buffers.bodies..]
+        .iter()
+        .map(proxy_bits)
+        .collect();
+    let want: Vec<_> = today.proxies.iter().map(proxy_bits).collect();
+    assert_eq!(kept.len(), want.len(), "{when}: tile count");
+    for (at, (kept, want)) in kept.iter().zip(&want).enumerate() {
+        assert_eq!(kept, want, "{when}: tile {at}");
+    }
+    assert_eq!(
+        buffers.layers.of[buffers.bodies..],
+        today.layers[..],
+        "{when}: layers"
+    );
+    assert_eq!(buffers.tiles.ids, today.ids, "{when}: identities");
+}
+
+#[test]
+fn the_step_keeps_todays_tile_proxies() {
+    // Two maps of two collision layers each, edited through the registry in
+    // runs of one to four writes, a cell broken, one map replaced and one
+    // moved: after each change the step's tile proxies, their layers and
+    // their sensor identities are the per-cell gather's.
+    for seed in 0..200 {
+        let mut rng = crate::Pcg32::seeded(0x0B0C_5000 + seed);
+        let mut world = seed_world();
+        let mut maps = Vec::new();
+        for (id, x) in [("a", -900.0), ("b", 1_800.0)] {
+            let data = outline_map(&mut rng);
+            world
+                .resource_mut::<TilemapRegistry>()
+                .insert(id.into(), data);
+            let map = world.spawn();
+            let origin = Vec2::new(
+                x + rng.next_range(-64.0, 64.0),
+                rng.next_range(-200.0, 200.0),
+            );
+            world.insert(map, TilemapInstance::new(id, origin.round()));
+            maps.push(map);
+        }
+        let mut buffers = PhysicsBuffers::default();
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: first"));
+        for run in 0..10 {
+            for _ in 0..=rng.next_u32() % 4 {
+                let id = ["a", "b"][rng.next_u32() as usize % 2];
+                let data = world.resource::<TilemapRegistry>().get(id).unwrap();
+                let (width, height) = (data.width, data.height);
+                let (layer, col, row) = (
+                    rng.next_u32() as usize % 3,
+                    rng.next_u32() % width,
+                    rng.next_u32() % height,
+                );
+                let tile = [EMPTY_TILE, EMPTY_TILE, 0, 1, 2][rng.next_u32() as usize % 5];
+                assert!(
+                    world
+                        .resource_mut::<TilemapRegistry>()
+                        .set_tile(id, layer, col, row, tile)
+                );
+            }
+            assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: run {run}"));
+        }
+        // A stone cell broken, when the map has one.
+        let data = world.resource::<TilemapRegistry>().get("a").unwrap();
+        let stone = (1..3).find_map(|layer| {
+            (0..data.height).find_map(|row| {
+                (0..data.width)
+                    .find(|&col| data.tile_at(layer, col, row) == Some(2))
+                    .map(|col| (layer, col, row))
+            })
+        });
+        if let Some((layer, col, row)) = stone {
+            let damage = world
+                .resource_mut::<TilemapRegistry>()
+                .damage_tile("a", layer, col, row, 2.0);
+            assert_eq!(damage, TileDamage::Broken { tile: EMPTY_TILE });
+            assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: broken"));
+        }
+        let replacement = outline_map(&mut rng);
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("b".into(), replacement);
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: replaced"));
+        world.get_mut::<TilemapInstance>(maps[0]).unwrap().origin += Vec2::new(16.0, -64.0);
+        assert_tiles_today(&world, &mut buffers, &format!("seed {seed}: moved"));
+    }
+}
+
+#[test]
+fn an_edit_retraces_its_chunk_and_neighbours_only() {
+    // A 48 × 48 block of 16 px cells, 3 × 3 chunks, under a render layer: a
+    // write re-traces the chunk of the cell and those of its four
+    // neighbours, and a render or same-tile write none.
+    let mut world = seed_world();
+    let mut data = TilemapData::new(16, 16, 48, 48);
+    let solid = data.add_tile("solid");
+    let decor = data.add_layer("decor", LayerKind::Render);
+    let layer = data.add_layer("solid", LayerKind::Collision);
+    data.fill(layer, solid);
+    data.fill(decor, solid);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .insert("block".into(), data);
+    let map = world.spawn();
+    world.insert(map, TilemapInstance::new("block", Vec2::ZERO));
+    physics_step(&mut world);
+    let traces = |world: &World| world.resource::<PhysicsBuffers>().terrain_traces();
+    assert_eq!(traces(&world), 9, "every chunk at first");
+    let cases = [
+        ("a chunk's interior cell", 1, 24, 24, 1),
+        ("a cell on a chunk's right edge", 1, 31, 24, 2),
+        ("a cell on a chunk's top edge", 1, 20, 16, 2),
+        ("a chunk's corner cell", 1, 31, 31, 3),
+        ("the map's corner cell", 1, 47, 47, 1),
+        ("a cell of the render layer", 0, 31, 31, 0),
+    ];
+    for (name, layer, col, row, chunks) in cases {
+        let before = traces(&world);
+        for tile in [EMPTY_TILE, solid] {
+            assert!(
+                world
+                    .resource_mut::<TilemapRegistry>()
+                    .set_tile("block", layer, col, row, tile)
+            );
+            physics_step(&mut world);
+        }
+        assert_eq!(traces(&world) - before, 2 * chunks, "{name}");
+    }
+    // A write that changes no tile journals nothing and traces nothing.
+    let before = traces(&world);
+    world
+        .resource_mut::<TilemapRegistry>()
+        .set_tile("block", 1, 5, 5, solid);
+    physics_step(&mut world);
+    assert_eq!(traces(&world), before);
 }

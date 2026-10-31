@@ -120,20 +120,21 @@ use super::broadphase::{ProxyId, SpatialGrid};
 use super::collision::{Aabb, Contact, FACE_ALL};
 use super::components::{BodyKind, Collider, Position, RigidBody, Shape, Velocity};
 use super::events::{CollisionEvent, SensorEntered};
-use super::query::{IndexEntry, SpatialIndex, TileHit};
+use super::query::{IndexEntry, SpatialIndex};
 use crate::ecs::{Entity, EventQueue, Without, World};
 use crate::time::Time;
 use glam::Vec2;
 
 mod arrival;
 mod gather;
+mod outline;
 mod pairs;
 mod sleep;
 mod solver;
 mod sweep;
 
 use arrival::{ARRIVAL_SLOPS, ArrivalScratch, arrival_pass};
-pub(super) use gather::GridCell;
+pub(super) use gather::{GridCell, TileRun};
 use gather::{TileCache, entity_key, gather_proxies};
 use pairs::{ImpulseMap, PairBudget, PairGrid, pair_key, refresh_pairs, sync_impulses};
 use sleep::{SleepTable, island_holds_any, sleep_frame_end, sleep_frame_start, uf_union};
@@ -449,6 +450,15 @@ impl PhysicsBuffers {
         self.proxies.len()
     }
 
+    /// Chunks of tile outline traced since the buffers were made, a 16 × 16
+    /// block of a collision layer's cells each (diagnostic): a map's every
+    /// chunk when it appears, moves or is replaced, and for a written cell
+    /// the chunks holding it and its four neighbours.
+    #[must_use]
+    pub fn terrain_traces(&self) -> u64 {
+        self.tiles.traced()
+    }
+
     /// Dynamic entity bodies gathered by the last step, the population
     /// `sleeping_count` is drawn from (diagnostic).
     #[must_use]
@@ -505,29 +515,24 @@ impl PhysicsBuffers {
         self.bodies
     }
 
-    /// The tile proxies as index entries, in tile order, each identity
-    /// naming its map, layer and cell and each in its collision layer's
-    /// layers, and their cells into `cells`; with the cache version they
-    /// are of.
-    pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>, cells: &mut Vec<TileHit>) -> u64 {
-        cells.extend_from_slice(self.tiles.cells());
-        out.extend(
-            self.tiles
-                .proxies
-                .iter()
-                .zip(&self.tiles.ids)
-                .zip(&self.tiles.layers)
-                .map(|((proxy, &identity), layers)| IndexEntry {
-                    entity: None,
-                    center: proxy.center,
-                    shape: proxy.shape,
-                    face_mask: proxy.face_mask,
-                    sensor: false,
-                    identity,
-                    layers: layers.layers,
-                    mask: layers.mask,
-                }),
-        );
+    /// The tile outline's runs as index entries, in their first cell's tile
+    /// order, each in its collision layer's layers, and the runs into
+    /// `runs`; with the cache version they are of.
+    pub(super) fn index_tiles(&self, out: &mut Vec<IndexEntry>, runs: &mut Vec<TileRun>) -> u64 {
+        let tile_runs = self.tiles.runs();
+        runs.extend_from_slice(tile_runs);
+        out.extend(tile_runs.iter().map(|run| IndexEntry {
+            entity: None,
+            center: run.center,
+            shape: Shape::Aabb {
+                half_extents: run.half,
+            },
+            face_mask: run.face_mask,
+            sensor: false,
+            identity: run.identity,
+            layers: run.layers,
+            mask: run.mask,
+        }));
         self.tiles.version()
     }
 

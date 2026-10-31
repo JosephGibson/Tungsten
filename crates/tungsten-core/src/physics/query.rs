@@ -52,7 +52,7 @@ use super::collision::{
     aabb_vs_aabb_speculative, aabb_vs_circle_speculative, circle_vs_circle_speculative,
 };
 use super::components::{RigidBody, Shape};
-use super::step::{GridCell, PhysicsBuffers};
+use super::step::{GridCell, PhysicsBuffers, TileRun};
 use crate::ecs::{Entity, World};
 use glam::Vec2;
 
@@ -322,15 +322,16 @@ struct IndexState {
     builds: usize,
 }
 
-/// The index's tile entries and their cells, in tile order, their exact
-/// boxes' grid by tile order and their union's corners, rebuilt when the
-/// step's tile cache or the cell size changes.
+/// The index's tile entries, the outline's runs, and the runs, in their
+/// first cell's tile order, their exact boxes' grid by that order and their
+/// union's corners, rebuilt when the step's tile cache or the cell size
+/// changes.
 #[derive(Debug, Default)]
 struct TileIndex {
     /// The cache version and cell size bits it was built for.
     staged: Option<(u64, u32)>,
     entries: Vec<IndexEntry>,
-    cells: Vec<TileHit>,
+    runs: Vec<TileRun>,
     grid: SpatialGrid,
     bounds: Option<(Vec2, Vec2)>,
 }
@@ -342,10 +343,10 @@ fn grow(bounds: Option<(Vec2, Vec2)>, aabb: &Aabb) -> (Vec2, Vec2) {
 }
 
 impl IndexState {
-    /// The cell of the tile `id` names; `None` for a body or a sensor.
-    fn tile_hit(&self, id: ProxyId) -> Option<TileHit> {
+    /// The run `id` names; `None` for a body or a sensor.
+    fn tile_run(&self, id: ProxyId) -> Option<&TileRun> {
         let at = (id as usize).checked_sub(self.tile_base)?;
-        self.tiles.cells.get(at).copied()
+        self.tiles.runs.get(at)
     }
 
     /// The entry `id` names.
@@ -373,8 +374,8 @@ impl IndexState {
         if self.tiles.staged != Some(key) {
             let tiles = &mut self.tiles;
             tiles.entries.clear();
-            tiles.cells.clear();
-            buffers.index_tiles(&mut tiles.entries, &mut tiles.cells);
+            tiles.runs.clear();
+            buffers.index_tiles(&mut tiles.entries, &mut tiles.runs);
             tiles.grid.set_cell_size(cell_size);
             tiles.bounds = None;
             for (ordinal, entry) in tiles.entries.iter().enumerate() {
@@ -499,19 +500,44 @@ fn cell_entry(cell: &GridCell) -> IndexEntry {
     }
 }
 
-/// A rank that orders a hit with the bodies (by index id), then the tiles
-/// read from the grids (by their visit, in tile order), then the sensors.
-fn rank(state: &IndexState, id: ProxyId) -> u64 {
-    if (id as usize) < state.tile_base {
-        u64::from(id)
-    } else {
-        (2 << 32) | u64::from(id)
+/// A cell of `run` as an index entry: its box, layers and identity, with
+/// the run's face mask, which each of its cells has.
+fn run_cell(cell: &GridCell, run: &TileRun) -> IndexEntry {
+    IndexEntry {
+        face_mask: run.face_mask,
+        ..cell_entry(cell)
     }
 }
 
-/// The rank of the `ordinal`-th tile a query read from the grids.
-fn tile_rank(ordinal: u64) -> u64 {
-    (1 << 32) | ordinal
+/// The order ties go by: the bodies by index id, then the tiles by map,
+/// layer, row and column, then the sensors.
+type Rank = (u8, u64, u64);
+
+/// The rank of the body or sensor `id` names.
+fn rank(state: &IndexState, id: ProxyId) -> Rank {
+    if (id as usize) < state.tile_base {
+        (0, u64::from(id), 0)
+    } else {
+        (2, u64::from(id), 0)
+    }
+}
+
+/// The rank of a tile cell: its map's and layer's places in the cache, its
+/// row and its column.
+fn tile_rank(cell: &GridCell) -> Rank {
+    (
+        1,
+        (u64::from(cell.map_slot) << 32) | u64::from(cell.layer_slot),
+        (u64::from(cell.cell.row) << 32) | u64::from(cell.cell.col),
+    )
+}
+
+/// Whether a path from `origin` along `dir` meets the box at `center`
+/// grown by `half`, and a little more for rounding, from any side or from
+/// inside: a run whose cells are worth testing.
+fn path_meets(origin: Vec2, dir: Vec2, center: Vec2, half: Vec2) -> bool {
+    let slack = 1.0e-3 + center.abs().max_element() * 1.0e-6;
+    enter_box(origin - center, dir, half + Vec2::splat(slack), true).is_some()
 }
 
 /// Runs `f` on `world`'s index of `buffers`, rebuilt first when a step has
@@ -553,26 +579,40 @@ pub fn cast_ray(
 ) -> Option<SpatialHit> {
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
-    with_index(world, |state, _| {
-        state.gather(&Aabb::from_min_max(origin.min(end), origin.max(end)));
+    with_index(world, |state, buffers| {
+        let query = Aabb::from_min_max(origin.min(end), origin.max(end));
+        state.gather(&query);
+        let (min, max) = padded(&query);
+        let hit_of = |entry: &IndexEntry, tile| {
+            ray_against(origin, dir, entry).map(|(distance, normal)| SpatialHit {
+                entity: entry.entity,
+                point: origin + dir * distance,
+                normal,
+                distance,
+                layers: entry.layers,
+                tile,
+            })
+        };
         let mut best = None;
         for &id in &state.candidates {
             let entry = state.entry(id);
             if !filter.admits(entry, world) {
                 continue;
             }
-            let Some((distance, normal)) = ray_against(origin, dir, entry) else {
+            if let Some(run) = state.tile_run(id) {
+                // A run: the hits of its cells, each its own box.
+                if path_meets(origin, dir, run.center, run.half) {
+                    buffers.grid_cells().run_cells_in(run, min, max, |cell| {
+                        if let Some(hit) = hit_of(&run_cell(cell, run), Some(cell.cell)) {
+                            keep_closer(&mut best, hit, tile_rank(cell), max_distance);
+                        }
+                    });
+                }
                 continue;
-            };
-            let hit = SpatialHit {
-                entity: entry.entity,
-                point: origin + dir * distance,
-                normal,
-                distance,
-                layers: entry.layers,
-                tile: state.tile_hit(id),
-            };
-            keep_closer(&mut best, hit, u64::from(id), max_distance);
+            }
+            if let Some(hit) = hit_of(entry, None) {
+                keep_closer(&mut best, hit, rank(state, id), max_distance);
+            }
         }
         best.map(|(hit, _)| hit)
     })
@@ -603,23 +643,33 @@ pub fn cast_shape(
     }
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
-    with_index(world, |state, _| {
-        state.gather(&Aabb::from_min_max(
-            origin.min(end) - half,
-            origin.max(end) + half,
-        ));
+    with_index(world, |state, buffers| {
+        let query = Aabb::from_min_max(origin.min(end) - half, origin.max(end) + half);
+        state.gather(&query);
+        let (min, max) = padded(&query);
         let mut best = None;
         for &id in &state.candidates {
             let entry = state.entry(id);
             if !filter.admits(entry, world) {
                 continue;
             }
+            if let Some(run) = state.tile_run(id) {
+                // A run: the hits of its cells, each its own box.
+                if path_meets(origin, dir, run.center, run.half + half) {
+                    buffers.grid_cells().run_cells_in(run, min, max, |cell| {
+                        if let Some(hit) = cast_against(shape, origin, dir, &run_cell(cell, run)) {
+                            let hit = SpatialHit {
+                                tile: Some(cell.cell),
+                                ..hit
+                            };
+                            keep_closer(&mut best, hit, tile_rank(cell), max_distance);
+                        }
+                    });
+                }
+                continue;
+            }
             if let Some(hit) = cast_against(shape, origin, dir, entry) {
-                let hit = SpatialHit {
-                    tile: state.tile_hit(id),
-                    ..hit
-                };
-                keep_closer(&mut best, hit, u64::from(id), max_distance);
+                keep_closer(&mut best, hit, rank(state, id), max_distance);
             }
         }
         best.map(|(hit, _)| hit)
@@ -711,7 +761,6 @@ pub fn nearest(
         }
         if filter.tiles {
             let (min, max) = padded(&query);
-            let mut ordinal = 0;
             buffers.grid_cells().cells_in(min, max, |cell| {
                 let entry = cell_entry(cell);
                 if filter.admits(&entry, world) {
@@ -719,9 +768,8 @@ pub fn nearest(
                         tile: Some(cell.cell),
                         ..surface_hit(point, &entry)
                     };
-                    keep_closer(&mut best, hit, tile_rank(ordinal), max_distance);
+                    keep_closer(&mut best, hit, tile_rank(cell), max_distance);
                 }
-                ordinal += 1;
             });
         }
         best.map(|(hit, _)| hit)
@@ -732,9 +780,9 @@ pub fn nearest(
 /// Keep `hit` when it lies within `max_distance` and beats `best`: a lower
 /// distance, or the same at a lower rank (its index order).
 fn keep_closer(
-    best: &mut Option<(SpatialHit, u64)>,
+    best: &mut Option<(SpatialHit, Rank)>,
     hit: SpatialHit,
-    rank: u64,
+    rank: Rank,
     max_distance: f32,
 ) {
     if hit.distance > max_distance {

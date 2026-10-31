@@ -7368,6 +7368,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
 pub fn tungsten_core::physics::step::PhysicsBuffers::default() -> tungsten_core::physics::step::PhysicsBuffers
@@ -7515,6 +7516,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
 pub fn tungsten_core::physics::step::PhysicsBuffers::default() -> tungsten_core::physics::step::PhysicsBuffers
@@ -17138,6 +17140,7 @@ pub fn tungsten_core::physics::step::PhysicsBuffers::is_sleeping(&self, tungsten
 pub fn tungsten_core::physics::step::PhysicsBuffers::pair_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::proxy_count(&self) -> usize
 pub fn tungsten_core::physics::step::PhysicsBuffers::sleeping_count(&self) -> usize
+pub fn tungsten_core::physics::step::PhysicsBuffers::terrain_traces(&self) -> u64
 pub fn tungsten_core::physics::step::PhysicsBuffers::wake(&mut self, tungsten_core::Entity)
 impl core::default::Default for tungsten_core::physics::step::PhysicsBuffers
 pub fn tungsten_core::physics::step::PhysicsBuffers::default() -> tungsten_core::physics::step::PhysicsBuffers
