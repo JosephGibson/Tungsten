@@ -46,7 +46,7 @@ Task → file map: read only the matching row's files. Prefixes: `core/` = `crat
 
 | Task | Open |
 | --- | --- |
-| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
+| Contacts, sleep, kinematic bodies, sensors, queries (`D-033`, `D-062`–`D-067`, `D-075`, `D-076`, `D-080`–`D-082`, `D-092`, `D-094`, `D-154`, `D-156`, `D-228`, `D-229`) | `core/physics/step/`, `core/physics/collision.rs`, `core/physics/broadphase.rs`, `core/physics/query.rs` |
 | Benchmarks, tunneling, determinism | `crates/tungsten-core/benches/physics_bench.rs`, `crates/tungsten-core/tests/integration/physics_*.rs`; [validation](validation.md#change-to-check-matrix) routes release-only physics checks |
 
 ## Rendering

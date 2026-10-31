@@ -28,7 +28,8 @@ What is being worked on, what comes next and what waits, one line per item ([ope
 - The step's tile proxies without the interior cells, which make no contact: 01's level keeps 1,551 of its 10,093, and one-cell boxes without them matched every pit case (`perf-runs/20261030-runtime-terrain/`), so a frame copies and an edit restages a sixth of them; only which sleepers an edit wakes moves (`D-156`). A measured perf item for 7.14, read on `terrain` (`D-228`).
 - Faces between two collision layers' cells exposed only to bodies that do not meet the other layer, seamless joins across layers (`D-228`, runtime-terrain's Q2).
 - The auto-tiler's 8-bit blob masks, 47 variants, beside its 4-bit open sides (`D-228`, runtime-terrain's Q4).
-- Dropping through a one-way tile edge, with the physics plan's controller (`D-228`, runtime-terrain's Q8).
+- Contacts on the outline's runs under a solver rule that holds 01's pit sweep: no stiffened run contact did, and friction does not change that measurement (`D-228`, physics-on-terrain's Q3).
+- Physics layer names in a tile layer's `layers` and `mask`, as `rigid_body` takes them, with 7.12's level format (`D-229`, physics-on-terrain's Q4, S-175).
 - Phase 7, Seams (redo §3, in [phase-7.md](docs/plans/phase-7.md)'s order): the analysis pass, terrain and physics, saves, the kit pass, the UI pass (7.17), screens as data (7.20), camera rigs (7.18), the template, the level format, 01 on the new systems, a CPU and a GPU pass, agent guidance.
 - Phase 8, Genres: story systems, shooter and AI systems, tooling for hand-made content, ARPG systems (8.7), 01 refreshed, the template's final pass, proof.
 - Phase 9, Release: benchmarks with budgets, performance, the stability policy, quality, docs and platforms, tests, records, release candidates, 1.0.
