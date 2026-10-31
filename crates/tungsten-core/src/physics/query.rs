@@ -601,6 +601,23 @@ pub fn cast_ray(
     max_distance: f32,
     filter: &SpatialFilter,
 ) -> Option<SpatialHit> {
+    cast_ray_where(world, origin, direction, max_distance, filter, |_| true)
+}
+
+/// [`cast_ray`], passing the hits `keep` refuses: the first hit along the
+/// path that `keep` accepts, with `cast_ray`'s order and ties, in one walk
+/// of the index. `keep` sees each hit nearer than the nearest it has
+/// accepted so far, in no set order, and may read the World, for a body's
+/// kind, mass or tags.
+#[must_use]
+pub fn cast_ray_where(
+    world: &World,
+    origin: Vec2,
+    direction: Vec2,
+    max_distance: f32,
+    filter: &SpatialFilter,
+    mut keep: impl FnMut(&SpatialHit) -> bool,
+) -> Option<SpatialHit> {
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
     with_index(world, |state, buffers| {
@@ -631,14 +648,20 @@ pub fn cast_ray(
                         if let Some(hit) = hit_of(&run_cell(cell, run), Some(cell.cell))
                             && counts_on(run, &hit)
                         {
-                            keep_closer(&mut best, hit, tile_rank(cell), max_distance);
+                            keep_closer_where(
+                                &mut best,
+                                hit,
+                                tile_rank(cell),
+                                max_distance,
+                                &mut keep,
+                            );
                         }
                     });
                 }
                 continue;
             }
             if let Some(hit) = hit_of(entry, None) {
-                keep_closer(&mut best, hit, rank(state, id), max_distance);
+                keep_closer_where(&mut best, hit, rank(state, id), max_distance, &mut keep);
             }
         }
         best.map(|(hit, _)| hit)
@@ -664,9 +687,32 @@ pub fn cast_shape(
     max_distance: f32,
     filter: &SpatialFilter,
 ) -> Option<SpatialHit> {
+    cast_shape_where(
+        world,
+        shape,
+        origin,
+        direction,
+        max_distance,
+        filter,
+        |_| true,
+    )
+}
+
+/// [`cast_shape`], passing the hits `keep` refuses, as [`cast_ray_where`]
+/// passes them.
+#[must_use]
+pub fn cast_shape_where(
+    world: &World,
+    shape: Shape,
+    origin: Vec2,
+    direction: Vec2,
+    max_distance: f32,
+    filter: &SpatialFilter,
+    mut keep: impl FnMut(&SpatialHit) -> bool,
+) -> Option<SpatialHit> {
     let half = valid_half_extents(shape)?;
     if half == Vec2::ZERO {
-        return cast_ray(world, origin, direction, max_distance, filter);
+        return cast_ray_where(world, origin, direction, max_distance, filter, keep);
     }
     let dir = cast_direction(origin, direction, max_distance)?;
     let end = origin + dir * max_distance;
@@ -693,14 +739,20 @@ pub fn cast_shape(
                                 tile: Some(cell.cell),
                                 ..hit
                             };
-                            keep_closer(&mut best, hit, tile_rank(cell), max_distance);
+                            keep_closer_where(
+                                &mut best,
+                                hit,
+                                tile_rank(cell),
+                                max_distance,
+                                &mut keep,
+                            );
                         }
                     });
                 }
                 continue;
             }
             if let Some(hit) = cast_against(shape, origin, dir, entry) {
-                keep_closer(&mut best, hit, rank(state, id), max_distance);
+                keep_closer_where(&mut best, hit, rank(state, id), max_distance, &mut keep);
             }
         }
         best.map(|(hit, _)| hit)
@@ -816,13 +868,25 @@ fn keep_closer(
     rank: Rank,
     max_distance: f32,
 ) {
+    keep_closer_where(best, hit, rank, max_distance, &mut |_| true);
+}
+
+/// [`keep_closer`] for a hit `keep` accepts; `keep` sees only a hit that
+/// would be kept.
+fn keep_closer_where(
+    best: &mut Option<(SpatialHit, Rank)>,
+    hit: SpatialHit,
+    rank: Rank,
+    max_distance: f32,
+    keep: &mut impl FnMut(&SpatialHit) -> bool,
+) {
     if hit.distance > max_distance {
         return;
     }
     let closer = best.as_ref().is_none_or(|(kept, kept_rank)| {
         hit.distance < kept.distance || (hit.distance == kept.distance && rank < *kept_rank)
     });
-    if closer {
+    if closer && keep(&hit) {
         *best = Some((hit, rank));
     }
 }

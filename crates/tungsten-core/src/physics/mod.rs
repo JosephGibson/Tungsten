@@ -33,7 +33,10 @@ pub use plugin::{
     PHYSICS_PREV_SNAPSHOT, PHYSICS_STEP, PHYSICS_SYNC, PhysicsPlugin, physics_prev_snapshot,
     physics_sync,
 };
-pub use query::{SpatialFilter, SpatialHit, TileHit, cast_ray, cast_shape, nearest, overlap};
+pub use query::{
+    SpatialFilter, SpatialHit, TileHit, cast_ray, cast_ray_where, cast_shape, cast_shape_where,
+    nearest, overlap,
+};
 pub use step::{PhysicsBuffers, TerrainFace, physics_step, teleport, wake};
 
 use std::collections::BTreeMap;

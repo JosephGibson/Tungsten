@@ -1372,6 +1372,156 @@ fn casts_on_run_boxes_give_the_cells_hits() {
 }
 
 #[test]
+fn casts_where_pass_the_hits_they_refuse() {
+    // Bodies and tiles over a seeded map; each ray, box and circle cast with
+    // a predicate refusing a seeded subset of the bodies and cells gives the
+    // nearest hit it accepts of a pass over every shape, ties to the earlier
+    // body, then to the earlier cell, in one walk.
+    let mut passed = 0;
+    for seed in 0..200 {
+        let mut rng = crate::Pcg32::seeded(0x0CA5_7A00 + seed);
+        let mut world = world();
+        let (width, height) = (8 + rng.next_u32() % 25, 6 + rng.next_u32() % 17);
+        let data = materials_map(&mut rng, width, height);
+        let tile = Vec2::new(data.tile_width as f32, data.tile_height as f32);
+        let size = data.pixel_size();
+        let origin =
+            Vec2::new(rng.next_range(-200.0, 200.0), rng.next_range(-200.0, 200.0)).round();
+        world
+            .resource_mut::<TilemapRegistry>()
+            .insert("map".into(), data);
+        let map = world.spawn();
+        world.insert(map, TilemapInstance::new("map", origin));
+        // Static bodies over the map, in proxy order.
+        let mut bodies = Vec::new();
+        for _ in 0..(4 + rng.next_u32() % 12) {
+            let at = origin + Vec2::new(rng.next_range(0.0, size.x), rng.next_range(0.0, size.y));
+            let shape = if rng.next_u32().is_multiple_of(2) {
+                Shape::Aabb {
+                    half_extents: Vec2::new(
+                        rng.next_range(2.0, tile.x),
+                        rng.next_range(2.0, tile.y),
+                    ),
+                }
+            } else {
+                Shape::Circle {
+                    radius: rng.next_range(2.0, tile.x),
+                }
+            };
+            let entity = match shape {
+                Shape::Aabb { half_extents } => wall(&mut world, at, half_extents),
+                _ => post(&mut world, at, shape.half_extents().x),
+            };
+            bodies.push((entity, at, shape));
+        }
+        physics_step(&mut world);
+        let cells = todays_cells(&world);
+        let refused_bodies: Vec<Entity> = bodies
+            .iter()
+            .filter(|_| rng.next_u32().is_multiple_of(3))
+            .map(|&(entity, ..)| entity)
+            .collect();
+        let salt = rng.next_u32();
+        let refused_cell = |cell: TileHit| (cell.col * 7 + cell.row * 13 + salt).is_multiple_of(3);
+        let keep = |hit: &SpatialHit| match (hit.entity, hit.tile) {
+            (Some(entity), _) => !refused_bodies.contains(&entity),
+            (None, Some(cell)) => !refused_cell(cell),
+            (None, None) => true,
+        };
+        for probe in 0..30 {
+            let from = origin
+                + Vec2::new(
+                    rng.next_range(-2.0 * tile.x, size.x + 2.0 * tile.x),
+                    rng.next_range(-2.0 * tile.y, size.y + 2.0 * tile.y),
+                );
+            let dir = rng.next_unit_vec2();
+            let reach = rng.next_range(0.0, size.max_element() * 1.5);
+            let across = rng.next_range(0.1, 2.5) * tile.x;
+            let shape = match probe % 3 {
+                0 => None,
+                1 => Some(Shape::Aabb {
+                    half_extents: Vec2::new(across, rng.next_range(0.1, 2.5) * tile.y) * 0.5,
+                }),
+                _ => Some(Shape::Circle {
+                    radius: across * 0.5,
+                }),
+            };
+            let unit = dir.try_normalize().unwrap();
+            let hit_on = |entry: &IndexEntry| match shape {
+                None => ray_against(from, unit, entry).map(|(distance, normal)| SpatialHit {
+                    entity: entry.entity,
+                    point: from + unit * distance,
+                    normal,
+                    distance,
+                    layers: entry.layers,
+                    tile: None,
+                }),
+                Some(shape) => cast_against(shape, from, unit, entry),
+            };
+            let mut want: Option<SpatialHit> = None;
+            let mut consider = |hit: SpatialHit| {
+                if hit.distance <= reach
+                    && keep(&hit)
+                    && want.is_none_or(|kept| hit.distance < kept.distance)
+                {
+                    want = Some(hit);
+                }
+            };
+            for &(entity, at, body) in &bodies {
+                let entry = IndexEntry {
+                    entity: Some(entity),
+                    center: at,
+                    shape: body,
+                    face_mask: FACE_ALL,
+                    sensor: false,
+                    identity: 0,
+                    layers: RigidBody::DEFAULT_LAYERS,
+                    mask: RigidBody::ALL_LAYERS,
+                };
+                if let Some(hit) = hit_on(&entry) {
+                    consider(hit);
+                }
+            }
+            for (entry, cell) in &cells {
+                if let Some(hit) = hit_on(entry) {
+                    consider(SpatialHit {
+                        tile: Some(*cell),
+                        ..hit
+                    });
+                }
+            }
+            let got = match shape {
+                None => cast_ray_where(&world, from, dir, reach, &all(), keep),
+                Some(shape) => cast_shape_where(&world, shape, from, dir, reach, &all(), keep),
+            };
+            let first = match shape {
+                None => cast_ray(&world, from, dir, reach, &all()),
+                Some(shape) => cast_shape(&world, shape, from, dir, reach, &all()),
+            };
+            passed += usize::from(first.is_some_and(|first| !keep(&first)));
+            let read = |hit: SpatialHit| {
+                (
+                    hit.entity,
+                    hit.distance.to_bits(),
+                    hit.normal.to_array().map(f32::to_bits),
+                    hit.point.to_array().map(f32::to_bits),
+                    hit.tile,
+                )
+            };
+            assert_eq!(
+                got.map(read),
+                want.map(read),
+                "seed {seed}, probe {probe}: {shape:?} from {from} along {dir} for {reach}"
+            );
+        }
+    }
+    assert!(
+        passed > 100,
+        "only {passed} casts passed a refused first hit"
+    );
+}
+
+#[test]
 fn casts_meet_a_one_way_edge_from_above_only() {
     // A one-way ledge of 16 px cells from x 32 to 112, its top face at y 48,
     // over a solid floor whose top is at y 96.
