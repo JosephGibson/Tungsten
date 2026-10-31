@@ -2,7 +2,7 @@ use std::any::{TypeId, type_name};
 use std::collections::HashSet;
 
 use super::bundle::{Bundle, BundleScratch, BundleSink};
-use super::command_buffer::{Command, CommandBuffer, CommandTarget};
+use super::command_buffer::{Command, CommandBuffer, CommandTarget, SavedPrefab};
 use super::entity::Entity;
 use super::event_queue::EventQueue;
 use super::query::{Columns, ColumnsMut, QueryData, QueryFilter, ReadOnlyQueryData};
@@ -220,11 +220,18 @@ impl World {
     }
 
     /// Gives `target` what the spawn inheritance derives from `source`, in
-    /// one archetype move after its own components, when anything is given.
-    fn derive_from(&mut self, source: Entity, target: Entity) {
+    /// one archetype move after its own components, when anything is given:
+    /// with a `prefab`, a saved source's spawn also takes the run's next
+    /// save ID and the source's area.
+    fn derive_from(&mut self, source: Entity, target: Entity, prefab: Option<String>) {
         self.bundle_scratch.reset();
         for i in 0..self.source_derivers.len() {
             (self.source_derivers[i])(self, source, target);
+        }
+        if let Some(prefab) = prefab
+            && let Some(saved) = crate::save::id::saved_spawn(self, source, prefab)
+        {
+            self.bundle_scratch.put(saved);
         }
         if !self.bundle_scratch.run.is_empty() {
             self.apply_bundle(target);
@@ -561,7 +568,14 @@ impl World {
                     }
                     index += 1;
                 }
-                Command::Derive { source, target } => {
+                Command::Derive { source, target } | Command::DeriveSaved { source, target } => {
+                    // The prefab of a spawn that may take a save ID.
+                    let prefab = match commands[index] {
+                        Command::DeriveSaved { .. } => {
+                            values.take::<SavedPrefab>().map(|SavedPrefab(id)| id)
+                        }
+                        _ => None,
+                    };
                     index += 1;
                     let entity = match target {
                         CommandTarget::Live(entity) => entity,
@@ -573,7 +587,7 @@ impl World {
                     // A source an earlier command despawned drops the spawn
                     // whole: its run has applied, so nothing of it remains.
                     if self.is_alive(source) {
-                        self.derive_from(source, entity);
+                        self.derive_from(source, entity, prefab);
                     } else {
                         self.despawn(entity);
                     }

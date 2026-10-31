@@ -21,11 +21,16 @@ use crate::config::GameConfig;
 use crate::persist::{WriteError, write_atomic};
 
 pub(crate) mod id;
+pub(crate) mod patch;
 pub(crate) mod registry;
+pub(crate) mod world;
 
 pub use id::{AUTHORED, NameError, SaveId, SaveState, Saved, name, order_key, saving};
 pub use registry::{
     MigrationStep, RefCodec, RefReader, RefWriter, Refs, SaveOptions, SaveRegistry,
+};
+pub use world::{
+    CaptureError, FORMAT, RestoreError, RestoreReport, WorldSave, capture_world, restore_world,
 };
 
 /// The JSON value [`SaveData::migrate`] rewrites, re-exported so a game

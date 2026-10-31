@@ -216,15 +216,12 @@ fn from_form<T: From<F>, F: DeserializeOwned>(value: Value) -> serde_json::Resul
 
 /// Where a registered value lives: on an entity, or as the resource.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)]
 pub(crate) enum Holder {
     Entity(Entity),
     Resource,
 }
 
 /// A registration with its type erased.
-// The capture and the restore (redo 7.9's step 2) call the rest.
-#[allow(dead_code)]
 pub(crate) trait Erased {
     fn has(&self, world: &World, at: Holder) -> bool;
     fn to_value(&self, world: &World, at: Holder) -> Option<serde_json::Result<Value>>;
@@ -239,6 +236,8 @@ pub(crate) trait Erased {
         ids: &dyn Fn(Entity) -> Option<SaveId>,
     ) -> Option<(Refs, usize)>;
     fn load_refs(&self, world: &mut World, at: Holder, refs: &BTreeMap<String, Vec<Entity>>);
+    // Kept areas' pending references (redo 7.9's step 3) read it.
+    #[allow(dead_code)]
     fn keys(&self, world: &World, at: Holder) -> Option<Vec<String>>;
 }
 
@@ -330,7 +329,6 @@ impl<T: 'static> Erased for Typed<T> {
 
 /// One registered type.
 #[derive(Clone)]
-#[allow(dead_code)]
 pub(crate) struct Entry {
     pub(crate) type_name: &'static str,
     pub(crate) version: u32,
@@ -338,7 +336,6 @@ pub(crate) struct Entry {
     pub(crate) saved: Rc<dyn Erased>,
 }
 
-#[allow(dead_code)]
 impl Entry {
     /// `value`, saved at version `from`, a step at a time to this entry's
     /// version.

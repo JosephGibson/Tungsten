@@ -1511,6 +1511,7 @@ pub struct tungsten_core::assets::prefab::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
 impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -3689,6 +3690,7 @@ pub struct tungsten_core::assets::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
 impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -8965,6 +8967,30 @@ impl core::panic::unwind_safe::UnwindSafe for tungsten_core::rng::Pcg32
 pub fn tungsten_core::rng::splitmix64(u64) -> u64
 pub mod tungsten_core::save
 pub use tungsten_core::save::Value
+#[non_exhaustive] pub enum tungsten_core::save::CaptureError
+pub tungsten_core::save::CaptureError::Queued
+pub tungsten_core::save::CaptureError::Queued::commands: usize
+pub tungsten_core::save::CaptureError::Serialize
+pub tungsten_core::save::CaptureError::Serialize::message: alloc::string::String
+pub tungsten_core::save::CaptureError::Serialize::what: alloc::string::String
+impl core::clone::Clone for tungsten_core::save::CaptureError
+pub fn tungsten_core::save::CaptureError::clone(&self) -> tungsten_core::save::CaptureError
+impl core::cmp::Eq for tungsten_core::save::CaptureError
+impl core::cmp::PartialEq for tungsten_core::save::CaptureError
+pub fn tungsten_core::save::CaptureError::eq(&self, &tungsten_core::save::CaptureError) -> bool
+impl core::error::Error for tungsten_core::save::CaptureError
+impl core::fmt::Debug for tungsten_core::save::CaptureError
+pub fn tungsten_core::save::CaptureError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::save::CaptureError
+pub fn tungsten_core::save::CaptureError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::CaptureError
+impl core::marker::Freeze for tungsten_core::save::CaptureError
+impl core::marker::Send for tungsten_core::save::CaptureError
+impl core::marker::Sync for tungsten_core::save::CaptureError
+impl core::marker::Unpin for tungsten_core::save::CaptureError
+impl core::marker::UnsafeUnpin for tungsten_core::save::CaptureError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::CaptureError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::CaptureError
 #[non_exhaustive] pub enum tungsten_core::save::NameError
 pub tungsten_core::save::NameError::AlreadySaved
 pub tungsten_core::save::NameError::AlreadySaved::id: tungsten_core::SaveId
@@ -8998,6 +9024,43 @@ impl core::marker::Unpin for tungsten_core::save::NameError
 impl core::marker::UnsafeUnpin for tungsten_core::save::NameError
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::NameError
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::NameError
+#[non_exhaustive] pub enum tungsten_core::save::RestoreError
+pub tungsten_core::save::RestoreError::Format
+pub tungsten_core::save::RestoreError::Format::found: u32
+pub tungsten_core::save::RestoreError::Migration
+pub tungsten_core::save::RestoreError::Migration::message: alloc::string::String
+pub tungsten_core::save::RestoreError::Migration::what: alloc::string::String
+pub tungsten_core::save::RestoreError::NewerVersion
+pub tungsten_core::save::RestoreError::NewerVersion::current: u32
+pub tungsten_core::save::RestoreError::NewerVersion::kind: &'static str
+pub tungsten_core::save::RestoreError::NewerVersion::name: alloc::string::String
+pub tungsten_core::save::RestoreError::NewerVersion::saved: u32
+pub tungsten_core::save::RestoreError::NextId
+pub tungsten_core::save::RestoreError::NextId::next_id: u64
+pub tungsten_core::save::RestoreError::Prefab
+pub tungsten_core::save::RestoreError::Prefab::message: alloc::string::String
+pub tungsten_core::save::RestoreError::Prefab::what: alloc::string::String
+pub tungsten_core::save::RestoreError::Value
+pub tungsten_core::save::RestoreError::Value::message: alloc::string::String
+pub tungsten_core::save::RestoreError::Value::what: alloc::string::String
+impl core::clone::Clone for tungsten_core::save::RestoreError
+pub fn tungsten_core::save::RestoreError::clone(&self) -> tungsten_core::save::RestoreError
+impl core::cmp::Eq for tungsten_core::save::RestoreError
+impl core::cmp::PartialEq for tungsten_core::save::RestoreError
+pub fn tungsten_core::save::RestoreError::eq(&self, &tungsten_core::save::RestoreError) -> bool
+impl core::error::Error for tungsten_core::save::RestoreError
+impl core::fmt::Debug for tungsten_core::save::RestoreError
+pub fn tungsten_core::save::RestoreError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tungsten_core::save::RestoreError
+pub fn tungsten_core::save::RestoreError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::RestoreError
+impl core::marker::Freeze for tungsten_core::save::RestoreError
+impl core::marker::Send for tungsten_core::save::RestoreError
+impl core::marker::Sync for tungsten_core::save::RestoreError
+impl core::marker::Unpin for tungsten_core::save::RestoreError
+impl core::marker::UnsafeUnpin for tungsten_core::save::RestoreError
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RestoreError
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RestoreError
 #[non_exhaustive] pub enum tungsten_core::save::SaveError
 pub tungsten_core::save::SaveError::Corrupt
 pub tungsten_core::save::SaveError::Corrupt::slot: alloc::string::String
@@ -9076,6 +9139,27 @@ impl<'a> core::marker::Unpin for tungsten_core::save::RefWriter<'a>
 impl<'a> core::marker::UnsafeUnpin for tungsten_core::save::RefWriter<'a>
 impl<'a> !core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RefWriter<'a>
 impl<'a> !core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RefWriter<'a>
+#[non_exhaustive] pub struct tungsten_core::save::RestoreReport
+pub tungsten_core::save::RestoreReport::dropped: alloc::vec::Vec<alloc::string::String>
+impl tungsten_core::save::RestoreReport
+pub fn tungsten_core::save::RestoreReport::is_clean(&self) -> bool
+impl core::clone::Clone for tungsten_core::save::RestoreReport
+pub fn tungsten_core::save::RestoreReport::clone(&self) -> tungsten_core::save::RestoreReport
+impl core::cmp::Eq for tungsten_core::save::RestoreReport
+impl core::cmp::PartialEq for tungsten_core::save::RestoreReport
+pub fn tungsten_core::save::RestoreReport::eq(&self, &tungsten_core::save::RestoreReport) -> bool
+impl core::default::Default for tungsten_core::save::RestoreReport
+pub fn tungsten_core::save::RestoreReport::default() -> tungsten_core::save::RestoreReport
+impl core::fmt::Debug for tungsten_core::save::RestoreReport
+pub fn tungsten_core::save::RestoreReport::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::RestoreReport
+impl core::marker::Freeze for tungsten_core::save::RestoreReport
+impl core::marker::Send for tungsten_core::save::RestoreReport
+impl core::marker::Sync for tungsten_core::save::RestoreReport
+impl core::marker::Unpin for tungsten_core::save::RestoreReport
+impl core::marker::UnsafeUnpin for tungsten_core::save::RestoreReport
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::RestoreReport
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::RestoreReport
 pub struct tungsten_core::save::SaveId(pub u64)
 impl tungsten_core::SaveId
 pub fn tungsten_core::SaveId::authored(&str) -> Self
@@ -9170,6 +9254,7 @@ impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SaveSlots
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SaveSlots
 pub struct tungsten_core::save::SaveState
 impl tungsten_core::save::SaveState
+pub fn tungsten_core::save::SaveState::is_loaded(&self, &str) -> bool
 pub fn tungsten_core::save::SaveState::name_of(&self, tungsten_core::SaveId) -> core::option::Option<&str>
 pub fn tungsten_core::save::SaveState::named_entity(&self, tungsten_core::SaveId) -> core::option::Option<tungsten_core::Entity>
 pub fn tungsten_core::save::SaveState::next_id(&self) -> u64
@@ -9240,12 +9325,38 @@ impl core::marker::Unpin for tungsten_core::save::SlotList
 impl core::marker::UnsafeUnpin for tungsten_core::save::SlotList
 impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::SlotList
 impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::SlotList
+pub struct tungsten_core::save::WorldSave
+impl tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::area_names(&self) -> impl core::iter::traits::iterator::Iterator<Item = &str>
+pub fn tungsten_core::save::WorldSave::dropped_refs(&self) -> usize
+pub fn tungsten_core::save::WorldSave::next_id(&self) -> u64
+impl core::clone::Clone for tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::clone(&self) -> tungsten_core::save::WorldSave
+impl core::cmp::PartialEq for tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::eq(&self, &tungsten_core::save::WorldSave) -> bool
+impl core::fmt::Debug for tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tungsten_core::save::WorldSave
+impl serde_core::ser::Serialize for tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tungsten_core::save::WorldSave
+pub fn tungsten_core::save::WorldSave::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tungsten_core::save::WorldSave
+impl core::marker::Send for tungsten_core::save::WorldSave
+impl core::marker::Sync for tungsten_core::save::WorldSave
+impl core::marker::Unpin for tungsten_core::save::WorldSave
+impl core::marker::UnsafeUnpin for tungsten_core::save::WorldSave
+impl core::panic::unwind_safe::RefUnwindSafe for tungsten_core::save::WorldSave
+impl core::panic::unwind_safe::UnwindSafe for tungsten_core::save::WorldSave
 pub const tungsten_core::save::AUTHORED: u64
+pub const tungsten_core::save::FORMAT: u32
 pub trait tungsten_core::save::SaveData: serde_core::ser::Serialize + serde_core::de::DeserializeOwned
 pub const tungsten_core::save::SaveData::SCHEMA: u32
 pub fn tungsten_core::save::SaveData::migrate(u32, serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::boxed::Box<(dyn core::error::Error + core::marker::Send + core::marker::Sync)>>
+pub fn tungsten_core::save::capture_world(&tungsten_core::World) -> core::result::Result<tungsten_core::save::WorldSave, tungsten_core::save::CaptureError>
 pub fn tungsten_core::save::name(&mut tungsten_core::World, tungsten_core::Entity, core::option::Option<&str>, &str) -> core::result::Result<tungsten_core::SaveId, tungsten_core::save::NameError>
 pub fn tungsten_core::save::order_key(&tungsten_core::World, tungsten_core::Entity) -> (bool, u64)
+pub fn tungsten_core::save::restore_world<B: tungsten_core::ecs::bundle::Bundle + core::clone::Clone>(&mut tungsten_core::World, &tungsten_core::save::WorldSave, &B) -> core::result::Result<tungsten_core::save::RestoreReport, tungsten_core::save::RestoreError>
 pub fn tungsten_core::save::saving(&tungsten_core::World) -> bool
 pub type tungsten_core::save::MigrationStep = fn(serde_json::value::Value) -> core::result::Result<serde_json::value::Value, alloc::string::String>
 pub type tungsten_core::save::Refs = alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tungsten_core::SaveId>>
@@ -18276,6 +18387,7 @@ pub struct tungsten_core::PreparedPrefab
 impl tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::id(&self) -> &str
 pub fn tungsten_core::assets::prefab::PreparedPrefab::spawn(self, &mut tungsten_core::World) -> tungsten_core::Entity
+pub fn tungsten_core::assets::prefab::PreparedPrefab::unsaved(self) -> Self
 pub fn tungsten_core::assets::prefab::PreparedPrefab::with<B: tungsten_core::ecs::bundle::Bundle>(self, B) -> Self
 impl core::fmt::Debug for tungsten_core::assets::prefab::PreparedPrefab
 pub fn tungsten_core::assets::prefab::PreparedPrefab::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

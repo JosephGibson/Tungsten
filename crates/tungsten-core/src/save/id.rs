@@ -6,7 +6,7 @@
 //! [`AUTHORED`]. A World where nothing was named holds no [`SaveState`], and
 //! nothing in it pays for saves.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -76,8 +76,6 @@ impl Saved {
 /// components as they were at the naming, which a capture writes changes
 /// over.
 #[derive(Debug, Clone)]
-// The capture (redo 7.9's step 2) reads the area and the baseline.
-#[allow(dead_code)]
 pub(crate) struct Named {
     pub(crate) name: String,
     pub(crate) area: Option<String>,
@@ -85,12 +83,14 @@ pub(crate) struct Named {
     pub(crate) baseline: BTreeMap<String, serde_json::Value>,
 }
 
-/// A World's save state, inserted at its first naming: the run's counter
-/// and every named entity.
+/// A World's save state, inserted at its first naming: the run's counter,
+/// every named entity and the areas loaded.
 #[derive(Debug, Default)]
 pub struct SaveState {
     pub(crate) next_id: u64,
     pub(crate) named: BTreeMap<SaveId, Named>,
+    /// The areas the World has loaded: each one a name was given in.
+    pub(crate) loaded: BTreeSet<String>,
 }
 
 impl SaveState {
@@ -106,6 +106,12 @@ impl SaveState {
         self.named.get(&id).map(|named| named.entity)
     }
 
+    /// Whether the World has loaded `area`: a name was given in it.
+    #[must_use]
+    pub fn is_loaded(&self, area: &str) -> bool {
+        self.loaded.contains(area)
+    }
+
     /// The name `id` was given.
     #[must_use]
     pub fn name_of(&self, id: SaveId) -> Option<&str> {
@@ -114,8 +120,6 @@ impl SaveState {
 
     /// Takes the run's next ID; `None` once the count reaches [`AUTHORED`],
     /// which it never does.
-    // A run's spawns (redo 7.9's step 2) take it.
-    #[allow(dead_code)]
     pub(crate) fn take_id(&mut self) -> Option<SaveId> {
         (self.next_id < AUTHORED).then(|| {
             let id = SaveId(self.next_id);
@@ -226,7 +230,11 @@ pub fn name(
     if !world.has_resource::<SaveState>() {
         world.insert_resource(SaveState::default());
     }
-    world.resource_mut::<SaveState>().named.insert(
+    let state = world.resource_mut::<SaveState>();
+    if let Some(area) = area {
+        state.loaded.insert(area.to_owned());
+    }
+    state.named.insert(
         id,
         Named {
             name: name.to_owned(),
@@ -262,6 +270,21 @@ fn baseline(
         }
     }
     Ok(baseline)
+}
+
+/// The identity a spawn of `prefab` from `source` takes at the flush: the
+/// run's next ID and the source's area, when the source is saved.
+pub(crate) fn saved_spawn(world: &mut World, source: Entity, prefab: String) -> Option<Saved> {
+    let area = world.get::<Saved>(source)?.area.clone();
+    let Some(id) = world.get_resource_mut::<SaveState>()?.take_id() else {
+        log::warn!("the run's save IDs ran out; a `{prefab}` spawn is not saved");
+        return None;
+    };
+    Some(Saved {
+        id,
+        area,
+        prefab: Some(prefab),
+    })
 }
 
 /// Whether the World has save state: whether anything was ever named in it.
